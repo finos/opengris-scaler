@@ -1,0 +1,4 @@
+sphinx
+sphinx-jsonschema
+sphinx_rtd_theme
+sphinx-substitution-extensions
