@@ -9,8 +9,8 @@ RightKeyT = TypeVar("RightKeyT")
 
 class ManyToManyDict(Generic[LeftKeyT, RightKeyT]):
     def __init__(self):
-        self._left_key_to_right_key_set: _KeyValueDictSet[LeftKeyT, Set[RightKeyT]] = _KeyValueDictSet()
-        self._right_key_to_left_key_set: _KeyValueDictSet[RightKeyT, Set[LeftKeyT]] = _KeyValueDictSet()
+        self._left_key_to_right_key_set: _KeyValueDictSet[LeftKeyT, RightKeyT] = _KeyValueDictSet()
+        self._right_key_to_left_key_set: _KeyValueDictSet[RightKeyT, LeftKeyT] = _KeyValueDictSet()
 
     def left_keys(self):
         return self._left_key_to_right_key_set.keys()

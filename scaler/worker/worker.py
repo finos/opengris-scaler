@@ -11,14 +11,13 @@ from scaler.io.config import PROFILING_INTERVAL_SECONDS
 from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,
-    DisconnectType,
-    MessageVariant,
     ObjectInstruction,
     ObjectResponse,
     Task,
     TaskCancel,
     WorkerHeartbeatEcho,
 )
+from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.logging.utility import setup_logger
@@ -125,7 +124,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self.__register_signal()
         self._task = self._loop.create_task(self.__get_loops())
 
-    async def __on_receive_external(self, message: MessageVariant):
+    async def __on_receive_external(self, message: Message):
         if isinstance(message, WorkerHeartbeatEcho):
             await self._heartbeat_manager.on_heartbeat_echo(message)
             return
@@ -147,7 +146,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             return
 
         if isinstance(message, ClientDisconnect):
-            if message.type == DisconnectType.Shutdown:
+            if message.disconnect_type == ClientDisconnect.DisconnectType.Shutdown:
                 raise ClientShutdownException("received client shutdown, quitting")
             logging.error(f"Worker received invalid ClientDisconnect type, ignoring {message=}")
             return
@@ -169,11 +168,11 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         except (ClientShutdownException, TimeoutError) as e:
             logging.info(f"Worker[{self.pid}]: {str(e)}")
 
-        await self._connector_external.send(DisconnectRequest(self._connector_external.identity))
+        await self._connector_external.send(DisconnectRequest.new_msg(self._connector_external.identity))
 
         self._connector_external.destroy()
-        self._processor_manager.destroy("quitted")
-        logging.info(f"Worker[{self.pid}]: quitted")
+        self._processor_manager.destroy("quited")
+        logging.info(f"Worker[{self.pid}]: quited")
 
     def __run_forever(self):
         self._loop.run_until_complete(self._task)

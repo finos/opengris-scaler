@@ -1,6 +1,7 @@
 import datetime
 import logging
 import time
+from typing import Optional
 
 
 class ScopedLogger:
@@ -18,7 +19,7 @@ class TimedLogger:
     def __init__(self, message: str, logging_level=logging.INFO):
         self.message = message
         self.logging_level = logging_level
-        self.timer = None
+        self.timer: Optional[int] = None
 
     def begin(self):
         self.timer = time.perf_counter_ns()

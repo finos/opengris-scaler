@@ -3,11 +3,12 @@ import os
 import socket
 import threading
 import uuid
-from typing import List, Optional
+from typing import Optional
 
 import zmq
 
-from scaler.protocol.python.message import PROTOCOL, MessageType, MessageVariant
+from scaler.io.utility import deserialize, serialize
+from scaler.protocol.python.mixins import Message
 from scaler.utility.zmq_config import ZMQConfig
 
 
@@ -44,31 +45,23 @@ class SyncConnector:
     def identity(self) -> bytes:
         return self._identity
 
-    def send(self, message: MessageVariant):
-        message_type = PROTOCOL.inverse[type(message)]
-
+    def send(self, message: Message):
         with self._lock:
-            self._socket.send_multipart([message_type.value, *message.serialize()])
+            self._socket.send(serialize(message))
 
-    def receive(self) -> Optional[MessageVariant]:
+    def receive(self) -> Optional[Message]:
         with self._lock:
-            frames = self._socket.recv_multipart()
+            payload = self._socket.recv()
 
-        return self.__compose_message(frames)
+        return self.__compose_message(payload)
 
-    def __compose_message(self, frames: List[bytes]) -> Optional[MessageVariant]:
-        if len(frames) < 2:
-            logging.error(f"{self.__get_prefix()} received unexpected frames {frames}")
+    def __compose_message(self, payload: bytes) -> Optional[Message]:
+        result: Optional[Message] = deserialize(payload)
+        if result is None:
+            logging.error(f"{self.__get_prefix()}: received unknown message: {payload!r}")
             return None
 
-        if frames[0] not in {member.value for member in MessageType}:
-            logging.error(f"{self.__get_prefix()} received unexpected message type: {frames[0]}: {frames}")
-            return None
-
-        message_type_bytes, *payload = frames
-        message_type = MessageType(message_type_bytes)
-        message = PROTOCOL[message_type].deserialize(payload)
-        return message
+        return result
 
     def __get_prefix(self):
         return f"{self.__class__.__name__}[{self._identity.decode()}]:"

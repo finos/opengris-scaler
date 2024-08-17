@@ -91,7 +91,7 @@ class ProcessorHolder:
             # TODO: some processors fail to interrupt because of a blocking 0mq call. Ideally we should interrupt
             # these blocking calls instead of sending a SIGKILL signal.
 
-            logging.warn(f"Processor[{self.pid()}] does not terminate in time, send SIGKILL.")
+            logging.warning(f"Processor[{self.pid()}] does not terminate in time, send SIGKILL.")
             self.__send_signal(signal.SIGKILL)
             self._processor.join()
 

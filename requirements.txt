@@ -1,6 +1,7 @@
-pyzmq
-psutil
-cloudpickle
-tblib
 bidict
+cloudpickle
 graphlib-backport; python_version < '3.9'
+psutil
+pycapnp
+pyzmq
+tblib

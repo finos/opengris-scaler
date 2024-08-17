@@ -1,6 +1,7 @@
 # Roles
 
 The communication protocol include 3 roles: client, scheduler and worker:
+
 - client is upstream of scheduler, scheduler is upstream of worker
 - worker is downstream of scheduler, scheduler is downstream of client
 
@@ -29,26 +30,11 @@ each client to scheduler and each worker to scheduler only maintains 1 TCP conne
 
 # Message format
 
-Each message is a sequence of bytes, and composed by frames, each frame is a sequence of bytes and has a fixed
-length header and a variable length body.
-
-see below, each frame have a fixed length header, and a variable length body, the header is 8 bytes, so each frame
-cannot exceed 2^64 bytes, which is 16 exabytes, which is enough for most of the use cases.
-
-```plaintext
-|   Frame 0    |    Frame 1    | Frame 2 |  Frame 3
-+---+----------+---+-----+-----+---+-----+----+---------------------
-| 7 | "Client1"| 2 | "O" | "I" | 1 | "C" | 36 | ...
-+---+----------+---+-----+-----+---+-----+----+---------------------
-    |  Message |   |   Object  |   |     |
-    | Identity |   |Instruction|   |     |
-                                   |     |
-                                 Instruction
-                                    Type
-```
-
+Scaler is using capnp library to serialize/deserialize and use zmq to communicate between client and scheduler and
+worker
 
 # Message Type Category
+
 In general, there are 2 categories of the message types: object and task
 
 object normally has an object id associated with actual object data, object data is immutable bytes, serialized by
@@ -60,10 +46,9 @@ function and series of arguments, but task message doesn't contain the actual fu
 contains object ids, workers are responsible to fetch the function/argument data from scheduler and deserialize and
 execute the function call.
 
-
 ## Object Channel
-Scheduler is the center of the object storage, client and worker are identical and can push
 
+Scheduler is the center of the object storage, client and worker are identical and can push
 
 ```plaintext
                                                       ObjectInstruction
@@ -84,18 +69,19 @@ Scheduler is the center of the object storage, client and worker are identical a
                                                          ObjectRequest  +--------------+
 
 ```
+
 ObjectInstruction = b"OI"
 client can send object instruction to scheduler, scheduler can send object instruction to worker
 it has 2 subtypes: create b"C", delete b"D"
 when subtype is create, it has to include:
+
 - list of object id (type bytes)
 - list of object names (type bytes)
 - list of object bytes (type bytes)
-All above 3 lists, the number of items need match
+  All above 3 lists, the number of items need match
 
 ObjectRequest = b"OR"
 ObjectResponse = b"OA"
-
 
 ## Task Channel
 

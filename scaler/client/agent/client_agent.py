@@ -18,7 +18,6 @@ from scaler.protocol.python.message import (
     ClientShutdownResponse,
     GraphTask,
     GraphTaskCancel,
-    MessageVariant,
     ObjectInstruction,
     ObjectRequest,
     ObjectResponse,
@@ -26,6 +25,7 @@ from scaler.protocol.python.message import (
     TaskCancel,
     TaskResult,
 )
+from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientCancelledException, ClientQuitException, ClientShutdownException
 from scaler.utility.zmq_config import ZMQConfig
@@ -113,7 +113,7 @@ class ClientAgent(threading.Thread):
         self.__initialize()
         self.__run_loop()
 
-    async def __on_receive_from_client(self, message: MessageVariant):
+    async def __on_receive_from_client(self, message: Message):
         if isinstance(message, ClientDisconnect):
             await self._disconnect_manager.on_client_disconnect(message)
             return
@@ -144,7 +144,7 @@ class ClientAgent(threading.Thread):
 
         raise TypeError(f"Unknown {message=}")
 
-    async def __on_receive_from_scheduler(self, message: MessageVariant):
+    async def __on_receive_from_scheduler(self, message: Message):
         if isinstance(message, ClientShutdownResponse):
             await self._disconnect_manager.on_client_shutdown_response(message)
             return

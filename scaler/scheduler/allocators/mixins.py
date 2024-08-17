@@ -1,5 +1,5 @@
 import abc
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 
 class TaskAllocator(metaclass=abc.ABCMeta):
@@ -14,7 +14,7 @@ class TaskAllocator(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_worker_ids(self) -> List[bytes]:
+    def get_worker_ids(self) -> Set[bytes]:
         """get all worker ids as list"""
         raise NotImplementedError()
 
@@ -24,9 +24,9 @@ class TaskAllocator(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def balance(self) -> Dict[bytes, int]:
-        """balance worker, it should return the number of tasks for over burdened worker, represented as worker
-        identity to number of tasks dictionary"""
+    def balance(self) -> Dict[bytes, List[bytes]]:
+        """balance worker, it should return list of task ids for over burdened worker, represented as worker
+        identity to list of task ids dictionary"""
         raise NotImplementedError()
 
     @abc.abstractmethod

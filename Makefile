@@ -12,7 +12,7 @@ _doc:
 	rm -fr docsvenv build; mkdir build
 	python3.8 -m venv docsvenv
 	. docsvenv/bin/activate; \
-	pip install -r docs/requirements_docs.txt; \
-	pip install -r requirements.txt; \
-	cd docs; make clean && make html
+		pip install -r docs/requirements_docs.txt; \
+		pip install -r requirements.txt; \
+		cd docs; make clean && make html
 	zip -r build/scaler_docs.zip docs/build/html/*

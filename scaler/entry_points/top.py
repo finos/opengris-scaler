@@ -1,10 +1,11 @@
 import argparse
 import curses
 import functools
-from typing import List, Literal
+from typing import List, Literal, Dict, Union
 
 from scaler.io.sync_subscriber import SyncSubscriber
-from scaler.protocol.python.message import MessageVariant, StateScheduler
+from scaler.protocol.python.message import StateScheduler
+from scaler.protocol.python.mixins import Message
 from scaler.utility.formatter import (
     format_bytes,
     format_integer,
@@ -28,7 +29,7 @@ SORT_BY_OPTIONS = {
     ord("l"): "lag",
 }
 
-sort_by_state = {"sort_by": "cpu", "sort_by_previous": "cpu", "sort_reverse": True}
+SORT_BY_STATE: Dict[str, Union[str, bool]] = {"sort_by": "cpu", "sort_by_previous": "cpu", "sort_reverse": True}
 
 
 def get_args():
@@ -61,7 +62,7 @@ def poke(screen, args):
         pass
 
 
-def show_status(status: MessageVariant, screen):
+def show_status(status: Message, screen):
     if not isinstance(status, StateScheduler):
         return
 
@@ -72,7 +73,7 @@ def show_status(status: MessageVariant, screen):
         {
             "cpu": format_percentage(status.scheduler.cpu),
             "rss": format_bytes(status.scheduler.rss),
-            "rss_free": format_bytes(status.scheduler.rss_free),
+            "rss_free": format_bytes(status.rss_free),
         },
     )
 
@@ -106,16 +107,16 @@ def show_status(status: MessageVariant, screen):
                 "worker": worker.worker_id.decode(),
                 "agt_cpu": worker.agent.cpu,
                 "agt_rss": worker.agent.rss,
-                "cpu": worker.total_processors.cpu,
-                "rss": worker.total_processors.rss,
-                "os_rss_free": worker.total_processors.rss_free,
+                "cpu": sum(p.resource.cpu for p in worker.processor_statuses),
+                "rss": sum(p.resource.rss for p in worker.processor_statuses),
+                "os_rss_free": worker.rss_free,
                 "free": worker.free,
                 "sent": worker.sent,
                 "queued": worker.queued,
                 "suspended": worker.suspended,
                 "lag": worker.lag_us,
                 "last": worker.last_s,
-                "ITL": worker.ITL,
+                "ITL": worker.itl,
             }
             for worker in status.worker_manager.workers
         ],
@@ -160,12 +161,14 @@ def __generate_keyword_data(title, data, key_col_length: int = 0, format_integer
     return table
 
 
-def __generate_worker_manager_table(wm_data, worker_length: int):
+def __generate_worker_manager_table(wm_data: List[Dict], worker_length: int) -> List[List[str]]:
     if not wm_data:
         headers = [["No workers"]]
         return headers
 
-    wm_data = sorted(wm_data, key=lambda item: item[sort_by_state["sort_by"]], reverse=sort_by_state["sort_reverse"])
+    wm_data = sorted(
+        wm_data, key=lambda item: item[SORT_BY_STATE["sort_by"]], reverse=bool(SORT_BY_STATE["sort_reverse"])
+    )
 
     for row in wm_data:
         row["worker"] = __truncate(row["worker"], worker_length, how="left")
@@ -179,7 +182,7 @@ def __generate_worker_manager_table(wm_data, worker_length: int):
         last = f"({format_seconds(last)}) " if last > 5 else ""
         row["lag"] = last + format_microseconds(row["lag"])
 
-    worker_manager_table = [[f"[{v}]" if v == sort_by_state["sort_by"] else v for v in wm_data[0].keys()]]
+    worker_manager_table = [[f"[{v}]" if v == SORT_BY_STATE["sort_by"] else v for v in wm_data[0].keys()]]
     worker_manager_table.extend([list(worker.values()) for worker in wm_data])
     return worker_manager_table
 
@@ -264,10 +267,10 @@ def __change_option_state(option: int):
     if option not in SORT_BY_OPTIONS.keys():
         return
 
-    sort_by_state["sort_by_previous"] = sort_by_state["sort_by"]
-    sort_by_state["sort_by"] = SORT_BY_OPTIONS[option]
-    if sort_by_state["sort_by"] != sort_by_state["sort_by_previous"]:
-        sort_by_state["sort_reverse"] = True
+    SORT_BY_STATE["sort_by_previous"] = SORT_BY_STATE["sort_by"]
+    SORT_BY_STATE["sort_by"] = SORT_BY_OPTIONS[option]
+    if SORT_BY_STATE["sort_by"] != SORT_BY_STATE["sort_by_previous"]:
+        SORT_BY_STATE["sort_reverse"] = True
         return
 
-    sort_by_state["sort_reverse"] = not sort_by_state["sort_reverse"]
+    SORT_BY_STATE["sort_reverse"] = not SORT_BY_STATE["sort_reverse"]

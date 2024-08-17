@@ -1,171 +1,39 @@
 import dataclasses
 import enum
 import os
-import pickle
-import struct
-from typing import List, Set, Tuple, TypeVar
+from typing import List, Set, Tuple, Optional, Type
 
 import bidict
 
-from scaler.protocol.python.mixins import _Message
+from scaler.protocol.capnp._python import _message  # noqa
+from scaler.protocol.python.common import TaskStatus, ObjectContent
+from scaler.protocol.python.mixins import Message
 from scaler.protocol.python.status import (
     BinderStatus,
     ClientManagerStatus,
     ObjectManagerStatus,
     Resource,
+    ProcessorStatus,
     TaskManagerStatus,
     WorkerManagerStatus,
 )
 
 
-class MessageType(enum.Enum):
-    Task = b"TK"
-    TaskCancel = b"TC"
-    TaskResult = b"TR"
+class Task(Message):
+    @dataclasses.dataclass
+    class Argument:
+        type: "ArgumentType"
+        data: bytes
 
-    GraphTask = b"GT"
-    GraphTaskCancel = b"GC"
+        def __repr__(self):
+            return f"Argument(type={self.type}, data={self.data.hex()})"
 
-    ObjectInstruction = b"OI"
-    ObjectRequest = b"OR"
-    ObjectResponse = b"OA"
+        class ArgumentType(enum.Enum):
+            Task = _message.Task.Argument.ArgumentType.task
+            ObjectID = _message.Task.Argument.ArgumentType.objectID
 
-    ClientHeartbeat = b"CB"
-    ClientHeartbeatEcho = b"CE"
-
-    WorkerHeartbeat = b"HB"
-    WorkerHeartbeatEcho = b"HE"
-
-    DisconnectRequest = b"DR"
-    DisconnectResponse = b"DP"
-
-    StateClient = b"SC"
-    StateObject = b"SF"
-    StateBalanceAdvice = b"SA"
-    StateScheduler = b"SS"
-    StateWorker = b"SW"
-    StateTask = b"ST"
-    StateGraphTask = b"SG"
-
-    ClientDisconnect = b"CS"
-    ClientShutdownResponse = b"CR"
-
-    ProcessorInitialized = b"PI"
-
-    @staticmethod
-    def allowed_values():
-        return {member.value for member in MessageType}
-
-
-class TaskEchoStatus(enum.Enum):
-    # task echo is the response of task submit to scheduler
-    SubmitOK = b"O"  # if submit ok and task get accepted by scheduler
-    SubmitDuplicated = b"D"  # if submit and find task in scheduler
-    CancelOK = b"C"  # if cancel and success
-    CancelTaskNotFound = b"N"  # if cancel and cannot find task in scheduler
-
-
-class TaskStatus(enum.Enum):
-    # task is accepted by scheduler, but will have below status
-    Success = b"S"  # if submit and task is done and get result
-    Failed = b"F"  # if submit and task is failed on worker
-    Canceled = b"C"  # if submit and task is canceled
-    NotFound = b"N"  # if submit and task is not found in scheduler
-    WorkerDied = b"K"  # if submit and worker died (only happened when scheduler keep_task=False)
-    NoWorker = b"W"  # if submit and scheduler is full (not implemented yet)
-
-    # below are only used for monitoring channel, not sent to client
-    Inactive = b"I"  # task is scheduled but not allocate to worker
-    Running = b"R"  # task is running in worker
-    Canceling = b"X"  # task is canceling (can be in Inactive or Running state)
-
-
-class NodeTaskType(enum.Enum):
-    Normal = b"N"
-    Target = b"T"
-
-
-class ObjectInstructionType(enum.Enum):
-    Create = b"C"
-    Delete = b"D"
-
-
-class ObjectRequestType(enum.Enum):
-    Get = b"A"
-
-
-class ObjectResponseType(enum.Enum):
-    Content = b"C"
-    ObjectNotExist = b"N"
-
-
-class ArgumentType(enum.Enum):
-    Task = b"T"
-    ObjectID = b"R"
-
-
-class DisconnectType(enum.Enum):
-    Disconnect = b"D"
-    Shutdown = b"S"
-
-
-@dataclasses.dataclass
-class Argument:
-    type: ArgumentType
-    data: bytes
-
-    def __repr__(self):
-        return f"Argument(type={self.type}, data={self.data.hex()})"
-
-    def serialize(self) -> Tuple[bytes, ...]:
-        return self.type.value, self.data
-
-    @staticmethod
-    def deserialize(data: List[bytes]):
-        return Argument(ArgumentType(data[0]), data[1])
-
-
-@dataclasses.dataclass
-class ObjectContent:
-    object_ids: Tuple[bytes, ...]
-    object_names: Tuple[bytes, ...] = dataclasses.field(default_factory=tuple)
-    object_bytes: Tuple[bytes, ...] = dataclasses.field(default_factory=tuple)
-
-    def serialize(self) -> Tuple[bytes, ...]:
-        payload = (
-            struct.pack("III", len(self.object_ids), len(self.object_names), len(self.object_bytes)),
-            *self.object_ids,
-            *self.object_names,
-            *self.object_bytes,
-        )
-        return payload
-
-    @staticmethod
-    def deserialize(data: List[bytes]) -> "ObjectContent":
-        num_of_object_ids, num_of_object_names, num_of_object_bytes = struct.unpack("III", data[0])
-
-        data = data[1:]
-        object_ids = data[:num_of_object_ids]
-
-        data = data[num_of_object_ids:]
-        object_names = data[:num_of_object_names]
-
-        data = data[num_of_object_names:]
-        object_bytes = data[:num_of_object_bytes]
-
-        return ObjectContent(tuple(object_ids), tuple(object_names), tuple(object_bytes))
-
-
-MessageVariant = TypeVar("MessageVariant", bound=_Message)
-
-
-@dataclasses.dataclass
-class Task(_Message):
-    task_id: bytes
-    source: bytes
-    metadata: bytes
-    func_object_id: bytes
-    function_args: List[Argument]
+    def __init__(self, msg):
+        super().__init__(msg)
 
     def __repr__(self):
         return (
@@ -173,74 +41,114 @@ class Task(_Message):
             f"func_object_id={self.func_object_id.hex()}, function_args={self.function_args})"
         )
 
-    def get_required_object_ids(self) -> Set[bytes]:
-        return {self.func_object_id} | {arg.data for arg in self.function_args if arg.type == ArgumentType.ObjectID}
+    @property
+    def task_id(self) -> bytes:
+        return self._msg.taskId
 
-    def serialize(self) -> Tuple[bytes, ...]:
-        return (
-            self.task_id,
-            self.source,
-            self.metadata,
-            self.func_object_id,
-            *[d for arg in self.function_args for d in arg.serialize()],
-        )
+    @property
+    def source(self) -> bytes:
+        return self._msg.source
+
+    @property
+    def metadata(self) -> bytes:
+        return self._msg.metadata
+
+    @property
+    def func_object_id(self) -> bytes:
+        return self._msg.funcObjectId
+
+    @property
+    def function_args(self) -> List[Argument]:
+        return [
+            Task.Argument(type=Task.Argument.ArgumentType(arg.type.raw), data=arg.data)
+            for arg in self._msg.functionArgs
+        ]
 
     @staticmethod
-    def deserialize(data: List[bytes]):
+    def new_msg(
+        task_id: bytes, source: bytes, metadata: bytes, func_object_id: bytes, function_args: List[Argument]
+    ) -> "Task":
         return Task(
-            data[0], data[1], data[2], data[3], [Argument.deserialize(data[i : i + 2]) for i in range(4, len(data), 2)]
+            _message.Task(
+                taskId=task_id,
+                source=source,
+                metadata=metadata,
+                funcObjectId=func_object_id,
+                functionArgs=[_message.Task.Argument(type=arg.type.value, data=arg.data) for arg in function_args],
+            )
         )
 
 
-@dataclasses.dataclass
-class TaskCancelFlags:
-    force: bool = dataclasses.field(default=False)
-    retrieve_task_object: bool = dataclasses.field(default=False)
+class TaskCancel(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
 
-    FORMAT = "??"
+    @dataclasses.dataclass
+    class TaskCancelFlags:
+        force: bool
+        retrieve_task_object: bool
 
-    def serialize(self) -> bytes:
-        return struct.pack(TaskCancelFlags.FORMAT, self.force, self.retrieve_task_object)
+    @property
+    def task_id(self) -> bytes:
+        return self._msg.taskId
 
-    @staticmethod
-    def deserialize(data: bytes) -> "TaskCancelFlags":
-        return TaskCancelFlags(*struct.unpack(TaskCancelFlags.FORMAT, data))
-
-
-@dataclasses.dataclass
-class TaskCancel(_Message):
-    task_id: bytes
-    flags: TaskCancelFlags = dataclasses.field(default_factory=TaskCancelFlags)
-
-    def serialize(self) -> Tuple[bytes, ...]:
-        return (self.task_id, self.flags.serialize())
+    @property
+    def flags(self) -> TaskCancelFlags:
+        return TaskCancel.TaskCancelFlags(
+            force=self._msg.flags.force, retrieve_task_object=self._msg.flags.retrieveTaskObject
+        )
 
     @staticmethod
-    def deserialize(data: List[bytes]):
-        return TaskCancel(data[0], TaskCancelFlags.deserialize(data[1]))  # type: ignore
+    def new_msg(task_id: bytes, flags: Optional[TaskCancelFlags] = None) -> "TaskCancel":
+        if flags is None:
+            flags = TaskCancel.TaskCancelFlags(force=False, retrieve_task_object=False)
+
+        return TaskCancel(
+            _message.TaskCancel(
+                taskId=task_id,
+                flags=_message.TaskCancel.TaskCancelFlags(
+                    force=flags.force, retrieveTaskObject=flags.retrieve_task_object
+                ),
+            )
+        )
 
 
-@dataclasses.dataclass
-class TaskResult(_Message):
-    task_id: bytes
-    status: TaskStatus
-    metadata: bytes = dataclasses.field(default=b"")
-    results: List[bytes] = dataclasses.field(default_factory=list)
+class TaskResult(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
 
-    def serialize(self) -> Tuple[bytes, ...]:
-        return self.task_id, self.status.value, self.metadata, *self.results
+    @property
+    def task_id(self) -> bytes:
+        return self._msg.taskId
+
+    @property
+    def status(self) -> TaskStatus:
+        return TaskStatus(self._msg.status.raw)
+
+    @property
+    def metadata(self) -> bytes:
+        return self._msg.metadata
+
+    @property
+    def results(self) -> List[bytes]:
+        return self._msg.results
 
     @staticmethod
-    def deserialize(data: List[bytes]):
-        return TaskResult(data[0], TaskStatus(data[1]), data[2], data[3:])
+    def new_msg(
+        task_id: bytes, status: TaskStatus, metadata: Optional[bytes] = None, results: Optional[List[bytes]] = None
+    ) -> "TaskResult":
+        if metadata is None:
+            metadata = bytes()
+
+        if results is None:
+            results = list()
+
+        return TaskResult(_message.TaskResult(taskId=task_id, status=status.value, metadata=metadata, results=results))
 
 
-@dataclasses.dataclass
-class GraphTask(_Message):
-    task_id: bytes
-    source: bytes
-    targets: List[bytes]
-    graph: List[Task]
+class GraphTask(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
 
     def __repr__(self):
         return (
@@ -253,401 +161,484 @@ class GraphTask(_Message):
             f")"
         )
 
-    def serialize(self) -> Tuple[bytes, ...]:
-        graph_bytes = []
-        for task in self.graph:
-            frames = task.serialize()
-            graph_bytes.append(struct.pack("I", len(frames)))
-            graph_bytes.extend(frames)
+    @property
+    def task_id(self) -> bytes:
+        return self._msg.taskId
 
-        return self.task_id, self.source, struct.pack("I", len(self.targets)), *self.targets, *graph_bytes
+    @property
+    def source(self) -> bytes:
+        return self._msg.source
 
-    @staticmethod
-    def deserialize(data: List[bytes]):
-        index = 0
-        task_id = data[index]
+    @property
+    def targets(self) -> List[bytes]:
+        return self._msg.targets
 
-        index += 1
-        client_id = data[index]
-
-        index += 1
-        number_of_targets = struct.unpack("I", data[index])[0]
-
-        index += 1
-        targets = data[index : index + number_of_targets]
-
-        index += number_of_targets
-        graph = []
-        while index < len(data):
-            number_of_frames = struct.unpack("I", data[index])[0]
-            index += 1
-            graph.append(Task.deserialize(data[index : index + number_of_frames]))
-            index += number_of_frames
-
-        return GraphTask(task_id, client_id, targets, graph)
-
-
-@dataclasses.dataclass
-class GraphTaskCancel(_Message):
-    task_id: bytes
-
-    def serialize(self) -> Tuple[bytes, ...]:
-        return (self.task_id,)
+    @property
+    def graph(self) -> List[Task]:
+        return [Task(task) for task in self._msg.graph]
 
     @staticmethod
-    def deserialize(data: List[bytes]):
-        return GraphTaskCancel(data[0])
-
-
-@dataclasses.dataclass
-class ClientHeartbeat(_Message):
-    client_cpu: float
-    client_rss: int
-    latency_us: int
-
-    FORMAT = "HQI"
-
-    def serialize(self) -> Tuple[bytes, ...]:
-        return (struct.pack(ClientHeartbeat.FORMAT, int(self.client_cpu * 1000), self.client_rss, self.latency_us),)
-
-    @staticmethod
-    def deserialize(data: List[bytes]):
-        client_cpu, client_rss, latency_us = struct.unpack(ClientHeartbeat.FORMAT, data[0])
-        return ClientHeartbeat(float(client_cpu / 1000), client_rss, latency_us)
-
-
-@dataclasses.dataclass
-class ClientHeartbeatEcho(_Message):
-    def serialize(self) -> Tuple[bytes, ...]:
-        return (b"",)
-
-    @staticmethod
-    def deserialize(data: List[bytes]):
-        return ClientHeartbeatEcho()
-
-
-@dataclasses.dataclass
-class ProcessorHeartbeat:
-    pid: int
-    initialized: bool
-    has_task: bool
-    suspended: bool
-    cpu: float
-    rss: int
-
-    FORMAT = "I???HQ"
-
-    def serialize(self) -> bytes:
-        return struct.pack(
-            ProcessorHeartbeat.FORMAT,
-            self.pid,
-            self.initialized,
-            self.has_task,
-            self.suspended,
-            int(self.cpu * 1000),
-            self.rss,
+    def new_msg(task_id: bytes, source: bytes, targets: List[bytes], graph: List[Task]) -> "GraphTask":
+        return GraphTask(
+            _message.GraphTask(
+                taskId=task_id, source=source, targets=targets, graph=[task.get_message() for task in graph]
+            )
         )
 
-    @staticmethod
-    def deserialize(data: bytes) -> "ProcessorHeartbeat":
-        pid, initialized, has_task, suspended, cpu, rss = struct.unpack(ProcessorHeartbeat.FORMAT, data)
-        return ProcessorHeartbeat(pid, initialized, has_task, suspended, float(cpu / 1000), rss)
 
+class GraphTaskCancel(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
 
-@dataclasses.dataclass
-class WorkerHeartbeat(_Message):
-    agent_cpu: float
-    agent_rss: int
-    rss_free: int
-    queued_tasks: int
-    latency_us: int
-    task_lock: bool
-
-    processors: List[ProcessorHeartbeat]
-
-    FORMAT = "HQQHI?"  # processor heartbeats come right after the main fields
-
-    def serialize(self) -> Tuple[bytes, ...]:
-        return (
-            struct.pack(
-                WorkerHeartbeat.FORMAT,
-                int(self.agent_cpu * 1000),
-                self.agent_rss,
-                self.rss_free,
-                self.queued_tasks,
-                self.latency_us,
-                self.task_lock,
-            ),
-            *(p.serialize() for p in self.processors)
-        )
+    @property
+    def task_id(self) -> bytes:
+        return self._msg.taskId
 
     @staticmethod
-    def deserialize(data: List[bytes]):
-        (
-            agent_cpu,
-            agent_rss,
-            rss_free,
-            queued_tasks,
-            latency_us,
-            task_lock,
-        ) = struct.unpack(WorkerHeartbeat.FORMAT, data[0])
-        processors = [ProcessorHeartbeat.deserialize(d) for d in data[1:]]
+    def new_msg(task_id: bytes) -> "GraphTaskCancel":
+        return GraphTaskCancel(_message.GraphTaskCancel(taskId=task_id))
 
+    def get_message(self):
+        return self._msg
+
+
+class ClientHeartbeat(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def resource(self) -> Resource:
+        return Resource(self._msg.resource)
+
+    @property
+    def latency_us(self) -> int:
+        return self._msg.latencyUS
+
+    @staticmethod
+    def new_msg(resource: Resource, latency_us: int) -> "ClientHeartbeat":
+        return ClientHeartbeat(_message.ClientHeartbeat(resource=resource.get_message(), latencyUS=latency_us))
+
+
+class ClientHeartbeatEcho(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @staticmethod
+    def new_msg() -> "ClientHeartbeatEcho":
+        return ClientHeartbeatEcho(_message.ClientHeartbeatEcho())
+
+
+class WorkerHeartbeat(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def agent(self) -> Resource:
+        return Resource(self._msg.agent)
+
+    @property
+    def rss_free(self) -> int:
+        return self._msg.rssFree
+
+    @property
+    def queued_tasks(self) -> int:
+        return self._msg.queuedTasks
+
+    @property
+    def latency_us(self) -> int:
+        return self._msg.latencyUS
+
+    @property
+    def task_lock(self) -> bool:
+        return self._msg.taskLock
+
+    @property
+    def processors(self) -> List[ProcessorStatus]:
+        return [ProcessorStatus(p) for p in self._msg.processors]
+
+    @staticmethod
+    def new_msg(
+        agent: Resource,
+        rss_free: int,
+        queued_tasks: int,
+        latency_us: int,
+        task_lock: bool,
+        processors: List[ProcessorStatus],
+    ) -> "WorkerHeartbeat":
         return WorkerHeartbeat(
-            float(agent_cpu / 1000),
-            agent_rss,
-            rss_free,
-            queued_tasks,
-            latency_us,
-            task_lock,
-            processors,
+            _message.WorkerHeartbeat(
+                agent=agent.get_message(),
+                rssFree=rss_free,
+                queuedTasks=queued_tasks,
+                latencyUS=latency_us,
+                taskLock=task_lock,
+                processors=[p.get_message() for p in processors],
+            )
         )
 
 
-@dataclasses.dataclass
-class WorkerHeartbeatEcho(_Message):
-    def serialize(self) -> Tuple[bytes, ...]:
-        return (b"",)
+class WorkerHeartbeatEcho(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
 
     @staticmethod
-    def deserialize(data: List[bytes]):
-        return WorkerHeartbeatEcho()
+    def new_msg() -> "WorkerHeartbeatEcho":
+        return WorkerHeartbeatEcho(_message.WorkerHeartbeatEcho())
 
 
-@dataclasses.dataclass
-class ObjectInstruction(_Message):
-    type: ObjectInstructionType
-    object_user: bytes
-    object_content: ObjectContent
+class ObjectInstruction(Message):
+    class ObjectInstructionType(enum.Enum):
+        Create = _message.ObjectInstruction.ObjectInstructionType.create
+        Delete = _message.ObjectInstruction.ObjectInstructionType.delete
 
-    def serialize(self) -> Tuple[bytes, ...]:
-        return self.type.value, self.object_user, *self.object_content.serialize()
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def instruction_type(self) -> ObjectInstructionType:
+        return ObjectInstruction.ObjectInstructionType(self._msg.instructionType.raw)
+
+    @property
+    def object_user(self) -> bytes:
+        return self._msg.objectUser
+
+    @property
+    def object_content(self) -> ObjectContent:
+        return ObjectContent(self._msg.objectContent)
 
     @staticmethod
-    def deserialize(data: List[bytes]) -> "ObjectInstruction":
-        return ObjectInstruction(ObjectInstructionType(data[0]), data[1], ObjectContent.deserialize(data[2:]))
+    def new_msg(
+        instruction_type: ObjectInstructionType, object_user: bytes, object_content: ObjectContent
+    ) -> "ObjectInstruction":
+        return ObjectInstruction(
+            _message.ObjectInstruction(
+                instructionType=instruction_type.value,
+                objectUser=object_user,
+                objectContent=object_content.get_message(),
+            )
+        )
 
 
-@dataclasses.dataclass
-class ObjectRequest(_Message):
-    type: ObjectRequestType
-    object_ids: Tuple[bytes, ...]
+class ObjectRequest(Message):
+    class ObjectRequestType(enum.Enum):
+        Get = _message.ObjectRequest.ObjectRequestType.get
+
+    def __init__(self, msg):
+        super().__init__(msg)
 
     def __repr__(self):
-        return f"ObjectRequest(type={self.type}, object_ids={tuple(object_id.hex() for object_id in self.object_ids)})"
-
-    def serialize(self) -> Tuple[bytes, ...]:
-        return self.type.value, *self.object_ids
-
-    @staticmethod
-    def deserialize(data: List[bytes]):
-        return ObjectRequest(ObjectRequestType(data[0]), tuple(data[1:]))
-
-
-@dataclasses.dataclass
-class ObjectResponse(_Message):
-    type: ObjectResponseType
-    object_content: ObjectContent
-
-    def serialize(self) -> Tuple[bytes, ...]:
-        return self.type.value, *self.object_content.serialize()
-
-    @staticmethod
-    def deserialize(data: List[bytes]):
-        request_type = ObjectResponseType(data[0])
-        return ObjectResponse(request_type, ObjectContent.deserialize(data[1:]))
-
-
-@dataclasses.dataclass
-class DisconnectRequest(_Message):
-    worker: bytes
-
-    def serialize(self) -> Tuple[bytes, ...]:
-        return (self.worker,)
-
-    @staticmethod
-    def deserialize(data: List[bytes]):
-        return DisconnectRequest(data[0])
-
-
-@dataclasses.dataclass
-class DisconnectResponse(_Message):
-    worker: bytes
-
-    def serialize(self) -> Tuple[bytes, ...]:
-        return (self.worker,)
-
-    @staticmethod
-    def deserialize(data: List[bytes]):
-        return DisconnectResponse(data[0])
-
-
-@dataclasses.dataclass
-class ClientDisconnect(_Message):
-    type: DisconnectType
-
-    def serialize(self) -> Tuple[bytes, ...]:
-        return (self.type.value,)
-
-    @staticmethod
-    def deserialize(data: List[bytes]):
-        return ClientDisconnect(DisconnectType(data[0]))
-
-
-@dataclasses.dataclass
-class ClientShutdownResponse(_Message):
-    accepted: bool
-
-    def serialize(self) -> Tuple[bytes, ...]:
-        return (struct.pack("?", self.accepted),)
-
-    @staticmethod
-    def deserialize(data: List[bytes]):
-        return ClientShutdownResponse(struct.unpack("?", data[0])[0])
-
-
-@dataclasses.dataclass
-class StateClient(_Message):
-    # TODO: implement this
-    def serialize(self) -> Tuple[bytes, ...]:
-        return (b"",)
-
-    @staticmethod
-    def deserialize(data: List[bytes]):
-        return StateClient()
-
-
-@dataclasses.dataclass
-class StateObject(_Message):
-    # TODO: implement this
-    def serialize(self) -> Tuple[bytes, ...]:
-        return (b"",)
-
-    @staticmethod
-    def deserialize(data: List[bytes]):
-        return StateObject()
-
-
-@dataclasses.dataclass
-class StateBalanceAdvice(_Message):
-    worker_id: bytes
-    task_ids: List[bytes]
-
-    def serialize(self) -> Tuple[bytes, ...]:
-        return self.worker_id, *self.task_ids
-
-    @staticmethod
-    def deserialize(data: List[bytes]):
-        return StateBalanceAdvice(data[0], data[1:])
-
-
-@dataclasses.dataclass
-class StateScheduler(_Message):
-    binder: BinderStatus
-    scheduler: Resource
-    client_manager: ClientManagerStatus
-    object_manager: ObjectManagerStatus
-    task_manager: TaskManagerStatus
-    worker_manager: WorkerManagerStatus
-
-    def serialize(self) -> Tuple[bytes, ...]:
         return (
-            pickle.dumps(
-                (
-                    self.binder,
-                    self.scheduler,
-                    self.client_manager,
-                    self.object_manager,
-                    self.task_manager,
-                    self.worker_manager,
-                )
-            ),
+            f"ObjectRequest(type={self.request_type}, "
+            f"object_ids={tuple(object_id.hex() for object_id in self.object_ids)})"
         )
 
+    @property
+    def request_type(self) -> ObjectRequestType:
+        return ObjectRequest.ObjectRequestType(self._msg.requestType.raw)
+
+    @property
+    def object_ids(self) -> Tuple[bytes]:
+        return tuple(self._msg.objectIds)
+
     @staticmethod
-    def deserialize(data: List[bytes]):
-        return StateScheduler(*pickle.loads(data[0]))
+    def new_msg(request_type: ObjectRequestType, object_ids: Tuple[bytes, ...]) -> "ObjectRequest":
+        return ObjectRequest(_message.ObjectRequest(requestType=request_type.value, objectIds=list(object_ids)))
+
+
+class ObjectResponse(Message):
+    class ObjectResponseType(enum.Enum):
+        Content = _message.ObjectResponse.ObjectResponseType.content
+        ObjectNotExist = _message.ObjectResponse.ObjectResponseType.objectNotExist
+
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def response_type(self) -> ObjectResponseType:
+        return ObjectResponse.ObjectResponseType(self._msg.responseType.raw)
+
+    @property
+    def object_content(self) -> ObjectContent:
+        return ObjectContent(self._msg.objectContent)
+
+    @staticmethod
+    def new_msg(response_type: ObjectResponseType, object_content: ObjectContent) -> "ObjectResponse":
+        return ObjectResponse(
+            _message.ObjectResponse(responseType=response_type.value, objectContent=object_content.get_message())
+        )
+
+
+class DisconnectRequest(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def worker(self) -> bytes:
+        return self._msg.worker
+
+    @staticmethod
+    def new_msg(worker: bytes) -> "DisconnectRequest":
+        return DisconnectRequest(_message.DisconnectRequest(worker=worker))
 
 
 @dataclasses.dataclass
-class StateWorker(_Message):
-    worker_id: bytes
-    message: bytes
+class DisconnectResponse(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
 
-    def serialize(self) -> Tuple[bytes, ...]:
-        return self.worker_id, self.message
-
-    @staticmethod
-    def deserialize(data: List[bytes]):
-        return StateWorker(data[0], data[1])
-
-
-@dataclasses.dataclass
-class StateTask(_Message):
-    task_id: bytes
-    function_name: bytes
-    status: TaskStatus
-    worker: bytes
-    metadata: bytes = dataclasses.field(default=b"")
-
-    def serialize(self) -> Tuple[bytes, ...]:
-        return self.task_id, self.function_name, self.status.value, self.worker, self.metadata
+    @property
+    def worker(self) -> bytes:
+        return self._msg.worker
 
     @staticmethod
-    def deserialize(data: List[bytes]):
-        return StateTask(data[0], data[1], TaskStatus(data[2]), data[3], data[4])
+    def new_msg(worker: bytes) -> "DisconnectResponse":
+        return DisconnectResponse(_message.DisconnectResponse(worker=worker))
 
 
-@dataclasses.dataclass
-class StateGraphTask(_Message):
-    graph_task_id: bytes
-    task_id: bytes
-    node_task_type: NodeTaskType
-    parent_task_ids: Set[bytes]
+class ClientDisconnect(Message):
+    class DisconnectType(enum.Enum):
+        Disconnect = _message.ClientDisconnect.DisconnectType.disconnect
+        Shutdown = _message.ClientDisconnect.DisconnectType.shutdown
 
-    def serialize(self) -> Tuple[bytes, ...]:
-        return self.graph_task_id, self.task_id, self.node_task_type.value, *self.parent_task_ids
+    def __init__(self, msg):
+        super().__init__(msg)
 
-    @staticmethod
-    def deserialize(data: List[bytes]):
-        return StateGraphTask(data[0], data[1], NodeTaskType(data[2]), set(data[3:]))
-
-
-@dataclasses.dataclass
-class ProcessorInitialized(_Message):
-    def serialize(self) -> Tuple[bytes, ...]:
-        return (b"",)
+    @property
+    def disconnect_type(self) -> DisconnectType:
+        return ClientDisconnect.DisconnectType(self._msg.disconnectType.raw)
 
     @staticmethod
-    def deserialize(data: List[bytes]):
-        return ProcessorInitialized()
+    def new_msg(disconnect_type: DisconnectType) -> "ClientDisconnect":
+        return ClientDisconnect(_message.ClientDisconnect(disconnectType=disconnect_type.value))
 
 
-PROTOCOL = bidict.bidict(
+class ClientShutdownResponse(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def accepted(self) -> bool:
+        return self._msg.accepted
+
+    @staticmethod
+    def new_msg(accepted: bool) -> "ClientShutdownResponse":
+        return ClientShutdownResponse(_message.ClientShutdownResponse(accepted=accepted))
+
+
+class StateClient(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @staticmethod
+    def new_msg() -> "StateClient":
+        return StateClient(_message.StateClient())
+
+
+class StateObject(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @staticmethod
+    def new_msg() -> "StateObject":
+        return StateObject(_message.StateObject())
+
+
+class StateBalanceAdvice(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def worker_id(self) -> bytes:
+        return self._msg.workerId
+
+    @property
+    def task_ids(self) -> List[bytes]:
+        return self._msg.taskIds
+
+    @staticmethod
+    def new_msg(worker_id: bytes, task_ids: List[bytes]) -> "StateBalanceAdvice":
+        return StateBalanceAdvice(_message.StateBalanceAdvice(workerId=worker_id, taskIds=task_ids))
+
+
+class StateScheduler(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def binder(self) -> BinderStatus:
+        return BinderStatus(self._msg.binder)
+
+    @property
+    def scheduler(self) -> Resource:
+        return Resource(self._msg.scheduler)
+
+    @property
+    def rss_free(self) -> int:
+        return self._msg.rssFree
+
+    @property
+    def client_manager(self) -> ClientManagerStatus:
+        return ClientManagerStatus(self._msg.clientManager)
+
+    @property
+    def object_manager(self) -> ObjectManagerStatus:
+        return ObjectManagerStatus(self._msg.objectManager)
+
+    @property
+    def task_manager(self) -> TaskManagerStatus:
+        return TaskManagerStatus(self._msg.taskManager)
+
+    @property
+    def worker_manager(self) -> WorkerManagerStatus:
+        return WorkerManagerStatus(self._msg.workerManager)
+
+    @staticmethod
+    def new_msg(
+        binder: BinderStatus,
+        scheduler: Resource,
+        rss_free: int,
+        client_manager: ClientManagerStatus,
+        object_manager: ObjectManagerStatus,
+        task_manager: TaskManagerStatus,
+        worker_manager: WorkerManagerStatus,
+    ) -> "StateScheduler":
+        return StateScheduler(
+            _message.StateScheduler(
+                binder=binder.get_message(),
+                scheduler=scheduler.get_message(),
+                rssFree=rss_free,
+                clientManager=client_manager.get_message(),
+                objectManager=object_manager.get_message(),
+                taskManager=task_manager.get_message(),
+                workerManager=worker_manager.get_message(),
+            )
+        )
+
+
+class StateWorker(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def worker_id(self) -> bytes:
+        return self._msg.workerId
+
+    @property
+    def message(self) -> bytes:
+        return self._msg.message
+
+    @staticmethod
+    def new_msg(worker_id: bytes, message: bytes) -> "StateWorker":
+        return StateWorker(_message.StateWorker(workerId=worker_id, message=message))
+
+
+class StateTask(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def task_id(self) -> bytes:
+        return self._msg.taskId
+
+    @property
+    def function_name(self) -> bytes:
+        return self._msg.functionName
+
+    @property
+    def status(self) -> TaskStatus:
+        return TaskStatus(self._msg.status.raw)
+
+    @property
+    def worker(self) -> bytes:
+        return self._msg.worker
+
+    @property
+    def metadata(self) -> bytes:
+        return self._msg.metadata
+
+    @staticmethod
+    def new_msg(
+        task_id: bytes, function_name: bytes, status: TaskStatus, worker: bytes, metadata: bytes = b""
+    ) -> "StateTask":
+        return StateTask(
+            _message.StateTask(
+                taskId=task_id, functionName=function_name, status=status.value, worker=worker, metadata=metadata
+            )
+        )
+
+
+class StateGraphTask(Message):
+    class NodeTaskType(enum.Enum):
+        Normal = _message.StateGraphTask.NodeTaskType.normal
+        Target = _message.StateGraphTask.NodeTaskType.target
+
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def graph_task_id(self) -> bytes:
+        return self._msg.graphTaskId
+
+    @property
+    def task_id(self) -> bytes:
+        return self._msg.taskId
+
+    @property
+    def node_task_type(self) -> NodeTaskType:
+        return StateGraphTask.NodeTaskType(self._msg.nodeTaskType.raw)
+
+    @property
+    def parent_task_ids(self) -> Set[bytes]:
+        return set(self._msg.parentTaskIds)
+
+    @staticmethod
+    def new_msg(
+        graph_task_id: bytes, task_id: bytes, node_task_type: NodeTaskType, parent_task_ids: Set[bytes]
+    ) -> "StateGraphTask":
+        return StateGraphTask(
+            _message.StateGraphTask(
+                graphTaskId=graph_task_id,
+                taskId=task_id,
+                nodeTaskType=node_task_type.value,
+                parentTaskIds=list(parent_task_ids),
+            )
+        )
+
+
+class ProcessorInitialized(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @staticmethod
+    def new_msg() -> "ProcessorInitialized":
+        return ProcessorInitialized(_message.ProcessorInitialized())
+
+
+PROTOCOL: bidict.bidict[str, Type[Message]] = bidict.bidict(
     {
-        MessageType.ClientHeartbeat: ClientHeartbeat,
-        MessageType.ClientHeartbeatEcho: ClientHeartbeatEcho,
-        MessageType.WorkerHeartbeat: WorkerHeartbeat,
-        MessageType.WorkerHeartbeatEcho: WorkerHeartbeatEcho,
-        MessageType.Task: Task,
-        MessageType.TaskCancel: TaskCancel,
-        MessageType.TaskResult: TaskResult,
-        MessageType.GraphTask: GraphTask,
-        MessageType.GraphTaskCancel: GraphTaskCancel,
-        MessageType.ObjectInstruction: ObjectInstruction,
-        MessageType.ObjectRequest: ObjectRequest,
-        MessageType.ObjectResponse: ObjectResponse,
-        MessageType.DisconnectRequest: DisconnectRequest,
-        MessageType.DisconnectResponse: DisconnectResponse,
-        MessageType.StateClient: StateClient,
-        MessageType.StateObject: StateObject,
-        MessageType.StateBalanceAdvice: StateBalanceAdvice,
-        MessageType.StateScheduler: StateScheduler,
-        MessageType.StateWorker: StateWorker,
-        MessageType.StateTask: StateTask,
-        MessageType.StateGraphTask: StateGraphTask,
-        MessageType.ClientDisconnect: ClientDisconnect,
-        MessageType.ClientShutdownResponse: ClientShutdownResponse,
-        MessageType.ProcessorInitialized: ProcessorInitialized,
+        "task": Task,
+        "taskCancel": TaskCancel,
+        "taskResult": TaskResult,
+        "graphTask": GraphTask,
+        "graphTaskCancel": GraphTaskCancel,
+        "objectInstruction": ObjectInstruction,
+        "objectRequest": ObjectRequest,
+        "objectResponse": ObjectResponse,
+        "clientHeartbeat": ClientHeartbeat,
+        "clientHeartbeatEcho": ClientHeartbeatEcho,
+        "workerHeartbeat": WorkerHeartbeat,
+        "workerHeartbeatEcho": WorkerHeartbeatEcho,
+        "disconnectRequest": DisconnectRequest,
+        "disconnectResponse": DisconnectResponse,
+        "stateClient": StateClient,
+        "stateObject": StateObject,
+        "stateBalanceAdvice": StateBalanceAdvice,
+        "stateScheduler": StateScheduler,
+        "stateWorker": StateWorker,
+        "stateTask": StateTask,
+        "stateGraphTask": StateGraphTask,
+        "clientDisconnect": ClientDisconnect,
+        "clientShutdownResponse": ClientShutdownResponse,
+        "processorInitialized": ProcessorInitialized,
     }
 )

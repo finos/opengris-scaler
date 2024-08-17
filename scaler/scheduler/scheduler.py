@@ -13,7 +13,6 @@ from scaler.protocol.python.message import (
     DisconnectRequest,
     GraphTask,
     GraphTaskCancel,
-    MessageVariant,
     ObjectInstruction,
     ObjectRequest,
     Task,
@@ -21,6 +20,7 @@ from scaler.protocol.python.message import (
     TaskResult,
     WorkerHeartbeat,
 )
+from scaler.protocol.python.mixins import Message
 from scaler.scheduler.client_manager import VanillaClientManager
 from scaler.scheduler.config import SchedulerConfig
 from scaler.scheduler.graph_manager import VanillaGraphTaskManager
@@ -92,7 +92,7 @@ class Scheduler:
             self._binder, self._client_manager, self._object_manager, self._task_manager, self._worker_manager
         )
 
-    async def on_receive_message(self, source: bytes, message: MessageVariant):
+    async def on_receive_message(self, source: bytes, message: Message):
         # =====================================================================================
         # receive from upstream
         if isinstance(message, ClientHeartbeat):

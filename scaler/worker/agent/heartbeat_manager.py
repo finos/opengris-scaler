@@ -4,7 +4,8 @@ from typing import Optional
 import psutil
 
 from scaler.io.async_connector import AsyncConnector
-from scaler.protocol.python.message import ProcessorHeartbeat, WorkerHeartbeat, WorkerHeartbeatEcho
+from scaler.protocol.python.message import WorkerHeartbeat, WorkerHeartbeatEcho, Resource
+from scaler.protocol.python.status import ProcessorStatus
 from scaler.utility.mixins import Looper
 from scaler.worker.agent.mixins import HeartbeatManager, ProcessorManager, TaskManager, TimeoutManager
 from scaler.worker.agent.processor_holder import ProcessorHolder
@@ -59,14 +60,13 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
             await self._processor_manager.on_failing_task(self._worker_process.status())
 
         processors = self._processor_manager.processors()
-        n_suspended_processors = self._processor_manager.n_suspended_processors()
+        num_suspended_processors = self._processor_manager.num_suspended_processors()
 
         await self._connector_external.send(
-            WorkerHeartbeat(
-                self._agent_process.cpu_percent() / 100,
-                self._agent_process.memory_info().rss,
+            WorkerHeartbeat.new_msg(
+                Resource.new_msg(int(self._agent_process.cpu_percent() * 10), self._agent_process.memory_info().rss),
                 psutil.virtual_memory().available,
-                self._worker_task_manager.get_queued_size() - n_suspended_processors,
+                self._worker_task_manager.get_queued_size() - num_suspended_processors,
                 self._latency_us,
                 self._processor_manager.task_lock(),
                 [self.__get_processor_status_from_holder(processor) for processor in processors],
@@ -75,13 +75,12 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
         self._start_timestamp_ns = time.time_ns()
 
     @staticmethod
-    def __get_processor_status_from_holder(processor: ProcessorHolder) -> ProcessorHeartbeat:
+    def __get_processor_status_from_holder(processor: ProcessorHolder) -> ProcessorStatus:
         process = processor.process()
-        return ProcessorHeartbeat(
+        return ProcessorStatus.new_msg(
             processor.pid(),
             processor.initialized(),
             processor.task() is not None,
             processor.suspended(),
-            process.cpu_percent() / 100,
-            process.memory_info().rss,
+            Resource.new_msg(int(process.cpu_percent() * 10), process.memory_info().rss),
         )

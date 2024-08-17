@@ -40,9 +40,9 @@ class SchedulerSection:
 @dataclasses.dataclass
 class WorkerRow:
     worker: str = dataclasses.field(default="")
-    agt_cpu: int = dataclasses.field(default=0)
+    agt_cpu: float = dataclasses.field(default=0)
     agt_rss: int = dataclasses.field(default=0)
-    cpu: int = dataclasses.field(default=0)
+    cpu: float = dataclasses.field(default=0)
     rss: int = dataclasses.field(default=0)
     rss_free: int = dataclasses.field(default=0)
     free: int = dataclasses.field(default=0)
@@ -50,24 +50,24 @@ class WorkerRow:
     queued: int = dataclasses.field(default=0)
     suspended: int = dataclasses.field(default=0)
     lag: str = dataclasses.field(default="")
-    ITL: str = dataclasses.field(default="")
+    itl: str = dataclasses.field(default="")
     last_seen: str = dataclasses.field(default="")
 
     handlers: List[Element] = dataclasses.field(default_factory=list)
 
     def populate(self, data: WorkerStatus):
         self.worker = data.worker_id.decode()
-        self.agt_cpu = int(data.agent.cpu * 100)
+        self.agt_cpu = data.agent.cpu / 10
         self.agt_rss = int(data.agent.rss / 1e6)
-        self.cpu = int(data.total_processors.cpu * 100)
-        self.rss = int(data.total_processors.rss / 1e6)
-        self.rss_free = int(data.total_processors.rss_free / 1e6)
+        self.cpu = sum(p.resource.cpu for p in data.processor_statuses) / 10
+        self.rss = int(sum(p.resource.rss for p in data.processor_statuses) / 1e6)
+        self.rss_free = int(data.rss_free / 1e6)
         self.free = data.free
         self.sent = data.sent
         self.queued = data.queued
         self.suspended = data.suspended
         self.lag = format_microseconds(data.lag_us)
-        self.ITL = data.ITL
+        self.itl = data.itl
         self.last_seen = format_seconds(data.last_s)
 
     def draw_row(self):
@@ -102,7 +102,8 @@ class WorkersSection:
             for worker_row in self.workers.values():
                 worker_row.draw_row()
 
-    def __draw_titles(self):
+    @staticmethod
+    def __draw_titles():
         ui.label("Worker")
         ui.label("Agt CPU %")
         ui.label("Agt RSS (in MB)")

@@ -1,10 +1,11 @@
 import logging
 import threading
-from typing import Callable, List, Optional
+from typing import Callable, Optional
 
 import zmq
 
-from scaler.protocol.python.message import PROTOCOL, MessageType, MessageVariant
+from scaler.io.utility import deserialize
+from scaler.protocol.python.mixins import Message
 from scaler.utility.zmq_config import ZMQConfig
 
 
@@ -12,7 +13,7 @@ class SyncSubscriber(threading.Thread):
     def __init__(
         self,
         address: ZMQConfig,
-        callback: Callable[[MessageVariant], None],
+        callback: Callable[[Message], None],
         topic: bytes,
         exit_callback: Optional[Callable[[], None]] = None,
         stop_event: threading.Event = threading.Event(),
@@ -54,7 +55,7 @@ class SyncSubscriber(threading.Thread):
 
     def __initialize(self):
         self._context = zmq.Context.instance()
-        self._socket: zmq.Socket = self._context.socket(zmq.SUB)
+        self._socket = self._context.socket(zmq.SUB)
         self._socket.setsockopt(zmq.RCVHWM, 0)
 
         if self._timeout_seconds == -1:
@@ -68,23 +69,14 @@ class SyncSubscriber(threading.Thread):
 
     def __routine_polling(self):
         try:
-            frames = self._socket.recv_multipart()
-            self.__routine_receive(frames)
+            self.__routine_receive(self._socket.recv())
         except zmq.Again:
             raise TimeoutError(f"Cannot connect to {self._address.to_address()} in {self._timeout_seconds} seconds")
 
-    def __routine_receive(self, frames: List[bytes]):
-        logging.info(frames)
-        if len(frames) < 2:
-            logging.error(f"received unexpected frames {frames}")
-            return
+    def __routine_receive(self, payload: bytes):
+        result: Optional[Message] = deserialize(payload)
+        if result is None:
+            logging.error(f"received unknown message: {payload!r}")
+            return None
 
-        if frames[0] not in {member.value for member in MessageType}:
-            logging.error(f"received unexpected message type: {frames[0]}")
-            return
-
-        message_type_bytes, *payload = frames
-        message_type = MessageType(message_type_bytes)
-        message = PROTOCOL[message_type].deserialize(payload)
-
-        self._callback(message)
+        self._callback(result)

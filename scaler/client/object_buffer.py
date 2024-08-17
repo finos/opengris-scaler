@@ -6,7 +6,8 @@ import cloudpickle
 
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.sync_connector import SyncConnector
-from scaler.protocol.python.message import ObjectContent, ObjectInstruction, ObjectInstructionType
+from scaler.protocol.python.common import ObjectContent
+from scaler.protocol.python.message import ObjectInstruction
 from scaler.utility.object_utility import generate_object_id, generate_serializer_object_id
 
 
@@ -56,7 +57,11 @@ class ObjectBuffer:
         ]
 
         self._connector.send(
-            ObjectInstruction(ObjectInstructionType.Create, self._identity, ObjectContent(*zip(*objects_to_send)))
+            ObjectInstruction.new_msg(
+                ObjectInstruction.ObjectInstructionType.Create,
+                self._identity,
+                ObjectContent.new_msg(*zip(*objects_to_send)),
+            )
         )
 
         self._pending_objects = list()
@@ -66,8 +71,10 @@ class ObjectBuffer:
             return
 
         self._connector.send(
-            ObjectInstruction(
-                ObjectInstructionType.Delete, self._identity, ObjectContent(tuple(self._pending_delete_objects))
+            ObjectInstruction.new_msg(
+                ObjectInstruction.ObjectInstructionType.Delete,
+                self._identity,
+                ObjectContent.new_msg(tuple(self._pending_delete_objects)),
             )
         )
 
@@ -89,5 +96,5 @@ class ObjectBuffer:
     def __construct_object(self, obj: Any, name: Optional[str] = None) -> ObjectCache:
         object_payload = self._serializer.serialize(obj)
         object_id = generate_object_id(self._identity, object_payload)
-        name_bytes = name.encode() if name else f"<obj {object_id.hex()[:6]}>".encode()
+        name_bytes = name.encode() if name else f"<obj {object_id.hex()[-6:]}>".encode()
         return ObjectCache(object_id, name_bytes, object_payload)

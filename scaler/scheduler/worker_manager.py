@@ -4,18 +4,16 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
+from scaler.protocol.python.common import TaskStatus
 from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,
     DisconnectResponse,
-    DisconnectType,
     StateBalanceAdvice,
     StateWorker,
     Task,
     TaskCancel,
-    TaskCancelFlags,
     TaskResult,
-    TaskStatus,
     WorkerHeartbeat,
     WorkerHeartbeatEcho,
 )
@@ -44,7 +42,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         self._worker_alive_since: Dict[bytes, Tuple[float, WorkerHeartbeat]] = dict()
         self._allocator = QueuedAllocator(per_worker_queue_size)
 
-        self._last_balance_advice = None
+        self._last_balance_advice: Dict[bytes, List[bytes]] = dict()
         self._load_balance_advice_same_count = 0
 
     def register(self, binder: AsyncBinder, binder_monitor: AsyncConnector, task_manager: TaskManager):
@@ -67,7 +65,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
             logging.error(f"cannot find task_id={task_cancel.task_id.hex()} in task workers")
             return
 
-        await self._binder.send(worker, TaskCancel(task_cancel.task_id))
+        await self._binder.send(worker, TaskCancel.new_msg(task_cancel.task_id))
 
     async def on_task_result(self, task_result: TaskResult):
         worker = self._allocator.remove_task(task_result.task_id)
@@ -93,11 +91,11 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
 
     async def on_heartbeat(self, worker: bytes, info: WorkerHeartbeat):
         if await self._allocator.add_worker(worker):
-            logging.info(f"worker {worker} connected")
-            await self._binder_monitor.send(StateWorker(worker, b"connected"))
+            logging.info(f"worker {worker!r} connected")
+            await self._binder_monitor.send(StateWorker.new_msg(worker, b"connected"))
 
         self._worker_alive_since[worker] = (time.time(), info)
-        await self._binder.send(worker, WorkerHeartbeatEcho())
+        await self._binder.send(worker, WorkerHeartbeatEcho.new_msg())
 
     async def on_client_shutdown(self, client: bytes):
         for worker in self._allocator.get_worker_ids():
@@ -105,7 +103,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
 
     async def on_disconnect(self, source: bytes, request: DisconnectRequest):
         await self.__disconnect_worker(request.worker)
-        await self._binder.send(source, DisconnectResponse(request.worker))
+        await self._binder.send(source, DisconnectResponse.new_msg(request.worker))
 
     async def routine(self):
         await self.__balance_request()
@@ -113,49 +111,46 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
 
     def get_status(self) -> WorkerManagerStatus:
         worker_to_task_numbers = self._allocator.statistics()
-        return WorkerManagerStatus(
+        return WorkerManagerStatus.new_msg(
             [
                 self.__worker_status_from_heartbeat(worker, worker_to_task_numbers[worker], last, info)
                 for worker, (last, info) in self._worker_alive_since.items()
             ]
         )
 
+    @staticmethod
     def __worker_status_from_heartbeat(
-        self, worker: bytes, worker_task_numbers: Dict, last: float, info: WorkerHeartbeat
+        worker: bytes, worker_task_numbers: Dict, last: float, info: WorkerHeartbeat
     ) -> WorkerStatus:
         current_processor = next((p for p in info.processors if not p.suspended), None)
-        n_suspended = sum(1 for p in info.processors if p.suspended)
+        suspended = len([p for p in info.processors if p.suspended])
 
         if current_processor:
-            ITL = f"{int(current_processor.initialized)}{int(current_processor.has_task)}{int(info.task_lock)}"
+            debug_info = f"{int(current_processor.initialized)}{int(current_processor.has_task)}{int(info.task_lock)}"
         else:
-            ITL = f"00{int(info.task_lock)}"
+            debug_info = f"00{int(info.task_lock)}"
 
-        processor_statuses = [
-            ProcessorStatus(
-                p.pid,
-                p.initialized,
-                p.has_task,
-                p.suspended,
-                Resource(p.cpu, p.rss, info.rss_free),
-            )
-            for p in info.processors
-        ]
-
-        return WorkerStatus(
+        return WorkerStatus.new_msg(
             worker_id=worker,
-            agent=Resource(info.agent_cpu, info.agent_rss, info.rss_free),
-            total_processors=Resource(
-                sum(p.cpu for p in info.processors), sum(p.rss for p in info.processors), info.rss_free
-            ),
+            agent=info.agent,
+            rss_free=info.rss_free,
             free=worker_task_numbers["free"],
             sent=worker_task_numbers["sent"],
             queued=info.queued_tasks,
-            suspended=n_suspended,
+            suspended=suspended,
             lag_us=info.latency_us,
             last_s=int(time.time() - last),
-            ITL=ITL,
-            processor_statuses=processor_statuses,
+            itl=debug_info,
+            processor_statuses=[
+                ProcessorStatus.new_msg(
+                    pid=p.pid,
+                    initialized=p.initialized,
+                    has_task=p.has_task,
+                    suspended=p.suspended,
+                    resource=Resource.new_msg(p.resource.cpu, p.resource.rss),
+                )
+                for p in info.processors
+            ],
         )
 
     def has_available_worker(self) -> bool:
@@ -187,16 +182,17 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         if not current_advice:
             return
 
-        logging.info(f"balance: {current_advice}")
-        for worker, tasks in current_advice.items():
-            await self._binder_monitor.send(StateBalanceAdvice(worker, tasks))
+        worker_to_num_tasks = {worker: len(task_ids) for worker, task_ids in current_advice.items()}
+        logging.info(f"balancing task: {worker_to_num_tasks}")
+        for worker, task_ids in current_advice.items():
+            await self._binder_monitor.send(StateBalanceAdvice.new_msg(worker, task_ids))
 
-        task_cancel_flags = TaskCancelFlags(force=True)
+        task_cancel_flags = TaskCancel.TaskCancelFlags(force=True, retrieve_task_object=False)
 
         self._last_balance_advice = current_advice
-        for worker, tasks in current_advice.items():
-            for task in tasks:
-                await self._binder.send(worker, TaskCancel(task, flags=task_cancel_flags))
+        for worker, task_ids in current_advice.items():
+            for task_id in task_ids:
+                await self._binder.send(worker, TaskCancel.new_msg(task_id=task_id, flags=task_cancel_flags))
 
     async def __clean_workers(self):
         now = time.time()
@@ -217,8 +213,8 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         if worker not in self._worker_alive_since:
             return
 
-        logging.info(f"worker {worker} disconnected")
-        await self._binder_monitor.send(StateWorker(worker, b"disconnected"))
+        logging.info(f"worker {worker!r} disconnected")
+        await self._binder_monitor.send(StateWorker.new_msg(worker, b"disconnected"))
         self._worker_alive_since.pop(worker)
 
         task_ids = self._allocator.remove_worker(worker)
@@ -229,5 +225,5 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         await self.__reroute_tasks(task_ids)
 
     async def __shutdown_worker(self, worker: bytes):
-        await self._binder.send(worker, ClientDisconnect(DisconnectType.Shutdown))
+        await self._binder.send(worker, ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Shutdown))
         await self.__disconnect_worker(worker)

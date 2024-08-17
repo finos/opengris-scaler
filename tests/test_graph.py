@@ -148,7 +148,7 @@ class TestGraph(unittest.TestCase):
 
     def test_cull_graph(self):
         graph = {
-            "a": (lambda *_: None),
+            "a": (lambda *_: None,),
             "b": (lambda *_: None, "a"),
             "c": (lambda *_: None, "a"),
             "d": (lambda *_: None, "b"),
@@ -156,8 +156,8 @@ class TestGraph(unittest.TestCase):
             "f": (lambda *_: None, "c"),
         }
 
-        def filter_keys(graph, keys):
-            return {key: value for key, value in graph.items() if key in keys}
+        def filter_keys(_graph, keys):
+            return {key: value for key, value in _graph.items() if key in keys}
 
         self.assertEqual(cull_graph(graph, ["d"]), filter_keys(graph, ["a", "b", "d"]))
         self.assertEqual(cull_graph(graph, ["e"]), filter_keys(graph, ["a", "b", "c", "e"]))

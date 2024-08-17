@@ -10,18 +10,16 @@ import tblib.pickling_support
 # from scaler.utility.logging.utility import setup_logger
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
+from scaler.protocol.python.common import TaskStatus, ObjectContent
 from scaler.protocol.python.message import (
-    MessageVariant,
-    ObjectContent,
     ObjectInstruction,
-    ObjectInstructionType,
     ObjectRequest,
     ObjectResponse,
     ProcessorInitialized,
     Task,
     TaskResult,
-    TaskStatus,
 )
+from scaler.protocol.python.mixins import Message
 from scaler.utility.exceptions import ProcessorDiedError
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.mixins import Looper
@@ -97,11 +95,11 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         for processor_id, instruction in processor_instructions.items():
             await self._binder_internal.send(processor_id, instruction)
 
-    async def on_object_response(self, request: ObjectResponse):
-        processors_ids = self._object_tracker.on_object_response(request)
+    async def on_object_response(self, response: ObjectResponse):
+        processors_ids = self._object_tracker.on_object_response(response)
 
         for process_id in processors_ids:
-            await self._binder_internal.send(process_id, request)
+            await self._binder_internal.send(process_id, response)
 
     async def acquire_task_active_lock(self):
         await self._task_active_lock.acquire()
@@ -151,15 +149,15 @@ class VanillaProcessorManager(Looper, ProcessorManager):
 
             result_object_id = generate_object_id(source, uuid.uuid4().bytes)
             await self._connector_external.send(
-                ObjectInstruction(
-                    ObjectInstructionType.Create,
+                ObjectInstruction.new_msg(
+                    ObjectInstruction.ObjectInstructionType.Create,
                     source,
-                    ObjectContent((result_object_id,), (b"",), (result_object_bytes,)),
+                    ObjectContent.new_msg((result_object_id,), (b"",), (result_object_bytes,)),
                 )
             )
 
             await self._task_manager.on_task_result(
-                TaskResult(task_id, TaskStatus.Failed, profile_result.serialize(), [result_object_id])
+                TaskResult.new_msg(task_id, TaskStatus.Failed, profile_result.serialize(), [result_object_id])
             )
 
         self.restart_current_processor(f"process died {process_status=}")
@@ -235,7 +233,7 @@ class VanillaProcessorManager(Looper, ProcessorManager):
     def processors(self) -> List[ProcessorHolder]:
         return list(self._holders_by_processor_id.values())
 
-    def n_suspended_processors(self) -> int:
+    def num_suspended_processors(self) -> int:
         return len(self._suspended_holders_by_task_id)
 
     def task_lock(self) -> bool:
@@ -293,7 +291,7 @@ class VanillaProcessorManager(Looper, ProcessorManager):
 
         return profile_result
 
-    async def __on_receive_internal(self, processor_id: bytes, message: MessageVariant):
+    async def __on_receive_internal(self, processor_id: bytes, message: Message):
         if isinstance(message, ProcessorInitialized):
             await self.__on_internal_processor_initialized(processor_id)
             return
@@ -355,9 +353,14 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         else:
             return
 
-        task_result.metadata = profile_result.serialize()
-
-        await self._task_manager.on_task_result(task_result)
+        await self._task_manager.on_task_result(
+            TaskResult.new_msg(
+                task_id=task_id,
+                status=task_result.status,
+                metadata=profile_result.serialize(),
+                results=task_result.results,
+            )
+        )
 
     def __processor_ready_to_process_object(self, processor_id: bytes) -> bool:
         holder = self._holders_by_processor_id.get(processor_id)
