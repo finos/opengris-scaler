@@ -1,6 +1,7 @@
 import asyncio
 import multiprocessing
-from typing import Optional, Tuple
+from asyncio import AbstractEventLoop, Task
+from typing import Optional, Tuple, Any
 
 from scaler.scheduler.config import SchedulerConfig
 from scaler.scheduler.scheduler import Scheduler, scheduler_main
@@ -9,7 +10,7 @@ from scaler.utility.logging.utility import setup_logger
 from scaler.utility.zmq_config import ZMQConfig
 
 
-class SchedulerProcess(multiprocessing.get_context("spawn").Process):
+class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
     def __init__(
         self,
         address: ZMQConfig,
@@ -45,8 +46,8 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):
         self._logging_config_file = logging_config_file
 
         self._scheduler: Optional[Scheduler] = None
-        self._loop = None
-        self._task = None
+        self._loop: Optional[AbstractEventLoop] = None
+        self._task: Optional[Task[Any]] = None
 
     def run(self) -> None:
         # scheduler have its own single process

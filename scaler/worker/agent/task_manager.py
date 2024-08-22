@@ -1,7 +1,8 @@
 from typing import Dict, Optional, Tuple
 
 from scaler.io.async_connector import AsyncConnector
-from scaler.protocol.python.message import Task, TaskCancel, TaskResult, TaskStatus
+from scaler.protocol.python.common import TaskStatus
+from scaler.protocol.python.message import Task, TaskCancel, TaskResult
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper
 from scaler.utility.queues.async_sorted_priority_queue import AsyncSortedPriorityQueue
@@ -41,9 +42,12 @@ class VanillaTaskManager(Looper, TaskManager):
             task = self._queued_task_id_to_task.pop(task_cancel.task_id)
             self._queued_task_ids.remove(task_cancel.task_id)
 
-            result = TaskResult(task_cancel.task_id, TaskStatus.Canceled)
             if task_cancel.flags.retrieve_task_object:
-                result.results = list(task.serialize())
+                result = TaskResult.new_msg(
+                    task_cancel.task_id, TaskStatus.Canceled, b"", [task.get_message().to_bytes()]
+                )
+            else:
+                result = TaskResult.new_msg(task_cancel.task_id, TaskStatus.Canceled)
 
             await self._connector_external.send(result)
             return
@@ -51,16 +55,17 @@ class VanillaTaskManager(Looper, TaskManager):
         if not task_cancel.flags.force:
             return
 
-        cancelled_running_task = self._processor_manager.on_cancel_task(task_cancel.task_id)
-        if cancelled_running_task is not None:
-            result = TaskResult(task_cancel.task_id, TaskStatus.Canceled)
-            if task_cancel.flags.retrieve_task_object:
-                result.results = list(cancelled_running_task.serialize())
-
-            await self._connector_external.send(result)
+        canceled_running_task = self._processor_manager.on_cancel_task(task_cancel.task_id)
+        if canceled_running_task is not None:
+            payload = [canceled_running_task.get_message().to_bytes()] if task_cancel.flags.retrieve_task_object else []
+            await self._connector_external.send(
+                TaskResult.new_msg(
+                    task_id=task_cancel.task_id, status=TaskStatus.Canceled, metadata=b"", results=payload
+                )
+            )
             return
 
-        await self._connector_external.send(TaskResult(task_cancel.task_id, TaskStatus.NotFound))
+        await self._connector_external.send(TaskResult.new_msg(task_cancel.task_id, TaskStatus.NotFound))
 
     async def on_task_result(self, result: TaskResult):
         if result.task_id in self._queued_task_id_to_task:

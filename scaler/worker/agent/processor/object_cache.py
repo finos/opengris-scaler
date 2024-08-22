@@ -12,7 +12,8 @@ import psutil
 
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.config import CLEANUP_INTERVAL_SECONDS
-from scaler.protocol.python.message import ObjectContent, Task
+from scaler.protocol.python.common import ObjectContent
+from scaler.protocol.python.message import Task
 from scaler.utility.exceptions import DeserializeObjectError
 from scaler.utility.object_utility import generate_serializer_object_id, is_object_id_serializer
 

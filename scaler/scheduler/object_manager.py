@@ -5,15 +5,8 @@ from typing import Optional, Set
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
-from scaler.protocol.python.message import (
-    ObjectContent,
-    ObjectInstruction,
-    ObjectInstructionType,
-    ObjectRequest,
-    ObjectRequestType,
-    ObjectResponse,
-    ObjectResponseType,
-)
+from scaler.protocol.python.common import ObjectContent
+from scaler.protocol.python.message import ObjectInstruction, ObjectRequest, ObjectResponse
 from scaler.protocol.python.status import ObjectManagerStatus
 from scaler.scheduler.mixins import ClientManager, ObjectManager, WorkerManager
 from scaler.scheduler.object_usage.object_tracker import ObjectTracker, ObjectUsage
@@ -34,7 +27,7 @@ class _ObjectCreation(ObjectUsage):
 
 class VanillaObjectManager(ObjectManager, Looper, Reporter):
     def __init__(self):
-        self._object_storage: ObjectTracker[_ObjectCreation, bytes] = ObjectTracker(
+        self._object_storage: ObjectTracker[bytes, _ObjectCreation] = ObjectTracker(
             "object_usage", self.__finished_object_storage
         )
 
@@ -58,31 +51,31 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
         self._worker_manager = worker_manager
 
     async def on_object_instruction(self, source: bytes, instruction: ObjectInstruction):
-        if instruction.type == ObjectInstructionType.Create:
+        if instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Create:
             self.__on_object_create(source, instruction)
             return
 
-        if instruction.type == ObjectInstructionType.Delete:
+        if instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Delete:
             self.on_del_objects(instruction.object_user, set(instruction.object_content.object_ids))
             return
 
         logging.error(
-            f"received unknown object response type instruction_type={instruction.type} from "
+            f"received unknown object response type instruction_type={instruction.instruction_type} from "
             f"source={instruction.object_user}"
         )
 
     async def on_object_request(self, source: bytes, request: ObjectRequest):
-        if request.type == ObjectRequestType.Get:
+        if request.request_type == ObjectRequest.ObjectRequestType.Get:
             await self.__process_get_request(source, request)
             return
 
-        logging.error(f"received unknown object request type {request=} from {source=}")
+        logging.error(f"received unknown object request type {request=} from {source=!r}")
 
     def on_add_object(self, object_user: bytes, object_id: bytes, object_name: bytes, object_bytes: bytes):
         creation = _ObjectCreation(object_id, object_user, object_name, object_bytes)
         logging.debug(
             f"add object cache "
-            f"object_name={creation.object_name}, "
+            f"object_name={creation.object_name!r}, "
             f"object_id={creation.object_id.hex()}, "
             f"size={format_bytes(len(creation.object_bytes))}"
         )
@@ -116,10 +109,8 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
         return self._object_storage.get_object(object_id).object_bytes
 
     def get_status(self) -> ObjectManagerStatus:
-        return ObjectManagerStatus(
-            # self._pending_get_requests.object_count(),
-            self._object_storage.object_count(),
-            sum(len(v.object_bytes) for _, v in self._object_storage.items()),
+        return ObjectManagerStatus.new_msg(
+            self._object_storage.object_count(), sum(len(v.object_bytes) for _, v in self._object_storage.items())
         )
 
     async def __process_get_request(self, source: bytes, request: ObjectRequest):
@@ -136,12 +127,16 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
         for worker in self._worker_manager.get_worker_ids():
             await self._binder.send(
                 worker,
-                ObjectInstruction(ObjectInstructionType.Delete, worker, ObjectContent(tuple(deleted_object_ids))),
+                ObjectInstruction.new_msg(
+                    ObjectInstruction.ObjectInstructionType.Delete,
+                    worker,
+                    ObjectContent.new_msg(tuple(deleted_object_ids)),
+                ),
             )
 
     def __on_object_create(self, source: bytes, instruction: ObjectInstruction):
         if not self._client_manager.has_client_id(instruction.object_user):
-            logging.error(f"received object creation from {source} for unknown client {instruction.object_user}")
+            logging.error(f"received object creation from {source!r} for unknown client {instruction.object_user!r}")
             return
 
         for object_id, object_name, object_content in zip(
@@ -154,7 +149,7 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
     def __finished_object_storage(self, creation: _ObjectCreation):
         logging.debug(
             f"del object cache "
-            f"object_name={creation.object_name}, "
+            f"object_name={creation.object_name!r}, "
             f"object_id={creation.object_id.hex()}, "
             f"size={format_bytes(len(creation.object_bytes))}"
         )
@@ -173,7 +168,7 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
             object_names.append(object_info.object_name)
             object_bytes.append(object_info.object_bytes)
 
-        return ObjectResponse(
-            ObjectResponseType.Content,
-            ObjectContent(tuple(request.object_ids), tuple(object_names), tuple(object_bytes)),
+        return ObjectResponse.new_msg(
+            ObjectResponse.ObjectResponseType.Content,
+            ObjectContent.new_msg(tuple(request.object_ids), tuple(object_names), tuple(object_bytes)),
         )

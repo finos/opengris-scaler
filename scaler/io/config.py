@@ -12,6 +12,9 @@ STATUS_REPORT_INTERVAL_SECONDS = 1
 # number of seconds for profiling
 PROFILING_INTERVAL_SECONDS = 1
 
+# message size limitation, max can be 2**64
+MESSAGE_SIZE_LIMIT = 2**64 - 1
+
 # ==========================
 # SCHEDULER SPECIFIC OPTIONS
 

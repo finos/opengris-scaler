@@ -5,7 +5,8 @@ from functools import partial
 from nicegui import ui
 
 from scaler.io.sync_subscriber import SyncSubscriber
-from scaler.protocol.python.message import MessageVariant, StateScheduler, StateTask
+from scaler.protocol.python.message import StateScheduler, StateTask
+from scaler.protocol.python.mixins import Message
 from scaler.ui.live_display import SchedulerSection, WorkersSection
 from scaler.ui.memory_window import MemoryChart
 from scaler.ui.setting_page import Settings
@@ -80,7 +81,7 @@ def start_webui(address: str, host: str, port: int):
     ui_thread.start()
 
 
-def __show_status(status: MessageVariant, tables: Sections):
+def __show_status(status: Message, tables: Sections):
     if isinstance(status, StateScheduler):
         __update_scheduler_state(status, tables)
         return
@@ -95,7 +96,7 @@ def __show_status(status: MessageVariant, tables: Sections):
 def __update_scheduler_state(data: StateScheduler, tables: Sections):
     tables.scheduler_section.cpu = format_percentage(data.scheduler.cpu)
     tables.scheduler_section.rss = format_bytes(data.scheduler.rss)
-    tables.scheduler_section.rss_free = format_bytes(data.scheduler.rss_free)
+    tables.scheduler_section.rss_free = format_bytes(data.rss_free)
 
     previous_workers = set(tables.workers_section.workers.keys())
     current_workers = set(worker_data.worker_id.decode() for worker_data in data.worker_manager.workers)

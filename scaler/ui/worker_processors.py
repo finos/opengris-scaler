@@ -31,7 +31,7 @@ class WorkerProcessors:
                 processor_table = self.workers.get(worker.worker_id)
 
                 if processor_table is None:
-                    processor_table = WorkerProcessorTable(worker_name, worker.processor_statuses)
+                    processor_table = WorkerProcessorTable(worker_name, worker.rss_free, worker.processor_statuses)
                     processor_table.draw_table()
                     self.workers[worker.worker_id] = processor_table
                 elif processor_table.processor_statuses != worker.processor_statuses:
@@ -46,6 +46,7 @@ class WorkerProcessors:
 @dataclasses.dataclass
 class WorkerProcessorTable:
     worker_name: str
+    rss_free: int
     processor_statuses: List[ProcessorStatus]
 
     handler: Optional[Element] = dataclasses.field(default=None)
@@ -61,7 +62,7 @@ class WorkerProcessorTable:
             with ui.grid(columns=6).classes("w-full"):
                 self.draw_titles()
                 for processor in sorted(self.processor_statuses, key=lambda x: x.pid):
-                    self.draw_row(processor)
+                    self.draw_row(processor, self.rss_free)
 
     @staticmethod
     def draw_titles():
@@ -73,10 +74,10 @@ class WorkerProcessorTable:
         ui.label("Suspended")
 
     @staticmethod
-    def draw_row(processor_status: ProcessorStatus):
-        cpu = int(processor_status.resource.cpu * 100)
+    def draw_row(processor_status: ProcessorStatus, rss_free: int):
+        cpu = processor_status.resource.cpu
         rss = int(processor_status.resource.rss / 1e6)
-        rss_free = int(processor_status.resource.rss_free / 1e6)
+        rss_free = int(rss_free / 1e6)
 
         ui.label(processor_status.pid)
         ui.knob(value=cpu, track_color="grey-2", show_value=True, min=0, max=100)

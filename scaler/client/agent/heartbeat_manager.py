@@ -6,6 +6,7 @@ import psutil
 from scaler.client.agent.mixins import HeartbeatManager
 from scaler.io.async_connector import AsyncConnector
 from scaler.protocol.python.message import ClientHeartbeat, ClientHeartbeatEcho
+from scaler.protocol.python.status import Resource
 from scaler.utility.mixins import Looper
 
 
@@ -26,9 +27,12 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         self._connector_external = connector_external
 
     async def send_heartbeat(self):
-        cpu = self._process.cpu_percent() / 100
-        rss = self._process.memory_info().rss
-        await self._connector_external.send(ClientHeartbeat(cpu, rss, self._latency_us))
+        await self._connector_external.send(
+            ClientHeartbeat.new_msg(
+                Resource.new_msg(int(self._process.cpu_percent() * 10), self._process.memory_info().rss),
+                self._latency_us,
+            )
+        )
 
     async def on_heartbeat_echo(self, heartbeat: ClientHeartbeatEcho):
         if not self._connected:

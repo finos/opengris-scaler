@@ -1,5 +1,5 @@
 import dataclasses
-
+import time
 from typing import Dict, Optional
 
 import psutil
@@ -15,7 +15,7 @@ class _ProcessProfiler:
 
     current_task_id: Optional[bytes] = None
 
-    start_time: Optional[int] = None
+    start_time: Optional[float] = None
     init_memory_rss: Optional[int] = None
     peak_memory_rss: Optional[int] = None
 
@@ -57,7 +57,7 @@ class VanillaProfilingManager(ProfilingManager, Looper):
             raise ValueError(f"process {pid=} is not registered.")
 
         if task_id != process_profiler.current_task_id:
-            raise ValueError(f"task {task_id=} is not the current task task_id={process_profiler.current_task_id}.")
+            raise ValueError(f"task {task_id=!r} is not the current task task_id={process_profiler.current_task_id!r}.")
 
         assert process_profiler.start_time is not None
         assert process_profiler.init_memory_rss is not None
@@ -83,8 +83,7 @@ class VanillaProfilingManager(ProfilingManager, Looper):
 
     @staticmethod
     def __process_cpu_time(process: psutil.Process) -> float:
-        cpu_times = process.cpu_times()
-        return cpu_times.user + cpu_times.system
+        return time.monotonic()
 
     @staticmethod
     def __process_memory_rss(process: psutil.Process) -> int:

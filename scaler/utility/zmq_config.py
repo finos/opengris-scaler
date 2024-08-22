@@ -54,15 +54,17 @@ class ZMQConfig:
         if socket_type not in ZMQType.allowed_types():
             raise ValueError(f"supported ZMQ types are: {ZMQType.allowed_types()}")
 
-        socket_type = ZMQType(socket_type)
-        if socket_type in {ZMQType.inproc, ZMQType.ipc}:
+        socket_type_enum = ZMQType(socket_type)
+        if socket_type_enum in {ZMQType.inproc, ZMQType.ipc}:
             host = host_port
-            port = None
-        else:
+            port_int = None
+        elif socket_type_enum == ZMQType.tcp:
             host, port = host_port.split(":")
             try:
-                port = int(port)
+                port_int = int(port)
             except ValueError:
                 raise ValueError(f"cannot convert '{port}' to port number")
+        else:
+            raise ValueError(f"Unsupported ZMQ type: {socket_type}")
 
-        return ZMQConfig(ZMQType(socket_type), host, port)
+        return ZMQConfig(socket_type_enum, host, port_int)

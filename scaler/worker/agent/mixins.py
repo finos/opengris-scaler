@@ -2,7 +2,6 @@ import abc
 from typing import Dict, List, Optional, Set
 
 from scaler.protocol.python.message import (
-    ObjectContent,
     ObjectInstruction,
     ObjectRequest,
     ObjectResponse,
@@ -67,7 +66,7 @@ class ProcessorManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_cancel_task(self, task_id: bytes) -> bool:
+    def on_cancel_task(self, task_id: bytes) -> Optional[Task]:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -107,7 +106,7 @@ class ProcessorManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def n_suspended_processors(self) -> int:
+    def num_suspended_processors(self) -> int:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -139,7 +138,7 @@ class ObjectTracker(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_object_response(self, object_response: ObjectContent) -> Set[bytes]:
+    def on_object_response(self, object_response: ObjectResponse) -> Set[bytes]:
         raise NotImplementedError()
 
     @abc.abstractmethod

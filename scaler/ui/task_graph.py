@@ -5,7 +5,8 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from nicegui import ui
 
-from scaler.protocol.python.message import StateTask, TaskStatus
+from scaler.protocol.python.common import TaskStatus
+from scaler.protocol.python.message import StateTask
 from scaler.ui.live_display import WorkersSection
 from scaler.ui.setting_page import Settings
 from scaler.ui.utility import format_timediff, format_worker_name, get_bounds, make_tick_text, make_ticks
@@ -51,10 +52,10 @@ class TaskStream:
         self._task_id_to_worker: Dict[bytes, str] = {}
 
         self._seen_workers = set()
-        self._lost_workers_queue = SimpleQueue()
+        self._lost_workers_queue: SimpleQueue[Tuple[datetime.datetime, str]] = SimpleQueue()
 
         self._data_update_lock = Lock()
-        self._busy_workers: List[str] = []
+        self._busy_workers: Set[str] = set()
         self._busy_workers_update_time: datetime.datetime = datetime.datetime.now()
 
     def setup_task_stream(self, settings: Settings):
@@ -224,14 +225,15 @@ class TaskStream:
 
         if not (worker := state.worker):
             return
-        worker = worker.decode()
-        self._worker_last_update[worker] = now
 
-        if worker not in self._seen_workers:
-            self.__handle_new_worker(worker, now)
+        worker_string = worker.decode()
+        self._worker_last_update[worker_string] = now
+
+        if worker_string not in self._seen_workers:
+            self.__handle_new_worker(worker_string, now)
 
         if task_status in {TaskStatus.Running}:
-            self.__handle_running_task(state, worker, now)
+            self.__handle_running_task(state, worker_string, now)
 
     def __add_lost_worker(self, worker: str, now: datetime.datetime):
         self._lost_workers_queue.put((now, worker))
@@ -273,7 +275,7 @@ class TaskStream:
     def update_data(self, workers_section: WorkersSection):
         now = datetime.datetime.now()
         worker_names = sorted(workers_section.workers.keys())
-        itls = {w: workers_section.workers[w].ITL for w in worker_names}
+        itls = {w: workers_section.workers[w].itl for w in worker_names}
         busy_workers = {w for w in worker_names if len(itls[w]) == 3 and itls[w][1] == "1" and itls[w][2] == "1"}
         for worker in worker_names:
             self._worker_last_update[worker] = now

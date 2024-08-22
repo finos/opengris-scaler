@@ -8,21 +8,22 @@ from scaler.protocol.python.message import (
     GraphTask,
     GraphTaskCancel,
     ObjectRequest,
-    ObjectResponse,
     Task,
     TaskCancel,
     TaskResult,
     WorkerHeartbeat,
+    ObjectInstruction,
 )
+from scaler.utility.mixins import Reporter
 
 
-class ObjectManager(metaclass=abc.ABCMeta):
+class ObjectManager(Reporter):
     @abc.abstractmethod
-    async def on_object_instruction(self, source: bytes, request: ObjectResponse):
+    async def on_object_instruction(self, source: bytes, request: ObjectInstruction):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_object_request(self, source: bytes, response: ObjectRequest):
+    async def on_object_request(self, source: bytes, request: ObjectRequest):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -50,7 +51,7 @@ class ObjectManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
 
-class ClientManager(metaclass=abc.ABCMeta):
+class ClientManager(Reporter):
     @abc.abstractmethod
     def get_client_task_ids(self, client: bytes) -> Set[bytes]:
         raise NotImplementedError()
@@ -79,7 +80,7 @@ class ClientManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
 
-class GraphTaskManager(metaclass=abc.ABCMeta):
+class GraphTaskManager(Reporter):
     @abc.abstractmethod
     async def on_graph_task(self, client: bytes, graph_task: GraphTask):
         raise NotImplementedError()
@@ -97,23 +98,7 @@ class GraphTaskManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
 
-class TaskReadyManager(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    async def on_task_new(self, client: bytes, task: Task):
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    async def on_task_cancel(self, task_cancel: TaskCancel):
-        raise NotImplementedError()
-
-
-class TaskResultReadyManager(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    async def on_task_done(self, task_result: TaskResult):
-        raise NotImplementedError()
-
-
-class TaskManager(metaclass=abc.ABCMeta):
+class TaskManager(Reporter):
     @abc.abstractmethod
     async def on_task_new(self, client: bytes, task: Task):
         raise NotImplementedError()
@@ -131,7 +116,7 @@ class TaskManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
 
-class WorkerManager(metaclass=abc.ABCMeta):
+class WorkerManager(Reporter):
     @abc.abstractmethod
     async def assign_task_to_worker(self, task: Task) -> bool:
         raise NotImplementedError()

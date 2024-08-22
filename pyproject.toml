@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm", "mypy", "black", "flake8", "pyproject-flake8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scaler"
+description = "Scaler Distribution Framework"
+requires-python = ">=3.8"
+readme = { file = "README.md", content-type = "text/markdown" }
+license = { text = "Apache 2.0" }
+authors = [{ name = "Citi", email = "opensource@citi.com" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Topic :: System :: Distributed Computing",
+]
+dynamic = ["dependencies", "version"]
+
+[project.urls]
+Home = "https://github.com/Citi/scaler"
+
+[project.scripts]
+scaler_scheduler = "scaler.entry_points.scheduler:main"
+scaler_cluster = "scaler.entry_points.cluster:main"
+scaler_top = "scaler.entry_points.top:main"
+scaler_ui = "scaler.entry_points.webui:main"
+
+[project.optional-dependencies]
+uvloop = ["uvloop"]
+graphblas = ["python-graphblas", "numpy"]
+gui = ["nicegui[plotly]"]
+all = ["python-graphblas", "numpy", "uvloop", "nicegui[plotly]"]
+
+[tool.setuptools]
+packages = ["scaler"]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+dependencies = { file = "requirements.txt" }
+version = { attr = "scaler.about.__version__" }
+
+[tool.mypy]
+no_strict_optional = true
+check_untyped_defs = true
+ignore_missing_imports = true
+exclude = [
+    "^docs.*$",
+    "^benchmark.*$",
+    "^venv.*$"
+]
+
+[tool.flake8]
+count = true
+statistics = true
+max-line-length = 120
+extend-ignore = ["E203"]
+exclude = "venv312"
+
+[tool.black]
+line-length = 120
+skip-magic-trailing-comma = true
+
+[metadata]
+long_description = { file = "README.md" }
+long_description_content_type = "text/markdown"

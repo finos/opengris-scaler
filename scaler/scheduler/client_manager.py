@@ -9,7 +9,6 @@ from scaler.protocol.python.message import (
     ClientHeartbeat,
     ClientHeartbeatEcho,
     ClientShutdownResponse,
-    DisconnectType,
     TaskCancel,
 )
 from scaler.protocol.python.status import ClientManagerStatus
@@ -63,14 +62,14 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
         return self._client_to_task_ids.remove_value(task_id)
 
     async def on_heartbeat(self, client: bytes, info: ClientHeartbeat):
-        await self._binder.send(client, ClientHeartbeatEcho())
+        await self._binder.send(client, ClientHeartbeatEcho.new_msg())
         if client not in self._client_last_seen:
-            logging.info(f"client {client} connected")
+            logging.info(f"client {client!r} connected")
 
         self._client_last_seen[client] = (time.time(), info)
 
     async def on_client_disconnect(self, client: bytes, request: ClientDisconnect):
-        if request.type == DisconnectType.Disconnect:
+        if request.disconnect_type == ClientDisconnect.DisconnectType.Disconnect:
             await self.__on_client_disconnect(client)
             return
 
@@ -78,23 +77,23 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
             logging.warning("cannot shutdown clusters as scheduler is running in protected mode")
             accepted = False
         else:
-            logging.info(f"shutdown scheduler and all clusters as received signal from {client=}")
+            logging.info(f"shutdown scheduler and all clusters as received signal from {client=!r}")
             accepted = True
 
-        await self._binder.send(client, ClientShutdownResponse(accepted=accepted))
+        await self._binder.send(client, ClientShutdownResponse.new_msg(accepted=accepted))
 
         if self._protected:
             return
 
         await self._worker_manager.on_client_shutdown(client)
 
-        raise ClientShutdownException(f"received client shutdown from {client}, quiting")
+        raise ClientShutdownException(f"received client shutdown from {client!r}, quiting")
 
     async def routine(self):
         await self.__routine_cleanup_clients()
 
     def get_status(self) -> ClientManagerStatus:
-        return ClientManagerStatus(
+        return ClientManagerStatus.new_msg(
             {client.decode(): len(task_ids) for client, task_ids in self._client_to_task_ids.items()}
         )
 
@@ -110,7 +109,7 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
             await self.__on_client_disconnect(client)
 
     async def __on_client_disconnect(self, client_id: bytes):
-        logging.info(f"client {client_id} disconnected")
+        logging.info(f"client {client_id!r} disconnected")
         if client_id in self._client_last_seen:
             self._client_last_seen.pop(client_id)
 
@@ -123,4 +122,4 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
 
         tasks = self._client_to_task_ids.get_values(client).copy()
         for task in tasks:
-            await self._task_manager.on_task_cancel(client, TaskCancel(task))
+            await self._task_manager.on_task_cancel(client, TaskCancel.new_msg(task))

@@ -1,4 +1,3 @@
-
 import collections
 from typing import Callable
 
@@ -19,6 +18,10 @@ class EventList(collections.UserList):
 
     def __delitem__(self, i):
         super().__delitem__(i)
+        self._list_updated()
+
+    def __add__(self, other):
+        super().__add__(other)
         self._list_updated()
 
     def __iadd__(self, other):

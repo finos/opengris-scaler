@@ -1,15 +1,10 @@
+from collections import defaultdict
 from typing import Dict, Set, Tuple
 
-from scaler.protocol.python.message import (
-    ObjectContent,
-    ObjectInstruction,
-    ObjectInstructionType,
-    ObjectRequest,
-    ObjectResponse,
-    ObjectResponseType,
-)
-from scaler.worker.agent.mixins import ObjectTracker
+from scaler.protocol.python.common import ObjectContent
+from scaler.protocol.python.message import ObjectInstruction, ObjectRequest, ObjectResponse
 from scaler.utility.many_to_many_dict import ManyToManyDict
+from scaler.worker.agent.mixins import ObjectTracker
 
 
 class VanillaObjectTracker(ObjectTracker):
@@ -23,8 +18,8 @@ class VanillaObjectTracker(ObjectTracker):
     def on_object_response(self, object_response: ObjectResponse) -> Set[bytes]:
         """Returns a list of processor ids that requested this object content."""
 
-        if object_response.type != ObjectResponseType.Content:
-            raise TypeError(f"invalid object response type received: {object_response.type}.")
+        if object_response.response_type != ObjectResponse.ObjectResponseType.Content:
+            raise TypeError(f"invalid object response type received: {object_response.response_type}.")
 
         object_ids = object_response.object_content.object_ids
 
@@ -45,26 +40,23 @@ class VanillaObjectTracker(ObjectTracker):
         forwarded to processors.
         """
 
-        if object_instruction.type != ObjectInstructionType.Delete:
-            raise TypeError(f"invalid object instruction type received: {object_instruction.type}.")
+        if object_instruction.instruction_type != ObjectInstruction.ObjectInstructionType.Delete:
+            raise TypeError(f"invalid object instruction type received: {object_instruction.instruction_type}.")
 
-        per_processor_object_ids = {}
+        per_processor_object_ids: Dict[bytes, Set[bytes]] = defaultdict(set)
         for object_id in object_instruction.object_content.object_ids:
             if not self._object_id_to_processors_ids.has_left_key(object_id):
                 continue
 
             processor_ids = self._object_id_to_processors_ids.remove_left_key(object_id)
             for processor_id in processor_ids:
-                if processor_id not in per_processor_object_ids:
-                    per_processor_object_ids[processor_id] = []
-
-                per_processor_object_ids[processor_id].append(object_id)
+                per_processor_object_ids[processor_id].add(object_id)
 
         return {
-            processor_id: ObjectInstruction(
-                type=ObjectInstructionType.Delete,
+            processor_id: ObjectInstruction.new_msg(
+                instruction_type=ObjectInstruction.ObjectInstructionType.Delete,
                 object_user=object_instruction.object_user,
-                object_content=ObjectContent(object_ids=object_ids),
+                object_content=ObjectContent.new_msg(object_ids=tuple(object_ids)),
             )
             for processor_id, object_ids in per_processor_object_ids.items()
         }

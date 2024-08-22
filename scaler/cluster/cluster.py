@@ -9,7 +9,7 @@ from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.worker import Worker
 
 
-class Cluster(multiprocessing.get_context("spawn").Process):
+class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
     def __init__(
         self,
         address: ZMQConfig,

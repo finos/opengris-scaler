@@ -3,7 +3,7 @@
     <img src="https://github.com/citi.png" alt="Citi" width="80" height="80">
   </a>
 
-  <h3 align="center">Citi/scaler</h3>
+<h3 align="center">Citi/scaler</h3>
 
   <p align="center">
     Efficient, lightweight and reliable distributed computation engine.
@@ -22,6 +22,9 @@
 with a stable and language agnostic protocol for client and worker communications.
 
 ```python
+import math
+from scaler import Client
+
 with Client(address="tcp://127.0.0.1:2345") as client:
     # Submits 100 tasks
     futures = [
@@ -43,20 +46,22 @@ messaging errors, among others.
 
 - Distributed computing on **multiple cores and multiple servers**
 - **Python** reference implementation, with **language agnostic messaging protocol** built on top of
-[ZeroMQ](https://zeromq.org)
+  [Cap'n Proto](https://capnproto.org/) and [ZeroMQ](https://zeromq.org)
 - **Graph** scheduling, which supports [Dask](https://www.dask.org)-like graph computing, optionally you
-can use [GraphBLAS](https://graphblas.org)
-- **Automated load balancing**. When workers got full of tasks, these will be scheduled to idle workers
+  can use [GraphBLAS](https://graphblas.org) for massive graph tasks
+- **Automated load balancing**. automatically balance busy workers' loads to idle workers, keep every worker as busy as
+  possible
 - **Automated recovery** from faulting workers or clients
 - Supports for **nested tasks**. Tasks can themselves submit new tasks
 - `top`-like **monitoring tools**
+- GUI monitoring tool
 
 Scaler's scheduler can be run on PyPy, which will provide a performance boost
 
 ## Installation
 
 ```bash
-$ pip instal scaler
+$ pip install scaler
 
 # or with graphblas and uvloop support
 $ pip install scaler[graphblas,uvloop]
@@ -76,7 +81,6 @@ A local scheduler and a local set of workers can be conveniently spawn using `Sc
 
 ```python
 from scaler import SchedulerClusterCombo
-
 
 cluster = SchedulerClusterCombo(address="tcp://127.0.0.1:2345", n_workers=4)
 
@@ -154,8 +158,10 @@ from scaler import Client
 def inc(i):
     return i + 1
 
+
 def add(a, b):
     return a + b
+
 
 def minus(a, b):
     return a - b
@@ -169,7 +175,7 @@ graph = {
     "e": (minus, "d", "c")  # e = d - c = 4 - 3 = 1
 }
 
-with Client(address="tcp://127.0.0.1:2345") as client
+with Client(address="tcp://127.0.0.1:2345") as client:
     result = client.get(graph, keys=["e"])
     print(result)  # {"e": 1}
 ```
@@ -179,18 +185,21 @@ with Client(address="tcp://127.0.0.1:2345") as client
 Scaler allows tasks to submit new tasks while being executed. Scaler also supports recursive task calls.
 
 ```python
-def fibonacci(client: Client, n: int):
+from scaler import Client
+
+
+def fibonacci(clnt: Client, n: int):
     if n == 0:
         return 0
     elif n == 1:
         return 1
     else:
-        a = client.submit(fibonacci, client, n - 1)
-        b = client.submit(fibonacci, client, n - 2)
+        a = clnt.submit(fibonacci, clnt, n - 1)
+        b = clnt.submit(fibonacci, clnt, n - 2)
         return a.result() + b.result()
 
 
-with Client(address="tcp://127.0.0.1:2345") as client
+with Client(address="tcp://127.0.0.1:2345") as client:
     result = client.submit(fibonacci, client, 8).result()
     print(result)  # 21
 ```
@@ -256,11 +265,11 @@ W|Linux|15943|a7fe8b5e+    0.0%   30.7m  0.0% 28.3m 1000    0      0 |
 - function_id_to_tasks section shows task count for each function used
 - worker section shows worker details, you can use shortcuts to sort by columns, the char * on column header show which
   column is sorted right now
-  - agt_cpu/agt_rss means cpu/memory usage of worker agent
-  - cpu/rss means cpu/memory usage of worker
-  - free means number of free task slots for this worker
-  - sent means how many tasks scheduler sent to the worker
-  - queued means how many tasks worker received and queued
+    - agt_cpu/agt_rss means cpu/memory usage of worker agent
+    - cpu/rss means cpu/memory usage of worker
+    - free means number of free task slots for this worker
+    - sent means how many tasks scheduler sent to the worker
+    - queued means how many tasks worker received and queued
 
 ### From the web UI
 
@@ -274,7 +283,8 @@ This will open a web server on port `8081`.
 
 ## Contributing
 
-Your contributions are at the core of making this a true open source project. Any contributions you make are **greatly appreciated**.
+Your contributions are at the core of making this a true open source project. Any contributions you make are **greatly
+appreciated**.
 
 We welcome you to:
 
@@ -297,4 +307,5 @@ This project is distributed under the [Apache-2.0 License](https://www.apache.or
 
 ## Contact
 
-If you have a query or require support with this project, [raise an issue](https://github.com/Citi/scaler/issues). Otherwise, reach out to [opensource@citi.com](mailto:opensource@citi.com).
+If you have a query or require support with this project, [raise an issue](https://github.com/Citi/scaler/issues).
+Otherwise, reach out to [opensource@citi.com](mailto:opensource@citi.com).

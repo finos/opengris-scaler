@@ -7,7 +7,7 @@ from scaler.io.async_connector import AsyncConnector
 from scaler.protocol.python.message import StateScheduler
 from scaler.protocol.python.status import Resource
 from scaler.scheduler.mixins import ClientManager, ObjectManager, TaskManager, WorkerManager
-from scaler.utility.mixins import Looper, Reporter
+from scaler.utility.mixins import Looper
 
 
 class StatusReporter(Looper):
@@ -16,10 +16,10 @@ class StatusReporter(Looper):
         self._process = psutil.Process()
 
         self._binder: Optional[AsyncBinder] = None
-        self._client_manager: Optional[Reporter] = None
-        self._object_manager: Optional[Reporter] = None
-        self._task_manager: Optional[Reporter] = None
-        self._worker_manager: Optional[Reporter] = None
+        self._client_manager: Optional[ClientManager] = None
+        self._object_manager: Optional[ObjectManager] = None
+        self._task_manager: Optional[TaskManager] = None
+        self._worker_manager: Optional[WorkerManager] = None
 
     def register_managers(
         self,
@@ -37,13 +37,10 @@ class StatusReporter(Looper):
 
     async def routine(self):
         await self._monitor_binder.send(
-            StateScheduler(
+            StateScheduler.new_msg(
                 binder=self._binder.get_status(),
-                scheduler=Resource(
-                    self._process.cpu_percent() / 100,
-                    self._process.memory_info().rss,
-                    psutil.virtual_memory().available,
-                ),
+                scheduler=Resource.new_msg(int(self._process.cpu_percent() * 10), self._process.memory_info().rss),
+                rss_free=psutil.virtual_memory().available,
                 client_manager=self._client_manager.get_status(),
                 object_manager=self._object_manager.get_status(),
                 task_manager=self._task_manager.get_status(),

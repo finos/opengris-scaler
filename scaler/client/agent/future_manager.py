@@ -1,12 +1,13 @@
 import logging
 import threading
-from concurrent.futures import InvalidStateError
+from concurrent.futures import InvalidStateError, Future
 from typing import Dict, Tuple
 
 from scaler.client.agent.mixins import FutureManager
 from scaler.client.future import ScalerFuture
 from scaler.client.serializer.mixins import Serializer
-from scaler.protocol.python.message import ObjectResponse, TaskResult, TaskStatus
+from scaler.protocol.python.common import TaskStatus
+from scaler.protocol.python.message import ObjectResponse, TaskResult
 from scaler.utility.exceptions import DisconnectedError, NoWorkerError, TaskNotFoundError, WorkerDiedError
 from scaler.utility.metadata.profile_result import retrieve_profiling_result_from_task_result
 from scaler.utility.object_utility import deserialize_failure
@@ -20,7 +21,8 @@ class ClientFutureManager(FutureManager):
         self._task_id_to_future: Dict[bytes, ScalerFuture] = dict()
         self._object_id_to_future: Dict[bytes, Tuple[TaskStatus, ScalerFuture]] = dict()
 
-    def add_future(self, future: ScalerFuture):
+    def add_future(self, future: Future):
+        assert isinstance(future, ScalerFuture)
         with self._lock:
             future.set_running_or_notify_cancel()
             self._task_id_to_future[future.task_id] = future

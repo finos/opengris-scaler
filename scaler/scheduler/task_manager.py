@@ -3,7 +3,8 @@ from typing import Dict, Optional, Set
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
-from scaler.protocol.python.message import StateTask, Task, TaskCancel, TaskResult, TaskStatus
+from scaler.protocol.python.common import TaskStatus
+from scaler.protocol.python.message import StateTask, Task, TaskCancel, TaskResult
 from scaler.protocol.python.status import TaskManagerStatus
 from scaler.scheduler.graph_manager import VanillaGraphTaskManager
 from scaler.scheduler.mixins import ClientManager, ObjectManager, TaskManager, WorkerManager
@@ -24,7 +25,7 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
 
         self._task_id_to_task: Dict[bytes, Task] = dict()
 
-        self._unassigned: AsyncIndexedQueue[bytes] = AsyncIndexedQueue()
+        self._unassigned: AsyncIndexedQueue = AsyncIndexedQueue()
         self._running: Set[bytes] = set()
 
         self._success_count: int = 0
@@ -66,7 +67,7 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
         )
 
     def get_status(self) -> TaskManagerStatus:
-        return TaskManagerStatus(
+        return TaskManagerStatus.new_msg(
             unassigned=self._unassigned.qsize(),
             running=len(self._running),
             success=self._success_count,
@@ -80,7 +81,7 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
             0 <= self._max_number_of_tasks_waiting <= self._unassigned.qsize()
             and not self._worker_manager.has_available_worker()
         ):
-            await self._binder.send(client, TaskResult(task.task_id, TaskStatus.NoWorker))
+            await self._binder.send(client, TaskResult.new_msg(task.task_id, TaskStatus.NoWorker))
             return
 
         self._client_manager.on_task_begin(client, task.task_id)
@@ -96,11 +97,11 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
     async def on_task_cancel(self, client: bytes, task_cancel: TaskCancel):
         if task_cancel.task_id not in self._task_id_to_task:
             logging.warning(f"cannot cancel, task not found: task_id={task_cancel.task_id.hex()}")
-            await self.on_task_done(TaskResult(task_cancel.task_id, TaskStatus.NotFound))
+            await self.on_task_done(TaskResult.new_msg(task_cancel.task_id, TaskStatus.NotFound))
             return
 
         if task_cancel.task_id in self._unassigned:
-            await self.on_task_done(TaskResult(task_cancel.task_id, TaskStatus.Canceled))
+            await self.on_task_done(TaskResult.new_msg(task_cancel.task_id, TaskStatus.Canceled))
             return
 
         await self._worker_manager.on_task_cancel(task_cancel)
@@ -162,4 +163,4 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
         self, task_id: bytes, function_name: bytes, status: TaskStatus, metadata: Optional[bytes] = b""
     ):
         worker = self._worker_manager.get_worker_by_task_id(task_id)
-        await self._binder_monitor.send(StateTask(task_id, function_name, status, worker, metadata))
+        await self._binder_monitor.send(StateTask.new_msg(task_id, function_name, status, worker, metadata))

@@ -1,10 +1,10 @@
+import dataclasses
 import functools
 import logging
 import os
 import threading
 import uuid
 from collections import Counter
-from concurrent.futures import Future
 from inspect import signature
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
@@ -20,15 +20,7 @@ from scaler.client.serializer.default import DefaultSerializer
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.config import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
 from scaler.io.sync_connector import SyncConnector
-from scaler.protocol.python.message import (
-    Argument,
-    ArgumentType,
-    ClientDisconnect,
-    ClientShutdownResponse,
-    DisconnectType,
-    GraphTask,
-    Task,
-)
+from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
 from scaler.utility.exceptions import ClientQuitException
 from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.graph.topological_sorter import TopologicalSorter
@@ -36,6 +28,23 @@ from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
 from scaler.utility.zmq_config import ZMQConfig, ZMQType
 from scaler.worker.agent.processor.processor import Processor
+
+
+@dataclasses.dataclass
+class _CallNode:
+    func: Callable
+    args: Tuple[str, ...]
+
+    def __post_init__(self):
+        if not callable(self.func):
+            raise TypeError(f"the first item of the tuple must be function, get {self.func}")
+
+        if not isinstance(self.args, tuple):
+            raise TypeError(f"arguments must be tuple, get {self.args}")
+
+        for arg in self.args:
+            if not isinstance(arg, str):
+                raise TypeError(f"argument `{arg}` must be a string and the string has to be in the graph")
 
 
 class Client:
@@ -59,6 +68,16 @@ class Client:
         :param heartbeat_interval_seconds: Frequency of heartbeat to scheduler in seconds
         :type heartbeat_interval_seconds: int
         """
+        self.__initialize__(address, profiling, timeout_seconds, heartbeat_interval_seconds, serializer)
+
+    def __initialize__(
+        self,
+        address: str,
+        profiling: bool,
+        timeout_seconds: int,
+        heartbeat_interval_seconds: int,
+        serializer: Serializer = DefaultSerializer(),
+    ):
         self._serializer = serializer
 
         self._profiling = profiling
@@ -149,7 +168,8 @@ class Client:
         }
 
     def __setstate__(self, state: dict) -> None:
-        self.__init__(
+        # TODO: fix copy the serializer
+        self.__initialize__(
             address=state["address"],
             profiling=state["profiling"],
             timeout_seconds=state["timeout_seconds"],
@@ -201,8 +221,8 @@ class Client:
         return results
 
     def get(
-        self, graph: Dict[str, Union[Any, Tuple[Union[Callable, Any], ...]]], keys: List[str], block: bool = True
-    ) -> Dict[str, Union[Any, Future]]:
+        self, graph: Dict[str, Union[Any, Tuple[Union[Callable, str], ...]]], keys: List[str], block: bool = True
+    ) -> Dict[str, Union[Any, ScalerFuture]]:
         """
         .. code-block:: python
            :linenos:
@@ -227,16 +247,26 @@ class Client:
 
         graph = cull_graph(graph, keys)
 
-        node_name_to_argument, graph = self.__split_data_and_graph(graph)
-        self.__check_graph(node_name_to_argument, graph, keys)
+        node_name_to_argument, call_graph = self.__split_data_and_graph(graph)
+        self.__check_graph(node_name_to_argument, call_graph, keys)
 
-        graph, compute_futures, finished_futures = self.__construct_graph(node_name_to_argument, graph, keys, block)
+        graph_task, compute_futures, finished_futures = self.__construct_graph(
+            node_name_to_argument, call_graph, keys, block
+        )
         self._object_buffer.commit_send_objects()
-        self._connector.send(graph)
+        self._connector.send(graph_task)
 
         self._future_manager.add_future(
             self._future_factory(
-                task=Task(graph.task_id, self._identity, b"", b"", []), is_delayed=not block, group_task_id=None
+                task=Task.new_msg(
+                    task_id=graph_task.task_id,
+                    source=self._identity,
+                    metadata=b"",
+                    func_object_id=b"",
+                    function_args=[],
+                ),
+                is_delayed=not block,
+                group_task_id=None,
             )
         )
         for future in compute_futures.values():
@@ -294,12 +324,12 @@ class Client:
 
         self._future_manager.cancel_all_futures()
 
-        self._connector.send(ClientDisconnect(DisconnectType.Disconnect))
+        self._connector.send(ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Disconnect))
 
         self.__destroy()
 
     def __receive_shutdown_response(self):
-        message = None
+        message: Optional[ClientShutdownResponse] = None
         while not isinstance(message, ClientShutdownResponse):
             message = self._connector.receive()
 
@@ -321,7 +351,7 @@ class Client:
 
         self._future_manager.cancel_all_futures()
 
-        self._connector.send(ClientDisconnect(DisconnectType.Shutdown))
+        self._connector.send(ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Shutdown))
         try:
             self.__receive_shutdown_response()
         finally:
@@ -339,8 +369,14 @@ class Client:
 
         task_flags_bytes = self.__get_task_flags().serialize()
 
-        arguments = [Argument(ArgumentType.ObjectID, object_id) for object_id in object_ids]
-        task = Task(task_id, self._identity, task_flags_bytes, function_object_id, arguments)
+        arguments = [Task.Argument(Task.Argument.ArgumentType.ObjectID, object_id) for object_id in object_ids]
+        task = Task.new_msg(
+            task_id=task_id,
+            source=self._identity,
+            metadata=task_flags_bytes,
+            func_object_id=function_object_id,
+            function_args=arguments,
+        )
 
         future = self._future_factory(task=task, is_delayed=delayed, group_task_id=None)
         self._future_manager.add_future(future)
@@ -357,48 +393,45 @@ class Client:
 
         number_of_required = len([p for p in params if p.default is p.empty])
 
-        args = list(args)
+        args_list = list(args)
         kwargs = kwargs.copy()
         kwargs.update({p.name: p.default for p in all_params if p.kind == p.KEYWORD_ONLY if p.default != p.empty})
 
-        for p in params[len(args) : number_of_required]:
+        for p in params[len(args_list) : number_of_required]:
             try:
-                args.append(kwargs.pop(p.name))
+                args_list.append(kwargs.pop(p.name))
             except KeyError:
-                missing = tuple(p.name for p in params[len(args) : number_of_required])
+                missing = tuple(p.name for p in params[len(args_list) : number_of_required])
                 raise TypeError(f"{fn} missing {len(missing)} arguments: {missing}")
 
-        for p in params[len(args) :]:
-            args.append(kwargs.pop(p.name, p.default))
+        for p in params[len(args_list) :]:
+            args_list.append(kwargs.pop(p.name, p.default))
 
-        return tuple(args)
+        return tuple(args_list)
 
     def __split_data_and_graph(
-        self, graph: Dict[str, Union[Any, Tuple[Union[Callable, Any], ...]]]
-    ) -> Tuple[Dict[str, Tuple[Argument, Any]], Dict[str, Tuple[Union[Callable, Any], ...]]]:
-        graph = graph.copy()
-        node_name_to_argument = {}
+        self, graph: Dict[str, Union[Any, Tuple[Union[Callable, str], ...]]]
+    ) -> Tuple[Dict[str, Tuple[Task.Argument, Any]], Dict[str, _CallNode]]:
+        call_graph = {}
+        node_name_to_argument: Dict[str, Tuple[Task.Argument, Union[Any, Tuple[Union[Callable, Any], ...]]]] = dict()
 
         for node_name, node in graph.items():
             if isinstance(node, tuple) and len(node) > 0 and callable(node[0]):
+                call_graph[node_name] = _CallNode(func=node[0], args=node[1:])  # type: ignore[arg-type]
                 continue
 
             if isinstance(node, ObjectReference):
-                node_name_to_argument[node_name] = (Argument(ArgumentType.ObjectID, node.object_id), None)
+                object_id = node.object_id
             else:
-                object_cache = self._object_buffer.buffer_send_object(node, name=node_name)
-                node_name_to_argument[node_name] = (Argument(ArgumentType.ObjectID, object_cache.object_id), node)
+                object_id = self._object_buffer.buffer_send_object(node, name=node_name).object_id
 
-        for node_name in node_name_to_argument.keys():
-            graph.pop(node_name)
+            node_name_to_argument[node_name] = (Task.Argument(Task.Argument.ArgumentType.ObjectID, object_id), node)
 
-        return node_name_to_argument, graph
+        return node_name_to_argument, call_graph
 
     @staticmethod
     def __check_graph(
-        node_to_argument: Dict[str, Tuple[Argument, Any]],
-        graph: Dict[str, Union[Any, Tuple[Union[Callable, Any], ...]]],
-        keys: List[str],
+        node_to_argument: Dict[str, Tuple[Task.Argument, Any]], call_graph: Dict[str, _CallNode], keys: List[str]
     ):
         duplicate_keys = [key for key, count in dict(Counter(keys)).items() if count > 1]
         if duplicate_keys:
@@ -406,76 +439,78 @@ class Client:
 
         # sanity check graph
         for key in keys:
-            if key not in graph and key not in node_to_argument:
+            if key not in call_graph and key not in node_to_argument:
                 raise KeyError(f"key {key} has to be in graph")
 
-        sorter = TopologicalSorter()
-        for node_name, node in graph.items():
-            assert (
-                isinstance(node, tuple) and len(node) > 0 and callable(node[0])
-            ), "node has to be tuple and first item should be function"
+        sorter: TopologicalSorter[str] = TopologicalSorter()
+        for node_name, node in call_graph.items():
+            for arg in node.args:
+                if arg not in node_to_argument and arg not in call_graph:
+                    raise KeyError(f"argument {arg} in node '{node_name}': {node} is not defined in graph")
 
-            for arg in node[1:]:
-                if arg not in node_to_argument and arg not in graph:
-                    raise KeyError(f"argument {arg} in node '{node_name}': {tuple(node)} is not defined in graph")
-
-            sorter.add(node_name, *node[1:])
+            sorter.add(node_name, *node.args)
 
         # check cyclic dependencies
         sorter.prepare()
 
     def __construct_graph(
         self,
-        node_name_to_arguments: Dict[str, Tuple[Argument, Any]],
-        graph: Dict[str, Tuple[Union[Callable, Any], ...]],
+        node_name_to_arguments: Dict[str, Tuple[Task.Argument, Any]],
+        call_graph: Dict[str, _CallNode],
         keys: List[str],
         block: bool,
     ) -> Tuple[GraphTask, Dict[str, ScalerFuture], Dict[str, ScalerFuture]]:
         graph_task_id = uuid.uuid1().bytes
 
-        node_name_to_task_id = {node_name: uuid.uuid1().bytes for node_name in graph.keys()}
+        node_name_to_task_id: Dict[str, bytes] = {node_name: uuid.uuid1().bytes for node_name in call_graph.keys()}
 
         task_flags_bytes = self.__get_task_flags().serialize()
 
         task_id_to_tasks = dict()
 
-        for node_name, node in graph.items():
+        for node_name, node in call_graph.items():
             task_id = node_name_to_task_id[node_name]
+            function_cache = self._object_buffer.buffer_send_function(node.func)
 
-            function, *args = node
-            function_cache = self._object_buffer.buffer_send_function(function)
+            arguments: List[Task.Argument] = []
+            for arg in node.args:
+                assert arg in call_graph or arg in node_name_to_arguments
 
-            arguments = []
-            for arg in args:
-                assert arg in graph or arg in node_name_to_arguments
-
-                if arg in graph:
-                    argument = Argument(ArgumentType.Task, node_name_to_task_id[arg])
-                else:
+                if arg in call_graph:
+                    arguments.append(
+                        Task.Argument(type=Task.Argument.ArgumentType.Task, data=node_name_to_task_id[arg])
+                    )
+                elif arg in node_name_to_arguments:
                     argument, _ = node_name_to_arguments[arg]
+                    arguments.append(argument)
+                else:
+                    raise ValueError("Not possible")
 
-                arguments.append(argument)
-
-            task_id_to_tasks[task_id] = Task(
-                task_id, self._identity, task_flags_bytes, function_cache.object_id, arguments
+            task_id_to_tasks[task_id] = Task.new_msg(
+                task_id=task_id,
+                source=self._identity,
+                metadata=task_flags_bytes,
+                func_object_id=function_cache.object_id,
+                function_args=arguments,
             )
 
-        result_task_ids = [node_name_to_task_id[key] for key in keys if key in graph]
-        graph_task = GraphTask(graph_task_id, self._identity, result_task_ids, list(task_id_to_tasks.values()))
+        result_task_ids = [node_name_to_task_id[key] for key in keys if key in call_graph]
+        graph_task = GraphTask.new_msg(graph_task_id, self._identity, result_task_ids, list(task_id_to_tasks.values()))
 
         compute_futures = {}
         ready_futures = {}
         for key in keys:
-            if key in graph:
-                future = self._future_factory(
+            if key in call_graph:
+                compute_futures[key] = self._future_factory(
                     task=task_id_to_tasks[node_name_to_task_id[key]], is_delayed=not block, group_task_id=graph_task_id
                 )
-                compute_futures[key] = future
 
             elif key in node_name_to_arguments:
                 argument, data = node_name_to_arguments[key]
                 future: ScalerFuture = self._future_factory(
-                    task=Task(argument.data, self._identity, b"", b"", []),
+                    task=Task.new_msg(
+                        task_id=argument.data, source=self._identity, metadata=b"", func_object_id=b"", function_args=[]
+                    ),
                     is_delayed=False,
                     group_task_id=graph_task_id,
                 )
@@ -498,6 +533,14 @@ class Client:
 
         return TaskFlags(profiling=self._profiling, priority=task_priority)
 
+    def __assert_client_not_stopped(self):
+        if self._stop_event.is_set():
+            raise ClientQuitException("client is already stopped.")
+
+    def __destroy(self):
+        self._agent.join()
+        self._internal_context.destroy(linger=1)
+
     @staticmethod
     def __get_parent_task_priority() -> Optional[int]:
         """If the client is running inside a Scaler processor, returns the priority of the associated task."""
@@ -511,11 +554,3 @@ class Client:
         assert current_task is not None
 
         return retrieve_task_flags_from_task(current_task).priority
-
-    def __assert_client_not_stopped(self):
-        if self._stop_event.is_set():
-            raise ClientQuitException("client is already stopped.")
-
-    def __destroy(self):
-        self._agent.join()
-        self._internal_context.destroy(linger=1)

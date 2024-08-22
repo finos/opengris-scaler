@@ -22,7 +22,7 @@ class TestObjectUsage(unittest.TestCase):
     def test_object_usage(self):
         setup_logger()
 
-        object_usage = ObjectTracker("sample", sample_ready)
+        object_usage: ObjectTracker[str, Sample] = ObjectTracker("sample", sample_ready)
 
         object_usage.add_object(Sample("a", "value1"))
         object_usage.add_object(Sample("b", "value2"))

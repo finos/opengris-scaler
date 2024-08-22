@@ -1,13 +1,13 @@
 import abc
-from typing import List, Tuple
+from typing import TypeVar
 
 
-class _Message(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    def serialize(self) -> Tuple[bytes, ...]:
-        raise NotImplementedError()
+class Message(metaclass=abc.ABCMeta):
+    def __init__(self, msg):
+        self._msg = msg
 
-    @staticmethod
-    @abc.abstractmethod
-    def deserialize(data: List[bytes]):
-        raise NotImplementedError()
+    def get_message(self):
+        return self._msg
+
+
+MessageType = TypeVar("MessageType", bound=Message)

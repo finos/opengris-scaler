@@ -6,18 +6,8 @@ from typing import Dict, List, Optional, Set
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
-from scaler.protocol.python.message import (
-    Argument,
-    ArgumentType,
-    GraphTask,
-    GraphTaskCancel,
-    NodeTaskType,
-    StateGraphTask,
-    Task,
-    TaskCancel,
-    TaskResult,
-    TaskStatus,
-)
+from scaler.protocol.python.common import TaskStatus
+from scaler.protocol.python.message import GraphTask, GraphTaskCancel, StateGraphTask, Task, TaskCancel, TaskResult
 from scaler.scheduler.mixins import ClientManager, GraphTaskManager, ObjectManager, TaskManager
 from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.many_to_many_dict import ManyToManyDict
@@ -107,7 +97,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
 
     async def on_graph_task_cancel(self, client: bytes, graph_task_cancel: GraphTaskCancel):
         if graph_task_cancel.task_id not in self._graph_task_id_to_graph:
-            await self._binder.send(client, TaskResult(graph_task_cancel.task_id, TaskStatus.NotFound))
+            await self._binder.send(client, TaskResult.new_msg(graph_task_cancel.task_id, TaskStatus.NotFound))
             return
 
         graph_task_id = self._task_id_to_graph_task_id[graph_task_cancel.task_id]
@@ -115,7 +105,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         if graph_info.status == _GraphState.Canceling:
             return
 
-        await self.__cancel_one_graph(graph_task_id, TaskResult(graph_task_cancel.task_id, TaskStatus.Canceled))
+        await self.__cancel_one_graph(graph_task_id, TaskResult.new_msg(graph_task_cancel.task_id, TaskStatus.Canceled))
 
     async def on_graph_sub_task_done(self, result: TaskResult):
         graph_task_id = self._task_id_to_graph_task_id[result.task_id]
@@ -148,22 +138,26 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         self._client_manager.on_task_begin(client, graph_task.task_id)
 
         tasks = dict()
-        depended_task_id_to_task_id = ManyToManyDict()
+        depended_task_id_to_task_id: ManyToManyDict[bytes, bytes] = ManyToManyDict()
         for task in graph_task.graph:
             self._task_id_to_graph_task_id[task.task_id] = graph_task.task_id
             tasks[task.task_id] = _TaskInfo(_NodeTaskState.Inactive, task)
 
-            required_task_ids = {arg.data for arg in task.function_args if arg.type == ArgumentType.Task}
+            required_task_ids = {arg.data for arg in task.function_args if arg.type == Task.Argument.ArgumentType.Task}
             for required_task_id in required_task_ids:
                 depended_task_id_to_task_id.add(required_task_id, task.task_id)
 
             graph[task.task_id] = required_task_ids
 
             await self._binder_monitor.send(
-                StateGraphTask(
+                StateGraphTask.new_msg(
                     graph_task.task_id,
                     task.task_id,
-                    NodeTaskType.Target if task.task_id in graph_task.targets else NodeTaskType.Normal,
+                    (
+                        StateGraphTask.NodeTaskType.Target
+                        if task.task_id in graph_task.targets
+                        else StateGraphTask.NodeTaskType.Normal
+                    ),
                     required_task_ids,
                 )
             )
@@ -179,7 +173,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
     async def __check_one_graph(self, graph_task_id: bytes):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         if not graph_info.sorter.is_active():
-            await self.__finish_one_graph(graph_task_id, TaskResult(graph_task_id, TaskStatus.Success))
+            await self.__finish_one_graph(graph_task_id, TaskResult.new_msg(graph_task_id, TaskStatus.Success))
             return
 
         ready_task_ids = graph_info.sorter.get_ready()
@@ -191,12 +185,12 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
             task_info.state = _NodeTaskState.Running
             graph_info.running_task_ids.add(task_id)
 
-            task = Task(
-                task_info.task.task_id,
-                task_info.task.source,
-                task_info.task.metadata,
-                task_info.task.func_object_id,
-                [self.__get_argument(graph_task_id, arg) for arg in task_info.task.function_args],
+            task = Task.new_msg(
+                task_id=task_info.task.task_id,
+                source=task_info.task.source,
+                metadata=task_info.task.metadata,
+                func_object_id=task_info.task.func_object_id,
+                function_args=[self.__get_argument(graph_task_id, arg) for arg in task_info.task.function_args],
             )
 
             await self._task_manager.on_task_new(graph_info.client, task)
@@ -240,7 +234,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
             await self.__clean_all_inactive_nodes(graph_task_id, result)
 
         await self.__finish_one_graph(
-            graph_task_id, TaskResult(result.task_id, result.status, result.metadata, result.results)
+            graph_task_id, TaskResult.new_msg(result.task_id, result.status, result.metadata, result.results)
         )
 
     async def __clean_all_running_nodes(self, graph_task_id: bytes, result: TaskResult):
@@ -261,8 +255,10 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                 )
                 new_result_object_ids.append(new_result_object_id)
 
-            await self._task_manager.on_task_cancel(graph_info.client, TaskCancel(task_id))
-            await self.__mark_node_done(TaskResult(task_id, result.status, result.metadata, new_result_object_ids))
+            await self._task_manager.on_task_cancel(graph_info.client, TaskCancel.new_msg(task_id))
+            await self.__mark_node_done(
+                TaskResult.new_msg(task_id, result.status, result.metadata, new_result_object_ids)
+            )
 
     async def __clean_all_inactive_nodes(self, graph_task_id: bytes, result: TaskResult):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
@@ -280,12 +276,14 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                     )
                     new_result_object_ids.append(new_result_object_id)
 
-                await self.__mark_node_done(TaskResult(task_id, result.status, result.metadata, new_result_object_ids))
+                await self.__mark_node_done(
+                    TaskResult.new_msg(task_id, result.status, result.metadata, new_result_object_ids)
+                )
 
     async def __finish_one_graph(self, graph_task_id: bytes, result: TaskResult):
         self._client_manager.on_task_finish(graph_task_id)
         info = self._graph_task_id_to_graph.pop(graph_task_id)
-        await self._binder.send(info.client, TaskResult(graph_task_id, result.status, results=result.results))
+        await self._binder.send(info.client, TaskResult.new_msg(graph_task_id, result.status, results=result.results))
 
     def __is_graph_finished(self, graph_task_id: bytes):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
@@ -299,11 +297,11 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
             for result_object_id in graph_info.tasks[task_id].result_object_ids
         ]
 
-    def __get_argument(self, graph_task_id: bytes, argument: Argument) -> Argument:
-        if argument.type == ArgumentType.ObjectID:
+    def __get_argument(self, graph_task_id: bytes, argument: Task.Argument) -> Task.Argument:
+        if argument.type == Task.Argument.ArgumentType.ObjectID:
             return argument
 
-        assert argument.type == ArgumentType.Task
+        assert argument.type == Task.Argument.ArgumentType.Task
         argument_task_id = argument.data
 
         graph_info = self._graph_task_id_to_graph[graph_task_id]
@@ -311,13 +309,13 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
 
         assert len(task_info.result_object_ids) == 1
 
-        return Argument(ArgumentType.ObjectID, task_info.result_object_ids[0])
+        return Task.Argument(Task.Argument.ArgumentType.ObjectID, task_info.result_object_ids[0])
 
     def __clean_intermediate_result(self, graph_task_id: bytes, task_id: bytes):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         task_info = graph_info.tasks[task_id]
 
-        for argument in filter(lambda arg: arg.type == ArgumentType.Task, task_info.task.function_args):
+        for argument in filter(lambda arg: arg.type == Task.Argument.ArgumentType.Task, task_info.task.function_args):
             argument_task_id = argument.data
             graph_info.depended_task_id_to_task_id.remove(argument_task_id, task_id)
             if graph_info.depended_task_id_to_task_id.has_left_key(argument_task_id):

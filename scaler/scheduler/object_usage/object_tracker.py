@@ -6,23 +6,22 @@ from scaler.utility.many_to_many_dict import ManyToManyDict
 ObjectKeyType = TypeVar("ObjectKeyType")
 
 
-class ObjectUsage(metaclass=abc.ABCMeta):
+class ObjectUsage(Generic[ObjectKeyType], metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def get_object_key(self) -> ObjectKeyType:
         raise NotImplementedError()
 
 
 ObjectType = TypeVar("ObjectType", bound=ObjectUsage)
-BlockType = TypeVar("BlockType")
 
 
-class ObjectTracker(Generic[ObjectType, BlockType]):
+class ObjectTracker(Generic[ObjectKeyType, ObjectType]):
     def __init__(self, prefix: str, callback: Callable[[ObjectType], None]):
         self._prefix = prefix
         self._callback = callback
 
-        self._current_blocks: Set[BlockType] = set()
-        self._object_key_to_block: ManyToManyDict[ObjectKeyType, BlockType] = ManyToManyDict()
+        self._current_blocks: Set[ObjectKeyType] = set()
+        self._object_key_to_block: ManyToManyDict[ObjectKeyType, ObjectKeyType] = ManyToManyDict()
         self._object_key_to_object: Dict[ObjectKeyType, ObjectType] = dict()
 
     def object_count(self):
@@ -43,7 +42,9 @@ class ObjectTracker(Generic[ObjectType, BlockType]):
     def add_object(self, obj: ObjectType):
         self._object_key_to_object[obj.get_object_key()] = obj
 
-    def get_object_block_pairs(self, blocks: Set[BlockType]) -> Generator[Tuple[ObjectKeyType, BlockType], None, None]:
+    def get_object_block_pairs(
+        self, blocks: Set[ObjectKeyType]
+    ) -> Generator[Tuple[ObjectKeyType, ObjectKeyType], None, None]:
         for block in blocks:
             if not self._object_key_to_block.has_right_key(block):
                 continue
@@ -51,16 +52,16 @@ class ObjectTracker(Generic[ObjectType, BlockType]):
             for object_key in self._object_key_to_block.get_left_items(block):
                 yield object_key, block
 
-    def add_blocks_for_one_object(self, object_key: ObjectKeyType, blocks: Set[BlockType]):
+    def add_blocks_for_one_object(self, object_key: ObjectKeyType, blocks: Set[ObjectKeyType]):
         if object_key not in self._object_key_to_object:
-            raise KeyError(f"cannot find key={object_key.hex()} in ObjectTracker")
+            raise KeyError(f"cannot find key={object_key} in ObjectTracker")
 
         for block in blocks:
             self._object_key_to_block.add(object_key, block)
 
         self._current_blocks.update(blocks)
 
-    def remove_blocks_for_one_object(self, object_key: ObjectKeyType, blocks: Set[BlockType]):
+    def remove_blocks_for_one_object(self, object_key: ObjectKeyType, blocks: Set[ObjectKeyType]):
         ready_objects = []
         for block in blocks:
             obj = self.__remove_block_for_object(object_key, block)
@@ -72,16 +73,16 @@ class ObjectTracker(Generic[ObjectType, BlockType]):
         for obj in ready_objects:
             self._callback(obj)
 
-    def add_one_block_for_objects(self, object_keys: Set[ObjectKeyType], block: BlockType):
+    def add_one_block_for_objects(self, object_keys: Set[ObjectKeyType], block: ObjectKeyType):
         for object_key in object_keys:
             if object_key not in self._object_key_to_object:
-                raise KeyError(f"cannot find key={object_key.hex()} in ObjectTracker")
+                raise KeyError(f"cannot find key={object_key} in ObjectTracker")
 
             self._object_key_to_block.add(object_key, block)
 
         self._current_blocks.add(block)
 
-    def remove_one_block_for_objects(self, object_keys: Set[ObjectKeyType], block: BlockType):
+    def remove_one_block_for_objects(self, object_keys: Set[ObjectKeyType], block: ObjectKeyType):
         ready_objects = []
         for object_key in object_keys:
             obj = self.__remove_block_for_object(object_key, block)
@@ -93,7 +94,7 @@ class ObjectTracker(Generic[ObjectType, BlockType]):
         for obj in ready_objects:
             self._callback(obj)
 
-    def remove_blocks(self, blocks: Set[BlockType]):
+    def remove_blocks(self, blocks: Set[ObjectKeyType]):
         ready_objects = []
         for block in blocks:
             if not self._object_key_to_block.has_right_key(block):
@@ -110,7 +111,7 @@ class ObjectTracker(Generic[ObjectType, BlockType]):
         for obj in ready_objects:
             self._callback(obj)
 
-    def __remove_block_for_object(self, object_key: ObjectKeyType, block: BlockType) -> Optional[ObjectType]:
+    def __remove_block_for_object(self, object_key: ObjectKeyType, block: ObjectKeyType) -> Optional[ObjectType]:
         if block not in self._current_blocks:
             return None
 

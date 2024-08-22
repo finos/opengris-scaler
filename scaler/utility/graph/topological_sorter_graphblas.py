@@ -1,31 +1,33 @@
 import collections
 import graphlib
 import itertools
-from typing import Dict, Hashable, Iterable, List, Optional, Tuple
+from typing import Hashable, Iterable, List, Optional, Tuple, TypeVar, Generic, Mapping
 
 from bidict import bidict
 
 try:
     import graphblas as gb
-    import numpy as np
+    import numpy as np  # noqa
 except ImportError:
     raise ImportError("Please use 'pip install python-graphblas' to have graph blas support")
 
+GraphKeyType = TypeVar("GraphKeyType", bound=Hashable)
 
-class TopologicalSorter:
+
+class TopologicalSorter(Generic[GraphKeyType]):
     """
     Implements graphlib's TopologicalSorter, but the graph handling is backed by GraphBLAS
     Reference: https://github.com/python/cpython/blob/4a3ea1fdd890e5e2ec26540dc3c958a52fba6556/Lib/graphlib.py
     """
 
-    def __init__(self, graph: Optional[Dict[Hashable, Iterable[Hashable]]] = None):
+    def __init__(self, graph: Optional[Mapping[GraphKeyType, Iterable[GraphKeyType]]] = None):
         # the layout of the matrix is (in-vertex, out-vertex)
         self._matrix = gb.Matrix(gb.dtypes.BOOL)
-        self._key_to_id = bidict()
+        self._key_to_id: bidict[GraphKeyType, int] = bidict()
 
-        self._graph_matrix_mask = None
-        self._visited_vertices_mask = None
-        self._ready_nodes = None
+        self._graph_matrix_mask: Optional[np.ndarray] = None
+        self._visited_vertices_mask: Optional[np.ndarray] = None
+        self._ready_nodes: Optional[List[GraphKeyType]] = None
 
         self._n_done = 0
         self._n_visited = 0
@@ -33,10 +35,10 @@ class TopologicalSorter:
         if graph is not None:
             self.merge_graph(graph)
 
-    def add(self, node: Hashable, *predecessors: Hashable) -> None:
+    def add(self, node: GraphKeyType, *predecessors: GraphKeyType) -> None:
         self.merge_graph({node: predecessors})
 
-    def merge_graph(self, graph: Dict[Hashable, Iterable[Hashable]]) -> None:
+    def merge_graph(self, graph: Mapping[GraphKeyType, Iterable[GraphKeyType]]) -> None:
         if self._ready_nodes is not None:
             raise ValueError("nodes cannot be added after a call to prepare()")
 
@@ -86,7 +88,7 @@ class TopologicalSorter:
         if self._has_cycle():
             raise graphlib.CycleError("cycle detected")
 
-    def get_ready(self) -> Tuple[Hashable, ...]:
+    def get_ready(self) -> Tuple[GraphKeyType, ...]:
         if self._ready_nodes is None:
             raise ValueError("prepare() must be called first")
 
@@ -102,7 +104,7 @@ class TopologicalSorter:
     def __bool__(self) -> bool:
         return self.is_active()
 
-    def done(self, *nodes: Hashable) -> None:
+    def done(self, *nodes: GraphKeyType) -> None:
         if self._ready_nodes is None:
             raise ValueError("prepare() must be called first")
 
@@ -127,7 +129,7 @@ class TopologicalSorter:
         self._ready_nodes.extend(new_ready_nodes)
         self._n_visited += len(new_ready_nodes)
 
-    def static_order(self) -> Iterable[Hashable]:
+    def static_order(self) -> Iterable[GraphKeyType]:
         self.prepare()
         while self.is_active():
             node_group = self.get_ready()
@@ -150,7 +152,7 @@ class TopologicalSorter:
                 return True
         return False
 
-    def _get_zero_degree_keys(self) -> List[Hashable]:
+    def _get_zero_degree_keys(self) -> List[GraphKeyType]:
         ids = self._get_mask_diff(self._visited_vertices_mask, self._get_zero_degree_mask(self._get_masked_matrix()))
         return [self._key_to_id.inverse[_id] for _id in ids]
 
@@ -165,7 +167,7 @@ class TopologicalSorter:
     def _get_zero_degree_mask(cls, masked_matrix: gb.Matrix) -> np.ndarray:
         degrees = masked_matrix.reduce_rowwise(gb.monoid.lor)
         indices, _ = degrees.to_coo(indices=True, values=False, sort=False)
-        return np.logical_not(np.in1d(np.arange(masked_matrix.nrows), indices))
+        return np.logical_not(np.in1d(np.arange(masked_matrix.nrows), indices))  # type: ignore[attr-defined]
 
     @staticmethod
     def _get_mask_diff(old_mask: np.ndarray, new_mask: np.ndarray) -> List[int]:

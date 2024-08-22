@@ -2,11 +2,12 @@ import logging
 import os
 import uuid
 from collections import defaultdict
-from typing import Awaitable, Callable, List, Literal, Optional
+from typing import Awaitable, Callable, List, Optional, Dict
 
 import zmq.asyncio
 
-from scaler.protocol.python.message import PROTOCOL, MessageType, MessageVariant
+from scaler.io.utility import deserialize, serialize
+from scaler.protocol.python.mixins import Message
 from scaler.protocol.python.status import BinderStatus
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.zmq_config import ZMQConfig
@@ -25,14 +26,15 @@ class AsyncBinder(Looper, Reporter):
         self.__set_socket_options()
         self._socket.bind(self._address.to_address())
 
-        self._callback: Optional[Callable[[bytes, MessageVariant], Awaitable[None]]] = None
+        self._callback: Optional[Callable[[bytes, Message], Awaitable[None]]] = None
 
-        self._statistics = {"received": defaultdict(lambda: 0), "sent": defaultdict(lambda: 0)}
+        self._received: Dict[str, int] = defaultdict(lambda: 0)
+        self._sent: Dict[str, int] = defaultdict(lambda: 0)
 
     def destroy(self):
         self._context.destroy(linger=0)
 
-    def register(self, callback: Callable[[bytes, MessageVariant], Awaitable[None]]):
+    def register(self, callback: Callable[[bytes, Message], Awaitable[None]]):
         self._callback = callback
 
     async def routine(self):
@@ -40,23 +42,21 @@ class AsyncBinder(Looper, Reporter):
         if not self.__is_valid_message(frames):
             return
 
-        source, message_type_bytes, payload = frames[0], frames[1], frames[2:]
-        message_type = MessageType(message_type_bytes)
-        self.__count_one("received", message_type)
+        source, payload = frames
+        message: Optional[Message] = deserialize(payload)
+        if message is None:
+            logging.error(f"received unknown message from {source!r}: {payload!r}")
+            return
 
-        message = PROTOCOL[message_type].deserialize(payload)
+        self.__count_received(message.__class__.__name__)
         await self._callback(source, message)
 
-    async def send(self, to: bytes, message: MessageVariant):
-        message_type = PROTOCOL.inverse[type(message)]
-        self.__count_one("sent", message_type)
-        await self._socket.send_multipart([to, message_type.value, *message.serialize()], copy=False)
+    async def send(self, to: bytes, message: Message):
+        self.__count_sent(message.__class__.__name__)
+        await self._socket.send_multipart([to, serialize(message)], copy=False)
 
     def get_status(self) -> BinderStatus:
-        return BinderStatus(
-            received={k: v for k, v in self._statistics["received"].items()},
-            sent={k: v for k, v in self._statistics["sent"].items()},
-        )
+        return BinderStatus.new_msg(received=self._received, sent=self._sent)
 
     def __set_socket_options(self):
         self._socket.setsockopt(zmq.IDENTITY, self._identity)
@@ -64,18 +64,17 @@ class AsyncBinder(Looper, Reporter):
         self._socket.setsockopt(zmq.RCVHWM, 0)
 
     def __is_valid_message(self, frames: List[bytes]) -> bool:
-        if len(frames) < 3:
+        if len(frames) < 2:
             logging.error(f"{self.__get_prefix()} received unexpected frames {frames}")
-            return False
-
-        if frames[1] not in {member.value for member in MessageType}:
-            logging.error(f"{self.__get_prefix()} received unexpected message type: {frames[0]}: {frames}")
             return False
 
         return True
 
-    def __count_one(self, count_type: Literal["sent", "received"], message_type: MessageType):
-        self._statistics[count_type][message_type.name] += 1
+    def __count_received(self, message_type: str):
+        self._received[message_type] += 1
+
+    def __count_sent(self, message_type: str):
+        self._sent[message_type] += 1
 
     def __get_prefix(self):
         return f"{self.__class__.__name__}[{self._identity.decode()}]:"

@@ -38,7 +38,7 @@ class AsyncPriorityQueue(Queue):
         item = self._locator.pop(data)
         i = self._queue.index(item)  # O(n)
         item[0] = self.__to_lowest_priority(item[0])
-        heapq._siftdown(self._queue, 0, i)  # noqa
+        heapq._siftdown(self._queue, 0, i)  # type: ignore[attr-defined]
         assert heapq.heappop(self._queue) == item
 
     def decrease_priority(self, data):
@@ -47,7 +47,7 @@ class AsyncPriorityQueue(Queue):
         item = self._locator[data]
         i = self._queue.index(item)  # O(n)
         item[0] = self.__to_lower_priority(item[0])
-        heapq._siftdown(self._queue, 0, i)  # noqa
+        heapq._siftdown(self._queue, 0, i)  # type: ignore[attr-defined]
 
     def max_priority(self):
         item = heapq.heappop(self._queue)

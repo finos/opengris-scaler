@@ -12,21 +12,16 @@ import zmq
 
 from scaler.io.config import DUMMY_CLIENT
 from scaler.io.sync_connector import SyncConnector
+from scaler.protocol.python.common import TaskStatus, ObjectContent
 from scaler.protocol.python.message import (
-    ArgumentType,
-    MessageVariant,
-    ObjectContent,
     ObjectInstruction,
-    ObjectInstructionType,
     ObjectRequest,
-    ObjectRequestType,
     ObjectResponse,
-    ObjectResponseType,
     ProcessorInitialized,
     Task,
     TaskResult,
-    TaskStatus,
 )
+from scaler.protocol.python.mixins import Message
 from scaler.utility.exceptions import MissingObjects
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.object_utility import generate_object_id, generate_serializer_object_id, serialize_failure
@@ -56,7 +51,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._logging_paths = logging_paths
         self._logging_level = logging_level
 
-        self._client_to_decorator = {}
+        # self._client_to_decorator = {}
 
         self._object_cache: Optional[ObjectCache] = None
 
@@ -103,9 +98,12 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
     def __run_forever(self):
         try:
-            self._connector.send(ProcessorInitialized())
+            self._connector.send(ProcessorInitialized.new_msg())
             while True:
                 message = self._connector.receive()
+                if message is None:
+                    continue
+
                 self.__on_connector_receive(message)
 
         except zmq.error.ZMQError as e:
@@ -121,7 +119,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
             self._object_cache.join()
 
-    def __on_connector_receive(self, message: MessageVariant):
+    def __on_connector_receive(self, message: Message):
         if isinstance(message, ObjectInstruction):
             self.__on_receive_object_instruction(message)
             return
@@ -137,7 +135,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         logging.error(f"unknown {message=}")
 
     def __on_receive_object_instruction(self, instruction: ObjectInstruction):
-        if instruction.type == ObjectInstructionType.Delete:
+        if instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Delete:
             for object_id in instruction.object_content.object_ids:
                 self._object_cache.del_object(object_id)
             return
@@ -145,7 +143,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         logging.error(f"worker received unknown object instruction type {instruction=}")
 
     def __on_receive_object_response(self, response: ObjectResponse):
-        if response.type == ObjectResponseType.Content:
+        if response.response_type == ObjectResponse.ObjectResponseType.Content:
             self.__on_receive_object_content(response.object_content)
             return
 
@@ -179,7 +177,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             self.__process_task(task)
             return
 
-        self._connector.send(ObjectRequest(ObjectRequestType.Get, unknown_object_ids))
+        self._connector.send(ObjectRequest.new_msg(ObjectRequest.ObjectRequestType.Get, unknown_object_ids))
 
     def __get_not_ready_object_ids(self, task: Task) -> Tuple[bytes, ...]:
         required_object_ids = self.__get_required_object_ids_for_task(task)
@@ -189,7 +187,9 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __get_required_object_ids_for_task(task: Task) -> List[bytes]:
         serializer_id = generate_serializer_object_id(task.source)
         object_ids = [serializer_id, task.func_object_id]
-        object_ids.extend([argument.data for argument in task.function_args if argument.type == ArgumentType.ObjectID])
+        object_ids.extend(
+            [argument.data for argument in task.function_args if argument.type == Task.Argument.ArgumentType.ObjectID]
+        )
         return object_ids
 
     def __process_task(self, task: Task):
@@ -246,13 +246,15 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         # clients
         result_object_id = generate_object_id(source, uuid.uuid4().bytes)
         self._connector.send(
-            ObjectInstruction(
-                ObjectInstructionType.Create,
+            ObjectInstruction.new_msg(
+                ObjectInstruction.ObjectInstructionType.Create,
                 source,
-                ObjectContent((result_object_id,), (f"<res {result_object_id.hex()[:6]}>".encode(),), (result_bytes,)),
+                ObjectContent.new_msg(
+                    (result_object_id,), (f"<res {result_object_id.hex()[:6]}>".encode(),), (result_bytes,)
+                ),
             )
         )
-        self._connector.send(TaskResult(task_id, status, results=[result_object_id]))
+        self._connector.send(TaskResult.new_msg(task_id, status, metadata=b"", results=[result_object_id]))
 
     @staticmethod
     def __set_current_processor(context: Optional["Processor"]) -> Token:
