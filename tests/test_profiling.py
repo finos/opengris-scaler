@@ -2,12 +2,19 @@ import time
 import unittest
 
 from scaler import Client, SchedulerClusterCombo
-
 from tests.utility import get_available_tcp_port
 
 
 def dummy(n: int):
     time.sleep(n)
+    return n * n
+
+
+def busy_dummy(n: int):
+    start_time = time.time()
+    while time.time() - start_time < n:
+        pass
+
     return n * n
 
 
@@ -38,3 +45,17 @@ class TestProfiling(unittest.TestCase):
         # Raises error because future is not done
         with self.assertRaises(ValueError):
             _ = fut.profiling_info().duration_s
+
+    def test_cpu_time_busy(self) -> None:
+        fut = self.client.submit(busy_dummy, 1, profiling=True)
+        fut.result()
+
+        cpu_time = fut.profiling_info().cpu_time_s
+        assert cpu_time > 0
+
+    def test_cpu_time_sleep(self) -> None:
+        fut = self.client.submit(dummy, 1, profiling=True)
+        fut.result()
+
+        cpu_time = fut.profiling_info().cpu_time_s
+        assert cpu_time < 1

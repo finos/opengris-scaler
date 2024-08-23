@@ -39,8 +39,7 @@ with Client(address="tcp://127.0.0.1:2345") as client:
 ```
 
 Scaler is a suitable Dask replacement, offering significantly better scheduling performance for jobs with a large number
-of lightweight tasks, while addressing some long-running issues with Dask such as deadlocks, load balancing issues,
-messaging errors, among others.
+of lightweight tasks while improving on load balancing, messaging and deadlocks.
 
 ## Features
 
@@ -48,15 +47,15 @@ messaging errors, among others.
 - **Python** reference implementation, with **language agnostic messaging protocol** built on top of
   [Cap'n Proto](https://capnproto.org/) and [ZeroMQ](https://zeromq.org)
 - **Graph** scheduling, which supports [Dask](https://www.dask.org)-like graph computing, optionally you
-  can use [GraphBLAS](https://graphblas.org) for massive graph tasks
-- **Automated load balancing**. automatically balance busy workers' loads to idle workers, keep every worker as busy as
-  possible
-- **Automated recovery** from faulting workers or clients
-- Supports for **nested tasks**. Tasks can themselves submit new tasks
+  can use [GraphBLAS](https://graphblas.org) for very large graph tasks
+- **Automated load balancing**. automatically balances load from busy workers to idle workers and tries to keep workers
+  utilized as uniformly as possible
+- **Automated task recovery** from faulting workers who have died
+- Supports for **nested tasks**, tasks can themselves submit new tasks
 - `top`-like **monitoring tools**
 - GUI monitoring tool
 
-Scaler's scheduler can be run on PyPy, which will provide a performance boost
+Scaler's scheduler can be run on PyPy, which can provide a performance boost
 
 ## Installation
 

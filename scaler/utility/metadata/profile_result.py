@@ -9,11 +9,12 @@ from scaler.protocol.python.message import TaskResult
 class ProfileResult:
     duration_s: float = dataclasses.field(default=0.0)
     memory_peak: int = dataclasses.field(default=0)
+    cpu_time_s: float = dataclasses.field(default=0.0)
 
-    FORMAT = "!fQ"
+    FORMAT = "!fQf"  # duration, memory peak, CPU time
 
     def serialize(self) -> bytes:
-        return struct.pack(self.FORMAT, self.duration_s, self.memory_peak)
+        return struct.pack(self.FORMAT, self.duration_s, self.memory_peak, self.cpu_time_s)
 
     @staticmethod
     def deserialize(data: bytes) -> "ProfileResult":

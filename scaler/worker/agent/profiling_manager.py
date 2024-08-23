@@ -16,6 +16,7 @@ class _ProcessProfiler:
     current_task_id: Optional[bytes] = None
 
     start_time: Optional[float] = None
+    start_cpu_time: Optional[float] = None
     init_memory_rss: Optional[int] = None
     peak_memory_rss: Optional[int] = None
 
@@ -46,7 +47,8 @@ class VanillaProfilingManager(ProfilingManager, Looper):
 
         process = process_profiler.process
 
-        process_profiler.start_time = self.__process_cpu_time(process)
+        process_profiler.start_time = self.__process_time()
+        process_profiler.start_cpu_time = self.__process_cpu_time(process)
         process_profiler.init_memory_rss = self.__process_memory_rss(process)
         process_profiler.peak_memory_rss = process_profiler.init_memory_rss
 
@@ -65,14 +67,15 @@ class VanillaProfilingManager(ProfilingManager, Looper):
 
         process = process_profiler.process
 
-        time_delta = self.__process_cpu_time(process) - process_profiler.start_time
+        time_delta = self.__process_time() - process_profiler.start_time
+        cpu_time_delta = self.__process_cpu_time(process) - process_profiler.start_cpu_time
         memory_delta = process_profiler.peak_memory_rss - process_profiler.init_memory_rss
 
         process_profiler.current_task_id = None
         process_profiler.init_memory_rss = None
         process_profiler.peak_memory_rss = None
 
-        return ProfileResult(time_delta, memory_delta)
+        return ProfileResult(time_delta, memory_delta, cpu_time_delta)
 
     async def routine(self):
         for process_profiler in self._process_profiler_by_pid.values():
@@ -82,8 +85,13 @@ class VanillaProfilingManager(ProfilingManager, Looper):
                 )
 
     @staticmethod
-    def __process_cpu_time(process: psutil.Process) -> float:
+    def __process_time():
         return time.monotonic()
+
+    @staticmethod
+    def __process_cpu_time(process: psutil.Process) -> float:
+        cpu_times = process.cpu_times()
+        return cpu_times.user + cpu_times.system
 
     @staticmethod
     def __process_memory_rss(process: psutil.Process) -> int:
