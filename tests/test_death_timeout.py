@@ -57,3 +57,34 @@ class TestDeathTimeout(unittest.TestCase):
         time.sleep(5)
         # this is combo cluster, client only shutdown clusters, not scheduler, so scheduler need be shutdown also
         cluster.shutdown()
+
+    @unittest.skip("client timeout is currently not prevented on suspended processors")
+    def test_no_timeout_if_suspended(self):
+        """
+        Client and scheduler shouldn't timeout a client if it is running inside a suspended processor.
+        """
+
+        CLIENT_TIMEOUT_SECONDS = 3
+
+        def parent(client: Client):
+            return client.submit(child).result()
+
+        def child():
+            time.sleep(CLIENT_TIMEOUT_SECONDS + 1)  # prevents the parent task to execute.
+            return "OK"
+
+        address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
+        cluster = SchedulerClusterCombo(
+            address=address,
+            n_workers=1,
+            per_worker_queue_size=2,
+            event_loop="builtin",
+            client_timeout_seconds=CLIENT_TIMEOUT_SECONDS,
+        )
+
+        try:
+            with Client(address, timeout_seconds=CLIENT_TIMEOUT_SECONDS) as client:
+                future = client.submit(parent, client)
+                self.assertEqual(future.result(), "OK")
+        finally:
+            cluster.shutdown()
