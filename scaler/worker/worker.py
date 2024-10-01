@@ -42,6 +42,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         trim_memory_threshold_bytes: int,
         task_timeout_seconds: int,
         death_timeout_seconds: int,
+        hard_processor_suspend: bool,
         logging_paths: Tuple[str, ...],
         logging_level: str,
     ):
@@ -57,6 +58,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
         self._task_timeout_seconds = task_timeout_seconds
         self._death_timeout_seconds = death_timeout_seconds
+        self._hard_processor_suspend = hard_processor_suspend
 
         self._logging_paths = logging_paths
         self._logging_level = logging_level
@@ -98,6 +100,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             io_threads=self._io_threads,
             garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
+            hard_processor_suspend=self._hard_processor_suspend,
             logging_paths=self._logging_paths,
             logging_level=self._logging_level,
         )

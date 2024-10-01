@@ -20,6 +20,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         death_timeout_seconds: int,
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
+        hard_processor_suspend: bool,
         event_loop: str,
         logging_paths: Tuple[str, ...],
         logging_level: str,
@@ -35,6 +36,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         self._death_timeout_seconds = death_timeout_seconds
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
+        self._hard_processor_suspend = hard_processor_suspend
         self._event_loop = event_loop
 
         self._logging_paths = logging_paths
@@ -76,6 +78,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
                 trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
                 task_timeout_seconds=self._task_timeout_seconds,
                 death_timeout_seconds=self._death_timeout_seconds,
+                hard_processor_suspend=self._hard_processor_suspend,
                 logging_paths=self._logging_paths,
                 logging_level=self._logging_level,
             )

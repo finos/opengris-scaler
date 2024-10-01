@@ -5,6 +5,7 @@ import os
 import signal
 import uuid
 from contextvars import ContextVar, Token
+from multiprocessing.synchronize import Event as EventType
 from typing import Callable, List, Optional, Tuple
 
 import tblib.pickling_support
@@ -28,6 +29,8 @@ from scaler.utility.object_utility import generate_object_id, generate_serialize
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.processor.object_cache import ObjectCache
 
+SUSPEND_SIGNAL: signal.Signals = signal.SIGUSR1
+
 _current_processor: ContextVar[Optional["Processor"]] = ContextVar("_current_processor", default=None)
 
 
@@ -36,6 +39,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self,
         event_loop: str,
         address: ZMQConfig,
+        resume_event: Optional[EventType],
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
         logging_paths: Tuple[str, ...],
@@ -45,6 +49,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self._event_loop = event_loop
         self._address = address
+
+        self._resume_event = resume_event
 
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
@@ -88,13 +94,20 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         )
         self._object_cache.start()
 
-        self.__register_signal()
+        self.__register_signals()
 
-    def __register_signal(self):
+    def __register_signals(self):
         signal.signal(signal.SIGTERM, self.__interrupt)
+
+        if self._resume_event is not None:
+            signal.signal(SUSPEND_SIGNAL, self.__suspend)
 
     def __interrupt(self, *args):
         self._connector.close()  # interrupts any blocking socket.
+
+    def __suspend(self, *args):
+        assert self._resume_event is not None
+        self._resume_event.wait()  # stops any computation in the main thread until the event is triggered
 
     def __run_forever(self):
         try:

@@ -18,6 +18,7 @@ from scaler.io.config import (
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
+    DEFAULT_HARD_PROCESSOR_SUSPEND,
 )
 from scaler.utility.zmq_config import ZMQConfig
 
@@ -41,6 +42,7 @@ class SchedulerClusterCombo:
         garbage_collect_interval_seconds: int = DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
         trim_memory_threshold_bytes: int = DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
         per_worker_queue_size: int = DEFAULT_PER_WORKER_QUEUE_SIZE,
+        hard_processor_suspend: bool = DEFAULT_HARD_PROCESSOR_SUSPEND,
         protected: bool = True,
         event_loop: str = "builtin",
         logging_paths: Tuple[str, ...] = ("/dev/stdout",),
@@ -56,6 +58,7 @@ class SchedulerClusterCombo:
             death_timeout_seconds=death_timeout_seconds,
             garbage_collect_interval_seconds=garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=trim_memory_threshold_bytes,
+            hard_processor_suspend=hard_processor_suspend,
             event_loop=event_loop,
             logging_paths=logging_paths,
             logging_level=logging_level,

@@ -10,6 +10,7 @@ from scaler.io.config import (
     DEFAULT_TASK_TIMEOUT_SECONDS,
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
     DEFAULT_WORKER_DEATH_TIMEOUT,
+    DEFAULT_HARD_PROCESSOR_SUSPEND,
 )
 from scaler.utility.event_loop import EventLoopType, register_event_loop
 from scaler.utility.zmq_config import ZMQConfig
@@ -67,6 +68,17 @@ def get_args():
         "--io-threads", "-it", default=DEFAULT_IO_THREADS, help="specify number of io threads per worker"
     )
     parser.add_argument(
+        "--hard-processor-suspend",
+        "-hps",
+        action="store_true",
+        default=DEFAULT_HARD_PROCESSOR_SUSPEND,
+        help=(
+            "When set, suspends worker processors using the SIGTSTP signal instead of a synchronization event, "
+            "fully halting computation on suspended tasks. Note that this may cause some tasks to fail if they "
+            "do not support being paused at the OS level (e.g. tasks requiring active network connections)."
+        )
+    )
+    parser.add_argument(
         "--log-hub-address", "-la", default=None, type=ZMQConfig.from_string, help="address for Worker send logs"
     )
     parser.add_argument(
@@ -119,6 +131,7 @@ def main():
         garbage_collect_interval_seconds=args.garbage_collect_interval_seconds,
         trim_memory_threshold_bytes=args.trim_memory_threshold_bytes,
         death_timeout_seconds=args.death_timeout_seconds,
+        hard_processor_suspend=args.hard_processor_suspend,
         event_loop=args.event_loop,
         worker_io_threads=args.io_threads,
         logging_paths=args.logging_paths,

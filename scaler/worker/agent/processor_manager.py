@@ -36,6 +36,7 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         io_threads: int,
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
+        hard_processor_suspend: bool,
         logging_paths: Tuple[str, ...],
         logging_level: str,
     ):
@@ -43,8 +44,10 @@ class VanillaProcessorManager(Looper, ProcessorManager):
 
         self._event_loop = event_loop
         self._io_threads = io_threads
+
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
+        self._hard_processor_suspend = hard_processor_suspend
         self._logging_paths = logging_paths
         self._logging_level = logging_level
 
@@ -245,6 +248,7 @@ class VanillaProcessorManager(Looper, ProcessorManager):
             self._address,
             self._garbage_collect_interval_seconds,
             self._trim_memory_threshold_bytes,
+            self._hard_processor_suspend,
             self._logging_paths,
             self._logging_level,
         )

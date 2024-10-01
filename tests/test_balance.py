@@ -39,6 +39,7 @@ class TestBalance(unittest.TestCase):
             death_timeout_seconds=combo._cluster._death_timeout_seconds,
             garbage_collect_interval_seconds=combo._cluster._garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=combo._cluster._trim_memory_threshold_bytes,
+            hard_processor_suspend=combo._cluster._hard_processor_suspend,
             event_loop=combo._cluster._event_loop,
             logging_paths=combo._cluster._logging_paths,
             logging_level=combo._cluster._logging_level,

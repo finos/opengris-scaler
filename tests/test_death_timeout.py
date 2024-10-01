@@ -33,6 +33,7 @@ class TestDeathTimeout(unittest.TestCase):
             trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
             task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
             death_timeout_seconds=10,
+            hard_processor_suspend=False,
             event_loop="builtin",
             logging_paths=("/dev/stdout",),
             logging_level="INFO",
@@ -58,7 +59,6 @@ class TestDeathTimeout(unittest.TestCase):
         # this is combo cluster, client only shutdown clusters, not scheduler, so scheduler need be shutdown also
         cluster.shutdown()
 
-    @unittest.skip("client timeout is currently not prevented on suspended processors")
     def test_no_timeout_if_suspended(self):
         """
         Client and scheduler shouldn't timeout a client if it is running inside a suspended processor.

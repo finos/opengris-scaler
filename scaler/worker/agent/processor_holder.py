@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import signal
+from multiprocessing import Event
 from typing import Optional, Tuple
 
 import psutil
@@ -9,7 +10,7 @@ import psutil
 from scaler.io.config import DEFAULT_PROCESSOR_KILL_DELAY_SECONDS
 from scaler.protocol.python.message import Task
 from scaler.utility.zmq_config import ZMQConfig
-from scaler.worker.agent.processor.processor import Processor
+from scaler.worker.agent.processor.processor import Processor, SUSPEND_SIGNAL
 
 
 class ProcessorHolder:
@@ -19,6 +20,7 @@ class ProcessorHolder:
         address: ZMQConfig,
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
+        hard_suspend: bool,
         logging_paths: Tuple[str, ...],
         logging_level: str,
     ):
@@ -27,9 +29,16 @@ class ProcessorHolder:
         self._initialized = asyncio.Event()
         self._suspended = False
 
+        self._hard_suspend = hard_suspend
+        if hard_suspend:
+            self._resume_event = None
+        else:
+            self._resume_event = Event()
+
         self._processor = Processor(
             event_loop=event_loop,
             address=address,
+            resume_event=self._resume_event,
             garbage_collect_interval_seconds=garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=trim_memory_threshold_bytes,
             logging_paths=logging_paths,
@@ -73,14 +82,32 @@ class ProcessorHolder:
         assert self._task is not None
         assert self._suspended is False
 
-        os.kill(self.pid(), signal.SIGSTOP)  # type: ignore
+        if self._hard_suspend:
+            os.kill(self.pid(), signal.SIGSTOP)
+        else:
+            # If we do not want to hardly suspend the processor's process (e.g. to keep network links alive), we request
+            # the process to wait on a synchronization event. That will stop the main thread while allowing the helper
+            # threads to continue running.
+            #
+            # See https://github.com/Citi/scaler/issues/14
+
+            assert self._resume_event is not None
+            self._resume_event.clear()
+
+            os.kill(self.pid(), SUSPEND_SIGNAL)
+
         self._suspended = True
 
     def resume(self):
         assert self._task is not None
         assert self._suspended is True
 
-        os.kill(self.pid(), signal.SIGCONT)  # type: ignore
+        if self._hard_suspend:
+            os.kill(self.pid(), signal.SIGCONT)
+        else:
+            assert self._resume_event is not None
+            self._resume_event.set()
+
         self._suspended = False
 
     def kill(self):
