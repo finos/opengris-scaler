@@ -13,7 +13,9 @@
     <a href="./LICENSE">
         <img src="https://img.shields.io/github/license/citi/scaler?label=license&colorA=0f1632&colorB=255be3">
     </a>
-    <img alt="PyPI - Version" src="https://img.shields.io/pypi/v/scaler?colorA=0f1632&colorB=255be3">
+    <a href="https://pypi.org/project/scaler">
+      <img alt="PyPI - Version" src="https://img.shields.io/pypi/v/scaler?colorA=0f1632&colorB=255be3">
+    </a>
     <img src="https://api.securityscorecards.dev/projects/github.com/citi/scaler/badge">
   </p>
 </div>
