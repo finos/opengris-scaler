@@ -23,6 +23,7 @@ class ScalerFuture(Future):
         self._result_object_id: Optional[bytes] = None
         self._result_ready_event = threading.Event()
         self._result_request_sent = False
+        self._result_received = False
 
         self._profiling_info: Optional[ProfileResult] = None
 
@@ -42,6 +43,8 @@ class ScalerFuture(Future):
             if self.done():
                 raise InvalidStateError(f"invalid future state: {self._state}")
 
+            self._state = "FINISHED"
+
             if object_id is not None:
                 self._result_object_id = object_id
 
@@ -54,25 +57,74 @@ class ScalerFuture(Future):
 
             self._result_ready_event.set()
 
-    def set_exception(self, exception: Optional[BaseException], profile_result: Optional[ProfileResult] = None) -> None:
+    def _set_result_or_exception(
+        self,
+        result: Optional[Any] = None,
+        exception: Optional[BaseException] = None,
+        profiling_info: Optional[ProfileResult] = None
+    ) -> None:
         with self._condition:  # type: ignore[attr-defined]
-            if profile_result is not None:
-                self._profiling_info = profile_result
+            if self.cancelled():
+                raise InvalidStateError(f"invalid future state: {self._state}")
+
+            if self._result_received:
+                raise InvalidStateError("future already received object data.")
+
+            if profiling_info is not None:
+                if self._profiling_info is not None:
+                    raise InvalidStateError("cannot set profiling info twice.")
+
+                self._profiling_info = profiling_info
+
+            self._state = "FINISHED"
+            self._result_received = True
+
+            if exception is not None:
+                assert result is None
+                self._exception = exception
+                for waiter in self._waiters:
+                    waiter.add_exception(self)
+            else:
+                self._result = result
+                for waiter in self._waiters:
+                    waiter.add_result(self)
 
             self._result_ready_event.set()
+            self._condition.notify_all()
 
-            return super().set_exception(exception)
+        self._invoke_callbacks()  # type: ignore[attr-defined]
 
-    def result(self, timeout=None):
+    def set_result(self, result: Any, profiling_info: Optional[ProfileResult] = None) -> None:
+        self._set_result_or_exception(result=result, profiling_info=profiling_info)
+
+    def set_exception(self, exception: Optional[BaseException], profiling_info: Optional[ProfileResult] = None) -> None:
+        self._set_result_or_exception(exception=exception, profiling_info=profiling_info)
+
+    def result(self, timeout: Optional[float] = None) -> Any:
         self._result_ready_event.wait(timeout)
 
         with self._condition:  # type: ignore[attr-defined]
-            # if it's delayed future, get the result when future.result() get called
+            # if it's delayed future, get the result when future.result() gets called
             if self._is_delayed:
                 self._request_result_object()
 
-            # wait for
-            return super().result(timeout)
+            if not self._result_received:
+                self._condition.wait(timeout)
+
+            return super().result()
+
+    def exception(self, timeout: Optional[float] = None) -> Optional[BaseException]:
+        self._result_ready_event.wait(timeout)
+
+        with self._condition:  # type: ignore[attr-defined]
+            # if it's delayed future, get the result when future.exception() gets called
+            if self._is_delayed:
+                self._request_result_object()
+
+            if not self._result_received:
+                self._condition.wait(timeout)
+
+            return super().exception()
 
     def cancel(self) -> bool:
         with self._condition:  # type: ignore[attr-defined]
@@ -88,6 +140,7 @@ class ScalerFuture(Future):
                 self._connector.send(TaskCancel.new_msg(self._task_id))
 
             self._state = "CANCELLED"
+            self._result_received = True
 
             self._result_ready_event.set()
             self._condition.notify_all()  # type: ignore[attr-defined]

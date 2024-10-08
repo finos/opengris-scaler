@@ -28,6 +28,7 @@ class TestFuture(unittest.TestCase):
         done_called_event = Event()
 
         def on_done_callback(fut):
+            self.assertTrue(fut.done())
             self.assertAlmostEqual(fut.result(), 4.0)
             done_called_event.set()
 
@@ -45,21 +46,32 @@ class TestFuture(unittest.TestCase):
 
     def test_state(self):
         with Client(address=self.address) as client:
-            fut = client.submit(noop_sleep, 1.0)
+            fut = client.submit(noop_sleep, 0.5)
             self.assertTrue(fut.running())
+            self.assertFalse(fut.done())
 
-            fut.result()
+            time.sleep(1.5)
+
+            self.assertFalse(fut.running())
             self.assertTrue(fut.done())
 
     def test_cancel(self):
         with Client(address=self.address) as client:
             fut = client.submit(math.sqrt, 100.0)
-            fut.cancel()
+            self.assertTrue(fut.cancel())
 
             self.assertTrue(fut.cancelled())
+            self.assertTrue(fut.done())
 
             with self.assertRaises(CancelledError):
                 fut.result()
+
+            fut = client.submit(math.sqrt, 16)
+            fut.result()
+
+            # cancel() should fail on a completed future.
+            self.assertFalse(fut.cancel())
+            self.assertFalse(fut.cancelled())
 
     def test_exception(self):
         with Client(address=self.address) as client:
@@ -67,6 +79,8 @@ class TestFuture(unittest.TestCase):
 
             with self.assertRaises(TypeError):
                 fut.result()
+
+            self.assertTrue(fut.done())
 
             self.assertIsInstance(fut.exception(), TypeError)
 
