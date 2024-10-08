@@ -29,7 +29,7 @@ from scaler.utility.object_utility import generate_object_id, generate_serialize
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.processor.object_cache import ObjectCache
 
-SUSPEND_SIGNAL: signal.Signals = signal.SIGUSR1
+SUSPEND_SIGNAL = "SIGUSR1"  # use str instead of a signal.Signal to not trigger an import error on unsupported systems.
 
 _current_processor: ContextVar[Optional["Processor"]] = ContextVar("_current_processor", default=None)
 
@@ -97,10 +97,10 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self.__register_signals()
 
     def __register_signals(self):
-        signal.signal(signal.SIGTERM, self.__interrupt)
+        self.__register_signal("SIGTERM", self.__interrupt)
 
         if self._resume_event is not None:
-            signal.signal(SUSPEND_SIGNAL, self.__suspend)
+            self.__register_signal(SUSPEND_SIGNAL, self.__suspend)
 
     def __interrupt(self, *args):
         self._connector.close()  # interrupts any blocking socket.
@@ -283,3 +283,11 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             yield
         finally:
             self.__set_current_processor(None)
+
+    @staticmethod
+    def __register_signal(signal_name: str, handler: Callable) -> None:
+        signal_instance = getattr(signal, signal_name, None)
+        if signal_instance is None:
+            raise RuntimeError(f"unsupported platform, signal not availaible: {signal_name}.")
+
+        signal.signal(signal_instance, handler)

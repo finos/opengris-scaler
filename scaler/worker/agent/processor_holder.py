@@ -83,7 +83,7 @@ class ProcessorHolder:
         assert self._suspended is False
 
         if self._hard_suspend:
-            os.kill(self.pid(), signal.SIGSTOP)
+            self.__send_signal("SIGSTOP")
         else:
             # If we do not want to hardly suspend the processor's process (e.g. to keep network links alive), we request
             # the process to wait on a synchronization event. That will stop the main thread while allowing the helper
@@ -94,7 +94,7 @@ class ProcessorHolder:
             assert self._resume_event is not None
             self._resume_event.clear()
 
-            os.kill(self.pid(), SUSPEND_SIGNAL)
+            self.__send_signal(SUSPEND_SIGNAL)
 
         self._suspended = True
 
@@ -103,7 +103,7 @@ class ProcessorHolder:
         assert self._suspended is True
 
         if self._hard_suspend:
-            os.kill(self.pid(), signal.SIGCONT)
+            self.__send_signal("SIGCONT")
         else:
             assert self._resume_event is not None
             self._resume_event.set()
@@ -111,7 +111,7 @@ class ProcessorHolder:
         self._suspended = False
 
     def kill(self):
-        self.__send_signal(signal.SIGTERM)
+        self.__send_signal("SIGTERM")
         self._processor.join(DEFAULT_PROCESSOR_KILL_DELAY_SECONDS)
 
         if self._processor.exitcode is None:
@@ -119,10 +119,14 @@ class ProcessorHolder:
             # these blocking calls instead of sending a SIGKILL signal.
 
             logging.warning(f"Processor[{self.pid()}] does not terminate in time, send SIGKILL.")
-            self.__send_signal(signal.SIGKILL)
+            self.__send_signal("SIGKILL")
             self._processor.join()
 
         self.set_task(None)
 
-    def __send_signal(self, sig: int):
-        os.kill(self.pid(), sig)
+    def __send_signal(self, signal_name: str):
+        signal_instance = getattr(signal, signal_name, None)
+        if signal_instance is None:
+            raise RuntimeError(f"unsupported platform, signal not availaible: {signal_name}.")
+
+        os.kill(self.pid(), signal_instance)
