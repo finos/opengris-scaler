@@ -1,10 +1,16 @@
 import asyncio
 import unittest
 
+from scaler.utility.logging.utility import setup_logger
 from scaler.utility.queues.async_indexed_queue import AsyncIndexedQueue
+from tests.utility import logging_test_name
 
 
 class TestAsyncIndexedQueue(unittest.TestCase):
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+
     def test_async_indexed_queue(self):
         async def async_test():
             queue = AsyncIndexedQueue()

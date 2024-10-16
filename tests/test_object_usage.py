@@ -3,6 +3,7 @@ import unittest
 
 from scaler.scheduler.object_usage.object_tracker import ObjectTracker, ObjectUsage
 from scaler.utility.logging.utility import setup_logger
+from tests.utility import logging_test_name
 
 
 @dataclasses.dataclass
@@ -19,9 +20,11 @@ def sample_ready(obj: Sample):
 
 
 class TestObjectUsage(unittest.TestCase):
-    def test_object_usage(self):
+    def setUp(self) -> None:
         setup_logger()
+        logging_test_name(self)
 
+    def test_object_usage(self):
         object_usage: ObjectTracker[str, Sample] = ObjectTracker("sample", sample_ready)
 
         object_usage.add_object(Sample("a", "value1"))

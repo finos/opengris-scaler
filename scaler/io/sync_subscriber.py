@@ -69,7 +69,7 @@ class SyncSubscriber(threading.Thread):
 
     def __routine_polling(self):
         try:
-            self.__routine_receive(self._socket.recv())
+            self.__routine_receive(self._socket.recv(copy=False).bytes)
         except zmq.Again:
             raise TimeoutError(f"Cannot connect to {self._address.to_address()} in {self._timeout_seconds} seconds")
 

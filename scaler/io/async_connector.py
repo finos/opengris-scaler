@@ -82,10 +82,10 @@ class AsyncConnector:
         if self._socket.closed:
             return None
 
-        payload = await self._socket.recv()
-        result: Optional[Message] = deserialize(payload)
+        payload = await self._socket.recv(copy=False)
+        result: Optional[Message] = deserialize(payload.bytes)
         if result is None:
-            logging.error(f"received unknown message: {payload!r}")
+            logging.error(f"received unknown message: {payload.bytes!r}")
             return None
 
         return result

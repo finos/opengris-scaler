@@ -6,6 +6,7 @@ import uuid
 from typing import Dict, List, Optional, Tuple
 
 import tblib.pickling_support
+import zmq.asyncio
 
 # from scaler.utility.logging.utility import setup_logger
 from scaler.io.async_binder import AsyncBinder
@@ -32,8 +33,8 @@ from scaler.worker.agent.processor_holder import ProcessorHolder
 class VanillaProcessorManager(Looper, ProcessorManager):
     def __init__(
         self,
+        context: zmq.asyncio.Context,
         event_loop: str,
-        io_threads: int,
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
         hard_processor_suspend: bool,
@@ -43,7 +44,6 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         tblib.pickling_support.install()
 
         self._event_loop = event_loop
-        self._io_threads = io_threads
 
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
@@ -67,7 +67,7 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         self._task_active_lock: asyncio.Lock = asyncio.Lock()
 
         self._binder_internal: AsyncBinder = AsyncBinder(
-            name="processor_manager", address=self._address, io_threads=self._io_threads, identity=None
+            context=context, name="processor_manager", address=self._address, identity=None
         )
         self._binder_internal.register(self.__on_receive_internal)
 

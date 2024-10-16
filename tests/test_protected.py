@@ -2,11 +2,15 @@ import time
 import unittest
 
 from scaler import Client, SchedulerClusterCombo
-
-from tests.utility import get_available_tcp_port
+from scaler.utility.logging.utility import setup_logger
+from tests.utility import get_available_tcp_port, logging_test_name
 
 
 class TestProtected(unittest.TestCase):
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+
     def test_protected_true(self) -> None:
         address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         cluster = SchedulerClusterCombo(

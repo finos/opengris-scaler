@@ -45,9 +45,10 @@ class Scheduler:
         )
 
         logging.info(f"{self.__class__.__name__}: monitor address is {self._address_monitor.to_address()}")
-        self._binder = AsyncBinder(name="scheduler", address=config.address, io_threads=config.io_threads)
+        self._context = zmq.asyncio.Context(io_threads=config.io_threads)
+        self._binder = AsyncBinder(context=self._context, name="scheduler", address=config.address)
         self._binder_monitor = AsyncConnector(
-            context=zmq.asyncio.Context(),
+            context=self._context,
             name="scheduler_monitor",
             socket_type=zmq.PUB,
             address=self._address_monitor,

@@ -12,7 +12,8 @@ from scaler.io.config import (
 )
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.zmq_config import ZMQConfig
-from tests.utility import get_available_tcp_port
+from tests.utility import get_available_tcp_port, logging_test_name
+
 
 # This is a manual test because it can loop infinitely if it fails
 
@@ -20,6 +21,7 @@ from tests.utility import get_available_tcp_port
 class TestDeathTimeout(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
+        logging_test_name(self)
 
     def test_no_scheduler(self):
         logging.info("test with no scheduler")
@@ -61,16 +63,16 @@ class TestDeathTimeout(unittest.TestCase):
 
     def test_no_timeout_if_suspended(self):
         """
-        Client and scheduler shouldn't timeout a client if it is running inside a suspended processor.
+        Client and scheduler shouldn't time out a client if it is running inside a suspended processor.
         """
 
-        CLIENT_TIMEOUT_SECONDS = 3
+        client_timeout_seconds = 3
 
-        def parent(client: Client):
-            return client.submit(child).result()
+        def parent(c: Client):
+            return c.submit(child).result()
 
         def child():
-            time.sleep(CLIENT_TIMEOUT_SECONDS + 1)  # prevents the parent task to execute.
+            time.sleep(client_timeout_seconds + 1)  # prevents the parent task to execute.
             return "OK"
 
         address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
@@ -79,11 +81,11 @@ class TestDeathTimeout(unittest.TestCase):
             n_workers=1,
             per_worker_queue_size=2,
             event_loop="builtin",
-            client_timeout_seconds=CLIENT_TIMEOUT_SECONDS,
+            client_timeout_seconds=client_timeout_seconds,
         )
 
         try:
-            with Client(address, timeout_seconds=CLIENT_TIMEOUT_SECONDS) as client:
+            with Client(address, timeout_seconds=client_timeout_seconds) as client:
                 future = client.submit(parent, client)
                 self.assertEqual(future.result(), "OK")
         finally:

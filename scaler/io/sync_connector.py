@@ -47,13 +47,13 @@ class SyncConnector:
 
     def send(self, message: Message):
         with self._lock:
-            self._socket.send(serialize(message))
+            self._socket.send(serialize(message), copy=False)
 
     def receive(self) -> Optional[Message]:
         with self._lock:
-            payload = self._socket.recv()
+            payload = self._socket.recv(copy=False)
 
-        return self.__compose_message(payload)
+        return self.__compose_message(payload.bytes)
 
     def __compose_message(self, payload: bytes) -> Optional[Message]:
         result: Optional[Message] = deserialize(payload)

@@ -3,7 +3,8 @@ import time
 import unittest
 
 from scaler import Client, Cluster, SchedulerClusterCombo
-from tests.utility import get_available_tcp_port
+from scaler.utility.logging.utility import setup_logger
+from tests.utility import get_available_tcp_port, logging_test_name
 
 
 def sleep_and_return_pid(sec: int):
@@ -12,6 +13,10 @@ def sleep_and_return_pid(sec: int):
 
 
 class TestBalance(unittest.TestCase):
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+
     def test_balance(self):
         """
         Schedules a few long-lasting tasks to a single process cluster, then adds workers. We expect the remaining tasks

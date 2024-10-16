@@ -6,7 +6,7 @@ from threading import Event
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
-from tests.utility import get_available_tcp_port
+from tests.utility import get_available_tcp_port, logging_test_name
 
 
 def noop_sleep(sec: int):
@@ -16,6 +16,7 @@ def noop_sleep(sec: int):
 class TestFuture(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
+        logging_test_name(self)
         self.address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         self._workers = 3
         self.cluster = SchedulerClusterCombo(address=self.address, n_workers=self._workers, event_loop="builtin")

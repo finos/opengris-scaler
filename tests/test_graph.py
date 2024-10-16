@@ -6,7 +6,7 @@ from scaler import Client, SchedulerClusterCombo
 from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
-from tests.utility import get_available_tcp_port
+from tests.utility import get_available_tcp_port, logging_test_name
 
 
 def inc(i):
@@ -24,6 +24,7 @@ def minus(a, b):
 class TestGraph(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
+        logging_test_name(self)
         self.address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         self.cluster = SchedulerClusterCombo(address=self.address, n_workers=3, event_loop="builtin")
 

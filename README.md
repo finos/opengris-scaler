@@ -16,7 +16,7 @@
     <a href="https://pypi.org/project/scaler">
       <img alt="PyPI - Version" src="https://img.shields.io/pypi/v/scaler?colorA=0f1632&colorB=255be3">
     </a>
-    <img src="https://api.securityscorecards.dev/projects/github.com/citi/scaler/badge">
+    <img src="https://api.securityscorecards.dev/projects/github.com/Citi/scaler/badge">
   </p>
 </div>
 

@@ -2,7 +2,8 @@ import time
 import unittest
 
 from scaler import Client, SchedulerClusterCombo
-from tests.utility import get_available_tcp_port
+from scaler.utility.logging.utility import setup_logger
+from tests.utility import get_available_tcp_port, logging_test_name
 
 
 def dummy(n: int):
@@ -20,6 +21,8 @@ def busy_dummy(n: int):
 
 class TestProfiling(unittest.TestCase):
     def setUp(self):
+        setup_logger()
+        logging_test_name(self)
         self.address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         self.cluster = SchedulerClusterCombo(
             address=self.address, n_workers=2, per_worker_queue_size=2, event_loop="builtin"

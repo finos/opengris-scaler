@@ -58,8 +58,6 @@ class ClientAgent(threading.Thread):
 
         self._future_manager = future_manager
 
-        self._external_context = zmq.asyncio.Context()
-
         self._connector_internal = AsyncConnector(
             context=zmq.asyncio.Context.shadow(self._context),
             name="client_agent_internal",
@@ -70,7 +68,7 @@ class ClientAgent(threading.Thread):
             identity=None,
         )
         self._connector_external = AsyncConnector(
-            context=self._external_context,
+            context=zmq.asyncio.Context.shadow(self._context),
             name="client_agent_external",
             socket_type=zmq.DEALER,
             address=self._scheduler_address,
@@ -182,8 +180,6 @@ class ClientAgent(threading.Thread):
 
             self._connector_external.destroy()
             self._connector_internal.destroy()
-
-            self._external_context.destroy()
 
         if exception is None:
             return

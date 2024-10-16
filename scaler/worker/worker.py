@@ -63,6 +63,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._logging_paths = logging_paths
         self._logging_level = logging_level
 
+        self._context: Optional[zmq.asyncio.Context] = None
         self._connector_external: Optional[AsyncConnector] = None
         self._task_manager: Optional[VanillaTaskManager] = None
         self._heartbeat_manager: Optional[VanillaHeartbeatManager] = None
@@ -81,8 +82,9 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         setup_logger()
         register_event_loop(self._event_loop)
 
+        self._context = zmq.asyncio.Context()
         self._connector_external = AsyncConnector(
-            context=zmq.asyncio.Context(),
+            context=self._context,
             name=self.name,
             socket_type=zmq.DEALER,
             address=self._address,
@@ -96,8 +98,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._task_manager = VanillaTaskManager(task_timeout_seconds=self._task_timeout_seconds)
         self._timeout_manager = VanillaTimeoutManager(death_timeout_seconds=self._death_timeout_seconds)
         self._processor_manager = VanillaProcessorManager(
+            context=self._context,
             event_loop=self._event_loop,
-            io_threads=self._io_threads,
             garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
             hard_processor_suspend=self._hard_processor_suspend,

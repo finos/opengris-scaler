@@ -89,9 +89,9 @@ class Client:
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
 
         self._stop_event = threading.Event()
-        self._internal_context = zmq.Context()
+        self._context = zmq.Context()
         self._connector = SyncConnector(
-            context=self._internal_context,
+            context=self._context,
             socket_type=zmq.PAIR,
             address=self._client_agent_address,
             identity=self._identity,
@@ -102,7 +102,7 @@ class Client:
             identity=self._identity,
             client_agent_address=self._client_agent_address,
             scheduler_address=ZMQConfig.from_string(address),
-            context=self._internal_context,
+            context=self._context,
             future_manager=self._future_manager,
             stop_event=self._stop_event,
             timeout_seconds=self._timeout_seconds,
@@ -539,7 +539,7 @@ class Client:
 
     def __destroy(self):
         self._agent.join()
-        self._internal_context.destroy(linger=1)
+        self._context.destroy(linger=1)
 
     @staticmethod
     def __get_parent_task_priority() -> Optional[int]:
