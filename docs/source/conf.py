@@ -40,7 +40,6 @@ extensions = [
     "sphinx.ext.doctest",
     "sphinx_substitution_extensions",
     "sphinx.ext.napoleon",
-    "sphinx-jsonschema",
     "sphinx.ext.autosectionlabel",
 ]
 
