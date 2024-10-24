@@ -1,7 +1,7 @@
 import asyncio
 import multiprocessing
 from asyncio import AbstractEventLoop, Task
-from typing import Optional, Tuple, Any
+from typing import Any, Optional, Tuple
 
 from scaler.scheduler.config import SchedulerConfig
 from scaler.scheduler.scheduler import Scheduler, scheduler_main

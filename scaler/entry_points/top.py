@@ -1,7 +1,7 @@
 import argparse
 import curses
 import functools
-from typing import List, Literal, Dict, Union
+from typing import Dict, List, Literal, Union
 
 from scaler.io.sync_subscriber import SyncSubscriber
 from scaler.protocol.python.message import StateScheduler

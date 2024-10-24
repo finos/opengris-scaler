@@ -115,6 +115,18 @@ class TestClient(unittest.TestCase):
             expected = [task * size for task in tasks]
             self.assertEqual(results, expected)
 
+    def test_very_large_payload(self):
+        def func(data: bytes):
+            return data
+
+        with Client(self.address) as client:
+            payload = os.urandom(2**29 + 300)  # 512MB + 300B
+            future = client.submit(func, payload)
+
+            result = future.result()
+
+            self.assertTrue(payload == result)
+
     def test_sleep(self):
         with Client(self.address) as client:
             time.sleep(5)

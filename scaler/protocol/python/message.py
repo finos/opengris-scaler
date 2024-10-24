@@ -1,19 +1,19 @@
 import dataclasses
 import enum
 import os
-from typing import List, Set, Tuple, Optional, Type
+from typing import List, Optional, Set, Tuple, Type
 
 import bidict
 
 from scaler.protocol.capnp._python import _message  # noqa
-from scaler.protocol.python.common import TaskStatus, ObjectContent
+from scaler.protocol.python.common import ObjectContent, TaskStatus
 from scaler.protocol.python.mixins import Message
 from scaler.protocol.python.status import (
     BinderStatus,
     ClientManagerStatus,
     ObjectManagerStatus,
-    Resource,
     ProcessorStatus,
+    Resource,
     TaskManagerStatus,
     WorkerManagerStatus,
 )

@@ -1,7 +1,7 @@
 import dataclasses
 import logging
 from asyncio import Queue
-from typing import Optional, Set
+from typing import List, Optional, Set
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
@@ -19,7 +19,7 @@ class _ObjectCreation(ObjectUsage):
     object_id: bytes
     object_creator: bytes
     object_name: bytes
-    object_bytes: bytes
+    object_bytes: List[bytes]
 
     def get_object_key(self) -> bytes:
         return self.object_id
@@ -71,7 +71,7 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
 
         logging.error(f"received unknown object request type {request=} from {source=!r}")
 
-    def on_add_object(self, object_user: bytes, object_id: bytes, object_name: bytes, object_bytes: bytes):
+    def on_add_object(self, object_user: bytes, object_id: bytes, object_name: bytes, object_bytes: List[bytes]):
         creation = _ObjectCreation(object_id, object_user, object_name, object_bytes)
         logging.debug(
             f"add object cache "
@@ -102,15 +102,16 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
 
         return self._object_storage.get_object(object_id).object_name
 
-    def get_object_content(self, object_id: bytes) -> bytes:
+    def get_object_content(self, object_id: bytes) -> List[bytes]:
         if not self.has_object(object_id):
-            return b""
+            return list()
 
         return self._object_storage.get_object(object_id).object_bytes
 
     def get_status(self) -> ObjectManagerStatus:
         return ObjectManagerStatus.new_msg(
-            self._object_storage.object_count(), sum(len(v.object_bytes) for _, v in self._object_storage.items())
+            self._object_storage.object_count(),
+            sum(sum(map(len, v.object_bytes)) for _, v in self._object_storage.items()),
         )
 
     async def __process_get_request(self, source: bytes, request: ObjectRequest):
@@ -139,12 +140,12 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
             logging.error(f"received object creation from {source!r} for unknown client {instruction.object_user!r}")
             return
 
-        for object_id, object_name, object_content in zip(
+        for object_id, object_name, object_bytes in zip(
             instruction.object_content.object_ids,
             instruction.object_content.object_names,
             instruction.object_content.object_bytes,
         ):
-            self.on_add_object(instruction.object_user, object_id, object_name, object_content)
+            self.on_add_object(instruction.object_user, object_id, object_name, object_bytes)
 
     def __finished_object_storage(self, creation: _ObjectCreation):
         logging.debug(

@@ -4,7 +4,7 @@ from typing import Optional
 import psutil
 
 from scaler.io.async_connector import AsyncConnector
-from scaler.protocol.python.message import WorkerHeartbeat, WorkerHeartbeatEcho, Resource
+from scaler.protocol.python.message import Resource, WorkerHeartbeat, WorkerHeartbeatEcho
 from scaler.protocol.python.status import ProcessorStatus
 from scaler.utility.mixins import Looper
 from scaler.worker.agent.mixins import HeartbeatManager, ProcessorManager, TaskManager, TimeoutManager

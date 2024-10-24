@@ -1,5 +1,5 @@
 import abc
-from typing import Optional, Set
+from typing import List, Optional, Set
 
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -7,12 +7,12 @@ from scaler.protocol.python.message import (
     DisconnectRequest,
     GraphTask,
     GraphTaskCancel,
+    ObjectInstruction,
     ObjectRequest,
     Task,
     TaskCancel,
     TaskResult,
     WorkerHeartbeat,
-    ObjectInstruction,
 )
 from scaler.utility.mixins import Reporter
 
@@ -27,7 +27,7 @@ class ObjectManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_add_object(self, object_user: bytes, object_id: bytes, object_name: bytes, object_bytes: bytes):
+    def on_add_object(self, object_user: bytes, object_id: bytes, object_name: bytes, object_bytes: List[bytes]):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -47,7 +47,7 @@ class ObjectManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_object_content(self, object_id: bytes) -> bytes:
+    def get_object_content(self, object_id: bytes) -> List[bytes]:
         raise NotImplementedError()
 
 

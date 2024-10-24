@@ -5,13 +5,14 @@ import multiprocessing
 import platform
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import cloudpickle
 import psutil
 
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.config import CLEANUP_INTERVAL_SECONDS
+from scaler.io.utility import concat_list_of_bytes
 from scaler.protocol.python.common import ObjectContent
 from scaler.protocol.python.message import Task
 from scaler.utility.exceptions import DeserializeObjectError
@@ -51,8 +52,8 @@ class ObjectCache(threading.Thread):
     def serialize(self, client: bytes, obj: Any) -> bytes:
         return self.get_serializer(client).serialize(obj)
 
-    def deserialize(self, client: bytes, payload: bytes) -> Any:
-        return self.get_serializer(client).deserialize(payload)
+    def deserialize(self, client: bytes, payload: List[bytes]) -> Any:
+        return self.get_serializer(client).deserialize(concat_list_of_bytes(payload))
 
     def add_objects(self, object_content: ObjectContent, task: Task):
         zipped = list(zip(object_content.object_ids, object_content.object_names, object_content.object_bytes))
@@ -60,7 +61,7 @@ class ObjectCache(threading.Thread):
         others = filter(lambda o: not is_object_id_serializer(o[0]), zipped)
 
         for object_id, object_name, object_bytes in serializers:
-            self.add_serializer(object_id, cloudpickle.loads(object_bytes))
+            self.add_serializer(object_id, cloudpickle.loads(concat_list_of_bytes(object_bytes)))
 
         for object_id, object_name, object_bytes in others:
             try:

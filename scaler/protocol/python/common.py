@@ -1,6 +1,6 @@
 import dataclasses
 import enum
-from typing import Tuple
+from typing import List, Tuple
 
 from scaler.protocol.capnp._python import _common  # noqa
 from scaler.protocol.python.mixins import Message
@@ -26,7 +26,7 @@ class TaskStatus(enum.Enum):
 @dataclasses.dataclass
 class ObjectContent(Message):
     def __init__(self, msg):
-        self._msg = msg
+        super().__init__(msg)
 
     @property
     def object_ids(self) -> Tuple[bytes, ...]:
@@ -37,14 +37,14 @@ class ObjectContent(Message):
         return tuple(self._msg.objectNames)
 
     @property
-    def object_bytes(self) -> Tuple[bytes, ...]:
+    def object_bytes(self) -> Tuple[List[bytes], ...]:
         return tuple(self._msg.objectBytes)
 
     @staticmethod
     def new_msg(
         object_ids: Tuple[bytes, ...],
         object_names: Tuple[bytes, ...] = tuple(),
-        object_bytes: Tuple[bytes, ...] = tuple(),
+        object_bytes: Tuple[List[bytes], ...] = tuple(),
     ) -> "ObjectContent":
         return ObjectContent(
             _common.ObjectContent(

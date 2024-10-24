@@ -2,7 +2,6 @@ import heapq
 from asyncio import Queue
 from typing import Dict, List, Tuple, Union
 
-
 PriorityType = Union[int, Tuple["PriorityType", ...]]
 
 

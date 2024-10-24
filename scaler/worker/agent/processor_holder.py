@@ -10,7 +10,7 @@ import psutil
 from scaler.io.config import DEFAULT_PROCESSOR_KILL_DELAY_SECONDS
 from scaler.protocol.python.message import Task
 from scaler.utility.zmq_config import ZMQConfig
-from scaler.worker.agent.processor.processor import Processor, SUSPEND_SIGNAL
+from scaler.worker.agent.processor.processor import SUSPEND_SIGNAL, Processor
 
 
 class ProcessorHolder:

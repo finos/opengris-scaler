@@ -1,7 +1,7 @@
 import collections
 import graphlib
 import itertools
-from typing import Hashable, Iterable, List, Optional, Tuple, TypeVar, Generic, Mapping
+from typing import Generic, Hashable, Iterable, List, Mapping, Optional, Tuple, TypeVar
 
 from bidict import bidict
 

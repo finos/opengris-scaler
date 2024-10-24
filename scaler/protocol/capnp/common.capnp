@@ -18,5 +18,5 @@ enum TaskStatus {
 struct ObjectContent {
     objectIds @0 :List(Data);
     objectNames @1 :List(Data);
-    objectBytes @2 :List(Data);
+    objectBytes @2 :List(List(Data));
 }
