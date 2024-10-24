@@ -2,7 +2,7 @@ import logging
 import os
 import uuid
 from collections import defaultdict
-from typing import Awaitable, Callable, List, Optional, Dict
+from typing import Awaitable, Callable, Dict, List, Optional
 
 import zmq.asyncio
 from zmq import Frame

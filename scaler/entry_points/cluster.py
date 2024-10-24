@@ -4,13 +4,13 @@ import socket
 from scaler.cluster.cluster import Cluster
 from scaler.io.config import (
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
+    DEFAULT_HARD_PROCESSOR_SUSPEND,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
     DEFAULT_IO_THREADS,
     DEFAULT_NUMBER_OF_WORKER,
     DEFAULT_TASK_TIMEOUT_SECONDS,
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
     DEFAULT_WORKER_DEATH_TIMEOUT,
-    DEFAULT_HARD_PROCESSOR_SUSPEND,
 )
 from scaler.utility.event_loop import EventLoopType, register_event_loop
 from scaler.utility.zmq_config import ZMQConfig

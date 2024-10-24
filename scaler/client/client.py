@@ -91,10 +91,7 @@ class Client:
         self._stop_event = threading.Event()
         self._context = zmq.Context()
         self._connector = SyncConnector(
-            context=self._context,
-            socket_type=zmq.PAIR,
-            address=self._client_agent_address,
-            identity=self._identity,
+            context=self._context, socket_type=zmq.PAIR, address=self._client_agent_address, identity=self._identity
         )
 
         self._future_manager = ClientFutureManager(self._serializer)
@@ -309,7 +306,7 @@ class Client:
         self.__assert_client_not_stopped()
 
         cache = self._object_buffer.buffer_send_object(obj, name)
-        return ObjectReference(cache.object_name, cache.object_id, len(cache.object_bytes))
+        return ObjectReference(cache.object_name, cache.object_id, sum(map(len, cache.object_bytes)))
 
     def disconnect(self):
         """

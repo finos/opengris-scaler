@@ -1,7 +1,8 @@
 import unittest
 
 from scaler.protocol.python.common import ObjectContent
-from scaler.protocol.python.message import ObjectInstruction, ObjectRequest, ObjectResponse
+from scaler.protocol.python.message import (ObjectInstruction, ObjectRequest,
+                                            ObjectResponse)
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.agent.object_tracker import VanillaObjectTracker
 from tests.utility import logging_test_name
@@ -56,7 +57,7 @@ class TestWorkerObjectTracker(unittest.TestCase):
                 ObjectContent.new_msg(
                     (b"object_1", b"object_2", b"object_3"),
                     (b"name_1", b"name_2", b"name_3"),
-                    (b"content_1", b"content_2", b"content_3"),
+                    ([b"content_1"], [b"content_2"], [b"content_3"]),
                 ),
             )
         )

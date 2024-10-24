@@ -1,11 +1,12 @@
 import logging
 import threading
-from concurrent.futures import InvalidStateError, Future
+from concurrent.futures import Future, InvalidStateError
 from typing import Dict, Tuple
 
 from scaler.client.agent.mixins import FutureManager
 from scaler.client.future import ScalerFuture
 from scaler.client.serializer.mixins import Serializer
+from scaler.io.utility import concat_list_of_bytes
 from scaler.protocol.python.common import TaskStatus
 from scaler.protocol.python.message import ObjectResponse, TaskResult
 from scaler.utility.exceptions import DisconnectedError, NoWorkerError, TaskNotFoundError, WorkerDiedError
@@ -106,9 +107,9 @@ class ClientFutureManager(FutureManager):
 
             try:
                 if status == TaskStatus.Success:
-                    future.set_result(self._serializer.deserialize(object_bytes))
+                    future.set_result(self._serializer.deserialize(concat_list_of_bytes(object_bytes)))
 
                 elif status == TaskStatus.Failed:
-                    future.set_exception(deserialize_failure(object_bytes))
+                    future.set_exception(deserialize_failure(concat_list_of_bytes(object_bytes)))
             except InvalidStateError:
                 continue  # future got canceled

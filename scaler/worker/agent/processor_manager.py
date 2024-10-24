@@ -11,7 +11,8 @@ import zmq.asyncio
 # from scaler.utility.logging.utility import setup_logger
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
-from scaler.protocol.python.common import TaskStatus, ObjectContent
+from scaler.io.utility import chunk_to_list_of_bytes
+from scaler.protocol.python.common import ObjectContent, TaskStatus
 from scaler.protocol.python.message import (
     ObjectInstruction,
     ObjectRequest,
@@ -26,7 +27,7 @@ from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.mixins import Looper
 from scaler.utility.object_utility import generate_object_id, serialize_failure
 from scaler.utility.zmq_config import ZMQConfig, ZMQType
-from scaler.worker.agent.mixins import HeartbeatManager, ProcessorManager, ProfilingManager, TaskManager, ObjectTracker
+from scaler.worker.agent.mixins import HeartbeatManager, ObjectTracker, ProcessorManager, ProfilingManager, TaskManager
 from scaler.worker.agent.processor_holder import ProcessorHolder
 
 
@@ -148,7 +149,7 @@ class VanillaProcessorManager(Looper, ProcessorManager):
 
             profile_result = self.__end_task(self._current_holder)
 
-            result_object_bytes = serialize_failure(ProcessorDiedError(f"{process_status=}"))
+            result_object_bytes = chunk_to_list_of_bytes(serialize_failure(ProcessorDiedError(f"{process_status=}")))
 
             result_object_id = generate_object_id(source, uuid.uuid4().bytes)
             await self._connector_external.send(

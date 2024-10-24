@@ -13,7 +13,8 @@ import zmq
 
 from scaler.io.config import DUMMY_CLIENT
 from scaler.io.sync_connector import SyncConnector
-from scaler.protocol.python.common import TaskStatus, ObjectContent
+from scaler.io.utility import chunk_to_list_of_bytes
+from scaler.protocol.python.common import ObjectContent, TaskStatus
 from scaler.protocol.python.message import (
     ObjectInstruction,
     ObjectRequest,
@@ -263,7 +264,9 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 ObjectInstruction.ObjectInstructionType.Create,
                 source,
                 ObjectContent.new_msg(
-                    (result_object_id,), (f"<res {result_object_id.hex()[:6]}>".encode(),), (result_bytes,)
+                    (result_object_id,),
+                    (f"<res {result_object_id.hex()[:6]}>".encode(),),
+                    (chunk_to_list_of_bytes(result_bytes),),
                 ),
             )
         )

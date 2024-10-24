@@ -6,6 +6,7 @@ import cloudpickle
 
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.sync_connector import SyncConnector
+from scaler.io.utility import chunk_to_list_of_bytes
 from scaler.protocol.python.common import ObjectContent
 from scaler.protocol.python.message import ObjectInstruction
 from scaler.utility.object_utility import generate_object_id, generate_serializer_object_id
@@ -15,7 +16,7 @@ from scaler.utility.object_utility import generate_object_id, generate_serialize
 class ObjectCache:
     object_id: bytes
     object_name: bytes
-    object_bytes: bytes
+    object_bytes: List[bytes]
 
 
 class ObjectBuffer:
@@ -83,13 +84,15 @@ class ObjectBuffer:
     def __construct_serializer(self) -> ObjectCache:
         serializer_bytes = cloudpickle.dumps(self._serializer, protocol=pickle.HIGHEST_PROTOCOL)
         object_id = generate_serializer_object_id(self._identity)
-        return ObjectCache(object_id, b"serializer", serializer_bytes)
+        return ObjectCache(object_id, b"serializer", chunk_to_list_of_bytes(serializer_bytes))
 
     def __construct_function(self, fn: Callable) -> ObjectCache:
         function_bytes = self._serializer.serialize(fn)
         object_id = generate_object_id(self._identity, function_bytes)
         function_cache = ObjectCache(
-            object_id, getattr(fn, "__name__", f"<func {object_id.hex()[:6]}>").encode(), function_bytes
+            object_id,
+            getattr(fn, "__name__", f"<func {object_id.hex()[:6]}>").encode(),
+            chunk_to_list_of_bytes(function_bytes),
         )
         return function_cache
 
@@ -97,4 +100,4 @@ class ObjectBuffer:
         object_payload = self._serializer.serialize(obj)
         object_id = generate_object_id(self._identity, object_payload)
         name_bytes = name.encode() if name else f"<obj {object_id.hex()[-6:]}>".encode()
-        return ObjectCache(object_id, name_bytes, object_payload)
+        return ObjectCache(object_id, name_bytes, chunk_to_list_of_bytes(object_payload))

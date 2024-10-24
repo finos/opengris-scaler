@@ -7,6 +7,7 @@ from scaler.cluster.scheduler import SchedulerProcess
 from scaler.io.config import (
     DEFAULT_CLIENT_TIMEOUT_SECONDS,
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
+    DEFAULT_HARD_PROCESSOR_SUSPEND,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
     DEFAULT_IO_THREADS,
     DEFAULT_LOAD_BALANCE_SECONDS,
@@ -18,7 +19,6 @@ from scaler.io.config import (
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
-    DEFAULT_HARD_PROCESSOR_SUSPEND,
 )
 from scaler.utility.zmq_config import ZMQConfig
 
