@@ -28,7 +28,4 @@ def chunk_to_list_of_bytes(data: bytes) -> List[bytes]:
 
 
 def concat_list_of_bytes(data: List[bytes]) -> bytes:
-    one_object_bytes = bytearray()
-    for chunk in data:
-        one_object_bytes.extend(chunk)
-    return one_object_bytes
+    return bytearray().join(data)
