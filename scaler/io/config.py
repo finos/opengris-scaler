@@ -34,7 +34,7 @@ DEFAULT_WORKER_TIMEOUT_SECONDS = 60
 
 # if didn't receive heartbeat for following seconds, then scheduler will treat client as dead and cancel remaining
 # tasks for this client
-DEFAULT_CLIENT_TIMEOUT_SECONDS = 600
+DEFAULT_CLIENT_TIMEOUT_SECONDS = 60
 
 # number of seconds for load balance, if value is 0 means disable load balance
 DEFAULT_LOAD_BALANCE_SECONDS = 1

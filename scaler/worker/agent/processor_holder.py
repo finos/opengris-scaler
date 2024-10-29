@@ -1,10 +1,9 @@
-import asyncio
 import logging
 import os
 import signal
-from multiprocessing import Event
 from typing import Optional, Tuple
 
+import multiprocessing
 import psutil
 
 from scaler.io.config import DEFAULT_PROCESSOR_KILL_DELAY_SECONDS
@@ -26,19 +25,22 @@ class ProcessorHolder:
     ):
         self._processor_id: Optional[bytes] = None
         self._task: Optional[Task] = None
-        self._initialized = asyncio.Event()
         self._suspended = False
 
         self._hard_suspend = hard_suspend
         if hard_suspend:
             self._resume_event = None
+            self._resumed_event = None
         else:
-            self._resume_event = Event()
+            context = multiprocessing.get_context("spawn")
+            self._resume_event = context.Event()
+            self._resumed_event = context.Event()
 
         self._processor = Processor(
             event_loop=event_loop,
             address=address,
             resume_event=self._resume_event,
+            resumed_event=self._resumed_event,
             garbage_collect_interval_seconds=garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=trim_memory_threshold_bytes,
             logging_paths=logging_paths,
@@ -59,14 +61,10 @@ class ProcessorHolder:
         return self._processor_id
 
     def initialized(self) -> bool:
-        return self._initialized.is_set()
+        return self._processor_id is not None
 
-    def wait_initialized(self):
-        return self._initialized.wait()
-
-    def set_initialized(self, processor_id: bytes):
+    def initialize(self, processor_id: bytes):
         self._processor_id = processor_id
-        self._initialized.set()
 
     def task(self) -> Optional[Task]:
         return self._task
@@ -81,6 +79,7 @@ class ProcessorHolder:
         assert self._processor is not None
         assert self._task is not None
         assert self._suspended is False
+        assert self.initialized()
 
         if self._hard_suspend:
             self.__send_signal("SIGSTOP")
@@ -92,7 +91,9 @@ class ProcessorHolder:
             # See https://github.com/Citi/scaler/issues/14
 
             assert self._resume_event is not None
+            assert self._resumed_event is not None
             self._resume_event.clear()
+            self._resumed_event.clear()
 
             self.__send_signal(SUSPEND_SIGNAL)
 
@@ -106,7 +107,13 @@ class ProcessorHolder:
             self.__send_signal("SIGCONT")
         else:
             assert self._resume_event is not None
+            assert self._resumed_event is not None
+
             self._resume_event.set()
+
+            # Waits until the processor resumes processing. This avoids any future call to `suspend()` while the
+            # processor hasn't returned from the `_resumed_event.wait()` call yet (causes a re-entrant error on Linux).
+            self._resumed_event.wait()
 
         self._suspended = False
 

@@ -1,4 +1,5 @@
 import heapq
+import sys
 from asyncio import Queue
 from typing import Dict, List, Tuple, Union
 
@@ -59,7 +60,7 @@ class AsyncPriorityQueue(Queue):
         if isinstance(original_priority, tuple):
             return tuple(cls.__to_lowest_priority(value) for value in original_priority)
         else:
-            return -1
+            return -sys.maxsize - 1
 
     @classmethod
     def __to_lower_priority(cls, original_priority: PriorityType) -> PriorityType:

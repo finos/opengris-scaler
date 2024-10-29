@@ -41,6 +41,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         event_loop: str,
         address: ZMQConfig,
         resume_event: Optional[EventType],
+        resumed_event: Optional[EventType],
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
         logging_paths: Tuple[str, ...],
@@ -52,6 +53,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._address = address
 
         self._resume_event = resume_event
+        self._resumed_event = resumed_event
 
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
@@ -108,7 +110,13 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
     def __suspend(self, *args):
         assert self._resume_event is not None
+        assert self._resumed_event is not None
+
         self._resume_event.wait()  # stops any computation in the main thread until the event is triggered
+
+        # Ensures the processor agent knows we stopped waiting on `_resume_event`, as to avoid re-entrant wait on the
+        # event.
+        self._resumed_event.set()
 
     def __run_forever(self):
         try:

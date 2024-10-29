@@ -1,4 +1,5 @@
 import dataclasses
+import logging
 import time
 from typing import Dict, Optional
 
@@ -68,7 +69,13 @@ class VanillaProfilingManager(ProfilingManager, Looper):
         process = process_profiler.process
 
         time_delta = self.__process_time() - process_profiler.start_time
-        cpu_time_delta = self.__process_cpu_time(process) - process_profiler.start_cpu_time
+
+        try:
+            cpu_time_delta = self.__process_cpu_time(process) - process_profiler.start_cpu_time
+        except psutil.ZombieProcess:
+            logging.warning(f"profiling zombie process: {pid=}")
+            cpu_time_delta = 0
+
         memory_delta = process_profiler.peak_memory_rss - process_profiler.init_memory_rss
 
         process_profiler.current_task_id = None
@@ -80,9 +87,12 @@ class VanillaProfilingManager(ProfilingManager, Looper):
     async def routine(self):
         for process_profiler in self._process_profiler_by_pid.values():
             if process_profiler.current_task_id is not None:
-                process_profiler.peak_memory_rss = max(
-                    process_profiler.peak_memory_rss, self.__process_memory_rss(process_profiler.process)
-                )
+                try:
+                    process_profiler.peak_memory_rss = max(
+                        process_profiler.peak_memory_rss, self.__process_memory_rss(process_profiler.process)
+                    )
+                except psutil.ZombieProcess:
+                    logging.warning(f"profiling zombie process: pid={process_profiler.process.pid}")
 
     @staticmethod
     def __process_time():

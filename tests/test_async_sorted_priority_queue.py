@@ -21,11 +21,13 @@ class TestSortedPriorityQueue(unittest.TestCase):
             await queue.put([1, 1])
             await queue.put([3, 6])
             await queue.put([2, 4])
+            await queue.put([-3, 0])  # supports negative priorities
             await queue.put([1, 2])
 
             queue.remove(4)
-            self.assertEqual(queue.qsize(), 5)
+            self.assertEqual(queue.qsize(), 6)
 
+            self.assertEqual(await queue.get(), [-3, 0])
             self.assertEqual(await queue.get(), [1, 1])
             self.assertEqual(await queue.get(), [1, 2])
             self.assertEqual(await queue.get(), [2, 3])

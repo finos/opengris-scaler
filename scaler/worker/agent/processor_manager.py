@@ -65,7 +65,7 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         self._suspended_holders_by_task_id: Dict[bytes, ProcessorHolder] = {}
         self._holders_by_processor_id: Dict[bytes, ProcessorHolder] = {}
 
-        self._task_active_lock: asyncio.Lock = asyncio.Lock()
+        self._can_accept_task_lock: asyncio.Lock = asyncio.Lock()
 
         self._binder_internal: AsyncBinder = AsyncBinder(
             context=context, name="processor_manager", address=self._address, identity=None
@@ -86,8 +86,9 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         self._object_tracker = object_tracker
         self._connector_external = connector_external
 
-    def initialize(self):
+    async def initialize(self):
         # setup_logger()
+        await self._can_accept_task_lock.acquire()  # prevents processor to accept task until initialized
         self.__start_new_processor()
 
     async def routine(self):
@@ -105,29 +106,39 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         for process_id in processors_ids:
             await self._binder_internal.send(process_id, response)
 
-    async def acquire_task_active_lock(self):
-        await self._task_active_lock.acquire()
+    def can_accept_task(self) -> bool:
+        return self._can_accept_task_lock.locked()
+
+    async def wait_until_can_accept_task(self):
+        """
+        Makes sure a processor is ready to start processing a new or suspended task.
+
+        Must be called before any call to `on_task()` or `on_task_resume()`.
+        """
+
+        await self._can_accept_task_lock.acquire()
 
     async def on_task(self, task: Task) -> bool:
-        assert self._current_holder is not None
-        assert self.current_task() is None
+        assert self._can_accept_task_lock.locked()
+        assert self.initialized()
 
-        await self._current_holder.wait_initialized()
+        holder = self._current_holder
 
-        self._current_holder.set_task(task)
+        assert holder.task() is None
+        holder.set_task(task)
 
-        await self._binder_internal.send(self._current_holder.processor_id(), task)
-        self._profiling_manager.on_task_start(self._current_holder.pid(), task.task_id)
+        self._profiling_manager.on_task_start(holder.pid(), task.task_id)
+
+        await self._binder_internal.send(holder.processor_id(), task)
 
         return True
 
-    def on_cancel_task(self, task_id: bytes) -> Optional[Task]:
+    async def on_cancel_task(self, task_id: bytes) -> Optional[Task]:
         assert self._current_holder is not None
 
         if self.current_task_id() == task_id:
             current_task = self.current_task()
-            self._task_active_lock.release()
-            self.restart_current_processor(f"cancel task_id={task_id.hex()}")
+            self.__restart_current_processor(f"cancel task_id={task_id.hex()}")
             return current_task
 
         if task_id in self._suspended_holders_by_task_id:
@@ -138,16 +149,29 @@ class VanillaProcessorManager(Looper, ProcessorManager):
 
         return None
 
-    async def on_failing_task(self, process_status: str):
+    async def on_failing_processor(self, processor_id: bytes, process_status: str):
         assert self._current_holder is not None
 
-        task = self.current_task()
+        holder = self._holders_by_processor_id.get(processor_id)
+
+        if holder is None:
+            return
+
+        task = holder.task()
+        if task is not None:
+            profile_result = self.__end_task(holder)  # profiling the task should happen before killing the processor
+        else:
+            profile_result = None
+
+        reason = f"process died {process_status=}"
+        if holder == self._current_holder:
+            self.__restart_current_processor(reason)
+        else:
+            self.__kill_processor(reason, holder)
 
         if task is not None:
             source = task.source
             task_id = task.task_id
-
-            profile_result = self.__end_task(self._current_holder)
 
             result_object_bytes = chunk_to_list_of_bytes(serialize_failure(ProcessorDiedError(f"{process_status=}")))
 
@@ -164,29 +188,27 @@ class VanillaProcessorManager(Looper, ProcessorManager):
                 TaskResult.new_msg(task_id, TaskStatus.Failed, profile_result.serialize(), [result_object_id])
             )
 
-        self.restart_current_processor(f"process died {process_status=}")
-
-    def on_suspend_task(self, task_id: bytes) -> bool:
+    async def on_suspend_task(self, task_id: bytes) -> bool:
         assert self._current_holder is not None
+        holder = self._current_holder
 
-        current_task = self.current_task()
+        current_task = holder.task()
 
         if current_task is None or current_task.task_id != task_id:
             return False
 
-        self._current_holder.suspend()
-        self._suspended_holders_by_task_id[task_id] = self._current_holder
+        holder.suspend()
+        self._suspended_holders_by_task_id[task_id] = holder
 
-        logging.info(f"Worker[{os.getpid()}]: suspend Processor[{self._current_holder.pid()}]")
+        logging.info(f"Worker[{os.getpid()}]: suspend Processor[{holder.pid()}]")
 
         self.__start_new_processor()
-
-        self._task_active_lock.release()
 
         return True
 
     def on_resume_task(self, task_id: bytes) -> bool:
-        assert self._current_holder is not None
+        assert self._can_accept_task_lock.locked()
+        assert self.initialized()
 
         if self.current_task() is not None:
             return False
@@ -201,18 +223,9 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         self._current_holder = suspended_holder
         suspended_holder.resume()
 
-        self._heartbeat.set_processor_pid(suspended_holder.pid())
-
         logging.info(f"Worker[{os.getpid()}]: resume Processor[{self._current_holder.pid()}]")
 
         return True
-
-    def restart_current_processor(self, reason: str):
-        assert self._current_holder is not None
-
-        self.__kill_processor(reason, self._current_holder)
-
-        self.__start_new_processor()
 
     def destroy(self, reason: str):
         self.__kill_all_processors(reason)
@@ -240,9 +253,6 @@ class VanillaProcessorManager(Looper, ProcessorManager):
     def num_suspended_processors(self) -> int:
         return len(self._suspended_holders_by_task_id)
 
-    def task_lock(self) -> bool:
-        return self._task_active_lock.locked()
-
     def __start_new_processor(self):
         self._current_holder = ProcessorHolder(
             self._event_loop,
@@ -255,16 +265,13 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         )
 
         processor_pid = self._current_holder.pid()
-        assert processor_pid is not None
 
-        self._heartbeat.set_processor_pid(processor_pid)
         self._profiling_manager.on_process_start(processor_pid)
 
         logging.info(f"Worker[{os.getpid()}]: start Processor[{processor_pid}]")
 
     def __kill_processor(self, reason: str, holder: ProcessorHolder):
         processor_pid = holder.pid()
-        assert processor_pid is not None
 
         self._profiling_manager.on_process_end(processor_pid)
 
@@ -275,6 +282,12 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         holder.kill()
 
         logging.info(f"Worker[{os.getpid()}]: stop Processor[{processor_pid}], reason: {reason}")
+
+    def __restart_current_processor(self, reason: str):
+        assert self._current_holder is not None
+
+        self.__kill_processor(reason, self._current_holder)
+        self.__start_new_processor()
 
     def __kill_all_processors(self, reason: str):
         if self._current_holder is not None:
@@ -290,9 +303,6 @@ class VanillaProcessorManager(Looper, ProcessorManager):
     def __end_task(self, processor_holder: ProcessorHolder) -> ProfileResult:
         profile_result = self._profiling_manager.on_task_end(processor_holder.pid(), processor_holder.task().task_id)
         processor_holder.set_task(None)
-
-        if self._current_holder == processor_holder:
-            self._task_active_lock.release()
 
         return profile_result
 
@@ -322,7 +332,9 @@ class VanillaProcessorManager(Looper, ProcessorManager):
             return
 
         self._holders_by_processor_id[processor_id] = self._current_holder
-        self._current_holder.set_initialized(processor_id)
+        self._current_holder.initialize(processor_id)
+
+        self._can_accept_task_lock.release()
 
     async def __on_internal_object_request(self, processor_id: bytes, request: ObjectRequest):
         if not self.__processor_ready_to_process_object(processor_id):
@@ -345,6 +357,8 @@ class VanillaProcessorManager(Looper, ProcessorManager):
             assert self._current_holder.processor_id() == processor_id
 
             profile_result = self.__end_task(self._current_holder)
+
+            release_task_lock = True
         elif task_id in self._suspended_holders_by_task_id:
             # Receiving a task result from a suspended processor is possible as the message might have been queued while
             # we were suspending the process.
@@ -355,6 +369,8 @@ class VanillaProcessorManager(Looper, ProcessorManager):
             profile_result = self.__end_task(holder)
 
             self.__kill_processor("task finished in suspended processor", holder)
+
+            release_task_lock = False
         else:
             return
 
@@ -366,6 +382,10 @@ class VanillaProcessorManager(Looper, ProcessorManager):
                 results=task_result.results,
             )
         )
+
+        # task lock must be released after calling `TaskManager.on_task_result()`
+        if release_task_lock:
+            self._can_accept_task_lock.release()
 
     def __processor_ready_to_process_object(self, processor_id: bytes) -> bool:
         holder = self._holders_by_processor_id.get(processor_id)

@@ -17,16 +17,18 @@ class TestAsyncPriorityQueue(unittest.TestCase):
             await queue.put((5, 5))
             await queue.put((2, 2))
             await queue.put((6, 6))
+            await queue.put((-3, 0))  # supports negative priorities
             await queue.put((1, 1))
             await queue.put((4, 4))
             await queue.put((3, 3))
 
             queue.remove(2)
             queue.remove(3)
-            self.assertEqual(queue.qsize(), 4)
+            self.assertEqual(queue.qsize(), 5)
 
             queue.decrease_priority(4)  # (4, 4) becomes (3, 4)
 
+            self.assertEqual(await queue.get(), (-3, 0))
             self.assertEqual(await queue.get(), (1, 1))
             self.assertEqual(await queue.get(), (3, 4))
             self.assertEqual(await queue.get(), (5, 5))

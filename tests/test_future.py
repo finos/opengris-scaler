@@ -51,7 +51,7 @@ class TestFuture(unittest.TestCase):
             self.assertTrue(fut.running())
             self.assertFalse(fut.done())
 
-            time.sleep(1.5)
+            fut.result()
 
             self.assertFalse(fut.running())
             self.assertTrue(fut.done())

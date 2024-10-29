@@ -123,7 +123,6 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             object_tracker=self._object_tracker,
             connector_external=self._connector_external,
         )
-        self._processor_manager.initialize()
 
         self._loop = asyncio.get_event_loop()
         self.__register_signal()
@@ -159,6 +158,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         raise TypeError(f"Unknown {message=}")
 
     async def __get_loops(self):
+        await self._processor_manager.initialize()
+
         try:
             await asyncio.gather(
                 create_async_loop_routine(self._connector_external.routine, 0),

@@ -524,7 +524,7 @@ class Client:
         parent_task_priority = self.__get_parent_task_priority()
 
         if parent_task_priority is not None:
-            task_priority = parent_task_priority - 1
+            task_priority = parent_task_priority + 1
         else:
             task_priority = 0
 

@@ -16,10 +16,6 @@ from scaler.worker.agent.processor_holder import ProcessorHolder
 
 class HeartbeatManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def set_processor_pid(self, process_id: int):
-        raise NotImplementedError()
-
-    @abc.abstractmethod
     async def on_heartbeat_echo(self, heartbeat: WorkerHeartbeatEcho):
         raise NotImplementedError()
 
@@ -58,7 +54,11 @@ class ProcessorManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def acquire_task_active_lock(self):
+    def can_accept_task(self) -> bool:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def wait_until_can_accept_task(self):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -66,23 +66,19 @@ class ProcessorManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_cancel_task(self, task_id: bytes) -> Optional[Task]:
+    async def on_cancel_task(self, task_id: bytes) -> Optional[Task]:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_failing_task(self, error: str):
+    async def on_failing_processor(self, processor_id: bytes, process_status: str):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_suspend_task(self, task_id: bytes) -> bool:
+    async def on_suspend_task(self, task_id: bytes) -> bool:
         raise NotImplementedError()
 
     @abc.abstractmethod
     def on_resume_task(self, task_id: bytes) -> bool:
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def restart_current_processor(self, reason: str):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -107,10 +103,6 @@ class ProcessorManager(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def num_suspended_processors(self) -> int:
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def task_lock(self) -> bool:
         raise NotImplementedError()
 
 
