@@ -6,7 +6,7 @@ from scaler.protocol.python.mixins import Message
 
 class Resource(Message):
     def __init__(self, msg):
-        self._msg = msg
+        super().__init__(msg)
 
     @property
     def cpu(self) -> int:
@@ -26,7 +26,7 @@ class Resource(Message):
 
 class ObjectManagerStatus(Message):
     def __init__(self, msg):
-        self._msg = msg
+        super().__init__(msg)
 
     @property
     def number_of_objects(self) -> int:
@@ -48,7 +48,7 @@ class ObjectManagerStatus(Message):
 
 class ClientManagerStatus(Message):
     def __init__(self, msg):
-        self._msg = msg
+        super().__init__(msg)
 
     @property
     def client_to_num_of_tasks(self) -> Dict[bytes, int]:
@@ -70,7 +70,7 @@ class ClientManagerStatus(Message):
 
 class TaskManagerStatus(Message):
     def __init__(self, msg):
-        self._msg = msg
+        super().__init__(msg)
 
     @property
     def unassigned(self) -> int:
@@ -117,7 +117,7 @@ class TaskManagerStatus(Message):
 
 class ProcessorStatus(Message):
     def __init__(self, msg):
-        self._msg = msg
+        super().__init__(msg)
 
     @property
     def pid(self) -> int:
@@ -155,7 +155,7 @@ class ProcessorStatus(Message):
 
 class WorkerStatus(Message):
     def __init__(self, msg):
-        self._msg = msg
+        super().__init__(msg)
 
     @property
     def worker_id(self) -> bytes:
@@ -237,7 +237,7 @@ class WorkerStatus(Message):
 
 class WorkerManagerStatus(Message):
     def __init__(self, msg):
-        self._msg = msg
+        super().__init__(msg)
 
     @property
     def workers(self) -> List[WorkerStatus]:
@@ -253,7 +253,7 @@ class WorkerManagerStatus(Message):
 
 class BinderStatus(Message):
     def __init__(self, msg):
-        self._msg = msg
+        super().__init__(msg)
 
     @property
     def received(self) -> Dict[str, int]:

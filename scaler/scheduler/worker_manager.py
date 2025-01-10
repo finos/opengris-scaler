@@ -22,6 +22,8 @@ from scaler.scheduler.allocators.queued import QueuedAllocator
 from scaler.scheduler.mixins import TaskManager, WorkerManager
 from scaler.utility.mixins import Looper, Reporter
 
+UINT8_MAX = 2**8 - 1
+
 
 class VanillaWorkerManager(WorkerManager, Looper, Reporter):
     def __init__(
@@ -123,7 +125,8 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         worker: bytes, worker_task_numbers: Dict, last: float, info: WorkerHeartbeat
     ) -> WorkerStatus:
         current_processor = next((p for p in info.processors if not p.suspended), None)
-        suspended = len([p for p in info.processors if p.suspended])
+        suspended = min(len([p for p in info.processors if p.suspended]), UINT8_MAX)
+        last_s = min(int(time.time() - last), UINT8_MAX)
 
         if current_processor:
             debug_info = f"{int(current_processor.initialized)}{int(current_processor.has_task)}{int(info.task_lock)}"
@@ -139,7 +142,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
             queued=info.queued_tasks,
             suspended=suspended,
             lag_us=info.latency_us,
-            last_s=int(time.time() - last),
+            last_s=last_s,
             itl=debug_info,
             processor_statuses=[
                 ProcessorStatus.new_msg(
