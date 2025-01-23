@@ -77,6 +77,7 @@ struct ObjectInstruction {
     enum ObjectInstructionType {
         create @0;
         delete @1;
+        clear @2;
     }
 }
 

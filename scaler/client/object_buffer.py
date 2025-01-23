@@ -15,6 +15,7 @@ from scaler.utility.object_utility import generate_object_id, generate_serialize
 @dataclasses.dataclass
 class ObjectCache:
     object_id: bytes
+    object_type: ObjectContent.ObjectContentType
     object_name: bytes
     object_bytes: List[bytes]
 
@@ -54,7 +55,8 @@ class ObjectBuffer:
             return
 
         objects_to_send = [
-            (obj_cache.object_id, obj_cache.object_name, obj_cache.object_bytes) for obj_cache in self._pending_objects
+            (obj_cache.object_id, obj_cache.object_type, obj_cache.object_name, obj_cache.object_bytes)
+            for obj_cache in self._pending_objects
         ]
 
         self._connector.send(
@@ -65,7 +67,7 @@ class ObjectBuffer:
             )
         )
 
-        self._pending_objects = list()
+        self._pending_objects.clear()
 
     def commit_delete_objects(self):
         if not self._pending_delete_objects:
@@ -81,16 +83,38 @@ class ObjectBuffer:
 
         self._pending_delete_objects.clear()
 
+    def clear(self):
+        """
+        remove all committed and pending objects.
+        """
+
+        self._pending_delete_objects.clear()
+        self._pending_objects.clear()
+
+        self._connector.send(
+            ObjectInstruction.new_msg(
+                ObjectInstruction.ObjectInstructionType.Clear,
+                self._identity,
+                ObjectContent.new_msg(tuple()),
+            )
+        )
+
     def __construct_serializer(self) -> ObjectCache:
         serializer_bytes = cloudpickle.dumps(self._serializer, protocol=pickle.HIGHEST_PROTOCOL)
         object_id = generate_serializer_object_id(self._identity)
-        return ObjectCache(object_id, b"serializer", chunk_to_list_of_bytes(serializer_bytes))
+        return ObjectCache(
+            object_id,
+            ObjectContent.ObjectContentType.Serializer,
+            b"serializer",
+            chunk_to_list_of_bytes(serializer_bytes)
+        )
 
     def __construct_function(self, fn: Callable) -> ObjectCache:
         function_bytes = self._serializer.serialize(fn)
         object_id = generate_object_id(self._identity, function_bytes)
         function_cache = ObjectCache(
             object_id,
+            ObjectContent.ObjectContentType.Object,
             getattr(fn, "__name__", f"<func {object_id.hex()[:6]}>").encode(),
             chunk_to_list_of_bytes(function_bytes),
         )
@@ -100,4 +124,9 @@ class ObjectBuffer:
         object_payload = self._serializer.serialize(obj)
         object_id = generate_object_id(self._identity, object_payload)
         name_bytes = name.encode() if name else f"<obj {object_id.hex()[-6:]}>".encode()
-        return ObjectCache(object_id, name_bytes, chunk_to_list_of_bytes(object_payload))
+        return ObjectCache(
+            object_id,
+            ObjectContent.ObjectContentType.Object,
+            name_bytes,
+            chunk_to_list_of_bytes(object_payload)
+        )

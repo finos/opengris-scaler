@@ -273,6 +273,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 source,
                 ObjectContent.new_msg(
                     (result_object_id,),
+                    (ObjectContent.ObjectContentType.Object,),
                     (f"<res {result_object_id.hex()[:6]}>".encode(),),
                     (chunk_to_list_of_bytes(result_bytes),),
                 ),

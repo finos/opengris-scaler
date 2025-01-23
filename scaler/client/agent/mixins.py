@@ -10,6 +10,7 @@ from scaler.protocol.python.message import (
     ObjectRequest,
     ObjectResponse,
     Task,
+    TaskCancel,
     TaskResult,
 )
 
@@ -40,11 +41,11 @@ class ObjectManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def record_task_result(self, task_id: bytes, object_id: bytes):
+    def on_task_result(self, result: TaskResult):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def clean_all_objects(self):
+    async def clear_all_objects(self, clear_serializer: bool):
         raise NotImplementedError()
 
 
@@ -77,6 +78,10 @@ class FutureManager(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def on_task_result(self, result: TaskResult):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def on_cancel_task(self, task_cancel: TaskCancel):
         raise NotImplementedError()
 
     @abc.abstractmethod

@@ -308,6 +308,15 @@ class Client:
         cache = self._object_buffer.buffer_send_object(obj, name)
         return ObjectReference(cache.object_name, cache.object_id, sum(map(len, cache.object_bytes)))
 
+    def clear(self):
+        """
+        clear all resources used by the client, this will cancel all running futures and invalidate all existing object
+        references
+        """
+
+        self._future_manager.cancel_all_futures()
+        self._object_buffer.clear()
+
     def disconnect(self):
         """
         disconnect from connected scheduler, this will not shut down the scheduler

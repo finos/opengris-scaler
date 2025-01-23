@@ -17,6 +17,12 @@ enum TaskStatus {
 
 struct ObjectContent {
     objectIds @0 :List(Data);
-    objectNames @1 :List(Data);
-    objectBytes @2 :List(List(Data));
+    objectTypes @1 :List(ObjectContentType);
+    objectNames @2 :List(Data);
+    objectBytes @3 :List(List(Data));
+
+    enum ObjectContentType {
+        serializer @0;
+        object @1;
+    }
 }

@@ -290,6 +290,7 @@ class ObjectInstruction(Message):
     class ObjectInstructionType(enum.Enum):
         Create = _message.ObjectInstruction.ObjectInstructionType.create
         Delete = _message.ObjectInstruction.ObjectInstructionType.delete
+        Clear = _message.ObjectInstruction.ObjectInstructionType.clear
 
     def __init__(self, msg):
         super().__init__(msg)

@@ -56,6 +56,7 @@ class TestWorkerObjectTracker(unittest.TestCase):
                 b"client",
                 ObjectContent.new_msg(
                     (b"object_1", b"object_2", b"object_3"),
+                    tuple([ObjectContent.ObjectContentType.Object] * 3),
                     (b"name_1", b"name_2", b"name_3"),
                     ([b"content_1"], [b"content_2"], [b"content_3"]),
                 ),

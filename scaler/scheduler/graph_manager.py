@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Set
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
-from scaler.protocol.python.common import TaskStatus
+from scaler.protocol.python.common import ObjectContent, TaskStatus
 from scaler.protocol.python.message import GraphTask, GraphTaskCancel, StateGraphTask, Task, TaskCancel, TaskResult
 from scaler.scheduler.mixins import ClientManager, GraphTaskManager, ObjectManager, TaskManager
 from scaler.utility.graph.topological_sorter import TopologicalSorter
@@ -250,6 +250,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                 self._object_manager.on_add_object(
                     graph_info.client,
                     new_result_object_id,
+                    ObjectContent.ObjectContentType.Object,
                     self._object_manager.get_object_name(result_object_id),
                     self._object_manager.get_object_content(result_object_id),
                 )
@@ -271,6 +272,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                     self._object_manager.on_add_object(
                         graph_info.client,
                         new_result_object_id,
+                        ObjectContent.ObjectContentType.Object,
                         self._object_manager.get_object_name(result_object_id),
                         self._object_manager.get_object_content(result_object_id),
                     )

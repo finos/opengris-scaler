@@ -3,7 +3,6 @@ from typing import Optional, Set
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.agent.mixins import ObjectManager, TaskManager
 from scaler.io.async_connector import AsyncConnector
-from scaler.protocol.python.common import TaskStatus
 from scaler.protocol.python.message import GraphTask, GraphTaskCancel, Task, TaskCancel, TaskResult
 
 
@@ -39,6 +38,8 @@ class ClientTaskManager(TaskManager):
             return
 
         self._task_ids.remove(task_cancel.task_id)
+        self._future_manager.on_cancel_task(task_cancel)
+
         await self._connector_external.send(task_cancel)
 
     async def on_new_graph_task(self, task: GraphTask):
@@ -54,13 +55,14 @@ class ClientTaskManager(TaskManager):
         await self._connector_external.send(task_cancel)
 
     async def on_task_result(self, result: TaskResult):
+        # All task result objects must be propagated to the object manager, even if we do not track the task anymore
+        # (e.g. if it got cancelled). If we don't, we might lose track of these result objects and not properly clear
+        # them.
+        self._object_manager.on_task_result(result)
+
         if result.task_id not in self._task_ids:
             return
 
         self._task_ids.remove(result.task_id)
-
-        if result.status != TaskStatus.Canceled:
-            for result_object_id in result.results:
-                self._object_manager.record_task_result(result.task_id, result_object_id)
 
         self._future_manager.on_task_result(result)

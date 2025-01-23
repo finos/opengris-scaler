@@ -3,9 +3,10 @@ import os
 import random
 import time
 import unittest
+from concurrent.futures import CancelledError
 
 from scaler import Client, SchedulerClusterCombo
-from scaler.utility.exceptions import ProcessorDiedError
+from scaler.utility.exceptions import MissingObjects, ProcessorDiedError
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
 from tests.utility import get_available_tcp_port, logging_test_name
@@ -287,3 +288,22 @@ class TestClient(unittest.TestCase):
             disconnect_start_time = time.time()
             client.disconnect()
             self.assertLess(time.time() - disconnect_start_time, MAX_DELAY_SECONDS)
+
+    def test_clear(self):
+        with Client(self.address) as client:
+            arg_reference = client.send_object(0.5)
+            future = client.submit(noop_sleep, arg_reference)
+
+            client.clear()
+
+            # clear() cancels all futures
+            with self.assertRaises(CancelledError):
+                future.result()
+            self.assertTrue(future.cancelled())
+
+            # using an old reference should fail
+            with self.assertRaises(MissingObjects):
+                client.submit(noop_sleep, arg_reference).result()
+
+            # but new tasks should work fine
+            self.assertEqual(client.submit(round, 3.14).result(), 3.0)

@@ -1,6 +1,7 @@
 import abc
 from typing import List, Optional, Set
 
+from scaler.protocol.python.common import ObjectContent
 from scaler.protocol.python.message import (
     ClientDisconnect,
     ClientHeartbeat,
@@ -27,7 +28,14 @@ class ObjectManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_add_object(self, object_user: bytes, object_id: bytes, object_name: bytes, object_bytes: List[bytes]):
+    def on_add_object(
+        self,
+        object_user: bytes,
+        object_id: bytes,
+        object_type: ObjectContent.ObjectContentType,
+        object_name: bytes,
+        object_bytes: List[bytes]
+    ):
         raise NotImplementedError()
 
     @abc.abstractmethod

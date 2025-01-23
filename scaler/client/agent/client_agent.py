@@ -176,7 +176,7 @@ class ClientAgent(threading.Thread):
         finally:
             self._stop_event.set()  # always set the stop event before setting futures' exceptions
 
-            await self._object_manager.clean_all_objects()
+            await self._object_manager.clear_all_objects(clear_serializer=True)
 
             self._connector_external.destroy()
             self._connector_internal.destroy()

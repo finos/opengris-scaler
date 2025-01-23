@@ -25,12 +25,24 @@ class TaskStatus(enum.Enum):
 
 @dataclasses.dataclass
 class ObjectContent(Message):
+    class ObjectContentType(enum.Enum):
+        # FIXME: Pycapnp does not support assignment of raw enum values when the enum is itself declared within a list.
+        # However, assigning the enum's string value works.
+        # See https://github.com/capnproto/pycapnp/issues/374
+
+        Serializer = "serializer"
+        Object = "object"
+
     def __init__(self, msg):
         super().__init__(msg)
 
     @property
     def object_ids(self) -> Tuple[bytes, ...]:
         return tuple(self._msg.objectIds)
+
+    @property
+    def object_types(self) -> Tuple[ObjectContentType, ...]:
+        return tuple(ObjectContent.ObjectContentType(object_type._as_str()) for object_type in self._msg.objectTypes)
 
     @property
     def object_names(self) -> Tuple[bytes, ...]:
@@ -43,12 +55,16 @@ class ObjectContent(Message):
     @staticmethod
     def new_msg(
         object_ids: Tuple[bytes, ...],
+        object_types: Tuple[ObjectContentType, ...] = tuple(),
         object_names: Tuple[bytes, ...] = tuple(),
         object_bytes: Tuple[List[bytes], ...] = tuple(),
     ) -> "ObjectContent":
         return ObjectContent(
             _common.ObjectContent(
-                objectIds=list(object_ids), objectNames=list(object_names), objectBytes=tuple(object_bytes)
+                objectIds=list(object_ids),
+                objectTypes=[object_type.value for object_type in object_types],
+                objectNames=list(object_names),
+                objectBytes=tuple(object_bytes),
             )
         )
 

@@ -18,6 +18,7 @@ from scaler.utility.mixins import Looper, Reporter
 class _ObjectCreation(ObjectUsage):
     object_id: bytes
     object_creator: bytes
+    object_type: ObjectContent.ObjectContentType
     object_name: bytes
     object_bytes: List[bytes]
 
@@ -61,7 +62,7 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
 
         logging.error(
             f"received unknown object response type instruction_type={instruction.instruction_type} from "
-            f"source={instruction.object_user}"
+            f"source={instruction.object_user!r}"
         )
 
     async def on_object_request(self, source: bytes, request: ObjectRequest):
@@ -71,11 +72,19 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
 
         logging.error(f"received unknown object request type {request=} from {source=!r}")
 
-    def on_add_object(self, object_user: bytes, object_id: bytes, object_name: bytes, object_bytes: List[bytes]):
-        creation = _ObjectCreation(object_id, object_user, object_name, object_bytes)
+    def on_add_object(
+        self,
+        object_user: bytes,
+        object_id: bytes,
+        object_type: ObjectContent.ObjectContentType,
+        object_name: bytes,
+        object_bytes: List[bytes]
+    ):
+        creation = _ObjectCreation(object_id, object_user, object_type, object_name, object_bytes)
         logging.debug(
             f"add object cache "
             f"object_name={creation.object_name!r}, "
+            f"object_type={creation.object_type}, "
             f"object_id={creation.object_id.hex()}, "
             f"size={format_bytes(len(creation.object_bytes))}"
         )
@@ -140,12 +149,13 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
             logging.error(f"received object creation from {source!r} for unknown client {instruction.object_user!r}")
             return
 
-        for object_id, object_name, object_bytes in zip(
+        for object_id, object_type, object_name, object_bytes in zip(
             instruction.object_content.object_ids,
+            instruction.object_content.object_types,
             instruction.object_content.object_names,
             instruction.object_content.object_bytes,
         ):
-            self.on_add_object(instruction.object_user, object_id, object_name, object_bytes)
+            self.on_add_object(instruction.object_user, object_id, object_type, object_name, object_bytes)
 
     def __finished_object_storage(self, creation: _ObjectCreation):
         logging.debug(
@@ -158,6 +168,7 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
 
     def __construct_response(self, request: ObjectRequest) -> ObjectResponse:
         object_ids = []
+        object_types = []
         object_names = []
         object_bytes = []
         for object_id in request.object_ids:
@@ -166,10 +177,16 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
 
             object_info = self._object_storage.get_object(object_id)
             object_ids.append(object_info.object_id)
+            object_types.append(object_info.object_type)
             object_names.append(object_info.object_name)
             object_bytes.append(object_info.object_bytes)
 
         return ObjectResponse.new_msg(
             ObjectResponse.ObjectResponseType.Content,
-            ObjectContent.new_msg(tuple(request.object_ids), tuple(object_names), tuple(object_bytes)),
+            ObjectContent.new_msg(
+                tuple(request.object_ids),
+                tuple(object_types),
+                tuple(object_names),
+                tuple(object_bytes)
+            ),
         )

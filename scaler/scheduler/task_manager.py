@@ -55,6 +55,12 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
     async def routine(self):
         task_id = await self._unassigned.get()
 
+        # FIXME: As the assign_task_to_worker() call can be blocking (especially if there is no worker connected to the
+        # scheduler), we might end up with the task object being in neither _running nor _unassigned.
+        # In this case, the scheduler will answer any task cancellation request with a "task not found" error, which is
+        # a bug.
+        # https://github.com/Citi/scaler/issues/45
+
         if not await self._worker_manager.assign_task_to_worker(self._task_id_to_task[task_id]):
             await self._unassigned.put(task_id)
             return

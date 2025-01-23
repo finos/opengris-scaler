@@ -8,7 +8,7 @@ from scaler.client.future import ScalerFuture
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.utility import concat_list_of_bytes
 from scaler.protocol.python.common import TaskStatus
-from scaler.protocol.python.message import ObjectResponse, TaskResult
+from scaler.protocol.python.message import ObjectResponse, TaskCancel, TaskResult
 from scaler.utility.exceptions import DisconnectedError, NoWorkerError, TaskNotFoundError, WorkerDiedError
 from scaler.utility.metadata.profile_result import retrieve_profiling_result_from_task_result
 from scaler.utility.object_utility import deserialize_failure
@@ -34,6 +34,8 @@ class ClientFutureManager(FutureManager):
             for task_id, future in self._task_id_to_future.items():
                 future.cancel()
 
+            self._task_id_to_future.clear()
+
     def set_all_futures_with_exception(self, exception: Exception):
         with self._lock:
             for future in self._task_id_to_future.values():
@@ -42,7 +44,7 @@ class ClientFutureManager(FutureManager):
                 except InvalidStateError:
                     continue  # Future got canceled
 
-            self._task_id_to_future = dict()
+            self._task_id_to_future.clear()
 
     def on_task_result(self, result: TaskResult):
         with self._lock:
@@ -93,6 +95,10 @@ class ClientFutureManager(FutureManager):
                 raise TypeError(f"Unknown task status: {result.status}")
             except InvalidStateError:
                 return  # Future got canceled
+
+    def on_cancel_task(self, task_cancel: TaskCancel):
+        with self._lock:
+            self._task_id_to_future.pop(task_cancel.task_id, None)
 
     def on_object_response(self, response: ObjectResponse):
         for object_id, object_name, object_bytes in zip(
