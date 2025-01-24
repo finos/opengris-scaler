@@ -2,14 +2,18 @@ import logging
 import time
 import unittest
 
+from tests.utility import get_available_tcp_port, logging_test_name
+
 from scaler import Client, Cluster, SchedulerClusterCombo
-from scaler.io.config import (DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
-                              DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
-                              DEFAULT_IO_THREADS, DEFAULT_TASK_TIMEOUT_SECONDS,
-                              DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES)
+from scaler.io.config import (
+    DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
+    DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+    DEFAULT_IO_THREADS,
+    DEFAULT_TASK_TIMEOUT_SECONDS,
+    DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
+)
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.zmq_config import ZMQConfig
-from tests.utility import get_available_tcp_port, logging_test_name
 
 # This is a manual test because it can loop infinitely if it fails
 

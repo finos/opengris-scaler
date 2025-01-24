@@ -1,10 +1,10 @@
 import dataclasses
 import unittest
 
-from scaler.scheduler.object_usage.object_tracker import (ObjectTracker,
-                                                          ObjectUsage)
-from scaler.utility.logging.utility import setup_logger
 from tests.utility import logging_test_name
+
+from scaler.scheduler.object_usage.object_tracker import ObjectTracker, ObjectUsage
+from scaler.utility.logging.utility import setup_logger
 
 
 @dataclasses.dataclass

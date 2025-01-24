@@ -61,7 +61,7 @@ class ScalerFuture(Future):
         self,
         result: Optional[Any] = None,
         exception: Optional[BaseException] = None,
-        profiling_info: Optional[ProfileResult] = None
+        profiling_info: Optional[ProfileResult] = None,
     ) -> None:
         with self._condition:  # type: ignore[attr-defined]
             if self.cancelled():

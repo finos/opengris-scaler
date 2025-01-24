@@ -181,10 +181,7 @@ class VanillaProcessorManager(Looper, ProcessorManager):
                     ObjectInstruction.ObjectInstructionType.Create,
                     source,
                     ObjectContent.new_msg(
-                        (result_object_id,),
-                        (ObjectContent.ObjectContentType.Object,),
-                        (b"",),
-                        (result_object_bytes,)
+                        (result_object_id,), (ObjectContent.ObjectContentType.Object,), (b"",), (result_object_bytes,)
                     ),
                 )
             )

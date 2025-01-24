@@ -1,9 +1,9 @@
 import logging
+import multiprocessing
 import os
 import signal
 from typing import Optional, Tuple
 
-import multiprocessing
 import psutil
 
 from scaler.io.config import DEFAULT_PROCESSOR_KILL_DELAY_SECONDS

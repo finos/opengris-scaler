@@ -23,7 +23,7 @@
 <br />
 
 **Scaler provides a simple, efficient and reliable way to perform distributed computing** using a centralized scheduler,
-with a stable and language agnostic protocol for client and worker communications.
+with a stable and language-agnostic protocol for client and worker communications.
 
 ```python
 import math
@@ -47,19 +47,17 @@ of lightweight tasks while improving on load balancing, messaging and deadlocks.
 
 ## Features
 
-- Distributed computing on **multiple cores and multiple servers**
-- **Python** reference implementation, with **language agnostic messaging protocol** built on top of
+- Distributed computing across **multiple cores and multiple servers**
+- **Python** reference implementation, with **language-agnostic messaging protocol** built on top of
   [Cap'n Proto](https://capnproto.org/) and [ZeroMQ](https://zeromq.org)
-- **Graph** scheduling, which supports [Dask](https://www.dask.org)-like graph computing, optionally you
-  can use [GraphBLAS](https://graphblas.org) for very large graph tasks
-- **Automated load balancing**. automatically balances load from busy workers to idle workers and tries to keep workers
-  utilized as uniformly as possible
-- **Automated task recovery** from faulting workers who have died
-- Supports for **nested tasks**, tasks can themselves submit new tasks
+- **Graph** scheduling, which supports [Dask](https://www.dask.org)-like graph computing, with optional [GraphBLAS](https://graphblas.org)
+  support for very large graph tasks
+- **Automated load balancing**, which automatically balances load from busy workers to idle workers, ensuring uniform utilization across workers
+- **Automated task recovery** from worker-related hardware, OS or network failures
+- Support for **nested tasks**, allowing tasks to submit new tasks
 - `top`-like **monitoring tools**
 - GUI monitoring tool
 
-Scaler's scheduler can be run on PyPy, which can provide a performance boost
 
 ## Installation
 
@@ -78,9 +76,9 @@ Scaler operates around 3 components:
 - A set of **workers**, or cluster. Workers are independent computing units, each capable of executing a single task
 - **Clients** running inside applications, responsible for submitting tasks to the scheduler.
 
-### Start local scheduler and cluster at the same time in code
+### Start local scheduler and cluster programmatically in code
 
-A local scheduler and a local set of workers can be conveniently spawn using `SchedulerClusterCombo`:
+A local scheduler and a local set of workers can be conveniently started using `SchedulerClusterCombo`:
 
 ```python
 from scaler import SchedulerClusterCombo
@@ -98,7 +96,7 @@ This will start a scheduler with 4 task executing workers on port `2345`.
 
 The scheduler and workers can also be started from the command line with `scaler_scheduler` and `scaler_cluster`.
 
-First start the Scaler scheduler:
+First, start the Scaler scheduler:
 
 ```bash
 $ scaler_scheduler tcp://127.0.0.1:2345
@@ -108,7 +106,7 @@ $ scaler_scheduler tcp://127.0.0.1:2345
 ...
 ```
 
-Then start a set of workers (a.k.a. a Scaler *cluster*) that connect to the previously started scheduler:
+Then, start a set of workers (a.k.a. a Scaler *cluster*) that connect to the previously started scheduler:
 
 ```bash
 $ scaler_cluster -n 4 tcp://127.0.0.1:2345
@@ -206,6 +204,93 @@ with Client(address="tcp://127.0.0.1:2345") as client:
     result = client.submit(fibonacci, client, 8).result()
     print(result)  # 21
 ```
+
+## IBM Spectrum Symphony integration
+
+A Scaler scheduler can interface with IBM Spectrum Symphony to provide distributed computing across Symphony clusters.
+
+```bash
+$ scaler_symphony_cluster tcp://127.0.0.1:2345 ScalerService --base-concurrency 4
+```
+
+This will start a Scaler worker that connects to the Scaler scheduler at `tcp://127.0.0.1:2345` and uses the Symphony
+service `ScalerService` to submit tasks.
+
+### Symphony service
+
+A service must be deployed in Symphony to handle the task submission.
+
+<details>
+
+<summary>Here is an example of a service that can be used</summary>
+
+```python
+class Message(soamapi.Message):
+    def __init__(self, payload: bytes = b""):
+        self.__payload = payload
+
+    def set_payload(self, payload: bytes):
+        self.__payload = payload
+
+    def get_payload(self) -> bytes:
+        return self.__payload
+
+    def on_serialize(self, stream):
+        payload_array = array.array("b", self.get_payload())
+        stream.write_byte_array(payload_array, 0, len(payload_array))
+
+    def on_deserialize(self, stream):
+        self.set_payload(stream.read_byte_array("b"))
+
+class ServiceContainer(soamapi.ServiceContainer):
+    def on_create_service(self, service_context):
+        return
+
+    def on_session_enter(self, session_context):
+        return
+
+    def on_invoke(self, task_context):
+        input_message = Message()
+        task_context.populate_task_input(input_message)
+
+        fn, *args = cloudpickle.loads(input_message.get_payload())
+        output_payload = cloudpickle.dumps(fn(*args))
+
+        output_message = Message(output_payload)
+        task_context.set_task_output(output_message)
+
+    def on_session_leave(self):
+        return
+
+    def on_destroy_service(self):
+        return
+```
+</details>
+
+### Nested tasks
+
+Nested task originating from Symphony workers must be able to reach the Scaler scheduler. This might require
+modifications to the network configuration.
+
+Nested tasks can also have unpredictable resource usage and runtimes, which can cause Symphony to prematurely kill
+tasks. It is recommended to be conservative when provisioning resources and limits, and monitor the cluster status
+closely for any abnormalities.
+
+### Base concurrency
+
+Base concurrency is the maximum number of unnested tasks that can be executed concurrently. It is possible to surpass
+this limit by submitting nested tasks which carry a higher priority. **Important**: If your workload contains nested
+tasks the base concurrency should be set to a value less to the number of cores available on the Symphony worker or else
+deadlocks may occur.
+
+A good heuristic for setting the base concurrency is to use the following formula:
+
+```
+base_concurrency = number_of_cores - deepest_nesting_level
+```
+
+where `deepest_nesting_level` is the deepest nesting level a task has in your workload. If you have a workload that has
+a base task that calls a nested task that calls another nested task, the deepest nesting level is 2.
 
 ## Performance
 

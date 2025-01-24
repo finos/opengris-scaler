@@ -1,8 +1,9 @@
 import unittest
 
+from tests.utility import logging_test_name
+
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
-from tests.utility import logging_test_name
 
 N_TASKS = 30
 N_WORKERS = 3

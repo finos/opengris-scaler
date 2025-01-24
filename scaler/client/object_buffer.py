@@ -93,9 +93,7 @@ class ObjectBuffer:
 
         self._connector.send(
             ObjectInstruction.new_msg(
-                ObjectInstruction.ObjectInstructionType.Clear,
-                self._identity,
-                ObjectContent.new_msg(tuple()),
+                ObjectInstruction.ObjectInstructionType.Clear, self._identity, ObjectContent.new_msg(tuple())
             )
         )
 
@@ -106,7 +104,7 @@ class ObjectBuffer:
             object_id,
             ObjectContent.ObjectContentType.Serializer,
             b"serializer",
-            chunk_to_list_of_bytes(serializer_bytes)
+            chunk_to_list_of_bytes(serializer_bytes),
         )
 
     def __construct_function(self, fn: Callable) -> ObjectCache:
@@ -125,8 +123,5 @@ class ObjectBuffer:
         object_id = generate_object_id(self._identity, object_payload)
         name_bytes = name.encode() if name else f"<obj {object_id.hex()[-6:]}>".encode()
         return ObjectCache(
-            object_id,
-            ObjectContent.ObjectContentType.Object,
-            name_bytes,
-            chunk_to_list_of_bytes(object_payload)
+            object_id, ObjectContent.ObjectContentType.Object, name_bytes, chunk_to_list_of_bytes(object_payload)
         )

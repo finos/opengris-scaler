@@ -78,7 +78,7 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
         object_id: bytes,
         object_type: ObjectContent.ObjectContentType,
         object_name: bytes,
-        object_bytes: List[bytes]
+        object_bytes: List[bytes],
     ):
         creation = _ObjectCreation(object_id, object_user, object_type, object_name, object_bytes)
         logging.debug(
@@ -184,9 +184,6 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
         return ObjectResponse.new_msg(
             ObjectResponse.ObjectResponseType.Content,
             ObjectContent.new_msg(
-                tuple(request.object_ids),
-                tuple(object_types),
-                tuple(object_names),
-                tuple(object_bytes)
+                tuple(request.object_ids), tuple(object_types), tuple(object_names), tuple(object_bytes)
             ),
         )

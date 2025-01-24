@@ -76,7 +76,7 @@ def get_args():
             "When set, suspends worker processors using the SIGTSTP signal instead of a synchronization event, "
             "fully halting computation on suspended tasks. Note that this may cause some tasks to fail if they "
             "do not support being paused at the OS level (e.g. tasks requiring active network connections)."
-        )
+        ),
     )
     parser.add_argument(
         "--log-hub-address", "-la", default=None, type=ZMQConfig.from_string, help="address for Worker send logs"

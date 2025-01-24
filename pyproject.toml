@@ -24,6 +24,7 @@ Home = "https://github.com/Citi/scaler"
 [project.scripts]
 scaler_scheduler = "scaler.entry_points.scheduler:main"
 scaler_cluster = "scaler.entry_points.cluster:main"
+scaler_symphony_cluster = "scaler.entry_points.symphony_cluster:main"
 scaler_top = "scaler.entry_points.top:main"
 scaler_ui = "scaler.entry_points.webui:main"
 

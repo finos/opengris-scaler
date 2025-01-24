@@ -3,11 +3,7 @@ from typing import Optional, Set
 from scaler.client.agent.mixins import ObjectManager
 from scaler.io.async_connector import AsyncConnector
 from scaler.protocol.python.common import ObjectContent
-from scaler.protocol.python.message import (
-    ObjectInstruction,
-    ObjectRequest,
-    TaskResult,
-)
+from scaler.protocol.python.message import ObjectInstruction, ObjectRequest, TaskResult
 
 
 class ClientObjectManager(ObjectManager):

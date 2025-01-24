@@ -2,10 +2,11 @@ import random
 import time
 import unittest
 
+from tests.utility import get_available_tcp_port, logging_test_name
+
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
-from tests.utility import get_available_tcp_port, logging_test_name
 
 
 def noop(sec: int):

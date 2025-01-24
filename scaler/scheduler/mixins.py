@@ -34,7 +34,7 @@ class ObjectManager(Reporter):
         object_id: bytes,
         object_type: ObjectContent.ObjectContentType,
         object_name: bytes,
-        object_bytes: List[bytes]
+        object_bytes: List[bytes],
     ):
         raise NotImplementedError()
 

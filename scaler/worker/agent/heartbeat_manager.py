@@ -85,9 +85,5 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
             resource = Resource.new_msg(0, 0)
 
         return ProcessorStatus.new_msg(
-            processor.pid(),
-            processor.initialized(),
-            processor.task() is not None,
-            processor.suspended(),
-            resource,
+            processor.pid(), processor.initialized(), processor.task() is not None, processor.suspended(), resource
         )
