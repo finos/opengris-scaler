@@ -135,6 +135,9 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         except (KeyboardInterrupt, InterruptedError):
             pass
 
+        except Exception as e:
+            logging.exception(f"Processor[{self.pid}]: failed with unhandled exception:\n{(e)}")
+
         finally:
             self._object_cache.destroy()
             self._connector.close()

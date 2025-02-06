@@ -28,7 +28,12 @@ class TestBalance(unittest.TestCase):
         N_WORKERS = N_TASKS
 
         address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        combo = SchedulerClusterCombo(address=address, n_workers=1, per_worker_queue_size=N_TASKS)
+        combo = SchedulerClusterCombo(
+            address=address,
+            n_workers=1,
+            per_worker_queue_size=N_TASKS,
+            load_balance_seconds=1,  # FIXME: re-enable balancing as it's currently disabled by default
+        )
 
         client = Client(address=address)
 

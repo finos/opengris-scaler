@@ -173,6 +173,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             pass
         except (ClientShutdownException, TimeoutError) as e:
             logging.info(f"Worker[{self.pid}]: {str(e)}")
+        except Exception as e:
+            logging.exception(f"Worker[{self.pid}]: failed with unhandled exception:\n{(e)}")
 
         await self._connector_external.send(DisconnectRequest.new_msg(self._connector_external.identity))
 
