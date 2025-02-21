@@ -369,6 +369,11 @@ $ scaler_ui ipc:///tmp/127.0.0.1_2345_monitor --port 8081
 
 This will open a web server on port `8081`.
 
+## Slides and presentations
+
+We showcased Scaler at FOSDEM 2025. Checkout the slides
+[here](<slides/Effortless Distributed Computing in Python - FOSDEM 2025.pdf>).
+
 ## Contributing
 
 Your contributions are at the core of making this a true open source project. Any contributions you make are **greatly
