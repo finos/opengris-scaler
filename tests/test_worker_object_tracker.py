@@ -1,11 +1,10 @@
 import unittest
 
-from tests.utility import logging_test_name
-
 from scaler.protocol.python.common import ObjectContent
 from scaler.protocol.python.message import ObjectInstruction, ObjectRequest, ObjectResponse
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.agent.object_tracker import VanillaObjectTracker
+from tests.utility import logging_test_name
 
 
 class TestWorkerObjectTracker(unittest.TestCase):

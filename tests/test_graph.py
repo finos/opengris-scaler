@@ -2,12 +2,12 @@ import graphlib
 import time
 import unittest
 
-from tests.utility import get_available_tcp_port, logging_test_name
-
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.network_util import get_available_tcp_port
+from tests.utility import logging_test_name
 
 
 def inc(i):

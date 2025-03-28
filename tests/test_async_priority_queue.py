@@ -1,10 +1,9 @@
 import asyncio
 import unittest
 
-from tests.utility import logging_test_name
-
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
+from tests.utility import logging_test_name
 
 
 class TestAsyncPriorityQueue(unittest.TestCase):

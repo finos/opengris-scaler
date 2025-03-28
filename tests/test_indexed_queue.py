@@ -1,9 +1,8 @@
 import unittest
 
-from tests.utility import logging_test_name
-
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.queues.indexed_queue import IndexedQueue
+from tests.utility import logging_test_name
 
 
 class TestIndexedQueue(unittest.TestCase):

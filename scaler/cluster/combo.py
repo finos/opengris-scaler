@@ -20,14 +20,15 @@ from scaler.io.config import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
+from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.zmq_config import ZMQConfig
 
 
 class SchedulerClusterCombo:
     def __init__(
         self,
-        address: str,
         n_workers: int,
+        address: Optional[str] = None,
         worker_io_threads: int = DEFAULT_IO_THREADS,
         scheduler_io_threads: int = DEFAULT_IO_THREADS,
         max_number_of_tasks_waiting: int = DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
@@ -49,8 +50,13 @@ class SchedulerClusterCombo:
         logging_level: str = "INFO",
         logging_config_file: Optional[str] = None,
     ):
+        if address is None:
+            self._address = ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}")
+        else:
+            self._address = ZMQConfig.from_string(address)
+
         self._cluster = Cluster(
-            address=ZMQConfig.from_string(address),
+            address=self._address,
             worker_io_threads=worker_io_threads,
             worker_names=[f"{socket.gethostname().split('.')[0]}_{i}" for i in range(n_workers)],
             heartbeat_interval_seconds=heartbeat_interval_seconds,
@@ -65,7 +71,7 @@ class SchedulerClusterCombo:
             logging_config_file=logging_config_file,
         )
         self._scheduler = SchedulerProcess(
-            address=ZMQConfig.from_string(address),
+            address=self._address,
             io_threads=scheduler_io_threads,
             max_number_of_tasks_waiting=max_number_of_tasks_waiting,
             per_worker_queue_size=per_worker_queue_size,
@@ -93,6 +99,9 @@ class SchedulerClusterCombo:
         self._scheduler.terminate()
         self._cluster.join()
         self._scheduler.join()
+
+    def get_address(self) -> str:
+        return self._address.to_address()
 
     def __get_prefix(self):
         return f"{self.__class__.__name__}:"

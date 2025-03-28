@@ -4,10 +4,10 @@ import unittest
 from concurrent.futures import CancelledError, as_completed
 from threading import Event
 
-from tests.utility import get_available_tcp_port, logging_test_name
-
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.network_util import get_available_tcp_port
+from tests.utility import logging_test_name
 
 
 def noop_sleep(sec: int):
