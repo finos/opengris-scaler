@@ -39,6 +39,7 @@ class TestUI(unittest.TestCase):
         self.cluster.shutdown()
         pass
 
+    @unittest.skip("those are simulation data for UI, not real test case")
     def test_noop(self):
         with Client(self.address) as client:
             tasks = [random.randint(2, 50) for _ in range(20)]
@@ -60,6 +61,7 @@ class TestUI(unittest.TestCase):
 
             self.assertEqual(results, tasks)
 
+    @unittest.skip("those are simulation data for UI, not real test case")
     def test_memory_usage(self):
         with Client(self.address) as client:
             tasks = [0, 1, 100, 1024, 1024 * 2, 1024 * 1024, 1024 * 1024 * 2, 1024 * 1024 * 4]
