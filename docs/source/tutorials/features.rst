@@ -94,21 +94,8 @@ reuse it over and over again
 - This ``client.send_object``, objects are still get serialized and deserialized by Serializer, if you have special
   needs to customize your serializer, please refer below :ref:`Custom Serializer` section
 
-.. code:: python
-
-    from scaler import Client
-
-    def add(a, b):
-        return a + b
-
-    client = Client(address="tcp://127.0.0.1:2345")
-    ref = client.send_object("large_object", [1, 2, 3, 4, 5])
-
-    fut = client.submit(add, ref, [6])
-    assert fut.result() == [1, 2, 3, 4, 5, 6]
-
-    # this will not work, scaler doesn't do deep resolving
-    # fut = client.submit(add, [ref], [6])
+.. literalinclude:: ../../../examples/send_object_client.py
+   :language: python
 
 
 Graph Submission
@@ -116,44 +103,36 @@ Graph Submission
 
 For tasks that are dependent on the output of other tasks, they can all be submitted together as a graph. Scaler will handle executing the dependencies in the right order.
 
-.. code:: python
+.. literalinclude:: ../../../examples/graphtask_client.py
+   :language: python
 
-    from scaler import Client
+Nested Tasks
+-------------
 
-    def inc(i):
-        return i + 1
+Tasks can depend on other tasks' result without using graph.
 
-    def add(a, b):
-        return a + b
+.. literalinclude:: ../../../examples/nested_client.py
+   :language: python
 
-    def minus(a, b):
-        return a - b
+Dynamically Building Graph Within a Task
+----------------------------------------
 
-    graph = {
-        "a": 2,
-        "b": 2,
-        "c": (inc, "a"),  # c = a + 1 = 2 + 1 = 3
-        "d": (add, "a", "b"),  # d = a + b = 2 + 2 = 4
-        "e": (minus, "d", "c")  # e = d - c = 4 - 3 = 1
-    }
+When the execution graph is undetermined until runtime, one may build graph dynamically on remote end.
 
-    client = Client(address="tcp://127.0.0.1:2345")
-    futures = client.submit_graph(graph, keys=["e"])
-
-    print(futures[0].result())
+.. literalinclude:: ../../../examples/graphtask_nested_client.py
+   :language: python
 
 
-Client Shutdown
----------------
 
-By default, the Scheduler is running in protected mode.  For more information, check the :ref:`protected <protected>` section. If the Scheduler is not in protected mode, the Client can shutdown the Cluster by calling ``client.shutdown()``. This needs to be specifically enabled when spinning up the Scheduler.
+Client Disconnect and Shutdown
+------------------------------
 
-.. code:: python
+By default, the Scheduler is running in protected mode.  For more information, check the :ref:`protected <protected>` section.
 
-    from scaler import Client
+.. literalinclude:: ../../../examples/disconnect_client.py
+   :language: python
 
-    client = Client(address="tcp://127.0.0.1:2345")
-    client.shutdown()
+
 
 Custom Serializer
 -----------------

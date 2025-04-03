@@ -58,6 +58,12 @@ Scaler supports ``uvloop`` as the event loop for the backend. This will provide 
         event_loop="uvloop"
     )
 
+**Start a scheduler in Python**
+
+.. literalinclude:: ../../../examples/simple_scheduler.py
+   :language: python
+
+
 Worker Settings
 ---------------
 
@@ -77,15 +83,9 @@ This can be set using the CLI:
 
     scaler_cluster -n 10 tcp://127.0.0.1:8516 -ds 300
 
-Through the programmatic API:
 
-.. code:: python
+**Start a cluster in Python**
 
-    from scaler import SchedulerClusterCombo
-
-    cluster = SchedulerClusterCombo(
-        address=f"tcp://127.0.0.1:8516",
-        n_workers=2,
-        death_timeout_seconds=300
-    )
+.. literalinclude:: ../../../examples/simple_cluster.py
+   :language: python
 

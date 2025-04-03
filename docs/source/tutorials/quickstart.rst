@@ -39,41 +39,18 @@ First, add the ``scaler`` package to your *requirements.txt* file, or install it
 First Look (Code API)
 ---------------------
 
-
 Client.map
 ----------
 
-In the example below, we spin up the ``SchedulerClusterCombo`` by giving the scheduler address along with the number of
+In the example below, we spin up the ``SchedulerClusterCombo`` by giving the number of
 workers. The `Client` then connects to the scheduler address.
 
 if user have series tasks for the same function, ``client.map()`` is used to pass that function and list of arguments to
 the scheduler.
 
-.. code:: python
+.. literalinclude:: ../../../examples/map_client.py
+   :language: python
 
-    import random
-
-    from scaler import Client, SchedulerClusterCombo
-
-
-    def calculate(sec: int):
-        return sec * 1
-
-
-    def main():
-        address = "tcp://127.0.0.1:2345"
-
-        cluster = SchedulerClusterCombo(address=address, n_workers=3)
-        with Client(address=address) as client:
-            tasks = [random.randint(0, 100) for _ in range(1000)]
-            results = client.map(calculate, [(i,) for i in tasks])
-            assert results == tasks
-
-        cluster.shutdown()
-
-
-    if __name__ == "__main__":
-        main()
 
 Client.submit
 -------------
@@ -81,35 +58,8 @@ Client.submit
 There is another way of to submit task to the scheduler: ``client.submit()``, which is used to submit a single function
 and arguments, the results will be lazily retrieved on the first call to result()
 
-
-.. code:: python
-
-    import random
-
-    from scaler import Client, SchedulerClusterCombo
-
-
-    def double_it(arg: int):
-        return arg * 2
-
-
-    def main():
-        address = "tcp://127.0.0.1:2345"
-
-        cluster = SchedulerClusterCombo(address=address, n_workers=3)
-
-        argument = random.randint(0, 100)
-
-        with Client(address=address) as client:
-            future = client.submit(calculate, argument)
-            print(f"random picked argument: {argument}")
-            print(f"double_it(arg={argument}): {future.result()}")
-
-        cluster.shutdown()
-
-
-    if __name__ == "__main__":
-        main()
+.. literalinclude:: ../../../examples/simple_client.py
+   :language: python
 
 
 Anti-patterns
