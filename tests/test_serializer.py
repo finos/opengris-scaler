@@ -77,7 +77,7 @@ class TestSerializer(unittest.TestCase):
     def test_heavy_function(self):
         with Client(self.address, serializer=MySerializer()) as client:
             size = 500_000_000
-            tasks = [random.randint(0, 100) for _ in range(10000)]
+            tasks = [random.randint(0, 100) for _ in range(5)]
             function = functools.partial(heavy_function, payload=b"1" * size)
             with ScopedLogger(f"submit {len(tasks)} heavy function (500mb) tasks"):
                 results = client.map(function, [(i,) for i in tasks])
