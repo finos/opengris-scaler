@@ -1,4 +1,5 @@
 import graphlib
+import logging
 import time
 import unittest
 
@@ -6,7 +7,6 @@ from scaler import Client, SchedulerClusterCombo
 from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
 from tests.utility import logging_test_name
 
 
@@ -26,8 +26,8 @@ class TestGraph(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
-        self.address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        self.cluster = SchedulerClusterCombo(address=self.address, n_workers=3, event_loop="builtin")
+        self.cluster = SchedulerClusterCombo(n_workers=3, event_loop="builtin")
+        self.address = self.cluster.get_address()
 
     def tearDown(self) -> None:
         self.cluster.shutdown()
@@ -165,3 +165,26 @@ class TestGraph(unittest.TestCase):
         self.assertEqual(cull_graph(graph, ["e"]), filter_keys(graph, ["a", "b", "c", "e"]))
         self.assertEqual(cull_graph(graph, ["f"]), filter_keys(graph, ["a", "c", "f"]))
         self.assertEqual(cull_graph(graph, ["d", "e", "f"]), graph)
+
+    def test_graph_error(self):
+        def raise_exception(*args):
+            raise ValueError("some error")
+
+        graph = {
+            "a": (lambda *_: None,),
+            "b": (lambda *_: time.sleep(1), "a"),
+            "c": (lambda *_: time.sleep(2), "a"),
+            "d": (lambda *_: time.sleep(3), "a"),
+            "e": (raise_exception, "b", "c"),
+            "f": (lambda *_: time.sleep(2), "e", "d"),
+            "g": (lambda *_: time.sleep(1), "f"),
+        }
+
+        with Client(address=self.address) as client:
+            futures = client.get(graph, keys=["e", "f", "g"], block=False)
+
+            time.sleep(4)
+            for k, fut in futures.items():
+                with self.assertRaises(ValueError):
+                    fut.result()
+                logging.info(f"Raised ValueError exception for {k}")
