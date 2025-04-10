@@ -29,3 +29,4 @@ Content
    tutorials/quickstart
    tutorials/features
    tutorials/configuration
+   tutorials/applications
