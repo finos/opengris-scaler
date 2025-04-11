@@ -118,10 +118,7 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
         return self._object_storage.get_object(object_id).object_bytes
 
     def get_status(self) -> ObjectManagerStatus:
-        return ObjectManagerStatus.new_msg(
-            self._object_storage.object_count(),
-            sum(sum(map(len, v.object_bytes)) for _, v in self._object_storage.items()),
-        )
+        return ObjectManagerStatus.new_msg(self._object_storage.object_count())
 
     async def __process_get_request(self, source: bytes, request: ObjectRequest):
         await self._binder.send(source, self.__construct_response(request))

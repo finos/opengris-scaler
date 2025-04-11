@@ -7,7 +7,6 @@ struct Resource {
 
 struct ObjectManagerStatus {
     numberOfObjects @0 :UInt32;
-    objectMemory @1 :UInt64;
 }
 
 struct ClientManagerStatus {

@@ -89,13 +89,7 @@ def show_status(status: Message, screen):
         },
         format_integer_flag=True,
     )
-    object_manager = __generate_keyword_data(
-        "object_manager",
-        {
-            "num_of_objs": status.object_manager.number_of_objects,
-            "obj_mem": format_bytes(status.object_manager.object_memory),
-        },
-    )
+    object_manager = __generate_keyword_data("object_manager", {"num_of_objs": status.object_manager.number_of_objects})
     sent_table = __generate_keyword_data("scheduler_sent", status.binder.sent, format_integer_flag=True)
     received_table = __generate_keyword_data("scheduler_received", status.binder.received, format_integer_flag=True)
     client_table = __generate_keyword_data(
