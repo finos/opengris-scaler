@@ -46,11 +46,11 @@ def find_volatility(target_value, S, K, T, r) -> float:
     return sigma  # value wasn't found, return best guess so far
 
 
-def find_volatilities(dataset: np.array) -> List[float]:
+def find_volatilities(dataset: np.ndarray) -> List[float]:
     return [find_volatility(*sample) for sample in dataset]
 
 
-def generate_synthetic_data(n_samples: int) -> np.array:
+def generate_synthetic_data(n_samples: int) -> np.ndarray:
     S = np.random.randint(100, 200, n_samples)  # stock prices
     K = S * 1.25  # strike prices
     T = np.ones(n_samples)  # time maturity (year)

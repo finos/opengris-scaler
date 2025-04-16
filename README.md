@@ -6,10 +6,13 @@
 <h3 align="center">Citi/scaler</h3>
 
   <p align="center">
-    Efficient, lightweight and reliable distributed computation engine.
+    Efficient, lightweight, and reliable distributed computation engine.
   </p>
 
   <p align="center">
+    <a href="https://citi.github.io/scaler/">
+      <img src="https://img.shields.io/badge/read%20our%20documentation-0f1632">
+    </a>
     <a href="./LICENSE">
         <img src="https://img.shields.io/github/license/citi/scaler?label=license&colorA=0f1632&colorB=255be3">
     </a>
@@ -22,7 +25,7 @@
 
 <br />
 
-**Scaler provides a simple, efficient and reliable way to perform distributed computing** using a centralized scheduler,
+**Scaler provides a simple, efficient, and reliable way to perform distributed computing** using a centralized scheduler,
 with a stable and language-agnostic protocol for client and worker communications.
 
 ```python
@@ -30,20 +33,17 @@ import math
 from scaler import Client
 
 with Client(address="tcp://127.0.0.1:2345") as client:
-    # Submits 100 tasks
-    futures = [
-        client.submit(math.sqrt, i)
-        for i in range(0, 100)
-    ]
+    # Compute a single task using `.submit()`
+    future = client.submit(math.sqrt, 16)
+    print(future.result())  # 4
 
-    # Collects the results and sums them
-    result = sum(future.result() for future in futures)
-
-    print(result)  # 661.46
+    # Submit multiple tasks with `.map()`
+    results = client.map(math.sqrt, [(i,) for i in range(100)])
+    print(sum(results))  # 661.46
 ```
 
 Scaler is a suitable Dask replacement, offering significantly better scheduling performance for jobs with a large number
-of lightweight tasks while improving on load balancing, messaging and deadlocks.
+of lightweight tasks while improving on load balancing, messaging, and deadlocks.
 
 ## Features
 
@@ -53,13 +53,15 @@ of lightweight tasks while improving on load balancing, messaging and deadlocks.
 - **Graph** scheduling, which supports [Dask](https://www.dask.org)-like graph computing, with optional [GraphBLAS](https://graphblas.org)
   support for very large graph tasks
 - **Automated load balancing**, which automatically balances load from busy workers to idle workers, ensuring uniform utilization across workers
-- **Automated task recovery** from worker-related hardware, OS or network failures
+- **Automated task recovery** from worker-related hardware, OS, or network failures
 - Support for **nested tasks**, allowing tasks to submit new tasks
 - `top`-like **monitoring tools**
 - GUI monitoring tool
 
 
 ## Installation
+
+Scaler is available on PyPI and can be installed using any compatible package manager.
 
 ```bash
 $ pip install scaler
@@ -70,10 +72,12 @@ $ pip install scaler[graphblas,uvloop]
 
 ## Quick Start
 
-Scaler operates around 3 components:
+The official documentation is available at [citi.github.io/scaler/](https://citi.github.io/scaler/).
 
-- A **scheduler**, responsible for routing tasks to available computing resources
-- A set of **workers**, or cluster. Workers are independent computing units, each capable of executing a single task
+Scaler has 3 main components:
+
+- A **scheduler**, responsible for routing tasks to available computing resources.
+- A set of **workers** that form a _cluster_. Workers are independent computing units, each capable of executing a single task.
 - **Clients** running inside applications, responsible for submitting tasks to the scheduler.
 
 ### Start local scheduler and cluster programmatically in code
@@ -90,7 +94,7 @@ cluster = SchedulerClusterCombo(address="tcp://127.0.0.1:2345", n_workers=4)
 cluster.shutdown()
 ```
 
-This will start a scheduler with 4 task executing workers on port `2345`.
+This will start a scheduler with 4 workers on port `2345`.
 
 ### Setting up a computing cluster from the CLI
 
@@ -106,7 +110,7 @@ $ scaler_scheduler tcp://127.0.0.1:2345
 ...
 ```
 
-Then, start a set of workers (a.k.a. a Scaler *cluster*) that connect to the previously started scheduler:
+Then, start a set of workers (a.k.a. a Scaler *cluster*) that connects to the previously started scheduler:
 
 ```bash
 $ scaler_cluster -n 4 tcp://127.0.0.1:2345
@@ -119,8 +123,7 @@ $ scaler_cluster -n 4 tcp://127.0.0.1:2345
 ...
 ```
 
-Multiple Scaler clusters can be connected to the same scheduler, providing distributed computation over multiple
-servers.
+Multiple Scaler clusters can be connected to the same scheduler, providing distributed computation over multiple servers.
 
 `-h` lists the available options for the scheduler and the cluster executables:
 
@@ -142,8 +145,8 @@ def square(value: int):
 
 
 with Client(address="tcp://127.0.0.1:2345") as client:
-    future = client.submit(square, 4)
-    print(future.result())  # 16
+    future = client.submit(square, 4) # submits a single task
+    print(future.result()) # 16
 ```
 
 `Client.submit()` returns a standard Python future.
@@ -171,6 +174,8 @@ def minus(a, b):
 graph = {
     "a": 2,
     "b": 2,
+
+    # the input to task c is the output of task a
     "c": (inc, "a"),  # c = a + 1 = 2 + 1 = 3
     "d": (add, "a", "b"),  # d = a + b = 2 + 2 = 4
     "e": (minus, "d", "c")  # e = d - c = 4 - 3 = 1
@@ -189,20 +194,20 @@ Scaler allows tasks to submit new tasks while being executed. Scaler also suppor
 from scaler import Client
 
 
-def fibonacci(clnt: Client, n: int):
+def fibonacci(client: Client, n: int):
     if n == 0:
         return 0
     elif n == 1:
         return 1
     else:
-        a = clnt.submit(fibonacci, clnt, n - 1)
-        b = clnt.submit(fibonacci, clnt, n - 2)
+        a = client.submit(fibonacci, client, n - 1)
+        b = client.submit(fibonacci, client, n - 2)
         return a.result() + b.result()
 
 
 with Client(address="tcp://127.0.0.1:2345") as client:
-    result = client.submit(fibonacci, client, 8).result()
-    print(result)  # 21
+    future = client.submit(fibonacci, client, 8)
+    print(future.result()) # 21
 ```
 
 ## IBM Spectrum Symphony integration
@@ -289,13 +294,14 @@ A good heuristic for setting the base concurrency is to use the following formul
 base_concurrency = number_of_cores - deepest_nesting_level
 ```
 
-where `deepest_nesting_level` is the deepest nesting level a task has in your workload. If you have a workload that has
-a base task that calls a nested task that calls another nested task, the deepest nesting level is 2.
+where `deepest_nesting_level` is the deepest nesting level a task has in your workload. For instance, if you have a workload that has
+a base task that calls a nested task that calls another nested task, then the deepest nesting level is 2.
 
 ## Performance
 
 ### uvloop
 
+By default, Scaler uses Python's built-in `asyncio` event loop.
 For better async performance, you can install uvloop (`pip install uvloop`) and supply `uvloop` for the CLI argument
 `--event-loop` or as a keyword argument for `event_loop` in Python code when initializing the scheduler.
 
@@ -346,18 +352,18 @@ W|Linux|15938|ed582770+    0.0%   31.1m  0.0% 28.1m 1000    0      0 |
 W|Linux|15943|a7fe8b5e+    0.0%   30.7m  0.0% 28.3m 1000    0      0 |
 ```
 
-- scheduler section shows scheduler resource usage
-- task_manager section shows count for each task status
-- scheduler_sent section shows count for each type of messages scheduler sent
-- scheduler_received section shows count for each type of messages scheduler received
-- function_id_to_tasks section shows task count for each function used
-- worker section shows worker details, you can use shortcuts to sort by columns, the char * on column header show which
-  column is sorted right now
-    - agt_cpu/agt_rss means cpu/memory usage of worker agent
-    - cpu/rss means cpu/memory usage of worker
-    - free means number of free task slots for this worker
-    - sent means how many tasks scheduler sent to the worker
-    - queued means how many tasks worker received and queued
+- **scheduler** section shows scheduler resource usage
+- **task_manager** section shows count for each task status
+- **scheduler_sent** section shows count for each type of messages scheduler sent
+- **scheduler_received** section shows count for each type of messages scheduler received
+- **function_id_to_tasks** section shows task count for each function used
+- **worker** section shows worker details, , you can use shortcuts to sort by columns, and the * in the column header shows
+which column is being used for sorting
+    - `agt_cpu/agt_rss` means cpu/memory usage of worker agent
+    - `cpu/rss` means cpu/memory usage of worker
+    - `free` means number of free task slots for this worker
+    - `sent` means how many tasks scheduler sent to the worker
+    - `queued` means how many tasks worker received and queued
 
 ### From the web UI
 
@@ -371,7 +377,7 @@ This will open a web server on port `8081`.
 
 ## Slides and presentations
 
-We showcased Scaler at FOSDEM 2025. Checkout the slides
+We showcased Scaler at FOSDEM 2025. Check out the slides
 [here](<slides/Effortless Distributed Computing in Python - FOSDEM 2025.pdf>).
 
 ## Contributing

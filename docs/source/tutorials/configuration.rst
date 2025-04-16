@@ -1,12 +1,12 @@
 Configuration
 =============
 
-Scaler has some settings that can be tuned for performance, but ideally users should not have to concern themselves with these because the defaults will give decent performance. A full list of the settings can be found using `-h` flag in the CLI (as detailed below). List in this page are the expected settings that users may want to configure.
+Scaler comes with a number of settings that can be tuned for performance. Reasonable defaults are chosen for these that will yield decent performance, but users can tune these settings to get the best performance for their use case. A full list of the available settings can be found by calling the CLI with the ``-h`` flag.
 
 Scheduler Settings
 ------------------
 
-For the full list, use the CLI command:
+For the list of available settings, use the CLI command:
 
 .. code:: bash
 
@@ -16,13 +16,13 @@ For the full list, use the CLI command:
 
 .. _protected:
 
-The Scheduler is started in protected mode by default, which means that it can not be shut down by the Client. This is because multiple Clients can connect to a long-running Scheduler, and calling `Client.shutdown()` may inadverdently kill work that another user is executing. This is also because Scaler encourages strong decoupling between Client, Scheduler and Workers. To turn off protected mode, start the scheduler with:
+The Scheduler is started in protected mode by default, which means that it can not be shut down by the Client. This is because multiple Clients can connect to a long-running Scheduler, and calling :py:func:`~Client.shutdown()` may inadverdently kill work that another user is executing. This is also because Scaler encourages strong decoupling between Client, Scheduler, and Workers. To turn off protected mode, start the scheduler with:
 
 .. code:: bash
 
     scaler_scheduler tcp://127.0.0.1:8516 -p False
 
-Or if using the programmatic API, pass ``protected=True```:
+Or if using the programmatic API, pass ``protected=False``:
 
 .. code:: python
 
@@ -31,12 +31,14 @@ Or if using the programmatic API, pass ``protected=True```:
     cluster = SchedulerClusterCombo(
         address=f"tcp://127.0.0.1:{port}",
         n_workers=2,
-        protected=protected,
+        protected=False, # this will turn off protected mode
     )
 
 **Event Loop**
 
-Scaler supports ``uvloop`` as the event loop for the backend. This will provide speedups when running Scaler. ``Uvloop`` needs to be installed separately:
+Scaler uses Python's built-in ``asyncio`` event loop by default, however users can choose to use ``uvloop`` for the event loop. ``uvloop`` is a faster implementation of the event loop and may improve performance of Scaler.
+
+``uvloop`` needs to be installed separately:
 
 .. code:: bash
 
@@ -62,7 +64,7 @@ Scaler supports ``uvloop`` as the event loop for the backend. This will provide 
 Worker Settings
 ---------------
 
-For the full list, use the CLI command:
+For the list of available settings, use the CLI command:
 
 .. code:: bash
 
@@ -78,5 +80,6 @@ This can be set using the CLI:
 
     scaler_cluster -n 10 tcp://127.0.0.1:8516 -ds 300
 
+Or through the programmatic API:
 
 

@@ -5,31 +5,30 @@ Quickstart
 When to use it
 --------------
 
-Scaler is inspired by dask and meant to be yet another parallel backend. It handles the communication between a Client, Scheduler, and Workers to orchestrate the execution of tasks. It is a good fit to scale out compute heavy jobs that are running too slow. Even on a local machine, slow jobs can be speed up through parallelization.
-
+Scaler is inspired by Dask and functions like other parallel backends. It handles the communication between the Client, Scheduler, and Workers to orchestrate the execution of tasks. It is a good fit for scaling compute-heavy jobs across multiple machines, or even on a local machine using process-level parallelization.
 
 Architecture
 ------------
 
-Below is a diagram of the relationship of the Client, Scheduler, and Workers.
+Below is a diagram of the relationship between the Client, Scheduler, and Workers.
 
 .. image:: images/architecture.png
    :width: 600
 
 
 * The Client submits tasks to the scheduler. This is the primary user-facing API.
-* The Client is responsible for define how to serialize the tasks
-* The Scheduler distributes the tasks to the workers
+* The Client is responsible for serializing the tasks
+* The Scheduler receives tasks from the client and distributes the tasks among the workers
 * Workers perform the computation and return the results
 
 .. note::
-    Though the architecture is similar to Dask, Scaler has a stronger decoupling of these systems. For example, the Client doesn't directly see the number of workers. There is a stronger separation of concerns.
+    Although the architecture is similar to Dask, Scaler has a better decoupling of these systems and separation of concerns. For example, the Client only knows about the Scheduler and doesn't directly see the number of workers.
 
 
-Setup
------
+Installation
+------------
 
-First, add the ``scaler`` package to your *requirements.txt* file, or install it using PIP:
+The `scaler` package is available on PyPI and can be installed using any compatible package manager.
 
 .. code:: bash
 
@@ -42,11 +41,9 @@ First Look (Code API)
 Client.map
 ----------
 
-In the example below, we spin up the ``SchedulerClusterCombo`` by giving the number of
-workers. The `Client` then connects to the scheduler address.
+:py:func:`~Client.map()` allows us to submit a batch of tasks to execute in parallel by pairing a function with a list of inputs. 
 
-if user have series tasks for the same function, ``client.map()`` is used to pass that function and list of arguments to
-the scheduler.
+In the example below, we spin up a scheduler and some workers on the local machine using ``SchedulerClusterCombo``. We create the scheduler with a localhost address, and then pass that address to the client so that it can connect. We then use :py:func:`~Client.map()` to submit tasks.
 
 .. literalinclude:: ../../../examples/map_client.py
    :language: python
@@ -55,22 +52,18 @@ the scheduler.
 Client.submit
 -------------
 
-There is another way of to submit task to the scheduler: ``client.submit()``, which is used to submit a single function
-and arguments, the results will be lazily retrieved on the first call to result()
+There is another way of to submit task to the scheduler: :py:func:`~Client.submit()`, which is used to submit a single function and arguments. The results will be lazily retrieved on the first call to ``result()``.
 
 .. literalinclude:: ../../../examples/simple_client.py
    :language: python
 
 
-Anti-patterns
--------------
+Things to Avoid
+---------------
 
-please note that the ``client.submit()`` is used to submit a single function and arguments, if you want submit same
-function with many arguments, use ``client.map()``. otherwise it will be extremely slow, because it will serialize the
-function every single time when ``client.submit()`` get called, following is exactly the anti pattern, if you have a
-heavy function
+please note that the :py:func:`~Client.submit()` method is used to submit a single task. If you wish to submit multiple tasks using the same function but with many sets of arguments, use :py:func:`~Client.map()` instead to avoid unnecessary serialization overhead. The following is an example `what not to do`.
 
-.. code:: python
+.. testcode:: python
 
     import functools
     import random
@@ -78,7 +71,6 @@ heavy function
     from scaler import Client, SchedulerClusterCombo
 
     def lookup(heavy_map: bytes, index: int):
-        # assume this function has
         return index * 1
 
 
@@ -87,12 +79,13 @@ heavy function
 
         cluster = SchedulerClusterCombo(address=address, n_workers=3)
 
-        # assume you are packing a heavy function
+        # a heavy function that is expensive to serialize
         big_func = functools.partial(lookup, b"1" * 5_000_000_000)
 
         arguments = [random.randint(0, 100) for _ in range(100)]
 
         with Client(address=address) as client:
+            # we incur serialization overhead for every call to client.submit -- use client.map instead
             futures = [client.submit(big_func, i) for i in arguments]
             print([fut.result() for fut in futures])
 
@@ -103,15 +96,15 @@ heavy function
         main()
 
 
-This will be extremely slow, because it will serialize the function every single time when ``client.submit()`` get
-called. Also only when ``fut.result()`` get called, it will reach to the scheduler to get actual result. It will get
-even worse if your function is very heavy (like enclosed with heavy objects), consider use ``client.send_object`` to
-send the heavy object to the scheduler, and use ``client.submit`` to submit the function with the object reference.
+This will be extremely slow, because it will serialize the argument function ``big_func()`` each time :py:func:`~Client.submit()` is called.
+
+Functions may also be 'heavy' if they accept large objects as arguments. In this case, consider using :py:func:`~Client.send_object()` to send the object to the scheduler, and then later use :py:func:`~Client.submit()` to submit the function.
 
 Spinning up Scheduler and Cluster Separately
 --------------------------------------------
 
 The scheduler and workers can be spun up independently through the CLI.
+Here we use localhost addresses for demonstration, however the scheduler and workers can be started on different machines.
 
 .. code:: bash
 
@@ -151,7 +144,7 @@ The scheduler and workers can be spun up independently through the CLI.
     [INFO]2023-03-19 12:19:19-0400: Worker[9] started
 
 
-From here, connect the Python Client and begin submitting work
+From here, connect the Python Client and begin submitting tasks:
 
 .. code:: python
 

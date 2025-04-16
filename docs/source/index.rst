@@ -1,22 +1,22 @@
-.. scaler documentation master file, created by
+.. Scaler documentation master file, created by
    sphinx-quickstart on Wed Feb 15 16:00:47 2023.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to scaler's documentation!
+Welcome to Scaler's documentation!
 ================================================
 
-Scaler is a lightweight distributed computing Python framework. It allocates work over multiple workers (distributedly or locally through multiprocessing). The motivation behind Scaler was the difficulty of debugging Dask jobs that were hanging. It is meant to be a drop-in replacement for Dask Futures with improvements and additional features.
+Scaler is a lightweight distributed computing Python framework that lets you easily distribute tasks across multiple machines or parallelize on a single machine.
 
-Scaler's design focuses on simplicity, resulting in reduced overhead and debuggable errors. Based on our benchmarking results for ICAAP Wholesale Loss forecasting, it took Scaler Graph only a third of the time to finish compared to Dask.
+Scaler is designed to be a drop-in replacement for Dask requiring minimal code changes. Scaler's design focuses on simplicity, reduced overhead, debuggable errors.
 
-Lastly, Scaler's load-balancers work in a more predictable manner, increasing utilization of workers. The best part is that Scaler can be adopted in place of Dask with minimal code change!
+Using Scaler's Graph features for ICAAP Wholesale Loss forecasting, we saw a 3x speedup in execution time as compared to Dask.
 
 Key features include:
 
-    * Graph Task Submission - submit task with dependencies together
-    * Monitoring Dashboard - utilization of workers and task completion can be seen
-    * Task Profiling - seeing execution time of functions
+    * Graph Tasks - submit tasks with complex interdependence
+    * Monitoring Dashboard - monitor utilization of workers and task completion in real time
+    * Task Profiling - profile and trace execution of tasks
     * Logging of Distributed Work - send logs back to the Client from workers (under development)
 
 

@@ -1,19 +1,19 @@
 Additional Features
 ===================
 
-These features are not needed for standard usage, but are helpful for monitoring and other use cases.
+Scaler comes with a number of additional features that can be used to monitor and profile tasks, and customize behavior.
 
 Scaler Top (Monitoring)
 -----------------------
 
-The scheduler has an address that can be monitored with an ipc connection. The exact address will be in the logs
-when the scheduler is spun up. Connect to it with the `scaler_top` CLI command.
+Top is a monitoring tool that allows you to see the status of the Scaler.
+The scheduler prints an address to the logs on startup that can be used to connect to it with the `scaler_top` CLI command:
 
 .. code:: bash
 
     scaler_top ipc:///tmp/0.0.0.0_8516_monitor
 
-Which will show something similar to top command, but it's for getting status of the scaled system:
+Which will show an interface similar to the standard Linux `top` command:
 
 .. code:: console
 
@@ -42,26 +42,31 @@ Which will show something similar to top command, but it's for getting status of
    2732886|sd-1e7d-dfba|345+    0.0%  111.5m  0.0% 112.8m 1000    0      0 0.8ms 100 |
 
 
-* scheduler section is showing how much resources the scheduler used
-* task_manager section shows count for each task status
-* scheduler_sent section shows count for each type of messages scheduler sent
-* scheduler_received section shows count for each type of messages scheduler received
-* object_id_to_tasks section shows task count for each object used
-* worker section shows worker details, you can use shortcuts to sort by columns, the char * on column header show which
-  column is sorted right now
-  * agt_cpu/agt_rss means cpu/memory usage of worker agent
-  * cpu/rss means cpu/memory usage of worker
-  * free means number of free task slots for this worker
-  * sent means how many tasks scheduler sent to the worker
-  * queued means how many tasks worker received and queued
-  * lag means the latency between scheduler and worker
-  * ITL means debug bits information, I means processor initialized, T means have a task or not, L means task lock
+* `scheduler` section shows the scheduler's resource usage
+* `task_manager` section shows the status of tasks
+* `scheduler_sent` section counts the number of each type of message sent by the scheduler
+* `scheduler_received` section counts the number of each type of message received by the scheduler
+* `worker` section shows worker details, you can use shortcuts to sort by columns, and the * in the column header shows which column is being used for sorting
+
+  * `agt_cpu/agt_rss` means cpu/memory usage of the worker agent
+  * `cpu/rss` means cpu/memory usage of the worker
+  * `free` means number of free task slots for the worker
+  * `sent` means how many tasks scheduler sent to the worker
+  * `queued` means how many tasks worker received and enqueued
+  * `lag` means the latency between scheduler and the worker
+  * `ITL` means is debug information
+
+    * `I` means processor initialized
+    * `T` means have a task or not
+    * `L` means task lock
 
 
 Task Profiling
 --------------
 
-To get the execution time of a task, submit it with profiling turned on. ``.result()`` needs to be called on the Future first so that execution is complete.
+To get the execution time of a task, submit it with profiling turned on.
+
+We need to call ``fut.result()`` to ensure that the task has been completed.
 
 .. code:: python
 
@@ -72,27 +77,26 @@ To get the execution time of a task, submit it with profiling turned on. ``.resu
 
     client = Client(address="tcp://127.0.0.1:2345")
     fut = client.submit(calculate, 1, profiling=True)
+
+    # this will execute the task
     fut.result()
 
     # contains task run duration time in microseconds
     fut.profiling_info().duration_us
 
-    # contains the peak memory usage in bytes for that function, this memory peak is sampled every second
+    # contains the peak memory usage in bytes for the task, this memory peak is sampled every second
     fut.profiling_info().peak_memory
 
 
 Send Object
 -----------
 
-Scaler can send objects to the workers. This is useful for sending large objects that are needed for the tasks, and
-reuse it over and over again
+Scaler can send objects to the workers. This is useful for sending large objects that are needed for the tasks, and are reused frequently. This allows you to avoid the overhead of sending the object multiple times.
 
-- The object is sent to the workers only once
-- the scaler API will returns an reference that link to the object
-- on the workers side, workers can use this reference to access the object, but this reference must be in the
-  positional argument level, **it cannot be nested to the other reference or inside of list etc.**
-- This ``client.send_object``, objects are still get serialized and deserialized by Serializer, if you have special
-  needs to customize your serializer, please refer below :ref:`Custom Serializer` section
+* The object is sent to the workers only once
+* The Scaler API will return a special reference to the object
+* Workers can use this reference to access the object, but this reference must be provided as a positional argument
+  * `The reference cannot be nested in another reference or inside a list, etc.`
 
 .. literalinclude:: ../../../examples/send_object_client.py
    :language: python
@@ -101,7 +105,7 @@ reuse it over and over again
 Graph Submission
 ----------------
 
-For tasks that are dependent on the output of other tasks, they can all be submitted together as a graph. Scaler will handle executing the dependencies in the right order.
+Some tasks are complex and depend on the output of other tasks. Scaler supports submitting tasks as a graph and will handle executing the dependencies in the correct order and communicating between tasks.
 
 .. literalinclude:: ../../../examples/graphtask_client.py
    :language: python
@@ -124,28 +128,26 @@ When the execution graph is undetermined until runtime, one may build graph dyna
 
 
 
+
 Client Disconnect and Shutdown
 ------------------------------
 
-By default, the Scheduler is running in protected mode.  For more information, check the :ref:`protected <protected>` section.
+By default, the Scheduler runs in protected mode. For more information, see the :ref:`protected <protected>` section.
+
+If the Scheduler is not in protected mode, the Client can shutdown the Cluster by calling :py:func:`~Client.shutdown()`.
 
 .. literalinclude:: ../../../examples/disconnect_client.py
    :language: python
 
+Custom Serialization
+--------------------
 
+Scaler uses ``cloudpickle`` by default for serialization. You can use a custom serializer by passing it to the Client.
 
-Custom Serializer
------------------
-Scaler uses cloudpickle by default for serialization. You can use a custom serializer by passing it to the Client.
+The serializer API has only two methods: ``serialize`` and ``deserialize``, and these are responsible for serializing and deserializing functions, function arguments, and function results.
 
-The serializer API has only two methods: ``serialize`` and ``deserialize``, and these are responsible for
-
-- function
-- function arguments
-- function results
-
-
-**All libraries used for serialization must be installed on workers.**
+.. note::
+    All libraries used for serialization must be installed on workers.
 
 
 .. py:function:: serialize(obj: Any) -> bytes
@@ -153,8 +155,7 @@ The serializer API has only two methods: ``serialize`` and ``deserialize``, and 
    :param obj: the object to be serialized, can be function object, argument object, or function result object
    :return: serialized bytes of the object
 
-Serialize the object to bytes, this serialization method is called for function object and EACH argument
-object and function result object, for example:
+Serialize the object to bytes. This serialization method is called for the function object each argument, and function's result, for example:
 
 
 .. code:: python
@@ -165,9 +166,14 @@ object and function result object, for example:
     client.submit(add, 1, 2)
 
 
-``serialize`` will initially be called three times: once for ``add``, once for ``1``, and once for ``2``.
-The result of the ``a+b`` calculation will then be serialized and sent back to the client.
-The client will ``deserialize`` the result.
+``serialize`` will be called four times:
+
+* Once for the ``add`` function
+* Once for the argument ``1``
+* Once for ``2``
+* Once for the result of the task
+
+The client will then ``deserialize`` the result.
 
 
 .. py:function:: deserialize(payload: bytes) -> Any
@@ -175,19 +181,16 @@ The client will ``deserialize`` the result.
    :param payload: the serialized bytes of the object, can be function object, argument object, or function result object
    :return: any deserialized object
 
-Deserialize the bytes to the original object, this de-serialize method is used to deserialize the function
-object bytes and EACH serialized argument and serialized function result.
+Deserialize the bytes into the original object, this deserialize method is used to deserialize the function and each argument as received by the workers, and the result of the task as received by the client.
+
+Below is an example implementation of a custom serializer that uses a different serialization/deserialization method for different types of objects. It uses a simple tagging system to indicate the type of object being serialized/deserialized.
+
+* Dataframes are serialized into the parquet format
+* Integers are serialized as 4-byte integers
+* All other objects are serialized using cloudpickle
 
 
-Below is an example implementation of customized serializer that deal with different types, but as you introduce
-different types, you may need an enum in front of serialized bytes to indicate how to deserialize on other ends, for
-example
-
-- following example will serialize and deserialize the pd.DataFrame and Integer specially (not use cloudpickle)
-- all other objects will be serialized by cloudpickle still
-
-
-.. code:: python
+.. testcode:: python
 
     import enum
     import pickle
@@ -233,4 +236,3 @@ example
                 return struct.unpack("I", payload)[0]
 
             return cloudpickle.loads(payload)
-
