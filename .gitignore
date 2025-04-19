@@ -12,6 +12,7 @@ eggs/
 *.egg-info/
 *.egg
 .mypy_cache/
+.cache
 
 .venv/
 venv*/
