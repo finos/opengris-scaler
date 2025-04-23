@@ -13,51 +13,48 @@ from scaler import SchedulerClusterCombo, Client
 
 def main():
     cluster = SchedulerClusterCombo(n_workers=cpu_count())
-    client = Client(address=cluster.get_address())
 
-    # Ensure that the client is connected before proceeding
-    client.submit(lambda _: ..., None).result()
+    with Client(address=cluster.get_address()) as client:
+        # Load the data
+        df = pd.read_csv(
+            "https://raw.githubusercontent.com/facebook/prophet/master/examples/example_wp_log_peyton_manning.csv",
+            parse_dates=["ds"]
+        )
 
-    # Load the data
-    df = pd.read_csv(
-        "https://raw.githubusercontent.com/facebook/prophet/master/examples/example_wp_log_peyton_manning.csv",
-        parse_dates=["ds"]
-    )
+        model = Prophet(daily_seasonality=False)
 
-    model = Prophet(daily_seasonality=False)
+        # Scaler is not involved in the fitting process
+        model.fit(df)
 
-    # Scaler is not involved in the fitting process
-    model.fit(df)
+        # This adapts the Scaler client to the Prophet diagnostics API
+        class Adapter:
+            def __init__(self, client: Client):
+                self.client = client
 
-    # This adapts the Scaler client to the Prophet diagnostics API
-    class Adapter:
-        def __init__(self, client: Client):
-            self.client = client
+            def map(self, func, *iterables):
+                return self.client.map(func, [args for args in zip(*iterables)])
 
-        def map(self, func, *iterables):
-            return self.client.map(func, [args for args in zip(*iterables)])
+        # non-parallelized cross-validation
+        start = timer()
+        prophet.diagnostics.cross_validation(
+            model,
+            initial="730 days",
+            period="180 days",
+            horizon="365 days",
+            parallel=None
+        )
+        non_parallel_time = timer() - start
 
-    # non-parallelized cross-validation
-    start = timer()
-    prophet.diagnostics.cross_validation(
-        model,
-        initial="730 days",
-        period="180 days",
-        horizon="365 days",
-        parallel=None
-    )
-    non_parallel_time = timer() - start
-
-    # Parallelized cross-validation via Scaler
-    start = timer()
-    prophet.diagnostics.cross_validation(
-        model,
-        initial="730 days",
-        period="180 days",
-        horizon="365 days",
-        parallel=Adapter(client)
-    )
-    parallel_time = timer() - start
+        # Parallelized cross-validation via Scaler
+        start = timer()
+        prophet.diagnostics.cross_validation(
+            model,
+            initial="730 days",
+            period="180 days",
+            horizon="365 days",
+            parallel=Adapter(client)
+        )
+        parallel_time = timer() - start
 
     cluster.shutdown()
 

@@ -20,6 +20,8 @@ def main():
     # is not guaranteed to succeed, as the scheduler can only be closed when it is not running under "protected" mode.
     # client.shutdown()
 
+    cluster.shutdown()
+
 
 if __name__ == "__main__":
     main()

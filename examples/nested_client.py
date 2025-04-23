@@ -20,9 +20,12 @@ def fibonacci(client: Client, n: int):
 def main():
     # For an explanation on how SchedulerClusterCombo and Client work, please see simple_client.py
     cluster = SchedulerClusterCombo(n_workers=1)
-    client = Client(address=cluster.get_address())
-    result = client.submit(fibonacci, client, 8).result()
-    print(result)  # 21
+
+    with Client(address=cluster.get_address()) as client:
+        result = client.submit(fibonacci, client, 8).result()
+        print(result)  # 21
+
+    cluster.shutdown()
 
 
 if __name__ == "__main__":

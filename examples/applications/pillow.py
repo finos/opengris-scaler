@@ -34,9 +34,11 @@ def main():
         dir = sys.argv[1]
 
     cluster = SchedulerClusterCombo(n_workers=cpu_count())
-    client = Client(address=cluster.get_address())
 
-    client.map(process_image, [(os.path.join(dir, f),) for f in os.listdir(dir)])
+    with Client(address=cluster.get_address()) as client:
+        client.map(process_image, [(os.path.join(dir, f),) for f in os.listdir(dir)])
+
+    cluster.shutdown()
 
 
 if __name__ == "__main__":

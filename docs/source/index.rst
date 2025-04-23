@@ -4,20 +4,18 @@
    contain the root `toctree` directive.
 
 Welcome to Scaler's documentation!
-================================================
+==================================
 
 Scaler is a lightweight distributed computing Python framework that lets you easily distribute tasks across multiple machines or parallelize on a single machine.
 
-Scaler is designed to be a drop-in replacement for Dask requiring minimal code changes. Scaler's design focuses on simplicity, reduced overhead, debuggable errors.
-
-Using Scaler's Graph features for ICAAP Wholesale Loss forecasting, we saw a 3x speedup in execution time as compared to Dask.
+Scaler is designed to be a drop-in replacement for Dask requiring minimal code changes. Scaler's design focuses on performance, simplicity, reduced overhead, debuggable errors.
 
 Key features include:
 
-    * Graph Tasks - submit tasks with complex interdependence
+    * Python's ``multiprocessing`` module like API - e.g. ``client.map()`` and ``client.submit()``
+    * Graph Tasks - submit DAG tasks with complex interdependence
     * Monitoring Dashboard - monitor utilization of workers and task completion in real time
     * Task Profiling - profile and trace execution of tasks
-    * Logging of Distributed Work - send logs back to the Client from workers (under development)
 
 
 Content
@@ -29,4 +27,4 @@ Content
    tutorials/quickstart
    tutorials/features
    tutorials/configuration
-   tutorials/applications
+   tutorials/examples

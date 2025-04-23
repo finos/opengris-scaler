@@ -105,7 +105,7 @@ Scaler can send objects to the workers. This is useful for sending large objects
 Graph Submission
 ----------------
 
-Some tasks are complex and depend on the output of other tasks. Scaler supports submitting tasks as a graph and will handle executing the dependencies in the correct order and communicating between tasks.
+Some tasks are complex and depend on the output of other tasks. Scaler supports submitting tasks as a  `DAG <https://en.wikipedia.org/wiki/Directed_acyclic_graph>`_ graph and will handle executing the dependencies in the correct order and communicating between tasks.
 
 .. literalinclude:: ../../../examples/graphtask_client.py
    :language: python

@@ -14,17 +14,19 @@ from scaler.cluster.combo import SchedulerClusterCombo
 def main():
     # For an explanation on how SchedulerClusterCombo and Client work, please see simple_client.py
     cluster = SchedulerClusterCombo(n_workers=10)
-    client = Client(address=cluster.get_address())
 
-    # map each integer in [0, 100) through math.sqrt()
-    # the first parameter is the function to call, and the second is a list of argument tuples
-    # (x,) denotes a tuple of length one
-    results = client.map(math.sqrt, [(x,) for x in range(100)])
+    with Client(address=cluster.get_address()) as client:
+        # map each integer in [0, 100) through math.sqrt()
+        # the first parameter is the function to call, and the second is a list of argument tuples
+        # (x,) denotes a tuple of length one
+        results = client.map(math.sqrt, [(x,) for x in range(100)])
 
-    # Collect the results and sums them
-    result = sum(results)
+        # Collect the results and sums them
+        result = sum(results)
 
-    print(result)
+        print(result)
+
+    cluster.shutdown()
 
 
 if __name__ == "__main__":
