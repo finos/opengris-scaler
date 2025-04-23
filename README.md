@@ -11,7 +11,7 @@
 
   <p align="center">
     <a href="https://citi.github.io/scaler/">
-      <img src="https://img.shields.io/badge/read%20our%20documentation-0f1632">
+      <img src="https://img.shields.io/badge/Documentation-0f1632">
     </a>
     <a href="./LICENSE">
         <img src="https://img.shields.io/github/license/citi/scaler?label=license&colorA=0f1632&colorB=255be3">
