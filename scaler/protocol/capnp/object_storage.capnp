@@ -8,8 +8,7 @@ struct ObjectRequestHeader {
     enum ObjectRequestType {
         setObject @0;       # send object to object storage, in the future, we might provide expiration time
         getObject @1;       # get object when it's ready, it will be similar like subscribe
-        getObjectHeader @2; # get object header bytes
-        deleteObject @3;
+        deleteObject @2;
     }
 }
 

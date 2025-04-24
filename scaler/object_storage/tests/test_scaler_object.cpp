@@ -130,17 +130,17 @@ void write_request_header(
     boost::asio::ip::tcp::socket& socket,
     scaler::object_storage::ObjectRequestHeader& header,
     uint64_t payload_length) {
-    capnp::MallocMessageBuilder return_msg;
-    auto resp_root = return_msg.initRoot<::ObjectRequestHeader>();
-    resp_root.setRequestType(header.req_type);
-    resp_root.setPayloadLength(payload_length);
-    auto resp_root_object_id = resp_root.initObjectID();
-    resp_root_object_id.setField0(header.object_id[0]);
-    resp_root_object_id.setField1(header.object_id[1]);
-    resp_root_object_id.setField2(header.object_id[2]);
-    resp_root_object_id.setField3(header.object_id[3]);
+    capnp::MallocMessageBuilder req_msg;
+    auto req_root = req_msg.initRoot<::ObjectRequestHeader>();
+    req_root.setRequestType(header.req_type);
+    req_root.setPayloadLength(payload_length);
+    auto req_root_object_id = req_root.initObjectID();
+    req_root_object_id.setField0(header.object_id[0]);
+    req_root_object_id.setField1(header.object_id[1]);
+    req_root_object_id.setField2(header.object_id[2]);
+    req_root_object_id.setField3(header.object_id[3]);
 
-    auto buf = capnp::messageToFlatArray(return_msg);
+    auto buf = capnp::messageToFlatArray(req_msg);
     boost::asio::write(socket, buffer(buf.asBytes().begin(), buf.asBytes().size()));
 }
 
@@ -235,17 +235,37 @@ TEST(ObjectStorageTestSuite, TestGetObject) {
     EXPECT_EQ(responseHeader.resp_type, resp_type::GET_O_K);
     EXPECT_EQ(std::string(response_payload), std::string(payload));
 
-    requestHeader.req_type = req_type::GET_OBJECT_HEADER;
-    // NOTE: Get the first byte
+    char small_buffer;
+    // Ver. 4 behavior: requested payload get's the first x bytes of the object
     write_request_header(socket, requestHeader, 1);
     read_response_header(socket, responseHeader);
+    boost::asio::read(socket, buffer(&small_buffer, 1));
+
     EXPECT_EQ(responseHeader.object_id, requestHeader.object_id);
     EXPECT_EQ(responseHeader.payload_length, 1);
     EXPECT_EQ(responseHeader.resp_type, resp_type::GET_O_K);
+    EXPECT_EQ(small_buffer, payload[0]);
 
-    response_payload[0] = 'A';  // Just to make sure it's not 'H'
-    boost::asio::read(socket, buffer(response_payload, 1));
-    EXPECT_EQ(response_payload[0], payload[0]);
+    // Request object payload length larger than the length of the object returns the whole object
+    write_request_header(socket, requestHeader, sizeof(payload) * 2);
+    read_response_header(socket, responseHeader);
+    boost::asio::read(socket, buffer(response_payload));
+
+    EXPECT_EQ(responseHeader.object_id, requestHeader.object_id);
+    EXPECT_EQ(responseHeader.payload_length, sizeof(payload));
+    EXPECT_EQ(responseHeader.resp_type, resp_type::GET_O_K);
+    EXPECT_EQ(std::string(response_payload), std::string(payload));
+
+    // Request object with unknown length should use 2^64 - 1
+    write_request_header(socket, requestHeader, -1);
+    read_response_header(socket, responseHeader);
+    boost::asio::read(socket, buffer(response_payload));
+
+    EXPECT_EQ(responseHeader.object_id, requestHeader.object_id);
+    // response will return the correct length
+    EXPECT_EQ(responseHeader.payload_length, sizeof(payload));
+    EXPECT_EQ(responseHeader.resp_type, resp_type::GET_O_K);
+    EXPECT_EQ(std::string(response_payload), std::string(payload));
 
     boost::system::error_code ec;
     auto res = socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
@@ -277,6 +297,50 @@ TEST(ObjectStorageTestSuite, TestDeleteObject) {
     EXPECT_EQ(responseHeader.object_id, requestHeader.object_id);
     EXPECT_EQ(responseHeader.payload_length, 0);
     EXPECT_EQ(responseHeader.resp_type, resp_type::DEL_NOT_EXISTS);
+
+    boost::system::error_code ec;
+    auto res = socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+    (void)res;
+}
+
+TEST(ObjectStorageTestSuite, TestEmptyObject) {
+    boost::asio::io_context io_context;
+    tcp::socket socket(io_context);
+    tcp::resolver resolver(io_context);
+    boost::asio::connect(socket, resolver.resolve("127.0.0.1", "55555"));
+
+    scaler::object_storage::ObjectRequestHeader requestHeader;
+    requestHeader.object_id = {114, 514, 1919, 810};
+    requestHeader.req_type  = req_type::SET_OBJECT;
+    write_request_header(socket, requestHeader, 0);
+
+    scaler::object_storage::ObjectResponseHeader responseHeader;
+    read_response_header(socket, responseHeader);
+
+    EXPECT_EQ(responseHeader.object_id, requestHeader.object_id);
+    EXPECT_EQ(responseHeader.payload_length, 0);
+    EXPECT_EQ(responseHeader.resp_type, resp_type::SET_O_K);
+
+    // Ver. 4 behavior
+    // Get object len with 0 does not halt
+    requestHeader.req_type = req_type::GET_OBJECT;
+    write_request_header(socket, requestHeader, 0);
+    read_response_header(socket, responseHeader);
+    EXPECT_EQ(responseHeader.object_id, requestHeader.object_id);
+    EXPECT_EQ(responseHeader.payload_length, 0);
+    EXPECT_EQ(responseHeader.resp_type, resp_type::GET_O_K);
+
+    // Get object len with bigger object length should return the actual object length
+    write_request_header(socket, requestHeader, 10);
+    read_response_header(socket, responseHeader);
+    EXPECT_EQ(responseHeader.object_id, requestHeader.object_id);
+    EXPECT_EQ(responseHeader.payload_length, 0);
+    EXPECT_EQ(responseHeader.resp_type, resp_type::GET_O_K);
+
+    // Delete the object so we don't fail the second round of test
+    requestHeader.req_type = req_type::DELETE_OBJECT;
+    write_request_header(socket, requestHeader, 10);
+    read_response_header(socket, responseHeader);
 
     boost::system::error_code ec;
     auto res = socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);

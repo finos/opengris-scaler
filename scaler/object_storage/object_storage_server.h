@@ -72,16 +72,8 @@ class ObjectStorageServer {
             case req_type::GET_OBJECT:
                 response_header.resp_type = resp_type::GET_O_K;
                 if (object_id_to_meta[request_header.object_id].object)
-                    response_header.payload_length = object_id_to_meta[request_header.object_id].object->size();
-                else
-                    return false;
-                break;
-
-            case req_type::GET_OBJECT_HEADER:
-                response_header.resp_type = resp_type::GET_O_K;
-                if (object_id_to_meta[request_header.object_id].object)
                     response_header.payload_length = std::min(
-                        request_header.payload_length, object_id_to_meta[request_header.object_id].object->size());
+                        object_id_to_meta[request_header.object_id].object->size(), request_header.payload_length);
                 else
                     return false;
                 break;
@@ -97,11 +89,9 @@ class ObjectStorageServer {
 
     awaitable<void> write_once(meta meta) {
         using type = ::ObjectRequestHeader::ObjectRequestType;
-        if (meta.request_header.req_type == type::GET_OBJECT_HEADER) {
+        if (meta.request_header.req_type == type::GET_OBJECT) {
             meta.response_header.payload_length = std::min(
                 object_id_to_meta[meta.response_header.object_id].object->size(), meta.request_header.payload_length);
-        } else if (meta.request_header.req_type == type::GET_OBJECT) {
-            meta.response_header.payload_length = object_id_to_meta[meta.response_header.object_id].object->size();
         }
 
         auto payload_view = get_memory_view_for_response_payload(meta.response_header);
