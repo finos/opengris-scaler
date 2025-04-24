@@ -21,10 +21,12 @@ enable_testing()
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release")
-  message(STATUS "${PROJECT_NAME} Release build")
+  message(STATUS "${PROJECT_NAME} defaulting to Release build")
+elseif(NOT CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT CMAKE_BUILD_TYPE STREQUAL "Release")
+  message(FATAL_ERROR "${PROJECT_NAME} invalid CMAKE_BUILD_TYPE: '${CMAKE_BUILD_TYPE}'. Must be 'Debug' or 'Release'.")
 else()
-  set(CMAKE_BUILD_TYPE "Debug")
-  message(STATUS "${PROJECT_NAME} Debug build")
+  message(STATUS "${PROJECT_NAME} ${CMAKE_BUILD_TYPE} build")
 endif()
+
 
 add_subdirectory(scaler)

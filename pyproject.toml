@@ -49,7 +49,13 @@ ignore_missing_imports = true
 exclude = [
     "^docs.*$",
     "^benchmark.*$",
-    "^venv.*$"
+    "^venv.*$",
+    "migrations",
+    "__pycache__",
+    "^build.*$",
+    "^capnproto.*$",
+    "^boost.*$",
+    "^scripts.*$"
 ]
 
 [tool.flake8]
@@ -57,7 +63,15 @@ count = true
 statistics = true
 max-line-length = 120
 extend-ignore = ["E203"]
-exclude = "venv312"
+exclude = [
+    "migrations",
+    "__pycache__",
+    "./build",
+    "./capnproto*",
+    "./boost*",
+    "./scripts",
+    "venv*"
+]
 
 [tool.black]
 line-length = 120

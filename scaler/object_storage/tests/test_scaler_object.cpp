@@ -27,7 +27,8 @@ char payload[] = "Hello, world!";
 awaitable<void> async_read_response_header(tcp::socket& socket, scaler::object_storage::ObjectResponseHeader& header) {
     try {
         std::array<uint64_t, CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE> buf;
-        std::size_t n = co_await boost::asio::async_read(socket, boost::asio::buffer(buf.data(), CAPNP_HEADER_SIZE));
+        std::size_t n = co_await boost::asio::async_read(
+            socket, boost::asio::buffer(buf.data(), CAPNP_HEADER_SIZE), boost::asio::use_awaitable);
 
         capnp::FlatArrayMessageReader reader(
             kj::ArrayPtr<const capnp::word>((const capnp::word*)buf.data(), CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE));
@@ -69,7 +70,8 @@ awaitable<void> async_write_request_header(
     resp_root_object_id.setField3(header.object_id[3]);
 
     auto buf = capnp::messageToFlatArray(return_msg);
-    co_await boost::asio::async_write(socket, buffer(buf.asBytes().begin(), buf.asBytes().size()));
+    co_await boost::asio::async_write(
+        socket, buffer(buf.asBytes().begin(), buf.asBytes().size()), boost::asio::use_awaitable);
 }
 
 awaitable<void> testGetObjectByID(tcp::socket socket) {
@@ -85,7 +87,7 @@ awaitable<void> testGetObjectByID(tcp::socket socket) {
     co_await async_read_response_header(socket, response_header);
     EXPECT_EQ(response_header.payload_length, sizeof(payload));
     char buf[sizeof(payload)];
-    co_await boost::asio::async_read(socket, buffer(buf));
+    co_await boost::asio::async_read(socket, buffer(buf), boost::asio::use_awaitable);
     printf("testGetObjectByID finished\n");
 }
 
@@ -98,7 +100,7 @@ awaitable<void> testSetObjectByID(tcp::socket socket) {
     request_header.object_id      = {1, 1, 2, 3};
     request_header.payload_length = sizeof(payload);
     co_await async_write_request_header(socket, request_header, request_header.payload_length);
-    co_await boost::asio::async_write(socket, buffer(payload));
+    co_await boost::asio::async_write(socket, buffer(payload), boost::asio::use_awaitable);
 
     scaler::object_storage::ObjectResponseHeader response_header;
     co_await async_read_response_header(socket, response_header);

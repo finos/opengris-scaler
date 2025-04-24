@@ -11,6 +11,7 @@
 #include <boost/asio/read.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <boost/asio/this_coro.hpp>
+#include <boost/asio/use_awaitable.hpp>
 #include <boost/asio/write.hpp>
 #include <boost/system/system_error.hpp>
 
@@ -28,7 +29,8 @@ namespace object_storage {
 awaitable<void> read_request_header(tcp::socket& socket, ObjectRequestHeader& header) {
     try {
         std::array<uint64_t, CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE> buf;
-        std::size_t n = co_await boost::asio::async_read(socket, boost::asio::buffer(buf.data(), CAPNP_HEADER_SIZE));
+        std::size_t n =
+            co_await boost::asio::async_read(socket, boost::asio::buffer(buf.data(), CAPNP_HEADER_SIZE), use_awaitable);
 
         capnp::FlatArrayMessageReader reader(
             kj::ArrayPtr<const capnp::word>((const capnp::word*)buf.data(), CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE));
@@ -75,7 +77,7 @@ awaitable<void> read_request_payload(tcp::socket& socket, ObjectRequestHeader& h
 
     payload.resize(header.payload_length);
     try {
-        std::size_t n = co_await boost::asio::async_read(socket, boost::asio::buffer(payload));
+        std::size_t n = co_await boost::asio::async_read(socket, boost::asio::buffer(payload), use_awaitable);
     } catch (boost::system::system_error& e) {
         printf("payload ends prematurely, e.what() = %s\n", e.what());
         throw e;
