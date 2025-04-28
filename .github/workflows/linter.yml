@@ -45,7 +45,8 @@ jobs:
           path: /usr/include/boost
           key: ${{ runner.os }}-boost
 
-      - if: ${{ steps.cache-boost.outputs.cache-hit != 'true' }}
+      - name: Install Boost
+        if: steps.cache-boost.outputs.cache-hit != 'true'
         run: |
           sudo chmod 755 ./scripts/download_install_dependencies.sh
           sudo ./scripts/download_install_dependencies.sh boost
@@ -57,7 +58,8 @@ jobs:
           path: /usr/include/capnp
           key: ${{ runner.os }}-capnp
 
-      - if: ${{ steps.cache-capnp.outputs.cache-hit != 'true' }}
+      - name: Install Capnp
+        if: steps.cache-capnp.outputs.cache-hit != 'true'
         run: |
           sudo chmod 755 ./scripts/download_install_dependencies.sh
           sudo ./scripts/download_install_dependencies.sh capnp
