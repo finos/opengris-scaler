@@ -38,32 +38,41 @@ jobs:
           sudo apt install software-properties-common -y
           sudo apt install cmake clang curl pkg-config -y
 
+      - name: Make scripts executable
+        run: |
+          sudo chmod 755 ./scripts/download_install_dependencies.sh
+
       - name: Cache Boost
         id: cache-boost
         uses: actions/cache@v4
         with:
-          path: /usr/include/boost
-          key: ${{ runner.os }}-boost
+          path: boost
+          key: ${{ runner.os }}-cache-boost
 
-      - name: Install Boost
+      - name: Download Boost if not cached
         if: steps.cache-boost.outputs.cache-hit != 'true'
         run: |
-          sudo chmod 755 ./scripts/download_install_dependencies.sh
-          sudo ./scripts/download_install_dependencies.sh boost
+          sudo ./scripts/download_install_dependencies.sh boost compile
+
+      - name: Install Boost
+        run: |
+          sudo ./scripts/download_install_dependencies.sh boost install
 
       - name: Cache Capnp
         id: cache-capnp
         uses: actions/cache@v4
         with:
-          path: /usr/include/capnp
-          key: ${{ runner.os }}-capnp
+          path: capnp
+          key: ${{ runner.os }}-cache-capnp
 
-      - name: Install Capnp
+      - name: Download and Compile capnp is not cached
         if: steps.cache-capnp.outputs.cache-hit != 'true'
         run: |
-          sudo chmod 755 ./scripts/download_install_dependencies.sh
-          sudo ./scripts/download_install_dependencies.sh capnp
+          sudo ./scripts/download_install_dependencies.sh capnp compile
 
+      - name: Install Capnp
+        run: |
+          sudo ./scripts/download_install_dependencies.sh capnp install
 
       - name: Build Object Storage Component
         run: |
