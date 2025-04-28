@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools", "setuptools-scm", "mypy", "black", "flake8", "pyproject-flake8"]
-build-backend = "setuptools.build_meta"
+requires = ["scikit-build-core>=0.5.0", "setuptools-scm", "mypy", "black", "flake8", "pyproject-flake8"]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "scaler"
@@ -16,7 +16,21 @@ classifiers = [
     "Operating System :: OS Independent",
     "Topic :: System :: Distributed Computing",
 ]
-dynamic = ["dependencies", "version"]
+dynamic = ["version"]
+dependencies = [
+    "bidict", 
+    "cloudpickle",
+    "graphlib-backport; python_version < '3.9'",
+    "psutil",
+    "pycapnp",
+    "pyzmq",
+    "tblib",
+]
+
+[tool.scikit-build.metadata.version]
+provider = "scikit_build_core.metadata.regex"
+regex = '(?P<value>\d+\.\d+\.\d+(\.[1-9]\d*)?)'
+input = "./scaler/about.py"
 
 [project.urls]
 Home = "https://github.com/Citi/scaler"
@@ -27,6 +41,7 @@ scaler_cluster = "scaler.entry_points.cluster:main"
 scaler_symphony_cluster = "scaler.entry_points.symphony_cluster:main"
 scaler_top = "scaler.entry_points.top:main"
 scaler_ui = "scaler.entry_points.webui:main"
+scaler_object_storage_server = "scaler.entry_points.object_storage_server:main"
 
 [project.optional-dependencies]
 uvloop = ["uvloop"]
@@ -34,13 +49,9 @@ graphblas = ["python-graphblas", "numpy"]
 gui = ["nicegui[plotly]"]
 all = ["python-graphblas", "numpy", "uvloop", "nicegui[plotly]"]
 
-[tool.setuptools]
-packages = ["scaler"]
-include-package-data = true
-
-[tool.setuptools.dynamic]
-dependencies = { file = "requirements.txt" }
-version = { attr = "scaler.about.__version__" }
+[tool.scikit-build]
+wheel.packages = ["scaler"]
+build.targets=["server"]
 
 [tool.mypy]
 no_strict_optional = true
@@ -77,6 +88,3 @@ exclude = [
 line-length = 120
 skip-magic-trailing-comma = true
 
-[metadata]
-long_description = { file = "README.md" }
-long_description_content_type = "text/markdown"

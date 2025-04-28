@@ -75,7 +75,7 @@ jobs:
           pip install uv
           uv pip install --system --upgrade pip
           uv pip install --system flake8 pyproject-flake8 mypy
-          uv pip install --system -r requirements.txt
+          uv pip install --system -r pyproject.toml
 
       - name: Lint With flake8
         run: |
