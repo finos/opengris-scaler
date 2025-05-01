@@ -34,17 +34,17 @@ awaitable<void> read_request_header(tcp::socket& socket, ObjectRequestHeader& he
 
         capnp::FlatArrayMessageReader reader(
             kj::ArrayPtr<const capnp::word>((const capnp::word*)buf.data(), CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE));
-        auto request_root = reader.getRoot<::ObjectRequestHeader>();
+        auto requestRoot = reader.getRoot<::ObjectRequestHeader>();
 
-        header.req_type       = request_root.getRequestType();
-        header.payload_length = request_root.getPayloadLength();
+        header.reqType       = requestRoot.getRequestType();
+        header.payloadLength = requestRoot.getPayloadLength();
 
-        auto object_id   = request_root.getObjectID();
-        header.object_id = {
-            object_id.getField0(),
-            object_id.getField1(),
-            object_id.getField2(),
-            object_id.getField3(),
+        auto objectID   = requestRoot.getObjectID();
+        header.objectID = {
+            objectID.getField0(),
+            objectID.getField1(),
+            objectID.getField2(),
+            objectID.getField3(),
         };
     } catch (boost::system::system_error& e) {
         // TODO: make this a log, since eof is not really an err.
@@ -59,22 +59,22 @@ awaitable<void> read_request_header(tcp::socket& socket, ObjectRequestHeader& he
 
 awaitable<void> read_request_payload(tcp::socket& socket, ObjectRequestHeader& header, payload_t& payload) {
     using type = ::ObjectRequestHeader::ObjectRequestType;
-    switch (header.req_type) {
+    switch (header.reqType) {
         case type::SET_OBJECT: break;
 
         case type::GET_OBJECT: co_return;
         case type::DELETE_OBJECT:
-        default: header.payload_length = 0; break;
+        default: header.payloadLength = 0; break;
     }
 
-    if (header.payload_length > MEMORY_LIMIT_IN_BYTES) {
+    if (header.payloadLength > MEMORY_LIMIT_IN_BYTES) {
         // Set header object id to null and send back
-        header.object_id      = {0, 0, 0, 0};
-        header.payload_length = 0;
+        header.objectID      = {0, 0, 0, 0};
+        header.payloadLength = 0;
         co_return;
     }
 
-    payload.resize(header.payload_length);
+    payload.resize(header.payloadLength);
     try {
         std::size_t n = co_await boost::asio::async_read(socket, boost::asio::buffer(payload), use_awaitable);
     } catch (boost::system::system_error& e) {
@@ -84,9 +84,9 @@ awaitable<void> read_request_payload(tcp::socket& socket, ObjectRequestHeader& h
 }
 
 boost::asio::awaitable<void> write_response_payload(
-    boost::asio::ip::tcp::socket& socket, std::span<const unsigned char> payload_view) {
+    boost::asio::ip::tcp::socket& socket, std::span<const unsigned char> payloadView) {
     try {
-        co_await async_write(socket, boost::asio::buffer(payload_view.data(), payload_view.size()), use_awaitable);
+        co_await async_write(socket, boost::asio::buffer(payloadView.data(), payloadView.size()), use_awaitable);
     } catch (boost::system::system_error& e) {
         printf("write error e.what() = %s\n", e.what());
         throw e;
@@ -94,18 +94,18 @@ boost::asio::awaitable<void> write_response_payload(
 }
 
 boost::asio::awaitable<void> write_response_header(
-    boost::asio::ip::tcp::socket& socket, ObjectResponseHeader& header, uint64_t payload_length) {
-    capnp::MallocMessageBuilder return_msg;
-    auto resp_root = return_msg.initRoot<::ObjectResponseHeader>();
-    resp_root.setResponseType(header.resp_type);
-    resp_root.setPayloadLength(payload_length);
-    auto resp_root_object_id = resp_root.initObjectID();
-    resp_root_object_id.setField0(header.object_id[0]);
-    resp_root_object_id.setField1(header.object_id[1]);
-    resp_root_object_id.setField2(header.object_id[2]);
-    resp_root_object_id.setField3(header.object_id[3]);
+    boost::asio::ip::tcp::socket& socket, ObjectResponseHeader& header, uint64_t payloadLength) {
+    capnp::MallocMessageBuilder returnMsg;
+    auto respRoot = returnMsg.initRoot<::ObjectResponseHeader>();
+    respRoot.setResponseType(header.respType);
+    respRoot.setPayloadLength(payloadLength);
+    auto respRootObjectID = respRoot.initObjectID();
+    respRootObjectID.setField0(header.objectID[0]);
+    respRootObjectID.setField1(header.objectID[1]);
+    respRootObjectID.setField2(header.objectID[2]);
+    respRootObjectID.setField3(header.objectID[3]);
 
-    auto buf = capnp::messageToFlatArray(return_msg);
+    auto buf = capnp::messageToFlatArray(returnMsg);
     try {
         co_await async_write(socket, boost::asio::buffer(buf.asBytes().begin(), buf.asBytes().size()), use_awaitable);
     } catch (boost::system::system_error& e) {

@@ -76,8 +76,9 @@ jobs:
 
       - name: Build Object Storage Component
         run: |
-          cmake -S . -B build -DCMAKE_CXX_COMPILER=$(which clang++)
+          cmake -S . -B build -DCMAKE_CXX_COMPILER=$(which clang++) -DCMAKE_BUILD_TYPE=Debug
           cd build && make
+          ./scaler/object_storage/tests/test_update_record
 
       - name: Install Python Dependent Packages
         run: |

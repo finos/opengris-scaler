@@ -16,17 +16,17 @@ using shared_object_t = std::shared_ptr<object_t>;
 using payload_t       = std::vector<unsigned char>;
 
 struct ObjectRequestHeader {
-    object_id_t object_id;
-    uint64_t payload_length;
-    ::ObjectRequestHeader::ObjectRequestType req_type;
-    ObjectRequestHeader(): object_id {}, payload_length {}, req_type {} {}
+    object_id_t objectID;
+    uint64_t payloadLength;
+    ::ObjectRequestHeader::ObjectRequestType reqType;
+    ObjectRequestHeader(): objectID {}, payloadLength {}, reqType {} {}
 };
 
 struct ObjectResponseHeader {
-    object_id_t object_id;
-    uint64_t payload_length;
-    ::ObjectResponseHeader::ObjectResponseType resp_type;
-    ObjectResponseHeader(): object_id {}, payload_length {}, resp_type {} {}
+    object_id_t objectID;
+    uint64_t payloadLength;
+    ::ObjectResponseHeader::ObjectResponseType respType;
+    ObjectResponseHeader(): objectID {}, payloadLength {}, respType {} {}
 };
 
 };  // namespace object_storage

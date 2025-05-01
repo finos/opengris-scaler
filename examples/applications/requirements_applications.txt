@@ -7,3 +7,4 @@ grequests
 quart
 prophet
 pillow
+pandas

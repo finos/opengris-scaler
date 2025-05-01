@@ -37,8 +37,25 @@ target_sources(test_scaler_object PRIVATE ${objectStorageSources})
 target_link_libraries(test_scaler_object PRIVATE CapnProto::capnp)
 target_include_directories(test_scaler_object PRIVATE ${CMAKE_BINARY_DIR})
 
+add_executable(
+  test_update_record
+  test_update_record.cpp
+  ../io_helper.cpp
+)
+
+target_link_libraries(
+  test_update_record PRIVATE
+  GTest::gtest_main
+)
+
+target_sources(test_update_record PRIVATE ${objectStorageSources})
+target_link_libraries(test_update_record PRIVATE CapnProto::capnp)
+target_include_directories(test_update_record PRIVATE ${CMAKE_BINARY_DIR})
+
 include(GoogleTest)
 gtest_discover_tests(test_scaler_object)
+
+gtest_discover_tests(test_update_record)
 
 add_executable(test_server_main 
   test_server_main.cpp

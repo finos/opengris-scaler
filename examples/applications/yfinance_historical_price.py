@@ -9,11 +9,12 @@ Usage:
 """
 
 import datetime
+import os
 from typing import Optional
 
+import pandas as pd
 import psutil
 import yfinance as yf
-
 from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
@@ -37,20 +38,35 @@ def get_option_history_data(contract_symbol, days_before_expiration: int = 30):
 
 
 def get_option_close_prices_with_strike(strike):
-    stock_symbol = "AAPL"
-    expiration_date = None  # User may wish to specify expiration_date
-    days_before_expiration = 30
-    option_type = "call"
+    # from yfinance.base import YFRateLimitError
+    # stock_symbol = "AAPL"
+    # expiration_date = None  # User may wish to specify expiration_date
+    # days_before_expiration = 30
+    # option_type = "call"
 
-    res = []
-    option_data = get_option_data(stock_symbol, expiration_date, option_type, strike)
-    for _, od in option_data.iterrows():
-        contract_symbol = od["contractSymbol"]
-        option_history = get_option_history_data(contract_symbol, days_before_expiration)
-        first_option_history = option_history.iloc[0]
-        first_option_history_date = option_history.index[0]
-        first_option_history_close = first_option_history["Close"]
-        res.append((contract_symbol, first_option_history_close, first_option_history_date))
+    # res = []
+    # try:
+    #     option_data = get_option_data(stock_symbol, expiration_date, option_type, strike)
+    #     for _, od in option_data.iterrows():
+    #         contract_symbol = od["contractSymbol"]
+    #         option_history = get_option_history_data(contract_symbol, days_before_expiration)
+    #         first_option_history = option_history.iloc[0]
+    #         first_option_history_date = option_history.index[0]
+    #         first_option_history_close = first_option_history["Close"]
+    #         res.append((contract_symbol, first_option_history_close, first_option_history_date))
+    # except YFRateLimitError:
+    #     print("Early return due to requesting too many requests.")
+    # return res
+
+    # NOTE: Here, we are mocking data that we will be receiving, and pass them back. This is to avoid creating network
+    # traffic to a third party. If you wish to get data from Yahoo, comment out below section, and uncomment everything
+    # that's above.
+    df = pd.read_csv(os.path.join(os.path.dirname(__file__), "downloaded_data.csv"))
+    mock_data = [(row["contractSymbol"], float(row["close"]), pd.to_datetime(row["date"])) for _, row in df.iterrows()]
+
+    if strike % 5 != 0:
+        return []
+    res = [mock_data[(strike - 170) // 5]]
     return res
 
 
@@ -60,7 +76,7 @@ def main():
         n_workers = 4
 
     strike_start = 170
-    strike_end = 250
+    strike_end = 240
 
     cluster = SchedulerClusterCombo(n_workers=n_workers)
 
