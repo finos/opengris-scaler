@@ -5,7 +5,7 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/read.hpp>
 
-#include "defs.h"
+#include "scaler/object_storage/defs.h"
 
 namespace scaler {
 namespace object_storage {

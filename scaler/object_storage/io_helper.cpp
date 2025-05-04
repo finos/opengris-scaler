@@ -15,9 +15,9 @@
 #include <boost/asio/write.hpp>
 #include <boost/system/system_error.hpp>
 
-#include "constants.h"
-#include "defs.h"
 #include "protocol/object_storage.capnp.h"
+#include "scaler/object_storage/constants.h"
+#include "scaler/object_storage/defs.h"
 
 using boost::asio::awaitable;
 using boost::asio::use_awaitable;

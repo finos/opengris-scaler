@@ -5,6 +5,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+set(BUILD_SHARED_LIBS ON CACHE BOOL "Build shared libraries")
 
 if(NOT SKBUILD_PROJECT_NAME)
   set(SKBUILD_PROJECT_NAME "scaler")
@@ -36,5 +37,15 @@ else()
   message(STATUS "${PROJECT_NAME} ${CMAKE_BUILD_TYPE} build")
 endif()
 
+find_package(CapnProto CONFIG REQUIRED)
+get_target_property(CAPNP_INCLUDE_DIRS CapnProto::capnp INTERFACE_INCLUDE_DIRECTORIES)
+message(STATUS "Found Capnp in ${CAPNP_INCLUDE_DIRS}")
+# Make LSP happy
+include_directories(${CAPNP_INCLUDE_DIRS})
+include_directories(${PROJECT_SOURCE_DIR})
 
 add_subdirectory(scaler)
+
+if(NOT SKBUILD_STATE)
+  add_subdirectory(tests)
+endif()

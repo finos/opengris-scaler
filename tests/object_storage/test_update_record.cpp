@@ -1,11 +1,7 @@
-
-#include <capnp/message.h>
-#include <capnp/serialize.h>
 #include <gtest/gtest.h>
 
-#include "../defs.h"
-#include "../object_storage_server.h"
-#include "protocol/object_storage.capnp.h"
+#include "scaler/object_storage/defs.h"
+#include "scaler/object_storage/object_storage_server.h"
 
 using reqType  = ObjectRequestHeader::ObjectRequestType;
 using respType = ObjectResponseHeader::ObjectResponseType;

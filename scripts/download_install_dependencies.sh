@@ -14,8 +14,8 @@ if [ "$1" == "boost" ]; then
 		tar -xzf ${BOOST_PACKAGE_NAME}
 		mv ${BOOST_FOLDER_NAME} boost
 	elif [ "$2" == "install" ]; then
-		sudo cp -r boost/boost /usr/include/.
-		echo "Installed Boost into /usr/include/boost"
+		sudo cp -r boost/boost /usr/local/include/.
+		echo "Installed Boost into /usr/local/include/boost"
 	else 
 		echo "Argument needs to be either compile or install"
 		exit 1
@@ -29,12 +29,12 @@ elif [ "$1" == "capnp" ]; then
 		tar -xzf ${CAPNP_PACKAGE_NAME}
 		mv ${CAPNP_FOLDER_NAME} capnp
 		cd capnp
-		./configure --prefix=/usr/
+		./configure --prefix=/usr/local/
 		make -j6 check
 	elif [ "$2" == "install" ]; then
 		cd capnp
 		sudo make install
-		echo "Installed capnp into /usr"
+		echo "Installed capnp into /usr/local"
 	else 
 		echo "Argument needs to be either compile or install"
 		exit 1

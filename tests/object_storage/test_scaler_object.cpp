@@ -9,10 +9,13 @@
 #include <boost/asio/use_awaitable.hpp>
 #include <boost/asio/write.hpp>
 #include <boost/asio/write_at.hpp>
+#include <chrono>
+#include <thread>
 
-#include "../constants.h"
-#include "../defs.h"
 #include "protocol/object_storage.capnp.h"
+#include "scaler/object_storage/constants.h"
+#include "scaler/object_storage/defs.h"
+#include "scaler/object_storage/server.h"
 
 using boost::asio::buffer;
 using boost::asio::ip::tcp;
@@ -21,6 +24,21 @@ using resp_type = ObjectResponseHeader::ObjectResponseType;
 using boost::asio::awaitable;
 using scaler::object_storage::CAPNP_HEADER_SIZE;
 using scaler::object_storage::CAPNP_WORD_SIZE;
+
+class ServerClientTest: public ::testing::Test {
+protected:
+    static void SetUpTestSuite() {
+        static std::once_flag server_started;
+        std::call_once(server_started, []() {
+            std::thread([] { run_object_storage_server("127.0.0.1", "55555"); }).detach();
+            std::this_thread::sleep_for(std::chrono::seconds(1));  // Allow server to start
+        });
+    }
+
+    static void TearDownTestSuite() {
+        // No shutdown — server runs until process exits
+    }
+};
 
 char payload[] = "Hello, world!";
 
@@ -108,7 +126,7 @@ awaitable<void> testSetObjectByID(tcp::socket socket) {
     printf("testSetObjectByID finished\n");
 }
 
-TEST(ObjectStorageTestSuite, TestHalt) {
+TEST_F(ServerClientTest, TestHalt) {
     boost::asio::io_context io_context;
     tcp::socket socket(io_context);
     tcp::socket socket2(io_context);
@@ -178,7 +196,7 @@ void write_payload(boost::asio::ip::tcp::socket& socket) {
     boost::asio::write(socket, buffer(payload));
 }
 
-TEST(ObjectStorageTestSuite, TestSetObject) {
+TEST_F(ServerClientTest, TestSetObject) {
     boost::asio::io_context io_context;
     tcp::socket socket(io_context);
     tcp::resolver resolver(io_context);
@@ -211,7 +229,7 @@ TEST(ObjectStorageTestSuite, TestSetObject) {
     (void)res;
 }
 
-TEST(ObjectStorageTestSuite, TestGetObject) {
+TEST_F(ServerClientTest, TestGetObject) {
     boost::asio::io_context io_context;
     tcp::socket socket(io_context);
     tcp::resolver resolver(io_context);
@@ -272,7 +290,7 @@ TEST(ObjectStorageTestSuite, TestGetObject) {
     (void)res;
 }
 
-TEST(ObjectStorageTestSuite, TestDeleteObject) {
+TEST_F(ServerClientTest, TestDeleteObject) {
     boost::asio::io_context io_context;
     tcp::socket socket(io_context);
     tcp::resolver resolver(io_context);
@@ -303,7 +321,7 @@ TEST(ObjectStorageTestSuite, TestDeleteObject) {
     (void)res;
 }
 
-TEST(ObjectStorageTestSuite, TestEmptyObject) {
+TEST_F(ServerClientTest, TestEmptyObject) {
     boost::asio::io_context io_context;
     tcp::socket socket(io_context);
     tcp::resolver resolver(io_context);

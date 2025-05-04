@@ -35,7 +35,7 @@ jobs:
           sudo apt upgrade -y
           sudo DEBIAN_FRONTEND=noninteractive sudo apt install -y tzdata
           # DEBIAN_FRONTEND=noninteractive apt install -y tzdata
-          sudo apt install software-properties-common -y
+          # sudo apt install software-properties-common -y
           sudo apt install cmake clang curl pkg-config -y
 
       - name: Make scripts executable
@@ -65,7 +65,7 @@ jobs:
           path: capnp
           key: ${{ runner.os }}-cache-capnp
 
-      - name: Download and Compile capnp is not cached
+      - name: Download and Compile capnp if not cached
         if: steps.cache-capnp.outputs.cache-hit != 'true'
         run: |
           sudo ./scripts/download_install_dependencies.sh capnp compile
@@ -78,7 +78,7 @@ jobs:
         run: |
           cmake -S . -B build -DCMAKE_CXX_COMPILER=$(which clang++) -DCMAKE_BUILD_TYPE=Debug
           cd build && make
-          ./scaler/object_storage/tests/test_update_record
+          ctest
 
       - name: Install Python Dependent Packages
         run: |

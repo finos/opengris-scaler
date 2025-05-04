@@ -20,10 +20,3 @@ target_include_directories(server PRIVATE ${CMAKE_BINARY_DIR})
 
 install(TARGETS server
         LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/scaler/lib)
-message(STATUS ${CMAKE_SOURCE_DIR}/scaler/lib)
-
-# Build tests only when triggering manually for now. Later we change
-# when we have proper unit tests
-if(NOT SKBUILD_STATE)
-  add_subdirectory(tests)
-endif()
