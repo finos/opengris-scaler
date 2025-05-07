@@ -15,6 +15,7 @@
 #include "protocol/object_storage.capnp.h"
 #include "scaler/object_storage/constants.h"
 #include "scaler/object_storage/defs.h"
+#include "scaler/object_storage/io_helper.h"
 #include "scaler/object_storage/server.h"
 
 using boost::asio::buffer;
@@ -152,6 +153,7 @@ void write_request_header(
     auto req_root = req_msg.initRoot<::ObjectRequestHeader>();
     req_root.setRequestType(header.reqType);
     req_root.setPayloadLength(payload_length);
+    req_root.setRequestID(header.requestID);
     auto req_root_object_id = req_root.initObjectID();
     req_root_object_id.setField0(header.objectID[0]);
     req_root_object_id.setField1(header.objectID[1]);
@@ -173,6 +175,7 @@ void read_response_header(tcp::socket& socket, scaler::object_storage::ObjectRes
 
         header.respType      = request_root.getResponseType();
         header.payloadLength = request_root.getPayloadLength();
+        header.responseID    = request_root.getResponseID();
 
         auto object_id  = request_root.getObjectID();
         header.objectID = {
@@ -359,6 +362,46 @@ TEST_F(ServerClientTest, TestEmptyObject) {
     requestHeader.reqType = req_type::DELETE_OBJECT;
     write_request_header(socket, requestHeader, 10);
     read_response_header(socket, responseHeader);
+
+    boost::system::error_code ec;
+    auto res = socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+    (void)res;
+}
+
+TEST_F(ServerClientTest, TestRequestBlocking) {
+    boost::asio::io_context io_context;
+    tcp::socket socket(io_context);
+    tcp::resolver resolver(io_context);
+    boost::asio::connect(socket, resolver.resolve("127.0.0.1", "55555"));
+
+    scaler::object_storage::ObjectRequestHeader requestHeader;
+    requestHeader.objectID  = {0xdead, 0xbeef, 0xdead, 0xbeef};
+    requestHeader.requestID = 42;
+    requestHeader.reqType   = req_type::GET_OBJECT;
+    write_request_header(socket, requestHeader, sizeof(payload));
+
+    requestHeader.requestID = 43;
+    requestHeader.reqType   = req_type::SET_OBJECT;
+    write_request_header(socket, requestHeader, sizeof(payload));
+    write_payload(socket);
+
+    scaler::object_storage::ObjectResponseHeader responseHeader;
+    read_response_header(socket, responseHeader);
+
+    char buf[sizeof(payload)] {};
+
+    if (responseHeader.responseID == 42) {
+        boost::asio::read(socket, buffer(buf));
+        EXPECT_EQ(responseHeader.objectID, requestHeader.objectID);
+        EXPECT_EQ(std::string(buf), std::string(payload));
+        read_response_header(socket, responseHeader);
+        EXPECT_EQ(responseHeader.responseID, 43);
+    } else if (responseHeader.responseID == 43) {
+        read_response_header(socket, responseHeader);
+        EXPECT_EQ(responseHeader.responseID, 42);
+        boost::asio::read(socket, buffer(buf));
+        EXPECT_EQ(std::string(buf), std::string(payload));
+    }
 
     boost::system::error_code ec;
     auto res = socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);

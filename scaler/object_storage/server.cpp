@@ -9,15 +9,12 @@
 #include <boost/asio/read.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <boost/asio/this_coro.hpp>
+#include <boost/asio/use_awaitable.hpp>
 #include <boost/system/system_error.hpp>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <string>
 
-#include "constants.h"
 #include "object_storage_server.h"
-#include "version.h"
 
 // Helper macros to stringify the macro value
 #define STRINGIFY_HELPER(x) #x
@@ -40,12 +37,14 @@ awaitable<void> listener(boost::asio::ip::tcp::endpoint endpoint) {
     auto executor = co_await this_coro::executor;
     tcp::acceptor acceptor(executor, endpoint);
     for (;;) {
-        tcp::socket socket = co_await acceptor.async_accept(use_awaitable);
-        co_spawn(executor, server.process_request(std::move(socket)), detached);
+        auto shared_socket = std::make_shared<tcp::socket>(executor);
+        co_await acceptor.async_accept(*shared_socket, use_awaitable);
+        co_spawn(executor, server.process_request(std::move(shared_socket)), detached);
     }
 }
 
 // Assuming name_ and port_ is valid name and port
+// TODO: In the future we might need to add expiration date for closing connections
 void run_object_storage_server(const char* name_, const char* port_) {
     std::string name = name_;
     std::string port = port_;
@@ -61,5 +60,8 @@ void run_object_storage_server(const char* name_, const char* port_) {
         co_spawn(io_context, listener(res.begin()->endpoint()), detached);
 
         io_context.run();
-    } catch (std::exception& e) { std::printf("Exception: %s\n", e.what()); }
+    } catch (std::exception& e) {
+        std::printf("Exception: %s\n", e.what());
+        std::printf("Mostly something serious happen, inspect capnp header correuption\n");
+    }
 }

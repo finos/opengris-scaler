@@ -3,7 +3,8 @@
 struct ObjectRequestHeader {
     objectID @0: ObjectID; # 32 bytes
     payloadLength @1: UInt64; # 8 bytes
-    requestType @2: ObjectRequestType; # 2 bytes
+    requestID @2: UInt64; # 8 bytes
+    requestType @3: ObjectRequestType; # 2 bytes
 
     enum ObjectRequestType {
         setObject @0;       # send object to object storage, in the future, we might provide expiration time
@@ -22,7 +23,8 @@ struct ObjectID {
 struct ObjectResponseHeader {
     objectID @0: ObjectID;
     payloadLength @1: UInt64;
-    responseType @2: ObjectResponseType;
+    responseID @2: UInt64; # 8 bytes
+    responseType @3: ObjectResponseType;
 
     enum ObjectResponseType {
         setOK @0;

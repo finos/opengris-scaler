@@ -6,6 +6,7 @@
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
+#include <boost/asio/error.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/read.hpp>
@@ -14,6 +15,8 @@
 #include <boost/asio/use_awaitable.hpp>
 #include <boost/asio/write.hpp>
 #include <boost/system/system_error.hpp>
+#include <exception>
+#include <iostream>
 
 #include "protocol/object_storage.capnp.h"
 #include "scaler/object_storage/constants.h"
@@ -38,6 +41,7 @@ awaitable<void> read_request_header(tcp::socket& socket, ObjectRequestHeader& he
 
         header.reqType       = requestRoot.getRequestType();
         header.payloadLength = requestRoot.getPayloadLength();
+        header.requestID     = requestRoot.getRequestID();
 
         auto objectID   = requestRoot.getObjectID();
         header.objectID = {
@@ -48,11 +52,16 @@ awaitable<void> read_request_header(tcp::socket& socket, ObjectRequestHeader& he
         };
     } catch (boost::system::system_error& e) {
         // TODO: make this a log, since eof is not really an err.
-        printf("exception throwned, read error e.what() = %s\n", e.what());
+        if (e.code() == boost::asio::error::eof) {
+            std::cerr << "Remote end closed, nothing to read.\n";
+        } else {
+            std::cerr << "exception throwned, read error e.what() = " << e.what() << '\n';
+        }
         throw e;
     } catch (std::exception& e) {
         // TODO: make this a log, capnp header corruption is an err.
-        printf("exception throwned, header not a capnp e.what() = %s\n", e.what());
+        std::cerr << "exception throwned, header not a capnp e.what() = " << e.what() << '\n';
+
         throw e;
     }
 }
@@ -78,8 +87,9 @@ awaitable<void> read_request_payload(tcp::socket& socket, ObjectRequestHeader& h
     try {
         std::size_t n = co_await boost::asio::async_read(socket, boost::asio::buffer(payload), use_awaitable);
     } catch (boost::system::system_error& e) {
-        printf("payload ends prematurely, e.what() = %s\n", e.what());
-        throw e;
+        std::cerr << "payload ends prematurely, e.what() = " << e.what() << '\n';
+        std::cerr << "Failing fast. Terminting now...\n";
+        std::terminate();
     }
 }
 
@@ -88,7 +98,15 @@ boost::asio::awaitable<void> write_response_payload(
     try {
         co_await async_write(socket, boost::asio::buffer(payloadView.data(), payloadView.size()), use_awaitable);
     } catch (boost::system::system_error& e) {
-        printf("write error e.what() = %s\n", e.what());
+        if (e.code() == boost::asio::error::broken_pipe) {
+            std::cerr << "Remote end closed, nothing to write.\n";
+            std::cerr << "This should never happen as the client is expected "
+                      << "to get every and all response. Terminating now...\n";
+
+            std::terminate();
+        } else {
+            std::cerr << "write error e.what() = " << e.what() << '\n';
+        }
         throw e;
     }
 }
@@ -99,6 +117,7 @@ boost::asio::awaitable<void> write_response_header(
     auto respRoot = returnMsg.initRoot<::ObjectResponseHeader>();
     respRoot.setResponseType(header.respType);
     respRoot.setPayloadLength(payloadLength);
+    respRoot.setResponseID(header.responseID);
     auto respRootObjectID = respRoot.initObjectID();
     respRootObjectID.setField0(header.objectID[0]);
     respRootObjectID.setField1(header.objectID[1]);
@@ -109,7 +128,15 @@ boost::asio::awaitable<void> write_response_header(
     try {
         co_await async_write(socket, boost::asio::buffer(buf.asBytes().begin(), buf.asBytes().size()), use_awaitable);
     } catch (boost::system::system_error& e) {
-        printf("write error e.what() = %s\n", e.what());
+        // TODO: Log support
+        if (e.code() == boost::asio::error::broken_pipe) {
+            std::cerr << "Remote end closed, nothing to write.\n";
+            std::cerr << "This should never happen as the client is expected "
+                      << "to get every and all response. Terminating now...\n";
+            std::terminate();
+        } else {
+            std::cerr << "write error e.what() = " << e.what() << '\n';
+        }
         throw e;
     }
 }
