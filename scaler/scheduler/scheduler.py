@@ -40,11 +40,11 @@ class Scheduler:
                 f"{self.__class__.__name__}: scheduler address must be tcp type: {config.address.to_address()}"
             )
 
-        self._address_monitor = ZMQConfig(
-            type=ZMQType.ipc, host=f"/tmp/{config.address.host}_{config.address.port}_monitor"
-        )
+        if config.monitor_address is None:
+            self._address_monitor = ZMQConfig(type=ZMQType.tcp, host=config.address.host, port=config.address.port + 2)
+        else:
+            self._address_monitor = config.monitor_address
 
-        logging.info(f"{self.__class__.__name__}: monitor address is {self._address_monitor.to_address()}")
         self._context = zmq.asyncio.Context(io_threads=config.io_threads)
         self._binder = AsyncBinder(context=self._context, name="scheduler", address=config.address)
         self._binder_monitor = AsyncConnector(
@@ -56,6 +56,12 @@ class Scheduler:
             callback=None,
             identity=None,
         )
+
+        logging.info(f"{self.__class__.__name__}: listen to scheduler address {config.address.to_address()}")
+        logging.info(
+            f"{self.__class__.__name__}: listen to scheduler monitor address {self._address_monitor.to_address()}"
+        )
+
         self._client_manager = VanillaClientManager(
             client_timeout_seconds=config.client_timeout_seconds, protected=config.protected
         )

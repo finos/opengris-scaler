@@ -29,6 +29,7 @@ class SchedulerClusterCombo:
         self,
         n_workers: int,
         address: Optional[str] = None,
+        monitor_address: Optional[str] = None,
         worker_io_threads: int = DEFAULT_IO_THREADS,
         scheduler_io_threads: int = DEFAULT_IO_THREADS,
         max_number_of_tasks_waiting: int = DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
@@ -55,6 +56,11 @@ class SchedulerClusterCombo:
         else:
             self._address = ZMQConfig.from_string(address)
 
+        if monitor_address is None:
+            self._monitor_address = None
+        else:
+            self._monitor_address = ZMQConfig.from_string(monitor_address)
+
         self._cluster = Cluster(
             address=self._address,
             worker_io_threads=worker_io_threads,
@@ -72,6 +78,7 @@ class SchedulerClusterCombo:
         )
         self._scheduler = SchedulerProcess(
             address=self._address,
+            monitor_address=self._monitor_address,
             io_threads=scheduler_io_threads,
             max_number_of_tasks_waiting=max_number_of_tasks_waiting,
             per_worker_queue_size=per_worker_queue_size,

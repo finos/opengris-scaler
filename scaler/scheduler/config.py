@@ -1,4 +1,5 @@
 import dataclasses
+from typing import Optional
 
 from scaler.utility.zmq_config import ZMQConfig
 
@@ -7,6 +8,7 @@ from scaler.utility.zmq_config import ZMQConfig
 class SchedulerConfig:
     event_loop: str
     address: ZMQConfig
+    monitor_address: Optional[ZMQConfig]
     io_threads: int
     max_number_of_tasks_waiting: int
     per_worker_queue_size: int

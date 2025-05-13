@@ -102,6 +102,15 @@ def get_args():
         help="use standard python the .conf file the specify python logging file configuration format, this will "
         "bypass --logging-path",
     )
+    parser.add_argument(
+        "--monitor-address",
+        "-ma",
+        type=ZMQConfig.from_string,
+        default=None,
+        help="specify monitoring address, if not specified, the monitoring address is scheduler address with port "
+        "number plus 2, e.g.: if scheduler address is tcp://localhost:2345, then monitoring address is "
+        "tcp://localhost:2347",
+    )
     parser.add_argument("address", type=ZMQConfig.from_string, help="scheduler address to connect to")
     return parser.parse_args()
 
@@ -113,6 +122,7 @@ def main():
     scheduler_config = SchedulerConfig(
         event_loop=args.event_loop,
         address=args.address,
+        monitor_address=args.monitor_address,
         io_threads=args.io_threads,
         max_number_of_tasks_waiting=args.max_number_of_tasks_waiting,
         per_worker_queue_size=args.per_worker_queue_size,
