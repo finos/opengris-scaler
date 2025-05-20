@@ -79,6 +79,7 @@ def start_webui(address: str, host: str, port: int):
 
     ui_thread = threading.Thread(target=partial(ui.run, host=host, port=port, reload=False), daemon=False)
     ui_thread.start()
+    ui_thread.join()
 
 
 def __show_status(status: Message, tables: Sections):
