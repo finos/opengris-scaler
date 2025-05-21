@@ -28,9 +28,8 @@ struct ObjectResponseHeader {
 
     enum ObjectResponseType {
         setOK @0;
-        setOKOverride @1;
-        getOK @2;             # if object not exists, it will hang
-        delOK @3;
-        delNotExists @4;
+        getOK @1;             # if object not exists, it will hang
+        delOK @2;
+        delNotExists @3;
     }
 }

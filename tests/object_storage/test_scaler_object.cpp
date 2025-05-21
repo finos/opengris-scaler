@@ -225,7 +225,6 @@ TEST_F(ServerClientTest, TestSetObject) {
     read_response_header(socket, responseHeader);
     EXPECT_EQ(responseHeader.objectID, requestHeader.objectID);
     EXPECT_EQ(responseHeader.payloadLength, 0);
-    EXPECT_EQ(responseHeader.respType, resp_type::SET_O_K_OVERRIDE);
 
     boost::system::error_code ec;
     auto res = socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);

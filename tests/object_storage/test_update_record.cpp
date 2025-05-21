@@ -22,10 +22,11 @@ TEST(ObjectStorageTestSuite, TestSetObject) {
     EXPECT_EQ(responseHeader.payloadLength, 0);
     EXPECT_EQ(responseHeader.respType, respType::SET_O_K);
 
+    requestHeader.objectID = {3, 2, 1, 0};
     server.updateRecord(requestHeader, responseHeader, payload_vec);
     EXPECT_EQ(responseHeader.objectID, requestHeader.objectID);
     EXPECT_EQ(responseHeader.payloadLength, 0);
-    EXPECT_EQ(responseHeader.respType, respType::SET_O_K_OVERRIDE);
+    EXPECT_EQ(server.objectHashToObject.size(), 1);
 }
 
 TEST(ObjectStorageTestSuite, TestGetObjectWithObjectPresence) {
@@ -102,4 +103,43 @@ TEST(ObjectStorageTestSuite, TestEmptyObject) {
     EXPECT_EQ(responseHeader.objectID, requestHeader.objectID);
     EXPECT_EQ(responseHeader.payloadLength, 0);
     EXPECT_EQ(responseHeader.respType, respType::GET_O_K);
+}
+
+TEST(ObjectStorageTestSuite, ReferenceCountObject) {
+    scaler::object_storage::ObjectStorageServer server;
+    scaler::object_storage::ObjectRequestHeader requestHeader;
+
+    std::string localPayload = "Goodbye, world!";
+
+    requestHeader.objectID      = {11, 0, 0, 0};
+    requestHeader.payloadLength = localPayload.size();
+    requestHeader.reqType       = reqType::SET_OBJECT;
+    scaler::object_storage::ObjectResponseHeader responseHeader;
+    std::vector<unsigned char> payload_vec(localPayload.begin(), localPayload.end());
+
+    server.updateRecord(requestHeader, responseHeader, payload_vec);
+    EXPECT_EQ(responseHeader.objectID, requestHeader.objectID);
+    EXPECT_EQ(responseHeader.payloadLength, 0);
+    EXPECT_EQ(responseHeader.respType, respType::SET_O_K);
+
+    requestHeader.objectID = {12, 0, 0, 0};
+    server.updateRecord(requestHeader, responseHeader, payload_vec);
+    EXPECT_EQ(responseHeader.objectID, requestHeader.objectID);
+    EXPECT_EQ(responseHeader.payloadLength, 0);
+    EXPECT_EQ(server.objectHashToObject.size(), 1);
+    EXPECT_EQ(responseHeader.respType, respType::SET_O_K);
+
+    requestHeader.reqType = reqType::DELETE_OBJECT;
+    server.updateRecord(requestHeader, responseHeader, payload_vec);
+    EXPECT_EQ(responseHeader.objectID, requestHeader.objectID);
+    EXPECT_EQ(responseHeader.payloadLength, 0);
+    EXPECT_EQ(responseHeader.respType, respType::DEL_O_K);
+    EXPECT_EQ(server.objectHashToObject.size(), 1);
+
+    requestHeader.objectID = {11, 0, 0, 0};
+    server.updateRecord(requestHeader, responseHeader, payload_vec);
+    EXPECT_EQ(responseHeader.objectID, requestHeader.objectID);
+    EXPECT_EQ(responseHeader.payloadLength, 0);
+    EXPECT_EQ(responseHeader.respType, respType::DEL_O_K);
+    EXPECT_EQ(server.objectHashToObject.size(), 0);
 }

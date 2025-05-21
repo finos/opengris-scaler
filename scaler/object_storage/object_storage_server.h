@@ -13,6 +13,13 @@
 #include "io_helper.h"
 #include "protocol/object_storage.capnp.h"
 
+template <>
+struct std::hash<scaler::object_storage::object_t> {
+    std::size_t operator()(const scaler::object_storage::object_t& x) const noexcept {
+        return std::hash<std::string_view> {}({reinterpret_cast<const char*>(x.data()), x.size()});
+    }
+};
+
 namespace scaler {
 namespace object_storage {
 
@@ -42,7 +49,6 @@ class ObjectStorageServer {
         switch (header.respType) {
             case respType::GET_O_K: return {objectIDToMeta[header.objectID].object->data(), header.payloadLength};
             case respType::SET_O_K:
-            case respType::SET_O_K_OVERRIDE:
             case respType::DEL_O_K:
             case respType::DEL_NOT_EXISTS:
             default: break;
@@ -60,14 +66,19 @@ public:
         responseHeader.objectID   = requestHeader.objectID;
         responseHeader.responseID = requestHeader.requestID;
         switch (requestHeader.reqType) {
-            case reqType::SET_OBJECT:
-                responseHeader.respType =
-                    objectIDToMeta[requestHeader.objectID].object ? respType::SET_O_K_OVERRIDE : respType::SET_O_K;
-                objectIDToMeta[requestHeader.objectID].object =
-                    std::make_shared<scaler::object_storage::object_t>(std::move(payload));
-                break;
+            case reqType::SET_OBJECT: {
+                auto objectHash = std::hash<object_t> {}(payload);
+                if (!objectHashToObject.contains(objectHash)) {
+                    objectHashToObject[objectHash] =
+                        std::make_shared<scaler::object_storage::object_t>(std::move(payload));
+                }
+                responseHeader.respType                       = respType::SET_O_K;
+                objectIDToMeta[requestHeader.objectID].object = objectHashToObject[objectHash];
 
-            case reqType::GET_OBJECT:
+                break;
+            }
+
+            case reqType::GET_OBJECT: {
                 responseHeader.respType = respType::GET_O_K;
                 if (objectIDToMeta[requestHeader.objectID].object)
                     responseHeader.payloadLength =
@@ -75,12 +86,18 @@ public:
                 else
                     return false;
                 break;
+            }
 
-            case reqType::DELETE_OBJECT:
+            case reqType::DELETE_OBJECT: {
                 responseHeader.respType =
                     objectIDToMeta[requestHeader.objectID].object ? respType::DEL_O_K : respType::DEL_NOT_EXISTS;
+                auto sharedObject = objectIDToMeta[requestHeader.objectID].object;
                 objectIDToMeta.erase(requestHeader.objectID);
+                if (sharedObject.use_count() == 2) {
+                    objectHashToObject.erase(std::hash<object_t> {}(*sharedObject));
+                }
                 break;
+            }
         }
         return true;
     }
@@ -115,6 +132,7 @@ private:
 public:
 #endif
     std::map<scaler::object_storage::object_id_t, ObjectWithMeta> objectIDToMeta;
+    std::map<std::size_t, shared_object_t> objectHashToObject;
 
 public:
     awaitable<void> process_request(std::shared_ptr<tcp::socket> socket) {
