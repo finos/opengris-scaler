@@ -5,7 +5,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "scaler"
 description = "Scaler Distribution Framework"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { text = "Apache 2.0" }
 authors = [{ name = "Citi", email = "opensource@citi.com" }]
@@ -21,8 +21,8 @@ dependencies = [
     "bidict", 
     "cloudpickle",
     "graphlib-backport; python_version < '3.9'",
-    "psutil",
-    "pycapnp",
+    "psutil==7.0.0",
+    "pycapnp==2.0.0",
     "pyzmq",
     "tblib",
 ]
@@ -45,9 +45,9 @@ scaler_object_storage_server = "scaler.entry_points.object_storage_server:main"
 
 [project.optional-dependencies]
 uvloop = ["uvloop"]
-graphblas = ["python-graphblas", "numpy"]
-gui = ["nicegui[plotly]"]
-all = ["python-graphblas", "numpy", "uvloop", "nicegui[plotly]"]
+graphblas = ["python-graphblas", "numpy==2.2.5"]
+gui = ["nicegui[plotly]==2.14.1"]
+all = ["python-graphblas", "numpy==2.2.5", "uvloop", "nicegui[plotly]==2.14.1"]
 
 [tool.scikit-build]
 wheel.packages = ["scaler"]
