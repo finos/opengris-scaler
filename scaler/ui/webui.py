@@ -7,6 +7,12 @@ from nicegui import ui
 from scaler.io.sync_subscriber import SyncSubscriber
 from scaler.protocol.python.message import StateScheduler, StateTask
 from scaler.protocol.python.mixins import Message
+from scaler.ui.constants import (
+    MEMORY_USAGE_UPDATE_INTERVAL,
+    TASK_LOG_REFRESH_INTERVAL,
+    TASK_STREAM_UPDATE_INTERVAL,
+    WORKER_PROCESSORS_REFRESH_INTERVAL,
+)
 from scaler.ui.live_display import SchedulerSection, WorkersSection
 from scaler.ui.memory_window import MemoryChart
 from scaler.ui.setting_page import Settings
@@ -53,18 +59,18 @@ def start_webui(address: str, host: str, port: int):
 
         with ui.tab_panel(tasklog_tab):
             tables.tasklog_section.draw_section()
-            ui.timer(0.5, tables.tasklog_section.draw_section.refresh, active=True)
-            pass
+            ui.timer(TASK_LOG_REFRESH_INTERVAL, tables.tasklog_section.draw_section.refresh, active=True)
 
         with ui.tab_panel(stream_tab):
             tables.task_stream_section.setup_task_stream(tables.settings_section)
-            ui.timer(0.1, tables.task_stream_section.update_plot, active=True)
+            ui.timer(TASK_STREAM_UPDATE_INTERVAL, tables.task_stream_section.update_plot, active=True)
 
             tables.memory_usage_section.setup_memory_chart(tables.settings_section)
-            ui.timer(0.1, tables.memory_usage_section.update_plot, active=True)
+            ui.timer(MEMORY_USAGE_UPDATE_INTERVAL, tables.memory_usage_section.update_plot, active=True)
 
-        with ui.tab_panel(worker_processors_tab) as tab_handler:
-            tables.worker_processors.draw_section(tab_handler)
+        with ui.tab_panel(worker_processors_tab):
+            tables.worker_processors.draw_section()
+            ui.timer(WORKER_PROCESSORS_REFRESH_INTERVAL, tables.worker_processors.draw_section.refresh, active=True)
 
         with ui.tab_panel(settings_tab):
             tables.settings_section.draw_section()
@@ -108,6 +114,7 @@ def __update_scheduler_state(data: StateScheduler, tables: Sections):
 
     for died_worker in previous_workers - current_workers:
         tables.workers_section.workers.pop(died_worker)
+        tables.worker_processors.remove_worker(died_worker)
 
     if previous_workers != current_workers:
         tables.workers_section.draw_section.refresh()
