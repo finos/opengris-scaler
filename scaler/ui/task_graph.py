@@ -154,6 +154,10 @@ class TaskStream:
         else:
             self._completed_data_cache[worker]["hovertemplate"].append("")
 
+    def __remove_old_tasks_from_cache(self, worker: str, cutoff_index: int):
+        self._completed_data_cache[worker]["y"] = self._completed_data_cache[worker]["y"][: cutoff_index + 1]
+        self._completed_data_cache[worker]["x"] = self._completed_data_cache[worker]["x"][: cutoff_index + 1]
+
     def __handle_task_result(self, state: StateTask, now: datetime.datetime):
         worker = self._task_id_to_worker.get(state.task_id, "")
         if worker == "":
@@ -250,12 +254,24 @@ class TaskStream:
                 removed_workers.append(worker)
 
         for worker in removed_workers:
-            del self._current_tasks[worker]
+            self._current_tasks.pop(worker)
 
     def __remove_worker_from_history(self, worker: str):
         if worker in self._completed_data_cache:
-            del self._completed_data_cache[worker]
+            self._completed_data_cache.pop(worker)
             self._seen_workers.remove(worker)
+
+    def __remove_old_tasks_from_history(self, remove_up_to: datetime.datetime):
+        for worker in self._completed_data_cache.keys():
+            worker_data = self._completed_data_cache[worker]
+
+            storage_cutoff_index = len(worker_data["x"]) - 1
+            time_taken = 0
+            while storage_cutoff_index > 0 and time_taken < remove_up_to.second:
+                time_taken += worker_data["x"][storage_cutoff_index]
+                storage_cutoff_index -= 1
+            if storage_cutoff_index > 0:
+                self.__remove_old_tasks_from_cache(worker, storage_cutoff_index)
 
     def __remove_old_workers(self, remove_up_to: datetime.datetime):
         while not self._lost_workers_queue.empty():
@@ -314,6 +330,7 @@ class TaskStream:
             self.__detect_lost_workers(now)
             worker_history_time = now - self._settings.memory_store_time
             self.__remove_old_workers(worker_history_time)
+            self.__remove_old_tasks_from_history(worker_history_time)
 
             worker_retention_time = now - self._settings.worker_retention_time
             self.__remove_dead_workers(worker_retention_time)
