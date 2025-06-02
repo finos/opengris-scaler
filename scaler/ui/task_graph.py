@@ -1,4 +1,5 @@
 import datetime
+from collections import deque
 from queue import SimpleQueue
 from threading import Lock
 from typing import Dict, List, Optional, Set, Tuple
@@ -57,6 +58,8 @@ class TaskStream:
         self._data_update_lock = Lock()
         self._busy_workers: Set[str] = set()
         self._busy_workers_update_time: datetime.datetime = datetime.datetime.now()
+
+        self._dead_workers: deque[Tuple[datetime.datetime, str]] = deque()
 
     def setup_task_stream(self, settings: Settings):
         with ui.card().classes("w-full").style("height: 85vh"):
@@ -250,8 +253,9 @@ class TaskStream:
             del self._current_tasks[worker]
 
     def __remove_worker_from_history(self, worker: str):
-        del self._completed_data_cache[worker]
-        self._seen_workers.remove(worker)
+        if worker in self._completed_data_cache:
+            del self._completed_data_cache[worker]
+            self._seen_workers.remove(worker)
 
     def __remove_old_workers(self, remove_up_to: datetime.datetime):
         while not self._lost_workers_queue.empty():
@@ -259,6 +263,11 @@ class TaskStream:
             if timestamp > remove_up_to:
                 self._lost_workers_queue.put((timestamp, worker))
                 return
+            self.__remove_worker_from_history(worker)
+
+    def __remove_dead_workers(self, remove_up_to: datetime.datetime):
+        while self._dead_workers and self._dead_workers[0][0] < remove_up_to:
+            _, worker = self._dead_workers.popleft()
             self.__remove_worker_from_history(worker)
 
     def __split_workers_by_status(self, now: datetime.datetime) -> List[Tuple[str, float, str]]:
@@ -271,6 +280,11 @@ class TaskStream:
 
                 workers_doing_jobs.append((worker_name, duration, object_name))
         return workers_doing_jobs
+
+    def mark_dead_worker(self, worker_name: str):
+        now = datetime.datetime.now()
+        with self._data_update_lock:
+            self._dead_workers.append((now, worker_name))
 
     def update_data(self, workers_section: WorkersSection):
         now = datetime.datetime.now()
@@ -298,8 +312,11 @@ class TaskStream:
             workers_doing_tasks = self.__split_workers_by_status(now)
 
             self.__detect_lost_workers(now)
-            remove_up_to = now - self._settings.memory_store_time
-            self.__remove_old_workers(remove_up_to)
+            worker_history_time = now - self._settings.memory_store_time
+            self.__remove_old_workers(worker_history_time)
+
+            worker_retention_time = now - self._settings.worker_retention_time
+            self.__remove_dead_workers(worker_retention_time)
 
             completed_cache_values = list(self._completed_data_cache.values())
 

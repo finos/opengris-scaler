@@ -115,6 +115,7 @@ def __update_scheduler_state(data: StateScheduler, tables: Sections):
     for died_worker in previous_workers - current_workers:
         tables.workers_section.workers.pop(died_worker)
         tables.worker_processors.remove_worker(died_worker)
+        tables.task_stream_section.mark_dead_worker(died_worker)
 
     if previous_workers != current_workers:
         tables.workers_section.draw_section.refresh()
