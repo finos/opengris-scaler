@@ -5,7 +5,7 @@
 #include <thread>
 
 // First-party
-#include "configuration.hpp"
+#include "configuration.h"
 #include "event_loop.h"
 // #include "io_socket.hpp"
 
