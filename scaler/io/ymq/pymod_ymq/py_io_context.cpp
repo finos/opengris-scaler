@@ -36,6 +36,6 @@ static PyTypeObject PyIOContextType = {
     .tp_init      = (initproc)PyIOContext_init,
     .tp_repr      = (reprfunc)PyIOContext_repr,
     .tp_dealloc   = (destructor)PyIOContext_dealloc,
-    .tp_methods   = PyIOContext_methods
+    .tp_methods   = PyIOContext_methods,
 };
 // clang-format on

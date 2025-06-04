@@ -43,6 +43,6 @@ static PyTypeObject PyIOSocketType = {
     .tp_repr      = (reprfunc)PyIOSocket_repr,
     .tp_dealloc   = (destructor)PyIOSocket_dealloc,
     .tp_getset    = PyIOSocket_properties,
-    .tp_methods   = PyIOSocket_methods
+    .tp_methods   = PyIOSocket_methods,
 };
 // clang-format on
