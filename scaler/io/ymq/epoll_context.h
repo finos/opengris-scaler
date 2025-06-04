@@ -4,7 +4,7 @@
 #include <functional>
 
 // First-party
-#include "event_manager.hpp"
+#include "event_manager.h"
 
 struct EpollContext {
     using Function   = std::function<void()>;  // TBD

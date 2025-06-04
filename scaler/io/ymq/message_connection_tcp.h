@@ -3,8 +3,8 @@
 #include <optional>
 #include <tuple>
 
-#include "file_descriptor.hpp"
-#include "message_connection.hpp"
+#include "file_descriptor.h"
+#include "message_connection.h"
 
 class TcpWriteOperation {};
 class TcpReadOperation {};

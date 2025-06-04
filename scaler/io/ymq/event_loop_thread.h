@@ -5,9 +5,9 @@
 #include <thread>
 
 // First-party
-#include "configuration.hpp"
-#include "event_loop.hpp"
-#include "io_socket.hpp"
+#include "configuration.h"
+#include "event_loop.h"
+#include "io_socket.h"
 
 class EventLoopThread {
     using PollingContext = configuration::polling_context_t;

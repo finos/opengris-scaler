@@ -4,10 +4,10 @@
 #include <functional>
 
 // First-party
-#include "event_loop_backend.hpp"
-#include "event_manager.hpp"
-#include "interruptive_concurrent_queue.hpp"
-#include "timed_concurrent_queue.hpp"
+#include "event_loop_backend.h"
+#include "event_manager.h"
+#include "interruptive_concurrent_queue.h"
+#include "timed_concurrent_queue.h"
 
 // Third-Party
 #include "third_party/concurrentqueue.h"

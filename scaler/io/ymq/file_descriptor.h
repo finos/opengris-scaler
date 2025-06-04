@@ -15,7 +15,7 @@
 #include <optional>
 
 // First-party
-#include "common.hpp"
+#include "common.h"
 
 class FileDescriptor {
     int fd;

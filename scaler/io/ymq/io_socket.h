@@ -6,10 +6,10 @@
 #include <string>
 
 // First-party
-#include "event_loop_thread.hpp"
-#include "message_connection_tcp.hpp"
-#include "tcp_client.hpp"
-#include "tcp_server.hpp"
+#include "event_loop_thread.h"
+#include "message_connection_tcp.h"
+#include "tcp_client.h"
+#include "tcp_server.h"
 
 class IOSocket {
     EventLoopThread& eventLoopThread;

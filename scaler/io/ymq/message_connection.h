@@ -4,7 +4,7 @@
 #include <functional>
 
 // First-party
-#include "bytes.hpp"
+#include "bytes.h"
 
 class MessageConnection {
     public:

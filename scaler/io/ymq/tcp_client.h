@@ -5,9 +5,9 @@
 #include <memory>
 
 // First-party
-#include "event_loop_thread.hpp"
-#include "event_manager.hpp"
-#include "file_descriptor.hpp"
+#include "event_loop_thread.h"
+#include "event_manager.h"
+#include "file_descriptor.h"
 
 class TcpClient {
     EventLoopThread& eventLoop; /* shared ownership */

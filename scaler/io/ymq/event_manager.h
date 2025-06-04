@@ -4,7 +4,7 @@
 #include <functional>
 
 // First-party
-#include "event_loop_thread.hpp"
+#include "event_loop_thread.h"
 
 class EventManager {
     EventLoopThread& eventLoop;
