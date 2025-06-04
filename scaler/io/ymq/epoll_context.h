@@ -4,8 +4,8 @@
 #include <functional>
 
 // First-party
-#include "event_manager.h"
 
+class EventManager;
 struct EpollContext {
     using Function   = std::function<void()>;  // TBD
     using TimeStamp  = int;                    // TBD

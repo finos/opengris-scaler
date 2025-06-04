@@ -1,14 +1,26 @@
 add_library(cc_ymq SHARED)
 
-target_sources(cc_ymq PRIVATE
-  coro_context.h
-  coro_context.cpp
+add_library(ymq SHARED)
+
+target_sources(ymq PRIVATE
+  io_context.h
+  io_context.cpp
+
+  event_loop.h
+
+  event_loop_thread.h
+  event_loop_thread.cpp
+
+  io_socket.h
+  io_socket.cpp
+
+  configuration.hpp
 )
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/scaler/io/ymq)
 
 install(TARGETS cc_ymq
-        LIBRARY DESTINATION scaler/io)
+        LIBRARY DESTINATION scaler/io/ymq)
 
 find_package(Python COMPONENTS Development)
 
@@ -25,4 +37,6 @@ target_link_libraries(ymq PRIVATE cc_ymq
 target_link_options(ymq PRIVATE "-Wl,-rpath,$ORIGIN")
 
 install(TARGETS ymq
-        LIBRARY DESTINATION scaler/io/ymq)
+        LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/scaler/lib)
+
+add_subdirectory(examples)
