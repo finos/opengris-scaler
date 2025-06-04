@@ -4,15 +4,15 @@
 #include <functional>
 
 // First-party
-#include "event_loop_backend.hpp"
-#include "event_manager.hpp"
-#include "interruptive_concurrent_queue.hpp"
-#include "timed_concurrent_queue.hpp"
+// #include "event_manager.hpp"
+// #include "interruptive_concurrent_queue.hpp"
+// #include "timed_concurrent_queue.hpp"
 
 // Third-Party
-#include "third_party/concurrentqueue.h"
+// #include "third_party/concurrentqueue.h"
+// #include "event_loop_backend.hpp"
 
-
+#include "epoll_context.h"
 template <class EventLoopBackend = EpollContext>
 struct EventLoop {
     using Function   = std::function<void()>;  // TBD
@@ -27,9 +27,9 @@ struct EventLoop {
     void cancelExecution(Identifier identifier);
     void registerCallbackBeforeLoop(EventManager*);
 
-    InterruptiveConcurrentQueue<FunctionType> immediateExecutionQueue;
-    TimedConcurrentQueue<FunctionType> timedExecutionQueue;
-    ConcurrentQueue<FunctionType> delayedExecutionQueue;
+    // InterruptiveConcurrentQueue<FunctionType> immediateExecutionQueue;
+    // TimedConcurrentQueue<FunctionType> timedExecutionQueue;
+    // ConcurrentQueue<FunctionType> delayedExecutionQueue;
 
-    EventLoopBackend eventLoopBackend;
+    // EventLoopBackend eventLoopBackend;
 };
