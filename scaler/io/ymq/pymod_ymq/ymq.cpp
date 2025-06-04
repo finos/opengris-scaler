@@ -1,7 +1,3 @@
-// allows us to define PyTypeObjects in the canonical way without warnings
-#pragma clang diagnostic ignored "-Wreorder-init-list"
-#pragma clang diagnostic ignored "-Wc99-designator"
-
 // Python
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
