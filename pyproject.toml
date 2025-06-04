@@ -20,7 +20,6 @@ dynamic = ["version"]
 dependencies = [
     "bidict", 
     "cloudpickle",
-    "graphlib-backport; python_version < '3.9'",
     "psutil==7.0.0",
     "pycapnp==2.0.0",
     "pyzmq",
