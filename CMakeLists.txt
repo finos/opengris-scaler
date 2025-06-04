@@ -11,14 +11,24 @@ if(NOT SKBUILD_PROJECT_NAME)
   set(SKBUILD_PROJECT_NAME "scaler")
 endif()
 
-if(NOT SKBUILD_PROJECT_VERSION)
-  set(SKBUILD_PROJECT_VERSION "1.9.4")
+# Path to the version file
+set(VERSION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/scaler/version.txt")
+
+# Check if the version file exists
+if(NOT EXISTS "${VERSION_FILE}")
+    message(FATAL_ERROR "Version file not found: ${VERSION_FILE}")
 endif()
+
+# Read version from file
+file(READ "${VERSION_FILE}" VERSION_CONTENTS)
+
+# Strip whitespace from the version string
+string(STRIP "${VERSION_CONTENTS}" PROJECT_VERSION)
 
 project(
   ${SKBUILD_PROJECT_NAME}
   LANGUAGES C CXX
-  VERSION ${SKBUILD_PROJECT_VERSION}
+  VERSION ${PROJECT_VERSION}
 )
 
 configure_file(

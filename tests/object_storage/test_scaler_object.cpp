@@ -16,7 +16,7 @@
 #include "scaler/object_storage/constants.h"
 #include "scaler/object_storage/defs.h"
 #include "scaler/object_storage/io_helper.h"
-#include "scaler/object_storage/server.h"
+#include "scaler/object_storage/object_storage_server.h"
 
 using boost::asio::buffer;
 using boost::asio::ip::tcp;
@@ -31,7 +31,10 @@ protected:
     static void SetUpTestSuite() {
         static std::once_flag server_started;
         std::call_once(server_started, []() {
-            std::thread([] { run_object_storage_server("127.0.0.1", "55555"); }).detach();
+            std::thread([] {
+                scaler::object_storage::ObjectStorageServer server;
+                server.run("127.0.0.1", "55555");
+            }).detach();
             std::this_thread::sleep_for(std::chrono::seconds(1));  // Allow server to start
         });
     }

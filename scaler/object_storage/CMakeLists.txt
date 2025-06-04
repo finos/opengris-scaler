@@ -1,7 +1,7 @@
-add_library(server SHARED)
+add_library(cc_object_storage_server SHARED)
 
-target_sources(server PRIVATE
-  server.cpp
+target_sources(cc_object_storage_server PRIVATE
+  object_storage_server.h
   io_helper.cpp
 )
 
@@ -14,9 +14,26 @@ file(MAKE_DIRECTORY "${CAPNPC_OUTPUT_DIR}")
 
 capnp_generate_cpp(objectStorageSources objectStorageHeaders "../protocol/capnp/object_storage.capnp")
 
-target_sources(server PRIVATE ${objectStorageSources})
-target_link_libraries(server PRIVATE CapnProto::capnp)
-target_include_directories(server PRIVATE ${CMAKE_BINARY_DIR})
+target_sources(cc_object_storage_server PUBLIC ${objectStorageSources})
+target_link_libraries(cc_object_storage_server PUBLIC CapnProto::capnp)
+target_include_directories(cc_object_storage_server PUBLIC ${CMAKE_BINARY_DIR})
 
-install(TARGETS server
-        LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/scaler/lib)
+install(TARGETS cc_object_storage_server
+        LIBRARY DESTINATION scaler/object_storage/)
+
+find_package(Python COMPONENTS Development)
+
+add_library(object_storage_server SHARED)
+
+set_target_properties(object_storage_server PROPERTIES  PREFIX "")
+
+target_sources(object_storage_server PRIVATE pymod_object_storage_server.cpp)
+target_include_directories(object_storage_server PRIVATE ${Python_INCLUDE_DIRS})
+target_link_libraries(object_storage_server PRIVATE cc_object_storage_server
+                                            PRIVATE ${Python_LIBRARIES}
+)
+
+target_link_options(object_storage_server PRIVATE "-Wl,-rpath,$ORIGIN")
+
+install(TARGETS object_storage_server
+        LIBRARY DESTINATION scaler/object_storage/)

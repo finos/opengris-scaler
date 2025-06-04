@@ -9,4 +9,4 @@ target_sources(ymq PRIVATE
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/scaler/io/ymq)
 
 install(TARGETS ymq
-        LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/scaler/lib)
+        LIBRARY DESTINATION scaler/io/ymq/)

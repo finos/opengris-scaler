@@ -29,7 +29,7 @@ dependencies = [
 [tool.scikit-build.metadata.version]
 provider = "scikit_build_core.metadata.regex"
 regex = '(?P<value>\d+\.\d+\.\d+(\.[1-9]\d*)?)'
-input = "./scaler/about.py"
+input = "./scaler/version.txt"
 
 [project.urls]
 Home = "https://github.com/Citi/scaler"
@@ -50,7 +50,7 @@ all = ["python-graphblas", "numpy==2.2.5", "uvloop", "nicegui[plotly]==2.14.1"]
 
 [tool.scikit-build]
 wheel.packages = ["scaler"]
-build.targets=["server", "ymq"]
+build.targets=["cc_object_storage_server", "ymq", "object_storage_server"]
 
 [tool.mypy]
 no_strict_optional = true
@@ -65,7 +65,8 @@ exclude = [
     "^build.*$",
     "^capnproto.*$",
     "^boost.*$",
-    "^scripts.*$"
+    "^scripts.*$",
+    ".*object_storage.*$",
 ]
 
 [tool.flake8]
