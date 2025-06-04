@@ -54,7 +54,6 @@ static PyBufferProcs PyBytesYmqBufferProcs = {
 };
 
 // clang-format off
-// this ordering is canonical as per the Python documentation
 static PyTypeObject PyBytesYmqType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name      = "ymq.Bytes",
@@ -94,7 +93,6 @@ static PyMemberDef PyMessage_members[] = {
 };
 
 // clang-format off
-// this ordering is canonical as per the Python documentation
 static PyTypeObject PyMessageType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name      = "ymq.Message",
@@ -141,7 +139,6 @@ static PyMethodDef PyIOSocket_methods[] = {
 };
 
 // clang-format off
-// this ordering is canonical as per the Python documentation
 static PyTypeObject PyIOSocketType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name      = "ymq.IOSocket",
@@ -181,7 +178,6 @@ static PyMethodDef PyIOContext_methods[] = {
 };
 
 // clang-format off
-// this ordering is canonical as per the Python documentation
 static PyTypeObject PyIOContextType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name      = "ymq.IOContext",
