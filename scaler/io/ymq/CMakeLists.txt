@@ -8,7 +8,7 @@ target_sources(cc_ymq PRIVATE
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/scaler/io/ymq)
 
 install(TARGETS cc_ymq
-        LIBRARY DESTINATION /scaler/io)
+        LIBRARY DESTINATION scaler/io)
 
 find_package(Python COMPONENTS Development)
 
