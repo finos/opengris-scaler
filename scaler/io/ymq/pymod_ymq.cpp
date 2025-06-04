@@ -219,11 +219,7 @@ static int ymq_exec(PyObject* module) {
 
 static PyMethodDef ymq_methods[] = {{NULL, NULL, 0, NULL}};
 
-static PyModuleDef_Slot ymq_slots[] = {
-    {Py_mod_exec, (void*)ymq_exec},
-    // only supported in Python 3.12+
-    // {Py_mod_multiple_interpreters, Py_MOD_MULTIPLE_INTERPRETERS_NOT_SUPPORTED},
-    {0, NULL}};
+static PyModuleDef_Slot ymq_slots[] = {{Py_mod_exec, (void*)ymq_exec}, {0, NULL}};
 
 void ymq_free(YmqState* state) {
     // todo
