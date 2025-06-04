@@ -3,6 +3,8 @@ from typing import Dict, List
 from scaler.protocol.capnp._python import _status  # noqa
 from scaler.protocol.python.mixins import Message
 
+CPU_MAXIMUM = 1000
+
 
 class Resource(Message):
     def __init__(self, msg):
@@ -18,7 +20,7 @@ class Resource(Message):
 
     @staticmethod
     def new_msg(cpu: int, rss: int) -> "Resource":  # type: ignore[override]
-        return Resource(_status.Resource(cpu=cpu, rss=rss))
+        return Resource(_status.Resource(cpu=min(cpu, CPU_MAXIMUM), rss=rss))
 
     def get_message(self):
         return self._msg
