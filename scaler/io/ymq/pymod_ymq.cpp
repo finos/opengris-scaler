@@ -44,9 +44,7 @@ static void PyBytesYmq_releasebuffer(PyBytesYmq* self, Py_buffer* view) {
     // todo
 }
 
-static PyGetSetDef PyBytesYmq_properties[] = {
-    {nullptr, nullptr, nullptr, nullptr, nullptr}  // Sentinel
-};
+static PyGetSetDef PyBytesYmq_properties[] = {{nullptr, nullptr, nullptr, nullptr, nullptr}};
 
 static PyBufferProcs PyBytesYmqBufferProcs = {
     .bf_getbuffer     = (getbufferproc)PyBytesYmq_getbuffer,
@@ -88,9 +86,7 @@ static PyObject* PyMessage_repr(PyMessage* self) {
     Py_RETURN_NONE;  // todo
 }
 
-static PyMemberDef PyMessage_members[] = {
-    {nullptr}  // Sentinel
-};
+static PyMemberDef PyMessage_members[] = {{nullptr}};
 
 // clang-format off
 static PyTypeObject PyMessageType = {
@@ -130,13 +126,9 @@ static PyObject* PyIOSocket_identity_getter(PyIOSocket* self, void* closure) {
     Py_RETURN_NONE;  // todo
 }
 
-static PyGetSetDef PyIOSocket_properties[] = {
-    {nullptr, nullptr, nullptr, nullptr, nullptr}  // Sentinel
-};
+static PyGetSetDef PyIOSocket_properties[] = {{nullptr, nullptr, nullptr, nullptr, nullptr}};
 
-static PyMethodDef PyIOSocket_methods[] = {
-    {nullptr, nullptr, 0, nullptr}  // Sentinel
-};
+static PyMethodDef PyIOSocket_methods[] = {{nullptr, nullptr, 0, nullptr}};
 
 // clang-format off
 static PyTypeObject PyIOSocketType = {
@@ -173,9 +165,7 @@ static PyObject* PyIOContext_repr(PyIOContext* self) {
     Py_RETURN_NONE;  // todo
 }
 
-static PyMethodDef PyIOContext_methods[] = {
-    {nullptr, nullptr, 0, nullptr}  // Sentinel
-};
+static PyMethodDef PyIOContext_methods[] = {{nullptr, nullptr, 0, nullptr}};
 
 // clang-format off
 static PyTypeObject PyIOContextType = {
@@ -227,16 +217,13 @@ static int ymq_exec(PyObject* module) {
     return 0;
 }
 
-static PyMethodDef ymq_methods[] = {
-    {NULL, NULL, 0, NULL}  // Sentinel
-};
+static PyMethodDef ymq_methods[] = {{NULL, NULL, 0, NULL}};
 
 static PyModuleDef_Slot ymq_slots[] = {
     {Py_mod_exec, (void*)ymq_exec},
     // only supported in Python 3.12+
     // {Py_mod_multiple_interpreters, Py_MOD_MULTIPLE_INTERPRETERS_NOT_SUPPORTED},
-    {0, NULL}  // Sentinel
-};
+    {0, NULL}};
 
 void ymq_free(YmqState* state) {
     // todo
