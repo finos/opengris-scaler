@@ -1,6 +1,7 @@
 __pychace__/
 *.py[cod]
 *$py.class
+*.so
 
 build/
 dist/

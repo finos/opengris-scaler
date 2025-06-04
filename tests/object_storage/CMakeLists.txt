@@ -33,7 +33,7 @@ add_executable(
   test_scaler_object
   test_scaler_object.cpp
   ${PROJECT_SOURCE_DIR}/scaler/object_storage/io_helper.cpp
-  ${PROJECT_SOURCE_DIR}/scaler/object_storage/server.cpp
+  ${PROJECT_SOURCE_DIR}/scaler/object_storage/object_storage_server.h
   ${CMAKE_BINARY_DIR}/protocol/object_storage.capnp.c++
 )
 

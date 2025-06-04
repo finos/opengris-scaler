@@ -5,13 +5,14 @@
 #include <boost/asio/detached.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/signal_set.hpp>
 #include <boost/system/system_error.hpp>
 #include <iostream>
 #include <map>
 
-#include "defs.h"
-#include "io_helper.h"
 #include "protocol/object_storage.capnp.h"
+#include "scaler/object_storage/defs.h"
+#include "scaler/object_storage/io_helper.h"
 
 template <>
 struct std::hash<scaler::object_storage::object_t> {
@@ -163,6 +164,36 @@ public:
         } catch (std::exception& e) {
             // TODO: Logging support
             // std::printf("process_request Exception: %s\n", e.what());
+        }
+    }
+
+private:
+    awaitable<void> listener(boost::asio::ip::tcp::endpoint endpoint) {
+        auto executor = co_await boost::asio::this_coro::executor;
+        tcp::acceptor acceptor(executor, endpoint);
+        for (;;) {
+            auto shared_socket = std::make_shared<tcp::socket>(executor);
+            co_await acceptor.async_accept(*shared_socket, use_awaitable);
+            co_spawn(executor, process_request(std::move(shared_socket)), detached);
+        }
+    }
+
+public:
+    void run(std::string name, std::string port) {
+        try {
+            boost::asio::io_context io_context(1);
+            tcp::resolver resolver(io_context);
+            auto res = resolver.resolve(name, port);
+
+            boost::asio::signal_set signals(io_context, SIGINT, SIGTERM);
+            signals.async_wait([&](auto, auto) { io_context.stop(); });
+
+            co_spawn(io_context, listener(res.begin()->endpoint()), detached);
+
+            io_context.run();
+        } catch (std::exception& e) {
+            std::printf("Exception: %s\n", e.what());
+            std::printf("Mostly something serious happen, inspect capnp header correuption\n");
         }
     }
 };

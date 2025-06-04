@@ -34,8 +34,6 @@ jobs:
           sudo apt update -y
           sudo apt upgrade -y
           sudo DEBIAN_FRONTEND=noninteractive sudo apt install -y tzdata
-          # DEBIAN_FRONTEND=noninteractive apt install -y tzdata
-          # sudo apt install software-properties-common -y
           sudo apt install cmake clang curl pkg-config -y
 
       - name: Make scripts executable
@@ -76,9 +74,7 @@ jobs:
 
       - name: Build Object Storage Component
         run: |
-          cmake -S . -B build -DCMAKE_CXX_COMPILER=$(which clang++) -DCMAKE_BUILD_TYPE=Debug
-          cd build && make
-          ctest
+          CXX=$(which clang++) ./scripts/build.sh
 
       - name: Install Python Dependent Packages
         run: |
