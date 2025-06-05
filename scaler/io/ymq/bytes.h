@@ -9,7 +9,7 @@
 #include <string>
 
 // First-party
-#include "common.h"
+#include "scaler/io/ymq/common.h"
 
 class Bytes {
     uint8_t* m_data;

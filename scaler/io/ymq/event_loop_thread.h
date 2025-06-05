@@ -5,9 +5,9 @@
 #include <thread>
 
 // First-party
-#include "configuration.h"
-#include "event_loop.h"
-// #include "io_socket.hpp"
+#include "scaler/io/ymq/configuration.h"
+#include "scaler/io/ymq/event_loop.h"
+// #include "scaler/io/ymq/io_socket.hpp"
 
 class IOSocket;
 

@@ -4,7 +4,7 @@
 #include <functional>
 
 // First-party
-#include "bytes.h"
+#include "scaler/io/ymq/bytes.h"
 
 class MessageConnection {
     public:

@@ -6,8 +6,8 @@
 #include <vector>
 
 // First-party
-#include "event_loop_thread.h"
-#include "io_socket.h"
+#include "scaler/io/ymq/event_loop_thread.h"
+#include "scaler/io/ymq/io_socket.h"
 
 class IOSocket;
 

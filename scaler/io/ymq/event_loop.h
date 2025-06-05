@@ -4,15 +4,15 @@
 #include <functional>
 
 // First-party
-// #include "event_manager.hpp"
-// #include "interruptive_concurrent_queue.hpp"
-// #include "timed_concurrent_queue.hpp"
+// #include "scaler/io/ymq/event_manager.hpp"
+// #include "scaler/io/ymq/interruptive_concurrent_queue.hpp"
+// #include "scaler/io/ymq/timed_concurrent_queue.hpp"
 
 // Third-Party
-// #include "third_party/concurrentqueue.h"
-// #include "event_loop_backend.hpp"
+// #include "scaler/io/ymq/third_party/concurrentqueue.h"
+// #include "scaler/io/ymq/event_loop_backend.hpp"
 
-#include "epoll_context.h"
+#include "scaler/io/ymq/epoll_context.h"
 template <class EventLoopBackend = EpollContext>
 struct EventLoop {
     using Function   = std::function<void()>;  // TBD
