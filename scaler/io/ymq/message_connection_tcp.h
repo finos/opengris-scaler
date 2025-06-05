@@ -3,8 +3,8 @@
 #include <optional>
 #include <tuple>
 
-#include "file_descriptor.hpp"
-#include "message_connection.hpp"
+#include "scaler/io/ymq/file_descriptor.h"
+#include "scaler/io/ymq/message_connection.h"
 
 class TcpWriteOperation {};
 class TcpReadOperation {};

@@ -1,6 +1,9 @@
+// C
 #include <stdio.h>
 
+// First-party
 #include "scaler/io/ymq/io_context.h"
+#include "scaler/io/ymq/io_socket.h"
 
 // Goal:
 // Make sure we can write an echo server with ymq in C++, pretend there is a language barrier, to mimic

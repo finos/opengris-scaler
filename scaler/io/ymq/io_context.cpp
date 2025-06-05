@@ -1,6 +1,5 @@
-#include "scaler/io/ymq/io_context.h"
-
 #include "scaler/io/ymq/event_loop_thread.h"
+#include "scaler/io/ymq/io_context.h"
 
 IOSocket* IOContext::addIOSocket(std::string identity, std::string socketType) {
     std::lock_guard guard {_threadsMu};

@@ -15,7 +15,7 @@
 #include <optional>
 
 // First-party
-#include "common.hpp"
+#include "scaler/io/ymq/common.h"
 
 class FileDescriptor {
     int fd;
