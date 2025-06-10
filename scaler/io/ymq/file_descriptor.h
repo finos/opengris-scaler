@@ -23,7 +23,7 @@ class FileDescriptor {
     FileDescriptor(int fd): fd(fd) {}
 
 public:
-    ~FileDescriptor() {
+    ~FileDescriptor() noexcept(false) {
         if (auto code = close(fd) < 0)
             throw std::system_error(errno, std::system_category(), "Failed to close file descriptor");
 

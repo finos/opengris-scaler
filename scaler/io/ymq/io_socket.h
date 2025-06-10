@@ -2,22 +2,28 @@
 
 // C++
 // #include <map>
-// #include <optional>
+#include <memory>
+#include <optional>
 #include <string>
 
 // First-party
-#include "scaler/io/ymq/event_loop_thread.h"
 // #include "scaler/io/ymq/message_connection_tcp.hpp"
 // #include "scaler/io/ymq/tcp_client.hpp"
 // #include "scaler/io/ymq/tcp_server.hpp"
 
-class IOSocket {
-    EventLoopThread& eventLoopThread;
-    enum SocketTypes { Binder, Sub, Pub, Dealer, Router, Pair /* etc. */ };
-    SocketTypes socketTypes;
+// #include "message_connection_tcp.hpp"
 
-    // std::optional<TcpServer> tcpServer;
-    // std::optional<TcpClient> tcpClient;
+#include "scaler/io/ymq/tcp_client.h"
+#include "scaler/io/ymq/tcp_server.h"
+#include "scaler/io/ymq/typedefs.h"
+
+class EventLoopThread;
+
+class IOSocket {
+    std::shared_ptr<EventLoopThread> eventLoopThread;
+
+    std::optional<TcpClient> tcpClient;
+    std::optional<TcpServer> tcpServer;
     // std::map<int /* class FileDescriptor */, MessageConnectionTCP*> fdToConnection;
     // std::map<std::string, MessageConnectionTCP*> identityToConnection;
 
@@ -26,8 +32,12 @@ public:
     IOSocket& operator=(const IOSocket&) = delete;
     IOSocket(IOSocket&&)                 = delete;
     IOSocket& operator=(IOSocket&&)      = delete;
+    IOSocket(): identity(), socketType(IOSocketType::Uninit) {}
+    IOSocket(std::shared_ptr<EventLoopThread> eventLoopThread, std::string identity, IOSocketType socketType)
+        : eventLoopThread(eventLoopThread), identity(std::move(identity)), socketType(socketType) {}
 
     const std::string identity;
+    const IOSocketType socketType;
     // string -> connection mapping
     // and connection->string mapping
 
@@ -46,6 +56,8 @@ public:
     // }
     // )
     // }
+
+    void onCreated();
 
     // void recvMessage(Message* msg);
 };

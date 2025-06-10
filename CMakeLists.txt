@@ -47,6 +47,13 @@ else()
   message(STATUS "${PROJECT_NAME} ${CMAKE_BUILD_TYPE} build")
 endif()
 
+# Compiler configuration
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(STATUS "Using Clang: adding -stdlib=libc++")
+    add_compile_options(-stdlib=libc++)
+    add_link_options(-stdlib=libc++)
+endif()
+
 find_package(CapnProto CONFIG REQUIRED)
 get_target_property(CAPNP_INCLUDE_DIRS CapnProto::capnp INTERFACE_INCLUDE_DIRECTORIES)
 message(STATUS "Found Capnp in ${CAPNP_INCLUDE_DIRS}")

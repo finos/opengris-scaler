@@ -1,30 +1,31 @@
 #pragma once
 
 // C++
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
 
 // First-party
 #include "scaler/io/ymq/event_loop_thread.h"
-#include "scaler/io/ymq/io_socket.h"
+#include "scaler/io/ymq/typedefs.h"
 
 class IOSocket;
 
 class IOContext {
-    // This is a pointer, just for now
-    std::vector<EventLoopThread> _threads;
+    std::vector<std::shared_ptr<EventLoopThread>> _threads;
     std::mutex _threadsMu;
 
 public:
-    IOContext()                            = default;
+    IOContext(size_t threadCount = 1);
+
     IOContext(const IOContext&)            = delete;
     IOContext& operator=(const IOContext&) = delete;
     IOContext(IOContext&&)                 = delete;
     IOContext& operator=(IOContext&&)      = delete;
 
     // These methods need to be thread-safe.
-    IOSocket* addIOSocket(std::string identity, std::string socketType);
+    IOSocket* createIOSocket(std::string identity, IOSocketType socketType);
     // ioSocket.getEventLoop().removeIOSocket(&ioSocket);
     bool removeIOSocket(IOSocket*);
 };

@@ -74,7 +74,7 @@ jobs:
 
       - name: Build Object Storage Component
         run: |
-          CXX=$(which clang++) ./scripts/build.sh
+          CXX=$(which g++) ./scripts/build.sh
 
       - name: Install Python Dependent Packages
         run: |
