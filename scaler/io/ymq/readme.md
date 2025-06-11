@@ -5,9 +5,14 @@ Welcome. This file contains schedule for each day, for each person.
 
 Each person maintains a todo and done list.
 
+## gxu
 
+### DONE
 
-# gxu
+- CMake integration, generate C++ stuff in build dir
+- Basic coroutine API
+- develop the so-called coro_context and their utility DEAD
+- write up interfaces(not impl) that uses coroutine DEAD
 
 ## DONE:
  - CMake integration, generate C++ stuff in build dir
@@ -21,10 +26,12 @@ Each person maintains a todo and done list.
  - Start organize files that they can be compiled in one go
  - Implement the detail of IOSocket, especially `onAdded` behavior
 
+## magniloquency
 
-# PUT NAME HERE 
+### DONE
 
-## DONE:
+- CPython module stub
 
-## TODO:
+### TODO
 
+- ?

@@ -52,6 +52,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(STATUS "Using Clang: adding -stdlib=libc++")
     add_compile_options(-stdlib=libc++)
     add_link_options(-stdlib=libc++)
+
+    # needed for jthread in libc++
+    add_compile_options(-fexperimental-library)
+    add_link_options(-fexperimental-library)
 endif()
 
 find_package(CapnProto CONFIG REQUIRED)

@@ -26,5 +26,5 @@ IOSocket* EventLoopThread::createIOSocket(std::string identity, IOSocketType soc
 // TODO: Think about non null pointer
 void EventLoopThread::removeIOSocket(IOSocket* target) {
     // TODO: Something happen with the running thread
-    identityToIOSocket.erase(target->identity);
+    identityToIOSocket.erase(target->identity());
 }

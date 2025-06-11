@@ -1,28 +1,39 @@
 #pragma once
 
-// C++
+// System
 #include <sys/epoll.h>
 
-#include <cstdint>  // uint64_t
+// C++
 #include <functional>
-
-#include "scaler/io/ymq/timestamp.h"
+#include <system_error>
 
 // First-party
+#include "scaler/io/ymq/event_manager.h"
+#include "scaler/io/ymq/file_descriptor.h"
+#include "scaler/io/ymq/timestamp.h"
 
 class EventManager;
 
 struct EpollContext {
-    int epfd;
+    FileDescriptor epoll_fd;
 
     using Function   = std::function<void()>;  // TBD
     using Identifier = int;                    // TBD
     void registerCallbackBeforeLoop(EventManager*);
 
-    EpollContext() { epfd = epoll_create1(0); }
+    EpollContext() {
+        auto fd = FileDescriptor::epollfd();
+
+        if (!fd) {
+            throw std::system_error(fd.error(), std::system_category(), "Failed to create epoll fd");
+        }
+
+        this->epoll_fd = std::move(*fd);
+    }
 
     void loop();
-    void addFdToLoop(int fd, uint64_t events, EventManager* manager);
+    void registerEventManager(EventManager& em);
+    void removeEventManager(EventManager& em);
 
     void stop();
 

@@ -11,7 +11,7 @@
 class IOSocket;
 
 class EventLoopThread: public std::enable_shared_from_this<EventLoopThread> {
-    using PollingContext = configuration::polling_context_t;
+    using PollingContext = Configuration::PollingContext;
     std::jthread thread;
     std::map<std::string, IOSocket> identityToIOSocket;
 

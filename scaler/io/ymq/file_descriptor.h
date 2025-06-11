@@ -30,6 +30,8 @@ public:
         this->fd = -1;
     }
 
+    FileDescriptor(): fd(-1) {}
+
     // move-only
     FileDescriptor(const FileDescriptor&)            = delete;
     FileDescriptor& operator=(const FileDescriptor&) = delete;
@@ -164,19 +166,19 @@ public:
         }
     }
 
-    std::optional<Errno> epoll_ctl(int op, FileDescriptor& other, epoll_event& event) {
-        if (::epoll_ctl(fd, op, other.fd, &event) < 0) {
+    std::optional<Errno> epoll_ctl(int op, FileDescriptor& other, epoll_event* event) {
+        if (::epoll_ctl(fd, op, other.fd, event) < 0) {
             return errno;
         } else {
             return std::nullopt;
         }
     }
 
-    std::optional<Errno> epoll_wait(epoll_event* events, int maxevents, int timeout) {
-        if (::epoll_wait(fd, events, maxevents, timeout) < 0) {
+    std::expected<int, Errno> epoll_wait(epoll_event* events, int maxevents, int timeout) {
+        if (auto n = ::epoll_wait(fd, events, maxevents, timeout) < 0) {
             return errno;
         } else {
-            return std::nullopt;
+            return n;
         }
     }
 };

@@ -7,14 +7,13 @@
 
 // First-party
 #include "scaler/io/ymq/event_loop_thread.h"
+#include "scaler/io/ymq/file_descriptor.h"
 
 class EventLoopThread;
 
 class EventManager {
     std::shared_ptr<EventLoopThread> eventLoop;
-    // TODO: This may be FileDescriptor
-    const int fd;
-    // Implementation defined method, will call onRead, onWrite etc based on events
+    FileDescriptor _fd;
 
 public:
     int events;
@@ -29,5 +28,7 @@ public:
     OnEventCallback onWrite;
     OnEventCallback onClose;
     OnEventCallback onError;
-    EventManager(): fd {} {}
+    EventManager(): _fd {} {}
+
+    friend class EpollContext;
 };

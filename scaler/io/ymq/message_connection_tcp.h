@@ -16,6 +16,6 @@ class MessageConnectionTCP: public MessageConnection {
     TcpReadOperation read_op;
 
 public:
-    void send(Bytes data, SendMessageContinuation k) { todo(); }
-    void recv(RecvMessageContinuation k) { todo(); }
+    void send(Bytes data, SendMessageContinuation k);
+    void recv(RecvMessageContinuation k);
 };

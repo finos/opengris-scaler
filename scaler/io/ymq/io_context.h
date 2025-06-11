@@ -10,11 +10,13 @@
 #include "scaler/io/ymq/event_loop_thread.h"
 #include "scaler/io/ymq/typedefs.h"
 
+using Identity = Configuration::Identity;
+
 class IOSocket;
 
 class IOContext {
+    // This is a pointer, just for now
     std::vector<std::shared_ptr<EventLoopThread>> _threads;
-    std::mutex _threadsMu;
 
 public:
     IOContext(size_t threadCount = 1);
@@ -25,7 +27,8 @@ public:
     IOContext& operator=(IOContext&&)      = delete;
 
     // These methods need to be thread-safe.
-    IOSocket* createIOSocket(std::string identity, IOSocketType socketType);
-    // ioSocket.getEventLoop().removeIOSocket(&ioSocket);
-    bool removeIOSocket(IOSocket*);
+    std::shared_ptr<IOSocket> createIOSocket(Identity identity, IOSocketType socketType);
+    bool removeIOSocket(std::shared_ptr<IOSocket>);
+
+    size_t numThreads() const { return _threads.size(); }
 };

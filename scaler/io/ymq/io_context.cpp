@@ -6,20 +6,24 @@
 
 #include "scaler/io/ymq/event_loop_thread.h"
 #include "scaler/io/ymq/io_socket.h"
+#include "scaler/io/ymq/typedefs.h"
 
 IOContext::IOContext(size_t threadCount): _threads(threadCount) {
     assert(threadCount > 0);
     std::ranges::generate(_threads, std::make_shared<EventLoopThread>);
 }
 
-IOSocket* IOContext::createIOSocket(std::string identity, IOSocketType socketType) {
-    std::lock_guard guard {_threadsMu};
-    static size_t threadsHead {0};
-    auto res = _threads[threadsHead]->createIOSocket(identity, socketType);
-    ++threadsHead %= _threads.size();
-    return res;
+std::shared_ptr<IOSocket> IOContext::createIOSocket(Identity identity, IOSocketType socketType) {
+    static size_t threadsRoundRobin = 0;
+    auto& thread                    = _threads[threadsRoundRobin];
+    ++threadsRoundRobin %= _threads.size();
+
+    auto socket = std::make_shared<IOSocket>(thread, identity, socketType);
+    // todo
+    // thread.addIOSocket(socket);
+    return socket;
 }
 
-bool IOContext::removeIOSocket(IOSocket*) {
-    return false;
+bool IOContext::removeIOSocket(std::shared_ptr<IOSocket> socket) {
+    return false;  // todo: implement this
 }

@@ -6,13 +6,13 @@
 void IOSocket::onCreated() {
     // Detect if we need to initialize tcpClient and/or tcpServer
     // If so, initialize it, and then call their onAdd();
-    if (socketType == IOSocketType::Router) {
+    if (_socketType == IOSocketType::Router) {
         // assert(!tcpClient);
-        tcpClient.emplace(eventLoopThread);
+        _tcpClient.emplace(_eventLoopThread);
         // assert(!tcpServer);
-        tcpServer.emplace(eventLoopThread);
-        tcpClient->onCreated();
-        tcpServer->onCreated();
+        _tcpServer.emplace(_eventLoopThread);
+        _tcpClient->onCreated();
+        _tcpServer->onCreated();
     }
     // Different SocketType might have different rules
 }

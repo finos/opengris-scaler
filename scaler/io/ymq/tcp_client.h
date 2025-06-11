@@ -12,6 +12,9 @@
 
 class EventLoopThread;
 
+class EventLoopThread;
+class EventManager;
+
 class TcpClient {
     std::shared_ptr<EventLoopThread> eventLoop; /* shared ownership */
     // std::unique_ptr<EventManager> eventManager;
