@@ -1,8 +1,7 @@
 <div align="center">
-  <a href="https://github.com/finos">
-    <img src="https://github.com/finos.png" alt="Citi" width="80" height="80">
+  <a href="https://github.com/finos/opengris-scaler">
+    <img src="https://github.com/finos/branding/blob/master/project-logos/active-project-logos/OpenGRIS/Scaler/2025_OpenGRIS_Scaler.svg" alt="OpenGRIS Scaler" width="180" height="80">
   </a>
-<h3 align="center">OpenGRIS Scaler</h3>
 
   <p align="center">
     Efficient, lightweight, and reliable distributed computation engine.
