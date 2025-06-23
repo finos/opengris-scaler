@@ -1,16 +1,17 @@
 <div align="center">
-  <a href="https://github.com/citi">
-    <img src="https://github.com/citi.png" alt="Citi" width="80" height="80">
+  <a href="https://github.com/finos/opengris-scaler">
+    <img src="https://github.com/finos/branding/blob/master/project-logos/active-project-logos/OpenGRIS/Scaler/2025_OpenGRIS_Scaler.svg" alt="OpenGRIS Scaler" width="180" height="80">
   </a>
-
-<h3 align="center">Citi/scaler</h3>
 
   <p align="center">
     Efficient, lightweight, and reliable distributed computation engine.
   </p>
 
   <p align="center">
-    <a href="https://citi.github.io/scaler/">
+    <a href="https://community.finos.org/docs/governance/Software-Projects/stages/incubating">
+      <img src="https://cdn.jsdelivr.net/gh/finos/contrib-toolbox@master/images/badge-incubating.svg">
+    </a>
+    <a href="https://finos.github.io/opengris-scaler/">
       <img src="https://img.shields.io/badge/Documentation-0f1632">
     </a>
     <a href="./LICENSE">
@@ -25,7 +26,7 @@
 
 <br />
 
-**Scaler provides a simple, efficient, and reliable way to perform distributed computing** using a centralized scheduler,
+**OpenGRIS Scaler provides a simple, efficient, and reliable way to perform distributed computing** using a centralized scheduler,
 with a stable and language-agnostic protocol for client and worker communications.
 
 ```python
@@ -42,7 +43,7 @@ with Client(address="tcp://127.0.0.1:2345") as client:
     print(sum(results))  # 661.46
 ```
 
-Scaler is a suitable Dask replacement, offering significantly better scheduling performance for jobs with a large number
+OpenGRIS Scaler is a suitable Dask replacement, offering significantly better scheduling performance for jobs with a large number
 of lightweight tasks while improving on load balancing, messaging, and deadlocks.
 
 ## Features
@@ -388,23 +389,29 @@ appreciated**.
 We welcome you to:
 
 - Fix typos or touch up documentation
-- Share your opinions on [existing issues](https://github.com/citi/scaler/issues)
-- Help expand and improve our library by [opening a new issue](https://github.com/citi/scaler/issues/new)
+- Share your opinions on [existing issues](https://github.com/finos/opengris-scaler/issues)
+- Help expand and improve our library by [opening a new issue](https://github.com/finos/opengris-scaler/issues/new)
 
-Please review our [community contribution guidelines](https://github.com/Citi/.github/blob/main/CONTRIBUTING.md) and
-[functional contribution guidelines](./CONTRIBUTING.md) to get started 👍.
+Please review [functional contribution guidelines](./CONTRIBUTING.md) to get started 👍.
+
+_NOTE:_ Commits and pull requests to FINOS repositories will only be accepted from those contributors with an active, executed Individual Contributor License Agreement (ICLA) with FINOS OR contributors who are covered under an existing and active Corporate Contribution License Agreement (CCLA) executed with FINOS. Commits from individuals not covered under an ICLA or CCLA will be flagged and blocked by the ([EasyCLA](https://community.finos.org/docs/governance/Software-Projects/easycla)) tool. Please note that some CCLAs require individuals/employees to be explicitly named on the CCLA.
+
+*Need an ICLA? Unsure if you are covered under an existing CCLA? Email [help@finos.org](mailto:help@finos.org)*
 
 ## Code of Conduct
 
-We are committed to making open source an enjoyable and respectful experience for our community. See
-[`CODE_OF_CONDUCT`](https://github.com/Citi/.github/blob/main/CODE_OF_CONDUCT.md) for more information.
+Please see the FINOS [Community Code of Conduct](https://www.finos.org/code-of-conduct).
 
 ## License
+
+Copyright 2023 Citigroup, Inc.
 
 This project is distributed under the [Apache-2.0 License](https://www.apache.org/licenses/LICENSE-2.0). See
 [`LICENSE`](./LICENSE) for more information.
 
+SPDX-License-Identifier: [Apache-2.0](https://spdx.org/licenses/Apache-2.0)
+
 ## Contact
 
-If you have a query or require support with this project, [raise an issue](https://github.com/Citi/scaler/issues).
+If you have a query or require support with this project, [raise an issue](https://github.com/finos/opengris-scaler/issues).
 Otherwise, reach out to [opensource@citi.com](mailto:opensource@citi.com).

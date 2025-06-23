@@ -1,0 +1,7 @@
+SPDXVersion: SPDX-2.0
+DataLicense: CC0-1.0
+Creator: Citigroup, Inc.
+PackageName: opengris-scaler
+PackageOriginator: Citigroup, Inc.
+PackageHomePage: https://github.com/finos/opengris-scaler
+PackageLicenseDeclared: Apache-2.0
