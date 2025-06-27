@@ -68,3 +68,6 @@ class ZMQConfig:
             raise ValueError(f"Unsupported ZMQ type: {socket_type}")
 
         return ZMQConfig(socket_type_enum, host, port_int)
+
+    def __repr__(self) -> str:
+        return self.to_address()

@@ -1,12 +1,11 @@
 import dataclasses
 import enum
-import os
-from typing import List, Optional, Set, Tuple, Type
+from typing import List, Optional, Set, Type, Union
 
 import bidict
 
 from scaler.protocol.capnp._python import _message  # noqa
-from scaler.protocol.python.common import ObjectContent, TaskStatus
+from scaler.protocol.python.common import ObjectMetadata, ObjectStorageAddress, TaskStatus
 from scaler.protocol.python.mixins import Message
 from scaler.protocol.python.status import (
     BinderStatus,
@@ -17,66 +16,75 @@ from scaler.protocol.python.status import (
     TaskManagerStatus,
     WorkerManagerStatus,
 )
+from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 
 
 class Task(Message):
-    @dataclasses.dataclass
-    class Argument:
-        type: "ArgumentType"
-        data: bytes
-
-        def __repr__(self):
-            return f"Argument(type={self.type}, data={self.data.hex()})"
-
-        class ArgumentType(enum.Enum):
-            Task = _message.Task.Argument.ArgumentType.task
-            ObjectID = _message.Task.Argument.ArgumentType.objectID
-
     def __init__(self, msg):
         super().__init__(msg)
 
     def __repr__(self):
         return (
-            f"Task(task_id={self.task_id.hex()}, source={self.source.hex()}, metadata={self.metadata.hex()},"
-            f"func_object_id={self.func_object_id.hex()}, function_args={self.function_args})"
+            f"Task(task_id={self.task_id!r}, source={self.source!r}, metadata={self.metadata.hex()},"
+            f"func_object_id={self.func_object_id!r}, function_args={self.function_args})"
         )
 
     @property
-    def task_id(self) -> bytes:
-        return self._msg.taskId
+    def task_id(self) -> TaskID:
+        return TaskID(self._msg.taskId)
 
     @property
-    def source(self) -> bytes:
-        return self._msg.source
+    def source(self) -> ClientID:
+        return ClientID(self._msg.source)
 
     @property
     def metadata(self) -> bytes:
         return self._msg.metadata
 
     @property
-    def func_object_id(self) -> bytes:
-        return self._msg.funcObjectId
+    def func_object_id(self) -> Optional[ObjectID]:
+        if len(self._msg.funcObjectId) > 0:
+            return ObjectID(self._msg.funcObjectId)
+        else:
+            return None
 
     @property
-    def function_args(self) -> List[Argument]:
-        return [
-            Task.Argument(type=Task.Argument.ArgumentType(arg.type.raw), data=arg.data)
-            for arg in self._msg.functionArgs
-        ]
+    def function_args(self) -> List[Union[ObjectID, TaskID]]:
+        return [self._from_capnp_task_argument(arg) for arg in self._msg.functionArgs]
 
     @staticmethod
     def new_msg(
-        task_id: bytes, source: bytes, metadata: bytes, func_object_id: bytes, function_args: List[Argument]
+        task_id: TaskID,
+        source: ClientID,
+        metadata: bytes,
+        func_object_id: Optional[ObjectID],
+        function_args: List[Union[ObjectID, TaskID]],
     ) -> "Task":
         return Task(
             _message.Task(
-                taskId=task_id,
-                source=source,
+                taskId=bytes(task_id),
+                source=bytes(source),
                 metadata=metadata,
-                funcObjectId=func_object_id,
-                functionArgs=[_message.Task.Argument(type=arg.type.value, data=arg.data) for arg in function_args],
+                funcObjectId=bytes(func_object_id) if func_object_id is not None else b"",
+                functionArgs=[Task._to_capnp_task_argument(arg) for arg in function_args],
             )
         )
+
+    @staticmethod
+    def _from_capnp_task_argument(value: _message.Task.Argument) -> Union[ObjectID, TaskID]:
+        if value.type.raw == _message.Task.Argument.ArgumentType.task:
+            return TaskID(value.data)
+        else:
+            assert value.type.raw == _message.Task.Argument.ArgumentType.objectID
+            return ObjectID(value.data)
+
+    @staticmethod
+    def _to_capnp_task_argument(value: Union[ObjectID, TaskID]) -> _message.Task.Argument:
+        if isinstance(value, TaskID):
+            return _message.Task.Argument(type=_message.Task.Argument.ArgumentType.task, data=bytes(value))
+        else:
+            assert isinstance(value, ObjectID)
+            return _message.Task.Argument(type=_message.Task.Argument.ArgumentType.objectID, data=bytes(value))
 
 
 class TaskCancel(Message):
@@ -89,8 +97,8 @@ class TaskCancel(Message):
         retrieve_task_object: bool
 
     @property
-    def task_id(self) -> bytes:
-        return self._msg.taskId
+    def task_id(self) -> TaskID:
+        return TaskID(self._msg.taskId)
 
     @property
     def flags(self) -> TaskCancelFlags:
@@ -99,13 +107,13 @@ class TaskCancel(Message):
         )
 
     @staticmethod
-    def new_msg(task_id: bytes, flags: Optional[TaskCancelFlags] = None) -> "TaskCancel":
+    def new_msg(task_id: TaskID, flags: Optional[TaskCancelFlags] = None) -> "TaskCancel":
         if flags is None:
             flags = TaskCancel.TaskCancelFlags(force=False, retrieve_task_object=False)
 
         return TaskCancel(
             _message.TaskCancel(
-                taskId=task_id,
+                taskId=bytes(task_id),
                 flags=_message.TaskCancel.TaskCancelFlags(
                     force=flags.force, retrieveTaskObject=flags.retrieve_task_object
                 ),
@@ -118,8 +126,8 @@ class TaskResult(Message):
         super().__init__(msg)
 
     @property
-    def task_id(self) -> bytes:
-        return self._msg.taskId
+    def task_id(self) -> TaskID:
+        return TaskID(self._msg.taskId)
 
     @property
     def status(self) -> TaskStatus:
@@ -135,7 +143,7 @@ class TaskResult(Message):
 
     @staticmethod
     def new_msg(
-        task_id: bytes, status: TaskStatus, metadata: Optional[bytes] = None, results: Optional[List[bytes]] = None
+        task_id: TaskID, status: TaskStatus, metadata: Optional[bytes] = None, results: Optional[List[bytes]] = None
     ) -> "TaskResult":
         if metadata is None:
             metadata = bytes()
@@ -143,7 +151,9 @@ class TaskResult(Message):
         if results is None:
             results = list()
 
-        return TaskResult(_message.TaskResult(taskId=task_id, status=status.value, metadata=metadata, results=results))
+        return TaskResult(
+            _message.TaskResult(taskId=bytes(task_id), status=status.value, metadata=metadata, results=results)
+        )
 
 
 class GraphTask(Message):
@@ -152,36 +162,39 @@ class GraphTask(Message):
 
     def __repr__(self):
         return (
-            f"GraphTask({os.linesep}"
-            f"    task_id={self.task_id.hex()},{os.linesep}"
-            f"    targets=[{os.linesep}"
-            f"        {[target.hex() + ',' + os.linesep for target in self.targets]}"
+            f"GraphTask(\n"
+            f"    task_id={self.task_id!r},\n"
+            f"    targets=[\n"
+            f"        {', '.join(repr(target) for target in self.targets)}\n"
             f"    ]\n"
-            f"    graph={self.graph}\n"
+            f"    graph={self.graph!r}\n"
             f")"
         )
 
     @property
-    def task_id(self) -> bytes:
-        return self._msg.taskId
+    def task_id(self) -> TaskID:
+        return TaskID(self._msg.taskId)
 
     @property
-    def source(self) -> bytes:
-        return self._msg.source
+    def source(self) -> ClientID:
+        return ClientID(self._msg.source)
 
     @property
-    def targets(self) -> List[bytes]:
-        return self._msg.targets
+    def targets(self) -> List[TaskID]:
+        return [TaskID(target) for target in self._msg.targets]
 
     @property
     def graph(self) -> List[Task]:
         return [Task(task) for task in self._msg.graph]
 
     @staticmethod
-    def new_msg(task_id: bytes, source: bytes, targets: List[bytes], graph: List[Task]) -> "GraphTask":
+    def new_msg(task_id: TaskID, source: ClientID, targets: List[TaskID], graph: List[Task]) -> "GraphTask":
         return GraphTask(
             _message.GraphTask(
-                taskId=task_id, source=source, targets=targets, graph=[task.get_message() for task in graph]
+                taskId=bytes(task_id),
+                source=bytes(source),
+                targets=[bytes(target) for target in targets],
+                graph=[task.get_message() for task in graph],
             )
         )
 
@@ -191,12 +204,12 @@ class GraphTaskCancel(Message):
         super().__init__(msg)
 
     @property
-    def task_id(self) -> bytes:
-        return self._msg.taskId
+    def task_id(self) -> TaskID:
+        return TaskID(self._msg.taskId)
 
     @staticmethod
-    def new_msg(task_id: bytes) -> "GraphTaskCancel":
-        return GraphTaskCancel(_message.GraphTaskCancel(taskId=task_id))
+    def new_msg(task_id: TaskID) -> "GraphTaskCancel":
+        return GraphTaskCancel(_message.GraphTaskCancel(taskId=bytes(task_id)))
 
     def get_message(self):
         return self._msg
@@ -223,9 +236,14 @@ class ClientHeartbeatEcho(Message):
     def __init__(self, msg):
         super().__init__(msg)
 
+    def object_storage_address(self) -> ObjectStorageAddress:
+        return ObjectStorageAddress(self._msg.objectStorageAddress)
+
     @staticmethod
-    def new_msg() -> "ClientHeartbeatEcho":
-        return ClientHeartbeatEcho(_message.ClientHeartbeatEcho())
+    def new_msg(object_storage_address: ObjectStorageAddress) -> "ClientHeartbeatEcho":
+        return ClientHeartbeatEcho(
+            _message.ClientHeartbeatEcho(objectStorageAddress=object_storage_address.get_message())
+        )
 
 
 class WorkerHeartbeat(Message):
@@ -281,9 +299,14 @@ class WorkerHeartbeatEcho(Message):
     def __init__(self, msg):
         super().__init__(msg)
 
+    def object_storage_address(self) -> ObjectStorageAddress:
+        return ObjectStorageAddress(self._msg.objectStorageAddress)
+
     @staticmethod
-    def new_msg() -> "WorkerHeartbeatEcho":
-        return WorkerHeartbeatEcho(_message.WorkerHeartbeatEcho())
+    def new_msg(object_storage_address: ObjectStorageAddress) -> "WorkerHeartbeatEcho":
+        return WorkerHeartbeatEcho(
+            _message.WorkerHeartbeatEcho(objectStorageAddress=object_storage_address.get_message())
+        )
 
 
 class ObjectInstruction(Message):
@@ -300,72 +323,23 @@ class ObjectInstruction(Message):
         return ObjectInstruction.ObjectInstructionType(self._msg.instructionType.raw)
 
     @property
-    def object_user(self) -> bytes:
-        return self._msg.objectUser
+    def object_user(self) -> Optional[ClientID]:
+        return ClientID(self._msg.objectUser) if len(self._msg.objectUser) > 0 else None
 
     @property
-    def object_content(self) -> ObjectContent:
-        return ObjectContent(self._msg.objectContent)
+    def object_metadata(self) -> ObjectMetadata:
+        return ObjectMetadata(self._msg.objectMetadata)
 
     @staticmethod
     def new_msg(
-        instruction_type: ObjectInstructionType, object_user: bytes, object_content: ObjectContent
+        instruction_type: ObjectInstructionType, object_user: Optional[ClientID], object_metadata: ObjectMetadata
     ) -> "ObjectInstruction":
         return ObjectInstruction(
             _message.ObjectInstruction(
                 instructionType=instruction_type.value,
-                objectUser=object_user,
-                objectContent=object_content.get_message(),
+                objectUser=bytes(object_user) if object_user is not None else b"",
+                objectMetadata=object_metadata.get_message(),
             )
-        )
-
-
-class ObjectRequest(Message):
-    class ObjectRequestType(enum.Enum):
-        Get = _message.ObjectRequest.ObjectRequestType.get
-
-    def __init__(self, msg):
-        super().__init__(msg)
-
-    def __repr__(self):
-        return (
-            f"ObjectRequest(type={self.request_type}, "
-            f"object_ids={tuple(object_id.hex() for object_id in self.object_ids)})"
-        )
-
-    @property
-    def request_type(self) -> ObjectRequestType:
-        return ObjectRequest.ObjectRequestType(self._msg.requestType.raw)
-
-    @property
-    def object_ids(self) -> Tuple[bytes]:
-        return tuple(self._msg.objectIds)
-
-    @staticmethod
-    def new_msg(request_type: ObjectRequestType, object_ids: Tuple[bytes, ...]) -> "ObjectRequest":
-        return ObjectRequest(_message.ObjectRequest(requestType=request_type.value, objectIds=list(object_ids)))
-
-
-class ObjectResponse(Message):
-    class ObjectResponseType(enum.Enum):
-        Content = _message.ObjectResponse.ObjectResponseType.content
-        ObjectNotExist = _message.ObjectResponse.ObjectResponseType.objectNotExist
-
-    def __init__(self, msg):
-        super().__init__(msg)
-
-    @property
-    def response_type(self) -> ObjectResponseType:
-        return ObjectResponse.ObjectResponseType(self._msg.responseType.raw)
-
-    @property
-    def object_content(self) -> ObjectContent:
-        return ObjectContent(self._msg.objectContent)
-
-    @staticmethod
-    def new_msg(response_type: ObjectResponseType, object_content: ObjectContent) -> "ObjectResponse":
-        return ObjectResponse(
-            _message.ObjectResponse(responseType=response_type.value, objectContent=object_content.get_message())
         )
 
 
@@ -374,12 +348,12 @@ class DisconnectRequest(Message):
         super().__init__(msg)
 
     @property
-    def worker(self) -> bytes:
-        return self._msg.worker
+    def worker(self) -> WorkerID:
+        return WorkerID(self._msg.worker)
 
     @staticmethod
-    def new_msg(worker: bytes) -> "DisconnectRequest":
-        return DisconnectRequest(_message.DisconnectRequest(worker=worker))
+    def new_msg(worker: WorkerID) -> "DisconnectRequest":
+        return DisconnectRequest(_message.DisconnectRequest(worker=bytes(worker)))
 
 
 @dataclasses.dataclass
@@ -388,12 +362,12 @@ class DisconnectResponse(Message):
         super().__init__(msg)
 
     @property
-    def worker(self) -> bytes:
-        return self._msg.worker
+    def worker(self) -> WorkerID:
+        return WorkerID(self._msg.worker)
 
     @staticmethod
-    def new_msg(worker: bytes) -> "DisconnectResponse":
-        return DisconnectResponse(_message.DisconnectResponse(worker=worker))
+    def new_msg(worker: WorkerID) -> "DisconnectResponse":
+        return DisconnectResponse(_message.DisconnectResponse(worker=bytes(worker)))
 
 
 class ClientDisconnect(Message):
@@ -449,16 +423,21 @@ class StateBalanceAdvice(Message):
         super().__init__(msg)
 
     @property
-    def worker_id(self) -> bytes:
-        return self._msg.workerId
+    def worker_id(self) -> WorkerID:
+        return WorkerID(self._msg.workerId)
 
     @property
-    def task_ids(self) -> List[bytes]:
-        return self._msg.taskIds
+    def task_ids(self) -> List[TaskID]:
+        return [TaskID(task_id) for task_id in self._msg.taskIds]
 
     @staticmethod
-    def new_msg(worker_id: bytes, task_ids: List[bytes]) -> "StateBalanceAdvice":
-        return StateBalanceAdvice(_message.StateBalanceAdvice(workerId=worker_id, taskIds=task_ids))
+    def new_msg(worker_id: WorkerID, task_ids: List[TaskID]) -> "StateBalanceAdvice":
+        return StateBalanceAdvice(
+            _message.StateBalanceAdvice(
+                workerId=bytes(worker_id),
+                taskIds=[bytes(task_id) for task_id in task_ids],
+            )
+        )
 
 
 class StateScheduler(Message):
@@ -521,16 +500,16 @@ class StateWorker(Message):
         super().__init__(msg)
 
     @property
-    def worker_id(self) -> bytes:
-        return self._msg.workerId
+    def worker_id(self) -> WorkerID:
+        return WorkerID(self._msg.workerId)
 
     @property
     def message(self) -> bytes:
         return self._msg.message
 
     @staticmethod
-    def new_msg(worker_id: bytes, message: bytes) -> "StateWorker":
-        return StateWorker(_message.StateWorker(workerId=worker_id, message=message))
+    def new_msg(worker_id: WorkerID, message: bytes) -> "StateWorker":
+        return StateWorker(_message.StateWorker(workerId=bytes(worker_id), message=message))
 
 
 class StateTask(Message):
@@ -538,8 +517,8 @@ class StateTask(Message):
         super().__init__(msg)
 
     @property
-    def task_id(self) -> bytes:
-        return self._msg.taskId
+    def task_id(self) -> TaskID:
+        return TaskID(self._msg.taskId)
 
     @property
     def function_name(self) -> bytes:
@@ -550,8 +529,8 @@ class StateTask(Message):
         return TaskStatus(self._msg.status.raw)
 
     @property
-    def worker(self) -> bytes:
-        return self._msg.worker
+    def worker(self) -> WorkerID:
+        return WorkerID(self._msg.worker)
 
     @property
     def metadata(self) -> bytes:
@@ -559,11 +538,15 @@ class StateTask(Message):
 
     @staticmethod
     def new_msg(
-        task_id: bytes, function_name: bytes, status: TaskStatus, worker: bytes, metadata: bytes = b""
+        task_id: TaskID, function_name: bytes, status: TaskStatus, worker: WorkerID, metadata: bytes = b""
     ) -> "StateTask":
         return StateTask(
             _message.StateTask(
-                taskId=task_id, functionName=function_name, status=status.value, worker=worker, metadata=metadata
+                taskId=bytes(task_id),
+                functionName=function_name,
+                status=status.value,
+                worker=bytes(worker),
+                metadata=metadata,
             )
         )
 
@@ -577,11 +560,11 @@ class StateGraphTask(Message):
         super().__init__(msg)
 
     @property
-    def graph_task_id(self) -> bytes:
+    def graph_task_id(self) -> TaskID:
         return self._msg.graphTaskId
 
     @property
-    def task_id(self) -> bytes:
+    def task_id(self) -> TaskID:
         return self._msg.taskId
 
     @property
@@ -589,19 +572,19 @@ class StateGraphTask(Message):
         return StateGraphTask.NodeTaskType(self._msg.nodeTaskType.raw)
 
     @property
-    def parent_task_ids(self) -> Set[bytes]:
-        return set(self._msg.parentTaskIds)
+    def parent_task_ids(self) -> Set[TaskID]:
+        return {TaskID(parent_task_id) for parent_task_id in self._msg.parentTaskIds}
 
     @staticmethod
     def new_msg(
-        graph_task_id: bytes, task_id: bytes, node_task_type: NodeTaskType, parent_task_ids: Set[bytes]
+        graph_task_id: TaskID, task_id: TaskID, node_task_type: NodeTaskType, parent_task_ids: Set[TaskID]
     ) -> "StateGraphTask":
         return StateGraphTask(
             _message.StateGraphTask(
-                graphTaskId=graph_task_id,
-                taskId=task_id,
+                graphTaskId=bytes(graph_task_id),
+                taskId=bytes(task_id),
                 nodeTaskType=node_task_type.value,
-                parentTaskIds=list(parent_task_ids),
+                parentTaskIds=[bytes(parent_task_id) for parent_task_id in parent_task_ids],
             )
         )
 
@@ -623,8 +606,6 @@ PROTOCOL: bidict.bidict[str, Type[Message]] = bidict.bidict(
         "graphTask": GraphTask,
         "graphTaskCancel": GraphTaskCancel,
         "objectInstruction": ObjectInstruction,
-        "objectRequest": ObjectRequest,
-        "objectResponse": ObjectResponse,
         "clientHeartbeat": ClientHeartbeat,
         "clientHeartbeatEcho": ClientHeartbeatEcho,
         "workerHeartbeat": WorkerHeartbeat,

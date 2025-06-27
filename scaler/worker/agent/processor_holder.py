@@ -8,6 +8,8 @@ import psutil
 
 from scaler.io.config import DEFAULT_PROCESSOR_KILL_DELAY_SECONDS
 from scaler.protocol.python.message import Task
+from scaler.utility.identifiers import ProcessorID
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.processor.processor import SUSPEND_SIGNAL, Processor
 
@@ -16,14 +18,15 @@ class ProcessorHolder:
     def __init__(
         self,
         event_loop: str,
-        address: ZMQConfig,
+        agent_address: ZMQConfig,
+        storage_address: ObjectStorageConfig,
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
         hard_suspend: bool,
         logging_paths: Tuple[str, ...],
         logging_level: str,
     ):
-        self._processor_id: Optional[bytes] = None
+        self._processor_id: Optional[ProcessorID] = None
         self._task: Optional[Task] = None
         self._suspended = False
 
@@ -38,7 +41,8 @@ class ProcessorHolder:
 
         self._processor = Processor(
             event_loop=event_loop,
-            address=address,
+            agent_address=agent_address,
+            storage_address=storage_address,
             resume_event=self._resume_event,
             resumed_event=self._resumed_event,
             garbage_collect_interval_seconds=garbage_collect_interval_seconds,
@@ -56,14 +60,14 @@ class ProcessorHolder:
     def process(self) -> psutil.Process:
         return self._process
 
-    def processor_id(self) -> bytes:
+    def processor_id(self) -> ProcessorID:
         assert self._processor_id is not None
         return self._processor_id
 
     def initialized(self) -> bool:
         return self._processor_id is not None
 
-    def initialize(self, processor_id: bytes):
+    def initialize(self, processor_id: ProcessorID):
         self._processor_id = processor_id
 
     def task(self) -> Optional[Task]:
@@ -134,6 +138,6 @@ class ProcessorHolder:
     def __send_signal(self, signal_name: str):
         signal_instance = getattr(signal, signal_name, None)
         if signal_instance is None:
-            raise RuntimeError(f"unsupported platform, signal not availaible: {signal_name}.")
+            raise RuntimeError(f"unsupported platform, signal not available: {signal_name}.")
 
         os.kill(self.pid(), signal_instance)

@@ -5,6 +5,7 @@ from typing import Dict, Optional
 
 import psutil
 
+from scaler.utility.identifiers import TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.mixins import Looper
 from scaler.worker.agent.mixins import ProfilingManager
@@ -14,7 +15,7 @@ from scaler.worker.agent.mixins import ProfilingManager
 class _ProcessProfiler:
     process: psutil.Process
 
-    current_task_id: Optional[bytes] = None
+    current_task_id: Optional[TaskID] = None
 
     start_time: Optional[float] = None
     start_cpu_time: Optional[float] = None
@@ -38,7 +39,7 @@ class VanillaProfilingManager(ProfilingManager, Looper):
 
         self._process_profiler_by_pid.pop(pid)
 
-    def on_task_start(self, pid: int, task_id: bytes):
+    def on_task_start(self, pid: int, task_id: TaskID):
         process_profiler = self._process_profiler_by_pid.get(pid)
 
         if process_profiler is None:
@@ -53,7 +54,7 @@ class VanillaProfilingManager(ProfilingManager, Looper):
         process_profiler.init_memory_rss = self.__process_memory_rss(process)
         process_profiler.peak_memory_rss = process_profiler.init_memory_rss
 
-    def on_task_end(self, pid: int, task_id: bytes) -> ProfileResult:
+    def on_task_end(self, pid: int, task_id: TaskID) -> ProfileResult:
         process_profiler = self._process_profiler_by_pid.get(pid)
 
         if process_profiler is None:

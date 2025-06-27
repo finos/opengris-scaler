@@ -36,3 +36,7 @@ class ClientShutdownException(Exception):
 
 class ClientQuitException(Exception):
     pass
+
+
+class ObjectStorageException(Exception):
+    pass

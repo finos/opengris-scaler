@@ -3,6 +3,7 @@ from typing import Callable, Dict, Generator, Generic, Optional, Set, Tuple, Typ
 
 from scaler.utility.many_to_many_dict import ManyToManyDict
 
+BlockType = TypeVar("BlockType")
 ObjectKeyType = TypeVar("ObjectKeyType")
 
 
@@ -15,13 +16,13 @@ class ObjectUsage(Generic[ObjectKeyType], metaclass=abc.ABCMeta):
 ObjectType = TypeVar("ObjectType", bound=ObjectUsage)
 
 
-class ObjectTracker(Generic[ObjectKeyType, ObjectType]):
+class ObjectTracker(Generic[BlockType, ObjectKeyType, ObjectType]):
     def __init__(self, prefix: str, callback: Callable[[ObjectType], None]):
         self._prefix = prefix
         self._callback = callback
 
-        self._current_blocks: Set[ObjectKeyType] = set()
-        self._object_key_to_block: ManyToManyDict[ObjectKeyType, ObjectKeyType] = ManyToManyDict()
+        self._current_blocks: Set[BlockType] = set()
+        self._object_key_to_block: ManyToManyDict[ObjectKeyType, BlockType] = ManyToManyDict()
         self._object_key_to_object: Dict[ObjectKeyType, ObjectType] = dict()
 
     def object_count(self):
@@ -43,8 +44,8 @@ class ObjectTracker(Generic[ObjectKeyType, ObjectType]):
         self._object_key_to_object[obj.get_object_key()] = obj
 
     def get_object_block_pairs(
-        self, blocks: Set[ObjectKeyType]
-    ) -> Generator[Tuple[ObjectKeyType, ObjectKeyType], None, None]:
+        self, blocks: Set[BlockType]
+    ) -> Generator[Tuple[ObjectKeyType, BlockType], None, None]:
         for block in blocks:
             if not self._object_key_to_block.has_right_key(block):
                 continue
@@ -52,7 +53,7 @@ class ObjectTracker(Generic[ObjectKeyType, ObjectType]):
             for object_key in self._object_key_to_block.get_left_items(block):
                 yield object_key, block
 
-    def add_blocks_for_one_object(self, object_key: ObjectKeyType, blocks: Set[ObjectKeyType]):
+    def add_blocks_for_one_object(self, object_key: ObjectKeyType, blocks: Set[BlockType]):
         if object_key not in self._object_key_to_object:
             raise KeyError(f"cannot find key={object_key} in ObjectTracker")
 
@@ -61,7 +62,7 @@ class ObjectTracker(Generic[ObjectKeyType, ObjectType]):
 
         self._current_blocks.update(blocks)
 
-    def remove_blocks_for_one_object(self, object_key: ObjectKeyType, blocks: Set[ObjectKeyType]):
+    def remove_blocks_for_one_object(self, object_key: ObjectKeyType, blocks: Set[BlockType]):
         ready_objects = []
         for block in blocks:
             obj = self.__remove_block_for_object(object_key, block)
@@ -73,7 +74,7 @@ class ObjectTracker(Generic[ObjectKeyType, ObjectType]):
         for obj in ready_objects:
             self._callback(obj)
 
-    def add_one_block_for_objects(self, object_keys: Set[ObjectKeyType], block: ObjectKeyType):
+    def add_one_block_for_objects(self, object_keys: Set[ObjectKeyType], block: BlockType):
         for object_key in object_keys:
             if object_key not in self._object_key_to_object:
                 raise KeyError(f"cannot find key={object_key} in ObjectTracker")
@@ -82,7 +83,7 @@ class ObjectTracker(Generic[ObjectKeyType, ObjectType]):
 
         self._current_blocks.add(block)
 
-    def remove_one_block_for_objects(self, object_keys: Set[ObjectKeyType], block: ObjectKeyType):
+    def remove_one_block_for_objects(self, object_keys: Set[ObjectKeyType], block: BlockType):
         ready_objects = []
         for object_key in object_keys:
             obj = self.__remove_block_for_object(object_key, block)
@@ -94,7 +95,7 @@ class ObjectTracker(Generic[ObjectKeyType, ObjectType]):
         for obj in ready_objects:
             self._callback(obj)
 
-    def remove_blocks(self, blocks: Set[ObjectKeyType]):
+    def remove_blocks(self, blocks: Set[BlockType]):
         ready_objects = []
         for block in blocks:
             if not self._object_key_to_block.has_right_key(block):
@@ -111,7 +112,7 @@ class ObjectTracker(Generic[ObjectKeyType, ObjectType]):
         for obj in ready_objects:
             self._callback(obj)
 
-    def __remove_block_for_object(self, object_key: ObjectKeyType, block: ObjectKeyType) -> Optional[ObjectType]:
+    def __remove_block_for_object(self, object_key: ObjectKeyType, block: BlockType) -> Optional[ObjectType]:
         if block not in self._current_blocks:
             return None
 

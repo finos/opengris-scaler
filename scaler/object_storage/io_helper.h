@@ -12,16 +12,17 @@
 namespace scaler {
 namespace object_storage {
 
+void setTCPNoDelay(boost::asio::ip::tcp::socket& socket, bool is_no_delay);
+
 boost::asio::awaitable<void> read_request_header(boost::asio::ip::tcp::socket& socket, ObjectRequestHeader& header);
 
 boost::asio::awaitable<void> read_request_payload(
     boost::asio::ip::tcp::socket& socket, ObjectRequestHeader& header, payload_t& payload);
 
-boost::asio::awaitable<void> write_response_header(
-    boost::asio::ip::tcp::socket& socket, ObjectResponseHeader& header, uint64_t payload_length);
+boost::asio::awaitable<void> write_response(
+    boost::asio::ip::tcp::socket& socket, ObjectResponseHeader& header, std::span<const unsigned char> payload_view);
 
-boost::asio::awaitable<void> write_response_payload(
-    boost::asio::ip::tcp::socket& socket, std::span<const unsigned char> payload_view);
+
 
 };  // namespace object_storage
 };  // namespace scaler

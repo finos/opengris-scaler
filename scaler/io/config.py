@@ -1,5 +1,7 @@
 import os
 
+from scaler.utility.identifiers import ClientID
+
 # ==============
 # SYSTEM OPTIONS
 
@@ -76,7 +78,7 @@ DEFAULT_WORKER_DEATH_TIMEOUT = 5 * 60
 
 # the global client name for get log, right now, all client shared remote log, task need have client information to
 # deliver log
-DUMMY_CLIENT = b"dummy_client"
+DUMMY_CLIENT = ClientID(b"dummy_client")
 
 # if true, suspended worker's processors will be actively suspended with a SIGTSTP signal, otherwise a synchronization
 # event will be used.

@@ -5,6 +5,7 @@ import signal
 from typing import List, Optional, Tuple
 
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.worker import Worker
 
@@ -13,6 +14,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
     def __init__(
         self,
         address: ZMQConfig,
+        storage_address: Optional[ObjectStorageConfig],
         worker_io_threads: int,
         worker_names: List[str],
         heartbeat_interval_seconds: int,
@@ -29,6 +31,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         multiprocessing.Process.__init__(self, name="WorkerMaster")
 
         self._address = address
+        self._storage_address = storage_address
         self._worker_io_threads = worker_io_threads
         self._worker_names = worker_names
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
@@ -54,7 +57,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         assert args is not None
         logging.info(f"{self.__get_prefix()} received signal, shutting down")
         for worker in self._workers:
-            logging.info(f"{self.__get_prefix()} shutting down worker[{worker.pid}]")
+            logging.info(f"{self.__get_prefix()} shutting down {worker.identity!r}")
             os.kill(worker.pid, signal.SIGINT)
 
     def __register_signal(self):
@@ -72,6 +75,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
                 event_loop=self._event_loop,
                 name=name,
                 address=self._address,
+                storage_address=self._storage_address,
                 io_threads=self._worker_io_threads,
                 heartbeat_interval_seconds=self._heartbeat_interval_seconds,
                 garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
@@ -88,8 +92,8 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         for worker in self._workers:
             worker.start()
 
-        for i, worker in enumerate(self._workers):
-            logging.info(f"Worker[{worker.ident}] started")
+        for worker in self._workers:
+            logging.info(f"{worker.identity!r} started")
 
         for worker in self._workers:
             worker.join()

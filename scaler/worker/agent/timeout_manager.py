@@ -16,4 +16,4 @@ class VanillaTimeoutManager(Looper, TimeoutManager):
         if (time.time() - self._last_seen_time) < self._death_timeout_seconds:
             return
 
-        raise TimeoutError("timeout when connect to scheduler, quiting")
+        raise TimeoutError("timeout when connect to scheduler, quitting")

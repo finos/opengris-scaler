@@ -2,6 +2,7 @@ from typing import Dict, List
 
 from scaler.protocol.capnp._python import _status  # noqa
 from scaler.protocol.python.mixins import Message
+from scaler.utility.identifiers import ClientID, WorkerID
 
 CPU_MAXIMUM = 1000
 
@@ -49,15 +50,16 @@ class ClientManagerStatus(Message):
         super().__init__(msg)
 
     @property
-    def client_to_num_of_tasks(self) -> Dict[bytes, int]:
+    def client_to_num_of_tasks(self) -> Dict[ClientID, int]:
         return {p.client: p.numTask for p in self._msg.clientToNumOfTask}
 
     @staticmethod
-    def new_msg(client_to_num_of_tasks: Dict[bytes, int]) -> "ClientManagerStatus":  # type: ignore[override]
+    def new_msg(client_to_num_of_tasks: Dict[ClientID, int]) -> "ClientManagerStatus":  # type: ignore[override]
         return ClientManagerStatus(
             _status.ClientManagerStatus(
                 clientToNumOfTask=[
-                    _status.ClientManagerStatus.Pair(client=p[0], numTask=p[1]) for p in client_to_num_of_tasks.items()
+                    _status.ClientManagerStatus.Pair(client=client_id.decode(), numTask=num_tasks)
+                    for client_id, num_tasks in client_to_num_of_tasks.items()
                 ]
             )
         )
@@ -156,8 +158,8 @@ class WorkerStatus(Message):
         super().__init__(msg)
 
     @property
-    def worker_id(self) -> bytes:
-        return self._msg.workerId
+    def worker_id(self) -> WorkerID:
+        return WorkerID(self._msg.workerId)
 
     @property
     def agent(self) -> Resource:
@@ -201,7 +203,7 @@ class WorkerStatus(Message):
 
     @staticmethod
     def new_msg(  # type: ignore[override]
-        worker_id: bytes,
+        worker_id: WorkerID,
         agent: Resource,
         rss_free: int,
         free: int,
@@ -215,7 +217,7 @@ class WorkerStatus(Message):
     ) -> "WorkerStatus":
         return WorkerStatus(
             _status.WorkerStatus(
-                workerId=worker_id,
+                workerId=bytes(worker_id),
                 agent=agent.get_message(),
                 rssFree=rss_free,
                 free=free,

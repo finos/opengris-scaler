@@ -3,6 +3,7 @@ from typing import Dict, Optional, Set
 from scaler.io.async_connector import AsyncConnector
 from scaler.protocol.python.common import TaskStatus
 from scaler.protocol.python.message import Task, TaskCancel, TaskResult
+from scaler.utility.identifiers import TaskID
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper
 from scaler.utility.queues.async_sorted_priority_queue import AsyncSortedPriorityQueue
@@ -16,7 +17,7 @@ class VanillaTaskManager(Looper, TaskManager):
     def __init__(self, task_timeout_seconds: int):
         self._task_timeout_seconds = task_timeout_seconds
 
-        self._queued_task_id_to_task: Dict[bytes, Task] = dict()
+        self._queued_task_id_to_task: Dict[TaskID, Task] = dict()
 
         # Queued tasks are sorted first by task's priorities, then suspended tasks are prioritized over non yet started
         # tasks. Finally the sorted queue ensure we execute the oldest tasks first.
@@ -30,7 +31,7 @@ class VanillaTaskManager(Looper, TaskManager):
         # We want to execute the tasks in this order: 2-3-1-4.
         self._queued_task_ids = AsyncSortedPriorityQueue()
 
-        self._processing_task_ids: Set[bytes] = set()  # Tasks associated with a processor, including suspended tasks
+        self._processing_task_ids: Set[TaskID] = set()  # Tasks associated with a processor, including suspended tasks
 
         self._connector_external: Optional[AsyncConnector] = None
         self._processor_manager: Optional[ProcessorManager] = None

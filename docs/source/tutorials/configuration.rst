@@ -3,6 +3,16 @@ Configuration
 
 Scaler comes with a number of settings that can be tuned for performance. Reasonable defaults are chosen for these that will yield decent performance, but users can tune these settings to get the best performance for their use case. A full list of the available settings can be found by calling the CLI with the ``-h`` flag.
 
+Object storage server settings
+------------------------------
+
+For the list of available settings, use the CLI command:
+
+.. code:: bash
+
+    scaler_object_storage_server -h
+
+
 Scheduler Settings
 ------------------
 

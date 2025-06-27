@@ -55,6 +55,7 @@ struct ClientHeartbeat {
 }
 
 struct ClientHeartbeatEcho {
+    objectStorageAddress @0 :CommonType.ObjectStorageAddress;
 }
 
 struct WorkerHeartbeat {
@@ -67,36 +68,18 @@ struct WorkerHeartbeat {
 }
 
 struct WorkerHeartbeatEcho {
+    objectStorageAddress @0 :CommonType.ObjectStorageAddress;
 }
 
 struct ObjectInstruction {
     instructionType @0 :ObjectInstructionType;
     objectUser @1 :Data;
-    objectContent @2 :CommonType.ObjectContent;
+    objectMetadata @2 :CommonType.ObjectMetadata;
 
     enum ObjectInstructionType {
         create @0;
         delete @1;
         clear @2;
-    }
-}
-
-struct ObjectRequest {
-    requestType @0 :ObjectRequestType;
-    objectIds @1 :List(Data);
-
-    enum ObjectRequestType {
-        get @0;
-    }
-}
-
-struct ObjectResponse {
-    responseType @0 :ObjectResponseType;
-    objectContent @1 :CommonType.ObjectContent;
-
-    enum ObjectResponseType {
-        content @0;
-        objectNotExist @1;
     }
 }
 
@@ -181,29 +164,27 @@ struct Message {
         graphTaskCancel @4 :GraphTaskCancel;
 
         objectInstruction @5 :ObjectInstruction;
-        objectRequest @6 :ObjectRequest;
-        objectResponse @7 :ObjectResponse;
 
-        clientHeartbeat @8 :ClientHeartbeat;
-        clientHeartbeatEcho @9 :ClientHeartbeatEcho;
+        clientHeartbeat @6 :ClientHeartbeat;
+        clientHeartbeatEcho @7 :ClientHeartbeatEcho;
 
-        workerHeartbeat @10 :WorkerHeartbeat;
-        workerHeartbeatEcho @11 :WorkerHeartbeatEcho;
+        workerHeartbeat @8 :WorkerHeartbeat;
+        workerHeartbeatEcho @9 :WorkerHeartbeatEcho;
 
-        disconnectRequest @12 :DisconnectRequest;
-        disconnectResponse @13 :DisconnectResponse;
+        disconnectRequest @10 :DisconnectRequest;
+        disconnectResponse @11 :DisconnectResponse;
 
-        stateClient @14 :StateClient;
-        stateObject @15 :StateObject;
-        stateBalanceAdvice @16 :StateBalanceAdvice;
-        stateScheduler @17 :StateScheduler;
-        stateWorker @18 :StateWorker;
-        stateTask @19 :StateTask;
-        stateGraphTask @20 :StateGraphTask;
+        stateClient @12 :StateClient;
+        stateObject @13 :StateObject;
+        stateBalanceAdvice @14 :StateBalanceAdvice;
+        stateScheduler @15 :StateScheduler;
+        stateWorker @16 :StateWorker;
+        stateTask @17 :StateTask;
+        stateGraphTask @18 :StateGraphTask;
 
-        clientDisconnect @21 :ClientDisconnect;
-        clientShutdownResponse @22 :ClientShutdownResponse;
+        clientDisconnect @19 :ClientDisconnect;
+        clientShutdownResponse @20 :ClientShutdownResponse;
 
-        processorInitialized @23 :ProcessorInitialized;
+        processorInitialized @21 :ProcessorInitialized;
     }
 }

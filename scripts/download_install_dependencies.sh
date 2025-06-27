@@ -16,7 +16,7 @@ if [ "$1" == "boost" ]; then
 	elif [ "$2" == "install" ]; then
 		sudo cp -r boost/boost /usr/local/include/.
 		echo "Installed Boost into /usr/local/include/boost"
-	else 
+	else
 		echo "Argument needs to be either compile or install"
 		exit 1
 	fi
@@ -35,12 +35,12 @@ elif [ "$1" == "capnp" ]; then
 		cd capnp
 		sudo make install
 		echo "Installed capnp into /usr/local"
-	else 
+	else
 		echo "Argument needs to be either compile or install"
 		exit 1
 	fi
 
-else 
+else
     echo "Usage: ./download_install_dependencies.sh [boost|capnp] [compile|install]"
     exit 1
 fi

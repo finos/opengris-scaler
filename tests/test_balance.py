@@ -43,6 +43,7 @@ class TestBalance(unittest.TestCase):
 
         new_cluster = Cluster(
             address=combo._cluster._address,
+            storage_address=None,
             worker_io_threads=1,
             worker_names=[str(i) for i in range(0, N_WORKERS - 1)],
             heartbeat_interval_seconds=combo._cluster._heartbeat_interval_seconds,

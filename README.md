@@ -78,6 +78,7 @@ The official documentation is available at [citi.github.io/scaler/](https://citi
 Scaler has 3 main components:
 
 - A **scheduler**, responsible for routing tasks to available computing resources.
+- An **object storage server** that stores the task data objects (task arguments and task results).
 - A set of **workers** that form a _cluster_. Workers are independent computing units, each capable of executing a single task.
 - **Clients** running inside applications, responsible for submitting tasks to the scheduler.
 
@@ -99,19 +100,28 @@ This will start a scheduler with 4 workers on port `2345`.
 
 ### Setting up a computing cluster from the CLI
 
-The scheduler and workers can also be started from the command line with `scaler_scheduler` and `scaler_cluster`.
+The object storage server, scheduler and workers can also be started from the command line with
+`scaler_object_storage_server`, `scaler_scheduler` and `scaler_cluster`.
 
-First, start the Scaler scheduler:
+First, start the object storage server:
+
+```bash
+$ scaler_object_storage_server tcp://127.0.0.1:2346
+```
+
+Then, start the scheduler, and make it connect to the object storage server:
 
 ```bash
 $ scaler_scheduler tcp://127.0.0.1:2345
-[INFO]2023-03-19 12:16:10-0400: logging to ('/dev/stdout',)
-[INFO]2023-03-19 12:16:10-0400: use event loop: 2
-[INFO]2023-03-19 12:16:10-0400: Scheduler: monitor address is ipc:///tmp/127.0.0.1_2345_monitor
+[INFO]2025-06-06 13:13:15+0200: logging to ('/dev/stdout',)
+[INFO]2025-06-06 13:13:15+0200: use event loop: builtin
+[INFO]2025-06-06 13:13:15+0200: Scheduler: listen to scheduler address tcp://127.0.0.1:2345
+[INFO]2025-06-06 13:13:15+0200: Scheduler: connect to object storage server tcp://127.0.0.1:2346
+[INFO]2025-06-06 13:13:15+0200: Scheduler: listen to scheduler monitor address tcp://127.0.0.1:2347
 ...
 ```
 
-Then, start a set of workers (a.k.a. a Scaler *cluster*) that connects to the previously started scheduler:
+Finally, start a set of workers (a.k.a. a Scaler *cluster*) that connects to the previously started scheduler:
 
 ```bash
 $ scaler_cluster -n 4 tcp://127.0.0.1:2345
@@ -126,9 +136,10 @@ $ scaler_cluster -n 4 tcp://127.0.0.1:2345
 
 Multiple Scaler clusters can be connected to the same scheduler, providing distributed computation over multiple servers.
 
-`-h` lists the available options for the scheduler and the cluster executables:
+`-h` lists the available options for the object storage server, scheduler and the cluster executables:
 
 ```bash
+$ scaler_object_storage_server -h
 $ scaler_scheduler -h
 $ scaler_cluster -h
 ```
@@ -324,7 +335,7 @@ Use `scaler_top` to connect to the scheduler's monitor address (printed by the s
 diagnostics/metrics information about the scheduler and its workers.
 
 ```bash
-$ scaler_top ipc:///tmp/127.0.0.1_2345_monitor
+$ scaler_top tcp://127.0.0.1:2347
 ```
 
 It will look similar to `top`, but provides information about the current Scaler setup:
@@ -371,7 +382,7 @@ which column is being used for sorting
 `scaler_ui` provides a web monitoring interface for Scaler.
 
 ```bash
-$ scaler_ui ipc:///tmp/127.0.0.1_2345_monitor --port 8081
+$ scaler_ui tcp://127.0.0.1:2347 --port 8081
 ```
 
 This will open a web server on port `8081`.

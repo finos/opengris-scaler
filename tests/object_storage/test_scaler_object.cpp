@@ -28,14 +28,15 @@ using scaler::object_storage::CAPNP_WORD_SIZE;
 
 class ServerClientTest: public ::testing::Test {
 protected:
+    static scaler::object_storage::ObjectStorageServer server;
+
     static void SetUpTestSuite() {
         static std::once_flag server_started;
         std::call_once(server_started, []() {
             std::thread([] {
-                scaler::object_storage::ObjectStorageServer server;
                 server.run("127.0.0.1", "55555");
             }).detach();
-            std::this_thread::sleep_for(std::chrono::seconds(1));  // Allow server to start
+            server.waitUntilReady();
         });
     }
 
@@ -43,6 +44,8 @@ protected:
         // No shutdown — server runs until process exits
     }
 };
+
+scaler::object_storage::ObjectStorageServer ServerClientTest::server;
 
 char payload[] = "Hello, world!";
 

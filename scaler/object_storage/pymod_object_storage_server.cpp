@@ -5,18 +5,15 @@
 #include <string>
 
 extern "C" {
-void run_object_storage_server(const char* name, const char* port) {
-    scaler::object_storage::ObjectStorageServer server;
-    server.run(name, port);
-}
-
-static PyObject* object_storage_server_run_object_storage_server(PyObject* self, PyObject* args) {
+static PyObject* run_object_storage_server(PyObject* self, PyObject* args) {
     const char* addr;
-    const char* port;
+    int port;
+    int on_server_ready_fd = -1;
 
-    if (!PyArg_ParseTuple(args, "ss", &addr, &port))
+    if (!PyArg_ParseTuple(args, "si|i", &addr, &port, &on_server_ready_fd))
         return NULL;
-    run_object_storage_server(addr, port);
+    scaler::object_storage::ObjectStorageServer server(on_server_ready_fd);
+    server.run(addr, std::to_string(port));
     Py_INCREF(Py_None);
     return Py_None;
 }
@@ -24,7 +21,7 @@ static PyObject* object_storage_server_run_object_storage_server(PyObject* self,
 static PyMethodDef object_storage_server_methods[] = {
     {
         "run_object_storage_server",
-        object_storage_server_run_object_storage_server,
+        run_object_storage_server,
         METH_VARARGS,
         "Run object storage server on address:port",
     },

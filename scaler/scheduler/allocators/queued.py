@@ -2,6 +2,7 @@ import math
 from typing import Dict, List, Optional, Set
 
 from scaler.scheduler.allocators.mixins import TaskAllocator
+from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
 from scaler.utility.queues.indexed_queue import IndexedQueue
 
@@ -9,12 +10,12 @@ from scaler.utility.queues.indexed_queue import IndexedQueue
 class QueuedAllocator(TaskAllocator):
     def __init__(self, max_tasks_per_worker: int):
         self._max_tasks_per_worker = max_tasks_per_worker
-        self._workers_to_task_ids: Dict[bytes, IndexedQueue] = dict()
-        self._task_id_to_worker: Dict[bytes, bytes] = {}
+        self._workers_to_task_ids: Dict[WorkerID, IndexedQueue] = dict()
+        self._task_id_to_worker: Dict[TaskID, WorkerID] = {}
 
         self._worker_queue: AsyncPriorityQueue = AsyncPriorityQueue()
 
-    async def add_worker(self, worker: bytes) -> bool:
+    async def add_worker(self, worker: WorkerID) -> bool:
         if worker in self._workers_to_task_ids:
             return False
 
@@ -22,7 +23,7 @@ class QueuedAllocator(TaskAllocator):
         await self._worker_queue.put([0, worker])
         return True
 
-    def remove_worker(self, worker: bytes) -> List[bytes]:
+    def remove_worker(self, worker: WorkerID) -> List[TaskID]:
         if worker not in self._workers_to_task_ids:
             return []
 
@@ -33,13 +34,13 @@ class QueuedAllocator(TaskAllocator):
             self._task_id_to_worker.pop(task_id)
         return task_ids
 
-    def get_worker_ids(self) -> Set[bytes]:
+    def get_worker_ids(self) -> Set[WorkerID]:
         return set(self._workers_to_task_ids.keys())
 
-    def get_worker_by_task_id(self, task_id: bytes) -> bytes:
-        return self._task_id_to_worker.get(task_id, b"")
+    def get_worker_by_task_id(self, task_id: TaskID) -> WorkerID:
+        return self._task_id_to_worker.get(task_id, WorkerID(b""))
 
-    def balance(self) -> Dict[bytes, List[bytes]]:
+    def balance(self) -> Dict[WorkerID, List[TaskID]]:
         """Returns, for every worker, the list of tasks to balance out."""
 
         balance_count = self.__get_balance_count_by_worker()
@@ -55,7 +56,7 @@ class QueuedAllocator(TaskAllocator):
 
         return balance_result
 
-    def __get_balance_count_by_worker(self) -> Dict[bytes, int]:
+    def __get_balance_count_by_worker(self) -> Dict[WorkerID, int]:
         """Returns, for every worker, the number of tasks to balance out."""
 
         queued_tasks_per_worker = {
@@ -98,7 +99,7 @@ class QueuedAllocator(TaskAllocator):
 
         return balance_count
 
-    async def assign_task(self, task_id: bytes) -> Optional[bytes]:
+    async def assign_task(self, task_id: TaskID) -> Optional[WorkerID]:
         if task_id in self._task_id_to_worker:
             return self._task_id_to_worker[task_id]
 
@@ -112,7 +113,7 @@ class QueuedAllocator(TaskAllocator):
         await self._worker_queue.put([count + 1, worker])
         return worker
 
-    def remove_task(self, task_id: bytes) -> Optional[bytes]:
+    def remove_task(self, task_id: TaskID) -> Optional[WorkerID]:
         if task_id not in self._task_id_to_worker:
             return None
 
@@ -122,7 +123,7 @@ class QueuedAllocator(TaskAllocator):
         self._worker_queue.decrease_priority(worker)
         return worker
 
-    def get_assigned_worker(self, task_id: bytes) -> Optional[bytes]:
+    def get_assigned_worker(self, task_id: TaskID) -> Optional[WorkerID]:
         if task_id not in self._task_id_to_worker:
             return None
 

@@ -1,17 +1,16 @@
 import logging
 import threading
 from concurrent.futures import Future, InvalidStateError
-from typing import Dict, Tuple
+from typing import Dict
 
 from scaler.client.agent.mixins import FutureManager
 from scaler.client.future import ScalerFuture
 from scaler.client.serializer.mixins import Serializer
-from scaler.io.utility import concat_list_of_bytes
 from scaler.protocol.python.common import TaskStatus
-from scaler.protocol.python.message import ObjectResponse, TaskCancel, TaskResult
+from scaler.protocol.python.message import TaskCancel, TaskResult
 from scaler.utility.exceptions import DisconnectedError, NoWorkerError, TaskNotFoundError, WorkerDiedError
 from scaler.utility.metadata.profile_result import retrieve_profiling_result_from_task_result
-from scaler.utility.object_utility import deserialize_failure
+from scaler.utility.identifiers import ObjectID
 
 
 class ClientFutureManager(FutureManager):
@@ -20,7 +19,6 @@ class ClientFutureManager(FutureManager):
         self._serializer = serializer
 
         self._task_id_to_future: Dict[bytes, ScalerFuture] = dict()
-        self._object_id_to_future: Dict[bytes, Tuple[TaskStatus, ScalerFuture]] = dict()
 
     def add_future(self, future: Future):
         assert isinstance(future, ScalerFuture)
@@ -78,18 +76,10 @@ class ClientFutureManager(FutureManager):
                     future.set_exception(DisconnectedError("client disconnected"), profile_result)
                     return
 
-                if result.status == TaskStatus.Success:
+                if result.status in {TaskStatus.Success, TaskStatus.Failed}:
                     assert len(result.results) == 1
-                    result_object_id = result.results[0]
-                    future.set_result_ready(result_object_id, profile_result)
-                    self._object_id_to_future[result_object_id] = result.status, future
-                    return
-
-                if result.status == TaskStatus.Failed:
-                    assert len(result.results) == 1
-                    result_object_id = result.results[0]
-                    future.set_result_ready(result_object_id, profile_result)
-                    self._object_id_to_future[result_object_id] = result.status, future
+                    result_object_id = ObjectID(result.results[0])
+                    future.set_result_ready(result_object_id, result.status, profile_result)
                     return
 
                 raise TypeError(f"Unknown task status: {result.status}")
@@ -99,23 +89,3 @@ class ClientFutureManager(FutureManager):
     def on_cancel_task(self, task_cancel: TaskCancel):
         with self._lock:
             self._task_id_to_future.pop(task_cancel.task_id, None)
-
-    def on_object_response(self, response: ObjectResponse):
-        for object_id, object_name, object_bytes in zip(
-            response.object_content.object_ids,
-            response.object_content.object_names,
-            response.object_content.object_bytes,
-        ):
-            if object_id not in self._object_id_to_future:
-                continue
-
-            status, future = self._object_id_to_future.pop(object_id)
-
-            try:
-                if status == TaskStatus.Success:
-                    future.set_result(self._serializer.deserialize(concat_list_of_bytes(object_bytes)))
-
-                elif status == TaskStatus.Failed:
-                    future.set_exception(deserialize_failure(concat_list_of_bytes(object_bytes)))
-            except InvalidStateError:
-                continue  # future got canceled

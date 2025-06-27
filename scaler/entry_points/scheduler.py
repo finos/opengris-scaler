@@ -17,6 +17,7 @@ from scaler.scheduler.config import SchedulerConfig
 from scaler.scheduler.scheduler import scheduler_main
 from scaler.utility.event_loop import EventLoopType, register_event_loop
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 
 
@@ -103,6 +104,15 @@ def get_args():
         "bypass --logging-path",
     )
     parser.add_argument(
+        "--object-storage-address",
+        "-osa",
+        type=ObjectStorageConfig.from_string,
+        default=None,
+        help="specify the object storage server address, if not specified, the address is scheduler address with port "
+        "number plus 1, e.g.: if scheduler address is tcp://localhost:2345, then object storage address is "
+        "tcp://localhost:2346",
+    )
+    parser.add_argument(
         "--monitor-address",
         "-ma",
         type=ZMQConfig.from_string,
@@ -111,7 +121,11 @@ def get_args():
         "number plus 2, e.g.: if scheduler address is tcp://localhost:2345, then monitoring address is "
         "tcp://localhost:2347",
     )
-    parser.add_argument("address", type=ZMQConfig.from_string, help="scheduler address to connect to")
+    parser.add_argument(
+        "address",
+        type=ZMQConfig.from_string,
+        help="scheduler address to connect to, e.g.: `tcp://localhost:6378`"
+    )
     return parser.parse_args()
 
 
@@ -122,6 +136,7 @@ def main():
     scheduler_config = SchedulerConfig(
         event_loop=args.event_loop,
         address=args.address,
+        storage_address=args.object_storage_address,
         monitor_address=args.monitor_address,
         io_threads=args.io_threads,
         max_number_of_tasks_waiting=args.max_number_of_tasks_waiting,

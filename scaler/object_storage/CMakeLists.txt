@@ -21,16 +21,16 @@ target_include_directories(cc_object_storage_server PUBLIC ${CMAKE_BINARY_DIR})
 install(TARGETS cc_object_storage_server
         LIBRARY DESTINATION scaler/object_storage/)
 
-find_package(Python COMPONENTS Development)
+find_package(Python3 COMPONENTS Development.Module REQUIRED)
 
 add_library(object_storage_server SHARED)
 
 set_target_properties(object_storage_server PROPERTIES  PREFIX "")
 
 target_sources(object_storage_server PRIVATE pymod_object_storage_server.cpp)
-target_include_directories(object_storage_server PRIVATE ${Python_INCLUDE_DIRS})
+target_include_directories(object_storage_server PRIVATE ${Python3_INCLUDE_DIRS})
 target_link_libraries(object_storage_server PRIVATE cc_object_storage_server
-                                            PRIVATE ${Python_LIBRARIES}
+                                            PRIVATE ${Python3_LIBRARIES}
 )
 
 target_link_options(object_storage_server PRIVATE "-Wl,-rpath,$ORIGIN")

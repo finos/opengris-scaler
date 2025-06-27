@@ -3,30 +3,28 @@ import logging
 import multiprocessing
 import os
 import signal
-import uuid
 from contextvars import ContextVar, Token
 from multiprocessing.synchronize import Event as EventType
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, cast
 
 import tblib.pickling_support
 import zmq
 
 from scaler.io.config import DUMMY_CLIENT
 from scaler.io.sync_connector import SyncConnector
-from scaler.io.utility import chunk_to_list_of_bytes
-from scaler.protocol.python.common import ObjectContent, TaskStatus
+from scaler.io.sync_object_storage_connector import SyncObjectStorageConnector
+from scaler.protocol.python.common import ObjectMetadata, TaskStatus
 from scaler.protocol.python.message import (
     ObjectInstruction,
-    ObjectRequest,
-    ObjectResponse,
     ProcessorInitialized,
     Task,
     TaskResult,
 )
 from scaler.protocol.python.mixins import Message
-from scaler.utility.exceptions import MissingObjects
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.object_utility import generate_object_id, generate_serializer_object_id, serialize_failure
+from scaler.utility.identifiers import ClientID, ObjectID, TaskID
+from scaler.utility.object_storage_config import ObjectStorageConfig
+from scaler.utility.serialization import serialize_failure
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.processor.object_cache import ObjectCache
 
@@ -39,7 +37,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __init__(
         self,
         event_loop: str,
-        address: ZMQConfig,
+        agent_address: ZMQConfig,
+        storage_address: ObjectStorageConfig,
         resume_event: Optional[EventType],
         resumed_event: Optional[EventType],
         garbage_collect_interval_seconds: int,
@@ -50,7 +49,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         multiprocessing.Process.__init__(self, name="Processor")
 
         self._event_loop = event_loop
-        self._address = address
+        self._agent_address = agent_address
+        self._storage_address = storage_address
 
         self._resume_event = resume_event
         self._resumed_event = resumed_event
@@ -59,8 +59,6 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
         self._logging_paths = logging_paths
         self._logging_level = logging_level
-
-        # self._client_to_decorator = {}
 
         self._object_cache: Optional[ObjectCache] = None
 
@@ -87,9 +85,10 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         setup_logger(log_paths=tuple(logging_paths), logging_level=self._logging_level)
         tblib.pickling_support.install()
 
-        self._connector = SyncConnector(
-            context=zmq.Context(), socket_type=zmq.DEALER, address=self._address, identity=None
+        self._connector_agent = SyncConnector(
+            context=zmq.Context(), socket_type=zmq.DEALER, address=self._agent_address, identity=None
         )
+        self._connector_storage = SyncObjectStorageConnector(self._storage_address.host, self._storage_address.port)
 
         self._object_cache = ObjectCache(
             garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
@@ -106,7 +105,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             self.__register_signal(SUSPEND_SIGNAL, self.__suspend)
 
     def __interrupt(self, *args):
-        self._connector.close()  # interrupts any blocking socket.
+        self._connector_agent.close()  # interrupts any blocking socket.
 
     def __suspend(self, *args):
         assert self._resume_event is not None
@@ -120,9 +119,9 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
     def __run_forever(self):
         try:
-            self._connector.send(ProcessorInitialized.new_msg())
+            self._connector_agent.send(ProcessorInitialized.new_msg())
             while True:
-                message = self._connector.receive()
+                message = self._connector_agent.receive()
                 if message is None:
                     continue
 
@@ -140,17 +139,13 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         finally:
             self._object_cache.destroy()
-            self._connector.close()
+            self._connector_agent.close()
 
             self._object_cache.join()
 
     def __on_connector_receive(self, message: Message):
         if isinstance(message, ObjectInstruction):
             self.__on_receive_object_instruction(message)
-            return
-
-        if isinstance(message, ObjectResponse):
-            self.__on_receive_object_response(message)
             return
 
         if isinstance(message, Task):
@@ -161,60 +156,37 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
     def __on_receive_object_instruction(self, instruction: ObjectInstruction):
         if instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Delete:
-            for object_id in instruction.object_content.object_ids:
+            for object_id in instruction.object_metadata.object_ids:
                 self._object_cache.del_object(object_id)
             return
 
         logging.error(f"worker received unknown object instruction type {instruction=}")
 
-    def __on_receive_object_response(self, response: ObjectResponse):
-        if response.response_type == ObjectResponse.ObjectResponseType.Content:
-            self.__on_receive_object_content(response.object_content)
-            return
-
-        logging.error(f"worker received unknown request object request type {response=}")
-
-    def __on_receive_object_content(self, object_content: ObjectContent):
-        task = self._current_task
-        assert task is not None
-
-        self._object_cache.add_objects(object_content, task)
-
-        # if still have unknown objects, something awful happened
-        unknown_object_ids = self.__get_not_ready_object_ids(task)
-        if not unknown_object_ids:
-            self.__process_task(task)
-            return
-
-        logging.error(f"Task({task.task_id.hex()}): insufficient objects received from scheduler, task failed")
-        self.__send_result(
-            task.source,
-            task.task_id,
-            TaskStatus.Failed,
-            serialize_failure(MissingObjects(",".join([obj.hex() for obj in unknown_object_ids]))),
-        )
-
     def __on_received_task(self, task: Task):
         self._current_task = task
 
-        unknown_object_ids = self.__get_not_ready_object_ids(task)
-        if not unknown_object_ids:
-            self.__process_task(task)
-            return
+        self.__cache_required_object_ids(task)
 
-        self._connector.send(ObjectRequest.new_msg(ObjectRequest.ObjectRequestType.Get, unknown_object_ids))
+        self.__process_task(task)
 
-    def __get_not_ready_object_ids(self, task: Task) -> Tuple[bytes, ...]:
+    def __cache_required_object_ids(self, task: Task) -> None:
         required_object_ids = self.__get_required_object_ids_for_task(task)
-        return tuple(filter(lambda oid: not self._object_cache.has_object(oid), required_object_ids))
+
+        for object_id in required_object_ids:
+            if self._object_cache.has_object(object_id):
+                continue
+
+            object_content = self._connector_storage.get_object(object_id)
+            self._object_cache.add_object(task.source, object_id, object_content)
 
     @staticmethod
-    def __get_required_object_ids_for_task(task: Task) -> List[bytes]:
-        serializer_id = generate_serializer_object_id(task.source)
-        object_ids = [serializer_id, task.func_object_id]
-        object_ids.extend(
-            [argument.data for argument in task.function_args if argument.type == Task.Argument.ArgumentType.ObjectID]
-        )
+    def __get_required_object_ids_for_task(task: Task) -> List[ObjectID]:
+        serializer_id = ObjectID.generate_serializer_object_id(task.source)
+        object_ids = [
+            serializer_id,
+            task.func_object_id,
+            *(cast(ObjectID, argument) for argument in task.function_args),
+        ]
         return object_ids
 
     def __process_task(self, task: Task):
@@ -222,11 +194,13 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             function = self._object_cache.get_object(task.func_object_id)
             function_with_logger = self.__get_object_with_client_logger(DUMMY_CLIENT, function)
 
-            args = [self._object_cache.get_object(arg.data) for arg in task.function_args]
+            args = [
+                self._object_cache.get_object(cast(ObjectID, arg))
+                for arg in task.function_args
+            ]
 
             with self.__processor_context():
                 result = function_with_logger(*args)
-
             result_bytes = self._object_cache.serialize(task.source, result)
             status = TaskStatus.Success
 
@@ -237,9 +211,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self.__send_result(task.source, task.task_id, status, result_bytes)
 
-    def __get_object_with_client_logger(self, client: bytes, fn: Callable) -> Callable:
+    def __get_object_with_client_logger(self, client: ClientID, fn: Callable) -> Callable:
         assert self is not None
-        assert isinstance(client, bytes)
         return fn
 
         # if client in self._client_to_decorator:
@@ -264,25 +237,26 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         # self._client_to_decorator[client] = wrap
         # return wrap(fn)
 
-    def __send_result(self, source: bytes, task_id: bytes, status: TaskStatus, result_bytes: bytes):
+    def __send_result(self, source: ClientID, task_id: TaskID, status: TaskStatus, result_bytes: bytes):
         self._current_task = None
 
-        # use uuid to avoid object_id collision, each result object_id is unique, even it's the same object across
-        # clients
-        result_object_id = generate_object_id(source, uuid.uuid4().bytes)
-        self._connector.send(
+        result_object_id = ObjectID.generate_object_id(source)
+
+        self._connector_storage.set_object(result_object_id, result_bytes)
+        self._connector_agent.send(
             ObjectInstruction.new_msg(
                 ObjectInstruction.ObjectInstructionType.Create,
                 source,
-                ObjectContent.new_msg(
+                ObjectMetadata.new_msg(
                     (result_object_id,),
-                    (ObjectContent.ObjectContentType.Object,),
-                    (f"<res {result_object_id.hex()[:6]}>".encode(),),
-                    (chunk_to_list_of_bytes(result_bytes),),
+                    (ObjectMetadata.ObjectContentType.Object,),
+                    (f"<res {repr(result_object_id)}>".encode(),),
                 ),
             )
         )
-        self._connector.send(TaskResult.new_msg(task_id, status, metadata=b"", results=[result_object_id]))
+        self._connector_agent.send(
+            TaskResult.new_msg(task_id, status, metadata=b"", results=[bytes(result_object_id)])
+        )
 
     @staticmethod
     def __set_current_processor(context: Optional["Processor"]) -> Token:
@@ -303,6 +277,6 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __register_signal(signal_name: str, handler: Callable) -> None:
         signal_instance = getattr(signal, signal_name, None)
         if signal_instance is None:
-            raise RuntimeError(f"unsupported platform, signal not availaible: {signal_name}.")
+            raise RuntimeError(f"unsupported platform, signal not available: {signal_name}.")
 
         signal.signal(signal_instance, handler)

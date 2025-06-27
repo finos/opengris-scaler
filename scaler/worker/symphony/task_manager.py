@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import uuid
 from concurrent.futures import Future
 from typing import Dict, Optional, Set, cast
 
@@ -9,21 +8,20 @@ from bidict import bidict
 
 from scaler import Serializer
 from scaler.io.async_connector import AsyncConnector
-from scaler.io.utility import chunk_to_list_of_bytes, concat_list_of_bytes
-from scaler.protocol.python.common import ObjectContent, TaskStatus
+from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
+from scaler.protocol.python.common import ObjectMetadata, ObjectStorageAddress, TaskStatus
 from scaler.protocol.python.message import (
     ObjectInstruction,
-    ObjectRequest,
-    ObjectResponse,
     Task,
     TaskCancel,
     TaskResult,
 )
+from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper
-from scaler.utility.object_utility import generate_object_id, generate_serializer_object_id, serialize_failure
+from scaler.utility.serialization import serialize_failure
 from scaler.utility.queues.async_sorted_priority_queue import AsyncSortedPriorityQueue
-from scaler.worker.agent.mixins import TaskManager
+from scaler.worker.agent.mixins import HeartbeatManager, TaskManager
 from scaler.worker.symphony.session_callback import SessionCallback, SoamMessage
 
 try:
@@ -42,25 +40,22 @@ class SymphonyTaskManager(Looper, TaskManager):
 
         self._executor_semaphore = asyncio.Semaphore(value=self._base_concurrency)
 
-        self._task_id_to_task: Dict[bytes, Task] = dict()
-        self._task_id_to_future: bidict[bytes, asyncio.Future] = bidict()
+        self._task_id_to_task: Dict[TaskID, Task] = dict()
+        self._task_id_to_future: bidict[TaskID, asyncio.Future] = bidict()
 
-        self._process_task_lock = asyncio.Lock()  # to ensure the object cache is not accessed by multiple tasks
         self._serializers: Dict[bytes, Serializer] = dict()
-        self._object_cache: Dict[bytes, bytes] = dict()  # this cache is ephemeral and is wiped after task processing
-
-        # locks are used to wait for object responses to be received
-        self._serializers_lock: Dict[bytes, asyncio.Lock] = dict()
-        self._object_cache_lock: Dict[bytes, asyncio.Lock] = dict()
 
         self._queued_task_id_queue = AsyncSortedPriorityQueue()
         self._queued_task_ids: Set[bytes] = set()
 
-        self._acquiring_task_ids: Set[bytes] = set()  # tasks contesting the semaphore
-        self._processing_task_ids: Set[bytes] = set()
-        self._canceled_task_ids: Set[bytes] = set()
+        self._acquiring_task_ids: Set[TaskID] = set()  # tasks contesting the semaphore
+        self._processing_task_ids: Set[TaskID] = set()
+        self._canceled_task_ids: Set[TaskID] = set()
+
+        self._storage_address: Optional[ObjectStorageAddress] = None
 
         self._connector_external: Optional[AsyncConnector] = None
+        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
 
         """
         SOAM specific code
@@ -82,32 +77,27 @@ class SymphonyTaskManager(Looper, TaskManager):
         self._ibm_soam_session = self._ibm_soam_connection.create_session(ibm_soam_session_attr)
         logging.info(f"established IBM Spectrum Symphony session {self._ibm_soam_session.get_id()}")
 
-    def register(self, connector: AsyncConnector):
-        self._connector_external = connector
+    def register(
+        self,
+        connector_external: AsyncConnector,
+        connector_storage: AsyncObjectStorageConnector,
+        heartbeat_manager: HeartbeatManager,
+    ):
+        self._connector_external = connector_external
+        self._connector_storage = connector_storage
+        self._heartbeat_manager = heartbeat_manager
 
     async def routine(self):  # SymphonyTaskManager has two loops
         pass
 
     async def on_object_instruction(self, instruction: ObjectInstruction):
-        pass
+        if instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Delete:
+            for object_id in instruction.object_metadata.object_ids:
+                self._serializers.pop(object_id, None)  # we only cache serializers
 
-    async def on_object_response(self, response: ObjectResponse):
-        if response.response_type != ObjectResponse.ObjectResponseType.Content:
-            raise TypeError(f"invalid object response type received: {response.response_type}.")
+            return
 
-        object_content = response.object_content
-
-        for object_type, object_id, object_bytes in zip(
-            object_content.object_types, object_content.object_ids, object_content.object_bytes
-        ):
-            if object_type == ObjectContent.ObjectContentType.Serializer:
-                self._serializers[object_id] = cloudpickle.loads(concat_list_of_bytes(object_bytes))
-                self._serializers_lock[object_id].release()
-            elif object_type == ObjectContent.ObjectContentType.Object:
-                self._object_cache[object_id] = concat_list_of_bytes(object_bytes)
-                self._object_cache_lock[object_id].release()
-            else:
-                raise ValueError(f"invalid object type received: {object_type}")
+        logging.error(f"worker received unknown object instruction type {instruction=}")
 
     async def on_task_new(self, task: Task):
         task_priority = self.__get_task_priority(task)
@@ -191,25 +181,25 @@ class SymphonyTaskManager(Looper, TaskManager):
                 self._processing_task_ids.remove(task_id)
 
                 if future.exception() is None:
-                    serializer_id = generate_serializer_object_id(task.source)
+                    serializer_id = ObjectID.generate_serializer_object_id(task.source)
                     serializer = self._serializers[serializer_id]
-
                     result_bytes = serializer.serialize(future.result())
                     status = TaskStatus.Success
                 else:
                     result_bytes = serialize_failure(cast(Exception, future.exception()))
                     status = TaskStatus.Failed
 
-                result_object_id = generate_object_id(task.source, uuid.uuid4().bytes)
+                result_object_id = ObjectID.generate_object_id(task.source)
+
+                await self._connector_storage.set_object(result_object_id, result_bytes)
                 await self._connector_external.send(
                     ObjectInstruction.new_msg(
                         ObjectInstruction.ObjectInstructionType.Create,
                         task.source,
-                        ObjectContent.new_msg(
+                        ObjectMetadata.new_msg(
                             object_ids=(result_object_id,),
-                            object_types=(ObjectContent.ObjectContentType.Object,),
+                            object_types=(ObjectMetadata.ObjectContentType.Object,),
                             object_names=(f"<res {result_object_id.hex()[:6]}>".encode(),),
-                            object_bytes=(chunk_to_list_of_bytes(result_bytes),),
                         ),
                     )
                 )
@@ -243,48 +233,34 @@ class SymphonyTaskManager(Looper, TaskManager):
     async def __execute_task(self, task: Task) -> asyncio.Future:
         """
         This method is not very efficient because it does let objects linger in the cache. Each time inputs are
-        requested, locks are acquired to wait for object responses to be received.
+        requested, all object data are requested.
         """
-        async with self._process_task_lock:
+        serializer_id = ObjectID.generate_serializer_object_id(task.source)
 
-            awaited_locks = []
-            request_ids = []
-
-            serializer_id = generate_serializer_object_id(task.source)
-            if serializer_id not in self._serializers:
-                serializer_lock = asyncio.Lock()
-                await serializer_lock.acquire()
-                self._serializers_lock[serializer_id] = serializer_lock
-                awaited_locks.append(serializer_lock)
-                request_ids.append(serializer_id)
-
-            object_ids = (task.func_object_id, *(arg.data for arg in task.function_args))
-            for object_id in object_ids:
-                object_lock = asyncio.Lock()
-                await object_lock.acquire()
-                self._object_cache_lock[object_id] = object_lock
-                awaited_locks.append(object_lock)
-                request_ids.append(object_id)
-
-            await self._connector_external.send(
-                ObjectRequest.new_msg(ObjectRequest.ObjectRequestType.Get, tuple(request_ids))
-            )
-            await asyncio.gather(*[awaited_lock.acquire() for awaited_lock in awaited_locks])
-
+        if serializer_id not in self._serializers:
+            serializer_bytes = await self._connector_storage.get_object(serializer_id)
+            serializer = cloudpickle.loads(serializer_bytes)
+            self._serializers[serializer_id] = serializer
+        else:
             serializer = self._serializers[serializer_id]
 
-            function = serializer.deserialize(self._object_cache[task.func_object_id])
-            args = [serializer.deserialize(self._object_cache[arg.data]) for arg in task.function_args]
+        # Fetches the function object and the argument objects concurrently
 
-            self._object_cache.clear()
-            self._object_cache_lock.clear()
-            self._serializers_lock.clear()
+        get_tasks = [
+            self._connector_storage.get_object(object_id)
+            for object_id in [task.func_object_id, *(cast(ObjectID, arg) for arg in task.function_args)]
+        ]
+
+        function_bytes, *arg_bytes = await asyncio.gather(*get_tasks)
+
+        function = serializer.deserialize(function_bytes)
+        arg_objects = [serializer.deserialize(object_bytes) for object_bytes in arg_bytes]
 
         """
         SOAM specific code
         """
         input_message = SoamMessage()
-        input_message.set_payload(cloudpickle.dumps((function, *args)))
+        input_message.set_payload(cloudpickle.dumps((function, *arg_objects)))
 
         task_attr = soamapi.TaskSubmissionAttributes()
         task_attr.set_task_input(input_message)

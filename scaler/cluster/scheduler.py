@@ -7,6 +7,7 @@ from scaler.scheduler.config import SchedulerConfig
 from scaler.scheduler.scheduler import Scheduler, scheduler_main
 from scaler.utility.event_loop import register_event_loop
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 
 
@@ -14,6 +15,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
     def __init__(
         self,
         address: ZMQConfig,
+        storage_address: Optional[ObjectStorageConfig],
         monitor_address: Optional[ZMQConfig],
         io_threads: int,
         max_number_of_tasks_waiting: int,
@@ -32,6 +34,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         self._scheduler_config = SchedulerConfig(
             event_loop=event_loop,
             address=address,
+            storage_address=storage_address,
             monitor_address=monitor_address,
             io_threads=io_threads,
             max_number_of_tasks_waiting=max_number_of_tasks_waiting,

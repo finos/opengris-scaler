@@ -7,8 +7,6 @@ from scaler.protocol.python.message import (
     ClientShutdownResponse,
     GraphTask,
     ObjectInstruction,
-    ObjectRequest,
-    ObjectResponse,
     Task,
     TaskCancel,
     TaskResult,
@@ -34,10 +32,6 @@ class TimeoutManager(metaclass=abc.ABCMeta):
 class ObjectManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def on_object_instruction(self, object_instruction: ObjectInstruction):
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    async def on_object_request(self, request: ObjectRequest):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -82,10 +76,6 @@ class FutureManager(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def on_cancel_task(self, task_cancel: TaskCancel):
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def on_object_response(self, response: ObjectResponse):
         raise NotImplementedError()
 
 

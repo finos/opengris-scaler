@@ -41,7 +41,7 @@ First Look (Code API)
 Client.map
 ----------
 
-:py:func:`~Client.map()` allows us to submit a batch of tasks to execute in parallel by pairing a function with a list of inputs. 
+:py:func:`~Client.map()` allows us to submit a batch of tasks to execute in parallel by pairing a function with a list of inputs.
 
 In the example below, we spin up a scheduler and some workers on the local machine using ``SchedulerClusterCombo``. We create the scheduler with a localhost address, and then pass that address to the client so that it can connect. We then use :py:func:`~Client.map()` to submit tasks.
 
@@ -103,24 +103,27 @@ Functions may also be 'heavy' if they accept large objects as arguments. In this
 Spinning up Scheduler and Cluster Separately
 --------------------------------------------
 
-The scheduler and workers can be spun up independently through the CLI.
+The object storage server, scheduler and workers can be spun up independently through the CLI.
 Here we use localhost addresses for demonstration, however the scheduler and workers can be started on different machines.
+
 
 .. code:: bash
 
-    scaler_scheduler tcp://127.0.0.1:8516
+    scaler_object_storage_server tcp://127.0.0.1:8517
+
+
+.. code:: bash
+
+    scaler_scheduler tcp://127.0.0.1:8516 -osa tcp://127.0.0.1:8517
 
 
 .. code:: console
 
-    [INFO]2023-03-19 12:16:10-0400: logging to ('/dev/stdout',)
-    [INFO]2023-03-19 12:16:10-0400: use event loop: 2
-    [INFO]2023-03-19 12:16:10-0400: Scheduler: monitor address is ipc:///tmp/0.0.0.0_8516_monitor
-    [INFO]2023-03-19 12:16:10-0400: AsyncBinder: started
-    [INFO]2023-03-19 12:16:10-0400: VanillaTaskManager: started
-    [INFO]2023-03-19 12:16:10-0400: VanillaObjectManager: started
-    [INFO]2023-03-19 12:16:10-0400: VanillaWorkerManager: started
-    [INFO]2023-03-19 12:16:10-0400: StatusReporter: started
+[INFO]2025-06-06 13:30:05+0200: logging to ('/dev/stdout',)
+[INFO]2025-06-06 13:30:05+0200: use event loop: builtin
+[INFO]2025-06-06 13:30:05+0200: Scheduler: listen to scheduler address tcp://127.0.0.1:8516
+[INFO]2025-06-06 13:30:05+0200: Scheduler: connect to object storage server tcp://127.0.0.1:8517
+[INFO]2025-06-06 13:30:05+0200: Scheduler: listen to scheduler monitor address tcp://127.0.0.1:8518
 
 
 .. code:: bash
@@ -150,7 +153,12 @@ From here, connect the Python Client and begin submitting tasks:
 
     from scaler import Client
 
-    address = "tcp://127.0.0.1:8516"
-    with Client(address=address) as client:
-        results = client.map(calculate, [(i,) for i in tasks]
-        assert results == tasks
+
+    def square(value):
+        return value * value
+
+
+    with Client(address="tcp://127.0.0.1:8516") as client:
+        results = client.map(square, [(i,) for i in range(0, 100)])
+
+    print(results)

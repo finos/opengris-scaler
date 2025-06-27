@@ -8,11 +8,11 @@ import zmq
 import zmq.asyncio
 
 from scaler.io.async_connector import AsyncConnector
+from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,
     ObjectInstruction,
-    ObjectResponse,
     Task,
     TaskCancel,
     WorkerHeartbeatEcho,
@@ -20,6 +20,7 @@ from scaler.protocol.python.message import (
 from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop
 from scaler.utility.exceptions import ClientShutdownException
+from scaler.utility.identifiers import WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
@@ -51,6 +52,8 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         self._address = address
         self._io_threads = io_threads
 
+        self._ident = WorkerID.generate_worker_id(name)  # _identity is internal to multiprocessing.Process
+
         self._service_name = service_name
         self._base_concurrency = base_concurrency
 
@@ -59,12 +62,13 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
 
         self._context: Optional[zmq.asyncio.Context] = None
         self._connector_external: Optional[AsyncConnector] = None
+        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
         self._task_manager: Optional[SymphonyTaskManager] = None
         self._heartbeat_manager: Optional[SymphonyHeartbeatManager] = None
 
     @property
-    def identity(self):
-        return self._connector_external.identity
+    def identity(self) -> WorkerID:
+        return self._ident
 
     def run(self) -> None:
         self.__initialize()
@@ -82,7 +86,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
             address=self._address,
             bind_or_connect="connect",
             callback=self.__on_receive_external,
-            identity=None,
+            identity=self._ident,
         )
 
         self._heartbeat_manager = SymphonyHeartbeatManager()
@@ -94,10 +98,15 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         # register
         self._heartbeat_manager.register(
             connector_external=self._connector_external,
+            connector_storage=self._connector_storage,
             worker_task_manager=self._task_manager,
             timeout_manager=self._timeout_manager,
         )
-        self._task_manager.register(connector=self._connector_external)
+        self._task_manager.register(
+            connector_external=self._connector_external,
+            connector_storage=self._connector_storage,
+            heartbeat_manager=self._heartbeat_manager,
+        )
 
         self._loop = asyncio.get_event_loop()
         self.__register_signal()
@@ -120,10 +129,6 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
             await self._task_manager.on_object_instruction(message)
             return
 
-        if isinstance(message, ObjectResponse):
-            await self._task_manager.on_object_response(message)
-            return
-
         if isinstance(message, ClientDisconnect):
             if message.disconnect_type == ClientDisconnect.DisconnectType.Shutdown:
                 raise ClientShutdownException("received client shutdown, quitting")
@@ -136,20 +141,22 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         try:
             await asyncio.gather(
                 create_async_loop_routine(self._connector_external.routine, 0),
+                create_async_loop_routine(self._connector_storage.routine, 0),
                 create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
                 create_async_loop_routine(self._timeout_manager.routine, 1),
+                create_async_loop_routine(self._task_manager.routine, 0),
                 create_async_loop_routine(self._task_manager.process_task, 0),
                 create_async_loop_routine(self._task_manager.resolve_tasks, 0),
             )
         except asyncio.CancelledError:
             pass
         except (ClientShutdownException, TimeoutError) as e:
-            logging.info(f"Worker[{self.pid}]: {str(e)}")
+            logging.info(f"{self.identity!r}: {str(e)}")
 
-        await self._connector_external.send(DisconnectRequest.new_msg(self._connector_external.identity))
+        await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
 
         self._connector_external.destroy()
-        logging.info(f"Worker[{self.pid}]: quited")
+        logging.info(f"{self.identity!r}: quitted")
 
     def __run_forever(self):
         self._loop.run_until_complete(self._task)

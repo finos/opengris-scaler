@@ -12,6 +12,7 @@ from scaler.io.config import (
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
     DEFAULT_WORKER_DEATH_TIMEOUT,
 )
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.event_loop import EventLoopType, register_event_loop
 from scaler.utility.zmq_config import ZMQConfig
 
@@ -105,6 +106,14 @@ def get_args():
         help="use standard python the .conf file the specify python logging file configuration format, this will "
         "bypass --logging-paths and --logging-level at the same time, and this will not work on per worker logging",
     )
+    parser.add_argument(
+        "--object-storage-address",
+        "-osa",
+        type=ObjectStorageConfig.from_string,
+        default=None,
+        help="specify the object storage server address, e.g. tcp://localhost:2346. If not specified, use the address "
+        "provided by the scheduler",
+    )
     parser.add_argument("address", type=ZMQConfig.from_string, help="scheduler address to connect to")
     return parser.parse_args()
 
@@ -125,6 +134,7 @@ def main():
 
     cluster = Cluster(
         address=args.address,
+        storage_address=args.object_storage_address,
         worker_names=worker_names,
         heartbeat_interval_seconds=args.heartbeat_interval,
         task_timeout_seconds=args.task_timeout_seconds,

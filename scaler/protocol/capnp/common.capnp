@@ -15,14 +15,18 @@ enum TaskStatus {
     canceling @8;   # task is canceling (can be in Inactive or Running state)
 }
 
-struct ObjectContent {
+struct ObjectMetadata {
     objectIds @0 :List(Data);
     objectTypes @1 :List(ObjectContentType);
     objectNames @2 :List(Data);
-    objectBytes @3 :List(List(Data));
 
     enum ObjectContentType {
         serializer @0;
         object @1;
     }
+}
+
+struct ObjectStorageAddress {
+    host @0 :Text;
+    port @1 :UInt16;
 }

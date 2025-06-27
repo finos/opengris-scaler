@@ -291,15 +291,19 @@ class TestClient(unittest.TestCase):
 
     def test_clear(self):
         with Client(self.address) as client:
+            finished_future = client.submit(round, 3.14)
+            finished_future.result()
+
             arg_reference = client.send_object(0.5)
-            future = client.submit(noop_sleep, arg_reference)
+            unfinished_future = client.submit(noop_sleep, arg_reference)
 
             client.clear()
 
-            # clear() cancels all futures
+            # clear() cancels all running futures
+            self.assertFalse(finished_future.cancelled())
             with self.assertRaises(CancelledError):
-                future.result()
-            self.assertTrue(future.cancelled())
+                unfinished_future.result()
+            self.assertTrue(unfinished_future.cancelled())
 
             # using an old reference should fail
             with self.assertRaises(MissingObjects):
