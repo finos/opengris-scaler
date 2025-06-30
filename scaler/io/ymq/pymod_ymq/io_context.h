@@ -6,6 +6,7 @@
 #include <structmember.h>
 
 // C++
+#include <future>
 #include <memory>
 
 // First-party
@@ -130,7 +131,11 @@ static PyObject* PyIOContext_createIOSocket(
         return nullptr;
     }
 
-    ioSocket->socket = self->ioContext->createIOSocket(identity, socketType);
+    auto createSocketPromise = std::make_shared<std::promise<void>>();
+    auto createSocketFuture  = createSocketPromise->get_future();
+    ioSocket->socket         = self->ioContext->createIOSocket(
+        identity, socketType, [createSocketPromise] { createSocketPromise->set_value(); });
+    createSocketFuture.wait();
     return (PyObject*)ioSocket;
 }
 

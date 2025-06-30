@@ -77,7 +77,10 @@ static PyObject* PyMessage_repr(PyMessage* self) {
 }
 }
 
-static PyMemberDef PyMessage_members[] = {{nullptr}};
+static PyMemberDef PyMessage_members[] = {
+    {"address", T_OBJECT, offsetof(PyMessage, address), 0, PyDoc_STR("the address of the message")},
+    {"payload", T_OBJECT, offsetof(PyMessage, payload), 0, PyDoc_STR("the payload of the message")},
+    {nullptr}};
 
 static PyType_Slot PyMessage_slots[] = {
     {Py_tp_init, (void*)PyMessage_init},
