@@ -61,20 +61,20 @@ static PyObject* PyBytesYmq_repr(PyBytesYmq* self) {
     if (self->bytes.is_empty()) {
         return PyUnicode_FromString("<Bytes: empty>");
     } else {
-        return PyUnicode_FromFormat("<Bytes: %db>", self->bytes.len());
+        return PyUnicode_FromFormat("<Bytes: %db>", self->bytes.len);
     }
 }
 
 static PyObject* PyBytesYmq_data_getter(PyBytesYmq* self) {
-    return PyBytes_FromStringAndSize((const char*)self->bytes.data(), self->bytes.len());
+    return PyBytes_FromStringAndSize((const char*)self->bytes.data, self->bytes.len);
 }
 
 static PyObject* PyBytesYmq_len_getter(PyBytesYmq* self) {
-    return PyLong_FromSize_t(self->bytes.len());
+    return PyLong_FromSize_t(self->bytes.len);
 }
 
 static int PyBytesYmq_getbuffer(PyBytesYmq* self, Py_buffer* view, int flags) {
-    return PyBuffer_FillInfo(view, (PyObject*)self, (void*)self->bytes.data(), self->bytes.len(), true, flags);
+    return PyBuffer_FillInfo(view, (PyObject*)self, (void*)self->bytes.data, self->bytes.len, true, flags);
 }
 }
 
