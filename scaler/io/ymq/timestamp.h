@@ -34,6 +34,8 @@ inline itimerspec convertToItimerspec(Timestamp ts) {
     itimerspec timerspec {};
     const auto duration = ts.timestamp - std::chrono::system_clock::now();
     if (duration.count() < 0) {
+        printf("NO THIS SHOULD NEVER HAPPEND\n");
+        exit(-1);
         return timerspec;
     }
 
@@ -41,5 +43,6 @@ inline itimerspec convertToItimerspec(Timestamp ts) {
     const auto nanosecs        = duration_cast<nanoseconds>(duration - secs);
     timerspec.it_value.tv_sec  = secs.count();
     timerspec.it_value.tv_nsec = nanosecs.count();
+
     return timerspec;
 }
