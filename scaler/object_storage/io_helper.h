@@ -22,7 +22,5 @@ boost::asio::awaitable<void> read_request_payload(
 boost::asio::awaitable<void> write_response(
     boost::asio::ip::tcp::socket& socket, ObjectResponseHeader& header, std::span<const unsigned char> payload_view);
 
-
-
 };  // namespace object_storage
 };  // namespace scaler
