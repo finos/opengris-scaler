@@ -1,6 +1,6 @@
 import argparse
 
-from scaler.object_storage.object_storage_server import run_object_storage_server
+from scaler.object_storage.object_storage_server import ObjectStorageServer
 from scaler.utility.object_storage_config import ObjectStorageConfig
 
 
@@ -19,4 +19,4 @@ def get_args():
 
 def main():
     args = get_args()
-    run_object_storage_server(args.address.host, args.address.port)
+    ObjectStorageServer().run(args.address.host, args.address.port)

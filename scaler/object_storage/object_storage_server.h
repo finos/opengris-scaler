@@ -1,5 +1,11 @@
 #pragma once
 
+#include <algorithm>
+#include <iostream>
+#include <map>
+#include <unistd.h>
+#include <utility>
+
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
@@ -7,8 +13,6 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <boost/system/system_error.hpp>
-#include <iostream>
-#include <map>
 
 #include "protocol/object_storage.capnp.h"
 #include "scaler/object_storage/defs.h"
@@ -81,10 +85,10 @@ public:
 
             case reqType::GET_OBJECT: {
                 responseHeader.respType = respType::GET_O_K;
-                if (objectIDToMeta[requestHeader.objectID].object)
-                    responseHeader.payloadLength =
-                        std::min(objectIDToMeta[requestHeader.objectID].object->size(), requestHeader.payloadLength);
-                else
+                if (objectIDToMeta[requestHeader.objectID].object) {
+                    uint64_t objectSize = static_cast<uint64_t>(objectIDToMeta[requestHeader.objectID].object->size());
+                    responseHeader.payloadLength = std::min(objectSize, requestHeader.payloadLength);
+                } else
                     return false;
                 break;
             }
@@ -106,8 +110,8 @@ public:
 private:
     awaitable<void> write_once(Meta meta) {
         if (meta.requestHeader.reqType == reqType::GET_OBJECT) {
-            meta.responseHeader.payloadLength =
-                std::min(objectIDToMeta[meta.responseHeader.objectID].object->size(), meta.requestHeader.payloadLength);
+            uint64_t objectSize = static_cast<uint64_t>(objectIDToMeta[meta.responseHeader.objectID].object->size());
+            meta.responseHeader.payloadLength = std::min(objectSize, meta.requestHeader.payloadLength);
         }
 
         auto payload_view = getMemoryViewForResponsePayload(meta.responseHeader);
@@ -131,7 +135,8 @@ private:
 #ifndef NDEBUG
 public:
 #endif
-    int on_server_ready_fd;
+    int _onServerReadyReader;
+    int _onServerReadyWriter;
 
     std::map<scaler::object_storage::object_id_t, ObjectWithMeta> objectIDToMeta;
     std::map<std::size_t, shared_object_t> objectHashToObject;
@@ -165,31 +170,46 @@ public:
         }
     }
 
-    static int createServerReadyEventfd() {
-        int on_server_ready_fd = eventfd(0, EFD_SEMAPHORE);
-        if (on_server_ready_fd == -1) {
-            std::cerr << "create on_server_ready_fd failed: errno=" << errno << std::endl;
+    void initServerReadyFds() {
+        int pipeFds[2];
+        int ret = pipe(pipeFds);
+
+        if (ret != 0) {
+            std::cerr << "create on server ready FDs failed: errno=" << errno << std::endl;
             std::terminate();
         }
 
-        return on_server_ready_fd;
+        this->_onServerReadyReader = pipeFds[0];
+        this->_onServerReadyWriter = pipeFds[1];
     }
 
-    void setServerReadyEventfd() {
+    void setServerReadyFd() {
         uint64_t value = 1;
-        ssize_t ret = write(this->on_server_ready_fd, &value, sizeof (uint64_t));
+        ssize_t ret = write(this->_onServerReadyWriter, &value, sizeof (uint64_t));
 
         if (ret != sizeof (uint64_t)) {
-            std::cerr << "write to on_server_ready_fd failed: errno=" << errno << std::endl;
+            std::cerr << "write to _onServerReadyWriter failed: errno=" << errno << std::endl;
             std::terminate();
+        }
+    }
+
+    void closeServerReadyFds() {
+        std::array<int, 2> fds { this->_onServerReadyReader, this->_onServerReadyWriter };
+
+        for (auto fd : fds) {
+            if (close(fd) != 0) {
+                std::cerr << "close failed: errno=" << errno << std::endl;
+                std::terminate();
+            }
         }
     }
 
     awaitable<void> listener(boost::asio::ip::tcp::endpoint endpoint) {
+
         auto executor = co_await boost::asio::this_coro::executor;
         tcp::acceptor acceptor(executor, endpoint);
 
-        setServerReadyEventfd();
+        setServerReadyFd();
 
         for (;;) {
             auto shared_socket = std::make_shared<tcp::socket>(executor);
@@ -201,13 +221,12 @@ public:
     }
 
 public:
-    ObjectStorageServer(int on_server_ready_fd = -1)
-    {
-        if (on_server_ready_fd < 0) {
-            this->on_server_ready_fd = createServerReadyEventfd();
-        } else {
-            this->on_server_ready_fd = on_server_ready_fd;
-        }
+    ObjectStorageServer() {
+        this->initServerReadyFds();
+    }
+
+    ~ObjectStorageServer() {
+        this->closeServerReadyFds();
     }
 
     void run(std::string name, std::string port) {
@@ -220,7 +239,6 @@ public:
             signals.async_wait([&](auto, auto) { io_context.stop(); });
 
             co_spawn(io_context, listener(res.begin()->endpoint()), detached);
-
             io_context.run();
         } catch (std::exception& e) {
             std::cerr << "Exception: " << e.what() << std::endl;
@@ -230,10 +248,10 @@ public:
 
     void waitUntilReady() {
         uint64_t value;
-        ssize_t ret = read(this->on_server_ready_fd, &value, sizeof (uint64_t));
+        ssize_t ret = read(this->_onServerReadyReader, &value, sizeof (uint64_t));
 
         if (ret != sizeof (uint64_t)) {
-            std::cerr << "read from on_server_ready_fd failed: errno=" << errno << std::endl;
+            std::cerr << "read from _onServerReadyReader failed: errno=" << errno << std::endl;
             std::terminate();
         }
     }

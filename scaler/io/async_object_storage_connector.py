@@ -85,7 +85,7 @@ class AsyncObjectStorageConnector:
         if header.response_type != ObjectResponseHeader.ObjectResponseType.GetOK:
             return
 
-        pending_get_future = self._pending_get_requests.get(header.object_id)
+        pending_get_future = self._pending_get_requests.pop(header.object_id, None)
 
         if pending_get_future is None:
             logging.warning(f"unknown get-ok response for unrequested object_id={repr(header.object_id)}.")

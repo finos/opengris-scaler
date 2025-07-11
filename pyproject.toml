@@ -18,7 +18,7 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "bidict", 
+    "bidict",
     "cloudpickle",
     "psutil==7.0.0",
     "pycapnp==2.0.0",
@@ -62,7 +62,7 @@ exclude = [
     "^venv.*$",
     "migrations",
     "__pycache__",
-    "^build.*$",
+    "^build_*_*.*$",
     "^capnproto.*$",
     "^boost.*$",
     "^scripts.*$",
@@ -77,7 +77,7 @@ extend-ignore = ["E203"]
 exclude = [
     "migrations",
     "__pycache__",
-    "./build",
+    "./build_*_*",
     "./capnproto*",
     "./boost*",
     "./scripts",

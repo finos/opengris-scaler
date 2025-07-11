@@ -1,7 +1,6 @@
 import multiprocessing
-import os
 
-from scaler.object_storage.object_storage_server import run_object_storage_server
+from scaler.object_storage.object_storage_server import ObjectStorageServer
 from scaler.utility.object_storage_config import ObjectStorageConfig
 
 
@@ -10,11 +9,12 @@ class ObjectStorageServerProcess(multiprocessing.get_context("fork").Process):  
         multiprocessing.Process.__init__(self, name="ObjectStorageServer")
 
         self._storage_address = storage_address
-        self._on_server_ready_fd = os.eventfd(0, os.EFD_SEMAPHORE)
+
+        self._server = ObjectStorageServer()
 
     def wait_until_ready(self) -> None:
         """Blocks until the object storage server is available to server requests."""
-        os.eventfd_read(self._on_server_ready_fd)
+        self._server.wait_until_ready()
 
     def run(self) -> None:
-        run_object_storage_server(self._storage_address.host, self._storage_address.port, self._on_server_ready_fd)
+        self._server.run(self._storage_address.host, self._storage_address.port)

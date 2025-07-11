@@ -1,5 +1,9 @@
 #include "io_helper.h"
 
+#include <cstdint>
+#include <exception>
+#include <iostream>
+
 #include <capnp/message.h>
 #include <capnp/serialize.h>
 
@@ -15,8 +19,6 @@
 #include <boost/asio/use_awaitable.hpp>
 #include <boost/asio/write.hpp>
 #include <boost/system/system_error.hpp>
-#include <exception>
-#include <iostream>
 
 #include "protocol/object_storage.capnp.h"
 #include "scaler/object_storage/constants.h"
@@ -65,12 +67,12 @@ awaitable<void> read_request_header(tcp::socket& socket, ObjectRequestHeader& he
         if (e.code() == boost::asio::error::eof) {
             std::cerr << "Remote end closed, nothing to read.\n";
         } else {
-            std::cerr << "exception throwned, read error e.what() = " << e.what() << '\n';
+            std::cerr << "exception thrown, read error e.what() = " << e.what() << '\n';
         }
         throw e;
     } catch (std::exception& e) {
         // TODO: make this a log, capnp header corruption is an err.
-        std::cerr << "exception throwned, header not a capnp e.what() = " << e.what() << '\n';
+        std::cerr << "exception thrown, header not a capnp e.what() = " << e.what() << '\n';
 
         throw e;
     }
@@ -91,6 +93,11 @@ awaitable<void> read_request_payload(tcp::socket& socket, ObjectRequestHeader& h
         header.objectID      = {0, 0, 0, 0};
         header.payloadLength = 0;
         co_return;
+    }
+
+    if (header.payloadLength > SIZE_MAX) {
+        std::cerr << "payload length is larger than SIZE_MAX = " << SIZE_MAX << '\n';
+        std::terminate();
     }
 
     payload.resize(header.payloadLength);
