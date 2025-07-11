@@ -65,8 +65,9 @@ message(STATUS "Found Capnp in ${CAPNP_INCLUDE_DIRS}")
 include_directories(${CAPNP_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR})
 
+
 add_subdirectory(scaler)
 
-if(NOT SKBUILD_STATE)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_subdirectory(tests)
 endif()
