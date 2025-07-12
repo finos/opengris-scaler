@@ -1,6 +1,10 @@
 #pragma once
 
 // C
+#include <string.h>  // memcmp
+
+#include <algorithm>
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -10,44 +14,58 @@
 
 // First-party
 #include "scaler/io/ymq/common.h"
-#include "scaler/io/ymq/typedefs.h"
 
 class Bytes {
     uint8_t* _data;
     size_t _len;
-    Ownership _tag;
 
     void free() {
-        if (_tag != Owned)
-            return;
-
         if (is_empty())
             return;
-
         delete[] _data;
-        this->_data = NULL;
     }
 
-    Bytes(uint8_t* m_data, size_t m_len, Ownership tag): _data(m_data), _len(m_len), _tag(tag) {}
+    explicit Bytes(uint8_t* m_data, size_t m_len): _data(m_data), _len(m_len) {}
 
 public:
-    // move-only
-    // TODO: make copyable
-    Bytes(const Bytes&)            = delete;
-    Bytes& operator=(const Bytes&) = delete;
-    Bytes(Bytes&& other) noexcept: _data(other._data), _len(other._len), _tag(other._tag) {
-        other._data = NULL;
+    Bytes(char* data, size_t len): _data(datadup((uint8_t*)data, len)), _len(len) {}
+
+    Bytes(): _data {}, _len {} {}
+
+    Bytes(const Bytes& other) noexcept {
+        this->_data = datadup(other._data, other._len);
+        this->_len  = other._len;
+    }
+
+    Bytes& operator=(const Bytes& other) noexcept {
+        Bytes tmp(other);
+        swap(*this, tmp);
+        return *this;
+    }
+
+    friend void swap(Bytes& x, Bytes& y) noexcept {
+        using std::swap;
+        swap(x._len, y._len);
+        swap(x._data, y._data);
+    }
+
+    Bytes(Bytes&& other) noexcept: _data(other._data), _len(other._len) {
+        other._data = nullptr;
         other._len  = 0;
     }
+
+    friend std::strong_ordering operator<=>(const Bytes& x, const Bytes& y) noexcept {
+        return std::lexicographical_compare_three_way(x._data, x._data + x._len, y._data, y._data + y._len);
+    }
+
     Bytes& operator=(Bytes&& other) noexcept {
         if (this != &other) {
             this->free();  // free current data
 
             _data = other._data;
             _len  = other._len;
-            _tag    = other._tag;
 
-            other._data = NULL;
+            other._data = nullptr;
             other._len  = 0;
         }
         return *this;
@@ -55,19 +73,9 @@ public:
 
     ~Bytes() { this->free(); }
 
-    bool operator==(const Bytes& other) const {
-        if (_len != other._len)
-            return false;
+    [[nodiscard]] constexpr bool operator!() const noexcept { return is_empty(); }
 
-        if (_data == other._data)
-            return true;
-
-        return std::memcmp(_data, other._data, _len) == 0;
-    }
-
-    bool operator!() const { return is_empty(); }
-
-    bool is_empty() const { return this->_data == NULL; }
+    [[nodiscard]] constexpr bool is_empty() const noexcept { return !this->_data; }
 
     // debugging utility
     std::string as_string() const {
@@ -77,51 +85,23 @@ public:
         return std::string((char*)_data, _len);
     }
 
-    Bytes ref() { return Bytes {this->_data, this->_len, Borrowed}; }
-
-    static Bytes alloc(size_t m_len) {
-        if (m_len == 0)
-            return empty();
-
-        return Bytes {new uint8_t[m_len], m_len, Owned};
+    [[nodiscard("Allocated Bytes is not used, likely causing memory leak")]]
+    static Bytes alloc(size_t m_len) noexcept {
+        auto ptr = new uint8_t[m_len];  // we just assume the allocation will succeed
+        return Bytes {ptr, m_len};
     }
 
-    static Bytes empty() { return Bytes {NULL, 0, Owned}; }
-
-    static Bytes copy(const uint8_t* m_data, size_t m_len) {
-        if (m_len == 0)
-            return empty();
-
-        return Bytes {datadup(m_data, m_len), m_len, Owned};
+    // NOTE: Below two functions are not used by the core but appears
+    // to be used by pymod YMQ. - gxu
+    [[nodiscard]] static Bytes empty() { return Bytes {(uint8_t*)nullptr, 0}; }
+    [[nodiscard]] static Bytes copy(const uint8_t* m_data, size_t m_len) {
+        Bytes result;
+        result._data = datadup(m_data, m_len);
+        result._len  = m_len;
+        return result;
     }
 
-    static Bytes clone(const Bytes& bytes) {
-        if (bytes.is_empty())
-            panic("tried to clone empty bytes");
-
-        return Bytes {datadup(bytes._data, bytes._len), bytes._len, Owned};
-    }
-
-    // static Bytes from_buffer(Buffer& buffer) { return buffer.into_bytes(); }
-
-    // // consume this Bytes and return a Buffer object
-    // Buffer into_buffer() {
-    //     if (tag != Owned) {
-    //         // if the m_data is borrowed, we need to copy it
-    //         auto new_m_data = new uint8_t[m_len];
-    //         std::memcpy(new_m_data, m_data, m_len);
-    //         m_data = new_m_data;
-    //         tag    = Owned;  // now we own the m_data
-    //     }
-
-    //     Buffer buffer {m_data, m_len, m_len};
-    //     m_data = NULL;  // prevent double free
-    //     m_len  = 0;     // prevent double free
-    //     return buffer;
-    // }
-
-    size_t len() const { return _len; }
-    const uint8_t* data() const { return _data; }
-
-    friend class Buffer;
+    [[nodiscard]] constexpr size_t len() const { return _len; }
+    [[nodiscard]] constexpr const uint8_t* data() const { return _data; }
+    [[nodiscard]] constexpr uint8_t* data() { return _data; }
 };

@@ -10,8 +10,6 @@
 #include <source_location>
 #include <string>
 
-const size_t HEADER_SIZE = 4;  // size of the message header in bytes
-
 using Errno = int;
 
 inline void print_trace(void) {
@@ -45,18 +43,9 @@ inline void print_trace(void) {
     std::abort();
 }
 
-[[noreturn]] inline void todo(
-    std::optional<std::string> message   = std::nullopt,
-    const std::source_location& location = std::source_location::current()) {
-    if (message) {
-        panic("TODO: " + *message, location);
-    } else {
-        panic("TODO", location);
-    }
-}
-
-inline uint8_t* datadup(const uint8_t* data, size_t len) {
-    uint8_t* dup = new uint8_t[len];
+[[nodiscard("Memory is allocated but not bind, likely causing memory leak")]]
+constexpr inline uint8_t* datadup(const uint8_t* data, size_t len) noexcept {
+    uint8_t* dup = new uint8_t[len];  // we just assume allocation will succeed
     std::memcpy(dup, data, len);
     return dup;
 }
