@@ -12,6 +12,8 @@
 #include "scaler/io/ymq/io_socket.h"
 #include "scaler/io/ymq/pymod_ymq/ymq.h"
 
+using namespace scaler::ymq;
+
 struct PyIOSocket {
     PyObject_HEAD;
     std::shared_ptr<IOSocket> socket;

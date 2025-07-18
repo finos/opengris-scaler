@@ -5,6 +5,9 @@
 #include <chrono>
 #include <sstream>  // stringify
 
+namespace scaler {
+namespace ymq {
+
 // Simple timestamp utility
 struct Timestamp {
     std::chrono::time_point<std::chrono::system_clock> timestamp;
@@ -34,6 +37,8 @@ inline itimerspec convertToItimerspec(Timestamp ts) {
     itimerspec timerspec {};
     const auto duration = ts.timestamp - std::chrono::system_clock::now();
     if (duration.count() < 0) {
+        printf("NO THIS SHOULD NEVER HAPPEND\n");
+        exit(-1);
         return timerspec;
     }
 
@@ -41,5 +46,26 @@ inline itimerspec convertToItimerspec(Timestamp ts) {
     const auto nanosecs        = duration_cast<nanoseconds>(duration - secs);
     timerspec.it_value.tv_sec  = secs.count();
     timerspec.it_value.tv_nsec = nanosecs.count();
+
     return timerspec;
 }
+
+}  // namespace ymq
+}  // namespace scaler
+
+template <>
+struct std::formatter<scaler::ymq::Timestamp, char> {
+    template <class ParseContext>
+    constexpr ParseContext::iterator parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <class FmtContext>
+    constexpr FmtContext::iterator format(scaler::ymq::Timestamp e, FmtContext& ctx) const {
+        std::ostringstream out;
+        const auto ts {std::chrono::floor<std::chrono::seconds>(e.timestamp)};
+        const std::chrono::zoned_time z {std::chrono::current_zone(), ts};
+        out << std::format("{0:%F %T%z}", z);
+        return std::ranges::copy(std::move(out).str(), ctx.out()).out;
+    }
+};

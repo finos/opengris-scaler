@@ -4,12 +4,10 @@ target_sources(cc_ymq PRIVATE
   bytes.h
   common.h
   configuration.h
-  main.h
 
   epoll_context.h
   epoll_context.cpp
 
-  event_loop_backend.h
   event_loop.h
 
   event_loop_thread.h
@@ -20,6 +18,7 @@ target_sources(cc_ymq PRIVATE
 
   message_connection.h
   message_connection_tcp.h
+  message_connection_tcp.cpp
 
   third_party/concurrentqueue.h
   interruptive_concurrent_queue.h
@@ -38,8 +37,17 @@ target_sources(cc_ymq PRIVATE
   tcp_client.h
   tcp_client.cpp
 
+  tcp_operations.h
+
   timestamp.h
+
   timed_queue.h
+
+  network_utils.h
+
+  error.h
+
+  logging.h
 )
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/scaler/io/ymq)
