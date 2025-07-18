@@ -3,6 +3,7 @@
 #include <iostream>
 
 using namespace std::chrono_literals;
+using namespace scaler::ymq;
 
 int main() {
     Timestamp ts;

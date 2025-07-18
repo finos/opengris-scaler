@@ -1,10 +1,16 @@
-import ymq
+import asyncio, ymq
 
-context = ymq.IOContext(num_threads=2)
-socket = context.createIOSocket("my-socket", ymq.IOSocketType.Dealer)
+async def main():
+    ctx = ymq.IOContext()
+    socket = await ctx.createIOSocket("ident", ymq.IOSocketType.Binder)
+    print(ctx, ';', socket)
 
-print(context, ";", socket)
+    assert socket.identity == "ident"
+    assert socket.socket_type == ymq.IOSocketType.Binder
 
-assert context.num_threads == 2
-assert socket.identity == "my-socket"
-assert socket.socket_type == ymq.IOSocketType.Dealer
+    exc = ymq.YMQException(ymq.ErrorCode.InvalidAddressFormat, "oh no!")
+    assert exc.code == ymq.ErrorCode.InvalidAddressFormat
+    assert exc.message == "oh no!"
+    assert exc.code.explanation()
+
+asyncio.run(main())
