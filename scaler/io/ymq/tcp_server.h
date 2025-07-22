@@ -1,36 +1,55 @@
 #pragma once
 
 // C++
-#include <functional>
+#include <sys/socket.h>
+
 #include <memory>
 
 // First-party
+#include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/file_descriptor.h"
-// #include "event_loop_thread.hpp"
-// #include "event_manager.hpp"
+
+namespace scaler {
+namespace ymq {
 
 class EventLoopThread;
 class EventManager;
 
 class TcpServer {
-    // eventLoop thread will call onRead that is associated w/ the eventManager
-    std::shared_ptr<EventLoopThread> eventLoop;
-    std::unique_ptr<EventManager> eventManager;  // will copy the `onRead()` to itself
-    int serverFd;
+public:
+    using BindReturnCallback = Configuration::BindReturnCallback;
+
+    TcpServer(
+        std::shared_ptr<EventLoopThread> eventLoop,
+        std::string localIOSocketIdentity,
+        sockaddr addr,
+        BindReturnCallback onBindReturn) noexcept;
+    TcpServer(const TcpServer&)            = delete;
+    TcpServer& operator=(const TcpServer&) = delete;
+    ~TcpServer() noexcept;
+
+    void onCreated();
+    std::shared_ptr<EventLoopThread> _eventLoopThread;
+
+private:
     // Implementation defined method. accept(3) should happen here.
     // This function will call user defined onAcceptReturn()
     // It will handle error it can handle. If it is unreasonable to
     // handle the error here, pass it to onAcceptReturn()
     void onRead();
+    void onWrite() { printf("%s\n", __PRETTY_FUNCTION__); }
+    void onClose() { printf("%s\n", __PRETTY_FUNCTION__); }
+    void onError() { printf("%s\n", __PRETTY_FUNCTION__); }
 
-public:
-    TcpServer(const TcpServer&)            = delete;
-    TcpServer& operator=(const TcpServer&) = delete;
+    int createAndBindSocket();
 
-    // TODO: Modify the behavior of default ctor
-    TcpServer(std::shared_ptr<EventLoopThread> eventLoop);
+    BindReturnCallback _onBindReturn;
+    int _serverFd;
+    sockaddr _addr;
+    std::string _localIOSocketIdentity;
 
-    using AcceptReturnCallback = std::function<void(FileDescriptor, sockaddr, int)>;
-    AcceptReturnCallback onAcceptReturn;
-    void onCreated();
+    std::unique_ptr<EventManager> _eventManager;  // will copy the `onRead()` to itself
 };
+
+}  // namespace ymq
+}  // namespace scaler

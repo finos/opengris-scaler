@@ -1,43 +1,57 @@
 #pragma once
 
 // C++
+#include <concepts>
 #include <cstdint>  // uint64_t
 #include <functional>
 
 // First-party
-#include "scaler/io/ymq/event_manager.h"
+#include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/epoll_context.h"
-#include "scaler/io/ymq/event_loop_backend.h"
-// #include "scaler/io/ymq/interruptive_concurrent_queue.hpp"
-// #include "scaler/io/ymq/timed_concurrent_queue.hpp"
 
-// Third-Party
-// #include "scaler/io/ymq/third_party/concurrentqueue.h"
-// #include "scaler/io/ymq/event_loop_backend.hpp"
+namespace scaler {
+namespace ymq {
 
 struct Timestamp;
 class EventManager;
 
-template <class EventLoopBackend = EpollContext>
-struct EventLoop {
-    using Function   = std::function<void()>;  // TBD
-    using Identifier = int;                    // TBD
-    void loop() { eventLoopBackend->loop(); }
-    void stop();
+template <class Backend>
+concept EventLoopBackend = requires(Backend backend, Backend::Function f) {
+    { backend.executeNow(std::move(f)) } -> std::same_as<void>;
+    { backend.executeLater(std::move(f)) } -> std::same_as<void>;
+    { backend.executeAt(Timestamp {}, std::move(f)) } -> std::integral;
+    { backend.cancelExecution(0) } -> std::same_as<void>;
 
-    void executeNow(Function func) { eventLoopBackend->executeNow(func); }
-    void executeLater(Function func, Identifier identifier);
-    void executeAt(Timestamp, Function, Identifier identifier);
-    void cancelExecution(Identifier identifier);
+    backend.addFdToLoop(int {}, uint64_t {}, (EventManager*)nullptr);
+    { backend.removeFdFromLoop(int {}) } -> std::same_as<void>;
+};
+
+template <EventLoopBackend Backend = EpollContext>
+class EventLoop {
+    Backend backend;
+
+public:
+    using Function   = Backend::Function;
+    using Identifier = Backend::Identifier;
+
+    void loop() { backend.loop(); }
+
+    void executeNow(Function func) { backend.executeNow(std::move(func)); }
+    void executeLater(Function func) { backend.executeLater(std::move(func)); }
+
+    Identifier executeAt(Timestamp timestamp, Function func) { return backend.executeAt(timestamp, std::move(func)); }
+    void cancelExecution(Identifier identifier) { backend.cancelExecution(identifier); }
+
+    // NOTE: These two functions are not used. - gxu
     void registerCallbackBeforeLoop(EventManager*);
+    void registerEventManager(EventManager& em) { backend.registerEventManager(em); }
 
-    void registerEventManager(EventManager &em) {
-        eventLoopBackend->registerEventManager(em);
+    auto addFdToLoop(int fd, uint64_t events, EventManager* manager) {
+        return backend.addFdToLoop(fd, events, manager);
     }
 
-    // InterruptiveConcurrentQueue<FunctionType> immediateExecutionQueue;
-    // TimedConcurrentQueue<FunctionType> timedExecutionQueue;
-    // ConcurrentQueue<FunctionType> delayedExecutionQueue;
-
-    EventLoopBackend* eventLoopBackend;
+    void removeFdFromLoop(int fd) { backend.removeFdFromLoop(fd); }
 };
+
+}  // namespace ymq
+}  // namespace scaler

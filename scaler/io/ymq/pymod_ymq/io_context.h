@@ -6,9 +6,11 @@
 #include <structmember.h>
 
 // C++
+#include <future>
 #include <memory>
 
 // First-party
+#include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/io_context.h"
 #include "scaler/io/ymq/pymod_ymq/io_socket.h"
 #include "scaler/io/ymq/pymod_ymq/ymq.h"
@@ -65,6 +67,7 @@ static PyObject* PyIOContext_repr(PyIOContext* self) {
 // https://peps.python.org/pep-0590/
 static PyObject* PyIOContext_createIOSocket(
     PyIOContext* self, PyTypeObject* clazz, PyObject* const* args, Py_ssize_t nargs, PyObject* kwnames) {
+    using Identity = Configuration::IOSocketIdentity;
     if (nargs != 2) {
         PyErr_SetString(PyExc_TypeError, "createIOSocket() requires exactly two arguments: identity and socket_type");
         return nullptr;
@@ -130,7 +133,13 @@ static PyObject* PyIOContext_createIOSocket(
         return nullptr;
     }
 
-    ioSocket->socket = self->ioContext->createIOSocket(identity, socketType);
+    auto createSocketPromise = std::promise<std::shared_ptr<IOSocket>>();
+    auto createSocketFuture  = createSocketPromise.get_future();
+    self->ioContext->createIOSocket(
+        identity, socketType, [&createSocketPromise](auto sock) { createSocketPromise.set_value(sock); });
+
+    ioSocket->socket = createSocketFuture.get();
+
     return (PyObject*)ioSocket;
 }
 

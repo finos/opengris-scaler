@@ -6,12 +6,12 @@
 #include <structmember.h>
 
 struct YmqState {
-    PyObject* enumModule;       // Reference to the enum module
+    PyObject* enumModule;        // Reference to the enum module
     PyObject* ioSocketTypeEnum;  // Reference to the IOSocketType enum
-    PyObject* PyBytesYmqType;  // Reference to the BytesYmq type
-    PyObject* PyMessageType;  // Reference to the Message type
-    PyObject* PyIOSocketType;  // Reference to the IOSocket type
-    PyObject* PyIOContextType;  // Reference to the IOContext type
+    PyObject* PyBytesYmqType;    // Reference to the BytesYmq type
+    PyObject* PyMessageType;     // Reference to the Message type
+    PyObject* PyIOSocketType;    // Reference to the IOSocket type
+    PyObject* PyIOContextType;   // Reference to the IOContext type
 };
 
 // C++
@@ -35,12 +35,12 @@ static void ymq_free(YmqState* state) {
     Py_XDECREF(state->PyIOSocketType);
     Py_XDECREF(state->PyIOContextType);
 
-    state->enumModule = nullptr;
+    state->enumModule       = nullptr;
     state->ioSocketTypeEnum = nullptr;
-    state->PyBytesYmqType = nullptr;
-    state->PyMessageType = nullptr;
-    state->PyIOSocketType = nullptr;
-    state->PyIOContextType = nullptr;
+    state->PyBytesYmqType   = nullptr;
+    state->PyMessageType    = nullptr;
+    state->PyIOSocketType   = nullptr;
+    state->PyIOContextType  = nullptr;
 }
 
 static int ymq_createIntEnum(PyObject* module, std::string enumName, std::vector<std::pair<std::string, int>> entries) {
@@ -102,11 +102,12 @@ static int ymq_createIntEnum(PyObject* module, std::string enumName, std::vector
 static int ymq_createIOSocketTypeEnum(PyObject* module) {
     std::vector<std::pair<std::string, int>> ioSocketTypes = {
         {"Binder", (int)IOSocketType::Binder},
-        {"Sub", (int)IOSocketType::Sub},
-        {"Pub", (int)IOSocketType::Pub},
-        {"Dealer", (int)IOSocketType::Dealer},
-        {"Router", (int)IOSocketType::Router},
-        {"Pair", (int)IOSocketType::Pair}};
+        // FIXME: FIX IN LEWIS' PR. This is just to make the code compile.
+        {"Sub", (int)IOSocketType::Binder},
+        {"Pub", (int)IOSocketType::Binder},
+        {"Dealer", (int)IOSocketType::Binder},
+        {"Router", (int)IOSocketType::Binder},
+        {"Pair", (int)IOSocketType::Binder}};
 
     if (ymq_createIntEnum(module, "IOSocketType", ioSocketTypes) < 0) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create IOSocketType enum");

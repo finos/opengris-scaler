@@ -2,33 +2,40 @@
 
 // C++
 #include <memory>
-#include <mutex>
-#include <string>
 #include <vector>
 
 // First-party
-#include "scaler/io/ymq/event_loop_thread.h"
+#include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/typedefs.h"
 
-using Identity = Configuration::Identity;
+namespace scaler {
+namespace ymq {
 
 class IOSocket;
+class EventLoopThread;
 
 class IOContext {
-    // This is a pointer, just for now
-    std::vector<std::shared_ptr<EventLoopThread>> _threads;
-
 public:
-    IOContext(size_t threadCount = 1);
+    using Identity               = Configuration::IOSocketIdentity;
+    using CreateIOSocketCallback = Configuration::CreateIOSocketCallback;
 
+    IOContext(size_t threadCount = 1) noexcept;
     IOContext(const IOContext&)            = delete;
     IOContext& operator=(const IOContext&) = delete;
     IOContext(IOContext&&)                 = delete;
     IOContext& operator=(IOContext&&)      = delete;
 
-    // These methods need to be thread-safe.
-    std::shared_ptr<IOSocket> createIOSocket(Identity identity, IOSocketType socketType);
-    bool removeIOSocket(std::shared_ptr<IOSocket>);
+    void createIOSocket(
+        Identity identity, IOSocketType socketType, CreateIOSocketCallback onIOSocketCreated) & noexcept;
 
-    size_t numThreads() const { return _threads.size(); }
+    // After user called this method, no other call on the passed in IOSocket should be made.
+    void removeIOSocket(std::shared_ptr<IOSocket>& socket) noexcept;
+
+    constexpr size_t numThreads() const noexcept { return _threads.size(); }
+
+private:
+    std::vector<std::shared_ptr<EventLoopThread>> _threads;
 };
+
+}  // namespace ymq
+}  // namespace scaler

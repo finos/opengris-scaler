@@ -34,11 +34,12 @@ jobs:
           sudo apt update -y
           sudo apt upgrade -y
           sudo DEBIAN_FRONTEND=noninteractive sudo apt install -y tzdata
-          sudo apt install cmake clang curl pkg-config -y
+          sudo apt install cmake clang curl pkg-config g++-14 -y
 
       - name: Make scripts executable
         run: |
           sudo chmod 755 ./scripts/download_install_dependencies.sh
+          sudo chmod 755 ./scripts/build.sh
 
       - name: Cache Boost
         id: cache-boost
@@ -72,9 +73,9 @@ jobs:
         run: |
           sudo ./scripts/download_install_dependencies.sh capnp install
 
-      - name: Build Object Storage Component
+      - name: Build and test C++ Components
         run: |
-          CXX=$(which g++) ./scripts/build.sh
+          CXX=$(which g++-14) ./scripts/build.sh
 
       - name: Install Python Dependent Packages
         run: |
