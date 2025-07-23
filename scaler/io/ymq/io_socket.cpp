@@ -118,7 +118,7 @@ void IOSocket::onConnectionDisconnected(MessageConnectionTCP* conn) noexcept {
     if (socketType() == IOSocketType::Unicast || socketType() == IOSocketType::Multicast) {
         auto destructWriteOp = std::move(connPtr->_writeOperations);
         connPtr->_writeOperations.clear();
-        while (_pendingRecvMessages->size()) {
+        while (!_pendingRecvMessages->empty()) {
             // TODO: Replace this with error didNotReceive or something like that
             _pendingRecvMessages->front()({});
             _pendingRecvMessages->pop();

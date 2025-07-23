@@ -11,8 +11,8 @@
 
 struct PyMessage {
     PyObject_HEAD;
-    PyBytesYmq* address;  // Address of the message
-    PyBytesYmq* payload;  // Payload of the message
+    PyBytesYMQ* address;  // Address of the message
+    PyBytesYMQ* payload;  // Payload of the message
 };
 
 extern "C" {
@@ -20,13 +20,13 @@ extern "C" {
 static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds) {
     // replace with PyType_GetModuleByDef(Py_TYPE(self), &ymq_module) in a newer Python version
     // https://docs.python.org/3/c-api/type.html#c.PyType_GetModuleByDef
-    PyObject* module = PyType_GetModule(Py_TYPE(self));
-    if (!module) {
+    PyObject* pyModule = PyType_GetModule(Py_TYPE(self));
+    if (!pyModule) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to get module for Message type");
         return -1;
     }
 
-    auto state = (YmqState*)PyModule_GetState(module);
+    auto state = (YMQState*)PyModule_GetState(pyModule);
     if (!state) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to get module state");
         return -1;
@@ -39,10 +39,10 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds) {
         return -1;
     }
 
-    // check if the address and payload are of type PyBytesYmq
-    if (!PyObject_IsInstance(address, state->PyBytesYmqType)) {
+    // check if the address and payload are of type PyBytesYMQ
+    if (!PyObject_IsInstance(address, state->PyBytesYMQType)) {
         PyObject* args = PyTuple_Pack(1, address);
-        address        = PyObject_CallObject(state->PyBytesYmqType, args);
+        address        = PyObject_CallObject(state->PyBytesYMQType, args);
         Py_DECREF(args);
 
         if (!address) {
@@ -50,9 +50,9 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds) {
         }
     }
 
-    if (!PyObject_IsInstance(payload, state->PyBytesYmqType)) {
+    if (!PyObject_IsInstance(payload, state->PyBytesYMQType)) {
         PyObject* args = PyTuple_Pack(1, payload);
-        payload        = PyObject_CallObject(state->PyBytesYmqType, args);
+        payload        = PyObject_CallObject(state->PyBytesYMQType, args);
         Py_DECREF(args);
 
         if (!payload) {
@@ -60,8 +60,8 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds) {
         }
     }
 
-    self->address = (PyBytesYmq*)address;
-    self->payload = (PyBytesYmq*)payload;
+    self->address = (PyBytesYMQ*)address;
+    self->payload = (PyBytesYMQ*)payload;
 
     return 0;  // todo
 }
@@ -77,7 +77,10 @@ static PyObject* PyMessage_repr(PyMessage* self) {
 }
 }
 
-static PyMemberDef PyMessage_members[] = {{nullptr}};
+static PyMemberDef PyMessage_members[] = {
+    {"address", T_OBJECT, offsetof(PyMessage, address), 0, PyDoc_STR("the address of the message")},
+    {"payload", T_OBJECT, offsetof(PyMessage, payload), 0, PyDoc_STR("the payload of the message")},
+    {nullptr}};
 
 static PyType_Slot PyMessage_slots[] = {
     {Py_tp_init, (void*)PyMessage_init},

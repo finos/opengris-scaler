@@ -65,7 +65,7 @@ int EpollContext::addFdToLoop(int fd, uint64_t events, EventManager* manager) {
 void EpollContext::removeFdFromLoop(int fd) {
     if (epoll_ctl(_epfd, EPOLL_CTL_DEL, fd, nullptr) == -1) {
         // TODO: Update when error type is determined
-        exit(1);
+        panic("Failed to remove fd from epoll loop");
     }
 }
 

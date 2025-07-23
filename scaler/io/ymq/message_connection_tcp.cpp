@@ -80,7 +80,8 @@ void MessageConnectionTCP::onCreated() {
     if (_connFd != 0) {
         this->_eventLoopThread->_eventLoop.addFdToLoop(
             _connFd, EPOLLIN | EPOLLOUT | EPOLLET, this->_eventManager.get());
-        _writeOperations.emplace_back(Bytes {_localIOSocketIdentity.data(), _localIOSocketIdentity.size()}, [](int) {});
+        _writeOperations.emplace_back(
+            Bytes::copy((uint8_t*)_localIOSocketIdentity.data(), _localIOSocketIdentity.size()), [](int) {});
     }
 }
 
@@ -174,7 +175,7 @@ std::expected<void, int> MessageConnectionTCP::tryReadMessages(bool readOneMessa
 void MessageConnectionTCP::updateReadOperation() {
     while (_pendingRecvMessageCallbacks->size() && _receivedReadOperations.size()) {
         if (isCompleteMessage(_receivedReadOperations.front())) {
-            Bytes address(_remoteIOSocketIdentity->data(), _remoteIOSocketIdentity->size());
+            Bytes address = Bytes::copy((uint8_t*)_remoteIOSocketIdentity->data(), _remoteIOSocketIdentity->size());
             Bytes payload(std::move(_receivedReadOperations.front()._payload));
             _receivedReadOperations.pop();
 

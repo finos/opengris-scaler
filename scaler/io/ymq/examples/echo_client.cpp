@@ -37,9 +37,10 @@ int main() {
         Message message;
         std::string destAddress = "ServerSocket";
 
-        message.address = Bytes {const_cast<char*>(destAddress.c_str()), destAddress.size()};
-
-        message.payload = Bytes {const_cast<char*>(line.c_str()), line.size()};
+        // message.address = Bytes {const_cast<char*>(destAddress.data()), destAddress.size()};
+        // message.payload = Bytes {const_cast<char*>(line.c_str()), line.size()};
+        message.address = Bytes::copy((uint8_t*)destAddress.c_str(), destAddress.size());
+        message.payload = Bytes::copy((uint8_t*)line.c_str(), line.size());
 
         auto send_promise = std::promise<void>();
         auto send_future  = send_promise.get_future();
