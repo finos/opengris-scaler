@@ -32,6 +32,8 @@ public:
     // EventLoop<PollingContext>& getEventLoop();
     // IOSocket* getIOSocketByIdentity(size_t identity);
 
+    constexpr bool stopRequested() { return thread.get_stop_source().stop_requested(); }
+
     EventLoopThread(const EventLoopThread&)            = delete;
     EventLoopThread& operator=(const EventLoopThread&) = delete;
     EventLoopThread()                                  = default;
