@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <functional>
 
+#include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/event_manager.h"
 
 namespace scaler {
@@ -48,18 +49,17 @@ int EpollContext::addFdToLoop(int fd, uint64_t events, EventManager* manager) {
     event.events   = (int)events & (EPOLLIN | EPOLLOUT | EPOLLET);
     event.data.ptr = (void*)manager;
     int res        = epoll_ctl(_epfd, EPOLL_CTL_ADD, fd, &event);
-    if (res == 0)
+    if (res == 0) {
         return 0;
+    }
 
     if (errno == EEXIST) {
         if (epoll_ctl(_epfd, EPOLL_CTL_MOD, fd, &event) == 0) {
             return 0;
-        } else {
-            return errno;
         }
-    } else {
         return errno;
     }
+    return errno;
 }
 
 void EpollContext::removeFdFromLoop(int fd) {
