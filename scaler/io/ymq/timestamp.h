@@ -2,6 +2,7 @@
 
 #include <sys/time.h>  // itimerspec
 
+#include <cassert>
 #include <chrono>
 #include <sstream>  // stringify
 
@@ -36,11 +37,7 @@ inline itimerspec convertToItimerspec(Timestamp ts) {
 
     itimerspec timerspec {};
     const auto duration = ts.timestamp - std::chrono::system_clock::now();
-    if (duration.count() < 0) {
-        printf("NO THIS SHOULD NEVER HAPPEND\n");
-        exit(-1);
-        return timerspec;
-    }
+    assert(duration.count() >= 0);
 
     const auto secs            = duration_cast<seconds>(duration);
     const auto nanosecs        = duration_cast<nanoseconds>(duration - secs);

@@ -4,6 +4,7 @@
 #include <cassert>
 #include <memory>
 
+#include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/event_manager.h"
 #include "scaler/io/ymq/io_socket.h"
 
@@ -22,7 +23,17 @@ void EventLoopThread::createIOSocket(std::string identity, IOSocketType socketTy
     _eventLoop.executeNow([this, callback = std::move(callback), identity = std::move(identity), socketType] mutable {
         auto [iterator, inserted] = _identityToIOSocket.try_emplace(
             identity, std::make_shared<IOSocket>(shared_from_this(), identity, socketType));
-        assert(inserted);
+
+        if (!inserted) {
+            unrecoverableError({
+                Error::ErrorCode::RepetetiveIOSocketIdentity,
+                "Originated from (in EventLoopThread::createIOSocket)",
+                __PRETTY_FUNCTION__,
+                "Your input identity",
+                identity,
+            });
+        }
+
         auto ptr = iterator->second;
 
         callback(ptr);
@@ -30,7 +41,17 @@ void EventLoopThread::createIOSocket(std::string identity, IOSocketType socketTy
 }
 
 void EventLoopThread::removeIOSocket(IOSocket* target) {
-    assert(_identityToIOSocket[target->identity()].use_count() == 1);
+    auto useCount = _identityToIOSocket[target->identity()].use_count();
+    if (useCount != 1) {
+        unrecoverableError({
+            Error::ErrorCode::RedundantIOSocketRefCount,
+            "Originated from",
+            __PRETTY_FUNCTION__,
+            "use_count",
+            useCount,
+        });
+    }
+
     _identityToIOSocket.erase(target->identity());
     if (_identityToIOSocket.empty()) {
         thread.request_stop();

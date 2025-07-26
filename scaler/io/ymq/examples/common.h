@@ -5,6 +5,7 @@
 #include <future>
 #include <memory>
 
+#include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/io_context.h"
 #include "scaler/io/ymq/io_socket.h"
 
@@ -22,18 +23,19 @@ inline std::shared_ptr<IOSocket> syncCreateSocket(IOContext& context, IOSocketTy
 }
 
 inline void syncBindSocket(std::shared_ptr<IOSocket> socket, std::string address) {
-    auto bind_promise = std::promise<void>();
+    auto bind_promise = std::promise<std::expected<void, Error>>();
     auto bind_future  = bind_promise.get_future();
     // Optionally handle result in the callback
-    socket->bindTo(address, [&bind_promise](int result) { bind_promise.set_value(); });
+    socket->bindTo(address, [&bind_promise](std::expected<void, Error> result) { bind_promise.set_value({}); });
     bind_future.wait();
 }
 
 inline void syncConnectSocket(std::shared_ptr<IOSocket> socket, std::string address) {
-    auto connect_promise = std::promise<void>();
+    auto connect_promise = std::promise<std::expected<void, Error>>();
     auto connect_future  = connect_promise.get_future();
 
-    socket->connectTo(address, [&connect_promise](int result) { connect_promise.set_value(); });
+    socket->connectTo(
+        address, [&connect_promise](std::expected<void, Error> result) { connect_promise.set_value({}); });
 
     connect_future.wait();
 }

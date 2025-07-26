@@ -51,7 +51,7 @@ public:
 
     void loop();
 
-    int addFdToLoop(int fd, uint64_t events, EventManager* manager);
+    void addFdToLoop(int fd, uint64_t events, EventManager* manager);
     void removeFdFromLoop(int fd);
 
     // NOTE: Thread-safe method to communicate with the event loop thread

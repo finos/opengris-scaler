@@ -10,6 +10,7 @@
 #include <thread>
 
 #include "./common.h"
+#include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/io_context.h"
 #include "scaler/io/ymq/io_socket.h"
 #include "scaler/io/ymq/typedefs.h"
@@ -41,20 +42,22 @@ int main() {
 
         message.payload = Bytes {const_cast<char*>(line.c_str()), line.size()};
 
-        auto send_promise = std::promise<void>();
+        auto send_promise = std::promise<std::expected<void, Error>>();
         auto send_future  = send_promise.get_future();
 
-        clientSocket->sendMessage(std::move(message), [&send_promise](int) { send_promise.set_value(); });
+        clientSocket->sendMessage(
+            std::move(message), [&send_promise](std::expected<void, Error>) { send_promise.set_value({}); });
 
         send_future.wait();
         printf("Message sent, waiting for response...\n");
 
-        auto recv_promise = std::promise<Message>();
+        auto recv_promise = std::promise<std::pair<Message, Error>>();
         auto recv_future  = recv_promise.get_future();
 
-        clientSocket->recvMessage([&recv_promise](Message msg) { recv_promise.set_value(std::move(msg)); });
+        clientSocket->recvMessage(
+            [&recv_promise](std::pair<Message, Error> msg) { recv_promise.set_value(std::move(msg)); });
 
-        Message reply = recv_future.get();
+        Message reply = recv_future.get().first;
         std::string reply_str(reply.payload.data(), reply.payload.data() + reply.payload.len());
         printf("Received echo: '%s'\n", reply_str.c_str());
     }

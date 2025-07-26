@@ -4,6 +4,7 @@
 #include <future>
 #include <memory>
 
+#include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/io_context.h"
 #include "scaler/io/ymq/io_socket.h"
 
@@ -22,15 +23,16 @@ int main() {
     printf("Successfully bound socket\n");
 
     while (true) {
-        auto recv_promise = std::promise<Message>();
+        auto recv_promise = std::promise<std::pair<Message, Error>>();
         auto recv_future  = recv_promise.get_future();
 
-        socket->recvMessage([&recv_promise](Message msg) { recv_promise.set_value(std::move(msg)); });
+        socket->recvMessage([&recv_promise](std::pair<Message, Error> msg) { recv_promise.set_value(std::move(msg)); });
 
-        Message received_msg = recv_future.get();
-        auto send_promise    = std::promise<void>();
+        Message received_msg = recv_future.get().first;
+        auto send_promise    = std::promise<std::expected<void, Error>>();
         auto send_future     = send_promise.get_future();
-        socket->sendMessage(std::move(received_msg), [&send_promise](int) { send_promise.set_value(); });
+        socket->sendMessage(
+            std::move(received_msg), [&send_promise](std::expected<void, Error>) { send_promise.set_value({}); });
         send_future.wait();
     }
 

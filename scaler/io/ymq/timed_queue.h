@@ -4,11 +4,11 @@
 #include <unistd.h>
 
 #include <cassert>
-#include <functional>
 #include <queue>
 #include <set>
 
 #include "scaler/io/ymq/configuration.h"
+#include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/timestamp.h"
 
 namespace scaler {
@@ -16,13 +16,42 @@ namespace ymq {
 
 inline int createTimerfd() {
     int timerfd = ::timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-    if (timerfd < 0) {
-        exit(1);
+    if (timerfd >= 0) {
+        return timerfd;
     }
-    return timerfd;
+
+    const int myErrno = errno;
+    switch (myErrno) {
+        case EMFILE:
+        case ENFILE:
+        case ENODEV:
+        case ENOMEM:
+        case EPERM:
+            unrecoverableError({
+                Error::ErrorCode::ConfigurationError,
+                "Originated from",
+                __PRETTY_FUNCTION__,
+                "Errno is",
+                strerror(myErrno),
+            });
+            break;
+
+        case EINVAL:
+        case EBADF:
+        case EFAULT:
+        case ECANCELED:
+        default:
+            unrecoverableError({
+                Error::ErrorCode::CoreBug,
+                "Originated from",
+                __PRETTY_FUNCTION__,
+                "Errno is",
+                strerror(myErrno),
+            });
+            break;
+    }
 }
 
-// TODO: HANDLE ERRS
 class TimedQueue {
 public:
     using Callback            = Configuration::TimedQueueCallback;
@@ -33,7 +62,7 @@ public:
 
     TimedQueue(): _timerFd(createTimerfd()), _currentId {} { assert(_timerFd); }
     ~TimedQueue() {
-        if (_timerFd > 0)
+        if (_timerFd >= 0)
             close(_timerFd);
     }
 
@@ -41,7 +70,15 @@ public:
         auto ts = convertToItimerspec(timestamp);
         if (pq.empty() || timestamp < std::get<0>(pq.top())) {
             int ret = timerfd_settime(_timerFd, 0, &ts, nullptr);
-            assert(ret == 0);
+            if (ret == -1) {
+                unrecoverableError({
+                    Error::ErrorCode::CoreBug,
+                    "Originated from",
+                    __PRETTY_FUNCTION__,
+                    "Errno is",
+                    strerror(errno),
+                });
+            }
         }
         pq.push({timestamp, std::move(cb), _currentId});
         return _currentId++;
@@ -52,10 +89,15 @@ public:
     std::vector<Callback> dequeue() {
         uint64_t numItems;
         ssize_t n = read(_timerFd, &numItems, sizeof numItems);
-        if (n != sizeof numItems) {
-            assert(false);
-            // Handle read error or spurious wakeup
-            return {};
+        if (n != sizeof numItems) [[unlikely]] {
+            // This should never happen anyway
+            unrecoverableError({
+                Error::ErrorCode::CoreBug,
+                "Originated from",
+                __PRETTY_FUNCTION__,
+                "Errno is",
+                strerror(errno),
+            });
         }
 
         std::vector<Callback> callbacks;
@@ -80,8 +122,36 @@ public:
             auto ts     = convertToItimerspec(nextTs);
             int ret     = timerfd_settime(_timerFd, 0, &ts, nullptr);
             if (ret == -1) {
-                assert(false);
-                // handle error
+                const int myErrno = errno;
+                switch (myErrno) {
+                    case EMFILE:
+                    case ENFILE:
+                    case ENODEV:
+                    case ENOMEM:
+                    case EPERM:
+                        unrecoverableError({
+                            Error::ErrorCode::ConfigurationError,
+                            "Originated from",
+                            __PRETTY_FUNCTION__,
+                            "Errno is",
+                            strerror(myErrno),
+                        });
+                        break;
+
+                    case EINVAL:
+                    case EBADF:
+                    case EFAULT:
+                    case ECANCELED:
+                    default:
+                        unrecoverableError({
+                            Error::ErrorCode::CoreBug,
+                            "Originated from",
+                            __PRETTY_FUNCTION__,
+                            "Errno is",
+                            strerror(myErrno),
+                        });
+                        break;
+                }
             }
         }
         return callbacks;

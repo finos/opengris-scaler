@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <expected>
+#include <functional>
 #include <memory>
 #include <optional>
 
@@ -80,7 +82,8 @@ void MessageConnectionTCP::onCreated() {
     if (_connFd != 0) {
         this->_eventLoopThread->_eventLoop.addFdToLoop(
             _connFd, EPOLLIN | EPOLLOUT | EPOLLET, this->_eventManager.get());
-        _writeOperations.emplace_back(Bytes {_localIOSocketIdentity.data(), _localIOSocketIdentity.size()}, [](int) {});
+        _writeOperations.emplace_back(
+            Bytes {_localIOSocketIdentity.data(), _localIOSocketIdentity.size()}, [](auto) {});
     }
 }
 
@@ -181,7 +184,7 @@ void MessageConnectionTCP::updateReadOperation() {
             auto recvMessageCallback = std::move(_pendingRecvMessageCallbacks->front());
             _pendingRecvMessageCallbacks->pop();
 
-            recvMessageCallback(Message(std::move(address), std::move(payload)));
+            recvMessageCallback({Message(std::move(address), std::move(payload)), {}});
 
         } else {
             assert(_pendingRecvMessageCallbacks->size());
@@ -393,7 +396,7 @@ void MessageConnectionTCP::updateWriteOperations(size_t n) {
     }
 
     for (auto it = _writeOperations.begin(); it != firstIncomplete; ++it) {
-        it->_callbackAfterCompleteWrite(0);
+        it->_callbackAfterCompleteWrite({});
     }
 
     while (firstIncomplete != _writeOperations.begin())
@@ -430,7 +433,9 @@ MessageConnectionTCP::~MessageConnectionTCP() noexcept {
         _connFd = 0;
     }
 
-    std::ranges::for_each(_writeOperations, [](auto&& x) { x._callbackAfterCompleteWrite(-1); });
+    std::ranges::for_each(_writeOperations, [](auto&& x) {
+        x._callbackAfterCompleteWrite(std::unexpected {Error::ErrorCode::SendMessageRequestCouldNotComplete});
+    });
 
     // TODO: What to do with this?
     // std::queue<std::vector<char>> _receivedMessages;

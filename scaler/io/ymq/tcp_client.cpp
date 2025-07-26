@@ -8,6 +8,7 @@
 #include <functional>
 #include <memory>
 
+#include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/event_loop_thread.h"
 #include "scaler/io/ymq/event_manager.h"
 #include "scaler/io/ymq/io_socket.h"
@@ -22,9 +23,34 @@ namespace ymq {
 void TcpClient::onCreated() {
     int sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
     if (sockfd == -1) {
-        if (_retryTimes == 0) {
-            _onConnectReturn(errno);
-            return;
+        const int myErrno = errno;
+        switch (myErrno) {
+            case EACCES:
+            case EAFNOSUPPORT:
+            case EMFILE:
+            case ENFILE:
+            case ENOBUFS:
+            case ENOMEM:
+                unrecoverableError({
+                    Error::ErrorCode::ConfigurationError,
+                    "Originated from",
+                    "socket(2)",
+                    "Errno is",
+                    strerror(myErrno),
+                });
+                break;
+
+            case EINVAL:
+            case EPROTONOSUPPORT:
+            default:
+                unrecoverableError({
+                    Error::ErrorCode::CoreBug,
+                    "Originated from",
+                    "socket(2)",
+                    "Errno is",
+                    strerror(myErrno),
+                });
+                break;
         }
     }
 
@@ -34,7 +60,6 @@ void TcpClient::onCreated() {
     int passedBackValue = 0;
     if (ret < 0) {
         if (errno != EINPROGRESS) {
-            perror("connect");
             close(sockfd);
             passedBackValue = errno;
         } else {
@@ -49,14 +74,65 @@ void TcpClient::onCreated() {
         passedBackValue = 0;
     }
 
-    if (_retryTimes == 0) {
-        _onConnectReturn(passedBackValue);
+    if (_retryTimes == 0 && passedBackValue == 0) {
+        _onConnectReturn(std::unexpected {Error::ErrorCode::InitialConnectFailedWithInProgress});
         return;
     }
 
-    if (passedBackValue < 0) {
-        printf("SOMETHING REALLY BAD\n");
-        exit(-1);
+    if (passedBackValue != 0) {
+        switch (passedBackValue) {
+            case EACCES:
+            case EADDRNOTAVAIL:
+            case EFAULT:
+            case ENETUNREACH:
+            case EPROTOTYPE:
+            case ETIMEDOUT:
+                unrecoverableError({
+                    Error::ErrorCode::ConfigurationError,
+                    "Originated from",
+                    "connect(2)",
+                    "Errno is",
+                    strerror(passedBackValue),
+                    "sockfd",
+                    sockfd,
+                });
+                break;
+
+            case EINTR:
+                unrecoverableError({
+                    Error::ErrorCode::SignalNotSupported,
+                    "Originated from",
+                    "connect(2)",
+                    "Errno is",
+                    strerror(passedBackValue),
+                    "sockfd",
+                    sockfd,
+                });
+                break;
+
+            case EPERM:
+            case EADDRINUSE:
+            case EAFNOSUPPORT:
+            case EAGAIN:
+            case EALREADY:
+            case EBADF:
+            case EISCONN:
+            case ENOTSOCK:
+                unrecoverableError({
+                    Error::ErrorCode::CoreBug,
+                    "Originated from",
+                    "connect(2)",
+                    "Errno is",
+                    strerror(passedBackValue),
+                    "sockfd",
+                    sockfd,
+                });
+                break;
+
+            case EINPROGRESS:
+            case ECONNREFUSED:
+            default: break;
+        }
     }
 }
 
@@ -87,14 +163,53 @@ void TcpClient::onWrite() {
     int err {};
     socklen_t errLen {sizeof(err)};
     if (getsockopt(_connFd, SOL_SOCKET, SO_ERROR, &err, &errLen) < 0) {
-        perror("getsockopt");
-        exit(-1);
+        const int myErrno = errno;
+        switch (myErrno) {
+            case ENOPROTOOPT:
+            case ENOBUFS:
+            case EACCES:
+                unrecoverableError({
+                    Error::ErrorCode::ConfigurationError,
+                    "Originated from",
+                    "getsockopt(3)",
+                    "Errno is",
+                    strerror(myErrno),
+                    "_connFd",
+                    _connFd,
+                });
+
+            case ENOTSOCK:
+            case EBADF:
+            case EINVAL:
+            default:
+                unrecoverableError({
+                    Error::ErrorCode::CoreBug,
+                    "Originated from",
+                    "getsockopt(3)",
+                    "Errno is",
+                    strerror(myErrno),
+                    "_connFd",
+                    _connFd,
+                });
+        }
     }
 
     if (err != 0) {
-        fprintf(stderr, "Connect failed: %s\n", strerror(err));
-        retry();
-        return;
+        if (err == ECONNREFUSED) {
+            retry();
+            return;
+        }
+
+        // Since connect(2) error has been checked previously
+        unrecoverableError({
+            Error::ErrorCode::CoreBug,
+            "Originated from",
+            "connect(2)",
+            "Errno is",
+            strerror(errno),
+            "_connFd",
+            _connFd,
+        });
     }
 
     std::string id = this->_localIOSocketIdentity;
@@ -112,7 +227,7 @@ void TcpClient::onRead() {}
 
 void TcpClient::retry() {
     if (_retryTimes > _maxRetryTimes) {
-        printf("_retryTimes > %lu, has reached maximum, no more retry now\n", _retryTimes);
+        log(LoggingLevel::error, "Retried times has reached maximum", _maxRetryTimes);
         exit(1);
         return;
     }
@@ -132,8 +247,9 @@ TcpClient::~TcpClient() noexcept {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_connFd);
         close(_connFd);
     }
-    if (_retryTimes > 0)
+    if (_retryTimes > 0) {
         _eventLoopThread->_eventLoop.cancelExecution(_retryIdentifier);
+    }
 }
 
 }  // namespace ymq

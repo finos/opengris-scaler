@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <vector>
 
+#include "scaler/io/ymq/error.h"
 #include "third_party/concurrentqueue.h"
 
 namespace scaler {
@@ -23,8 +24,34 @@ public:
     InterruptiveConcurrentQueue(): _queue() {
         _eventFd = eventfd(0, EFD_NONBLOCK);
         if (_eventFd == -1) {
-            printf("eventfd goes wrong\n");
-            exit(1);
+            const int myErrno = errno;
+            switch (myErrno) {
+                case ENFILE:
+                case ENODEV:
+                case ENOMEM:
+                case EMFILE:
+                    unrecoverableError({
+                        Error::ErrorCode::ConfigurationError,
+                        "Originated from",
+                        "eventfd(2)",
+                        "Errno is",
+                        strerror(myErrno),
+                    });
+                    break;
+
+                case EINVAL:
+                default:
+                    unrecoverableError({
+                        Error::ErrorCode::CoreBug,
+                        "Originated from",
+                        "eventfd(2)",
+                        "Errno is",
+                        strerror(myErrno),
+                        "flags",
+                        "EFD_NONBLOCK",
+                    });
+                    break;
+            }
         }
     }
 
@@ -35,8 +62,13 @@ public:
 
         uint64_t u = 1;
         if (::eventfd_write(_eventFd, u) < 0) {
-            printf("eventfd_write goes wrong\n");
-            exit(1);
+            unrecoverableError({
+                Error::ErrorCode::CoreBug,
+                "Originated from",
+                "eventfd_write(2)",
+                "Errno is",
+                strerror(errno),
+            });
         }
     }
 
@@ -44,12 +76,17 @@ public:
     std::vector<T> dequeue() {
         uint64_t u {};
         if (::eventfd_read(_eventFd, &u) < 0) {
-            if (errno != EAGAIN) {
-                printf("eventfd_read goes wrong\n");
-                exit(1);
-            } else {
+            if (errno == EAGAIN) {
                 return {};
             }
+
+            unrecoverableError({
+                Error::ErrorCode::CoreBug,
+                "Originated from",
+                "eventfd_read(2)",
+                "Errno is",
+                strerror(errno),
+            });
         }
 
         std::vector<T> vecT(u);
