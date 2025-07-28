@@ -15,6 +15,7 @@ from scaler.client.agent.task_manager import ClientTaskManager
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.async_connector import AsyncConnector
 from scaler.protocol.python.common import ObjectStorageAddress
+from scaler.io.ymq.ymq import IOContext, IOSocketType
 from scaler.protocol.python.message import (
     ClientDisconnect,
     ClientHeartbeatEcho,
@@ -31,16 +32,16 @@ from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientCancelledException, ClientQuitException, ClientShutdownException
 from scaler.utility.identifiers import ClientID
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.utility.ymq_config import YMQConfig
 
 
 class ClientAgent(threading.Thread):
     def __init__(
         self,
         identity: ClientID,
-        client_agent_address: ZMQConfig,
-        scheduler_address: ZMQConfig,
-        context: zmq.Context,
+        client_agent_address: YMQConfig,
+        scheduler_address: YMQConfig,
+        context: IOContext,
         future_manager: ClientFutureManager,
         stop_event: threading.Event,
         timeout_seconds: int,
@@ -63,20 +64,17 @@ class ClientAgent(threading.Thread):
         self._future_manager = future_manager
 
         self._connector_internal = AsyncConnector(
-            context=zmq.asyncio.Context.shadow(self._context),
+            context=self._context,
             name="client_agent_internal",
-            socket_type=zmq.PAIR,
-            bind_or_connect="bind",
             address=self._client_agent_address,
             callback=self.__on_receive_from_client,
             identity=None,
         )
+
         self._connector_external = AsyncConnector(
-            context=zmq.asyncio.Context.shadow(self._context),
+            context=self._context,
             name="client_agent_external",
-            socket_type=zmq.DEALER,
             address=self._scheduler_address,
-            bind_or_connect="connect",
             callback=self.__on_receive_from_scheduler,
             identity=self._identity,
         )
@@ -86,6 +84,9 @@ class ClientAgent(threading.Thread):
         self._task_manager: Optional[ClientTaskManager] = None
 
     def __initialize(self):
+        self._connector_internal.init_sync(bind_or_connect="bind", socket_type=IOSocketType.Binder)
+        self._connector_external.init_sync(bind_or_connect="connect", socket_type=IOSocketType.Connector)
+
         self._disconnect_manager = ClientDisconnectManager()
         self._heartbeat_manager = ClientHeartbeatManager(
             death_timeout_seconds=self._timeout_seconds, storage_address_future=self._storage_address

@@ -15,7 +15,7 @@ from scaler.io.config import (
 )
 from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.event_loop import EventLoopType, register_event_loop
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.utility.ymq_config import YMQConfig
 
 
 def get_args():
@@ -94,7 +94,7 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--log-hub-address", "-la", default=None, type=ZMQConfig.from_string, help="address for Worker send logs"
+        "--log-hub-address", "-la", default=None, type=YMQConfig.from_string, help="address for Worker send logs"
     )
     parser.add_argument(
         "--logging-paths",
@@ -128,7 +128,7 @@ def get_args():
         help="specify the object storage server address, e.g. tcp://localhost:2346. If not specified, use the address "
         "provided by the scheduler",
     )
-    parser.add_argument("address", type=ZMQConfig.from_string, help="scheduler address to connect to")
+    parser.add_argument("address", type=YMQConfig.from_string, help="scheduler address to connect to")
     return parser.parse_args()
 
 

@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
+from scaler.io.async_connector_zmq import AsyncConnectorZMQ
 from scaler.protocol.python.message import StateBalanceAdvice
 from scaler.scheduler.allocate_policy.mixins import TaskAllocatePolicy
 from scaler.scheduler.controllers.mixins import TaskController
@@ -20,11 +21,11 @@ class VanillaBalanceController(Looper):
         self._same_load_balance_advice_count = 0
 
         self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncConnector] = None
+        self._binder_monitor: Optional[AsyncConnectorZMQ] = None
 
         self._task_controller: Optional[TaskController] = None
 
-    def register(self, binder: AsyncBinder, binder_monitor: AsyncConnector, task_controller: TaskController):
+    def register(self, binder: AsyncBinder, binder_monitor: AsyncConnectorZMQ, task_controller: TaskController):
         self._binder = binder
         self._binder_monitor = binder_monitor
 

@@ -2,13 +2,13 @@ import asyncio
 import functools
 import logging
 
-import zmq.asyncio
-
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
+from scaler.io.async_connector_zmq import AsyncConnectorZMQ
 from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.io.config import CLEANUP_INTERVAL_SECONDS, STATUS_REPORT_INTERVAL_SECONDS
 from scaler.protocol.python.common import ObjectStorageAddress
+from scaler.io.ymq.ymq import IOContext, IOSocketType
 from scaler.protocol.python.message import (
     ClientDisconnect,
     ClientHeartbeat,
@@ -36,17 +36,14 @@ from scaler.scheduler.controllers.worker_controller import VanillaWorkerControll
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, WorkerID
+from scaler.utility.ymq_config import YMQConfig
 from scaler.utility.zmq_config import ZMQConfig, ZMQType
 
+import zmq.asyncio
 
 class Scheduler:
     def __init__(self, config: SchedulerConfig):
         self._config = config
-
-        if config.address.type != ZMQType.tcp:
-            raise TypeError(
-                f"{self.__class__.__name__}: scheduler address must be tcp type: {config.address.to_address()}"
-            )
 
         if config.storage_address is None:
             self._storage_address = ObjectStorageAddress.new_msg(host=config.address.host, port=config.address.port + 1)
@@ -60,22 +57,25 @@ class Scheduler:
         else:
             self._address_monitor = config.monitor_address
 
-        self._context = zmq.asyncio.Context(io_threads=config.io_threads)
-
+        self._context = IOContext(num_threads=config.io_threads)
         self._binder = AsyncBinder(context=self._context, name="scheduler", address=config.address)
-        logging.info(f"{self.__class__.__name__}: listen to scheduler address {config.address.to_address()}")
+        self._binder.init_sync()
 
-        self._connector_storage = AsyncObjectStorageConnector()
-        logging.info(f"{self.__class__.__name__}: connect to object storage server {self._storage_address!r}")
-
-        self._binder_monitor = AsyncConnector(
-            context=self._context,
+        self._context_zmq = zmq.asyncio.Context(io_threads=config.io_threads)
+        self._binder_monitor = AsyncConnectorZMQ(
+            context=self._context_zmq,
             name="scheduler_monitor",
             socket_type=zmq.PUB,
             address=self._address_monitor,
             bind_or_connect="bind",
             callback=None,
             identity=None,
+        )
+        self._connector_storage = AsyncObjectStorageConnector()
+
+        logging.info(f"{self.__class__.__name__}: listen to scheduler address {config.address.to_address()}")
+        logging.info(
+            f"{self.__class__.__name__}: connect to object storage server {self._storage_address!r}"
         )
         logging.info(
             f"{self.__class__.__name__}: listen to scheduler monitor address {self._address_monitor.to_address()}"

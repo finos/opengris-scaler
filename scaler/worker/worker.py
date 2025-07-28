@@ -5,9 +5,9 @@ import os
 import signal
 import tempfile
 import uuid
+from random import randint
 from typing import Optional, Set, Tuple
 
-import zmq.asyncio
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
@@ -24,13 +24,14 @@ from scaler.protocol.python.message import (
     TaskResult,
     WorkerHeartbeatEcho,
 )
+from scaler.io.ymq.ymq import IOContext, IOSocketType
 from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ProcessorID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.object_storage_config import ObjectStorageConfig
-from scaler.utility.zmq_config import ZMQConfig, ZMQType
+from scaler.utility.ymq_config import YMQConfig
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
 from scaler.worker.agent.processor_manager import VanillaProcessorManager
 from scaler.worker.agent.profiling_manager import VanillaProfilingManager
@@ -43,7 +44,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self,
         event_loop: str,
         name: str,
-        address: ZMQConfig,
+        address: YMQConfig,
         storage_address: Optional[ObjectStorageConfig],
         tags: Set[str],
         io_threads: int,
@@ -67,10 +68,10 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._io_threads = io_threads
         self._task_queue_size = task_queue_size
 
-        self._ident = WorkerID.generate_worker_id(name)  # _identity is internal to multiprocessing.Process
+        self._ident_external = WorkerID.generate_worker_id(name)  # _identity is internal to multiprocessing.Process
+        self._ident_internal = self._ident_external.extend("|internal")
 
-        self._address_path_internal = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
-        self._address_internal = ZMQConfig(ZMQType.ipc, host=self._address_path_internal)
+        self._address_internal = YMQConfig("127.0.0.1", port=randint(10000, 20000))
 
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
@@ -82,7 +83,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._logging_paths = logging_paths
         self._logging_level = logging_level
 
-        self._context: Optional[zmq.asyncio.Context] = None
+        self._context: Optional[IOContext] = None
         self._connector_external: Optional[AsyncConnector] = None
         self._binder_internal: Optional[AsyncBinder] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
@@ -93,7 +94,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
     @property
     def identity(self) -> WorkerID:
-        return self._ident
+        return self._ident_external
 
     def run(self) -> None:
         self.__initialize()
@@ -103,20 +104,20 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         setup_logger()
         register_event_loop(self._event_loop)
 
-        self._context = zmq.asyncio.Context()
+        self._context = IOContext()
         self._connector_external = AsyncConnector(
             context=self._context,
             name=self.name,
-            socket_type=zmq.DEALER,
             address=self._address,
-            bind_or_connect="connect",
             callback=self.__on_receive_external,
-            identity=self._ident,
+            identity=self.identity,
         )
+        self._connector_external.init_sync(bind_or_connect="connect", socket_type=IOSocketType.Connector)
 
         self._binder_internal = AsyncBinder(
-            context=self._context, name=self.name, address=self._address_internal, identity=self._ident
+            context=self._context, name=self.name, address=self._address_internal, identity=self._ident_internal
         )
+        self._binder_internal.init_sync()
         self._binder_internal.register(self.__on_receive_internal)
 
         self._connector_storage = AsyncObjectStorageConnector()
@@ -129,7 +130,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._task_manager = VanillaTaskManager(task_timeout_seconds=self._task_timeout_seconds)
         self._timeout_manager = VanillaTimeoutManager(death_timeout_seconds=self._death_timeout_seconds)
         self._processor_manager = VanillaProcessorManager(
-            identity=self._ident,
+            identity=self._ident_internal,
+            context=self._context,
             event_loop=self._event_loop,
             address_internal=self._address_internal,
             garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
@@ -235,7 +237,6 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._connector_external.destroy()
         self._processor_manager.destroy("quitted")
         self._binder_internal.destroy()
-        os.remove(self._address_path_internal)
 
         logging.info(f"{self.identity!r}: quitted")
 
