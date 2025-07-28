@@ -10,13 +10,14 @@ from scaler.scheduler.scheduler import Scheduler, scheduler_main
 from scaler.utility.event_loop import register_event_loop
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.object_storage_config import ObjectStorageConfig
+from scaler.utility.ymq_config import YMQConfig
 from scaler.utility.zmq_config import ZMQConfig
 
 
 class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
     def __init__(
         self,
-        address: ZMQConfig,
+        address: YMQConfig,
         storage_address: Optional[ObjectStorageConfig],
         monitor_address: Optional[ZMQConfig],
         io_threads: int,

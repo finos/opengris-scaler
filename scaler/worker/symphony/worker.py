@@ -4,9 +4,6 @@ import multiprocessing
 import signal
 from typing import Optional
 
-import zmq
-import zmq.asyncio
-
 from scaler.io.async_connector import AsyncConnector
 from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.protocol.python.message import (
@@ -22,10 +19,11 @@ from scaler.utility.event_loop import create_async_loop_routine, register_event_
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.utility.ymq_config import YMQConfig
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 from scaler.worker.symphony.heartbeat_manager import SymphonyHeartbeatManager
 from scaler.worker.symphony.task_manager import SymphonyTaskManager
+from scaler.io.ymq.ymq import IOContext
 
 
 class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ignore
@@ -37,7 +35,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
     def __init__(
         self,
         name: str,
-        address: ZMQConfig,
+        address: YMQConfig,
         service_name: str,
         base_concurrency: int,
         heartbeat_interval_seconds: int,
@@ -62,7 +60,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         self._death_timeout_seconds = death_timeout_seconds
         self._task_queue_size = task_queue_size
 
-        self._context: Optional[zmq.asyncio.Context] = None
+        self._context: Optional[IOContext] = None
         self._connector_external: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
         self._task_manager: Optional[SymphonyTaskManager] = None
@@ -80,13 +78,13 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         setup_logger()
         register_event_loop(self._event_loop)
 
-        self._context = zmq.asyncio.Context()
+        self._context = IOContext()
         self._connector_external = AsyncConnector(
             context=self._context,
             name=self.name,
-            socket_type=zmq.DEALER,
+            # socket_type=zmq.DEALER,
             address=self._address,
-            bind_or_connect="connect",
+            # bind_or_connect="connect",
             callback=self.__on_receive_external,
             identity=self._ident,
         )
