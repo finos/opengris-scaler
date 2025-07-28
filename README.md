@@ -73,7 +73,7 @@ $ pip install scaler[graphblas,uvloop]
 
 ## Quick Start
 
-The official documentation is available at [citi.github.io/scaler/](https://citi.github.io/scaler/).
+The official documentation is available at [finos.github.io/opengris-scaler/](https://finos.github.io/opengris-scaler/).
 
 Scaler has 3 main components:
 
