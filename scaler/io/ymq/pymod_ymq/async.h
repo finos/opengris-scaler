@@ -78,7 +78,10 @@ static PyObject* Awaitable_await(Awaitable* self)
 static void Awaitable_dealloc(Awaitable* self)
 {
     Py_DECREF(self->future);
-    Py_TYPE(self)->tp_free((PyObject*)self);
+
+    auto* tp = Py_TYPE(self);
+    tp->tp_free(self);
+    Py_DECREF(tp);
 }
 }
 

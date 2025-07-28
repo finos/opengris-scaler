@@ -38,12 +38,19 @@ static void future_do(PyObject* future, const std::function<PyObject*()>& fn, co
 
     {
         PyObject* loop = PyObject_CallMethod(future, "get_loop", nullptr);
-
         if (!loop) {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to get future's loop");
             Py_DECREF(future);
+            PyErr_WriteUnraisable(nullptr);
 
             // end python critical section
+            PyGILState_Release(gstate);
+            return;
+        }
+
+        if (PyObject_CallMethod(future, "done", nullptr) == Py_True) {
+            // future is already done, no need to call the method
+            Py_DECREF(loop);
+            Py_DECREF(future);
             PyGILState_Release(gstate);
             return;
         }
@@ -51,15 +58,26 @@ static void future_do(PyObject* future, const std::function<PyObject*()>& fn, co
         PyObject* method = PyObject_GetAttrString(future, future_method);
 
         if (!method) {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to get future's method");
             Py_DECREF(future);
+            PyErr_WriteUnraisable(nullptr);
 
             // end python critical section
             PyGILState_Release(gstate);
             return;
         }
 
-        PyObject_CallMethod(loop, "call_soon_threadsafe", "OO", method, fn());
+        auto obj = PyObject_GetAttrString(loop, "call_soon_threadsafe");
+
+        // auto result = PyObject_CallMethod(loop, "call_soon_threadsafe", "OO", method, fn());
+        auto result = PyObject_CallFunctionObjArgs(obj, method, fn(), nullptr);
+        if (!result) {
+            Py_DECREF(future);
+            PyErr_WriteUnraisable(nullptr);
+
+            // end python critical section
+            PyGILState_Release(gstate);
+            return;
+        }
     }
 
     Py_DECREF(future);
@@ -233,6 +251,18 @@ static int ymq_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
         {"InvalidPortFormat", (int)Error::ErrorCode::InvalidPortFormat},
         {"InvalidAddressFormat", (int)Error::ErrorCode::InvalidAddressFormat},
         {"ConfigurationError", (int)Error::ErrorCode::ConfigurationError},
+        {"SignalNotSupported", (int)Error::ErrorCode::SignalNotSupported},
+        {"CoreBug", (int)Error::ErrorCode::CoreBug},
+        {"RepetetiveIOSocketIdentity", (int)Error::ErrorCode::RepetetiveIOSocketIdentity},
+        {"RedundantIOSocketRefCount", (int)Error::ErrorCode::RedundantIOSocketRefCount},
+        {"MultipleConnectToNotSupported", (int)Error::ErrorCode::MultipleConnectToNotSupported},
+        {"MultipleBindToNotSupported", (int)Error::ErrorCode::MultipleBindToNotSupported},
+        {"InitialConnectFailedWithInProgress", (int)Error::ErrorCode::InitialConnectFailedWithInProgress},
+        {"SendMessageRequestCouldNotComplete", (int)Error::ErrorCode::SendMessageRequestCouldNotComplete},
+        {"SetSockOptNonFatalFailure", (int)Error::ErrorCode::SetSockOptNonFatalFailure},
+        {"IPv6NotSupported", (int)Error::ErrorCode::IPv6NotSupported},
+        {"RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery",
+         (int)Error::ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery},
     };
 
     if (ymq_createIntEnum(pyModule, &state->PyErrorCodeType, "ErrorCode", errorCodeValues) < 0) {

@@ -10,6 +10,7 @@
 #include <expected>
 #include <latch>
 #include <memory>
+#include <semaphore>
 #include <thread>
 #include <utility>
 
@@ -25,6 +26,7 @@
 #include "scaler/io/ymq/pymod_ymq/ymq.h"
 
 using namespace scaler::ymq;
+using namespace std::chrono_literals;
 
 struct PyIOSocket {
     PyObject_HEAD;
@@ -36,10 +38,18 @@ extern "C" {
 
 static void PyIOSocket_dealloc(PyIOSocket* self)
 {
-    self->ioContext->removeIOSocket(self->socket);
-    self->ioContext.~shared_ptr();
-    self->socket.~shared_ptr();
-    Py_TYPE(self)->tp_free((PyObject*)self);  // Free the PyObject
+    try {
+        self->ioContext->removeIOSocket(self->socket);
+        self->ioContext.~shared_ptr();
+        self->socket.~shared_ptr();
+    } catch (...) {
+        // set the error and continue to free the object
+        PyErr_SetString(PyExc_RuntimeError, "Failed to deallocate IOSocket");
+    }
+
+    auto* tp = Py_TYPE(self);
+    tp->tp_free(self);
+    Py_DECREF(tp);
 }
 
 static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwargs)
@@ -50,15 +60,15 @@ static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwa
         Py_RETURN_NONE;
     }
 
-    return async_wrapper((PyObject*)self, [&](YMQState* state, PyObject* future) {
+    return async_wrapper((PyObject*)self, [=](YMQState* state, PyObject* future) {
         self->socket->sendMessage(
             {.address = std::move(message->address->bytes), .payload = std::move(message->payload->bytes)},
-            [&](auto result) {
+            [=](auto result) {
                 if (result) {
                     future_set_result(future, []() { Py_RETURN_NONE; });
                 } else {
                     future_raise_exception(
-                        future, [state, result]() { return YMQException_createFromCoreError(state, &result.error()); });
+                        future, [=]() { return YMQException_createFromCoreError(state, &result.error()); });
                 }
             });
     });
@@ -76,27 +86,43 @@ static PyObject* PyIOSocket_send_sync(PyIOSocket* self, PyObject* args, PyObject
         Py_RETURN_NONE;
     }
 
-    std::latch waiter(1);
-    std::expected<void, Error> result {};
+    Bytes address =
+        (PyObject*)message->address == Py_None ? Bytes {(char*)nullptr, 0} : std::move(message->address->bytes);
+    Bytes payload = std::move(message->payload->bytes);
 
-    self->socket->sendMessage(
-        {.address = message->address ? std::move(message->address->bytes) : Bytes((char*)nullptr, 0),
-         .payload = std::move(message->payload->bytes)},
-        [&](auto r) {
-            result = r;
-            waiter.count_down();
-        });
+    PyThreadState* _save = PyEval_SaveThread();
+
+    std::shared_ptr<std::latch> waiter                 = std::make_shared<std::latch>(1);
+    std::shared_ptr<std::expected<void, Error>> result = std::make_shared<std::expected<void, Error>>();
+
+    self->socket->sendMessage({.address = std::move(address), .payload = std::move(payload)}, [=](auto r) {
+        *result = std::move(r);
+        waiter->count_down();
+    });
 
     // block the thread until the callback is called
     try {
-        waiter.wait();
+        for (;;) {
+            if (waiter->try_wait())
+                break;
+
+            PyEval_RestoreThread(_save);
+            if (PyErr_CheckSignals() < 0)
+                return nullptr;
+            _save = PyEval_SaveThread();
+
+            std::this_thread::sleep_for(10ms);
+        }
     } catch (const std::exception& e) {
+        PyEval_RestoreThread(_save);
         PyErr_SetString(PyExc_RuntimeError, "Failed to bind to send synchronously");
         return nullptr;
     }
 
+    PyEval_RestoreThread(_save);
+
     if (!result) {
-        YMQException_setFromCoreError(state, &result.error());
+        YMQException_setFromCoreError(state, &result->error());
         return nullptr;
     }
 
@@ -105,11 +131,11 @@ static PyObject* PyIOSocket_send_sync(PyIOSocket* self, PyObject* args, PyObject
 
 static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args)
 {
-    return async_wrapper((PyObject*)self, [&](YMQState* state, PyObject* future) {
-        self->socket->recvMessage([&](auto result) {
+    return async_wrapper((PyObject*)self, [=](YMQState* state, PyObject* future) {
+        self->socket->recvMessage([=](auto result) {
             if (result.second._errorCode == Error::ErrorCode::Uninit) {
                 auto message = result.first;
-                future_set_result(future, [&]() {
+                future_set_result(future, [=]() {
                     PyBytesYMQ* address = (PyBytesYMQ*)PyObject_CallNoArgs(state->PyBytesYMQType);
                     if (!address) {
                         Py_RETURN_NONE;
@@ -135,8 +161,7 @@ static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args)
                     return (PyObject*)message;
                 });
             } else {
-                future_raise_exception(
-                    future, [state, result] { return YMQException_createFromCoreError(state, &result.second); });
+                future_raise_exception(future, [=] { return YMQException_createFromCoreError(state, &result.second); });
             }
         });
     });
@@ -148,38 +173,52 @@ static PyObject* PyIOSocket_recv_sync(PyIOSocket* self, PyObject* args)
     if (!state)
         return nullptr;
 
-    std::pair<Message, Error> result {};
-    std::latch waiter(1);
+    PyThreadState* _save = PyEval_SaveThread();
 
-    self->socket->recvMessage([&](auto r) {
-        result = std::move(r);
-        waiter.count_down();
+    std::shared_ptr<std::latch> waiter                = std::make_shared<std::latch>(1);
+    std::shared_ptr<std::pair<Message, Error>> result = std::make_shared<std::pair<Message, Error>>();
+
+    self->socket->recvMessage([=](auto r) {
+        *result = std::move(r);
+        waiter->count_down();
     });
 
     // block the thread until the callback is called
     try {
-        waiter.wait();
+        for (;;) {
+            if (waiter->try_wait())
+                break;
+
+            PyEval_RestoreThread(_save);
+            if (PyErr_CheckSignals() < 0)
+                return nullptr;
+            _save = PyEval_SaveThread();
+
+            std::this_thread::sleep_for(10ms);
+        }
     } catch (const std::exception& e) {
+        PyEval_RestoreThread(_save);
         PyErr_SetString(PyExc_RuntimeError, "Failed to bind to recv synchronously");
         return nullptr;
     }
 
-    if (result.second._errorCode != Error::ErrorCode::Uninit) {
-        YMQException_setFromCoreError(state, &result.second);
+    PyEval_RestoreThread(_save);
+
+    if (result->second._errorCode != Error::ErrorCode::Uninit) {
+        YMQException_setFromCoreError(state, &result->second);
         return nullptr;
     }
 
-    auto message = result.first;
+    auto message = result->first;
 
     PyBytesYMQ* address = (PyBytesYMQ*)PyObject_CallNoArgs(state->PyBytesYMQType);
-    if (!address) {
-        Py_RETURN_NONE;
-    }
+    if (!address)
+        return nullptr;
 
     PyBytesYMQ* payload = (PyBytesYMQ*)PyObject_CallNoArgs(state->PyBytesYMQType);
     if (!payload) {
         Py_DECREF(address);
-        Py_RETURN_NONE;
+        return nullptr;
     }
 
     address->bytes = std::move(message.address);
@@ -189,7 +228,7 @@ static PyObject* PyIOSocket_recv_sync(PyIOSocket* self, PyObject* args)
     if (!pyMessage) {
         Py_DECREF(address);
         Py_DECREF(payload);
-        Py_RETURN_NONE;
+        return nullptr;
     }
 
     return (PyObject*)pyMessage;
@@ -199,34 +238,28 @@ static PyObject* PyIOSocket_bind(PyIOSocket* self, PyObject* args, PyObject* kwa
 {
     PyObject* addressObj = nullptr;
     const char* kwlist[] = {"address", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj)) {
-        PyErr_SetString(PyExc_TypeError, "expected one argument: address");
-        Py_RETURN_NONE;
-    }
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj))
+        return nullptr;
 
     if (!PyUnicode_Check(addressObj)) {
         Py_DECREF(addressObj);
-
-        PyErr_SetString(PyExc_TypeError, "argument must be a str");
-        Py_RETURN_NONE;
+        return nullptr;
     }
 
     Py_ssize_t addressLen = 0;
     const char* address   = PyUnicode_AsUTF8AndSize(addressObj, &addressLen);
 
     if (!address)
-        Py_RETURN_NONE;
+        return nullptr;
 
     return async_wrapper((PyObject*)self, [=](YMQState* state, PyObject* future) {
-        self->socket->bindTo(std::string(address, addressLen), [=](auto error) {
-            future_set_result(future, [=]() {
-                if (error) {
-                    PyErr_SetString(PyExc_RuntimeError, "Failed to bind to address");
-                    return (PyObject*)nullptr;
-                }
-
-                Py_RETURN_NONE;
-            });
+        self->socket->bindTo(std::string(address, addressLen), [=](auto result) {
+            if (result) {
+                future_set_result(future, [] { Py_RETURN_NONE; });
+            } else {
+                future_raise_exception(
+                    future, [=] { return YMQException_createFromCoreError(state, &result.error()); });
+            }
         });
     });
 }
@@ -239,42 +272,54 @@ static PyObject* PyIOSocket_bind_sync(PyIOSocket* self, PyObject* args, PyObject
 
     PyObject* addressObj = nullptr;
     const char* kwlist[] = {"address", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj)) {
-        PyErr_SetString(PyExc_TypeError, "expected one argument: address");
-        Py_RETURN_NONE;
-    }
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj))
+        return nullptr;
 
     if (!PyUnicode_Check(addressObj)) {
         Py_DECREF(addressObj);
-
         PyErr_SetString(PyExc_TypeError, "argument must be a str");
-        Py_RETURN_NONE;
+        return nullptr;
     }
 
     Py_ssize_t addressLen = 0;
     const char* address   = PyUnicode_AsUTF8AndSize(addressObj, &addressLen);
 
     if (!address)
-        Py_RETURN_NONE;
+        return nullptr;
 
-    std::expected<void, Error> result {};
-    std::latch waiter(1);
+    PyThreadState* _save = PyEval_SaveThread();
 
-    self->socket->bindTo(std::string(address, addressLen), [&](auto r) {
-        result = r;
-        waiter.count_down();
+    std::shared_ptr<std::latch> waiter                 = std::make_shared<std::latch>(1);
+    std::shared_ptr<std::expected<void, Error>> result = std::make_shared<std::expected<void, Error>>();
+
+    self->socket->bindTo(std::string(address, addressLen), [=](auto r) {
+        *result = std::move(r);
+        waiter->count_down();
     });
 
     // block the thread until the callback is called
     try {
-        waiter.wait();
+        for (;;) {
+            if (waiter->try_wait())
+                break;
+
+            PyEval_RestoreThread(_save);
+            if (PyErr_CheckSignals() < 0)
+                return nullptr;
+            _save = PyEval_SaveThread();
+
+            std::this_thread::sleep_for(10ms);
+        }
     } catch (const std::exception& e) {
+        PyEval_RestoreThread(_save);
         PyErr_SetString(PyExc_RuntimeError, "Failed to bind to address synchronously");
         return nullptr;
     }
 
+    PyEval_RestoreThread(_save);
+
     if (!result) {
-        YMQException_setFromCoreError(state, &result.error());
+        YMQException_setFromCoreError(state, &result->error());
         return nullptr;
     }
 
@@ -285,27 +330,24 @@ static PyObject* PyIOSocket_connect(PyIOSocket* self, PyObject* args, PyObject* 
 {
     PyObject* addressObj = nullptr;
     const char* kwlist[] = {"address", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj)) {
-        PyErr_SetString(PyExc_TypeError, "expected one argument: address");
-        Py_RETURN_NONE;
-    }
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj))
+        return nullptr;
 
     if (!PyUnicode_Check(addressObj)) {
         Py_DECREF(addressObj);
-
         PyErr_SetString(PyExc_TypeError, "argument must be a str");
-        Py_RETURN_NONE;
+        return nullptr;
     }
 
     Py_ssize_t addressLen = 0;
     const char* address   = PyUnicode_AsUTF8AndSize(addressObj, &addressLen);
 
     if (!address)
-        Py_RETURN_NONE;
+        return nullptr;
 
     return async_wrapper((PyObject*)self, [=](YMQState* state, PyObject* future) {
         self->socket->connectTo(std::string(address, addressLen), [=](auto result) {
-            if (result) {
+            if (result || result.error()._errorCode == Error::ErrorCode::InitialConnectFailedWithInProgress) {
                 future_set_result(future, []() { Py_RETURN_NONE; });
             } else {
                 future_raise_exception(
@@ -323,42 +365,55 @@ static PyObject* PyIOSocket_connect_sync(PyIOSocket* self, PyObject* args, PyObj
 
     PyObject* addressObj = nullptr;
     const char* kwlist[] = {"address", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj)) {
-        PyErr_SetString(PyExc_TypeError, "expected one argument: address");
-        Py_RETURN_NONE;
-    }
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj))
+        return nullptr;
 
     if (!PyUnicode_Check(addressObj)) {
         Py_DECREF(addressObj);
 
         PyErr_SetString(PyExc_TypeError, "argument must be a str");
-        Py_RETURN_NONE;
+        return nullptr;
     }
 
     Py_ssize_t addressLen = 0;
     const char* address   = PyUnicode_AsUTF8AndSize(addressObj, &addressLen);
 
     if (!address)
-        Py_RETURN_NONE;
+        return nullptr;
 
-    std::expected<void, Error> result {};
-    std::latch waiter(1);
+    PyThreadState* _save = PyEval_SaveThread();
 
-    self->socket->connectTo(std::string(address, addressLen), [&](auto r) {
-        result = r;
-        waiter.count_down();
+    std::shared_ptr<std::latch> waiter                 = std::make_shared<std::latch>(1);
+    std::shared_ptr<std::expected<void, Error>> result = std::make_shared<std::expected<void, Error>>();
+
+    self->socket->connectTo(std::string(address, addressLen), [=](auto r) {
+        *result = std::move(r);
+        waiter->count_down();
     });
 
     // block the thread until the callback is called
     try {
-        waiter.wait();
+        for (;;) {
+            if (waiter->try_wait())
+                break;
+
+            PyEval_RestoreThread(_save);
+            if (PyErr_CheckSignals() < 0)
+                return nullptr;
+            _save = PyEval_SaveThread();
+
+            std::this_thread::sleep_for(10ms);
+        }
     } catch (const std::exception& e) {
+        PyEval_RestoreThread(_save);
         PyErr_SetString(PyExc_RuntimeError, "Failed to bind to connect synchronously");
         return nullptr;
     }
 
-    if (!result) {
-        YMQException_setFromCoreError(state, &result.error());
+    PyEval_RestoreThread(_save);
+
+    if (!result && result->error()._errorCode != Error::ErrorCode::InitialConnectFailedWithInProgress) {
+        YMQException_setFromCoreError(state, &result->error());
         return nullptr;
     }
 

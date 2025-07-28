@@ -1,6 +1,7 @@
 #pragma once
 
 // Python
+#include "object.h"
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <structmember.h>
@@ -11,7 +12,7 @@
 
 struct PyMessage {
     PyObject_HEAD;
-    PyBytesYMQ* address;  // Address of the message
+    PyBytesYMQ* address;  // Address of the message; PyObject* because it can be Py_None
     PyBytesYMQ* payload;  // Payload of the message
 };
 
@@ -33,15 +34,22 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds)
         return -1;
     }
 
-    PyObject *address = nullptr, *payload = nullptr;
+    PyObject* address      = nullptr;
+    PyObject* payload      = nullptr;
     const char* keywords[] = {"address", "payload", nullptr};
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO", (char**)keywords, &address, &payload)) {
         PyErr_SetString(PyExc_TypeError, "Expected two Bytes objects: address and payload");
         return -1;
     }
 
+    // address can be None, which means the message has no address
+    // check if the address and payload are of type PyBytesYmq
+    if (address == Py_None) {
+        self->address = (PyBytesYMQ*)Py_None;
+    }
+
     // check if the address and payload are of type PyBytesYMQ
-    if (!PyObject_IsInstance(address, state->PyBytesYMQType)) {
+    else if (!PyObject_IsInstance(address, state->PyBytesYMQType)) {
         PyObject* args = PyTuple_Pack(1, address);
         address        = PyObject_CallObject(state->PyBytesYMQType, args);
         Py_DECREF(args);
@@ -49,6 +57,8 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds)
         if (!address) {
             return -1;
         }
+
+        self->address = (PyBytesYMQ*)address;
     }
 
     if (!PyObject_IsInstance(payload, state->PyBytesYMQType)) {
@@ -61,7 +71,9 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds)
         }
     }
 
+    Py_INCREF(address);
     self->address = (PyBytesYMQ*)address;
+    Py_INCREF(payload);
     self->payload = (PyBytesYMQ*)payload;
 
     return 0;
@@ -71,7 +83,10 @@ static void PyMessage_dealloc(PyMessage* self)
 {
     Py_XDECREF(self->address);
     Py_XDECREF(self->payload);
-    Py_TYPE(self)->tp_free(self);
+
+    auto* tp = Py_TYPE(self);
+    tp->tp_free(self);
+    Py_DECREF(tp);
 }
 
 static PyObject* PyMessage_repr(PyMessage* self)
