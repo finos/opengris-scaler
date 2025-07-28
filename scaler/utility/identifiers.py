@@ -9,6 +9,9 @@ class Identifier(bytes, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def __repr__(self) -> str:
         raise NotImplementedError()
+    
+    def extend(self, extra: str):
+        return self.__class__(self + extra.encode())
 
 
 class ClientID(Identifier):

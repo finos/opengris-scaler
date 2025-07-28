@@ -15,7 +15,7 @@ class Bytes(Buffer):
     data: bytes
     len: int
 
-    def __init__(self, data: SupportsBytes) -> None: ...
+    def __init__(self, data: SupportsBytes | bytes) -> None: ...
     def __repr__(self) -> str: ...
 
 class Message:
@@ -41,6 +41,9 @@ class IOContext:
 
     def createIOSocket(self, /, identity: str, socket_type: IOSocketType) -> Awaitable[IOSocket]:
         """Create an io socket with an identity and socket type"""
+
+    def createIOSocket_sync(self, /, identity: str, socket_type: IOSocketType) -> IOSocket:
+        """Create an io socket with an identity and socket type synchronously"""
 
 
 class IOSocket:

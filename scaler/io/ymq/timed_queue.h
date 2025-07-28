@@ -3,6 +3,7 @@
 #include <sys/timerfd.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cassert>
 #include <queue>
 #include <set>
@@ -10,6 +11,7 @@
 #include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/timestamp.h"
+#include "scaler/io/ymq/common.h"
 
 namespace scaler {
 namespace ymq {

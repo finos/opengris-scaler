@@ -13,8 +13,8 @@
 #include "ymq.h"
 
 // the order of the members in the exception args tuple
-const Py_ssize_t YMQException_errorCodeIndex = 0;
-const Py_ssize_t YMQException_messageIndex   = 1;
+const Py_ssize_t errorCodeIndex = 0;
+const Py_ssize_t messageIndex   = 1;
 
 struct YMQException {
     PyException_HEAD;
@@ -62,11 +62,11 @@ static void YMQException_dealloc(YMQException* self) {
 }
 
 static PyObject* YMQException_code_getter(YMQException* self, void* Py_UNUSED(closure)) {
-    return PySequence_GetItem(self->args, YMQException_errorCodeIndex);
+    return PySequence_GetItem(self->args, errorCodeIndex);
 }
 
 static PyObject* YMQException_message_getter(YMQException* self, void* Py_UNUSED(closure)) {
-    return PySequence_GetItem(self->args, YMQException_messageIndex);
+    return PySequence_GetItem(self->args, messageIndex);
 }
 }
 

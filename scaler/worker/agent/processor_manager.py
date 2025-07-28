@@ -1,5 +1,9 @@
 import asyncio
 import logging
+import os
+import tempfile
+import uuid
+from random import randint
 from typing import Dict, List, Optional, Tuple
 
 import tblib.pickling_support
@@ -9,12 +13,18 @@ from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
 from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata, TaskStatus
-from scaler.protocol.python.message import ObjectInstruction, ProcessorInitialized, Task, TaskResult
+from scaler.io.ymq.ymq import IOContext
+from scaler.protocol.python.message import (
+    ObjectInstruction,
+    ProcessorInitialized,
+    Task,
+    TaskResult,
+)
 from scaler.utility.exceptions import ProcessorDiedError
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.identifiers import ObjectID, ProcessorID, TaskID, WorkerID
 from scaler.utility.serialization import serialize_failure
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.utility.ymq_config import YMQConfig
 from scaler.worker.agent.mixins import HeartbeatManager, ProcessorManager, ProfilingManager, TaskManager
 from scaler.worker.agent.processor_holder import ProcessorHolder
 
@@ -23,8 +33,9 @@ class VanillaProcessorManager(ProcessorManager):
     def __init__(
         self,
         identity: WorkerID,
+        context: IOContext,
         event_loop: str,
-        address_internal: ZMQConfig,
+        address_internal: YMQConfig,
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
         hard_processor_suspend: bool,
@@ -43,12 +54,13 @@ class VanillaProcessorManager(ProcessorManager):
         self._logging_level = logging_level
 
         self._heartbeat_manager: Optional[HeartbeatManager] = None
+        self._heartbeat: Optional[HeartbeatManager] = None
         self._task_manager: Optional[TaskManager] = None
         self._profiling_manager: Optional[ProfilingManager] = None
         self._connector_external: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
 
-        self._address_internal: ZMQConfig = address_internal
+        self._address_internal: YMQConfig = address_internal
 
         self._current_holder: Optional[ProcessorHolder] = None
         self._suspended_holders_by_task_id: Dict[bytes, ProcessorHolder] = {}

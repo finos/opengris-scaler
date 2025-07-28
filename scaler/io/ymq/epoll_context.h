@@ -4,6 +4,7 @@
 #include <sys/epoll.h>
 
 // C++
+#include <expected>
 #include <functional>
 #include <queue>
 
