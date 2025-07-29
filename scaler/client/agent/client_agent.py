@@ -86,8 +86,7 @@ class ClientAgent(threading.Thread):
     def __initialize(self):
         self._disconnect_manager = ClientDisconnectManager()
         self._heartbeat_manager = ClientHeartbeatManager(
-            death_timeout_seconds=self._timeout_seconds,
-            storage_address_future=self._storage_address,
+            death_timeout_seconds=self._timeout_seconds, storage_address_future=self._storage_address
         )
         self._object_manager = ClientObjectManager(identity=self._identity)
         self._task_manager = ClientTaskManager()
@@ -165,13 +164,15 @@ class ClientAgent(threading.Thread):
     async def __get_loops(self):
         await self._heartbeat_manager.send_heartbeat()
 
+        loops = [
+            create_async_loop_routine(self._connector_external.routine, 0),
+            create_async_loop_routine(self._connector_internal.routine, 0),
+            create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
+        ]
+
         exception = None
         try:
-            await asyncio.gather(
-                create_async_loop_routine(self._connector_external.routine, 0),
-                create_async_loop_routine(self._connector_internal.routine, 0),
-                create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
-            )
+            await asyncio.gather(*loops)
         except BaseException as e:
             exception = e
         finally:

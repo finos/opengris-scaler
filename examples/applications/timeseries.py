@@ -3,12 +3,14 @@ This example uses the Prophet library with Scaler to perform parallelized cross-
 This reveals a ~4x speedup over the non-parallelized version.
 """
 
-import pandas as pd
-from prophet import Prophet
-import prophet.diagnostics
-from timeit import default_timer as timer
 from multiprocessing import cpu_count
-from scaler import SchedulerClusterCombo, Client
+from timeit import default_timer as timer
+
+import pandas as pd
+import prophet.diagnostics
+from prophet import Prophet
+
+from scaler import Client, SchedulerClusterCombo
 
 
 def main():
@@ -18,7 +20,7 @@ def main():
         # Load the data
         df = pd.read_csv(
             "https://raw.githubusercontent.com/facebook/prophet/master/examples/example_wp_log_peyton_manning.csv",
-            parse_dates=["ds"]
+            parse_dates=["ds"],
         )
 
         model = Prophet(daily_seasonality=False)
@@ -37,22 +39,14 @@ def main():
         # non-parallelized cross-validation
         start = timer()
         prophet.diagnostics.cross_validation(
-            model,
-            initial="730 days",
-            period="180 days",
-            horizon="365 days",
-            parallel=None
+            model, initial="730 days", period="180 days", horizon="365 days", parallel=None
         )
         non_parallel_time = timer() - start
 
         # Parallelized cross-validation via Scaler
         start = timer()
         prophet.diagnostics.cross_validation(
-            model,
-            initial="730 days",
-            period="180 days",
-            horizon="365 days",
-            parallel=Adapter(client)
+            model, initial="730 days", period="180 days", horizon="365 days", parallel=Adapter(client)
         )
         parallel_time = timer() - start
 

@@ -10,12 +10,7 @@ from scaler import Serializer
 from scaler.io.async_connector import AsyncConnector
 from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata, ObjectStorageAddress, TaskStatus
-from scaler.protocol.python.message import (
-    ObjectInstruction,
-    Task,
-    TaskCancel,
-    TaskResult,
-)
+from scaler.protocol.python.message import ObjectInstruction, Task, TaskCancel, TaskResult
 from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper

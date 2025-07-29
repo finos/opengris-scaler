@@ -14,8 +14,9 @@ from scaler.worker.agent.processor_holder import ProcessorHolder
 
 
 class VanillaHeartbeatManager(Looper, HeartbeatManager):
-    def __init__(self, storage_address: Optional[ObjectStorageConfig]):
+    def __init__(self, storage_address: Optional[ObjectStorageConfig], task_queue_size: int):
         self._agent_process = psutil.Process()
+        self._task_queue_size = task_queue_size
 
         self._connector_external: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
@@ -71,6 +72,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
         processors = self._processor_manager.processors()  # refreshes for removed dead and zombie processors
         num_suspended_processors = self._processor_manager.num_suspended_processors()
 
+        # TODO: add task queue size to WorkerHeartbeat
         await self._connector_external.send(
             WorkerHeartbeat.new_msg(
                 Resource.new_msg(int(self._agent_process.cpu_percent() * 10), self._agent_process.memory_info().rss),

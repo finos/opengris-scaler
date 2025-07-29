@@ -20,7 +20,7 @@ class VanillaTaskManager(Looper, TaskManager):
         self._queued_task_id_to_task: Dict[TaskID, Task] = dict()
 
         # Queued tasks are sorted first by task's priorities, then suspended tasks are prioritized over non yet started
-        # tasks. Finally the sorted queue ensure we execute the oldest tasks first.
+        # tasks, finally the sorted queue ensure we execute the oldest tasks first.
         #
         # For example, if we receive these tasks in this order:
         #   1. Task(priority=0) [suspended]
@@ -119,8 +119,8 @@ class VanillaTaskManager(Looper, TaskManager):
     def __enqueue_task(self, task: Task, is_suspended: bool):
         task_priority = self.__get_task_priority(task)
 
-        # Higher-priority tasks have an higher priority value. But as the queue is sorted by increasing order, we negate
-        # the inserted value so they will be at the head of the queue.
+        # Higher-priority tasks have a higher priority value. But as the queue is sorted by increasing order, we negate
+        # the inserted value that it will be at the head of the queue.
         if is_suspended:
             queue_priority = (-task_priority, _SUSPENDED_TASKS_PRIORITY)
         else:

@@ -38,9 +38,9 @@ DEFAULT_WORKER_TIMEOUT_SECONDS = 60
 # tasks for this client
 DEFAULT_CLIENT_TIMEOUT_SECONDS = 60
 
-# number of seconds for load balance, if value is 0 means disable load balance
+# number of seconds for load balance, if value is -1 means disable load balance
 # FIXME: load balancing is currently disabled by default as it's causing some issues under heavy load.
-DEFAULT_LOAD_BALANCE_SECONDS = 0
+DEFAULT_LOAD_BALANCE_SECONDS = -1
 
 # when load balance advice happened repeatedly and always be the same, we issue load balance request when exact repeated
 # times happened

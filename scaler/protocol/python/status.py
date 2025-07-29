@@ -37,9 +37,7 @@ class ObjectManagerStatus(Message):
 
     @staticmethod
     def new_msg(number_of_objects: int) -> "ObjectManagerStatus":  # type: ignore[override]
-        return ObjectManagerStatus(
-            _status.ObjectManagerStatus(numberOfObjects=number_of_objects)
-        )
+        return ObjectManagerStatus(_status.ObjectManagerStatus(numberOfObjects=number_of_objects))
 
     def get_message(self):
         return self._msg

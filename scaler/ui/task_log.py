@@ -16,7 +16,7 @@ COMPLETED_TASK_STATUSES = {
     TaskStatus.Failed,
     TaskStatus.Canceled,
     TaskStatus.WorkerDied,
-    TaskStatus.NoWorker,
+    TaskStatus.NotFound,
 }
 
 
@@ -43,7 +43,7 @@ class TaskData:
             self.peak_mem = format_bytes(mem) if mem != 0 else "0"
 
     def draw_row(self):
-        color = "color: green" if self.status == "Success" else "color: red"
+        color = "color: green" if self.status == "Finished" else "color: red"
         ui.label(self.task)
         ui.label(self.function)
         ui.label(self.duration)
@@ -65,7 +65,7 @@ class TaskLogTable:
         self._lock = Lock()
 
     def handle_task_state(self, state: StateTask):
-        if state.status not in COMPLETED_TASK_STATUSES:
+        if state not in COMPLETED_TASK_STATUSES:
             return
 
         row = TaskData()

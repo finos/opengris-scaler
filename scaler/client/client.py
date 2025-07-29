@@ -117,16 +117,13 @@ class Client:
         self._connector_storage = SyncObjectStorageConnector(self._storage_address.host, self._storage_address.port)
 
         self._object_buffer = ObjectBuffer(
-            self._identity,
-            self._serializer,
-            self._connector_agent,
-            self._connector_storage,
+            self._identity, self._serializer, self._connector_agent, self._connector_storage
         )
         self._future_factory = functools.partial(
             ScalerFuture,
             serializer=self._serializer,
             connector_agent=self._connector_agent,
-            connector_storage=self._connector_storage
+            connector_storage=self._connector_storage,
         )
 
     @property

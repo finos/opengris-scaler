@@ -7,6 +7,7 @@ from scaler.io.config import (
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
     DEFAULT_IO_THREADS,
+    DEFAULT_PER_WORKER_QUEUE_SIZE,
     DEFAULT_TASK_TIMEOUT_SECONDS,
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
 )
@@ -31,6 +32,7 @@ class TestDeathTimeout(unittest.TestCase):
             storage_address=None,
             worker_io_threads=DEFAULT_IO_THREADS,
             worker_names=["a", "b"],
+            per_worker_task_queue_size=DEFAULT_PER_WORKER_QUEUE_SIZE,
             heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
             garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
             trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
@@ -50,7 +52,7 @@ class TestDeathTimeout(unittest.TestCase):
         # Test 2: Running the Combo and sending shutdown
         address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         cluster = SchedulerClusterCombo(
-            address=address, n_workers=2, per_worker_queue_size=2, event_loop="builtin", protected=False
+            address=address, n_workers=2, per_worker_task_queue_size=2, event_loop="builtin", protected=False
         )
         client = Client(address=address)
 
@@ -80,7 +82,7 @@ class TestDeathTimeout(unittest.TestCase):
         cluster = SchedulerClusterCombo(
             address=address,
             n_workers=1,
-            per_worker_queue_size=2,
+            per_worker_task_queue_size=2,
             event_loop="builtin",
             client_timeout_seconds=client_timeout_seconds,
         )

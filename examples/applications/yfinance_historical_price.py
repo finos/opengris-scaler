@@ -15,6 +15,7 @@ from typing import Optional
 import pandas as pd
 import psutil
 import yfinance as yf
+
 from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 

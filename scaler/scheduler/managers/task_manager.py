@@ -6,8 +6,8 @@ from scaler.io.async_connector import AsyncConnector
 from scaler.protocol.python.common import TaskStatus
 from scaler.protocol.python.message import StateTask, Task, TaskCancel, TaskResult
 from scaler.protocol.python.status import TaskManagerStatus
-from scaler.scheduler.graph_manager import VanillaGraphTaskManager
-from scaler.scheduler.mixins import ClientManager, ObjectManager, TaskManager, WorkerManager
+from scaler.scheduler.managers.graph_manager import VanillaGraphTaskManager
+from scaler.scheduler.managers.mixins import ClientManager, ObjectManager, TaskManager, WorkerManager
 from scaler.utility.identifiers import ClientID, TaskID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.queues.async_indexed_queue import AsyncIndexedQueue

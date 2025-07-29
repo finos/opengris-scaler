@@ -1,25 +1,30 @@
 import math
 from typing import Dict, List, Optional, Set
 
-from scaler.scheduler.allocators.mixins import TaskAllocator
+from scaler.scheduler.allocate_policy.mixins import TaskAllocatePolicy
 from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
 from scaler.utility.queues.indexed_queue import IndexedQueue
 
 
-class QueuedAllocator(TaskAllocator):
-    def __init__(self, max_tasks_per_worker: int):
-        self._max_tasks_per_worker = max_tasks_per_worker
+class EvenLoadAllocatePolicy(TaskAllocatePolicy):
+    """This Allocator policy is trying to make all workers load as equal as possible"""
+
+    def __init__(self):
+        self._workers_to_queue_size: Dict[bytes, int] = dict()
         self._workers_to_task_ids: Dict[WorkerID, IndexedQueue] = dict()
         self._task_id_to_worker: Dict[TaskID, WorkerID] = {}
 
         self._worker_queue: AsyncPriorityQueue = AsyncPriorityQueue()
 
-    async def add_worker(self, worker: WorkerID) -> bool:
+    async def add_worker(self, worker: WorkerID, queue_size: int) -> bool:
+        # TODO: handle uneven queue size for each worker
         if worker in self._workers_to_task_ids:
             return False
 
         self._workers_to_task_ids[worker] = IndexedQueue()
+        self._workers_to_queue_size[worker] = queue_size
+
         await self._worker_queue.put([0, worker])
         return True
 
@@ -43,6 +48,7 @@ class QueuedAllocator(TaskAllocator):
     def balance(self) -> Dict[WorkerID, List[TaskID]]:
         """Returns, for every worker, the list of tasks to balance out."""
 
+        # TODO: handle uneven queue size for each worker
         balance_count = self.__get_balance_count_by_worker()
 
         balance_result = {}
@@ -104,7 +110,7 @@ class QueuedAllocator(TaskAllocator):
             return self._task_id_to_worker[task_id]
 
         count, worker = await self._worker_queue.get()
-        if count == self._max_tasks_per_worker:
+        if count == self._workers_to_queue_size[worker]:
             await self._worker_queue.put([count, worker])
             return None
 
@@ -133,14 +139,14 @@ class QueuedAllocator(TaskAllocator):
         if not len(self._worker_queue):
             return False
 
-        count = self._worker_queue.max_priority()
-        if count == self._max_tasks_per_worker:
+        count, worker = self._worker_queue.max_priority_item()
+        if count == self._workers_to_queue_size[worker]:
             return False
 
         return True
 
     def statistics(self) -> Dict:
         return {
-            worker: {"free": self._max_tasks_per_worker - len(tasks), "sent": len(tasks)}
+            worker: {"free": self._workers_to_queue_size[worker] - len(tasks), "sent": len(tasks)}
             for worker, tasks in self._workers_to_task_ids.items()
         }

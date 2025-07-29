@@ -9,7 +9,7 @@ from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata
 from scaler.protocol.python.message import ObjectInstruction
 from scaler.protocol.python.status import ObjectManagerStatus
-from scaler.scheduler.mixins import ClientManager, ObjectManager, WorkerManager
+from scaler.scheduler.managers.mixins import ClientManager, ObjectManager, WorkerManager
 from scaler.scheduler.object_usage.object_tracker import ObjectTracker, ObjectUsage
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.identifiers import ClientID, ObjectID
@@ -64,9 +64,7 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
             self.on_del_objects(instruction.object_user, set(instruction.object_metadata.object_ids))
             return
 
-        logging.error(
-            f"received unknown object instruction_type={instruction.instruction_type} from {source=}"
-        )
+        logging.error(f"received unknown object instruction_type={instruction.instruction_type} from {source=}")
 
     def on_add_object(
         self,
@@ -145,8 +143,6 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
 
     def __finished_object_storage(self, creation: _ObjectCreation):
         logging.debug(
-            f"del object cache "
-            f"object_name={creation.object_name!r}, "
-            f"object_id={creation.object_id!r}, "
+            f"del object cache object_name={creation.object_name!r}, object_id={creation.object_id!r}"
         )
         self._queue_deleted_object_ids.put_nowait(creation.object_id)

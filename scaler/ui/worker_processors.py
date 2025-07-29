@@ -1,6 +1,6 @@
 import dataclasses
-from typing import Dict, List, Optional
 from threading import Lock
+from typing import Dict, List, Optional
 
 from nicegui import ui
 from nicegui.element import Element

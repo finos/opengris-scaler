@@ -152,3 +152,7 @@ class WorkerManager(Reporter):
     @abc.abstractmethod
     def get_worker_ids(self) -> Set[WorkerID]:
         raise NotImplementedError()
+
+
+class InformationManager(metaclass=abc.ABCMeta):
+    pass

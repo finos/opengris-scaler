@@ -16,7 +16,6 @@ class IOContext:
     num_threads: int
 
     def __init__(self, num_threads: int = 1) -> None: ...
-
     def createIOSocket(self, /, identity: str, socket_type: IOSocketType) -> IOSocket: ...
 
 class IOSocket:

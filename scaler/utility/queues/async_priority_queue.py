@@ -1,7 +1,7 @@
 import heapq
 import sys
 from asyncio import Queue
-from typing import Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 PriorityType = Union[int, Tuple["PriorityType", ...]]
 
@@ -49,11 +49,11 @@ class AsyncPriorityQueue(Queue):
         item[0] = self.__to_lower_priority(item[0])
         heapq._siftdown(self._queue, 0, i)  # type: ignore[attr-defined]
 
-    def max_priority(self):
+    def max_priority_item(self) -> Tuple[PriorityType, Any]:
+        """output the Tuple of top priority number and top priority item"""
         item = heapq.heappop(self._queue)
         heapq.heappush(self._queue, item)
-        priority = item[0]
-        return priority
+        return item[0], item[1]
 
     @classmethod
     def __to_lowest_priority(cls, original_priority: PriorityType) -> PriorityType:

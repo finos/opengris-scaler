@@ -1,8 +1,7 @@
 import argparse
-import asyncio
-import functools
-import signal
 
+from scaler.cluster.object_storage_server import ObjectStorageServerProcess
+from scaler.cluster.scheduler import SchedulerProcess
 from scaler.io.config import (
     DEFAULT_CLIENT_TIMEOUT_SECONDS,
     DEFAULT_IO_THREADS,
@@ -10,13 +9,11 @@ from scaler.io.config import (
     DEFAULT_LOAD_BALANCE_TRIGGER_TIMES,
     DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
     DEFAULT_OBJECT_RETENTION_SECONDS,
-    DEFAULT_PER_WORKER_QUEUE_SIZE,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
-from scaler.scheduler.config import SchedulerConfig
-from scaler.scheduler.scheduler import scheduler_main
-from scaler.utility.event_loop import EventLoopType, register_event_loop
-from scaler.utility.logging.utility import setup_logger
+from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
+from scaler.utility.event_loop import EventLoopType
+from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 
@@ -67,17 +64,24 @@ def get_args():
         help="exact number of repeated load balance advices when trigger load balance operation in scheduler",
     )
     parser.add_argument(
-        "--per-worker-queue-size",
-        "-qs",
-        type=int,
-        default=DEFAULT_PER_WORKER_QUEUE_SIZE,
-        help="specify per worker queue size",
-    )
-    parser.add_argument(
         "--event-loop", "-e", default="builtin", choices=EventLoopType.allowed_types(), help="select event loop type"
     )
     parser.add_argument(
         "--protected", "-p", action="store_true", help="protect scheduler and worker from being shutdown by client"
+    )
+    parser.add_argument(
+        "--store-tasks",
+        "-k",
+        action="store_true",
+        help="store tasks in scheduler when tasks are running, if this is true, when worker disconnected, all tasks "
+        "on this worker will get rerouted to other workers",
+    )
+    parser.add_argument(
+        "--allocate-policy",
+        "-ap",
+        choices=[p.name for p in AllocatePolicy],
+        default=AllocatePolicy.even.name,
+        help="specify allocate policy, this controls how scheduler will prioritize tasks, including balancing tasks",
     )
     parser.add_argument(
         "--logging-paths",
@@ -122,45 +126,47 @@ def get_args():
         "tcp://localhost:2347",
     )
     parser.add_argument(
-        "address",
-        type=ZMQConfig.from_string,
-        help="scheduler address to connect to, e.g.: `tcp://localhost:6378`"
+        "address", type=ZMQConfig.from_string, help="scheduler address to connect to, e.g.: `tcp://localhost:6378`"
     )
     return parser.parse_args()
 
 
 def main():
     args = get_args()
-    setup_logger(args.logging_paths, args.logging_config_file, args.logging_level)
 
-    scheduler_config = SchedulerConfig(
-        event_loop=args.event_loop,
+    if args.object_storage_address is None:
+        object_storage_address = ObjectStorageConfig(args.address.host, get_available_tcp_port())
+        object_storage = ObjectStorageServerProcess(
+            storage_address=object_storage_address,
+            logging_paths=args.logging_paths,
+            logging_config_file=args.logging_config_file,
+            logging_level=args.logging_level,
+        )
+        object_storage.start()
+        object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
+    else:
+        object_storage_address = args.object_storage_address
+
+    scheduler = SchedulerProcess(
         address=args.address,
-        storage_address=args.object_storage_address,
+        storage_address=object_storage_address,
         monitor_address=args.monitor_address,
         io_threads=args.io_threads,
         max_number_of_tasks_waiting=args.max_number_of_tasks_waiting,
-        per_worker_queue_size=args.per_worker_queue_size,
         client_timeout_seconds=args.client_timeout_seconds,
         worker_timeout_seconds=args.worker_timeout_seconds,
         object_retention_seconds=args.object_retention_seconds,
         load_balance_seconds=args.load_balance_seconds,
         load_balance_trigger_times=args.load_balance_trigger_times,
         protected=args.protected,
+        store_tasks=args.store_tasks,
+        allocate_policy=AllocatePolicy[args.allocate_policy],
+        event_loop=args.event_loop,
+        logging_paths=args.logging_paths,
+        logging_config_file=args.logging_config_file,
+        logging_level=args.logging_level,
     )
+    scheduler.start()
 
-    register_event_loop(args.event_loop)
-
-    loop = asyncio.get_event_loop()
-    __register_signal(loop)
-    loop.run_until_complete(scheduler_main(scheduler_config))
-
-
-def __register_signal(loop):
-    loop.add_signal_handler(signal.SIGINT, functools.partial(__handle_signal))
-    loop.add_signal_handler(signal.SIGTERM, functools.partial(__handle_signal))
-
-
-def __handle_signal():
-    for task in asyncio.all_tasks():
-        task.cancel()
+    scheduler.join()
+    object_storage.join()

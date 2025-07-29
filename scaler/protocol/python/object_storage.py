@@ -37,10 +37,7 @@ class ObjectRequestHeader(Message):
 
     @staticmethod
     def new_msg(
-        object_id: ObjectID,
-        payload_length: int,
-        request_id: int,
-        request_type: ObjectRequestType,
+        object_id: ObjectID, payload_length: int, request_id: int, request_type: ObjectRequestType
     ) -> "ObjectRequestHeader":
         return ObjectRequestHeader(
             _object_storage.ObjectRequestHeader(
@@ -86,10 +83,7 @@ class ObjectResponseHeader(Message):
 
     @staticmethod
     def new_msg(
-        object_id: ObjectID,
-        payload_length: int,
-        response_id: int,
-        response_type: ObjectResponseType,
+        object_id: ObjectID, payload_length: int, response_id: int, response_type: ObjectResponseType
     ) -> "ObjectResponseHeader":
         return ObjectResponseHeader(
             _object_storage.ObjectResponseHeader(

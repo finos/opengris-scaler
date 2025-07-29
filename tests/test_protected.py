@@ -15,7 +15,7 @@ class TestProtected(unittest.TestCase):
     def test_protected_true(self) -> None:
         address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         cluster = SchedulerClusterCombo(
-            address=address, n_workers=2, per_worker_queue_size=2, event_loop="builtin", protected=True
+            address=address, n_workers=2, per_worker_task_queue_size=2, event_loop="builtin", protected=True
         )
         print("wait for 3 seconds")
         time.sleep(3)
@@ -31,7 +31,7 @@ class TestProtected(unittest.TestCase):
     def test_protected_false(self) -> None:
         address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         cluster = SchedulerClusterCombo(
-            address=address, n_workers=2, per_worker_queue_size=2, event_loop="builtin", protected=False
+            address=address, n_workers=2, per_worker_task_queue_size=2, event_loop="builtin", protected=False
         )
         print("wait for 3 seconds")
         time.sleep(3)

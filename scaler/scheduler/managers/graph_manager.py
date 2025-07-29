@@ -9,7 +9,7 @@ from scaler.io.async_connector import AsyncConnector
 from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata, TaskStatus
 from scaler.protocol.python.message import GraphTask, GraphTaskCancel, StateGraphTask, Task, TaskCancel, TaskResult
-from scaler.scheduler.mixins import ClientManager, GraphTaskManager, ObjectManager, TaskManager
+from scaler.scheduler.managers.mixins import ClientManager, GraphTaskManager, ObjectManager, TaskManager
 from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.many_to_many_dict import ManyToManyDict
@@ -240,11 +240,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
             result_metadata = result.metadata
             result_object_ids = [ObjectID(object_id_bytes) for object_id_bytes in result.results]
             result_objects = [
-                (
-                    object_id,
-                    self._object_manager.get_object_name(object_id),
-                )
-                for object_id in result_object_ids
+                (object_id, self._object_manager.get_object_name(object_id)) for object_id in result_object_ids
             ]
             await self.__clean_all_running_nodes(graph_task_id, result_status, result_metadata, result_objects)
             await self.__clean_all_inactive_nodes(graph_task_id, result_status, result_metadata, result_objects)
@@ -268,10 +264,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
             await self._task_manager.on_task_cancel(graph_info.client, TaskCancel.new_msg(task_id))
             await self.__mark_node_done(
                 TaskResult.new_msg(
-                    task_id,
-                    result_status,
-                    result_metadata,
-                    [bytes(object_id) for object_id in new_result_object_ids]
+                    task_id, result_status, result_metadata, [bytes(object_id) for object_id in new_result_object_ids]
                 )
             )
 
@@ -339,16 +332,13 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
             self._object_manager.on_del_objects(graph_info.client, set(graph_info.tasks[argument].result_object_ids))
 
     async def __duplicate_objects(
-        self,
-        owner: ClientID,
-        result_objects: List[Tuple[ObjectID, bytes]]
+        self, owner: ClientID, result_objects: List[Tuple[ObjectID, bytes]]
     ) -> List[ObjectID]:
         new_result_object_ids = [ObjectID.generate_object_id(owner) for _ in result_objects]
 
         futures = [
             self.__duplicate_object(owner, result_object_id, result_object_name, new_object_id)
-            for (result_object_id, result_object_name), new_object_id
-            in zip(result_objects, new_result_object_ids)
+            for (result_object_id, result_object_name), new_object_id in zip(result_objects, new_result_object_ids)
         ]
 
         await asyncio.gather(*futures)
@@ -356,11 +346,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         return new_result_object_ids
 
     async def __duplicate_object(
-        self,
-        owner: ClientID,
-        object_id: ObjectID,
-        object_name: bytes,
-        new_object_id: ObjectID
+        self, owner: ClientID, object_id: ObjectID, object_name: bytes, new_object_id: ObjectID
     ):
         object_payload = await self._connector_storage.get_object(object_id)
         await self._connector_storage.set_object(new_object_id, object_payload)

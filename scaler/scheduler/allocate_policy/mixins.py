@@ -4,9 +4,9 @@ from typing import Dict, List, Optional, Set
 from scaler.utility.identifiers import TaskID, WorkerID
 
 
-class TaskAllocator(metaclass=abc.ABCMeta):
+class TaskAllocatePolicy(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def add_worker(self, worker: WorkerID) -> bool:
+    async def add_worker(self, worker: WorkerID, queue_size: int) -> bool:
         """add worker to worker collection"""
         raise NotImplementedError()
 

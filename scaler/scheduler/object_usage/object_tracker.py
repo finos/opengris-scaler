@@ -43,9 +43,7 @@ class ObjectTracker(Generic[BlockType, ObjectKeyType, ObjectType]):
     def add_object(self, obj: ObjectType):
         self._object_key_to_object[obj.get_object_key()] = obj
 
-    def get_object_block_pairs(
-        self, blocks: Set[BlockType]
-    ) -> Generator[Tuple[ObjectKeyType, BlockType], None, None]:
+    def get_object_block_pairs(self, blocks: Set[BlockType]) -> Generator[Tuple[ObjectKeyType, BlockType], None, None]:
         for block in blocks:
             if not self._object_key_to_block.has_right_key(block):
                 continue

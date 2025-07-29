@@ -50,8 +50,7 @@ class ObjectBuffer:
             return
 
         object_instructions_to_send = [
-            (obj_cache.object_id, obj_cache.object_type, obj_cache.object_name)
-            for obj_cache in self._pending_objects
+            (obj_cache.object_id, obj_cache.object_type, obj_cache.object_name) for obj_cache in self._pending_objects
         ]
 
         self._connector_agent.send(
@@ -91,10 +90,7 @@ class ObjectBuffer:
         serializer_payload = cloudpickle.dumps(self._serializer, protocol=pickle.HIGHEST_PROTOCOL)
         object_id = ObjectID.generate_serializer_object_id(self._identity)
         serializer_cache = ObjectCache(
-            object_id,
-            ObjectMetadata.ObjectContentType.Serializer,
-            b"serializer",
-            serializer_payload,
+            object_id, ObjectMetadata.ObjectContentType.Serializer, b"serializer", serializer_payload
         )
 
         return serializer_cache

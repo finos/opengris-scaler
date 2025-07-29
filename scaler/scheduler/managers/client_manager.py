@@ -13,7 +13,7 @@ from scaler.protocol.python.message import (
     TaskCancel,
 )
 from scaler.protocol.python.status import ClientManagerStatus
-from scaler.scheduler.mixins import ClientManager, ObjectManager, TaskManager, WorkerManager
+from scaler.scheduler.managers.mixins import ClientManager, ObjectManager, TaskManager, WorkerManager
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, TaskID
 from scaler.utility.mixins import Looper, Reporter
@@ -66,10 +66,7 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
         return self._client_to_task_ids.remove_value(task_id)
 
     async def on_heartbeat(self, client_id: ClientID, info: ClientHeartbeat):
-        await self._binder.send(
-            client_id,
-            ClientHeartbeatEcho.new_msg(object_storage_address=self._storage_address)
-        )
+        await self._binder.send(client_id, ClientHeartbeatEcho.new_msg(object_storage_address=self._storage_address))
         if client_id not in self._client_last_seen:
             logging.info(f"{client_id!r} connected")
 

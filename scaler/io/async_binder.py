@@ -32,6 +32,10 @@ class AsyncBinder(Looper, Reporter):
         self._received: Dict[str, int] = defaultdict(lambda: 0)
         self._sent: Dict[str, int] = defaultdict(lambda: 0)
 
+    @property
+    def identity(self):
+        return self._identity
+
     def destroy(self):
         self._context.destroy(linger=0)
 

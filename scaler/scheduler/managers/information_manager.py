@@ -6,11 +6,17 @@ from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
 from scaler.protocol.python.message import StateScheduler
 from scaler.protocol.python.status import Resource
-from scaler.scheduler.mixins import ClientManager, ObjectManager, TaskManager, WorkerManager
+from scaler.scheduler.managers.mixins import (
+    ClientManager,
+    InformationManager,
+    ObjectManager,
+    TaskManager,
+    WorkerManager,
+)
 from scaler.utility.mixins import Looper
 
 
-class StatusReporter(Looper):
+class VanillaInformationManager(InformationManager, Looper):
     def __init__(self, binder: AsyncConnector):
         self._monitor_binder: AsyncConnector = binder
         self._process = psutil.Process()

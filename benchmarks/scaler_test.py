@@ -15,7 +15,7 @@ def main():
 
     address = "tcp://127.0.0.1:2345"
 
-    cluster = SchedulerClusterCombo(address=address, n_workers=10, per_worker_queue_size=2, event_loop="builtin")
+    cluster = SchedulerClusterCombo(address=address, n_workers=10, per_worker_task_queue_size=2, event_loop="builtin")
     client = Client(address=address)
 
     tasks = [random.randint(0, 101) for _ in range(10000)]

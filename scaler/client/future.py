@@ -54,10 +54,7 @@ class ScalerFuture(Future):
             return self._profiling_info
 
     def set_result_ready(
-        self,
-        object_id: Optional[ObjectID],
-        task_status: TaskStatus,
-        profile_result: Optional[ProfileResult] = None,
+        self, object_id: Optional[ObjectID], task_status: TaskStatus, profile_result: Optional[ProfileResult] = None
     ) -> None:
         with self._condition:  # type: ignore[attr-defined]
             if self.done():

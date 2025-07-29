@@ -36,14 +36,15 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
 
     def __init__(
         self,
-        event_loop: str,
         name: str,
         address: ZMQConfig,
-        io_threads: int,
         service_name: str,
         base_concurrency: int,
         heartbeat_interval_seconds: int,
         death_timeout_seconds: int,
+        task_queue_size: int,
+        io_threads: int,
+        event_loop: str,
     ):
         multiprocessing.Process.__init__(self, name="Agent")
 
@@ -59,6 +60,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
 
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._death_timeout_seconds = death_timeout_seconds
+        self._task_queue_size = task_queue_size
 
         self._context: Optional[zmq.asyncio.Context] = None
         self._connector_external: Optional[AsyncConnector] = None

@@ -14,12 +14,7 @@ from scaler.io.config import DUMMY_CLIENT
 from scaler.io.sync_connector import SyncConnector
 from scaler.io.sync_object_storage_connector import SyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata, TaskStatus
-from scaler.protocol.python.message import (
-    ObjectInstruction,
-    ProcessorInitialized,
-    Task,
-    TaskResult,
-)
+from scaler.protocol.python.message import ObjectInstruction, ProcessorInitialized, Task, TaskResult
 from scaler.protocol.python.mixins import Message
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
@@ -194,10 +189,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             function = self._object_cache.get_object(task.func_object_id)
             function_with_logger = self.__get_object_with_client_logger(DUMMY_CLIENT, function)
 
-            args = [
-                self._object_cache.get_object(cast(ObjectID, arg))
-                for arg in task.function_args
-            ]
+            args = [self._object_cache.get_object(cast(ObjectID, arg)) for arg in task.function_args]
 
             with self.__processor_context():
                 result = function_with_logger(*args)
@@ -254,9 +246,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 ),
             )
         )
-        self._connector_agent.send(
-            TaskResult.new_msg(task_id, status, metadata=b"", results=[bytes(result_object_id)])
-        )
+        self._connector_agent.send(TaskResult.new_msg(task_id, status, metadata=b"", results=[bytes(result_object_id)]))
 
     @staticmethod
     def __set_current_processor(context: Optional["Processor"]) -> Token:

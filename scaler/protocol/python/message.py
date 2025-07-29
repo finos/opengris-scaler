@@ -433,10 +433,7 @@ class StateBalanceAdvice(Message):
     @staticmethod
     def new_msg(worker_id: WorkerID, task_ids: List[TaskID]) -> "StateBalanceAdvice":
         return StateBalanceAdvice(
-            _message.StateBalanceAdvice(
-                workerId=bytes(worker_id),
-                taskIds=[bytes(task_id) for task_id in task_ids],
-            )
+            _message.StateBalanceAdvice(workerId=bytes(worker_id), taskIds=[bytes(task_id) for task_id in task_ids])
         )
 
 

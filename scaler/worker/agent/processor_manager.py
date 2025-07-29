@@ -9,12 +9,7 @@ from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
 from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata, TaskStatus
-from scaler.protocol.python.message import (
-    ObjectInstruction,
-    ProcessorInitialized,
-    Task,
-    TaskResult,
-)
+from scaler.protocol.python.message import ObjectInstruction, ProcessorInitialized, Task, TaskResult
 from scaler.utility.exceptions import ProcessorDiedError
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.identifiers import ObjectID, ProcessorID, TaskID, WorkerID

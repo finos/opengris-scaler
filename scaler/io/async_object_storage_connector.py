@@ -104,10 +104,7 @@ class AsyncObjectStorageConnector:
             self._pending_get_requests[object_id] = pending_get_future
 
             await self.__send_request(
-                object_id,
-                max_payload_length,
-                ObjectRequestHeader.ObjectRequestType.GetObject,
-                None
+                object_id, max_payload_length, ObjectRequestHeader.ObjectRequestType.GetObject, None
             )
 
         return await pending_get_future

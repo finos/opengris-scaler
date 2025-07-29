@@ -48,10 +48,7 @@ class SyncObjectStorageConnector:
             self.__send_request(object_id, len(payload), ObjectRequestHeader.ObjectRequestType.SetObject, payload)
             response_header, response_payload = self.__receive_response()
 
-        self.__ensure_response_type(
-            response_header,
-            [ObjectResponseHeader.ObjectResponseType.SetOK],
-        )
+        self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.SetOK])
         self.__ensure_empty_payload(response_payload)
 
     def get_object(self, object_id: ObjectID, max_payload_length: int = 2**64 - 1) -> bytearray:
@@ -82,7 +79,7 @@ class SyncObjectStorageConnector:
 
         self.__ensure_response_type(
             response_header,
-            [ObjectResponseHeader.ObjectResponseType.DelOK, ObjectResponseHeader.ObjectResponseType.DelNotExists]
+            [ObjectResponseHeader.ObjectResponseType.DelOK, ObjectResponseHeader.ObjectResponseType.DelNotExists],
         )
         self.__ensure_empty_payload(response_payload)
 
@@ -93,9 +90,7 @@ class SyncObjectStorageConnector:
             raise ObjectStorageException("connector is closed.")
 
     def __ensure_response_type(
-        self,
-        header: ObjectResponseHeader,
-        valid_response_types: Iterable[ObjectResponseHeader.ObjectResponseType],
+        self, header: ObjectResponseHeader, valid_response_types: Iterable[ObjectResponseHeader.ObjectResponseType]
     ):
         if header.response_type not in valid_response_types:
             raise RuntimeError(f"unexpected object storage response_type={header.response_type}.")
@@ -160,7 +155,7 @@ class SyncObjectStorageConnector:
 
         total_sent = 0
         while total_sent < len(buffer):
-            sent = self._socket.send(buffer_view[total_sent:MAX_CHUNK_SIZE + total_sent])
+            sent = self._socket.send(buffer_view[total_sent : MAX_CHUNK_SIZE + total_sent])
 
             if sent <= 0:
                 self.__raise_connection_failure()

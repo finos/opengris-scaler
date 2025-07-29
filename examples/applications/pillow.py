@@ -6,8 +6,10 @@ import os
 import sys
 import tempfile
 from multiprocessing import cpu_count
+
 from PIL import Image, UnidentifiedImageError
-from scaler import SchedulerClusterCombo, Client
+
+from scaler import Client, SchedulerClusterCombo
 
 
 def process_image(source: str, dest: str):
@@ -40,9 +42,12 @@ def main():
 
     with Client(address=cluster.get_address()) as client:
         with tempfile.TemporaryDirectory() as dest_dir:
-            client.map(process_image, [
-                (os.path.join(source_dir, filename), os.path.join(dest_dir, filename))
-                for filename in os.listdir(source_dir)]
+            client.map(
+                process_image,
+                [
+                    (os.path.join(source_dir, filename), os.path.join(dest_dir, filename))
+                    for filename in os.listdir(source_dir)
+                ],
             )
 
     cluster.shutdown()

@@ -11,12 +11,14 @@ from scaler.worker.worker import Worker
 
 
 class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
+
     def __init__(
         self,
         address: ZMQConfig,
         storage_address: Optional[ObjectStorageConfig],
         worker_io_threads: int,
         worker_names: List[str],
+        per_worker_task_queue_size: int,
         heartbeat_interval_seconds: int,
         task_timeout_seconds: int,
         death_timeout_seconds: int,
@@ -25,8 +27,8 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         hard_processor_suspend: bool,
         event_loop: str,
         logging_paths: Tuple[str, ...],
-        logging_level: str,
         logging_config_file: Optional[str],
+        logging_level: str,
     ):
         multiprocessing.Process.__init__(self, name="WorkerMaster")
 
@@ -34,6 +36,8 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         self._storage_address = storage_address
         self._worker_io_threads = worker_io_threads
         self._worker_names = worker_names
+
+        self._per_worker_task_queue_size = per_worker_task_queue_size
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._task_timeout_seconds = task_timeout_seconds
         self._death_timeout_seconds = death_timeout_seconds
@@ -43,8 +47,8 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         self._event_loop = event_loop
 
         self._logging_paths = logging_paths
-        self._logging_level = logging_level
         self._logging_config_file = logging_config_file
+        self._logging_level = logging_level
 
         self._workers: List[Worker] = []
 
@@ -77,6 +81,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
                 address=self._address,
                 storage_address=self._storage_address,
                 io_threads=self._worker_io_threads,
+                task_queue_size=self._per_worker_task_queue_size,
                 heartbeat_interval_seconds=self._heartbeat_interval_seconds,
                 garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
                 trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
