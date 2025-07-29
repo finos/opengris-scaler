@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/event_loop_thread.h"
 #include "scaler/io/ymq/event_manager.h"
 #include "scaler/io/ymq/message_connection_tcp.h"
@@ -35,12 +36,12 @@ void IOSocket::sendMessage(Message message, SendMessageCallback onMessageSent) n
             if (this->socketType() == IOSocketType::Connector) {
                 address = "";
             } else if (this->socketType() == IOSocketType::Multicast) {
-                callback(0);  // SUCCESS
+                callback({});  // SUCCESS
                 for (const auto& [addr, conn]: _identityToConnection) {
                     // TODO: Currently doing N copies of the messages. Find a place to
                     // store this message and pass in reference.
                     if (addr.starts_with(address))
-                        conn->sendMessage(message, [](int) {});
+                        conn->sendMessage(message, [](auto) {});
                 }
                 return;
             }
@@ -77,6 +78,14 @@ void IOSocket::recvMessage(RecvMessageCallback onRecvMessage) noexcept {
 void IOSocket::connectTo(sockaddr addr, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes) noexcept {
     _eventLoopThread->_eventLoop.executeNow(
         [this, addr = std::move(addr), callback = std::move(onConnectReturn), maxRetryTimes] mutable {
+            if (_tcpClient) {
+                unrecoverableError({
+                    Error::ErrorCode::MultipleConnectToNotSupported,
+                    "Originated from",
+                    "IOSocket::connectTo",
+                });
+            }
+
             _tcpClient.emplace(_eventLoopThread, this->identity(), std::move(addr), std::move(callback), maxRetryTimes);
             _tcpClient->onCreated();
         });
@@ -85,7 +94,6 @@ void IOSocket::connectTo(sockaddr addr, ConnectReturnCallback onConnectReturn, s
 void IOSocket::connectTo(
     std::string networkAddress, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes) noexcept {
     auto res = stringToSockaddr(std::move(networkAddress));
-    assert(res);
     connectTo(std::move(res.value()), std::move(onConnectReturn), maxRetryTimes);
 }
 
@@ -93,7 +101,7 @@ void IOSocket::bindTo(std::string networkAddress, BindReturnCallback onBindRetur
     _eventLoopThread->_eventLoop.executeNow(
         [this, networkAddress = std::move(networkAddress), callback = std::move(onBindReturn)] mutable {
             if (_tcpServer) {
-                callback(-1);
+                callback(std::unexpected {Error::ErrorCode::MultipleBindToNotSupported});
                 return;
             }
             auto res = stringToSockaddr(std::move(networkAddress));
@@ -119,15 +127,15 @@ void IOSocket::onConnectionDisconnected(MessageConnectionTCP* conn) noexcept {
         auto destructWriteOp = std::move(connPtr->_writeOperations);
         connPtr->_writeOperations.clear();
         while (_pendingRecvMessages->size()) {
-            // TODO: Replace this with error didNotReceive or something like that
-            _pendingRecvMessages->front()({});
+            _pendingRecvMessages->front()(
+                {{}, Error::ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery});
             _pendingRecvMessages->pop();
         }
         auto destructReadOp = std::move(connPtr->_receivedReadOperations);
     }
 
     if (connPtr->_responsibleForRetry) {
-        connectTo(connPtr->_remoteAddr, [](int) {});  // as the user callback is one-shot
+        connectTo(connPtr->_remoteAddr, [](auto) {});  // as the user callback is one-shot
     }
 }
 
@@ -157,8 +165,10 @@ void IOSocket::onConnectionIdentityReceived(MessageConnectionTCP* conn) noexcept
                | std::views::filter([](const auto& x) { return x->_remoteIOSocketIdentity != std::nullopt; })  //
                | std::views::filter([&s](const auto& x) { return *x->_remoteIOSocketIdentity == *s; })         //
                | std::views::take(1);
-    if (rge.empty())
+    if (rge.empty()) {
         return;
+    }
+
     auto& targetConn = _identityToConnection[*s];
 
     auto c = _unestablishedConnection.begin() + (_unestablishedConnection.size() - rge.begin().count());

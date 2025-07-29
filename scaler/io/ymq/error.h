@@ -21,6 +21,15 @@ struct Error: std::exception {
         ConfigurationError,
         SignalNotSupported,
         CoreBug,
+        RepetetiveIOSocketIdentity,
+        RedundantIOSocketRefCount,
+        MultipleConnectToNotSupported,
+        MultipleBindToNotSupported,
+        InitialConnectFailedWithInProgress,
+        SendMessageRequestCouldNotComplete,
+        SetSockOptNonFatalFailure,
+        IPv6NotSupported,
+        RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery,
     };
 
     // NOTE:
@@ -35,6 +44,8 @@ struct Error: std::exception {
         : _errorCode(e)
         , _logMsg(argsToString(Timestamp {}, convertErrorToExplanation(e), std::forward<Args>(args)...)) {}
 
+    constexpr Error() noexcept: _errorCode(ErrorCode::Uninit) {}
+
     static constexpr std::string_view convertErrorToExplanation(ErrorCode e) noexcept {
         switch (e) {
             case ErrorCode::Uninit: return "";
@@ -46,6 +57,25 @@ struct Error: std::exception {
             case ErrorCode::SignalNotSupported:
                 return "A function call was interrupted by signal, but signal handling is not supported";
             case ErrorCode::CoreBug: return "Likely a bug within the library";
+            case ErrorCode::RepetetiveIOSocketIdentity:
+                return "It is NOT allowed to create two IOSocket with the same identity";
+            case ErrorCode::RedundantIOSocketRefCount:
+                return "It is NOT allowed to hold IOSocket shared_ptr after you try to remove it";
+            case ErrorCode::MultipleConnectToNotSupported:
+                return "Connect to remote end without the previous such request successfully completed or exceeds "
+                       "retry limit is currently NOT supported";
+            case ErrorCode::MultipleBindToNotSupported:
+                return "Bind to multiple IP addresses is currently not supported";
+            case ErrorCode::InitialConnectFailedWithInProgress:
+                return "The first connect(2) call to an socket failed with EINPROGRESS, expected";
+            case ErrorCode::SendMessageRequestCouldNotComplete:
+                return "sendMessage request could not complete. Possibly because the underlying connection has been "
+                       "destructed because it exceeds maximum retry limit";
+            case ErrorCode::SetSockOptNonFatalFailure: return "sendsockopt(3) gets unfatal failure";
+            case ErrorCode::IPv6NotSupported: return "IPv6 is currently not supported";
+            case ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery:
+                return "You are using IOSocket::Unicast or IOSocket::Multicast, which do not support guaranteed "
+                       "message delivery, and the connection(s) disconnects";
         }
         std::abort();
     }

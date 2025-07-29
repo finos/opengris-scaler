@@ -29,9 +29,9 @@ int main() {
 
     constexpr size_t msgCnt = 100'000;
 
-    std::vector<std::promise<void>> sendPromises;
+    std::vector<std::promise<std::expected<void, Error>>> sendPromises;
     sendPromises.reserve(msgCnt + 10);
-    std::vector<std::promise<Message>> recvPromises;
+    std::vector<std::promise<std::pair<Message, Error>>> recvPromises;
     recvPromises.reserve(msgCnt + 10);
 
     // syncConnectSocket(clientSocket, "tcp://51.15.214.200:32912");
@@ -50,23 +50,25 @@ int main() {
         sendPromises.emplace_back();
 
         clientSocket->sendMessage(
-            std::move(message), [&send_promise = sendPromises.back()](int) { send_promise.set_value(); });
+            std::move(message),
+            [&send_promise = sendPromises.back()](std::expected<void, Error>) { send_promise.set_value({}); });
 
         recvPromises.emplace_back();
 
-        clientSocket->recvMessage(
-            [&recv_promise = recvPromises.back()](Message msg) { recv_promise.set_value(std::move(msg)); });
+        clientSocket->recvMessage([&recv_promise = recvPromises.back()](std::pair<Message, Error> msg) {
+            recv_promise.set_value(std::move(msg));
+        });
     }
 
     for (auto& x: sendPromises) {
         auto future = x.get_future();
-        future.get();
+        future.wait();
     }
     printf("send completes\n");
 
-    for (auto& x: recvPromises) {
+    for (auto&& x: recvPromises) {
         auto future = x.get_future();
-        Message msg = future.get();
+        Message msg = future.get().first;
         if (msg.payload.as_string() != longStr) {
             printf("Checksum failed, %s\n", msg.payload.as_string().c_str());
             exit(1);

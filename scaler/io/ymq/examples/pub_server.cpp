@@ -6,7 +6,8 @@
 #include <future>
 #include <memory>
 
-#include "./common.h"
+#include "scaler/io/ymq/error.h"
+#include "scaler/io/ymq/examples/common.h"
 #include "scaler/io/ymq/io_context.h"
 #include "scaler/io/ymq/io_socket.h"
 
@@ -29,9 +30,10 @@ int main() {
         publishContent.address = Bytes(address.data(), address.size());
         publishContent.payload = Bytes(payload.data(), payload.size());
 
-        auto send_promise = std::promise<void>();
+        auto send_promise = std::promise<std::expected<void, Error>>();
         auto send_future  = send_promise.get_future();
-        socket->sendMessage(std::move(publishContent), [&send_promise](int) { send_promise.set_value(); });
+        socket->sendMessage(
+            std::move(publishContent), [&send_promise](std::expected<void, Error>) { send_promise.set_value({}); });
         send_future.wait();
 
         printf("One message published, sleep for 10 sec\n");

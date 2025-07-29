@@ -6,12 +6,14 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <expected>
 #include <memory>
 
-#include "scaler/io/ymq/configuration.h"
+#include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/event_loop_thread.h"
 #include "scaler/io/ymq/event_manager.h"
 #include "scaler/io/ymq/io_socket.h"
+#include "scaler/io/ymq/logging.h"
 #include "scaler/io/ymq/message_connection_tcp.h"
 #include "scaler/io/ymq/network_utils.h"
 
@@ -21,30 +23,61 @@ namespace ymq {
 int TcpServer::createAndBindSocket() {
     int server_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
     if (server_fd == -1) {
-        perror("socket");
-        _onBindReturn(errno);
+        unrecoverableError({
+            Error::ErrorCode::ConfigurationError,
+            "Originated from",
+            "socket(2)",
+            "Errno is",
+            strerror(errno),
+            "_serverFd",
+            _serverFd,
+        });
+
+        _onBindReturn(std::unexpected(Error {Error::ErrorCode::ConfigurationError}));
         return -1;
     }
 
     int optval = 1;
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) == -1) {
-        perror("setsockopt");
+        log(LoggingLevel::error,
+            "Originated from",
+            "setsockopt(2)",
+            "Errno is",
+            strerror(errno)  // ,
+        );
+
         close(server_fd);
-        _onBindReturn(errno);
+        _onBindReturn(std::unexpected(Error {Error::ErrorCode::SetSockOptNonFatalFailure}));
         return -1;
     }
 
     if (bind(server_fd, &_addr, sizeof(_addr)) == -1) {
-        perror("bind");
         close(server_fd);
-        _onBindReturn(errno);
+        unrecoverableError({
+            Error::ErrorCode::ConfigurationError,
+            "Originated from",
+            "bind(2)",
+            "Errno is",
+            strerror(errno),
+            "server_fd",
+            server_fd,
+        });
+
         return -1;
     }
 
     if (listen(server_fd, SOMAXCONN) == -1) {
-        perror("listen");
         close(server_fd);
-        _onBindReturn(errno);
+        unrecoverableError({
+            Error::ErrorCode::ConfigurationError,
+            "Originated from",
+            "listen(2)",
+            "Errno is",
+            strerror(errno),
+            "server_fd",
+            server_fd,
+        });
+
         return -1;
     }
 
@@ -74,14 +107,8 @@ void TcpServer::onCreated() {
         _serverFd = 0;
         return;
     }
-    auto res = _eventLoopThread->_eventLoop.addFdToLoop(_serverFd, EPOLLIN | EPOLLET, this->_eventManager.get());
-    if (res == 0) {
-        _onBindReturn(0);
-    } else {
-        close(_serverFd);
-        _serverFd = 0;
-        _onBindReturn(res);
-    }
+    _eventLoopThread->_eventLoop.addFdToLoop(_serverFd, EPOLLIN | EPOLLET, this->_eventManager.get());
+    _onBindReturn({});
 }
 
 void TcpServer::onRead() {
@@ -90,7 +117,6 @@ void TcpServer::onRead() {
         socklen_t remoteAddrLen = sizeof(remoteAddr);
 
         int fd = accept4(_serverFd, &remoteAddr, &remoteAddrLen, SOCK_NONBLOCK | SOCK_CLOEXEC);
-        // TODO: Change this to a user callback
         if (fd < 0) {
             const int myErrno = errno;
             switch (myErrno) {
@@ -149,8 +175,15 @@ void TcpServer::onRead() {
         }
 
         if (remoteAddrLen > sizeof(remoteAddr)) {
-            fprintf(stderr, "Are you using IPv6? This is probably not supported as of now.\n");
-            exit(-1);
+            unrecoverableError({
+                Error::ErrorCode::IPv6NotSupported,
+                "Originated from",
+                "accept4(2)",
+                "remoteAddrLen",
+                remoteAddrLen,
+                "sizeof(remoteAddr)",
+                sizeof(remoteAddr),
+            });
         }
 
         std::string id = this->_localIOSocketIdentity;

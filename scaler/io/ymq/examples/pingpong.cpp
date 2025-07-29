@@ -12,6 +12,7 @@
 #include <thread>
 
 #include "./common.h"
+#include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/io_context.h"
 #include "scaler/io/ymq/io_socket.h"
 #include "scaler/io/ymq/typedefs.h"
@@ -45,16 +46,18 @@ int main(int argc, char* argv[]) {
         Message message {};
         message.payload = Bytes {const_cast<char*>(line.data()), line.size()};
 
-        std::promise<void> sendPromise;
+        std::promise<std::expected<void, Error>> sendPromise;
         auto sendFuture = sendPromise.get_future();
 
-        clientSocket->sendMessage(std::move(message), [&sendPromise](int) { sendPromise.set_value(); });
-        sendFuture.get();
+        clientSocket->sendMessage(
+            std::move(message), [&sendPromise](std::expected<void, Error>) { sendPromise.set_value({}); });
+        sendFuture.get().value();
 
-        std::promise<Message> recvPromise;
+        std::promise<std::pair<Message, Error>> recvPromise;
         auto recvFuture = recvPromise.get_future();
-        clientSocket->recvMessage([&recvPromise](Message msg) { recvPromise.set_value(std::move(msg)); });
-        recvFuture.get();
+        clientSocket->recvMessage(
+            [&recvPromise](std::pair<Message, Error> msg) { recvPromise.set_value(std::move(msg)); });
+        recvFuture.wait();
     }
 
     time_point<system_clock> end = system_clock::now();
