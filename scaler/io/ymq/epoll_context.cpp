@@ -75,14 +75,16 @@ void EpollContext::addFdToLoop(int fd, uint64_t events, EventManager* manager) {
     event.events   = (int)events & (EPOLLIN | EPOLLOUT | EPOLLET);
     event.data.ptr = (void*)manager;
     int res        = epoll_ctl(_epfd, EPOLL_CTL_ADD, fd, &event);
-    if (res == 0)
+    if (res == 0) {
         return;
+    }
 
     if (errno == EEXIST) {
         if (epoll_ctl(_epfd, EPOLL_CTL_MOD, fd, &event) == 0) {
             return;
         }
     }
+
     const int myErrno = errno;
     switch (myErrno) {
         case ENOMEM:

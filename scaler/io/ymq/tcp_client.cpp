@@ -52,87 +52,85 @@ void TcpClient::onCreated() {
                 });
                 break;
         }
-    }
-
-    this->_connFd = sockfd;
-    int ret       = connect(sockfd, (sockaddr*)&_remoteAddr, sizeof(_remoteAddr));
-
-    int passedBackValue = 0;
-    if (ret < 0) {
-        if (errno != EINPROGRESS) {
-            close(sockfd);
-            passedBackValue = errno;
-        } else {
-            _eventLoopThread->_eventLoop.addFdToLoop(sockfd, EPOLLOUT | EPOLLET, this->_eventManager.get());
-            passedBackValue = 0;
-        }
-    } else {
-        std::string id = this->_localIOSocketIdentity;
-        auto sock      = this->_eventLoopThread->_identityToIOSocket.at(id);
-        sock->onConnectionCreated(setNoDelay(sockfd), getLocalAddr(sockfd), getRemoteAddr(sockfd), true);
-
-        passedBackValue = 0;
-    }
-
-    if (_retryTimes == 0 && passedBackValue == 0) {
-        _onConnectReturn(std::unexpected {Error::ErrorCode::InitialConnectFailedWithInProgress});
         return;
     }
 
-    if (passedBackValue != 0) {
-        switch (passedBackValue) {
-            case EACCES:
-            case EADDRNOTAVAIL:
-            case EFAULT:
-            case ENETUNREACH:
-            case EPROTOTYPE:
-            case ETIMEDOUT:
-                unrecoverableError({
-                    Error::ErrorCode::ConfigurationError,
-                    "Originated from",
-                    "connect(2)",
-                    "Errno is",
-                    strerror(passedBackValue),
-                    "sockfd",
-                    sockfd,
-                });
-                break;
-
-            case EINTR:
-                unrecoverableError({
-                    Error::ErrorCode::SignalNotSupported,
-                    "Originated from",
-                    "connect(2)",
-                    "Errno is",
-                    strerror(passedBackValue),
-                    "sockfd",
-                    sockfd,
-                });
-                break;
-
-            case EPERM:
-            case EADDRINUSE:
-            case EAFNOSUPPORT:
-            case EAGAIN:
-            case EALREADY:
-            case EBADF:
-            case EISCONN:
-            case ENOTSOCK:
-                unrecoverableError({
-                    Error::ErrorCode::CoreBug,
-                    "Originated from",
-                    "connect(2)",
-                    "Errno is",
-                    strerror(passedBackValue),
-                    "sockfd",
-                    sockfd,
-                });
-                break;
-
-            case EINPROGRESS:
-            case ECONNREFUSED:
-            default: break;
+    this->_connFd = sockfd;
+    const int ret = connect(sockfd, (sockaddr*)&_remoteAddr, sizeof(_remoteAddr));
+    if (ret >= 0) [[unlikely]] {
+        std::string id                 = this->_localIOSocketIdentity;
+        auto sock                      = this->_eventLoopThread->_identityToIOSocket.at(id);
+        const bool responsibleForRetry = true;
+        sock->onConnectionCreated(setNoDelay(sockfd), getLocalAddr(sockfd), getRemoteAddr(sockfd), responsibleForRetry);
+        if (_retryTimes == 0) {
+            _onConnectReturn({});
         }
+        return;
+    }
+
+    if (errno == EINPROGRESS) {
+        _eventLoopThread->_eventLoop.addFdToLoop(sockfd, EPOLLOUT | EPOLLET, this->_eventManager.get());
+        if (_retryTimes == 0) {
+            _onConnectReturn(std::unexpected {Error::ErrorCode::InitialConnectFailedWithInProgress});
+        }
+        return;
+    }
+
+    close(sockfd);
+
+    const int myErrno = errno;
+    switch (myErrno) {
+        case EACCES:
+        case EADDRNOTAVAIL:
+        case EFAULT:
+        case ENETUNREACH:
+        case EPROTOTYPE:
+        case ETIMEDOUT:
+            unrecoverableError({
+                Error::ErrorCode::ConfigurationError,
+                "Originated from",
+                "connect(2)",
+                "Errno is",
+                strerror(myErrno),
+                "sockfd",
+                sockfd,
+            });
+            break;
+
+        case EINTR:
+            unrecoverableError({
+                Error::ErrorCode::SignalNotSupported,
+                "Originated from",
+                "connect(2)",
+                "Errno is",
+                strerror(myErrno),
+                "sockfd",
+                sockfd,
+            });
+            break;
+
+        case EPERM:
+        case EADDRINUSE:
+        case EAFNOSUPPORT:
+        case EAGAIN:
+        case EALREADY:
+        case EBADF:
+        case EISCONN:
+        case ENOTSOCK:
+            unrecoverableError({
+                Error::ErrorCode::CoreBug,
+                "Originated from",
+                "connect(2)",
+                "Errno is",
+                strerror(myErrno),
+                "sockfd",
+                sockfd,
+            });
+            break;
+
+        case EINPROGRESS:
+        case ECONNREFUSED:
+        default: break;
     }
 }
 
@@ -212,10 +210,10 @@ void TcpClient::onWrite() {
         });
     }
 
-    std::string id = this->_localIOSocketIdentity;
-    auto sock      = this->_eventLoopThread->_identityToIOSocket.at(id);
-
-    sock->onConnectionCreated(setNoDelay(_connFd), getLocalAddr(_connFd), getRemoteAddr(_connFd), true);
+    std::string id                 = this->_localIOSocketIdentity;
+    auto sock                      = this->_eventLoopThread->_identityToIOSocket.at(id);
+    const bool responsibleForRetry = true;
+    sock->onConnectionCreated(setNoDelay(_connFd), getLocalAddr(_connFd), getRemoteAddr(_connFd), responsibleForRetry);
 
     _connFd    = 0;
     _connected = true;
@@ -246,6 +244,7 @@ TcpClient::~TcpClient() noexcept {
     if (_connFd) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_connFd);
         close(_connFd);
+        _connFd = 0;
     }
     if (_retryTimes > 0) {
         _eventLoopThread->_eventLoop.cancelExecution(_retryIdentifier);
