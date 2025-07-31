@@ -225,19 +225,20 @@ static PyObject* PyIOContext_createIOSocket_sync(
         self, clazz, args, nargs, kwnames, [self](auto ioSocket, Identity identity, IOSocketType socketType) {
             PyThreadState* _save = PyEval_SaveThread();
             std::shared_ptr<IOSocket> socket;
-            std::latch waiter(1);
+            std::shared_ptr<std::latch> waiter = std::make_shared<std::latch>(1);
 
-            self->ioContext->createIOSocket(identity, socketType, [&](std::shared_ptr<IOSocket> s) mutable {
-                socket = s;
-                waiter.count_down();
-            });
+            self->ioContext->createIOSocket(
+                identity, socketType, [waiter, &socket](std::shared_ptr<IOSocket> s) mutable {
+                    socket = std::move(s);
+                    waiter->count_down();
+                });
 
             try {
-                waiter.wait();
+                waiter->wait();
             } catch (std::exception& e) {
                 PyEval_RestoreThread(_save);
                 PyErr_SetString(PyExc_RuntimeError, "Failed to create io socket");
-                Py_RETURN_NONE;
+                return (PyObject*)nullptr;
             }
 
             PyEval_RestoreThread(_save);

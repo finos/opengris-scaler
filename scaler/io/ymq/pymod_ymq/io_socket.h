@@ -58,7 +58,7 @@ static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwa
                     future_set_result(future, []() { Py_RETURN_NONE; });
                 } else {
                     future_raise_exception(
-                        future, [state, result]() { return YMQException_createFromCoreError(state, &result.error()); });
+                        future, [=]() { return YMQException_createFromCoreError(state, &result.error()); });
                 }
             });
     });
@@ -75,9 +75,8 @@ static PyObject* PyIOSocket_send_sync(PyIOSocket* self, PyObject* args, PyObject
         Py_RETURN_NONE;
     }
 
-    Bytes address = (PyObject*)message->address == Py_None ?
-                        Bytes {(char*)nullptr, 0} :
-                        std::move(reinterpret_cast<PyBytesYMQ*>(message->address)->bytes);
+    Bytes address =
+        (PyObject*)message->address == Py_None ? Bytes {(char*)nullptr, 0} : std::move(message->address->bytes);
     Bytes payload = std::move(message->payload->bytes);
 
     PyThreadState* _save = PyEval_SaveThread();
@@ -86,7 +85,7 @@ static PyObject* PyIOSocket_send_sync(PyIOSocket* self, PyObject* args, PyObject
     std::shared_ptr<std::expected<void, Error>> result = std::make_shared<std::expected<void, Error>>();
 
     self->socket->sendMessage({.address = std::move(address), .payload = std::move(payload)}, [=](auto r) {
-        *result = r;
+        *result = std::move(r);
         waiter->count_down();
     });
 
@@ -147,6 +146,9 @@ static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args) {
                         Py_RETURN_NONE;
                     }
 
+                    Py_DECREF(address);
+                    Py_DECREF(payload);
+
                     return (PyObject*)message;
                 });
             } else {
@@ -200,14 +202,14 @@ static PyObject* PyIOSocket_recv_sync(PyIOSocket* self, PyObject* args) {
     auto message = result->first;
 
     PyBytesYMQ* address = (PyBytesYMQ*)PyObject_CallNoArgs(state->PyBytesYMQType);
-    if (!address) {
-        Py_RETURN_NONE;
-    }
+    if (!address)
+        return nullptr;
 
     PyBytesYMQ* payload = (PyBytesYMQ*)PyObject_CallNoArgs(state->PyBytesYMQType);
     if (!payload) {
         Py_DECREF(address);
-        Py_RETURN_NONE;
+        return nullptr;
+        ;
     }
 
     address->bytes = std::move(message.address);
@@ -217,8 +219,11 @@ static PyObject* PyIOSocket_recv_sync(PyIOSocket* self, PyObject* args) {
     if (!pyMessage) {
         Py_DECREF(address);
         Py_DECREF(payload);
-        Py_RETURN_NONE;
+        return nullptr;
     }
+
+    Py_DECREF(address);
+    Py_DECREF(payload);
 
     return (PyObject*)pyMessage;
 }
@@ -226,34 +231,27 @@ static PyObject* PyIOSocket_recv_sync(PyIOSocket* self, PyObject* args) {
 static PyObject* PyIOSocket_bind(PyIOSocket* self, PyObject* args, PyObject* kwargs) {
     PyObject* addressObj = nullptr;
     const char* kwlist[] = {"address", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj)) {
-        PyErr_SetString(PyExc_TypeError, "expected one argument: address");
-        Py_RETURN_NONE;
-    }
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj))
+        return nullptr;
 
     if (!PyUnicode_Check(addressObj)) {
         Py_DECREF(addressObj);
-
-        PyErr_SetString(PyExc_TypeError, "argument must be a str");
-        Py_RETURN_NONE;
+        return nullptr;
     }
 
     Py_ssize_t addressLen = 0;
     const char* address   = PyUnicode_AsUTF8AndSize(addressObj, &addressLen);
 
     if (!address)
-        Py_RETURN_NONE;
+        return nullptr;
 
     return async_wrapper((PyObject*)self, [=](YMQState* state, PyObject* future) {
-        self->socket->bindTo(std::string(address, addressLen), [=](auto error) {
-            future_set_result(future, [=]() {
-                if (error) {
-                    PyErr_SetString(PyExc_RuntimeError, "Failed to bind to address");
-                    return (PyObject*)nullptr;
-                }
-
-                Py_RETURN_NONE;
-            });
+        self->socket->bindTo(std::string(address, addressLen), [=](auto result) {
+            if (result) {
+                future_set_result(future, [] { Py_RETURN_NONE; });
+            } else {
+                future_raise_exception(future, [=] { return YMQException_createFromCoreError(state, &result.error()); });
+            }
         });
     });
 }
@@ -265,23 +263,20 @@ static PyObject* PyIOSocket_bind_sync(PyIOSocket* self, PyObject* args, PyObject
 
     PyObject* addressObj = nullptr;
     const char* kwlist[] = {"address", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj)) {
-        PyErr_SetString(PyExc_TypeError, "expected one argument: address");
-        Py_RETURN_NONE;
-    }
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj))
+        return nullptr;
 
     if (!PyUnicode_Check(addressObj)) {
         Py_DECREF(addressObj);
-
         PyErr_SetString(PyExc_TypeError, "argument must be a str");
-        Py_RETURN_NONE;
+        return nullptr;
     }
 
     Py_ssize_t addressLen = 0;
     const char* address   = PyUnicode_AsUTF8AndSize(addressObj, &addressLen);
 
     if (!address)
-        Py_RETURN_NONE;
+        return nullptr;
 
     PyThreadState* _save = PyEval_SaveThread();
 
@@ -325,23 +320,20 @@ static PyObject* PyIOSocket_bind_sync(PyIOSocket* self, PyObject* args, PyObject
 static PyObject* PyIOSocket_connect(PyIOSocket* self, PyObject* args, PyObject* kwargs) {
     PyObject* addressObj = nullptr;
     const char* kwlist[] = {"address", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj)) {
-        PyErr_SetString(PyExc_TypeError, "expected one argument: address");
-        Py_RETURN_NONE;
-    }
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj))
+        return nullptr;
 
     if (!PyUnicode_Check(addressObj)) {
         Py_DECREF(addressObj);
-
         PyErr_SetString(PyExc_TypeError, "argument must be a str");
-        Py_RETURN_NONE;
+        return nullptr;
     }
 
     Py_ssize_t addressLen = 0;
     const char* address   = PyUnicode_AsUTF8AndSize(addressObj, &addressLen);
 
     if (!address)
-        Py_RETURN_NONE;
+        return nullptr;
 
     return async_wrapper((PyObject*)self, [=](YMQState* state, PyObject* future) {
         self->socket->connectTo(std::string(address, addressLen), [=](auto result) {
@@ -362,23 +354,21 @@ static PyObject* PyIOSocket_connect_sync(PyIOSocket* self, PyObject* args, PyObj
 
     PyObject* addressObj = nullptr;
     const char* kwlist[] = {"address", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj)) {
-        PyErr_SetString(PyExc_TypeError, "expected one argument: address");
-        Py_RETURN_NONE;
-    }
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj))
+        return nullptr;
 
     if (!PyUnicode_Check(addressObj)) {
         Py_DECREF(addressObj);
 
         PyErr_SetString(PyExc_TypeError, "argument must be a str");
-        Py_RETURN_NONE;
+        return nullptr;
     }
 
     Py_ssize_t addressLen = 0;
     const char* address   = PyUnicode_AsUTF8AndSize(addressObj, &addressLen);
 
     if (!address)
-        Py_RETURN_NONE;
+        return nullptr;
 
     PyThreadState* _save = PyEval_SaveThread();
 
