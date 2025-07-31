@@ -5,7 +5,7 @@ import time
 import unittest
 from concurrent.futures import CancelledError
 
-from scaler import Client, SchedulerClusterCombo
+from scaler import Client
 from scaler.utility.exceptions import MissingObjects, ProcessorDiedError
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
@@ -35,12 +35,12 @@ class TestClient(unittest.TestCase):
         setup_logger()
         logging_test_name(self)
         self._workers = 3
-        self.cluster = SchedulerClusterCombo(n_workers=self._workers, event_loop="builtin")
-        self.address = self.cluster.get_address()
-        # self.address = f"tcp://127.0.0.1:2345"
+        # self.cluster = SchedulerClusterCombo(n_workers=self._workers, event_loop="builtin")
+        # self.address = self.cluster.get_address()
+        self.address = f"tcp://127.0.0.1:2345"
 
     def tearDown(self) -> None:
-        self.cluster.shutdown()
+        # self.cluster.shutdown()
         pass
 
     def test_one_submit(self):
@@ -219,7 +219,6 @@ class TestClient(unittest.TestCase):
         def func():
             time.sleep(1)
             os._exit(1)  # noqa
-            return 1
 
         with Client(self.address) as client:
             with self.assertRaises(ProcessorDiedError):
@@ -254,9 +253,9 @@ class TestClient(unittest.TestCase):
             self.assertEqual(fut.result(), [1, 2, 3, 4, 5, 6])
 
     def test_scheduler_crash(self):
-        CLIENT_TIMEOUT_SECONDS = 5
+        client_timeout_seconds = 5
 
-        with Client(address=self.address, timeout_seconds=CLIENT_TIMEOUT_SECONDS) as client:
+        with Client(address=self.address, timeout_seconds=client_timeout_seconds) as client:
             future = client.submit(noop, 10)
 
             self.cluster._scheduler.kill()

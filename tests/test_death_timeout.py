@@ -10,6 +10,7 @@ from scaler.io.config import (
     DEFAULT_PER_WORKER_QUEUE_SIZE,
     DEFAULT_TASK_TIMEOUT_SECONDS,
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
+    DEFAULT_PER_WORKER_QUEUE_SIZE,
 )
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
