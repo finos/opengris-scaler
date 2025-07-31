@@ -1,6 +1,7 @@
 #pragma once
 
 // Python
+#include "io_socket.h"
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <structmember.h>
@@ -47,13 +48,14 @@ static int PyIOContext_init(PyIOContext* self, PyObject* args, PyObject* kwds) {
         }
     }
 
+    new (&self->ioContext) std::shared_ptr<IOContext>();
     self->ioContext = std::make_shared<IOContext>(numThreads);
+
     return 0;
 }
 
 static void PyIOContext_dealloc(PyIOContext* self) {
-    // Python knows nothing about C++, so we need to manually call destructors
-    self->ioContext.~shared_ptr();            // Call the destructor of shared_ptr
+    self->ioContext.~shared_ptr();
     Py_TYPE(self)->tp_free((PyObject*)self);  // Free the PyObject
 }
 
@@ -73,7 +75,8 @@ static PyObject* PyIOContext_createIOSocket(
         return nullptr;
     }
 
-    PyObject *pyIdentity = args[0], *pySocketType = args[1];
+    PyObject* pyIdentity   = args[0];
+    PyObject* pySocketType = args[1];
 
     if (!PyUnicode_Check(pyIdentity)) {
         PyErr_SetString(PyExc_TypeError, "Expected identity to be a string");
@@ -81,19 +84,19 @@ static PyObject* PyIOContext_createIOSocket(
     }
 
     // get the module state from the class
-    YmqState* state = (YmqState*)PyType_GetModuleState(clazz);
+    YMQState* state = (YMQState*)PyType_GetModuleState(clazz);
 
     if (!state) {
         // PyErr_SetString(PyExc_RuntimeError, "Failed to get module state");
         return nullptr;
     }
 
-    if (!PyObject_IsInstance(pySocketType, state->ioSocketTypeEnum)) {
+    if (!PyObject_IsInstance(pySocketType, state->PyIOSocketEnumType)) {
         PyErr_SetString(PyExc_TypeError, "Expected socket_type to be an instance of IOSocketType");
         return nullptr;
     }
 
-    Py_ssize_t identitySize;
+    Py_ssize_t identitySize  = 0;
     const char* identityCStr = PyUnicode_AsUTF8AndSize(pyIdentity, &identitySize);
 
     if (!identityCStr) {
@@ -127,23 +130,27 @@ static PyObject* PyIOContext_createIOSocket(
     Identity identity(identityCStr, identitySize);
     IOSocketType socketType = static_cast<IOSocketType>(socketTypeValue);
 
-    PyIOSocket* ioSocket = (PyIOSocket*)PyObject_CallObject((PyObject*)state->PyIOSocketType, nullptr);
+    PyIOSocket* ioSocket = PyObject_New(PyIOSocket, (PyTypeObject*)state->PyIOSocketType);
     if (!ioSocket) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create IOSocket instance");
         return nullptr;
     }
 
-    auto createSocketPromise = std::promise<std::shared_ptr<IOSocket>>();
-    auto createSocketFuture  = createSocketPromise.get_future();
-    self->ioContext->createIOSocket(
-        identity, socketType, [&createSocketPromise](auto sock) { createSocketPromise.set_value(sock); });
+    // ensure the fields are init
+    new (&ioSocket->socket) std::shared_ptr<IOSocket>();
+    new (&ioSocket->ioContext) std::shared_ptr<IOContext>();
 
-    ioSocket->socket = createSocketFuture.get();
-
-    return (PyObject*)ioSocket;
+    return async_wrapper((PyObject*)self, [=](YMQState* state, PyObject* future) {
+        self->ioContext->createIOSocket(identity, socketType, [=](auto socket) {
+            future_set_result(future, [=] {
+                ioSocket->socket = socket;
+                return (PyObject*)ioSocket;
+            });
+        });
+    });
 }
 
-static PyObject* PyIOContext_numThreads_getter(PyIOContext* self, void* /*closure*/) {
+static PyObject* PyIOContext_numThreads_getter(PyIOContext* self, void* Py_UNUSED(closure)) {
     return PyLong_FromSize_t(self->ioContext->numThreads());
 }
 }
@@ -153,7 +160,8 @@ static PyMethodDef PyIOContext_methods[] = {
      (PyCFunction)PyIOContext_createIOSocket,
      METH_METHOD | METH_FASTCALL | METH_KEYWORDS,
      PyDoc_STR("Create a new IOSocket")},
-    {nullptr, nullptr, 0, nullptr}};
+    {nullptr, nullptr, 0, nullptr},
+};
 
 static PyGetSetDef PyIOContext_properties[] = {
     {"num_threads",
@@ -161,7 +169,8 @@ static PyGetSetDef PyIOContext_properties[] = {
      nullptr,
      PyDoc_STR("Get the number of threads in the IOContext"),
      nullptr},
-    {nullptr, nullptr, nullptr, nullptr, nullptr}};
+    {nullptr, nullptr, nullptr, nullptr, nullptr},
+};
 
 static PyType_Slot PyIOContext_slots[] = {
     {Py_tp_init, (void*)PyIOContext_init},

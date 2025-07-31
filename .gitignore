@@ -26,3 +26,5 @@ dask-worker-space/*
 
 .clangd
 .python-version
+
+build*/

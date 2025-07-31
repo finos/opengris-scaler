@@ -82,8 +82,8 @@ struct Error: std::exception {
 
     constexpr const char* what() const noexcept override { return _logMsg.c_str(); }
 
-    const ErrorCode _errorCode;
-    const std::string _logMsg;
+    ErrorCode _errorCode;
+    std::string _logMsg;
 };
 
 }  // namespace ymq

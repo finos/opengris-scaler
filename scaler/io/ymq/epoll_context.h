@@ -70,9 +70,9 @@ private:
     TimedQueue _timingFunctions;
     DelayedFunctionQueue _delayedFunctions;
     InterruptiveConcurrentQueue<Function> _interruptiveFunctions;
-    static const size_t _isInterruptiveFd = 0;
-    static const size_t _isTimingFd       = 1;
-    static const size_t _reventSize       = 1024;
+    constexpr static const size_t _isInterruptiveFd = 0;
+    constexpr static const size_t _isTimingFd       = 1;
+    constexpr static const size_t _reventSize = 1024;
 };
 
 }  // namespace ymq
