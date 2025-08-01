@@ -39,6 +39,8 @@ from scaler.utility.ymq_config import YMQConfig
 
 class Scheduler:
     def __init__(self, config: SchedulerConfig):
+        self._config = config
+
         if config.storage_address is None:
             self._storage_address = ObjectStorageAddress.new_msg(host=config.address.host, port=config.address.port + 1)
         else:

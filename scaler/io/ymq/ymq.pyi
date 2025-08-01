@@ -75,6 +75,17 @@ class ErrorCode(IntEnum):
     InvalidPortFormat = 1
     InvalidAddressFormat = 2
     ConfigurationError = 3
+    SignalNotSupported = 4
+    CoreBug = 5
+    RepetetiveIOSocketIdentity = 6
+    RedundantIOSocketRefCount = 7
+    MultipleConnectToNotSupported = 8
+    MultipleBindToNotSupported = 9
+    InitialConnectFailedWithInProgress = 10
+    SendMessageRequestCouldNotComplete = 11
+    SetSockOptNonFatalFailure = 12
+    IPv6NotSupported = 13
+    RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery = 14
 
     def explanation(self) -> str: ...
 

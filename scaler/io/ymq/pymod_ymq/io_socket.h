@@ -250,7 +250,8 @@ static PyObject* PyIOSocket_bind(PyIOSocket* self, PyObject* args, PyObject* kwa
             if (result) {
                 future_set_result(future, [] { Py_RETURN_NONE; });
             } else {
-                future_raise_exception(future, [=] { return YMQException_createFromCoreError(state, &result.error()); });
+                future_raise_exception(
+                    future, [=] { return YMQException_createFromCoreError(state, &result.error()); });
             }
         });
     });
@@ -284,7 +285,7 @@ static PyObject* PyIOSocket_bind_sync(PyIOSocket* self, PyObject* args, PyObject
     std::shared_ptr<std::expected<void, Error>> result = std::make_shared<std::expected<void, Error>>();
 
     self->socket->bindTo(std::string(address, addressLen), [=](auto r) {
-        *result = r;
+        *result = std::move(r);
         waiter->count_down();
     });
 
@@ -337,7 +338,7 @@ static PyObject* PyIOSocket_connect(PyIOSocket* self, PyObject* args, PyObject* 
 
     return async_wrapper((PyObject*)self, [=](YMQState* state, PyObject* future) {
         self->socket->connectTo(std::string(address, addressLen), [=](auto result) {
-            if (result) {
+            if (result || result.error()._errorCode == Error::ErrorCode::InitialConnectFailedWithInProgress) {
                 future_set_result(future, []() { Py_RETURN_NONE; });
             } else {
                 future_raise_exception(
@@ -376,7 +377,7 @@ static PyObject* PyIOSocket_connect_sync(PyIOSocket* self, PyObject* args, PyObj
     std::shared_ptr<std::expected<void, Error>> result = std::make_shared<std::expected<void, Error>>();
 
     self->socket->connectTo(std::string(address, addressLen), [=](auto r) {
-        *result = r;
+        *result = std::move(r);
         waiter->count_down();
     });
 
@@ -401,7 +402,7 @@ static PyObject* PyIOSocket_connect_sync(PyIOSocket* self, PyObject* args, PyObj
 
     PyEval_RestoreThread(_save);
 
-    if (!result) {
+    if (!result && result->error()._errorCode != Error::ErrorCode::InitialConnectFailedWithInProgress) {
         YMQException_setFromCoreError(state, &result->error());
         return nullptr;
     }
