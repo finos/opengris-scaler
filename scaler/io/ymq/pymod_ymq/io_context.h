@@ -7,14 +7,22 @@
 #include <structmember.h>
 
 // C++
+#include <cstring>
+#include <exception>
+#include <functional>
 #include <future>
+#include <latch>
 #include <memory>
 
 // First-party
 #include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/io_context.h"
+#include "scaler/io/ymq/io_socket.h"
 #include "scaler/io/ymq/pymod_ymq/io_socket.h"
 #include "scaler/io/ymq/pymod_ymq/ymq.h"
+
+using namespace scaler::ymq;
+using Identity = Configuration::IOSocketIdentity;
 
 struct PyIOContext {
     PyObject_HEAD;
@@ -63,20 +71,73 @@ static PyObject* PyIOContext_repr(PyIOContext* self) {
     return PyUnicode_FromFormat("<IOContext at %p>", (void*)self->ioContext.get());
 }
 
-// todo: how to parse keyword arguments?
-// https://docs.python.org/3/c-api/structures.html#c.METH_METHOD
-// https://docs.python.org/3.10/c-api/call.html#vectorcall
-// https://peps.python.org/pep-0590/
-static PyObject* PyIOContext_createIOSocket(
-    PyIOContext* self, PyTypeObject* clazz, PyObject* const* args, Py_ssize_t nargs, PyObject* kwnames) {
+static PyObject* PyIOContext_createIOSocket_(
+    PyIOContext* self,
+    PyTypeObject* clazz,
+    PyObject* const* args,
+    Py_ssize_t nargs,
+    PyObject* kwnames,
+    std::function<PyObject*(PyIOSocket* ioSocket, Identity identity, IOSocketType socketType)> fn) {
     using Identity = Configuration::IOSocketIdentity;
-    if (nargs != 2) {
-        PyErr_SetString(PyExc_TypeError, "createIOSocket() requires exactly two arguments: identity and socket_type");
+
+    PyObject *pyIdentity = nullptr, *pySocketType = nullptr;
+    if (nargs == 1) {
+        pyIdentity = args[0];
+    } else if (nargs == 2) {
+        pyIdentity   = args[0];
+        pySocketType = args[1];
+    } else if (nargs > 2) {
+        PyErr_SetString(PyExc_TypeError, "createIOSocket() requires exactly two arguments");
         return nullptr;
     }
 
-    PyObject* pyIdentity   = args[0];
-    PyObject* pySocketType = args[1];
+    if (kwnames) {
+        auto n = PyTuple_Size(kwnames);
+
+        if (n < 0)
+            return nullptr;
+
+        for (int i = 0; i < n; ++i) {
+            auto kw = PyTuple_GetItem(kwnames, i);
+            if (!kw) {
+                PyErr_SetString(PyExc_RuntimeError, "Failed to get keyword argument");
+                return nullptr;
+            }
+
+            const char* kwStr = PyUnicode_AsUTF8(kw);
+            if (!kwStr) {
+                PyErr_SetString(PyExc_TypeError, "Failed to convert keyword argument to string");
+                return nullptr;
+            }
+
+            if (std::strcmp(kwStr, "identity") == 0) {
+                if (pyIdentity) {
+                    PyErr_SetString(PyExc_TypeError, "Multiple values provided for identity argument");
+                    return nullptr;
+                }
+                pyIdentity = args[nargs + i];
+            } else if (std::strcmp(kwStr, "socket_type") == 0) {
+                if (pySocketType) {
+                    PyErr_SetString(PyExc_TypeError, "Multiple values provided for socket_type argument");
+                    return nullptr;
+                }
+                pySocketType = args[nargs + i];
+            } else {
+                PyErr_Format(PyExc_TypeError, "Unexpected keyword argument: %s", kwStr);
+                return nullptr;
+            }
+        }
+    }
+
+    if (!pyIdentity) {
+        PyErr_SetString(PyExc_TypeError, "createIOSocket() requires an identity argument");
+        return nullptr;
+    }
+
+    if (!pySocketType) {
+        PyErr_SetString(PyExc_TypeError, "createIOSocket() requires a socket_type argument");
+        return nullptr;
+    }
 
     if (!PyUnicode_Check(pyIdentity)) {
         PyErr_SetString(PyExc_TypeError, "Expected identity to be a string");
@@ -140,14 +201,51 @@ static PyObject* PyIOContext_createIOSocket(
     new (&ioSocket->socket) std::shared_ptr<IOSocket>();
     new (&ioSocket->ioContext) std::shared_ptr<IOContext>();
 
-    return async_wrapper((PyObject*)self, [=](YMQState* state, PyObject* future) {
-        self->ioContext->createIOSocket(identity, socketType, [=](auto socket) {
-            future_set_result(future, [=] {
-                ioSocket->socket = socket;
-                return (PyObject*)ioSocket;
+    return fn(ioSocket, identity, socketType);
+}
+
+static PyObject* PyIOContext_createIOSocket(
+    PyIOContext* self, PyTypeObject* clazz, PyObject* const* args, Py_ssize_t nargs, PyObject* kwnames) {
+    return PyIOContext_createIOSocket_(
+        self, clazz, args, nargs, kwnames, [self](auto ioSocket, Identity identity, IOSocketType socketType) {
+            return async_wrapper((PyObject*)self, [=](YMQState* state, PyObject* future) {
+                self->ioContext->createIOSocket(identity, socketType, [=](std::shared_ptr<IOSocket> socket) {
+                    future_set_result(future, [=] {
+                        ioSocket->socket = socket;
+                        return (PyObject*)ioSocket;
+                    });
+                });
             });
         });
-    });
+}
+
+static PyObject* PyIOContext_createIOSocket_sync(
+    PyIOContext* self, PyTypeObject* clazz, PyObject* const* args, Py_ssize_t nargs, PyObject* kwnames) {
+    return PyIOContext_createIOSocket_(
+        self, clazz, args, nargs, kwnames, [self](auto ioSocket, Identity identity, IOSocketType socketType) {
+            PyThreadState* _save = PyEval_SaveThread();
+            std::shared_ptr<IOSocket> socket;
+            std::shared_ptr<std::latch> waiter = std::make_shared<std::latch>(1);
+
+            self->ioContext->createIOSocket(
+                identity, socketType, [waiter, &socket](std::shared_ptr<IOSocket> s) mutable {
+                    socket = std::move(s);
+                    waiter->count_down();
+                });
+
+            try {
+                waiter->wait();
+            } catch (std::exception& e) {
+                PyEval_RestoreThread(_save);
+                PyErr_SetString(PyExc_RuntimeError, "Failed to create io socket");
+                return (PyObject*)nullptr;
+            }
+
+            PyEval_RestoreThread(_save);
+
+            ioSocket->socket = socket;
+            return (PyObject*)ioSocket;
+        });
 }
 
 static PyObject* PyIOContext_numThreads_getter(PyIOContext* self, void* Py_UNUSED(closure)) {
@@ -158,6 +256,10 @@ static PyObject* PyIOContext_numThreads_getter(PyIOContext* self, void* Py_UNUSE
 static PyMethodDef PyIOContext_methods[] = {
     {"createIOSocket",
      (PyCFunction)PyIOContext_createIOSocket,
+     METH_METHOD | METH_FASTCALL | METH_KEYWORDS,
+     PyDoc_STR("Create a new IOSocket")},
+    {"createIOSocket_sync",
+     (PyCFunction)PyIOContext_createIOSocket_sync,
      METH_METHOD | METH_FASTCALL | METH_KEYWORDS,
      PyDoc_STR("Create a new IOSocket")},
     {nullptr, nullptr, 0, nullptr},

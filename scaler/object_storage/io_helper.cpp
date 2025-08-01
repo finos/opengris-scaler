@@ -21,6 +21,7 @@
 #include <boost/system/system_error.hpp>
 
 #include "protocol/object_storage.capnp.h"
+#include "scaler/io/ymq/common.h"
 #include "scaler/object_storage/constants.h"
 #include "scaler/object_storage/defs.h"
 
@@ -37,7 +38,7 @@ void setTCPNoDelay(tcp::socket& socket, bool is_no_delay) {
 
     if (ec) {
         std::cerr << "failed to set TCP_NODELAY on client socket: " << ec.message() << std::endl;
-        std::terminate();
+        panic();
     }
 }
 
@@ -106,7 +107,7 @@ awaitable<void> read_request_payload(tcp::socket& socket, ObjectRequestHeader& h
     } catch (boost::system::system_error& e) {
         std::cerr << "payload ends prematurely, e.what() = " << e.what() << '\n';
         std::cerr << "Failing fast. Terminting now...\n";
-        std::terminate();
+        panic();
     }
 }
 
@@ -138,7 +139,7 @@ boost::asio::awaitable<void> write_response(
             std::cerr << "Remote end closed, nothing to write.\n";
             std::cerr << "This should never happen as the client is expected "
                       << "to get every and all response. Terminating now...\n";
-            std::terminate();
+            panic();
         } else {
             std::cerr << "write error e.what() = " << e.what() << '\n';
         }

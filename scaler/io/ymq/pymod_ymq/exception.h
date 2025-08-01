@@ -13,8 +13,8 @@
 #include "ymq.h"
 
 // the order of the members in the exception args tuple
-const Py_ssize_t YMQException_errorCodeIndex = 0;
-const Py_ssize_t YMQException_messageIndex   = 1;
+const Py_ssize_t errorCodeIndex = 0;
+const Py_ssize_t messageIndex   = 1;
 
 struct YMQException {
     PyException_HEAD;
@@ -23,25 +23,15 @@ struct YMQException {
 extern "C" {
 
 static int YMQException_init(YMQException* self, PyObject* args, PyObject* kwds) {
+    auto state = YMQStateFromSelf((PyObject*)self);
+    if (!state)
+        return -1;
+
     // check the args
     PyObject* code    = nullptr;
     PyObject* message = nullptr;
     if (!PyArg_ParseTuple(args, "OO", &code, &message))
         return -1;
-
-    // replace with PyType_GetModuleByDef(Py_TYPE(self), &ymq_module) in a newer Python version
-    // https://docs.python.org/3/c-api/type.html#c.PyType_GetModuleByDef
-    PyObject* pyModule = PyType_GetModule(Py_TYPE(self));
-    if (!pyModule) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get module for Message type");
-        return -1;
-    }
-
-    auto state = (YMQState*)PyModule_GetState(pyModule);
-    if (!state) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get module state");
-        return -1;
-    }
 
     if (!PyObject_IsInstance(code, state->PyErrorCodeType)) {
         PyErr_SetString(PyExc_TypeError, "expected code to be of type ErrorCode");
@@ -62,11 +52,11 @@ static void YMQException_dealloc(YMQException* self) {
 }
 
 static PyObject* YMQException_code_getter(YMQException* self, void* Py_UNUSED(closure)) {
-    return PySequence_GetItem(self->args, YMQException_errorCodeIndex);
+    return PySequence_GetItem(self->args, errorCodeIndex);
 }
 
 static PyObject* YMQException_message_getter(YMQException* self, void* Py_UNUSED(closure)) {
-    return PySequence_GetItem(self->args, YMQException_messageIndex);
+    return PySequence_GetItem(self->args, messageIndex);
 }
 }
 
@@ -86,35 +76,41 @@ static PyType_Slot YMQException_slots[] = {
 static PyType_Spec YMQException_spec = {
     "ymq.YMQException", sizeof(YMQException), 0, Py_TPFLAGS_DEFAULT, YMQException_slots};
 
-PyObject* YMQException_argtupleFromCoreError(const Error* error) {
+PyObject* YMQException_argtupleFromCoreError(YMQState* state, const Error* error) {
     PyObject* code = PyLong_FromLong(static_cast<long>(error->_errorCode));
 
     if (!code)
         return nullptr;
 
+    PyObject* pyCode = PyObject_CallFunction((PyObject*)state->PyErrorCodeType, "O", code);
+    Py_DECREF(code);
+
+    if (!pyCode)
+        return nullptr;
+
     PyObject* message = PyUnicode_FromString(error->what());
 
     if (!message) {
-        Py_DECREF(code);
+        Py_DECREF(pyCode);
         return nullptr;
     }
 
-    PyObject* tuple = PyTuple_Pack(2, code, message);
+    PyObject* tuple = PyTuple_Pack(2, pyCode, message);
 
     if (!tuple) {
-        Py_DECREF(code);
+        Py_DECREF(pyCode);
         Py_DECREF(message);
         return nullptr;
     }
 
-    Py_DECREF(code);
+    Py_DECREF(pyCode);
     Py_DECREF(message);
 
     return tuple;
 }
 
 void YMQException_setFromCoreError(YMQState* state, const Error* error) {
-    auto tuple = YMQException_argtupleFromCoreError(error);
+    auto tuple = YMQException_argtupleFromCoreError(state, error);
     if (!tuple)
         return;
 
@@ -123,7 +119,7 @@ void YMQException_setFromCoreError(YMQState* state, const Error* error) {
 }
 
 PyObject* YMQException_createFromCoreError(YMQState* state, const Error* error) {
-    auto tuple = YMQException_argtupleFromCoreError(error);
+    auto tuple = YMQException_argtupleFromCoreError(state, error);
     if (!tuple)
         return nullptr;
 

@@ -18,6 +18,8 @@
 #include "scaler/object_storage/defs.h"
 #include "scaler/object_storage/io_helper.h"
 
+#include "scaler/io/ymq/common.h"
+
 template <>
 struct std::hash<scaler::object_storage::object_t> {
     std::size_t operator()(const scaler::object_storage::object_t& x) const noexcept {
@@ -176,7 +178,7 @@ public:
 
         if (ret != 0) {
             std::cerr << "create on server ready FDs failed: errno=" << errno << std::endl;
-            std::terminate();
+            panic();
         }
 
         this->_onServerReadyReader = pipeFds[0];
@@ -189,7 +191,7 @@ public:
 
         if (ret != sizeof (uint64_t)) {
             std::cerr << "write to _onServerReadyWriter failed: errno=" << errno << std::endl;
-            std::terminate();
+            panic();
         }
     }
 
@@ -252,7 +254,7 @@ public:
 
         if (ret != sizeof (uint64_t)) {
             std::cerr << "read from _onServerReadyReader failed: errno=" << errno << std::endl;
-            std::terminate();
+            panic();
         }
     }
 };
