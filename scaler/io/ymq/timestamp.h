@@ -6,8 +6,6 @@
 #include <chrono>
 #include <sstream>  // stringify
 
-#include "scaler/io/ymq/common.h"
-
 namespace scaler {
 namespace ymq {
 

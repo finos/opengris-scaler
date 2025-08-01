@@ -227,7 +227,6 @@ void TcpClient::retry() {
     if (_retryTimes > _maxRetryTimes) {
         log(LoggingLevel::error, "Retried times has reached maximum", _maxRetryTimes);
         panic();
-        return;
     }
 
     log(LoggingLevel::debug, "Client retrying times", _retryTimes);

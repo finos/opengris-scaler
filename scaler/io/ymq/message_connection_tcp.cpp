@@ -17,7 +17,6 @@
 #include "scaler/io/ymq/event_loop_thread.h"
 #include "scaler/io/ymq/event_manager.h"
 #include "scaler/io/ymq/io_socket.h"
-#include "scaler/io/ymq/typedefs.h"
 
 namespace scaler {
 namespace ymq {

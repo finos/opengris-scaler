@@ -9,7 +9,6 @@
 
 #include "scaler/io/ymq/error.h"
 #include "third_party/concurrentqueue.h"
-#include "scaler/io/ymq/common.h"
 
 namespace scaler {
 namespace ymq {

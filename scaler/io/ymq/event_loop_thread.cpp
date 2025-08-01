@@ -3,10 +3,8 @@
 
 #include <cassert>
 #include <memory>
-#include <print>
 
 #include "scaler/io/ymq/error.h"
-#include "scaler/io/ymq/common.h"
 #include "scaler/io/ymq/event_manager.h"
 #include "scaler/io/ymq/io_socket.h"
 

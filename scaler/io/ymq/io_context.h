@@ -1,7 +1,6 @@
 #pragma once
 
 // C++
-#include <functional>
 #include <memory>
 #include <vector>
 
