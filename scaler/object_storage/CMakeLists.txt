@@ -1,8 +1,20 @@
+add_compile_options(
+    -Wall
+    -Wpedantic
+    -Wunused
+    -Wunused-parameter
+    -Wunused-function
+    -Wunused-variable
+    -Wunused-local-typedefs
+)
+
 add_library(cc_object_storage_server SHARED)
 
 target_sources(cc_object_storage_server PRIVATE
-  object_storage_server.h
   io_helper.cpp
+  message.cpp
+  object_storage_server.cpp
+  object_manager.cpp
 )
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/scaler/object_storage)
@@ -32,6 +44,7 @@ set_target_properties(object_storage_server PROPERTIES  PREFIX "")
 set_target_properties(object_storage_server PROPERTIES SUFFIX ".so")
 
 target_sources(object_storage_server PRIVATE pymod_object_storage_server.cpp)
+
 target_link_libraries(object_storage_server PRIVATE cc_object_storage_server
                                             PRIVATE Python3::Module)
 

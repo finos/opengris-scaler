@@ -15,13 +15,14 @@ class ObjectRequestHeader(Message):
         SetObject = _object_storage.ObjectRequestHeader.ObjectRequestType.setObject
         GetObject = _object_storage.ObjectRequestHeader.ObjectRequestType.getObject
         DeleteObject = _object_storage.ObjectRequestHeader.ObjectRequestType.deleteObject
+        DuplicateObjectID = _object_storage.ObjectRequestHeader.ObjectRequestType.duplicateObjectID
 
     def __init__(self, msg):
         super().__init__(msg)
 
     @property
     def object_id(self) -> ObjectID:
-        return _from_capnp_object_id(self._msg.objectID)
+        return from_capnp_object_id(self._msg.objectID)
 
     @property
     def payload_length(self) -> int:
@@ -41,7 +42,7 @@ class ObjectRequestHeader(Message):
     ) -> "ObjectRequestHeader":
         return ObjectRequestHeader(
             _object_storage.ObjectRequestHeader(
-                objectID=_to_capnp_object_id(object_id),
+                objectID=to_capnp_object_id(object_id),
                 payloadLength=payload_length,
                 requestID=request_id,
                 requestType=request_type.value,
@@ -61,13 +62,14 @@ class ObjectResponseHeader(Message):
         GetOK = _object_storage.ObjectResponseHeader.ObjectResponseType.getOK
         DelOK = _object_storage.ObjectResponseHeader.ObjectResponseType.delOK
         DelNotExists = _object_storage.ObjectResponseHeader.ObjectResponseType.delNotExists
+        DuplicateOK = _object_storage.ObjectResponseHeader.ObjectResponseType.duplicateOK
 
     def __init__(self, msg):
         super().__init__(msg)
 
     @property
     def object_id(self) -> ObjectID:
-        return _from_capnp_object_id(self._msg.objectID)
+        return from_capnp_object_id(self._msg.objectID)
 
     @property
     def payload_length(self) -> int:
@@ -87,7 +89,7 @@ class ObjectResponseHeader(Message):
     ) -> "ObjectResponseHeader":
         return ObjectResponseHeader(
             _object_storage.ObjectResponseHeader(
-                objectID=_to_capnp_object_id(object_id),
+                objectID=to_capnp_object_id(object_id),
                 payloadLength=payload_length,
                 responseID=response_id,
                 responseType=response_type.value,
@@ -98,13 +100,13 @@ class ObjectResponseHeader(Message):
         return self._msg
 
 
-def _to_capnp_object_id(object_id: ObjectID) -> _object_storage.ObjectID:
+def to_capnp_object_id(object_id: ObjectID) -> _object_storage.ObjectID:
     field0, field1, field2, field3 = struct.unpack(OBJECT_ID_FORMAT, object_id)
 
     return _object_storage.ObjectID(field0=field0, field1=field1, field2=field2, field3=field3)
 
 
-def _from_capnp_object_id(capnp_object_id: _object_storage.ObjectID) -> ObjectID:
+def from_capnp_object_id(capnp_object_id: _object_storage.ObjectID) -> ObjectID:
     return ObjectID(
         struct.pack(
             OBJECT_ID_FORMAT,

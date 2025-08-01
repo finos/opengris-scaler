@@ -15,6 +15,14 @@ for arg in "$@"; do
 	fi
 done
 
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    NUM_CORES=$(nproc)
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    NUM_CORES=$(sysctl -n hw.ncpu)
+else
+    NUM_CORES=1
+fi
+
 if [ "$1" == "boost" ]; then
 	if [ "$2" == "compile" ]; then
 		BOOST_FOLDER_NAME="boost_$(echo $BOOST_VERSION | tr '.' '_')"
@@ -41,7 +49,7 @@ elif [ "$1" == "capnp" ]; then
 		./configure --prefix=${PREFIX} \
 			CXXFLAGS="${CXXFLAGS} -I${PREFIX}/include" \
 			LDFLAGS="${LDFLAGS} -L${PREFIX}/lib -Wl,-rpath,${PREFIX}/lib"
-		make -j$(nproc)
+		make -j${NUM_CORES}
 	elif [ "$2" == "install" ]; then
 		cd capnp
 		make install

@@ -348,7 +348,6 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
     async def __duplicate_object(
         self, owner: ClientID, object_id: ObjectID, object_name: bytes, new_object_id: ObjectID
     ):
-        object_payload = await self._connector_storage.get_object(object_id)
-        await self._connector_storage.set_object(new_object_id, object_payload)
+        await self._connector_storage.duplicate_object_id(object_id, new_object_id)
 
         self._object_manager.on_add_object(owner, new_object_id, ObjectMetadata.ObjectContentType.Object, object_name)
