@@ -4,7 +4,7 @@ from threading import Lock
 from typing import Optional, Iterable, List, Tuple
 
 from scaler.protocol.capnp._python import _object_storage  # noqa
-from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader
+from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader, to_capnp_object_id
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ObjectID
 
@@ -84,6 +84,25 @@ class SyncObjectStorageConnector:
         self.__ensure_empty_payload(response_payload)
 
         return response_header.response_type == ObjectResponseHeader.ObjectResponseType.DelOK
+
+    def duplicate_object_id(self, object_id: ObjectID, new_object_id: ObjectID) -> None:
+        """
+        Link an object's content to a new object ID on the object storage server.
+        """
+
+        object_id_payload = to_capnp_object_id(object_id).to_bytes()
+
+        with self._socket_lock:
+            self.__send_request(
+                new_object_id,
+                len(object_id_payload),
+                ObjectRequestHeader.ObjectRequestType.DuplicateObjectID,
+                object_id_payload,
+            )
+            response_header, response_payload = self.__receive_response()
+
+        self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.DuplicateOK])
+        self.__ensure_empty_payload(response_payload)
 
     def __ensure_is_connected(self):
         if self._socket is None:

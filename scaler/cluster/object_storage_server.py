@@ -3,7 +3,6 @@ import multiprocessing
 from typing import Optional, Tuple
 
 from scaler.object_storage.object_storage_server import ObjectStorageServer
-
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.object_storage_config import ObjectStorageConfig
 

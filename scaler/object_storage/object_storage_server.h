@@ -1,29 +1,15 @@
 #pragma once
 
-#include <algorithm>
+#include <boost/asio.hpp>
 #include <iostream>
-#include <map>
-#include <unistd.h>
-#include <utility>
+#include <memory>
+#include <span>
 
-#include <boost/asio/awaitable.hpp>
-#include <boost/asio/co_spawn.hpp>
-#include <boost/asio/detached.hpp>
-#include <boost/asio/io_context.hpp>
-#include <boost/asio/ip/tcp.hpp>
-#include <boost/asio/signal_set.hpp>
-#include <boost/system/system_error.hpp>
-
-#include "protocol/object_storage.capnp.h"
+#include "scaler/object_storage/constants.h"
 #include "scaler/object_storage/defs.h"
 #include "scaler/object_storage/io_helper.h"
-
-template <>
-struct std::hash<scaler::object_storage::object_t> {
-    std::size_t operator()(const scaler::object_storage::object_t& x) const noexcept {
-        return std::hash<std::string_view> {}({reinterpret_cast<const char*>(x.data()), x.size()});
-    }
-};
+#include "scaler/object_storage/message.h"
+#include "scaler/object_storage/object_manager.h"
 
 namespace scaler {
 namespace object_storage {
@@ -35,226 +21,127 @@ using boost::asio::use_awaitable;
 using boost::asio::ip::tcp;
 
 class ObjectStorageServer {
-    struct Meta {
-        std::shared_ptr<boost::asio::ip::tcp::socket> socket;
-        ObjectRequestHeader requestHeader;
-        ObjectResponseHeader responseHeader;
-    };
-
-    struct ObjectWithMeta {
-        shared_object_t object;
-        std::vector<Meta> metaInfo;
-    };
-
-    using reqType  = ::ObjectRequestHeader::ObjectRequestType;
-    using respType = ::ObjectResponseHeader::ObjectResponseType;
-
-    std::span<const unsigned char> getMemoryViewForResponsePayload(
-        scaler::object_storage::ObjectResponseHeader& header) {
-        switch (header.respType) {
-            case respType::GET_O_K: return {objectIDToMeta[header.objectID].object->data(), header.payloadLength};
-            case respType::SET_O_K:
-            case respType::DEL_O_K:
-            case respType::DEL_NOT_EXISTS:
-            default: break;
-        }
-        return {static_cast<const unsigned char*>(nullptr), 0};
-    }
-
-#ifndef NDEBUG
 public:
-#endif
-    bool updateRecord(
-        const scaler::object_storage::ObjectRequestHeader& requestHeader,
-        scaler::object_storage::ObjectResponseHeader& responseHeader,
-        scaler::object_storage::payload_t payload) {
-        responseHeader.objectID   = requestHeader.objectID;
-        responseHeader.responseID = requestHeader.requestID;
-        switch (requestHeader.reqType) {
-            case reqType::SET_OBJECT: {
-                auto objectHash = std::hash<object_t> {}(payload);
-                if (!objectHashToObject.contains(objectHash)) {
-                    objectHashToObject[objectHash] =
-                        std::make_shared<scaler::object_storage::object_t>(std::move(payload));
-                }
-                responseHeader.respType                       = respType::SET_O_K;
-                objectIDToMeta[requestHeader.objectID].object = objectHashToObject[objectHash];
+    ObjectStorageServer();
 
-                break;
-            }
+    ~ObjectStorageServer();
 
-            case reqType::GET_OBJECT: {
-                responseHeader.respType = respType::GET_O_K;
-                if (objectIDToMeta[requestHeader.objectID].object) {
-                    uint64_t objectSize = static_cast<uint64_t>(objectIDToMeta[requestHeader.objectID].object->size());
-                    responseHeader.payloadLength = std::min(objectSize, requestHeader.payloadLength);
-                } else
-                    return false;
-                break;
-            }
+    void run(std::string name, std::string port);
 
-            case reqType::DELETE_OBJECT: {
-                responseHeader.respType =
-                    objectIDToMeta[requestHeader.objectID].object ? respType::DEL_O_K : respType::DEL_NOT_EXISTS;
-                auto sharedObject = objectIDToMeta[requestHeader.objectID].object;
-                objectIDToMeta.erase(requestHeader.objectID);
-                if (sharedObject.use_count() == 2) {
-                    objectHashToObject.erase(std::hash<object_t> {}(*sharedObject));
-                }
-                break;
-            }
-        }
-        return true;
-    }
+    void waitUntilReady();
+
+    void shutdown();
 
 private:
-    awaitable<void> write_once(Meta meta) {
-        if (meta.requestHeader.reqType == reqType::GET_OBJECT) {
-            uint64_t objectSize = static_cast<uint64_t>(objectIDToMeta[meta.responseHeader.objectID].object->size());
-            meta.responseHeader.payloadLength = std::min(objectSize, meta.requestHeader.payloadLength);
-        }
+    struct Client {
+        Client(boost::asio::any_io_executor executor): socket(executor), writeStrand(executor) {}
 
-        auto payload_view = getMemoryViewForResponsePayload(meta.responseHeader);
-        co_await scaler::object_storage::write_response(*meta.socket, meta.responseHeader, payload_view);
-    }
+        tcp::socket socket;
 
-    awaitable<void> optionally_send_pending_requests(scaler::object_storage::ObjectRequestHeader requestHeader) {
-        if (requestHeader.reqType == reqType::SET_OBJECT) {
-            for (auto& curr_meta: objectIDToMeta[requestHeader.objectID].metaInfo) {
-                try {
-                    co_await write_once(std::move(curr_meta));
-                } catch (boost::system::system_error& e) {
-                    std::cerr << "Mostly because some connections disconnected accidentally.\n";
-                }
-            }
-            objectIDToMeta[requestHeader.objectID].metaInfo = std::vector<Meta>();
-        }
-        co_return;
-    }
+        // As multiple detached coroutines can concurrently write to the client's socket (because of
+        // `optionallySendPendingRequests()`), we must ensure that the calls to `async_write()` are sequenced in the
+        // same strand (i.e. an asio execution queue).
+        // As all `async_read()` calls are made from a single coroutine, we don't need to protect these.
+        // See https://www.boost.org/doc/libs/latest/doc/html/boost_asio/reference/async_write/overload1.html.
+        boost::asio::strand<boost::asio::any_io_executor> writeStrand;
+    };
 
-#ifndef NDEBUG
-public:
-#endif
-    int _onServerReadyReader;
-    int _onServerReadyWriter;
+    struct PendingRequest {
+        std::shared_ptr<Client> client;
+        ObjectRequestHeader requestHeader;
+    };
 
-    std::map<scaler::object_storage::object_id_t, ObjectWithMeta> objectIDToMeta;
-    std::map<std::size_t, shared_object_t> objectHashToObject;
+    using ObjectRequestType  = scaler::protocol::ObjectRequestHeader::ObjectRequestType;
+    using ObjectResponseType = scaler::protocol::ObjectResponseHeader::ObjectResponseType;
 
-    awaitable<void> process_request(std::shared_ptr<tcp::socket> socket) {
+    boost::asio::io_context ioContext {1};
+
+    int onServerReadyReader;
+    int onServerReadyWriter;
+
+    ObjectManager objectManager;
+
+    // Some GET and DUPLICATE requests might be delayed if the referenced object isn't available yet.
+    std::map<ObjectID, std::vector<PendingRequest>> pendingRequests;
+
+    void initServerReadyFds();
+
+    void setServerReadyFd();
+
+    void closeServerReadyFds();
+
+    awaitable<void> listener(tcp::endpoint endpoint);
+
+    awaitable<void> processRequests(std::shared_ptr<Client> client);
+
+    awaitable<void> processSetRequest(std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader);
+
+    awaitable<void> processGetRequest(std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader);
+
+    awaitable<void> processDeleteRequest(std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader);
+
+    awaitable<void> processDuplicateRequest(std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader);
+
+    template <ObjectStorageMessage T>
+    awaitable<T> readMessage(std::shared_ptr<Client> client) {
         try {
-            for (;;) {
-                scaler::object_storage::ObjectRequestHeader requestHeader;
-                co_await scaler::object_storage::read_request_header(*socket, requestHeader);
+            std::array<uint64_t, T::bufferSize() / CAPNP_WORD_SIZE> buffer;
+            co_await boost::asio::async_read(
+                client->socket, boost::asio::buffer(buffer.data(), T::bufferSize()), use_awaitable);
 
-                scaler::object_storage::payload_t payload;
-                co_await scaler::object_storage::read_request_payload(*socket, requestHeader, payload);
-
-                scaler::object_storage::ObjectResponseHeader responseHeader;
-                bool non_blocking_request = updateRecord(requestHeader, responseHeader, std::move(payload));
-
-                co_await optionally_send_pending_requests(requestHeader);
-
-                if (!non_blocking_request) {
-                    objectIDToMeta[requestHeader.objectID].metaInfo.emplace_back(socket, requestHeader, responseHeader);
-                    continue;
-                }
-
-                auto payload_view = getMemoryViewForResponsePayload(responseHeader);
-
-                co_await scaler::object_storage::write_response(*socket, responseHeader, payload_view);
+            co_return T::fromBuffer(buffer);
+        } catch (boost::system::system_error& e) {
+            // TODO: make this a log, since eof is not really an err.
+            if (e.code() == boost::asio::error::eof) {
+                std::cerr << "Remote end closed, nothing to read.\n";
+            } else {
+                std::cerr << "exception thrown, read error e.what() = " << e.what() << '\n';
             }
+            throw e;
         } catch (std::exception& e) {
-            // TODO: Logging support
-            // std::printf("process_request Exception: %s\n", e.what());
+            // TODO: make this a log, capnp header corruption is an err.
+            std::cerr << "exception thrown, message not a capnp e.what() = " << e.what() << '\n';
+            throw e;
         }
     }
 
-    void initServerReadyFds() {
-        int pipeFds[2];
-        int ret = pipe(pipeFds);
+    template <ObjectStorageMessage T>
+    boost::asio::awaitable<void> writeMessage(
+        std::shared_ptr<Client> client, T& message, std::span<const unsigned char> payload) {
+        auto messageBuffer = message.toBuffer();
 
-        if (ret != 0) {
-            std::cerr << "create on server ready FDs failed: errno=" << errno << std::endl;
-            std::terminate();
-        }
+        std::array<boost::asio::const_buffer, 2> buffers {
+            boost::asio::buffer(messageBuffer.asBytes().begin(), messageBuffer.asBytes().size()),
+            boost::asio::buffer(payload),
+        };
 
-        this->_onServerReadyReader = pipeFds[0];
-        this->_onServerReadyWriter = pipeFds[1];
-    }
+        try {
+            co_await boost::asio::async_write(
+                client->socket, buffers, boost::asio::bind_executor(client->writeStrand, boost::asio::use_awaitable));
 
-    void setServerReadyFd() {
-        uint64_t value = 1;
-        ssize_t ret = write(this->_onServerReadyWriter, &value, sizeof (uint64_t));
-
-        if (ret != sizeof (uint64_t)) {
-            std::cerr << "write to _onServerReadyWriter failed: errno=" << errno << std::endl;
-            std::terminate();
-        }
-    }
-
-    void closeServerReadyFds() {
-        std::array<int, 2> fds { this->_onServerReadyReader, this->_onServerReadyWriter };
-
-        for (auto fd : fds) {
-            if (close(fd) != 0) {
-                std::cerr << "close failed: errno=" << errno << std::endl;
+        } catch (boost::system::system_error& e) {
+            // TODO: Log support
+            if (e.code() == boost::asio::error::broken_pipe) {
+                std::cerr << "Remote end closed, nothing to write.\n";
+                std::cerr << "This should never happen as the client is expected "
+                          << "to get every and all response. Terminating now...\n";
                 std::terminate();
+            } else {
+                std::cerr << "write error e.what() = " << e.what() << '\n';
             }
+            throw e;
         }
     }
 
-    awaitable<void> listener(boost::asio::ip::tcp::endpoint endpoint) {
+    awaitable<void> sendGetResponse(
+        std::shared_ptr<Client> client,
+        const ObjectRequestHeader& requestHeader,
+        std::shared_ptr<const ObjectPayload> objectPtr);
 
-        auto executor = co_await boost::asio::this_coro::executor;
-        tcp::acceptor acceptor(executor, endpoint);
+    awaitable<void> sendDuplicateResponse(std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader);
 
-        setServerReadyFd();
-
-        for (;;) {
-            auto shared_socket = std::make_shared<tcp::socket>(executor);
-            co_await acceptor.async_accept(*shared_socket, use_awaitable);
-            setTCPNoDelay(*shared_socket, true);
-
-            co_spawn(executor, process_request(std::move(shared_socket)), detached);
-        }
-    }
-
-public:
-    ObjectStorageServer() {
-        this->initServerReadyFds();
-    }
-
-    ~ObjectStorageServer() {
-        this->closeServerReadyFds();
-    }
-
-    void run(std::string name, std::string port) {
-        try {
-            boost::asio::io_context io_context(1);
-            tcp::resolver resolver(io_context);
-            auto res = resolver.resolve(name, port);
-
-            boost::asio::signal_set signals(io_context, SIGINT, SIGTERM);
-            signals.async_wait([&](auto, auto) { io_context.stop(); });
-
-            co_spawn(io_context, listener(res.begin()->endpoint()), detached);
-            io_context.run();
-        } catch (std::exception& e) {
-            std::cerr << "Exception: " << e.what() << std::endl;
-            std::cerr << "Mostly something serious happen, inspect capnp header corruption" << std::endl;
-        }
-    }
-
-    void waitUntilReady() {
-        uint64_t value;
-        ssize_t ret = read(this->_onServerReadyReader, &value, sizeof (uint64_t));
-
-        if (ret != sizeof (uint64_t)) {
-            std::cerr << "read from _onServerReadyReader failed: errno=" << errno << std::endl;
-            std::terminate();
-        }
-    }
+    awaitable<void> optionallySendPendingRequests(
+        const ObjectID& objectID, std::shared_ptr<const ObjectPayload> objectPtr);
 };
 
 };  // namespace object_storage
