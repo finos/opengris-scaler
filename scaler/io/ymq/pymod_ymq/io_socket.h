@@ -34,14 +34,16 @@ struct PyIOSocket {
 
 extern "C" {
 
-static void PyIOSocket_dealloc(PyIOSocket* self) {
+static void PyIOSocket_dealloc(PyIOSocket* self)
+{
     self->ioContext->removeIOSocket(self->socket);
     self->ioContext.~shared_ptr();
     self->socket.~shared_ptr();
     Py_TYPE(self)->tp_free((PyObject*)self);  // Free the PyObject
 }
 
-static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwargs) {
+static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwargs)
+{
     PyMessage* message   = nullptr;
     const char* kwlist[] = {"message", nullptr};
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &message)) {
@@ -62,7 +64,8 @@ static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwa
     });
 }
 
-static PyObject* PyIOSocket_send_sync(PyIOSocket* self, PyObject* args, PyObject* kwargs) {
+static PyObject* PyIOSocket_send_sync(PyIOSocket* self, PyObject* args, PyObject* kwargs)
+{
     auto state = YMQStateFromSelf((PyObject*)self);
     if (!state)
         return nullptr;
@@ -100,7 +103,8 @@ static PyObject* PyIOSocket_send_sync(PyIOSocket* self, PyObject* args, PyObject
     Py_RETURN_NONE;
 }
 
-static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args) {
+static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args)
+{
     return async_wrapper((PyObject*)self, [&](YMQState* state, PyObject* future) {
         self->socket->recvMessage([&](auto result) {
             if (result.second._errorCode == Error::ErrorCode::Uninit) {
@@ -138,7 +142,8 @@ static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args) {
     });
 }
 
-static PyObject* PyIOSocket_recv_sync(PyIOSocket* self, PyObject* args) {
+static PyObject* PyIOSocket_recv_sync(PyIOSocket* self, PyObject* args)
+{
     auto state = YMQStateFromSelf((PyObject*)self);
     if (!state)
         return nullptr;
@@ -190,7 +195,8 @@ static PyObject* PyIOSocket_recv_sync(PyIOSocket* self, PyObject* args) {
     return (PyObject*)pyMessage;
 }
 
-static PyObject* PyIOSocket_bind(PyIOSocket* self, PyObject* args, PyObject* kwargs) {
+static PyObject* PyIOSocket_bind(PyIOSocket* self, PyObject* args, PyObject* kwargs)
+{
     PyObject* addressObj = nullptr;
     const char* kwlist[] = {"address", nullptr};
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj)) {
@@ -225,7 +231,8 @@ static PyObject* PyIOSocket_bind(PyIOSocket* self, PyObject* args, PyObject* kwa
     });
 }
 
-static PyObject* PyIOSocket_bind_sync(PyIOSocket* self, PyObject* args, PyObject* kwargs) {
+static PyObject* PyIOSocket_bind_sync(PyIOSocket* self, PyObject* args, PyObject* kwargs)
+{
     auto state = YMQStateFromSelf((PyObject*)self);
     if (!state)
         return nullptr;
@@ -274,7 +281,8 @@ static PyObject* PyIOSocket_bind_sync(PyIOSocket* self, PyObject* args, PyObject
     Py_RETURN_NONE;
 }
 
-static PyObject* PyIOSocket_connect(PyIOSocket* self, PyObject* args, PyObject* kwargs) {
+static PyObject* PyIOSocket_connect(PyIOSocket* self, PyObject* args, PyObject* kwargs)
+{
     PyObject* addressObj = nullptr;
     const char* kwlist[] = {"address", nullptr};
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &addressObj)) {
@@ -307,7 +315,8 @@ static PyObject* PyIOSocket_connect(PyIOSocket* self, PyObject* args, PyObject* 
     });
 }
 
-static PyObject* PyIOSocket_connect_sync(PyIOSocket* self, PyObject* args, PyObject* kwargs) {
+static PyObject* PyIOSocket_connect_sync(PyIOSocket* self, PyObject* args, PyObject* kwargs)
+{
     auto state = YMQStateFromSelf((PyObject*)self);
     if (!state)
         return nullptr;
@@ -356,15 +365,18 @@ static PyObject* PyIOSocket_connect_sync(PyIOSocket* self, PyObject* args, PyObj
     Py_RETURN_NONE;
 }
 
-static PyObject* PyIOSocket_repr(PyIOSocket* self) {
+static PyObject* PyIOSocket_repr(PyIOSocket* self)
+{
     return PyUnicode_FromFormat("<IOSocket at %p>", (void*)self->socket.get());
 }
 
-static PyObject* PyIOSocket_identity_getter(PyIOSocket* self, void* closure) {
+static PyObject* PyIOSocket_identity_getter(PyIOSocket* self, void* closure)
+{
     return PyUnicode_FromStringAndSize(self->socket->identity().data(), self->socket->identity().size());
 }
 
-static PyObject* PyIOSocket_socket_type_getter(PyIOSocket* self, void* closure) {
+static PyObject* PyIOSocket_socket_type_getter(PyIOSocket* self, void* closure)
+{
     // replace with PyType_GetModuleByDef(Py_TYPE(self), &ymq_module) in a newer Python version
     // https://docs.python.org/3/c-api/type.html#c.PyType_GetModuleByDef
     PyObject* pyModule = PyType_GetModule(Py_TYPE(self));

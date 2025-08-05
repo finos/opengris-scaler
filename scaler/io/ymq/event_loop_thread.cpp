@@ -11,7 +11,8 @@
 namespace scaler {
 namespace ymq {
 
-void EventLoopThread::createIOSocket(std::string identity, IOSocketType socketType, CreateIOSocketCallback callback) {
+void EventLoopThread::createIOSocket(std::string identity, IOSocketType socketType, CreateIOSocketCallback callback)
+{
     if (thread.get_id() == std::thread::id()) {
         thread = std::jthread([this](std::stop_token token) {
             while (!token.stop_requested()) {
@@ -40,7 +41,8 @@ void EventLoopThread::createIOSocket(std::string identity, IOSocketType socketTy
     });
 }
 
-void EventLoopThread::removeIOSocket(IOSocket* target) {
+void EventLoopThread::removeIOSocket(IOSocket* target)
+{
     auto useCount = _identityToIOSocket[target->identity()].use_count();
     if (useCount != 1) {
         unrecoverableError({

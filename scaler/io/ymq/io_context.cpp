@@ -13,13 +13,15 @@
 namespace scaler {
 namespace ymq {
 
-IOContext::IOContext(size_t threadCount) noexcept: _threads(threadCount) {
+IOContext::IOContext(size_t threadCount) noexcept: _threads(threadCount)
+{
     assert(threadCount > 0);
     std::ranges::generate(_threads, std::make_shared<EventLoopThread>);
 }
 
 void IOContext::createIOSocket(
-    Identity identity, IOSocketType socketType, CreateIOSocketCallback onIOSocketCreated) & noexcept {
+    Identity identity, IOSocketType socketType, CreateIOSocketCallback onIOSocketCreated) & noexcept
+{
     static std::atomic<size_t> threadsRoundRobin = 0;
     auto& thread                                 = _threads[threadsRoundRobin];
     ++threadsRoundRobin;
@@ -27,7 +29,8 @@ void IOContext::createIOSocket(
     thread->createIOSocket(std::move(identity), socketType, std::move(onIOSocketCreated));
 }
 
-void IOContext::removeIOSocket(std::shared_ptr<IOSocket>& socket) noexcept {
+void IOContext::removeIOSocket(std::shared_ptr<IOSocket>& socket) noexcept
+{
     auto* rawSocket = socket.get();
     socket.reset();
 

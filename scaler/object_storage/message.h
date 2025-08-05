@@ -40,7 +40,8 @@ struct ObjectID {
     kj::Array<const capnp::word> toBuffer() const;
 
     template <typename Buffer>
-    static ObjectID fromBuffer(const Buffer& buffer) {
+    static ObjectID fromBuffer(const Buffer& buffer)
+    {
         capnp::FlatArrayMessageReader reader(
             kj::ArrayPtr<const capnp::word>((const capnp::word*)buffer.data(), bufferSize() / CAPNP_WORD_SIZE));
 
@@ -63,7 +64,8 @@ struct ObjectRequestHeader {
     kj::Array<const capnp::word> toBuffer() const;
 
     template <typename Buffer>
-    static ObjectRequestHeader fromBuffer(const Buffer& buffer) {
+    static ObjectRequestHeader fromBuffer(const Buffer& buffer)
+    {
         capnp::FlatArrayMessageReader reader(
             kj::ArrayPtr<const capnp::word>((const capnp::word*)buffer.data(), bufferSize() / CAPNP_WORD_SIZE));
 
@@ -98,7 +100,8 @@ struct ObjectResponseHeader {
     kj::Array<const capnp::word> toBuffer() const;
 
     template <typename Buffer>
-    static ObjectResponseHeader fromBuffer(const Buffer& buffer) {
+    static ObjectResponseHeader fromBuffer(const Buffer& buffer)
+    {
         capnp::FlatArrayMessageReader reader(
             kj::ArrayPtr<const capnp::word>((const capnp::word*)buffer.data(), bufferSize() / CAPNP_WORD_SIZE));
 

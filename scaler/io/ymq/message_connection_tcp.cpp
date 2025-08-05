@@ -23,7 +23,8 @@ namespace ymq {
 
 static constexpr const size_t HEADER_SIZE = sizeof(uint64_t);
 
-constexpr bool MessageConnectionTCP::isCompleteMessage(const TcpReadOperation& x) {
+constexpr bool MessageConnectionTCP::isCompleteMessage(const TcpReadOperation& x)
+{
     if (x._cursor < HEADER_SIZE) {
         return false;
     }
@@ -50,7 +51,8 @@ MessageConnectionTCP::MessageConnectionTCP(
     , _remoteIOSocketIdentity(std::nullopt)
     , _responsibleForRetry(responsibleForRetry)
     , _pendingRecvMessageCallbacks(pendingRecvMessageCallbacks)
-    , _sendCursor {} {
+    , _sendCursor {}
+{
     _eventManager->onRead  = [this] { this->onRead(); };
     _eventManager->onWrite = [this] { this->onWrite(); };
     _eventManager->onClose = [this] { this->onClose(); };
@@ -71,14 +73,16 @@ MessageConnectionTCP::MessageConnectionTCP(
     , _remoteIOSocketIdentity(std::move(remoteIOSocketIdentity))
     , _responsibleForRetry(false)
     , _pendingRecvMessageCallbacks(pendingRecvMessageCallbacks)
-    , _sendCursor {} {
+    , _sendCursor {}
+{
     _eventManager->onRead  = [this] { this->onRead(); };
     _eventManager->onWrite = [this] { this->onWrite(); };
     _eventManager->onClose = [this] { this->onClose(); };
     _eventManager->onError = [this] { this->onError(); };
 }
 
-void MessageConnectionTCP::onCreated() {
+void MessageConnectionTCP::onCreated()
+{
     if (_connFd != 0) {
         this->_eventLoopThread->_eventLoop.addFdToLoop(
             _connFd, EPOLLIN | EPOLLOUT | EPOLLET, this->_eventManager.get());
@@ -88,7 +92,8 @@ void MessageConnectionTCP::onCreated() {
 }
 
 // on Return, unexpected value shall be interpreted as this - 0 = close, other -> errno
-std::expected<void, int> MessageConnectionTCP::tryReadMessages(bool readOneMessage) {
+std::expected<void, int> MessageConnectionTCP::tryReadMessages(bool readOneMessage)
+{
     bool haveReadOne = false;
     while (true) {
         char* readTo         = nullptr;
@@ -174,7 +179,8 @@ std::expected<void, int> MessageConnectionTCP::tryReadMessages(bool readOneMessa
     return {};
 }
 
-void MessageConnectionTCP::updateReadOperation() {
+void MessageConnectionTCP::updateReadOperation()
+{
     while (_pendingRecvMessageCallbacks->size() && _receivedReadOperations.size()) {
         if (isCompleteMessage(_receivedReadOperations.front())) {
             Bytes address(_remoteIOSocketIdentity->data(), _remoteIOSocketIdentity->size());
@@ -193,7 +199,8 @@ void MessageConnectionTCP::updateReadOperation() {
     }
 }
 
-void MessageConnectionTCP::onRead() {
+void MessageConnectionTCP::onRead()
+{
     if (_connFd == 0) {
         return;
     }
@@ -227,7 +234,8 @@ void MessageConnectionTCP::onRead() {
     updateReadOperation();
 }
 
-void MessageConnectionTCP::onWrite() {
+void MessageConnectionTCP::onWrite()
+{
     // This is because after disconnected, onRead will be called first, and that will set
     // _connFd to 0. There's no way to not call onWrite in this case. So we return early.
     if (_connFd == 0) {
@@ -248,7 +256,8 @@ void MessageConnectionTCP::onWrite() {
     }
 }
 
-void MessageConnectionTCP::onClose() {
+void MessageConnectionTCP::onClose()
+{
     if (_connFd) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_connFd);
         close(_connFd);
@@ -258,7 +267,8 @@ void MessageConnectionTCP::onClose() {
     }
 };
 
-std::expected<size_t, int> MessageConnectionTCP::trySendQueuedMessages() {
+std::expected<size_t, int> MessageConnectionTCP::trySendQueuedMessages()
+{
     std::vector<struct iovec> iovecs;
     iovecs.reserve(IOV_MAX);
 
@@ -375,7 +385,8 @@ std::expected<size_t, int> MessageConnectionTCP::trySendQueuedMessages() {
 // TODO: There is a classic optimization that can (and should) be done. That is, we store
 // prefix sum in each write operation, and perform binary search instead of linear search
 // to find the first write operation we haven't complete. - gxu
-void MessageConnectionTCP::updateWriteOperations(size_t n) {
+void MessageConnectionTCP::updateWriteOperations(size_t n)
+{
     auto firstIncomplete = _writeOperations.begin();
     _sendCursor += n;
     // Post condition of the loop: firstIncomplete contains the first write op we haven't complete.
@@ -405,7 +416,8 @@ void MessageConnectionTCP::updateWriteOperations(size_t n) {
     // _writeOperations.shrink_to_fit();
 }
 
-void MessageConnectionTCP::sendMessage(Message msg, SendMessageCallback onMessageSent) {
+void MessageConnectionTCP::sendMessage(Message msg, SendMessageCallback onMessageSent)
+{
     TcpWriteOperation writeOp(std::move(msg), std::move(onMessageSent));
     _writeOperations.emplace_back(std::move(writeOp));
 
@@ -415,7 +427,8 @@ void MessageConnectionTCP::sendMessage(Message msg, SendMessageCallback onMessag
     onWrite();
 }
 
-bool MessageConnectionTCP::recvMessage() {
+bool MessageConnectionTCP::recvMessage()
+{
     if (_receivedReadOperations.empty() || _pendingRecvMessageCallbacks->empty() ||
         !isCompleteMessage(_receivedReadOperations.front())) {
         return false;
@@ -425,7 +438,8 @@ bool MessageConnectionTCP::recvMessage() {
     return true;
 }
 
-MessageConnectionTCP::~MessageConnectionTCP() noexcept {
+MessageConnectionTCP::~MessageConnectionTCP() noexcept
+{
     if (_connFd != 0) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_connFd);
         shutdown(_connFd, SHUT_RDWR);

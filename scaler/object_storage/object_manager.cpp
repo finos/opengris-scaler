@@ -4,7 +4,8 @@
 
 template <>
 struct std::hash<scaler::object_storage::ObjectPayload> {
-    std::size_t operator()(const scaler::object_storage::ObjectPayload& payload) const noexcept {
+    std::size_t operator()(const scaler::object_storage::ObjectPayload& payload) const noexcept
+    {
         return std::hash<std::string_view> {}({reinterpret_cast<const char*>(payload.data()), payload.size()});
     }
 };
@@ -12,10 +13,13 @@ struct std::hash<scaler::object_storage::ObjectPayload> {
 namespace scaler {
 namespace object_storage {
 
-ObjectManager::ObjectManager() {}
+ObjectManager::ObjectManager()
+{
+}
 
 std::shared_ptr<const ObjectPayload> ObjectManager::setObject(
-    const ObjectID& objectID, ObjectPayload&& payload) noexcept {
+    const ObjectID& objectID, ObjectPayload&& payload) noexcept
+{
     if (hasObject(objectID)) {
         // Overriding object: delete old first
         deleteObject(objectID);
@@ -45,7 +49,8 @@ std::shared_ptr<const ObjectPayload> ObjectManager::setObject(
     return objectIt->second.payload;
 }
 
-std::shared_ptr<const ObjectPayload> ObjectManager::getObject(const ObjectID& objectID) const noexcept {
+std::shared_ptr<const ObjectPayload> ObjectManager::getObject(const ObjectID& objectID) const noexcept
+{
     auto hashIt = objectIDToHash.find(objectID);
 
     if (hashIt == objectIDToHash.end()) {
@@ -55,7 +60,8 @@ std::shared_ptr<const ObjectPayload> ObjectManager::getObject(const ObjectID& ob
     return hashToObject.at(hashIt->second).payload;
 }
 
-bool ObjectManager::deleteObject(const ObjectID& objectID) noexcept {
+bool ObjectManager::deleteObject(const ObjectID& objectID) noexcept
+{
     auto hashIt = objectIDToHash.find(objectID);
 
     if (hashIt == objectIDToHash.end()) {
@@ -77,7 +83,8 @@ bool ObjectManager::deleteObject(const ObjectID& objectID) noexcept {
 }
 
 std::shared_ptr<const ObjectPayload> ObjectManager::duplicateObject(
-    const ObjectID& originalObjectID, const ObjectID& newObjectID) noexcept {
+    const ObjectID& originalObjectID, const ObjectID& newObjectID) noexcept
+{
     auto hashIt = objectIDToHash.find(originalObjectID);
 
     if (hashIt == objectIDToHash.end()) {
@@ -100,15 +107,18 @@ std::shared_ptr<const ObjectPayload> ObjectManager::duplicateObject(
     return object.payload;
 }
 
-bool ObjectManager::hasObject(const ObjectID& objectID) const noexcept {
+bool ObjectManager::hasObject(const ObjectID& objectID) const noexcept
+{
     return objectIDToHash.contains(objectID);
 }
 
-size_t ObjectManager::size() const noexcept {
+size_t ObjectManager::size() const noexcept
+{
     return objectIDToHash.size();
 }
 
-size_t ObjectManager::sizeUnique() const noexcept {
+size_t ObjectManager::sizeUnique() const noexcept
+{
     return hashToObject.size();
 }
 

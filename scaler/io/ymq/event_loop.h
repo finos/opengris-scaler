@@ -46,7 +46,8 @@ public:
     void registerCallbackBeforeLoop(EventManager*);
     void registerEventManager(EventManager& em) { backend.registerEventManager(em); }
 
-    auto addFdToLoop(int fd, uint64_t events, EventManager* manager) {
+    auto addFdToLoop(int fd, uint64_t events, EventManager* manager)
+    {
         return backend.addFdToLoop(fd, events, manager);
     }
 

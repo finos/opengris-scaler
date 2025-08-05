@@ -18,7 +18,8 @@ std::string longStr = "1234567890";
 using namespace scaler::ymq;
 using namespace std::chrono_literals;
 
-int main() {
+int main()
+{
     IOContext context;
 
     for (int i = 0; i < 400; ++i)

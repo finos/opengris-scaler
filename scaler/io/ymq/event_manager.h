@@ -22,7 +22,8 @@ class EventManager {
     // FileDescriptor _fd;
 
 public:
-    void onEvents(uint64_t events) {
+    void onEvents(uint64_t events)
+    {
         if constexpr (std::same_as<Configuration::PollingContext, EpollContext>) {
             int realEvents = (int)events;
             if ((realEvents & EPOLLHUP) && !(realEvents & EPOLLIN)) {
