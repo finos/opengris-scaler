@@ -1,2 +1,7 @@
 add_subdirectory(object_storage)
-add_subdirectory(io/ymq)
+
+if(LINUX)
+  add_subdirectory(io/ymq)
+else()
+  message(WARNING "Not building YMQ, as it's not supported on this system currently!")
+endif()

@@ -3,7 +3,6 @@ __pychace__/
 *$py.class
 *.so
 
-build/
 dist/
 sdist/
 wheels/
@@ -28,3 +27,4 @@ dask-worker-space/*
 .python-version
 
 build*/
+CMakeUserPresets.json
