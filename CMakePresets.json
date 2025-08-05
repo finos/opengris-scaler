@@ -1,0 +1,60 @@
+{
+  "version": 8,
+  "configurePresets": [
+    {
+      "name": "linux-x86_64",
+      "displayName": "Linux 64 bit build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}"
+      },
+      "binaryDir": "${sourceDir}/build_linux_x86_64"
+    },
+    {
+      "name": "darwin-arm64",
+      "displayName": "Apple ARM 64 bit build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}"
+      },
+      "binaryDir": "${sourceDir}/build_darwin_arm64"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "linux-x86_64",
+      "displayName": "Linux 64 bit build",
+      "configurePreset": "linux-x86_64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "darwin-arm64",
+      "displayName": "Apple ARM 64 bit build",
+      "configurePreset": "darwin-arm64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "targets": [
+        "object_storage_server",
+        "cc_object_storage_server",
+        "test_object_manager",
+        "test_object_storage_server"
+      ]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "default-test",
+      "configurePreset": "linux-x86_64",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

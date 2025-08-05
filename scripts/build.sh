@@ -9,28 +9,19 @@ OS="$(uname -s | tr '[:upper:]' '[:lower:]')"   # e.g. linux or darwin
 ARCH="$(uname -m)"                              # e.g. x86_64 or arm64
 
 BUILD_DIR="build_${OS}_${ARCH}"
+BUILD_PRESET="${OS}-${ARCH}"
 
 echo "Build directory: $BUILD_DIR"
-
-# YMQ only supported on Linux for now
-TARGETS=("object_storage_server" "cc_object_storage_server")
-TEST_TARGETS=("test_object_manager" "test_object_storage_server")
-if [[ "$OS" == "linux" ]]; then
-  TARGETS+=("ymq")
-fi
+echo "Build preset: $BUILD_PRESET"
 
 # Configure
-cmake -S . -B "$BUILD_DIR" \
-    -DCMAKE_BUILD_TYPE=Debug \
-    -DCMAKE_INSTALL_PREFIX=.
+cmake --preset $BUILD_PRESET
 
 # Build
-cmake --build "$BUILD_DIR" --target "${TARGETS[@]}" "${TEST_TARGETS[@]}"
+cmake --build --preset $BUILD_PRESET
 
 # Install
-for TARGET in "${TARGETS[@]}"; do
-  cmake --install "$BUILD_DIR" --component "$TARGET"
-done
+cmake --install $BUILD_DIR
 
 # Tests
-ctest --test-dir "$BUILD_DIR" --output-on-failure
+ctest --preset default-test
