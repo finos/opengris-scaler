@@ -21,7 +21,8 @@ class InterruptiveConcurrentQueue {
     moodycamel::ConcurrentQueue<T> _queue;
 
 public:
-    InterruptiveConcurrentQueue(): _queue() {
+    InterruptiveConcurrentQueue(): _queue()
+    {
         _eventFd = eventfd(0, EFD_NONBLOCK);
         if (_eventFd == -1) {
             const int myErrno = errno;
@@ -57,7 +58,8 @@ public:
 
     int eventFd() const { return _eventFd; }
 
-    void enqueue(T item) {
+    void enqueue(T item)
+    {
         _queue.enqueue(std::move(item));
 
         uint64_t u = 1;
@@ -73,7 +75,8 @@ public:
     }
 
     // NOTE: this method will block until an item is available
-    std::vector<T> dequeue() {
+    std::vector<T> dequeue()
+    {
         uint64_t u {};
         if (::eventfd_read(_eventFd, &u) < 0) {
             if (errno == EAGAIN) {

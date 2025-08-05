@@ -11,7 +11,8 @@
 namespace scaler {
 namespace ymq {
 
-void EpollContext::execPendingFunctions() {
+void EpollContext::execPendingFunctions()
+{
     while (_delayedFunctions.size()) {
         auto top = std::move(_delayedFunctions.front());
         top();
@@ -19,7 +20,8 @@ void EpollContext::execPendingFunctions() {
     }
 }
 
-void EpollContext::loop() {
+void EpollContext::loop()
+{
     std::array<epoll_event, _reventSize> events {};
     int n = epoll_wait(_epfd, events.data(), _reventSize, -1);
     if (n == -1) {
@@ -70,7 +72,8 @@ void EpollContext::loop() {
     execPendingFunctions();
 }
 
-void EpollContext::addFdToLoop(int fd, uint64_t events, EventManager* manager) {
+void EpollContext::addFdToLoop(int fd, uint64_t events, EventManager* manager)
+{
     epoll_event event {};
     event.events   = (int)events & (EPOLLIN | EPOLLOUT | EPOLLET);
     event.data.ptr = (void*)manager;
@@ -127,7 +130,8 @@ void EpollContext::addFdToLoop(int fd, uint64_t events, EventManager* manager) {
     }
 }
 
-void EpollContext::removeFdFromLoop(int fd) {
+void EpollContext::removeFdFromLoop(int fd)
+{
     if (epoll_ctl(_epfd, EPOLL_CTL_DEL, fd, nullptr) == 0) {
         return;
     }

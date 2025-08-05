@@ -7,7 +7,7 @@
 #include "scaler/io/ymq/bytes.h"
 
 class MessageConnection {
-    public:
+public:
     using SendMessageContinuation = std::function<void()>;
     using RecvMessageContinuation = std::function<void(Bytes)>;
 

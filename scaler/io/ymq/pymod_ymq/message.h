@@ -17,7 +17,8 @@ struct PyMessage {
 
 extern "C" {
 
-static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds) {
+static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds)
+{
     // replace with PyType_GetModuleByDef(Py_TYPE(self), &ymq_module) in a newer Python version
     // https://docs.python.org/3/c-api/type.html#c.PyType_GetModuleByDef
     PyObject* pyModule = PyType_GetModule(Py_TYPE(self));
@@ -66,13 +67,15 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds) {
     return 0;
 }
 
-static void PyMessage_dealloc(PyMessage* self) {
+static void PyMessage_dealloc(PyMessage* self)
+{
     Py_XDECREF(self->address);
     Py_XDECREF(self->payload);
     Py_TYPE(self)->tp_free(self);
 }
 
-static PyObject* PyMessage_repr(PyMessage* self) {
+static PyObject* PyMessage_repr(PyMessage* self)
+{
     return PyUnicode_FromFormat("<Message address=%R payload=%R>", self->address, self->payload);
 }
 }

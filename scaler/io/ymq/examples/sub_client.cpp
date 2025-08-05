@@ -15,7 +15,8 @@
 
 using namespace scaler::ymq;
 
-int main() {
+int main()
+{
     IOContext context;
     auto clientSocket1 = syncCreateSocket(context, IOSocketType::Unicast, "ClientSocket1");
     auto clientSocket2 = syncCreateSocket(context, IOSocketType::Unicast, "ClientSocket2");

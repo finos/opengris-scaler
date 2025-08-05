@@ -21,7 +21,8 @@ using namespace scaler::ymq;
 using namespace std::chrono;
 using namespace std::chrono_literals;
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
     if (argc != 5) {
         printf("Usage: %s <Identity> <MessageSize> <MessageCount> <AddressString>\n", argv[0]);
         exit(1);

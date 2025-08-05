@@ -10,7 +10,8 @@
 
 using namespace scaler::ymq;
 
-int main() {
+int main()
+{
     IOContext context;
     auto clientSocket = syncCreateSocket(context, IOSocketType::Connector, "ServerSocket");
     printf("Successfully created socket.\n");

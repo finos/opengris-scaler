@@ -52,7 +52,8 @@ private:
     void onRead();
     void onWrite();
     void onClose();
-    void onError() {
+    void onError()
+    {
         printf("%s\n", __PRETTY_FUNCTION__);
         printf("onError (for debug don't remove) later this will be a log\n");
         onClose();

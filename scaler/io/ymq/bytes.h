@@ -19,7 +19,8 @@ class Bytes {
     uint8_t* _data;
     size_t _len;
 
-    void free() {
+    void free()
+    {
         if (is_empty())
             return;
         delete[] _data;
@@ -33,33 +34,39 @@ public:
 
     Bytes(): _data {}, _len {} {}
 
-    Bytes(const Bytes& other) noexcept {
+    Bytes(const Bytes& other) noexcept
+    {
         this->_data = datadup(other._data, other._len);
         this->_len  = other._len;
     }
 
-    Bytes& operator=(const Bytes& other) noexcept {
+    Bytes& operator=(const Bytes& other) noexcept
+    {
         Bytes tmp(other);
         swap(*this, tmp);
         return *this;
     }
 
-    friend void swap(Bytes& x, Bytes& y) noexcept {
+    friend void swap(Bytes& x, Bytes& y) noexcept
+    {
         using std::swap;
         swap(x._len, y._len);
         swap(x._data, y._data);
     }
 
-    Bytes(Bytes&& other) noexcept: _data(other._data), _len(other._len) {
+    Bytes(Bytes&& other) noexcept: _data(other._data), _len(other._len)
+    {
         other._data = nullptr;
         other._len  = 0;
     }
 
-    friend std::strong_ordering operator<=>(const Bytes& x, const Bytes& y) noexcept {
+    friend std::strong_ordering operator<=>(const Bytes& x, const Bytes& y) noexcept
+    {
         return std::lexicographical_compare_three_way(x._data, x._data + x._len, y._data, y._data + y._len);
     }
 
-    Bytes& operator=(Bytes&& other) noexcept {
+    Bytes& operator=(Bytes&& other) noexcept
+    {
         if (this != &other) {
             this->free();  // free current data
 
@@ -79,7 +86,8 @@ public:
     [[nodiscard]] constexpr bool is_empty() const noexcept { return !this->_data; }
 
     // debugging utility
-    std::string as_string() const {
+    std::string as_string() const
+    {
         if (is_empty())
             return "[EMPTY]";
 
@@ -87,7 +95,8 @@ public:
     }
 
     [[nodiscard("Allocated Bytes is not used, likely causing a memory leak")]]
-    static Bytes alloc(size_t len) noexcept {
+    static Bytes alloc(size_t len) noexcept
+    {
         auto ptr = new uint8_t[len];  // we just assume the allocation will succeed
         return Bytes {ptr, len};
     }

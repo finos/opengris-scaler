@@ -31,7 +31,8 @@ struct YMQState {
 
 // this function must be called from a C++ thread
 // this function will lock the GIL, call `fn()` and use its return value to set the future's result/exception
-static void future_do(PyObject* future, const std::function<PyObject*()>& fn, const char* future_method) {
+static void future_do(PyObject* future, const std::function<PyObject*()>& fn, const char* future_method)
+{
     PyGILState_STATE gstate = PyGILState_Ensure();
     // begin python critical section
 
@@ -67,15 +68,18 @@ static void future_do(PyObject* future, const std::function<PyObject*()>& fn, co
     PyGILState_Release(gstate);
 }
 
-static void future_set_result(PyObject* future, std::function<PyObject*()> fn) {
+static void future_set_result(PyObject* future, std::function<PyObject*()> fn)
+{
     return future_do(future, fn, "set_result");
 }
 
-static void future_raise_exception(PyObject* future, std::function<PyObject*()> fn) {
+static void future_raise_exception(PyObject* future, std::function<PyObject*()> fn)
+{
     return future_do(future, fn, "set_exception");
 }
 
-static YMQState* YMQStateFromSelf(PyObject* self) {
+static YMQState* YMQStateFromSelf(PyObject* self)
+{
     // replace with PyType_GetModuleByDef(Py_TYPE(self), &ymq_module) in a newer Python version
     // https://docs.python.org/3/c-api/type.html#c.PyType_GetModuleByDef
     PyObject* pyModule = PyType_GetModule(Py_TYPE(self));
@@ -95,7 +99,8 @@ static YMQState* YMQStateFromSelf(PyObject* self) {
 
 extern "C" {
 
-static void ymq_free(YMQState* state) {
+static void ymq_free(YMQState* state)
+{
     Py_XDECREF(state->enumModule);
     Py_XDECREF(state->asyncioModule);
     Py_XDECREF(state->PyIOSocketEnumType);
@@ -118,7 +123,8 @@ static void ymq_free(YMQState* state) {
 }
 
 static int ymq_createIntEnum(
-    PyObject* pyModule, PyObject** storage, std::string enumName, std::vector<std::pair<std::string, int>> entries) {
+    PyObject* pyModule, PyObject** storage, std::string enumName, std::vector<std::pair<std::string, int>> entries)
+{
     // create a python dictionary to hold the entries
     auto enumDict = PyDict_New();
     if (!enumDict) {
@@ -174,7 +180,8 @@ static int ymq_createIntEnum(
     return 0;
 }
 
-static int ymq_createIOSocketTypeEnum(PyObject* pyModule, YMQState* state) {
+static int ymq_createIOSocketTypeEnum(PyObject* pyModule, YMQState* state)
+{
     std::vector<std::pair<std::string, int>> ioSocketTypes = {
         {"Uninit", (int)IOSocketType::Uninit},
         {"Binder", (int)IOSocketType::Binder},
@@ -191,7 +198,8 @@ static int ymq_createIOSocketTypeEnum(PyObject* pyModule, YMQState* state) {
     return 0;
 }
 
-static PyObject* YMQErrorCode_explanation(PyObject* self, PyObject* Py_UNUSED(args)) {
+static PyObject* YMQErrorCode_explanation(PyObject* self, PyObject* Py_UNUSED(args))
+{
     auto pyValue = PyObject_GetAttrString(self, "value");
     if (!pyValue) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to get value attribute");
@@ -218,7 +226,8 @@ static PyObject* YMQErrorCode_explanation(PyObject* self, PyObject* Py_UNUSED(ar
 
 // IDEA: CREATE AN INT ENUM AND ATTACH METHOD AFTERWARDS
 // OR: CREATE A NON-INT ENUM AND USE A TUPLE FOR THE VALUES
-static int ymq_createErrorCodeEnum(PyObject* pyModule, YMQState* state) {
+static int ymq_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
+{
     std::vector<std::pair<std::string, int>> errorCodeValues = {
         {"Uninit", (int)Error::ErrorCode::Uninit},
         {"InvalidPortFormat", (int)Error::ErrorCode::InvalidPortFormat},
@@ -285,7 +294,8 @@ static int ymq_createType(
     // whether or not to add this type to the module
     bool add = true,
     // the types base classes
-    PyObject* bases = nullptr) {
+    PyObject* bases = nullptr)
+{
     assert(storage != nullptr);
 
     *storage = PyType_FromModuleAndSpec(pyModule, spec, bases);
@@ -305,7 +315,8 @@ static int ymq_createType(
     return 0;
 }
 
-static int ymq_exec(PyObject* pyModule) {
+static int ymq_exec(PyObject* pyModule)
+{
     auto state = (YMQState*)PyModule_GetState(pyModule);
 
     if (!state) {

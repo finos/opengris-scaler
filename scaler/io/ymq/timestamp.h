@@ -19,20 +19,23 @@ struct Timestamp {
     Timestamp(std::chrono::time_point<std::chrono::system_clock> t) { timestamp = std::move(t); }
 
     template <class Rep, class Period = std::ratio<1>>
-    Timestamp createTimestampByOffsetDuration(std::chrono::duration<Rep, Period> offset) {
+    Timestamp createTimestampByOffsetDuration(std::chrono::duration<Rep, Period> offset)
+    {
         return {timestamp + offset};
     }
 };
 
 // For possibly logging purposes
-inline std::string stringifyTimestamp(Timestamp ts) {
+inline std::string stringifyTimestamp(Timestamp ts)
+{
     std::ostringstream oss;
     oss << ts.timestamp;
     return oss.str();
 }
 
 // For timerfd
-inline itimerspec convertToItimerspec(Timestamp ts) {
+inline itimerspec convertToItimerspec(Timestamp ts)
+{
     using namespace std::chrono;
 
     itimerspec timerspec {};
@@ -53,12 +56,14 @@ inline itimerspec convertToItimerspec(Timestamp ts) {
 template <>
 struct std::formatter<scaler::ymq::Timestamp, char> {
     template <class ParseContext>
-    constexpr ParseContext::iterator parse(ParseContext& ctx) {
+    constexpr ParseContext::iterator parse(ParseContext& ctx)
+    {
         return ctx.begin();
     }
 
     template <class FmtContext>
-    constexpr FmtContext::iterator format(scaler::ymq::Timestamp e, FmtContext& ctx) const {
+    constexpr FmtContext::iterator format(scaler::ymq::Timestamp e, FmtContext& ctx) const
+    {
         std::ostringstream out;
         const auto ts {std::chrono::floor<std::chrono::seconds>(e.timestamp)};
         const std::chrono::zoned_time z {std::chrono::current_zone(), ts};

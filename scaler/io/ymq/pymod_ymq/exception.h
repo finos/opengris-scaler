@@ -22,7 +22,8 @@ struct YMQException {
 
 extern "C" {
 
-static int YMQException_init(YMQException* self, PyObject* args, PyObject* kwds) {
+static int YMQException_init(YMQException* self, PyObject* args, PyObject* kwds)
+{
     // check the args
     PyObject* code    = nullptr;
     PyObject* message = nullptr;
@@ -57,15 +58,18 @@ static int YMQException_init(YMQException* self, PyObject* args, PyObject* kwds)
     return self->ob_base.ob_type->tp_base->tp_init((PyObject*)self, args, kwds);
 }
 
-static void YMQException_dealloc(YMQException* self) {
+static void YMQException_dealloc(YMQException* self)
+{
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-static PyObject* YMQException_code_getter(YMQException* self, void* Py_UNUSED(closure)) {
+static PyObject* YMQException_code_getter(YMQException* self, void* Py_UNUSED(closure))
+{
     return PySequence_GetItem(self->args, YMQException_errorCodeIndex);
 }
 
-static PyObject* YMQException_message_getter(YMQException* self, void* Py_UNUSED(closure)) {
+static PyObject* YMQException_message_getter(YMQException* self, void* Py_UNUSED(closure))
+{
     return PySequence_GetItem(self->args, YMQException_messageIndex);
 }
 }
@@ -86,7 +90,8 @@ static PyType_Slot YMQException_slots[] = {
 static PyType_Spec YMQException_spec = {
     "ymq.YMQException", sizeof(YMQException), 0, Py_TPFLAGS_DEFAULT, YMQException_slots};
 
-PyObject* YMQException_argtupleFromCoreError(const Error* error) {
+PyObject* YMQException_argtupleFromCoreError(const Error* error)
+{
     PyObject* code = PyLong_FromLong(static_cast<long>(error->_errorCode));
 
     if (!code)
@@ -113,7 +118,8 @@ PyObject* YMQException_argtupleFromCoreError(const Error* error) {
     return tuple;
 }
 
-void YMQException_setFromCoreError(YMQState* state, const Error* error) {
+void YMQException_setFromCoreError(YMQState* state, const Error* error)
+{
     auto tuple = YMQException_argtupleFromCoreError(error);
     if (!tuple)
         return;
@@ -122,7 +128,8 @@ void YMQException_setFromCoreError(YMQState* state, const Error* error) {
     Py_DECREF(tuple);
 }
 
-PyObject* YMQException_createFromCoreError(YMQState* state, const Error* error) {
+PyObject* YMQException_createFromCoreError(YMQState* state, const Error* error)
+{
     auto tuple = YMQException_argtupleFromCoreError(error);
     if (!tuple)
         return nullptr;

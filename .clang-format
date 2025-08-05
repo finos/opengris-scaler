@@ -10,7 +10,6 @@ AlignOperands: 'true'
 AlignTrailingComments: 'true'
 AllowAllArgumentsOnNextLine: 'true'
 AllowAllConstructorInitializersOnNextLine: 'true'
-AllowAllParametersOfDeclarationOnNextLine: 'true'
 AllowShortBlocksOnASingleLine: 'true'
 AllowShortCaseLabelsOnASingleLine: 'true'
 AllowShortIfStatementsOnASingleLine: Never
@@ -20,9 +19,7 @@ AlwaysBreakAfterReturnType: None
 AlwaysBreakBeforeMultilineStrings: 'true'
 AlwaysBreakTemplateDeclarations: 'Yes'
 BinPackArguments: 'false'
-BinPackParameters: 'false'
 BreakBeforeBinaryOperators: None
-BreakBeforeBraces: Attach
 BreakBeforeTernaryOperators: 'false'
 BreakConstructorInitializers: BeforeComma
 BreakInheritanceList: BeforeColon
@@ -58,4 +55,22 @@ Standard: Cpp11
 TabWidth: '4'
 UseTab: Never
 
+# control function declaration/definition
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowAllParametersOfDeclarationOnNextLine: true
+BinPackParameters: OnePerLine
+
+# control behavior of {, only detach for function body
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterClass: false
+  AfterControlStatement: false
+  AfterEnum: false
+  AfterNamespace: false
+  AfterStruct: false
+  AfterUnion: false
+  BeforeCatch: false
+  BeforeElse: false
+  IndentBraces: false
 ...

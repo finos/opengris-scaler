@@ -3,16 +3,19 @@
 namespace scaler {
 namespace object_storage {
 
-ObjectStorageServer::ObjectStorageServer() {
+ObjectStorageServer::ObjectStorageServer()
+{
     initServerReadyFds();
 }
 
-ObjectStorageServer::~ObjectStorageServer() {
+ObjectStorageServer::~ObjectStorageServer()
+{
     shutdown();
     closeServerReadyFds();
 }
 
-void ObjectStorageServer::run(std::string name, std::string port) {
+void ObjectStorageServer::run(std::string name, std::string port)
+{
     try {
         tcp::resolver resolver(ioContext);
         auto res = resolver.resolve(name, port);
@@ -29,7 +32,8 @@ void ObjectStorageServer::run(std::string name, std::string port) {
     }
 }
 
-void ObjectStorageServer::waitUntilReady() {
+void ObjectStorageServer::waitUntilReady()
+{
     uint64_t value;
     ssize_t ret = read(onServerReadyReader, &value, sizeof(uint64_t));
 
@@ -39,11 +43,13 @@ void ObjectStorageServer::waitUntilReady() {
     }
 }
 
-void ObjectStorageServer::shutdown() {
+void ObjectStorageServer::shutdown()
+{
     ioContext.stop();
 }
 
-void ObjectStorageServer::initServerReadyFds() {
+void ObjectStorageServer::initServerReadyFds()
+{
     int pipeFds[2] {};
     int ret = pipe(pipeFds);
 
@@ -56,7 +62,8 @@ void ObjectStorageServer::initServerReadyFds() {
     onServerReadyWriter = pipeFds[1];
 }
 
-void ObjectStorageServer::setServerReadyFd() {
+void ObjectStorageServer::setServerReadyFd()
+{
     uint64_t value = 1;
     ssize_t ret    = write(onServerReadyWriter, &value, sizeof(uint64_t));
 
@@ -66,7 +73,8 @@ void ObjectStorageServer::setServerReadyFd() {
     }
 }
 
-void ObjectStorageServer::closeServerReadyFds() {
+void ObjectStorageServer::closeServerReadyFds()
+{
     const std::array<int, 2> fds {onServerReadyReader, onServerReadyWriter};
 
     for (const int fd: fds) {
@@ -77,7 +85,8 @@ void ObjectStorageServer::closeServerReadyFds() {
     }
 }
 
-awaitable<void> ObjectStorageServer::listener(tcp::endpoint endpoint) {
+awaitable<void> ObjectStorageServer::listener(tcp::endpoint endpoint)
+{
     auto executor = co_await boost::asio::this_coro::executor;
     tcp::acceptor acceptor(executor, endpoint);
 
@@ -93,7 +102,8 @@ awaitable<void> ObjectStorageServer::listener(tcp::endpoint endpoint) {
     }
 }
 
-awaitable<void> ObjectStorageServer::processRequests(std::shared_ptr<Client> client) {
+awaitable<void> ObjectStorageServer::processRequests(std::shared_ptr<Client> client)
+{
     try {
         for (;;) {
             ObjectRequestHeader requestHeader = co_await readMessage<ObjectRequestHeader>(client);
@@ -124,7 +134,8 @@ awaitable<void> ObjectStorageServer::processRequests(std::shared_ptr<Client> cli
 }
 
 awaitable<void> ObjectStorageServer::processSetRequest(
-    std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader) {
+    std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader)
+{
     if (requestHeader.payloadLength > MEMORY_LIMIT_IN_BYTES) {
         std::cerr << "payload length is larger than MEMORY_LIMIT_IN_BYTES = " << MEMORY_LIMIT_IN_BYTES << '\n';
         std::terminate();
@@ -161,7 +172,8 @@ awaitable<void> ObjectStorageServer::processSetRequest(
 }
 
 awaitable<void> ObjectStorageServer::processGetRequest(
-    std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader) {
+    std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader)
+{
     auto objectPtr = objectManager.getObject(requestHeader.objectID);
 
     if (objectPtr != nullptr) {
@@ -173,7 +185,8 @@ awaitable<void> ObjectStorageServer::processGetRequest(
 }
 
 awaitable<void> ObjectStorageServer::processDeleteRequest(
-    std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader) {
+    std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader)
+{
     bool success = objectManager.deleteObject(requestHeader.objectID);
 
     ObjectResponseHeader responseHeader {
@@ -187,7 +200,8 @@ awaitable<void> ObjectStorageServer::processDeleteRequest(
 }
 
 awaitable<void> ObjectStorageServer::processDuplicateRequest(
-    std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader) {
+    std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader)
+{
     if (requestHeader.payloadLength != ObjectID::bufferSize()) {
         std::cerr << "payload length should be the size of ObjectID = " << ObjectID::bufferSize() << '\n';
         std::terminate();
@@ -209,7 +223,8 @@ awaitable<void> ObjectStorageServer::processDuplicateRequest(
 awaitable<void> ObjectStorageServer::sendGetResponse(
     std::shared_ptr<Client> client,
     const ObjectRequestHeader& requestHeader,
-    std::shared_ptr<const ObjectPayload> objectPtr) {
+    std::shared_ptr<const ObjectPayload> objectPtr)
+{
     uint64_t payloadLength = std::min(static_cast<uint64_t>(objectPtr->size()), requestHeader.payloadLength);
 
     ObjectResponseHeader responseHeader {
@@ -223,7 +238,8 @@ awaitable<void> ObjectStorageServer::sendGetResponse(
 }
 
 awaitable<void> ObjectStorageServer::sendDuplicateResponse(
-    std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader) {
+    std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader)
+{
     ObjectResponseHeader responseHeader {
         .objectID      = requestHeader.objectID,
         .payloadLength = 0,
@@ -235,7 +251,8 @@ awaitable<void> ObjectStorageServer::sendDuplicateResponse(
 }
 
 awaitable<void> ObjectStorageServer::optionallySendPendingRequests(
-    const ObjectID& objectID, std::shared_ptr<const ObjectPayload> objectPtr) {
+    const ObjectID& objectID, std::shared_ptr<const ObjectPayload> objectPtr)
+{
     auto it = pendingRequests.find(objectID);
 
     if (it == pendingRequests.end()) {
