@@ -20,7 +20,8 @@
 namespace scaler {
 namespace ymq {
 
-void TcpClient::onCreated() {
+void TcpClient::onCreated()
+{
     int sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
     if (sockfd == -1) {
         const int myErrno = errno;
@@ -148,14 +149,16 @@ TcpClient::TcpClient(
     , _onConnectReturn(std::move(onConnectReturn))
     , _maxRetryTimes(maxRetryTimes)
     , _retryTimes {}
-    , _retryIdentifier {} {
+    , _retryIdentifier {}
+{
     _eventManager->onRead  = [this] { this->onRead(); };
     _eventManager->onWrite = [this] { this->onWrite(); };
     _eventManager->onClose = [this] { this->onClose(); };
     _eventManager->onError = [this] { this->onError(); };
 }
 
-void TcpClient::onWrite() {
+void TcpClient::onWrite()
+{
     _eventLoopThread->_eventLoop.removeFdFromLoop(_connFd);
 
     int err {};
@@ -221,9 +224,12 @@ void TcpClient::onWrite() {
     _eventLoopThread->_eventLoop.executeLater([sock] { sock->removeConnectedTcpClient(); });
 }
 
-void TcpClient::onRead() {}
+void TcpClient::onRead()
+{
+}
 
-void TcpClient::retry() {
+void TcpClient::retry()
+{
     if (_retryTimes > _maxRetryTimes) {
         log(LoggingLevel::error, "Retried times has reached maximum", _maxRetryTimes);
         exit(1);
@@ -240,7 +246,8 @@ void TcpClient::retry() {
     _retryIdentifier = _eventLoopThread->_eventLoop.executeAt(at, [this] { this->onCreated(); });
 }
 
-TcpClient::~TcpClient() noexcept {
+TcpClient::~TcpClient() noexcept
+{
     if (_connFd) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_connFd);
         close(_connFd);

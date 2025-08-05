@@ -12,7 +12,8 @@
 // We should not be using namespace in header file, but this is example, so we are good
 using namespace scaler::ymq;
 
-inline std::shared_ptr<IOSocket> syncCreateSocket(IOContext& context, IOSocketType type, std::string name) {
+inline std::shared_ptr<IOSocket> syncCreateSocket(IOContext& context, IOSocketType type, std::string name)
+{
     auto createSocketPromise = std::promise<std::shared_ptr<IOSocket>>();
     auto createSocketFuture  = createSocketPromise.get_future();
     context.createIOSocket(
@@ -22,7 +23,8 @@ inline std::shared_ptr<IOSocket> syncCreateSocket(IOContext& context, IOSocketTy
     return clientSocket;
 }
 
-inline void syncBindSocket(std::shared_ptr<IOSocket> socket, std::string address) {
+inline void syncBindSocket(std::shared_ptr<IOSocket> socket, std::string address)
+{
     auto bind_promise = std::promise<std::expected<void, Error>>();
     auto bind_future  = bind_promise.get_future();
     // Optionally handle result in the callback
@@ -30,7 +32,8 @@ inline void syncBindSocket(std::shared_ptr<IOSocket> socket, std::string address
     bind_future.wait();
 }
 
-inline void syncConnectSocket(std::shared_ptr<IOSocket> socket, std::string address) {
+inline void syncConnectSocket(std::shared_ptr<IOSocket> socket, std::string address)
+{
     auto connect_promise = std::promise<std::expected<void, Error>>();
     auto connect_future  = connect_promise.get_future();
 

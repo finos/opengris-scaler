@@ -13,7 +13,8 @@
 
 using namespace scaler::ymq;
 
-int main() {
+int main()
+{
     IOContext context;
 
     auto socket = syncCreateSocket(context, IOSocketType::Binder, "ServerSocket");

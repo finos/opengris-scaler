@@ -24,7 +24,8 @@ inline LoggingLevel LOGGING_LEVEL = LoggingLevel::info;
 inline LoggingLevel LOGGING_LEVEL = LoggingLevel::debug;
 #endif
 
-constexpr std::string_view convertLevelToString(LoggingLevel level) {
+constexpr std::string_view convertLevelToString(LoggingLevel level)
+{
     switch (level) {
         case debug: return "[DEBUG]";
         case info: return "[INFO]";
@@ -34,7 +35,8 @@ constexpr std::string_view convertLevelToString(LoggingLevel level) {
 }
 
 template <typename... Args>
-constexpr void log(LoggingLevel level, Args&&... args) {
+constexpr void log(LoggingLevel level, Args&&... args)
+{
     if (level < LOGGING_LEVEL)
         return;
     auto str = argsToString(convertLevelToString(level), Timestamp {}, std::forward<Args>(args)...);

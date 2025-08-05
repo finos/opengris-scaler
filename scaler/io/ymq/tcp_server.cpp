@@ -20,7 +20,8 @@
 namespace scaler {
 namespace ymq {
 
-int TcpServer::createAndBindSocket() {
+int TcpServer::createAndBindSocket()
+{
     int server_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
     if (server_fd == -1) {
         unrecoverableError({
@@ -94,14 +95,16 @@ TcpServer::TcpServer(
     , _eventManager(std::make_unique<EventManager>())
     , _addr(std::move(addr))
     , _onBindReturn(std::move(onBindReturn))
-    , _serverFd {} {
+    , _serverFd {}
+{
     _eventManager->onRead  = [this] { this->onRead(); };
     _eventManager->onWrite = [this] { this->onWrite(); };
     _eventManager->onClose = [this] { this->onClose(); };
     _eventManager->onError = [this] { this->onError(); };
 }
 
-void TcpServer::onCreated() {
+void TcpServer::onCreated()
+{
     _serverFd = createAndBindSocket();
     if (_serverFd == -1) {
         _serverFd = 0;
@@ -111,7 +114,8 @@ void TcpServer::onCreated() {
     _onBindReturn({});
 }
 
-void TcpServer::onRead() {
+void TcpServer::onRead()
+{
     while (true) {
         sockaddr remoteAddr {};
         socklen_t remoteAddrLen = sizeof(remoteAddr);
@@ -192,7 +196,8 @@ void TcpServer::onRead() {
     }
 }
 
-TcpServer::~TcpServer() noexcept {
+TcpServer::~TcpServer() noexcept
+{
     if (_serverFd != 0) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_serverFd);
         close(_serverFd);

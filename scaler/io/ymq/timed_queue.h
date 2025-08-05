@@ -14,7 +14,8 @@
 namespace scaler {
 namespace ymq {
 
-inline int createTimerfd() {
+inline int createTimerfd()
+{
     int timerfd = ::timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     if (timerfd >= 0) {
         return timerfd;
@@ -61,12 +62,14 @@ public:
     using PriorityQueue       = std::priority_queue<TimedFunc, std::vector<TimedFunc>, decltype(cmp)>;
 
     TimedQueue(): _timerFd(createTimerfd()), _currentId {} { assert(_timerFd); }
-    ~TimedQueue() {
+    ~TimedQueue()
+    {
         if (_timerFd >= 0)
             close(_timerFd);
     }
 
-    Identifier push(Timestamp timestamp, Callback cb) {
+    Identifier push(Timestamp timestamp, Callback cb)
+    {
         auto ts = convertToItimerspec(timestamp);
         if (pq.empty() || timestamp < std::get<0>(pq.top())) {
             int ret = timerfd_settime(_timerFd, 0, &ts, nullptr);
@@ -86,7 +89,8 @@ public:
 
     void cancelExecution(Identifier id) { _cancelledFunctions.insert(id); }
 
-    std::vector<Callback> dequeue() {
+    std::vector<Callback> dequeue()
+    {
         uint64_t numItems;
         ssize_t n = read(_timerFd, &numItems, sizeof numItems);
         if (n != sizeof numItems) [[unlikely]] {

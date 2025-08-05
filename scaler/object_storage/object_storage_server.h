@@ -83,7 +83,8 @@ private:
     awaitable<void> processDuplicateRequest(std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader);
 
     template <ObjectStorageMessage T>
-    awaitable<T> readMessage(std::shared_ptr<Client> client) {
+    awaitable<T> readMessage(std::shared_ptr<Client> client)
+    {
         try {
             std::array<uint64_t, T::bufferSize() / CAPNP_WORD_SIZE> buffer;
             co_await boost::asio::async_read(
@@ -107,7 +108,8 @@ private:
 
     template <ObjectStorageMessage T>
     boost::asio::awaitable<void> writeMessage(
-        std::shared_ptr<Client> client, T& message, std::span<const unsigned char> payload) {
+        std::shared_ptr<Client> client, T& message, std::span<const unsigned char> payload)
+    {
         auto messageBuffer = message.toBuffer();
 
         std::array<boost::asio::const_buffer, 2> buffers {

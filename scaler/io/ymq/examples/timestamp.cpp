@@ -5,7 +5,8 @@
 using namespace std::chrono_literals;
 using namespace scaler::ymq;
 
-int main() {
+int main()
+{
     Timestamp ts;
     std::cout << ts.timestamp << std::endl;
     Timestamp three_seconds_later_than_ts = ts.createTimestampByOffsetDuration(3s);

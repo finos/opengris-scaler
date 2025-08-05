@@ -7,7 +7,8 @@ using boost::asio::ip::tcp;
 namespace scaler {
 namespace object_storage {
 
-int getAvailableTCPPort() {
+int getAvailableTCPPort()
+{
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         return -1;
@@ -36,7 +37,8 @@ int getAvailableTCPPort() {
     return port;
 }
 
-void setTCPNoDelay(tcp::socket& socket, bool isNoDelay) {
+void setTCPNoDelay(tcp::socket& socket, bool isNoDelay)
+{
     boost::system::error_code ec;
     socket.set_option(tcp::no_delay(isNoDelay), ec);
 

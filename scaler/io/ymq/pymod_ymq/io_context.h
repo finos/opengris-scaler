@@ -23,7 +23,8 @@ struct PyIOContext {
 
 extern "C" {
 
-static int PyIOContext_init(PyIOContext* self, PyObject* args, PyObject* kwds) {
+static int PyIOContext_init(PyIOContext* self, PyObject* args, PyObject* kwds)
+{
     PyObject* numThreadsObj = nullptr;
     const char* kwlist[]    = {"num_threads", nullptr};
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|O", (char**)kwlist, &numThreadsObj)) {
@@ -54,12 +55,14 @@ static int PyIOContext_init(PyIOContext* self, PyObject* args, PyObject* kwds) {
     return 0;
 }
 
-static void PyIOContext_dealloc(PyIOContext* self) {
+static void PyIOContext_dealloc(PyIOContext* self)
+{
     self->ioContext.~shared_ptr();
     Py_TYPE(self)->tp_free((PyObject*)self);  // Free the PyObject
 }
 
-static PyObject* PyIOContext_repr(PyIOContext* self) {
+static PyObject* PyIOContext_repr(PyIOContext* self)
+{
     return PyUnicode_FromFormat("<IOContext at %p>", (void*)self->ioContext.get());
 }
 
@@ -68,7 +71,8 @@ static PyObject* PyIOContext_repr(PyIOContext* self) {
 // https://docs.python.org/3.10/c-api/call.html#vectorcall
 // https://peps.python.org/pep-0590/
 static PyObject* PyIOContext_createIOSocket(
-    PyIOContext* self, PyTypeObject* clazz, PyObject* const* args, Py_ssize_t nargs, PyObject* kwnames) {
+    PyIOContext* self, PyTypeObject* clazz, PyObject* const* args, Py_ssize_t nargs, PyObject* kwnames)
+{
     using Identity = Configuration::IOSocketIdentity;
     if (nargs != 2) {
         PyErr_SetString(PyExc_TypeError, "createIOSocket() requires exactly two arguments: identity and socket_type");
@@ -150,7 +154,8 @@ static PyObject* PyIOContext_createIOSocket(
     });
 }
 
-static PyObject* PyIOContext_numThreads_getter(PyIOContext* self, void* Py_UNUSED(closure)) {
+static PyObject* PyIOContext_numThreads_getter(PyIOContext* self, void* Py_UNUSED(closure))
+{
     return PyLong_FromSize_t(self->ioContext->numThreads());
 }
 }

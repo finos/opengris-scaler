@@ -41,12 +41,14 @@ struct Error: std::exception {
     //     Other := ["Originated from", Function Name, "Errno is", strerror(errno), items...]
     template <typename... Args>
     constexpr Error(ErrorCode e, Args&&... args) noexcept
-        : _errorCode(e)
-        , _logMsg(argsToString(Timestamp {}, convertErrorToExplanation(e), std::forward<Args>(args)...)) {}
+        : _errorCode(e), _logMsg(argsToString(Timestamp {}, convertErrorToExplanation(e), std::forward<Args>(args)...))
+    {
+    }
 
     constexpr Error() noexcept: _errorCode(ErrorCode::Uninit) {}
 
-    static constexpr std::string_view convertErrorToExplanation(ErrorCode e) noexcept {
+    static constexpr std::string_view convertErrorToExplanation(ErrorCode e) noexcept
+    {
         switch (e) {
             case ErrorCode::Uninit: return "";
             case ErrorCode::InvalidPortFormat: return "Invalid port format, example input \"tcp://127.0.0.1:2345\"";
@@ -92,26 +94,30 @@ struct Error: std::exception {
 template <>
 struct std::formatter<scaler::ymq::Error, char> {
     template <class ParseContext>
-    constexpr ParseContext::iterator parse(ParseContext& ctx) noexcept {
+    constexpr ParseContext::iterator parse(ParseContext& ctx) noexcept
+    {
         return ctx.begin();
     }
 
     template <class FmtContext>
-    constexpr FmtContext::iterator format(scaler::ymq::Error e, FmtContext& ctx) const noexcept {
+    constexpr FmtContext::iterator format(scaler::ymq::Error e, FmtContext& ctx) const noexcept
+    {
         return std::ranges::copy(e._logMsg, ctx.out()).out;
     }
 };
 
 using UnrecoverableErrorFunctionHookPtr = std::function<void(scaler::ymq::Error)>;
 
-[[noreturn]] constexpr inline void defaultUnrecoverableError(scaler::ymq::Error e) noexcept {
+[[noreturn]] constexpr inline void defaultUnrecoverableError(scaler::ymq::Error e) noexcept
+{
     std::print(stderr, "{}\n", e);
     exit(1);
 }
 
 inline UnrecoverableErrorFunctionHookPtr unrecoverableErrorFunctionHookPtr = defaultUnrecoverableError;
 
-[[noreturn]] constexpr inline void unrecoverableError(scaler::ymq::Error e) {
+[[noreturn]] constexpr inline void unrecoverableError(scaler::ymq::Error e)
+{
     unrecoverableErrorFunctionHookPtr(std::move(e));
     exit(1);
 }

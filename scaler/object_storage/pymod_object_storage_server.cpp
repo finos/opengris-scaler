@@ -9,24 +9,27 @@ struct PyObjectStorageServer {
 };
 
 static PyObject* PyObjectStorageServerNew(
-    PyTypeObject* type, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwargs) {
+    PyTypeObject* type, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwargs)
+{
     PyObjectStorageServer* self;
     self = (PyObjectStorageServer*)type->tp_alloc(type, 0);
     return (PyObject*)self;
 }
 
-static int PyObjectStorageServerInit(
-    PyObject* self, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwargs) {
+static int PyObjectStorageServerInit(PyObject* self, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwargs)
+{
     new (&((PyObjectStorageServer*)self)->server) scaler::object_storage::ObjectStorageServer();
     return 0;
 }
 
-static void PyObjectStorageServerDealloc(PyObject* self) {
+static void PyObjectStorageServerDealloc(PyObject* self)
+{
     ((PyObjectStorageServer*)self)->server.~ObjectStorageServer();
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args) {
+static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
+{
     const char* addr;
     int port;
 
@@ -38,7 +41,8 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args) {
     Py_RETURN_NONE;
 }
 
-static PyObject* PyObjectStorageServerWaitUntilReady(PyObject* self, [[maybe_unused]] PyObject* args) {
+static PyObject* PyObjectStorageServerWaitUntilReady(PyObject* self, [[maybe_unused]] PyObject* args)
+{
     ((PyObjectStorageServer*)self)->server.waitUntilReady();
     Py_RETURN_NONE;
 }
@@ -66,7 +70,8 @@ static PyModuleDef PyObjectStorageServerModule = {
     .m_size = -1,
 };
 
-PyMODINIT_FUNC PyInit_object_storage_server(void) {
+PyMODINIT_FUNC PyInit_object_storage_server(void)
+{
     PyObject* m;
     if (PyType_Ready(&PyObjectStorageServerType) < 0)
         return NULL;

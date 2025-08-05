@@ -13,7 +13,8 @@
 namespace scaler {
 namespace ymq {
 
-inline std::expected<sockaddr, int> stringToSockaddr(const std::string& address) {
+inline std::expected<sockaddr, int> stringToSockaddr(const std::string& address)
+{
     // Check and strip the "tcp://" prefix
     static const constexpr std::string prefix = "tcp://";
     if (address.substr(0, prefix.size()) != prefix) {
@@ -86,7 +87,8 @@ inline std::expected<sockaddr, int> stringToSockaddr(const std::string& address)
     return *(sockaddr*)&out_addr;
 }
 
-inline int setNoDelay(int fd) {
+inline int setNoDelay(int fd)
+{
     int optval = 1;
     if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval)) == -1) {
         unrecoverableError({
@@ -103,7 +105,8 @@ inline int setNoDelay(int fd) {
     return fd;
 }
 
-inline sockaddr getLocalAddr(int fd) {
+inline sockaddr getLocalAddr(int fd)
+{
     sockaddr localAddr     = {};
     socklen_t localAddrLen = sizeof(localAddr);
     if (getsockname(fd, &localAddr, &localAddrLen) == -1) {
@@ -120,7 +123,8 @@ inline sockaddr getLocalAddr(int fd) {
     return localAddr;
 }
 
-inline sockaddr getRemoteAddr(int fd) {
+inline sockaddr getRemoteAddr(int fd)
+{
     sockaddr remoteAddr     = {};
     socklen_t remoteAddrLen = sizeof(remoteAddr);
 

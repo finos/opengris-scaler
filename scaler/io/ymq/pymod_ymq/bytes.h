@@ -17,7 +17,8 @@ struct PyBytesYMQ {
 
 extern "C" {
 
-static int PyBytesYMQ_init(PyBytesYMQ* self, PyObject* args, PyObject* kwds) {
+static int PyBytesYMQ_init(PyBytesYMQ* self, PyObject* args, PyObject* kwds)
+{
     PyObject* bytes        = nullptr;
     const char* keywords[] = {"bytes", nullptr};
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|O", (char**)keywords, &bytes)) {
@@ -54,12 +55,14 @@ static int PyBytesYMQ_init(PyBytesYMQ* self, PyObject* args, PyObject* kwds) {
     return 0;
 }
 
-static void PyBytesYMQ_dealloc(PyBytesYMQ* self) {
+static void PyBytesYMQ_dealloc(PyBytesYMQ* self)
+{
     self->bytes.~Bytes();  // Call the destructor of Bytes
     Py_TYPE(self)->tp_free(self);
 }
 
-static PyObject* PyBytesYMQ_repr(PyBytesYMQ* self) {
+static PyObject* PyBytesYMQ_repr(PyBytesYMQ* self)
+{
     if (self->bytes.is_empty()) {
         return PyUnicode_FromString("<Bytes: empty>");
     } else {
@@ -67,15 +70,18 @@ static PyObject* PyBytesYMQ_repr(PyBytesYMQ* self) {
     }
 }
 
-static PyObject* PyBytesYMQ_data_getter(PyBytesYMQ* self) {
+static PyObject* PyBytesYMQ_data_getter(PyBytesYMQ* self)
+{
     return PyBytes_FromStringAndSize((const char*)self->bytes.data(), self->bytes.len());
 }
 
-static PyObject* PyBytesYMQ_len_getter(PyBytesYMQ* self) {
+static PyObject* PyBytesYMQ_len_getter(PyBytesYMQ* self)
+{
     return PyLong_FromSize_t(self->bytes.len());
 }
 
-static int PyBytesYMQ_getbuffer(PyBytesYMQ* self, Py_buffer* view, int flags) {
+static int PyBytesYMQ_getbuffer(PyBytesYMQ* self, Py_buffer* view, int flags)
+{
     return PyBuffer_FillInfo(view, (PyObject*)self, (void*)self->bytes.data(), self->bytes.len(), true, flags);
 }
 }

@@ -3,7 +3,8 @@
 namespace scaler {
 namespace object_storage {
 
-kj::Array<const capnp::word> ObjectID::toBuffer() const {
+kj::Array<const capnp::word> ObjectID::toBuffer() const
+{
     capnp::MallocMessageBuilder returnMsg;
     auto objectIDRoot = returnMsg.initRoot<scaler::protocol::ObjectID>();
 
@@ -15,7 +16,8 @@ kj::Array<const capnp::word> ObjectID::toBuffer() const {
     return capnp::messageToFlatArray(returnMsg);
 }
 
-kj::Array<const capnp::word> ObjectRequestHeader::toBuffer() const {
+kj::Array<const capnp::word> ObjectRequestHeader::toBuffer() const
+{
     capnp::MallocMessageBuilder returnMsg;
     auto reqRoot = returnMsg.initRoot<scaler::protocol::ObjectRequestHeader>();
 
@@ -32,7 +34,8 @@ kj::Array<const capnp::word> ObjectRequestHeader::toBuffer() const {
     return capnp::messageToFlatArray(returnMsg);
 }
 
-kj::Array<const capnp::word> ObjectResponseHeader::toBuffer() const {
+kj::Array<const capnp::word> ObjectResponseHeader::toBuffer() const
+{
     capnp::MallocMessageBuilder returnMsg;
     auto respRoot = returnMsg.initRoot<scaler::protocol::ObjectResponseHeader>();
 

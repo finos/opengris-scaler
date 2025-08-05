@@ -2,7 +2,8 @@
 
 using namespace scaler::ymq;
 
-int main() {
+int main()
+{
     TimedQueue tq;
     Timestamp ts;
 
