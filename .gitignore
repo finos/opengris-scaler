@@ -28,3 +28,4 @@ dask-worker-space/*
 
 build*/
 CMakeUserPresets.json
+.vs/

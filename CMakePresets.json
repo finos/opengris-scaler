@@ -18,6 +18,20 @@
         "CMAKE_INSTALL_PREFIX": "${sourceDir}"
       },
       "binaryDir": "${sourceDir}/build_darwin_arm64"
+    },
+    {
+      "name": "windows-x64",
+      "displayName": "Windows x64 (MSVC)",
+      "generator": "Visual Studio 17 2022",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}"
+      },
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "binaryDir": "${sourceDir}/build_windows_x64"
     }
   ],
   "buildPresets": [
@@ -46,6 +60,16 @@
         "test_object_manager",
         "test_object_storage_server"
       ]
+    },
+    {
+      "name": "windows-x64",
+      "displayName": "Windows x64 build",
+      "configurePreset": "windows-x64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
     }
   ],
   "testPresets": [

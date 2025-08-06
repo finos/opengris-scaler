@@ -1,12 +1,14 @@
-add_compile_options(
-    -Wall
-    -Wpedantic
-    -Wunused
-    -Wunused-parameter
-    -Wunused-function
-    -Wunused-variable
-    -Wunused-local-typedefs
-)
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  add_compile_options(
+      -Wall
+      -Wpedantic
+      -Wunused
+      -Wunused-parameter
+      -Wunused-function
+      -Wunused-variable
+      -Wunused-local-typedefs
+  )
+endif()
 
 add_library(cc_object_storage_server SHARED)
 

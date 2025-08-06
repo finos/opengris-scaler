@@ -1,4 +1,8 @@
-add_subdirectory(object_storage)
+if(LINUX OR APPLE)
+  add_subdirectory(object_storage)
+else()
+  message(WARNING "Not building OSS, as it's not supported on this system currently!")
+endif()
 
 if(LINUX)
   add_subdirectory(io/ymq)

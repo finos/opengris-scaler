@@ -1,1 +1,3 @@
-add_subdirectory(object_storage)
+if(LINUX OR APPLE)
+  add_subdirectory(object_storage)
+endif()
