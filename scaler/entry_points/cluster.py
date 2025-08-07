@@ -13,8 +13,8 @@ from scaler.io.config import (
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
     DEFAULT_WORKER_DEATH_TIMEOUT,
 )
-from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.event_loop import EventLoopType, register_event_loop
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 
 
@@ -33,8 +33,8 @@ def get_args():
         help="worker names to replace default worker names (host names), separate by comma",
     )
     parser.add_argument(
-        "--worker-task-queue-size",
-        "-wtqs",
+        "--per-worker-task-queue-size",
+        "-qs",
         type=int,
         default=DEFAULT_PER_WORKER_QUEUE_SIZE,
         help="specify per worker queue size",
@@ -144,7 +144,7 @@ def main():
         address=args.address,
         storage_address=args.object_storage_address,
         worker_names=worker_names,
-        per_worker_task_queue_size=args.worker_task_queue_size,
+        per_worker_task_queue_size=args.per_worker_task_queue_size,
         heartbeat_interval_seconds=args.heartbeat_interval,
         task_timeout_seconds=args.task_timeout_seconds,
         garbage_collect_interval_seconds=args.garbage_collect_interval_seconds,

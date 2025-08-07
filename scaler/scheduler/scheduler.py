@@ -15,11 +15,13 @@ from scaler.protocol.python.message import (
     DisconnectRequest,
     GraphTask,
     GraphTaskCancel,
+    InformationRequest,
     ObjectInstruction,
     Task,
     TaskCancel,
     TaskResult,
     WorkerHeartbeat,
+    TaskCancelConfirm,
 )
 from scaler.protocol.python.mixins import Message
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
@@ -164,21 +166,19 @@ class Scheduler:
         # =====================================================================================
         # task manager
         if isinstance(message, Task):
-            await self._task_manager.on_task_new(ClientID(source), message)
+            await self._task_manager.on_task_new(message)
             return
 
         if isinstance(message, TaskCancel):
             await self._task_manager.on_task_cancel(ClientID(source), message)
             return
 
-        # receive task result from downstream
-        if isinstance(message, TaskResult):
-            await self._worker_manager.on_task_result(message)
+        if isinstance(message, TaskCancelConfirm):
+            await self._task_manager.on_task_cancel_confirm(message)
             return
 
-        # scheduler receives client shutdown request from upstream
-        if isinstance(message, ClientDisconnect):
-            await self._client_manager.on_client_disconnect(ClientID(source), message)
+        if isinstance(message, TaskResult):
+            await self._task_manager.on_task_result(message)
             return
 
         # =====================================================================================
@@ -197,6 +197,11 @@ class Scheduler:
         if isinstance(message, ObjectInstruction):
             await self._object_manager.on_object_instruction(source, message)
             return
+
+        # =====================================================================================
+        # information manager
+        if isinstance(message, InformationRequest):
+            await self._information_manager.on_request(message)
 
         logging.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")
 

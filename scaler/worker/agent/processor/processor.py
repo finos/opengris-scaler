@@ -13,11 +13,11 @@ import zmq
 from scaler.io.config import DUMMY_CLIENT
 from scaler.io.sync_connector import SyncConnector
 from scaler.io.sync_object_storage_connector import SyncObjectStorageConnector
-from scaler.protocol.python.common import ObjectMetadata, TaskStatus
+from scaler.protocol.python.common import ObjectMetadata, TaskResultType
 from scaler.protocol.python.message import ObjectInstruction, ProcessorInitialized, Task, TaskResult
 from scaler.protocol.python.mixins import Message
-from scaler.utility.logging.utility import setup_logger
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
+from scaler.utility.logging.utility import setup_logger
 from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.serialization import serialize_failure
 from scaler.utility.zmq_config import ZMQConfig
@@ -130,7 +130,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             pass
 
         except Exception as e:
-            logging.exception(f"Processor[{self.pid}]: failed with unhandled exception:\n{(e)}")
+            logging.exception(f"Processor[{self.pid}]: failed with unhandled exception:\n{e}")
 
         finally:
             self._object_cache.destroy()
@@ -194,14 +194,14 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             with self.__processor_context():
                 result = function_with_logger(*args)
             result_bytes = self._object_cache.serialize(task.source, result)
-            status = TaskStatus.Success
+            task_result_type = TaskResultType.Success
 
         except Exception as e:
             logging.exception(f"exception when processing task_id={task.task_id.hex()}:")
-            status = TaskStatus.Failed
+            task_result_type = TaskResultType.Failed
             result_bytes = serialize_failure(e)
 
-        self.__send_result(task.source, task.task_id, status, result_bytes)
+        self.__send_result(task.source, task.task_id, task_result_type, result_bytes)
 
     def __get_object_with_client_logger(self, client: ClientID, fn: Callable) -> Callable:
         assert self is not None
@@ -229,7 +229,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         # self._client_to_decorator[client] = wrap
         # return wrap(fn)
 
-    def __send_result(self, source: ClientID, task_id: TaskID, status: TaskStatus, result_bytes: bytes):
+    def __send_result(self, source: ClientID, task_id: TaskID, task_result_type: TaskResultType, result_bytes: bytes):
         self._current_task = None
 
         result_object_id = ObjectID.generate_object_id(source)
@@ -246,7 +246,9 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 ),
             )
         )
-        self._connector_agent.send(TaskResult.new_msg(task_id, status, metadata=b"", results=[bytes(result_object_id)]))
+        self._connector_agent.send(
+            TaskResult.new_msg(task_id, task_result_type, metadata=b"", results=[bytes(result_object_id)])
+        )
 
     @staticmethod
     def __set_current_processor(context: Optional["Processor"]) -> Token:
