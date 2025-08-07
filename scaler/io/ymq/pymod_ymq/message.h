@@ -11,7 +11,7 @@
 
 struct PyMessage {
     PyObject_HEAD;
-    PyBytesYMQ* address;  // Address of the message; PyObject* because it can be Py_None
+    PyBytesYMQ* address;  // Address of the message; can be None
     PyBytesYMQ* payload;  // Payload of the message
 };
 
