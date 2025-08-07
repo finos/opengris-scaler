@@ -33,40 +33,27 @@ extern "C" {
 
 static int PyIOContext_init(PyIOContext* self, PyObject* args, PyObject* kwds)
 {
-    PyObject* numThreadsObj = nullptr;
-    const char* kwlist[]    = {"num_threads", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|O", (char**)kwlist, &numThreadsObj)) {
-        return -1;  // Error parsing arguments
+    // default to 1 thread if not specified
+    Py_ssize_t numThreads = 1;
+    const char* kwlist[]  = {"num_threads", nullptr};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|n", (char**)kwlist, &numThreads))
+        return -1;
+
+    try {
+        new (&self->ioContext) std::shared_ptr<IOContext>();
+        self->ioContext = std::make_shared<IOContext>(numThreads);
+    } catch (...) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create IOContext");
+        return -1;
     }
-
-    size_t numThreads = 1;  // Default to 1 thread if not specified
-
-    if (numThreadsObj) {
-        if (!PyLong_Check(numThreadsObj)) {
-            PyErr_SetString(PyExc_TypeError, "num_threads must be an integer");
-            return -1;
-        }
-        numThreads = PyLong_AsSize_t(numThreadsObj);
-        if (numThreads == static_cast<size_t>(-1) && PyErr_Occurred()) {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to convert num_threads to size_t");
-            return -1;
-        }
-        if (numThreads <= 0) {
-            PyErr_SetString(PyExc_ValueError, "num_threads must be greater than 0");
-            return -1;
-        }
-    }
-
-    new (&self->ioContext) std::shared_ptr<IOContext>();
-    self->ioContext = std::make_shared<IOContext>(numThreads);
 
     return 0;
 }
 
 static void PyIOContext_dealloc(PyIOContext* self)
 {
-    try{
-    self->ioContext.~shared_ptr();
+    try {
+        self->ioContext.~shared_ptr();
     } catch (...) {
         // set the error and continue to free the object
         PyErr_SetString(PyExc_RuntimeError, "Failed to deallocate IOContext");
@@ -92,7 +79,9 @@ static PyObject* PyIOContext_createIOSocket_(
 {
     using Identity = Configuration::IOSocketIdentity;
 
-    PyObject *pyIdentity = nullptr, *pySocketType = nullptr;
+    // note: references borrowed from args, so no need to manage their lifetime
+    PyObject* pyIdentity   = nullptr;
+    PyObject* pySocketType = nullptr;
     if (nargs == 1) {
         pyIdentity = args[0];
     } else if (nargs == 2) {
@@ -110,17 +99,15 @@ static PyObject* PyIOContext_createIOSocket_(
             return nullptr;
 
         for (int i = 0; i < n; ++i) {
+            // note: returns a borrowed reference
             auto kw = PyTuple_GetItem(kwnames, i);
-            if (!kw) {
-                PyErr_SetString(PyExc_RuntimeError, "Failed to get keyword argument");
+            if (!kw)
                 return nullptr;
-            }
 
+            // ptr is callee-owned, no need to free it
             const char* kwStr = PyUnicode_AsUTF8(kw);
-            if (!kwStr) {
-                PyErr_SetString(PyExc_TypeError, "Failed to convert keyword argument to string");
+            if (!kwStr)
                 return nullptr;
-            }
 
             if (std::strcmp(kwStr, "identity") == 0) {
                 if (pyIdentity) {
@@ -159,10 +146,8 @@ static PyObject* PyIOContext_createIOSocket_(
     // get the module state from the class
     YMQState* state = (YMQState*)PyType_GetModuleState(clazz);
 
-    if (!state) {
-        // PyErr_SetString(PyExc_RuntimeError, "Failed to get module state");
+    if (!state)
         return nullptr;
-    }
 
     if (!PyObject_IsInstance(pySocketType, state->PyIOSocketEnumType)) {
         PyErr_SetString(PyExc_TypeError, "Expected socket_type to be an instance of IOSocketType");
@@ -171,47 +156,43 @@ static PyObject* PyIOContext_createIOSocket_(
 
     Py_ssize_t identitySize  = 0;
     const char* identityCStr = PyUnicode_AsUTF8AndSize(pyIdentity, &identitySize);
-
-    if (!identityCStr) {
-        PyErr_SetString(PyExc_TypeError, "Failed to convert identity to string");
+    if (!identityCStr)
         return nullptr;
-    }
 
     PyObject* value = PyObject_GetAttrString(pySocketType, "value");
-
-    if (!value) {
-        PyErr_SetString(PyExc_TypeError, "Failed to get value from socket_type");
+    if (!value)
         return nullptr;
-    }
 
     if (!PyLong_Check(value)) {
-        PyErr_SetString(PyExc_TypeError, "Expected socket_type to be an integer");
         Py_DECREF(value);
+
+        PyErr_SetString(PyExc_TypeError, "Expected socket_type to be an integer");
         return nullptr;
     }
 
     long socketTypeValue = PyLong_AsLong(value);
 
-    if (socketTypeValue < 0 && PyErr_Occurred()) {
-        PyErr_SetString(PyExc_TypeError, "Failed to convert socket_type to integer");
-        Py_DECREF(value);
-        return nullptr;
-    }
-
     Py_DECREF(value);
+
+    if (socketTypeValue < 0 && PyErr_Occurred())
+        return nullptr;
 
     Identity identity(identityCStr, identitySize);
     IOSocketType socketType = static_cast<IOSocketType>(socketTypeValue);
 
     PyIOSocket* ioSocket = PyObject_New(PyIOSocket, (PyTypeObject*)state->PyIOSocketType);
-    if (!ioSocket) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create IOSocket instance");
+    if (!ioSocket)
+        return nullptr;
+
+    try {
+        // ensure the fields are init
+        new (&ioSocket->socket) std::shared_ptr<IOSocket>();
+        new (&ioSocket->ioContext) std::shared_ptr<IOContext>();
+    } catch (...) {
+        Py_DECREF(ioSocket);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create IOSocket");
         return nullptr;
     }
-
-    // ensure the fields are init
-    new (&ioSocket->socket) std::shared_ptr<IOSocket>();
-    new (&ioSocket->ioContext) std::shared_ptr<IOContext>();
 
     return fn(ioSocket, identity, socketType);
 }
@@ -224,7 +205,7 @@ static PyObject* PyIOContext_createIOSocket(
             return async_wrapper((PyObject*)self, [=](YMQState* state, PyObject* future) {
                 self->ioContext->createIOSocket(identity, socketType, [=](std::shared_ptr<IOSocket> socket) {
                     future_set_result(future, [=] {
-                        ioSocket->socket = socket;
+                        ioSocket->socket = std::move(socket);
                         return (PyObject*)ioSocket;
                     });
                 });
@@ -238,17 +219,18 @@ static PyObject* PyIOContext_createIOSocket_sync(
     return PyIOContext_createIOSocket_(
         self, clazz, args, nargs, kwnames, [self](auto ioSocket, Identity identity, IOSocketType socketType) {
             PyThreadState* _save = PyEval_SaveThread();
-            std::shared_ptr<IOSocket> socket;
-            std::shared_ptr<std::latch> waiter = std::make_shared<std::latch>(1);
 
-            self->ioContext->createIOSocket(
-                identity, socketType, [waiter, &socket](std::shared_ptr<IOSocket> s) mutable {
-                    socket = std::move(s);
-                    waiter->count_down();
-                });
-
-            // block the thread until the callback is called
+            std::shared_ptr<IOSocket> socket {};
             try {
+                std::shared_ptr<std::latch> waiter = std::make_shared<std::latch>(1);
+
+                self->ioContext->createIOSocket(
+                    identity, socketType, [waiter, &socket](std::shared_ptr<IOSocket> s) mutable {
+                        socket = std::move(s);
+                        waiter->count_down();
+                    });
+
+                // block the thread until the callback is called
                 for (;;) {
                     if (waiter->try_wait())
                         break;
@@ -262,7 +244,7 @@ static PyObject* PyIOContext_createIOSocket_sync(
                 }
             } catch (const std::exception& e) {
                 PyEval_RestoreThread(_save);
-                PyErr_SetString(PyExc_RuntimeError, "Failed to bind to createio socket synchronously");
+                PyErr_SetString(PyExc_RuntimeError, "Failed to bind to create io socket synchronously");
                 return (PyObject*)nullptr;
             }
 

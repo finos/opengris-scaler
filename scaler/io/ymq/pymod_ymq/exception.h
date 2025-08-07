@@ -28,7 +28,8 @@ static int YMQException_init(YMQException* self, PyObject* args, PyObject* kwds)
     if (!state)
         return -1;
 
-    // check the args
+    // no need to incref these because we don't store them
+    // Furthermore, this fn does not create a strong reference to the args
     PyObject* code    = nullptr;
     PyObject* message = nullptr;
     if (!PyArg_ParseTuple(args, "OO", &code, &message))
@@ -50,8 +51,10 @@ static int YMQException_init(YMQException* self, PyObject* args, PyObject* kwds)
 
 static void YMQException_dealloc(YMQException* self)
 {
+    self->ob_base.ob_type->tp_base->tp_dealloc((PyObject*)self);
+
+    // we still need to release the reference to the heap type
     auto* tp = Py_TYPE(self);
-    tp->tp_free(self);
     Py_DECREF(tp);
 }
 
@@ -103,13 +106,6 @@ PyObject* YMQException_argtupleFromCoreError(YMQState* state, const Error* error
     }
 
     PyObject* tuple = PyTuple_Pack(2, pyCode, message);
-
-    if (!tuple) {
-        Py_DECREF(pyCode);
-        Py_DECREF(message);
-        return nullptr;
-    }
-
     Py_DECREF(pyCode);
     Py_DECREF(message);
 

@@ -19,7 +19,7 @@ class Bytes(Buffer):
     def __repr__(self) -> str: ...
 
 class Message:
-    address: Bytes
+    address: Bytes | None
     payload: Bytes
 
     def __init__(self, address: Bytes | bytes | SupportsBytes | None, payload: Bytes | bytes | SupportsBytes) -> None: ...

@@ -47,18 +47,22 @@ static void future_do(PyObject* future, const std::function<PyObject*()>& fn, co
             return;
         }
 
+        // if future is already done, no need to call the method
         if (PyObject_CallMethod(future, "done", nullptr) == Py_True) {
-            // future is already done, no need to call the method
-            Py_DECREF(loop);
             Py_DECREF(future);
+            Py_DECREF(loop);
             PyGILState_Release(gstate);
             return;
         }
 
         PyObject* method = PyObject_GetAttrString(future, future_method);
 
+        // correlates with the creation of the future in `async_wrapper()`
+        Py_DECREF(future);
+
         if (!method) {
-            Py_DECREF(future);
+            Py_DECREF(loop);
+            Py_DECREF(method);
             PyErr_WriteUnraisable(nullptr);
 
             // end python critical section
@@ -67,20 +71,23 @@ static void future_do(PyObject* future, const std::function<PyObject*()>& fn, co
         }
 
         auto obj = PyObject_GetAttrString(loop, "call_soon_threadsafe");
+        Py_DECREF(loop);
 
         // auto result = PyObject_CallMethod(loop, "call_soon_threadsafe", "OO", method, fn());
         auto result = PyObject_CallFunctionObjArgs(obj, method, fn(), nullptr);
+        Py_DECREF(method);
+        Py_DECREF(obj);
+
         if (!result) {
-            Py_DECREF(future);
             PyErr_WriteUnraisable(nullptr);
 
             // end python critical section
             PyGILState_Release(gstate);
             return;
         }
-    }
 
-    Py_DECREF(future);
+        Py_DECREF(result);
+    }
 
     // end python critical section
     PyGILState_Release(gstate);
@@ -105,6 +112,18 @@ static YMQState* YMQStateFromSelf(PyObject* self)
         return nullptr;
 
     return (YMQState*)PyModule_GetState(pyModule);
+}
+
+PyObject* PyErr_CreateFromString(PyObject* type, const char* message)
+{
+    auto args = Py_BuildValue("(s)", message);
+    if (!args)
+        return nullptr;
+
+    PyObject* exc = PyObject_CallObject(type, args);
+    Py_DECREF(args);
+
+    return exc;
 }
 
 // First-Party
@@ -145,33 +164,29 @@ static int ymq_createIntEnum(
 {
     // create a python dictionary to hold the entries
     auto enumDict = PyDict_New();
-    if (!enumDict) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create enum dictionary");
+    if (!enumDict)
         return -1;
-    }
 
     // add each entry to the dictionary
     for (const auto& entry: entries) {
         PyObject* value = PyLong_FromLong(entry.second);
         if (!value) {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to create enum value");
             Py_DECREF(enumDict);
             return -1;
         }
 
-        if (PyDict_SetItemString(enumDict, entry.first.c_str(), value) < 0) {
-            Py_DECREF(value);
+        auto status = PyDict_SetItemString(enumDict, entry.first.c_str(), value);
+        Py_DECREF(value);
+
+        if (status < 0) {
             Py_DECREF(enumDict);
-            PyErr_SetString(PyExc_RuntimeError, "Failed to set item in enum dictionary");
             return -1;
         }
-        Py_DECREF(value);
     }
 
     auto state = (YMQState*)PyModule_GetState(pyModule);
 
     if (!state) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get module state");
         Py_DECREF(enumDict);
         return -1;
     }
@@ -180,22 +195,17 @@ static int ymq_createIntEnum(
     auto enumClass = PyObject_CallMethod(state->enumModule, "IntEnum", "sO", enumName.c_str(), enumDict);
     Py_DECREF(enumDict);
 
-    if (!enumClass) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create IntEnum class");
+    if (!enumClass)
         return -1;
-    }
 
     *storage = enumClass;
 
     // add the class to the module
     // this increments the reference count of enumClass
-    if (PyModule_AddObjectRef(pyModule, enumName.c_str(), enumClass) < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to add IntEnum class to module");
-        Py_DECREF(enumClass);
-        return -1;
-    }
+    auto status = PyModule_AddObjectRef(pyModule, enumName.c_str(), enumClass);
+    Py_DECREF(enumClass);
 
-    return 0;
+    return status;
 }
 
 static int ymq_createIOSocketTypeEnum(PyObject* pyModule, YMQState* state)
@@ -208,21 +218,14 @@ static int ymq_createIOSocketTypeEnum(PyObject* pyModule, YMQState* state)
         {"Multicast", (int)IOSocketType::Multicast},
     };
 
-    if (ymq_createIntEnum(pyModule, &state->PyIOSocketEnumType, "IOSocketType", ioSocketTypes) < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create IOSocketType enum");
-        return -1;
-    }
-
-    return 0;
+    return ymq_createIntEnum(pyModule, &state->PyIOSocketEnumType, "IOSocketType", ioSocketTypes);
 }
 
 static PyObject* YMQErrorCode_explanation(PyObject* self, PyObject* Py_UNUSED(args))
 {
     auto pyValue = PyObject_GetAttrString(self, "value");
-    if (!pyValue) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get value attribute");
+    if (!pyValue)
         return nullptr;
-    }
 
     if (!PyLong_Check(pyValue)) {
         PyErr_SetString(PyExc_TypeError, "Expected an integer value");
@@ -233,10 +236,8 @@ static PyObject* YMQErrorCode_explanation(PyObject* self, PyObject* Py_UNUSED(ar
     long value = PyLong_AsLong(pyValue);
     Py_DECREF(pyValue);
 
-    if (value == -1 && PyErr_Occurred()) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to convert value to long");
+    if (value == -1 && PyErr_Occurred())
         return nullptr;
-    }
 
     std::string_view explanation = Error::convertErrorToExplanation(static_cast<Error::ErrorCode>(value));
     return PyUnicode_FromString(std::string(explanation).c_str());
@@ -265,10 +266,8 @@ static int ymq_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
          (int)Error::ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery},
     };
 
-    if (ymq_createIntEnum(pyModule, &state->PyErrorCodeType, "ErrorCode", errorCodeValues) < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create Error enum");
+    if (ymq_createIntEnum(pyModule, &state->PyErrorCodeType, "ErrorCode", errorCodeValues) < 0)
         return -1;
-    }
 
     static PyMethodDef YMQErrorCode_explanation_def = {
         "explanation",
@@ -277,10 +276,8 @@ static int ymq_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
         PyDoc_STR("Returns an explanation of a YMQ error code")};
 
     auto iter = PyObject_GetIter(state->PyErrorCodeType);
-    if (!iter) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get iterator for Error enum");
+    if (!iter)
         return -1;
-    }
 
     // is this the best way to add a method to each enum item?
     // in python you can just write: MyEnum.new_method = ...
@@ -290,20 +287,17 @@ static int ymq_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
     PyObject* item = nullptr;
     while ((item = PyIter_Next(iter)) != nullptr) {
         auto fn = PyCMethod_New(&YMQErrorCode_explanation_def, item, pyModule, nullptr);
-        if (!fn) {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to create description method");
+        if (!fn)
             return -1;
-        }
 
-        if (PyObject_SetAttrString(item, "explanation", fn) < 0) {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to set explanation method on Error enum item");
-            Py_DECREF(item);
-            Py_DECREF(fn);
+        auto status = PyObject_SetAttrString(item, "explanation", fn);
+        Py_DECREF(item);
+        Py_DECREF(fn);
+
+        if (status < 0) {
             Py_DECREF(iter);
             return -1;
         }
-        Py_DECREF(item);
-        Py_DECREF(fn);
     }
 
     Py_DECREF(iter);
@@ -329,18 +323,12 @@ static int ymq_createType(
     assert(storage != nullptr);
 
     *storage = PyType_FromModuleAndSpec(pyModule, spec, bases);
-
-    if (!*storage) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create type from spec");
+    if (!*storage)
         return -1;
-    }
 
     if (add)
-        if (PyModule_AddObjectRef(pyModule, name, *storage) < 0) {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to add type to module");
-            Py_DECREF(*storage);
+        if (PyModule_AddObjectRef(pyModule, name, *storage) < 0)
             return -1;
-        }
 
     return 0;
 }
@@ -348,25 +336,16 @@ static int ymq_createType(
 static int ymq_exec(PyObject* pyModule)
 {
     auto state = (YMQState*)PyModule_GetState(pyModule);
-
-    if (!state) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get module state");
+    if (!state)
         return -1;
-    }
 
     state->enumModule = PyImport_ImportModule("enum");
-
-    if (!state->enumModule) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to import enum module");
+    if (!state->enumModule)
         return -1;
-    }
 
     state->asyncioModule = PyImport_ImportModule("asyncio");
-
-    if (!state->asyncioModule) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to import asyncio module");
+    if (!state->asyncioModule)
         return -1;
-    }
 
     if (ymq_createIOSocketTypeEnum(pyModule, state) < 0)
         return -1;
