@@ -23,6 +23,7 @@ from scaler.protocol.python.message import (
     ObjectInstruction,
     Task,
     TaskCancel,
+    TaskLog,
     TaskResult,
 )
 from scaler.protocol.python.mixins import Message
@@ -153,6 +154,11 @@ class ClientAgent(threading.Thread):
 
         if isinstance(message, ClientHeartbeatEcho):
             await self._heartbeat_manager.on_heartbeat_echo(message)
+            return
+
+        if isinstance(message, TaskLog):
+            stream = "STDOUT" if message.stream == TaskLog.Stream.Stdout else "STDERR"
+            print(f"[{stream} {message.task_id.hex()}] {message.content}")
             return
 
         if isinstance(message, TaskResult):

@@ -1,8 +1,11 @@
 import contextlib
+import io
 import logging
 import multiprocessing
 import os
 import signal
+
+from contextlib import redirect_stdout, redirect_stderr
 from contextvars import ContextVar, Token
 from multiprocessing.synchronize import Event as EventType
 from typing import Callable, List, Optional, Tuple, cast
@@ -14,7 +17,7 @@ from scaler.io.config import DUMMY_CLIENT
 from scaler.io.sync_connector import SyncConnector
 from scaler.io.sync_object_storage_connector import SyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata, TaskStatus
-from scaler.protocol.python.message import ObjectInstruction, ProcessorInitialized, Task, TaskResult
+from scaler.protocol.python.message import ObjectInstruction, ProcessorInitialized, Task, TaskLog, TaskResult
 from scaler.protocol.python.mixins import Message
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
@@ -185,13 +188,16 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         return object_ids
 
     def __process_task(self, task: Task):
+        stdout_buf = io.StringIO()
+        stderr_buf = io.StringIO()
+
         try:
             function = self._object_cache.get_object(task.func_object_id)
             function_with_logger = self.__get_object_with_client_logger(DUMMY_CLIENT, function)
 
             args = [self._object_cache.get_object(cast(ObjectID, arg)) for arg in task.function_args]
 
-            with self.__processor_context():
+            with self.__processor_context(), redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
                 result = function_with_logger(*args)
             result_bytes = self._object_cache.serialize(task.source, result)
             status = TaskStatus.Success
@@ -200,6 +206,11 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             logging.exception(f"exception when processing task_id={task.task_id.hex()}:")
             status = TaskStatus.Failed
             result_bytes = serialize_failure(e)
+
+        for stream, buf in ((TaskLog.Stream.Stdout, stdout_buf), (TaskLog.Stream.Stderr, stderr_buf)):
+            content = buf.getvalue()
+            if content:
+                self._connector_agent.send(TaskLog.new_msg(task.task_id, stream, content))
 
         self.__send_result(task.source, task.task_id, status, result_bytes)
 
