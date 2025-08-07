@@ -19,17 +19,12 @@ static PyObject* async_wrapper(PyObject* self, const std::function<void(YMQState
         return nullptr;
 
     OwnedPyObject loop = PyObject_CallMethod(*state->asyncioModule, "get_event_loop", nullptr);
-    if (!loop) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get event loop");
+    if (!loop)
         return nullptr;
-    }
 
     OwnedPyObject future = PyObject_CallMethod(*loop, "create_future", nullptr);
-
-    if (!future) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create future");
+    if (!future) 
         return nullptr;
-    }
 
     // create the awaitable before calling the callback
     // this ensures that we create a new strong reference to the future before the callback decrefs it

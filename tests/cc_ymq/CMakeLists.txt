@@ -11,8 +11,9 @@ set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
 set(BUILD_GTEST ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-# This function compiles, links, and adds a C++ test executable using Google Test.
-# It is shared by all test subdirectories.
+find_package(Python3 COMPONENTS Development REQUIRED)
+
+# Compile, link and add the provided source CPP file as a test executable
 function(add_test_executable test_name source_file)
     add_executable(${test_name} ${source_file})
 
@@ -21,18 +22,11 @@ function(add_test_executable test_name source_file)
     target_link_libraries(
         ${test_name}
         PRIVATE GTest::gtest_main
-        PRIVATE cc_object_storage_server
+        PRIVATE cc_ymq
+        PRIVATE Python3::Python
     )
 
     add_test(NAME ${test_name} COMMAND ${test_name})
 endfunction()
 
-
-if(LINUX OR APPLE)
-  # This directory fetches Google Test, so it must be included first.
-  add_subdirectory(object_storage)
-
-  # Add the new directory for io tests.
-  add_subdirectory(io/ymq)
-  add_subdirectory(cc_ymq)
-endif()
+add_test_executable(test_cc_ymq test_cc_ymq.cpp)

@@ -131,7 +131,7 @@ PyObject* PyErr_CreateFromString(PyObject* type, const char* message)
     return PyObject_CallObject(type, *args);
 }
 
-// this is a polyfill for PyErr_GetRaisedException() added in Python 3.12+
+// TODO: this is a polyfill for PyErr_GetRaisedException() added in Python 3.12+
 std::expected<PyObject*, PyObject*> PyErr_GetRaisedException()
 {
     PyObject *excType, *excValue, *excTraceback;
@@ -298,7 +298,7 @@ static int YMQ_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
     // docs and examples are unfortunately scarce for this
     // for now this will work just fine
     OwnedPyObject item {};
-    while (item = PyIter_Next(*iter)) {
+    while ((item = PyIter_Next(*iter))) {
         OwnedPyObject fn = PyCMethod_New(&YMQErrorCode_explanation_def, *item, pyModule, nullptr);
         if (!fn)
             return -1;
