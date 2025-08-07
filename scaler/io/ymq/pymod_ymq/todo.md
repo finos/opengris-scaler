@@ -1,5 +1,6 @@
 # YMQ Python Interfce TODO
 
-- Error handling for callback inside `future_set_result()` callback
+- Error handling for callback inside `future_set_result()`
   - Unify set result and raise exception fns?
-- investigate zerocopy for constructing Bytes
+- Investigate zerocopy for constructing Bytes
+- The latch-check-signals loops are bad, investigate replacing with pysignal_setwakeupfd or a signalfd
