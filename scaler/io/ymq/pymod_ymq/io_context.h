@@ -1,14 +1,11 @@
 #pragma once
 
 // Python
-#include "io_socket.h"
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <structmember.h>
 
 // C++
-#include <cstring>
-#include <exception>
 #include <functional>
 #include <future>
 #include <latch>

@@ -1,7 +1,6 @@
 #pragma once
 
 // Python
-#include "object.h"
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <structmember.h>

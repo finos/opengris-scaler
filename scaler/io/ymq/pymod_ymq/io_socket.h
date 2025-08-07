@@ -10,7 +10,6 @@
 #include <expected>
 #include <latch>
 #include <memory>
-#include <semaphore>
 #include <thread>
 #include <utility>
 
