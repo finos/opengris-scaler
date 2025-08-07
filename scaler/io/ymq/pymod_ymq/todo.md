@@ -4,3 +4,5 @@
   - Unify set result and raise exception fns?
 - Investigate zerocopy for constructing Bytes
 - The latch-check-signals loops are bad, investigate replacing with pysignal_setwakeupfd or a signalfd
+- Put everything in scaler::ymq namespace
+- Migrate pub/sub sockets back to ZMQ
