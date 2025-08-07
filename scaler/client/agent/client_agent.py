@@ -158,7 +158,10 @@ class ClientAgent(threading.Thread):
 
         if isinstance(message, TaskLog):
             stream = "STDOUT" if message.stream == TaskLog.Stream.Stdout else "STDERR"
-            print(f"[{stream} {message.task_id.hex()}] {message.content}")
+            for line in message.content.splitlines():
+                # Only print non-empty lines
+                if line:
+                    print(f"[{stream} {message.task_id.hex()}] {line}")
             return
 
         if isinstance(message, TaskResult):

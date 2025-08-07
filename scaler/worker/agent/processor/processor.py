@@ -1,5 +1,4 @@
 import contextlib
-import io
 import logging
 import multiprocessing
 import os
@@ -25,6 +24,7 @@ from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.serialization import serialize_failure
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.processor.object_cache import ObjectCache
+from scaler.worker.agent.processor.streaming_buffer import StreamingBuffer
 
 SUSPEND_SIGNAL = "SIGUSR1"  # use str instead of a signal.Signal to not trigger an import error on unsupported systems.
 
@@ -188,8 +188,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         return object_ids
 
     def __process_task(self, task: Task):
-        stdout_buf = io.StringIO()
-        stderr_buf = io.StringIO()
+        stdout_buf = StreamingBuffer(task.task_id, TaskLog.Stream.Stdout, self._connector_agent)
+        stderr_buf = StreamingBuffer(task.task_id, TaskLog.Stream.Stderr, self._connector_agent)
 
         try:
             function = self._object_cache.get_object(task.func_object_id)
@@ -207,10 +207,9 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             status = TaskStatus.Failed
             result_bytes = serialize_failure(e)
 
-        for stream, buf in ((TaskLog.Stream.Stdout, stdout_buf), (TaskLog.Stream.Stderr, stderr_buf)):
-            content = buf.getvalue()
-            if content:
-                self._connector_agent.send(TaskLog.new_msg(task.task_id, stream, content))
+        finally:
+            stdout_buf.close()
+            stderr_buf.close()
 
         self.__send_result(task.source, task.task_id, status, result_bytes)
 
