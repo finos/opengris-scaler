@@ -15,7 +15,7 @@ from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.utility.event_loop import EventLoopType
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.object_storage_config import ObjectStorageConfig
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.utility.ymq_config import YMQConfig
 
 
 def get_args():
@@ -119,14 +119,16 @@ def get_args():
     parser.add_argument(
         "--monitor-address",
         "-ma",
-        type=ZMQConfig.from_string,
+        type=YMQConfig.from_string,
         default=None,
         help="specify monitoring address, if not specified, the monitoring address is scheduler address with port "
         "number plus 2, e.g.: if scheduler address is tcp://localhost:2345, then monitoring address is "
         "tcp://localhost:2347",
     )
     parser.add_argument(
-        "address", type=ZMQConfig.from_string, help="scheduler address to connect to, e.g.: `tcp://localhost:6378`"
+        "address",
+        type=YMQConfig.from_string,
+        help="scheduler address to connect to, e.g.: `tcp://localhost:6378`"
     )
     return parser.parse_args()
 

@@ -11,7 +11,7 @@
 
 struct PyMessage {
     PyObject_HEAD;
-    PyBytesYMQ* address;  // Address of the message
+    PyBytesYMQ* address;  // Address of the message; can be None
     PyBytesYMQ* payload;  // Payload of the message
 };
 
@@ -19,36 +19,27 @@ extern "C" {
 
 static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds)
 {
-    // replace with PyType_GetModuleByDef(Py_TYPE(self), &ymq_module) in a newer Python version
-    // https://docs.python.org/3/c-api/type.html#c.PyType_GetModuleByDef
-    PyObject* pyModule = PyType_GetModule(Py_TYPE(self));
-    if (!pyModule) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get module for Message type");
+    auto state = YMQStateFromSelf((PyObject*)self);
+    if (!state)
         return -1;
-    }
 
-    auto state = (YMQState*)PyModule_GetState(pyModule);
-    if (!state) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get module state");
-        return -1;
-    }
-
-    PyObject *address = nullptr, *payload = nullptr;
+    PyObject* address      = nullptr;
+    PyObject* payload      = nullptr;
     const char* keywords[] = {"address", "payload", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO", (char**)keywords, &address, &payload)) {
-        PyErr_SetString(PyExc_TypeError, "Expected two Bytes objects: address and payload");
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO", (char**)keywords, &address, &payload))
         return -1;
-    }
 
+    // address can be None, which means the message has no address
     // check if the address and payload are of type PyBytesYMQ
-    if (!PyObject_IsInstance(address, state->PyBytesYMQType)) {
+    if (address == Py_None) {
+        // do nothing, the address will be set to None
+    } else if (!PyObject_IsInstance(address, state->PyBytesYMQType)) {
         PyObject* args = PyTuple_Pack(1, address);
         address        = PyObject_CallObject(state->PyBytesYMQType, args);
         Py_DECREF(args);
 
-        if (!address) {
+        if (!address)
             return -1;
-        }
     }
 
     if (!PyObject_IsInstance(payload, state->PyBytesYMQType)) {
@@ -61,6 +52,8 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds)
         }
     }
 
+    Py_INCREF(address);
+    Py_INCREF(payload);
     self->address = (PyBytesYMQ*)address;
     self->payload = (PyBytesYMQ*)payload;
 
@@ -69,9 +62,13 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds)
 
 static void PyMessage_dealloc(PyMessage* self)
 {
-    Py_XDECREF(self->address);
-    Py_XDECREF(self->payload);
-    Py_TYPE(self)->tp_free(self);
+    std::println("message dealloc");
+    Py_DECREF(self->address);
+    Py_DECREF(self->payload);
+
+    auto* tp = Py_TYPE(self);
+    tp->tp_free(self);
+    Py_DECREF(tp);
 }
 
 static PyObject* PyMessage_repr(PyMessage* self)
