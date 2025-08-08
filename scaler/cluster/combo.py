@@ -1,6 +1,6 @@
 import logging
 import socket
-from typing import Optional, Tuple
+from typing import Optional, Set, Tuple
 
 from scaler.cluster.cluster import Cluster
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
@@ -34,6 +34,7 @@ class SchedulerClusterCombo:
         address: Optional[str] = None,
         storage_address: Optional[str] = None,
         monitor_address: Optional[str] = None,
+        tags: Optional[Set[str]] = None,
         worker_io_threads: int = DEFAULT_IO_THREADS,
         scheduler_io_threads: int = DEFAULT_IO_THREADS,
         max_number_of_tasks_waiting: int = DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
@@ -86,6 +87,7 @@ class SchedulerClusterCombo:
             storage_address=self._storage_address,
             worker_io_threads=worker_io_threads,
             worker_names=[f"{socket.gethostname().split('.')[0]}_{i}" for i in range(n_workers)],
+            tags=tags or set(),
             per_worker_task_queue_size=per_worker_task_queue_size,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
             task_timeout_seconds=task_timeout_seconds,

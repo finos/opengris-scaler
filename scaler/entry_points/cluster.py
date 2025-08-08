@@ -33,6 +33,12 @@ def get_args():
         help="worker names to replace default worker names (host names), separate by comma",
     )
     parser.add_argument(
+        "--worker-tags",
+        "-wt",
+        type=lambda value: set(value.split(",")),
+        help="comma-separated tag names supported by the workers (e.g. \"-wt tag_1,tag2\")",
+    )
+    parser.add_argument(
         "--worker-task-queue-size",
         "-wtqs",
         type=int,
@@ -144,6 +150,7 @@ def main():
         address=args.address,
         storage_address=args.object_storage_address,
         worker_names=worker_names,
+        tags=args.tags or set(),
         per_worker_task_queue_size=args.worker_task_queue_size,
         heartbeat_interval_seconds=args.heartbeat_interval,
         task_timeout_seconds=args.task_timeout_seconds,
