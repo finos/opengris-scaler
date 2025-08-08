@@ -40,8 +40,6 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds)
 
         if (!address)
             return -1;
-
-        self->address = (PyBytesYMQ*)address;
     }
 
     if (!PyObject_IsInstance(payload, state->PyBytesYMQType)) {
@@ -64,6 +62,7 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds)
 
 static void PyMessage_dealloc(PyMessage* self)
 {
+    std::println("message dealloc");
     Py_DECREF(self->address);
     Py_DECREF(self->payload);
 

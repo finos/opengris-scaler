@@ -14,6 +14,7 @@
 
 // First-party
 #include "scaler/io/ymq/error.h"
+#include "scaler/io/ymq/pymod_ymq/utils.h"
 
 struct YMQState {
     PyObject* enumModule;     // Reference to the enum module
@@ -29,6 +30,33 @@ struct YMQState {
     PyObject* PyAwaitableType;     // Reference to the Awaitable type
 };
 
+static bool future_do_(PyObject* future_, const std::function<PyObject*()>& fn, const char* future_method)
+{
+    // this is an owned reference to the future created in `async_wrapper()`
+    OwnedPyObject future(future_);
+    OwnedPyObject loop = PyObject_CallMethod(*future, "get_loop", nullptr);
+    if (!loop)
+        return true;
+
+    // if future is already done, no need to call the method
+    if (PyObject_CallMethod(*future, "done", nullptr) == Py_True)
+        return false;
+
+    OwnedPyObject method = PyObject_GetAttrString(*future, future_method);
+    if (!method)
+        return true;
+
+    OwnedPyObject obj = PyObject_GetAttrString(*loop, "call_soon_threadsafe");
+    OwnedPyObject arg = fn();
+
+    // auto result = PyObject_CallMethod(loop, "call_soon_threadsafe", "OO", method, fn());
+    OwnedPyObject result = PyObject_CallFunctionObjArgs(*obj, *method, *arg, nullptr);
+    if (!result)
+        return true;
+
+    return false;
+}
+
 // this function must be called from a C++ thread
 // this function will lock the GIL, call `fn()` and use its return value to set the future's result/exception
 static void future_do(PyObject* future, const std::function<PyObject*()>& fn, const char* future_method)
@@ -36,58 +64,9 @@ static void future_do(PyObject* future, const std::function<PyObject*()>& fn, co
     PyGILState_STATE gstate = PyGILState_Ensure();
     // begin python critical section
 
-    {
-        PyObject* loop = PyObject_CallMethod(future, "get_loop", nullptr);
-        if (!loop) {
-            Py_DECREF(future);
-            PyErr_WriteUnraisable(nullptr);
-
-            // end python critical section
-            PyGILState_Release(gstate);
-            return;
-        }
-
-        // if future is already done, no need to call the method
-        if (PyObject_CallMethod(future, "done", nullptr) == Py_True) {
-            Py_DECREF(future);
-            Py_DECREF(loop);
-            PyGILState_Release(gstate);
-            return;
-        }
-
-        PyObject* method = PyObject_GetAttrString(future, future_method);
-
-        // correlates with the creation of the future in `async_wrapper()`
-        Py_DECREF(future);
-
-        if (!method) {
-            Py_DECREF(loop);
-            Py_DECREF(method);
-            PyErr_WriteUnraisable(nullptr);
-
-            // end python critical section
-            PyGILState_Release(gstate);
-            return;
-        }
-
-        auto obj = PyObject_GetAttrString(loop, "call_soon_threadsafe");
-        Py_DECREF(loop);
-
-        // auto result = PyObject_CallMethod(loop, "call_soon_threadsafe", "OO", method, fn());
-        auto result = PyObject_CallFunctionObjArgs(obj, method, fn(), nullptr);
-        Py_DECREF(method);
-        Py_DECREF(obj);
-
-        if (!result) {
-            PyErr_WriteUnraisable(nullptr);
-
-            // end python critical section
-            PyGILState_Release(gstate);
-            return;
-        }
-
-        Py_DECREF(result);
-    }
+    auto error = future_do_(future, fn, future_method);
+    if (error)
+        PyErr_WriteUnraisable(nullptr);
 
     // end python critical section
     PyGILState_Release(gstate);

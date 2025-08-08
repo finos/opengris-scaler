@@ -36,12 +36,12 @@ static int PyBytesYMQ_init(PyBytesYMQ* self, PyObject* args, PyObject* kwds)
     self->bytes = Bytes((char*)view.buf, view.len);
 
     PyBuffer_Release(&view);
-
     return 0;
 }
 
 static void PyBytesYMQ_dealloc(PyBytesYMQ* self)
 {
+    std::println("bytes dealloc");
     try {
         self->bytes.~Bytes();  // Call the destructor to free the Bytes object
     } catch (...) {
