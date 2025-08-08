@@ -36,7 +36,6 @@ static int PyBytesYMQ_init(PyBytesYMQ* self, PyObject* args, PyObject* kwds)
     self->bytes = Bytes((char*)view.buf, view.len);
 
     PyBuffer_Release(&view);
-
     return 0;
 }
 

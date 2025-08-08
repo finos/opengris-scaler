@@ -18,45 +18,45 @@ static PyObject* async_wrapper(PyObject* self, const std::function<void(YMQState
     if (!state)
         return nullptr;
 
-    PyObject* loop = PyObject_CallMethod(state->asyncioModule, "get_event_loop", nullptr);
+    OwnedPyObject loop = PyObject_CallMethod(*state->asyncioModule, "get_event_loop", nullptr);
     if (!loop) {
-        Py_DECREF(loop);
-
         PyErr_SetString(PyExc_RuntimeError, "Failed to get event loop");
         return nullptr;
     }
 
-    PyObject* future = PyObject_CallMethod(loop, "create_future", nullptr);
-
-    Py_DECREF(loop);
+    OwnedPyObject future = PyObject_CallMethod(*loop, "create_future", nullptr);
 
     if (!future) {
-        Py_DECREF(future);
-
         PyErr_SetString(PyExc_RuntimeError, "Failed to create future");
         return nullptr;
     }
 
-    // async
-    callback(state, future);
+    // create the awaitable before calling the callback
+    // this ensures that we create a new strong reference to the future before the callback decrefs it
+    auto awaitable = PyObject_CallFunction(*state->PyAwaitableType, "O", *future);
 
-    return PyObject_CallFunction(state->PyAwaitableType, "O", future);
+    // async
+    // we transfer ownership of the future to the callback
+    callback(state, future.take());
+
+    return awaitable;
 }
 
 struct Awaitable {
     PyObject_HEAD;
-    PyObject* future;
+    OwnedPyObject<> future;
 };
 
 extern "C" {
 
 static int Awaitable_init(Awaitable* self, PyObject* args, PyObject* kwds)
 {
-    if (!PyArg_ParseTuple(args, "O", &self->future))
+    PyObject* future = nullptr;
+    if (!PyArg_ParseTuple(args, "O", &future))
         return -1;
 
-    // we store an owned reference to the future
-    Py_INCREF(self->future);
+    new (&self->future) OwnedPyObject<>();
+    self->future = OwnedPyObject<>::fromBorrowed(future);
 
     return 0;
 }
@@ -65,13 +65,16 @@ static PyObject* Awaitable_await(Awaitable* self)
 {
     // Easy: coroutines are just iterators and we don't need anything fancy
     // so we can just return the future's iterator!
-    return PyObject_GetIter(self->future);
+    return PyObject_GetIter(*self->future);
 }
 
 static void Awaitable_dealloc(Awaitable* self)
 {
-    // destroy our owned reference
-    Py_DECREF(self->future);
+    try {
+        self->future.~OwnedPyObject();
+    } catch (...) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to deallocate Awaitable");
+    }
 
     auto* tp = Py_TYPE(self);
     tp->tp_free(self);

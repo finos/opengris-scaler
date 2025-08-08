@@ -7,12 +7,13 @@
 
 // First-party
 #include "scaler/io/ymq/pymod_ymq/bytes.h"
+#include "scaler/io/ymq/pymod_ymq/utils.h"
 #include "scaler/io/ymq/pymod_ymq/ymq.h"
 
 struct PyMessage {
     PyObject_HEAD;
-    PyBytesYMQ* address;  // Address of the message; can be None
-    PyBytesYMQ* payload;  // Payload of the message
+    OwnedPyObject<PyBytesYMQ> address;  // Address of the message; can be None
+    OwnedPyObject<PyBytesYMQ> payload;  // Payload of the message
 };
 
 extern "C" {
@@ -31,41 +32,41 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds)
 
     // address can be None, which means the message has no address
     // check if the address and payload are of type PyBytesYMQ
-    if (address == Py_None) {
-        // do nothing, the address will be set to None
-    } else if (!PyObject_IsInstance(address, state->PyBytesYMQType)) {
-        PyObject* args = PyTuple_Pack(1, address);
-        address        = PyObject_CallObject(state->PyBytesYMQType, args);
-        Py_DECREF(args);
+    if (PyObject_IsInstance(address, *state->PyBytesYMQType)) {
+        self->address = OwnedPyObject<PyBytesYMQ>::fromBorrowed((PyBytesYMQ*)address);
+    } else if (address == Py_None) {
+        self->address = OwnedPyObject<PyBytesYMQ>::none();
+    } else {
+        OwnedPyObject args = PyTuple_Pack(1, address);
+        self->address      = (PyBytesYMQ*)PyObject_CallObject(*state->PyBytesYMQType, *args);
 
-        if (!address)
+        if (!self->address)
             return -1;
-
-        self->address = (PyBytesYMQ*)address;
     }
 
-    if (!PyObject_IsInstance(payload, state->PyBytesYMQType)) {
-        PyObject* args = PyTuple_Pack(1, payload);
-        payload        = PyObject_CallObject(state->PyBytesYMQType, args);
-        Py_DECREF(args);
+    if (PyObject_IsInstance(payload, *state->PyBytesYMQType)) {
+        self->payload = OwnedPyObject<PyBytesYMQ>::fromBorrowed((PyBytesYMQ*)payload);
+    } else {
+        OwnedPyObject args = PyTuple_Pack(1, payload);
+        self->payload      = (PyBytesYMQ*)PyObject_CallObject(*state->PyBytesYMQType, *args);
 
-        if (!payload) {
+        if (!self->payload) {
             return -1;
         }
     }
-
-    Py_INCREF(address);
-    Py_INCREF(payload);
-    self->address = (PyBytesYMQ*)address;
-    self->payload = (PyBytesYMQ*)payload;
 
     return 0;
 }
 
 static void PyMessage_dealloc(PyMessage* self)
 {
-    Py_DECREF(self->address);
-    Py_DECREF(self->payload);
+    try {
+        self->address.~OwnedPyObject();
+        self->payload.~OwnedPyObject();
+    } catch (...) {
+        // set the error and continue to free the object
+        PyErr_SetString(PyExc_RuntimeError, "Failed to deallocate Message");
+    }
 
     auto* tp = Py_TYPE(self);
     tp->tp_free(self);
@@ -74,7 +75,7 @@ static void PyMessage_dealloc(PyMessage* self)
 
 static PyObject* PyMessage_repr(PyMessage* self)
 {
-    return PyUnicode_FromFormat("<Message address=%R payload=%R>", self->address, self->payload);
+    return PyUnicode_FromFormat("<Message address=%R payload=%R>", *self->address, *self->payload);
 }
 }
 

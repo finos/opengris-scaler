@@ -14,20 +14,49 @@
 
 // First-party
 #include "scaler/io/ymq/error.h"
+#include "scaler/io/ymq/pymod_ymq/utils.h"
 
 struct YMQState {
-    PyObject* enumModule;     // Reference to the enum module
-    PyObject* asyncioModule;  // Reference to the asyncio module
+    OwnedPyObject<> enumModule;     // Reference to the enum module
+    OwnedPyObject<> asyncioModule;  // Reference to the asyncio module
 
-    PyObject* PyIOSocketEnumType;  // Reference to the IOSocketType enum
-    PyObject* PyErrorCodeType;     // Reference to the Error enum
-    PyObject* PyBytesYMQType;      // Reference to the PyBytesYMQ type
-    PyObject* PyMessageType;       // Reference to the Message type
-    PyObject* PyIOSocketType;      // Reference to the IOSocket type
-    PyObject* PyIOContextType;     // Reference to the IOContext type
-    PyObject* PyExceptionType;     // Reference to the Exception type
-    PyObject* PyAwaitableType;     // Reference to the Awaitable type
+    OwnedPyObject<> PyIOSocketEnumType;  // Reference to the IOSocketType enum
+    OwnedPyObject<> PyErrorCodeType;     // Reference to the Error enum
+    OwnedPyObject<> PyBytesYMQType;      // Reference to the PyBytesYMQ type
+    OwnedPyObject<> PyMessageType;       // Reference to the Message type
+    OwnedPyObject<> PyIOSocketType;      // Reference to the IOSocket type
+    OwnedPyObject<> PyIOContextType;     // Reference to the IOContext type
+    OwnedPyObject<> PyExceptionType;     // Reference to the Exception type
+    OwnedPyObject<> PyAwaitableType;     // Reference to the Awaitable type
 };
+
+static bool future_do_(PyObject* future_, const std::function<PyObject*()>& fn, const char* future_method)
+{
+    // this is an owned reference to the future created in `async_wrapper()`
+    OwnedPyObject future(future_);
+    OwnedPyObject loop = PyObject_CallMethod(*future, "get_loop", nullptr);
+    if (!loop)
+        return true;
+
+    // if future is already done, no need to call the method
+    OwnedPyObject result1 = PyObject_CallMethod(*future, "done", nullptr);
+    if (*result1 == Py_True)
+        return false;
+
+    OwnedPyObject method = PyObject_GetAttrString(*future, future_method);
+    if (!method)
+        return true;
+
+    OwnedPyObject obj = PyObject_GetAttrString(*loop, "call_soon_threadsafe");
+    OwnedPyObject arg = fn();
+
+    // auto result = PyObject_CallMethod(loop, "call_soon_threadsafe", "OO", method, fn());
+    OwnedPyObject result2 = PyObject_CallFunctionObjArgs(*obj, *method, *arg, nullptr);
+    if (!result2)
+        return true;
+
+    return false;
+}
 
 // this function must be called from a C++ thread
 // this function will lock the GIL, call `fn()` and use its return value to set the future's result/exception
@@ -36,58 +65,9 @@ static void future_do(PyObject* future, const std::function<PyObject*()>& fn, co
     PyGILState_STATE gstate = PyGILState_Ensure();
     // begin python critical section
 
-    {
-        PyObject* loop = PyObject_CallMethod(future, "get_loop", nullptr);
-        if (!loop) {
-            Py_DECREF(future);
-            PyErr_WriteUnraisable(nullptr);
-
-            // end python critical section
-            PyGILState_Release(gstate);
-            return;
-        }
-
-        // if future is already done, no need to call the method
-        if (PyObject_CallMethod(future, "done", nullptr) == Py_True) {
-            Py_DECREF(future);
-            Py_DECREF(loop);
-            PyGILState_Release(gstate);
-            return;
-        }
-
-        PyObject* method = PyObject_GetAttrString(future, future_method);
-
-        // correlates with the creation of the future in `async_wrapper()`
-        Py_DECREF(future);
-
-        if (!method) {
-            Py_DECREF(loop);
-            Py_DECREF(method);
-            PyErr_WriteUnraisable(nullptr);
-
-            // end python critical section
-            PyGILState_Release(gstate);
-            return;
-        }
-
-        auto obj = PyObject_GetAttrString(loop, "call_soon_threadsafe");
-        Py_DECREF(loop);
-
-        // auto result = PyObject_CallMethod(loop, "call_soon_threadsafe", "OO", method, fn());
-        auto result = PyObject_CallFunctionObjArgs(obj, method, fn(), nullptr);
-        Py_DECREF(method);
-        Py_DECREF(obj);
-
-        if (!result) {
-            PyErr_WriteUnraisable(nullptr);
-
-            // end python critical section
-            PyGILState_Release(gstate);
-            return;
-        }
-
-        Py_DECREF(result);
-    }
+    auto error = future_do_(future, fn, future_method);
+    if (error)
+        PyErr_WriteUnraisable(nullptr);
 
     // end python critical section
     PyGILState_Release(gstate);
@@ -116,14 +96,11 @@ static YMQState* YMQStateFromSelf(PyObject* self)
 
 PyObject* PyErr_CreateFromString(PyObject* type, const char* message)
 {
-    auto args = Py_BuildValue("(s)", message);
+    OwnedPyObject args = Py_BuildValue("(s)", message);
     if (!args)
         return nullptr;
 
-    PyObject* exc = PyObject_CallObject(type, args);
-    Py_DECREF(args);
-
-    return exc;
+    return PyObject_CallObject(type, *args);
 }
 
 // First-Party
@@ -138,63 +115,52 @@ extern "C" {
 
 static void YMQ_free(YMQState* state)
 {
-    Py_XDECREF(state->enumModule);
-    Py_XDECREF(state->asyncioModule);
-    Py_XDECREF(state->PyIOSocketEnumType);
-    Py_XDECREF(state->PyBytesYMQType);
-    Py_XDECREF(state->PyMessageType);
-    Py_XDECREF(state->PyIOSocketType);
-    Py_XDECREF(state->PyIOContextType);
-    Py_XDECREF(state->PyExceptionType);
-    Py_XDECREF(state->PyAwaitableType);
-
-    state->asyncioModule      = nullptr;
-    state->enumModule         = nullptr;
-    state->PyIOSocketEnumType = nullptr;
-    state->PyBytesYMQType     = nullptr;
-    state->PyMessageType      = nullptr;
-    state->PyIOSocketType     = nullptr;
-    state->PyIOContextType    = nullptr;
-    state->PyExceptionType    = nullptr;
-    state->PyAwaitableType    = nullptr;
+    try {
+        state->enumModule.~OwnedPyObject();
+        state->asyncioModule.~OwnedPyObject();
+        state->PyIOSocketEnumType.~OwnedPyObject();
+        state->PyErrorCodeType.~OwnedPyObject();
+        state->PyBytesYMQType.~OwnedPyObject();
+        state->PyMessageType.~OwnedPyObject();
+        state->PyIOSocketType.~OwnedPyObject();
+        state->PyIOContextType.~OwnedPyObject();
+        state->PyExceptionType.~OwnedPyObject();
+        state->PyAwaitableType.~OwnedPyObject();
+    } catch (...) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to free YMQState");
+        PyErr_WriteUnraisable(nullptr);
+    }
 }
 
 static int YMQ_createIntEnum(
-    PyObject* pyModule, PyObject** storage, std::string enumName, std::vector<std::pair<std::string, int>> entries)
+    PyObject* pyModule,
+    OwnedPyObject<>* storage,
+    std::string enumName,
+    std::vector<std::pair<std::string, int>> entries)
 {
     // create a python dictionary to hold the entries
-    auto enumDict = PyDict_New();
+    OwnedPyObject enumDict = PyDict_New();
     if (!enumDict)
         return -1;
 
     // add each entry to the dictionary
     for (const auto& entry: entries) {
-        PyObject* value = PyLong_FromLong(entry.second);
-        if (!value) {
-            Py_DECREF(enumDict);
+        OwnedPyObject value = PyLong_FromLong(entry.second);
+        if (!value)
             return -1;
-        }
 
-        auto status = PyDict_SetItemString(enumDict, entry.first.c_str(), value);
-        Py_DECREF(value);
-
-        if (status < 0) {
-            Py_DECREF(enumDict);
+        auto status = PyDict_SetItemString(*enumDict, entry.first.c_str(), *value);
+        if (status < 0)
             return -1;
-        }
     }
 
     auto state = (YMQState*)PyModule_GetState(pyModule);
 
-    if (!state) {
-        Py_DECREF(enumDict);
+    if (!state)
         return -1;
-    }
 
     // create our class by calling enum.IntEnum(enumName, enumDict)
-    auto enumClass = PyObject_CallMethod(state->enumModule, "IntEnum", "sO", enumName.c_str(), enumDict);
-    Py_DECREF(enumDict);
-
+    OwnedPyObject enumClass = PyObject_CallMethod(*state->enumModule, "IntEnum", "sO", enumName.c_str(), *enumDict);
     if (!enumClass)
         return -1;
 
@@ -202,10 +168,7 @@ static int YMQ_createIntEnum(
 
     // add the class to the module
     // this increments the reference count of enumClass
-    auto status = PyModule_AddObjectRef(pyModule, enumName.c_str(), enumClass);
-    Py_DECREF(enumClass);
-
-    return status;
+    return PyModule_AddObjectRef(pyModule, enumName.c_str(), *enumClass);
 }
 
 static int YMQ_createIOSocketTypeEnum(PyObject* pyModule, YMQState* state)
@@ -223,18 +186,16 @@ static int YMQ_createIOSocketTypeEnum(PyObject* pyModule, YMQState* state)
 
 static PyObject* YMQErrorCode_explanation(PyObject* self, PyObject* Py_UNUSED(args))
 {
-    auto pyValue = PyObject_GetAttrString(self, "value");
+    OwnedPyObject pyValue = PyObject_GetAttrString(self, "value");
     if (!pyValue)
         return nullptr;
 
-    if (!PyLong_Check(pyValue)) {
+    if (!PyLong_Check(*pyValue)) {
         PyErr_SetString(PyExc_TypeError, "Expected an integer value");
-        Py_DECREF(pyValue);
         return nullptr;
     }
 
-    long value = PyLong_AsLong(pyValue);
-    Py_DECREF(pyValue);
+    long value = PyLong_AsLong(*pyValue);
 
     if (value == -1 && PyErr_Occurred())
         return nullptr;
@@ -275,7 +236,7 @@ static int YMQ_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
         METH_NOARGS,
         PyDoc_STR("Returns an explanation of a YMQ error code")};
 
-    auto iter = PyObject_GetIter(state->PyErrorCodeType);
+    OwnedPyObject iter = PyObject_GetIter(*state->PyErrorCodeType);
     if (!iter)
         return -1;
 
@@ -284,23 +245,17 @@ static int YMQ_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
     // for some reason this does not seem to work with the c api
     // docs and examples are unfortunately scarce for this
     // for now this will work just fine
-    PyObject* item = nullptr;
-    while ((item = PyIter_Next(iter)) != nullptr) {
-        auto fn = PyCMethod_New(&YMQErrorCode_explanation_def, item, pyModule, nullptr);
+    OwnedPyObject item {};
+    while (item = PyIter_Next(*iter)) {
+        OwnedPyObject fn = PyCMethod_New(&YMQErrorCode_explanation_def, *item, pyModule, nullptr);
         if (!fn)
             return -1;
 
-        auto status = PyObject_SetAttrString(item, "explanation", fn);
-        Py_DECREF(item);
-        Py_DECREF(fn);
-
-        if (status < 0) {
-            Py_DECREF(iter);
+        auto status = PyObject_SetAttrString(*item, "explanation", *fn);
+        if (status < 0)
             return -1;
-        }
     }
 
-    Py_DECREF(iter);
     return 0;
 }
 }
@@ -310,7 +265,7 @@ static int YMQ_createType(
     // the module object
     PyObject* pyModule,
     // storage for the generated type object
-    PyObject** storage,
+    OwnedPyObject<>* storage,
     // the type's spec
     PyType_Spec* spec,
     // the name of the type, can be omitted if `add` is false
@@ -327,7 +282,7 @@ static int YMQ_createType(
         return -1;
 
     if (add)
-        if (PyModule_AddObjectRef(pyModule, name, *storage) < 0)
+        if (PyModule_AddObjectRef(pyModule, name, **storage) < 0)
             return -1;
 
     return 0;

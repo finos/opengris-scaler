@@ -77,8 +77,8 @@ static PyObject* PyIOContext_createIOSocket_(
     using Identity = Configuration::IOSocketIdentity;
 
     // note: references borrowed from args, so no need to manage their lifetime
-    PyObject* pyIdentity   = nullptr;
-    PyObject* pySocketType = nullptr;
+    PyObject* pyIdentity {};
+    PyObject* pySocketType {};
     if (nargs == 1) {
         pyIdentity = args[0];
     } else if (nargs == 2) {
@@ -146,7 +146,7 @@ static PyObject* PyIOContext_createIOSocket_(
     if (!state)
         return nullptr;
 
-    if (!PyObject_IsInstance(pySocketType, state->PyIOSocketEnumType)) {
+    if (!PyObject_IsInstance(pySocketType, *state->PyIOSocketEnumType)) {
         PyErr_SetString(PyExc_TypeError, "Expected socket_type to be an instance of IOSocketType");
         return nullptr;
     }
@@ -156,20 +156,16 @@ static PyObject* PyIOContext_createIOSocket_(
     if (!identityCStr)
         return nullptr;
 
-    PyObject* value = PyObject_GetAttrString(pySocketType, "value");
+    OwnedPyObject value = PyObject_GetAttrString(pySocketType, "value");
     if (!value)
         return nullptr;
 
-    if (!PyLong_Check(value)) {
-        Py_DECREF(value);
-
+    if (!PyLong_Check(*value)) {
         PyErr_SetString(PyExc_TypeError, "Expected socket_type to be an integer");
         return nullptr;
     }
 
-    long socketTypeValue = PyLong_AsLong(value);
-
-    Py_DECREF(value);
+    long socketTypeValue = PyLong_AsLong(*value);
 
     if (socketTypeValue < 0 && PyErr_Occurred())
         return nullptr;
@@ -177,7 +173,7 @@ static PyObject* PyIOContext_createIOSocket_(
     Identity identity(identityCStr, identitySize);
     IOSocketType socketType = static_cast<IOSocketType>(socketTypeValue);
 
-    PyIOSocket* ioSocket = PyObject_New(PyIOSocket, (PyTypeObject*)state->PyIOSocketType);
+    OwnedPyObject<PyIOSocket> ioSocket = PyObject_New(PyIOSocket, (PyTypeObject*)*state->PyIOSocketType);
     if (!ioSocket)
         return nullptr;
 
@@ -185,13 +181,14 @@ static PyObject* PyIOContext_createIOSocket_(
         // ensure the fields are init
         new (&ioSocket->socket) std::shared_ptr<IOSocket>();
         new (&ioSocket->ioContext) std::shared_ptr<IOContext>();
+        ioSocket->ioContext = self->ioContext;
     } catch (...) {
-        Py_DECREF(ioSocket);
         PyErr_SetString(PyExc_RuntimeError, "Failed to create IOSocket");
         return nullptr;
     }
 
-    return fn(ioSocket, identity, socketType);
+    // move ownership of the ioSocket to the callback
+    return fn(ioSocket.take(), identity, socketType);
 }
 
 static PyObject* PyIOContext_createIOSocket(
@@ -199,7 +196,7 @@ static PyObject* PyIOContext_createIOSocket(
 {
     return PyIOContext_createIOSocket_(
         self, clazz, args, nargs, kwnames, [self](auto ioSocket, Identity identity, IOSocketType socketType) {
-            return async_wrapper((PyObject*)self, [=](YMQState* state, PyObject* future) {
+            return async_wrapper((PyObject*)self, [=](YMQState* state, auto future) {
                 self->ioContext->createIOSocket(identity, socketType, [=](std::shared_ptr<IOSocket> socket) {
                     future_set_result(future, [=] {
                         ioSocket->socket = std::move(socket);
