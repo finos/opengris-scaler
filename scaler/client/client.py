@@ -271,6 +271,7 @@ class Client:
                     metadata=b"",
                     func_object_id=None,
                     function_args=[],
+                    tags=set(),
                 ),
                 is_delayed=not block,
                 group_task_id=None,
@@ -397,6 +398,7 @@ class Client:
             metadata=task_flags_bytes,
             func_object_id=function_object_id,
             function_args=function_args,
+            tags=set(),
         )
 
         future = self._future_factory(task=task, is_delayed=delayed, group_task_id=None)
@@ -511,6 +513,7 @@ class Client:
                 metadata=task_flags_bytes,
                 func_object_id=function_cache.object_id,
                 function_args=arguments,
+                tags=set(),
             )
 
         result_task_ids = [node_name_to_task_id[key] for key in keys if key in call_graph]
@@ -533,6 +536,7 @@ class Client:
                         metadata=b"",
                         func_object_id=None,
                         function_args=[],
+                        tags=set(),
                     ),
                     is_delayed=False,
                     group_task_id=graph_task_id,

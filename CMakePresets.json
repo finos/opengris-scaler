@@ -3,12 +3,21 @@
   "configurePresets": [
     {
       "name": "linux-x86_64",
-      "displayName": "Linux 64 bit build",
+      "displayName": "Linux 64 bit Intel build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}"
       },
       "binaryDir": "${sourceDir}/build_linux_x86_64"
+    },
+    {
+      "name": "linux-aarch64",
+      "displayName": "Linux 64 bit ARM build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}"
+      },
+      "binaryDir": "${sourceDir}/build_linux_aarch64"
     },
     {
       "name": "darwin-arm64",
@@ -37,8 +46,18 @@
   "buildPresets": [
     {
       "name": "linux-x86_64",
-      "displayName": "Linux 64 bit build",
+      "displayName": "Linux 64 bit Intel build",
       "configurePreset": "linux-x86_64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-aarch64",
+      "displayName": "Linux 64 bit ARM build",
+      "configurePreset": "linux-aarch64",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -75,7 +94,7 @@
   "testPresets": [
     {
       "name": "default-test",
-      "configurePreset": "linux-x86_64",
+      "configurePreset": "linux-aarch64",
       "output": {
         "outputOnFailure": true
       }

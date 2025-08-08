@@ -66,6 +66,7 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
                 self._latency_us,
                 self._worker_task_manager.can_accept_task(),
                 [],
+                set(),
             )
         )
         self._start_timestamp_ns = time.time_ns()
