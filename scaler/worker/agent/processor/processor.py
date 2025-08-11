@@ -1,4 +1,5 @@
 import contextlib
+import io
 import logging
 import multiprocessing
 import os
@@ -20,6 +21,7 @@ from scaler.protocol.python.message import ObjectInstruction, ProcessorInitializ
 from scaler.protocol.python.mixins import Message
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
+from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.serialization import serialize_failure
 from scaler.utility.zmq_config import ZMQConfig
@@ -188,8 +190,14 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         return object_ids
 
     def __process_task(self, task: Task):
-        stdout_buf = StreamingBuffer(task.task_id, TaskLog.Stream.Stdout, self._connector_agent)
-        stderr_buf = StreamingBuffer(task.task_id, TaskLog.Stream.Stderr, self._connector_agent)
+        task_flags = retrieve_task_flags_from_task(task)
+        if task_flags.stream_output:
+            # Create streaming buffers that send output immediately
+            stdout_buf = StreamingBuffer(task.task_id, TaskLog.Stream.Stdout, self._connector_agent)
+            stderr_buf = StreamingBuffer(task.task_id, TaskLog.Stream.Stderr, self._connector_agent)
+        else:
+            stdout_buf = None
+            stderr_buf = None
 
         try:
             function = self._object_cache.get_object(task.func_object_id)
@@ -197,8 +205,13 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
             args = [self._object_cache.get_object(cast(ObjectID, arg)) for arg in task.function_args]
 
-            with self.__processor_context(), redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
-                result = function_with_logger(*args)
+            if task_flags.stream_output:
+                with self.__processor_context(), redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
+                    result = function_with_logger(*args)
+            else:
+                with self.__processor_context():
+                    result = function_with_logger(*args)
+
             result_bytes = self._object_cache.serialize(task.source, result)
             status = TaskStatus.Success
 
@@ -208,8 +221,11 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             result_bytes = serialize_failure(e)
 
         finally:
-            stdout_buf.close()
-            stderr_buf.close()
+            # Always close buffers if they were created
+            if stdout_buf is not None:
+                stdout_buf.close()
+            if stderr_buf is not None:
+                stderr_buf.close()
 
         self.__send_result(task.source, task.task_id, status, result_bytes)
 

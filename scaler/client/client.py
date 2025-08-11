@@ -55,6 +55,7 @@ class Client:
         timeout_seconds: int = DEFAULT_CLIENT_TIMEOUT_SECONDS,
         heartbeat_interval_seconds: int = DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
         serializer: Serializer = DefaultSerializer(),
+        stream_output: bool = False,
     ):
         """
         The Scaler Client used to send tasks to a scheduler.
@@ -67,8 +68,10 @@ class Client:
         :type timeout_seconds: int
         :param heartbeat_interval_seconds: Frequency of heartbeat to scheduler in seconds
         :type heartbeat_interval_seconds: int
+        :param stream_output: If True, stdout/stderr will be streamed to client during task execution
+        :type stream_output: bool
         """
-        self.__initialize__(address, profiling, timeout_seconds, heartbeat_interval_seconds, serializer)
+        self.__initialize__(address, profiling, timeout_seconds, heartbeat_interval_seconds, serializer, stream_output)
 
     def __initialize__(
         self,
@@ -77,10 +80,12 @@ class Client:
         timeout_seconds: int,
         heartbeat_interval_seconds: int,
         serializer: Serializer = DefaultSerializer(),
+        stream_output: bool = False,
     ):
         self._serializer = serializer
 
         self._profiling = profiling
+        self._stream_output = stream_output
         self._identity = ClientID.generate_client_id()
 
         self._client_agent_address = ZMQConfig(ZMQType.inproc, host=f"scaler_client_{uuid.uuid4().hex}")
@@ -170,6 +175,7 @@ class Client:
         return {
             "address": self._scheduler_address.to_address(),
             "profiling": self._profiling,
+            "stream_output": self._stream_output,
             "timeout_seconds": self._timeout_seconds,
             "heartbeat_interval_seconds": self._heartbeat_interval_seconds,
         }
@@ -179,6 +185,7 @@ class Client:
         self.__initialize__(
             address=state["address"],
             profiling=state["profiling"],
+            stream_output=state.get("stream_output", False),
             timeout_seconds=state["timeout_seconds"],
             heartbeat_interval_seconds=state["heartbeat_interval_seconds"],
         )
@@ -553,7 +560,7 @@ class Client:
         else:
             task_priority = 0
 
-        return TaskFlags(profiling=self._profiling, priority=task_priority)
+        return TaskFlags(profiling=self._profiling, priority=task_priority, stream_output=self._stream_output)
 
     def __assert_client_not_stopped(self):
         if self._stop_event.is_set():
