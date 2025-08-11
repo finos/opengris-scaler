@@ -120,6 +120,7 @@ class TaskCancel(Message):
             )
         )
 
+
 class TaskLog(Message):
     class Stream(enum.Enum):
         Stdout = _message.TaskLog.Stream.stdout
@@ -142,9 +143,8 @@ class TaskLog(Message):
 
     @staticmethod
     def new_msg(task_id: TaskID, stream: "TaskLog.Stream", content: str) -> "TaskLog":
-        return TaskLog(
-            _message.TaskLog(taskId=bytes(task_id), stream=stream.value, content=content)
-        )
+        return TaskLog(_message.TaskLog(taskId=bytes(task_id), stream=stream.value, content=content))
+
 
 class TaskResult(Message):
     def __init__(self, msg):
