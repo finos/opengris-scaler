@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 import threading
 from concurrent.futures import Future
 from typing import Optional
@@ -157,11 +158,11 @@ class ClientAgent(threading.Thread):
             return
 
         if isinstance(message, TaskLog):
-            stream = "STDOUT" if message.stream == TaskLog.Stream.Stdout else "STDERR"
+            stream = sys.stdout if message.stream == TaskLog.Stream.Stdout else sys.stderr
             for line in message.content.splitlines():
                 # Only print non-empty lines
                 if line:
-                    print(f"[{stream} {message.task_id.hex()}] {line}")
+                    print(line, file=stream)
             return
 
         if isinstance(message, TaskResult):
