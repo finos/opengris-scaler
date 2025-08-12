@@ -3,7 +3,9 @@
 // Python
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
+#include <fcntl.h>
 #include <structmember.h>
+#include <unistd.h>
 
 // C++
 #include <expected>
@@ -17,7 +19,17 @@
 #include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/pymod_ymq/utils.h"
 
+#define CHECK_SIGNALS                \
+    do {                             \
+        PyEval_RestoreThread(_save); \
+        PyErr_CheckSignals();        \
+        return (PyObject*)nullptr;              \
+    } while (0);
+
 struct YMQState {
+    int wakeupfd_wr;
+    int wakeupfd_rd;
+
     OwnedPyObject<> enumModule;     // Reference to the enum module
     OwnedPyObject<> asyncioModule;  // Reference to the asyncio module
 
@@ -117,14 +129,14 @@ PyObject* PyErr_CreateFromString(PyObject* type, const char* message)
 // this is a polyfill for PyErr_GetRaisedException() added in Python 3.12+
 std::expected<PyObject*, PyObject*> PyErr_GetRaisedException()
 {
-    PyObject* excType, *excValue, *excTraceback;
+    PyObject *excType, *excValue, *excTraceback;
     PyErr_Fetch(&excType, &excValue, &excTraceback);
     Py_XDECREF(excType);
     Py_XDECREF(excTraceback);
     if (!excValue)
         Py_RETURN_NONE;
 
-    return std::unexpected{excValue};
+    return std::unexpected {excValue};
 }
 
 // First-Party
@@ -152,6 +164,16 @@ static void YMQ_free(YMQState* state)
         state->PyAwaitableType.~OwnedPyObject();
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to free YMQState");
+        PyErr_WriteUnraisable(nullptr);
+    }
+
+    if (close(state->wakeupfd_wr) < 0) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to close waitfd_wr");
+        PyErr_WriteUnraisable(nullptr);
+    }
+
+    if (close(state->wakeupfd_rd) < 0) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to close waitfd_rd");
         PyErr_WriteUnraisable(nullptr);
     }
 }
@@ -312,10 +334,35 @@ static int YMQ_createType(
     return 0;
 }
 
+static int YMQ_setupWakeupFd(YMQState* state)
+{
+    int pipefd[2];
+    if (pipe2(pipefd, O_NONBLOCK | O_CLOEXEC) < 0) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create pipe for wakeup fd");
+        return -1;
+    }
+
+    state->wakeupfd_rd = pipefd[0];
+    state->wakeupfd_wr = pipefd[1];
+
+    OwnedPyObject signalModule = PyImport_ImportModule("signal");
+    if (!signalModule)
+        return -1;
+
+    OwnedPyObject result = PyObject_CallMethod(*signalModule, "set_wakeup_fd", "i", state->wakeupfd_wr);
+    if (!result)
+        return -1;
+
+    return 0;
+}
+
 static int YMQ_exec(PyObject* pyModule)
 {
     auto state = (YMQState*)PyModule_GetState(pyModule);
     if (!state)
+        return -1;
+
+    if (YMQ_setupWakeupFd(state) < 0)
         return -1;
 
     state->enumModule = PyImport_ImportModule("enum");

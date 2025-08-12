@@ -5,6 +5,7 @@
 - Create RAII abstraction for reference counting
 - Propagate errors to futures in more situations
   - unify result setting and error raising fns
+- Replace latch-check-signal loop with wakeupfd and poll
 
 ## Todo
 

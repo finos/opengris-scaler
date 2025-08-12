@@ -8,7 +8,6 @@
 // C++
 #include <functional>
 #include <future>
-#include <latch>
 #include <memory>
 
 // First-party
@@ -210,31 +209,26 @@ static PyObject* PyIOContext_createIOSocket(
 static PyObject* PyIOContext_createIOSocket_sync(
     PyIOContext* self, PyTypeObject* clazz, PyObject* const* args, Py_ssize_t nargs, PyObject* kwnames)
 {
+    auto state = YMQStateFromSelf((PyObject*)self);
+    if (!state)
+        return nullptr;
+
     return PyIOContext_createIOSocket_(
-        self, clazz, args, nargs, kwnames, [self](auto ioSocket, Identity identity, IOSocketType socketType) {
+        self, clazz, args, nargs, kwnames, [self, state](auto ioSocket, Identity identity, IOSocketType socketType) {
             PyThreadState* _save = PyEval_SaveThread();
 
             std::shared_ptr<IOSocket> socket {};
             try {
-                std::shared_ptr<std::latch> waiter = std::make_shared<std::latch>(1);
+                Waiter waiter(state->wakeupfd_rd);
 
                 self->ioContext->createIOSocket(
                     identity, socketType, [waiter, &socket](std::shared_ptr<IOSocket> s) mutable {
                         socket = std::move(s);
-                        waiter->count_down();
+                        waiter.signal();
                     });
 
-                // block the thread until the callback is called
-                for (;;) {
-                    if (waiter->try_wait())
-                        break;
-
-                    PyEval_RestoreThread(_save);
-                    if (PyErr_CheckSignals() < 0)
-                        return (PyObject*)nullptr;
-                    _save = PyEval_SaveThread();
-
-                    std::this_thread::sleep_for(10ms);
+                if (waiter.wait()) {
+                    CHECK_SIGNALS;
                 }
             } catch (const std::exception& e) {
                 PyEval_RestoreThread(_save);

@@ -8,10 +8,14 @@
 // C++
 #include <chrono>
 #include <expected>
-#include <latch>
 #include <memory>
 #include <thread>
 #include <utility>
+
+// C
+#include <semaphore.h>
+#include <sys/eventfd.h>
+#include <sys/poll.h>
 
 // First-party
 #include "scaler/io/ymq/bytes.h"
@@ -100,24 +104,15 @@ static PyObject* PyIOSocket_send_sync(PyIOSocket* self, PyObject* args, PyObject
 
     std::shared_ptr<std::expected<void, Error>> result = std::make_shared<std::expected<void, Error>>();
     try {
-        std::shared_ptr<std::latch> waiter = std::make_shared<std::latch>(1);
+        Waiter waiter(state->wakeupfd_rd);
 
-        self->socket->sendMessage({.address = std::move(address), .payload = std::move(payload)}, [=](auto r) {
+        self->socket->sendMessage({.address = std::move(address), .payload = std::move(payload)}, [=](auto r) mutable {
             *result = std::move(r);
-            waiter->count_down();
+            waiter.signal();
         });
 
-        // block the thread until the callback is called
-        for (;;) {
-            if (waiter->try_wait())
-                break;
-
-            PyEval_RestoreThread(_save);
-            if (PyErr_CheckSignals() < 0)
-                return nullptr;
-            _save = PyEval_SaveThread();
-
-            std::this_thread::sleep_for(10ms);
+        if (waiter.wait()) {
+            CHECK_SIGNALS;
         }
     } catch (const std::exception& e) {
         PyEval_RestoreThread(_save);
@@ -187,24 +182,15 @@ static PyObject* PyIOSocket_recv_sync(PyIOSocket* self, PyObject* args)
 
     std::shared_ptr<std::pair<Message, Error>> result = std::make_shared<std::pair<Message, Error>>();
     try {
-        std::shared_ptr<std::latch> waiter = std::make_shared<std::latch>(1);
+        Waiter waiter(state->wakeupfd_rd);
 
-        self->socket->recvMessage([=](auto r) {
+        self->socket->recvMessage([=](auto r) mutable {
             *result = std::move(r);
-            waiter->count_down();
+            waiter.signal();
         });
 
-        // block the thread until the callback is called
-        for (;;) {
-            if (waiter->try_wait())
-                break;
-
-            PyEval_RestoreThread(_save);
-            if (PyErr_CheckSignals() < 0)
-                return nullptr;
-            _save = PyEval_SaveThread();
-
-            std::this_thread::sleep_for(10ms);
+        if (waiter.wait()) {
+            CHECK_SIGNALS;
         }
     } catch (const std::exception& e) {
         PyEval_RestoreThread(_save);
@@ -287,24 +273,15 @@ static PyObject* PyIOSocket_bind_sync(PyIOSocket* self, PyObject* args, PyObject
 
     std::shared_ptr<std::expected<void, Error>> result = std::make_shared<std::expected<void, Error>>();
     try {
-        std::shared_ptr<std::latch> waiter = std::make_shared<std::latch>(1);
+        Waiter waiter(state->wakeupfd_rd);
 
-        self->socket->bindTo(std::string(address, addressLen), [=](auto r) {
+        self->socket->bindTo(std::string(address, addressLen), [=](auto r) mutable {
             *result = std::move(r);
-            waiter->count_down();
+            waiter.signal();
         });
 
-        // block the thread until the callback is called
-        for (;;) {
-            if (waiter->try_wait())
-                break;
-
-            PyEval_RestoreThread(_save);
-            if (PyErr_CheckSignals() < 0)
-                return nullptr;
-            _save = PyEval_SaveThread();
-
-            std::this_thread::sleep_for(10ms);
+        if (waiter.wait()) {
+            CHECK_SIGNALS;
         }
     } catch (const std::exception& e) {
         PyEval_RestoreThread(_save);
@@ -364,24 +341,15 @@ static PyObject* PyIOSocket_connect_sync(PyIOSocket* self, PyObject* args, PyObj
 
     std::shared_ptr<std::expected<void, Error>> result = std::make_shared<std::expected<void, Error>>();
     try {
-        std::shared_ptr<std::latch> waiter = std::make_shared<std::latch>(1);
+        Waiter waiter(state->wakeupfd_rd);
 
-        self->socket->connectTo(std::string(address, addressLen), [=](auto r) {
+        self->socket->connectTo(std::string(address, addressLen), [=](auto r) mutable {
             *result = std::move(r);
-            waiter->count_down();
+            waiter.signal();
         });
 
-        // block the thread until the callback is called
-        for (;;) {
-            if (waiter->try_wait())
-                break;
-
-            PyEval_RestoreThread(_save);
-            if (PyErr_CheckSignals() < 0)
-                return nullptr;
-            _save = PyEval_SaveThread();
-
-            std::this_thread::sleep_for(10ms);
+        if (waiter.wait()) {
+            CHECK_SIGNALS;
         }
     } catch (const std::exception& e) {
         PyEval_RestoreThread(_save);
