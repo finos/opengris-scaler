@@ -55,10 +55,10 @@ def start_webui(address: str, host: str, port: int):
     with ui.tab_panels(tabs, value=live_tab).classes("w-full"):
         with ui.tab_panel(live_tab):
             tables.scheduler_section.draw_section()
-            tables.workers_section.draw_section()
+            tables.workers_section.draw_section()  # type: ignore[call-arg]
 
         with ui.tab_panel(tasklog_tab):
-            tables.tasklog_section.draw_section()
+            tables.tasklog_section.draw_section()  # type: ignore[call-arg]
             ui.timer(TASK_LOG_REFRESH_INTERVAL, tables.tasklog_section.draw_section.refresh, active=True)
 
         with ui.tab_panel(stream_tab):
@@ -69,7 +69,7 @@ def start_webui(address: str, host: str, port: int):
             ui.timer(MEMORY_USAGE_UPDATE_INTERVAL, tables.memory_usage_section.update_plot, active=True)
 
         with ui.tab_panel(worker_processors_tab):
-            tables.worker_processors.draw_section()
+            tables.worker_processors.draw_section()  # type: ignore[call-arg]
             ui.timer(WORKER_PROCESSORS_REFRESH_INTERVAL, tables.worker_processors.draw_section.refresh, active=True)
 
         with ui.tab_panel(settings_tab):
