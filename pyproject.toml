@@ -60,6 +60,10 @@ all = ["python-graphblas", "numpy==2.2.6", "uvloop", "nicegui[plotly]==2.22.1"]
 wheel.packages = ["scaler"]
 build.targets=["cc_object_storage_server", "ymq", "object_storage_server"]
 
+[tool.scikit-build.cmake.define]
+CMAKE_C_COMPILER = { env = "CMAKE_C_COMPILER", default = "gcc-14" }
+CMAKE_CXX_COMPILER = { env = "CMAKE_CXX_COMPILER", default = "g++-14" }
+
 [tool.mypy]
 no_strict_optional = true
 check_untyped_defs = true
