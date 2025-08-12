@@ -1,8 +1,15 @@
 # YMQ Python Interfce TODO
 
-- Error handling for callback inside `future_set_result()`
-  - Unify set result and raise exception fns?
+## Done
+
+- Create RAII abstraction for reference counting
+- Propagate errors to futures in more situations
+  - unify result setting and error raising fns
+
+## Todo
+
 - Investigate zerocopy for constructing Bytes
 - The latch-check-signals loops are bad, investigate replacing with pysignal_setwakeupfd or a signalfd
 - Put everything in scaler::ymq namespace
 - Migrate pub/sub sockets back to ZMQ
+- Why do the Bytes need to be incref'd in recv?

@@ -6,6 +6,7 @@
 #include <structmember.h>
 
 // C++
+#include <expected>
 #include <format>
 #include <functional>
 #include <string>
@@ -30,7 +31,7 @@ struct YMQState {
     OwnedPyObject<> PyAwaitableType;     // Reference to the Awaitable type
 };
 
-static bool future_do_(PyObject* future_, const std::function<PyObject*()>& fn, const char* future_method)
+static bool future_do_(PyObject* future_, const std::function<std::expected<PyObject*, PyObject*>()>& fn)
 {
     // this is an owned reference to the future created in `async_wrapper()`
     OwnedPyObject future(future_);
@@ -43,12 +44,22 @@ static bool future_do_(PyObject* future_, const std::function<PyObject*()>& fn, 
     if (*result1 == Py_True)
         return false;
 
-    OwnedPyObject method = PyObject_GetAttrString(*future, future_method);
+    const char* method_name = nullptr;
+    OwnedPyObject arg {};
+
+    if (auto result = fn()) {
+        method_name = "set_result";
+        arg         = *result;
+    } else {
+        method_name = "set_exception";
+        arg         = result.error();
+    }
+
+    OwnedPyObject method = PyObject_GetAttrString(*future, method_name);
     if (!method)
         return true;
 
     OwnedPyObject obj = PyObject_GetAttrString(*loop, "call_soon_threadsafe");
-    OwnedPyObject arg = fn();
 
     // auto result = PyObject_CallMethod(loop, "call_soon_threadsafe", "OO", method, fn());
     OwnedPyObject result2 = PyObject_CallFunctionObjArgs(*obj, *method, *arg, nullptr);
@@ -60,12 +71,12 @@ static bool future_do_(PyObject* future_, const std::function<PyObject*()>& fn, 
 
 // this function must be called from a C++ thread
 // this function will lock the GIL, call `fn()` and use its return value to set the future's result/exception
-static void future_do(PyObject* future, const std::function<PyObject*()>& fn, const char* future_method)
+static void future_do(PyObject* future, const std::function<std::expected<PyObject*, PyObject*>()>& fn)
 {
     PyGILState_STATE gstate = PyGILState_Ensure();
     // begin python critical section
 
-    auto error = future_do_(future, fn, future_method);
+    auto error = future_do_(future, fn);
     if (error)
         PyErr_WriteUnraisable(nullptr);
 
@@ -73,14 +84,14 @@ static void future_do(PyObject* future, const std::function<PyObject*()>& fn, co
     PyGILState_Release(gstate);
 }
 
-static void future_set_result(PyObject* future, std::function<PyObject*()> fn)
+static void future_set_result(PyObject* future, std::function<std::expected<PyObject*, PyObject*>()> fn)
 {
-    return future_do(future, fn, "set_result");
+    return future_do(future, fn);
 }
 
 static void future_raise_exception(PyObject* future, std::function<PyObject*()> fn)
 {
-    return future_do(future, fn, "set_exception");
+    return future_do(future, [=] { return std::unexpected {fn()}; });
 }
 
 static YMQState* YMQStateFromSelf(PyObject* self)
@@ -101,6 +112,19 @@ PyObject* PyErr_CreateFromString(PyObject* type, const char* message)
         return nullptr;
 
     return PyObject_CallObject(type, *args);
+}
+
+// this is a polyfill for PyErr_GetRaisedException() added in Python 3.12+
+std::expected<PyObject*, PyObject*> PyErr_GetRaisedException()
+{
+    PyObject* excType, *excValue, *excTraceback;
+    PyErr_Fetch(&excType, &excValue, &excTraceback);
+    Py_XDECREF(excType);
+    Py_XDECREF(excTraceback);
+    if (!excValue)
+        Py_RETURN_NONE;
+
+    return std::unexpected{excValue};
 }
 
 // First-Party

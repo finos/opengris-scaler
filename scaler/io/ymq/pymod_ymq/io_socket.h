@@ -66,12 +66,13 @@ static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwa
     return async_wrapper((PyObject*)self, [=](YMQState* state, auto future) {
         try {
             self->socket->sendMessage({.address = std::move(address), .payload = std::move(payload)}, [=](auto result) {
-                if (result) {
-                    future_set_result(future, [] { Py_RETURN_NONE; });
-                } else {
-                    future_raise_exception(
-                        future, [=] { return YMQException_createFromCoreError(state, &result.error()); });
-                }
+                future_set_result(future, [=] -> std::expected<PyObject*, PyObject*> {
+                    if (result) {
+                        Py_RETURN_NONE;
+                    } else {
+                        return std::unexpected {YMQException_createFromCoreError(state, &result.error())};
+                    }
+                });
             });
         } catch (...) {
             future_raise_exception(
@@ -139,36 +140,35 @@ static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args)
     return async_wrapper((PyObject*)self, [=](YMQState* state, auto future) {
         self->socket->recvMessage([=](auto result) {
             try {
-                if (result.second._errorCode == Error::ErrorCode::Uninit) {
-                    auto message = result.first;
-                    future_set_result(future, [=] {
-                        OwnedPyObject<PyBytesYMQ> address = (PyBytesYMQ*)PyObject_CallNoArgs(*state->PyBytesYMQType);
-                        if (!address)
-                            Py_RETURN_NONE;
+                future_set_result(future, [=] -> std::expected<PyObject*, PyObject*> {
+                    if (result.second._errorCode != Error::ErrorCode::Uninit) {
+                        return std::unexpected {YMQException_createFromCoreError(state, &result.second)};
+                    }
 
-                        address->bytes = std::move(message.address);
+                    auto message                      = result.first;
+                    OwnedPyObject<PyBytesYMQ> address = (PyBytesYMQ*)PyObject_CallNoArgs(*state->PyBytesYMQType);
+                    if (!address)
+                        return PyErr_GetRaisedException();
 
-                        OwnedPyObject<PyBytesYMQ> payload = (PyBytesYMQ*)PyObject_CallNoArgs(*state->PyBytesYMQType);
-                        if (!payload)
-                            Py_RETURN_NONE;
+                    address->bytes = std::move(message.address);
 
-                        payload->bytes = std::move(message.payload);
+                    OwnedPyObject<PyBytesYMQ> payload = (PyBytesYMQ*)PyObject_CallNoArgs(*state->PyBytesYMQType);
+                    if (!payload)
+                        return PyErr_GetRaisedException();
 
-                        OwnedPyObject<PyMessage> message =
-                            (PyMessage*)PyObject_CallFunction(*state->PyMessageType, "OO", *address, *payload);
-                        if (!message)
-                            Py_RETURN_NONE;
+                    payload->bytes = std::move(message.payload);
 
-                        // leak -- why is this necessary?
-                        address.forget();
-                        payload.forget();
+                    OwnedPyObject<PyMessage> pyMessage =
+                        (PyMessage*)PyObject_CallFunction(*state->PyMessageType, "OO", *address, *payload);
+                    if (!pyMessage)
+                        return PyErr_GetRaisedException();
 
-                        return (PyObject*)message.take();
-                    });
-                } else {
-                    future_raise_exception(
-                        future, [=] { return YMQException_createFromCoreError(state, &result.second); });
-                }
+                    // leak -- why is this necessary?
+                    address.forget();
+                    payload.forget();
+
+                    return (PyObject*)pyMessage.take();
+                });
             } catch (...) {
                 future_raise_exception(
                     future, [] { return PyErr_CreateFromString(PyExc_RuntimeError, "Failed to receive message"); });
@@ -256,12 +256,13 @@ static PyObject* PyIOSocket_bind(PyIOSocket* self, PyObject* args, PyObject* kwa
     return async_wrapper((PyObject*)self, [=](YMQState* state, auto future) {
         try {
             self->socket->bindTo(std::string(address, addressLen), [=](auto result) {
-                if (result) {
-                    future_set_result(future, [] { Py_RETURN_NONE; });
-                } else {
-                    future_raise_exception(
-                        future, [=] { return YMQException_createFromCoreError(state, &result.error()); });
-                }
+                future_set_result(future, [=] -> std::expected<PyObject*, PyObject*> {
+                    if (!result) {
+                        return std::unexpected {YMQException_createFromCoreError(state, &result.error())};
+                    }
+
+                    Py_RETURN_NONE;
+                });
             });
         } catch (...) {
             future_raise_exception(
@@ -332,12 +333,13 @@ static PyObject* PyIOSocket_connect(PyIOSocket* self, PyObject* args, PyObject* 
     return async_wrapper((PyObject*)self, [=](YMQState* state, auto future) {
         try {
             self->socket->connectTo(std::string(address, addressLen), [=](auto result) {
-                if (result || result.error()._errorCode == Error::ErrorCode::InitialConnectFailedWithInProgress) {
-                    future_set_result(future, [] { Py_RETURN_NONE; });
-                } else {
-                    future_raise_exception(
-                        future, [=] { return YMQException_createFromCoreError(state, &result.error()); });
-                }
+                future_set_result(future, [=] -> std::expected<PyObject*, PyObject*> {
+                    if (result || result.error()._errorCode == Error::ErrorCode::InitialConnectFailedWithInProgress) {
+                        Py_RETURN_NONE;
+                    } else {
+                        return std::unexpected {YMQException_createFromCoreError(state, &result.error())};
+                    }
+                });
             });
         } catch (...) {
             future_raise_exception(
