@@ -117,10 +117,10 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
         if client_id in self._client_last_seen:
             self._client_last_seen.pop(client_id)
 
-        await self.__cancel_tasks(client_id)
+        await self.__cancel_client_all_tasks(client_id)
         self._object_manager.clean_client(client_id)
 
-    async def __cancel_tasks(self, client_id: ClientID):
+    async def __cancel_client_all_tasks(self, client_id: ClientID):
         if client_id not in self._client_to_task_ids.keys():
             return
 

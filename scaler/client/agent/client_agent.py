@@ -24,6 +24,7 @@ from scaler.protocol.python.message import (
     Task,
     TaskCancel,
     TaskResult,
+    TaskCancelConfirm,
 )
 from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine
@@ -157,6 +158,10 @@ class ClientAgent(threading.Thread):
 
         if isinstance(message, TaskResult):
             await self._task_manager.on_task_result(message)
+            return
+
+        if isinstance(message, TaskCancelConfirm):
+            await self._task_manager.on_task_cancel_confirm(message)
             return
 
         raise TypeError(f"Unknown {message=}")

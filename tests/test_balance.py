@@ -35,7 +35,6 @@ class TestBalance(unittest.TestCase):
             n_workers=1,
             per_worker_task_queue_size=N_TASKS,
             load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
-            # FIXME: re-enable balancing as it's currently disabled by default
         )
 
         client = Client(address=address)

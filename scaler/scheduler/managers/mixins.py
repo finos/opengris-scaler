@@ -8,12 +8,15 @@ from scaler.protocol.python.message import (
     DisconnectRequest,
     GraphTask,
     GraphTaskCancel,
+    InformationRequest,
     ObjectInstruction,
     Task,
     TaskCancel,
     TaskResult,
     WorkerHeartbeat,
+    TaskCancelConfirm,
 )
+from scaler.scheduler.task.task_state_machine import TaskTypeFlags
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.mixins import Reporter
 
@@ -90,7 +93,11 @@ class GraphTaskManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_graph_sub_task_done(self, result: TaskResult) -> bool:
+    async def on_graph_sub_task_cancel_confirm(self, task_cancel_confirm: TaskCancelConfirm):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_graph_sub_task_result(self, result: TaskResult) -> bool:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -100,7 +107,11 @@ class GraphTaskManager(Reporter):
 
 class TaskManager(Reporter):
     @abc.abstractmethod
-    async def on_task_new(self, client_id: ClientID, task: Task):
+    def add_task_flag(self, task_id: bytes, flag: TaskTypeFlags):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_task_new(self, task: Task):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -108,25 +119,33 @@ class TaskManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_done(self, result: TaskResult):
+    async def on_task_balance_cancel(self, task_id: TaskID):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_reroute(self, task_id: TaskID):
+    async def on_task_cancel_confirm(self, task_cancel_confirm: TaskCancelConfirm):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_task_result(self, result: TaskResult):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_worker_disconnect(self, task_id: TaskID, worker_id: WorkerID):
         raise NotImplementedError()
 
 
 class WorkerManager(Reporter):
     @abc.abstractmethod
-    async def assign_task_to_worker(self, task: Task) -> bool:
+    async def assign_task_to_worker(self, task: TaskID) -> Optional[WorkerID]:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_cancel(self, task_cancel: TaskCancel):
+    async def on_task_cancel(self, task_cancel: TaskCancel) -> bytes:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_result(self, task_result: TaskResult):
+    async def on_task_done(self, task_id: TaskID):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -155,4 +174,6 @@ class WorkerManager(Reporter):
 
 
 class InformationManager(metaclass=abc.ABCMeta):
-    pass
+    @abc.abstractmethod
+    async def on_request(self, request: InformationRequest):
+        raise NotImplementedError()
