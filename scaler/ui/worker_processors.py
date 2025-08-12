@@ -72,7 +72,7 @@ class WorkerProcessorTable:
         rss = int(processor_status.resource.rss / 1e6)
         rss_free = int(rss_free / 1e6)
 
-        ui.label(processor_status.pid)
+        ui.label(str(processor_status.pid))
         ui.knob(value=cpu, track_color="grey-2", show_value=True, min=0, max=100)
         ui.knob(value=rss, track_color="grey-2", show_value=True, min=0, max=rss + rss_free)
         ui.checkbox().bind_value_from(processor_status, "initialized")
