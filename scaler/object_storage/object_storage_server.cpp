@@ -26,8 +26,8 @@ void ObjectStorageServer::run(std::string name, std::string port)
         co_spawn(ioContext, listener(res.begin()->endpoint()), detached);
         ioContext.run();
     } catch (std::exception& e) {
-        std::cerr << "Exception: " << e.what() << std::endl;
-        std::cerr << "Mostly something serious happen, inspect capnp header corruption" << std::endl;
+        log(scaler::ymq::LoggingLevel::error, "Exception: ", e.what(), "\n",
+        "Mostly something serious happen, inspect capnp header corruption \n");
         std::terminate();
     }
 }
@@ -38,7 +38,7 @@ void ObjectStorageServer::waitUntilReady()
     ssize_t ret = read(onServerReadyReader, &value, sizeof(uint64_t));
 
     if (ret != sizeof(uint64_t)) {
-        std::cerr << "read from onServerReadyReader failed: errno=" << errno << std::endl;
+        log(scaler::ymq::LoggingLevel::error, "read from onServerReadyReader failed: errno=", errno , "\n");
         std::terminate();
     }
 }
@@ -54,7 +54,7 @@ void ObjectStorageServer::initServerReadyFds()
     int ret = pipe(pipeFds);
 
     if (ret != 0) {
-        std::cerr << "create on server ready FDs failed: errno=" << errno << std::endl;
+        log(scaler::ymq::LoggingLevel::error, "create on server ready FDs failed: errno=", errno, "\n");
         std::terminate();
     }
 
@@ -68,7 +68,7 @@ void ObjectStorageServer::setServerReadyFd()
     ssize_t ret    = write(onServerReadyWriter, &value, sizeof(uint64_t));
 
     if (ret != sizeof(uint64_t)) {
-        std::cerr << "write to onServerReadyWriter failed: errno=" << errno << std::endl;
+        log(scaler::ymq::LoggingLevel::error, "write to onServerReadyWriter failed: errno=", errno, "\n");
         std::terminate();
     }
 }
@@ -79,7 +79,7 @@ void ObjectStorageServer::closeServerReadyFds()
 
     for (const int fd: fds) {
         if (close(fd) != 0) {
-            std::cerr << "close failed: errno=" << errno << std::endl;
+            log(scaler::ymq::LoggingLevel::error, "close failed: errno=", errno, "\n");
             std::terminate();
         }
     }
@@ -128,8 +128,7 @@ awaitable<void> ObjectStorageServer::processRequests(std::shared_ptr<Client> cli
             }
         }
     } catch (std::exception& e) {
-        // TODO: Logging support
-        // std::printf("process_request Exception: %s\n", e.what());
+        log(scaler::ymq::LoggingLevel::error, "process_requests Exception: ", e.what(), "\n");
     }
 }
 
@@ -137,12 +136,12 @@ awaitable<void> ObjectStorageServer::processSetRequest(
     std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader)
 {
     if (requestHeader.payloadLength > MEMORY_LIMIT_IN_BYTES) {
-        std::cerr << "payload length is larger than MEMORY_LIMIT_IN_BYTES = " << MEMORY_LIMIT_IN_BYTES << '\n';
+        log(scaler::ymq::LoggingLevel::error, "payload length is larger than MEMORY_LIMIT_IN_BYTES = ", MEMORY_LIMIT_IN_BYTES, "\n");
         std::terminate();
     }
 
     if (requestHeader.payloadLength > SIZE_MAX) {
-        std::cerr << "payload length is larger than SIZE_MAX = " << SIZE_MAX << '\n';
+        log(scaler::ymq::LoggingLevel::error, "payload length is larger than SIZE_MAX = ", SIZE_MAX, "\n");
         std::terminate();
     }
 
@@ -152,8 +151,8 @@ awaitable<void> ObjectStorageServer::processSetRequest(
     try {
         co_await boost::asio::async_read(client->socket, boost::asio::buffer(requestPayload), use_awaitable);
     } catch (boost::system::system_error& e) {
-        std::cerr << "payload ends prematurely, e.what() = " << e.what() << '\n';
-        std::cerr << "Failing fast. Terminting now...\n";
+        log(scaler::ymq::LoggingLevel::error, "payload ends prematurely, e.what() = ", e.what(), "\n",
+        "Failing fast. Terminting now...\n");
         std::terminate();
     }
 
@@ -203,7 +202,7 @@ awaitable<void> ObjectStorageServer::processDuplicateRequest(
     std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader)
 {
     if (requestHeader.payloadLength != ObjectID::bufferSize()) {
-        std::cerr << "payload length should be the size of ObjectID = " << ObjectID::bufferSize() << '\n';
+        log(scaler::ymq::LoggingLevel::error, "payload length should be the size of ObjectID = ", ObjectID::bufferSize(), "\n");
         std::terminate();
     }
 
