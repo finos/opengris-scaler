@@ -13,14 +13,14 @@ from scaler.protocol.python.message import (
     TaskCancel,
 )
 from scaler.protocol.python.status import ClientManagerStatus
-from scaler.scheduler.managers.mixins import ClientManager, ObjectManager, TaskManager, WorkerManager
+from scaler.scheduler.controllers.mixins import ClientController, ObjectController, TaskController, WorkerController
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, TaskID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.one_to_many_dict import OneToManyDict
 
 
-class VanillaClientManager(ClientManager, Looper, Reporter):
+class VanillaClientController(ClientController, Looper, Reporter):
     def __init__(self, client_timeout_seconds: int, protected: bool, storage_address: ObjectStorageAddress):
         self._client_timeout_seconds = client_timeout_seconds
         self._protected = protected
@@ -30,9 +30,9 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
 
         self._binder: Optional[AsyncBinder] = None
         self._binder_monitor: Optional[AsyncConnector] = None
-        self._object_manager: Optional[ObjectManager] = None
-        self._task_manager: Optional[TaskManager] = None
-        self._worker_manager: Optional[WorkerManager] = None
+        self._object_controller: Optional[ObjectController] = None
+        self._task_controller: Optional[TaskController] = None
+        self._worker_controller: Optional[WorkerController] = None
 
         self._client_last_seen: Dict[ClientID, Tuple[float, ClientHeartbeat]] = dict()
 
@@ -40,15 +40,15 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
         self,
         binder: AsyncBinder,
         binder_monitor: AsyncConnector,
-        object_manager: ObjectManager,
-        task_manager: TaskManager,
-        worker_manager: WorkerManager,
+        object_controller: ObjectController,
+        task_controller: TaskController,
+        worker_controller: WorkerController,
     ):
         self._binder = binder
         self._binder_monitor = binder_monitor
-        self._object_manager = object_manager
-        self._task_manager = task_manager
-        self._worker_manager = worker_manager
+        self._object_controller = object_controller
+        self._task_controller = task_controller
+        self._worker_controller = worker_controller
 
     def get_client_task_ids(self, client_id: ClientID) -> Set[TaskID]:
         return self._client_to_task_ids.get_values(client_id)
@@ -89,7 +89,7 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
         if self._protected:
             return
 
-        await self._worker_manager.on_client_shutdown(client_id)
+        await self._worker_controller.on_client_shutdown(client_id)
 
         raise ClientShutdownException(f"received client shutdown from {client_id!r}, quitting")
 
@@ -118,7 +118,7 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
             self._client_last_seen.pop(client_id)
 
         await self.__cancel_tasks(client_id)
-        self._object_manager.clean_client(client_id)
+        self._object_controller.clean_client(client_id)
 
     async def __cancel_tasks(self, client_id: ClientID):
         if client_id not in self._client_to_task_ids.keys():
@@ -126,4 +126,4 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
 
         tasks = self._client_to_task_ids.get_values(client_id).copy()
         for task in tasks:
-            await self._task_manager.on_task_cancel(client_id, TaskCancel.new_msg(task))
+            await self._task_controller.on_task_cancel(client_id, TaskCancel.new_msg(task))
