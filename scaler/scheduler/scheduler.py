@@ -4,6 +4,7 @@ import logging
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
+from scaler.io.async_connector_zmq import AsyncConnectorZMQ
 from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.io.config import CLEANUP_INTERVAL_SECONDS, STATUS_REPORT_INTERVAL_SECONDS
 from scaler.protocol.python.common import ObjectStorageAddress
@@ -35,7 +36,9 @@ from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, WorkerID
 from scaler.utility.ymq_config import YMQConfig
+from scaler.utility.zmq_config import ZMQConfig, ZMQType
 
+import zmq.asyncio
 
 class Scheduler:
     def __init__(self, config: SchedulerConfig):
@@ -49,21 +52,24 @@ class Scheduler:
             )
 
         if config.monitor_address is None:
-            self._address_monitor = YMQConfig(host=config.address.host, port=config.address.port + 2)
+            self._address_monitor = ZMQConfig(type=ZMQType.tcp, host=config.address.host, port=config.address.port + 2)
         else:
             self._address_monitor = config.monitor_address
 
         self._context = IOContext(num_threads=config.io_threads)
         self._binder = AsyncBinder(context=self._context, name="scheduler", address=config.address)
         self._binder.init_sync()
-        self._binder_monitor = AsyncConnector(
-            context=self._context,
+
+        self._context_zmq = zmq.asyncio.Context(io_threads=config.io_threads)
+        self._binder_monitor = AsyncConnectorZMQ(
+            context=self._context_zmq,
             name="scheduler_monitor",
+            socket_type=zmq.PUB,
             address=self._address_monitor,
+            bind_or_connect="bind",
             callback=None,
             identity=None,
         )
-        self._binder_monitor.init_sync(bind_or_connect="bind", socket_type=IOSocketType.Multicast)
         self._connector_storage = AsyncObjectStorageConnector()
 
         logging.info(f"{self.__class__.__name__}: listen to scheduler address {config.address.to_address()}")

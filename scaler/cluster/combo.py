@@ -25,6 +25,7 @@ from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.ymq_config import YMQConfig
+from scaler.utility.zmq_config import ZMQConfig
 
 
 class SchedulerClusterCombo:
@@ -70,7 +71,7 @@ class SchedulerClusterCombo:
         if monitor_address is None:
             self._monitor_address = None
         else:
-            self._monitor_address = YMQConfig.from_string(monitor_address)
+            self._monitor_address = ZMQConfig.from_string(monitor_address)
 
         self._object_storage = ObjectStorageServerProcess(
             storage_address=self._storage_address,
