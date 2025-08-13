@@ -158,11 +158,11 @@ class ClientAgent(threading.Thread):
             return
 
         if isinstance(message, TaskLog):
-            stream = sys.stdout if message.stream == TaskLog.Stream.Stdout else sys.stderr
+            log_type = sys.stdout if message.log_type == TaskLog.LogType.Stdout else sys.stderr
             for line in message.content.splitlines():
                 # Only print non-empty lines
                 if line:
-                    print(line, file=stream)
+                    print(line, file=log_type)
             return
 
         if isinstance(message, TaskResult):

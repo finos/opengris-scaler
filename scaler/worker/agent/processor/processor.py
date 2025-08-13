@@ -192,8 +192,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         task_flags = retrieve_task_flags_from_task(task)
         if task_flags.stream_output:
             # Create streaming buffers that send output immediately
-            stdout_buf = StreamingBuffer(task.task_id, TaskLog.Stream.Stdout, self._connector_agent)
-            stderr_buf = StreamingBuffer(task.task_id, TaskLog.Stream.Stderr, self._connector_agent)
+            stdout_buf = StreamingBuffer(task.task_id, TaskLog.LogType.Stdout, self._connector_agent)
+            stderr_buf = StreamingBuffer(task.task_id, TaskLog.LogType.Stderr, self._connector_agent)
         else:
             stdout_buf = None
             stderr_buf = None

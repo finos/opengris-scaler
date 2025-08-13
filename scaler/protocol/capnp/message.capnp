@@ -33,10 +33,10 @@ struct TaskCancel {
 
 struct TaskLog {
     taskId @0 :Data;
-    stream @1 :Stream;
+    logType @1 :LogType;
     content @2 :Text;
 
-    enum Stream {
+    enum LogType {
         stdout @0;
         stderr @1;
     }
