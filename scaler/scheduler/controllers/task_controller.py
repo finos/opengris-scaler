@@ -7,7 +7,13 @@ from scaler.protocol.python.common import TaskStatus
 from scaler.protocol.python.message import StateTask, Task, TaskCancel, TaskResult
 from scaler.protocol.python.status import TaskManagerStatus
 from scaler.scheduler.controllers.graph_controller import VanillaGraphTaskController
-from scaler.scheduler.controllers.mixins import ClientController, ObjectController, TaskController, WorkerController
+from scaler.scheduler.controllers.mixins import (
+    ClientController,
+    ObjectController,
+    ScalingController,
+    TaskController,
+    WorkerController,
+)
 from scaler.utility.identifiers import ClientID, TaskID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.queues.async_indexed_queue import AsyncIndexedQueue
@@ -23,6 +29,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         self._object_controller: Optional[ObjectController] = None
         self._worker_controller: Optional[WorkerController] = None
         self._graph_controller: Optional[VanillaGraphTaskController] = None
+        self._scaling_controller: Optional[ScalingController] = None
 
         self._task_id_to_task: Dict[TaskID, Task] = dict()
 
@@ -44,6 +51,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         object_controller: ObjectController,
         worker_controller: WorkerController,
         graph_controller: VanillaGraphTaskController,
+        scaling_controller: ScalingController,
     ):
         self._binder = binder
         self._binder_monitor = binder_monitor
@@ -52,6 +60,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         self._object_controller = object_controller
         self._worker_controller = worker_controller
         self._graph_controller = graph_controller
+        self._scaling_controller = scaling_controller
 
     async def routine(self):
         task_id = await self._unassigned.get()
@@ -170,4 +179,6 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         self, task_id: TaskID, function_name: bytes, status: TaskStatus, metadata: Optional[bytes] = b""
     ):
         worker = self._worker_controller.get_worker_by_task_id(task_id)
-        await self._binder_monitor.send(StateTask.new_msg(task_id, function_name, status, worker, metadata))
+        state_task = StateTask.new_msg(task_id, function_name, status, worker, metadata)
+        await self._scaling_controller.on_state_task(state_task)
+        await self._binder_monitor.send(state_task)

@@ -4,7 +4,6 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
-from scaler.io.config import DEFAULT_PER_WORKER_QUEUE_SIZE
 from scaler.protocol.python.common import ObjectStorageAddress, TaskStatus
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -19,7 +18,7 @@ from scaler.protocol.python.message import (
 )
 from scaler.protocol.python.status import ProcessorStatus, Resource, WorkerManagerStatus, WorkerStatus
 from scaler.scheduler.allocate_policy.mixins import TaskAllocatePolicy
-from scaler.scheduler.controllers.mixins import TaskController, WorkerController
+from scaler.scheduler.controllers.mixins import ScalingController, TaskController, WorkerController
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.mixins import Looper, Reporter
 
@@ -36,14 +35,22 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         self._binder: Optional[AsyncBinder] = None
         self._binder_monitor: Optional[AsyncConnector] = None
         self._task_controller: Optional[TaskController] = None
+        self._scaling_controller: Optional[ScalingController] = None
 
         self._worker_alive_since: Dict[WorkerID, Tuple[float, WorkerHeartbeat]] = dict()
         self._allocator_policy = task_allocate_policy
 
-    def register(self, binder: AsyncBinder, binder_monitor: AsyncConnector, task_controller: TaskController):
+    def register(
+        self,
+        binder: AsyncBinder,
+        binder_monitor: AsyncConnector,
+        task_controller: TaskController,
+        scaling_controller: ScalingController,
+    ):
         self._binder = binder
         self._binder_monitor = binder_monitor
         self._task_controller = task_controller
+        self._scaling_controller = scaling_controller
 
     async def assign_task_to_worker(self, task: Task) -> bool:
         worker = await self._allocator_policy.assign_task(task)
@@ -86,9 +93,11 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
     async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat):
         # TODO: get worker queue size from worker heartbeat
-        if await self._allocator_policy.add_worker(worker_id, info.tags, DEFAULT_PER_WORKER_QUEUE_SIZE):
+        if await self._allocator_policy.add_worker(worker_id, info.tags, info.max_queue_size):
             logging.info(f"worker {worker_id!r} connected")
-            await self._binder_monitor.send(StateWorker.new_msg(worker_id, b"connected"))
+            state_worker = StateWorker.new_msg(worker_id, b"connected")
+            await self._scaling_controller.on_state_worker(state_worker)
+            await self._binder_monitor.send(state_worker)
 
         self._worker_alive_since[worker_id] = (time.time(), info)
         await self._binder.send(worker_id, WorkerHeartbeatEcho.new_msg(object_storage_address=self._storage_address))
@@ -178,7 +187,9 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             return
 
         logging.info(f"{worker_id!r} disconnected")
-        await self._binder_monitor.send(StateWorker.new_msg(worker_id, b"disconnected"))
+        state_worker = StateWorker.new_msg(worker_id, b"disconnected")
+        await self._scaling_controller.on_state_worker(state_worker)
+        await self._binder_monitor.send(state_worker)
         self._worker_alive_since.pop(worker_id)
 
         task_ids = self._allocator_policy.remove_worker(worker_id)

@@ -9,8 +9,8 @@ from scaler.client.serializer.mixins import Serializer
 from scaler.protocol.python.common import TaskStatus
 from scaler.protocol.python.message import TaskCancel, TaskResult
 from scaler.utility.exceptions import DisconnectedError, NoWorkerError, TaskNotFoundError, WorkerDiedError
-from scaler.utility.metadata.profile_result import retrieve_profiling_result_from_task_result
 from scaler.utility.identifiers import ObjectID
+from scaler.utility.metadata.profile_result import retrieve_profiling_result_from_task_result
 
 
 class ClientFutureManager(FutureManager):

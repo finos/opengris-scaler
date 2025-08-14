@@ -12,6 +12,7 @@ class SchedulerConfig:
     address: ZMQConfig
     storage_address: Optional[ObjectStorageConfig]
     monitor_address: Optional[ZMQConfig]
+    adapter_webhook_url: Optional[str]
     io_threads: int
     max_number_of_tasks_waiting: int
     client_timeout_seconds: int

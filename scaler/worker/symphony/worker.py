@@ -91,7 +91,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
             identity=self._ident,
         )
 
-        self._heartbeat_manager = SymphonyHeartbeatManager()
+        self._heartbeat_manager = SymphonyHeartbeatManager(task_queue_size=self._task_queue_size)
         self._task_manager = SymphonyTaskManager(
             base_concurrency=self._base_concurrency, service_name=self._service_name
         )

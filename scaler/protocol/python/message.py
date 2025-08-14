@@ -309,6 +309,10 @@ class WorkerHeartbeat(Message):
     def tags(self) -> Set[str]:
         return set(self._msg.tags)
 
+    @property
+    def max_queue_size(self) -> int:
+        return self._msg.maxQueueSize
+
     @staticmethod
     def new_msg(
         agent: Resource,
@@ -318,6 +322,7 @@ class WorkerHeartbeat(Message):
         task_lock: bool,
         processors: List[ProcessorStatus],
         tags: Set[str],
+        max_queue_size: int,
     ) -> "WorkerHeartbeat":
         return WorkerHeartbeat(
             _message.WorkerHeartbeat(
@@ -328,6 +333,7 @@ class WorkerHeartbeat(Message):
                 taskLock=task_lock,
                 processors=[p.get_message() for p in processors],
                 tags=list(tags),
+                maxQueueSize=max_queue_size,
             )
         )
 
