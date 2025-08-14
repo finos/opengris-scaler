@@ -1,6 +1,8 @@
 #pragma once
 
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -12,7 +14,7 @@
 
 using namespace std::chrono_literals;
 
-void exception_handler(std::function<void()> fn)
+inline void exception_handler(std::function<void()> fn)
 {
     try {
         fn();
@@ -22,7 +24,7 @@ void exception_handler(std::function<void()> fn)
     }
 }
 
-void harness(std::string test_description, int timeout_secs, std::function<void()> test)
+inline void harness(std::string test_description, int timeout_secs, std::function<void()> test)
 {
     std::println("Running: {}", test_description);
 
@@ -44,6 +46,10 @@ public:
         this->_socket = ::socket(AF_INET, SOCK_STREAM, 0);
         if (this->_socket < 0)
             throw std::runtime_error("failed to create socket");
+
+        int on = 1;
+        if (setsockopt(this->_socket, IPPROTO_TCP, TCP_NODELAY, (char*)&on, sizeof(on)) < 0)
+            throw std::runtime_error("failed to set TCP_NODELAY");
     }
 
     ~TcpSocket() { close(this->_socket); }
