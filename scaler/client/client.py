@@ -185,7 +185,7 @@ class Client:
         self.__initialize__(
             address=state["address"],
             profiling=state["profiling"],
-            stream_output=state.get("stream_output", False),
+            stream_output=state["stream_output"],
             timeout_seconds=state["timeout_seconds"],
             heartbeat_interval_seconds=state["heartbeat_interval_seconds"],
         )
