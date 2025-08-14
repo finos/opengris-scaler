@@ -7,7 +7,7 @@ import signal
 from contextlib import redirect_stdout, redirect_stderr
 from contextvars import ContextVar, Token
 from multiprocessing.synchronize import Event as EventType
-from typing import Callable, List, Optional, Tuple, cast
+from typing import Callable, IO, List, Optional, Tuple, cast
 
 import tblib.pickling_support
 import zmq
@@ -190,13 +190,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
     def __process_task(self, task: Task):
         task_flags = retrieve_task_flags_from_task(task)
-        if task_flags.stream_output:
-            # Create streaming buffers that send output immediately
-            stdout_buf = StreamingBuffer(task.task_id, TaskLog.LogType.Stdout, self._connector_agent)
-            stderr_buf = StreamingBuffer(task.task_id, TaskLog.LogType.Stderr, self._connector_agent)
-        else:
-            stdout_buf = None
-            stderr_buf = None
+        stdout_buf = None
+        stderr_buf = None
 
         try:
             function = self._object_cache.get_object(task.func_object_id)
@@ -205,7 +200,13 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             args = [self._object_cache.get_object(cast(ObjectID, arg)) for arg in task.function_args]
 
             if task_flags.stream_output:
-                with self.__processor_context(), redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
+                stdout_buf = StreamingBuffer(task.task_id, TaskLog.LogType.Stdout, self._connector_agent)
+                stderr_buf = StreamingBuffer(task.task_id, TaskLog.LogType.Stderr, self._connector_agent)
+                with (
+                    self.__processor_context(),
+                    redirect_stdout(cast(IO[str], stdout_buf)),
+                    redirect_stderr(cast(IO[str], stderr_buf)),
+                ):
                     result = function_with_logger(*args)
             else:
                 with self.__processor_context():

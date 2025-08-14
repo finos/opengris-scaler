@@ -6,7 +6,7 @@ from scaler.protocol.python.message import TaskLog
 from scaler.utility.identifiers import TaskID
 
 
-class StreamingBuffer(io.IOBase):
+class StreamingBuffer(io.TextIOBase):
     """A custom IO buffer that sends content as it's written."""
 
     def __init__(self, task_id: TaskID, log_type: TaskLog.LogType, connector_agent: SyncConnector):
