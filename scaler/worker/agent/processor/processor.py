@@ -8,11 +8,11 @@ from multiprocessing.synchronize import Event as EventType
 from typing import Callable, List, Optional, Tuple, cast
 
 import tblib.pickling_support
-import zmq
 
 from scaler.io.config import DUMMY_CLIENT
 from scaler.io.sync_connector import SyncConnector
 from scaler.io.sync_object_storage_connector import SyncObjectStorageConnector
+from scaler.io.ymq.ymq import IOContext, IOSocketType
 from scaler.protocol.python.common import ObjectMetadata, TaskStatus
 from scaler.protocol.python.message import ObjectInstruction, ProcessorInitialized, Task, TaskResult
 from scaler.protocol.python.mixins import Message
@@ -20,7 +20,7 @@ from scaler.utility.logging.utility import setup_logger
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.serialization import serialize_failure
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.utility.ymq_config import YMQConfig
 from scaler.worker.agent.processor.object_cache import ObjectCache
 
 SUSPEND_SIGNAL = "SIGUSR1"  # use str instead of a signal.Signal to not trigger an import error on unsupported systems.
@@ -32,7 +32,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __init__(
         self,
         event_loop: str,
-        agent_address: ZMQConfig,
+        agent_address: YMQConfig,
         storage_address: ObjectStorageConfig,
         resume_event: Optional[EventType],
         resumed_event: Optional[EventType],
@@ -81,7 +81,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         tblib.pickling_support.install()
 
         self._connector_agent = SyncConnector(
-            context=zmq.Context(), socket_type=zmq.DEALER, address=self._agent_address, identity=None
+            context=IOContext(), socket_type=IOSocketType.Connector, address=self._agent_address, identity=None
         )
         self._connector_storage = SyncObjectStorageConnector(self._storage_address.host, self._storage_address.port)
 
@@ -121,10 +121,6 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                     continue
 
                 self.__on_connector_receive(message)
-
-        except zmq.error.ZMQError as e:
-            if e.errno != zmq.ENOTSOCK:  # ignore if socket got closed
-                raise
 
         except (KeyboardInterrupt, InterruptedError):
             pass

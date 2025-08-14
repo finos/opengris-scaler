@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.object_storage_config import ObjectStorageConfig
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.utility.ymq_config import YMQConfig
 from scaler.worker.worker import Worker
 
 
@@ -14,7 +14,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
 
     def __init__(
         self,
-        address: ZMQConfig,
+        address: YMQConfig,
         storage_address: Optional[ObjectStorageConfig],
         worker_io_threads: int,
         worker_names: List[str],

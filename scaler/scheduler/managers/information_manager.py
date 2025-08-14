@@ -4,6 +4,7 @@ import psutil
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
+from scaler.io.async_connector_zmq import AsyncConnectorZMQ
 from scaler.protocol.python.message import StateScheduler
 from scaler.protocol.python.status import Resource
 from scaler.scheduler.managers.mixins import (
@@ -17,8 +18,8 @@ from scaler.utility.mixins import Looper
 
 
 class VanillaInformationManager(InformationManager, Looper):
-    def __init__(self, binder: AsyncConnector):
-        self._monitor_binder: AsyncConnector = binder
+    def __init__(self, binder: AsyncConnectorZMQ):
+        self._monitor_binder: AsyncConnectorZMQ = binder
         self._process = psutil.Process()
 
         self._binder: Optional[AsyncBinder] = None
