@@ -18,7 +18,7 @@ from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.mixins import Reporter
 
 
-class ObjectManager(Reporter):
+class ObjectController(Reporter):
     @abc.abstractmethod
     async def on_object_instruction(self, source: bytes, request: ObjectInstruction):
         raise NotImplementedError()
@@ -50,7 +50,7 @@ class ObjectManager(Reporter):
         raise NotImplementedError()
 
 
-class ClientManager(Reporter):
+class ClientController(Reporter):
     @abc.abstractmethod
     def get_client_task_ids(self, client_id: ClientID) -> Set[TaskID]:
         raise NotImplementedError()
@@ -80,7 +80,7 @@ class ClientManager(Reporter):
         raise NotImplementedError()
 
 
-class GraphTaskManager(Reporter):
+class GraphTaskController(Reporter):
     @abc.abstractmethod
     async def on_graph_task(self, client_id: ClientID, graph_task: GraphTask):
         raise NotImplementedError()
@@ -98,7 +98,7 @@ class GraphTaskManager(Reporter):
         raise NotImplementedError()
 
 
-class TaskManager(Reporter):
+class TaskController(Reporter):
     @abc.abstractmethod
     async def on_task_new(self, client_id: ClientID, task: Task):
         raise NotImplementedError()
@@ -116,7 +116,7 @@ class TaskManager(Reporter):
         raise NotImplementedError()
 
 
-class WorkerManager(Reporter):
+class WorkerController(Reporter):
     @abc.abstractmethod
     async def assign_task_to_worker(self, task: Task) -> bool:
         raise NotImplementedError()
@@ -154,5 +154,5 @@ class WorkerManager(Reporter):
         raise NotImplementedError()
 
 
-class InformationManager(metaclass=abc.ABCMeta):
+class InformationController(metaclass=abc.ABCMeta):
     pass

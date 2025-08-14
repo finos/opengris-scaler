@@ -5,12 +5,12 @@ from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
 from scaler.protocol.python.message import StateBalanceAdvice
 from scaler.scheduler.allocate_policy.mixins import TaskAllocatePolicy
-from scaler.scheduler.managers.mixins import TaskManager
+from scaler.scheduler.controllers.mixins import TaskController
 from scaler.utility.identifiers import WorkerID, TaskID
 from scaler.utility.mixins import Looper
 
 
-class VanillaBalanceManager(Looper):
+class VanillaBalanceController(Looper):
     def __init__(self, load_balance_trigger_times: int, task_allocate_policy: TaskAllocatePolicy):
         self._load_balance_trigger_times = load_balance_trigger_times
 
@@ -22,13 +22,13 @@ class VanillaBalanceManager(Looper):
         self._binder: Optional[AsyncBinder] = None
         self._binder_monitor: Optional[AsyncConnector] = None
 
-        self._task_manager: Optional[TaskManager] = None
+        self._task_controller: Optional[TaskController] = None
 
-    def register(self, binder: AsyncBinder, binder_monitor: AsyncConnector, task_manager: TaskManager):
+    def register(self, binder: AsyncBinder, binder_monitor: AsyncConnector, task_controller: TaskController):
         self._binder = binder
         self._binder_monitor = binder_monitor
 
-        self._task_manager = task_manager
+        self._task_controller = task_controller
 
     async def routine(self):
         current_advice = self._task_allocate_policy.balance()
