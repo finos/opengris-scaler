@@ -2,6 +2,7 @@
 
 #include <unistd.h>
 
+#include <expected>
 #include <future>
 #include <memory>
 
@@ -41,4 +42,20 @@ inline void syncConnectSocket(std::shared_ptr<IOSocket> socket, std::string addr
         address, [&connect_promise](std::expected<void, Error> result) { connect_promise.set_value({}); });
 
     connect_future.wait();
+}
+
+inline std::expected<Message, Error> syncRecvMessage(std::shared_ptr<IOSocket> socket)
+{
+    auto promise = std::promise<std::pair<Message, Error>>();
+    auto future  = promise.get_future();
+
+    socket->recvMessage([&promise](auto result) { promise.set_value(result); });
+
+    auto result = future.get();
+
+    if (result.second._errorCode == Error::ErrorCode::Uninit) {
+        return result.first;
+    } else {
+        return std::unexpected {result.second};
+    }
 }

@@ -10,6 +10,7 @@
 #include <cstring>
 
 // C++
+#include <optional>
 #include <string>
 
 // First-party
@@ -85,11 +86,10 @@ public:
 
     [[nodiscard]] constexpr bool is_empty() const noexcept { return !this->_data; }
 
-    // debugging utility
-    std::string as_string() const
+    std::optional<std::string> as_string() const
     {
         if (is_empty())
-            return "[EMPTY]";
+            return std::nullopt;
 
         return std::string((char*)_data, _len);
     }

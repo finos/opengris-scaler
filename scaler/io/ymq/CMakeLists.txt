@@ -83,3 +83,4 @@ install(TARGETS ymq
        LIBRARY DESTINATION scaler/io/ymq)
 
 add_subdirectory(examples)
+add_subdirectory(tests)
