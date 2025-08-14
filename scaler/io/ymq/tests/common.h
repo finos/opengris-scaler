@@ -6,34 +6,111 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <chrono>
+#include <csignal>
+#include <cstdio>
+#include <exception>
 #include <functional>
 #include <future>
 #include <print>
+#include <stdexcept>
+#include <string>
 #include <thread>
 #include <vector>
 
 using namespace std::chrono_literals;
 
-inline void exception_handler(std::function<void()> fn)
+enum class TestResult { Success, Failure };
+
+struct Counters {
+    int successes = 0;
+    int failures  = 0;
+
+    int total() const { return this->successes + this->failures; }
+
+    Counters& operator+=(const TestResult& other)
+    {
+        switch (other) {
+            case TestResult::Success: this->successes++; break;
+            case TestResult::Failure: this->failures++; break;
+        }
+
+        return *this;
+    }
+};
+
+inline void thread_wrapper(std::function<void()> fn, int timeout_secs, std::promise<TestResult>& promise)
 {
     try {
-        fn();
+        auto future = std::async(std::launch::async, fn);
+        auto result = future.wait_for(std::chrono::seconds(timeout_secs));
+
+        switch (result) {
+            case std::future_status::ready: promise.set_value(TestResult::Success); break;
+            default: promise.set_value(TestResult::Failure);
+        }
     } catch (const std::exception& e) {
         std::println("Exception: {}", e.what());
+        promise.set_value(TestResult::Failure);
         throw;
     }
 }
 
-inline void harness(std::string test_description, int timeout_secs, std::function<void()> test)
+inline TestResult test(int timeout_secs, std::function<void()> client_main, std::function<void()> server_main)
 {
-    std::println("Running: {}", test_description);
+    auto server_promise = std::promise<TestResult>();
+    std::thread server([&] { thread_wrapper(server_main, timeout_secs, server_promise); });
+    auto client_promise = std::promise<TestResult>();
+    std::thread client([&] { thread_wrapper(client_main, timeout_secs, client_promise); });
 
-    auto future = std::async(std::launch::async, test);
-    auto result = future.wait_for(std::chrono::seconds(timeout_secs));
+    // guaranteed that these will exit in <=timeout_secs because of `std::future::wait_for()`
+    server.detach();
+    client.detach();
+
+    if (server_promise.get_future().get() != TestResult::Success)
+        return TestResult::Failure;
+
+    if (client_promise.get_future().get() != TestResult::Success)
+        return TestResult::Failure;
+
+    return TestResult::Success;
+}
+
+inline TestResult harness(
+    std::string test_description,
+    int timeout_secs,
+    std::function<void()> client_main,
+    std::function<void()> server_main)
+{
+    std::print("Running: {} ... ", test_description);
+    std::fflush(stdout);
+
+    auto result = test(timeout_secs, client_main, server_main);
 
     switch (result) {
-        case std::future_status::ready: std::println("... SUCCESS"); break;
-        default: std::println("... FAILED"); std::exit(1);
+        case TestResult::Success: std::println("SUCCESS"); break;
+        case TestResult::Failure: std::println("FAILED");
+    }
+
+    return result;
+}
+
+static void handler(int signo)
+{
+    std::println("Received signal: {}", signo);
+}
+
+inline void setup_signal_handlers()
+{
+    int signals[] = {SIGPIPE};
+
+    struct sigaction action {0};
+    action.sa_handler = handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
+    for (auto signo: signals) {
+        if (sigaction(signo, &action, nullptr) < 0)
+            throw std::runtime_error("failed to set signal handler");
     }
 }
 
@@ -57,7 +134,7 @@ public:
     void connect(const char* sAddr, int port)
     {
         sockaddr_in addr {
-            .sin_family = AF_INET, .sin_port = htons(25711), .sin_addr = {.s_addr = inet_addr(sAddr)}, .sin_zero = {0}};
+            .sin_family = AF_INET, .sin_port = htons(port), .sin_addr = {.s_addr = inet_addr(sAddr)}, .sin_zero = {0}};
 
     connect:
         if (::connect(this->_socket, (sockaddr*)&addr, sizeof(addr)) < 0) {
