@@ -10,6 +10,7 @@
 #include <cstring>
 
 // C++
+#include <optional>
 #include <string>
 
 // First-party
@@ -30,7 +31,7 @@ class Bytes {
     explicit Bytes(uint8_t* data, size_t len): _data(data), _len(len) {}
 
 public:
-    Bytes(char* data, size_t len): _data(datadup((uint8_t*)data, len)), _len(len) {}
+    Bytes(char* data, size_t len): _data(data ? datadup((uint8_t*)data, len) : nullptr), _len(len) {}
 
     Bytes(): _data {}, _len {} {}
 
@@ -85,11 +86,10 @@ public:
 
     [[nodiscard]] constexpr bool is_empty() const noexcept { return !this->_data; }
 
-    // debugging utility
-    std::string as_string() const
+    std::optional<std::string> as_string() const
     {
         if (is_empty())
-            return "[EMPTY]";
+            return std::nullopt;
 
         return std::string((char*)_data, _len);
     }

@@ -3,6 +3,7 @@ from typing import Dict, Optional, Set
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
+from scaler.io.async_connector_zmq import AsyncConnectorZMQ
 from scaler.protocol.python.common import TaskStatus
 from scaler.protocol.python.message import StateTask, Task, TaskCancel, TaskResult
 from scaler.protocol.python.status import TaskManagerStatus
@@ -17,7 +18,7 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
     def __init__(self, max_number_of_tasks_waiting: int):
         self._max_number_of_tasks_waiting = max_number_of_tasks_waiting
         self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncConnector] = None
+        self._binder_monitor: Optional[AsyncConnectorZMQ] = None
 
         self._client_manager: Optional[ClientManager] = None
         self._object_manager: Optional[ObjectManager] = None
@@ -39,7 +40,7 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
     def register(
         self,
         binder: AsyncBinder,
-        binder_monitor: AsyncConnector,
+        binder_monitor: AsyncConnectorZMQ,
         client_manager: ClientManager,
         object_manager: ObjectManager,
         worker_manager: WorkerManager,

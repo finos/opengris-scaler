@@ -68,6 +68,7 @@ target_sources(ymq PRIVATE pymod_ymq/async.h
                            pymod_ymq/message.h
                            pymod_ymq/io_context.h
                            pymod_ymq/io_socket.h
+                           pymod_ymq/utils.h
                            pymod_ymq/ymq.h
                            pymod_ymq/ymq.cpp
 )
@@ -82,3 +83,4 @@ install(TARGETS ymq
        LIBRARY DESTINATION scaler/io/ymq)
 
 add_subdirectory(examples)
+add_subdirectory(tests)

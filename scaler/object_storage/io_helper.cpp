@@ -44,7 +44,7 @@ void setTCPNoDelay(tcp::socket& socket, bool isNoDelay)
 
     if (ec) {
         std::cerr << "failed to set TCP_NODELAY on client socket: " << ec.message() << std::endl;
-        std::terminate();
+        exit(1);
     }
 }
 

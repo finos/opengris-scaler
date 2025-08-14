@@ -3,13 +3,14 @@ from typing import Optional
 
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.utility.object_storage_config import ObjectStorageConfig
+from scaler.utility.ymq_config import YMQConfig
 from scaler.utility.zmq_config import ZMQConfig
 
 
 @dataclasses.dataclass
 class SchedulerConfig:
     event_loop: str
-    address: ZMQConfig
+    address: YMQConfig
     storage_address: Optional[ObjectStorageConfig]
     monitor_address: Optional[ZMQConfig]
     io_threads: int
