@@ -33,6 +33,8 @@ class Bytes {
 public:
     Bytes(char* data, size_t len): _data(data ? datadup((uint8_t*)data, len) : nullptr), _len(len) {}
 
+    Bytes(std::string s): _data(datadup((uint8_t*)s.data(), s.length())), _len(s.length()) {}
+
     Bytes(): _data {}, _len {} {}
 
     Bytes(const Bytes& other) noexcept

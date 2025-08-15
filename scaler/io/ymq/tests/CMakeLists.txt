@@ -1,2 +1,2 @@
-add_executable(basic basic.cpp)
-target_link_libraries(basic cc_ymq)
+add_executable(test_ test.cpp)
+target_link_libraries(test_ cc_ymq)

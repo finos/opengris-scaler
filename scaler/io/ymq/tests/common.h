@@ -76,7 +76,7 @@ inline TestResult test(int timeout_secs, std::function<void()> client_main, std:
     return TestResult::Success;
 }
 
-inline TestResult harness(
+inline TestResult test(
     std::string test_description,
     int timeout_secs,
     std::function<void()> client_main,
