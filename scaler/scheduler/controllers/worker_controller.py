@@ -19,14 +19,14 @@ from scaler.protocol.python.message import (
 )
 from scaler.protocol.python.status import ProcessorStatus, Resource, WorkerManagerStatus, WorkerStatus
 from scaler.scheduler.allocate_policy.mixins import TaskAllocatePolicy
-from scaler.scheduler.managers.mixins import TaskManager, WorkerManager
+from scaler.scheduler.controllers.mixins import TaskController, WorkerController
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.mixins import Looper, Reporter
 
 UINT8_MAX = 2**8 - 1
 
 
-class VanillaWorkerManager(WorkerManager, Looper, Reporter):
+class VanillaWorkerController(WorkerController, Looper, Reporter):
     def __init__(
         self, timeout_seconds: int, task_allocate_policy: TaskAllocatePolicy, storage_address: ObjectStorageAddress
     ):
@@ -35,15 +35,15 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
 
         self._binder: Optional[AsyncBinder] = None
         self._binder_monitor: Optional[AsyncConnector] = None
-        self._task_manager: Optional[TaskManager] = None
+        self._task_controller: Optional[TaskController] = None
 
         self._worker_alive_since: Dict[WorkerID, Tuple[float, WorkerHeartbeat]] = dict()
         self._allocator_policy = task_allocate_policy
 
-    def register(self, binder: AsyncBinder, binder_monitor: AsyncConnector, task_manager: TaskManager):
+    def register(self, binder: AsyncBinder, binder_monitor: AsyncConnector, task_controller: TaskController):
         self._binder = binder
         self._binder_monitor = binder_monitor
-        self._task_manager = task_manager
+        self._task_controller = task_controller
 
     async def assign_task_to_worker(self, task: Task) -> bool:
         worker = await self._allocator_policy.assign_task(task.task_id)
@@ -71,7 +71,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
                 # worker.
                 await self.__reroute_tasks([task_result.task_id])
             else:
-                await self._task_manager.on_task_done(task_result)
+                await self._task_controller.on_task_done(task_result)
 
             return
 
@@ -82,7 +82,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
             )
             return
 
-        await self._task_manager.on_task_done(task_result)
+        await self._task_controller.on_task_done(task_result)
 
     async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat):
         # TODO: get worker queue size from worker heartbeat
@@ -170,7 +170,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
 
     async def __reroute_tasks(self, task_ids: List[TaskID]):
         for task_id in task_ids:
-            await self._task_manager.on_task_reroute(task_id)
+            await self._task_controller.on_task_reroute(task_id)
 
     async def __disconnect_worker(self, worker_id: WorkerID):
         """return True if disconnect worker success"""

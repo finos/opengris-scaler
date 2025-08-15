@@ -6,23 +6,23 @@ from scaler.io.async_connector import AsyncConnector
 from scaler.protocol.python.common import TaskStatus
 from scaler.protocol.python.message import StateTask, Task, TaskCancel, TaskResult
 from scaler.protocol.python.status import TaskManagerStatus
-from scaler.scheduler.managers.graph_manager import VanillaGraphTaskManager
-from scaler.scheduler.managers.mixins import ClientManager, ObjectManager, TaskManager, WorkerManager
+from scaler.scheduler.controllers.graph_controller import VanillaGraphTaskController
+from scaler.scheduler.controllers.mixins import ClientController, ObjectController, TaskController, WorkerController
 from scaler.utility.identifiers import ClientID, TaskID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.queues.async_indexed_queue import AsyncIndexedQueue
 
 
-class VanillaTaskManager(TaskManager, Looper, Reporter):
+class VanillaTaskController(TaskController, Looper, Reporter):
     def __init__(self, max_number_of_tasks_waiting: int):
         self._max_number_of_tasks_waiting = max_number_of_tasks_waiting
         self._binder: Optional[AsyncBinder] = None
         self._binder_monitor: Optional[AsyncConnector] = None
 
-        self._client_manager: Optional[ClientManager] = None
-        self._object_manager: Optional[ObjectManager] = None
-        self._worker_manager: Optional[WorkerManager] = None
-        self._graph_manager: Optional[VanillaGraphTaskManager] = None
+        self._client_controller: Optional[ClientController] = None
+        self._object_controller: Optional[ObjectController] = None
+        self._worker_controller: Optional[WorkerController] = None
+        self._graph_controller: Optional[VanillaGraphTaskController] = None
 
         self._task_id_to_task: Dict[TaskID, Task] = dict()
 
@@ -40,18 +40,18 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
         self,
         binder: AsyncBinder,
         binder_monitor: AsyncConnector,
-        client_manager: ClientManager,
-        object_manager: ObjectManager,
-        worker_manager: WorkerManager,
-        graph_manager: VanillaGraphTaskManager,
+        client_controller: ClientController,
+        object_controller: ObjectController,
+        worker_controller: WorkerController,
+        graph_controller: VanillaGraphTaskController,
     ):
         self._binder = binder
         self._binder_monitor = binder_monitor
 
-        self._client_manager = client_manager
-        self._object_manager = object_manager
-        self._worker_manager = worker_manager
-        self._graph_manager = graph_manager
+        self._client_controller = client_controller
+        self._object_controller = object_controller
+        self._worker_controller = worker_controller
+        self._graph_controller = graph_controller
 
     async def routine(self):
         task_id = await self._unassigned.get()
@@ -62,14 +62,14 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
         # a bug.
         # https://github.com/Citi/scaler/issues/45
 
-        if not await self._worker_manager.assign_task_to_worker(self._task_id_to_task[task_id]):
+        if not await self._worker_controller.assign_task_to_worker(self._task_id_to_task[task_id]):
             await self._unassigned.put(task_id)
             return
 
         self._running.add(task_id)
         await self.__send_monitor(
             task_id,
-            self._object_manager.get_object_name(self._task_id_to_task[task_id].func_object_id),
+            self._object_controller.get_object_name(self._task_id_to_task[task_id].func_object_id),
             TaskStatus.Running,
         )
 
@@ -86,18 +86,18 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
     async def on_task_new(self, client_id: ClientID, task: Task):
         if (
             0 <= self._max_number_of_tasks_waiting <= self._unassigned.qsize()
-            and not self._worker_manager.has_available_worker()
+            and not self._worker_controller.has_available_worker()
         ):
             await self._binder.send(client_id, TaskResult.new_msg(task.task_id, TaskStatus.NoWorker))
             return
 
-        self._client_manager.on_task_begin(client_id, task.task_id)
+        self._client_controller.on_task_begin(client_id, task.task_id)
         self._task_id_to_task[task.task_id] = task
 
         await self._unassigned.put(task.task_id)
         await self.__send_monitor(
             task.task_id,
-            self._object_manager.get_object_name(self._task_id_to_task[task.task_id].func_object_id),
+            self._object_controller.get_object_name(self._task_id_to_task[task.task_id].func_object_id),
             TaskStatus.Inactive,
         )
 
@@ -111,10 +111,10 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
             await self.on_task_done(TaskResult.new_msg(task_cancel.task_id, TaskStatus.Canceled))
             return
 
-        await self._worker_manager.on_task_cancel(task_cancel)
+        await self._worker_controller.on_task_cancel(task_cancel)
         await self.__send_monitor(
             task_cancel.task_id,
-            self._object_manager.get_object_name(self._task_id_to_task[task_cancel.task_id].func_object_id),
+            self._object_controller.get_object_name(self._task_id_to_task[task_cancel.task_id].func_object_id),
             TaskStatus.Canceling,
         )
 
@@ -138,36 +138,36 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
             self._running.remove(result.task_id)
 
         if result.task_id in self._task_id_to_task:
-            func_object_name = self._object_manager.get_object_name(
+            func_object_name = self._object_controller.get_object_name(
                 self._task_id_to_task.pop(result.task_id).func_object_id
             )
-            client = self._client_manager.on_task_finish(result.task_id)
+            client = self._client_controller.on_task_finish(result.task_id)
         else:
             func_object_name = b"<unknown func object>"
             client = None
 
         await self.__send_monitor(result.task_id, func_object_name, result.status, result.metadata)
 
-        if self._graph_manager.is_graph_sub_task(result.task_id):
-            await self._graph_manager.on_graph_sub_task_done(result)
+        if self._graph_controller.is_graph_sub_task(result.task_id):
+            await self._graph_controller.on_graph_sub_task_done(result)
             return
 
         if client is not None:
             await self._binder.send(client, result)
 
     async def on_task_reroute(self, task_id: TaskID):
-        assert self._client_manager.get_client_id(task_id) is not None
+        assert self._client_controller.get_client_id(task_id) is not None
 
         self._running.remove(task_id)
         await self._unassigned.put(task_id)
         await self.__send_monitor(
             task_id,
-            self._object_manager.get_object_name(self._task_id_to_task[task_id].func_object_id),
+            self._object_controller.get_object_name(self._task_id_to_task[task_id].func_object_id),
             TaskStatus.Inactive,
         )
 
     async def __send_monitor(
         self, task_id: TaskID, function_name: bytes, status: TaskStatus, metadata: Optional[bytes] = b""
     ):
-        worker = self._worker_manager.get_worker_by_task_id(task_id)
+        worker = self._worker_controller.get_worker_by_task_id(task_id)
         await self._binder_monitor.send(StateTask.new_msg(task_id, function_name, status, worker, metadata))
