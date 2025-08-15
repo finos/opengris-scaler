@@ -28,13 +28,15 @@ void EpollContext::loop()
         const int myErrno = errno;
         switch (myErrno) {
             case EINTR:
-                unrecoverableError({
-                    Error::ErrorCode::SignalNotSupported,
-                    "Originated from",
-                    "epoll_wait(2)",
-                    "Errno is",
-                    strerror(errno),
-                });
+                // unrecoverableError({
+                //     Error::ErrorCode::SignalNotSupported,
+                //     "Originated from",
+                //     "epoll_wait(2)",
+                //     "Errno is",
+                //     strerror(errno),
+                // });
+
+                // not an error for now
                 break;
             case EBADF:
             case EFAULT:
