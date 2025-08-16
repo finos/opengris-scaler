@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 import threading
 from concurrent.futures import Future
 from typing import Optional
@@ -23,6 +24,7 @@ from scaler.protocol.python.message import (
     ObjectInstruction,
     Task,
     TaskCancel,
+    TaskLog,
     TaskResult,
 )
 from scaler.protocol.python.mixins import Message
@@ -153,6 +155,11 @@ class ClientAgent(threading.Thread):
 
         if isinstance(message, ClientHeartbeatEcho):
             await self._heartbeat_manager.on_heartbeat_echo(message)
+            return
+
+        if isinstance(message, TaskLog):
+            log_type = sys.stdout if message.log_type == TaskLog.LogType.Stdout else sys.stderr
+            print(message.content, file=log_type, end="")
             return
 
         if isinstance(message, TaskResult):
