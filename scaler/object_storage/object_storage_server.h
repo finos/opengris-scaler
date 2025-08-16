@@ -5,6 +5,7 @@
 #include <memory>
 #include <span>
 
+#include "scaler/io/ymq/logging.h"
 #include "scaler/object_storage/constants.h"
 #include "scaler/object_storage/defs.h"
 #include "scaler/object_storage/io_helper.h"
@@ -92,16 +93,14 @@ private:
 
             co_return T::fromBuffer(buffer);
         } catch (boost::system::system_error& e) {
-            // TODO: make this a log, since eof is not really an err.
             if (e.code() == boost::asio::error::eof) {
-                std::cerr << "Remote end closed, nothing to read.\n";
+                log(scaler::ymq::LoggingLevel::info, "Remote end closed, nothing to read.\n");
             } else {
-                std::cerr << "exception thrown, read error e.what() = " << e.what() << '\n';
+                log(scaler::ymq::LoggingLevel::error, "exception thrown, read error e.what() = ", e.what(), "\n");
             }
             throw e;
         } catch (std::exception& e) {
-            // TODO: make this a log, capnp header corruption is an err.
-            std::cerr << "exception thrown, message not a capnp e.what() = " << e.what() << '\n';
+            log(scaler::ymq::LoggingLevel::error, "exception thrown, message not a capnp e.what() = ", e.what(), "\n");
             throw e;
         }
     }
@@ -122,14 +121,13 @@ private:
                 client->socket, buffers, boost::asio::bind_executor(client->writeStrand, boost::asio::use_awaitable));
 
         } catch (boost::system::system_error& e) {
-            // TODO: Log support
             if (e.code() == boost::asio::error::broken_pipe) {
-                std::cerr << "Remote end closed, nothing to write.\n";
-                std::cerr << "This should never happen as the client is expected "
-                          << "to get every and all response. Terminating now...\n";
+                log(scaler::ymq::LoggingLevel::error, "Remote end closed, nothing to write.\n",
+                    "This should never happen as the client is expected ",
+                    "to get every and all response. Terminating now...\n");
                 std::terminate();
             } else {
-                std::cerr << "write error e.what() = " << e.what() << '\n';
+                log(scaler::ymq::LoggingLevel::error, "write error e.what() = ", e.what(), "\n");
             }
             throw e;
         }
