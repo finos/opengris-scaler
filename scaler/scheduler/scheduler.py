@@ -26,13 +26,13 @@ from scaler.protocol.python.mixins import Message
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.scheduler.allocate_policy.even_load_allocate_policy import EvenLoadAllocatePolicy
 from scaler.scheduler.config import SchedulerConfig
-from scaler.scheduler.managers.balance_manager import VanillaBalanceManager
-from scaler.scheduler.managers.client_manager import VanillaClientManager
-from scaler.scheduler.managers.graph_manager import VanillaGraphTaskManager
-from scaler.scheduler.managers.information_manager import VanillaInformationManager
-from scaler.scheduler.managers.object_manager import VanillaObjectManager
-from scaler.scheduler.managers.task_manager import VanillaTaskManager
-from scaler.scheduler.managers.worker_manager import VanillaWorkerManager
+from scaler.scheduler.controllers.balance_controller import VanillaBalanceController
+from scaler.scheduler.controllers.client_controller import VanillaClientController
+from scaler.scheduler.controllers.graph_controller import VanillaGraphTaskController
+from scaler.scheduler.controllers.information_controller import VanillaInformationController
+from scaler.scheduler.controllers.object_controller import VanillaObjectController
+from scaler.scheduler.controllers.task_controller import VanillaTaskController
+from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, WorkerID
@@ -87,54 +87,54 @@ class Scheduler:
             case _:
                 raise ValueError(f"Unknown allocate_policy: {config.allocate_policy}")
 
-        self._client_manager = VanillaClientManager(
+        self._client_manager = VanillaClientController(
             client_timeout_seconds=config.client_timeout_seconds,
             protected=config.protected,
             storage_address=self._storage_address,
         )
-        self._object_manager = VanillaObjectManager()
-        self._graph_manager = VanillaGraphTaskManager()
-        self._task_manager = VanillaTaskManager(max_number_of_tasks_waiting=config.max_number_of_tasks_waiting)
-        self._worker_manager = VanillaWorkerManager(
+        self._object_controller = VanillaObjectController()
+        self._graph_controller = VanillaGraphTaskController()
+        self._task_controller = VanillaTaskController(max_number_of_tasks_waiting=config.max_number_of_tasks_waiting)
+        self._worker_controller = VanillaWorkerController(
             timeout_seconds=config.worker_timeout_seconds,
             task_allocate_policy=self._task_allocate_policy,
             storage_address=self._storage_address,
         )
-        self._balance_manager = VanillaBalanceManager(
+        self._balance_controller = VanillaBalanceController(
             load_balance_trigger_times=config.load_balance_trigger_times,
             task_allocate_policy=self._task_allocate_policy,
         )
-        self._information_manager = VanillaInformationManager(self._binder_monitor)
+        self._information_manager = VanillaInformationController(self._binder_monitor)
 
         # register
         self._binder.register(self.on_receive_message)
         self._client_manager.register(
-            self._binder, self._binder_monitor, self._object_manager, self._task_manager, self._worker_manager
+            self._binder, self._binder_monitor, self._object_controller, self._task_controller, self._worker_controller
         )
-        self._object_manager.register(
-            self._binder, self._binder_monitor, self._connector_storage, self._client_manager, self._worker_manager
+        self._object_controller.register(
+            self._binder, self._binder_monitor, self._connector_storage, self._client_manager, self._worker_controller
         )
-        self._graph_manager.register(
+        self._graph_controller.register(
             self._binder,
             self._binder_monitor,
             self._connector_storage,
             self._client_manager,
-            self._task_manager,
-            self._object_manager,
+            self._task_controller,
+            self._object_controller,
         )
-        self._task_manager.register(
+        self._task_controller.register(
             self._binder,
             self._binder_monitor,
             self._client_manager,
-            self._object_manager,
-            self._worker_manager,
-            self._graph_manager,
+            self._object_controller,
+            self._worker_controller,
+            self._graph_controller,
         )
-        self._worker_manager.register(self._binder, self._binder_monitor, self._task_manager)
-        self._balance_manager.register(self._binder, self._binder_monitor, self._task_manager)
+        self._worker_controller.register(self._binder, self._binder_monitor, self._task_controller)
+        self._balance_controller.register(self._binder, self._binder_monitor, self._task_controller)
 
         self._information_manager.register_managers(
-            self._binder, self._client_manager, self._object_manager, self._task_manager, self._worker_manager
+            self._binder, self._client_manager, self._object_controller, self._task_controller, self._worker_controller
         )
 
     async def connect_to_storage(self):
@@ -155,21 +155,21 @@ class Scheduler:
         # =====================================================================================
         # graph manager
         if isinstance(message, GraphTask):
-            await self._graph_manager.on_graph_task(ClientID(source), message)
+            await self._graph_controller.on_graph_task(ClientID(source), message)
             return
 
         if isinstance(message, GraphTaskCancel):
-            await self._graph_manager.on_graph_task_cancel(ClientID(source), message)
+            await self._graph_controller.on_graph_task_cancel(ClientID(source), message)
             return
 
         # =====================================================================================
         # task manager
         if isinstance(message, Task):
-            await self._task_manager.on_task_new(ClientID(source), message)
+            await self._task_controller.on_task_new(ClientID(source), message)
             return
 
         if isinstance(message, TaskCancel):
-            await self._task_manager.on_task_cancel(ClientID(source), message)
+            await self._task_controller.on_task_cancel(ClientID(source), message)
             return
 
         if isinstance(message, TaskLog):
@@ -180,7 +180,7 @@ class Scheduler:
 
         # receive task result from downstream
         if isinstance(message, TaskResult):
-            await self._worker_manager.on_task_result(message)
+            await self._worker_controller.on_task_result(message)
             return
 
         # scheduler receives client shutdown request from upstream
@@ -191,18 +191,18 @@ class Scheduler:
         # =====================================================================================
         # worker manager
         if isinstance(message, WorkerHeartbeat):
-            await self._worker_manager.on_heartbeat(WorkerID(source), message)
+            await self._worker_controller.on_heartbeat(WorkerID(source), message)
             return
 
         # scheduler receives worker disconnect request from downstream
         if isinstance(message, DisconnectRequest):
-            await self._worker_manager.on_disconnect(WorkerID(source), message)
+            await self._worker_controller.on_disconnect(WorkerID(source), message)
             return
 
         # =====================================================================================
         # object manager
         if isinstance(message, ObjectInstruction):
-            await self._object_manager.on_object_instruction(source, message)
+            await self._object_controller.on_object_instruction(source, message)
             return
 
         logging.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")
@@ -213,12 +213,12 @@ class Scheduler:
         loops = [
             create_async_loop_routine(self._binder.routine, 0),
             create_async_loop_routine(self._connector_storage.routine, 0),
-            create_async_loop_routine(self._graph_manager.routine, 0),
-            create_async_loop_routine(self._task_manager.routine, 0),
-            create_async_loop_routine(self._balance_manager.routine, self._config.load_balance_seconds),
+            create_async_loop_routine(self._graph_controller.routine, 0),
+            create_async_loop_routine(self._task_controller.routine, 0),
+            create_async_loop_routine(self._balance_controller.routine, self._config.load_balance_seconds),
             create_async_loop_routine(self._client_manager.routine, CLEANUP_INTERVAL_SECONDS),
-            create_async_loop_routine(self._object_manager.routine, CLEANUP_INTERVAL_SECONDS),
-            create_async_loop_routine(self._worker_manager.routine, CLEANUP_INTERVAL_SECONDS),
+            create_async_loop_routine(self._object_controller.routine, CLEANUP_INTERVAL_SECONDS),
+            create_async_loop_routine(self._worker_controller.routine, CLEANUP_INTERVAL_SECONDS),
             create_async_loop_routine(self._information_manager.routine, STATUS_REPORT_INTERVAL_SECONDS),
         ]
 
