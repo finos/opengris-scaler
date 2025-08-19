@@ -48,8 +48,8 @@ class TaggedAllocatePolicy(TaskAllocatePolicy):
         self._task_id_to_worker_id: Dict[TaskID, WorkerID] = {}
         self._tag_to_worker_ids: Dict[str, Set[WorkerID]] = {}
 
-    async def add_worker(self, worker: WorkerID, tags: Set[str], queue_size: int) -> bool:
-        # FIXME: this implementation does not require async
+    def add_worker(self, worker: WorkerID, tags: Set[str], queue_size: int) -> bool:  # type: ignore[override]
+        # FIXME: remove async in TaskAllocatePolicy interface
 
         if worker in self._worker_id_to_worker:
             return False
@@ -223,15 +223,15 @@ class TaggedAllocatePolicy(TaskAllocatePolicy):
 
         return None
 
-    async def assign_task(self, task: Task) -> Optional[WorkerID]:
-        # Worst-case time complexity is O(n_workers • len(task.tags))
+    def assign_task(self, task: Task) -> Optional[WorkerID]:  # type: ignore[override]
+        # FIXME: remove async in TaskAllocatePolicy interface
 
-        # FIXME: this implementation does not require async
+        # Worst-case time complexity is O(n_workers • len(task.tags))
 
         available_workers = self.__get_available_workers_for_tags(task.tags)
 
-        if len(available_workers) <= 0:
-            return None
+        if len(available_workers) == 0:
+            return WorkerID.invalid_worker_id()
 
         # Selects the worker that has the least amount of queued tasks. We could select the worker that has the most
         # free queue task slots, but that might needlessly idle workers that have a smaller queue.
@@ -276,4 +276,4 @@ class TaggedAllocatePolicy(TaskAllocatePolicy):
 
         matching_workers = [self._worker_id_to_worker[worker_id] for worker_id in matching_worker_ids]
 
-        return [worker for worker in matching_workers if not worker.n_free() > 0]
+        return [worker for worker in matching_workers if worker.n_free() > 0]

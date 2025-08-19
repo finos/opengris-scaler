@@ -1,0 +1,181 @@
+
+import unittest
+
+from typing import Dict, Set
+
+from scaler.utility.logging.utility import setup_logger
+from scaler.scheduler.allocate_policy.tagged_allocate_policy import TaggedAllocatePolicy
+from scaler.protocol.python.message import Task
+from scaler.utility.identifiers import ClientID, TaskID, WorkerID
+
+from tests.utility import logging_test_name
+
+MAX_TASKS_PER_WORKER = 10
+
+
+class TestTaggedAllocatePolicy(unittest.TestCase):
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+
+    def test_assign_task(self):
+        allocator = TaggedAllocatePolicy()
+
+        regular_task = self.__create_task(TaskID(b"task_regular"), set())
+
+        # No worker, should return None
+        assigned_worker = allocator.assign_task(regular_task)
+        self.assertIsNone(assigned_worker)
+
+        # Adds a bunch of workers
+        worker_added = allocator.add_worker(WorkerID(b"worker_regular"), set(), MAX_TASKS_PER_WORKER)
+        self.assertTrue(worker_added)
+        worker_added = allocator.add_worker(WorkerID(b"worker_gpu"), {"gpu"}, MAX_TASKS_PER_WORKER)
+        self.assertTrue(worker_added)
+
+        self.assertEqual(allocator.get_worker_ids(), {WorkerID(b"worker_regular"), WorkerID(b"worker_gpu")})
+
+        # Assign a task to the GPU worker
+        gpu_task = self.__create_task(TaskID(b"task_gpu"), {"gpu"})
+        assigned_worker = allocator.assign_task(gpu_task)
+        self.assertEqual(assigned_worker, WorkerID(b"worker_gpu"))
+
+        # Assign a task with a non-supported tag should fail
+        mac_os_task = self.__create_task(TaskID(b"task_mac_os"), {"mac_os"})
+        assigned_worker = allocator.assign_task(mac_os_task)
+        self.assertIsNone(assigned_worker)
+
+        # Assign a task without tag
+        assigned_worker = allocator.assign_task(regular_task)
+        self.assertEqual(assigned_worker, WorkerID(b"worker_regular"))
+
+        # Assign should fail when the number of tasks exceeds MAX_TASKS_PER_WORKER
+
+        for i in range(0, (MAX_TASKS_PER_WORKER * 2) - 2):
+            self.assertTrue(allocator.has_available_worker())
+
+            task = self.__create_task(TaskID(f"task_{i}".encode()), set())
+            assigned_worker = allocator.assign_task(task)
+            self.assertIsNotNone(assigned_worker)
+
+        self.assertFalse(allocator.has_available_worker())
+
+        overloaded_task = self.__create_task(TaskID(b"task_overload"), set())
+        assigned_worker = allocator.assign_task(overloaded_task)
+        self.assertIsNone(assigned_worker)
+
+    def test_remove_task(self):
+        allocator = TaggedAllocatePolicy()
+
+        allocator.add_worker(WorkerID(b"worker"), set(), MAX_TASKS_PER_WORKER)
+
+        task = self.__create_task(TaskID(b"task_regular"), set())
+
+        # Removing a non-assigned task returns None
+
+        self.assertIsNone(allocator.remove_task(task.task_id))
+
+        # Removing an assigned task returns the assigned worker
+
+        assigned_worker = allocator.assign_task(task)
+        self.assertEqual(assigned_worker, allocator.remove_task(task.task_id))
+
+        # Removing it again returns None
+
+        self.assertIsNone(allocator.remove_task(task.task_id))
+
+    def test_remove_worker(self):
+        N_TASKS = MAX_TASKS_PER_WORKER + 3
+
+        allocator = TaggedAllocatePolicy()
+
+        allocator.add_worker(WorkerID(b"worker_1"), set(), MAX_TASKS_PER_WORKER)
+        allocator.add_worker(WorkerID(b"worker_2"), set(), MAX_TASKS_PER_WORKER)
+
+        # Adds a bunch of tasks
+
+        worker_id_to_tasks: Dict[WorkerID, Set[TaskID]] = {
+            WorkerID(b"worker_1"): set(),
+            WorkerID(b"worker_2"): set(),
+        }
+
+        for i in range(0, N_TASKS):
+            task = self.__create_task(TaskID(f"task_{i}".encode()), set())
+
+            assigned_worker = allocator.assign_task(task)
+            self.assertIsNotNone(assigned_worker)
+            assert assigned_worker is not None
+
+            worker_id_to_tasks[assigned_worker].add(task.task_id)
+
+        # Tasks should be balanced between the two workers
+
+        for workers_tasks in worker_id_to_tasks.values():
+            self.assertAlmostEqual(len(workers_tasks), N_TASKS / 2, delta=1.0)
+
+        # Removes the two workers
+
+        worker_tasks = allocator.remove_worker(WorkerID(b"worker_1"))
+        self.assertSetEqual(set(worker_tasks), worker_id_to_tasks[WorkerID(b"worker_1")])
+
+        worker_tasks = allocator.remove_worker(WorkerID(b"worker_2"))
+        self.assertSetEqual(set(worker_tasks), worker_id_to_tasks[WorkerID(b"worker_2")])
+
+    def test_balancing(self):
+        N_TASKS = MAX_TASKS_PER_WORKER // 2 * 2  # must be even
+
+        n_workers = 0
+
+        allocator = TaggedAllocatePolicy()
+
+        allocator.add_worker(WorkerID(b"worker_1"), {"linux", "gpu"}, MAX_TASKS_PER_WORKER)
+        n_workers += 1
+
+        # Assign a few tasks
+
+        for i in range(0, N_TASKS // 2):
+            allocator.assign_task(self.__create_task(TaskID(f"gpu_task_{i}".encode()), {"gpu"}))
+            allocator.assign_task(self.__create_task(TaskID(f"linux+gpu_task_{i}".encode()), {"linux", "gpu"}))
+
+        self.assertDictEqual(allocator.balance(), {})
+
+        # Adds a worker that cannot accept the balanced tasks
+
+        allocator.add_worker(WorkerID(b"worker_2"), {"windows"}, MAX_TASKS_PER_WORKER)
+        n_workers += 1
+
+        self.assertDictEqual(allocator.balance(), {})
+
+        # Adds a worker that can accept some of the tasks
+
+        allocator.add_worker(WorkerID(b"worker_3"), {"gpu"}, MAX_TASKS_PER_WORKER)
+        n_workers += 1
+
+        balancing_advice = allocator.balance()
+
+        avg_tasks_per_worker = N_TASKS / n_workers
+
+        self.assertListEqual(list(balancing_advice.keys()), [WorkerID(b"worker_1")])
+
+        self.assertAlmostEqual(len(balancing_advice[WorkerID(b"worker_1")]), avg_tasks_per_worker, delta=1.0)
+        self.assertSetEqual(
+            set(balancing_advice[WorkerID(b"worker_1")]),
+            {f"gpu_task_{(N_TASKS // 2) - i - 1}".encode() for i in range(0, int(avg_tasks_per_worker))},
+            msg="youngest task should be advised first for balancing.",
+        )
+
+        # Adds a fourth worker that can accept all tasks
+
+        allocator.add_worker(WorkerID(b"worker_4"), {"gpu", "linux"}, MAX_TASKS_PER_WORKER)
+        n_workers += 1
+
+        balancing_advice = allocator.balance()
+
+        avg_tasks_per_worker = N_TASKS / n_workers
+
+        self.assertListEqual(list(balancing_advice.keys()), [WorkerID(b"worker_1")])
+        self.assertAlmostEqual(len(balancing_advice[WorkerID(b"worker_1")]), avg_tasks_per_worker * 2, delta=1.0)
+
+    @staticmethod
+    def __create_task(task_id: TaskID, tags: Set[str]) -> Task:
+        return Task.new_msg(task_id, ClientID(b"client_id"), b"", None, [], tags)

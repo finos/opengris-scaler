@@ -23,6 +23,7 @@ dependencies = [
     "psutil==7.0.0",
     "pycapnp==2.0.0",
     "pyzmq",
+    "sortedcontainers==2.4.0",
     "tblib",
 ]
 
