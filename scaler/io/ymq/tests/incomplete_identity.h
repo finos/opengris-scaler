@@ -24,21 +24,21 @@ void incomplete_identity_server_main()
 void incomplete_identity_client_main()
 {
     // open a socket, write an incomplete identity and exit
-    // {
-    //     TcpSocket socket;
+    {
+        TcpSocket socket;
 
-    //     socket.connect("127.0.0.1", 25715);
+        socket.connect("127.0.0.1", 25715);
 
-    //     auto remote_identity = socket.read_message();
-    //     assert(remote_identity == "server");
+        auto remote_identity = socket.read_message();
+        assert(remote_identity == "server");
 
-    //     // write incomplete identity and exit
-    //     std::string identity = "client";
-    //     uint64_t header      = identity.length();
-    //     socket.write_all((char*)&header, 8);
-    //     socket.write_all(identity.data(), identity.length() - 2);
-    //     std::this_thread::sleep_for(3s);
-    // }
+        // write incomplete identity and exit
+        std::string identity = "client";
+        uint64_t header      = identity.length();
+        socket.write_all((char*)&header, 8);
+        socket.write_all(identity.data(), identity.length() - 2);
+        std::this_thread::sleep_for(3s);
+    }
 
     // connect again and try to send a message
     {

@@ -28,13 +28,13 @@ int main()
     counters += test("slow network", 20, slow_client_main, slow_server_main);
     counters += test("incomplete identity", 20, incomplete_identity_client_main, incomplete_identity_server_main);
 
-    // this is wip
+    // how do we test reconnection?
     // ReconnectContext rectx;
     // counters +=
     //     test("reconnect", 15, [rectx] { reconnect_client_main(rectx); }, [rectx] { reconnect_server_main(rectx); });
 
-    // this throws `std::bad_alloc` which shuts down the program -- is it possible to recover from this?
-    // counters += test("bad header", 10, bad_header_client_main, bad_header_server_main);
+    // the server throws `std::bad_alloc`, but subprocessing ensures we're shielded from it
+    counters += test("bad header", 10, bad_header_client_main, bad_header_server_main);
 
     counters += test("empty message", 10, empty_message_client_main, empty_message_server_main);
 
