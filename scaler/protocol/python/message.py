@@ -538,8 +538,11 @@ class StateTask(Message):
         return TaskStatus(self._msg.status.raw)
 
     @property
-    def worker(self) -> WorkerID:
-        return WorkerID(self._msg.worker)
+    def worker(self) -> Optional[WorkerID]:
+        if len(self._msg.worker) > 0:
+            return WorkerID(self._msg.worker)
+        else:
+            return None
 
     @property
     def metadata(self) -> bytes:
@@ -547,14 +550,14 @@ class StateTask(Message):
 
     @staticmethod
     def new_msg(
-        task_id: TaskID, function_name: bytes, status: TaskStatus, worker: WorkerID, metadata: bytes = b""
+        task_id: TaskID, function_name: bytes, status: TaskStatus, worker: Optional[WorkerID], metadata: bytes = b""
     ) -> "StateTask":
         return StateTask(
             _message.StateTask(
                 taskId=bytes(task_id),
                 functionName=function_name,
                 status=status.value,
-                worker=bytes(worker),
+                worker=bytes(worker) if worker is not None else b"",
                 metadata=metadata,
             )
         )

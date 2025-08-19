@@ -46,7 +46,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         self._task_controller = task_controller
 
     async def assign_task_to_worker(self, task: Task) -> bool:
-        worker = await self._allocator_policy.assign_task(task.task_id)
+        worker = await self._allocator_policy.assign_task(task)
         if worker is None:
             return False
 
@@ -86,7 +86,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
     async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat):
         # TODO: get worker queue size from worker heartbeat
-        if await self._allocator_policy.add_worker(worker_id, DEFAULT_PER_WORKER_QUEUE_SIZE):
+        if await self._allocator_policy.add_worker(worker_id, info.tags, DEFAULT_PER_WORKER_QUEUE_SIZE):
             logging.info(f"worker {worker_id!r} connected")
             await self._binder_monitor.send(StateWorker.new_msg(worker_id, b"connected"))
 
@@ -152,7 +152,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
     def has_available_worker(self) -> bool:
         return self._allocator_policy.has_available_worker()
 
-    def get_worker_by_task_id(self, task_id: TaskID) -> WorkerID:
+    def get_worker_by_task_id(self, task_id: TaskID) -> Optional[WorkerID]:
         return self._allocator_policy.get_worker_by_task_id(task_id)
 
     def get_worker_ids(self) -> Set[WorkerID]:

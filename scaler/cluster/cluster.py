@@ -18,7 +18,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         storage_address: Optional[ObjectStorageConfig],
         worker_io_threads: int,
         worker_names: List[str],
-        tags: Set[str],
+        worker_tags: Set[str],
         per_worker_task_queue_size: int,
         heartbeat_interval_seconds: int,
         task_timeout_seconds: int,
@@ -37,7 +37,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         self._storage_address = storage_address
         self._worker_io_threads = worker_io_threads
         self._worker_names = worker_names
-        self._tags = tags
+        self._worker_tags = worker_tags
 
         self._per_worker_task_queue_size = per_worker_task_queue_size
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
@@ -82,7 +82,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
                 name=name,
                 address=self._address,
                 storage_address=self._storage_address,
-                tags=self._tags,
+                tags=self._worker_tags,
                 io_threads=self._worker_io_threads,
                 task_queue_size=self._per_worker_task_queue_size,
                 heartbeat_interval_seconds=self._heartbeat_interval_seconds,

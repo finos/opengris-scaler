@@ -1,12 +1,13 @@
 import abc
 from typing import Dict, List, Optional, Set
 
+from scaler.protocol.python.message import Task
 from scaler.utility.identifiers import TaskID, WorkerID
 
 
 class TaskAllocatePolicy(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def add_worker(self, worker: WorkerID, queue_size: int) -> bool:
+    async def add_worker(self, worker: WorkerID, tags: Set[str], queue_size: int) -> bool:
         """add worker to worker collection"""
         raise NotImplementedError()
 
@@ -21,8 +22,9 @@ class TaskAllocatePolicy(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_worker_by_task_id(self, task_id: TaskID) -> WorkerID:
-        """get worker name by task id"""
+    def get_worker_by_task_id(self, task_id: TaskID) -> Optional[WorkerID]:
+        """get worker that been assigned to this task_id, return None means cannot find the worker assigned to this
+        task id"""
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -32,8 +34,8 @@ class TaskAllocatePolicy(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def assign_task(self, task_id: TaskID) -> Optional[WorkerID]:
-        """assign task_id in allocator, return None means no available worker, otherwise will return worker been
+    async def assign_task(self, task: Task) -> Optional[WorkerID]:
+        """assign task in allocator, return None means no available worker, otherwise will return worker been
         assigned to"""
         raise NotImplementedError()
 
@@ -44,14 +46,8 @@ class TaskAllocatePolicy(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_assigned_worker(self, task_id: TaskID) -> Optional[WorkerID]:
-        """get worker that been assigned to this task_id, return None means cannot find the worker assigned to this
-        task id"""
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def has_available_worker(self) -> bool:
-        """has available worker or not"""
+    def has_available_worker(self, tags: Optional[Set[str]] = None) -> bool:
+        """has available worker or not, possibly constrained to the provided task tags"""
         raise NotImplementedError()
 
     @abc.abstractmethod

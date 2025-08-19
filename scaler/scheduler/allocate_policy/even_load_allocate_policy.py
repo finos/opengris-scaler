@@ -1,6 +1,7 @@
 import math
 from typing import Dict, List, Optional, Set
 
+from scaler.protocol.python.message import Task
 from scaler.scheduler.allocate_policy.mixins import TaskAllocatePolicy
 from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
@@ -17,7 +18,7 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
 
         self._worker_queue: AsyncPriorityQueue = AsyncPriorityQueue()
 
-    async def add_worker(self, worker: WorkerID, queue_size: int) -> bool:
+    async def add_worker(self, worker: WorkerID, tags: Set[str], queue_size: int) -> bool:
         # TODO: handle uneven queue size for each worker
         if worker in self._workers_to_task_ids:
             return False
@@ -42,8 +43,8 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
     def get_worker_ids(self) -> Set[WorkerID]:
         return set(self._workers_to_task_ids.keys())
 
-    def get_worker_by_task_id(self, task_id: TaskID) -> WorkerID:
-        return self._task_id_to_worker.get(task_id, WorkerID(b""))
+    def get_worker_by_task_id(self, task_id: TaskID) -> Optional[WorkerID]:
+        return self._task_id_to_worker.get(task_id, None)
 
     def balance(self) -> Dict[WorkerID, List[TaskID]]:
         """Returns, for every worker, the list of tasks to balance out."""
@@ -105,7 +106,9 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
 
         return balance_count
 
-    async def assign_task(self, task_id: TaskID) -> Optional[WorkerID]:
+    async def assign_task(self, task: Task) -> Optional[WorkerID]:
+        task_id = task.task_id
+
         if task_id in self._task_id_to_worker:
             return self._task_id_to_worker[task_id]
 
@@ -129,13 +132,7 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
         self._worker_queue.decrease_priority(worker)
         return worker
 
-    def get_assigned_worker(self, task_id: TaskID) -> Optional[WorkerID]:
-        if task_id not in self._task_id_to_worker:
-            return None
-
-        return self._task_id_to_worker[task_id]
-
-    def has_available_worker(self) -> bool:
+    def has_available_worker(self, tags: Optional[Set[str]] = None) -> bool:
         if not len(self._worker_queue):
             return False
 

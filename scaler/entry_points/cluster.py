@@ -36,7 +36,7 @@ def get_args():
         "--worker-tags",
         "-wt",
         type=lambda value: set(value.split(",")),
-        help="comma-separated tag names supported by the workers (e.g. \"-wt tag_1,tag2\")",
+        help="comma-separated tag names supported by the workers (e.g. \"-wt tag_1,tag_2\")",
     )
     parser.add_argument(
         "--worker-task-queue-size",
@@ -150,7 +150,7 @@ def main():
         address=args.address,
         storage_address=args.object_storage_address,
         worker_names=worker_names,
-        tags=args.tags or set(),
+        worker_tags=args.worker_tags or set(),
         per_worker_task_queue_size=args.worker_task_queue_size,
         heartbeat_interval_seconds=args.heartbeat_interval,
         task_timeout_seconds=args.task_timeout_seconds,

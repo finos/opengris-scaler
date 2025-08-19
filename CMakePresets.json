@@ -94,7 +94,7 @@
   "testPresets": [
     {
       "name": "default-test",
-      "configurePreset": "linux-aarch64",
+      "configurePreset": "linux-x86_64",
       "output": {
         "outputOnFailure": true
       }

@@ -146,7 +146,7 @@ class WorkerController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_worker_by_task_id(self, task_id: TaskID) -> WorkerID:
+    def get_worker_by_task_id(self, task_id: TaskID) -> Optional[WorkerID]:
         raise NotImplementedError()
 
     @abc.abstractmethod
