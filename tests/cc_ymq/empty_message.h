@@ -1,15 +1,13 @@
 #pragma once
 
 #include <limits>
-#include <print>
-#include <thread>
 
 #include "scaler/io/ymq/bytes.h"
 #include "scaler/io/ymq/examples/common.h"
 #include "scaler/io/ymq/io_context.h"
-#include "scaler/io/ymq/tests/common.h"
+#include "tests/cc_ymq/common.h"
 
-void empty_message_server_main()
+TestResult empty_message_server_main()
 {
     IOContext context(1);
 
@@ -17,20 +15,19 @@ void empty_message_server_main()
     syncBindSocket(socket, "tcp://127.0.0.1:25713");
 
     auto result = syncRecvMessage(socket);
-    assert(result.has_value());
-
-    // which of these is the desired behaviour?
-    // assert(result->payload.is_empty());
-    assert(result->payload.as_string() == "");
+    ASSERT(result.has_value());
+    ASSERT(result->payload.as_string() == "");
 
     auto result2 = syncRecvMessage(socket);
-    assert(result2.has_value());
-    assert(result2->payload.as_string() == "");
+    ASSERT(result2.has_value());
+    ASSERT(result2->payload.as_string() == "");
 
     context.removeIOSocket(socket);
+
+    return TestResult::Success;
 }
 
-void empty_message_client_main()
+TestResult empty_message_client_main()
 {
     IOContext context(1);
 
@@ -38,10 +35,12 @@ void empty_message_client_main()
     syncConnectSocket(socket, "tcp://127.0.0.1:25713");
 
     auto error = syncSendMessage(socket, Message {.address = Bytes(), .payload = Bytes()});
-    assert(!error);
+    ASSERT(!error);
 
     auto error2 = syncSendMessage(socket, Message {.address = Bytes(), .payload = Bytes("")});
-    assert(!error2);
+    ASSERT(!error2);
 
     context.removeIOSocket(socket);
+
+    return TestResult::Success;
 }

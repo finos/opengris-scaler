@@ -1,10 +1,12 @@
 #pragma once
 
+#include <thread>
+
 #include "scaler/io/ymq/examples/common.h"
 #include "scaler/io/ymq/io_context.h"
-#include "scaler/io/ymq/tests/common.h"
+#include "tests/cc_ymq/common.h"
 
-void slow_server_main()
+TestResult slow_server_main()
 {
     IOContext context(1);
 
@@ -12,13 +14,15 @@ void slow_server_main()
     syncBindSocket(socket, "tcp://127.0.0.1:25713");
     auto result = syncRecvMessage(socket);
 
-    assert(result.has_value());
-    assert(result->payload.as_string() == "yi er san si wu liu");
+    ASSERT(result.has_value());
+    ASSERT(result->payload.as_string() == "yi er san si wu liu");
 
     context.removeIOSocket(socket);
+
+    return TestResult::Success;
 }
 
-void slow_client_main()
+TestResult slow_client_main()
 {
     TcpSocket socket;
 
@@ -26,7 +30,7 @@ void slow_client_main()
 
     socket.write_message("client");
     auto remote_identity = socket.read_message();
-    assert(remote_identity == "server");
+    ASSERT(remote_identity == "server");
 
     std::string message = "yi er san si wu liu";
     uint64_t header     = message.length();
@@ -39,4 +43,6 @@ void slow_client_main()
     std::this_thread::sleep_for(5s);
     socket.write_all(message.data() + header / 2, header - header / 2);
     std::this_thread::sleep_for(3s);
+
+    return TestResult::Success;
 }

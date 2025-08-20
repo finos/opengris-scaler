@@ -8,7 +8,7 @@
 #include "scaler/io/ymq/bytes.h"
 #include "scaler/io/ymq/examples/common.h"
 #include "scaler/io/ymq/io_context.h"
-#include "scaler/io/ymq/tests/common.h"
+#include "tests/cc_ymq/common.h"
 
 struct ReconnectContext {
     std::shared_ptr<std::binary_semaphore> sem_a;

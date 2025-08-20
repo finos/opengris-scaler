@@ -2,11 +2,12 @@
 
 #include <limits>
 #include <thread>
+
 #include "scaler/io/ymq/examples/common.h"
 #include "scaler/io/ymq/io_context.h"
-#include "scaler/io/ymq/tests/common.h"
+#include "tests/cc_ymq/common.h"
 
-void bad_header_server_main()
+TestResult bad_header_server_main()
 {
     IOContext context(1);
 
@@ -14,13 +15,15 @@ void bad_header_server_main()
     syncBindSocket(socket, "tcp://127.0.0.1:25713");
     auto result = syncRecvMessage(socket);
 
-    assert(result.has_value());
-    assert(result->payload.as_string() == "yi er san si wu liu");
+    ASSERT(result.has_value());
+    ASSERT(result->payload.as_string() == "yi er san si wu liu");
 
     context.removeIOSocket(socket);
+
+    return TestResult::Success;
 }
 
-void bad_header_client_main()
+TestResult bad_header_client_main()
 {
     TcpSocket socket;
 
@@ -28,10 +31,13 @@ void bad_header_client_main()
 
     socket.write_message("client");
     auto remote_identity = socket.read_message();
-    assert(remote_identity == "server");
+    ASSERT(remote_identity == "server");
 
     uint64_t header = std::numeric_limits<uint64_t>::max();
     socket.write_all((char*)&header, 8);
 
+    // TODO: this sleep shouldn't be necessary
     std::this_thread::sleep_for(3s);
+
+    return TestResult::Success;
 }

@@ -21,6 +21,7 @@
 #include <exception>
 #include <functional>
 #include <future>
+#include <iostream>
 #include <optional>
 #include <print>
 #include <stdexcept>
@@ -28,6 +29,9 @@
 #include <thread>
 #include <tuple>
 #include <vector>
+
+#define ASSERT(condition) \
+    if (!(condition)) { return TestResult::Failure; }
 
 using namespace std::chrono_literals;
 
@@ -73,7 +77,7 @@ public:
     ~OwnedFd()
     {
         if (close(_fd) < 0)
-            std::println("failed to close fd!");
+            std::println(std::cerr, "failed to close fd!");
     }
 
     size_t write(const void* data, size_t len)
@@ -158,19 +162,17 @@ public:
     }
 };
 
-inline void fork_wrapper(std::function<void()> fn, int timeout_secs, OwnedFd pipe_wr)
+inline void fork_wrapper(std::function<TestResult()> fn, int timeout_secs, OwnedFd pipe_wr)
 {
+    TestResult result = TestResult::Failure;
     try {
-        fn();
+        result = fn();
     } catch (const std::exception& e) {
-        std::println("Exception: {}", e.what());
-        auto failure = TestResult::Failure;
-        pipe_wr.write_all((char*)&failure, sizeof(TestResult));
-        return;
+        std::println(std::cerr, "Exception: {}", e.what());
+        result = TestResult::Failure;
     }
 
-    auto success = TestResult::Success;
-    pipe_wr.write_all((char*)&success, sizeof(TestResult));
+    pipe_wr.write_all((char*)&result, sizeof(TestResult));
 }
 
 // strategy: fork and run the client, then fork again and run the server
@@ -178,7 +180,7 @@ inline void fork_wrapper(std::function<void()> fn, int timeout_secs, OwnedFd pip
 // shield us from any potential bugs, e.g. hanging, segmentation faults, etc.
 // the processes will communicate back via pipes, which we combine with a timerfd in poll()
 // to receive responses from both subprocesses with a timeout
-inline TestResult test(int timeout_secs, std::function<void()> client_main, std::function<void()> server_main)
+inline TestResult test(int timeout_secs, std::function<TestResult()> client_main, std::function<TestResult()> server_main)
 {
     int client_pipe[2] = {0};
     if (pipe2(client_pipe, O_NONBLOCK) < 0)
@@ -299,28 +301,9 @@ done:
     return TestResult::Failure;
 }
 
-inline TestResult test(
-    std::string test_description,
-    int timeout_secs,
-    std::function<void()> client_main,
-    std::function<void()> server_main)
-{
-    std::print("Running: {} ... ", test_description);
-    std::fflush(stdout);
-
-    auto result = test(timeout_secs, client_main, server_main);
-
-    switch (result) {
-        case TestResult::Success: std::println("SUCCESS"); break;
-        case TestResult::Failure: std::println("FAILED");
-    }
-
-    return result;
-}
-
 static void handler(int signo)
 {
-    std::println("Received signal: {}", signo);
+    std::println(std::cerr, "Received signal: {}", signo);
 }
 
 inline void setup_signal_handlers()

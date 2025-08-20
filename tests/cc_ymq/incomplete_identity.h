@@ -1,13 +1,12 @@
 #pragma once
 
-#include <print>
 #include <thread>
 
 #include "scaler/io/ymq/examples/common.h"
 #include "scaler/io/ymq/io_context.h"
 #include "tests/cc_ymq/common.h"
 
-void incomplete_identity_server_main()
+TestResult incomplete_identity_server_main()
 {
     IOContext context(1); 
 
@@ -15,13 +14,15 @@ void incomplete_identity_server_main()
     syncBindSocket(socket, "tcp://127.0.0.1:25715");
     auto result = syncRecvMessage(socket);
 
-    assert(result.has_value());
-    assert(result->payload.as_string() == "yi er san si wu liu");
+    ASSERT(result.has_value());
+    ASSERT(result->payload.as_string() == "yi er san si wu liu");
 
     context.removeIOSocket(socket);
+
+    return TestResult::Success;
 }
 
-void incomplete_identity_client_main()
+TestResult incomplete_identity_client_main()
 {
     // open a socket, write an incomplete identity and exit
     {
@@ -30,7 +31,7 @@ void incomplete_identity_client_main()
         socket.connect("127.0.0.1", 25715);
 
         auto remote_identity = socket.read_message();
-        assert(remote_identity == "server");
+        ASSERT(remote_identity == "server");
 
         // write incomplete identity and exit
         std::string identity = "client";
@@ -45,9 +46,11 @@ void incomplete_identity_client_main()
         TcpSocket socket;
         socket.connect("127.0.0.1", 25715);
         auto remote_identity = socket.read_message();
-        assert(remote_identity == "server");
+        ASSERT(remote_identity == "server");
         socket.write_message("client");
         socket.write_message("yi er san si wu liu");
         std::this_thread::sleep_for(3s);
     }
+
+    return TestResult::Success;
 }
