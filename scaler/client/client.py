@@ -183,15 +183,39 @@ class Client:
             heartbeat_interval_seconds=state["heartbeat_interval_seconds"],
         )
 
-    def submit(self, fn: Callable, *args, tags_: Optional[Set[str]] = None, **kwargs) -> ScalerFuture:
+    def submit(self, fn: Callable, *args, **kwargs) -> ScalerFuture:
         """
-        Submit a single task (function with arguments) to the scheduler, and return a future
+        Submit a single task (function with arguments) to the scheduler, and return a future.
+
+        See `submit_verbose()` for additional parameters.
 
         :param fn: function to be executed remotely
         :type fn: Callable
         :param args: positional arguments will be passed to function
-        :param tags_: routing tags
-        :type tags_: Optional[Set[str]]
+        :param kwargs: keyword arguments will be passed to function
+        :return: future of the submitted task
+        :rtype: ScalerFuture
+        """
+
+        return self.submit_verbose(fn, args, kwargs)
+
+    def submit_verbose(
+        self,
+        fn: Callable,
+        args: Tuple[Any, ...],
+        kwargs: Dict[str, Any],
+        tags: Optional[Set[str]] = None,
+    ) -> ScalerFuture:
+        """
+        Submit a single task (function with arguments) to the scheduler, and return a future. Possibly route the task to
+        specific workers.
+
+        :param fn: function to be executed remotely
+        :type fn: Callable
+        :param args: positional arguments will be passed to function
+        :param kwargs: keyword arguments will be passed to function
+        :param tags: routing tags
+        :type tags: Optional[Set[str]]
         :return: future of the submitted task
         :rtype: ScalerFuture
         """
@@ -201,7 +225,7 @@ class Client:
         function_object_id = self._object_buffer.buffer_send_function(fn).object_id
         all_args = Client.__convert_kwargs_to_args(fn, args, kwargs)
 
-        task, future = self.__submit(function_object_id, all_args, delayed=True, tags=tags_)
+        task, future = self.__submit(function_object_id, all_args, delayed=True, tags=tags)
 
         self._object_buffer.commit_send_objects()
         self._connector_agent.send(task)
