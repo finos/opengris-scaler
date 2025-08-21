@@ -16,12 +16,15 @@
 #include <algorithm>
 #include <chrono>
 #include <csignal>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <exception>
 #include <functional>
 #include <future>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <print>
 #include <stdexcept>
@@ -30,8 +33,10 @@
 #include <tuple>
 #include <vector>
 
-#define ASSERT(condition) \
-    if (!(condition)) { return TestResult::Failure; }
+#define ASSERT(condition)           \
+    if (!(condition)) {             \
+        return TestResult::Failure; \
+    }
 
 using namespace std::chrono_literals;
 
@@ -116,6 +121,192 @@ public:
     operator int() { return _fd; }
 };
 
+inline bool host_is_network_byte_order()
+{
+    uint16_t x = 0x00FF;
+
+    // if the lowest byte is 0, host is big endian
+    return (*((uint8_t*)&x)) == 0x00;
+}
+
+struct TcpHeader {
+    uint16_t source_port;
+    uint16_t destination_port;
+    uint32_t seq_num;
+    uint32_t ack_num;
+    uint8_t data_offset__reserved;
+    uint8_t flags;
+    uint16_t window;
+    uint16_t checksum;
+    uint16_t urgent_pointer;
+    std::vector<uint8_t> options;
+
+    uint8_t data_offset() { return this->data_offset__reserved & 0b11110000; }
+    uint8_t reserved() { return this->data_offset__reserved & 0b00001111; }
+
+    bool cwr() { return (this->flags & 0b10000000) > 0; }
+    bool ece() { return (this->flags & 0b01000000) > 0; }
+    bool urg() { return (this->flags & 0b00100000) > 0; }
+    bool ack() { return (this->flags & 0b00010000) > 0; }
+    bool psh() { return (this->flags & 0b00001000) > 0; }
+    bool rst() { return (this->flags & 0b00000100) > 0; }
+    bool syn() { return (this->flags & 0b00000010) > 0; }
+    bool fin() { return (this->flags & 0b00000001) > 0; }
+
+    size_t size() { return this->data_offset() * 4; }
+
+    // ---
+
+    static TcpHeader deserialize(uint8_t* buffer, size_t len)
+    {
+        auto read_u8 = [](uint8_t* buffer, size_t cursor, uint8_t* x) {
+            *x = buffer[cursor];
+            return 1;
+        };
+
+        auto read_u16 = [](uint8_t* buffer, size_t cursor, uint16_t* x) {
+            std::memcpy(x, buffer + cursor, 2);
+            *x = ntohs(*x);
+            return 2;
+        };
+
+        auto read_u32 = [](uint8_t* buffer, size_t cursor, uint32_t* x) {
+            std::memcpy(x, buffer + cursor, 4);
+            *x = ntohl(*x);
+            return 4;
+        };
+
+        auto read_n = [](uint8_t* buffer, size_t cursor, uint8_t* data, size_t n) {
+            if (host_is_network_byte_order()) {
+                std::memcpy(data, buffer + cursor, n);
+            } else {
+                for (size_t i = 0; i < n; i++)
+                    data[i] = buffer[cursor + n - i - 1];
+            }
+            return n;
+        };
+
+        size_t cursor = 0;
+        TcpHeader that {};
+
+        cursor += read_u16(buffer, cursor, &that.source_port);
+        cursor += read_u16(buffer, cursor, &that.destination_port);
+        cursor += read_u32(buffer, cursor, &that.seq_num);
+        cursor += read_u32(buffer, cursor, &that.ack_num);
+        cursor += read_u8(buffer, cursor, &that.data_offset__reserved);
+        cursor += read_u8(buffer, cursor, &that.flags);
+        cursor += read_u16(buffer, cursor, &that.window);
+        cursor += read_u16(buffer, cursor, &that.checksum);
+        cursor += read_u16(buffer, cursor, &that.urgent_pointer);
+
+        for (; cursor < len;) {
+            uint8_t kind = 0;
+            cursor += read_u8(buffer, cursor, &kind);
+
+            that.options.push_back(kind);
+
+            // end of options
+            if (kind == 0) {
+                break;
+            }
+
+            // no-op
+            if (kind == 1) {
+                continue;
+            }
+
+            uint8_t length = 0;
+            cursor += read_u8(buffer, cursor, &length);
+
+            that.options.push_back(length);
+
+            // note: we assume the header is well-formed, so length < 
+            uint8_t* data = new uint8_t[length];
+            cursor += read_n(buffer, cursor, data, length);
+            for (size_t i = 0; i < length; i++)
+                that.options.push_back(data[i]);
+            delete[] data;
+        }
+
+        return that;
+    }
+
+    std::unique_ptr<uint8_t[]> serialize()
+    {
+        auto write_u8 = [](uint8_t* buffer, size_t cursor, uint8_t x) {
+            buffer[cursor] = x;
+            return 1;
+        };
+
+        auto write_u16 = [](uint8_t* buffer, size_t cursor, uint16_t x) {
+            x = htons(x);
+            std::memcpy(buffer + cursor, &x, 2);
+            return 2;
+        };
+
+        auto write_u32 = [](uint8_t* buffer, size_t cursor, uint32_t x) {
+            x = htonl(x);
+            std::memcpy(buffer + cursor, &x, 4);
+            return 4;
+        };
+
+        auto write_n = [](uint8_t* buffer, size_t cursor, uint8_t* data, size_t n) {
+            if (host_is_network_byte_order()) {
+                std::memcpy(buffer + cursor, data, n);
+            } else {
+                // reverse the bytes
+                for (size_t i = 0; i < n; i++)
+                    buffer[cursor + i] = data[n - i - 1];
+            }
+            return n;
+        };
+
+        size_t cursor   = 0;
+        uint8_t* buffer = new uint8_t[this->size()];
+
+        cursor += write_u16(buffer, cursor, this->source_port);
+        cursor += write_u16(buffer, cursor, this->destination_port);
+        cursor += write_u32(buffer, cursor, this->seq_num);
+        cursor += write_u32(buffer, cursor, this->ack_num);
+        cursor += write_u8(buffer, cursor, this->data_offset__reserved);
+        cursor += write_u8(buffer, cursor, this->flags);
+        cursor += write_u16(buffer, cursor, this->window);
+        cursor += write_u16(buffer, cursor, this->checksum);
+        cursor += write_u16(buffer, cursor, this->urgent_pointer);
+
+        for (size_t i = 0;; i++) {
+            auto kind = this->options[i++];
+            cursor += write_u8(buffer, cursor, kind);
+
+            if (kind == 0) {
+                break;
+            }
+
+            if (kind == 1) {
+                continue;
+            }
+
+            auto length = this->options[i++];
+            cursor += write_u8(buffer, cursor, length);
+            cursor += write_n(buffer, cursor, this->options.data() + i, length);
+            i += length;
+        }
+
+        return std::unique_ptr<uint8_t[]>(buffer);
+    }
+};
+
+class RawSocket: public OwnedFd {
+public:
+    RawSocket(): OwnedFd(0)
+    {
+        this->_fd = ::socket(AF_INET, SOCK_RAW, 0);
+
+        if (this->_fd < 0)
+            throw std::runtime_error("failed to create socket");
+    }
+};
+
 class TcpSocket: public OwnedFd {
 public:
     TcpSocket(): OwnedFd(0)
@@ -180,7 +371,8 @@ inline void fork_wrapper(std::function<TestResult()> fn, int timeout_secs, Owned
 // shield us from any potential bugs, e.g. hanging, segmentation faults, etc.
 // the processes will communicate back via pipes, which we combine with a timerfd in poll()
 // to receive responses from both subprocesses with a timeout
-inline TestResult test(int timeout_secs, std::function<TestResult()> client_main, std::function<TestResult()> server_main)
+inline TestResult test(
+    int timeout_secs, std::function<TestResult()> client_main, std::function<TestResult()> server_main)
 {
     int client_pipe[2] = {0};
     if (pipe2(client_pipe, O_NONBLOCK) < 0)
