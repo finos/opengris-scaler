@@ -27,9 +27,19 @@ class WorkerID(Identifier):
     def __repr__(self) -> str:
         return f"WorkerID({self.decode()})"
 
+    def is_valid(self) -> bool:
+        return self != _INVALID_WORKER_ID
+
+    @staticmethod
+    def invalid_worker_id() -> "WorkerID":
+        return _INVALID_WORKER_ID
+
     @staticmethod
     def generate_worker_id(name: str) -> "WorkerID":
         return WorkerID(f"{os.getpid()}|Worker|{name}|{uuid.uuid4().bytes.hex()}".encode())
+
+
+_INVALID_WORKER_ID = WorkerID(b"")
 
 
 class ProcessorID(Identifier):

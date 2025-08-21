@@ -43,8 +43,8 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
     def get_worker_ids(self) -> Set[WorkerID]:
         return set(self._workers_to_task_ids.keys())
 
-    def get_worker_by_task_id(self, task_id: TaskID) -> Optional[WorkerID]:
-        return self._task_id_to_worker.get(task_id, None)
+    def get_worker_by_task_id(self, task_id: TaskID) -> WorkerID:
+        return self._task_id_to_worker.get(task_id, WorkerID.invalid_worker_id())
 
     def balance(self) -> Dict[WorkerID, List[TaskID]]:
         """Returns, for every worker, the list of tasks to balance out."""
@@ -106,7 +106,7 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
 
         return balance_count
 
-    async def assign_task(self, task: Task) -> Optional[WorkerID]:
+    async def assign_task(self, task: Task) -> WorkerID:
         task_id = task.task_id
 
         if task_id in self._task_id_to_worker:
@@ -115,16 +115,16 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
         count, worker = await self._worker_queue.get()
         if count == self._workers_to_queue_size[worker]:
             await self._worker_queue.put([count, worker])
-            return None
+            return WorkerID.invalid_worker_id()
 
         self._workers_to_task_ids[worker].put(task_id)
         self._task_id_to_worker[task_id] = worker
         await self._worker_queue.put([count + 1, worker])
         return worker
 
-    def remove_task(self, task_id: TaskID) -> Optional[WorkerID]:
+    def remove_task(self, task_id: TaskID) -> WorkerID:
         if task_id not in self._task_id_to_worker:
-            return None
+            return WorkerID.invalid_worker_id()
 
         worker = self._task_id_to_worker.pop(task_id)
         self._workers_to_task_ids[worker].remove(task_id)

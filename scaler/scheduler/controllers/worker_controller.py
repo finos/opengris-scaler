@@ -47,7 +47,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
     async def assign_task_to_worker(self, task: Task) -> bool:
         worker = await self._allocator_policy.assign_task(task)
-        if worker is None:
+        if not worker.is_valid():
             return False
 
         # send to worker
@@ -56,7 +56,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
     async def on_task_cancel(self, task_cancel: TaskCancel):
         worker = self._allocator_policy.remove_task(task_cancel.task_id)
-        if worker is None:
+        if not worker.is_valid():
             logging.error(f"cannot find task_id={task_cancel.task_id.hex()} in task workers")
             return
 
@@ -66,7 +66,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         worker = self._allocator_policy.remove_task(task_result.task_id)
 
         if task_result.status in {TaskStatus.Canceled, TaskStatus.NotFound}:
-            if worker is not None:
+            if worker.is_valid():
                 # The worker canceled the task, but the scheduler still had it queued. Re-route the task to another
                 # worker.
                 await self.__reroute_tasks([task_result.task_id])
@@ -75,7 +75,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
             return
 
-        if worker is None:
+        if not worker.is_valid():
             logging.error(
                 f"received unknown task result for task_id={task_result.task_id.hex()}, status={task_result.status} "
                 f"might due to worker get disconnected or canceled"
@@ -152,7 +152,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
     def has_available_worker(self) -> bool:
         return self._allocator_policy.has_available_worker()
 
-    def get_worker_by_task_id(self, task_id: TaskID) -> Optional[WorkerID]:
+    def get_worker_by_task_id(self, task_id: TaskID) -> WorkerID:
         return self._allocator_policy.get_worker_by_task_id(task_id)
 
     def get_worker_ids(self) -> Set[WorkerID]:

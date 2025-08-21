@@ -85,8 +85,8 @@ class TaggedAllocatePolicy(TaskAllocatePolicy):
     def get_worker_ids(self) -> Set[WorkerID]:
         return set(self._worker_id_to_worker.keys())
 
-    def get_worker_by_task_id(self, task_id: TaskID) -> Optional[WorkerID]:
-        return self._task_id_to_worker_id.get(task_id, None)
+    def get_worker_by_task_id(self, task_id: TaskID) -> WorkerID:
+        return self._task_id_to_worker_id.get(task_id, WorkerID.invalid_worker_id())
 
     def balance(self) -> Dict[WorkerID, List[TaskID]]:
         """Returns, for every worker id, the list of task ids to balance out."""
@@ -223,7 +223,7 @@ class TaggedAllocatePolicy(TaskAllocatePolicy):
 
         return None
 
-    def assign_task(self, task: Task) -> Optional[WorkerID]:  # type: ignore[override]
+    def assign_task(self, task: Task) -> WorkerID:  # type: ignore[override]
         # FIXME: remove async in TaskAllocatePolicy interface
 
         # Worst-case time complexity is O(n_workers • len(task.tags))
@@ -243,11 +243,11 @@ class TaggedAllocatePolicy(TaskAllocatePolicy):
 
         return min_loaded_worker.worker_id
 
-    def remove_task(self, task_id: TaskID) -> Optional[WorkerID]:
+    def remove_task(self, task_id: TaskID) -> WorkerID:
         worker_id = self._task_id_to_worker_id.pop(task_id, None)
 
         if worker_id is None:
-            return None
+            return WorkerID.invalid_worker_id()
 
         worker = self._worker_id_to_worker[worker_id]
         worker.task_id_to_task.pop(task_id)

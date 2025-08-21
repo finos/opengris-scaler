@@ -23,9 +23,9 @@ class TestTaggedAllocatePolicy(unittest.TestCase):
 
         regular_task = self.__create_task(TaskID(b"task_regular"), set())
 
-        # No worker, should return None
+        # No worker, should return an invalid worker ID
         assigned_worker = allocator.assign_task(regular_task)
-        self.assertIsNone(assigned_worker)
+        self.assertFalse(assigned_worker.is_valid())
 
         # Adds a bunch of workers
         worker_added = allocator.add_worker(WorkerID(b"worker_regular"), set(), MAX_TASKS_PER_WORKER)
@@ -43,7 +43,7 @@ class TestTaggedAllocatePolicy(unittest.TestCase):
         # Assign a task with a non-supported tag should fail
         mac_os_task = self.__create_task(TaskID(b"task_mac_os"), {"mac_os"})
         assigned_worker = allocator.assign_task(mac_os_task)
-        self.assertIsNone(assigned_worker)
+        self.assertFalse(assigned_worker.is_valid())
 
         # Assign a task without tag
         assigned_worker = allocator.assign_task(regular_task)
@@ -56,13 +56,13 @@ class TestTaggedAllocatePolicy(unittest.TestCase):
 
             task = self.__create_task(TaskID(f"task_{i}".encode()), set())
             assigned_worker = allocator.assign_task(task)
-            self.assertIsNotNone(assigned_worker)
+            self.assertTrue(assigned_worker.is_valid())
 
         self.assertFalse(allocator.has_available_worker())
 
         overloaded_task = self.__create_task(TaskID(b"task_overload"), set())
         assigned_worker = allocator.assign_task(overloaded_task)
-        self.assertIsNone(assigned_worker)
+        self.assertFalse(assigned_worker.is_valid())
 
     def test_remove_task(self):
         allocator = TaggedAllocatePolicy()
@@ -71,18 +71,18 @@ class TestTaggedAllocatePolicy(unittest.TestCase):
 
         task = self.__create_task(TaskID(b"task_regular"), set())
 
-        # Removing a non-assigned task returns None
+        # Removing a non-assigned task returns an invalid Worker ID
 
-        self.assertIsNone(allocator.remove_task(task.task_id))
+        self.assertFalse(allocator.remove_task(task.task_id).is_valid())
 
         # Removing an assigned task returns the assigned worker
 
         assigned_worker = allocator.assign_task(task)
-        self.assertEqual(assigned_worker, allocator.remove_task(task.task_id))
+        self.assertTrue(assigned_worker, allocator.remove_task(task.task_id).is_valid())
 
-        # Removing it again returns None
+        # Removing it again returns an invalid worker ID
 
-        self.assertIsNone(allocator.remove_task(task.task_id))
+        self.assertFalse(allocator.remove_task(task.task_id).is_valid())
 
     def test_remove_worker(self):
         N_TASKS = MAX_TASKS_PER_WORKER + 3
@@ -103,8 +103,7 @@ class TestTaggedAllocatePolicy(unittest.TestCase):
             task = self.__create_task(TaskID(f"task_{i}".encode()), set())
 
             assigned_worker = allocator.assign_task(task)
-            self.assertIsNotNone(assigned_worker)
-            assert assigned_worker is not None
+            self.assertTrue(assigned_worker.is_valid())
 
             worker_id_to_tasks[assigned_worker].add(task.task_id)
 
