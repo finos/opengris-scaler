@@ -190,8 +190,6 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
     def __process_task(self, task: Task):
         task_flags = retrieve_task_flags_from_task(task)
-        stdout_buf = None
-        stderr_buf = None
 
         try:
             function = self._object_cache.get_object(task.func_object_id)
@@ -200,9 +198,9 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             args = [self._object_cache.get_object(cast(ObjectID, arg)) for arg in task.function_args]
 
             if task_flags.stream_output:
-                stdout_buf = StreamingBuffer(task.task_id, TaskLog.LogType.Stdout, self._connector_agent)
-                stderr_buf = StreamingBuffer(task.task_id, TaskLog.LogType.Stderr, self._connector_agent)
                 with (
+                    StreamingBuffer(task.task_id, TaskLog.LogType.Stdout, self._connector_agent) as stdout_buf,
+                    StreamingBuffer(task.task_id, TaskLog.LogType.Stderr, self._connector_agent) as stderr_buf,
                     self.__processor_context(),
                     redirect_stdout(cast(IO[str], stdout_buf)),
                     redirect_stderr(cast(IO[str], stderr_buf)),
@@ -219,13 +217,6 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             logging.exception(f"exception when processing task_id={task.task_id.hex()}:")
             status = TaskStatus.Failed
             result_bytes = serialize_failure(e)
-
-        finally:
-            # Always close buffers if they were created
-            if stdout_buf is not None:
-                stdout_buf.close()
-            if stderr_buf is not None:
-                stderr_buf.close()
 
         self.__send_result(task.source, task.task_id, status, result_bytes)
 
