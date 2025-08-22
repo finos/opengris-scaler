@@ -46,8 +46,8 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         self._task_controller = task_controller
 
     async def assign_task_to_worker(self, task: Task) -> bool:
-        worker = await self._allocator_policy.assign_task(task.task_id)
-        if worker is None:
+        worker = await self._allocator_policy.assign_task(task)
+        if not worker.is_valid():
             return False
 
         # send to worker
@@ -56,7 +56,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
     async def on_task_cancel(self, task_cancel: TaskCancel):
         worker = self._allocator_policy.remove_task(task_cancel.task_id)
-        if worker is None:
+        if not worker.is_valid():
             logging.error(f"cannot find task_id={task_cancel.task_id.hex()} in task workers")
             return
 
@@ -66,7 +66,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         worker = self._allocator_policy.remove_task(task_result.task_id)
 
         if task_result.status in {TaskStatus.Canceled, TaskStatus.NotFound}:
-            if worker is not None:
+            if worker.is_valid():
                 # The worker canceled the task, but the scheduler still had it queued. Re-route the task to another
                 # worker.
                 await self.__reroute_tasks([task_result.task_id])
@@ -75,7 +75,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
             return
 
-        if worker is None:
+        if not worker.is_valid():
             logging.error(
                 f"received unknown task result for task_id={task_result.task_id.hex()}, status={task_result.status} "
                 f"might due to worker get disconnected or canceled"
@@ -86,7 +86,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
     async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat):
         # TODO: get worker queue size from worker heartbeat
-        if await self._allocator_policy.add_worker(worker_id, DEFAULT_PER_WORKER_QUEUE_SIZE):
+        if await self._allocator_policy.add_worker(worker_id, info.tags, DEFAULT_PER_WORKER_QUEUE_SIZE):
             logging.info(f"worker {worker_id!r} connected")
             await self._binder_monitor.send(StateWorker.new_msg(worker_id, b"connected"))
 

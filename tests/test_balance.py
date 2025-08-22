@@ -49,6 +49,7 @@ class TestBalance(unittest.TestCase):
             storage_address=None,
             worker_io_threads=1,
             worker_names=[str(i) for i in range(0, N_WORKERS - 1)],
+            worker_tags=set(),
             per_worker_task_queue_size=combo._cluster._per_worker_task_queue_size,
             heartbeat_interval_seconds=combo._cluster._heartbeat_interval_seconds,
             task_timeout_seconds=combo._cluster._task_timeout_seconds,
