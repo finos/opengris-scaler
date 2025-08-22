@@ -26,6 +26,14 @@ dependencies = [
     "tblib",
 ]
 
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "flake8>=7.3.0",
+    "flake8-pyproject>=1.2.3",
+    "mypy>=1.17.1",
+]
+
 [tool.scikit-build.metadata.version]
 provider = "scikit_build_core.metadata.regex"
 regex = '(?P<value>\d+\.\d+\.\d+(\.[1-9]\d*)?)'
@@ -51,6 +59,10 @@ all = ["python-graphblas", "numpy==2.2.6", "uvloop", "nicegui[plotly]==2.22.2"]
 [tool.scikit-build]
 wheel.packages = ["scaler"]
 build.targets=["cc_object_storage_server", "ymq", "object_storage_server"]
+
+[tool.scikit-build.cmake.define]
+CMAKE_C_COMPILER = { env = "CMAKE_C_COMPILER", default = "gcc-14" }
+CMAKE_CXX_COMPILER = { env = "CMAKE_CXX_COMPILER", default = "g++-14" }
 
 [tool.mypy]
 no_strict_optional = true
