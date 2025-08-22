@@ -18,6 +18,7 @@ from scaler.protocol.python.message import (
     ObjectInstruction,
     Task,
     TaskCancel,
+    TaskLog,
     TaskResult,
     WorkerHeartbeat,
 )
@@ -169,6 +170,12 @@ class Scheduler:
 
         if isinstance(message, TaskCancel):
             await self._task_controller.on_task_cancel(ClientID(source), message)
+            return
+
+        if isinstance(message, TaskLog):
+            client = self._client_manager.get_client_id(message.task_id)
+            if client is not None:
+                await self._binder.send(client, message)
             return
 
         # receive task result from downstream

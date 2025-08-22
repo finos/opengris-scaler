@@ -20,6 +20,7 @@ from scaler.protocol.python.message import (
     ProcessorInitialized,
     Task,
     TaskCancel,
+    TaskLog,
     TaskResult,
     WorkerHeartbeatEcho,
 )
@@ -194,6 +195,10 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         if isinstance(message, ObjectInstruction):
             await self._processor_manager.on_internal_object_instruction(processor_id, message)
+            return
+
+        if isinstance(message, TaskLog):
+            await self._connector_external.send(message)
             return
 
         if isinstance(message, TaskResult):

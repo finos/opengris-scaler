@@ -127,6 +127,31 @@ class TaskCancel(Message):
         )
 
 
+class TaskLog(Message):
+    class LogType(enum.Enum):
+        Stdout = _message.TaskLog.LogType.stdout
+        Stderr = _message.TaskLog.LogType.stderr
+
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def task_id(self) -> TaskID:
+        return TaskID(self._msg.taskId)
+
+    @property
+    def log_type(self) -> "TaskLog.LogType":
+        return TaskLog.LogType(self._msg.logType.raw)
+
+    @property
+    def content(self) -> str:
+        return self._msg.content
+
+    @staticmethod
+    def new_msg(task_id: TaskID, log_type: "TaskLog.LogType", content: str) -> "TaskLog":
+        return TaskLog(_message.TaskLog(taskId=bytes(task_id), logType=log_type.value, content=content))
+
+
 class TaskResult(Message):
     def __init__(self, msg):
         super().__init__(msg)
@@ -612,6 +637,7 @@ PROTOCOL: bidict.bidict[str, Type[Message]] = bidict.bidict(
         "task": Task,
         "taskCancel": TaskCancel,
         "taskResult": TaskResult,
+        "taskLog": TaskLog,
         "graphTask": GraphTask,
         "graphTaskCancel": GraphTaskCancel,
         "objectInstruction": ObjectInstruction,

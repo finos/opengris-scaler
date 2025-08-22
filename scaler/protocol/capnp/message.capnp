@@ -32,6 +32,17 @@ struct TaskCancel {
     flags @1 :TaskCancelFlags;
 }
 
+struct TaskLog {
+    taskId @0 :Data;
+    logType @1 :LogType;
+    content @2 :Text;
+
+    enum LogType {
+        stdout @0;
+        stderr @1;
+    }
+}
+
 struct TaskResult {
     taskId @0 :Data;
     status @1 :CommonType.TaskStatus;
@@ -161,32 +172,33 @@ struct Message {
         task @0 :Task;
         taskCancel @1 :TaskCancel;
         taskResult @2 :TaskResult;
+        taskLog @3 :TaskLog;
 
-        graphTask @3 :GraphTask;
-        graphTaskCancel @4 :GraphTaskCancel;
+        graphTask @4 :GraphTask;
+        graphTaskCancel @5 :GraphTaskCancel;
 
-        objectInstruction @5 :ObjectInstruction;
+        objectInstruction @6 :ObjectInstruction;
 
-        clientHeartbeat @6 :ClientHeartbeat;
-        clientHeartbeatEcho @7 :ClientHeartbeatEcho;
+        clientHeartbeat @7 :ClientHeartbeat;
+        clientHeartbeatEcho @8 :ClientHeartbeatEcho;
 
-        workerHeartbeat @8 :WorkerHeartbeat;
-        workerHeartbeatEcho @9 :WorkerHeartbeatEcho;
+        workerHeartbeat @9 :WorkerHeartbeat;
+        workerHeartbeatEcho @10 :WorkerHeartbeatEcho;
 
-        disconnectRequest @10 :DisconnectRequest;
-        disconnectResponse @11 :DisconnectResponse;
+        disconnectRequest @11 :DisconnectRequest;
+        disconnectResponse @12 :DisconnectResponse;
 
-        stateClient @12 :StateClient;
-        stateObject @13 :StateObject;
-        stateBalanceAdvice @14 :StateBalanceAdvice;
-        stateScheduler @15 :StateScheduler;
-        stateWorker @16 :StateWorker;
-        stateTask @17 :StateTask;
-        stateGraphTask @18 :StateGraphTask;
+        stateClient @13 :StateClient;
+        stateObject @14 :StateObject;
+        stateBalanceAdvice @15 :StateBalanceAdvice;
+        stateScheduler @16 :StateScheduler;
+        stateWorker @17 :StateWorker;
+        stateTask @18 :StateTask;
+        stateGraphTask @19 :StateGraphTask;
 
-        clientDisconnect @19 :ClientDisconnect;
-        clientShutdownResponse @20 :ClientShutdownResponse;
+        clientDisconnect @20 :ClientDisconnect;
+        clientShutdownResponse @21 :ClientShutdownResponse;
 
-        processorInitialized @21 :ProcessorInitialized;
+        processorInitialized @22 :ProcessorInitialized;
     }
 }
