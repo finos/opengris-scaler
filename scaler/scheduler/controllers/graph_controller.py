@@ -9,7 +9,7 @@ from scaler.io.async_connector import AsyncConnector
 from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata, TaskStatus
 from scaler.protocol.python.message import GraphTask, GraphTaskCancel, StateGraphTask, Task, TaskCancel, TaskResult
-from scaler.scheduler.managers.mixins import ClientManager, GraphTaskManager, ObjectManager, TaskManager
+from scaler.scheduler.controllers.mixins import ClientController, GraphTaskController, ObjectController, TaskController
 from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.many_to_many_dict import ManyToManyDict
@@ -47,7 +47,7 @@ class _Graph:
     running_task_ids: Set[TaskID] = dataclasses.field(default_factory=set)
 
 
-class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
+class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
     """
     A = func()
     B = func2(A)
@@ -73,9 +73,9 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         self._binder_monitor: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
 
-        self._client_manager: Optional[ClientManager] = None
-        self._task_manager: Optional[TaskManager] = None
-        self._object_manager: Optional[ObjectManager] = None
+        self._client_controller: Optional[ClientController] = None
+        self._task_controller: Optional[TaskController] = None
+        self._object_controller: Optional[ObjectController] = None
 
         self._unassigned: Queue = Queue()
 
@@ -87,16 +87,16 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         binder: AsyncBinder,
         binder_monitor: AsyncConnector,
         connector_storage: AsyncObjectStorageConnector,
-        client_manager: ClientManager,
-        task_manager: TaskManager,
-        object_manager: ObjectManager,
+        client_controller: ClientController,
+        task_controller: TaskController,
+        object_controller: ObjectController,
     ):
         self._binder = binder
         self._binder_monitor = binder_monitor
         self._connector_storage = connector_storage
-        self._client_manager = client_manager
-        self._task_manager = task_manager
-        self._object_manager = object_manager
+        self._client_controller = client_controller
+        self._task_controller = task_controller
+        self._object_controller = object_controller
 
     async def on_graph_task(self, client_id: ClientID, graph_task: GraphTask):
         await self._unassigned.put((client_id, graph_task))
@@ -141,7 +141,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
     async def __add_new_graph(self, client_id: ClientID, graph_task: GraphTask):
         graph = {}
 
-        self._client_manager.on_task_begin(client_id, graph_task.task_id)
+        self._client_controller.on_task_begin(client_id, graph_task.task_id)
 
         tasks = dict()
         depended_task_id_to_task_id: ManyToManyDict[TaskID, TaskID] = ManyToManyDict()
@@ -199,7 +199,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                 function_args=[self.__get_argument_object(graph_task_id, arg) for arg in task_info.task.function_args],
             )
 
-            await self._task_manager.on_task_new(graph_info.client, task)
+            await self._task_controller.on_task_new(graph_info.client, task)
 
     async def __mark_node_done(self, result: TaskResult):
         graph_task_id = self._task_id_to_graph_task_id.pop(result.task_id)
@@ -240,7 +240,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
             result_metadata = result.metadata
             result_object_ids = [ObjectID(object_id_bytes) for object_id_bytes in result.results]
             result_objects = [
-                (object_id, self._object_manager.get_object_name(object_id)) for object_id in result_object_ids
+                (object_id, self._object_controller.get_object_name(object_id)) for object_id in result_object_ids
             ]
             await self.__clean_all_running_nodes(graph_task_id, result_status, result_metadata, result_objects)
             await self.__clean_all_inactive_nodes(graph_task_id, result_status, result_metadata, result_objects)
@@ -261,7 +261,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         # cancel all running tasks
         for task_id in running_task_ids:
             new_result_object_ids = await self.__duplicate_objects(graph_info.client, result_objects)
-            await self._task_manager.on_task_cancel(graph_info.client, TaskCancel.new_msg(task_id))
+            await self._task_controller.on_task_cancel(graph_info.client, TaskCancel.new_msg(task_id))
             await self.__mark_node_done(
                 TaskResult.new_msg(
                     task_id, result_status, result_metadata, [bytes(object_id) for object_id in new_result_object_ids]
@@ -292,7 +292,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                 )
 
     async def __finish_one_graph(self, graph_task_id: TaskID, result_status: TaskStatus):
-        self._client_manager.on_task_finish(graph_task_id)
+        self._client_controller.on_task_finish(graph_task_id)
         info = self._graph_task_id_to_graph.pop(graph_task_id)
         await self._binder.send(info.client, TaskResult.new_msg(graph_task_id, result_status, metadata=b""))
 
@@ -329,7 +329,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                 continue
 
             # delete intermediate results as they are not needed anymore
-            self._object_manager.on_del_objects(graph_info.client, set(graph_info.tasks[argument].result_object_ids))
+            self._object_controller.on_del_objects(graph_info.client, set(graph_info.tasks[argument].result_object_ids))
 
     async def __duplicate_objects(
         self, owner: ClientID, result_objects: List[Tuple[ObjectID, bytes]]
@@ -350,4 +350,6 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
     ):
         await self._connector_storage.duplicate_object_id(object_id, new_object_id)
 
-        self._object_manager.on_add_object(owner, new_object_id, ObjectMetadata.ObjectContentType.Object, object_name)
+        self._object_controller.on_add_object(
+            owner, new_object_id, ObjectMetadata.ObjectContentType.Object, object_name
+        )

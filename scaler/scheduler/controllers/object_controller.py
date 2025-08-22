@@ -9,10 +9,10 @@ from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata
 from scaler.protocol.python.message import ObjectInstruction
 from scaler.protocol.python.status import ObjectManagerStatus
-from scaler.scheduler.managers.mixins import ClientManager, ObjectManager, WorkerManager
+from scaler.scheduler.controllers.mixins import ClientController, ObjectController, WorkerController
 from scaler.scheduler.object_usage.object_tracker import ObjectTracker, ObjectUsage
-from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.identifiers import ClientID, ObjectID
+from scaler.utility.mixins import Looper, Reporter
 
 
 @dataclasses.dataclass
@@ -26,7 +26,7 @@ class _ObjectCreation(ObjectUsage):
         return self.object_id
 
 
-class VanillaObjectManager(ObjectManager, Looper, Reporter):
+class VanillaObjectController(ObjectController, Looper, Reporter):
     def __init__(self):
         self._object_tracker: ObjectTracker[ClientID, ObjectID, _ObjectCreation] = ObjectTracker(
             "object_usage", self.__finished_object_storage
@@ -38,16 +38,16 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
         self._binder_monitor: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
 
-        self._client_manager: Optional[ClientManager] = None
-        self._worker_manager: Optional[WorkerManager] = None
+        self._client_manager: Optional[ClientController] = None
+        self._worker_manager: Optional[WorkerController] = None
 
     def register(
         self,
         binder: AsyncBinder,
         binder_monitor: AsyncConnector,
         connector_storage: AsyncObjectStorageConnector,
-        client_manager: ClientManager,
-        worker_manager: WorkerManager,
+        client_manager: ClientController,
+        worker_manager: WorkerController,
     ):
         self._binder = binder
         self._binder_monitor = binder_monitor
@@ -142,7 +142,5 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
             self.on_add_object(instruction.object_user, object_id, object_type, object_name)
 
     def __finished_object_storage(self, creation: _ObjectCreation):
-        logging.debug(
-            f"del object cache object_name={creation.object_name!r}, object_id={creation.object_id!r}"
-        )
+        logging.debug(f"del object cache object_name={creation.object_name!r}, object_id={creation.object_id!r}")
         self._queue_deleted_object_ids.put_nowait(creation.object_id)
