@@ -8,11 +8,12 @@ from scaler.protocol.python.message import Task
 class TaskFlags:
     profiling: bool = dataclasses.field(default=True)
     priority: int = dataclasses.field(default=0)
+    stream_output: bool = dataclasses.field(default=False)
 
-    FORMAT = "!?i"
+    FORMAT = "!?i?"
 
     def serialize(self) -> bytes:
-        return struct.pack(TaskFlags.FORMAT, self.profiling, self.priority)
+        return struct.pack(TaskFlags.FORMAT, self.profiling, self.priority, self.stream_output)
 
     @staticmethod
     def deserialize(data: bytes) -> "TaskFlags":
