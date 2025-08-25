@@ -2,7 +2,6 @@
 
 // C++
 #include <stdio.h>
-#include <unistd.h>
 
 #include <future>
 #include <memory>

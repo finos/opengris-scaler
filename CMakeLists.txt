@@ -58,6 +58,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_link_options(-fexperimental-library)
 endif()
 
+if(WIN32)
+    set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS on)
+    add_compile_definitions(WIN32_LEAN_AND_MEAN)
+    add_compile_options("/EHsc")
+endif()
+
 find_package(CapnProto CONFIG REQUIRED)
 get_target_property(CAPNP_INCLUDE_DIRS CapnProto::capnp INTERFACE_INCLUDE_DIRECTORIES)
 message(STATUS "Found Capnp in ${CAPNP_INCLUDE_DIRS}")

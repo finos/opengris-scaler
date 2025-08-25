@@ -1,7 +1,9 @@
 #include "scaler/io/ymq/tcp_client.h"
 
+#ifdef __linux__
 #include <netinet/in.h>
 #include <sys/socket.h>
+#endif  // __linux__
 
 #include <cerrno>
 #include <chrono>
@@ -22,7 +24,11 @@ namespace ymq {
 
 void TcpClient::onCreated()
 {
-    int sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    assert(_connFd == 0);
+    assert(_eventManager.get() != nullptr);
+#ifdef __linux__
+    int sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+
     if (sockfd == -1) {
         const int myErrno = errno;
         switch (myErrno) {
@@ -77,7 +83,7 @@ void TcpClient::onCreated()
         return;
     }
 
-    close(sockfd);
+    CloseAndZeroSocket(sockfd);
 
     const int myErrno = errno;
     switch (myErrno) {
@@ -133,6 +139,62 @@ void TcpClient::onCreated()
         case ECONNREFUSED:
         default: break;
     }
+#endif  // __linux__
+#ifdef _WIN32
+    _connFd         = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    u_long nonblock = 1;
+    // TODO: Error handling here
+    ioctlsocket(_connFd, FIONBIO, &nonblock);
+    DWORD res;
+    GUID guid = WSAID_CONNECTEX;
+    WSAIoctl(
+        this->_connFd,
+        SIO_GET_EXTENSION_FUNCTION_POINTER,
+        (void*)&guid,
+        sizeof(GUID),
+        &_connectExFunc,
+        sizeof(_connectExFunc),
+        &res,
+        0,
+        0);
+    // TODO: Better error handling here
+    if (!_connectExFunc) {
+        fprintf(stderr, "WSAIoctl\n");
+        exit(1);
+    }
+    _eventLoopThread->_eventLoop.addFdToLoop(_connFd, 0, nullptr);
+
+    sockaddr_in localAddr      = {};
+    localAddr.sin_family       = AF_INET;
+    const char ip4[]           = {127, 0, 0, 1};
+    *(int*)&localAddr.sin_addr = *(int*)ip4;
+
+    const int bindRes = bind(_connFd, (struct sockaddr*)&localAddr, sizeof(struct sockaddr_in));
+    // TODO: Better error handling here
+    if (bindRes == -1) {
+        fprintf(stderr, "bind\n");
+        exit(1);
+    }
+
+    const bool ok =
+        _connectExFunc(_connFd, &_remoteAddr, sizeof(struct sockaddr), NULL, 0, NULL, this->_eventManager.get());
+    if (ok) {
+        fprintf(stderr, "connectEx returns true, which is unplanned. Exiting...\n");
+        exit(1);
+    }
+
+    const int lastError = WSAGetLastError();
+    if (lastError == ERROR_IO_PENDING) {
+        if (_retryTimes == 0) {
+            _onConnectReturn(std::unexpected {Error::ErrorCode::InitialConnectFailedWithInProgress});
+        }
+        return;
+    }
+
+    // TODO: Better error handling here
+    fprintf(stderr, "connectEx failed with %d\n", lastError);
+    exit(1);
+#endif  // _WIN32
 }
 
 TcpClient::TcpClient(
@@ -150,6 +212,10 @@ TcpClient::TcpClient(
     , _maxRetryTimes(maxRetryTimes)
     , _retryTimes {}
     , _retryIdentifier {}
+    , _connFd {}
+#ifdef _WIN32
+    , _connectExFunc {}
+#endif  // _WIN32
 {
     _eventManager->onRead  = [this] { this->onRead(); };
     _eventManager->onWrite = [this] { this->onWrite(); };
@@ -157,10 +223,14 @@ TcpClient::TcpClient(
     _eventManager->onError = [this] { this->onError(); };
 }
 
+void TcpClient::onRead()
+{
+}
+
 void TcpClient::onWrite()
 {
+#ifdef __linux__
     _eventLoopThread->_eventLoop.removeFdFromLoop(_connFd);
-
     int err {};
     socklen_t errLen {sizeof(err)};
     if (getsockopt(_connFd, SOL_SOCKET, SO_ERROR, &err, &errLen) < 0) {
@@ -222,10 +292,27 @@ void TcpClient::onWrite()
     _connected = true;
 
     _eventLoopThread->_eventLoop.executeLater([sock] { sock->removeConnectedTcpClient(); });
-}
 
-void TcpClient::onRead()
-{
+#endif  // __linux__
+#ifdef _WIN32
+    int iResult = 0;
+    iResult     = setsockopt(_connFd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
+    if (iResult == -1) {
+        CloseAndZeroSocket(_connFd);
+        retry();
+        return;
+    }
+
+    std::string id                 = this->_localIOSocketIdentity;
+    auto sock                      = this->_eventLoopThread->_identityToIOSocket.at(id);
+    const bool responsibleForRetry = true;
+    sock->onConnectionCreated(setNoDelay(_connFd), getLocalAddr(_connFd), getRemoteAddr(_connFd), responsibleForRetry);
+
+    _connFd    = 0;
+    _connected = true;
+
+    _eventLoopThread->_eventLoop.executeLater([sock] { sock->removeConnectedTcpClient(); });
+#endif  // _WIN32
 }
 
 void TcpClient::retry()
@@ -237,8 +324,7 @@ void TcpClient::retry()
     }
 
     log(LoggingLevel::debug, "Client retrying times", _retryTimes);
-    close(_connFd);
-    _connFd = 0;
+    CloseAndZeroSocket(_connFd);
 
     Timestamp now;
     auto at = now.createTimestampByOffsetDuration(std::chrono::seconds(2 << _retryTimes++));
@@ -250,8 +336,7 @@ TcpClient::~TcpClient() noexcept
 {
     if (_connFd) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_connFd);
-        close(_connFd);
-        _connFd = 0;
+        CloseAndZeroSocket(_connFd);
     }
     if (_retryTimes > 0) {
         _eventLoopThread->_eventLoop.cancelExecution(_retryIdentifier);

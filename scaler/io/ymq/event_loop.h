@@ -8,6 +8,7 @@
 // First-party
 #include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/epoll_context.h"
+#include "scaler/io/ymq/iocp_context.h"
 
 namespace scaler {
 namespace ymq {
@@ -41,10 +42,6 @@ public:
 
     Identifier executeAt(Timestamp timestamp, Function func) { return backend.executeAt(timestamp, std::move(func)); }
     void cancelExecution(Identifier identifier) { backend.cancelExecution(identifier); }
-
-    // NOTE: These two functions are not used. - gxu
-    void registerCallbackBeforeLoop(EventManager*);
-    void registerEventManager(EventManager& em) { backend.registerEventManager(em); }
 
     auto addFdToLoop(int fd, uint64_t events, EventManager* manager)
     {

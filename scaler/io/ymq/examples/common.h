@@ -1,7 +1,5 @@
 #pragma once
 
-#include <unistd.h>
-
 #include <future>
 #include <memory>
 
@@ -16,8 +14,7 @@ inline std::shared_ptr<IOSocket> syncCreateSocket(IOContext& context, IOSocketTy
 {
     auto createSocketPromise = std::promise<std::shared_ptr<IOSocket>>();
     auto createSocketFuture  = createSocketPromise.get_future();
-    context.createIOSocket(
-        std::move(name), type, [&createSocketPromise](auto sock) { createSocketPromise.set_value(sock); });
+    context.createIOSocket(std::move(name), type, [&createSocketPromise](auto sock) { createSocketPromise.set_value(sock); });
 
     auto clientSocket = createSocketFuture.get();
     return clientSocket;
