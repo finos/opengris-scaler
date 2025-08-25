@@ -1,24 +1,22 @@
 import logging
 import time
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, Optional, Set, Tuple
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
-from scaler.io.config import DEFAULT_PER_WORKER_QUEUE_SIZE
-from scaler.protocol.python.common import ObjectStorageAddress, TaskStatus
 from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,
     DisconnectResponse,
     StateWorker,
-    Task,
     TaskCancel,
-    TaskResult,
     WorkerHeartbeat,
     WorkerHeartbeatEcho,
+    Task,
 )
 from scaler.protocol.python.status import ProcessorStatus, Resource, WorkerManagerStatus, WorkerStatus
 from scaler.scheduler.allocate_policy.mixins import TaskAllocatePolicy
+from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import TaskController, WorkerController
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.mixins import Looper, Reporter
@@ -27,11 +25,8 @@ UINT8_MAX = 2**8 - 1
 
 
 class VanillaWorkerController(WorkerController, Looper, Reporter):
-    def __init__(
-        self, timeout_seconds: int, task_allocate_policy: TaskAllocatePolicy, storage_address: ObjectStorageAddress
-    ):
-        self._timeout_seconds = timeout_seconds
-        self._storage_address = storage_address
+    def __init__(self, config_controller: VanillaConfigController, task_allocate_policy: TaskAllocatePolicy):
+        self._config_controller = config_controller
 
         self._binder: Optional[AsyncBinder] = None
         self._binder_monitor: Optional[AsyncConnector] = None
@@ -45,14 +40,8 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         self._binder_monitor = binder_monitor
         self._task_controller = task_controller
 
-    async def assign_task_to_worker(self, task: Task) -> bool:
-        worker = await self._allocator_policy.assign_task(task)
-        if not worker.is_valid():
-            return False
-
-        # send to worker
-        await self._binder.send(worker, task)
-        return True
+    def acquire_worker(self, task: Task) -> Optional[WorkerID]:
+        return self._allocator_policy.assign_task(task)
 
     async def on_task_cancel(self, task_cancel: TaskCancel):
         worker = self._allocator_policy.remove_task(task_cancel.task_id)
@@ -62,36 +51,26 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
         await self._binder.send(worker, task_cancel)
 
-    async def on_task_result(self, task_result: TaskResult):
-        worker = self._allocator_policy.remove_task(task_result.task_id)
-
-        if task_result.status in {TaskStatus.Canceled, TaskStatus.NotFound}:
-            if worker.is_valid():
-                # The worker canceled the task, but the scheduler still had it queued. Re-route the task to another
-                # worker.
-                await self.__reroute_tasks([task_result.task_id])
-            else:
-                await self._task_controller.on_task_done(task_result)
-
-            return
-
+    async def on_task_done(self, task_id: TaskID) -> WorkerID:
+        worker = self._allocator_policy.remove_task(task_id)
         if not worker.is_valid():
-            logging.error(
-                f"received unknown task result for task_id={task_result.task_id.hex()}, status={task_result.status} "
-                f"might due to worker get disconnected or canceled"
-            )
-            return
+            logging.error(f"Cannot find task in worker queue: task_id={task_id.hex()}")
 
-        await self._task_controller.on_task_done(task_result)
+        return worker
 
     async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat):
-        # TODO: get worker queue size from worker heartbeat
-        if await self._allocator_policy.add_worker(worker_id, info.tags, DEFAULT_PER_WORKER_QUEUE_SIZE):
+        if self._allocator_policy.add_worker(worker_id, info.tags, info.queue_size):
             logging.info(f"worker {worker_id!r} connected")
             await self._binder_monitor.send(StateWorker.new_msg(worker_id, b"connected"))
+            await self._task_controller.on_worker_connect(worker_id)
 
         self._worker_alive_since[worker_id] = (time.time(), info)
-        await self._binder.send(worker_id, WorkerHeartbeatEcho.new_msg(object_storage_address=self._storage_address))
+        await self._binder.send(
+            worker_id,
+            WorkerHeartbeatEcho.new_msg(
+                object_storage_address=self._config_controller.get_config("object_storage_address")
+            ),
+        )
 
     async def on_client_shutdown(self, client_id: ClientID):
         for worker in self._allocator_policy.get_worker_ids():
@@ -163,14 +142,10 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         dead_workers = [
             dead_worker
             for dead_worker, (alive_since, info) in self._worker_alive_since.items()
-            if now - alive_since > self._timeout_seconds
+            if now - alive_since > self._config_controller.get_config("worker_timeout_seconds")
         ]
         for dead_worker in dead_workers:
             await self.__disconnect_worker(dead_worker)
-
-    async def __reroute_tasks(self, task_ids: List[TaskID]):
-        for task_id in task_ids:
-            await self._task_controller.on_task_reroute(task_id)
 
     async def __disconnect_worker(self, worker_id: WorkerID):
         """return True if disconnect worker success"""
@@ -185,8 +160,9 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         if not task_ids:
             return
 
-        logging.info(f"rerouting {len(task_ids)} tasks")
-        await self.__reroute_tasks(task_ids)
+        logging.info(f"{len(task_ids)} task(s) failed due to worker {worker_id!r} disconnected")
+        for task_id in task_ids:
+            await self._task_controller.on_worker_disconnect(task_id, worker_id)
 
     async def __shutdown_worker(self, worker_id: WorkerID):
         await self._binder.send(worker_id, ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Shutdown))

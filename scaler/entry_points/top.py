@@ -79,14 +79,7 @@ def show_status(status: Message, screen):
 
     task_manager_table = __generate_keyword_data(
         "task_manager",
-        {
-            "unassigned": status.task_manager.unassigned,
-            "running": status.task_manager.running,
-            "success": status.task_manager.success,
-            "failed": status.task_manager.failed,
-            "canceled": status.task_manager.canceled,
-            "not_found": status.task_manager.not_found,
-        },
+        dict(sorted({k.name: v for k, v in status.task_manager.state_to_count.items()}.items())),
         format_integer_flag=True,
     )
     object_manager = __generate_keyword_data("object_manager", {"num_of_objs": status.object_manager.number_of_objects})
