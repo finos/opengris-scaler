@@ -24,6 +24,9 @@ Below is a diagram of the relationship between the Client, Scheduler, and Worker
 .. note::
     Although the architecture is similar to Dask, Scaler has a better decoupling of these systems and separation of concerns. For example, the Client only knows about the Scheduler and doesn't directly see the number of workers.
 
+.. note::
+    Scaler's Client is cross platform, supporting Windows and GNU/Linux, while other components can only be run on GNU/Linux.
+
 
 Installation
 ------------

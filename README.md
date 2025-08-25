@@ -82,6 +82,8 @@ Scaler has 3 main components:
 - A set of **workers** that form a _cluster_. Workers are independent computing units, each capable of executing a single task.
 - **Clients** running inside applications, responsible for submitting tasks to the scheduler.
 
+Please be noted that **Clients** are cross platform, supporting Windows and GNU/Linux, while other components can only be run on GNU/Linux.
+
 ### Start local scheduler and cluster programmatically in code
 
 A local scheduler and a local set of workers can be conveniently started using `SchedulerClusterCombo`:
