@@ -146,3 +146,15 @@ def __create_size_rotating_file_handler(log_path) -> typing.Dict:
 
 def __parse_logging_level(value):
     return LoggingLevel(value).value
+
+
+def get_logger_format_and_level(logger: logging.Logger) -> typing.Tuple[str, str]:
+    log_level_str = logging.getLevelName(logger.getEffectiveLevel())
+
+    log_format_str = ""
+    if logger.hasHandlers():
+        formatter = logger.handlers[0].formatter
+        if formatter:
+            log_format_str = getattr(formatter, '_fmt', "")
+
+    return log_format_str, log_level_str

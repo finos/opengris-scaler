@@ -32,11 +32,13 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
 {
     const char* addr;
     int port;
+    const char* log_level;
+    const char* log_format;
 
-    if (!PyArg_ParseTuple(args, "si", &addr, &port))
+    if (!PyArg_ParseTuple(args, "siss", &addr, &port, &log_level, &log_format))
         return NULL;
 
-    ((PyObjectStorageServer*)self)->server.run(addr, std::to_string(port));
+    ((PyObjectStorageServer*)self)->server.run(addr, std::to_string(port), log_level, log_format);
 
     Py_RETURN_NONE;
 }
@@ -48,7 +50,7 @@ static PyObject* PyObjectStorageServerWaitUntilReady(PyObject* self, [[maybe_unu
 }
 
 static PyMethodDef PyObjectStorageServerMethods[] = {
-    {"run", PyObjectStorageServerRun, METH_VARARGS, "Run object storage server on address:port"},
+    {"run", PyObjectStorageServerRun, METH_VARARGS, "Run object storage server on address:port with logging config"},
     {"wait_until_ready", PyObjectStorageServerWaitUntilReady, METH_NOARGS, "Wait until the server is ready"},
     {NULL, NULL, 0, NULL},
 };

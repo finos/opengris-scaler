@@ -27,7 +27,7 @@ public:
 
     ~ObjectStorageServer();
 
-    void run(std::string name, std::string port);
+    void run(std::string name, std::string port, std::string log_level, std::string log_format);
 
     void waitUntilReady();
 
@@ -65,6 +65,16 @@ private:
     // Some GET and DUPLICATE requests might be delayed if the referenced object isn't available yet.
     std::map<ObjectID, std::vector<PendingRequest>> pendingRequests;
 
+    std::string log_level_;
+    std::string log_format_;
+
+    template <typename... Args>
+    void log(ymq::LoggingLevel level, Args&&... args)
+    {
+        // Automatically uses the member variable log_format_
+        ymq::log(level, log_format_, std::forward<Args>(args)...);
+    }
+
     void initServerReadyFds();
 
     void setServerReadyFd();
@@ -94,13 +104,13 @@ private:
             co_return T::fromBuffer(buffer);
         } catch (boost::system::system_error& e) {
             if (e.code() == boost::asio::error::eof) {
-                log(scaler::ymq::LoggingLevel::info, "Remote end closed, nothing to read.\n");
+                log(scaler::ymq::LoggingLevel::info, "Remote end closed, nothing to read.");
             } else {
-                log(scaler::ymq::LoggingLevel::error, "exception thrown, read error e.what() = ", e.what(), "\n");
+                log(scaler::ymq::LoggingLevel::error, "exception thrown, read error e.what() = ", e.what());
             }
             throw e;
         } catch (std::exception& e) {
-            log(scaler::ymq::LoggingLevel::error, "exception thrown, message not a capnp e.what() = ", e.what(), "\n");
+            log(scaler::ymq::LoggingLevel::error, "exception thrown, message not a capnp e.what() = ", e.what());
             throw e;
         }
     }
@@ -124,10 +134,10 @@ private:
             if (e.code() == boost::asio::error::broken_pipe) {
                 log(scaler::ymq::LoggingLevel::error, "Remote end closed, nothing to write.\n",
                     "This should never happen as the client is expected ",
-                    "to get every and all response. Terminating now...\n");
+                    "to get every and all response. Terminating now...");
                 std::terminate();
             } else {
-                log(scaler::ymq::LoggingLevel::error, "write error e.what() = ", e.what(), "\n");
+                log(scaler::ymq::LoggingLevel::error, "write error e.what() = ", e.what());
             }
             throw e;
         }
