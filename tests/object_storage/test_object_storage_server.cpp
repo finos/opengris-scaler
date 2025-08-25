@@ -81,7 +81,9 @@ protected:
 
         serverPort = std::to_string(getAvailableTCPPort());
 
-        serverThread = std::thread([this] { server->run(SERVER_HOST, serverPort); });
+        serverThread = std::thread([this] {
+            server->run(SERVER_HOST, serverPort, "INFO", "%(levelname)s: %(message)s");
+        });
 
         server->waitUntilReady();
     }

@@ -2,6 +2,7 @@ import dataclasses
 import enum
 import logging
 import logging.config
+import logging.handlers
 import os
 import typing
 
@@ -146,3 +147,34 @@ def __create_size_rotating_file_handler(log_path) -> typing.Dict:
 
 def __parse_logging_level(value):
     return LoggingLevel(value).value
+
+
+def get_logger_info(logger: logging.Logger) -> typing.Tuple[str, str, str]:
+    """
+    Retrieves the format string, level string, and path from the first active handler of a logger.
+    """
+    log_level_str = logging.getLevelName(logger.getEffectiveLevel())
+
+    log_format_str = ""
+    log_path_str = ""
+
+    # Check if the logger has handlers configured
+    if logger.hasHandlers():
+        handler = logger.handlers[0]
+
+        # Get the format string from the handler's formatter
+        if handler.formatter:
+            log_format_str = getattr(handler.formatter, '_fmt', "")
+
+        if isinstance(handler, logging.handlers.BaseRotatingHandler):
+            log_path_str = handler.baseFilename
+        # For stream-based handlers (like stdout), check the stream's name
+        elif isinstance(handler, logging.StreamHandler) and hasattr(handler.stream, 'name'):
+            if 'stdout' in handler.stream.name:
+                log_path_str = "/dev/stdout"
+
+    # If no specific path was found, default to stdout
+    if not log_path_str:
+        log_path_str = "/dev/stdout"
+
+    return log_format_str, log_level_str, log_path_str

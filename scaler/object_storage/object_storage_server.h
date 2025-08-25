@@ -27,7 +27,8 @@ public:
 
     ~ObjectStorageServer();
 
-    void run(std::string name, std::string port);
+    void run(std::string name, std::string port, std::string log_level, std::string log_format,
+        std::string log_path  = "/dev/stdout");
 
     void waitUntilReady();
 
@@ -64,6 +65,10 @@ private:
 
     // Some GET and DUPLICATE requests might be delayed if the referenced object isn't available yet.
     std::map<ObjectID, std::vector<PendingRequest>> pendingRequests;
+
+    std::string log_level_;
+    std::string log_format_;
+    std::string log_path_;
 
     void initServerReadyFds();
 

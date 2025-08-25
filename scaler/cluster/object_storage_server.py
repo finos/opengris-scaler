@@ -3,7 +3,7 @@ import multiprocessing
 from typing import Optional, Tuple
 
 from scaler.object_storage.object_storage_server import ObjectStorageServer
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.logging.utility import setup_logger, get_logger_info
 from scaler.utility.object_storage_config import ObjectStorageConfig
 
 
@@ -33,4 +33,7 @@ class ObjectStorageServerProcess(multiprocessing.get_context("fork").Process):  
         setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
         logging.info(f"ObjectStorageServer: start and listen to {self._storage_address.to_string()}")
 
-        self._server.run(self._storage_address.host, self._storage_address.port)
+        log_format_str, log_level_str, logging_path = get_logger_info(logging.getLogger())
+
+        self._server.run(self._storage_address.host, self._storage_address.port, log_level_str,
+                         log_format_str, logging_path)

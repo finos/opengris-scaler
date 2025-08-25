@@ -1,6 +1,8 @@
 import argparse
+import logging
 
 from scaler.object_storage.object_storage_server import ObjectStorageServer
+from scaler.utility.logging.utility import setup_logger, get_logger_info
 from scaler.utility.object_storage_config import ObjectStorageConfig
 
 
@@ -19,4 +21,8 @@ def get_args():
 
 def main():
     args = get_args()
-    ObjectStorageServer().run(args.address.host, args.address.port)
+    setup_logger("object_storage_server")
+
+    log_format_str, log_level_str, log_path = get_logger_info(logging.getLogger())
+
+    ObjectStorageServer().run(args.address.host, args.address.port, log_level_str, log_format_str, log_path)

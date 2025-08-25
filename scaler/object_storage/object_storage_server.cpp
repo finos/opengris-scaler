@@ -16,8 +16,14 @@ ObjectStorageServer::~ObjectStorageServer()
     closeServerReadyFds();
 }
 
-void ObjectStorageServer::run(std::string name, std::string port)
+void ObjectStorageServer::run(std::string name, std::string port,
+    std::string log_level, std::string log_format, std::string log_path)
 {
+    assert(!log_level.empty() && !log_format.empty());
+    scaler::ymq::LOGGING_LEVEL = scaler::ymq::stringToLogLevel(log_level);
+    log_format_ = log_format;
+    log_path_   = log_path;
+
     try {
         tcp::resolver resolver(ioContext);
         auto res = resolver.resolve(name, port);
