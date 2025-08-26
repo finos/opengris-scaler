@@ -1,10 +1,18 @@
 #include "scaler/io/ymq/tcp_server.h"
 
+#ifdef __linux__
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif  // __linux__
+#ifdef _WIN32
+// clang-format off
+#include <windows.h>
+#include <winsock2.h>
+// clang-format on
+#endif  // _WIN32
 
 #include <expected>
 #include <memory>
@@ -20,9 +28,42 @@
 namespace scaler {
 namespace ymq {
 
+#ifdef _WIN32
+void TcpServer::prepareAcceptSocket()
+{
+    _newConn = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (_newConn == INVALID_SOCKET) {
+        exit(1);
+    }
+
+    // TODO: Think about RawSocket abstraction that implements read/write/accept/connect/etc.
+    DWORD bytesReturned                 = 0;
+    const size_t requiredRedundantSpace = 16;
+    if (!_acceptExFunc(
+            _serverFd,
+            _newConn,
+            _buffer,
+            0,
+            sizeof(sockaddr_in) + requiredRedundantSpace,
+            sizeof(sockaddr_in) + requiredRedundantSpace,
+            &bytesReturned,
+            _eventManager.get())) {
+        int err = WSAGetLastError();
+        if (err != ERROR_IO_PENDING) {
+            CloseAndZeroSocket(_newConn);
+            fprintf(stderr, "acceptEx falied with %d\n", err);
+            exit(1);
+        }
+        return;
+    }
+    // acceptEx never succeed.
+}
+#endif  // _WIN32
+
 int TcpServer::createAndBindSocket()
 {
-    int server_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+#ifdef __linux__
+    int server_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
     if (server_fd == -1) {
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
@@ -34,32 +75,42 @@ int TcpServer::createAndBindSocket()
             _serverFd,
         });
 
+        // _onBindReturn(std::unexpected(Error {Error::ErrorCode::ConfigurationError}));
+        return -1;
+    }
+#endif  // __linux__
+#ifdef _WIN32
+    auto server_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (server_fd == -1) {
+        // TODO: Error handling should behave like Linux
         _onBindReturn(std::unexpected(Error {Error::ErrorCode::ConfigurationError}));
         return -1;
     }
+    unsigned long turnOnNonBlocking = 1;
+    ioctlsocket(server_fd, FIONBIO, &turnOnNonBlocking);
+#endif  // _WIN32
 
     int optval = 1;
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) == -1) {
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&optval, sizeof(optval)) == -1) {
         log(LoggingLevel::error,
             "Originated from",
             "setsockopt(2)",
             "Errno is",
-            strerror(errno)  // ,
+            strerror(GetErrorCode())  // ,
         );
-
-        close(server_fd);
+        CloseAndZeroSocket(server_fd);
         _onBindReturn(std::unexpected(Error {Error::ErrorCode::SetSockOptNonFatalFailure}));
         return -1;
     }
 
     if (bind(server_fd, &_addr, sizeof(_addr)) == -1) {
-        close(server_fd);
+        CloseAndZeroSocket(server_fd);
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
             "Originated from",
             "bind(2)",
             "Errno is",
-            strerror(errno),
+            strerror(GetErrorCode()),
             "server_fd",
             server_fd,
         });
@@ -68,13 +119,13 @@ int TcpServer::createAndBindSocket()
     }
 
     if (listen(server_fd, SOMAXCONN) == -1) {
-        close(server_fd);
+        CloseAndZeroSocket(server_fd);
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
             "Originated from",
             "listen(2)",
             "Errno is",
-            strerror(errno),
+            strerror(GetErrorCode()),
             "server_fd",
             server_fd,
         });
@@ -96,6 +147,11 @@ TcpServer::TcpServer(
     , _addr(std::move(addr))
     , _onBindReturn(std::move(onBindReturn))
     , _serverFd {}
+#ifdef _WIN32
+    , _acceptExFunc {}
+    , _newConn {}
+    , _buffer {}
+#endif  // _WIN32
 {
     _eventManager->onRead  = [this] { this->onRead(); };
     _eventManager->onWrite = [this] { this->onWrite(); };
@@ -110,12 +166,38 @@ void TcpServer::onCreated()
         _serverFd = 0;
         return;
     }
+#ifdef __linux__
     _eventLoopThread->_eventLoop.addFdToLoop(_serverFd, EPOLLIN | EPOLLET, this->_eventManager.get());
+#endif  // __linux__
+#ifdef _WIN32
+    // Events and EventManager are not used here.
+    _eventLoopThread->_eventLoop.addFdToLoop(_serverFd, 0, nullptr);
+    // Retrieve AcceptEx pointer once
+    GUID guidAcceptEx   = WSAID_ACCEPTEX;
+    DWORD bytesReturned = 0;
+    if (WSAIoctl(
+            _serverFd,
+            SIO_GET_EXTENSION_FUNCTION_POINTER,
+            &guidAcceptEx,
+            sizeof(guidAcceptEx),
+            &_acceptExFunc,
+            sizeof(_acceptExFunc),
+            &bytesReturned,
+            nullptr,
+            nullptr) == SOCKET_ERROR) {
+        // TODO: Error handling here
+        fprintf(stderr, "WSAIoctl\n");
+        exit(1);
+    }
+    prepareAcceptSocket();
+#endif  // _WIN32
+
     _onBindReturn({});
 }
 
 void TcpServer::onRead()
 {
+#ifdef __linux__
     while (true) {
         sockaddr remoteAddr {};
         socklen_t remoteAddrLen = sizeof(remoteAddr);
@@ -194,13 +276,34 @@ void TcpServer::onRead()
         auto sock      = this->_eventLoopThread->_identityToIOSocket.at(id);
         sock->onConnectionCreated(setNoDelay(fd), getLocalAddr(fd), remoteAddr, false);
     }
+#endif
+#ifdef _WIN32
+    if (setsockopt(
+            _newConn, SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT, reinterpret_cast<char*>(&_serverFd), sizeof(_serverFd)) ==
+        SOCKET_ERROR) {
+        CloseAndZeroSocket(_serverFd);
+        CloseAndZeroSocket(_newConn);
+        // TODO: Better error handling here
+        fprintf(stderr, "setsockopt(SO_UPDATE_ACCEPT_CONTEXT) failed. Error: %d\n", WSAGetLastError());
+        exit(1);
+    }
+
+    // TODO: Error handling here
+    unsigned long mode = 1;
+    ioctlsocket(_newConn, FIONBIO, &mode);
+
+    const auto& id = this->_localIOSocketIdentity;
+    auto& sock     = this->_eventLoopThread->_identityToIOSocket.at(id);
+    sock->onConnectionCreated(setNoDelay(_newConn), getLocalAddr(_newConn), getRemoteAddr(_newConn), false);
+    prepareAcceptSocket();
+#endif  // _WIN32
 }
 
 TcpServer::~TcpServer() noexcept
 {
     if (_serverFd != 0) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_serverFd);
-        close(_serverFd);
+        CloseAndZeroSocket(_serverFd);
     }
 }
 

@@ -1,8 +1,10 @@
 #pragma once
-#ifdef __linux__
+#ifdef _WIN32
 
-// System
-#include <sys/epoll.h>
+// clang-format off
+#include <windows.h>
+#include <winsock2.h>
+// clang-format on
 
 // C++
 #include <functional>
@@ -12,7 +14,6 @@
 #include "scaler/io/ymq/timed_queue.h"
 
 // First-party
-#include "scaler/io/ymq/file_descriptor.h"
 #include "scaler/io/ymq/interruptive_concurrent_queue.h"
 #include "scaler/io/ymq/timestamp.h"
 
@@ -23,38 +24,26 @@ class EventManager;
 
 // In the constructor, the epoll context should register eventfd/timerfd from
 // This way, the queues need not know about the event manager. We don't use callbacks.
-class EpollContext {
+class IocpContext {
 public:
     using Function             = Configuration::ExecutionFunction;
     using DelayedFunctionQueue = std::queue<Function>;
     using Identifier           = Configuration::ExecutionCancellationIdentifier;
+    HANDLE _completionPort;
 
-    EpollContext()
+    // TODO: Handle error with unrecoverable error in the next PR.
+    IocpContext()
+        : _completionPort(CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, (ULONG_PTR)0, 1))
+        , _timingFunctions(_completionPort, _isTimingFd)
+        , _interruptiveFunctions(_completionPort, _isInterruptiveFd)
     {
-        _epfd = epoll_create1(0);
-        epoll_event event {};
-
-        event.events   = EPOLLIN | EPOLLET;
-        event.data.u64 = _isInterruptiveFd;
-        epoll_ctl(_epfd, EPOLL_CTL_ADD, _interruptiveFunctions.eventFd(), &event);
-
-        event          = {};
-        event.events   = EPOLLIN | EPOLLET;
-        event.data.u64 = _isTimingFd;
-        epoll_ctl(_epfd, EPOLL_CTL_ADD, _timingFunctions.timingFd(), &event);
     }
 
-    ~EpollContext()
-    {
-        epoll_ctl(_epfd, EPOLL_CTL_DEL, _interruptiveFunctions.eventFd(), nullptr);
-        epoll_ctl(_epfd, EPOLL_CTL_DEL, _timingFunctions.timingFd(), nullptr);
-
-        close(_epfd);
-    }
+    ~IocpContext() { CloseHandle(_completionPort); }
 
     void loop();
 
-    void addFdToLoop(int fd, uint64_t events, EventManager* manager);
+    void addFdToLoop(int fd, uint64_t, EventManager*);
     void removeFdFromLoop(int fd);
 
     // NOTE: Thread-safe method to communicate with the event loop thread
@@ -70,16 +59,16 @@ public:
 
 private:
     void execPendingFunctions();
-    int _epfd;
     TimedQueue _timingFunctions;
     DelayedFunctionQueue _delayedFunctions;
     InterruptiveConcurrentQueue<Function> _interruptiveFunctions;
     constexpr static const size_t _isInterruptiveFd = 0;
     constexpr static const size_t _isTimingFd       = 1;
-    constexpr static const size_t _reventSize       = 1024;
+    constexpr static const size_t _isSocket         = 2;
+    constexpr static const size_t _reventSize       = 128;  // Reduced for linter.
 };
 
 }  // namespace ymq
 }  // namespace scaler
 
-#endif  // __linux__
+#endif  // _WIN32

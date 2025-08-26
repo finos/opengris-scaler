@@ -24,6 +24,7 @@ public:
     IOContext& operator=(const IOContext&) = delete;
     IOContext(IOContext&&)                 = delete;
     IOContext& operator=(IOContext&&)      = delete;
+    ~IOContext() noexcept;
 
     void createIOSocket(
         Identity identity, IOSocketType socketType, CreateIOSocketCallback onIOSocketCreated) & noexcept;

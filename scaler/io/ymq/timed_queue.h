@@ -1,7 +1,12 @@
 #pragma once
 
+#ifdef __linux__
 #include <sys/timerfd.h>
 #include <unistd.h>
+#endif  // __linux__
+#ifdef _WIN32
+#include <windows.h>
+#endif  // _WIN32
 
 #include <cassert>
 #include <queue>
@@ -14,6 +19,7 @@
 namespace scaler {
 namespace ymq {
 
+#ifdef __linux__
 inline int createTimerfd()
 {
     int timerfd = ::timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
@@ -169,6 +175,98 @@ private:
     PriorityQueue pq;
     std::set<Identifier> _cancelledFunctions;
 };
+
+#endif  // __linux__
+
+#ifdef _WIN32
+class TimedQueue {
+public:
+    using Callback            = Configuration::TimedQueueCallback;
+    using Identifier          = Configuration::ExecutionCancellationIdentifier;
+    using TimedFunc           = std::tuple<Timestamp, Callback, Identifier>;
+    constexpr static auto cmp = [](const auto& x, const auto& y) { return std::get<0>(x) < std::get<0>(y); };
+    using PriorityQueue       = std::priority_queue<TimedFunc, std::vector<TimedFunc>, decltype(cmp)>;
+    HANDLE _completionPort;
+    const size_t _key;
+
+    // TODO: Handle error for system calls
+    TimedQueue(HANDLE completionPort, size_t key)
+        : _completionPort(completionPort), _key(key), _timerFd(CreateWaitableTimer(NULL, 0, NULL)), _currentId {}
+    {
+        assert(_timerFd);
+    }
+    ~TimedQueue()
+    {
+        if (_timerFd) {
+            CloseHandle(_timerFd);
+        }
+    }
+
+    Identifier push(Timestamp timestamp, Callback cb)
+    {
+        auto ts = convertToLARGE_INTEGER(timestamp);
+        if (pq.empty() || timestamp < std::get<0>(pq.top())) {
+            SetWaitableTimer(
+                _timerFd,
+                (LARGE_INTEGER*)&ts,
+                0,
+                [](LPVOID thisPointer, DWORD, DWORD) {
+                    auto* self = (TimedQueue*)thisPointer;
+                    PostQueuedCompletionStatus(self->_completionPort, 0, (ULONG_PTR)(self->_timerFd), nullptr);
+                },
+                (LPVOID)this,
+                false);
+        }
+        pq.push({timestamp, std::move(cb), _currentId});
+        return _currentId++;
+    }
+
+    void cancelExecution(Identifier id) { _cancelledFunctions.insert(id); }
+
+    std::vector<Callback> dequeue()
+    {
+        std::vector<Callback> callbacks;
+
+        Timestamp now;
+        while (pq.size()) {
+            if (std::get<0>(pq.top()) < now) {
+                auto [ts, cb, id] = std::move(const_cast<PriorityQueue::reference>(pq.top()));
+                pq.pop();
+                auto cancelled = _cancelledFunctions.find(id);
+                if (cancelled != _cancelledFunctions.end()) {
+                    _cancelledFunctions.erase(cancelled);
+                } else {
+                    callbacks.emplace_back(std::move(cb));
+                }
+            } else
+                break;
+        }
+
+        if (!pq.empty()) {
+            auto nextTs = std::get<0>(pq.top());
+            auto ts     = convertToLARGE_INTEGER(nextTs);
+            SetWaitableTimer(
+                _timerFd,
+                (LARGE_INTEGER*)&ts,
+                0,
+                [](LPVOID thisPointer, DWORD, DWORD) {
+                    auto* self = (TimedQueue*)thisPointer;
+                    PostQueuedCompletionStatus(self->_completionPort, 0, (ULONG_PTR)(self->_timerFd), nullptr);
+                },
+                (LPVOID)this,
+                false);
+        }
+        return callbacks;
+    }
+
+private:
+    HANDLE _timerFd;
+    Identifier _currentId;
+    PriorityQueue pq;
+    std::set<Identifier> _cancelledFunctions;
+};
+
+#endif  // _WIN32
 
 }  // namespace ymq
 }  // namespace scaler

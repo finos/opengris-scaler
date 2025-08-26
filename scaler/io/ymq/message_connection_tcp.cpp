@@ -1,7 +1,16 @@
 
 #include "scaler/io/ymq/message_connection_tcp.h"
 
+#ifdef __linux__
 #include <unistd.h>
+#endif  // __linux__
+#ifdef _WIN32
+// clang-format off
+#include <windows.h>
+#include <winsock2.h>
+#include <mswsock.h>
+// clang-format on
+#endif  // _WIN32
 
 #include <algorithm>
 #include <cerrno>
@@ -17,6 +26,7 @@
 #include "scaler/io/ymq/event_loop_thread.h"
 #include "scaler/io/ymq/event_manager.h"
 #include "scaler/io/ymq/io_socket.h"
+#include "scaler/io/ymq/network_utils.h"
 
 namespace scaler {
 namespace ymq {
@@ -84,10 +94,29 @@ MessageConnectionTCP::MessageConnectionTCP(
 void MessageConnectionTCP::onCreated()
 {
     if (_connFd != 0) {
+#ifdef __linux__
         this->_eventLoopThread->_eventLoop.addFdToLoop(
             _connFd, EPOLLIN | EPOLLOUT | EPOLLET, this->_eventManager.get());
         _writeOperations.emplace_back(
             Bytes {_localIOSocketIdentity.data(), _localIOSocketIdentity.size()}, [](auto) {});
+#endif  // __linux__
+#ifdef _WIN32
+        // This probably need handle the addtwice problem
+        this->_eventLoopThread->_eventLoop.addFdToLoop(_connFd, 0, nullptr);
+        _writeOperations.emplace_back(
+            Bytes {_localIOSocketIdentity.data(), _localIOSocketIdentity.size()}, [](auto) {});
+        onWrite();
+        const bool ok = ReadFile((HANDLE)(SOCKET)_connFd, nullptr, 0, nullptr, this->_eventManager.get());
+        if (ok) {
+            onRead();
+            return;
+        }
+        if (GetLastError() == ERROR_IO_PENDING) {
+            return;
+        }
+        fprintf(stderr, "ReadFile\n");
+        exit(1);
+#endif  // _WIN32
     }
 }
 
@@ -125,11 +154,24 @@ std::expected<void, int> MessageConnectionTCP::tryReadMessages(bool readOneMessa
             return {};
         }
 
-        int n = read(_connFd, readTo, remainingSize);
+        int n = ::recv(_connFd, readTo, remainingSize, 0);
         if (n == 0) {
             return std::unexpected {0};
         } else if (n == -1) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            const int myErrno = GetErrorCode();
+#ifdef _WIN32
+            if (myErrno == WSAEWOULDBLOCK) {
+                return {};
+            }
+            if (myErrno == WSAECONNRESET || myErrno == WSAENOTSOCK) {
+                return std::unexpected {0};
+            } else {
+                fprintf(stderr, "recv failed with %d\n", myErrno);
+                exit(1);
+            }
+#endif  // _WIN32
+#ifdef __linux__
+            if (myErrno == EAGAIN || myErrno == EWOULDBLOCK) {
                 return {};  // Expected, we read until exhuastion
             } else {
                 const int myErrno = errno;
@@ -172,6 +214,7 @@ std::expected<void, int> MessageConnectionTCP::tryReadMessages(bool readOneMessa
                         });
                 }
             }
+#endif // __linux__
         } else {
             message._cursor += n;
         }
@@ -230,8 +273,21 @@ void MessageConnectionTCP::onRead()
             return;
         }
     }
-
     updateReadOperation();
+
+#ifdef _WIN32
+    const bool ok = ReadFile((HANDLE)(SOCKET)_connFd, nullptr, 0, nullptr, this->_eventManager.get());
+    if (ok) {
+        onRead();
+        return;
+    }
+    const auto lastError = GetLastError();
+    if (lastError == ERROR_IO_PENDING) {
+        return;
+    }
+    fprintf(stderr, "ReadFile failed with %d\n", lastError);
+    exit(1);
+#endif  // _WIN32
 }
 
 void MessageConnectionTCP::onWrite()
@@ -248,20 +304,57 @@ void MessageConnectionTCP::onWrite()
         return;
     }
 
+#ifdef __linux__
     // EPIPE: Shutdown for writing or disconnected, since we don't provide the former,
     // it means the later.
     if (res.error() == ECONNRESET || res.error() == EPIPE) {
         onClose();
         return;
     }
+#endif  // __linux__
+
+#ifdef _WIN32
+    if (res.error() == WSAESHUTDOWN || res.error() == WSAENOTCONN) {
+        onClose();
+        return;
+    }
+
+    // NOTE: Precondition is the queue still has messages (perhaps a partial one).
+    // We don't need to update the queue because trySendQueuedMessages is okay with a complete message in front.
+    if (res.error() == WSAEWOULDBLOCK) {
+        void* addr = nullptr;
+        if (_sendCursor < HEADER_SIZE) {
+            addr = (char*)(&_writeOperations.front()._header) + _sendCursor;
+        } else {
+            addr = (char*)_writeOperations.front()._payload.data() + _sendCursor - HEADER_SIZE;
+        }
+        ++_sendCursor;  // Next onWrite() will not be called until the asyncop complete
+
+        const bool writeFileRes = WriteFile((HANDLE)(SOCKET)_connFd, addr, 1, nullptr, _eventManager.get());
+        if (writeFileRes) {
+            onWrite();
+            return;
+        }
+
+        const auto err = GetLastError();
+        if (err == ERROR_IO_PENDING) {
+            return;
+        }
+        // TODO: Better error handling
+        fprintf(stderr, "WriteFile failed with %lu\n", err);
+        exit(1);
+    }
+    // TODO: Error handling here
+    fprintf(stderr, "WSASendTo\n");
+    exit(1);
+#endif  // _WIN32
 }
 
 void MessageConnectionTCP::onClose()
 {
     if (_connFd) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_connFd);
-        close(_connFd);
-        _connFd    = 0;
+        CloseAndZeroSocket(_connFd);
         auto& sock = _eventLoopThread->_identityToIOSocket.at(_localIOSocketIdentity);
         sock->onConnectionDisconnected(this);
     }
@@ -269,9 +362,19 @@ void MessageConnectionTCP::onClose()
 
 std::expected<size_t, int> MessageConnectionTCP::trySendQueuedMessages()
 {
-    std::vector<struct iovec> iovecs;
-    iovecs.reserve(IOV_MAX);
+// typedef struct _WSABUF {
+//     ULONG(same to sizet on x64 machine) len;     /* the length of the buffer */
+//     _Field_size_bytes_(len) CHAR FAR *buf; /* the pointer to the buffer */
+// } WSABUF, FAR * LPWSABUF;
+#ifdef _WIN32
+#define iovec    ::WSABUF
+#define IOV_MAX  (1024)
+#define iov_base buf
+#define iov_len  len
+#endif  // _WIN32
 
+    std::vector<iovec> iovecs;
+    iovecs.reserve(IOV_MAX);
     for (auto it = _writeOperations.begin(); it != _writeOperations.end(); ++it) {
         if (iovecs.size() > IOV_MAX - 2) {
             break;
@@ -283,7 +386,7 @@ std::expected<size_t, int> MessageConnectionTCP::trySendQueuedMessages()
             if (_sendCursor < HEADER_SIZE) {
                 iovHeader.iov_base  = (char*)(&it->_header) + _sendCursor;
                 iovHeader.iov_len   = HEADER_SIZE - _sendCursor;
-                iovPayload.iov_base = (void*)(it->_payload.data());
+                iovPayload.iov_base = (char*)(it->_payload.data());
                 iovPayload.iov_len  = it->_payload.len();
             } else {
                 iovHeader.iov_base  = nullptr;
@@ -292,9 +395,9 @@ std::expected<size_t, int> MessageConnectionTCP::trySendQueuedMessages()
                 iovPayload.iov_len  = it->_payload.len() - (_sendCursor - HEADER_SIZE);
             }
         } else {
-            iovHeader.iov_base  = (void*)(&it->_header);
+            iovHeader.iov_base  = (char*)(&it->_header);
             iovHeader.iov_len   = HEADER_SIZE;
-            iovPayload.iov_base = (void*)(it->_payload.data());
+            iovPayload.iov_base = (char*)(it->_payload.data());
             iovPayload.iov_len  = it->_payload.len();
         }
 
@@ -306,6 +409,23 @@ std::expected<size_t, int> MessageConnectionTCP::trySendQueuedMessages()
         return 0;
     }
 
+#ifdef _WIN32
+    DWORD bytesSent {};
+    const int sendToResult =
+        WSASendTo(_connFd, iovecs.data(), iovecs.size(), &bytesSent, 0, nullptr, 0, nullptr, nullptr);
+    if (sendToResult == 0) {
+        return bytesSent;
+    }
+    const int lastError = WSAGetLastError();
+    if (lastError == WSAEWOULDBLOCK) {
+        return std::unexpected {lastError};
+    }
+    // TODO: Error handling
+    fprintf(stderr, "WSASendTo failed with error %d\n", lastError);
+    exit(1);
+#endif  // _WIN32
+
+#ifdef __linux__
     struct msghdr msg {};
     msg.msg_iov    = iovecs.data();
     msg.msg_iovlen = iovecs.size();
@@ -380,6 +500,14 @@ std::expected<size_t, int> MessageConnectionTCP::trySendQueuedMessages()
     }
 
     return bytesSent;
+#endif  // __linux__
+
+#ifdef _WIN32
+#undef iovec
+#undef IOV_MAX
+#undef iov_base
+#undef iov_len
+#endif  // _WIN32
 }
 
 // TODO: There is a classic optimization that can (and should) be done. That is, we store
@@ -410,8 +538,10 @@ void MessageConnectionTCP::updateWriteOperations(size_t n)
         it->_callbackAfterCompleteWrite({});
     }
 
-    while (firstIncomplete != _writeOperations.begin())
+    const int numPopItems = std::distance(_writeOperations.begin(), firstIncomplete);
+    for (int i = 0; i < numPopItems; ++i) {
         _writeOperations.pop_front();
+    }
 
     // _writeOperations.shrink_to_fit();
 }
@@ -442,9 +572,15 @@ MessageConnectionTCP::~MessageConnectionTCP() noexcept
 {
     if (_connFd != 0) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_connFd);
+
+#ifdef __linux__
         shutdown(_connFd, SHUT_RDWR);
-        close(_connFd);
-        _connFd = 0;
+#endif  // __linux__
+#ifdef _WIN32
+        shutdown(_connFd, SD_BOTH);
+#endif  // _WIN32
+
+        CloseAndZeroSocket(_connFd);
     }
 
     std::ranges::for_each(_writeOperations, [](auto&& x) {

@@ -1,7 +1,9 @@
 #pragma once
 
 // C
+#ifdef __linux__
 #include <execinfo.h>
+#endif  // __linux__
 
 // C++
 #include <cstdlib>
@@ -14,6 +16,7 @@ using Errno = int;
 
 inline void print_trace(void)
 {
+#ifdef __linux__
     void* array[10];
     char** strings;
     int size, i;
@@ -27,6 +30,7 @@ inline void print_trace(void)
     }
 
     free(strings);
+#endif  // __linux__
 }
 
 // this is an unrecoverable error that exits the program
@@ -46,7 +50,7 @@ inline void print_trace(void)
 }
 
 [[nodiscard("Memory is allocated but not used, likely causing a memory leak")]]
-constexpr inline uint8_t* datadup(const uint8_t* data, size_t len) noexcept
+inline uint8_t* datadup(const uint8_t* data, size_t len) noexcept
 {
     uint8_t* dup = new uint8_t[len];  // we just assume allocation will succeed
     std::memcpy(dup, data, len);

@@ -1,3 +1,5 @@
+#ifdef __linux__
+
 #include "scaler/io/ymq/epoll_context.h"
 
 #include <sys/epoll.h>
@@ -175,3 +177,5 @@ void EpollContext::removeFdFromLoop(int fd)
 
 }  // namespace ymq
 }  // namespace scaler
+
+#endif  // __linux__

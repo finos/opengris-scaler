@@ -1,6 +1,15 @@
 #pragma once
 
+#ifdef __linux__
 #include <sys/socket.h>
+#endif  // __linux__
+#ifdef _WIN32
+// clang-format off
+#include <windows.h>
+#include <winsock2.h>
+#include <mswsock.h>
+// clang-format on
+#endif  // _WIN32
 
 #include <memory>
 
@@ -53,6 +62,10 @@ private:
     size_t _retryTimes;
 
     const size_t _maxRetryTimes;
+
+#ifdef _WIN32
+    LPFN_CONNECTEX _connectExFunc;
+#endif  // _WIN32
 };
 
 }  // namespace ymq
