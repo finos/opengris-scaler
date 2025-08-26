@@ -1,0 +1,6 @@
+x = IP(src="192.168.0.1", dst="127.0.0.1")/TCP(
+    b"\x09\xfb\x1a\x85\x00\x00\x00\x01\x00\x00\x00\x02\xa0\xaa\x01\x42\xbf\x61\x00\x2a\x02\x04\x00\xe9\x00\x00\x00\x00\x66\x6f\x6f\x62\x61\x72")
+x.show2()
+a = IP(src="192.168.0.1", dst="127.0.0.1")/TCP(
+    sport=2555, dport=6789, seq=1, ack=2, dataofs=5, flags=0b10101010, window=322, urgptr=42)/'foobar'
+a.show2()
