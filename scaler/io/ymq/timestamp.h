@@ -1,6 +1,11 @@
 #pragma once
 
+#ifdef __linux__
 #include <sys/time.h>  // itimerspec
+#endif                 // __linux__
+#ifdef _WIN32
+#include <windows.h>
+#endif  // _WIN32
 
 #include <cassert>
 #include <chrono>
@@ -33,6 +38,7 @@ inline std::string stringifyTimestamp(Timestamp ts)
     return oss.str();
 }
 
+#ifdef __linux__
 // For timerfd
 inline itimerspec convertToItimerspec(Timestamp ts)
 {
@@ -49,6 +55,19 @@ inline itimerspec convertToItimerspec(Timestamp ts)
 
     return timerspec;
 }
+#endif  // __linux__
+#ifdef _WIN32
+// For timerfd
+inline LARGE_INTEGER convertToLARGE_INTEGER(Timestamp ts)
+{
+    using namespace std::chrono;
+    const auto duration = ts.timestamp - std::chrono::system_clock::now();
+    assert(duration.count() >= 0);
+    const auto nanosecs           = duration_cast<nanoseconds>(duration);
+    long long relativeHundredNanos = 1LL * nanosecs.count() / 100 * -1;
+    return *(LARGE_INTEGER*)&relativeHundredNanos;
+}
+#endif  // _WIN32
 
 }  // namespace ymq
 }  // namespace scaler

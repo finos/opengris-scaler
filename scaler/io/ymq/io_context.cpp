@@ -5,6 +5,12 @@
 #include <cassert>    // assert
 #include <future>
 #include <memory>  // std::make_shared
+#ifdef _WIN32
+// clang-format off
+#include <winsock2.h>
+#include <mswsock.h>
+// clang-format on
+#endif  // _WIN32
 
 #include "scaler/io/ymq/event_loop_thread.h"
 #include "scaler/io/ymq/io_socket.h"
@@ -17,6 +23,15 @@ IOContext::IOContext(size_t threadCount) noexcept: _threads(threadCount)
 {
     assert(threadCount > 0);
     std::ranges::generate(_threads, std::make_shared<EventLoopThread>);
+#ifdef _WIN32
+    WSADATA wsaData;
+    int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    // TODO: Better error handling
+    if (iResult != 0) {
+        fprintf(stderr, "WSAStartup\n");
+        exit(1);
+    }
+#endif  // _WIN32
 }
 
 void IOContext::createIOSocket(
@@ -60,6 +75,13 @@ void IOContext::removeIOSocket(std::shared_ptr<IOSocket>& socket) noexcept
         assert(_threads[id].use_count() == 1);
         _threads[id] = std::make_shared<EventLoopThread>();
     }
+}
+
+IOContext::~IOContext() noexcept
+{
+#ifdef _WIN32
+    WSACleanup();
+#endif  // _WIN32
 }
 
 }  // namespace ymq

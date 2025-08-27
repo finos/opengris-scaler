@@ -4,7 +4,7 @@
 
 #include "scaler/io/ymq/error.h"
 
-constexpr inline void ymqUnrecoverableError(scaler::ymq::Error e)
+inline void ymqUnrecoverableError(scaler::ymq::Error e)
 {
     PyGILState_STATE gstate = PyGILState_Ensure();
     PyErr_SetString(PyExc_SystemExit, e.what());

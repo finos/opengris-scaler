@@ -1,10 +1,19 @@
 #pragma once
 
+#ifdef _WIN32
+// clang-format off
+#include <winsock2.h>
+#include <mswsock.h>
+// clang-format on
+#undef SendMessageCallback
+#endif  // _WIN32
+
 // C++
 #include <map>
 #include <memory>
 #include <optional>
 #include <queue>
+#include <string>
 
 // First-party
 #include "scaler/io/ymq/configuration.h"

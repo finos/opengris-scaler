@@ -13,7 +13,7 @@
 namespace scaler {
 namespace ymq {
 
-struct Error: std::exception {
+struct Error: public std::exception {
     enum struct ErrorCode {
         Uninit,
         InvalidPortFormat,
@@ -45,9 +45,9 @@ struct Error: std::exception {
     {
     }
 
-    constexpr Error() noexcept: _errorCode(ErrorCode::Uninit) {}
+    Error() noexcept: _errorCode(ErrorCode::Uninit) {}
 
-    static constexpr std::string_view convertErrorToExplanation(ErrorCode e) noexcept
+    static inline constexpr std::string_view convertErrorToExplanation(ErrorCode e) noexcept
     {
         switch (e) {
             case ErrorCode::Uninit: return "";
@@ -79,7 +79,8 @@ struct Error: std::exception {
                 return "You are using IOSocket::Unicast or IOSocket::Multicast, which do not support guaranteed "
                        "message delivery, and the connection(s) disconnects";
         }
-        std::abort();
+        fprintf(stderr, "Unrecognized ErrorCode value, program exits\n");
+        std::exit(1);
     }
 
     constexpr const char* what() const noexcept override { return _logMsg.c_str(); }
@@ -108,16 +109,16 @@ struct std::formatter<scaler::ymq::Error, char> {
 
 using UnrecoverableErrorFunctionHookPtr = std::function<void(scaler::ymq::Error)>;
 
-[[noreturn]] constexpr inline void defaultUnrecoverableError(scaler::ymq::Error e) noexcept
+[[noreturn]] inline void defaultUnrecoverableError(scaler::ymq::Error e) noexcept
 {
     std::print(stderr, "{}\n", e);
-    exit(1);
+    std::exit(1);
 }
 
 inline UnrecoverableErrorFunctionHookPtr unrecoverableErrorFunctionHookPtr = defaultUnrecoverableError;
 
-[[noreturn]] constexpr inline void unrecoverableError(scaler::ymq::Error e)
+[[noreturn]] inline void unrecoverableError(scaler::ymq::Error e) noexcept
 {
     unrecoverableErrorFunctionHookPtr(std::move(e));
-    exit(1);
+    std::exit(1);
 }
