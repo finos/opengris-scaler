@@ -93,10 +93,27 @@
   ],
   "testPresets": [
     {
-      "name": "default-test",
+      "name": "linux-x86_64",
       "configurePreset": "linux-x86_64",
       "output": {
         "outputOnFailure": true
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-aarch64",
+      "configurePreset": "linux-aarch64",
+      "output": {
+        "outputOnFailure": true
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
       }
     }
   ]
