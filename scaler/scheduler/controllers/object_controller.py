@@ -5,6 +5,7 @@ from typing import Optional, Set
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
+from scaler.io.async_connector_zmq import AsyncConnectorZMQ
 from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata
 from scaler.protocol.python.message import ObjectInstruction
@@ -35,7 +36,7 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
         self._queue_deleted_object_ids: Queue[ObjectID] = Queue()
 
         self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncConnector] = None
+        self._binder_monitor: Optional[AsyncConnectorZMQ] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
 
         self._client_manager: Optional[ClientController] = None
@@ -44,7 +45,7 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
     def register(
         self,
         binder: AsyncBinder,
-        binder_monitor: AsyncConnector,
+        binder_monitor: AsyncConnectorZMQ,
         connector_storage: AsyncObjectStorageConnector,
         client_manager: ClientController,
         worker_manager: WorkerController,

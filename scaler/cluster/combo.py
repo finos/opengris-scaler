@@ -24,6 +24,7 @@ from scaler.io.config import (
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.object_storage_config import ObjectStorageConfig
+from scaler.utility.ymq_config import YMQConfig
 from scaler.utility.zmq_config import ZMQConfig
 
 
@@ -59,9 +60,9 @@ class SchedulerClusterCombo:
         logging_config_file: Optional[str] = None,
     ):
         if address is None:
-            self._address = ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}")
+            self._address = YMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}")
         else:
-            self._address = ZMQConfig.from_string(address)
+            self._address = YMQConfig.from_string(address)
 
         if storage_address is None:
             self._storage_address = ObjectStorageConfig(self._address.host, get_available_tcp_port())
