@@ -86,23 +86,11 @@ private:
     template <ObjectStorageMessage T>
     awaitable<T> readMessage(std::shared_ptr<Client> client)
     {
-        try {
-            std::array<uint64_t, T::bufferSize() / CAPNP_WORD_SIZE> buffer;
-            co_await boost::asio::async_read(
-                client->socket, boost::asio::buffer(buffer.data(), T::bufferSize()), use_awaitable);
+        std::array<uint64_t, T::bufferSize() / CAPNP_WORD_SIZE> buffer;
+        co_await boost::asio::async_read(
+            client->socket, boost::asio::buffer(buffer.data(), T::bufferSize()), use_awaitable);
 
-            co_return T::fromBuffer(buffer);
-        } catch (boost::system::system_error& e) {
-            if (e.code() == boost::asio::error::eof) {
-                log(scaler::ymq::LoggingLevel::info, "Remote end closed, nothing to read.\n");
-            } else {
-                log(scaler::ymq::LoggingLevel::error, "exception thrown, read error e.what() = ", e.what(), "\n");
-            }
-            throw e;
-        } catch (std::exception& e) {
-            log(scaler::ymq::LoggingLevel::error, "exception thrown, message not a capnp e.what() = ", e.what(), "\n");
-            throw e;
-        }
+        co_return T::fromBuffer(buffer);
     }
 
     template <ObjectStorageMessage T>
@@ -116,21 +104,8 @@ private:
             boost::asio::buffer(payload),
         };
 
-        try {
-            co_await boost::asio::async_write(
-                client->socket, buffers, boost::asio::bind_executor(client->writeStrand, boost::asio::use_awaitable));
-
-        } catch (boost::system::system_error& e) {
-            if (e.code() == boost::asio::error::broken_pipe) {
-                log(scaler::ymq::LoggingLevel::error, "Remote end closed, nothing to write.\n",
-                    "This should never happen as the client is expected ",
-                    "to get every and all response. Terminating now...\n");
-                std::terminate();
-            } else {
-                log(scaler::ymq::LoggingLevel::error, "write error e.what() = ", e.what(), "\n");
-            }
-            throw e;
-        }
+        co_await boost::asio::async_write(
+            client->socket, buffers, boost::asio::bind_executor(client->writeStrand, boost::asio::use_awaitable));
     }
 
     awaitable<void> sendGetResponse(

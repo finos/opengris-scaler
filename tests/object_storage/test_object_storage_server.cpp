@@ -20,12 +20,14 @@ protected:
 
     class ObjectStorageClient {
     public:
-        ObjectStorageClient(boost::asio::io_context& ioContext, std::string serverPort): socket(ioContext) {
+        ObjectStorageClient(boost::asio::io_context& ioContext, std::string serverPort): socket(ioContext)
+        {
             tcp::resolver resolver(ioContext);
             boost::asio::connect(socket, resolver.resolve(SERVER_HOST, serverPort));
         }
 
-        ~ObjectStorageClient() {
+        ~ObjectStorageClient()
+        {
             boost::system::error_code ec;
             socket.shutdown(tcp::socket::shutdown_both, ec);
             socket.close(ec);
@@ -34,17 +36,21 @@ protected:
         ObjectStorageClient(const ObjectStorageClient&)            = delete;
         ObjectStorageClient& operator=(const ObjectStorageClient&) = delete;
 
-        void writeRequest(const ObjectRequestHeader& header, const std::optional<ObjectPayload>& payload) {
+        void write(const boost::asio::const_buffer& buffer) { boost::asio::write(socket, buffer); }
+
+        void writeRequest(const ObjectRequestHeader& header, const std::optional<ObjectPayload>& payload)
+        {
             auto buf = header.toBuffer();
 
-            boost::asio::write(socket, boost::asio::buffer(buf.asBytes().begin(), buf.asBytes().size()));
+            write(boost::asio::buffer(buf.asBytes().begin(), buf.asBytes().size()));
 
             if (payload) {
-                boost::asio::write(socket, boost::asio::buffer(*payload));
+                write(boost::asio::buffer(*payload));
             }
         }
 
-        void readResponse(ObjectResponseHeader& header, std::optional<ObjectPayload>& payload) {
+        void readResponse(ObjectResponseHeader& header, std::optional<ObjectPayload>& payload)
+        {
             std::array<uint64_t, CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE> buf;
             boost::asio::read(socket, boost::asio::buffer(buf.data(), CAPNP_HEADER_SIZE));
 
@@ -69,7 +75,8 @@ protected:
 
     boost::asio::io_context ioContext;
 
-    void SetUp() override {
+    void SetUp() override
+    {
         server = std::make_unique<ObjectStorageServer>();
 
         serverPort = std::to_string(getAvailableTCPPort());
@@ -79,7 +86,8 @@ protected:
         server->waitUntilReady();
     }
 
-    void TearDown() override {
+    void TearDown() override
+    {
         server->shutdown();
         if (serverThread.joinable()) {
             serverThread.join();
@@ -87,14 +95,16 @@ protected:
         server.reset();
     }
 
-    std::unique_ptr<ObjectStorageClient> getClient() {
+    std::unique_ptr<ObjectStorageClient> getClient()
+    {
         return std::make_unique<ObjectStorageClient>(ioContext, serverPort);
     }
 };
 
 const ObjectPayload payload {'H', 'e', 'l', 'l', 'o'};
 
-TEST_F(ObjectStorageServerTest, TestSetObject) {
+TEST_F(ObjectStorageServerTest, TestSetObject)
+{
     ObjectResponseHeader responseHeader;
     std::optional<ObjectPayload> responsePayload;
 
@@ -116,7 +126,8 @@ TEST_F(ObjectStorageServerTest, TestSetObject) {
     EXPECT_FALSE(responsePayload.has_value());
 }
 
-TEST_F(ObjectStorageServerTest, TestGetObject) {
+TEST_F(ObjectStorageServerTest, TestGetObject)
+{
     ObjectResponseHeader responseHeader;
     std::optional<ObjectPayload> responsePayload;
     uint64_t requestID = 12;
@@ -178,7 +189,8 @@ TEST_F(ObjectStorageServerTest, TestGetObject) {
     }
 }
 
-TEST_F(ObjectStorageServerTest, TestDeleteObject) {
+TEST_F(ObjectStorageServerTest, TestDeleteObject)
+{
     ObjectResponseHeader responseHeader;
     std::optional<ObjectPayload> responsePayload;
     uint64_t requestID = 16;
@@ -249,7 +261,8 @@ TEST_F(ObjectStorageServerTest, TestDeleteObject) {
     }
 }
 
-TEST_F(ObjectStorageServerTest, TestDuplicateObject) {
+TEST_F(ObjectStorageServerTest, TestDuplicateObject)
+{
     ObjectResponseHeader responseHeader;
     std::optional<ObjectPayload> responsePayload;
     uint64_t requestID = 655;
@@ -313,7 +326,8 @@ TEST_F(ObjectStorageServerTest, TestDuplicateObject) {
     }
 }
 
-TEST_F(ObjectStorageServerTest, TestEmptyObject) {
+TEST_F(ObjectStorageServerTest, TestEmptyObject)
+{
     ObjectResponseHeader responseHeader;
     std::optional<ObjectPayload> responsePayload;
     uint64_t requestID = 265;
@@ -356,7 +370,8 @@ TEST_F(ObjectStorageServerTest, TestEmptyObject) {
     }
 }
 
-TEST_F(ObjectStorageServerTest, TestRequestBlocking) {
+TEST_F(ObjectStorageServerTest, TestRequestBlocking)
+{
     ObjectResponseHeader responseHeader;
     std::optional<ObjectPayload> responsePayload;
     uint64_t requestID = 42;
@@ -425,5 +440,111 @@ TEST_F(ObjectStorageServerTest, TestRequestBlocking) {
 
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::GET_O_K);
         EXPECT_EQ(*responsePayload, payload);
+    }
+}
+
+TEST_F(ObjectStorageServerTest, TestClientDisconnect)
+{
+    ObjectResponseHeader responseHeader;
+    std::optional<ObjectPayload> responsePayload;
+    uint64_t requestID = 100;
+
+    auto client1 = getClient();
+    auto client2 = getClient();
+    auto client3 = getClient();
+
+    ObjectID objectID {0, 1, 2, 3};
+
+    // Client 1 tries to get the object
+    {
+        ObjectRequestHeader requestHeader {
+            .objectID      = objectID,
+            .payloadLength = UINT64_MAX,
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::GET_OBJECT,
+        };
+
+        client1->writeRequest(requestHeader, std::nullopt);
+    }
+
+    // Client 2 tries to get the object
+    {
+        ObjectRequestHeader requestHeader {
+            .objectID      = objectID,
+            .payloadLength = UINT64_MAX,
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::GET_OBJECT,
+        };
+
+        client2->writeRequest(requestHeader, std::nullopt);
+    }
+
+    // Client 1 disconnects
+    client1.reset();
+
+    // Client 3 sets the object
+    {
+        ObjectRequestHeader requestHeader {
+            .objectID      = objectID,
+            .payloadLength = payload.size(),
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::SET_OBJECT,
+        };
+
+        client3->writeRequest(requestHeader, {payload});
+        client3->readResponse(responseHeader, responsePayload);
+
+        EXPECT_EQ(responseHeader.responseType, ObjectResponseType::SET_O_K);
+    }
+
+    // Client 2 receives the object
+    {
+        client2->readResponse(responseHeader, responsePayload);
+
+        EXPECT_EQ(responseHeader.responseType, ObjectResponseType::GET_O_K);
+        EXPECT_EQ(*responsePayload, payload);
+    }
+}
+
+TEST_F(ObjectStorageServerTest, TestMalformedHeader)
+{
+    ObjectResponseHeader responseHeader;
+    std::optional<ObjectPayload> responsePayload;
+
+    // Server should disconnect when it receives a garbage header
+    {
+        auto client = getClient();
+
+        std::array<uint8_t, CAPNP_HEADER_SIZE> malformedHeader;
+        malformedHeader.fill(0xAA);
+
+        try {
+            client->write(boost::asio::buffer(malformedHeader));
+
+            // Server should disconnect before or while we are reading the response
+            client->readResponse(responseHeader, responsePayload);
+
+            ADD_FAILURE();  // Unreachable
+        } catch (const boost::system::system_error& e) {
+            // Expect the connection to be closed by the server
+            EXPECT_EQ(e.code(), boost::asio::error::eof);
+        }
+    }
+
+    // Server must still answers to requests from other clients
+    {
+        auto client = getClient();
+
+        ObjectRequestHeader requestHeader {
+            .objectID      = {0, 1, 2, 3},
+            .payloadLength = payload.size(),
+            .requestID     = 42,
+            .requestType   = ObjectRequestType::SET_OBJECT,
+        };
+
+        client->writeRequest(requestHeader, {payload});
+        client->readResponse(responseHeader, responsePayload);
+
+        EXPECT_EQ(responseHeader.responseType, ObjectResponseType::SET_O_K);
     }
 }

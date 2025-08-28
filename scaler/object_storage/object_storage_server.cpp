@@ -1,5 +1,7 @@
 #include "scaler/object_storage/object_storage_server.h"
 
+#include <exception>
+
 namespace scaler {
 namespace object_storage {
 
@@ -25,10 +27,8 @@ void ObjectStorageServer::run(std::string name, std::string port)
 
         co_spawn(ioContext, listener(res.begin()->endpoint()), detached);
         ioContext.run();
-    } catch (std::exception& e) {
-        log(scaler::ymq::LoggingLevel::error, "Exception: ", e.what(), "\n",
-        "Mostly something serious happen, inspect capnp header corruption \n");
-        std::terminate();
+    } catch (const std::exception& e) {
+        log(scaler::ymq::LoggingLevel::error, "ObjectStorageServer: unexpected server error, reason: ", e.what());
     }
 }
 
@@ -38,7 +38,9 @@ void ObjectStorageServer::waitUntilReady()
     ssize_t ret = read(onServerReadyReader, &value, sizeof(uint64_t));
 
     if (ret != sizeof(uint64_t)) {
-        log(scaler::ymq::LoggingLevel::error, "read from onServerReadyReader failed: errno=", errno , "\n");
+        log(scaler::ymq::LoggingLevel::error,
+            "ObjectStorageServer: read from onServerReadyReader failed, errno=",
+            errno);
         std::terminate();
     }
 }
@@ -54,7 +56,7 @@ void ObjectStorageServer::initServerReadyFds()
     int ret = pipe(pipeFds);
 
     if (ret != 0) {
-        log(scaler::ymq::LoggingLevel::error, "create on server ready FDs failed: errno=", errno, "\n");
+        log(scaler::ymq::LoggingLevel::error, "ObjectStorageServer: create on server ready FDs failed, errno=", errno);
         std::terminate();
     }
 
@@ -68,7 +70,9 @@ void ObjectStorageServer::setServerReadyFd()
     ssize_t ret    = write(onServerReadyWriter, &value, sizeof(uint64_t));
 
     if (ret != sizeof(uint64_t)) {
-        log(scaler::ymq::LoggingLevel::error, "write to onServerReadyWriter failed: errno=", errno, "\n");
+        log(scaler::ymq::LoggingLevel::error,
+            "ObjectStorageServer: write to onServerReadyWriter failed, errno=",
+            errno);
         std::terminate();
     }
 }
@@ -79,7 +83,7 @@ void ObjectStorageServer::closeServerReadyFds()
 
     for (const int fd: fds) {
         if (close(fd) != 0) {
-            log(scaler::ymq::LoggingLevel::error, "close failed: errno=", errno, "\n");
+            log(scaler::ymq::LoggingLevel::error, "ObjectStorageServer: close failed, errno=", errno);
             std::terminate();
         }
     }
@@ -89,6 +93,8 @@ awaitable<void> ObjectStorageServer::listener(tcp::endpoint endpoint)
 {
     auto executor = co_await boost::asio::this_coro::executor;
     tcp::acceptor acceptor(executor, endpoint);
+
+    log(scaler::ymq::LoggingLevel::info, "ObjectStorageServer: started");
 
     setServerReadyFd();
 
@@ -104,6 +110,8 @@ awaitable<void> ObjectStorageServer::listener(tcp::endpoint endpoint)
 
 awaitable<void> ObjectStorageServer::processRequests(std::shared_ptr<Client> client)
 {
+    log(scaler::ymq::LoggingLevel::info, "ObjectStorageServer: client connected");
+
     try {
         for (;;) {
             ObjectRequestHeader requestHeader = co_await readMessage<ObjectRequestHeader>(client);
@@ -127,34 +135,36 @@ awaitable<void> ObjectStorageServer::processRequests(std::shared_ptr<Client> cli
                 }
             }
         }
-    } catch (std::exception& e) {
-        log(scaler::ymq::LoggingLevel::error, "process_requests Exception: ", e.what(), "\n");
+    } catch (const boost::system::system_error& e) {
+        if (e.code() == boost::asio::error::eof || e.code() == boost::asio::error::connection_reset) {
+            log(scaler::ymq::LoggingLevel::info, "ObjectStorageServer: client disconnected");
+        } else {
+            log(scaler::ymq::LoggingLevel::error,
+                "ObjectStorageServer: unexpected networking error, reason: ",
+                e.what());
+        }
+    } catch (const std::exception& e) {
+        log(scaler::ymq::LoggingLevel::error, "ObjectStorageServer: unexpected error, reason: ", e.what());
     }
+
+    client->socket.close();
 }
 
 awaitable<void> ObjectStorageServer::processSetRequest(
     std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader)
 {
     if (requestHeader.payloadLength > MEMORY_LIMIT_IN_BYTES) {
-        log(scaler::ymq::LoggingLevel::error, "payload length is larger than MEMORY_LIMIT_IN_BYTES = ", MEMORY_LIMIT_IN_BYTES, "\n");
-        std::terminate();
+        throw std::runtime_error("payload length is larger than MEMORY_LIMIT_IN_BYTES=" + MEMORY_LIMIT_IN_BYTES);
     }
 
-    if (requestHeader.payloadLength > SIZE_MAX) {
-        log(scaler::ymq::LoggingLevel::error, "payload length is larger than SIZE_MAX = ", SIZE_MAX, "\n");
-        std::terminate();
+    if (requestHeader.payloadLength > std::numeric_limits<size_t>::max()) {
+        throw std::runtime_error("payload length is larger than SIZE_MAX=" + SIZE_MAX);
     }
 
     ObjectPayload requestPayload;
     requestPayload.resize(requestHeader.payloadLength);
 
-    try {
-        co_await boost::asio::async_read(client->socket, boost::asio::buffer(requestPayload), use_awaitable);
-    } catch (boost::system::system_error& e) {
-        log(scaler::ymq::LoggingLevel::error, "payload ends prematurely, e.what() = ", e.what(), "\n",
-        "Failing fast. Terminting now...\n");
-        std::terminate();
-    }
+    co_await boost::asio::async_read(client->socket, boost::asio::buffer(requestPayload), use_awaitable);
 
     auto objectPtr = objectManager.setObject(requestHeader.objectID, std::move(requestPayload));
 
@@ -202,8 +212,7 @@ awaitable<void> ObjectStorageServer::processDuplicateRequest(
     std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader)
 {
     if (requestHeader.payloadLength != ObjectID::bufferSize()) {
-        log(scaler::ymq::LoggingLevel::error, "payload length should be the size of ObjectID = ", ObjectID::bufferSize(), "\n");
-        std::terminate();
+        throw std::runtime_error("payload length should be size_of(ObjectID)=" + ObjectID::bufferSize());
     }
 
     ObjectID originalObjectID = co_await readMessage<ObjectID>(client);

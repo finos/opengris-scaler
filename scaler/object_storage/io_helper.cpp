@@ -1,5 +1,6 @@
 #include "io_helper.h"
 
+#include <exception>
 #include <iostream>
 
 using boost::asio::ip::tcp;
@@ -21,13 +22,13 @@ int getAvailableTCPPort()
 
     if (bind(sockfd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
         close(sockfd);
-        return -1;
+        throw std::runtime_error("bind() failed");
     }
 
     socklen_t len = sizeof(addr);
     if (getsockname(sockfd, reinterpret_cast<sockaddr*>(&addr), &len) < 0) {
         close(sockfd);
-        return -1;
+        throw std::runtime_error("getsockname() failed");
     }
 
     const int port = ntohs(addr.sin_port);
@@ -43,8 +44,7 @@ void setTCPNoDelay(tcp::socket& socket, bool isNoDelay)
     socket.set_option(tcp::no_delay(isNoDelay), ec);
 
     if (ec) {
-        std::cerr << "failed to set TCP_NODELAY on client socket: " << ec.message() << std::endl;
-        std::terminate();
+        throw std::runtime_error("failed to set TCP_NODELAY on client socket: " + ec.message());
     }
 }
 
