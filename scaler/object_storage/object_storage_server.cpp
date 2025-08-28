@@ -154,11 +154,12 @@ awaitable<void> ObjectStorageServer::processSetRequest(
     std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader)
 {
     if (requestHeader.payloadLength > MEMORY_LIMIT_IN_BYTES) {
-        throw std::runtime_error("payload length is larger than MEMORY_LIMIT_IN_BYTES=" + MEMORY_LIMIT_IN_BYTES);
+        throw std::runtime_error(
+            "payload length is larger than MEMORY_LIMIT_IN_BYTES=" + std::to_string(MEMORY_LIMIT_IN_BYTES));
     }
 
     if (requestHeader.payloadLength > std::numeric_limits<size_t>::max()) {
-        throw std::runtime_error("payload length is larger than SIZE_MAX=" + SIZE_MAX);
+        throw std::runtime_error("payload length is larger than SIZE_MAX=" + std::to_string(SIZE_MAX));
     }
 
     ObjectPayload requestPayload;
@@ -212,7 +213,8 @@ awaitable<void> ObjectStorageServer::processDuplicateRequest(
     std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader)
 {
     if (requestHeader.payloadLength != ObjectID::bufferSize()) {
-        throw std::runtime_error("payload length should be size_of(ObjectID)=" + ObjectID::bufferSize());
+        throw std::runtime_error(
+            "payload length should be size_of(ObjectID)=" + std::to_string(ObjectID::bufferSize()));
     }
 
     ObjectID originalObjectID = co_await readMessage<ObjectID>(client);
