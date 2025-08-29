@@ -24,6 +24,16 @@ class IocpContext;
 class Message;
 class IOSocket;
 
+// Use feature-test macro to detect support for std::move_only_function.
+// This works across GCC, Clang, and MSVC on all platforms.
+#if defined(__cpp_lib_move_only_function) && __cpp_lib_move_only_function >= 202110L
+template<typename T>
+using MoveOnlyFunction = std::move_only_function<T>;
+#else
+template<typename T>
+using MoveOnlyFunction = std::function<T>;
+#endif
+
 constexpr const uint64_t IOCP_SOCKET_CLOSED = 4;
 
 struct Configuration {
@@ -35,13 +45,13 @@ struct Configuration {
 #endif  // _WIN32
 
     using IOSocketIdentity                = std::string;
-    using SendMessageCallback             = std::move_only_function<void(std::expected<void, Error>)>;
-    using RecvMessageCallback             = std::move_only_function<void(std::pair<Message, Error>)>;
-    using ConnectReturnCallback           = std::move_only_function<void(std::expected<void, Error>)>;
-    using BindReturnCallback              = std::move_only_function<void(std::expected<void, Error>)>;
-    using CreateIOSocketCallback          = std::move_only_function<void(std::shared_ptr<IOSocket>)>;
-    using TimedQueueCallback              = std::move_only_function<void()>;
-    using ExecutionFunction               = std::move_only_function<void()>;
+    using SendMessageCallback             = MoveOnlyFunction<void(std::expected<void, Error>)>;
+    using RecvMessageCallback             = MoveOnlyFunction<void(std::pair<Message, Error>)>;
+    using ConnectReturnCallback           = MoveOnlyFunction<void(std::expected<void, Error>)>;
+    using BindReturnCallback              = MoveOnlyFunction<void(std::expected<void, Error>)>;
+    using CreateIOSocketCallback          = MoveOnlyFunction<void(std::shared_ptr<IOSocket>)>;
+    using TimedQueueCallback              = MoveOnlyFunction<void()>;
+    using ExecutionFunction               = MoveOnlyFunction<void()>;
     using ExecutionCancellationIdentifier = size_t;
 };
 
