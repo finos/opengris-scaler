@@ -15,6 +15,7 @@
 
 // First-party
 #include "scaler/io/ymq/configuration.h"
+#include "scaler/io/ymq/logging.h"
 
 namespace scaler {
 namespace ymq {
@@ -57,6 +58,8 @@ private:
     std::string _localIOSocketIdentity;
     sockaddr _remoteAddr;
     int _retryIdentifier;
+
+    Logger _logger;
 
     std::unique_ptr<EventManager> _eventManager;
     size_t _retryTimes;

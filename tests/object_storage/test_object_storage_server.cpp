@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <boost/asio.hpp>
+#include <filesystem>
 #include <thread>
 
+#include "scaler/io/ymq/logging.h"
 #include "scaler/object_storage/object_storage_server.h"
 
 // using boost::asio::awaitable;
@@ -14,60 +16,62 @@ using namespace scaler::object_storage;
 using ObjectRequestType  = scaler::protocol::ObjectRequestHeader::ObjectRequestType;
 using ObjectResponseType = scaler::protocol::ObjectResponseHeader::ObjectResponseType;
 
+// This client class is used to connect to and interact with the server.
+class ObjectStorageClient {
+public:
+    ObjectStorageClient(boost::asio::io_context& ioContext, const std::string& serverHost, const std::string serverPort)
+        : socket(ioContext)
+    {
+        tcp::resolver resolver(ioContext);
+        boost::asio::connect(socket, resolver.resolve(serverHost, serverPort));
+    }
+
+    ~ObjectStorageClient()
+    {
+        boost::system::error_code ec;
+        socket.shutdown(tcp::socket::shutdown_both, ec);
+        socket.close(ec);
+    }
+
+    ObjectStorageClient(const ObjectStorageClient&)            = delete;
+    ObjectStorageClient& operator=(const ObjectStorageClient&) = delete;
+
+    void write(const boost::asio::const_buffer& buffer) { boost::asio::write(socket, buffer); }
+
+    void writeRequest(const ObjectRequestHeader& header, const std::optional<ObjectPayload>& payload)
+    {
+        auto buf = header.toBuffer();
+
+        write(boost::asio::buffer(buf.asBytes().begin(), buf.asBytes().size()));
+
+        if (payload) {
+            write(boost::asio::buffer(*payload));
+        }
+    }
+
+    void readResponse(ObjectResponseHeader& header, std::optional<ObjectPayload>& payload)
+    {
+        std::array<uint64_t, CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE> buf;
+        boost::asio::read(socket, boost::asio::buffer(buf.data(), CAPNP_HEADER_SIZE));
+
+        header = ObjectResponseHeader::fromBuffer(buf);
+
+        if (header.payloadLength > 0) {
+            payload.emplace(header.payloadLength);
+            boost::asio::read(socket, boost::asio::buffer(*payload));
+        } else {
+            payload.reset();
+        }
+    }
+
+private:
+    tcp::socket socket;
+};
+
+// This test fixture is for functional testing of the server's core features.
 class ObjectStorageServerTest: public ::testing::Test {
 protected:
     static constexpr std::string SERVER_HOST = "127.0.0.1";
-
-    class ObjectStorageClient {
-    public:
-        ObjectStorageClient(boost::asio::io_context& ioContext, std::string serverPort): socket(ioContext)
-        {
-            tcp::resolver resolver(ioContext);
-            boost::asio::connect(socket, resolver.resolve(SERVER_HOST, serverPort));
-        }
-
-        ~ObjectStorageClient()
-        {
-            boost::system::error_code ec;
-            socket.shutdown(tcp::socket::shutdown_both, ec);
-            socket.close(ec);
-        }
-
-        ObjectStorageClient(const ObjectStorageClient&)            = delete;
-        ObjectStorageClient& operator=(const ObjectStorageClient&) = delete;
-
-        void write(const boost::asio::const_buffer& buffer) { boost::asio::write(socket, buffer); }
-
-        void writeRequest(const ObjectRequestHeader& header, const std::optional<ObjectPayload>& payload)
-        {
-            auto buf = header.toBuffer();
-
-            write(boost::asio::buffer(buf.asBytes().begin(), buf.asBytes().size()));
-
-            if (payload) {
-                write(boost::asio::buffer(*payload));
-            }
-        }
-
-        void readResponse(ObjectResponseHeader& header, std::optional<ObjectPayload>& payload)
-        {
-            std::array<uint64_t, CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE> buf;
-            boost::asio::read(socket, boost::asio::buffer(buf.data(), CAPNP_HEADER_SIZE));
-
-            header = ObjectResponseHeader::fromBuffer(buf);
-
-            if (header.payloadLength > 0) {
-                payload.emplace(header.payloadLength);
-                boost::asio::read(socket, boost::asio::buffer(*payload));
-            } else {
-                payload.reset();
-            }
-        }
-
-    private:
-        tcp::socket socket;
-    };
-
     std::unique_ptr<ObjectStorageServer> server;
 
     std::string serverPort;
@@ -81,9 +85,8 @@ protected:
 
         serverPort = std::to_string(getAvailableTCPPort());
 
-        serverThread = std::thread([this] {
-            server->run(SERVER_HOST, serverPort, "INFO", "%(levelname)s: %(message)s");
-        });
+        serverThread =
+            std::thread([this] { server->run(SERVER_HOST, serverPort, "INFO", "%(levelname)s: %(message)s"); });
 
         server->waitUntilReady();
     }
@@ -99,7 +102,7 @@ protected:
 
     std::unique_ptr<ObjectStorageClient> getClient()
     {
-        return std::make_unique<ObjectStorageClient>(ioContext, serverPort);
+        return std::make_unique<ObjectStorageClient>(ioContext, SERVER_HOST, serverPort);
     }
 };
 
@@ -162,7 +165,7 @@ TEST_F(ObjectStorageServerTest, TestGetObject)
         };
 
         requestHeader.payloadLength = UINT64_MAX;
-        requestHeader.requestType   = ObjectRequestType::GET_OBJECT,
+        requestHeader.requestType   = ObjectRequestType::GET_OBJECT;
 
         client->writeRequest(requestHeader, std::nullopt);
         client->readResponse(responseHeader, responsePayload);
@@ -385,7 +388,7 @@ TEST_F(ObjectStorageServerTest, TestRequestBlocking)
     ObjectID originalObjectID {0, 0, 0, 1};
     ObjectID duplicatedObjectID {0, 0, 0, 2};
 
-    // Client 1 sends a blocking get request for the not yet duplicated object
+    // Client 1 sends a blocking GET request for the not yet duplicated object
     {
         ObjectRequestHeader requestHeader {
             .objectID      = duplicatedObjectID,
@@ -549,4 +552,70 @@ TEST_F(ObjectStorageServerTest, TestMalformedHeader)
 
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::SET_O_K);
     }
+}
+
+// This test fixture is specifically for verifying server logging behavior.
+class ObjectStorageLoggingTest: public ::testing::Test {
+protected:
+    static constexpr std::string SERVER_HOST = "127.0.0.1";
+    std::filesystem::path log_filepath;
+
+    std::unique_ptr<scaler::object_storage::ObjectStorageServer> server;
+    std::string serverPort;
+    std::thread serverThread;
+    boost::asio::io_context ioContext;
+
+    void SetUp() override
+    {
+        log_filepath = std::filesystem::temp_directory_path();
+
+        std::string unique_filename = "server_log_" + std::to_string(getpid()) + "_" +
+                                      std::to_string(std::hash<std::thread::id> {}(std::this_thread::get_id())) +
+                                      ".txt";
+        log_filepath /= unique_filename;
+
+        server     = std::make_unique<scaler::object_storage::ObjectStorageServer>();
+        serverPort = std::to_string(getAvailableTCPPort());
+
+        serverThread = std::thread([this] {
+            server->run(SERVER_HOST, serverPort, "INFO", "%(levelname)s: %(message)s", log_filepath.string());
+        });
+        server->waitUntilReady();
+    }
+
+    void TearDown() override
+    {
+        server->shutdown();
+        if (serverThread.joinable()) {
+            serverThread.join();
+        }
+        server.reset();
+        // Delete the log file after the test is complete.
+        std::error_code ec;
+        std::filesystem::remove(log_filepath, ec);
+    }
+
+    // Reads the content of the log file for verification.
+    std::string readLogFile()
+    {
+        std::ifstream file(log_filepath);
+        if (!file.is_open())
+            return "";
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        return buffer.str();
+    }
+};
+
+TEST_F(ObjectStorageLoggingTest, TestServerLogsDisconnectionToFile)
+{
+    {
+        // Use the functional client to connect and then disconnect.
+        ObjectStorageClient client(ioContext, SERVER_HOST, serverPort);
+    }
+    // Give the server time to process the disconnection and write the log.
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::string log_content = readLogFile();
+    // Verify that the disconnection message is present in the log file.
+    EXPECT_NE(log_content.find("INFO: ObjectStorageServer: client disconnected"), std::string::npos);
 }

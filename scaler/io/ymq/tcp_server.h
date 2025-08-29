@@ -15,6 +15,7 @@
 
 // First-party
 #include "scaler/io/ymq/configuration.h"
+#include "scaler/io/ymq/logging.h"
 
 namespace scaler {
 namespace ymq {
@@ -62,6 +63,8 @@ private:
     std::string _localIOSocketIdentity;
 
     std::unique_ptr<EventManager> _eventManager;  // will copy the `onRead()` to itself
+
+    Logger _logger;
 
 #ifdef _WIN32
     // We break the decl rule here because otherwise the implementation would be messy.

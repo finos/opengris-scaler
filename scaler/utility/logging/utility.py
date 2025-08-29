@@ -164,13 +164,13 @@ def get_logger_info(logger: logging.Logger) -> typing.Tuple[str, str, str]:
 
         # Get the format string from the handler's formatter
         if handler.formatter:
-            log_format_str = getattr(handler.formatter, '_fmt', "")
+            log_format_str = getattr(handler.formatter, "_fmt", "")
 
         if isinstance(handler, logging.handlers.BaseRotatingHandler):
             log_path_str = handler.baseFilename
         # For stream-based handlers (like stdout), check the stream's name
-        elif isinstance(handler, logging.StreamHandler) and hasattr(handler.stream, 'name'):
-            if 'stdout' in handler.stream.name:
+        elif isinstance(handler, logging.StreamHandler) and hasattr(handler.stream, "name"):
+            if "stdout" in handler.stream.name:
                 log_path_str = "/dev/stdout"
 
     # If no specific path was found, default to stdout

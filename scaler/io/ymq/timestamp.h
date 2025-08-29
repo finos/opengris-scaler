@@ -9,8 +9,8 @@
 
 #include <cassert>
 #include <chrono>
-#include <sstream>  // stringify
 #include <ostream>
+#include <sstream>  // stringify
 
 namespace scaler {
 namespace ymq {
@@ -73,7 +73,7 @@ inline LARGE_INTEGER convertToLARGE_INTEGER(Timestamp ts)
     using namespace std::chrono;
     const auto duration = ts.timestamp - std::chrono::system_clock::now();
     assert(duration.count() >= 0);
-    const auto nanosecs           = duration_cast<nanoseconds>(duration);
+    const auto nanosecs            = duration_cast<nanoseconds>(duration);
     long long relativeHundredNanos = 1LL * nanosecs.count() / 100 * -1;
     return *(LARGE_INTEGER*)&relativeHundredNanos;
 }
