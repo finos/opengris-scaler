@@ -18,9 +18,9 @@ from scaler.io.sync_object_storage_connector import SyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata, TaskStatus
 from scaler.protocol.python.message import ObjectInstruction, ProcessorInitialized, Task, TaskLog, TaskResult
 from scaler.protocol.python.mixins import Message
-from scaler.utility.logging.utility import setup_logger
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
+from scaler.utility.logging.utility import setup_logger
 from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.serialization import serialize_failure
 from scaler.utility.zmq_config import ZMQConfig

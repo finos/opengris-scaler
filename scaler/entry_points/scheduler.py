@@ -126,6 +126,13 @@ def get_args():
         "tcp://localhost:2347",
     )
     parser.add_argument(
+        "--adapter-webhook-url",
+        "-awu",
+        type=str,
+        default=None,
+        help="specify the webhook URL for scaling adapter, if not specified the scaling adapter will not be used",
+    )
+    parser.add_argument(
         "address", type=ZMQConfig.from_string, help="scheduler address to connect to, e.g.: `tcp://localhost:6378`"
     )
     return parser.parse_args()
@@ -151,6 +158,7 @@ def main():
         address=args.address,
         storage_address=object_storage_address,
         monitor_address=args.monitor_address,
+        adapter_webhook_url=args.adapter_webhook_url,
         io_threads=args.io_threads,
         max_number_of_tasks_waiting=args.max_number_of_tasks_waiting,
         client_timeout_seconds=args.client_timeout_seconds,

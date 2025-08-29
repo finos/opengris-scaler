@@ -83,6 +83,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
                 self._processor_manager.can_accept_task(),
                 [self.__get_processor_status_from_holder(processor) for processor in processors],
                 self._tags,
+                self._task_queue_size,
             )
         )
         self._start_timestamp_ns = time.time_ns()
