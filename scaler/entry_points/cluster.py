@@ -13,8 +13,8 @@ from scaler.io.config import (
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
     DEFAULT_WORKER_DEATH_TIMEOUT,
 )
-from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.event_loop import EventLoopType, register_event_loop
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 
 
@@ -36,7 +36,7 @@ def get_args():
         "--worker-tags",
         "-wt",
         type=lambda value: set(value.split(",")),
-        help="comma-separated tag names supported by the workers (e.g. \"-wt tag_1,tag_2\")",
+        help='comma-separated tag names supported by the workers (e.g. "-wt tag_1,tag_2")',
     )
     parser.add_argument(
         "--worker-task-queue-size",

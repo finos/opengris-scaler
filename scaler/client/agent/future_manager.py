@@ -6,11 +6,11 @@ from typing import Dict
 from scaler.client.agent.mixins import FutureManager
 from scaler.client.future import ScalerFuture
 from scaler.client.serializer.mixins import Serializer
-from scaler.protocol.python.common import TaskStatus
-from scaler.protocol.python.message import TaskCancel, TaskResult
-from scaler.utility.exceptions import DisconnectedError, NoWorkerError, TaskNotFoundError, WorkerDiedError
+from scaler.protocol.python.common import TaskResultType, TaskCancelConfirmType, TaskState
+from scaler.protocol.python.message import TaskResult, TaskCancelConfirm
+from scaler.utility.exceptions import WorkerDiedError
+from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.profile_result import retrieve_profiling_result_from_task_result
-from scaler.utility.identifiers import ObjectID
 
 
 class ClientFutureManager(FutureManager):
@@ -18,7 +18,7 @@ class ClientFutureManager(FutureManager):
         self._lock = threading.RLock()
         self._serializer = serializer
 
-        self._task_id_to_future: Dict[bytes, ScalerFuture] = dict()
+        self._task_id_to_future: Dict[TaskID, ScalerFuture] = dict()
 
     def add_future(self, future: Future):
         assert isinstance(future, ScalerFuture)
@@ -31,8 +31,6 @@ class ClientFutureManager(FutureManager):
             logging.info(f"canceling {len(self._task_id_to_future)} task(s)")
             for task_id, future in self._task_id_to_future.items():
                 future.cancel()
-
-            self._task_id_to_future.clear()
 
     def set_all_futures_with_exception(self, exception: Exception):
         with self._lock:
@@ -55,37 +53,45 @@ class ClientFutureManager(FutureManager):
 
             profile_result = retrieve_profiling_result_from_task_result(result)
 
-            try:
-                if result.status == TaskStatus.NotFound:
-                    future.set_exception(TaskNotFoundError(f"task not found: {task_id.hex()}"), profile_result)
-                    return
-
-                if result.status == TaskStatus.WorkerDied:
+            match result.result_type:
+                case TaskResultType.FailedWorkerDied:
                     future.set_exception(
                         WorkerDiedError(f"worker died when processing task: {task_id.hex()}"), profile_result
                     )
-                    return
 
-                if result.status == TaskStatus.NoWorker:
-                    future.set_exception(
-                        NoWorkerError(f"no available worker when processing task: {task_id.hex()}"), profile_result
-                    )
-                    return
-
-                if result.status == TaskStatus.Canceled:
-                    future.set_exception(DisconnectedError("client disconnected"), profile_result)
-                    return
-
-                if result.status in {TaskStatus.Success, TaskStatus.Failed}:
+                case TaskResultType.Success:
                     assert len(result.results) == 1
-                    result_object_id = ObjectID(result.results[0])
-                    future.set_result_ready(result_object_id, result.status, profile_result)
-                    return
+                    future.set_result_ready(ObjectID(result.results[0]), TaskState.Success, profile_result)
 
-                raise TypeError(f"Unknown task status: {result.status}")
-            except InvalidStateError:
-                return  # Future got canceled
+                case TaskResultType.Failed:
+                    assert len(result.results) == 1
+                    future.set_result_ready(ObjectID(result.results[0]), TaskState.Failed, profile_result)
 
-    def on_cancel_task(self, task_cancel: TaskCancel):
+                case _:
+                    raise TypeError(f"{result.task_id.hex()}: Unknown task status: {result.result_type}")
+
+    def on_task_cancel_confirm(self, cancel_confirm: TaskCancelConfirm):
         with self._lock:
-            self._task_id_to_future.pop(task_cancel.task_id, None)
+            task_id = cancel_confirm.task_id
+            if task_id not in self._task_id_to_future:
+                return
+
+            future = self._task_id_to_future.pop(task_id)
+            assert cancel_confirm.task_id == future.task_id
+
+            match cancel_confirm.cancel_confirm_type:
+                case TaskCancelConfirmType.Canceled:
+                    future.set_canceled()
+
+                case TaskCancelConfirmType.CancelNotFound:
+                    logging.error(f"{task_id!r}: task not found")
+                    future.set_canceled()
+
+                case TaskCancelConfirmType.CancelFailed:
+                    logging.error(f"{task_id!r}: task cancel failed")
+                    self._task_id_to_future[task_id] = future
+
+                case _:
+                    raise TypeError(
+                        f"{task_id}: unknown task cancel confirm type:" f" {cancel_confirm.cancel_confirm_type}"
+                    )

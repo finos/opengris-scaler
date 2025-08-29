@@ -5,14 +5,15 @@ from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
 from scaler.protocol.python.message import StateBalanceAdvice
 from scaler.scheduler.allocate_policy.mixins import TaskAllocatePolicy
+from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import TaskController
 from scaler.utility.identifiers import WorkerID, TaskID
 from scaler.utility.mixins import Looper
 
 
 class VanillaBalanceController(Looper):
-    def __init__(self, load_balance_trigger_times: int, task_allocate_policy: TaskAllocatePolicy):
-        self._load_balance_trigger_times = load_balance_trigger_times
+    def __init__(self, config_controller: VanillaConfigController, task_allocate_policy: TaskAllocatePolicy):
+        self._config_controller = config_controller
 
         self._task_allocate_policy = task_allocate_policy
 
@@ -43,9 +44,7 @@ class VanillaBalanceController(Looper):
         self._last_balance_advice = current_advice
         for worker, task_ids in current_advice.items():
             for task_id in task_ids:
-                # TODO: fix this in the following PR that does state machine
-                # await self._task_manager.on_task_balance_cancel(task_id)
-                pass
+                await self._task_controller.on_task_balance_cancel(task_id)
 
     def __should_balance(self, current_advice: Dict[WorkerID, List[TaskID]]) -> bool:
         # 1. if this is the same advise as last time, then we +1 on same advice count
@@ -57,7 +56,7 @@ class VanillaBalanceController(Looper):
             self._same_load_balance_advice_count = 0
 
         # if we have same advice for more than trigger times, then we start doing the balancing
-        if 0 < self._same_load_balance_advice_count < self._load_balance_trigger_times:
+        if 0 < self._same_load_balance_advice_count < self._config_controller.get_config("load_balance_trigger_times"):
             return False
 
         # if current advice is empty, then we skip

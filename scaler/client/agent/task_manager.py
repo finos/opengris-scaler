@@ -3,7 +3,7 @@ from typing import Optional, Set
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.agent.mixins import ObjectManager, TaskManager
 from scaler.io.async_connector import AsyncConnector
-from scaler.protocol.python.message import GraphTask, GraphTaskCancel, Task, TaskCancel, TaskResult
+from scaler.protocol.python.message import GraphTask, GraphTaskCancel, Task, TaskCancel, TaskResult, TaskCancelConfirm
 
 
 class ClientTaskManager(TaskManager):
@@ -37,9 +37,6 @@ class ClientTaskManager(TaskManager):
         if task_cancel.task_id not in self._task_ids:
             return
 
-        self._task_ids.remove(task_cancel.task_id)
-        self._future_manager.on_cancel_task(task_cancel)
-
         await self._connector_external.send(task_cancel)
 
     async def on_new_graph_task(self, task: GraphTask):
@@ -66,3 +63,10 @@ class ClientTaskManager(TaskManager):
         self._task_ids.remove(result.task_id)
 
         self._future_manager.on_task_result(result)
+
+    async def on_task_cancel_confirm(self, task_cancel_confirm: TaskCancelConfirm):
+        if task_cancel_confirm.task_id not in self._task_ids:
+            return
+
+        self._task_ids.remove(task_cancel_confirm.task_id)
+        self._future_manager.on_task_cancel_confirm(task_cancel_confirm)

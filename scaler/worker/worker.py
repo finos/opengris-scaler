@@ -72,6 +72,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._address_path_internal = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
         self._address_internal = ZMQConfig(ZMQType.ipc, host=self._address_path_internal)
 
+        self._task_queue_size = task_queue_size
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
@@ -228,16 +229,16 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         except (ClientShutdownException, TimeoutError) as e:
             logging.info(f"{self.identity!r}: {str(e)}")
         except Exception as e:
-            logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{(e)}")
+            logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
         await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
 
         self._connector_external.destroy()
-        self._processor_manager.destroy("quitted")
+        self._processor_manager.destroy("quit")
         self._binder_internal.destroy()
         os.remove(self._address_path_internal)
 
-        logging.info(f"{self.identity!r}: quitted")
+        logging.info(f"{self.identity!r}: quit")
 
     def __run_forever(self):
         self._loop.run_until_complete(self._task)

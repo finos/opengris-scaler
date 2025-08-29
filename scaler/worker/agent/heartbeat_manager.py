@@ -78,6 +78,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
             WorkerHeartbeat.new_msg(
                 Resource.new_msg(int(self._agent_process.cpu_percent() * 10), self._agent_process.memory_info().rss),
                 psutil.virtual_memory().available,
+                self._task_queue_size,
                 self._worker_task_manager.get_queued_size() - num_suspended_processors,
                 self._latency_us,
                 self._processor_manager.can_accept_task(),

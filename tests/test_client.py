@@ -194,7 +194,7 @@ class TestClient(unittest.TestCase):
 
     def test_more_tasks(self):
         def func(a):
-            time.sleep(random.randint(10, 50))
+            time.sleep(random.randint(1, 10))
             return a * 2
 
         with Client(self.address) as client:
@@ -219,7 +219,6 @@ class TestClient(unittest.TestCase):
         def func():
             time.sleep(1)
             os._exit(1)  # noqa
-            return 1
 
         with Client(self.address) as client:
             with self.assertRaises(ProcessorDiedError):
@@ -254,9 +253,8 @@ class TestClient(unittest.TestCase):
             self.assertEqual(fut.result(), [1, 2, 3, 4, 5, 6])
 
     def test_scheduler_crash(self):
-        CLIENT_TIMEOUT_SECONDS = 5
-
-        with Client(address=self.address, timeout_seconds=CLIENT_TIMEOUT_SECONDS) as client:
+        client_timeout_seconds = 5
+        with Client(address=self.address, timeout_seconds=client_timeout_seconds) as client:
             future = client.submit(noop, 10)
 
             self.cluster._scheduler.kill()

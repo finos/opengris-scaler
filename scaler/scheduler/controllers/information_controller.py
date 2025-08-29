@@ -4,8 +4,9 @@ import psutil
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
-from scaler.protocol.python.message import StateScheduler
+from scaler.protocol.python.message import StateScheduler, InformationRequest
 from scaler.protocol.python.status import Resource
+from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import (
     ClientController,
     InformationController,
@@ -17,10 +18,12 @@ from scaler.utility.mixins import Looper
 
 
 class VanillaInformationController(InformationController, Looper):
-    def __init__(self, binder: AsyncConnector):
-        self._monitor_binder: AsyncConnector = binder
+    def __init__(self, config_controller: VanillaConfigController):
+        self._config_controller = config_controller
+
         self._process = psutil.Process()
 
+        self._monitor_binder: Optional[AsyncConnector] = None
         self._binder: Optional[AsyncBinder] = None
         self._client_controller: Optional[ClientController] = None
         self._object_controller: Optional[ObjectController] = None
@@ -29,17 +32,23 @@ class VanillaInformationController(InformationController, Looper):
 
     def register_managers(
         self,
+        monitor_binder: AsyncConnector,
         binder: AsyncBinder,
         client_controller: ClientController,
         object_controller: ObjectController,
         task_controller: TaskController,
         worker_controller: WorkerController,
     ):
+        self._monitor_binder = monitor_binder
         self._binder = binder
         self._client_controller = client_controller
         self._object_controller = object_controller
         self._task_controller = task_controller
         self._worker_controller = worker_controller
+
+    def on_request(self, request: InformationRequest):
+        # TODO: implement commands
+        pass
 
     async def routine(self):
         await self._monitor_binder.send(

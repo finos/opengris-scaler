@@ -9,13 +9,13 @@ from bidict import bidict
 from scaler import Serializer
 from scaler.io.async_connector import AsyncConnector
 from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
-from scaler.protocol.python.common import ObjectMetadata, ObjectStorageAddress, TaskStatus
-from scaler.protocol.python.message import ObjectInstruction, Task, TaskCancel, TaskResult
+from scaler.protocol.python.common import ObjectMetadata, ObjectStorageAddress, TaskResultType, TaskCancelConfirmType
+from scaler.protocol.python.message import ObjectInstruction, Task, TaskCancel, TaskResult, TaskCancelConfirm
 from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper
-from scaler.utility.serialization import serialize_failure
 from scaler.utility.queues.async_sorted_priority_queue import AsyncSortedPriorityQueue
+from scaler.utility.serialization import serialize_failure
 from scaler.worker.agent.mixins import HeartbeatManager, TaskManager
 from scaler.worker.symphony.session_callback import SessionCallback, SoamMessage
 
@@ -119,12 +119,21 @@ class SymphonyTaskManager(Looper, TaskManager):
         task_queued = task_cancel.task_id in self._queued_task_ids
         task_processing = task_cancel.task_id in self._processing_task_ids
 
-        if (not task_queued and not task_processing) or (task_processing and not task_cancel.flags.force):
-            result = TaskResult.new_msg(task_cancel.task_id, TaskStatus.NotFound)
-            await self._connector_external.send(result)
+        if not task_queued and not task_processing:
+            await self._connector_external.send(
+                TaskCancelConfirm.new_msg(
+                    task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.CancelNotFound
+                )
+            )
             return
 
-        canceled_task = self._task_id_to_task[task_cancel.task_id]
+        if task_processing and not task_cancel.flags.force:
+            await self._connector_external.send(
+                TaskCancelConfirm.new_msg(
+                    task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.CancelFailed
+                )
+            )
+            return
 
         if task_queued:
             self._queued_task_ids.remove(task_cancel.task_id)
@@ -141,9 +150,8 @@ class SymphonyTaskManager(Looper, TaskManager):
             self._processing_task_ids.remove(task_cancel.task_id)
             self._canceled_task_ids.add(task_cancel.task_id)
 
-        payload = [canceled_task.get_message().to_bytes()] if task_cancel.flags.retrieve_task_object else []
-        result = TaskResult.new_msg(
-            task_id=task_cancel.task_id, status=TaskStatus.Canceled, metadata=b"", results=payload
+        result = TaskCancelConfirm.new_msg(
+            task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.Canceled
         )
         await self._connector_external.send(result)
 
@@ -179,10 +187,10 @@ class SymphonyTaskManager(Looper, TaskManager):
                     serializer_id = ObjectID.generate_serializer_object_id(task.source)
                     serializer = self._serializers[serializer_id]
                     result_bytes = serializer.serialize(future.result())
-                    status = TaskStatus.Success
+                    result_type = TaskResultType.Success
                 else:
                     result_bytes = serialize_failure(cast(Exception, future.exception()))
-                    status = TaskStatus.Failed
+                    result_type = TaskResultType.Failed
 
                 result_object_id = ObjectID.generate_object_id(task.source)
 
@@ -200,7 +208,7 @@ class SymphonyTaskManager(Looper, TaskManager):
                 )
 
                 await self._connector_external.send(
-                    TaskResult.new_msg(task_id, status, metadata=b"", results=[result_object_id])
+                    TaskResult.new_msg(task_id, result_type, metadata=b"", results=[result_object_id])
                 )
 
             elif task_id in self._canceled_task_ids:

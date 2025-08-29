@@ -4,7 +4,6 @@ from typing import Dict, Optional, Set, Tuple
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
-from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
     ClientDisconnect,
     ClientHeartbeat,
@@ -13,6 +12,7 @@ from scaler.protocol.python.message import (
     TaskCancel,
 )
 from scaler.protocol.python.status import ClientManagerStatus
+from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import ClientController, ObjectController, TaskController, WorkerController
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, TaskID
@@ -21,10 +21,8 @@ from scaler.utility.one_to_many_dict import OneToManyDict
 
 
 class VanillaClientController(ClientController, Looper, Reporter):
-    def __init__(self, client_timeout_seconds: int, protected: bool, storage_address: ObjectStorageAddress):
-        self._client_timeout_seconds = client_timeout_seconds
-        self._protected = protected
-        self._storage_address = storage_address
+    def __init__(self, config_controller: VanillaConfigController):
+        self._config_controller = config_controller
 
         self._client_to_task_ids: OneToManyDict[ClientID, TaskID] = OneToManyDict()
 
@@ -66,7 +64,12 @@ class VanillaClientController(ClientController, Looper, Reporter):
         return self._client_to_task_ids.remove_value(task_id)
 
     async def on_heartbeat(self, client_id: ClientID, info: ClientHeartbeat):
-        await self._binder.send(client_id, ClientHeartbeatEcho.new_msg(object_storage_address=self._storage_address))
+        await self._binder.send(
+            client_id,
+            ClientHeartbeatEcho.new_msg(
+                object_storage_address=self._config_controller.get_config("object_storage_address")
+            ),
+        )
         if client_id not in self._client_last_seen:
             logging.info(f"{client_id!r} connected")
 
@@ -77,7 +80,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
             await self.__on_client_disconnect(client_id)
             return
 
-        if self._protected:
+        if self._config_controller.get_config("protected"):
             logging.warning("cannot shutdown clusters as scheduler is running in protected mode")
             accepted = False
         else:
@@ -86,7 +89,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
 
         await self._binder.send(client_id, ClientShutdownResponse.new_msg(accepted=accepted))
 
-        if self._protected:
+        if self._config_controller.get_config("protected"):
             return
 
         await self._worker_controller.on_client_shutdown(client_id)
@@ -106,7 +109,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
         dead_clients = {
             client
             for client, (last_seen, info) in self._client_last_seen.items()
-            if now - last_seen > self._client_timeout_seconds
+            if now - last_seen > self._config_controller.get_config("client_timeout_seconds")
         }
 
         for client in dead_clients:
@@ -117,10 +120,10 @@ class VanillaClientController(ClientController, Looper, Reporter):
         if client_id in self._client_last_seen:
             self._client_last_seen.pop(client_id)
 
-        await self.__cancel_tasks(client_id)
+        await self.__cancel_client_all_tasks(client_id)
         self._object_controller.clean_client(client_id)
 
-    async def __cancel_tasks(self, client_id: ClientID):
+    async def __cancel_client_all_tasks(self, client_id: ClientID):
         if client_id not in self._client_to_task_ids.keys():
             return
 
