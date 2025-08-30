@@ -9,6 +9,7 @@
 
 #include <cassert>
 #include <chrono>
+#include <ostream>
 #include <sstream>  // stringify
 
 namespace scaler {
@@ -34,8 +35,17 @@ struct Timestamp {
 inline std::string stringifyTimestamp(Timestamp ts)
 {
     std::ostringstream oss;
-    oss << ts.timestamp;
+    const auto ts_point {std::chrono::floor<std::chrono::seconds>(ts.timestamp)};
+    const std::chrono::zoned_time z {std::chrono::current_zone(), ts_point};
+    oss << std::format("{0:%F %T%z}", z);
     return oss.str();
+}
+
+inline std::ostream& operator<<(std::ostream& os, const Timestamp& ts)
+{
+    // Use the existing stringify function
+    os << stringifyTimestamp(ts);
+    return os;
 }
 
 #ifdef __linux__
@@ -63,7 +73,7 @@ inline LARGE_INTEGER convertToLARGE_INTEGER(Timestamp ts)
     using namespace std::chrono;
     const auto duration = ts.timestamp - std::chrono::system_clock::now();
     assert(duration.count() >= 0);
-    const auto nanosecs           = duration_cast<nanoseconds>(duration);
+    const auto nanosecs            = duration_cast<nanoseconds>(duration);
     long long relativeHundredNanos = 1LL * nanosecs.count() / 100 * -1;
     return *(LARGE_INTEGER*)&relativeHundredNanos;
 }

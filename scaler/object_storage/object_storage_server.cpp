@@ -16,8 +16,12 @@ ObjectStorageServer::~ObjectStorageServer()
     closeServerReadyFds();
 }
 
-void ObjectStorageServer::run(std::string name, std::string port)
+void ObjectStorageServer::run(
+    std::string name, std::string port, std::string log_level, std::string log_format, std::string log_path)
 {
+    assert(!log_level.empty() && !log_format.empty());
+    logger_ = scaler::ymq::Logger(log_format, log_path, scaler::ymq::Logger::stringToLogLevel(log_level));
+
     try {
         tcp::resolver resolver(ioContext);
         auto res = resolver.resolve(name, port);
@@ -28,7 +32,10 @@ void ObjectStorageServer::run(std::string name, std::string port)
         co_spawn(ioContext, listener(res.begin()->endpoint()), detached);
         ioContext.run();
     } catch (const std::exception& e) {
-        log(scaler::ymq::LoggingLevel::error, "ObjectStorageServer: unexpected server error, reason: ", e.what());
+        logger_.log(
+            scaler::ymq::Logger::LoggingLevel::error,
+            "ObjectStorageServer: unexpected server error, reason: ",
+            e.what());
     }
 }
 
@@ -38,7 +45,8 @@ void ObjectStorageServer::waitUntilReady()
     ssize_t ret = read(onServerReadyReader, &value, sizeof(uint64_t));
 
     if (ret != sizeof(uint64_t)) {
-        log(scaler::ymq::LoggingLevel::error,
+        logger_.log(
+            scaler::ymq::Logger::LoggingLevel::error,
             "ObjectStorageServer: read from onServerReadyReader failed, errno=",
             errno);
         std::terminate();
@@ -56,7 +64,10 @@ void ObjectStorageServer::initServerReadyFds()
     int ret = pipe(pipeFds);
 
     if (ret != 0) {
-        log(scaler::ymq::LoggingLevel::error, "ObjectStorageServer: create on server ready FDs failed, errno=", errno);
+        logger_.log(
+            scaler::ymq::Logger::LoggingLevel::error,
+            "ObjectStorageServer: create on server ready FDs failed, errno=",
+            errno);
         std::terminate();
     }
 
@@ -70,7 +81,8 @@ void ObjectStorageServer::setServerReadyFd()
     ssize_t ret    = write(onServerReadyWriter, &value, sizeof(uint64_t));
 
     if (ret != sizeof(uint64_t)) {
-        log(scaler::ymq::LoggingLevel::error,
+        logger_.log(
+            scaler::ymq::Logger::LoggingLevel::error,
             "ObjectStorageServer: write to onServerReadyWriter failed, errno=",
             errno);
         std::terminate();
@@ -83,7 +95,7 @@ void ObjectStorageServer::closeServerReadyFds()
 
     for (const int fd: fds) {
         if (close(fd) != 0) {
-            log(scaler::ymq::LoggingLevel::error, "ObjectStorageServer: close failed, errno=", errno);
+            logger_.log(scaler::ymq::Logger::LoggingLevel::error, "ObjectStorageServer: close failed, errno=", errno);
             std::terminate();
         }
     }
@@ -94,7 +106,7 @@ awaitable<void> ObjectStorageServer::listener(tcp::endpoint endpoint)
     auto executor = co_await boost::asio::this_coro::executor;
     tcp::acceptor acceptor(executor, endpoint);
 
-    log(scaler::ymq::LoggingLevel::info, "ObjectStorageServer: started");
+    logger_.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: started");
 
     setServerReadyFd();
 
@@ -110,7 +122,7 @@ awaitable<void> ObjectStorageServer::listener(tcp::endpoint endpoint)
 
 awaitable<void> ObjectStorageServer::processRequests(std::shared_ptr<Client> client)
 {
-    log(scaler::ymq::LoggingLevel::info, "ObjectStorageServer: client connected");
+    logger_.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: client connected");
 
     try {
         for (;;) {
@@ -137,14 +149,16 @@ awaitable<void> ObjectStorageServer::processRequests(std::shared_ptr<Client> cli
         }
     } catch (const boost::system::system_error& e) {
         if (e.code() == boost::asio::error::eof || e.code() == boost::asio::error::connection_reset) {
-            log(scaler::ymq::LoggingLevel::info, "ObjectStorageServer: client disconnected");
+            logger_.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: client disconnected");
         } else {
-            log(scaler::ymq::LoggingLevel::error,
+            logger_.log(
+                scaler::ymq::Logger::LoggingLevel::error,
                 "ObjectStorageServer: unexpected networking error, reason: ",
                 e.what());
         }
     } catch (const std::exception& e) {
-        log(scaler::ymq::LoggingLevel::error, "ObjectStorageServer: unexpected error, reason: ", e.what());
+        logger_.log(
+            scaler::ymq::Logger::LoggingLevel::error, "ObjectStorageServer: unexpected error, reason: ", e.what());
     }
 
     client->socket.close();

@@ -58,7 +58,7 @@ UseTab: Never
 # control function declaration/definition
 AllowShortFunctionsOnASingleLine: InlineOnly
 AllowAllParametersOfDeclarationOnNextLine: true
-BinPackParameters: OnePerLine
+BinPackParameters: false
 
 # control behavior of {, only detach for function body
 BreakBeforeBraces: Custom
