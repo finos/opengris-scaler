@@ -77,7 +77,8 @@
         "object_storage_server",
         "cc_object_storage_server",
         "test_object_manager",
-        "test_object_storage_server"
+        "test_object_storage_server",
+        "test_logging"
       ]
     },
     {

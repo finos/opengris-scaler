@@ -27,7 +27,12 @@ public:
 
     ~ObjectStorageServer();
 
-    void run(std::string name, std::string port);
+    void run(
+        std::string name,
+        std::string port,
+        std::string log_level  = "INFO",
+        std::string log_format = "%(levelname)s: %(message)s",
+        std::string log_path   = "/dev/stdout");
 
     void waitUntilReady();
 
@@ -64,6 +69,8 @@ private:
 
     // Some GET and DUPLICATE requests might be delayed if the referenced object isn't available yet.
     std::map<ObjectID, std::vector<PendingRequest>> pendingRequests;
+
+    scaler::ymq::Logger _logger;
 
     void initServerReadyFds();
 

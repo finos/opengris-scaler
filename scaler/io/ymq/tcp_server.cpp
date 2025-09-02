@@ -21,7 +21,6 @@
 #include "scaler/io/ymq/event_loop_thread.h"
 #include "scaler/io/ymq/event_manager.h"
 #include "scaler/io/ymq/io_socket.h"
-#include "scaler/io/ymq/logging.h"
 #include "scaler/io/ymq/message_connection_tcp.h"
 #include "scaler/io/ymq/network_utils.h"
 
@@ -92,7 +91,8 @@ int TcpServer::createAndBindSocket()
 
     int optval = 1;
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&optval, sizeof(optval)) == -1) {
-        log(LoggingLevel::error,
+        _logger.log(
+            Logger::LoggingLevel::error,
             "Originated from",
             "setsockopt(2)",
             "Errno is",

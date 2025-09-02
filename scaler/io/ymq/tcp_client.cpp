@@ -14,7 +14,6 @@
 #include "scaler/io/ymq/event_loop_thread.h"
 #include "scaler/io/ymq/event_manager.h"
 #include "scaler/io/ymq/io_socket.h"
-#include "scaler/io/ymq/logging.h"
 #include "scaler/io/ymq/message_connection_tcp.h"
 #include "scaler/io/ymq/network_utils.h"
 #include "scaler/io/ymq/timestamp.h"
@@ -318,12 +317,12 @@ void TcpClient::onWrite()
 void TcpClient::retry()
 {
     if (_retryTimes > _maxRetryTimes) {
-        log(LoggingLevel::error, "Retried times has reached maximum", _maxRetryTimes);
+        _logger.log(Logger::LoggingLevel::error, "Retried times has reached maximum", _maxRetryTimes);
         exit(1);
         return;
     }
 
-    log(LoggingLevel::debug, "Client retrying times", _retryTimes);
+    _logger.log(Logger::LoggingLevel::debug, "Client retrying times", _retryTimes);
     CloseAndZeroSocket(_connFd);
 
     Timestamp now;
