@@ -394,6 +394,53 @@ This will open a web server on port `8081`.
 We showcased Scaler at FOSDEM 2025. Check out the slides
 [here](<slides/Effortless Distributed Computing in Python - FOSDEM 2025.pdf>).
 
+## Building from source
+
+To contribute to Scaler, you might need to manually build its C++ components.
+
+These C++ components depend on the Boost and Cap'n Proto libraries. If these libraries are not available on your system,
+you can use the `download_install_dependencies.sh` script to download, compile, and install them:
+
+```bash
+./scripts/download_install_dependencies.sh boost compile
+./scripts/download_install_dependencies.sh boost install
+./scripts/download_install_dependencies.sh capnp compile
+./scripts/download_install_dependencies.sh capnp install
+```
+
+After installing these dependencies, use the `build.sh` script to configure, build, and install Scaler's C++ components:
+
+```bash
+./scripts/build.sh
+```
+
+This script will create a build directory based on your operating system and architecture, and install the components
+within the main source tree, as compiled Python modules. You can specify the compiler to use by setting the `CC` and
+`CXX` environment variables.
+
+### Building the Python wheel
+
+Build the Python wheel for Scaler using `cibuildwheel`:
+
+```bash
+pip install build cibuildwheel==2.23.3
+
+# Parametrize the cibuildwheel's container to build the Boost and Cap'n Proto dependencies.
+export CIBW_BEFORE_ALL='
+            yum install sudo -y;
+            sudo ./scripts/download_install_dependencies.sh capnp compile
+            sudo ./scripts/download_install_dependencies.sh capnp install
+            sudo ./scripts/download_install_dependencies.sh boost compile
+            sudo ./scripts/download_install_dependencies.sh boost install'
+export CIBW_BUILD="*manylinux_x86_64"
+export CIBW_SKIP="pp*"
+export CIBW_MANYLINUX_X86_64_IMAGE="manylinux_2_28"
+
+python -m cibuildwheel --output-dir wheelhouse
+
+python -m build --sdist
+```
+
 ## Contributing
 
 Your contributions are at the core of making this a true open source project. Any contributions you make are **greatly

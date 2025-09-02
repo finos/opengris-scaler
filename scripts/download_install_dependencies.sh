@@ -1,4 +1,9 @@
 #!/bin/bash -e
+# This script builds and installs the required 3rd party C++ libraries.
+#
+# Usage:
+#    	./scripts/download_install_dependencies.sh [boost|capnp] [compile|install] [--prefix=PREFIX]
+
 # Remember:
 #	Update the usage string when you are add/remove dependency
 #	Bump version should be done through variables, not hard coded strs.
