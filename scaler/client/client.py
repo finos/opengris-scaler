@@ -207,11 +207,7 @@ class Client:
         return self.submit_verbose(fn, args, kwargs)
 
     def submit_verbose(
-        self,
-        fn: Callable,
-        args: Tuple[Any, ...],
-        kwargs: Dict[str, Any],
-        tags: Optional[Set[str]] = None,
+        self, fn: Callable, args: Tuple[Any, ...], kwargs: Dict[str, Any], tags: Optional[Set[str]] = None
     ) -> ScalerFuture:
         """
         Submit a single task (function with arguments) to the scheduler, and return a future. Possibly route the task to
@@ -299,7 +295,7 @@ class Client:
         self.__check_graph(node_name_to_argument, call_graph, keys)
 
         graph_task, compute_futures, finished_futures = self.__construct_graph(
-            node_name_to_argument, call_graph, keys, block, tags,
+            node_name_to_argument, call_graph, keys, block, tags
         )
         self._object_buffer.commit_send_objects()
         self._connector_agent.send(graph_task)
@@ -419,11 +415,7 @@ class Client:
             self.__destroy()
 
     def __submit(
-        self,
-        function_object_id: ObjectID,
-        args: Tuple[Any, ...],
-        delayed: bool,
-        tags: Optional[Set[str]] = None,
+        self, function_object_id: ObjectID, args: Tuple[Any, ...], delayed: bool, tags: Optional[Set[str]] = None
     ) -> Tuple[Task, ScalerFuture]:
         task_id = TaskID.generate_task_id()
 

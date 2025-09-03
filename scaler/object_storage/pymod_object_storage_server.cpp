@@ -18,7 +18,18 @@ static PyObject* PyObjectStorageServerNew(
 
 static int PyObjectStorageServerInit(PyObject* self, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwargs)
 {
-    new (&((PyObjectStorageServer*)self)->server) scaler::object_storage::ObjectStorageServer();
+    static const char* kwlist[] = {"log_level", "log_format", "logging_path", NULL};
+    const char* log_level       = "INFO";
+    const char* log_format      = "%(levelname)s: %(message)s";
+    const char* logging_path    = "/dev/stdout";
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|sss", (char**)kwlist, &log_level, &log_format, &logging_path)) {
+        return -1;  // Indicate an error in argument parsing
+    }
+
+    new (&((PyObjectStorageServer*)self)->server)
+        scaler::object_storage::ObjectStorageServer(log_level, log_format, logging_path);
+
     return 0;
 }
 
@@ -32,14 +43,11 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
 {
     const char* addr;
     int port;
-    const char* log_level;
-    const char* log_format;
-    const char* logging_path;
 
-    if (!PyArg_ParseTuple(args, "sisss", &addr, &port, &log_level, &log_format, &logging_path))
+    if (!PyArg_ParseTuple(args, "si", &addr, &port))
         return NULL;
 
-    ((PyObjectStorageServer*)self)->server.run(addr, std::to_string(port), log_level, log_format, logging_path);
+    ((PyObjectStorageServer*)self)->server.run(addr, std::to_string(port));
 
     Py_RETURN_NONE;
 }

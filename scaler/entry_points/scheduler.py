@@ -139,7 +139,7 @@ def main():
         object_storage = ObjectStorageServerProcess(
             storage_address=object_storage_address,
             logging_paths=args.logging_paths,
-            logging_config_file=args.logging_config_file,
+            logging_format=args.logging_format,
             logging_level=args.logging_level,
         )
         object_storage.start()

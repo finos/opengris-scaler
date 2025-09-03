@@ -1,4 +1,5 @@
 import functools
+import logging
 import os
 import random
 import time
@@ -8,7 +9,7 @@ from concurrent.futures import CancelledError
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.exceptions import MissingObjects, ProcessorDiedError
 from scaler.utility.logging.scoped_logger import ScopedLogger
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.logging.utility import setup_logger, get_logger_info
 from tests.utility import logging_test_name
 
 
@@ -35,7 +36,15 @@ class TestClient(unittest.TestCase):
         setup_logger()
         logging_test_name(self)
         self._workers = 3
-        self.cluster = SchedulerClusterCombo(n_workers=self._workers, event_loop="builtin")
+
+        log_format, log_level_str, log_path = get_logger_info(logging.getLogger())
+        self.cluster = SchedulerClusterCombo(
+            n_workers=self._workers,
+            event_loop="builtin",
+            logging_paths=tuple(log_path),
+            logging_level=log_level_str,
+            logging_format=log_format,
+        )
         self.address = self.cluster.get_address()
         # self.address = f"tcp://127.0.0.1:2345"
 

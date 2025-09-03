@@ -5,8 +5,18 @@
 namespace scaler {
 namespace object_storage {
 
-ObjectStorageServer::ObjectStorageServer()
+ObjectStorageServer::ObjectStorageServer(
+    std::string log_level,
+    std::string log_format,
+    std::string log_path)
+    : _log_format(log_format)
+    ,  // Reordered to match declaration order
+    _log_level(log_level)
+    ,  // Reordered to match declaration order
+    _log_path(log_path)
+    , _logger(log_format, log_path, scaler::ymq::Logger::stringToLogLevel(log_level))
 {
+    // The rest of the constructor body goes here.
     initServerReadyFds();
 }
 
@@ -16,11 +26,8 @@ ObjectStorageServer::~ObjectStorageServer()
     closeServerReadyFds();
 }
 
-void ObjectStorageServer::run(
-    std::string name, std::string port, std::string log_level, std::string log_format, std::string log_path)
+void ObjectStorageServer::run(std::string name, std::string port)
 {
-    _logger = scaler::ymq::Logger(log_format, log_path, scaler::ymq::Logger::stringToLogLevel(log_level));
-
     try {
         tcp::resolver resolver(ioContext);
         auto res = resolver.resolve(name, port);
