@@ -78,7 +78,7 @@ struct WorkerHeartbeat {
     taskLock @4 :Bool;
     processors @5 :List(Status.ProcessorStatus);
     tags @6 :List(Text);
-    maxQueueSize @6 :UInt32;
+    maxQueueSize @7 :UInt32;
 }
 
 struct WorkerHeartbeatEcho {

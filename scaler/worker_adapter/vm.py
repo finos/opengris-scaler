@@ -11,7 +11,7 @@ from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.worker import Worker
 
 
-class VMAdapter:
+class VMWorkerAdapter:
     def __init__(
         self,
         address: ZMQConfig,

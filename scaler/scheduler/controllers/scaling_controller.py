@@ -12,11 +12,26 @@ from scaler.utility.mixins import Reporter
 
 
 class NullScalingController(ScalingController, Reporter):
+    """No-op scaling controller used when scaling is disabled.
+    """
+
     def get_status(self):
+        """Return the status.
+
+        :returns: Dictionary with worker/task information.
+        :rtype: dict
+        """
         return {"worker_task_counts": {}, "workers_pending_startup": [], "workers_pending_shutdown": []}
 
 
 class VanillaScalingController(ScalingController, Reporter):
+    """Simple autoscaling controller based on tasks-per-worker ratio.
+
+    :param adapter_webhook_url: Adapter webhook URL used to request worker start/stop.
+    :param lower_task_ratio: Lower bound of tasks per worker before scaling down.
+    :param upper_task_ratio: Upper bound of tasks per worker before scaling up.
+    """
+
     def __init__(self, adapter_webhook_url: str, lower_task_ratio: int = 1, upper_task_ratio: int = 10):
         self.inactive_tasks: Set[TaskID] = set()
         self.task_to_worker: Dict[TaskID, WorkerID] = {}
@@ -30,6 +45,11 @@ class VanillaScalingController(ScalingController, Reporter):
         self.upper_task_ratio: int = upper_task_ratio
 
     def get_status(self):
+        """Return the status.
+
+        :returns: Dictionary with worker/task information.
+        :rtype: dict
+        """
         return {
             "worker_task_counts": {worker_id.decode(): len(tasks) for worker_id, tasks in self.worker_to_tasks.items()},
             "workers_pending_startup": [worker_id.decode() for worker_id in self.workers_pending_startup],
@@ -37,6 +57,14 @@ class VanillaScalingController(ScalingController, Reporter):
         }
 
     async def on_state_worker(self, state_worker: StateWorker):
+        """Handle worker state updates.
+
+        Removes worker ids from pending sets when the worker reports a matching
+        connected/disconnected state.
+
+        :param state_worker: StateWorker message with worker_id and message payload.
+        :type state_worker: StateWorker
+        """
         if state_worker.message == b"connected" and state_worker.worker_id in self.workers_pending_startup:
             self.workers_pending_startup.remove(state_worker.worker_id)
 
@@ -44,6 +72,16 @@ class VanillaScalingController(ScalingController, Reporter):
             self.workers_pending_shutdown.remove(state_worker.worker_id)
 
     async def on_state_task(self, state_task: StateTask):
+        """Handle task lifecycle updates and perform scaling decisions.
+
+        Behaviour:
+        - Track inactive tasks and ensure at least one worker exists when tasks appear.
+        - Assign running tasks to workers and maintain reverse mappings.
+        - When tasks complete/failed/canceled, remove mappings and evaluate scaling.
+
+        :param state_task: StateTask message describing task id, status, and worker (if running).
+        :type state_task: StateTask
+        """
         if state_task.status == TaskStatus.Inactive:
             if len(self.worker_to_tasks) == 0:
                 try:
@@ -106,6 +144,11 @@ class VanillaScalingController(ScalingController, Reporter):
             logging.info("Shutdown worker %s as task ratio is below the lower threshold.", worker_id)
 
     async def start_worker(self) -> WorkerID:
+        """Request the worker_adapter to start a new worker and register it as pending.
+
+        :returns: Identifier of the newly created worker.
+        :rtype: WorkerID
+        """
         worker_id_str = f"worker-{uuid.uuid4().hex}"
         response = await self._make_request({"action": "start_worker", "worker_id": worker_id_str})
 
@@ -117,12 +160,27 @@ class VanillaScalingController(ScalingController, Reporter):
         return worker_id
 
     async def shutdown_worker(self, worker_id: WorkerID):
+        """Request the worker_adapter to shutdown a worker and mark it pending shutdown.
+
+        The worker is removed from local tracking immediately; its disconnected state
+        will be reconciled when a StateWorker disconnected message is received.
+
+        :param worker_id: Identifier of the worker to shutdown.
+        """
         await self._make_request({"action": "shutdown_worker", "worker_id": worker_id.decode()})
 
         self.workers_pending_shutdown.add(worker_id)
         self.worker_to_tasks.pop(worker_id)
 
     async def _make_request(self, payload):
+        """POST a JSON payload to the configured worker_adapter webhook and return JSON.
+
+        :param payload: JSON-serializable payload to send to the worker_adapter.
+        :raises Exception: If the worker_adapter responds with a non-200 status; the worker_adapter's
+            error message is extracted from the response JSON under the "error" key.
+        :returns: Decoded JSON response from the worker_adapter.
+        :rtype: dict
+        """
         async with aiohttp.ClientSession() as session:
             async with session.post(self.adapter_webhook_url, json=payload) as response:
                 if response.status == 200:

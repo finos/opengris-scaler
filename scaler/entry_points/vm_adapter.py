@@ -3,7 +3,7 @@ import argparse
 import psutil
 from aiohttp import web
 
-from scaler.adapter.vm import VMAdapter
+from scaler.worker_adapter.vm import VMWorkerAdapter
 from scaler.io.config import (
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
     DEFAULT_HARD_PROCESSOR_SUSPEND,
@@ -20,11 +20,11 @@ from scaler.utility.zmq_config import ZMQConfig
 
 
 def get_args():
-    parser = argparse.ArgumentParser("scaler vm adapter", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser("scaler vm worker_adapter", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     # Server configuration
-    parser.add_argument("--host", type=str, default="localhost", help="host address for the VM adapter HTTP server")
-    parser.add_argument("--port", "-p", type=int, help="port for the VM adapter HTTP server")
+    parser.add_argument("--host", type=str, default="localhost", help="host address for the VM worker_adapter HTTP server")
+    parser.add_argument("--port", "-p", type=int, help="port for the VM worker_adapter HTTP server")
 
     # Worker configuration
     parser.add_argument("--io-threads", type=int, default=DEFAULT_IO_THREADS, help="number of io threads for zmq")
@@ -129,7 +129,7 @@ def get_args():
 def main():
     args = get_args()
 
-    vm_adapter = VMAdapter(
+    vm_worker_adapter = VMWorkerAdapter(
         address=args.scheduler_address,
         storage_address=args.object_storage_address,
         io_threads=args.io_threads,
@@ -147,7 +147,7 @@ def main():
         logging_config_file=args.logging_config_file,
     )
 
-    app = vm_adapter.create_app()
+    app = vm_worker_adapter.create_app()
     web.run_app(app, host=args.host, port=args.port)
 
 
