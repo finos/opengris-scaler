@@ -4,7 +4,8 @@
 
 const scaler::object_storage::ObjectPayload payload {'H', 'e', 'l', 'l', 'o'};
 
-TEST(ObjectManagerTestSuite, TestSetObject) {
+TEST(ObjectManagerTestSuite, TestSetObject)
+{
     scaler::object_storage::ObjectManager objectManager;
 
     scaler::object_storage::ObjectID objectID1 {0, 1, 2, 3};
@@ -28,7 +29,8 @@ TEST(ObjectManagerTestSuite, TestSetObject) {
     EXPECT_EQ(objectManager.sizeUnique(), 1);
 }
 
-TEST(ObjectManagerTestSuite, TestGetObject) {
+TEST(ObjectManagerTestSuite, TestGetObject)
+{
     scaler::object_storage::ObjectManager objectManager;
 
     scaler::object_storage::ObjectID objectID1 {0, 1, 2, 3};
@@ -44,7 +46,8 @@ TEST(ObjectManagerTestSuite, TestGetObject) {
     EXPECT_EQ(*payloadPtr, payload);
 }
 
-TEST(ObjectManagerTestSuite, TestDeleteObject) {
+TEST(ObjectManagerTestSuite, TestDeleteObject)
+{
     scaler::object_storage::ObjectManager objectManager;
 
     scaler::object_storage::ObjectID objectID1 {0, 1, 2, 3};
@@ -62,7 +65,8 @@ TEST(ObjectManagerTestSuite, TestDeleteObject) {
     EXPECT_FALSE(deleted);
 }
 
-TEST(ObjectManagerTestSuite, TestDuplicateObject) {
+TEST(ObjectManagerTestSuite, TestDuplicateObject)
+{
     scaler::object_storage::ObjectManager objectManager;
 
     scaler::object_storage::ObjectID objectID1 {0, 1, 2, 3};
@@ -85,7 +89,8 @@ TEST(ObjectManagerTestSuite, TestDuplicateObject) {
     EXPECT_EQ(objectManager.sizeUnique(), 1);
 }
 
-TEST(ObjectManagerTestSuite, TestReferenceCountObject) {
+TEST(ObjectManagerTestSuite, TestReferenceCountObject)
+{
     scaler::object_storage::ObjectManager objectManager;
 
     scaler::object_storage::ObjectID objectID1 {11, 0, 0, 0};
