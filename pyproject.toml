@@ -21,7 +21,7 @@ dependencies = [
     "bidict",
     "cloudpickle",
     "psutil==7.0.0",
-    "pycapnp==2.0.0",
+    "pycapnp==2.1.0",
     "pyzmq",
     "sortedcontainers==2.4.0",
     "tblib",
