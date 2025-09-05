@@ -13,7 +13,7 @@ from scaler.worker.symphony.task_manager import SymphonyTaskManager
 
 
 class SymphonyHeartbeatManager(Looper, HeartbeatManager):
-    def __init__(self):
+    def __init__(self, task_queue_size: int):
         self._agent_process = psutil.Process()
 
         self._connector_external: Optional[AsyncConnector] = None
@@ -22,6 +22,7 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
 
         self._start_timestamp_ns = 0
         self._latency_us = 0
+        self._task_queue_size = task_queue_size
 
         self._storage_address: Optional[ObjectStorageConfig] = None
 
@@ -67,6 +68,7 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
                 self._worker_task_manager.can_accept_task(),
                 [],
                 set(),
+                self._task_queue_size
             )
         )
         self._start_timestamp_ns = time.time_ns()

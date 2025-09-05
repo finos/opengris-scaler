@@ -9,6 +9,13 @@ from scaler.protocol.python.message import (
     GraphTask,
     GraphTaskCancel,
     ObjectInstruction,
+    StateBalanceAdvice,
+    StateClient,
+    StateGraphTask,
+    StateObject,
+    StateScheduler,
+    StateTask,
+    StateWorker,
     Task,
     TaskCancel,
     TaskResult,
@@ -156,3 +163,26 @@ class WorkerController(Reporter):
 
 class InformationController(metaclass=abc.ABCMeta):
     pass
+
+
+class ScalingController(Reporter, abc.ABC):
+    async def on_state_client(self, state_client: StateClient):
+        pass
+
+    async def on_state_object(self, state_object: StateObject):
+        pass
+
+    async def on_state_balance_advice(self, state_balance_advice: StateBalanceAdvice):
+        pass
+
+    async def on_state_scheduler(self, state_scheduler: StateScheduler):
+        pass
+
+    async def on_state_worker(self, state_worker: StateWorker):
+        pass
+
+    async def on_state_task(self, state_task: StateTask):
+        pass
+
+    async def on_state_graph_task(self, state_graph_task: StateGraphTask):
+        pass

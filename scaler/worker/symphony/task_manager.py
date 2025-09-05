@@ -14,8 +14,8 @@ from scaler.protocol.python.message import ObjectInstruction, Task, TaskCancel, 
 from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper
-from scaler.utility.serialization import serialize_failure
 from scaler.utility.queues.async_sorted_priority_queue import AsyncSortedPriorityQueue
+from scaler.utility.serialization import serialize_failure
 from scaler.worker.agent.mixins import HeartbeatManager, TaskManager
 from scaler.worker.symphony.session_callback import SessionCallback, SoamMessage
 
