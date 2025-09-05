@@ -37,6 +37,15 @@ public:
         , _timingFunctions(_completionPort, _isTimingFd)
         , _interruptiveFunctions(_completionPort, _isInterruptiveFd)
     {
+        if (!_completionPort) {
+            unrecoverableError({
+                Error::ErrorCode::CoreBug,
+                "Originated from",
+                "CreateIoCompletionPort",
+                "Errno is",
+                GetLastError(),
+            });
+        }
     }
 
     ~IocpContext() { CloseHandle(_completionPort); }

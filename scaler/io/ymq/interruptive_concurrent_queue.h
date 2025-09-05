@@ -134,7 +134,15 @@ public:
     void enqueue(T item)
     {
         _queue.enqueue(std::move(item));
-        PostQueuedCompletionStatus(_completionPort, 0, (ULONG_PTR)_key, nullptr);
+        if (!PostQueuedCompletionStatus(_completionPort, 0, (ULONG_PTR)_key, nullptr)) {
+            unrecoverableError({
+                Error::ErrorCode::CoreBug,
+                "Originated from",
+                "PostQueuedCompletionStatus",
+                "Errno is",
+                GetLastError(),
+            });
+        }
     }
 
     // NOTE: this method will block until an item is available
@@ -153,8 +161,6 @@ public:
     InterruptiveConcurrentQueue& operator=(const InterruptiveConcurrentQueue&) = delete;
     InterruptiveConcurrentQueue(InterruptiveConcurrentQueue&&)                 = delete;
     InterruptiveConcurrentQueue& operator=(InterruptiveConcurrentQueue&&)      = delete;
-
-    // ~InterruptiveConcurrentQueue() { close(_eventFd); } // No need on Windows
 };
 
 #endif  // _WIN32

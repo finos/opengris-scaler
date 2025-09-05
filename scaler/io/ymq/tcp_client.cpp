@@ -142,7 +142,6 @@ void TcpClient::onCreated()
 #ifdef _WIN32
     _connFd         = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     u_long nonblock = 1;
-    // TODO: Error handling here
     ioctlsocket(_connFd, FIONBIO, &nonblock);
     DWORD res;
     GUID guid = WSAID_CONNECTEX;
@@ -156,10 +155,16 @@ void TcpClient::onCreated()
         &res,
         0,
         0);
-    // TODO: Better error handling here
     if (!_connectExFunc) {
-        fprintf(stderr, "WSAIoctl\n");
-        exit(1);
+        unrecoverableError({
+            Error::ErrorCode::CoreBug,
+            "Originated from",
+            "WSAIoctl",
+            "Errno is",
+            GetErrorCode(),
+            "_connFd",
+            _connFd,
+        });
     }
     _eventLoopThread->_eventLoop.addFdToLoop(_connFd, 0, nullptr);
 
@@ -169,30 +174,47 @@ void TcpClient::onCreated()
     *(int*)&localAddr.sin_addr = *(int*)ip4;
 
     const int bindRes = bind(_connFd, (struct sockaddr*)&localAddr, sizeof(struct sockaddr_in));
-    // TODO: Better error handling here
     if (bindRes == -1) {
-        fprintf(stderr, "bind\n");
-        exit(1);
+        unrecoverableError({
+            Error::ErrorCode::ConfigurationError,
+            "Originated from",
+            "bind",
+            "Errno is",
+            GetErrorCode(),
+            "_connFd",
+            _connFd,
+        });
     }
 
     const bool ok =
         _connectExFunc(_connFd, &_remoteAddr, sizeof(struct sockaddr), NULL, 0, NULL, this->_eventManager.get());
     if (ok) {
-        fprintf(stderr, "connectEx returns true, which is unplanned. Exiting...\n");
-        exit(1);
+        unrecoverableError({
+            Error::ErrorCode::CoreBug,
+            "Originated from",
+            "connectEx",
+            "_connFd",
+            _connFd,
+        });
     }
 
-    const int lastError = WSAGetLastError();
-    if (lastError == ERROR_IO_PENDING) {
+    const int myErrno = GetErrorCode();
+    if (myErrno == ERROR_IO_PENDING) {
         if (_retryTimes == 0) {
             _onConnectReturn(std::unexpected {Error::ErrorCode::InitialConnectFailedWithInProgress});
         }
         return;
     }
 
-    // TODO: Better error handling here
-    fprintf(stderr, "connectEx failed with %d\n", lastError);
-    exit(1);
+    unrecoverableError({
+        Error::ErrorCode::CoreBug,
+        "Originated from",
+        "connectEx",
+        "Errno is",
+        myErrno,
+        "_connFd",
+        _connFd,
+    });
 #endif  // _WIN32
 }
 
@@ -294,8 +316,7 @@ void TcpClient::onWrite()
 
 #endif  // __linux__
 #ifdef _WIN32
-    int iResult = 0;
-    iResult     = setsockopt(_connFd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
+    const int iResult = setsockopt(_connFd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
     if (iResult == -1) {
         CloseAndZeroSocket(_connFd);
         retry();

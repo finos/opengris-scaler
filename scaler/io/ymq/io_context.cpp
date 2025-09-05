@@ -25,11 +25,15 @@ IOContext::IOContext(size_t threadCount) noexcept: _threads(threadCount)
     std::ranges::generate(_threads, std::make_shared<EventLoopThread>);
 #ifdef _WIN32
     WSADATA wsaData;
-    int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    // TODO: Better error handling
-    if (iResult != 0) {
-        fprintf(stderr, "WSAStartup\n");
-        exit(1);
+    const int myErrno = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (myErrno != 0) {
+        unrecoverableError({
+            Error::ErrorCode::ConfigurationError,
+            "Originated from",
+            "WSAStartup",
+            "Errno is",
+            strerror(myErrno),
+        });
     }
 #endif  // _WIN32
 }
