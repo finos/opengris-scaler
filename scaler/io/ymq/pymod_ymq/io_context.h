@@ -77,8 +77,8 @@ static PyObject* PyIOContext_createIOSocket_(
     using Identity = Configuration::IOSocketIdentity;
 
     // note: references borrowed from args, so no need to manage their lifetime
-    PyObject* pyIdentity {};
-    PyObject* pySocketType {};
+    PyObject* pyIdentity   = nullptr;
+    PyObject* pySocketType = nullptr;
     if (nargs == 1) {
         pyIdentity = args[0];
     } else if (nargs == 2) {

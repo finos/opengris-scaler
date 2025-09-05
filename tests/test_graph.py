@@ -208,13 +208,7 @@ class TestGraph(unittest.TestCase):
         base_cluster = self.combo._cluster
 
         with Client(self.address) as client:
-            graph = {
-                "a": 1.3,
-                "b": 2.6,
-                "c": (round, "a"),
-                "d": (round, "b"),
-                "e": (add, "c", "d")
-            }
+            graph = {"a": 1.3, "b": 2.6, "c": (round, "a"), "d": (round, "b"), "e": (add, "c", "d")}
 
             future = client.get(graph, keys=["e"], capabilities={"gpu": 1}, block=False)["e"]
 
