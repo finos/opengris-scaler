@@ -396,10 +396,12 @@ We showcased Scaler at FOSDEM 2025. Check out the slides
 
 ## Building from source
 
+### Building on GNU/Linux
+
 To contribute to Scaler, you might need to manually build its C++ components.
 
 These C++ components depend on the Boost and Cap'n Proto libraries. If these libraries are not available on your system,
-you can use the `download_install_dependencies.sh` script to download, compile, and install them:
+you can use the `download_install_dependencies.sh` script to download, compile, and install them (You might need `sudo`):
 
 ```bash
 ./scripts/download_install_dependencies.sh boost compile
@@ -417,6 +419,27 @@ After installing these dependencies, use the `build.sh` script to configure, bui
 This script will create a build directory based on your operating system and architecture, and install the components
 within the main source tree, as compiled Python modules. You can specify the compiler to use by setting the `CC` and
 `CXX` environment variables.
+
+### Building on Windows
+
+*Building on Windows requires _Visual Studio 17 2022_*. Similar to the former section, you can use the `download_install_dependencies.ps1` script to download, compile, and install them (You might need `Run as administrator`):
+
+```bash
+./scripts/download_install_dependencies.ps1 boost compile
+./scripts/download_install_dependencies.ps1 boost install
+./scripts/download_install_dependencies.ps1 capnp compile
+./scripts/download_install_dependencies.ps1 capnp install
+```
+
+After installing these dependencies, if you are using _Visual Studio_ for developing, you may open the project folder with it, select preset `windows-x64`, and build the project. You may also run the following commands to configure, build, and install Scaler's C++ components:
+
+```bash
+cmake --preset windows-x64
+cmake --build --preset windows-x64 --config (Debug|Release)
+cmake --install build_windows_x64 --config (Debug|Release)
+```
+
+The output will be similar to what described in the former section. We recommend using _Visual Studio_ for developing on Windows.
 
 ### Building the Python wheel
 
