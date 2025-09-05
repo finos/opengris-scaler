@@ -2,13 +2,20 @@ import abc
 import hashlib
 import os
 import uuid
-from typing import Optional
+from typing import Optional, TypeVar
+
+# TODO: replace with typing.Self in Python 3.11+
+T = TypeVar("T", bound="Identifier")
 
 
 class Identifier(bytes, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def __repr__(self) -> str:
         raise NotImplementedError()
+
+    def extend(self: T, extra: str) -> T:
+        # we know that this method will only ever be called on concrete subclasses of Identifier
+        return self.__class__(self + extra.encode())  # type: ignore[abstract]
 
 
 class ClientID(Identifier):

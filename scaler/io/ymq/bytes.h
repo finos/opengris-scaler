@@ -30,7 +30,7 @@ class Bytes {
     explicit Bytes(uint8_t* data, size_t len): _data(data), _len(len) {}
 
 public:
-    Bytes(char* data, size_t len): _data(datadup((uint8_t*)data, len)), _len(len) {}
+    Bytes(char* data, size_t len): _data(data ? datadup((uint8_t*)data, len) : nullptr), _len(len) {}
 
     Bytes(): _data {}, _len {} {}
 

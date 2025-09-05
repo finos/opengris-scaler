@@ -20,7 +20,7 @@ from scaler.ui.task_graph import TaskStream
 from scaler.ui.task_log import TaskLogTable
 from scaler.ui.worker_processors import WorkerProcessors
 from scaler.utility.formatter import format_bytes, format_percentage
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.utility.ymq_config import YMQConfig
 
 
 @dataclasses.dataclass
@@ -76,9 +76,9 @@ def start_webui(address: str, host: str, port: int):
             tables.settings_section.draw_section()
 
     subscriber = SyncSubscriber(
-        address=ZMQConfig.from_string(address),
+        address=YMQConfig.from_string(address),
         callback=partial(__show_status, tables=tables),
-        topic=b"",
+        topic="",
         timeout_seconds=-1,
     )
     subscriber.start()

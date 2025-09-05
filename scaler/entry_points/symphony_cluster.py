@@ -13,7 +13,7 @@ from scaler.io.config import (
 )
 from scaler.utility.event_loop import EventLoopType, register_event_loop
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.utility.ymq_config import YMQConfig
 from scaler.worker.symphony.worker import SymphonyWorker
 
 
@@ -74,7 +74,7 @@ def get_args():
         help="use standard python the .conf file the specify python logging file configuration format, this will "
         "bypass --logging-paths and --logging-level at the same time, and this will not work on per worker logging",
     )
-    parser.add_argument("address", type=ZMQConfig.from_string, help="scheduler address to connect to")
+    parser.add_argument("address", type=YMQConfig.from_string, help="scheduler address to connect to")
     parser.add_argument("service_name", type=str, help="symphony service name")
     return parser.parse_args()
 

@@ -13,7 +13,7 @@ from scaler.io.config import (
 )
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.utility.ymq_config import YMQConfig
 from tests.utility import logging_test_name
 
 # This is a manual test because it can loop infinitely if it fails
@@ -28,7 +28,7 @@ class TestDeathTimeout(unittest.TestCase):
         logging.info("test with no scheduler")
         # Test 1: Spinning up a cluster with no scheduler. Death timeout should apply
         cluster = Cluster(
-            address=ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
+            address=YMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
             storage_address=None,
             worker_io_threads=DEFAULT_IO_THREADS,
             worker_names=["a", "b"],
