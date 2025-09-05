@@ -23,16 +23,14 @@ using boost::asio::ip::tcp;
 
 class ObjectStorageServer {
 public:
-    ObjectStorageServer();
-
-    ~ObjectStorageServer();
-
-    void run(
-        std::string name,
-        std::string port,
+    ObjectStorageServer(
         std::string log_level  = "INFO",
         std::string log_format = "%(levelname)s: %(message)s",
         std::string log_path   = "/dev/stdout");
+
+    ~ObjectStorageServer();
+
+    void run(std::string name, std::string port);
 
     void waitUntilReady();
 
@@ -70,6 +68,9 @@ private:
     // Some GET and DUPLICATE requests might be delayed if the referenced object isn't available yet.
     std::map<ObjectID, std::vector<PendingRequest>> pendingRequests;
 
+    std::string _log_format;
+    std::string _log_level;
+    std::string _log_path;
     scaler::ymq::Logger _logger;
 
     void initServerReadyFds();

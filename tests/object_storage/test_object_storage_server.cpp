@@ -81,12 +81,11 @@ protected:
 
     void SetUp() override
     {
-        server = std::make_unique<ObjectStorageServer>();
+        server = std::make_unique<ObjectStorageServer>("INFO", "%(levelname)s: %(message)s");
 
         serverPort = std::to_string(getAvailableTCPPort());
 
-        serverThread =
-            std::thread([this] { server->run(SERVER_HOST, serverPort, "INFO", "%(levelname)s: %(message)s"); });
+        serverThread = std::thread([this] { server->run(SERVER_HOST, serverPort); });
 
         server->waitUntilReady();
     }
@@ -574,12 +573,11 @@ protected:
                                       ".txt";
         log_filepath /= unique_filename;
 
-        server     = std::make_unique<scaler::object_storage::ObjectStorageServer>();
+        server = std::make_unique<scaler::object_storage::ObjectStorageServer>(
+            "INFO", "%(levelname)s: %(message)s", log_filepath.string());
         serverPort = std::to_string(getAvailableTCPPort());
 
-        serverThread = std::thread([this] {
-            server->run(SERVER_HOST, serverPort, "INFO", "%(levelname)s: %(message)s", log_filepath.string());
-        });
+        serverThread = std::thread([this] { server->run(SERVER_HOST, serverPort); });
         server->waitUntilReady();
     }
 

@@ -25,4 +25,4 @@ def main():
 
     log_format_str, log_level_str, log_path = get_logger_info(logging.getLogger())
 
-    ObjectStorageServer().run(args.address.host, args.address.port, log_level_str, log_format_str, log_path)
+    ObjectStorageServer(log_level_str, log_format_str, log_path).run(args.address.host, args.address.port)

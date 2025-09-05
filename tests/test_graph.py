@@ -6,7 +6,7 @@ import unittest
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.logging.scoped_logger import ScopedLogger
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.logging.utility import setup_logger, get_logger_info
 from tests.utility import logging_test_name
 
 
@@ -26,7 +26,14 @@ class TestGraph(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
-        self.cluster = SchedulerClusterCombo(n_workers=3, event_loop="builtin")
+        log_format, log_level_str, log_path = get_logger_info(logging.getLogger())
+        self.cluster = SchedulerClusterCombo(
+            n_workers=3,
+            event_loop="builtin",
+            logging_format=log_format,
+            logging_level=log_level_str,
+            logging_paths=tuple(log_path),
+        )
         self.address = self.cluster.get_address()
 
     def tearDown(self) -> None:

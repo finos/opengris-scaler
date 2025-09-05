@@ -1,5 +1,6 @@
 import enum
 import functools
+import logging
 import random
 import unittest
 from typing import Any
@@ -8,7 +9,7 @@ import cloudpickle
 
 from scaler import Client, SchedulerClusterCombo, Serializer
 from scaler.utility.logging.scoped_logger import ScopedLogger
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.logging.utility import setup_logger, get_logger_info
 from scaler.utility.network_util import get_available_tcp_port
 from tests.utility import logging_test_name
 
@@ -54,9 +55,18 @@ class TestSerializer(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
+        self.log_format, self.log_level_str, self.log_path = get_logger_info(logging.getLogger())
+
         self.address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         self._workers = 3
-        self.cluster = SchedulerClusterCombo(address=self.address, n_workers=self._workers, event_loop="builtin")
+        self.cluster = SchedulerClusterCombo(
+            address=self.address,
+            n_workers=self._workers,
+            event_loop="builtin",
+            logging_format=self.log_format,
+            logging_level=self.log_level_str,
+            logging_paths=tuple(self.log_path,),
+        )
 
     def tearDown(self) -> None:
         self.cluster.shutdown()

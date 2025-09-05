@@ -1,10 +1,11 @@
+import logging
 import os
 import time
 import unittest
 
 from scaler import Client, Cluster, SchedulerClusterCombo
 from scaler.io.config import DEFAULT_LOAD_BALANCE_SECONDS
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.logging.utility import setup_logger, get_logger_info
 from scaler.utility.network_util import get_available_tcp_port
 from tests.utility import logging_test_name
 
@@ -18,6 +19,7 @@ class TestBalance(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
+        self.log_format, self.log_level_str, self.log_path = get_logger_info(logging.getLogger())
 
     @unittest.skip("skip this test until state machine PR get merged")
     def test_balance(self):
@@ -35,6 +37,9 @@ class TestBalance(unittest.TestCase):
             n_workers=1,
             per_worker_task_queue_size=N_TASKS,
             load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
+            logging_format=self.log_format,
+            logging_level=self.log_level_str,
+            logging_paths=tuple(self.log_path,),
             # FIXME: re-enable balancing as it's currently disabled by default
         )
 

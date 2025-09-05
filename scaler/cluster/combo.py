@@ -56,6 +56,7 @@ class SchedulerClusterCombo:
         event_loop: str = "builtin",
         logging_paths: Tuple[str, ...] = ("/dev/stdout",),
         logging_level: str = "INFO",
+        logging_format: str = "%(levelname)s %(message)s",
         logging_config_file: Optional[str] = None,
     ):
         if address is None:
@@ -77,7 +78,7 @@ class SchedulerClusterCombo:
             storage_address=self._storage_address,
             logging_paths=logging_paths,
             logging_level=logging_level,
-            logging_config_file=logging_config_file,
+            logging_format=logging_format,
         )
         self._object_storage.start()
         self._object_storage.wait_until_ready()  # object storage should be ready before starting the cluster

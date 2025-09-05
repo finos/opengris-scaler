@@ -11,7 +11,7 @@ from scaler.io.config import (
     DEFAULT_TASK_TIMEOUT_SECONDS,
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
 )
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.logging.utility import setup_logger, get_logger_info
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.zmq_config import ZMQConfig
 from tests.utility import logging_test_name
@@ -23,6 +23,7 @@ class TestDeathTimeout(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
+        self.log_format, self.log_level_str, self.log_path = get_logger_info(logging.getLogger())
 
     def test_no_scheduler(self):
         logging.info("test with no scheduler")
@@ -86,6 +87,9 @@ class TestDeathTimeout(unittest.TestCase):
             per_worker_task_queue_size=2,
             event_loop="builtin",
             client_timeout_seconds=client_timeout_seconds,
+            logging_format=self.log_format,
+            logging_level=self.log_level_str,
+            logging_paths=tuple(self.log_path,),
         )
 
         try:
