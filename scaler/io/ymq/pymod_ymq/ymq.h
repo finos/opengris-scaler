@@ -303,7 +303,7 @@ static int YMQ_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
     // docs and examples are unfortunately scarce for this
     // for now this will work just fine
     OwnedPyObject item {};
-    while (item = PyIter_Next(*iter)) {
+    while ((item = PyIter_Next(*iter))) {
         OwnedPyObject fn = PyCMethod_New(&YMQErrorCode_explanation_def, *item, pyModule, nullptr);
         if (!fn)
             return -1;

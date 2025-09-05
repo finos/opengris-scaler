@@ -249,10 +249,10 @@ void MessageConnectionTCP::updateReadOperation()
             Bytes address(_remoteIOSocketIdentity->data(), _remoteIOSocketIdentity->size());
             Bytes payload(std::move(_receivedReadOperations.front()._payload));
             _receivedReadOperations.pop();
-
+            
             auto recvMessageCallback = std::move(_pendingRecvMessageCallbacks->front());
             _pendingRecvMessageCallbacks->pop();
-
+            
             recvMessageCallback({Message(std::move(address), std::move(payload)), {}});
 
         } else {

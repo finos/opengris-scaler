@@ -1,11 +1,17 @@
 #pragma once
 
+#include <unistd.h>
+
+#include <expected>
 #include <future>
 #include <memory>
+#include <optional>
 
+#include "scaler/io/ymq/bytes.h"
 #include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/io_context.h"
 #include "scaler/io/ymq/io_socket.h"
+#include "scaler/io/ymq/message.h"
 
 // We should not be using namespace in header file, but this is example, so we are good
 using namespace scaler::ymq;
@@ -38,4 +44,35 @@ inline void syncConnectSocket(std::shared_ptr<IOSocket> socket, std::string addr
         address, [&connect_promise](std::expected<void, Error> result) { connect_promise.set_value({}); });
 
     connect_future.wait();
+}
+
+inline std::expected<Message, Error> syncRecvMessage(std::shared_ptr<IOSocket> socket)
+{
+    auto promise = std::promise<std::pair<Message, Error>>();
+    auto future  = promise.get_future();
+
+    socket->recvMessage([&promise](auto result) { promise.set_value(result); });
+
+    auto result = future.get();
+
+    if (result.second._errorCode == Error::ErrorCode::Uninit) {
+        return result.first;
+    } else {
+        return std::unexpected {result.second};
+    }
+}
+
+inline std::optional<Error> syncSendMessage(std::shared_ptr<IOSocket> socket, Message message)
+{
+    auto promise = std::promise<std::expected<void, Error>>();
+    auto future  = promise.get_future();
+
+    socket->sendMessage(message, [&promise](auto result) { promise.set_value(result); });
+
+    auto result = future.get();
+
+    if (result)
+        return std::nullopt;
+    else
+        return result.error();
 }
