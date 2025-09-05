@@ -9,9 +9,10 @@ from typing import Optional, Set, Tuple
 
 import zmq.asyncio
 
-from scaler.io.async_binder import AsyncBinder
-from scaler.io.async_connector import AsyncConnector
-from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
+from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
+from scaler.io.async_binder import ZMQAsyncBinder
+from scaler.io.async_connector import ZMQAsyncConnector
+from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
 from scaler.io.config import PROFILING_INTERVAL_SECONDS
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -72,6 +73,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._address_path_internal = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
         self._address_internal = ZMQConfig(ZMQType.ipc, host=self._address_path_internal)
 
+        self._task_queue_size = task_queue_size
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
@@ -104,7 +106,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         register_event_loop(self._event_loop)
 
         self._context = zmq.asyncio.Context()
-        self._connector_external = AsyncConnector(
+        self._connector_external = ZMQAsyncConnector(
             context=self._context,
             name=self.name,
             socket_type=zmq.DEALER,
@@ -114,12 +116,12 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             identity=self._ident,
         )
 
-        self._binder_internal = AsyncBinder(
+        self._binder_internal = ZMQAsyncBinder(
             context=self._context, name=self.name, address=self._address_internal, identity=self._ident
         )
         self._binder_internal.register(self.__on_receive_internal)
 
-        self._connector_storage = AsyncObjectStorageConnector()
+        self._connector_storage = PyAsyncObjectStorageConnector()
 
         self._heartbeat_manager = VanillaHeartbeatManager(
             storage_address=self._storage_address, tags=self._tags, task_queue_size=self._task_queue_size
@@ -228,16 +230,16 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         except (ClientShutdownException, TimeoutError) as e:
             logging.info(f"{self.identity!r}: {str(e)}")
         except Exception as e:
-            logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{(e)}")
+            logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
         await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
 
         self._connector_external.destroy()
-        self._processor_manager.destroy("quitted")
+        self._processor_manager.destroy("quit")
         self._binder_internal.destroy()
         os.remove(self._address_path_internal)
 
-        logging.info(f"{self.identity!r}: quitted")
+        logging.info(f"{self.identity!r}: quit")
 
     def __run_forever(self):
         self._loop.run_until_complete(self._task)

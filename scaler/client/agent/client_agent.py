@@ -13,7 +13,8 @@ from scaler.client.agent.heartbeat_manager import ClientHeartbeatManager
 from scaler.client.agent.object_manager import ClientObjectManager
 from scaler.client.agent.task_manager import ClientTaskManager
 from scaler.client.serializer.mixins import Serializer
-from scaler.io.async_connector import AsyncConnector
+from scaler.io.mixins import AsyncConnector
+from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -26,6 +27,7 @@ from scaler.protocol.python.message import (
     TaskCancel,
     TaskLog,
     TaskResult,
+    TaskCancelConfirm,
 )
 from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine
@@ -62,7 +64,7 @@ class ClientAgent(threading.Thread):
 
         self._future_manager = future_manager
 
-        self._connector_internal = AsyncConnector(
+        self._connector_internal: AsyncConnector = ZMQAsyncConnector(
             context=zmq.asyncio.Context.shadow(self._context),
             name="client_agent_internal",
             socket_type=zmq.PAIR,
@@ -71,7 +73,7 @@ class ClientAgent(threading.Thread):
             callback=self.__on_receive_from_client,
             identity=None,
         )
-        self._connector_external = AsyncConnector(
+        self._connector_external: AsyncConnector = ZMQAsyncConnector(
             context=zmq.asyncio.Context.shadow(self._context),
             name="client_agent_external",
             socket_type=zmq.DEALER,
@@ -164,6 +166,10 @@ class ClientAgent(threading.Thread):
 
         if isinstance(message, TaskResult):
             await self._task_manager.on_task_result(message)
+            return
+
+        if isinstance(message, TaskCancelConfirm):
+            await self._task_manager.on_task_cancel_confirm(message)
             return
 
         raise TypeError(f"Unknown {message=}")

@@ -2,8 +2,9 @@ import dataclasses
 import typing
 from collections import OrderedDict, defaultdict
 from itertools import takewhile
-from sortedcontainers import SortedList
 from typing import Dict, Iterable, List, Optional, Set
+
+from sortedcontainers import SortedList
 
 from scaler.protocol.python.message import Task
 from scaler.scheduler.allocate_policy.mixins import TaskAllocatePolicy
@@ -48,7 +49,7 @@ class TaggedAllocatePolicy(TaskAllocatePolicy):
         self._task_id_to_worker_id: Dict[TaskID, WorkerID] = {}
         self._tag_to_worker_ids: Dict[str, Set[WorkerID]] = {}
 
-    def add_worker(self, worker: WorkerID, tags: Set[str], queue_size: int) -> bool:  # type: ignore[override]
+    def add_worker(self, worker: WorkerID, tags: Set[str], queue_size: int) -> bool:
         # FIXME: remove async in TaskAllocatePolicy interface
 
         if worker in self._worker_id_to_worker:
@@ -223,9 +224,7 @@ class TaggedAllocatePolicy(TaskAllocatePolicy):
 
         return None
 
-    def assign_task(self, task: Task) -> WorkerID:  # type: ignore[override]
-        # FIXME: remove async in TaskAllocatePolicy interface
-
+    def assign_task(self, task: Task) -> WorkerID:
         # Worst-case time complexity is O(n_workers • len(task.tags))
 
         available_workers = self.__get_available_workers_for_tags(task.tags)

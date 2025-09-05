@@ -18,7 +18,7 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
 
         self._worker_queue: AsyncPriorityQueue = AsyncPriorityQueue()
 
-    async def add_worker(self, worker: WorkerID, tags: Set[str], queue_size: int) -> bool:
+    def add_worker(self, worker: WorkerID, tags: Set[str], queue_size: int) -> bool:
         # TODO: handle uneven queue size for each worker
         if worker in self._workers_to_task_ids:
             return False
@@ -26,7 +26,7 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
         self._workers_to_task_ids[worker] = IndexedQueue()
         self._workers_to_queue_size[worker] = queue_size
 
-        await self._worker_queue.put([0, worker])
+        self._worker_queue.put_nowait([0, worker])
         return True
 
     def remove_worker(self, worker: WorkerID) -> List[TaskID]:
@@ -106,20 +106,23 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
 
         return balance_count
 
-    async def assign_task(self, task: Task) -> WorkerID:
+    def assign_task(self, task: Task) -> WorkerID:
         task_id = task.task_id
 
         if task_id in self._task_id_to_worker:
             return self._task_id_to_worker[task_id]
 
-        count, worker = await self._worker_queue.get()
+        if self._worker_queue.empty():
+            return WorkerID.invalid_worker_id()
+
+        count, worker = self._worker_queue.get_nowait()
         if count == self._workers_to_queue_size[worker]:
-            await self._worker_queue.put([count, worker])
+            self._worker_queue.put_nowait([count, worker])
             return WorkerID.invalid_worker_id()
 
         self._workers_to_task_ids[worker].put(task_id)
         self._task_id_to_worker[task_id] = worker
-        await self._worker_queue.put([count + 1, worker])
+        self._worker_queue.put_nowait([count + 1, worker])
         return worker
 
     def remove_task(self, task_id: TaskID) -> WorkerID:

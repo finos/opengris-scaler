@@ -1,10 +1,20 @@
 import math
+import threading
 import time
 import unittest
-from concurrent.futures import CancelledError, as_completed
+from concurrent.futures import CancelledError, InvalidStateError, as_completed
 from threading import Event
+from typing import Tuple
+from unittest.mock import Mock
 
 from scaler import Client, SchedulerClusterCombo
+from scaler.client.future import ScalerFuture
+from scaler.client.serializer.default import DefaultSerializer
+from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
+from scaler.protocol.python.common import TaskState
+from scaler.protocol.python.message import Task
+from scaler.utility.exceptions import WorkerDiedError
+from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from tests.utility import logging_test_name
@@ -24,7 +34,6 @@ class TestFuture(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.cluster.shutdown()
-        pass
 
     def test_callback(self):
         done_called_event = Event()
@@ -92,3 +101,203 @@ class TestFuture(unittest.TestCase):
 
         with self.assertRaises(CancelledError):
             fut.result()
+
+    def test_mocked_success(self):
+        task_result = "Task result"
+        client_id, future, _connector_agent, connector_storage = self.__create_mocked_future(future_result=task_result)
+
+        # Future should be running
+
+        self.assertTrue(future.running())
+        self.assertFalse(future.done())
+        self.assertFalse(future.cancelled())
+
+        with self.assertRaises(TimeoutError):
+            future.result(timeout=0)
+
+        with self.assertRaises(TimeoutError):
+            future.exception(timeout=0)
+
+        # Future is done, but result should not have been fetched yet
+
+        future.set_result_ready(ObjectID.generate_object_id(client_id), TaskState.Success)
+
+        self.assertFalse(future.running())
+        self.assertTrue(future.done())
+        self.assertFalse(future.cancelled())
+
+        connector_storage.get_object.assert_not_called()
+        connector_storage.delete_object.assert_not_called()
+
+        # Future is done, the result should have been fetched, then deleted
+
+        self.assertEqual(future.result(), task_result)
+        self.assertIsNone(future.exception())
+
+        connector_storage.get_object.assert_called_once()
+        connector_storage.delete_object.assert_called_once()
+
+        # Cannot cancel a finished future
+
+        self.assertFalse(future.cancel())
+
+    def test_mocked_as_completed(self):
+        """Ensure that a task result notifies as_completed waiters."""
+
+        task_result = "Task result"
+        client_id, future, _connector_agent, connector_storage = self.__create_mocked_future(future_result=task_result)
+
+        it = as_completed([future])
+
+        future.set_result_ready(ObjectID.generate_object_id(client_id), TaskState.Success)
+
+        # The iterator should yield the finished future
+
+        finished = next(it)
+        self.assertEqual(finished.result(), task_result)
+
+    def test_mocked_task_failure(self):
+        exception = ValueError()
+        client_id, future, _connector_agent, connector_storage = self.__create_mocked_future(future_result=exception)
+
+        # Future is failing with an exception, the exception object has been fetched
+
+        future.set_result_ready(ObjectID.generate_object_id(client_id), TaskState.Failed)
+
+        self.assertFalse(future.running())
+        self.assertTrue(future.done())
+        self.assertFalse(future.cancelled())
+
+        connector_storage.get_object.assert_not_called()
+        connector_storage.delete_object.assert_not_called()
+
+        # Future is done and the exception has been fetched, then deleted
+
+        self.assertRaises(ValueError, future.result)
+        self.assertIsInstance(future.exception(), ValueError)
+
+        connector_storage.get_object.assert_called_once()
+        connector_storage.delete_object.assert_called_once()
+
+        # Cannot cancel a failed future
+
+        self.assertFalse(future.cancel())
+
+    def test_mocked_worker_failure(self):
+        exception = WorkerDiedError()
+
+        client_id, future, _connector_agent, connector_storage = self.__create_mocked_future(future_result=exception)
+
+        # Future is failing with a local exception, shouldn't reach the object-storage server.
+
+        future.set_exception(exception)
+
+        self.assertFalse(future.running())
+        self.assertTrue(future.done())
+        self.assertFalse(future.cancelled())
+
+        self.assertRaises(WorkerDiedError, future.result)
+        self.assertIsInstance(future.exception(), WorkerDiedError)
+
+        connector_storage.get_object.assert_not_called()
+        connector_storage.delete_object.assert_not_called()
+
+    def test_mocked_cancel(self):
+        client_id, future, _connector_agent, connector_storage = self.__create_mocked_future(future_result=None)
+
+        # Cancel the future
+
+        # Mock the client immediately receiving the cancel confirmation after the task cancellation request
+        def on_connector_send(_message):
+            threading.Thread(target=future.set_canceled).start()
+
+        _connector_agent.send.side_effect = on_connector_send
+
+        self.assertTrue(future.cancel())
+
+        self.assertFalse(future.running())
+        self.assertTrue(future.done())
+        self.assertTrue(future.cancelled())
+
+        self.assertRaises(CancelledError, future.result)
+        self.assertRaises(CancelledError, future.exception)
+
+        # Receiving a future result from the scheduler should not change the cancelled state.
+        # That might happen if the future get cancelled while the cluster is finishing the task's computation.
+
+        with self.assertRaises(InvalidStateError):
+            future.set_result_ready(ObjectID.generate_object_id(client_id), TaskState.Success)
+
+        connector_storage.get_object.assert_not_called()
+        connector_storage.delete_object.assert_not_called()
+
+    def test_mocked_cancel_concurrent(self):
+        """
+        Simulate a very specific cancellation case, where the client tries to cancel a future that just finished,
+        but for which it hasn't received the result yet. In this scenario, `future.cancel()` returns `False` and the
+        task finishes normally.
+        """
+
+        task_result = "Task result"
+        client_id, future, _connector_agent, connector_storage = self.__create_mocked_future(future_result=task_result)
+        task_result_id = ObjectID.generate_object_id(client_id)
+
+        # Cancel the finishing future
+
+        # Mock the client receiving the task result immediately after the cancellation request
+        def on_connector_send(_message):
+            threading.Thread(target=lambda: future.set_result_ready(task_result_id, TaskState.Success)).start()
+
+        _connector_agent.send.side_effect = on_connector_send
+
+        self.assertFalse(future.cancel())
+
+        self.assertFalse(future.running())
+        self.assertTrue(future.done())
+        self.assertFalse(future.cancelled())
+
+        self.assertEqual(future.result(), task_result)
+
+    def test_mocked_cancel_as_completed(self):
+        """Ensure that a canceled future notifies as_completed waiters."""
+
+        client_id, future, _connector_agent, connector_storage = self.__create_mocked_future(future_result=None)
+
+        it = as_completed([future])
+
+        future.set_canceled()
+
+        # The iterator should yield the canceled future
+
+        finished = next(it)
+        self.assertTrue(finished.cancelled())
+
+    @staticmethod
+    def __create_mocked_future(future_result, is_delayed: bool = True) -> Tuple[ClientID, ScalerFuture, Mock, Mock]:
+        client_id = ClientID.generate_client_id()
+        connector_agent = Mock(spec=SyncConnector)
+        connector_storage = Mock(spec=SyncObjectStorageConnector)
+
+        connector_storage.get_object.return_value = DefaultSerializer.serialize(future_result)
+
+        task = Task.new_msg(
+            task_id=TaskID.generate_task_id(),
+            source=client_id,
+            metadata=b"",
+            func_object_id=ObjectID.generate_object_id(client_id),
+            function_args=[],
+            tags=set(),
+        )
+
+        future = ScalerFuture(
+            task=task,
+            is_delayed=is_delayed,
+            group_task_id=None,
+            serializer=DefaultSerializer(),
+            connector_agent=connector_agent,
+            connector_storage=connector_storage,
+        )
+
+        future.set_running_or_notify_cancel()
+
+        return client_id, future, connector_agent, connector_storage

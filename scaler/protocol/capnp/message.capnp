@@ -25,7 +25,6 @@ struct Task {
 struct TaskCancel {
     struct TaskCancelFlags {
         force @0 :Bool;
-        retrieveTaskObject @1 :Bool;
     }
 
     taskId @0 :Data;
@@ -45,9 +44,14 @@ struct TaskLog {
 
 struct TaskResult {
     taskId @0 :Data;
-    status @1 :CommonType.TaskStatus;
+    resultType @1 :CommonType.TaskResultType;
     metadata @2 :Data;
     results @3 :List(Data);
+}
+
+struct TaskCancelConfirm {
+    taskId @0 :Data;
+    cancelConfirmType @1 :CommonType.TaskCancelConfirmType;
 }
 
 struct GraphTask {
@@ -73,11 +77,12 @@ struct ClientHeartbeatEcho {
 struct WorkerHeartbeat {
     agent @0 :Status.Resource;
     rssFree @1 :UInt64;
-    queuedTasks @2 :UInt32;
-    latencyUS @3 :UInt32;
-    taskLock @4 :Bool;
-    processors @5 :List(Status.ProcessorStatus);
-    tags @6 :List(Text);
+    queueSize @2 :UInt32;
+    queuedTasks @3 :UInt32;
+    latencyUS @4 :UInt32;
+    taskLock @5 :Bool;
+    processors @6 :List(Status.ProcessorStatus);
+    tags @7 :List(Text);
 }
 
 struct WorkerHeartbeatEcho {
@@ -146,7 +151,7 @@ struct StateWorker {
 struct StateTask {
     taskId @0 :Data;
     functionName @1 :Data;
-    status @2 :CommonType.TaskStatus;
+    state @2 :CommonType.TaskState;
     worker @3 :Data;
     metadata @4 :Data;
 }
@@ -166,13 +171,20 @@ struct StateGraphTask {
 struct ProcessorInitialized {
 }
 
+struct InformationRequest {
+    request @0 :Data;
+}
+
+struct InformationResponse {
+    response @0 :Data;
+}
 
 struct Message {
     union {
         task @0 :Task;
         taskCancel @1 :TaskCancel;
-        taskResult @2 :TaskResult;
-        taskLog @3 :TaskLog;
+        taskCancelConfirm @2 :TaskCancelConfirm;
+        taskResult @3 :TaskResult;
 
         graphTask @4 :GraphTask;
         graphTaskCancel @5 :GraphTaskCancel;
@@ -200,5 +212,10 @@ struct Message {
         clientShutdownResponse @21 :ClientShutdownResponse;
 
         processorInitialized @22 :ProcessorInitialized;
+
+        informationRequest @23 :InformationRequest;
+        informationResponse @24 :InformationResponse;
+
+        taskLog @25 :TaskLog;
     }
 }
