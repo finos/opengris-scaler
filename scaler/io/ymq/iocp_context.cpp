@@ -27,7 +27,7 @@ void IocpContext::loop()
     const bool res  = GetQueuedCompletionStatusEx(_completionPort, events.data(), _reventSize, &n, INFINITE, true);
     uint64_t revent = 0;
     if (!res) {
-        int lastError = GetLastError();
+        const int lastError = GetLastError();
         if (lastError == WAIT_IO_COMPLETION) {
             auto vec = _timingFunctions.dequeue();
             std::ranges::for_each(vec, [](auto& x) { x(); });
@@ -37,8 +37,13 @@ void IocpContext::loop()
         if (lastError == ERROR_ABANDONED_WAIT_0) {
             revent |= IOCP_SOCKET_CLOSED;
         } else {
-            fprintf(stderr, "GetQueuedCompletionStatusEx failed with error %d\n", lastError);
-            exit(1);
+            unrecoverableError({
+                Error::ErrorCode::CoreBug,
+                "Originated from",
+                "GetQueuedCompletionStatusEx",
+                "Errno is",
+                lastError,
+            });
         }
     }
 
@@ -67,15 +72,19 @@ void IocpContext::addFdToLoop(int fd, uint64_t, EventManager*)
 {
     const DWORD threadCount = 1;
     if (!CreateIoCompletionPort((HANDLE)(SOCKET)fd, _completionPort, _isSocket, threadCount)) {
-        const int res = GetLastError();
+        const int lastError = GetLastError();
         // NOTE: This is when the same fd being added to the loop more than once, normal.
-        if (res == ERROR_INVALID_PARAMETER) {
+        if (lastError == ERROR_INVALID_PARAMETER) {
             return;
         }
 
-        // TODO: Better error handling
-        fprintf(stderr, "addFdToLoop CreateIOCompletionPort res = %d, exit\n", res);
-        exit(1);
+        unrecoverableError({
+            Error::ErrorCode::CoreBug,
+            "Originated from",
+            "CreateIoCompletionPort",
+            "Errno is",
+            lastError,
+        });
     }
 }
 

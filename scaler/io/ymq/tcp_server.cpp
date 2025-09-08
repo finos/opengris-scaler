@@ -32,7 +32,33 @@ void TcpServer::prepareAcceptSocket()
 {
     _newConn = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (_newConn == INVALID_SOCKET) {
-        exit(1);
+        const int myErrno = GetErrorCode();
+        switch (myErrno) {
+            case WSAENOBUFS:
+            case WSAEMFILE:
+            case WSAENETDOWN:
+            case WSAEPROVIDERFAILEDINIT:
+                unrecoverableError({
+                    Error::ErrorCode::ConfigurationError,
+                    "Originated from",
+                    "socket(2)",
+                    "Errno is",
+                    strerror(myErrno),
+                });
+                break;
+            case WSANOTINITIALISED:
+            case WSAEINPROGRESS:
+            case WSAEAFNOSUPPORT:
+            default:
+                unrecoverableError({
+                    Error::ErrorCode::CoreBug,
+                    "Originated from",
+                    "socket(2)",
+                    "Errno is",
+                    strerror(myErrno),
+                });
+                break;
+        }
     }
 
     // TODO: Think about RawSocket abstraction that implements read/write/accept/connect/etc.
@@ -47,11 +73,18 @@ void TcpServer::prepareAcceptSocket()
             sizeof(sockaddr_in) + requiredRedundantSpace,
             &bytesReturned,
             _eventManager.get())) {
-        int err = WSAGetLastError();
-        if (err != ERROR_IO_PENDING) {
+        const int myErrno = GetErrorCode();
+        if (myErrno != ERROR_IO_PENDING) {
             CloseAndZeroSocket(_newConn);
-            fprintf(stderr, "acceptEx falied with %d\n", err);
-            exit(1);
+            unrecoverableError({
+                Error::ErrorCode::CoreBug,
+                "Originated from",
+                "AcceptEx",
+                "Errno is",
+                strerror(myErrno),
+                "_serverFd",
+                _serverFd,
+            });
         }
         return;
     }
@@ -81,8 +114,33 @@ int TcpServer::createAndBindSocket()
 #ifdef _WIN32
     auto server_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (server_fd == -1) {
-        // TODO: Error handling should behave like Linux
-        _onBindReturn(std::unexpected(Error {Error::ErrorCode::ConfigurationError}));
+        const int myErrno = GetErrorCode();
+        switch (myErrno) {
+            case WSAENOBUFS:
+            case WSAEMFILE:
+            case WSAENETDOWN:
+            case WSAEPROVIDERFAILEDINIT:
+                unrecoverableError({
+                    Error::ErrorCode::ConfigurationError,
+                    "Originated from",
+                    "socket(2)",
+                    "Errno is",
+                    strerror(myErrno),
+                });
+                break;
+            case WSANOTINITIALISED:
+            case WSAEINPROGRESS:
+            case WSAEAFNOSUPPORT:
+            default:
+                unrecoverableError({
+                    Error::ErrorCode::CoreBug,
+                    "Originated from",
+                    "socket(2)",
+                    "Errno is",
+                    myErrno,
+                });
+                break;
+        }
         return -1;
     }
     unsigned long turnOnNonBlocking = 1;
@@ -185,9 +243,15 @@ void TcpServer::onCreated()
             &bytesReturned,
             nullptr,
             nullptr) == SOCKET_ERROR) {
-        // TODO: Error handling here
-        fprintf(stderr, "WSAIoctl\n");
-        exit(1);
+        unrecoverableError({
+            Error::ErrorCode::CoreBug,
+            "Originated from",
+            "WSAIoctl",
+            "Errno is",
+            strerror(GetErrorCode()),
+            "_serverFd",
+            _serverFd,
+        });
     }
     prepareAcceptSocket();
 #endif  // _WIN32
@@ -283,14 +347,49 @@ void TcpServer::onRead()
         SOCKET_ERROR) {
         CloseAndZeroSocket(_serverFd);
         CloseAndZeroSocket(_newConn);
-        // TODO: Better error handling here
-        fprintf(stderr, "setsockopt(SO_UPDATE_ACCEPT_CONTEXT) failed. Error: %d\n", WSAGetLastError());
-        exit(1);
+        unrecoverableError({
+            Error::ErrorCode::ConfigurationError,
+            "Originated from",
+            "setsockopt(SO_UPDATE_ACCEPT_CONTEXT)",
+            "Errno is",
+            strerror(GetErrorCode()),
+            "_serverFd",
+            _serverFd,
+        });
     }
 
-    // TODO: Error handling here
     unsigned long mode = 1;
-    ioctlsocket(_newConn, FIONBIO, &mode);
+    if (ioctlsocket(_newConn, FIONBIO, &mode) == SOCKET_ERROR) {
+        const int myErrno = GetErrorCode();
+        switch (myErrno) {
+            case WSANOTINITIALISED:
+            case WSAEINPROGRESS:
+            case WSAENOTSOCK:
+                unrecoverableError({
+                    Error::ErrorCode::CoreBug,
+                    "Originated from",
+                    "ioctlsocket(FIONBIO)",
+                    "Errno is",
+                    strerror(myErrno),
+                    "_newConn",
+                    _newConn,
+                });
+
+            case WSAENETDOWN:
+            case WSAEFAULT:
+            default:
+                unrecoverableError({
+                    Error::ErrorCode::ConfigurationError,
+                    "Originated from",
+                    "ioctlsocket(FIONBIO)",
+                    "Errno is",
+                    strerror(myErrno),
+                    "_newConn",
+                    _newConn,
+                });
+                break;
+        }
+    }
 
     const auto& id = this->_localIOSocketIdentity;
     auto& sock     = this->_eventLoopThread->_identityToIOSocket.at(id);

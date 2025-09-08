@@ -111,11 +111,19 @@ void MessageConnectionTCP::onCreated()
             onRead();
             return;
         }
-        if (GetLastError() == ERROR_IO_PENDING) {
+        const int lastError = GetLastError();
+        if (lastError == ERROR_IO_PENDING) {
             return;
         }
-        fprintf(stderr, "ReadFile\n");
-        exit(1);
+        unrecoverableError({
+            Error::ErrorCode::CoreBug,
+            "Originated from",
+            "ReadFile",
+            "Errno is",
+            lastError,
+            "_connfd",
+            _connFd,
+        });
 #endif  // _WIN32
     }
 }
@@ -166,8 +174,20 @@ std::expected<void, int> MessageConnectionTCP::tryReadMessages(bool readOneMessa
             if (myErrno == WSAECONNRESET || myErrno == WSAENOTSOCK) {
                 return std::unexpected {0};
             } else {
-                fprintf(stderr, "recv failed with %d\n", myErrno);
-                exit(1);
+                // NOTE: On Windows we don't have signals and weird IO Errors
+                unrecoverableError({
+                    Error::ErrorCode::CoreBug,
+                    "Originated from",
+                    "recv",
+                    "Errno is",
+                    myErrno,
+                    "_connfd",
+                    _connFd,
+                    "readTo",
+                    (void*)readTo,
+                    "remainingSize",
+                    remainingSize,
+                });
             }
 #endif  // _WIN32
 #ifdef __linux__
@@ -214,7 +234,7 @@ std::expected<void, int> MessageConnectionTCP::tryReadMessages(bool readOneMessa
                         });
                 }
             }
-#endif // __linux__
+#endif  // __linux__
         } else {
             message._cursor += n;
         }
@@ -285,8 +305,15 @@ void MessageConnectionTCP::onRead()
     if (lastError == ERROR_IO_PENDING) {
         return;
     }
-    fprintf(stderr, "ReadFile failed with %d\n", lastError);
-    exit(1);
+    unrecoverableError({
+        Error::ErrorCode::CoreBug,
+        "Originated from",
+        "ReadFile",
+        "Errno is",
+        lastError,
+        "_connfd",
+        _connFd,
+    });
 #endif  // _WIN32
 }
 
@@ -336,17 +363,20 @@ void MessageConnectionTCP::onWrite()
             return;
         }
 
-        const auto err = GetLastError();
-        if (err == ERROR_IO_PENDING) {
+        const auto lastError = GetLastError();
+        if (lastError == ERROR_IO_PENDING) {
             return;
         }
-        // TODO: Better error handling
-        fprintf(stderr, "WriteFile failed with %lu\n", err);
-        exit(1);
+        unrecoverableError({
+            Error::ErrorCode::CoreBug,
+            "Originated from",
+            "WriteFile",
+            "Errno is",
+            lastError,
+            "_connfd",
+            _connFd,
+        });
     }
-    // TODO: Error handling here
-    fprintf(stderr, "WSASendTo\n");
-    exit(1);
 #endif  // _WIN32
 }
 
@@ -416,13 +446,21 @@ std::expected<size_t, int> MessageConnectionTCP::trySendQueuedMessages()
     if (sendToResult == 0) {
         return bytesSent;
     }
-    const int lastError = WSAGetLastError();
-    if (lastError == WSAEWOULDBLOCK) {
-        return std::unexpected {lastError};
+    const int myErrno = GetErrorCode();
+    if (myErrno == WSAEWOULDBLOCK) {
+        return std::unexpected {myErrno};
     }
-    // TODO: Error handling
-    fprintf(stderr, "WSASendTo failed with error %d\n", lastError);
-    exit(1);
+    unrecoverableError({
+        Error::ErrorCode::CoreBug,
+        "Originated from",
+        "WSASendTo",
+        "Errno is",
+        myErrno,
+        "_connfd",
+        _connFd,
+        "iovecs.size()",
+        iovecs.size(),
+    });
 #endif  // _WIN32
 
 #ifdef __linux__

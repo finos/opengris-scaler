@@ -27,10 +27,10 @@ class IOSocket;
 // Use feature-test macro to detect support for std::move_only_function.
 // This works across GCC, Clang, and MSVC on all platforms.
 #if defined(__cpp_lib_move_only_function) && __cpp_lib_move_only_function >= 202110L
-template<typename T>
+template <typename T>
 using MoveOnlyFunction = std::move_only_function<T>;
 #else
-template<typename T>
+template <typename T>
 using MoveOnlyFunction = std::function<T>;
 #endif
 
