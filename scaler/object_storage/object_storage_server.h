@@ -30,9 +30,9 @@ public:
     void run(
         std::string name,
         std::string port,
-        std::string log_level  = "INFO",
-        std::string log_format = "%(levelname)s: %(message)s",
-        std::string log_path   = "/dev/stdout");
+        std::string log_level              = "INFO",
+        std::string log_format             = "%(levelname)s: %(message)s",
+        std::vector<std::string> log_paths = {"/dev/stdout"});
 
     void waitUntilReady();
 

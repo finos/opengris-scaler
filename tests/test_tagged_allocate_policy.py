@@ -1,4 +1,3 @@
-
 import unittest
 
 from typing import Dict, Set
@@ -94,10 +93,7 @@ class TestTaggedAllocatePolicy(unittest.TestCase):
 
         # Adds a bunch of tasks
 
-        worker_id_to_tasks: Dict[WorkerID, Set[TaskID]] = {
-            WorkerID(b"worker_1"): set(),
-            WorkerID(b"worker_2"): set(),
-        }
+        worker_id_to_tasks: Dict[WorkerID, Set[TaskID]] = {WorkerID(b"worker_1"): set(), WorkerID(b"worker_2"): set()}
 
         for i in range(0, N_TASKS):
             task = self.__create_task(TaskID(f"task_{i}".encode()), set())

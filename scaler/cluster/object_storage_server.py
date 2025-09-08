@@ -33,8 +33,8 @@ class ObjectStorageServerProcess(multiprocessing.get_context("fork").Process):  
         setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
         logging.info(f"ObjectStorageServer: start and listen to {self._storage_address.to_string()}")
 
-        log_format_str, log_level_str, logging_path = get_logger_info(logging.getLogger())
+        log_format_str, log_level_str, logging_paths = get_logger_info(logging.getLogger())
 
         self._server.run(
-            self._storage_address.host, self._storage_address.port, log_level_str, log_format_str, logging_path
+            self._storage_address.host, self._storage_address.port, log_level_str, log_format_str, logging_paths
         )

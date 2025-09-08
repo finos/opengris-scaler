@@ -17,9 +17,13 @@ ObjectStorageServer::~ObjectStorageServer()
 }
 
 void ObjectStorageServer::run(
-    std::string name, std::string port, std::string log_level, std::string log_format, std::string log_path)
+    std::string name,
+    std::string port,
+    std::string log_level,
+    std::string log_format,
+    std::vector<std::string> log_paths)
 {
-    _logger = scaler::ymq::Logger(log_format, log_path, scaler::ymq::Logger::stringToLogLevel(log_level));
+    _logger = scaler::ymq::Logger(log_format, std::move(log_paths), scaler::ymq::Logger::stringToLogLevel(log_level));
 
     try {
         tcp::resolver resolver(ioContext);

@@ -34,12 +34,24 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
     int port;
     const char* log_level;
     const char* log_format;
-    const char* logging_path;
+    PyObject* logging_paths_tuple = NULL;
 
-    if (!PyArg_ParseTuple(args, "sisss", &addr, &port, &log_level, &log_format, &logging_path))
+    if (!PyArg_ParseTuple(args, "sissO!", &addr, &port, &log_level, &log_format, &PyTuple_Type, &logging_paths_tuple))
         return NULL;
 
-    ((PyObjectStorageServer*)self)->server.run(addr, std::to_string(port), log_level, log_format, logging_path);
+    std::vector<std::string> logging_paths;
+    Py_ssize_t num_paths = PyTuple_Size(logging_paths_tuple);
+    for (Py_ssize_t i = 0; i < num_paths; ++i) {
+        PyObject* path_obj = PyTuple_GetItem(logging_paths_tuple, i);
+        if (!PyUnicode_Check(path_obj)) {
+            PyErr_SetString(PyExc_TypeError, "logging_paths must be a tuple of strings");
+            return NULL;
+        }
+        logging_paths.push_back(PyUnicode_AsUTF8(path_obj));
+    }
+
+    ((PyObjectStorageServer*)self)
+        ->server.run(addr, std::to_string(port), log_level, log_format, std::move(logging_paths));
 
     Py_RETURN_NONE;
 }

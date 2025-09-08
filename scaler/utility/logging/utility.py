@@ -149,32 +149,30 @@ def __parse_logging_level(value):
     return LoggingLevel(value).value
 
 
-def get_logger_info(logger: logging.Logger) -> typing.Tuple[str, str, str]:
+def get_logger_info(logger: logging.Logger) -> typing.Tuple[str, str, typing.Tuple[str, ...]]:
     """
-    Retrieves the format string, level string, and path from the first active handler of a logger.
+    Retrieves the format string, level string, and all active log paths from a logger's handlers.
     """
     log_level_str = logging.getLevelName(logger.getEffectiveLevel())
-
     log_format_str = ""
-    log_path_str = ""
+    log_paths: typing.List[str] = []
 
-    # Check if the logger has handlers configured
     if logger.hasHandlers():
-        handler = logger.handlers[0]
+        first_handler = logger.handlers[0]
+        if first_handler.formatter:
+            log_format_str = getattr(first_handler.formatter, "_fmt", "")
 
-        # Get the format string from the handler's formatter
-        if handler.formatter:
-            log_format_str = getattr(handler.formatter, "_fmt", "")
-
-        if isinstance(handler, logging.handlers.BaseRotatingHandler):
-            log_path_str = handler.baseFilename
-        # For stream-based handlers (like stdout), check the stream's name
-        elif isinstance(handler, logging.StreamHandler) and hasattr(handler.stream, "name"):
-            if "stdout" in handler.stream.name:
-                log_path_str = "/dev/stdout"
+        for handler in logger.handlers:
+            if isinstance(handler, logging.handlers.BaseRotatingHandler):
+                log_paths.append(handler.baseFilename)
+            elif isinstance(handler, logging.StreamHandler) and hasattr(handler.stream, "name"):
+                if "stdout" in handler.stream.name:
+                    log_paths.append("/dev/stdout")
+                elif "stderr" in handler.stream.name:
+                    log_paths.append("/dev/stderr")
 
     # If no specific path was found, default to stdout
-    if not log_path_str:
-        log_path_str = "/dev/stdout"
+    if not log_paths:
+        log_paths.append("/dev/stdout")
 
-    return log_format_str, log_level_str, log_path_str
+    return log_format_str, log_level_str, tuple(log_paths)

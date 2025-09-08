@@ -578,7 +578,7 @@ protected:
         serverPort = std::to_string(getAvailableTCPPort());
 
         serverThread = std::thread([this] {
-            server->run(SERVER_HOST, serverPort, "INFO", "%(levelname)s: %(message)s", log_filepath.string());
+            server->run(SERVER_HOST, serverPort, "INFO", "%(levelname)s: %(message)s", {log_filepath.string()});
         });
         server->waitUntilReady();
     }
