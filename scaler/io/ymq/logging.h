@@ -28,10 +28,10 @@ public:
 #endif
 
     Logger(
-        std::string log_format = "%(levelname)s: %(message)s",
-        std::string log_path   = "/dev/stdout",
-        LoggingLevel level     = DEFAULT_LOGGING_LEVEL)
-        : _log_path(std::move(log_path)), _level(level)
+        std::string log_format             = "%(levelname)s: %(message)s",
+        std::vector<std::string> log_paths = {"/dev/stdout"},
+        LoggingLevel level                 = DEFAULT_LOGGING_LEVEL)
+        : _log_paths(std::move(log_paths)), _level(level)
     {
         preprocessFormat(log_format);
     }
@@ -97,17 +97,19 @@ public:
 
         std::string formatted_message = output_stream.str();
 
-        if (_log_path.empty() || _log_path == "/dev/stdout") {
-            // Use std::print and flush for immediate output to the terminal
-            std::print("{}\n", formatted_message);
-            std::fflush(stdout);
-        } else {
-            // Open the file in append mode and write the log message
-            std::ofstream log_file(_log_path, std::ios_base::app);
-            if (log_file.is_open()) {
-                log_file << formatted_message << std::endl;
+        for (auto log_path: _log_paths) {
+            if (log_path.empty() || log_path == "/dev/stdout") {
+                // Use std::print and flush for immediate output to the terminal
+                std::print("{}\n", formatted_message);
+                std::fflush(stdout);
             } else {
-                throw std::runtime_error("Error: Could not open log file: " + _log_path + "\n" + formatted_message);
+                // Open the file in append mode and write the log message
+                std::ofstream log_file(log_path, std::ios_base::app);
+                if (log_file.is_open()) {
+                    log_file << formatted_message << std::endl;
+                } else {
+                    throw std::runtime_error("Error: Could not open log file: " + log_path + "\n" + formatted_message);
+                }
             }
         }
     }
@@ -119,7 +121,7 @@ private:
     };
 
     std::vector<FormatPart> _processed_format;
-    std::string _log_path;
+    std::vector<std::string> _log_paths;
     LoggingLevel _level;
 
     void preprocessFormat(const std::string& format)

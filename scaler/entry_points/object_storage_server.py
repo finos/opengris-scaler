@@ -23,6 +23,6 @@ def main():
     args = get_args()
     setup_logger("object_storage_server")
 
-    log_format_str, log_level_str, log_path = get_logger_info(logging.getLogger())
+    log_format_str, log_level_str, log_paths = get_logger_info(logging.getLogger())
 
-    ObjectStorageServer().run(args.address.host, args.address.port, log_level_str, log_format_str, log_path)
+    ObjectStorageServer().run(args.address.host, args.address.port, log_level_str, log_format_str, log_paths)
