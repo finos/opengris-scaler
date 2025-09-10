@@ -18,5 +18,5 @@ PyMODINIT_FUNC PyInit_ymq(void)
 {
     unrecoverableErrorFunctionHookPtr = ymqUnrecoverableError;
 
-    return PyModuleDef_Init(&ymq_module);
+    return PyModuleDef_Init(&YMQ_module);
 }

@@ -1,69 +1,66 @@
 import logging
-import os
-import uuid
-from typing import Awaitable, Callable, List, Literal, Optional
+from typing import Awaitable, Callable, Literal, Optional
 
-import zmq.asyncio
+from scaler.io.ymq.ymq import IOContext, IOSocket, IOSocketType
+from scaler.io.ymq import ymq
 
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.utility.identifiers import ClientID, Identifier
+from scaler.utility.ymq_config import YMQConfig
 
 
 class AsyncConnector:
     def __init__(
         self,
-        context: zmq.asyncio.Context,
+        context: IOContext,
         name: str,
-        socket_type: int,
-        address: ZMQConfig,
-        bind_or_connect: Literal["bind", "connect"],
+        address: YMQConfig,
         callback: Optional[Callable[[Message], Awaitable[None]]],
-        identity: Optional[bytes],
+        identity: Optional[Identifier],
     ):
         self._address = address
-
         self._context = context
-        self._socket = self._context.socket(socket_type)
-
         if identity is None:
-            identity = f"{os.getpid()}|{name}|{uuid.uuid4().bytes.hex()}".encode()
+            identity = ClientID.generate_client_id(name)
         self._identity = identity
+        self._callback: Optional[Callable[[Message], Awaitable[None]]] = callback
 
-        # set socket option
-        self._socket.setsockopt(zmq.IDENTITY, self._identity)
-        self._socket.setsockopt(zmq.SNDHWM, 0)
-        self._socket.setsockopt(zmq.RCVHWM, 0)
-
+    def init_sync(self, bind_or_connect: Literal["bind", "connect"], socket_type: IOSocketType):
+        self._socket = self._context.createIOSocket_sync(self._identity.decode(), socket_type)
         if bind_or_connect == "bind":
-            self._socket.bind(self._address.to_address())
+            self._socket.bind_sync(self._address.to_address())
         elif bind_or_connect == "connect":
-            self._socket.connect(self._address.to_address())
+            self._socket.connect_sync(self._address.to_address())
         else:
             raise TypeError("bind_or_connect has to be 'bind' or 'connect'")
 
-        self._callback: Optional[Callable[[Message], Awaitable[None]]] = callback
+    async def init(self, bind_or_connect: Literal["bind", "connect"], socket_type: IOSocketType):
+        self._socket = await self._context.createIOSocket(self._identity.decode(), socket_type)
+        if bind_or_connect == "bind":
+            await self._socket.bind(self._address.to_address())
+        elif bind_or_connect == "connect":
+            await self._socket.connect(self._address.to_address())
+        else:
+            raise TypeError("bind_or_connect has to be 'bind' or 'connect'")
 
     def __del__(self):
         self.destroy()
 
     def destroy(self):
-        if self._socket.closed:
-            return
-
-        self._socket.close(linger=1)
+        pass
 
     @property
-    def identity(self) -> bytes:
+    def identity(self) -> Identifier:
         return self._identity
 
     @property
-    def socket(self) -> zmq.asyncio.Socket:
+    def socket(self) -> IOSocket:
         return self._socket
 
     @property
-    def address(self) -> str:
-        return self._address.to_address()
+    def address(self) -> YMQConfig:
+        return self._address
 
     async def routine(self):
         if self._callback is None:
@@ -76,29 +73,15 @@ class AsyncConnector:
         await self._callback(message)
 
     async def receive(self) -> Optional[Message]:
-        if self._context.closed:
+        message: ymq.Message = await self._socket.recv()
+
+        # TODO: zero-copy
+        deserialized: Optional[Message] = deserialize(message.payload.data)
+        if deserialized is None:
+            logging.error(f"received unknown message: {message.payload.data!r}")
             return None
 
-        if self._socket.closed:
-            return None
-
-        payload = await self._socket.recv(copy=False)
-        result: Optional[Message] = deserialize(payload.bytes)
-        if result is None:
-            logging.error(f"received unknown message: {payload.bytes!r}")
-            return None
-
-        return result
+        return deserialized
 
     async def send(self, message: Message):
-        await self._socket.send(serialize(message), copy=False)
-
-    def __is_valid_message(self, frames: List[bytes]) -> bool:
-        if len(frames) > 1:
-            logging.error(f"{self.__get_prefix()} received unexpected frames {frames}")
-            return False
-
-        return True
-
-    def __get_prefix(self):
-        return f"{self.__class__.__name__}[{self._identity.decode()}]:"
+        await self._socket.send(ymq.Message(address=None, payload=serialize(message)))

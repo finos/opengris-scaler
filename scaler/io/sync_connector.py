@@ -1,59 +1,51 @@
 import logging
-import os
-import socket
-import threading
-import uuid
 from typing import Optional
 
-import zmq
+import sys
+if sys.version_info >= (3, 12):
+    from collections.abc import Buffer
+else:
+    Buffer = object
+
+from scaler.io.ymq.ymq import IOContext, IOSocketType
+from scaler.io.ymq import ymq
 
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.utility.identifiers import ClientID, Identifier
+from scaler.utility.ymq_config import YMQConfig
 
 
 class SyncConnector:
-    def __init__(self, context: zmq.Context, socket_type: int, address: ZMQConfig, identity: Optional[bytes]):
+    def __init__(self, context: IOContext, socket_type: IOSocketType, address: YMQConfig, identity: Optional[Identifier]):
+        identity = identity or ClientID.generate_client_id()
+
+        self._identity = identity
         self._address = address
-
         self._context = context
-        self._socket = self._context.socket(socket_type)
+        self._socket = self._context.createIOSocket_sync(identity.decode(), socket_type)
 
-        self._identity: bytes = (
-            f"{os.getpid()}|{socket.gethostname().split('.')[0]}|{uuid.uuid4()}".encode()
-            if identity is None
-            else identity
-        )
-
-        # set socket option
-        self._socket.setsockopt(zmq.IDENTITY, self._identity)
-        self._socket.setsockopt(zmq.SNDHWM, 0)
-        self._socket.setsockopt(zmq.RCVHWM, 0)
-
-        self._socket.connect(self._address.to_address())
-
-        self._lock = threading.Lock()
+        self._socket.connect_sync(self._address.to_address())
 
     def close(self):
-        self._socket.close()
+        pass
 
     @property
-    def address(self) -> ZMQConfig:
+    def address(self) -> YMQConfig:
         return self._address
 
     @property
-    def identity(self) -> bytes:
+    def identity(self) -> Identifier | str:
         return self._identity
 
     def send(self, message: Message):
-        with self._lock:
-            self._socket.send(serialize(message), copy=False)
+        self._socket.send_sync(ymq.Message(address=None, payload=serialize(message)))
 
     def receive(self) -> Optional[Message]:
-        with self._lock:
-            payload = self._socket.recv(copy=False)
+        message: ymq.Message = self._socket.recv_sync()
 
-        return self.__compose_message(payload.bytes)
+        # TODO: zero-copy
+        return self.__compose_message(message.payload.data)
 
     def __compose_message(self, payload: bytes) -> Optional[Message]:
         result: Optional[Message] = deserialize(payload)
@@ -64,4 +56,4 @@ class SyncConnector:
         return result
 
     def __get_prefix(self):
-        return f"{self.__class__.__name__}[{self._identity.decode()}]:"
+        return f"{self.__class__.__name__}[{self._identity}]:"

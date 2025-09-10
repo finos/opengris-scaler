@@ -3,11 +3,10 @@ import functools
 import logging
 import threading
 import uuid
+from random import randint
 from collections import Counter
 from inspect import signature
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
-
-import zmq
 
 from scaler.client.agent.client_agent import ClientAgent
 from scaler.client.agent.future_manager import ClientFutureManager
@@ -19,6 +18,7 @@ from scaler.client.serializer.mixins import Serializer
 from scaler.io.config import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
 from scaler.io.sync_connector import SyncConnector
 from scaler.io.sync_object_storage_connector import SyncObjectStorageConnector
+from scaler.io.ymq.ymq import IOContext, IOSocketType
 from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
 from scaler.utility.graph.optimization import cull_graph
@@ -26,7 +26,7 @@ from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
-from scaler.utility.zmq_config import ZMQConfig, ZMQType
+from scaler.utility.ymq_config import YMQConfig
 from scaler.worker.agent.processor.processor import Processor
 
 
@@ -88,22 +88,20 @@ class Client:
         self._stream_output = stream_output
         self._identity = ClientID.generate_client_id()
 
-        self._client_agent_address = ZMQConfig(ZMQType.inproc, host=f"scaler_client_{uuid.uuid4().hex}")
-        self._scheduler_address = ZMQConfig.from_string(address)
+        self._client_agent_address = YMQConfig("127.0.0.1", randint(10000, 20000))
+        self._scheduler_address = YMQConfig.from_string(address)
         self._timeout_seconds = timeout_seconds
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
 
         self._stop_event = threading.Event()
-        self._context = zmq.Context()
-        self._connector_agent = SyncConnector(
-            context=self._context, socket_type=zmq.PAIR, address=self._client_agent_address, identity=self._identity
-        )
+        self._context = IOContext()
 
         self._future_manager = ClientFutureManager(self._serializer)
+
         self._agent = ClientAgent(
             identity=self._identity,
             client_agent_address=self._client_agent_address,
-            scheduler_address=ZMQConfig.from_string(address),
+            scheduler_address=self._scheduler_address,
             context=self._context,
             future_manager=self._future_manager,
             stop_event=self._stop_event,
@@ -112,6 +110,10 @@ class Client:
             serializer=self._serializer,
         )
         self._agent.start()
+
+        self._connector_agent = SyncConnector(
+            context=self._context, socket_type=IOSocketType.Connector, address=self._client_agent_address, identity=self._identity.extend("|agent")
+        )
 
         logging.info(f"ScalerClient: connect to scheduler at {self._scheduler_address}")
 
@@ -607,7 +609,6 @@ class Client:
 
     def __destroy(self):
         self._agent.join()
-        self._context.destroy(linger=1)
 
     @staticmethod
     def __get_parent_task_priority() -> Optional[int]:

@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
+from scaler.io.async_connector_zmq import AsyncConnectorZMQ
 from scaler.io.config import DEFAULT_PER_WORKER_QUEUE_SIZE
 from scaler.protocol.python.common import ObjectStorageAddress, TaskStatus
 from scaler.protocol.python.message import (
@@ -34,13 +35,13 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         self._storage_address = storage_address
 
         self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncConnector] = None
+        self._binder_monitor: Optional[AsyncConnectorZMQ] = None
         self._task_controller: Optional[TaskController] = None
 
         self._worker_alive_since: Dict[WorkerID, Tuple[float, WorkerHeartbeat]] = dict()
         self._allocator_policy = task_allocate_policy
 
-    def register(self, binder: AsyncBinder, binder_monitor: AsyncConnector, task_controller: TaskController):
+    def register(self, binder: AsyncBinder, binder_monitor: AsyncConnectorZMQ, task_controller: TaskController):
         self._binder = binder
         self._binder_monitor = binder_monitor
         self._task_controller = task_controller

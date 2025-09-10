@@ -10,7 +10,7 @@ from scaler.io.config import DEFAULT_PROCESSOR_KILL_DELAY_SECONDS
 from scaler.protocol.python.message import Task
 from scaler.utility.identifiers import ProcessorID
 from scaler.utility.object_storage_config import ObjectStorageConfig
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.utility.ymq_config import YMQConfig
 from scaler.worker.agent.processor.processor import SUSPEND_SIGNAL, Processor
 
 
@@ -18,7 +18,7 @@ class ProcessorHolder:
     def __init__(
         self,
         event_loop: str,
-        agent_address: ZMQConfig,
+        agent_address: YMQConfig,
         storage_address: ObjectStorageConfig,
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,

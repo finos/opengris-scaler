@@ -2,26 +2,19 @@ import logging
 import threading
 from typing import Callable, Optional
 
-import sys
-if sys.version_info >= (3, 12):
-    from collections.abc import Buffer
-else:
-    Buffer = object
-
-from scaler.io.ymq.ymq import IOContext, IOSocket, IOSocketType
+import zmq
 
 from scaler.io.utility import deserialize
 from scaler.protocol.python.mixins import Message
-from scaler.utility.identifiers import ClientID
-from scaler.utility.ymq_config import YMQConfig
+from scaler.utility.zmq_config import ZMQConfig
 
 
-class SyncSubscriber(threading.Thread):
+class SyncSubscriberZMQ(threading.Thread):
     def __init__(
         self,
-        address: YMQConfig,
+        address: ZMQConfig,
         callback: Callable[[Message], None],
-        topic: str,
+        topic: bytes,
         exit_callback: Optional[Callable[[], None]] = None,
         stop_event: threading.Event = threading.Event(),
         daemonic: bool = False,
@@ -37,11 +30,11 @@ class SyncSubscriber(threading.Thread):
         self.daemon = bool(daemonic)
         self._timeout_seconds = timeout_seconds
 
-        self._context: Optional[IOContext] = None
-        self._socket: Optional[IOSocket] = None
+        self._context: Optional[zmq.Context] = None
+        self._socket: Optional[zmq.Socket] = None
 
     def __close(self):
-        pass
+        self._socket.close()
 
     def __stop_polling(self):
         self._stop_event.set()
@@ -61,22 +54,24 @@ class SyncSubscriber(threading.Thread):
         self.__close()
 
     def __initialize(self):
-        self._context = IOContext(num_threads=1)
-        self._socket = self._context.createIOSocket_sync(
-            identity=repr(ClientID.generate_client_id()),
-            socket_type=IOSocketType.Unicast
-        )
+        self._context = zmq.Context.instance()
+        self._socket = self._context.socket(zmq.SUB)
+        self._socket.setsockopt(zmq.RCVHWM, 0)
 
-        # todo: implement topic subscription in ymq
-        # self._socket.subscribe(self._topic)
-        self._socket.connect_sync(self._address.to_address())
+        if self._timeout_seconds == -1:
+            self._socket.setsockopt(zmq.RCVTIMEO, self._timeout_seconds)
+        else:
+            self._socket.setsockopt(zmq.RCVTIMEO, self._timeout_seconds * 1000)
+
+        self._socket.subscribe(self._topic)
+        self._socket.connect(self._address.to_address())
+        self._socket.connect(self._address.to_address())
 
     def __routine_polling(self):
-        if self._socket is None:
-            raise RuntimeError("Socket not initialized")
-
-        # TODO: zero-copy
-        self.__routine_receive(self._socket.recv_sync().payload.data)
+        try:
+            self.__routine_receive(self._socket.recv(copy=False).bytes)
+        except zmq.Again:
+            raise TimeoutError(f"Cannot connect to {self._address.to_address()} in {self._timeout_seconds} seconds")
 
     def __routine_receive(self, payload: bytes):
         result: Optional[Message] = deserialize(payload)

@@ -4,6 +4,7 @@ from typing import Dict, Optional, Set, Tuple
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
+from scaler.io.async_connector_zmq import AsyncConnectorZMQ
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -29,7 +30,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
         self._client_to_task_ids: OneToManyDict[ClientID, TaskID] = OneToManyDict()
 
         self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncConnector] = None
+        self._binder_monitor: Optional[AsyncConnectorZMQ] = None
         self._object_controller: Optional[ObjectController] = None
         self._task_controller: Optional[TaskController] = None
         self._worker_controller: Optional[WorkerController] = None
@@ -39,7 +40,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
     def register(
         self,
         binder: AsyncBinder,
-        binder_monitor: AsyncConnector,
+        binder_monitor: AsyncConnectorZMQ,
         object_controller: ObjectController,
         task_controller: TaskController,
         worker_controller: WorkerController,
