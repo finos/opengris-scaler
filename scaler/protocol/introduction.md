@@ -89,10 +89,10 @@ ObjectResponse = b"OA"
                                                              Task
                                                           TaskCancel    +--------------+
                                                     +-------------------+              |
-                    Task                            |                   |   Worker     |
-+---------+      TaskCancel        +-----------+    |  +----------------+              |
-|         |      GraphTask         |           +----+  |  TaskResult    +--------------+
-|         |    GraphTaskCancel     |           |       |
+                                                    |                   |   Worker     |
++---------+         Task           +-----------+    |  +----------------+              |
+|         |      TaskCancel        |           +----+  |  TaskResult    +--------------+
+|         |      GraphTask         |           |       |
 |         +------------------------+           |<------+
 |  Client |                        | Scheduler |
 |         |<-----------------------+           +-------+
@@ -103,12 +103,3 @@ ObjectResponse = b"OA"
                                                     +-------------------+              |
                                                           TaskResult    +--------------+
 ```
-
-Task = b"TK"
-TaskEcho = b"TE"
-TaskCancel = b"TC"
-TaskResult = b"TR"
-GraphTask = b"GT"
-GraphTaskEcho = b"GE"
-GraphTaskCancel = b"GC"
-GraphTaskResult = b"GR"

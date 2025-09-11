@@ -1,7 +1,7 @@
 from typing import Optional
 
 from scaler.client.agent.mixins import DisconnectManager
-from scaler.io.async_connector import AsyncConnector
+from scaler.io.mixins import AsyncConnector
 from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse
 from scaler.utility.exceptions import ClientQuitException, ClientShutdownException
 

@@ -4,12 +4,13 @@ from typing import Callable, Optional
 
 import zmq
 
+from scaler.io.mixins import SyncSubscriber
 from scaler.io.utility import deserialize
 from scaler.protocol.python.mixins import Message
 from scaler.utility.zmq_config import ZMQConfig
 
 
-class SyncSubscriber(threading.Thread):
+class ZMQSyncSubscriber(SyncSubscriber, threading.Thread):
     def __init__(
         self,
         address: ZMQConfig,
@@ -39,7 +40,7 @@ class SyncSubscriber(threading.Thread):
     def __stop_polling(self):
         self._stop_event.set()
 
-    def disconnect(self):
+    def destroy(self):
         self.__stop_polling()
 
     def run(self) -> None:

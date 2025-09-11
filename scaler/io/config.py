@@ -1,7 +1,5 @@
 import os
 
-from scaler.utility.identifiers import ClientID
-
 # ==============
 # SYSTEM OPTIONS
 
@@ -39,8 +37,7 @@ DEFAULT_WORKER_TIMEOUT_SECONDS = 60
 DEFAULT_CLIENT_TIMEOUT_SECONDS = 60
 
 # number of seconds for load balance, if value is -1 means disable load balance
-# FIXME: load balancing is currently disabled by default as it's causing some issues under heavy load.
-DEFAULT_LOAD_BALANCE_SECONDS = -1
+DEFAULT_LOAD_BALANCE_SECONDS = 1
 
 # when load balance advice happened repeatedly and always be the same, we issue load balance request when exact repeated
 # times happened
@@ -75,10 +72,6 @@ DEFAULT_PROCESSOR_KILL_DELAY_SECONDS = 3
 
 # number of seconds without scheduler contact before worker shuts down
 DEFAULT_WORKER_DEATH_TIMEOUT = 5 * 60
-
-# the global client name for get log, right now, all client shared remote log, task need have client information to
-# deliver log
-DUMMY_CLIENT = ClientID(b"dummy_client")
 
 # if true, suspended worker's processors will be actively suspended with a SIGTSTP signal, otherwise a synchronization
 # event will be used.

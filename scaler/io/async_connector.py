@@ -1,16 +1,17 @@
 import logging
 import os
 import uuid
-from typing import Awaitable, Callable, List, Literal, Optional
+from typing import Awaitable, Callable, Literal, Optional
 
 import zmq.asyncio
 
+from scaler.io.mixins import AsyncConnector
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
 from scaler.utility.zmq_config import ZMQConfig
 
 
-class AsyncConnector:
+class ZMQAsyncConnector(AsyncConnector):
     def __init__(
         self,
         context: zmq.asyncio.Context,
@@ -36,9 +37,9 @@ class AsyncConnector:
         self._socket.setsockopt(zmq.RCVHWM, 0)
 
         if bind_or_connect == "bind":
-            self._socket.bind(self._address.to_address())
+            self._socket.bind(self.address)
         elif bind_or_connect == "connect":
-            self._socket.connect(self._address.to_address())
+            self._socket.connect(self.address)
         else:
             raise TypeError("bind_or_connect has to be 'bind' or 'connect'")
 
@@ -92,13 +93,3 @@ class AsyncConnector:
 
     async def send(self, message: Message):
         await self._socket.send(serialize(message), copy=False)
-
-    def __is_valid_message(self, frames: List[bytes]) -> bool:
-        if len(frames) > 1:
-            logging.error(f"{self.__get_prefix()} received unexpected frames {frames}")
-            return False
-
-        return True
-
-    def __get_prefix(self):
-        return f"{self.__class__.__name__}[{self._identity.decode()}]:"

@@ -8,7 +8,7 @@ from scaler.protocol.python.message import (
     GraphTask,
     ObjectInstruction,
     Task,
-    TaskCancel,
+    TaskCancelConfirm,
     TaskResult,
 )
 
@@ -75,7 +75,7 @@ class FutureManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_cancel_task(self, task_cancel: TaskCancel):
+    def on_task_cancel_confirm(self, cancel_confirm: TaskCancelConfirm):
         raise NotImplementedError()
 
 

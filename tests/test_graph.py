@@ -3,7 +3,7 @@ import logging
 import time
 import unittest
 
-from scaler import Client, SchedulerClusterCombo
+from scaler import Client
 from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
@@ -26,11 +26,12 @@ class TestGraph(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
-        self.cluster = SchedulerClusterCombo(n_workers=3, event_loop="builtin")
-        self.address = self.cluster.get_address()
+        #self.cluster = SchedulerClusterCombo(n_workers=3, event_loop="builtin")
+        #self.address = self.cluster.get_address()
+        self.address = "tcp://127.0.0.1:2345"
 
     def tearDown(self) -> None:
-        self.cluster.shutdown()
+        #self.cluster.shutdown()
         pass
 
     def test_graph(self):
@@ -125,14 +126,14 @@ class TestGraph(unittest.TestCase):
 
     def test_cancel(self):
         def func(a):
-            time.sleep(10)
+            time.sleep(5)
             return a
 
         with Client(address=self.address) as client:
             graph = {"a": 1, "b": (func, "a")}
             futures = client.get(graph, keys=["b"], block=False)
 
-            time.sleep(4)
+            time.sleep(1)
             futures["b"].cancel()
 
     def test_client_quit(self):

@@ -7,21 +7,44 @@ from scaler.protocol.python.mixins import Message
 from scaler.utility.identifiers import ObjectID
 
 
-class TaskStatus(enum.Enum):
-    # task is accepted by scheduler, but will have below status
-    Success = _common.TaskStatus.success  # if submit and task is done and get result
-    Failed = _common.TaskStatus.failed  # if submit and task is failed on worker
-    Canceled = _common.TaskStatus.canceled  # if submit and task is canceled
-    NotFound = _common.TaskStatus.notFound  # if submit and task is not found in scheduler
-    WorkerDied = (
-        _common.TaskStatus.workerDied
-    )  # if submit and worker died (only happened when scheduler keep_task=False)
-    NoWorker = _common.TaskStatus.noWorker  # if submit and scheduler is full (not implemented yet)
+class TaskResultType(enum.Enum):
+    Success = _common.TaskResultType.success  # if submit and task is done and get result
+    Failed = _common.TaskResultType.failed  # if submit and task is failed on worker
+    FailedWorkerDied = _common.TaskResultType.failedWorkerDied  # if submit and worker died
 
-    # below are only used for monitoring channel, not sent to client
-    Inactive = _common.TaskStatus.inactive  # task is scheduled but not allocate to worker
-    Running = _common.TaskStatus.running  # task is running in worker
-    Canceling = _common.TaskStatus.canceling  # task is canceling (can be in Inactive or Running state)
+
+class TaskCancelConfirmType(enum.Enum):
+    Canceled = _common.TaskCancelConfirmType.canceled  # if cancel success
+    CancelFailed = _common.TaskCancelConfirmType.cancelFailed  # if failed to cancel if task is running
+    CancelNotFound = _common.TaskCancelConfirmType.cancelNotFound  # if try to cancel, and task is not found
+
+
+class TaskTransition(enum.Enum):
+    HasCapacity = _common.TaskTransition.hasCapacity
+    TaskResultSuccess = _common.TaskTransition.taskResultSuccess
+    TaskResultFailed = _common.TaskTransition.taskResultFailed
+    TaskResultWorkerDied = _common.TaskTransition.taskResultWorkerDied
+    TaskCancel = _common.TaskTransition.taskCancel
+    TaskCancelConfirmCanceled = _common.TaskTransition.taskCancelConfirmCanceled
+    TaskCancelConfirmFailed = _common.TaskTransition.taskCancelConfirmFailed
+    TaskCancelConfirmNotFound = _common.TaskTransition.taskCancelConfirmNotFound
+    BalanceTaskCancel = _common.TaskTransition.balanceTaskCancel
+    WorkerDisconnect = _common.TaskTransition.workerDisconnect
+    SchedulerHasTask = _common.TaskTransition.schedulerHasTask
+    SchedulerHasNoTask = _common.TaskTransition.schedulerHasNoTask
+
+
+class TaskState(enum.Enum):
+    Inactive = _common.TaskState.inactive  # task is scheduled but not allocate to worker
+    Running = _common.TaskState.running  # task is running in worker
+    Canceling = _common.TaskState.canceling  # task is canceling state
+    BalanceCanceling = _common.TaskState.balanceCanceling  # task is in balance canceling state
+    Success = _common.TaskState.success  # task is finished properly
+    Failed = _common.TaskState.failed  # task is finished but exception happened
+    FailedWorkerDied = _common.TaskState.failedWorkerDied  # task is failed due to worker died
+    Canceled = _common.TaskState.canceled  # task is canceled (received task cancel confirm)
+    CanceledNotFound = _common.TaskState.canceledNotFound  # task is not found when trying to cancel
+    WorkerDisconnecting = _common.TaskState.workerDisconnecting  # task is lost due to worker disconnecting
 
 
 @dataclasses.dataclass
