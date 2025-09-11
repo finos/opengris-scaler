@@ -54,8 +54,8 @@ scaler_object_storage_server = "scaler.entry_points.object_storage_server:main"
 [project.optional-dependencies]
 uvloop = ["uvloop"]
 graphblas = ["python-graphblas", "numpy==2.2.6"]
-gui = ["nicegui[plotly]==2.24.0"]
-all = ["python-graphblas", "numpy==2.2.6", "uvloop", "nicegui[plotly]==2.24.0"]
+gui = ["nicegui[plotly]==2.24.1"]
+all = ["python-graphblas", "numpy==2.2.6", "uvloop", "nicegui[plotly]==2.24.1"]
 
 [tool.scikit-build]
 wheel.packages = ["scaler"]
