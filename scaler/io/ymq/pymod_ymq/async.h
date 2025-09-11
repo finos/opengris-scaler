@@ -14,56 +14,50 @@
 // wraps an async callback that accepts a Python asyncio future
 static PyObject* async_wrapper(PyObject* self, const std::function<void(YMQState* state, PyObject* future)>& callback)
 {
-    // replace with PyType_GetModuleByDef(Py_TYPE(self), &ymq_module) in a newer Python version
-    // https://docs.python.org/3/c-api/type.html#c.PyType_GetModuleByDef
-    PyObject* pyModule = PyType_GetModule(Py_TYPE(self));
-    if (!pyModule) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get module for Message type");
+    auto state = YMQStateFromSelf(self);
+    if (!state)
         return nullptr;
-    }
 
-    auto state = (YMQState*)PyModule_GetState(pyModule);
-    if (!state) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get module state");
-        return nullptr;
-    }
-
-    PyObject* loop = PyObject_CallMethod(state->asyncioModule, "get_event_loop", nullptr);
-
+    OwnedPyObject loop = PyObject_CallMethod(*state->asyncioModule, "get_event_loop", nullptr);
     if (!loop) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to get event loop");
         return nullptr;
     }
 
-    PyObject* future = PyObject_CallMethod(loop, "create_future", nullptr);
+    OwnedPyObject future = PyObject_CallMethod(*loop, "create_future", nullptr);
 
     if (!future) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create future");
         return nullptr;
     }
 
-    // borrow the future, we'll decref this after the C++ thread is done
-    Py_INCREF(future);
+    // create the awaitable before calling the callback
+    // this ensures that we create a new strong reference to the future before the callback decrefs it
+    auto awaitable = PyObject_CallFunction(*state->PyAwaitableType, "O", *future);
 
     // async
-    callback(state, future);
+    // we transfer ownership of the future to the callback
+    // TODO: investigate having the callback take an OwnedPyObject, and just std::move()
+    callback(state, future.take());
 
-    return PyObject_CallFunction(state->PyAwaitableType, "O", future);
+    return awaitable;
 }
 
 struct Awaitable {
     PyObject_HEAD;
-    PyObject* future;
+    OwnedPyObject<> future;
 };
 
 extern "C" {
 
 static int Awaitable_init(Awaitable* self, PyObject* args, PyObject* kwds)
 {
-    if (!PyArg_ParseTuple(args, "O", &self->future)) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to parse arguments for Iterable");
+    PyObject* future = nullptr;
+    if (!PyArg_ParseTuple(args, "O", &future))
         return -1;
-    }
+
+    new (&self->future) OwnedPyObject<>();
+    self->future = OwnedPyObject<>::fromBorrowed(future);
 
     return 0;
 }
@@ -72,13 +66,21 @@ static PyObject* Awaitable_await(Awaitable* self)
 {
     // Easy: coroutines are just iterators and we don't need anything fancy
     // so we can just return the future's iterator!
-    return PyObject_GetIter(self->future);
+    return PyObject_GetIter(*self->future);
 }
 
 static void Awaitable_dealloc(Awaitable* self)
 {
-    Py_DECREF(self->future);
-    Py_TYPE(self)->tp_free((PyObject*)self);
+    try {
+        self->future.~OwnedPyObject();
+    } catch (...) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to deallocate Awaitable");
+        PyErr_WriteUnraisable((PyObject*)self);
+    }
+
+    auto* tp = Py_TYPE(self);
+    tp->tp_free(self);
+    Py_DECREF(tp);
 }
 }
 

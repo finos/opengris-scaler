@@ -10,7 +10,7 @@
 
 // First-party
 #include "scaler/io/ymq/pymod_ymq/ymq.h"
-#include "ymq.h"
+#include "scaler/io/ymq/pymod_ymq/utils.h"
 
 // the order of the members in the exception args tuple
 const Py_ssize_t YMQException_errorCodeIndex = 0;
@@ -24,32 +24,23 @@ extern "C" {
 
 static int YMQException_init(YMQException* self, PyObject* args, PyObject* kwds)
 {
-    // check the args
-    PyObject* code    = nullptr;
-    PyObject* message = nullptr;
-    if (!PyArg_ParseTuple(args, "OO", &code, &message))
+    auto state = YMQStateFromSelf((PyObject*)self);
+    if (!state)
         return -1;
 
-    // replace with PyType_GetModuleByDef(Py_TYPE(self), &ymq_module) in a newer Python version
-    // https://docs.python.org/3/c-api/type.html#c.PyType_GetModuleByDef
-    PyObject* pyModule = PyType_GetModule(Py_TYPE(self));
-    if (!pyModule) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get module for Message type");
+    // no need to incref these because we don't store them
+    // Furthermore, this fn does not create a strong reference to the args
+    PyObject* errorCode    = nullptr;
+    PyObject* errorMessage = nullptr;
+    if (!PyArg_ParseTuple(args, "OO", &errorCode, &errorMessage))
         return -1;
-    }
 
-    auto state = (YMQState*)PyModule_GetState(pyModule);
-    if (!state) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get module state");
-        return -1;
-    }
-
-    if (!PyObject_IsInstance(code, state->PyErrorCodeType)) {
+    if (!PyObject_IsInstance(errorCode, *state->PyErrorCodeType)) {
         PyErr_SetString(PyExc_TypeError, "expected code to be of type ErrorCode");
         return -1;
     }
 
-    if (!PyUnicode_Check(message)) {
+    if (!PyUnicode_Check(errorMessage)) {
         PyErr_SetString(PyExc_TypeError, "expected message to be a string");
         return -1;
     }
@@ -60,7 +51,11 @@ static int YMQException_init(YMQException* self, PyObject* args, PyObject* kwds)
 
 static void YMQException_dealloc(YMQException* self)
 {
-    Py_TYPE(self)->tp_free((PyObject*)self);
+    self->ob_base.ob_type->tp_base->tp_dealloc((PyObject*)self);
+
+    // we still need to release the reference to the heap type
+    auto* tp = Py_TYPE(self);
+    Py_DECREF(tp);
 }
 
 static PyObject* YMQException_code_getter(YMQException* self, void* Py_UNUSED(closure))
@@ -90,52 +85,43 @@ static PyType_Slot YMQException_slots[] = {
 static PyType_Spec YMQException_spec = {
     "ymq.YMQException", sizeof(YMQException), 0, Py_TPFLAGS_DEFAULT, YMQException_slots};
 
-PyObject* YMQException_argtupleFromCoreError(const Error* error)
+OwnedPyObject<> YMQException_argtupleFromCoreError(YMQState* state, const Error* error)
 {
-    PyObject* code = PyLong_FromLong(static_cast<long>(error->_errorCode));
+    OwnedPyObject code = PyLong_FromLong(static_cast<long>(error->_errorCode));
 
     if (!code)
         return nullptr;
 
-    PyObject* message = PyUnicode_FromString(error->what());
+    OwnedPyObject pyCode = PyObject_CallFunction(*state->PyErrorCodeType, "O", *code);
 
-    if (!message) {
-        Py_DECREF(code);
+    if (!pyCode)
         return nullptr;
-    }
 
-    PyObject* tuple = PyTuple_Pack(2, code, message);
+    OwnedPyObject message = PyUnicode_FromString(error->what());
 
-    if (!tuple) {
-        Py_DECREF(code);
-        Py_DECREF(message);
+    if (!message)
         return nullptr;
-    }
 
-    Py_DECREF(code);
-    Py_DECREF(message);
-
-    return tuple;
+    return PyTuple_Pack(2, *pyCode, *message);
 }
 
 void YMQException_setFromCoreError(YMQState* state, const Error* error)
 {
-    auto tuple = YMQException_argtupleFromCoreError(error);
+    auto tuple = YMQException_argtupleFromCoreError(state, error);
     if (!tuple)
         return;
 
-    PyErr_SetObject(state->PyExceptionType, tuple);
-    Py_DECREF(tuple);
+    PyErr_SetObject(*state->PyExceptionType, *tuple);
 }
 
 PyObject* YMQException_createFromCoreError(YMQState* state, const Error* error)
 {
-    auto tuple = YMQException_argtupleFromCoreError(error);
+    auto tuple = YMQException_argtupleFromCoreError(state, error);
     if (!tuple)
         return nullptr;
 
-    PyObject* exc = PyObject_CallObject(state->PyExceptionType, tuple);
-    Py_DECREF(tuple);
+    OwnedPyObject exc = PyObject_CallObject(*state->PyExceptionType, *tuple);
 
-    return exc;
+    // transfer ownership to caller
+    return exc.take();
 }

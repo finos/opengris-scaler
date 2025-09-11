@@ -19,51 +19,43 @@ extern "C" {
 
 static int PyBytesYMQ_init(PyBytesYMQ* self, PyObject* args, PyObject* kwds)
 {
-    PyObject* bytes        = nullptr;
+    Py_buffer view {.buf = nullptr};
     const char* keywords[] = {"bytes", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|O", (char**)keywords, &bytes)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|y*", (char**)keywords, &view)) {
         return -1;  // Error parsing arguments
     }
 
-    if (!bytes) {
+    if (!view.buf) {
         // If no bytes were provided, initialize with an empty Bytes object
-        self->bytes = Bytes((char*)nullptr, 0);
+        self->bytes = Bytes();
         return 0;
-    }
-
-    if (!PyBytes_Check(bytes)) {
-        bytes = PyObject_Bytes(bytes);
-
-        if (!bytes) {
-            PyErr_SetString(PyExc_TypeError, "Expected bytes or bytes-like object");
-            return -1;
-        }
-    }
-
-    char* data     = nullptr;
-    Py_ssize_t len = 0;
-
-    if (PyBytes_AsStringAndSize(bytes, &data, &len) < 0) {
-        PyErr_SetString(PyExc_TypeError, "Failed to get bytes data");
-        return -1;
     }
 
     // copy the data into the Bytes object
     // it might be possible to make this zero-copy in the future
-    self->bytes = Bytes(data, len);
+    self->bytes = Bytes((char*)view.buf, view.len);
 
+    PyBuffer_Release(&view);
     return 0;
 }
 
 static void PyBytesYMQ_dealloc(PyBytesYMQ* self)
 {
-    self->bytes.~Bytes();  // Call the destructor of Bytes
-    Py_TYPE(self)->tp_free(self);
+    try {
+        self->bytes.~Bytes();  // Call the destructor to free the Bytes object
+    } catch (...) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to deallocate Bytes");
+        PyErr_WriteUnraisable((PyObject*)self);
+    }
+
+    auto* tp = Py_TYPE(self);
+    tp->tp_free(self);
+    Py_DECREF(tp);
 }
 
 static PyObject* PyBytesYMQ_repr(PyBytesYMQ* self)
 {
-    if (self->bytes.is_empty()) {
+    if (self->bytes.is_null()) {
         return PyUnicode_FromString("<Bytes: empty>");
     } else {
         return PyUnicode_FromFormat("<Bytes: %db>", self->bytes.len());
@@ -72,7 +64,15 @@ static PyObject* PyBytesYMQ_repr(PyBytesYMQ* self)
 
 static PyObject* PyBytesYMQ_data_getter(PyBytesYMQ* self)
 {
+    if (self->bytes.is_null())
+        Py_RETURN_NONE;
+
     return PyBytes_FromStringAndSize((const char*)self->bytes.data(), self->bytes.len());
+}
+
+static Py_ssize_t PyBytesYMQ_len(PyBytesYMQ* self)
+{
+    return self->bytes.len();
 }
 
 static PyObject* PyBytesYMQ_len_getter(PyBytesYMQ* self)
@@ -84,6 +84,10 @@ static int PyBytesYMQ_getbuffer(PyBytesYMQ* self, Py_buffer* view, int flags)
 {
     return PyBuffer_FillInfo(view, (PyObject*)self, (void*)self->bytes.data(), self->bytes.len(), true, flags);
 }
+
+static void PyBytesYMQ_releasebuffer(PyBytesYMQ* self, Py_buffer* view)
+{
+}
 }
 
 static PyGetSetDef PyBytesYMQ_properties[] = {
@@ -94,15 +98,17 @@ static PyGetSetDef PyBytesYMQ_properties[] = {
 
 static PyBufferProcs PyBytesYMQBufferProcs = {
     .bf_getbuffer     = (getbufferproc)PyBytesYMQ_getbuffer,
-    .bf_releasebuffer = (releasebufferproc) nullptr,
+    .bf_releasebuffer = (releasebufferproc)PyBytesYMQ_releasebuffer,
 };
 
 static PyType_Slot PyBytesYMQ_slots[] = {
     {Py_tp_init, (void*)PyBytesYMQ_init},
     {Py_tp_dealloc, (void*)PyBytesYMQ_dealloc},
     {Py_tp_repr, (void*)PyBytesYMQ_repr},
+    {Py_mp_length, (void*)PyBytesYMQ_len},
     {Py_tp_getset, (void*)PyBytesYMQ_properties},
-    {Py_bf_getbuffer, (void*)&PyBytesYMQBufferProcs},
+    {Py_bf_getbuffer, (void*)PyBytesYMQ_getbuffer},
+    {Py_bf_releasebuffer, (void*)PyBytesYMQ_releasebuffer},
     {0, nullptr},
 };
 

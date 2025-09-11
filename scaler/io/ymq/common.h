@@ -8,6 +8,7 @@
 // C++
 #include <cstdlib>
 #include <cstring>
+#include <format>
 #include <iostream>
 #include <source_location>
 #include <string>
@@ -31,22 +32,6 @@ inline void print_trace(void)
 
     free(strings);
 #endif  // __linux__
-}
-
-// this is an unrecoverable error that exits the program
-// prints a message plus the source location
-[[noreturn]] inline void panic(
-    std::string message, const std::source_location& location = std::source_location::current())
-{
-    auto file_name = std::string(location.file_name());
-    file_name      = file_name.substr(file_name.find_last_of("/") + 1);
-
-    std::cout << "panic at " << file_name << ":" << location.line() << ":" << location.column() << " in function ["
-              << location.function_name() << "]: " << message << std::endl;
-
-    print_trace();
-
-    std::abort();
 }
 
 [[nodiscard("Memory is allocated but not used, likely causing a memory leak")]]

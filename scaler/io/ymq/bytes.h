@@ -21,7 +21,7 @@ class Bytes {
 
     void free()
     {
-        if (is_empty())
+        if (is_null())
             return;
         delete[] _data;
         _data = nullptr;
@@ -81,14 +81,14 @@ public:
 
     ~Bytes() { this->free(); }
 
-    [[nodiscard]] constexpr bool operator!() const noexcept { return is_empty(); }
+    [[nodiscard]] constexpr bool operator!() const noexcept { return is_null(); }
 
-    [[nodiscard]] constexpr bool is_empty() const noexcept { return !this->_data; }
+    [[nodiscard]] constexpr bool is_null() const noexcept { return !this->_data; }
 
     // debugging utility
     std::string as_string() const
     {
-        if (is_empty())
+        if (is_null())
             return "[EMPTY]";
 
         return std::string((char*)_data, _len);

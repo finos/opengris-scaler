@@ -30,13 +30,17 @@ void EpollContext::loop()
         const int myErrno = errno;
         switch (myErrno) {
             case EINTR:
-                unrecoverableError({
-                    Error::ErrorCode::SignalNotSupported,
-                    "Originated from",
-                    "epoll_wait(2)",
-                    "Errno is",
-                    strerror(errno),
-                });
+                // unrecoverableError({
+                //     Error::ErrorCode::SignalNotSupported,
+                //     "Originated from",
+                //     "epoll_wait(2)",
+                //     "Errno is",
+                //     strerror(errno),
+                // });
+
+                // todo: investigate better error handling
+                // the epoll thread is not expected to receive signals(?)
+                // but occasionally does (e.g. sigwinch) and we shouldn't stop the thread in that case
                 break;
             case EBADF:
             case EFAULT:
