@@ -1,0 +1,14 @@
+scheduler_address = "tcp://127.0.0.1:6378"
+adapter_web_host = "localhost"
+adapter_web_port = 8080
+per_worker_capabilities = "linux,cpu=4"
+io_threads = 1
+worker_task_queue_size = 1000
+heartbeat_interval_seconds = 2
+task_timeout_seconds = 0
+death_timeout_seconds = 300
+garbage_collect_interval_seconds = 30
+trim_memory_threshold_bytes = 1073741824
+hard_processor_suspend = false
+logging_level = "INFO"
+logging_paths = ["/dev/stdout"]

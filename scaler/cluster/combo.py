@@ -20,11 +20,12 @@ from scaler.io.config import (
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
+    DEFAULT_LOGGING_LEVEL,
+    DEFAULT_LOGGING_PATHS,
 )
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.utility.network_util import get_available_tcp_port
-from scaler.utility.object_storage_config import ObjectStorageConfig
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.config.config import ObjectStorageConfig, ZMQConfig
 
 
 class SchedulerClusterCombo:
@@ -53,8 +54,8 @@ class SchedulerClusterCombo:
         protected: bool = True,
         allocate_policy: AllocatePolicy = AllocatePolicy.even,
         event_loop: str = "builtin",
-        logging_paths: Tuple[str, ...] = ("/dev/stdout",),
-        logging_level: str = "INFO",
+        logging_paths: Tuple[str, ...] = DEFAULT_LOGGING_PATHS,
+        logging_level: str = DEFAULT_LOGGING_LEVEL,
         logging_config_file: Optional[str] = None,
     ):
         if address is None:
