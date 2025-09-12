@@ -7,7 +7,7 @@ from aiohttp import web
 from aiohttp.web_request import Request
 
 from scaler.utility.identifiers import WorkerID
-from scaler.utility.object_storage_config import ObjectStorageConfig
+from scaler.config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.worker import Worker
 

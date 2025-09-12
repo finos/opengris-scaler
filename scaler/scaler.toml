@@ -1,0 +1,49 @@
+[scheduler]
+address_str = "tcp://127.0.0.1:6378"
+storage_address_str = "tcp://127.0.0.1:6379"
+monitor_address_str = "tcp://127.0.0.1:6380"
+adapter_webhook_url = "http://127.0.0.1:8080"
+event_loop = "asyncio"
+io_threads = 1
+max_number_of_tasks_waiting = -1
+client_timeout_seconds = 60
+worker_timeout_seconds = 60
+object_retention_seconds = 60
+load_balance_seconds = 1
+load_balance_trigger_times = 2
+protected = true
+allocate_policy_str = "even"
+
+[worker]
+num_of_workers = 4
+io_threads = 1
+per_worker_task_queue_size = 1000
+heartbeat_interval_seconds = 2
+garbage_collect_interval_seconds = 30
+trim_memory_threshold_bytes = 1073741824
+task_timeout_seconds = 0
+death_timeout_seconds = 300
+hard_processor_suspend = false
+
+[webui]
+web_host = "127.0.0.1"
+web_port = 6380
+sched_address = "tcp://127.0.0.1:6380"
+
+[native_adapter]
+adapter_web_host = "localhost"
+adapter_web_port = 8080
+
+[object_storage]
+host = "127.0.0.1"
+port = 6380
+
+[cluster]
+worker_names_str = "worker"
+per_worker_capabilities_str = ""
+num_of_workers = 4
+
+[logging]
+paths_list = ["/dev/stdout"]
+level = "INFO"
+config_file = "logging.conf"

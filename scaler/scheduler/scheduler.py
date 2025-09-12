@@ -25,7 +25,7 @@ from scaler.protocol.python.message import (
     WorkerHeartbeat,
 )
 from scaler.protocol.python.mixins import Message
-from scaler.scheduler.config import SchedulerConfig
+from scaler.config import SchedulerConfig
 from scaler.scheduler.controllers.balance_controller import VanillaBalanceController
 from scaler.scheduler.controllers.client_controller import VanillaClientController
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
@@ -66,7 +66,7 @@ class Scheduler:
             monitor_address = config.monitor_address
         self._config_controller.update_config("monitor_address", monitor_address)
 
-        self._context = zmq.asyncio.Context(io_threads=config.io_threads)
+        self._context = zmq.asyncio.Context(io_threads=config.zmq_io_threads)
 
         self._binder: AsyncBinder = ZMQAsyncBinder(context=self._context, name="scheduler", address=config.address)
         logging.info(f"{self.__class__.__name__}: listen to scheduler address {config.address}")

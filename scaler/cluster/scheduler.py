@@ -5,11 +5,11 @@ from asyncio import AbstractEventLoop, Task
 from typing import Any, Optional, Tuple
 
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
-from scaler.scheduler.config import SchedulerConfig
+from scaler.config import SchedulerConfig
 from scaler.scheduler.scheduler import Scheduler, scheduler_main
 from scaler.utility.event_loop import register_event_loop
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.object_storage_config import ObjectStorageConfig
+from scaler.config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 
 
@@ -37,11 +37,11 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         multiprocessing.Process.__init__(self, name="Scheduler")
         self._scheduler_config = SchedulerConfig(
             event_loop=event_loop,
-            address=address,
-            storage_address=storage_address,
-            monitor_address=monitor_address,
+            address_str=ZMQConfig.to_address(address),
+            storage_address_str=storage_address.to_string() if storage_address is not None else None,
+            monitor_address_str=monitor_address.to_address() if monitor_address is not None else None,
             adapter_webhook_url=adapter_webhook_url,
-            io_threads=io_threads,
+            zmq_io_threads=io_threads,
             max_number_of_tasks_waiting=max_number_of_tasks_waiting,
             client_timeout_seconds=client_timeout_seconds,
             worker_timeout_seconds=worker_timeout_seconds,
@@ -49,7 +49,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
             load_balance_seconds=load_balance_seconds,
             load_balance_trigger_times=load_balance_trigger_times,
             protected=protected,
-            allocate_policy=allocate_policy,
+            allocate_policy_str=allocate_policy.name,
         )
 
         self._logging_paths = logging_paths

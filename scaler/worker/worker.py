@@ -30,7 +30,7 @@ from scaler.utility.event_loop import create_async_loop_routine, register_event_
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ProcessorID, WorkerID
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.object_storage_config import ObjectStorageConfig
+from scaler.config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig, ZMQType
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
 from scaler.worker.agent.processor_manager import VanillaProcessorManager

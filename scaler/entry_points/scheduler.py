@@ -10,17 +10,21 @@ from scaler.io.config import (
     DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
     DEFAULT_OBJECT_RETENTION_SECONDS,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
+    DEFAULT_LOGGING_LEVEL,
+    DEFAULT_LOGGING_PATHS,
 )
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
+from scaler.config import ScalerConfig
 from scaler.utility.event_loop import EventLoopType
 from scaler.utility.network_util import get_available_tcp_port
-from scaler.utility.object_storage_config import ObjectStorageConfig
+from scaler.config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 
 
 def get_args():
     parser = argparse.ArgumentParser("scaler scheduler", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--io-threads", type=int, default=DEFAULT_IO_THREADS, help="number of io threads for zmq")
+    parser.add_argument("--config", type=str, default=None, help="Path to the TOML configuration file.")
+    parser.add_argument("--zmq-io-threads", type=int, default=DEFAULT_IO_THREADS, help="number of io threads for zmq")
     parser.add_argument(
         "--max-number-of-tasks-waiting",
         "-mt",
@@ -81,7 +85,7 @@ def get_args():
         "-lp",
         nargs="*",
         type=str,
-        default=("/dev/stdout",),
+        default=DEFAULT_LOGGING_PATHS,
         help="specify where scheduler log should logged to, it can accept multiple files, default is /dev/stdout",
     )
     parser.add_argument(
@@ -89,7 +93,7 @@ def get_args():
         "-ll",
         type=str,
         choices=("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
-        default="INFO",
+        default=DEFAULT_LOGGING_LEVEL,
         help="specify the logging level",
     )
     parser.add_argument(
@@ -103,7 +107,7 @@ def get_args():
     parser.add_argument(
         "--object-storage-address",
         "-osa",
-        type=ObjectStorageConfig.from_string,
+        type=str,
         default=None,
         help="specify the object storage server address, if not specified, the address is scheduler address with port "
         "number plus 1, e.g.: if scheduler address is tcp://localhost:2345, then object storage address is "
@@ -112,7 +116,7 @@ def get_args():
     parser.add_argument(
         "--monitor-address",
         "-ma",
-        type=ZMQConfig.from_string,
+        type=str,
         default=None,
         help="specify monitoring address, if not specified, the monitoring address is scheduler address with port "
         "number plus 2, e.g.: if scheduler address is tcp://localhost:2345, then monitoring address is "
@@ -134,13 +138,15 @@ def get_args():
 def main():
     args = get_args()
 
-    if args.object_storage_address is None:
-        object_storage_address = ObjectStorageConfig(args.address.host, get_available_tcp_port())
+    scaler_config = ScalerConfig.get_config(args.config, args)
+
+    if args.address is None:
+        object_storage_address = ObjectStorageConfig(scaler_config.scheduler.address.host, get_available_tcp_port())
         object_storage = ObjectStorageServerProcess(
             storage_address=object_storage_address,
-            logging_paths=args.logging_paths,
-            logging_config_file=args.logging_config_file,
-            logging_level=args.logging_level,
+            logging_paths=scaler_config.logging.paths,
+            logging_config_file=scaler_config.logging.config_file,
+            logging_level=scaler_config.logging.level,
         )
         object_storage.start()
         object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
@@ -149,23 +155,23 @@ def main():
         object_storage = None
 
     scheduler = SchedulerProcess(
-        address=args.address,
+        address=scaler_config.scheduler.address,
         storage_address=object_storage_address,
-        monitor_address=args.monitor_address,
-        adapter_webhook_url=args.adapter_webhook_url,
-        io_threads=args.io_threads,
-        max_number_of_tasks_waiting=args.max_number_of_tasks_waiting,
-        client_timeout_seconds=args.client_timeout_seconds,
-        worker_timeout_seconds=args.worker_timeout_seconds,
-        object_retention_seconds=args.object_retention_seconds,
-        load_balance_seconds=args.load_balance_seconds,
-        load_balance_trigger_times=args.load_balance_trigger_times,
-        protected=args.protected,
-        allocate_policy=AllocatePolicy[args.allocate_policy],
-        event_loop=args.event_loop,
-        logging_paths=args.logging_paths,
-        logging_config_file=args.logging_config_file,
-        logging_level=args.logging_level,
+        monitor_address=scaler_config.scheduler.monitor_address,
+        adapter_webhook_url=scaler_config.scheduler.adapter_webhook_url,
+        io_threads=scaler_config.scheduler.zmq_io_threads,
+        max_number_of_tasks_waiting=scaler_config.scheduler.max_number_of_tasks_waiting,
+        client_timeout_seconds=scaler_config.scheduler.client_timeout_seconds,
+        worker_timeout_seconds=scaler_config.scheduler.worker_timeout_seconds,
+        object_retention_seconds=scaler_config.scheduler.object_retention_seconds,
+        load_balance_seconds=scaler_config.scheduler.load_balance_seconds,
+        load_balance_trigger_times=scaler_config.scheduler.load_balance_trigger_times,
+        protected=scaler_config.scheduler.protected,
+        allocate_policy=scaler_config.scheduler.allocate_policy,
+        event_loop=scaler_config.scheduler.event_loop,
+        logging_paths=scaler_config.logging.paths,
+        logging_config_file=scaler_config.logging.config_file,
+        logging_level=scaler_config.logging.level,
     )
     scheduler.start()
 
