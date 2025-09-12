@@ -11,6 +11,8 @@ from typing import IO, Callable, List, Optional, Tuple, cast
 import tblib.pickling_support
 import zmq
 
+from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.zmq import ZMQConfig
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
 from scaler.io.sync_connector import ZMQSyncConnector
 from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector
@@ -20,9 +22,7 @@ from scaler.protocol.python.mixins import Message
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
-from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.serialization import serialize_failure
-from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.processor.object_cache import ObjectCache
 from scaler.worker.agent.processor.streaming_buffer import StreamingBuffer
 from scaler.worker.preload import execute_preload

@@ -7,7 +7,7 @@ import zmq
 from scaler.io.mixins import SyncSubscriber
 from scaler.io.utility import deserialize
 from scaler.protocol.python.mixins import Message
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.config.types.zmq import ZMQConfig
 
 
 class ZMQSyncSubscriber(SyncSubscriber, threading.Thread):
