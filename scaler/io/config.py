@@ -76,3 +76,12 @@ DEFAULT_WORKER_DEATH_TIMEOUT = 5 * 60
 # if true, suspended worker's processors will be actively suspended with a SIGTSTP signal, otherwise a synchronization
 # event will be used.
 DEFAULT_HARD_PROCESSOR_SUSPEND = False
+
+# =======================
+# LOGGING SPECIFIC OPTIONS
+
+# default logging level
+DEFAULT_LOGGING_LEVEL = "INFO"
+
+# default logging paths
+DEFAULT_LOGGING_PATHS = ("/dev/stdout",)

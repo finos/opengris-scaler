@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Dict
 
-from scaler.scheduler.config import SchedulerConfig
+from scaler.config.section.scheduler import SchedulerConfig
 from scaler.scheduler.controllers.mixins import ConfigController
 
 
