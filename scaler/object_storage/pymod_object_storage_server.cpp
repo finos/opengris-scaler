@@ -50,8 +50,10 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
         logging_paths.push_back(PyUnicode_AsUTF8(path_obj));
     }
 
+    // TODO: The identity string should be passed in from Python ideally. HACK.
     ((PyObjectStorageServer*)self)
-        ->server.run(addr, std::to_string(port), log_level, log_format, std::move(logging_paths));
+        ->server.run(
+            addr, std::to_string(port), "ObjectStorageServer", log_level, log_format, std::move(logging_paths));
 
     Py_RETURN_NONE;
 }

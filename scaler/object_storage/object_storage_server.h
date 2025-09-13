@@ -1,11 +1,16 @@
 #pragma once
 
 #include <boost/asio.hpp>
+#include <expected>
 #include <iostream>
 #include <memory>
 #include <span>
 
+#include "scaler/io/ymq/configuration.h"
+#include "scaler/io/ymq/io_context.h"
+#include "scaler/io/ymq/io_socket.h"
 #include "scaler/io/ymq/logging.h"
+#include "scaler/io/ymq/simple_interface.h"
 #include "scaler/object_storage/constants.h"
 #include "scaler/object_storage/defs.h"
 #include "scaler/object_storage/io_helper.h"
@@ -23,6 +28,9 @@ using boost::asio::ip::tcp;
 
 class ObjectStorageServer {
 public:
+    using Identity          = ymq::Configuration::IOSocketIdentity;
+    using SendMessageFuture = std::future<std::expected<void, ymq::Error>>;
+    using GetResponseResult = std::pair<SendMessageFuture, SendMessageFuture>;
     ObjectStorageServer();
 
     ~ObjectStorageServer();
@@ -30,9 +38,10 @@ public:
     void run(
         std::string name,
         std::string port,
-        std::string log_level              = "INFO",
-        std::string log_format             = "%(levelname)s: %(message)s",
-        std::vector<std::string> log_paths = {"/dev/stdout"});
+        ymq::Configuration::IOSocketIdentity identity = "ObjectStorageServer",
+        std::string log_level                         = "INFO",
+        std::string log_format                        = "%(levelname)s: %(message)s",
+        std::vector<std::string> log_paths            = {"/dev/stdout"});
 
     void waitUntilReady();
 
@@ -40,16 +49,8 @@ public:
 
 private:
     struct Client {
-        Client(boost::asio::any_io_executor executor): socket(executor), writeStrand(executor) {}
-
-        tcp::socket socket;
-
-        // As multiple detached coroutines can concurrently write to the client's socket (because of
-        // `optionallySendPendingRequests()`), we must ensure that the calls to `async_write()` are sequenced in the
-        // same strand (i.e. an asio execution queue).
-        // As all `async_read()` calls are made from a single coroutine, we don't need to protect these.
-        // See https://www.boost.org/doc/libs/latest/doc/html/boost_asio/reference/async_write/overload1.html.
-        boost::asio::strand<boost::asio::any_io_executor> writeStrand;
+        std::shared_ptr<ymq::IOSocket> _ioSocket;
+        Identity _identity;
     };
 
     struct PendingRequest {
@@ -60,7 +61,8 @@ private:
     using ObjectRequestType  = scaler::protocol::ObjectRequestHeader::ObjectRequestType;
     using ObjectResponseType = scaler::protocol::ObjectResponseHeader::ObjectResponseType;
 
-    boost::asio::io_context ioContext {1};
+    ymq::IOContext _ioContext;
+    std::shared_ptr<ymq::IOSocket> _ioSocket;
 
     int onServerReadyReader;
     int onServerReadyWriter;
@@ -72,57 +74,76 @@ private:
 
     scaler::ymq::Logger _logger;
 
+    std::atomic<bool> _stopped;
+
     void initServerReadyFds();
 
     void setServerReadyFd();
 
     void closeServerReadyFds();
 
-    awaitable<void> listener(tcp::endpoint endpoint);
+    ObjectRequestHeader parseRequestHeader(Bytes message);
 
-    awaitable<void> processRequests(std::shared_ptr<Client> client);
+    void processRequests();
 
-    awaitable<void> processSetRequest(std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader);
+    std::vector<SendMessageFuture> processSetRequest(
+        std::shared_ptr<Client> client, std::pair<ObjectRequestHeader, Bytes> request);
 
-    awaitable<void> processGetRequest(std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader);
+    GetResponseResult processGetRequest(std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader);
 
-    awaitable<void> processDeleteRequest(std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader);
+    GetResponseResult processDeleteRequest(std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader);
 
-    awaitable<void> processDuplicateRequest(std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader);
-
-    template <ObjectStorageMessage T>
-    awaitable<T> readMessage(std::shared_ptr<Client> client)
-    {
-        std::array<uint64_t, T::bufferSize() / CAPNP_WORD_SIZE> buffer;
-        co_await boost::asio::async_read(
-            client->socket, boost::asio::buffer(buffer.data(), T::bufferSize()), use_awaitable);
-
-        co_return T::fromBuffer(buffer);
-    }
+    std::vector<SendMessageFuture> processDuplicateRequest(
+        std::shared_ptr<Client> client, std::pair<ObjectRequestHeader, Bytes> request);
 
     template <ObjectStorageMessage T>
-    boost::asio::awaitable<void> writeMessage(
-        std::shared_ptr<Client> client, T& message, std::span<const unsigned char> payload)
+    auto writeMessage(std::shared_ptr<Client> client, T& message, std::span<const unsigned char> payload)
     {
+        // Send OSS header
         auto messageBuffer = message.toBuffer();
+        ymq::Message ymqHeader {};
+        ymqHeader.address     = Bytes(client->_identity);
+        ymqHeader.payload     = Bytes((char*)messageBuffer.asBytes().begin(), messageBuffer.asBytes().size());
+        auto sendHeaderFuture = ymq::futureSendMessage(client->_ioSocket, std::move(ymqHeader));
 
-        std::array<boost::asio::const_buffer, 2> buffers {
-            boost::asio::buffer(messageBuffer.asBytes().begin(), messageBuffer.asBytes().size()),
-            boost::asio::buffer(payload),
-        };
+        if (!payload.data()) {
+            return std::pair {std::move(sendHeaderFuture), std::future<std::expected<void, ymq::Error>> {}};
+        }
 
-        co_await boost::asio::async_write(
-            client->socket, buffers, boost::asio::bind_executor(client->writeStrand, boost::asio::use_awaitable));
+        ymq::Message ymqPayload {};
+        ymqPayload.address     = Bytes(client->_identity);
+        ymqPayload.payload     = Bytes((char*)payload.data(), payload.size());
+        auto sendPayloadFuture = ymq::futureSendMessage(client->_ioSocket, std::move(ymqPayload));
+
+        return std::pair {std::move(sendHeaderFuture), std::move(sendPayloadFuture)};
     }
 
-    awaitable<void> sendGetResponse(
+    void catFuts(std::vector<ObjectStorageServer::SendMessageFuture>& dest, PairOrVecOf<SendMessageFuture> auto&& src)
+    {
+        if constexpr (requires { src.first; }) {
+            dest.emplace_back(std::move(src.first));
+            dest.emplace_back(std::move(src.second));
+            return;
+        }
+
+        if constexpr (requires { src.begin(); }) {
+            // NOTE: Not the std::move you might expect!
+            dest.resize(dest.size() + src.size());
+            auto first = dest.end() - src.size();
+            std::move(src.begin(), src.end(), first);
+            return;
+        }
+        assert(false);
+    }
+
+    GetResponseResult sendGetResponse(
         std::shared_ptr<Client> client,
         const ObjectRequestHeader& requestHeader,
         std::shared_ptr<const ObjectPayload> objectPtr);
 
-    awaitable<void> sendDuplicateResponse(std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader);
+    GetResponseResult sendDuplicateResponse(std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader);
 
-    awaitable<void> optionallySendPendingRequests(
+    std::vector<SendMessageFuture> optionallySendPendingRequests(
         const ObjectID& objectID, std::shared_ptr<const ObjectPayload> objectPtr);
 };
 

@@ -56,6 +56,9 @@ target_sources(cc_ymq PRIVATE
   error.h
 
   logging.h
+
+  simple_interface.h
+  simple_interface.cpp
 )
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/scaler/io/ymq)

@@ -1,13 +1,13 @@
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-  add_compile_options(
-      -Wall
-      -Wpedantic
-      -Wunused
-      -Wunused-parameter
-      -Wunused-function
-      -Wunused-variable
-      -Wunused-local-typedefs
-  )
+    # add_compile_options(
+    #     -Wall
+    #     -Wpedantic
+    #     -Wunused
+    #     -Wunused-parameter
+    #     -Wunused-function
+    #     -Wunused-variable
+    #     -Wunused-local-typedefs
+    # )
 endif()
 
 add_library(cc_object_storage_server SHARED)
@@ -31,6 +31,15 @@ capnp_generate_cpp(objectStorageSources objectStorageHeaders "../protocol/capnp/
 target_sources(cc_object_storage_server PUBLIC ${objectStorageSources})
 target_link_libraries(cc_object_storage_server PUBLIC CapnProto::capnp)
 target_include_directories(cc_object_storage_server PUBLIC ${CMAKE_BINARY_DIR})
+
+target_link_libraries(cc_object_storage_server PUBLIC cc_ymq)
+
+# C++ OSS depends on YMQ
+if(APPLE)
+    target_link_options(cc_object_storage_server PUBLIC "-Wl,-rpath,@loader_path/../io/ymq")
+else()
+    target_link_options(cc_object_storage_server PUBLIC "-Wl,-rpath,$ORIGIN/../io/ymq")
+endif()
 
 install(TARGETS cc_object_storage_server
         LIBRARY DESTINATION scaler/object_storage/
