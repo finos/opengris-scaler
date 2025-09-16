@@ -115,6 +115,9 @@ def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: in
         # and the source ip and port will be the remote ip and port
         sender = TCPConnection(pkt.dst, pkt.dport, pkt.src, pkt.sport)
 
+        if not mitm.proxy(tuntap, pkt, sender, client_conn, server_conn):
+            continue  # the segment was not proxied, so we can't update our internal state
+
         if sender == client_conn:
             print(f"-> [{tcp.flags}]{(': ' + str(bytes(tcp.payload))) if tcp.payload else ''}")
         elif sender == server_conn:
@@ -125,23 +128,37 @@ def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: in
             print(f"[*] New connection from {ip.src}:{tcp.sport} to {ip.dst}:{tcp.dport}")
             client_conn = sender
 
-        if tcp.flags == "SA":  # SYN-ACK from server
+        if tcp.flags.S and tcp.flags.A:  # SYN-ACK from server
             if sender == server_conn:
                 print(f"[*] Connection to server established: {ip.src}:{tcp.sport} to {ip.dst}:{tcp.dport}")
 
-        if tcp.flags == "FA":  # FIN-ACK
+        if tcp.flags.F and tcp.flags.A:  # FIN-ACK
             if sender == client_conn:
+                print("[*] client sent fin ack")
                 client_sent_fin_ack = True
             if sender == server_conn:
+                print("[*] server sent fin ack")
                 server_sent_fin_ack = True
 
-        if tcp.flags == "A":  # ACK
-            if sender == client_conn and server_sent_fin_ack:
+        if tcp.flags.A:  # ACK
+            if sender == client_conn and server_sent_fin_ack and not server_closed:
+                print("[*] server closed")
                 server_closed = True
-            if sender == server_conn and client_sent_fin_ack:
+            if sender == server_conn and client_sent_fin_ack and not client_closed:
+                print("[*] client closed")
                 client_closed = True
 
-        mitm.proxy(tuntap, pkt, sender, client_conn, server_conn)
+        # if the peer sends something that isn't an ACK (incl FIN-ACK)
+        # then it seems like the shutdown process was interrupted
+        if not tcp.flags.A:
+            if sender == client_conn:
+                if not client_closed and client_sent_fin_ack:
+                    print("[!] client fin ack cancelled")
+                client_sent_fin_ack = False
+            if sender == server_conn:
+                if not server_closed and server_sent_fin_ack:
+                    print("[!] server fin ack cancelled")
+                server_sent_fin_ack = False
 
         if client_closed and server_closed:
             print("[*] Both connections closed")
@@ -151,6 +168,8 @@ def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: in
 if __name__ == "__main__":
     # parse the ips, ports, and test case from the command line
     pid, testcase, mitm_ip, mitm_port, remote_ip, server_port, *args = sys.argv[1:]
+
+    print(f"runner: running test case [{testcase}]")
 
     # load the module dynamically
     module = importlib.import_module(testcase)

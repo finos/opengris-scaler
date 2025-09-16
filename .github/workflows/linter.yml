@@ -30,11 +30,11 @@ jobs:
           python-version: "3.10"
 
       - name: Install necessary component
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt update -y
-          sudo apt upgrade -y
-          sudo DEBIAN_FRONTEND=noninteractive sudo apt install -y tzdata
-          sudo apt install cmake clang curl pkg-config g++-14 -y
+          sudo --preserve-env apt update -y
+          sudo --preserve-env apt install -y tzdata cmake clang curl pkg-config g++-14
 
       - name: Make scripts executable
         run: |
@@ -73,19 +73,19 @@ jobs:
         run: |
           sudo ./scripts/download_install_dependencies.sh capnp install
 
-      - name: Build and test C++ Components
-
-        # TODO: Figure out how to run man-in-the-middle tests in CI
-        # TODO: Why does TestIncompleteIdentity work when run locally, but fail in CI?
-        run: |
-          CXX=$(which g++-14) GTEST_FILTER="-*Mitm*:*TestIncompleteIdentity*" ./scripts/build.sh
-
       - name: Install Python Dependent Packages
         run: |
           pip install uv
           uv pip install --system --upgrade pip
           uv pip install --system flake8 pyproject-flake8 mypy
-          uv pip install --system -r pyproject.toml --all-extras
+          uv pip install --system -r pyproject.toml --all-extras --group dev
+
+      - name: Build and test C++ Components
+
+        # TODO: Figure out how to run man-in-the-middle tests in CI
+        # TODO: Why does TestIncompleteIdentity work when run locally, but fail in CI?
+        run: |
+          CXX=$(which g++-14) sudo --preserve-env ./scripts/build.sh
 
       - name: Lint With flake8
         run: |

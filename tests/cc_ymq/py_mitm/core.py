@@ -44,6 +44,9 @@ class TCPConnection:
 
 
 class MITMProtocol(Protocol):
+    # return `True` when the packet was proxied
+    # this is important so that the runner knows
+    # if it can update its state or not for e.g. closing
     def proxy(
         self,
         tuntap: TunTapInterface,
@@ -51,4 +54,4 @@ class MITMProtocol(Protocol):
         sender: TCPConnection,
         client_conn: TCPConnection | None,
         server_conn: TCPConnection,
-    ) -> None: ...
+    ) -> bool: ...

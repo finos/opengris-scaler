@@ -16,8 +16,9 @@ class MITM(MITMProtocol):
         sender: TCPConnection,
         client_conn: TCPConnection | None,
         server_conn: TCPConnection,
-    ) -> None:
-        if sender == client_conn:
+    ) -> bool:
+        if sender == client_conn or client_conn is None:
             tuntap.send(server_conn.rewrite(pkt))
         elif sender == server_conn:
             tuntap.send(client_conn.rewrite(pkt))
+        return True

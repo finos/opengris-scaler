@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cerrno>
+#include <format>
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <arpa/inet.h>
@@ -248,8 +250,14 @@ inline void wait_for_python_ready_sigwait(int timeout_secs)
 
     std::println("waiting for python to be ready...");
     timespec ts {.tv_sec = timeout_secs, .tv_nsec = 0};
-    if (sigtimedwait(&set, &sig, &ts) < 0)
-        throw std::runtime_error("failed to wait on sigusr1");
+    if (sigtimedwait(&set, &sig, &ts) < 0) {
+        auto err = errno;
+        sigprocmask(SIG_UNBLOCK, &set, nullptr);
+        if (err == EAGAIN)
+            throw std::runtime_error("timed out waiting for sigusr1 from python");
+        else
+            throw std::runtime_error("failed to wait on sigusr1: " + std::to_string(errno));
+    }
 
     sigprocmask(SIG_UNBLOCK, &set, nullptr);
     std::println("signal received; python is ready");
@@ -418,6 +426,7 @@ end:
     });
 }
 
+// path is relative to the directory of this source file
 inline TestResult run_python(const char* path, std::vector<const wchar_t*> argv = {})
 {
     // insert the pid at the start of the argv, this is important for signalling readiness
@@ -442,13 +451,21 @@ inline TestResult run_python(const char* path, std::vector<const wchar_t*> argv 
     PySys_SetArgv(argv.size(), (wchar_t**)argv.data());
 
     {
-        auto file = fopen(path, "r");
+        // make the path relative to the source file directory
+        std::string src_path = __FILE__;
+        src_path             = src_path.substr(0, src_path.rfind("/"));
+        auto full_path       = std::format("{}/{}", src_path, path);
+
+        auto file = fopen(full_path.c_str(), "r");
         if (!file) {
-            std::println("failed to open file: {}; {}", path, errno);
+            std::println("failed to open file: {}; {}", full_path, errno);
+            char cwd[PATH_MAX] = {0};
+            if (getcwd(cwd, sizeof(cwd)) != nullptr)
+                std::println("current dir is: {}", cwd);
             return TestResult::Failure;
         }
 
-        PyRun_SimpleFile(file, path);
+        PyRun_SimpleFile(file, full_path.c_str());
         fclose(file);
     }
 
@@ -469,5 +486,5 @@ exception:
 inline TestResult run_mitm(const wchar_t* testcase, std::vector<const wchar_t*> argv = {})
 {
     argv.insert(argv.begin(), testcase);
-    return run_python("tests/cc_ymq/py_mitm/runner.py", argv);
+    return run_python("py_mitm/runner.py", argv);
 }

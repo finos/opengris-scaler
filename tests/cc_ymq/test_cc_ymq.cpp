@@ -181,7 +181,7 @@ TEST(CcYmqTestSuite, DISABLED_TestMitmReconnect)
     EXPECT_EQ(result, TestResult::Success);
 }
 
-// TODO: Make more reliable
+// TODO: Make this more reliable
 TEST(CcYmqTestSuite, DISABLED_TestMitmDrop)
 {
     auto result = test(
