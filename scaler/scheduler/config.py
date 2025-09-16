@@ -20,5 +20,4 @@ class SchedulerConfig:
     load_balance_seconds: int
     load_balance_trigger_times: int
     protected: bool
-    store_tasks: bool
     allocate_policy: AllocatePolicy

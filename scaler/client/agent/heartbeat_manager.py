@@ -5,7 +5,7 @@ from typing import Optional
 import psutil
 
 from scaler.client.agent.mixins import HeartbeatManager, ObjectManager
-from scaler.io.async_connector import AsyncConnector
+from scaler.io.mixins import AsyncConnector
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import ClientHeartbeat, ClientHeartbeatEcho
 from scaler.protocol.python.status import Resource

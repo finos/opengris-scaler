@@ -1,7 +1,7 @@
 from typing import Optional, Set
 
 from scaler.client.agent.mixins import ObjectManager
-from scaler.io.async_connector import AsyncConnector
+from scaler.io.mixins import AsyncConnector
 from scaler.protocol.python.common import ObjectMetadata
 from scaler.protocol.python.message import ObjectInstruction, TaskResult
 from scaler.utility.identifiers import ClientID, ObjectID

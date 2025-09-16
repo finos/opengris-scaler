@@ -19,12 +19,12 @@ struct ClientManagerStatus {
 }
 
 struct TaskManagerStatus {
-    unassigned @0 :UInt32;
-    running @1 :UInt32;
-    success @2 :UInt32;
-    failed @3 :UInt32;
-    canceled @4 :UInt32;
-    notFound @5 :UInt32;
+    stateToCount @0 :List(Pair);
+
+    struct Pair {
+        state @0 :UInt8;
+        count @1 :UInt32;
+    }
 }
 
 struct ProcessorStatus {

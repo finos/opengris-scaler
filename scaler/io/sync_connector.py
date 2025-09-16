@@ -8,11 +8,12 @@ from typing import Optional
 import zmq
 
 from scaler.io.utility import deserialize, serialize
+from scaler.io.mixins import SyncConnector
 from scaler.protocol.python.mixins import Message
 from scaler.utility.zmq_config import ZMQConfig
 
 
-class SyncConnector:
+class ZMQSyncConnector(SyncConnector):
     def __init__(self, context: zmq.Context, socket_type: int, address: ZMQConfig, identity: Optional[bytes]):
         self._address = address
 
@@ -34,12 +35,12 @@ class SyncConnector:
 
         self._lock = threading.Lock()
 
-    def close(self):
+    def destroy(self):
         self._socket.close()
 
     @property
-    def address(self) -> ZMQConfig:
-        return self._address
+    def address(self) -> str:
+        return self._address.to_address()
 
     @property
     def identity(self) -> bytes:

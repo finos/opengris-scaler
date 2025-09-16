@@ -19,7 +19,6 @@ class TestBalance(unittest.TestCase):
         setup_logger()
         logging_test_name(self)
 
-    @unittest.skip("skip this test until state machine PR get merged")
     def test_balance(self):
         """
         Schedules a few long-lasting tasks to a single process cluster, then adds workers. We expect the remaining tasks
@@ -35,14 +34,13 @@ class TestBalance(unittest.TestCase):
             n_workers=1,
             per_worker_task_queue_size=N_TASKS,
             load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
-            # FIXME: re-enable balancing as it's currently disabled by default
         )
 
         client = Client(address=address)
 
         futures = [client.submit(sleep_and_return_pid, 10) for _ in range(N_TASKS)]
 
-        time.sleep(5)
+        time.sleep(3)
 
         new_cluster = Cluster(
             address=combo._cluster._address,

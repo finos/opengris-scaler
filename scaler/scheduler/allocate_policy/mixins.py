@@ -7,7 +7,7 @@ from scaler.utility.identifiers import TaskID, WorkerID
 
 class TaskAllocatePolicy(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def add_worker(self, worker: WorkerID, tags: Set[str], queue_size: int) -> bool:
+    def add_worker(self, worker: WorkerID, tags: Set[str], queue_size: int) -> bool:
         """add worker to worker collection"""
         raise NotImplementedError()
 
@@ -34,14 +34,14 @@ class TaskAllocatePolicy(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def assign_task(self, task: Task) -> WorkerID:
+    def assign_task(self, task: Task) -> WorkerID:
         """assign task in allocator, return an invalid worker ID if available worker, otherwise will return worker been
         assigned to"""
         raise NotImplementedError()
 
     @abc.abstractmethod
     def remove_task(self, task_id: TaskID) -> WorkerID:
-        """remove task in allocator, return an invalid worker ID if it did not found any worker, otherwise will return
+        """remove task in allocator, return an invalid worker ID if it did not find any worker, otherwise will return
         worker associate with the removed task_id"""
         raise NotImplementedError()
 

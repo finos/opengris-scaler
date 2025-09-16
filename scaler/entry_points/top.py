@@ -3,7 +3,7 @@ import curses
 import functools
 from typing import Dict, List, Literal, Union
 
-from scaler.io.sync_subscriber import SyncSubscriber
+from scaler.io.sync_subscriber import ZMQSyncSubscriber
 from scaler.protocol.python.message import StateScheduler
 from scaler.protocol.python.mixins import Message
 from scaler.utility.formatter import (
@@ -50,7 +50,7 @@ def poke(screen, args):
     screen.nodelay(1)
 
     try:
-        subscriber = SyncSubscriber(
+        subscriber = ZMQSyncSubscriber(
             address=ZMQConfig.from_string(args.address),
             callback=functools.partial(show_status, screen=screen),
             topic=b"",
@@ -79,14 +79,7 @@ def show_status(status: Message, screen):
 
     task_manager_table = __generate_keyword_data(
         "task_manager",
-        {
-            "unassigned": status.task_manager.unassigned,
-            "running": status.task_manager.running,
-            "success": status.task_manager.success,
-            "failed": status.task_manager.failed,
-            "canceled": status.task_manager.canceled,
-            "not_found": status.task_manager.not_found,
-        },
+        dict(sorted((k.name, v) for k, v in status.task_manager.state_to_count.items())),
         format_integer_flag=True,
     )
     object_manager = __generate_keyword_data("object_manager", {"num_of_objs": status.object_manager.number_of_objects})

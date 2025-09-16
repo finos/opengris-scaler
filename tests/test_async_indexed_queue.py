@@ -13,7 +13,7 @@ class TestAsyncIndexedQueue(unittest.TestCase):
 
     def test_async_indexed_queue(self):
         async def async_test():
-            queue = AsyncIndexedQueue()
+            queue: AsyncIndexedQueue[int] = AsyncIndexedQueue()
             await queue.put(1)
             await queue.put(2)
             await queue.put(3)
@@ -37,7 +37,7 @@ class TestAsyncIndexedQueue(unittest.TestCase):
 
     def test_duplicated_items(self):
         async def async_test():
-            queue = AsyncIndexedQueue(3)
+            queue: AsyncIndexedQueue[int] = AsyncIndexedQueue(3)
             await queue.put(1)
             await queue.put(1)
 

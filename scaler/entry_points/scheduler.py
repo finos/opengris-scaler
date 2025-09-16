@@ -70,13 +70,6 @@ def get_args():
         "--protected", "-p", action="store_true", help="protect scheduler and worker from being shutdown by client"
     )
     parser.add_argument(
-        "--store-tasks",
-        "-k",
-        action="store_true",
-        help="store tasks in scheduler when tasks are running, if this is true, when worker disconnected, all tasks "
-        "on this worker will get rerouted to other workers",
-    )
-    parser.add_argument(
         "--allocate-policy",
         "-ap",
         choices=[p.name for p in AllocatePolicy],
@@ -146,6 +139,7 @@ def main():
         object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
     else:
         object_storage_address = args.object_storage_address
+        object_storage = None
 
     scheduler = SchedulerProcess(
         address=args.address,
@@ -159,7 +153,6 @@ def main():
         load_balance_seconds=args.load_balance_seconds,
         load_balance_trigger_times=args.load_balance_trigger_times,
         protected=args.protected,
-        store_tasks=args.store_tasks,
         allocate_policy=AllocatePolicy[args.allocate_policy],
         event_loop=args.event_loop,
         logging_paths=args.logging_paths,
@@ -169,4 +162,5 @@ def main():
     scheduler.start()
 
     scheduler.join()
-    object_storage.join()
+    if object_storage is not None:
+        object_storage.join()

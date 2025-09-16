@@ -8,13 +8,13 @@ import zmq.asyncio
 from zmq import Frame
 
 from scaler.io.utility import deserialize, serialize
+from scaler.io.mixins import AsyncBinder
 from scaler.protocol.python.mixins import Message
 from scaler.protocol.python.status import BinderStatus
-from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.zmq_config import ZMQConfig
 
 
-class AsyncBinder(Looper, Reporter):
+class ZMQAsyncBinder(AsyncBinder):
     def __init__(self, context: zmq.asyncio.Context, name: str, address: ZMQConfig, identity: Optional[bytes] = None):
         self._address = address
 

@@ -100,8 +100,8 @@ def main():
         io_threads=args.io_threads,
     )
 
-    def destroy(*args):
-        assert args is not None
+    def destroy(*_args):
+        assert _args is not None
         logging.info(f"{SymphonyWorker.__class__.__name__}: shutting down Symphony worker[{worker.pid}]")
         os.kill(worker.pid, signal.SIGINT)
 

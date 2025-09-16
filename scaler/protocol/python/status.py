@@ -1,6 +1,7 @@
 from typing import Dict, List
 
 from scaler.protocol.capnp._python import _status  # noqa
+from scaler.protocol.python.common import TaskState
 from scaler.protocol.python.mixins import Message
 from scaler.utility.identifiers import ClientID, WorkerID
 
@@ -67,45 +68,23 @@ class ClientManagerStatus(Message):
 
 
 class TaskManagerStatus(Message):
+    VALUE_SIZE_LIMIT = 2**32
+
     def __init__(self, msg):
         super().__init__(msg)
 
     @property
-    def unassigned(self) -> int:
-        return self._msg.unassigned
-
-    @property
-    def running(self) -> int:
-        return self._msg.running
-
-    @property
-    def success(self) -> int:
-        return self._msg.success
-
-    @property
-    def failed(self) -> int:
-        return self._msg.failed
-
-    @property
-    def canceled(self) -> int:
-        return self._msg.canceled
-
-    @property
-    def not_found(self) -> int:
-        return self._msg.notFound
+    def state_to_count(self) -> Dict[TaskState, int]:
+        return {TaskState(p.state): p.count for p in self._msg.stateToCount}
 
     @staticmethod
-    def new_msg(  # type: ignore[override]
-        unassigned: int, running: int, success: int, failed: int, canceled: int, not_found: int
-    ) -> "TaskManagerStatus":
+    def new_msg(state_to_count: Dict[TaskState, int]) -> "TaskManagerStatus":  # type: ignore[override]
         return TaskManagerStatus(
             _status.TaskManagerStatus(
-                unassigned=unassigned,
-                running=running,
-                success=success,
-                failed=failed,
-                canceled=canceled,
-                notFound=not_found,
+                stateToCount=[
+                    _status.TaskManagerStatus.Pair(state=p[0].value, count=p[1] % TaskManagerStatus.VALUE_SIZE_LIMIT)
+                    for p in state_to_count.items()
+                ]
             )
         )
 

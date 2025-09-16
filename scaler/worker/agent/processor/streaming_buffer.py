@@ -1,7 +1,7 @@
 import io
 import logging
 
-from scaler.io.sync_connector import SyncConnector
+from scaler.io.mixins import SyncConnector
 from scaler.protocol.python.message import TaskLog
 from scaler.utility.identifiers import TaskID
 

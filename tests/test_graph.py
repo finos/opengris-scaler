@@ -1,5 +1,6 @@
 import graphlib
 import logging
+import math
 import time
 import unittest
 
@@ -22,12 +23,24 @@ def minus(a, b):
     return a - b
 
 
+def inc_error(i):
+    assert isinstance(i, int)
+    time.sleep(1)
+    raise ValueError("Compute Error")
+
+
+def add_sleep(a, b):
+    time.sleep(5)
+    return a + b
+
+
 class TestGraph(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
         self.cluster = SchedulerClusterCombo(n_workers=3, event_loop="builtin")
         self.address = self.cluster.get_address()
+        # self.address = "tcp://127.0.0.1:2345"
 
     def tearDown(self) -> None:
         self.cluster.shutdown()
@@ -45,28 +58,30 @@ class TestGraph(unittest.TestCase):
                 client.get({"b": (inc, "c"), "c": (inc, "b")}, ["b", "c"])
 
     def test_graph_fail(self):
-        def inc_error(i):
-            assert isinstance(i, int)
-            time.sleep(1)
-            raise ValueError("Compute Error")
-
-        def add_sleep(a, b):
-            time.sleep(5)
-            return a + b
-
-        graph = {"a": 2, "b": 2, "c": (inc_error, "a"), "d": (add_sleep, "a", "b"), "e": (minus, "d", "c")}
+        # fmt: off
+        graph = {
+            "a": 2,
+            "b": 2,
+            "c": (inc_error, "a"),
+            "d": (add_sleep, "a", "b"),
+            "e": (minus, "d", "c")}
+        # fmt: on
 
         with Client(self.address) as client:
             with ScopedLogger("test graph node fail"), self.assertRaises(ValueError):
                 client.get(graph, ["e"])
 
-            time.sleep(5)
+    def test_graph_fail_2(self):
+        # fmt: off
+        graph = {
+            "a": 2,
+            "b": 2,
+            "c": (math.sqrt, "a"),  # c = sqft(a)
+            "d": (add_sleep, "a", "b"),  # d = a + b (sleep for 5 seconds)
+            "e": (minus, "d", "c")}  # e = d - c
+        # fmt: on
 
         with Client(self.address) as client:
-            import math
-
-            graph["c"] = (math.sqrt, "a")
-
             with ScopedLogger("test graph node should restore from failure"):
                 futures = client.get(graph, ["e"], block=False)
                 futures["e"].result(timeout=15.0)
@@ -125,14 +140,14 @@ class TestGraph(unittest.TestCase):
 
     def test_cancel(self):
         def func(a):
-            time.sleep(10)
+            time.sleep(5)
             return a
 
         with Client(address=self.address) as client:
             graph = {"a": 1, "b": (func, "a")}
             futures = client.get(graph, keys=["b"], block=False)
 
-            time.sleep(4)
+            time.sleep(1)
             futures["b"].cancel()
 
     def test_client_quit(self):

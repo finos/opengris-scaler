@@ -1,8 +1,8 @@
 from typing import Dict, Optional, Set
 
-from scaler.io.async_connector import AsyncConnector
-from scaler.protocol.python.common import TaskStatus
-from scaler.protocol.python.message import Task, TaskCancel, TaskResult
+from scaler.io.mixins import AsyncConnector
+from scaler.protocol.python.common import TaskCancelConfirmType
+from scaler.protocol.python.message import Task, TaskCancel, TaskResult, TaskCancelConfirm
 from scaler.utility.identifiers import TaskID
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper
@@ -46,31 +46,44 @@ class VanillaTaskManager(Looper, TaskManager):
         await self.__suspend_if_priority_is_higher(task)
 
     async def on_cancel_task(self, task_cancel: TaskCancel):
-        task_id = task_cancel.task_id
+        task_not_found = (
+            task_cancel.task_id not in self._processing_task_ids
+            and task_cancel.task_id not in self._queued_task_id_to_task
+        )
+        if task_not_found:
+            await self._connector_external.send(
+                TaskCancelConfirm.new_msg(
+                    task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.CancelNotFound
+                )
+            )
+            return
 
-        task_not_found = task_id not in self._processing_task_ids and task_id not in self._queued_task_id_to_task
-        task_is_processing = task_id in self._processing_task_ids
-
-        if task_not_found or (task_is_processing and not task_cancel.flags.force):
-            result = TaskResult.new_msg(task_id, TaskStatus.NotFound)
-            await self._connector_external.send(result)
+        if task_cancel.task_id in self._processing_task_ids and not task_cancel.flags.force:
+            # ignore cancel task while in processing if is not force cancel
+            await self._connector_external.send(
+                TaskCancelConfirm.new_msg(
+                    task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.CancelFailed
+                )
+            )
             return
 
         # A suspended task will be both processing AND queued
 
-        if task_cancel.task_id in self._queued_task_id_to_task:
-            canceled_task = self._queued_task_id_to_task.pop(task_cancel.task_id)
-            self._queued_task_ids.remove(task_cancel.task_id)
-
-        if task_is_processing:
+        if task_cancel.task_id in self._processing_task_ids:
+            # if task is in processing
             self._processing_task_ids.remove(task_cancel.task_id)
-            canceled_task = await self._processor_manager.on_cancel_task(task_cancel.task_id)
+            _ = await self._processor_manager.on_cancel_task(task_cancel.task_id)
+        else:
+            # if task is queued
+            assert task_cancel.task_id in self._queued_task_id_to_task
+            self._queued_task_ids.remove(task_cancel.task_id)
+            _ = self._queued_task_id_to_task.pop(task_cancel.task_id)
 
-        assert canceled_task is not None
-
-        payload = [canceled_task.get_message().to_bytes()] if task_cancel.flags.retrieve_task_object else []
-        result = TaskResult.new_msg(task_id=task_id, status=TaskStatus.Canceled, metadata=b"", results=payload)
-        await self._connector_external.send(result)
+        await self._connector_external.send(
+            TaskCancelConfirm.new_msg(
+                task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.Canceled
+            )
+        )
 
     async def on_task_result(self, result: TaskResult):
         if result.task_id in self._queued_task_id_to_task:

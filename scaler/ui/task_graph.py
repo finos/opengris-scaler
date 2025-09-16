@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from nicegui import ui
 
-from scaler.protocol.python.common import TaskStatus
+from scaler.protocol.python.common import TaskState
 from scaler.protocol.python.message import StateTask
 from scaler.ui.live_display import WorkersSection
 from scaler.ui.setting_page import Settings
@@ -14,25 +14,24 @@ from scaler.ui.utility import format_timediff, format_worker_name, get_bounds, m
 
 
 class TaskColors:
-    ONGOING = "yellow"
-    NOWORK = "white"
+    RUNNING = "yellow"
+    NO_WORK = "white"
     SUCCESS = "green"
     FAILED = "red"
-    UNKNOWN = "lightgray"
-    DEADWORKER = NOWORK
-    CANCELED = "lightgray"
+    INACTIVE = "lightgray"
+    CANCELED = "black"
     CANCELING = CANCELED
 
     __task_status_to_color = {
-        TaskStatus.Inactive: NOWORK,
-        TaskStatus.Running: ONGOING,
-        TaskStatus.Success: SUCCESS,
-        TaskStatus.Canceled: CANCELED,
-        TaskStatus.Canceling: CANCELING,
+        TaskState.Inactive: INACTIVE,
+        TaskState.Running: RUNNING,
+        TaskState.Success: SUCCESS,
+        TaskState.Canceled: CANCELED,
+        TaskState.Canceling: CANCELING,
     }
 
     @staticmethod
-    def from_status(status: TaskStatus) -> str:
+    def from_status(status: TaskState) -> str:
         return TaskColors.__task_status_to_color[status]
 
 
@@ -137,7 +136,7 @@ class TaskStream:
             # this serves two purposes:
             #   - get a clean bar instead of many ~0 width lines
             #   - more importantly, make the ui significantly more responsive
-            if task_color != TaskColors.NOWORK and len(worker_history["y"]) > 2:
+            if task_color != TaskColors.NO_WORK and len(worker_history["y"]) > 2:
                 penult_time_taken, penult_color, penult_text = self.__get_history_fields(worker, -2)
 
                 if last_time_taken < 0.1 and penult_color == task_color and penult_text == hovertext:
@@ -164,7 +163,7 @@ class TaskStream:
         if worker == "":
             return
 
-        task_state = state.status
+        task_state = state.state
         self._worker_last_update[worker] = now
 
         _, _, start = self._current_tasks.get(worker, (False, set(), None))
@@ -185,7 +184,7 @@ class TaskStream:
     def __handle_new_worker(self, worker: str, now: datetime.datetime):
         if worker not in self._completed_data_cache:
             self.__setup_worker_cache(worker)
-            self.__add_bar(worker, format_timediff(self._start_time, now), TaskColors.DEADWORKER, "")
+            self.__add_bar(worker, format_timediff(self._start_time, now), TaskColors.NO_WORK, "")
         self._seen_workers.add(worker)
 
     def __remove_task_from_worker(self, worker: str, task_id: bytes, now: datetime.datetime, force_new_time: bool):
@@ -213,7 +212,7 @@ class TaskStream:
         with self._data_update_lock:
             self._current_tasks[worker] = (True, {state.task_id}, now)
         if start_time:
-            self.__add_bar(worker, format_timediff(start_time, now), TaskColors.NOWORK, "")
+            self.__add_bar(worker, format_timediff(start_time, now), TaskColors.NO_WORK, "")
 
     def handle_task_state(self, state_task: StateTask):
         """
@@ -223,11 +222,11 @@ class TaskStream:
         we store this mapping ourselves based on the Running statuses we see.
         """
 
-        task_state = state_task.status
+        task_state = state_task.state
         now = datetime.datetime.now()
         self._last_task_tick = now
 
-        if task_state in {TaskStatus.Success, TaskStatus.Canceling}:
+        if task_state in {TaskState.Success, TaskState.Canceling}:
             self.__handle_task_result(state_task, now)
             return
 
@@ -240,7 +239,7 @@ class TaskStream:
         if worker_string not in self._seen_workers:
             self.__handle_new_worker(worker_string, now)
 
-        if task_state in {TaskStatus.Running}:
+        if task_state in {TaskState.Running}:
             self.__handle_running_task(state_task, worker_string, now)
 
     def __add_lost_worker(self, worker: str, now: datetime.datetime):
@@ -352,7 +351,7 @@ class TaskStream:
             "orientation": "h",
             "text": [f for (_, _, f) in workers_doing_tasks],
             "hovertemplate": "%{text} (%{x})",
-            "marker": {"color": TaskColors.ONGOING, "width": 5},
+            "marker": {"color": TaskColors.RUNNING, "width": 5},
             "showlegend": False,
         }
         plot_data = completed_cache_values + [working_data]

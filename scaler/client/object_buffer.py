@@ -5,8 +5,7 @@ from typing import Any, Callable, List, Optional, Set
 import cloudpickle
 
 from scaler.client.serializer.mixins import Serializer
-from scaler.io.sync_connector import SyncConnector
-from scaler.io.sync_object_storage_connector import SyncObjectStorageConnector
+from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata
 from scaler.protocol.python.message import ObjectInstruction
 from scaler.utility.identifiers import ClientID, ObjectID

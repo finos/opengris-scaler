@@ -1,10 +1,12 @@
 from asyncio import Queue, QueueEmpty
-from typing import Hashable
+from typing import TypeVar, Generic
 
 from scaler.utility.queues.indexed_queue import IndexedQueue
 
+ItemType = TypeVar("ItemType")
 
-class AsyncIndexedQueue(Queue):
+
+class AsyncIndexedQueue(Queue, Generic[ItemType]):
     """This should have same set of features as asyncio.Queue, with additional methods like remove
     - it behaves like regular async queue, except:
       - all the items pushed to queue should be hashable
@@ -12,7 +14,7 @@ class AsyncIndexedQueue(Queue):
     - IndexedQueue.put(), IndexedQueue.get(), IndexedQueue.remove() should all take O(1) time complexity
     """
 
-    def __contains__(self, item):
+    def __contains__(self, item: ItemType):
         return item in self._queue
 
     def __len__(self):
@@ -21,7 +23,7 @@ class AsyncIndexedQueue(Queue):
     def _init(self, maxsize):
         self._queue = IndexedQueue()
 
-    def _put(self, item: Hashable):
+    def _put(self, item: ItemType):
         self._queue.put(item)
 
     def _get(self):
@@ -30,6 +32,6 @@ class AsyncIndexedQueue(Queue):
         except IndexError:
             raise QueueEmpty(f"{self.__class__.__name__} queue empty")
 
-    def remove(self, item: Hashable):
+    def remove(self, item: ItemType):
         """remove the item in the queue in O(1) time complexity"""
         self._queue.remove(item)

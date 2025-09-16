@@ -3,12 +3,11 @@ import logging
 from asyncio import Queue
 from typing import Optional, Set
 
-from scaler.io.async_binder import AsyncBinder
-from scaler.io.async_connector import AsyncConnector
-from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
+from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata
 from scaler.protocol.python.message import ObjectInstruction
 from scaler.protocol.python.status import ObjectManagerStatus
+from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import ClientController, ObjectController, WorkerController
 from scaler.scheduler.object_usage.object_tracker import ObjectTracker, ObjectUsage
 from scaler.utility.identifiers import ClientID, ObjectID
@@ -27,7 +26,9 @@ class _ObjectCreation(ObjectUsage):
 
 
 class VanillaObjectController(ObjectController, Looper, Reporter):
-    def __init__(self):
+    def __init__(self, config_controller: VanillaConfigController):
+        self._config_controller = config_controller
+
         self._object_tracker: ObjectTracker[ClientID, ObjectID, _ObjectCreation] = ObjectTracker(
             "object_usage", self.__finished_object_storage
         )

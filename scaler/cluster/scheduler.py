@@ -27,7 +27,6 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         load_balance_seconds: int,
         load_balance_trigger_times: int,
         protected: bool,
-        store_tasks: bool,
         allocate_policy: AllocatePolicy,
         event_loop: str,
         logging_paths: Tuple[str, ...],
@@ -48,7 +47,6 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
             load_balance_seconds=load_balance_seconds,
             load_balance_trigger_times=load_balance_trigger_times,
             protected=protected,
-            store_tasks=store_tasks,
             allocate_policy=allocate_policy,
         )
 
