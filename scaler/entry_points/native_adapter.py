@@ -19,7 +19,9 @@ from scaler.worker_adapter.native import NativeWorkerAdapter
 
 
 def get_args():
-    parser = argparse.ArgumentParser("scaler native worker adapter", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(
+        "scaler native worker adapter", formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
 
     # Server configuration
     parser.add_argument(

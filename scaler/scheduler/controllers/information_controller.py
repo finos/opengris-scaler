@@ -69,7 +69,7 @@ class VanillaInformationController(InformationController, Looper):
 
         await self._scaling_controller.on_snapshot(
             InformationSnapshot(
-                tasks=self._task_controller._task_id_to_task, # type: ignore # noqa: Expose this later
+                tasks=self._task_controller._task_id_to_task,  # type: ignore # noqa: Expose this later
                 workers={
                     worker_id: worker_heartbeat
                     for worker_id, (
