@@ -18,11 +18,14 @@ function(add_test_executable test_name source_file)
 
     target_include_directories(${test_name} PRIVATE ${CMAKE_BINARY_DIR})
 
-    target_link_libraries(
-        ${test_name}
-        PRIVATE GTest::gtest_main
-        PRIVATE cc_object_storage_server
-        PRIVATE cc_ymq
+    target_link_libraries(${test_name} PRIVATE 
+        $<$<CXX_COMPILER_ID:GNU,Clang>:-Wl,-Bstatic>
+        object_storage_server_objs
+        ymq_objs
+        $<$<CXX_COMPILER_ID:GNU,Clang>:-Wl,-Bdynamic>
+        CapnProto::capnp
+        CapnProto::kj
+        GTest::gtest_main
     )
 
     add_test(NAME ${test_name} COMMAND ${test_name})

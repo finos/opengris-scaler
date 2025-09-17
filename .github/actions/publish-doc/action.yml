@@ -1,0 +1,24 @@
+name: 'Build Documentation'
+description: 'Build Documentation'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install dependencies
+      shell: bash
+      run: |
+        uv pip install --system -r pyproject.toml
+        uv pip install --system -r docs/requirements_docs.txt
+
+    - name: Build documentation
+      shell: bash
+      run: cd docs && make html
+
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+      with:
+        path: './docs/build/html'
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

@@ -60,12 +60,13 @@ gui = ["nicegui[plotly]==2.24.1"]
 all = ["python-graphblas", "numpy==2.2.6", "uvloop", "nicegui[plotly]==2.24.1"]
 
 [tool.scikit-build]
+cmake.source-dir = "."
 wheel.packages = ["scaler"]
-build.targets=["cc_object_storage_server", "ymq", "object_storage_server"]
+build.targets = ["py_ymq", "py_object_storage_server"]
 
 [tool.scikit-build.cmake.define]
-CMAKE_C_COMPILER = { env = "CMAKE_C_COMPILER", default = "gcc-14" }
-CMAKE_CXX_COMPILER = { env = "CMAKE_CXX_COMPILER", default = "g++-14" }
+CMAKE_C_COMPILER = { env = "CMAKE_C_COMPILER", default = "gcc" }
+CMAKE_CXX_COMPILER = { env = "CMAKE_CXX_COMPILER", default = "g++" }
 
 [tool.mypy]
 no_strict_optional = true
@@ -78,6 +79,7 @@ exclude = [
     "migrations",
     "__pycache__",
     "^build_*_*.*$",
+    "^thirdparties.*$",
     "^capnproto.*$",
     "^boost.*$",
     "^scripts.*$",
@@ -93,6 +95,7 @@ exclude = [
     "migrations",
     "__pycache__",
     "./build_*_*",
+    "./thirdparties",
     "./capnproto*",
     "./boost*",
     "./scripts",

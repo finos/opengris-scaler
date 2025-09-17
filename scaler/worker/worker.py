@@ -126,7 +126,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._heartbeat_manager = VanillaHeartbeatManager(
             storage_address=self._storage_address,
             capabilities=self._capabilities,
-            task_queue_size=self._task_queue_size
+            task_queue_size=self._task_queue_size,
         )
 
         self._profiling_manager = VanillaProfilingManager()

@@ -7,8 +7,8 @@ It shows how to route tasks to workers with specific capabilities (like GPU) usi
 import math
 
 from scaler import Client, Cluster
-from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.cluster.combo import SchedulerClusterCombo
+from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 
 
 def gpu_task(x: float) -> float:

@@ -1,5 +1,5 @@
 name: 'Dependency Review'
-on: [pull_request]
+on: [ pull_request ]
 
 permissions:
   contents: read
@@ -9,17 +9,18 @@ jobs:
   dependency-review:
     runs-on: ubuntu-latest
     steps:
-     - name: Harden the runner (Audit all outbound calls)
-       uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
-       with:
-         egress-policy: audit
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
 
-     - name: 'Checkout Repository'
-       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-     - name: Dependency Review
-       uses: actions/dependency-review-action@da24556b548a50705dd671f47852072ea4c105d9 # v4.7.1
-       with:
-        comment-summary-in-pr: always
-        fail-on-severity: high
-        allow-licenses: MIT, Apache-2.0, BSD-3-Clause, ISC, BSD-2-Clause, Unlicense, CC0-1.0, 0BSD, X11, MPL-2.0, MPL-1.0, MPL-1.1, MPL-2.0
-        fail-on-scopes: development, runtime
+      - name: 'Checkout Repository'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@da24556b548a50705dd671f47852072ea4c105d9 # v4.7.1
+        with:
+          comment-summary-in-pr: always
+          fail-on-severity: high
+          allow-licenses: MIT, Apache-2.0, BSD-3-Clause, ISC, BSD-2-Clause, Unlicense, CC0-1.0, 0BSD, X11, MPL-2.0, MPL-1.0, MPL-1.1, MPL-2.0
+          fail-on-scopes: development, runtime
