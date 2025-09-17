@@ -3,10 +3,10 @@ import logging
 import multiprocessing
 import os
 import signal
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from contextvars import ContextVar, Token
 from multiprocessing.synchronize import Event as EventType
-from typing import Callable, IO, List, Optional, Tuple, cast
+from typing import IO, Callable, List, Optional, Tuple, cast
 
 import tblib.pickling_support
 import zmq

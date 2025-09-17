@@ -19,10 +19,10 @@ from scaler.protocol.python.message import (
     ObjectInstruction,
     Task,
     TaskCancel,
+    TaskCancelConfirm,
     TaskLog,
     TaskResult,
     WorkerHeartbeat,
-    TaskCancelConfirm,
 )
 from scaler.protocol.python.mixins import Message
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
@@ -34,6 +34,7 @@ from scaler.scheduler.controllers.config_controller import VanillaConfigControll
 from scaler.scheduler.controllers.graph_controller import VanillaGraphTaskController
 from scaler.scheduler.controllers.information_controller import VanillaInformationController
 from scaler.scheduler.controllers.object_controller import VanillaObjectController
+from scaler.scheduler.controllers.scaling_controller import NullScalingController, VanillaScalingController
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
 from scaler.utility.event_loop import create_async_loop_routine
@@ -103,6 +104,11 @@ class Scheduler:
             config_controller=self._config_controller, task_allocate_policy=self._task_allocate_policy
         )
         self._information_controller = VanillaInformationController(config_controller=self._config_controller)
+        self._scaling_controller = (
+            VanillaScalingController(config.adapter_webhook_url)
+            if config.adapter_webhook_url
+            else NullScalingController()
+        )
 
         # register
         self._binder.register(self.on_receive_message)
@@ -138,6 +144,7 @@ class Scheduler:
             self._object_controller,
             self._task_controller,
             self._worker_controller,
+            self._scaling_controller,
         )
 
     async def connect_to_storage(self):

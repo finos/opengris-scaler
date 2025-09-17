@@ -1,6 +1,6 @@
 import dataclasses
 import enum
-from typing import List, Optional, Set, Type, Union
+from typing import Dict, List, Optional, Set, Type, Union
 
 import bidict
 
@@ -8,8 +8,8 @@ from scaler.protocol.capnp._python import _message  # noqa
 from scaler.protocol.python.common import (
     ObjectMetadata,
     ObjectStorageAddress,
-    TaskResultType,
     TaskCancelConfirmType,
+    TaskResultType,
     TaskState,
 )
 from scaler.protocol.python.mixins import Message
@@ -19,6 +19,7 @@ from scaler.protocol.python.status import (
     ObjectManagerStatus,
     ProcessorStatus,
     Resource,
+    ScalingManagerStatus,
     TaskManagerStatus,
     WorkerManagerStatus,
 )
@@ -516,6 +517,10 @@ class StateScheduler(Message):
     def worker_manager(self) -> WorkerManagerStatus:
         return WorkerManagerStatus(self._msg.workerManager)
 
+    @property
+    def scaling_manager(self) -> ScalingManagerStatus:
+        return ScalingManagerStatus(self._msg.scalingManager)
+
     @staticmethod
     def new_msg(
         binder: BinderStatus,
@@ -525,6 +530,7 @@ class StateScheduler(Message):
         object_manager: ObjectManagerStatus,
         task_manager: TaskManagerStatus,
         worker_manager: WorkerManagerStatus,
+        scaling_manager: ScalingManagerStatus,
     ) -> "StateScheduler":
         return StateScheduler(
             _message.StateScheduler(
@@ -535,6 +541,7 @@ class StateScheduler(Message):
                 objectManager=object_manager.get_message(),
                 taskManager=task_manager.get_message(),
                 workerManager=worker_manager.get_message(),
+                scalingManager=scaling_manager.get_message(),
             )
         )
 
@@ -666,6 +673,21 @@ class InformationResponse(Message):
     @staticmethod
     def new_msg(response: bytes) -> "InformationResponse":
         return InformationResponse(_message.InformationResponse(response=response))
+
+
+# NOTE: This class is not a Message and does not have serialization methods. This is intentional.
+class InformationSnapshot:
+    def __init__(self, tasks: Dict[TaskID, Task], workers: Dict[WorkerID, WorkerHeartbeat]):
+        self._tasks = tasks
+        self._workers = workers
+
+    @property
+    def tasks(self) -> Dict[TaskID, Task]:
+        return self._tasks
+
+    @property
+    def workers(self) -> Dict[WorkerID, WorkerHeartbeat]:
+        return self._workers
 
 
 PROTOCOL: bidict.bidict[str, Type[Message]] = bidict.bidict(

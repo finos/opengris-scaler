@@ -6,6 +6,7 @@ from scaler.protocol.python.mixins import Message
 from scaler.utility.identifiers import ClientID, WorkerID
 
 CPU_MAXIMUM = 1000
+WorkerGroupID = bytes
 
 
 class Resource(Message):
@@ -223,6 +224,31 @@ class WorkerManagerStatus(Message):
     @staticmethod
     def new_msg(workers: List[WorkerStatus]) -> "WorkerManagerStatus":  # type: ignore[override]
         return WorkerManagerStatus(_status.WorkerManagerStatus(workers=[ws.get_message() for ws in workers]))
+
+    def get_message(self):
+        return self._msg
+
+
+class ScalingManagerStatus(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def worker_groups(self) -> Dict[WorkerGroupID, List[WorkerID]]:
+        return {wg.workerGroupID: [WorkerID(wid) for wid in wg.workerIDs] for wg in self._msg.workerGroups}
+
+    @staticmethod
+    def new_msg(worker_groups: Dict[WorkerGroupID, List[WorkerID]]) -> "ScalingManagerStatus":  # type: ignore[override]
+        return ScalingManagerStatus(
+            _status.ScalingManagerStatus(
+                workerGroups=[
+                    _status.ScalingManagerStatus.Pair(
+                        workerGroupID=worker_group_id, workerIDs=[bytes(worker_id) for worker_id in worker_ids]
+                    )
+                    for worker_group_id, worker_ids in worker_groups.items()
+                ]
+            )
+        )
 
     def get_message(self):
         return self._msg

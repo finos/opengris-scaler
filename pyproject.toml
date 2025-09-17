@@ -25,6 +25,7 @@ dependencies = [
     "pyzmq",
     "sortedcontainers==2.4.0",
     "tblib",
+    "aiohttp",
 ]
 
 [dependency-groups]
@@ -50,6 +51,7 @@ scaler_symphony_cluster = "scaler.entry_points.symphony_cluster:main"
 scaler_top = "scaler.entry_points.top:main"
 scaler_ui = "scaler.entry_points.webui:main"
 scaler_object_storage_server = "scaler.entry_points.object_storage_server:main"
+scaler_vm_worker_adapter = "scaler.entry_points.vm_adapter:main"
 
 [project.optional-dependencies]
 uvloop = ["uvloop"]
@@ -103,4 +105,4 @@ skip-magic-trailing-comma = true
 
 [tool.isort]
 profile = "black"
-line-length = 120
+line_length = 120

@@ -1,19 +1,19 @@
 import asyncio
 import logging
 from collections import deque
-from typing import Awaitable, Callable, Optional, Dict, Deque, Tuple, List, Any
+from typing import Any, Awaitable, Callable, Deque, Dict, List, Optional, Tuple
 
 from scaler.io.mixins import AsyncBinder, AsyncConnector
-from scaler.protocol.python.common import TaskResultType, TaskCancelConfirmType, TaskState, TaskTransition
-from scaler.protocol.python.message import StateTask, Task, TaskCancel, TaskResult, TaskCancelConfirm
+from scaler.protocol.python.common import TaskCancelConfirmType, TaskResultType, TaskState, TaskTransition
+from scaler.protocol.python.message import StateTask, Task, TaskCancel, TaskCancelConfirm, TaskResult
 from scaler.protocol.python.status import TaskManagerStatus
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import (
     ClientController,
+    GraphTaskController,
     ObjectController,
     TaskController,
     WorkerController,
-    GraphTaskController,
 )
 from scaler.scheduler.task.task_state_machine import TaskStateMachine
 from scaler.scheduler.task.task_state_manager import TaskStateManager

@@ -3,13 +3,14 @@ from typing import Optional
 import psutil
 
 from scaler.io.mixins import AsyncBinder, AsyncConnector
-from scaler.protocol.python.message import StateScheduler, InformationRequest
+from scaler.protocol.python.message import InformationRequest, InformationSnapshot, StateScheduler
 from scaler.protocol.python.status import Resource
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import (
     ClientController,
     InformationController,
     ObjectController,
+    ScalingController,
     TaskController,
     WorkerController,
 )
@@ -28,6 +29,7 @@ class VanillaInformationController(InformationController, Looper):
         self._object_controller: Optional[ObjectController] = None
         self._task_controller: Optional[TaskController] = None
         self._worker_controller: Optional[WorkerController] = None
+        self._scaling_controller: Optional[ScalingController] = None
 
     def register_managers(
         self,
@@ -37,6 +39,7 @@ class VanillaInformationController(InformationController, Looper):
         object_controller: ObjectController,
         task_controller: TaskController,
         worker_controller: WorkerController,
+        scaling_controller: ScalingController,
     ):
         self._monitor_binder = monitor_binder
         self._binder = binder
@@ -44,6 +47,7 @@ class VanillaInformationController(InformationController, Looper):
         self._object_controller = object_controller
         self._task_controller = task_controller
         self._worker_controller = worker_controller
+        self._scaling_controller = scaling_controller
 
     async def on_request(self, request: InformationRequest):
         # TODO: implement commands
@@ -59,5 +63,19 @@ class VanillaInformationController(InformationController, Looper):
                 object_manager=self._object_controller.get_status(),
                 task_manager=self._task_controller.get_status(),
                 worker_manager=self._worker_controller.get_status(),
+                scaling_manager=self._scaling_controller.get_status(),
+            )
+        )
+
+        await self._scaling_controller.on_snapshot(
+            InformationSnapshot(
+                tasks=self._task_controller._task_id_to_task, # type: ignore # noqa: Expose this later
+                workers={
+                    worker_id: worker_heartbeat
+                    for worker_id, (
+                        _,
+                        worker_heartbeat,
+                    ) in self._worker_controller._worker_alive_since.items()  # type: ignore # noqa: Expose this later
+                },
             )
         )

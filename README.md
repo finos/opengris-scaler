@@ -311,6 +311,32 @@ base_concurrency = number_of_cores - deepest_nesting_level
 where `deepest_nesting_level` is the deepest nesting level a task has in your workload. For instance, if you have a workload that has
 a base task that calls a nested task that calls another nested task, then the deepest nesting level is 2.
 
+## Worker Adapter usage
+
+> **Note**: This feature is experimental and may change in future releases.
+
+Scaler provides a Worker Adapter webhook interface to integrate with other job schedulers or resource managers. The
+Worker Adapter allows external systems to request the creation and termination of Scaler workers dynamically.
+
+Please check the OpenGRIS standard for more details on the Worker Adapter specification [here](https://github.com/finos/opengris).
+
+### Starting the VM Worker Adapter
+
+Starting a VM Worker Adapter server at `http://127.0.0.1:8080`:
+
+```bash
+$ scaler_vm_worker_adapter tcp://127.0.0.1:2345 --host 127.0.0.1 --port 8080
+```
+
+Pass the `--adapter-webhook-url` argument to the Scaler scheduler to connect to the Worker Adapter:
+
+```bash
+$ scaler_scheduler tcp://127.0.0.1:2345 --adapter-webhook-url http://127.0.0.1:8080
+````
+
+To check that the Worker Adapter is working, you can bring up `scaler_top` to see workers spawning and terminating as
+there is task load changes.
+
 ## Performance
 
 ### uvloop

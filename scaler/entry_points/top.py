@@ -16,6 +16,7 @@ from scaler.utility.formatter import (
 from scaler.utility.zmq_config import ZMQConfig
 
 SORT_BY_OPTIONS = {
+    ord("g"): "group",
     ord("n"): "worker",
     ord("C"): "agt_cpu",
     ord("M"): "agt_rss",
@@ -88,9 +89,19 @@ def show_status(status: Message, screen):
     client_table = __generate_keyword_data(
         "client_manager", status.client_manager.client_to_num_of_tasks, key_col_length=18
     )
+
+    worker_group_map = {}
+    if status.scaling_manager.worker_groups:
+        for worker_group_id, worker_ids in status.scaling_manager.worker_groups.items():
+            worker_group_id_str = worker_group_id.decode()
+            for worker_id in worker_ids:
+                worker_group_map[worker_id.decode()] = worker_group_id_str
+
+    # Include 'group' as the first column for each worker; empty if not found
     worker_manager_table = __generate_worker_manager_table(
         [
             {
+                "group": worker_group_map.get(worker.worker_id.decode(), ""),
                 "worker": worker.worker_id.decode(),
                 "agt_cpu": worker.agent.cpu,
                 "agt_rss": worker.agent.rss,
@@ -107,7 +118,8 @@ def show_status(status: Message, screen):
             }
             for worker in status.worker_manager.workers
         ],
-        worker_length=24,
+        worker_group_length=10,
+        worker_length=20,
     )
 
     table1 = __merge_tables(scheduler_table, object_manager, padding="|")
@@ -127,7 +139,12 @@ def show_status(status: Message, screen):
     try:
         screen.addstr(new_row, 0, "-" * max_cols)
         screen.addstr(new_row + 1, 0, "Shortcuts: " + " ".join([f"{v}[{chr(k)}]" for k, v in SORT_BY_OPTIONS.items()]))
-        screen.addstr(new_row + 3, 0, f"Total {len(status.worker_manager.workers)} worker(s)")
+        screen.addstr(
+            new_row + 3,
+            0,
+            f"Total {len(status.scaling_manager.worker_groups)} worker group(s) "
+            f"with {len(status.worker_manager.workers)} worker(s)",
+        )
         _ = __print_table(screen, new_row + 4, table3)
     except curses.error:
         pass
@@ -148,7 +165,9 @@ def __generate_keyword_data(title, data, key_col_length: int = 0, format_integer
     return table
 
 
-def __generate_worker_manager_table(wm_data: List[Dict], worker_length: int) -> List[List[str]]:
+def __generate_worker_manager_table(
+    wm_data: List[Dict], worker_group_length: int, worker_length: int
+) -> List[List[str]]:
     if not wm_data:
         headers = [["No workers"]]
         return headers
@@ -158,6 +177,7 @@ def __generate_worker_manager_table(wm_data: List[Dict], worker_length: int) -> 
     )
 
     for row in wm_data:
+        row["group"] = __truncate(row["group"], worker_group_length, how="left")
         row["worker"] = __truncate(row["worker"], worker_length, how="left")
         row["agt_cpu"] = format_percentage(row["agt_cpu"])
         row["agt_rss"] = format_bytes(row["agt_rss"])

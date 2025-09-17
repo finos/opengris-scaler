@@ -9,11 +9,11 @@ from typing import Optional, Set, Tuple
 
 import zmq.asyncio
 
-from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
 from scaler.io.async_binder import ZMQAsyncBinder
 from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
 from scaler.io.config import PROFILING_INTERVAL_SECONDS
+from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,
