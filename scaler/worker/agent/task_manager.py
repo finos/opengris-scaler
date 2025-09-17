@@ -80,9 +80,7 @@ class VanillaTaskManager(Looper, TaskManager):
             _ = self._queued_task_id_to_task.pop(task_cancel.task_id)
 
         await self._connector_external.send(
-            TaskCancelConfirm.new_msg(
-                task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.Canceled
-            )
+            TaskCancelConfirm.new_msg(task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.Canceled)
         )
 
     async def on_task_result(self, result: TaskResult):
