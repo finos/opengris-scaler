@@ -320,12 +320,12 @@ Worker Adapter allows external systems to request the creation and termination o
 
 Please check the OpenGRIS standard for more details on the Worker Adapter specification [here](https://github.com/finos/opengris).
 
-### Starting the VM Worker Adapter
+### Starting the Native Worker Adapter
 
-Starting a VM Worker Adapter server at `http://127.0.0.1:8080`:
+Starting a Native Worker Adapter server at `http://127.0.0.1:8080`:
 
 ```bash
-$ scaler_vm_worker_adapter tcp://127.0.0.1:2345 --host 127.0.0.1 --port 8080
+$ scaler_native_worker_adapter tcp://127.0.0.1:2345 --host 127.0.0.1 --port 8080
 ```
 
 Pass the `--adapter-webhook-url` argument to the Scaler scheduler to connect to the Worker Adapter:

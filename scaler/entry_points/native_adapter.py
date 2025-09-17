@@ -15,17 +15,17 @@ from scaler.io.config import (
 from scaler.utility.event_loop import EventLoopType
 from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
-from scaler.worker_adapter.vm import VMWorkerAdapter
+from scaler.worker_adapter.native import NativeWorkerAdapter
 
 
 def get_args():
-    parser = argparse.ArgumentParser("scaler vm worker_adapter", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser("scaler native worker adapter", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     # Server configuration
     parser.add_argument(
-        "--host", type=str, default="localhost", help="host address for the VM worker_adapter HTTP server"
+        "--host", type=str, default="localhost", help="host address for the native worker adapter HTTP server"
     )
-    parser.add_argument("--port", "-p", type=int, help="port for the VM worker_adapter HTTP server")
+    parser.add_argument("--port", "-p", type=int, help="port for the native worker adapter HTTP server")
 
     # Worker configuration
     parser.add_argument("--io-threads", type=int, default=DEFAULT_IO_THREADS, help="number of io threads for zmq")
@@ -130,7 +130,7 @@ def get_args():
 def main():
     args = get_args()
 
-    vm_worker_adapter = VMWorkerAdapter(
+    native_worker_adapter = NativeWorkerAdapter(
         address=args.scheduler_address,
         storage_address=args.object_storage_address,
         tags=args.worker_tags if args.worker_tags else set(),
@@ -149,7 +149,7 @@ def main():
         logging_config_file=args.logging_config_file,
     )
 
-    app = vm_worker_adapter.create_app()
+    app = native_worker_adapter.create_app()
     web.run_app(app, host=args.host, port=args.port)
 
 

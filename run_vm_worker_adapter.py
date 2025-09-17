@@ -1,4 +1,4 @@
-from scaler.entry_points.vm_adapter import main
+from scaler.entry_points.native_adapter import main
 from scaler.utility.debug import pdb_wrapped
 
 if __name__ == "__main__":

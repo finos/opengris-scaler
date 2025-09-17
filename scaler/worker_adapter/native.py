@@ -22,7 +22,7 @@ class WorkerGroupNotFoundError(Exception):
     pass
 
 
-class VMWorkerAdapter:
+class NativeWorkerAdapter:
     def __init__(
         self,
         address: ZMQConfig,
@@ -60,7 +60,7 @@ class VMWorkerAdapter:
         self._logging_config_file = logging_config_file
 
         """
-        Although a worker group can contain multiple workers, in this VM adapter implementation,
+        Although a worker group can contain multiple workers, in this native adapter implementation,
         each worker group will only contain one worker.
         """
         self._worker_groups: Dict[WorkerGroupID, Dict[WorkerID, Worker]] = {}
@@ -89,7 +89,7 @@ class VMWorkerAdapter:
         )
 
         worker.start()
-        worker_group_id = f"vm-{uuid.uuid4().hex}".encode()
+        worker_group_id = f"native-{uuid.uuid4().hex}".encode()
         self._worker_groups[worker_group_id] = {worker.identity: worker}
         return worker_group_id
 

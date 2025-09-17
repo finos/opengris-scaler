@@ -29,13 +29,13 @@ from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
-from scaler.worker_adapter.vm import VMWorkerAdapter
+from scaler.worker_adapter.native import NativeWorkerAdapter
 from tests.utility import logging_test_name
 
 
-def _run_vm_adapter_webhook(address: str, webhook_port: int) -> None:
-    """Construct a VMWorkerAdapter and run its aiohttp app. Runs in a separate process."""
-    adapter = VMWorkerAdapter(
+def _run_native_worker_adapter(address: str, webhook_port: int) -> None:
+    """Construct a NativeWorkerAdapter and run its aiohttp app. Runs in a separate process."""
+    adapter = NativeWorkerAdapter(
         address=ZMQConfig.from_string(address),
         storage_address=None,
         tags=set(),
@@ -97,7 +97,7 @@ class TestScaling(unittest.TestCase):
         )
         scheduler.start()
 
-        webhook_server = Process(target=_run_vm_adapter_webhook, args=(self.scheduler_address, self.webhook_port))
+        webhook_server = Process(target=_run_native_worker_adapter, args=(self.scheduler_address, self.webhook_port))
         webhook_server.start()
 
         with Client(self.scheduler_address) as client:
