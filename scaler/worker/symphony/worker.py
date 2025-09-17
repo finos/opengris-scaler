@@ -7,8 +7,8 @@ from typing import Optional
 import zmq
 import zmq.asyncio
 
-from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.io.async_connector import ZMQAsyncConnector
+from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,

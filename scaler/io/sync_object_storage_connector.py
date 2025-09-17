@@ -1,7 +1,7 @@
 import collections
 import socket
 from threading import Lock
-from typing import Optional, Iterable, List, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from scaler.io.mixins import SyncObjectStorageConnector
 from scaler.protocol.capnp._python import _object_storage  # noqa

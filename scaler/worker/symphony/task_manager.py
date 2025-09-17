@@ -8,8 +8,8 @@ from bidict import bidict
 
 from scaler import Serializer
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
-from scaler.protocol.python.common import ObjectMetadata, ObjectStorageAddress, TaskResultType, TaskCancelConfirmType
-from scaler.protocol.python.message import ObjectInstruction, Task, TaskCancel, TaskResult, TaskCancelConfirm
+from scaler.protocol.python.common import ObjectMetadata, ObjectStorageAddress, TaskCancelConfirmType, TaskResultType
+from scaler.protocol.python.message import ObjectInstruction, Task, TaskCancel, TaskCancelConfirm, TaskResult
 from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper

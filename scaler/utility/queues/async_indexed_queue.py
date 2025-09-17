@@ -1,5 +1,5 @@
 from asyncio import Queue, QueueEmpty
-from typing import TypeVar, Generic
+from typing import Generic, TypeVar
 
 from scaler.utility.queues.indexed_queue import IndexedQueue
 

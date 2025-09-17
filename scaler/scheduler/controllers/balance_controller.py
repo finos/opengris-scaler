@@ -6,7 +6,7 @@ from scaler.protocol.python.message import StateBalanceAdvice
 from scaler.scheduler.allocate_policy.mixins import TaskAllocatePolicy
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import TaskController
-from scaler.utility.identifiers import WorkerID, TaskID
+from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.mixins import Looper
 
 

@@ -1,5 +1,5 @@
 import abc
-from typing import Optional, Set, Any
+from typing import Any, Optional, Set
 
 from scaler.protocol.python.common import ObjectMetadata
 from scaler.protocol.python.message import (
@@ -8,12 +8,13 @@ from scaler.protocol.python.message import (
     DisconnectRequest,
     GraphTask,
     InformationRequest,
+    InformationSnapshot,
     ObjectInstruction,
     Task,
     TaskCancel,
+    TaskCancelConfirm,
     TaskResult,
     WorkerHeartbeat,
-    TaskCancelConfirm,
 )
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.mixins import Reporter
@@ -185,6 +186,12 @@ class WorkerController(Reporter):
 
     @abc.abstractmethod
     def get_worker_ids(self) -> Set[WorkerID]:
+        raise NotImplementedError()
+
+
+class ScalingController(Reporter):
+    @abc.abstractmethod
+    async def on_snapshot(self, snapshot: InformationSnapshot):
         raise NotImplementedError()
 
 

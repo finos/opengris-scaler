@@ -8,10 +8,10 @@ from scaler.protocol.python.message import (
     DisconnectRequest,
     DisconnectResponse,
     StateWorker,
+    Task,
     TaskCancel,
     WorkerHeartbeat,
     WorkerHeartbeatEcho,
-    Task,
 )
 from scaler.protocol.python.status import ProcessorStatus, Resource, WorkerManagerStatus, WorkerStatus
 from scaler.scheduler.allocate_policy.mixins import TaskAllocatePolicy

@@ -1,6 +1,6 @@
 from typing import Optional
 
-from scaler.protocol.python.common import TaskTransition, TaskState
+from scaler.protocol.python.common import TaskState, TaskTransition
 
 
 class TaskStateMachine:

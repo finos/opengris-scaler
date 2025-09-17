@@ -53,6 +53,15 @@ struct WorkerManagerStatus {
     workers @0 :List(WorkerStatus);
 }
 
+struct ScalingManagerStatus {
+    workerGroups @0 :List(Pair);
+
+    struct Pair {
+        workerGroupID @0 :Data;
+        workerIDs @1 :List(Data);
+    }
+}
+
 struct BinderStatus {
     received @0 :List(Pair);
     sent @1 :List(Pair);

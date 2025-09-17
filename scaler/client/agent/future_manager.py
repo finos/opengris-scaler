@@ -6,8 +6,8 @@ from typing import Dict, Optional
 from scaler.client.agent.mixins import FutureManager
 from scaler.client.future import ScalerFuture
 from scaler.client.serializer.mixins import Serializer
-from scaler.protocol.python.common import TaskResultType, TaskCancelConfirmType, TaskState
-from scaler.protocol.python.message import TaskResult, TaskCancelConfirm
+from scaler.protocol.python.common import TaskCancelConfirmType, TaskResultType, TaskState
+from scaler.protocol.python.message import TaskCancelConfirm, TaskResult
 from scaler.utility.exceptions import WorkerDiedError
 from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.profile_result import retrieve_profiling_result_from_task_result

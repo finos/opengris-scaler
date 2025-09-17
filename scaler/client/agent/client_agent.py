@@ -24,9 +24,9 @@ from scaler.protocol.python.message import (
     ObjectInstruction,
     Task,
     TaskCancel,
+    TaskCancelConfirm,
     TaskLog,
     TaskResult,
-    TaskCancelConfirm,
 )
 from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine

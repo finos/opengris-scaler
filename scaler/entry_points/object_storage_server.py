@@ -2,7 +2,7 @@ import argparse
 import logging
 
 from scaler.object_storage.object_storage_server import ObjectStorageServer
-from scaler.utility.logging.utility import setup_logger, get_logger_info
+from scaler.utility.logging.utility import get_logger_info, setup_logger
 from scaler.utility.object_storage_config import ObjectStorageConfig
 
 

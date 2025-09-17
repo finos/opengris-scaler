@@ -1,12 +1,10 @@
 import unittest
-
 from typing import Dict, Set
 
-from scaler.utility.logging.utility import setup_logger
-from scaler.scheduler.allocate_policy.tagged_allocate_policy import TaggedAllocatePolicy
 from scaler.protocol.python.message import Task
+from scaler.scheduler.allocate_policy.tagged_allocate_policy import TaggedAllocatePolicy
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
-
+from scaler.utility.logging.utility import setup_logger
 from tests.utility import logging_test_name
 
 MAX_TASKS_PER_WORKER = 10

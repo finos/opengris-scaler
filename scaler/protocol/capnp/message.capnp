@@ -137,6 +137,7 @@ struct StateScheduler {
     objectManager @4 :Status.ObjectManagerStatus;
     taskManager @5 :Status.TaskManagerStatus;
     workerManager @6 :Status.WorkerManagerStatus;
+    scalingManager @7 :Status.ScalingManagerStatus;
 }
 
 struct StateWorker {
