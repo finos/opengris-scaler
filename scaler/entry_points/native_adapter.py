@@ -2,7 +2,6 @@ import argparse
 
 from aiohttp import web
 
-from scaler.entry_points.cluster import parse_capabilities
 from scaler.io.config import (
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
     DEFAULT_HARD_PROCESSOR_SUSPEND,
@@ -14,7 +13,7 @@ from scaler.io.config import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
 )
 from scaler.utility.event_loop import EventLoopType
-from scaler.utility.object_storage_config import ObjectStorageConfig
+from scaler.config import ObjectStorageConfig, ScalerConfig
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker_adapter.native import NativeWorkerAdapter
 
@@ -24,24 +23,29 @@ def get_args():
         "scaler native worker adapter", formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
+    parser.add_argument("--config", type=str, default=None, help="Path to the TOML configuration file.")
+
     # Server configuration
     parser.add_argument(
-        "--host", type=str, default="localhost", help="host address for the native worker adapter HTTP server"
+        "--adapter_web_host",
+        type=str,
+        default="localhost",
+        help="host address for the native worker adapter HTTP server",
     )
-    parser.add_argument("--port", "-p", type=int, help="port for the native worker adapter HTTP server")
+    parser.add_argument("--adapter_web_port", "-awp", type=int, help="port for the native worker adapter HTTP server")
 
     # Worker configuration
     parser.add_argument("--io-threads", type=int, default=DEFAULT_IO_THREADS, help="number of io threads for zmq")
     parser.add_argument(
-        "--per-worker-capabilities",
+        "--per-worker-capabilities-str",
         "-pwc",
-        type=parse_capabilities,
+        type=str,
         default="",
         help='comma-separated capabilities provided by the workers (e.g. "-pwc linux,cpu=4")',
     )
     parser.add_argument("--worker-task-queue-size", "-wtqs", type=int, default=10, help="specify worker queue size")
     parser.add_argument(
-        "--max-workers",
+        "--num-of-workers",
         "-mw",
         type=int,
         default=DEFAULT_NUMBER_OF_WORKER,
@@ -134,27 +138,31 @@ def get_args():
 def main():
     args = get_args()
 
+    scaler_config = ScalerConfig.get_config(args.config, args)
+
     native_worker_adapter = NativeWorkerAdapter(
-        address=args.scheduler_address,
-        storage_address=args.object_storage_address,
-        capabilities=args.per_worker_capabilities,
-        io_threads=args.io_threads,
-        task_queue_size=args.worker_task_queue_size,
-        max_workers=args.max_workers,
-        heartbeat_interval_seconds=args.heartbeat_interval,
-        task_timeout_seconds=args.task_timeout_seconds,
-        death_timeout_seconds=args.death_timeout_seconds,
-        garbage_collect_interval_seconds=args.garbage_collect_interval_seconds,
-        trim_memory_threshold_bytes=args.trim_memory_threshold_bytes,
-        hard_processor_suspend=args.hard_processor_suspend,
-        event_loop=args.event_loop,
-        logging_paths=args.logging_paths,
-        logging_level=args.logging_level,
-        logging_config_file=args.logging_config_file,
+        address=scaler_config.scheduler.address,
+        storage_address=scaler_config.object_storage,
+        capabilities=scaler_config.cluster.per_worker_capabilities,
+        io_threads=scaler_config.worker.io_threads,
+        task_queue_size=scaler_config.worker.per_worker_task_queue_size,
+        max_workers=scaler_config.cluster.num_of_workers,
+        heartbeat_interval_seconds=scaler_config.worker.heartbeat_interval_seconds,
+        task_timeout_seconds=scaler_config.worker.task_timeout_seconds,
+        death_timeout_seconds=scaler_config.worker.death_timeout_seconds,
+        garbage_collect_interval_seconds=scaler_config.worker.garbage_collect_interval_seconds,
+        trim_memory_threshold_bytes=scaler_config.worker.trim_memory_threshold_bytes,
+        hard_processor_suspend=scaler_config.worker.hard_processor_suspend,
+        event_loop=scaler_config.scheduler.event_loop,
+        logging_paths=scaler_config.logging.paths,
+        logging_level=scaler_config.logging.level,
+        logging_config_file=scaler_config.logging.config_file,
     )
 
     app = native_worker_adapter.create_app()
-    web.run_app(app, host=args.host, port=args.port)
+    web.run_app(
+        app, host=scaler_config.native_adapter.adapter_web_host, port=scaler_config.native_adapter.adapter_web_port
+    )
 
 
 if __name__ == "__main__":

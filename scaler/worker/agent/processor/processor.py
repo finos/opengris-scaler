@@ -20,7 +20,7 @@ from scaler.protocol.python.mixins import Message
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
-from scaler.utility.object_storage_config import ObjectStorageConfig
+from scaler.config import ObjectStorageConfig
 from scaler.utility.serialization import serialize_failure
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.processor.object_cache import ObjectCache

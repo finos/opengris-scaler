@@ -6,6 +6,8 @@ import logging.handlers
 import os
 import typing
 
+from scaler.io.config import DEFAULT_LOGGING_PATHS
+
 
 class LogType(enum.Enum):
     Screen = enum.auto()
@@ -28,7 +30,7 @@ class LoggingLevel(enum.Enum):
 
 
 def setup_logger(
-    log_paths: typing.Tuple[str, ...] = ("/dev/stdout",),
+    log_paths: typing.Tuple[str, ...] = DEFAULT_LOGGING_PATHS,
     logging_config_file: typing.Optional[str] = None,
     logging_level: str = LoggingLevel.INFO.name,
 ):

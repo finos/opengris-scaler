@@ -2,7 +2,7 @@ import dataclasses
 from typing import Optional
 
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
-from scaler.utility.object_storage_config import ObjectStorageConfig
+from scaler.config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 
 

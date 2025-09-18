@@ -11,6 +11,8 @@ from scaler.io.config import (
     DEFAULT_NUMBER_OF_WORKER,
     DEFAULT_PER_WORKER_QUEUE_SIZE,
     DEFAULT_WORKER_DEATH_TIMEOUT,
+    DEFAULT_LOGGING_LEVEL,
+    DEFAULT_LOGGING_PATHS,
 )
 from scaler.utility.event_loop import EventLoopType, register_event_loop
 from scaler.utility.logging.utility import setup_logger
@@ -63,7 +65,7 @@ def get_args():
         "-lp",
         nargs="*",
         type=str,
-        default=("/dev/stdout",),
+        default=DEFAULT_LOGGING_PATHS,
         help='specify where cluster log should logged to, it can be multiple paths, "/dev/stdout" is default for '
         "standard output, each worker will have its own log file with process id appended to the path",
     )
@@ -72,7 +74,7 @@ def get_args():
         "-ll",
         type=str,
         choices=("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
-        default="INFO",
+        default=DEFAULT_LOGGING_LEVEL,
         help="specify the logging level",
     )
     parser.add_argument(
