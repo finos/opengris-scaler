@@ -45,6 +45,7 @@ class TestBalance(unittest.TestCase):
         new_cluster = Cluster(
             address=combo._cluster._address,
             storage_address=None,
+            preload=None,
             worker_io_threads=1,
             worker_names=[str(i) for i in range(0, N_WORKERS - 1)],
             per_worker_capabilities={},

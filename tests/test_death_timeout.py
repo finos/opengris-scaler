@@ -30,6 +30,7 @@ class TestDeathTimeout(unittest.TestCase):
         cluster = Cluster(
             address=ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
             storage_address=None,
+            preload=None,
             worker_io_threads=DEFAULT_IO_THREADS,
             worker_names=["a", "b"],
             per_worker_capabilities={},
