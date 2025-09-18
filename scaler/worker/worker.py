@@ -46,6 +46,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         name: str,
         address: ZMQConfig,
         storage_address: Optional[ObjectStorageConfig],
+        preload: Optional[str],
         capabilities: Dict[str, int],
         io_threads: int,
         task_queue_size: int,
@@ -64,6 +65,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._name = name
         self._address = address
         self._storage_address = storage_address
+        self._preload = preload
         self._capabilities = capabilities
         self._io_threads = io_threads
         self._task_queue_size = task_queue_size
@@ -126,7 +128,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._heartbeat_manager = VanillaHeartbeatManager(
             storage_address=self._storage_address,
             capabilities=self._capabilities,
-            task_queue_size=self._task_queue_size
+            task_queue_size=self._task_queue_size,
         )
 
         self._profiling_manager = VanillaProfilingManager()
@@ -136,6 +138,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             identity=self._ident,
             event_loop=self._event_loop,
             address_internal=self._address_internal,
+            preload=self._preload,
             garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
             hard_processor_suspend=self._hard_processor_suspend,

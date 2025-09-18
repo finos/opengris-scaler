@@ -16,6 +16,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         self,
         address: ZMQConfig,
         storage_address: Optional[ObjectStorageConfig],
+        preload: Optional[str],
         worker_io_threads: int,
         worker_names: List[str],
         per_worker_capabilities: Dict[str, int],
@@ -35,6 +36,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
 
         self._address = address
         self._storage_address = storage_address
+        self._preload = preload
         self._worker_io_threads = worker_io_threads
         self._worker_names = worker_names
         self._per_worker_capabilities = per_worker_capabilities
@@ -83,6 +85,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
                 address=self._address,
                 storage_address=self._storage_address,
                 capabilities=self._per_worker_capabilities,
+                preload=self._preload,
                 io_threads=self._worker_io_threads,
                 task_queue_size=self._per_worker_task_queue_size,
                 heartbeat_interval_seconds=self._heartbeat_interval_seconds,

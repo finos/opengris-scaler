@@ -74,6 +74,7 @@ class NativeWorkerAdapter:
             name=uuid.uuid4().hex,
             address=self._address,
             storage_address=self._storage_address,
+            preload=None,
             capabilities=self._capabilities,
             io_threads=self._io_threads,
             task_queue_size=self._task_queue_size,

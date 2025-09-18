@@ -24,6 +24,12 @@ def get_args():
         "standalone compute cluster", formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument(
+        "--preload",
+        type=str,
+        default=None,
+        help='optional module init in the form "pkg.mod:func(arg1, arg2)" executed in each processor before tasks',
+    )
+    parser.add_argument(
         "--num-of-workers", "-n", type=int, default=DEFAULT_NUMBER_OF_WORKER, help="number of workers in cluster"
     )
     parser.add_argument(
@@ -162,6 +168,7 @@ def main():
     cluster = Cluster(
         address=args.address,
         storage_address=args.object_storage_address,
+        preload=args.preload,
         worker_names=worker_names,
         per_worker_capabilities=args.per_worker_capabilities,
         per_worker_task_queue_size=args.worker_task_queue_size,

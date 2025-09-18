@@ -23,6 +23,7 @@ class VanillaProcessorManager(ProcessorManager):
         identity: WorkerID,
         event_loop: str,
         address_internal: ZMQConfig,
+        preload: Optional[str],
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
         hard_processor_suspend: bool,
@@ -33,6 +34,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         self._identity = identity
         self._event_loop = event_loop
+        self._preload = preload
 
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
@@ -298,6 +300,7 @@ class VanillaProcessorManager(ProcessorManager):
             self._event_loop,
             self._address_internal,
             storage_address,
+            self._preload,
             self._garbage_collect_interval_seconds,
             self._trim_memory_threshold_bytes,
             self._hard_processor_suspend,
