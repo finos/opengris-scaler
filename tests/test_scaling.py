@@ -38,7 +38,7 @@ def _run_native_worker_adapter(address: str, webhook_port: int) -> None:
     adapter = NativeWorkerAdapter(
         address=ZMQConfig.from_string(address),
         storage_address=None,
-        tags=set(),
+        capabilities={},
         io_threads=DEFAULT_IO_THREADS,
         task_queue_size=10,
         max_workers=4,

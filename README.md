@@ -224,6 +224,52 @@ with Client(address="tcp://127.0.0.1:2345") as client:
     print(future.result()) # 21
 ```
 
+## Task Routing and Capability Management
+
+> **Note**: This feature is experimental and may change in future releases.
+
+Scaler provides a task routing mechanism, allowing you to specify capability requirements for tasks and allocate them to
+workers supporting these.
+
+### Starting the Scheduler with the Capability Allocation Policy
+
+The scheduler can be started with the experimental capability allocation policy using the `--allocate-policy/-ap`
+argument.
+
+```bash
+$ scaler_scheduler --allocate-policy capability tcp://127.0.0.1:2345
+```
+
+### Defining Worker Supported Capabilities
+
+When starting a cluster of workers, you can define the capabilities available on each worker using the
+`--per-worker-capabilities/-pwc` argument. This allows the scheduler to allocate tasks to workers based on the
+capabilities these provide.
+
+```bash
+$ scaler_cluster -n 4 --per-worker-capabilities "gpu,linux" tcp://127.0.0.1:2345
+```
+
+### Specifying Capability Requirements for Tasks
+
+When submitting tasks using the Scaler client, you can specify the capability requirements for each task using the
+`capabilities` argument in the `submit_verbose()` and `get()` methods. This ensures that tasks are allocated to workers
+supporting these capabilities.
+
+```python
+from scaler import Client
+
+with Client(address="tcp://127.0.0.1:2345") as client:
+    future = client.submit_verbose(round, args=(3.15,), kwargs={}, capabilities={"gpu": -1})
+    print(future.result())  # 3
+```
+
+The scheduler will route a task to a worker if `task.capabilities.is_subset(worker.capabilities)`.
+
+Integer values specified for capabilities (e.g., `gpu=10`) are *currently* ignored by the capabilities allocation policy.
+This means that the presence of a capabilities is considered, but not its quantity. Support for capabilities tracking
+might be added in the future.
+
 ## IBM Spectrum Symphony integration
 
 A Scaler scheduler can interface with IBM Spectrum Symphony to provide distributed computing across Symphony clusters.

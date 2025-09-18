@@ -1,5 +1,6 @@
 import dataclasses
 import typing
+import logging
 from collections import OrderedDict, defaultdict
 from itertools import takewhile
 from typing import Dict, Iterable, List, Optional, Set
@@ -14,14 +15,14 @@ from scaler.utility.identifiers import TaskID, WorkerID
 @dataclasses.dataclass(frozen=True)
 class _TaskHolder:
     task_id: TaskID = dataclasses.field()
-    tags: Set[str] = dataclasses.field()
+    capabilities: Set[str] = dataclasses.field()
 
 
 @dataclasses.dataclass(frozen=True)
 class _WorkerHolder:
     worker_id: WorkerID = dataclasses.field()
 
-    tags: Set[str] = dataclasses.field()
+    capabilities: Set[str] = dataclasses.field()
     queue_size: int = dataclasses.field()
 
     # Queued tasks, ordered from oldest to youngest tasks.
@@ -34,35 +35,36 @@ class _WorkerHolder:
         return self.queue_size - self.n_tasks()
 
     def copy(self) -> "_WorkerHolder":
-        return _WorkerHolder(self.worker_id, self.tags, self.queue_size, self.task_id_to_task.copy())
+        return _WorkerHolder(self.worker_id, self.capabilities, self.queue_size, self.task_id_to_task.copy())
 
 
-class TaggedAllocatePolicy(TaskAllocatePolicy):
+class CapabilityAllocatePolicy(TaskAllocatePolicy):
     """
-    This allocator policy assigns the tasks to workers supporting the requested task tags, trying to make all workers
-    load as equal as possible.
+    This allocator policy assigns the tasks to workers supporting the requested task capabilities, trying to make all
+    workers load as equal as possible.
     """
 
     def __init__(self):
         self._worker_id_to_worker: Dict[WorkerID, _WorkerHolder] = {}
 
         self._task_id_to_worker_id: Dict[TaskID, WorkerID] = {}
-        self._tag_to_worker_ids: Dict[str, Set[WorkerID]] = {}
+        self._capability_to_worker_ids: Dict[str, Set[WorkerID]] = {}
 
-    def add_worker(self, worker: WorkerID, tags: Set[str], queue_size: int) -> bool:
-        # FIXME: remove async in TaskAllocatePolicy interface
+    def add_worker(self, worker: WorkerID, capabilities: Dict[str, int], queue_size: int) -> bool:
+        if any(capability_value != -1 for capability_value in capabilities.values()):
+            logging.warning(f"allocate policy ignores non-infinite worker capabilities: {capabilities!r}.")
 
         if worker in self._worker_id_to_worker:
             return False
 
-        worker_holder = _WorkerHolder(worker_id=worker, tags=tags, queue_size=queue_size)
+        worker_holder = _WorkerHolder(worker_id=worker, capabilities=set(capabilities.keys()), queue_size=queue_size)
         self._worker_id_to_worker[worker] = worker_holder
 
-        for tag in tags:
-            if tag not in self._tag_to_worker_ids:
-                self._tag_to_worker_ids[tag] = set()
+        for capability in worker_holder.capabilities:
+            if capability not in self._capability_to_worker_ids:
+                self._capability_to_worker_ids[capability] = set()
 
-            self._tag_to_worker_ids[tag].add(worker)
+            self._capability_to_worker_ids[capability].add(worker)
 
         return True
 
@@ -72,10 +74,10 @@ class TaggedAllocatePolicy(TaskAllocatePolicy):
         if worker_holder is None:
             return []
 
-        for tag in worker_holder.tags:
-            self._tag_to_worker_ids[tag].discard(worker)
-            if len(self._tag_to_worker_ids[tag]) == 0:
-                self._tag_to_worker_ids.pop(tag)
+        for capability in worker_holder.capabilities:
+            self._capability_to_worker_ids[capability].discard(worker)
+            if len(self._capability_to_worker_ids[capability]) == 0:
+                self._capability_to_worker_ids.pop(capability)
 
         task_ids = list(worker_holder.task_id_to_task.keys())
         for task_id in task_ids:
@@ -102,27 +104,27 @@ class TaggedAllocatePolicy(TaskAllocatePolicy):
         #
         # The overall worst-case time complexity of the balancing algorithm is:
         #
-        #     O(n_workers * log(n_workers) + n_tasks * n_workers * n_tags)
+        #     O(n_workers • log(n_workers) + n_tasks • n_workers • n_capabilities)
         #
-        # However, if the cluster does not use any tag, time complexity is always:
+        # However, if the cluster does not use any capability, time complexity is always:
         #
-        #     O(n_workers * log(n_workers) + n_tasks * log(n_workers))
+        #     O(n_workers • log(n_workers) + n_tasks • log(n_workers))
         #
-        # If tag constraints are used, this might result in less than optimal balancing. That's because, in some cases,
-        # the optimal balancing might require to move tasks between more than two workers. Consider this cluster's
-        # state:
+        # If capability constraints are used, this might result in less than optimal balancing. That's because, in some
+        # cases, the optimal balancing might require to move tasks between more than two workers. Consider this
+        # cluster's state:
         #
         #   Worker 1
-        #       Supported tags: {Linux, GPU}
+        #       Supported capabilities: {Linux, GPU}
         #       Tasks:
         #           Task 1: {Linux}
         #
         #   Worker 2
-        #       Supported tags: {Linux}
+        #       Supported capabilities: {Linux}
         #       Tasks: None
         #
         #   Worker 3:
-        #       Supported tags: {GPU}
+        #       Supported capabilities: {GPU}
         #       Tasks:
         #           Task 2: {GPU}
         #           Task 3: {GPU}
@@ -159,7 +161,7 @@ class TaggedAllocatePolicy(TaskAllocatePolicy):
         # - all workers are balanced;
         # - we cannot find a low-load worker than can accept tasks from a high-load worker.
         #
-        # Worst-case time complexity is O(n_tasks • n_workers • n_tags).
+        # Worst-case time complexity is O(n_tasks • n_workers • n_capabilities).
         # If no tag is used in the cluster, complexity is always O(n_tasks • log(n_workers))
 
         balancing_advice: Dict[WorkerID, List[TaskID]] = defaultdict(list)
@@ -216,18 +218,18 @@ class TaggedAllocatePolicy(TaskAllocatePolicy):
     def __balance_try_reassign_task(task: _TaskHolder, worker_candidates: Iterable[_WorkerHolder]) -> Optional[int]:
         """Returns the index of the first worker that can accept the task."""
 
-        # Time complexity is O(n_workers • len(task.tags))
+        # Time complexity is O(n_workers • len(task.capabilities))
 
         for worker_index, worker in enumerate(worker_candidates):
-            if task.tags.issubset(worker.tags):
+            if task.capabilities.issubset(worker.capabilities):
                 return worker_index
 
         return None
 
     def assign_task(self, task: Task) -> WorkerID:
-        # Worst-case time complexity is O(n_workers • len(task.tags))
+        # Worst-case time complexity is O(n_workers • len(task.capabilities))
 
-        available_workers = self.__get_available_workers_for_tags(task.tags)
+        available_workers = self.__get_available_workers_for_capabilities(task.capabilities)
 
         if len(available_workers) == 0:
             return WorkerID.invalid_worker_id()
@@ -236,7 +238,7 @@ class TaggedAllocatePolicy(TaskAllocatePolicy):
         # free queue task slots, but that might needlessly idle workers that have a smaller queue.
 
         min_loaded_worker = min(available_workers, key=lambda worker: worker.n_tasks())
-        min_loaded_worker.task_id_to_task[task.task_id] = _TaskHolder(task.task_id, task.tags)
+        min_loaded_worker.task_id_to_task[task.task_id] = _TaskHolder(task.task_id, set(task.capabilities.keys()))
 
         self._task_id_to_worker_id[task.task_id] = min_loaded_worker.worker_id
 
@@ -253,25 +255,25 @@ class TaggedAllocatePolicy(TaskAllocatePolicy):
 
         return worker_id
 
-    def has_available_worker(self, tags: Optional[Set[str]] = None) -> bool:
-        return len(self.__get_available_workers_for_tags(tags or set())) > 0
+    def has_available_worker(self, capabilities: Optional[Dict[str, int]] = None) -> bool:
+        return len(self.__get_available_workers_for_capabilities(capabilities or {})) > 0
 
     def statistics(self) -> Dict:
         return {
-            worker.worker_id: {"free": worker.n_free(), "sent": worker.n_tasks(), "tags": worker.tags}
+            worker.worker_id: {"free": worker.n_free(), "sent": worker.n_tasks(), "capabilities": worker.capabilities}
             for worker in self._worker_id_to_worker.values()
         }
 
-    def __get_available_workers_for_tags(self, tags: Set[str]) -> List[_WorkerHolder]:
-        # Worst-case time complexity is O(n_workers • len(tags))
+    def __get_available_workers_for_capabilities(self, capabilities: Dict[str, int]) -> List[_WorkerHolder]:
+        # Worst-case time complexity is O(n_workers • len(capabilities))
 
-        if any(tag not in self._tag_to_worker_ids for tag in tags):
+        if any(capability not in self._capability_to_worker_ids for capability in capabilities.keys()):
             return []
 
         matching_worker_ids = set(self._worker_id_to_worker.keys())
 
-        for tag in tags:
-            matching_worker_ids.intersection_update(self._tag_to_worker_ids[tag])
+        for capability in capabilities.keys():
+            matching_worker_ids.intersection_update(self._capability_to_worker_ids[capability])
 
         matching_workers = [self._worker_id_to_worker[worker_id] for worker_id in matching_worker_ids]
 

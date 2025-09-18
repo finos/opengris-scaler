@@ -1,7 +1,7 @@
 import os
 import signal
 import uuid
-from typing import Dict, Optional, Set, Tuple
+from typing import Dict, Optional, Tuple
 
 from aiohttp import web
 from aiohttp.web_request import Request
@@ -27,7 +27,7 @@ class NativeWorkerAdapter:
         self,
         address: ZMQConfig,
         storage_address: Optional[ObjectStorageConfig],
-        tags: Set[str],
+        capabilities: Dict[str, int],
         io_threads: int,
         task_queue_size: int,
         max_workers: int,
@@ -44,7 +44,7 @@ class NativeWorkerAdapter:
     ):
         self._address = address
         self._storage_address = storage_address
-        self._tags = tags
+        self._capabilities = capabilities
         self._io_threads = io_threads
         self._task_queue_size = task_queue_size
         self._max_workers = max_workers
@@ -74,7 +74,7 @@ class NativeWorkerAdapter:
             name=uuid.uuid4().hex,
             address=self._address,
             storage_address=self._storage_address,
-            tags=self._tags,
+            capabilities=self._capabilities,
             io_threads=self._io_threads,
             task_queue_size=self._task_queue_size,
             heartbeat_interval_seconds=self._heartbeat_interval_seconds,

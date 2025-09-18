@@ -25,8 +25,6 @@ from scaler.protocol.python.message import (
     WorkerHeartbeat,
 )
 from scaler.protocol.python.mixins import Message
-from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
-from scaler.scheduler.allocate_policy.even_load_allocate_policy import EvenLoadAllocatePolicy
 from scaler.scheduler.config import SchedulerConfig
 from scaler.scheduler.controllers.balance_controller import VanillaBalanceController
 from scaler.scheduler.controllers.client_controller import VanillaClientController
@@ -87,11 +85,7 @@ class Scheduler:
         )
         logging.info(f"{self.__class__.__name__}: listen to scheduler monitor address {monitor_address.to_address()}")
 
-        match config.allocate_policy:
-            case AllocatePolicy.even:
-                self._task_allocate_policy = EvenLoadAllocatePolicy()
-            case _:
-                raise ValueError(f"Unknown allocate_policy: {config.allocate_policy}")
+        self._task_allocate_policy = config.allocate_policy.value()
 
         self._client_manager = VanillaClientController(config_controller=self._config_controller)
         self._object_controller = VanillaObjectController(config_controller=self._config_controller)

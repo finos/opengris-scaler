@@ -8,6 +8,7 @@ from scaler.protocol.capnp._python import _message  # noqa
 from scaler.protocol.python.common import (
     ObjectMetadata,
     ObjectStorageAddress,
+    TaskCapability,
     TaskCancelConfirmType,
     TaskResultType,
     TaskState,
@@ -60,8 +61,8 @@ class Task(Message):
         return [self._from_capnp_task_argument(arg) for arg in self._msg.functionArgs]
 
     @property
-    def tags(self) -> Set[str]:
-        return set(self._msg.tags)
+    def capabilities(self) -> Dict[str, int]:
+        return {capability.name: capability.value for capability in self._msg.capabilities}
 
     @staticmethod
     def new_msg(
@@ -70,7 +71,7 @@ class Task(Message):
         metadata: bytes,
         func_object_id: Optional[ObjectID],
         function_args: List[Union[ObjectID, TaskID]],
-        tags: Set[str],
+        capabilities: Dict[str, int],
     ) -> "Task":
         return Task(
             _message.Task(
@@ -79,7 +80,9 @@ class Task(Message):
                 metadata=metadata,
                 funcObjectId=bytes(func_object_id) if func_object_id is not None else b"",
                 functionArgs=[Task._to_capnp_task_argument(arg) for arg in function_args],
-                tags=list(tags),
+                capabilities=[
+                    TaskCapability.new_msg(name, value).get_message() for name, value in capabilities.items()
+                ],
             )
         )
 
@@ -315,8 +318,8 @@ class WorkerHeartbeat(Message):
         return [ProcessorStatus(p) for p in self._msg.processors]
 
     @property
-    def tags(self) -> Set[str]:
-        return set(self._msg.tags)
+    def capabilities(self) -> Dict[str, int]:
+        return {capability.name: capability.value for capability in self._msg.capabilities}
 
     @staticmethod
     def new_msg(
@@ -327,7 +330,7 @@ class WorkerHeartbeat(Message):
         latency_us: int,
         task_lock: bool,
         processors: List[ProcessorStatus],
-        tags: Set[str],
+        capabilities: Dict[str, int],
     ) -> "WorkerHeartbeat":
         return WorkerHeartbeat(
             _message.WorkerHeartbeat(
@@ -338,7 +341,9 @@ class WorkerHeartbeat(Message):
                 latencyUS=latency_us,
                 taskLock=task_lock,
                 processors=[p.get_message() for p in processors],
-                tags=list(tags),
+                capabilities=[
+                    TaskCapability.new_msg(name, value).get_message() for name, value in capabilities.items()
+                ],
             )
         )
 

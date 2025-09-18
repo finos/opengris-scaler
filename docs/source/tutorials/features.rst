@@ -126,8 +126,14 @@ When the execution graph is undetermined until runtime, one may build graph dyna
 .. literalinclude:: ../../../examples/graphtask_nested_client.py
    :language: python
 
+Capability Allocation
+---------------------
 
+Scaler provides an *experimental* task routing and capability management, allowing you to specify capability
+requirements for tasks and allocate them to workers supporting these.
 
+.. literalinclude:: ../../../examples/capabilities_client.py
+   :language: python
 
 Client Disconnect and Shutdown
 ------------------------------

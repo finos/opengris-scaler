@@ -5,7 +5,7 @@ import threading
 import uuid
 from collections import Counter
 from inspect import signature
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import zmq
 
@@ -210,7 +210,11 @@ class Client:
         return self.submit_verbose(fn, args, kwargs)
 
     def submit_verbose(
-        self, fn: Callable, args: Tuple[Any, ...], kwargs: Dict[str, Any], tags: Optional[Set[str]] = None
+        self,
+        fn: Callable,
+        args: Tuple[Any, ...],
+        kwargs: Dict[str, Any],
+        capabilities: Optional[Dict[str, int]] = None,
     ) -> ScalerFuture:
         """
         Submit a single task (function with arguments) to the scheduler, and return a future. Possibly route the task to
@@ -220,8 +224,8 @@ class Client:
         :type fn: Callable
         :param args: positional arguments will be passed to function
         :param kwargs: keyword arguments will be passed to function
-        :param tags: routing tags
-        :type tags: Optional[Set[str]]
+        :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
+        :type capabilities: Optional[Dict[str, int]]
         :return: future of the submitted task
         :rtype: ScalerFuture
         """
@@ -231,20 +235,27 @@ class Client:
         function_object_id = self._object_buffer.buffer_send_function(fn).object_id
         all_args = Client.__convert_kwargs_to_args(fn, args, kwargs)
 
-        task, future = self.__submit(function_object_id, all_args, delayed=True, tags=tags)
+        task, future = self.__submit(function_object_id, all_args, delayed=True, capabilities=capabilities)
 
         self._object_buffer.commit_send_objects()
         self._connector_agent.send(task)
         return future
 
-    def map(self, fn: Callable, iterable: Iterable[Tuple[Any, ...]], tags: Optional[Set[str]] = None) -> List[Any]:
+    def map(
+        self,
+        fn: Callable,
+        iterable: Iterable[Tuple[Any, ...]],
+        capabilities: Optional[Dict[str, int]] = None
+    ) -> List[Any]:
         if not all(isinstance(args, (tuple, list)) for args in iterable):
             raise TypeError("iterable should be list of arguments(list or tuple-like) of function")
 
         self.__assert_client_not_stopped()
 
         function_object_id = self._object_buffer.buffer_send_function(fn).object_id
-        tasks, futures = zip(*[self.__submit(function_object_id, args, delayed=False, tags=tags) for args in iterable])
+        tasks, futures = zip(
+            *[self.__submit(function_object_id, args, delayed=False, capabilities=capabilities) for args in iterable]
+        )
 
         self._object_buffer.commit_send_objects()
         for task in tasks:
@@ -264,7 +275,7 @@ class Client:
         graph: Dict[str, Union[Any, Tuple[Union[Callable, str], ...]]],
         keys: List[str],
         block: bool = True,
-        tags: Optional[Set[str]] = None,
+        capabilities: Optional[Dict[str, int]] = None,
     ) -> Dict[str, Union[Any, ScalerFuture]]:
         """
         .. code-block:: python
@@ -283,14 +294,14 @@ class Client:
         :type keys: List[str]
         :param block: if True, it will directly return a dictionary that maps from keys to results
         :return: dictionary of mapping keys to futures, or map to results if block=True is specified
-        :param tags_: routing tags
-        :type tags_: Optional[Set[str]]
+        :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
+        :type capabilities: Optional[Dict[str, int]]
         :rtype: Dict[ScalerFuture]
         """
 
         self.__assert_client_not_stopped()
 
-        tags = tags or set()
+        capabilities = capabilities or {}
 
         graph = cull_graph(graph, keys)
 
@@ -298,7 +309,7 @@ class Client:
         self.__check_graph(node_name_to_argument, call_graph, keys)
 
         graph_task, compute_futures, finished_futures = self.__construct_graph(
-            node_name_to_argument, call_graph, keys, block, tags
+            node_name_to_argument, call_graph, keys, block, capabilities,
         )
         self._object_buffer.commit_send_objects()
         self._connector_agent.send(graph_task)
@@ -311,7 +322,7 @@ class Client:
                     metadata=b"",
                     func_object_id=None,
                     function_args=[],
-                    tags=tags,
+                    capabilities=capabilities,
                 ),
                 is_delayed=not block,
                 group_task_id=graph_task.task_id,
@@ -418,11 +429,15 @@ class Client:
             self.__destroy()
 
     def __submit(
-        self, function_object_id: ObjectID, args: Tuple[Any, ...], delayed: bool, tags: Optional[Set[str]] = None
+        self,
+        function_object_id: ObjectID,
+        args: Tuple[Any, ...],
+        delayed: bool,
+        capabilities: Optional[Dict[str, int]] = None,
     ) -> Tuple[Task, ScalerFuture]:
         task_id = TaskID.generate_task_id()
 
-        tags = tags or set()
+        capabilities = capabilities or {}
 
         function_args: List[Union[ObjectID, TaskID]] = []
         for arg in args:
@@ -442,7 +457,7 @@ class Client:
             metadata=task_flags_bytes,
             func_object_id=function_object_id,
             function_args=function_args,
-            tags=tags,
+            capabilities=capabilities,
         )
 
         future = self._future_factory(task=task, is_delayed=delayed, group_task_id=None)
@@ -526,7 +541,7 @@ class Client:
         call_graph: Dict[str, _CallNode],
         keys: List[str],
         block: bool,
-        tags: Set[str],
+        capabilities: Dict[str, int],
     ) -> Tuple[GraphTask, Dict[str, ScalerFuture], Dict[str, ScalerFuture]]:
         graph_task_id = TaskID.generate_task_id()
 
@@ -558,7 +573,7 @@ class Client:
                 metadata=task_flags_bytes,
                 func_object_id=function_cache.object_id,
                 function_args=arguments,
-                tags=tags,
+                capabilities=capabilities,
             )
 
         result_task_ids = [node_name_to_task_id[key] for key in keys if key in call_graph]
@@ -581,7 +596,7 @@ class Client:
                         metadata=b"",
                         func_object_id=None,
                         function_args=[],
-                        tags=set(),
+                        capabilities={},
                     ),
                     is_delayed=False,
                     group_task_id=graph_task_id,

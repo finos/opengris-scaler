@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata, TaskCancelConfirmType, TaskResultType
-from scaler.protocol.python.message import GraphTask, StateGraphTask, Task, TaskCancel, TaskCancelConfirm, TaskResult
+from scaler.protocol.python.message import GraphTask, StateGraphTask, Task, TaskCancel, TaskResult, TaskCancelConfirm
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import ClientController, GraphTaskController, ObjectController, TaskController
 from scaler.utility.graph.topological_sorter import TopologicalSorter
@@ -215,7 +215,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
                 metadata=task_info.task.metadata,
                 func_object_id=task_info.task.func_object_id,
                 function_args=[self.__get_argument_object(graph_task_id, arg) for arg in task_info.task.function_args],
-                tags=set(),
+                capabilities={},
             )
 
             await self._task_controller.on_task_new(task)
@@ -290,7 +290,6 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         # mark all running tasks done
         results: List[TaskResult] = list()
         for task_id in graph_info.running_task_ids.copy():
-            print(f"{task_id!r}: mark done running")
             new_result_object_ids = await self.__duplicate_objects(graph_info.client, result_objects)
             result = TaskResult.new_msg(
                 task_id, result.result_type, result.metadata, [bytes(object_id) for object_id in new_result_object_ids]

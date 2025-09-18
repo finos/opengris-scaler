@@ -1,5 +1,6 @@
 import argparse
 import socket
+from typing import Dict
 
 from scaler.cluster.cluster import Cluster
 from scaler.io.config import (
@@ -33,10 +34,11 @@ def get_args():
         help="worker names to replace default worker names (host names), separate by comma",
     )
     parser.add_argument(
-        "--worker-tags",
-        "-wt",
-        type=lambda value: set(value.split(",")),
-        help='comma-separated tag names supported by the workers (e.g. "-wt tag_1,tag_2")',
+        "--per-worker-capabilities",
+        "-pwc",
+        type=parse_capabilities,
+        default="",
+        help='comma-separated capabilities provided by the workers (e.g. "-pwc linux,cpu=4")',
     )
     parser.add_argument(
         "--worker-task-queue-size",
@@ -132,6 +134,17 @@ def get_args():
     return parser.parse_args()
 
 
+def parse_capabilities(capability_string: str) -> Dict[str, int]:
+    capabilities = {}
+    for item in capability_string.split(","):
+        name, _, value = item.partition("=")
+        if value != "":
+            capabilities[name] = int(value)
+        else:
+            capabilities[name] = -1
+    return capabilities
+
+
 def main():
     args = get_args()
     register_event_loop(args.event_loop)
@@ -150,7 +163,7 @@ def main():
         address=args.address,
         storage_address=args.object_storage_address,
         worker_names=worker_names,
-        worker_tags=args.worker_tags or set(),
+        per_worker_capabilities=args.per_worker_capabilities,
         per_worker_task_queue_size=args.worker_task_queue_size,
         heartbeat_interval_seconds=args.heartbeat_interval,
         task_timeout_seconds=args.task_timeout_seconds,

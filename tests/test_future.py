@@ -286,7 +286,7 @@ class TestFuture(unittest.TestCase):
             metadata=b"",
             func_object_id=ObjectID.generate_object_id(client_id),
             function_args=[],
-            tags=set(),
+            capabilities={},
         )
 
         future = ScalerFuture(

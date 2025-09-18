@@ -4,7 +4,6 @@ Examples
 This page shows some real life examples. Before reading this page, be sure that you have read examples in the
 Quickstart section. Those examples are better starting point than examples in this page.
 
-
 Basic Usage
 -----------
 
@@ -59,6 +58,14 @@ Shows how to disconnect a client from scheduler
 .. literalinclude:: ../../../examples/disconnect_client.py
    :language: python
 
+Capability Allocation
+~~~~~~~~~~~~~~~~~~~~~
+
+Shows how to use capabilities for task routing
+
+.. literalinclude:: ../../../examples/capabilities_client.py
+   :language: python
+
 Applications
 ------------
 
@@ -73,7 +80,6 @@ heavy or is possible to block.
 .. literalinclude:: ../../../examples/applications/implied_volatility.py
    :language: python
 
-
 Get Option Close Price Parallelly
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -83,7 +89,6 @@ overhead introduced by slow IO speed.
 .. literalinclude:: ../../../examples/applications/yfinance_historical_price.py
    :language: python
 
-
 Distributed Image Processing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -91,7 +96,6 @@ This example uses the Pillow library with Scaler to resize images in parallel.
 
 .. literalinclude:: ../../../examples/applications/pillow.py
    :language: python
-
 
 Parallel Timeseries Cross-Validation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

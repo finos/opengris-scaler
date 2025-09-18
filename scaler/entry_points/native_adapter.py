@@ -2,6 +2,7 @@ import argparse
 
 from aiohttp import web
 
+from scaler.entry_points.cluster import parse_capabilities
 from scaler.io.config import (
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
     DEFAULT_HARD_PROCESSOR_SUSPEND,
@@ -32,10 +33,11 @@ def get_args():
     # Worker configuration
     parser.add_argument("--io-threads", type=int, default=DEFAULT_IO_THREADS, help="number of io threads for zmq")
     parser.add_argument(
-        "--worker-tags",
-        "-wt",
-        type=lambda value: set(value.split(",")),
-        help='comma-separated tag names supported by the workers (e.g. "-wt tag_1,tag_2")',
+        "--per-worker-capabilities",
+        "-pwc",
+        type=parse_capabilities,
+        default="",
+        help='comma-separated capabilities provided by the workers (e.g. "-pwc linux,cpu=4")',
     )
     parser.add_argument("--worker-task-queue-size", "-wtqs", type=int, default=10, help="specify worker queue size")
     parser.add_argument(
@@ -135,7 +137,7 @@ def main():
     native_worker_adapter = NativeWorkerAdapter(
         address=args.scheduler_address,
         storage_address=args.object_storage_address,
-        tags=args.worker_tags if args.worker_tags else set(),
+        capabilities=args.per_worker_capabilities,
         io_threads=args.io_threads,
         task_queue_size=args.worker_task_queue_size,
         max_workers=args.max_workers,

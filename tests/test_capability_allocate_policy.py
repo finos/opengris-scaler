@@ -2,7 +2,7 @@ import unittest
 from typing import Dict, Set
 
 from scaler.protocol.python.message import Task
-from scaler.scheduler.allocate_policy.tagged_allocate_policy import TaggedAllocatePolicy
+from scaler.scheduler.allocate_policy.capability_allocate_policy import CapabilityAllocatePolicy
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from tests.utility import logging_test_name
@@ -10,35 +10,35 @@ from tests.utility import logging_test_name
 MAX_TASKS_PER_WORKER = 10
 
 
-class TestTaggedAllocatePolicy(unittest.TestCase):
+class TestCapabilityAllocatePolicy(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
 
     def test_assign_task(self):
-        allocator = TaggedAllocatePolicy()
+        allocator = CapabilityAllocatePolicy()
 
-        regular_task = self.__create_task(TaskID(b"task_regular"), set())
+        regular_task = self.__create_task(TaskID(b"task_regular"), {})
 
         # No worker, should return an invalid worker ID
         assigned_worker = allocator.assign_task(regular_task)
         self.assertFalse(assigned_worker.is_valid())
 
         # Adds a bunch of workers
-        worker_added = allocator.add_worker(WorkerID(b"worker_regular"), set(), MAX_TASKS_PER_WORKER)
+        worker_added = allocator.add_worker(WorkerID(b"worker_regular"), {}, MAX_TASKS_PER_WORKER)
         self.assertTrue(worker_added)
-        worker_added = allocator.add_worker(WorkerID(b"worker_gpu"), {"gpu"}, MAX_TASKS_PER_WORKER)
+        worker_added = allocator.add_worker(WorkerID(b"worker_gpu"), {"gpu": -1}, MAX_TASKS_PER_WORKER)
         self.assertTrue(worker_added)
 
         self.assertEqual(allocator.get_worker_ids(), {WorkerID(b"worker_regular"), WorkerID(b"worker_gpu")})
 
         # Assign a task to the GPU worker
-        gpu_task = self.__create_task(TaskID(b"task_gpu"), {"gpu"})
+        gpu_task = self.__create_task(TaskID(b"task_gpu"), {"gpu": -1})
         assigned_worker = allocator.assign_task(gpu_task)
         self.assertEqual(assigned_worker, WorkerID(b"worker_gpu"))
 
         # Assign a task with a non-supported tag should fail
-        mac_os_task = self.__create_task(TaskID(b"task_mac_os"), {"mac_os"})
+        mac_os_task = self.__create_task(TaskID(b"task_mac_os"), {"mac_os": -1})
         assigned_worker = allocator.assign_task(mac_os_task)
         self.assertFalse(assigned_worker.is_valid())
 
@@ -51,22 +51,22 @@ class TestTaggedAllocatePolicy(unittest.TestCase):
         for i in range(0, (MAX_TASKS_PER_WORKER * 2) - 2):
             self.assertTrue(allocator.has_available_worker())
 
-            task = self.__create_task(TaskID(f"task_{i}".encode()), set())
+            task = self.__create_task(TaskID(f"task_{i}".encode()), {})
             assigned_worker = allocator.assign_task(task)
             self.assertTrue(assigned_worker.is_valid())
 
         self.assertFalse(allocator.has_available_worker())
 
-        overloaded_task = self.__create_task(TaskID(b"task_overload"), set())
+        overloaded_task = self.__create_task(TaskID(b"task_overload"), {})
         assigned_worker = allocator.assign_task(overloaded_task)
         self.assertFalse(assigned_worker.is_valid())
 
     def test_remove_task(self):
-        allocator = TaggedAllocatePolicy()
+        allocator = CapabilityAllocatePolicy()
 
-        allocator.add_worker(WorkerID(b"worker"), set(), MAX_TASKS_PER_WORKER)
+        allocator.add_worker(WorkerID(b"worker"), {}, MAX_TASKS_PER_WORKER)
 
-        task = self.__create_task(TaskID(b"task_regular"), set())
+        task = self.__create_task(TaskID(b"task_regular"), {})
 
         # Removing a non-assigned task returns an invalid Worker ID
 
@@ -84,17 +84,17 @@ class TestTaggedAllocatePolicy(unittest.TestCase):
     def test_remove_worker(self):
         N_TASKS = MAX_TASKS_PER_WORKER + 3
 
-        allocator = TaggedAllocatePolicy()
+        allocator = CapabilityAllocatePolicy()
 
-        allocator.add_worker(WorkerID(b"worker_1"), set(), MAX_TASKS_PER_WORKER)
-        allocator.add_worker(WorkerID(b"worker_2"), set(), MAX_TASKS_PER_WORKER)
+        allocator.add_worker(WorkerID(b"worker_1"), {}, MAX_TASKS_PER_WORKER)
+        allocator.add_worker(WorkerID(b"worker_2"), {}, MAX_TASKS_PER_WORKER)
 
         # Adds a bunch of tasks
 
         worker_id_to_tasks: Dict[WorkerID, Set[TaskID]] = {WorkerID(b"worker_1"): set(), WorkerID(b"worker_2"): set()}
 
         for i in range(0, N_TASKS):
-            task = self.__create_task(TaskID(f"task_{i}".encode()), set())
+            task = self.__create_task(TaskID(f"task_{i}".encode()), {})
 
             assigned_worker = allocator.assign_task(task)
             self.assertTrue(assigned_worker.is_valid())
@@ -119,29 +119,29 @@ class TestTaggedAllocatePolicy(unittest.TestCase):
 
         n_workers = 0
 
-        allocator = TaggedAllocatePolicy()
+        allocator = CapabilityAllocatePolicy()
 
-        allocator.add_worker(WorkerID(b"worker_1"), {"linux", "gpu"}, MAX_TASKS_PER_WORKER)
+        allocator.add_worker(WorkerID(b"worker_1"), {"linux": -1, "gpu": -1}, MAX_TASKS_PER_WORKER)
         n_workers += 1
 
         # Assign a few tasks
 
         for i in range(0, N_TASKS // 2):
-            allocator.assign_task(self.__create_task(TaskID(f"gpu_task_{i}".encode()), {"gpu"}))
-            allocator.assign_task(self.__create_task(TaskID(f"linux+gpu_task_{i}".encode()), {"linux", "gpu"}))
+            allocator.assign_task(self.__create_task(TaskID(f"gpu_task_{i}".encode()), {"gpu": -1}))
+            allocator.assign_task(self.__create_task(TaskID(f"linux+gpu_task_{i}".encode()), {"linux": -1, "gpu": -1}))
 
         self.assertDictEqual(allocator.balance(), {})
 
         # Adds a worker that cannot accept the balanced tasks
 
-        allocator.add_worker(WorkerID(b"worker_2"), {"windows"}, MAX_TASKS_PER_WORKER)
+        allocator.add_worker(WorkerID(b"worker_2"), {"windows": -1}, MAX_TASKS_PER_WORKER)
         n_workers += 1
 
         self.assertDictEqual(allocator.balance(), {})
 
         # Adds a worker that can accept some of the tasks
 
-        allocator.add_worker(WorkerID(b"worker_3"), {"gpu"}, MAX_TASKS_PER_WORKER)
+        allocator.add_worker(WorkerID(b"worker_3"), {"gpu": -1}, MAX_TASKS_PER_WORKER)
         n_workers += 1
 
         balancing_advice = allocator.balance()
@@ -159,7 +159,7 @@ class TestTaggedAllocatePolicy(unittest.TestCase):
 
         # Adds a fourth worker that can accept all tasks
 
-        allocator.add_worker(WorkerID(b"worker_4"), {"gpu", "linux"}, MAX_TASKS_PER_WORKER)
+        allocator.add_worker(WorkerID(b"worker_4"), {"gpu": -1, "linux": -1}, MAX_TASKS_PER_WORKER)
         n_workers += 1
 
         balancing_advice = allocator.balance()
@@ -170,5 +170,5 @@ class TestTaggedAllocatePolicy(unittest.TestCase):
         self.assertAlmostEqual(len(balancing_advice[WorkerID(b"worker_1")]), avg_tasks_per_worker * 2, delta=1.0)
 
     @staticmethod
-    def __create_task(task_id: TaskID, tags: Set[str]) -> Task:
-        return Task.new_msg(task_id, ClientID(b"client_id"), b"", None, [], tags)
+    def __create_task(task_id: TaskID, capabilities: Dict[str, int]) -> Task:
+        return Task.new_msg(task_id, ClientID(b"client_id"), b"", None, [], capabilities)

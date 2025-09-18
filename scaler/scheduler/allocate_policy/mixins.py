@@ -7,7 +7,7 @@ from scaler.utility.identifiers import TaskID, WorkerID
 
 class TaskAllocatePolicy(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def add_worker(self, worker: WorkerID, tags: Set[str], queue_size: int) -> bool:
+    def add_worker(self, worker: WorkerID, capabilities: Dict[str, int], queue_size: int) -> bool:
         """add worker to worker collection"""
         raise NotImplementedError()
 
@@ -46,8 +46,8 @@ class TaskAllocatePolicy(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def has_available_worker(self, tags: Optional[Set[str]] = None) -> bool:
-        """has available worker or not, possibly constrained to the provided task tags"""
+    def has_available_worker(self, capabilities: Optional[Dict[str, int]] = None) -> bool:
+        """has available worker or not, possibly constrained to the requested task capabilities"""
         raise NotImplementedError()
 
     @abc.abstractmethod

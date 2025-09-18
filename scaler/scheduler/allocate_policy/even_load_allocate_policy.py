@@ -1,3 +1,4 @@
+import logging
 import math
 from typing import Dict, List, Optional, Set
 
@@ -18,7 +19,10 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
 
         self._worker_queue: AsyncPriorityQueue = AsyncPriorityQueue()
 
-    def add_worker(self, worker: WorkerID, tags: Set[str], queue_size: int) -> bool:
+    def add_worker(self, worker: WorkerID, capabilities: Dict[str, int], queue_size: int) -> bool:
+        if len(capabilities) > 0:
+            logging.warning(f"allocate policy ignores worker capabilities: {capabilities!r}.")
+
         # TODO: handle uneven queue size for each worker
         if worker in self._workers_to_task_ids:
             return False
@@ -107,6 +111,9 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
         return balance_count
 
     def assign_task(self, task: Task) -> WorkerID:
+        if len(task.capabilities) > 0:
+            logging.warning(f"allocate policy ignores task capabilities: {task.capabilities!r}.")
+
         task_id = task.task_id
 
         if task_id in self._task_id_to_worker:
@@ -135,7 +142,7 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
         self._worker_queue.decrease_priority(worker)
         return worker
 
-    def has_available_worker(self, tags: Optional[Set[str]] = None) -> bool:
+    def has_available_worker(self, capabilities: Optional[Dict[str, int]] = None) -> bool:
         if not len(self._worker_queue):
             return False
 

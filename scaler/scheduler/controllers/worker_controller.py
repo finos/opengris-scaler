@@ -58,7 +58,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         return worker
 
     async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat):
-        if self._allocator_policy.add_worker(worker_id, info.tags, info.queue_size):
+        if self._allocator_policy.add_worker(worker_id, info.capabilities, info.queue_size):
             logging.info(f"worker {worker_id!r} connected")
             await self._binder_monitor.send(StateWorker.new_msg(worker_id, b"connected"))
             await self._task_controller.on_worker_connect(worker_id)

@@ -41,6 +41,11 @@ enum TaskState {
     workerDisconnecting @10;
 }
 
+struct TaskCapability {
+    name @0 :Text;      # the name of the capability provided by the worker/required by the task (e.g. "gpu" or "linux")
+    value @1 :Int64;    # the quantity of the capability provided/required. Use -1 for quantity-less capabilities
+}
+
 struct ObjectMetadata {
     objectIds @0 :List(Data);
     objectTypes @1 :List(ObjectContentType);

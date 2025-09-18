@@ -1,5 +1,5 @@
 import time
-from typing import Optional, Set
+from typing import Dict, Optional
 
 import psutil
 
@@ -13,9 +13,14 @@ from scaler.worker.agent.processor_holder import ProcessorHolder
 
 
 class VanillaHeartbeatManager(Looper, HeartbeatManager):
-    def __init__(self, storage_address: Optional[ObjectStorageConfig], tags: Set[str], task_queue_size: int):
+    def __init__(
+        self,
+        storage_address: Optional[ObjectStorageConfig],
+        capabilities: Dict[str, int],
+        task_queue_size: int
+    ):
         self._agent_process = psutil.Process()
-        self._tags = tags
+        self._capabilities = capabilities
         self._task_queue_size = task_queue_size
 
         self._connector_external: Optional[AsyncConnector] = None
@@ -82,7 +87,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
                 self._latency_us,
                 self._processor_manager.can_accept_task(),
                 [self.__get_processor_status_from_holder(processor) for processor in processors],
-                self._tags,
+                self._capabilities,
             )
         )
         self._start_timestamp_ns = time.time_ns()

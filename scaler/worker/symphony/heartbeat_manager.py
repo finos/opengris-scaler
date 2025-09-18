@@ -1,5 +1,5 @@
 import time
-from typing import Optional
+from typing import Dict, Optional
 
 import psutil
 
@@ -12,7 +12,8 @@ from scaler.worker.symphony.task_manager import SymphonyTaskManager
 
 
 class SymphonyHeartbeatManager(Looper, HeartbeatManager):
-    def __init__(self, task_queue_size: int):
+    def __init__(self, capabilities: Dict[str, int], task_queue_size: int):
+        self._capabilities = capabilities
         self._task_queue_size = task_queue_size
 
         self._agent_process = psutil.Process()
@@ -68,7 +69,7 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
                 self._latency_us,
                 self._worker_task_manager.can_accept_task(),
                 [],
-                set(),
+                self._capabilities,
             )
         )
         self._start_timestamp_ns = time.time_ns()

@@ -1,5 +1,9 @@
 import enum
 
+from scaler.scheduler.allocate_policy.even_load_allocate_policy import EvenLoadAllocatePolicy
+from scaler.scheduler.allocate_policy.capability_allocate_policy import CapabilityAllocatePolicy
+
 
 class AllocatePolicy(enum.Enum):
-    even = enum.auto()
+    even = EvenLoadAllocatePolicy
+    capability = CapabilityAllocatePolicy
