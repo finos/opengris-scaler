@@ -21,9 +21,10 @@ sys.path.insert(0, os.path.abspath(os.path.join("..", "..")))
 project = "Scaler"
 author = "Citi"
 
+with open("../../scaler/version.txt", "rt") as f:
+    version = f.read().strip()
 
-version = __import__("scaler").__version__
-release = f"{__import__('scaler').__version__}-py3-none-any"
+release = f"{version}-py3-none-any"
 
 rst_prolog = f"""
 .. |version| replace:: {version}

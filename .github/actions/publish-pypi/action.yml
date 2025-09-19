@@ -1,0 +1,30 @@
+name: publish-pypi
+description: publish-pypi
+
+inputs:
+  os:
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Build Wheel (Linux)
+      if: ${{ inputs.os == 'Linux' }}
+      shell: bash
+      run: python -m cibuildwheel --output-dir wheelhouse
+      env:
+        CIBW_BUILD: "*manylinux_x86_64"
+        CIBW_SKIP: "pp*"
+        CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
+
+    - name: Build Sdist
+      if: ${{ inputs.os == 'Linux' }}
+      shell: bash
+      run: |
+        python -m build --sdist
+        sudo mv dist/scaler* wheelhouse/.
+
+#    - name: Publish to PyPI
+#      uses: pypa/gh-action-pypi-publish@db8f07d3871a0a180efa06b95d467625c19d5d5f # release/v1
+#      with:
+#        packages_dir: ./wheelhouse/

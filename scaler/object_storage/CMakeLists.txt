@@ -29,6 +29,7 @@ file(MAKE_DIRECTORY "${CAPNPC_OUTPUT_DIR}")
 capnp_generate_cpp(objectStorageSources objectStorageHeaders "../protocol/capnp/object_storage.capnp")
 
 target_sources(cc_object_storage_server PUBLIC ${objectStorageSources})
+target_link_options(cc_object_storage_server PUBLIC -Wl, -Bstatic)
 target_link_libraries(cc_object_storage_server PUBLIC CapnProto::capnp)
 target_include_directories(cc_object_storage_server PUBLIC ${CMAKE_BINARY_DIR})
 
@@ -56,6 +57,7 @@ set_target_properties(object_storage_server PROPERTIES SUFFIX ".so")
 
 target_sources(object_storage_server PRIVATE pymod_object_storage_server.cpp)
 
+target_link_options(object_storage_server PUBLIC -Wl, -Bstatic)
 target_link_libraries(object_storage_server PRIVATE cc_object_storage_server
                                             PRIVATE Python3::Module)
 

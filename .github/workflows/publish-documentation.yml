@@ -1,0 +1,23 @@
+name: Publish documentation to GitHub Pages
+
+on:
+  release:
+    types: [ created ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/checkout
+
+      - uses: ./.github/actions/setup-env
+        with:
+          os: ${{ runner.os }}
+
+      - uses: ./.github/actions/publish-doc

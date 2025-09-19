@@ -1,0 +1,27 @@
+name: Publish Python package to PyPI
+
+on:
+  release:
+    types: [ created ]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    environment: release
+    strategy:
+      matrix:
+        os: [ ubuntu-latest ]
+    permissions:
+      id-token: write
+    steps:
+      - uses: ./.github/actions/checkout
+
+      - uses: ./.github/actions/setup-env
+        with:
+          os: ${{ runner.os }}
+
+      - uses: ./.github/actions/publish-pypi

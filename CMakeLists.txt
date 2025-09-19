@@ -11,6 +11,10 @@ if(NOT SKBUILD_PROJECT_NAME)
   set(SKBUILD_PROJECT_NAME "scaler")
 endif()
 
+# all should find libs in thirdparties
+list(APPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/thirdparties")
+set(CMAKE_PROGRAM_PATH "${CMAKE_SOURCE_DIR}/thirdparties/bin")
+
 # Path to the version file
 set(VERSION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/scaler/version.txt")
 
