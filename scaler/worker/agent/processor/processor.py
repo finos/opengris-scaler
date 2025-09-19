@@ -106,8 +106,9 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 from scaler.worker.preload import execute_preload
 
                 execute_preload(self._preload)
-            except Exception:
-                logging.exception(f"failed to execute preload: {self._preload}")
+            except Exception as e:
+                logging.exception(f"Processor[{self.pid}]: preload ({self._preload}) failed with exception:\n{e}")
+                raise RuntimeError(f"Processor initialization failed due to preload error: {self._preload}")
 
     def __register_signals(self):
         self.__register_signal("SIGTERM", self.__interrupt)
