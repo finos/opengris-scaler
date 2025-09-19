@@ -414,7 +414,7 @@ class TestClient(unittest.TestCase):
 
             try:
                 preload_cluster.start()
-                time.sleep(3)
+                time.sleep(10)
 
                 # Find processor log files by looking for files with PID suffixes
                 processor_log_content = ""
