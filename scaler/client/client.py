@@ -51,7 +51,7 @@ class _CallNode:
 class Client:
     def __init__(
         self,
-        address: str,
+        address: Optional[str] = None,
         profiling: bool = False,
         timeout_seconds: int = DEFAULT_CLIENT_TIMEOUT_SECONDS,
         heartbeat_interval_seconds: int = DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
@@ -61,8 +61,9 @@ class Client:
         """
         The Scaler Client used to send tasks to a scheduler.
 
-        :param address: Address of Scheduler to submit work to
-        :type address: str
+        :param address: Address of Scheduler to submit work to. If None, will attempt to auto-detect
+                       when running inside a worker context.
+        :type address: Optional[str]
         :param profiling: If True, the returned futures will have the `task_duration()` property enabled.
         :type profiling: bool
         :param timeout_seconds: Seconds until heartbeat times out
@@ -72,7 +73,52 @@ class Client:
         :param stream_output: If True, stdout/stderr will be streamed to client during task execution
         :type stream_output: bool
         """
-        self.__initialize__(address, profiling, timeout_seconds, heartbeat_interval_seconds, serializer, stream_output)
+        # Resolve scheduler address
+        resolved_address = self._resolve_scheduler_address(address)
+        self.__initialize__(resolved_address, profiling, timeout_seconds, heartbeat_interval_seconds, serializer, stream_output)
+
+    def _resolve_scheduler_address(self, address: Optional[str]) -> str:
+        """
+        Resolve the scheduler address based on the provided address and worker context.
+        
+        This implements the following logic:
+        - If client is outside of worker and doesn't provide scheduler address: raise error
+        - If client is inside worker and provides scheduler address: honor the user-provided address
+        - If client is inside worker and doesn't provide scheduler address: use worker's scheduler address
+        
+        Args:
+            address: User-provided scheduler address or None
+            
+        Returns:
+            Resolved scheduler address string
+            
+        Raises:
+            ValueError: If no address provided and not running in worker context
+        """
+        from scaler.utility.worker_context import is_running_in_worker, get_worker_scheduler_address
+        
+        is_in_worker = is_running_in_worker()
+        
+        if address is not None:
+            # User provided an address - always honor it
+            return address
+        
+        if not is_in_worker:
+            # Client outside worker with no address - raise error
+            raise ValueError(
+                "No scheduler address provided and not running inside a worker context. "
+                "Please provide a scheduler address when creating the Client outside of a worker."
+            )
+        
+        # Client inside worker with no address - use worker's scheduler address
+        worker_address = get_worker_scheduler_address()
+        if worker_address is None:
+            raise ValueError(
+                "Running inside worker context but unable to determine worker's scheduler address. "
+                "Please provide a scheduler address explicitly."
+            )
+        
+        return worker_address.to_address()
 
     def __initialize__(
         self,
@@ -139,7 +185,9 @@ class Client:
         return self._identity
 
     def __del__(self):
-        self.disconnect()
+        # Only disconnect if the client was properly initialized
+        if hasattr(self, '_stop_event'):
+            self.disconnect()
 
     def __enter__(self):
         return self
@@ -386,6 +434,9 @@ class Client:
         """
         disconnect from connected scheduler, this will not shut down the scheduler
         """
+        # Handle case where client wasn't fully initialized
+        if not hasattr(self, '_stop_event'):
+            return
 
         if self._stop_event.is_set():
             self.__destroy()

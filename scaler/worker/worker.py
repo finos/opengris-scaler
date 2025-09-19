@@ -105,6 +105,14 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         setup_logger()
         register_event_loop(self._event_loop)
 
+        # Register this worker's scheduler address for nested client functionality
+        from scaler.utility.worker_context import set_worker_scheduler_address
+        set_worker_scheduler_address(self._address)
+        
+        # Also set as environment variable for child processes (processors)
+        import os
+        os.environ['SCALER_WORKER_SCHEDULER_ADDRESS'] = self._address.to_address()
+
         self._context = zmq.asyncio.Context()
         self._connector_external = ZMQAsyncConnector(
             context=self._context,
