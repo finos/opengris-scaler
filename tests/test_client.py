@@ -51,6 +51,30 @@ class TestClient(unittest.TestCase):
         self.combo.shutdown()
         pass
 
+    def _create_preload_combo_and_cluster(self, preload: str, logging_paths: tuple = ("/dev/stdout",)):
+        base_cluster = self.combo._cluster
+        preload_combo = SchedulerClusterCombo(n_workers=0, event_loop="builtin")
+        preload_cluster = Cluster(
+            address=preload_combo._address,
+            storage_address=preload_combo._storage_address,
+            preload=preload,
+            worker_io_threads=base_cluster._worker_io_threads,
+            worker_names=["preload_worker"],
+            per_worker_capabilities={},
+            per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
+            heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
+            task_timeout_seconds=base_cluster._task_timeout_seconds,
+            death_timeout_seconds=base_cluster._death_timeout_seconds,
+            garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
+            trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
+            hard_processor_suspend=base_cluster._hard_processor_suspend,
+            event_loop=base_cluster._event_loop,
+            logging_paths=logging_paths,
+            logging_level=base_cluster._logging_level,
+            logging_config_file=base_cluster._logging_config_file,
+        )
+        return preload_combo, preload_cluster
+
     def test_one_submit(self):
         with Client(self.address) as client:
             with ScopedLogger("submitting 1 task"):
@@ -356,57 +380,27 @@ class TestClient(unittest.TestCase):
             gpu_cluster.terminate()
 
     def test_preload_success(self):
-        """Test that preload successfully sets global variables accessible to tasks"""
-        # Create a completely independent cluster with preload
-        from scaler.cluster.combo import SchedulerClusterCombo
-
-        test_combo = SchedulerClusterCombo(n_workers=0)
+        preload_combo, preload_cluster = self._create_preload_combo_and_cluster(
+            preload="tests.test_preload_module:setup_global_value('test_preload_value')"
+        )
 
         try:
-            cluster = Cluster(
-                address=test_combo._address,
-                storage_address=test_combo._storage_address,
-                preload="tests.test_preload_module:setup_global_value('test_preload_value')",
-                worker_io_threads=1,
-                worker_names=["test_worker"],
-                per_worker_capabilities={},
-                per_worker_task_queue_size=10,
-                heartbeat_interval_seconds=2,
-                task_timeout_seconds=30,
-                death_timeout_seconds=60,
-                garbage_collect_interval_seconds=10,
-                trim_memory_threshold_bytes=1024 * 1024 * 100,
-                hard_processor_suspend=False,
-                event_loop="builtin",
-                logging_paths=("/dev/stdout",),
-                logging_level="INFO",
-                logging_config_file=None,
-            )
-            cluster.start()
+            preload_cluster.start()
+            time.sleep(2)
 
-            try:
-                time.sleep(2)
+            with Client(preload_combo.get_address()) as client:
+                # Submit a task that should access the preloaded global value
+                future = client.submit(get_preloaded_value)
+                result = future.result()
 
-                with Client(test_combo._address.to_address()) as client:
-                    # Submit a task that should access the preloaded global value
-                    future = client.submit(get_preloaded_value)
-                    result = future.result()
-
-                    # Verify the preloaded value is accessible
-                    self.assertEqual(result, "test_preload_value")
-            finally:
-                cluster.terminate()
-                cluster.join()
+                # Verify the preloaded value is accessible
+                self.assertEqual(result, "test_preload_value")
         finally:
-            test_combo.shutdown()
+            preload_cluster.terminate()
+            preload_cluster.join()
+            preload_combo.shutdown()
 
     def test_preload_failure(self):
-        """Test that preload failures cause proper error handling"""
-        # Create a completely independent cluster with failing preload
-        from scaler.cluster.combo import SchedulerClusterCombo
-
-        test_combo = SchedulerClusterCombo(n_workers=0)
-
         # For checking if the failure was logged, Processor will create log_path-{pid}
         log_file = tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".log")
         log_path = log_file.name
@@ -414,28 +408,12 @@ class TestClient(unittest.TestCase):
         log_basename = os.path.basename(log_path)
 
         try:
-            cluster = Cluster(
-                address=test_combo._address,
-                storage_address=test_combo._storage_address,
-                preload="tests.test_preload_module:failing_preload()",
-                worker_io_threads=1,
-                worker_names=["test_worker"],
-                per_worker_capabilities={},
-                per_worker_task_queue_size=10,
-                heartbeat_interval_seconds=2,
-                task_timeout_seconds=30,
-                death_timeout_seconds=60,
-                garbage_collect_interval_seconds=10,
-                trim_memory_threshold_bytes=1024 * 1024 * 100,
-                hard_processor_suspend=False,
-                event_loop="builtin",
-                logging_paths=(log_path,),
-                logging_level="INFO",
-                logging_config_file=None,
+            preload_combo, preload_cluster = self._create_preload_combo_and_cluster(
+                preload="tests.test_preload_module:failing_preload()", logging_paths=(log_path,)
             )
-            cluster.start()
 
             try:
+                preload_cluster.start()
                 time.sleep(3)
 
                 # Find processor log files by looking for files with PID suffixes
@@ -455,10 +433,10 @@ class TestClient(unittest.TestCase):
 
                 # If we reach here without any other exceptions, the test is successful
             finally:
-                cluster.terminate()
-                cluster.join()
+                preload_cluster.terminate()
+                preload_cluster.join()
+                preload_combo.shutdown()
         finally:
-            test_combo.shutdown()
             # Clean up log files
             try:
                 os.unlink(log_path)
