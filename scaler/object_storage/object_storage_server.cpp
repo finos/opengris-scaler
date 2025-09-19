@@ -1,11 +1,19 @@
 #include "scaler/object_storage/object_storage_server.h"
 
+#include <algorithm>
 #include <exception>
+#include <future>
+
+#include "scaler/io/ymq/configuration.h"
+#include "scaler/io/ymq/error.h"
+#include "scaler/io/ymq/simple_interface.h"
+#include "scaler/io/ymq/typedefs.h"
+#include "scaler/object_storage/message.h"
 
 namespace scaler {
 namespace object_storage {
 
-ObjectStorageServer::ObjectStorageServer()
+ObjectStorageServer::ObjectStorageServer(): _stopped(false)
 {
     initServerReadyFds();
 }
@@ -19,6 +27,7 @@ ObjectStorageServer::~ObjectStorageServer()
 void ObjectStorageServer::run(
     std::string name,
     std::string port,
+    ObjectStorageServer::Identity identity,
     std::string log_level,
     std::string log_format,
     std::vector<std::string> log_paths)
@@ -26,14 +35,19 @@ void ObjectStorageServer::run(
     _logger = scaler::ymq::Logger(log_format, std::move(log_paths), scaler::ymq::Logger::stringToLogLevel(log_level));
 
     try {
-        tcp::resolver resolver(ioContext);
-        auto res = resolver.resolve(name, port);
+        // NOTE: Setup IOSocket synchronously here because it is a one-time thing.
+        const auto socketType {ymq::IOSocketType::Binder};
+        _ioSocket = ymq::syncCreateSocket(_ioContext, socketType, std::move(identity));
+        const std::string networkAddress {"tcp://" + name + ':' + port};
+        ymq::syncBindSocket(_ioSocket, std::move(networkAddress));
 
-        boost::asio::signal_set signals(ioContext, SIGINT, SIGTERM);
-        signals.async_wait([&](auto, auto) { ioContext.stop(); });
+        setServerReadyFd();
 
-        co_spawn(ioContext, listener(res.begin()->endpoint()), detached);
-        ioContext.run();
+        _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: started");
+
+        processRequests();
+
+        _ioContext.removeIOSocket(_ioSocket);
     } catch (const std::exception& e) {
         _logger.log(
             scaler::ymq::Logger::LoggingLevel::error,
@@ -58,7 +72,7 @@ void ObjectStorageServer::waitUntilReady()
 
 void ObjectStorageServer::shutdown()
 {
-    ioContext.stop();
+    _stopped = true;
 }
 
 void ObjectStorageServer::initServerReadyFds()
@@ -104,72 +118,96 @@ void ObjectStorageServer::closeServerReadyFds()
     }
 }
 
-awaitable<void> ObjectStorageServer::listener(tcp::endpoint endpoint)
+void ObjectStorageServer::processRequests()
 {
-    auto executor = co_await boost::asio::this_coro::executor;
-    tcp::acceptor acceptor(executor, endpoint);
-
-    _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: started");
-
-    setServerReadyFd();
-
-    for (;;) {
-        auto client = std::make_shared<Client>(executor);
-
-        co_await acceptor.async_accept(client->socket, use_awaitable);
-        setTCPNoDelay(client->socket, true);
-
-        co_spawn(executor, processRequests(client), detached);
-    }
-}
-
-awaitable<void> ObjectStorageServer::processRequests(std::shared_ptr<Client> client)
-{
-    _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: client connected");
-
+    using namespace std::chrono_literals;
     try {
-        for (;;) {
-            ObjectRequestHeader requestHeader = co_await readMessage<ObjectRequestHeader>(client);
+        std::map<ymq::Configuration::IOSocketIdentity, std::pair<ObjectRequestHeader, Bytes>> identityToFullRequest;
 
-            switch (requestHeader.requestType) {
+        while (true) {
+            auto invalids = std::ranges::remove_if(_pendingSendMessageFuts, [](const auto& x) { return !x.valid(); });
+            _pendingSendMessageFuts.erase(invalids.begin(), invalids.end());
+
+            std::ranges::for_each(_pendingSendMessageFuts, [](auto& fut) {
+                if (fut.wait_for(0s) == std::future_status::ready) {
+                    auto res = fut.get();
+                    assert(res);
+                }
+            });
+
+            // TODO: This adds up to 100ms delay when trying to shutdown the server. This is due to ymq doesn't let you
+            // call removeIOSocket in another thread, which shouldn't be the case.
+            auto maybeMessageFut = ymq::futureRecvMessage(_ioSocket);
+            while (maybeMessageFut.wait_for(100ms) == std::future_status::timeout) {
+                if (_stopped) {
+                    _logger.log(
+                        scaler::ymq::Logger::LoggingLevel::info,
+                        "ObjectStorageServer: stopped, number of messages leftover in the system = ",
+                        std::ranges::count_if(_pendingSendMessageFuts, [](auto& x) {
+                            return x.valid() && x.wait_for(0s) == std::future_status::timeout;
+                        }));
+                    return;
+                }
+            }
+
+            auto maybeMessage = maybeMessageFut.get();
+
+            if (maybeMessage.second._errorCode != ymq::Error::ErrorCode::Uninit) {
+                throw maybeMessage.second;
+            }
+
+            const auto identity        = maybeMessage.first.address.as_string();
+            const auto headerOrPayload = std::move(maybeMessage.first.payload);
+
+            auto it = identityToFullRequest.find(identity);
+            if (it == identityToFullRequest.end()) {
+                identityToFullRequest[identity].first = ObjectRequestHeader::fromBuffer(headerOrPayload);
+                const auto& requestType               = identityToFullRequest[identity].first.requestType;
+                if (requestType == ObjectRequestType::DUPLICATE_OBJECT_I_D ||
+                    requestType == ObjectRequestType::SET_OBJECT) {
+                    continue;
+                }
+            } else {
+                assert(it->second.first.payloadLength == headerOrPayload.len());
+                (it->second).second = std::move(headerOrPayload);
+            }
+
+            // NOTE: PostCondition of the previous statement: We have a full request here
+
+            auto request = std::move(identityToFullRequest[identity]);
+            identityToFullRequest.erase(identity);
+            auto client = std::make_shared<Client>(_ioSocket, identity);
+
+            switch (request.first.requestType) {
                 case ObjectRequestType::SET_OBJECT: {
-                    co_await processSetRequest(client, requestHeader);
+                    processSetRequest(std::move(client), std::move(request));
                     break;
                 }
                 case ObjectRequestType::GET_OBJECT: {
-                    co_await processGetRequest(client, requestHeader);
+                    processGetRequest(std::move(client), request.first);
                     break;
                 }
                 case ObjectRequestType::DELETE_OBJECT: {
-                    co_await processDeleteRequest(client, requestHeader);
+                    processDeleteRequest(client, request.first);
                     break;
                 }
                 case ObjectRequestType::DUPLICATE_OBJECT_I_D: {
-                    co_await processDuplicateRequest(client, requestHeader);
+                    processDuplicateRequest(client, request);
                     break;
                 }
             }
-        }
-    } catch (const boost::system::system_error& e) {
-        if (e.code() == boost::asio::error::eof || e.code() == boost::asio::error::connection_reset) {
-            _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: client disconnected");
-        } else {
-            _logger.log(
-                scaler::ymq::Logger::LoggingLevel::error,
-                "ObjectStorageServer: unexpected networking error, reason: ",
-                e.what());
         }
     } catch (const std::exception& e) {
         _logger.log(
             scaler::ymq::Logger::LoggingLevel::error, "ObjectStorageServer: unexpected error, reason: ", e.what());
     }
-
-    client->socket.close();
 }
 
-awaitable<void> ObjectStorageServer::processSetRequest(
-    std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader)
+void ObjectStorageServer::processSetRequest(
+    std::shared_ptr<Client> client, std::pair<ObjectRequestHeader, Bytes> request)
 {
+    const auto requestHeader = std::move(request.first);
+    auto requestPayload      = std::move(request.second);
     if (requestHeader.payloadLength > MEMORY_LIMIT_IN_BYTES) {
         throw std::runtime_error(
             "payload length is larger than MEMORY_LIMIT_IN_BYTES=" + std::to_string(MEMORY_LIMIT_IN_BYTES));
@@ -179,14 +217,9 @@ awaitable<void> ObjectStorageServer::processSetRequest(
         throw std::runtime_error("payload length is larger than SIZE_MAX=" + std::to_string(SIZE_MAX));
     }
 
-    ObjectPayload requestPayload;
-    requestPayload.resize(requestHeader.payloadLength);
-
-    co_await boost::asio::async_read(client->socket, boost::asio::buffer(requestPayload), use_awaitable);
-
     auto objectPtr = objectManager.setObject(requestHeader.objectID, std::move(requestPayload));
 
-    co_await optionallySendPendingRequests(requestHeader.objectID, objectPtr);
+    optionallySendPendingRequests(requestHeader.objectID, objectPtr);
 
     ObjectResponseHeader responseHeader {
         .objectID      = requestHeader.objectID,
@@ -195,24 +228,23 @@ awaitable<void> ObjectStorageServer::processSetRequest(
         .responseType  = ObjectResponseType::SET_O_K,
     };
 
-    co_await writeMessage(client, responseHeader, {});
+    writeMessage(client, responseHeader, {});
 }
 
-awaitable<void> ObjectStorageServer::processGetRequest(
-    std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader)
+void ObjectStorageServer::processGetRequest(std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader)
 {
     auto objectPtr = objectManager.getObject(requestHeader.objectID);
 
     if (objectPtr != nullptr) {
-        co_await sendGetResponse(client, requestHeader, objectPtr);
+        sendGetResponse(client, requestHeader, objectPtr);
+        return;
     } else {
         // We don't have the object yet. Send the response later after once we receive the SET request.
         pendingRequests[requestHeader.objectID].emplace_back(client, requestHeader);
     }
 }
 
-awaitable<void> ObjectStorageServer::processDeleteRequest(
-    std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader)
+void ObjectStorageServer::processDeleteRequest(std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader)
 {
     bool success = objectManager.deleteObject(requestHeader.objectID);
 
@@ -223,31 +255,34 @@ awaitable<void> ObjectStorageServer::processDeleteRequest(
         .responseType  = success ? ObjectResponseType::DEL_O_K : ObjectResponseType::DEL_NOT_EXISTS,
     };
 
-    co_await writeMessage(client, responseHeader, {});
+    writeMessage(client, responseHeader, {});
 }
 
-awaitable<void> ObjectStorageServer::processDuplicateRequest(
-    std::shared_ptr<Client> client, ObjectRequestHeader& requestHeader)
+void ObjectStorageServer::processDuplicateRequest(
+    std::shared_ptr<Client> client, std::pair<ObjectRequestHeader, Bytes> request)
 {
+    auto requestHeader = std::move(request.first);
+    auto payload       = std::move(request.second);
     if (requestHeader.payloadLength != ObjectID::bufferSize()) {
         throw std::runtime_error(
             "payload length should be size_of(ObjectID)=" + std::to_string(ObjectID::bufferSize()));
     }
 
-    ObjectID originalObjectID = co_await readMessage<ObjectID>(client);
+    ObjectID originalObjectID = ObjectID::fromBuffer(payload);
 
     auto objectPtr = objectManager.duplicateObject(originalObjectID, requestHeader.objectID);
 
+    std::vector<ObjectStorageServer::SendMessageFuture> res;
     if (objectPtr != nullptr) {
-        co_await optionallySendPendingRequests(requestHeader.objectID, objectPtr);
-        co_await sendDuplicateResponse(client, requestHeader);
+        optionallySendPendingRequests(requestHeader.objectID, objectPtr);
+        sendDuplicateResponse(client, requestHeader);
     } else {
-        // We don't have the referenced original object yet. Send the response later once we receive the SET request.
+        // We don't have the referenced original object yet. Send the response later once we receive the SET
         pendingRequests[originalObjectID].emplace_back(client, requestHeader);
     }
 }
 
-awaitable<void> ObjectStorageServer::sendGetResponse(
+void ObjectStorageServer::sendGetResponse(
     std::shared_ptr<Client> client,
     const ObjectRequestHeader& requestHeader,
     std::shared_ptr<const ObjectPayload> objectPtr)
@@ -261,10 +296,10 @@ awaitable<void> ObjectStorageServer::sendGetResponse(
         .responseType  = ObjectResponseType::GET_O_K,
     };
 
-    co_await writeMessage(client, responseHeader, {objectPtr->data(), payloadLength});
+    writeMessage(client, responseHeader, {objectPtr->data(), payloadLength});
 }
 
-awaitable<void> ObjectStorageServer::sendDuplicateResponse(
+void ObjectStorageServer::sendDuplicateResponse(
     std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader)
 {
     ObjectResponseHeader responseHeader {
@@ -274,40 +309,36 @@ awaitable<void> ObjectStorageServer::sendDuplicateResponse(
         .responseType  = ObjectResponseType::DUPLICATE_O_K,
     };
 
-    co_await writeMessage(client, responseHeader, {});
+    writeMessage(client, responseHeader, {});
 }
 
-awaitable<void> ObjectStorageServer::optionallySendPendingRequests(
+void ObjectStorageServer::optionallySendPendingRequests(
     const ObjectID& objectID, std::shared_ptr<const ObjectPayload> objectPtr)
 {
     auto it = pendingRequests.find(objectID);
-
     if (it == pendingRequests.end()) {
-        co_return;
+        return;
     }
 
     // Immediately remove the object's pending requests, or else another coroutine might process them too.
     auto requests = std::move(it->second);
     pendingRequests.erase(it);
 
+    std::vector<ObjectStorageServer::SendMessageFuture> res;
     for (auto& request: requests) {
         if (request.requestHeader.requestType == ObjectRequestType::GET_OBJECT) {
-            if (request.client->socket.is_open()) {
-                co_await sendGetResponse(request.client, request.requestHeader, objectPtr);
-            }
+            sendGetResponse(request.client, request.requestHeader, objectPtr);
         } else {
             assert(request.requestHeader.requestType == ObjectRequestType::DUPLICATE_OBJECT_I_D);
-
             objectManager.duplicateObject(objectID, request.requestHeader.objectID);
-
-            if (request.client->socket.is_open()) {
-                co_await sendDuplicateResponse(request.client, request.requestHeader);
-            }
+            sendDuplicateResponse(request.client, request.requestHeader);
 
             // Some other pending requests might be themselves dependent on this duplicated object.
-            co_await optionallySendPendingRequests(request.requestHeader.objectID, objectPtr);
+            optionallySendPendingRequests(request.requestHeader.objectID, objectPtr);
         }
     }
+    return;
 }
+
 };  // namespace object_storage
 };  // namespace scaler

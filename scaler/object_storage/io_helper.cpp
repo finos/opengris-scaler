@@ -1,9 +1,11 @@
 #include "io_helper.h"
 
+#include <netinet/in.h>  // sockaddr_in
+#include <sys/socket.h>  // socket(2)
+#include <unistd.h>      // close(2)
+
 #include <exception>
 #include <iostream>
-
-using boost::asio::ip::tcp;
 
 namespace scaler {
 namespace object_storage {
@@ -36,16 +38,6 @@ int getAvailableTCPPort()
     close(sockfd);
 
     return port;
-}
-
-void setTCPNoDelay(tcp::socket& socket, bool isNoDelay)
-{
-    boost::system::error_code ec;
-    socket.set_option(tcp::no_delay(isNoDelay), ec);
-
-    if (ec) {
-        throw std::runtime_error("failed to set TCP_NODELAY on client socket: " + ec.message());
-    }
 }
 
 };  // namespace object_storage

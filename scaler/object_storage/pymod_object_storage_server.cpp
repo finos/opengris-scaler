@@ -32,11 +32,13 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
 {
     const char* addr;
     int port;
+    const char* identity;
     const char* log_level;
     const char* log_format;
     PyObject* logging_paths_tuple = NULL;
 
-    if (!PyArg_ParseTuple(args, "sissO!", &addr, &port, &log_level, &log_format, &PyTuple_Type, &logging_paths_tuple))
+    if (!PyArg_ParseTuple(
+            args, "sisssO!", &addr, &port, &identity, &log_level, &log_format, &PyTuple_Type, &logging_paths_tuple))
         return NULL;
 
     std::vector<std::string> logging_paths;
@@ -51,7 +53,7 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
     }
 
     ((PyObjectStorageServer*)self)
-        ->server.run(addr, std::to_string(port), log_level, log_format, std::move(logging_paths));
+        ->server.run(addr, std::to_string(port), identity, log_level, log_format, std::move(logging_paths));
 
     Py_RETURN_NONE;
 }

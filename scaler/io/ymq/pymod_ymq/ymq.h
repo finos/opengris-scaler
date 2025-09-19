@@ -282,6 +282,7 @@ static int YMQ_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
         {"IPv6NotSupported", (int)Error::ErrorCode::IPv6NotSupported},
         {"RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery",
          (int)Error::ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery},
+        {"ConnectorSocketClosedByRemoteEnd", (int)Error::ErrorCode::ConnectorSocketClosedByRemoteEnd},
     };
 
     if (YMQ_createIntEnum(pyModule, &state->PyErrorCodeType, "ErrorCode", errorCodeValues) < 0)

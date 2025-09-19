@@ -1,14 +1,15 @@
 
+#include <stdio.h>
+
 #include <chrono>
 #include <future>
 #include <memory>
-#include <stdio.h>
 #include <thread>
 
 #include "scaler/io/ymq/error.h"
-#include "scaler/io/ymq/examples/common.h"
 #include "scaler/io/ymq/io_context.h"
 #include "scaler/io/ymq/io_socket.h"
+#include "scaler/io/ymq/simple_interface.h"
 
 using namespace scaler::ymq;
 

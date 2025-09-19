@@ -7,9 +7,9 @@
 #include <memory>
 #include <string>
 
-#include "./common.h"
 #include "scaler/io/ymq/io_context.h"
 #include "scaler/io/ymq/io_socket.h"
+#include "scaler/io/ymq/simple_interface.h"
 #include "scaler/io/ymq/typedefs.h"
 
 std::string longStr = "1234567890";

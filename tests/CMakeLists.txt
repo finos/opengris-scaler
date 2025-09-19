@@ -22,6 +22,7 @@ function(add_test_executable test_name source_file)
         ${test_name}
         PRIVATE GTest::gtest_main
         PRIVATE cc_object_storage_server
+        PRIVATE cc_ymq
     )
 
     add_test(NAME ${test_name} COMMAND ${test_name})

@@ -1,6 +1,8 @@
 
 #include "scaler/io/ymq/message_connection_tcp.h"
 
+#include <future>
+
 #ifdef __linux__
 #include <unistd.h>
 #endif  // __linux__
@@ -62,6 +64,7 @@ MessageConnectionTCP::MessageConnectionTCP(
     , _responsibleForRetry(responsibleForRetry)
     , _pendingRecvMessageCallbacks(pendingRecvMessageCallbacks)
     , _sendCursor {}
+    , _disconnect {false}
 {
     _eventManager->onRead  = [this] { this->onRead(); };
     _eventManager->onWrite = [this] { this->onWrite(); };
@@ -84,6 +87,7 @@ MessageConnectionTCP::MessageConnectionTCP(
     , _responsibleForRetry(false)
     , _pendingRecvMessageCallbacks(pendingRecvMessageCallbacks)
     , _sendCursor {}
+    , _disconnect {false}
 {
     _eventManager->onRead  = [this] { this->onRead(); };
     _eventManager->onWrite = [this] { this->onWrite(); };
@@ -191,6 +195,9 @@ std::expected<void, int> MessageConnectionTCP::tryReadMessages(bool readOneMessa
             }
 #endif  // _WIN32
 #ifdef __linux__
+            if (myErrno == ECONNRESET) {
+                return std::unexpected {-1};
+            }
             if (myErrno == EAGAIN || myErrno == EWOULDBLOCK) {
                 return {};  // Expected, we read until exhuastion
             } else {
@@ -272,23 +279,31 @@ void MessageConnectionTCP::onRead()
         auto res = tryReadMessages(true);
         if (!res) {
             if (res.error() == 0) {
+                _disconnect = true;
+            }
+            if (res.error() == 0 || res.error() == -1) {
                 onClose();
                 return;
             }
         }
 
-        if (_receivedReadOperations.size() && isCompleteMessage(_receivedReadOperations.front())) {
-            auto id = std::move(_receivedReadOperations.front());
-            _remoteIOSocketIdentity.emplace((char*)id._payload.data(), id._payload.len());
-            _receivedReadOperations.pop();
-            auto sock = this->_eventLoopThread->_identityToIOSocket[_localIOSocketIdentity];
-            sock->onConnectionIdentityReceived(this);
+        if (_receivedReadOperations.empty() || !isCompleteMessage(_receivedReadOperations.front())) {
+            return;
         }
+
+        auto id = std::move(_receivedReadOperations.front());
+        _remoteIOSocketIdentity.emplace((char*)id._payload.data(), id._payload.len());
+        _receivedReadOperations.pop();
+        auto sock = this->_eventLoopThread->_identityToIOSocket[_localIOSocketIdentity];
+        sock->onConnectionIdentityReceived(this);
     }
 
     auto res = tryReadMessages(false);
     if (!res) {
         if (res.error() == 0) {
+            _disconnect = true;
+        }
+        if (res.error() == 0 || res.error() == -1) {
             onClose();
             return;
         }
@@ -386,7 +401,7 @@ void MessageConnectionTCP::onClose()
         _eventLoopThread->_eventLoop.removeFdFromLoop(_connFd);
         CloseAndZeroSocket(_connFd);
         auto& sock = _eventLoopThread->_identityToIOSocket.at(_localIOSocketIdentity);
-        sock->onConnectionDisconnected(this);
+        sock->onConnectionDisconnected(this, !_disconnect);
     }
 };
 
@@ -606,13 +621,24 @@ bool MessageConnectionTCP::recvMessage()
     return true;
 }
 
+void MessageConnectionTCP::disconnect()
+{
+#ifdef __linux__
+    if (!_connFd) {
+        return;
+    }
+    shutdown(_connFd, SHUT_WR);
+#endif
+}
+
 MessageConnectionTCP::~MessageConnectionTCP() noexcept
 {
     if (_connFd != 0) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_connFd);
 
 #ifdef __linux__
-        shutdown(_connFd, SHUT_RDWR);
+        shutdown(_connFd, SHUT_RD);
+
 #endif  // __linux__
 #ifdef _WIN32
         shutdown(_connFd, SD_BOTH);

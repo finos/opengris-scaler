@@ -30,6 +30,7 @@ struct Error: public std::exception {
         SetSockOptNonFatalFailure,
         IPv6NotSupported,
         RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery,
+        ConnectorSocketClosedByRemoteEnd,
     };
 
     // NOTE:
@@ -78,6 +79,8 @@ struct Error: public std::exception {
             case ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery:
                 return "You are using IOSocket::Unicast or IOSocket::Multicast, which do not support guaranteed "
                        "message delivery, and the connection(s) disconnects";
+            case ErrorCode::ConnectorSocketClosedByRemoteEnd:
+                return "You have an IOSocket with Connector type but the only connection is closed by remote end";
         }
         fprintf(stderr, "Unrecognized ErrorCode value, program exits\n");
         std::exit(1);

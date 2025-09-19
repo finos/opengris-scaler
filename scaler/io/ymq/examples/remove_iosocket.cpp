@@ -3,8 +3,8 @@
 #include <memory>
 #include <string>
 
-#include "./common.h"
 #include "scaler/io/ymq/io_context.h"
+#include "scaler/io/ymq/simple_interface.h"
 #include "scaler/io/ymq/typedefs.h"
 
 using namespace scaler::ymq;

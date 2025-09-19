@@ -75,6 +75,7 @@ class TestScaling(unittest.TestCase):
             logging_level="INFO",
         )
         object_storage.start()
+        object_storage.wait_until_ready()
 
         scheduler = SchedulerProcess(
             address=ZMQConfig.from_string(self.scheduler_address),
@@ -106,7 +107,7 @@ class TestScaling(unittest.TestCase):
         os.kill(scheduler.pid, signal.SIGINT)
         scheduler.join()
 
-        os.kill(object_storage.pid, signal.SIGINT)
+        os.kill(object_storage.pid, signal.SIGKILL)
         object_storage.join()
 
         os.kill(webhook_server.pid, signal.SIGINT)

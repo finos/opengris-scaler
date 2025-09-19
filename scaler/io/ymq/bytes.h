@@ -15,6 +15,7 @@
 // First-party
 #include "scaler/io/ymq/common.h"
 
+// TODO: This is not in the namespace
 class Bytes {
     uint8_t* _data;
     size_t _len;
@@ -33,6 +34,9 @@ public:
     Bytes(char* data, size_t len): _data(datadup((uint8_t*)data, len)), _len(len) {}
 
     Bytes(): _data {}, _len {} {}
+
+    // For debug and convenience only
+    explicit Bytes(const std::string& str): Bytes((char*)str.c_str(), str.size()) {}
 
     Bytes(const Bytes& other) noexcept
     {
@@ -64,6 +68,9 @@ public:
     {
         return std::lexicographical_compare_three_way(x._data, x._data + x._len, y._data, y._data + y._len);
     }
+
+    // https://stackoverflow.com/questions/68221024/why-must-i-provide-operator-when-operator-is-enough
+    friend bool operator==(const Bytes& x, const Bytes& y) noexcept { return x <=> y == 0; }
 
     Bytes& operator=(Bytes&& other) noexcept
     {
@@ -102,6 +109,7 @@ public:
     }
 
     [[nodiscard]] constexpr size_t len() const { return _len; }
+    [[nodiscard]] constexpr size_t size() const { return _len; }
     [[nodiscard]] constexpr const uint8_t* data() const { return _data; }
     [[nodiscard]] constexpr uint8_t* data() { return _data; }
 };
