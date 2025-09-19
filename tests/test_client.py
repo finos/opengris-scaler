@@ -10,6 +10,7 @@ from scaler import Client, Cluster, SchedulerClusterCombo
 from scaler.utility.exceptions import MissingObjects, ProcessorDiedError
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
+from scaler.worker.preload import PreloadSpecError, _parse_preload_spec, execute_preload
 from tests.utility import logging_test_name
 
 
@@ -454,3 +455,17 @@ class TestClientPreload(unittest.TestCase):
                         os.unlink(os.path.join(log_dir, file))
             except FileNotFoundError:
                 pass
+
+    def test_parse_preload_spec_error(self):
+        # Test that _parse_preload_spec raises PreloadSpecError for invalid specs
+        with self.assertRaises(PreloadSpecError) as cm:
+            _parse_preload_spec("module_without_colon")
+
+        self.assertIn("preload must be in 'module.sub:func(...)' format", str(cm.exception))
+
+    def test_execute_preload_error(self):
+        # Test that execute_preload raises PreloadSpecError for non-callable targets
+        with self.assertRaises(PreloadSpecError) as cm:
+            execute_preload("sys:version")  # sys.version is a string, not callable
+
+        self.assertIn("Preload target must be callable", str(cm.exception))
