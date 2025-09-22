@@ -32,6 +32,8 @@ public:
     // After user called this method, no other call on the passed in IOSocket should be made.
     void removeIOSocket(std::shared_ptr<IOSocket>& socket) noexcept;
 
+    void requestIOSocketStop(std::shared_ptr<IOSocket> socket) noexcept;
+
     constexpr size_t numThreads() const noexcept { return _threads.size(); }
 
 private:

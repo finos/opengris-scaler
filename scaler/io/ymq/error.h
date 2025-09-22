@@ -31,6 +31,7 @@ struct Error: public std::exception {
         IPv6NotSupported,
         RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery,
         ConnectorSocketClosedByRemoteEnd,
+        IOSocketStopRequested,
     };
 
     // NOTE:
@@ -81,6 +82,7 @@ struct Error: public std::exception {
                        "message delivery, and the connection(s) disconnects";
             case ErrorCode::ConnectorSocketClosedByRemoteEnd:
                 return "You have an IOSocket with Connector type but the only connection is closed by remote end";
+            case ErrorCode::IOSocketStopRequested: return "Current IOSocket is requested to stop by another thread";
         }
         fprintf(stderr, "Unrecognized ErrorCode value, program exits\n");
         std::exit(1);

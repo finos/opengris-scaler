@@ -50,6 +50,12 @@ public:
     std::optional<std::string> _remoteIOSocketIdentity;
 
 private:
+    enum class IOError {
+        Drained,
+        Aborted,
+        Disconnected,
+    };
+
     void onRead();
     void onWrite();
     void onClose();
@@ -59,8 +65,9 @@ private:
         // onClose();
     };
 
-    std::expected<void, int> tryReadMessages(bool readOneMessage);
-    std::expected<size_t, int> trySendQueuedMessages();
+    std::expected<void, IOError> tryReadOneMessage();
+    std::expected<void, IOError> tryReadMessages();
+    std::expected<size_t, IOError> trySendQueuedMessages();
     void updateWriteOperations(size_t n);
     void updateReadOperation();
 

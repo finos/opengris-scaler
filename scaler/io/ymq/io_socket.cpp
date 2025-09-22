@@ -26,6 +26,7 @@ IOSocket::IOSocket(
     , _identity(std::move(identity))
     , _socketType(std::move(socketType))
     , _pendingRecvMessages(std::make_shared<std::queue<RecvMessageCallback>>())
+    , _stopped {false}
 {
 }
 
@@ -116,6 +117,17 @@ void IOSocket::bindTo(std::string networkAddress, BindReturnCallback onBindRetur
             _tcpServer.emplace(_eventLoopThread, this->identity(), std::move(res.value()), std::move(callback));
             _tcpServer->onCreated();
         });
+}
+
+void IOSocket::closeConnection(Identity remoteSocketIdentity) noexcept
+{
+    if (_stopped) {
+        return;
+    }
+    _eventLoopThread->_eventLoop.executeNow([this, remoteIdentity = std::move(remoteSocketIdentity)] mutable {
+        _eventLoopThread->_eventLoop.executeLater(
+            [this, remoteIdentity = std::move(remoteIdentity)] { _identityToConnection.erase(remoteIdentity); });
+    });
 }
 
 // TODO: The function should be separated into onConnectionAborted, onConnectionDisconnected,
@@ -237,6 +249,16 @@ void IOSocket::removeConnectedTcpClient() noexcept
     }
 }
 
+void IOSocket::requestStop() noexcept
+{
+    _stopped = true;
+    while (_pendingRecvMessages->size()) {
+        auto readOp = std::move(_pendingRecvMessages->front());
+        _pendingRecvMessages->pop();
+        readOp({{}, Error::ErrorCode::IOSocketStopRequested});
+    }
+}
+
 IOSocket::~IOSocket() noexcept
 {
     for (const auto& [k, v]: _identityToConnection) {
@@ -246,8 +268,7 @@ IOSocket::~IOSocket() noexcept
     while (_pendingRecvMessages->size()) {
         auto readOp = std::move(_pendingRecvMessages->front());
         _pendingRecvMessages->pop();
-        // TODO: report what errorr?
-        readOp({});
+        readOp({{}, Error::ErrorCode::IOSocketStopRequested});
     }
 }
 

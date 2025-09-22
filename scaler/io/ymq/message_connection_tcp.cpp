@@ -132,21 +132,14 @@ void MessageConnectionTCP::onCreated()
     }
 }
 
-// on Return, unexpected value shall be interpreted as this - 0 = close, other -> errno
-std::expected<void, int> MessageConnectionTCP::tryReadMessages(bool readOneMessage)
+std::expected<void, MessageConnectionTCP::IOError> MessageConnectionTCP::tryReadOneMessage()
 {
-    bool haveReadOne = false;
-    while (true) {
+    if (_receivedReadOperations.empty() || isCompleteMessage(_receivedReadOperations.back())) {
+        _receivedReadOperations.emplace();
+    }
+    while (!isCompleteMessage(_receivedReadOperations.back())) {
         char* readTo         = nullptr;
         size_t remainingSize = 0;
-
-        if (_receivedReadOperations.empty() || isCompleteMessage(_receivedReadOperations.back())) {
-            if (haveReadOne)
-                break;
-            _receivedReadOperations.emplace();
-            if (readOneMessage)
-                haveReadOne = true;
-        }
 
         auto& message = _receivedReadOperations.back();
         if (message._cursor < HEADER_SIZE) {
@@ -168,15 +161,15 @@ std::expected<void, int> MessageConnectionTCP::tryReadMessages(bool readOneMessa
 
         int n = ::recv(_connFd, readTo, remainingSize, 0);
         if (n == 0) {
-            return std::unexpected {0};
+            return std::unexpected {IOError::Disconnected};
         } else if (n == -1) {
             const int myErrno = GetErrorCode();
 #ifdef _WIN32
             if (myErrno == WSAEWOULDBLOCK) {
-                return {};
+                return std::unexpected {IOError::Drained};
             }
             if (myErrno == WSAECONNRESET || myErrno == WSAENOTSOCK) {
-                return std::unexpected {0};
+                return std::unexpected {IOError::Aborted};
             } else {
                 // NOTE: On Windows we don't have signals and weird IO Errors
                 unrecoverableError({
@@ -196,10 +189,10 @@ std::expected<void, int> MessageConnectionTCP::tryReadMessages(bool readOneMessa
 #endif  // _WIN32
 #ifdef __linux__
             if (myErrno == ECONNRESET) {
-                return std::unexpected {-1};
+                return std::unexpected {IOError::Aborted};
             }
             if (myErrno == EAGAIN || myErrno == EWOULDBLOCK) {
-                return {};  // Expected, we read until exhuastion
+                return std::unexpected {IOError::Drained};
             } else {
                 const int myErrno = errno;
                 switch (myErrno) {
@@ -249,6 +242,17 @@ std::expected<void, int> MessageConnectionTCP::tryReadMessages(bool readOneMessa
     return {};
 }
 
+// on Return, unexpected value shall be interpreted as this - 0 = close, other -> errno
+std::expected<void, MessageConnectionTCP::IOError> MessageConnectionTCP::tryReadMessages()
+{
+    while (true) {
+        auto res = tryReadOneMessage();
+        if (!res) {
+            return res;
+        }
+    }
+}
+
 void MessageConnectionTCP::updateReadOperation()
 {
     while (_pendingRecvMessageCallbacks->size() && _receivedReadOperations.size()) {
@@ -275,40 +279,47 @@ void MessageConnectionTCP::onRead()
         return;
     }
 
-    if (!_remoteIOSocketIdentity) {
-        auto res = tryReadMessages(true);
-        if (!res) {
-            if (res.error() == 0) {
-                _disconnect = true;
-            }
-            if (res.error() == 0 || res.error() == -1) {
-                onClose();
-                return;
-            }
+    auto maybeCloseConn = [this](IOError err) -> std::expected<void, IOError> {
+        switch (err) {
+            case IOError::Drained: return {};
+            case IOError::Disconnected: _disconnect = true; break;
+            case IOError::Aborted: _disconnect = false; break;
         }
+        onClose();
+        return std::unexpected {err};
+    };
 
-        if (_receivedReadOperations.empty() || !isCompleteMessage(_receivedReadOperations.front())) {
-            return;
-        }
+    auto res = _remoteIOSocketIdentity
+                   .or_else([this, maybeCloseConn] {
+                       auto _ = tryReadOneMessage()
+                                    .or_else(maybeCloseConn)  //
+                                    .and_then([this]() -> std::expected<void, IOError> {
+                                        if (_receivedReadOperations.empty() ||
+                                            !isCompleteMessage(_receivedReadOperations.front())) {
+                                            return {};
+                                        }
 
-        auto id = std::move(_receivedReadOperations.front());
-        _remoteIOSocketIdentity.emplace((char*)id._payload.data(), id._payload.len());
-        _receivedReadOperations.pop();
-        auto sock = this->_eventLoopThread->_identityToIOSocket[_localIOSocketIdentity];
-        sock->onConnectionIdentityReceived(this);
-    }
-
-    auto res = tryReadMessages(false);
+                                        auto id = std::move(_receivedReadOperations.front());
+                                        _remoteIOSocketIdentity.emplace((char*)id._payload.data(), id._payload.len());
+                                        _receivedReadOperations.pop();
+                                        auto sock = this->_eventLoopThread->_identityToIOSocket[_localIOSocketIdentity];
+                                        sock->onConnectionIdentityReceived(this);
+                                        return {};
+                                    });
+                       return _remoteIOSocketIdentity;
+                   })
+                   .and_then([this, maybeCloseConn](const std::string&) -> std::optional<std::string> {
+                       auto _ = tryReadMessages()
+                                    .or_else(maybeCloseConn)  //
+                                    .and_then([this]() -> std::expected<void, IOError> {
+                                        updateReadOperation();
+                                        return {};
+                                    });
+                       return _remoteIOSocketIdentity;
+                   });
     if (!res) {
-        if (res.error() == 0) {
-            _disconnect = true;
-        }
-        if (res.error() == 0 || res.error() == -1) {
-            onClose();
-            return;
-        }
+        return;
     }
-    updateReadOperation();
 
 #ifdef _WIN32
     const bool ok = ReadFile((HANDLE)(SOCKET)_connFd, nullptr, 0, nullptr, this->_eventManager.get());
@@ -346,24 +357,15 @@ void MessageConnectionTCP::onWrite()
         return;
     }
 
-#ifdef __linux__
-    // EPIPE: Shutdown for writing or disconnected, since we don't provide the former,
-    // it means the later.
-    if (res.error() == ECONNRESET || res.error() == EPIPE) {
+    if (res.error() == IOError::Aborted) {
         onClose();
         return;
     }
-#endif  // __linux__
 
 #ifdef _WIN32
-    if (res.error() == WSAESHUTDOWN || res.error() == WSAENOTCONN) {
-        onClose();
-        return;
-    }
-
     // NOTE: Precondition is the queue still has messages (perhaps a partial one).
     // We don't need to update the queue because trySendQueuedMessages is okay with a complete message in front.
-    if (res.error() == WSAEWOULDBLOCK) {
+    if (res.error() == IOError::Drained) {
         void* addr = nullptr;
         if (_sendCursor < HEADER_SIZE) {
             addr = (char*)(&_writeOperations.front()._header) + _sendCursor;
@@ -405,7 +407,7 @@ void MessageConnectionTCP::onClose()
     }
 };
 
-std::expected<size_t, int> MessageConnectionTCP::trySendQueuedMessages()
+std::expected<size_t, MessageConnectionTCP::IOError> MessageConnectionTCP::trySendQueuedMessages()
 {
 // typedef struct _WSABUF {
 //     ULONG(same to sizet on x64 machine) len;     /* the length of the buffer */
@@ -463,7 +465,10 @@ std::expected<size_t, int> MessageConnectionTCP::trySendQueuedMessages()
     }
     const int myErrno = GetErrorCode();
     if (myErrno == WSAEWOULDBLOCK) {
-        return std::unexpected {myErrno};
+        return std::unexpected {IOError::Drained};
+    }
+    if (myErrno == WSAESHUTDOWN || myErrno == WSAENOTCONN) {
+        return std::unexpected {IOError::Aborted};
     }
     unrecoverableError({
         Error::ErrorCode::CoreBug,
@@ -486,7 +491,7 @@ std::expected<size_t, int> MessageConnectionTCP::trySendQueuedMessages()
     ssize_t bytesSent = ::sendmsg(_connFd, &msg, MSG_NOSIGNAL);
     if (bytesSent == -1) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            return 0;
+            return std::unexpected {IOError::Drained};
         } else {
             const int myErrno = errno;
             switch (myErrno) {
@@ -517,7 +522,8 @@ std::expected<size_t, int> MessageConnectionTCP::trySendQueuedMessages()
                     });
                     break;
 
-                case ECONNRESET: break;  // NOTE: HANDLE BY CALLER
+                case ECONNRESET:
+                case EPIPE: return std::unexpected {IOError::Aborted}; break;
 
                 case EINTR:
                     unrecoverableError({
@@ -528,8 +534,6 @@ std::expected<size_t, int> MessageConnectionTCP::trySendQueuedMessages()
                         strerror(myErrno),
                     });
                     break;
-
-                case EPIPE: break;  // NOTE: HANDLE BY CALLER
 
                 case EIO:
                 case EACCES:
@@ -547,8 +551,6 @@ std::expected<size_t, int> MessageConnectionTCP::trySendQueuedMessages()
                     });
                     break;
             }
-
-            return std::unexpected {myErrno};
         }
     }
 

@@ -43,6 +43,8 @@ public:
         ASSERT_TRUE(res.has_value());
     }
 
+    auto readYMQMessage() { return syncRecvMessage(ioSocket); }
+
     void writeRequest(const ObjectRequestHeader& header, const std::optional<ObjectPayload>& payload)
     {
         auto buf = header.toBuffer();
@@ -527,8 +529,7 @@ TEST_F(ObjectStorageServerTest, TestClientDisconnect)
     }
 }
 
-// TODO: This is a regression as ymq doesn't support actively closing an underlying connection
-TEST_F(ObjectStorageServerTest, DISABLED_TestMalformedHeader)
+TEST_F(ObjectStorageServerTest, TestMalformedHeader)
 {
     ObjectResponseHeader responseHeader;
     std::optional<ObjectPayload> responsePayload;
@@ -540,15 +541,13 @@ TEST_F(ObjectStorageServerTest, DISABLED_TestMalformedHeader)
         std::array<uint8_t, CAPNP_HEADER_SIZE> malformedHeader;
         malformedHeader.fill(0xAA);
 
-        // client->write(boost::asio::buffer(malformedHeader));
         Message message;
         message.payload = Bytes((char*)malformedHeader.begin(), malformedHeader.size());
         client->writeYMQMessage(std::move(message));
 
         // Server should disconnect before or while we are reading the response
-        client->readResponse(responseHeader, responsePayload);
-
-        ADD_FAILURE();  // Unreachable
+        auto [msg, err] = client->readYMQMessage();
+        EXPECT_EQ(err._errorCode, Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
     }
 
     // Server must still answers to requests from other clients

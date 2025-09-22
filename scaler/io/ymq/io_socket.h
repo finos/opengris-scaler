@@ -9,6 +9,7 @@
 #endif  // _WIN32
 
 // C++
+#include <atomic>
 #include <map>
 #include <memory>
 #include <optional>
@@ -54,6 +55,8 @@ public:
 
     void bindTo(std::string networkAddress, BindReturnCallback onBindReturn) noexcept;
 
+    void closeConnection(Identity remoteSocketIdentity) noexcept;
+
     [[nodiscard]] constexpr Identity identity() const { return _identity; }
 
     [[nodiscard]] constexpr IOSocketType socketType() const { return _socketType; }
@@ -75,6 +78,8 @@ public:
 
     // From TcpClient class only
     void removeConnectedTcpClient() noexcept;
+
+    void requestStop() noexcept;
 
     std::shared_ptr<EventLoopThread> _eventLoopThread;
 
@@ -107,6 +112,8 @@ private:
     // NOTE: This variable needs to present in the IOSocket level because the user
     // does not care which connection a message is coming from.
     std::shared_ptr<std::queue<RecvMessageCallback>> _pendingRecvMessages;
+
+    std::atomic<bool> _stopped;
 };
 
 }  // namespace ymq
