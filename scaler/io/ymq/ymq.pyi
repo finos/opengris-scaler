@@ -46,7 +46,6 @@ class IOContext:
     def createIOSocket_sync(self, /, identity: str, socket_type: IOSocketType) -> IOSocket:
         """Create an io socket with an identity and socket type synchronously"""
 
-
 class IOSocket:
     identity: str
     socket_type: IOSocketType
@@ -92,6 +91,7 @@ class ErrorCode(IntEnum):
     SetSockOptNonFatalFailure = 12
     IPv6NotSupported = 13
     RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery = 14
+    ConnectorSocketClosedByRemoteEnd = 15
 
     def explanation(self) -> str: ...
 

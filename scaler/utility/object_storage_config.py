@@ -6,6 +6,7 @@ import re
 class ObjectStorageConfig:
     host: str
     port: int
+    identity: str = "ObjectStorageServer"
 
     def to_string(self) -> str:
         return f"tcp://{self.host}:{self.port}"

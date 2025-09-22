@@ -7,9 +7,7 @@
 #include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/io_context.h"
 #include "scaler/io/ymq/io_socket.h"
-
-// For test directory, okay to not use project path
-#include "./common.h"
+#include "scaler/io/ymq/simple_interface.h"
 
 using namespace scaler::ymq;
 

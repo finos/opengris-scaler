@@ -81,6 +81,12 @@ void IOContext::removeIOSocket(std::shared_ptr<IOSocket>& socket) noexcept
     }
 }
 
+void IOContext::requestIOSocketStop(std::shared_ptr<IOSocket> socket) noexcept
+{
+    socket->_eventLoopThread->_eventLoop.executeNow(
+        [socket] { socket->_eventLoopThread->_eventLoop.executeLater([socket] { socket->requestStop(); }); });
+}
+
 IOContext::~IOContext() noexcept
 {
 #ifdef _WIN32

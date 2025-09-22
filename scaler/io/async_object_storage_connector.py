@@ -3,6 +3,10 @@ import logging
 import socket
 from typing import Dict, Optional, Tuple
 
+import uuid
+import os
+import struct
+
 from scaler.io.mixins import AsyncObjectStorageConnector
 from scaler.protocol.capnp._python import _object_storage  # noqa
 from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader, to_capnp_object_id
@@ -25,6 +29,8 @@ class PyAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         self._next_request_id = 0
         self._pending_get_requests: Dict[ObjectID, asyncio.Future] = {}
 
+        self._identity: bytes = f"{os.getpid()}|{socket.gethostname().split('.')[0]}|{uuid.uuid4()}".encode()
+
     def __del__(self):
         if not self.is_connected():
             return
@@ -39,6 +45,13 @@ class PyAsyncObjectStorageConnector(AsyncObjectStorageConnector):
             raise ObjectStorageException("connector is already connected.")
 
         self._reader, self._writer = await asyncio.open_connection(self._host, self._port)
+        await self.__read_framed_message()
+        self.__write_framed(self._identity)
+
+        try:
+            await self._writer.drain()
+        except ConnectionResetError:
+            self.__raise_connection_failure()
 
         # Makes sure the socket is TCP_NODELAY. It seems to be the case by default, but that's not specified in the
         # asyncio's documentation and might change in the future.
@@ -158,11 +171,11 @@ class PyAsyncObjectStorageConnector(AsyncObjectStorageConnector):
 
     def __write_request_header(self, header: ObjectRequestHeader):
         assert self._writer is not None
-        self._writer.write(header.get_message().to_bytes())
+        self.__write_framed(header.get_message().to_bytes())
 
     def __write_request_payload(self, payload: bytes):
         assert self._writer is not None
-        self._writer.write(payload)
+        self.__write_framed(payload)
 
     async def __receive_response(self) -> Optional[Tuple[ObjectResponseHeader, bytes]]:
         assert self._reader is not None
@@ -181,7 +194,8 @@ class PyAsyncObjectStorageConnector(AsyncObjectStorageConnector):
     async def __read_response_header(self) -> ObjectResponseHeader:
         assert self._reader is not None
 
-        header_data = await self._reader.readexactly(ObjectResponseHeader.MESSAGE_LENGTH)
+        header_data = await self.__read_framed_message()
+        assert len(header_data) == ObjectResponseHeader.MESSAGE_LENGTH
 
         with _object_storage.ObjectResponseHeader.from_bytes(header_data) as header_message:
             return ObjectResponseHeader(header_message)
@@ -190,9 +204,21 @@ class PyAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         assert self._reader is not None
 
         if header.payload_length > 0:
-            return await self._reader.readexactly(header.payload_length)
+            res = await self.__read_framed_message()
+            assert len(res) == header.payload_length
+            return res
         else:
             return b""
+
+    async def __read_framed_message(self) -> bytes:
+        length_bytes = await self._reader.readexactly(8)
+        (payload_length,) = struct.unpack("<Q", length_bytes)
+        return await self._reader.readexactly(payload_length) if payload_length > 0 else bytes()
+
+    def __write_framed(self, payload: bytes):
+        self._writer.write(struct.pack("<Q", len(payload)))
+        self._writer.write(payload)
+        return
 
     @staticmethod
     def __raise_connection_failure():

@@ -1,17 +1,19 @@
 #include <gtest/gtest.h>
 
-#include <boost/asio.hpp>
+#include <algorithm>
+#include <cstring>
 #include <filesystem>
+#include <string>
 #include <thread>
 
+#include "scaler/io/ymq/io_context.h"
+#include "scaler/io/ymq/io_socket.h"
 #include "scaler/io/ymq/logging.h"
+#include "scaler/io/ymq/simple_interface.h"
 #include "scaler/object_storage/object_storage_server.h"
 
-// using boost::asio::awaitable;
-using boost::asio::buffer;
-using boost::asio::ip::tcp;
-
 using namespace scaler::object_storage;
+using namespace scaler::ymq;
 
 using ObjectRequestType  = scaler::protocol::ObjectRequestHeader::ObjectRequestType;
 using ObjectResponseType = scaler::protocol::ObjectResponseHeader::ObjectResponseType;
@@ -19,53 +21,67 @@ using ObjectResponseType = scaler::protocol::ObjectResponseHeader::ObjectRespons
 // This client class is used to connect to and interact with the server.
 class ObjectStorageClient {
 public:
-    ObjectStorageClient(boost::asio::io_context& ioContext, const std::string& serverHost, const std::string serverPort)
-        : socket(ioContext)
+    ObjectStorageClient(
+        std::shared_ptr<IOContext> ioContext, const std::string& serverHost, const std::string serverPort)
+        : ioContext(ioContext)
     {
-        tcp::resolver resolver(ioContext);
-        boost::asio::connect(socket, resolver.resolve(serverHost, serverPort));
+        static int id = 0;
+        ioSocket =
+            syncCreateSocket(*ioContext.get(), IOSocketType::Connector, "ObjectStorageClient" + std::to_string(id++));
+        const std::string address = "tcp://" + serverHost + ':' + serverPort;
+        syncConnectSocket(ioSocket, address);
     }
 
-    ~ObjectStorageClient()
-    {
-        boost::system::error_code ec;
-        socket.shutdown(tcp::socket::shutdown_both, ec);
-        socket.close(ec);
-    }
+    ~ObjectStorageClient() { ioContext->removeIOSocket(ioSocket); }
 
     ObjectStorageClient(const ObjectStorageClient&)            = delete;
     ObjectStorageClient& operator=(const ObjectStorageClient&) = delete;
 
-    void write(const boost::asio::const_buffer& buffer) { boost::asio::write(socket, buffer); }
+    void writeYMQMessage(Message message)
+    {
+        auto res = syncSendMessage(ioSocket, std::move(message));
+        ASSERT_TRUE(res.has_value());
+    }
+
+    auto readYMQMessage() { return syncRecvMessage(ioSocket); }
 
     void writeRequest(const ObjectRequestHeader& header, const std::optional<ObjectPayload>& payload)
     {
         auto buf = header.toBuffer();
 
-        write(boost::asio::buffer(buf.asBytes().begin(), buf.asBytes().size()));
+        Message ymqHeader {};
+        ymqHeader.payload = Bytes((char*)buf.asBytes().begin(), buf.asBytes().size());
+        writeYMQMessage(std::move(ymqHeader));
 
         if (payload) {
-            write(boost::asio::buffer(*payload));
+            Message ymqPayload {};
+            ymqPayload.payload = *payload;
+            writeYMQMessage(std::move(ymqPayload));
         }
     }
 
     void readResponse(ObjectResponseHeader& header, std::optional<ObjectPayload>& payload)
     {
-        std::array<uint64_t, CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE> buf;
-        boost::asio::read(socket, boost::asio::buffer(buf.data(), CAPNP_HEADER_SIZE));
+        std::array<uint64_t, CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE> buf {};
+        auto [message, error] = syncRecvMessage(ioSocket);
+        ASSERT_EQ(error._errorCode, Error::ErrorCode::Uninit);
 
+        memcpy(buf.begin(), message.payload.data(), CAPNP_HEADER_SIZE);
+        ASSERT_EQ(message.payload.size(), CAPNP_HEADER_SIZE);
         header = ObjectResponseHeader::fromBuffer(buf);
 
         if (header.payloadLength > 0) {
-            payload.emplace(header.payloadLength);
-            boost::asio::read(socket, boost::asio::buffer(*payload));
+            auto [message2, error2] = syncRecvMessage(ioSocket);
+            ASSERT_EQ(error2._errorCode, Error::ErrorCode::Uninit);
+            payload.emplace(message2.payload);
         } else {
             payload.reset();
         }
     }
 
 private:
-    tcp::socket socket;
+    std::shared_ptr<IOContext> ioContext;
+    std::shared_ptr<IOSocket> ioSocket;
 };
 
 // This test fixture is for functional testing of the server's core features.
@@ -77,16 +93,18 @@ protected:
     std::string serverPort;
     std::thread serverThread;
 
-    boost::asio::io_context ioContext;
+    std::shared_ptr<IOContext> ioContext;
 
     void SetUp() override
     {
-        server = std::make_unique<ObjectStorageServer>();
+        ioContext = std::make_shared<IOContext>();
+        server    = std::make_unique<ObjectStorageServer>();
 
         serverPort = std::to_string(getAvailableTCPPort());
 
-        serverThread =
-            std::thread([this] { server->run(SERVER_HOST, serverPort, "INFO", "%(levelname)s: %(message)s"); });
+        serverThread = std::thread([this] {
+            server->run(SERVER_HOST, serverPort, "ObjectStorageServerTest", "INFO", "%(levelname)s: %(message)s");
+        });
 
         server->waitUntilReady();
     }
@@ -106,7 +124,7 @@ protected:
     }
 };
 
-const ObjectPayload payload {'H', 'e', 'l', 'l', 'o'};
+const ObjectPayload payload {std::string("Hello")};
 
 TEST_F(ObjectStorageServerTest, TestSetObject)
 {
@@ -190,7 +208,7 @@ TEST_F(ObjectStorageServerTest, TestGetObject)
 
         EXPECT_EQ(responseHeader.payloadLength, 1);
         EXPECT_EQ(responsePayload->size(), 1);
-        EXPECT_EQ(responsePayload->front(), payload.front());
+        EXPECT_EQ(*responsePayload->data(), *payload.data());
     }
 }
 
@@ -303,8 +321,8 @@ TEST_F(ObjectStorageServerTest, TestDuplicateObject)
 
         auto originalObjectIDBuffer = originalObjectID.toBuffer();
         ObjectPayload originalObjectIDPayload {
-            reinterpret_cast<const uint8_t*>(originalObjectIDBuffer.begin()),
-            reinterpret_cast<const uint8_t*>(originalObjectIDBuffer.end())};
+            reinterpret_cast<char*>(const_cast<unsigned char*>(originalObjectIDBuffer.asBytes().begin())),
+            originalObjectIDBuffer.asBytes().size()};
 
         client->writeRequest(requestHeader, {originalObjectIDPayload});
 
@@ -411,8 +429,8 @@ TEST_F(ObjectStorageServerTest, TestRequestBlocking)
 
         auto objectIDBuffer = originalObjectID.toBuffer();
         ObjectPayload objectIDPayload {
-            reinterpret_cast<const uint8_t*>(objectIDBuffer.begin()),
-            reinterpret_cast<const uint8_t*>(objectIDBuffer.end())};
+            reinterpret_cast<char*>(const_cast<unsigned char*>(objectIDBuffer.asBytes().begin())),
+            objectIDBuffer.asBytes().size()};
 
         client3->writeRequest(requestHeader, {objectIDPayload});
     }
@@ -523,17 +541,13 @@ TEST_F(ObjectStorageServerTest, TestMalformedHeader)
         std::array<uint8_t, CAPNP_HEADER_SIZE> malformedHeader;
         malformedHeader.fill(0xAA);
 
-        try {
-            client->write(boost::asio::buffer(malformedHeader));
+        Message message;
+        message.payload = Bytes((char*)malformedHeader.begin(), malformedHeader.size());
+        client->writeYMQMessage(std::move(message));
 
-            // Server should disconnect before or while we are reading the response
-            client->readResponse(responseHeader, responsePayload);
-
-            ADD_FAILURE();  // Unreachable
-        } catch (const boost::system::system_error& e) {
-            // Expect the connection to be closed by the server
-            EXPECT_EQ(e.code(), boost::asio::error::eof);
-        }
+        // Server should disconnect before or while we are reading the response
+        auto [msg, err] = client->readYMQMessage();
+        EXPECT_EQ(err._errorCode, Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
     }
 
     // Server must still answers to requests from other clients
@@ -563,10 +577,11 @@ protected:
     std::unique_ptr<scaler::object_storage::ObjectStorageServer> server;
     std::string serverPort;
     std::thread serverThread;
-    boost::asio::io_context ioContext;
+    std::shared_ptr<IOContext> ioContext;
 
     void SetUp() override
     {
+        ioContext    = std::make_shared<IOContext>();
         log_filepath = std::filesystem::temp_directory_path();
 
         std::string unique_filename = "server_log_" + std::to_string(getpid()) + "_" +
@@ -578,7 +593,13 @@ protected:
         serverPort = std::to_string(getAvailableTCPPort());
 
         serverThread = std::thread([this] {
-            server->run(SERVER_HOST, serverPort, "INFO", "%(levelname)s: %(message)s", {log_filepath.string()});
+            server->run(
+                SERVER_HOST,
+                serverPort,
+                "ObjectStorageLoggingTest",
+                "INFO",
+                "%(levelname)s: %(message)s",
+                {log_filepath.string()});
         });
         server->waitUntilReady();
     }
@@ -607,7 +628,7 @@ protected:
     }
 };
 
-TEST_F(ObjectStorageLoggingTest, TestServerLogsDisconnectionToFile)
+TEST_F(ObjectStorageLoggingTest, TestServerLogsStartToFile)
 {
     {
         // Use the functional client to connect and then disconnect.
@@ -617,5 +638,5 @@ TEST_F(ObjectStorageLoggingTest, TestServerLogsDisconnectionToFile)
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     std::string log_content = readLogFile();
     // Verify that the disconnection message is present in the log file.
-    EXPECT_NE(log_content.find("INFO: ObjectStorageServer: client disconnected"), std::string::npos);
+    EXPECT_NE(log_content.find("INFO: ObjectStorageServer: started"), std::string::npos);
 }

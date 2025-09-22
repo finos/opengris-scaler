@@ -3,6 +3,7 @@
 #include <capnp/serialize.h>
 
 #include <array>
+#include <cstdio>
 #include <vector>
 
 #include "protocol/object_storage.capnp.h"

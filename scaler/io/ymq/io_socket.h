@@ -9,6 +9,7 @@
 #endif  // _WIN32
 
 // C++
+#include <atomic>
 #include <map>
 #include <memory>
 #include <optional>
@@ -54,12 +55,17 @@ public:
 
     void bindTo(std::string networkAddress, BindReturnCallback onBindReturn) noexcept;
 
+    void closeConnection(Identity remoteSocketIdentity) noexcept;
+
     [[nodiscard]] constexpr Identity identity() const { return _identity; }
 
     [[nodiscard]] constexpr IOSocketType socketType() const { return _socketType; }
 
     // From Connection Class only
-    void onConnectionDisconnected(MessageConnectionTCP* conn) noexcept;
+    // TODO: Maybe figure out a better name than keepInBook. When keepInBook is true, the system will remember this
+    // remote identity and will treat the next connection with that identity as the reincarnation of this identity.
+    // Thus, keeping the identity in the book.
+    void onConnectionDisconnected(MessageConnectionTCP* conn, bool keepInBook = true) noexcept;
     // From Connection Class only
     void onConnectionIdentityReceived(MessageConnectionTCP* conn) noexcept;
 
@@ -72,6 +78,8 @@ public:
 
     // From TcpClient class only
     void removeConnectedTcpClient() noexcept;
+
+    void requestStop() noexcept;
 
     std::shared_ptr<EventLoopThread> _eventLoopThread;
 
@@ -104,6 +112,8 @@ private:
     // NOTE: This variable needs to present in the IOSocket level because the user
     // does not care which connection a message is coming from.
     std::shared_ptr<std::queue<RecvMessageCallback>> _pendingRecvMessages;
+
+    std::atomic<bool> _stopped;
 };
 
 }  // namespace ymq

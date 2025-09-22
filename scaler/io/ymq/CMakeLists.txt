@@ -56,6 +56,9 @@ target_sources(cc_ymq PRIVATE
   error.h
 
   logging.h
+
+  simple_interface.h
+  simple_interface.cpp
 )
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/scaler/io/ymq)
@@ -65,9 +68,9 @@ install(TARGETS cc_ymq
 
 if(LINUX)
   find_package(Python3 COMPONENTS Development.Module REQUIRED)
-  
+
   add_library(ymq SHARED)
-  
+
   set_target_properties(ymq PROPERTIES  PREFIX "")
   set_target_properties(ymq PROPERTIES LINKER_LANGUAGE CXX)
 find_package(Python3 COMPONENTS Development.Module REQUIRED)

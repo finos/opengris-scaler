@@ -42,6 +42,7 @@ public:
 
     void sendMessage(Message msg, SendMessageCallback onMessageSent);
     bool recvMessage();
+    void disconnect();
 
     std::shared_ptr<EventLoopThread> _eventLoopThread;
     const sockaddr _remoteAddr;
@@ -49,18 +50,24 @@ public:
     std::optional<std::string> _remoteIOSocketIdentity;
 
 private:
+    enum class IOError {
+        Drained,
+        Aborted,
+        Disconnected,
+    };
+
     void onRead();
     void onWrite();
     void onClose();
     void onError()
     {
-        printf("%s\n", __PRETTY_FUNCTION__);
-        printf("onError (for debug don't remove) later this will be a log\n");
-        onClose();
+        onRead();
+        // onClose();
     };
 
-    std::expected<void, int> tryReadMessages(bool readOneMessage);
-    std::expected<size_t, int> trySendQueuedMessages();
+    std::expected<void, IOError> tryReadOneMessage();
+    std::expected<void, IOError> tryReadMessages();
+    std::expected<size_t, IOError> trySendQueuedMessages();
     void updateWriteOperations(size_t n);
     void updateReadOperation();
 
@@ -75,9 +82,11 @@ private:
     std::shared_ptr<std::queue<RecvMessageCallback>> _pendingRecvMessageCallbacks;
     std::queue<TcpReadOperation> _receivedReadOperations;
 
+    bool _disconnect;
+
     constexpr static bool isCompleteMessage(const TcpReadOperation& x);
     friend void IOSocket::onConnectionIdentityReceived(MessageConnectionTCP* conn) noexcept;
-    friend void IOSocket::onConnectionDisconnected(MessageConnectionTCP* conn) noexcept;
+    friend void IOSocket::onConnectionDisconnected(MessageConnectionTCP* conn, bool keepInBook) noexcept;
 };
 
 }  // namespace ymq

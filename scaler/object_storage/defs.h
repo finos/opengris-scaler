@@ -1,11 +1,13 @@
 #pragma once
 
-#include <vector>
+#include <memory>  // std::shared_ptr
+
+#include "scaler/io/ymq/bytes.h"
 
 namespace scaler {
 namespace object_storage {
 
-using ObjectPayload       = std::vector<unsigned char>;
+using ObjectPayload       = Bytes;
 using SharedObjectPayload = std::shared_ptr<ObjectPayload>;
 
 };  // namespace object_storage

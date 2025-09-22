@@ -339,7 +339,7 @@ void TcpClient::retry()
 {
     if (_retryTimes > _maxRetryTimes) {
         _logger.log(Logger::LoggingLevel::error, "Retried times has reached maximum", _maxRetryTimes);
-        exit(1);
+        // exit(1);
         return;
     }
 
