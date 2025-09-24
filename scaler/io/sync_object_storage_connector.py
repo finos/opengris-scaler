@@ -9,6 +9,7 @@ from threading import Lock
 from typing import Iterable, List, Optional, Tuple
 
 from scaler.io.mixins import SyncObjectStorageConnector
+from scaler.io.ymq import ymq
 from scaler.protocol.capnp._python import _object_storage  # noqa
 from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader, to_capnp_object_id
 from scaler.utility.exceptions import ObjectStorageException
@@ -25,26 +26,23 @@ class PySyncObjectStorageConnector(SyncObjectStorageConnector):
         self._host = host
         self._port = port
 
-        self._identity: bytes = f"{os.getpid()}|{socket.gethostname().split('.')[0]}|{uuid.uuid4()}".encode()
-
-        self._socket: Optional[socket.socket] = socket.create_connection((self._host, self._port))
-        self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self._identity: str = f"{os.getpid()}|{socket.gethostname().split('.')[0]}|{uuid.uuid4()}"
 
         self._next_request_id = 0
 
         self._socket_lock = Lock()
 
-        self.__send_buffers([struct.pack("<Q", len(self._identity)), self._identity])
-        self.__read_framed_message()  # receive server identity
+        self._io_context = ymq.IOContext()
+        self._io_socket = self._io_context.createIOSocket_sync(self._identity, ymq.IOSocketType.Connector)
+        self._io_socket.connect_sync(self.address)
 
     def __del__(self):
         self.destroy()
 
     def destroy(self):
         with self._socket_lock:
-            if self._socket is not None:
-                self._socket.close()
-                self._socket = None
+            if self._io_socket is not None:
+                self._io_socket = None
 
     @property
     def address(self) -> str:
@@ -116,7 +114,7 @@ class PySyncObjectStorageConnector(SyncObjectStorageConnector):
         self.__ensure_empty_payload(response_payload)
 
     def __ensure_is_connected(self):
-        if self._socket is None:
+        if self._io_socket is None:
             raise ObjectStorageException("connector is closed.")
 
     def __ensure_response_type(
@@ -137,7 +135,7 @@ class PySyncObjectStorageConnector(SyncObjectStorageConnector):
         payload: Optional[bytes] = None,
     ):
         self.__ensure_is_connected()
-        assert self._socket is not None
+        assert self._io_socket is not None
 
         request_id = self._next_request_id
         self._next_request_id += 1
@@ -147,56 +145,13 @@ class PySyncObjectStorageConnector(SyncObjectStorageConnector):
         header_bytes = header.get_message().to_bytes()
 
         if payload is not None:
-            self.__send_buffers([struct.pack("<Q", len(header_bytes)),
-                                 header_bytes,
-                                 struct.pack("<Q", len(payload)),
-                                 payload])
+            self._io_socket.send_sync(ymq.Message(address=b"", payload=header_bytes))
+            self._io_socket.send_sync(ymq.Message(address=b"", payload=payload))
         else:
-            self.__send_buffers([struct.pack("<Q", len(header_bytes)), header_bytes])
-
-    def __send_buffers(self, buffers: List[bytes]) -> None:
-        if len(buffers) < 1:
-            return
-
-        total_size = sum(len(buffer) for buffer in buffers)
-
-        # If the message is small enough, first try to send it at once with sendmsg(). This would ensure the message can
-        # be transmitted within a single TCP segment.
-        if total_size < MAX_CHUNK_SIZE:
-            sent = self._socket.sendmsg(buffers)
-
-            if sent <= 0:
-                self.__raise_connection_failure()
-
-            remaining_buffers = collections.deque(buffers)
-            while sent > len(remaining_buffers[0]):
-                removed_buffer = remaining_buffers.popleft()
-                sent -= len(removed_buffer)
-
-            if sent > 0:
-                # Truncate the first partially sent buffer
-                remaining_buffers[0] = memoryview(remaining_buffers[0])[sent:]
-
-            buffers = list(remaining_buffers)
-
-        # Send the remaining buffers sequentially
-        for buffer in buffers:
-            self.__send_buffer(buffer)
-
-    def __send_buffer(self, buffer: bytes) -> None:
-        buffer_view = memoryview(buffer)
-
-        total_sent = 0
-        while total_sent < len(buffer):
-            sent = self._socket.send(buffer_view[total_sent : MAX_CHUNK_SIZE + total_sent])
-
-            if sent <= 0:
-                self.__raise_connection_failure()
-
-            total_sent += sent
+            self._io_socket.send_sync(ymq.Message(address=b"", payload=header_bytes))
 
     def __receive_response(self) -> Tuple[ObjectResponseHeader, bytearray]:
-        assert self._socket is not None
+        assert self._io_socket is not None
 
         header = self.__read_response_header()
         payload = self.__read_response_payload(header)
@@ -204,7 +159,7 @@ class PySyncObjectStorageConnector(SyncObjectStorageConnector):
         return header, payload
 
     def __read_response_header(self) -> ObjectResponseHeader:
-        assert self._socket is not None
+        assert self._io_socket is not None
 
         header_bytearray = self.__read_framed_message()
 
@@ -224,25 +179,11 @@ class PySyncObjectStorageConnector(SyncObjectStorageConnector):
         else:
             return bytearray()
 
-    def __read_exactly(self, length: int) -> bytearray:
-        buffer = bytearray(length)
-
-        total_received = 0
-        while total_received < length:
-            chunk_size = min(MAX_CHUNK_SIZE, length - total_received)
-            received = self._socket.recv_into(memoryview(buffer)[total_received:], chunk_size)
-
-            if received <= 0:
-                self.__raise_connection_failure()
-
-            total_received += received
-
-        return buffer
-
     def __read_framed_message(self) -> bytearray:
-        length_bytes = self.__read_exactly(8)
-        (payload_length,) = struct.unpack("<Q", length_bytes)
-        return self.__read_exactly(payload_length) if payload_length > 0 else bytearray()
+        try:
+            bytearray(self._io_socket.recv_sync().payload.data)
+        except ymq.YMQInterruptedException:
+            return bytearray()
 
     @staticmethod
     def __raise_connection_failure():
