@@ -1,6 +1,6 @@
 import dataclasses
-import typing
 import logging
+import typing
 from collections import OrderedDict, defaultdict
 from itertools import takewhile
 from typing import Dict, Iterable, List, Optional, Set

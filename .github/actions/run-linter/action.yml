@@ -1,0 +1,34 @@
+name: 'Run Linter'
+description: 'Run Linter'
+
+inputs:
+  os:
+    description: "operating system"
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Python Packages (Linux)
+      if: inputs.os == 'Linux'
+      shell: bash
+      run: |
+        uv pip install --system flake8 pyproject-flake8 mypy
+        uv pip install --system -r pyproject.toml --all-extras
+
+    - name: Install Python Packages (Windows)
+      if: inputs.os == 'Windows'
+      shell: bash
+      run: |
+        uv pip install --system flake8 pyproject-flake8 mypy
+        uv pip install --system -r pyproject.toml --extra graphblas --extra gui
+
+    - name: Lint With flake8
+      shell: bash
+      run: |
+        pflake8 .
+
+    - name: Lint With MyPy
+      shell: bash
+      run: |
+        mypy --install-types --non-interactive .

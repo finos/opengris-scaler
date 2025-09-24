@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata, TaskCancelConfirmType, TaskResultType
-from scaler.protocol.python.message import GraphTask, StateGraphTask, Task, TaskCancel, TaskResult, TaskCancelConfirm
+from scaler.protocol.python.message import GraphTask, StateGraphTask, Task, TaskCancel, TaskCancelConfirm, TaskResult
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import ClientController, GraphTaskController, ObjectController, TaskController
 from scaler.utility.graph.topological_sorter import TopologicalSorter

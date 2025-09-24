@@ -14,10 +14,7 @@ from scaler.worker.agent.processor_holder import ProcessorHolder
 
 class VanillaHeartbeatManager(Looper, HeartbeatManager):
     def __init__(
-        self,
-        storage_address: Optional[ObjectStorageConfig],
-        capabilities: Dict[str, int],
-        task_queue_size: int
+        self, storage_address: Optional[ObjectStorageConfig], capabilities: Dict[str, int], task_queue_size: int
     ):
         self._agent_process = psutil.Process()
         self._capabilities = capabilities

@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.28 FATAL_ERROR)
 
 set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-# set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+set(CMAKE_VERBOSE_MAKEFILE OFF)
 set(BUILD_SHARED_LIBS ON CACHE BOOL "Build shared libraries")
 
 if(NOT SKBUILD_PROJECT_NAME)
@@ -48,29 +49,63 @@ else()
 endif()
 
 # Compiler configuration
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    message(STATUS "Using Clang: adding -stdlib=libc++")
-    add_compile_options(-stdlib=libc++)
-    add_link_options(-stdlib=libc++)
-
-    # needed for jthread in libc++
-    add_compile_options(-fexperimental-library)
-    add_link_options(-fexperimental-library)
-endif()
-
 if(WIN32)
+    # Windows
+    message(STATUS "Windows")
+    
     set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS on)
     add_compile_definitions(WIN32_LEAN_AND_MEAN)
     add_compile_options("/EHsc")
+   
+elseif(APPLE)
+    if(CMAKE_OSX_ARCHITECTURES MATCHES "arm64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+        # Mac Arm
+        message(STATUS "macOS on ARM64")
+
+        add_compile_options(-Wall -Wextra)
+        add_link_options(-Wl,-rpath,@loader_path)
+    else()
+        # Mac Intel
+        message(STATUS "macOS on x86_64")
+
+        add_compile_options(-Wall -Wextra)
+        add_link_options(-Wl,-rpath,@loader_path)
+    endif()
+
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        # Linux GCC
+        message(STATUS "Linux GCC ${CMAKE_CXX_COMPILER_VERSION}")
+    
+        add_compile_options(-Wall -Wsubobject-linkage)
+        add_link_options(-Wl,-rpath,$ORIGIN)
+
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang") # matches Clang and AppleClang
+        #Linux Clang
+        message(STATUS "Linux Clang ${CMAKE_CXX_COMPILER_VERSION}")
+
+        add_compile_options(-Wall -stdlib=libc++)
+        add_link_options(-stdlib=libc++)
+
+        # needed for jthread in libc++
+        add_compile_options(-fexperimental-library)
+        add_link_options(-fexperimental-library)
+
+    else()
+        message(WARNING "Unknown compiler on Linux")
+    endif()
+else()
+    message(WARNING "Unknown platform: ${CMAKE_SYSTEM_NAME}")
 endif()
+
 
 find_package(CapnProto CONFIG REQUIRED)
 get_target_property(CAPNP_INCLUDE_DIRS CapnProto::capnp INTERFACE_INCLUDE_DIRECTORIES)
-message(STATUS "Found Capnp in ${CAPNP_INCLUDE_DIRS}")
+message(STATUS "Found Capnp includes in ${CAPNP_INCLUDE_DIRS}")
+
 # Make LSP happy
 include_directories(${CAPNP_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR})
-
 
 add_subdirectory(scaler)
 

@@ -1,0 +1,36 @@
+name: Publish Python package to PyPI
+
+on:
+  release:
+    types: [ created ]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    environment: release
+    strategy:
+      matrix:
+        os: [ ubuntu-latest ]
+    permissions:
+      id-token: write
+    steps:
+      # - uses: ./.github/actions/checkout
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
+      - name: 'Checkout Repository'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: ./.github/actions/setup-env
+        with:
+          os: ${{ runner.os }}
+
+      - uses: ./.github/actions/publish-pypi
+        with:
+          os: ${{ runner.os }}
