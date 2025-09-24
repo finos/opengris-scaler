@@ -2,6 +2,7 @@
 #include "scaler/io/ymq/message_connection_tcp.h"
 
 #include <future>
+#include <print>
 
 #include "scaler/io/ymq/configuration.h"
 
@@ -269,7 +270,6 @@ void MessageConnectionTCP::updateReadOperation()
             _pendingRecvMessageCallbacks->pop();
 
             recvMessageCallback({Message(std::move(address), std::move(payload)), {}});
-
         } else {
             assert(_pendingRecvMessageCallbacks->size());
             break;
@@ -308,6 +308,8 @@ void MessageConnectionTCP::onRead()
             case IOError::Disconnected: _disconnect = true; break;
             case IOError::MessageTooLarge: _disconnect = true; break;
         }
+
+        std::println("closing connection to {}", *_remoteIOSocketIdentity);
 
         onClose();
         return std::unexpected {err};

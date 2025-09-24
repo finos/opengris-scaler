@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-#include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <string>
@@ -8,7 +7,6 @@
 
 #include "scaler/io/ymq/io_context.h"
 #include "scaler/io/ymq/io_socket.h"
-#include "scaler/io/ymq/logging.h"
 #include "scaler/io/ymq/simple_interface.h"
 #include "scaler/object_storage/object_storage_server.h"
 
@@ -39,8 +37,8 @@ public:
 
     void writeYMQMessage(Message message)
     {
-        auto res = syncSendMessage(ioSocket, std::move(message));
-        ASSERT_TRUE(res.has_value());
+        auto error = syncSendMessage(ioSocket, std::move(message));
+        ASSERT_TRUE(!error);
     }
 
     auto readYMQMessage() { return syncRecvMessage(ioSocket); }
@@ -63,17 +61,17 @@ public:
     void readResponse(ObjectResponseHeader& header, std::optional<ObjectPayload>& payload)
     {
         std::array<uint64_t, CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE> buf {};
-        auto [message, error] = syncRecvMessage(ioSocket);
-        ASSERT_EQ(error._errorCode, Error::ErrorCode::Uninit);
+        auto result = syncRecvMessage(ioSocket);
+        ASSERT_TRUE(result.has_value());
 
-        memcpy(buf.begin(), message.payload.data(), CAPNP_HEADER_SIZE);
-        ASSERT_EQ(message.payload.size(), CAPNP_HEADER_SIZE);
+        memcpy(buf.begin(), result->payload.data(), CAPNP_HEADER_SIZE);
+        ASSERT_EQ(result->payload.size(), CAPNP_HEADER_SIZE);
         header = ObjectResponseHeader::fromBuffer(buf);
 
         if (header.payloadLength > 0) {
-            auto [message2, error2] = syncRecvMessage(ioSocket);
-            ASSERT_EQ(error2._errorCode, Error::ErrorCode::Uninit);
-            payload.emplace(message2.payload);
+            auto result2 = syncRecvMessage(ioSocket);
+            ASSERT_TRUE(result2.has_value());
+            payload.emplace(result2->payload);
         } else {
             payload.reset();
         }
@@ -530,6 +528,9 @@ TEST_F(ObjectStorageServerTest, TestClientDisconnect)
     }
 }
 
+// TODO: why does this not pass?
+// the message connection tcp is removed from the remote socket's list
+// but the object is never destructued, and so the connection is never closed
 TEST_F(ObjectStorageServerTest, TestMalformedHeader)
 {
     ObjectResponseHeader responseHeader;
@@ -547,8 +548,9 @@ TEST_F(ObjectStorageServerTest, TestMalformedHeader)
         client->writeYMQMessage(std::move(message));
 
         // Server should disconnect before or while we are reading the response
-        auto [msg, err] = client->readYMQMessage();
-        EXPECT_EQ(err._errorCode, Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
+        auto result = client->readYMQMessage();
+        EXPECT_TRUE(!result);
+        EXPECT_EQ(result.error()._errorCode, Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
     }
 
     // Server must still answers to requests from other clients
