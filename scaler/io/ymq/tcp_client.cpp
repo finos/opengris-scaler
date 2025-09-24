@@ -225,15 +225,15 @@ TcpClient::TcpClient(
     ConnectReturnCallback onConnectReturn,
     size_t maxRetryTimes) noexcept
     : _eventLoopThread(eventLoopThread)
-    , _localIOSocketIdentity(std::move(localIOSocketIdentity))
-    , _remoteAddr(std::move(remoteAddr))
-    , _eventManager(std::make_unique<EventManager>())
     , _connected(false)
     , _onConnectReturn(std::move(onConnectReturn))
-    , _maxRetryTimes(maxRetryTimes)
-    , _retryTimes {}
-    , _retryIdentifier {}
     , _connFd {}
+    , _localIOSocketIdentity(std::move(localIOSocketIdentity))
+    , _remoteAddr(std::move(remoteAddr))
+    , _retryIdentifier {}
+    , _eventManager(std::make_unique<EventManager>())
+    , _retryTimes {}
+    , _maxRetryTimes(maxRetryTimes)
 #ifdef _WIN32
     , _connectExFunc {}
 #endif  // _WIN32
