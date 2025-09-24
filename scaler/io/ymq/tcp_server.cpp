@@ -200,11 +200,11 @@ TcpServer::TcpServer(
     sockaddr addr,
     BindReturnCallback onBindReturn) noexcept
     : _eventLoopThread(eventLoopThread)
-    , _localIOSocketIdentity(std::move(localIOSocketIdentity))
-    , _eventManager(std::make_unique<EventManager>())
-    , _addr(std::move(addr))
     , _onBindReturn(std::move(onBindReturn))
     , _serverFd {}
+    , _addr(std::move(addr))
+    , _localIOSocketIdentity(std::move(localIOSocketIdentity))
+    , _eventManager(std::make_unique<EventManager>())
 #ifdef _WIN32
     , _acceptExFunc {}
     , _newConn {}
