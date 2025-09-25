@@ -1,0 +1,42 @@
+name: publish-pypi
+description: publish-pypi
+
+inputs:
+  os:
+    description: "operating system"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Python Packages
+      if: inputs.os == 'Linux'
+      shell: bash
+      run: |
+        uv pip install --system --upgrade build cibuildwheel
+        rm -rf dist
+
+    - name: Build Sdist
+      if: inputs.os == 'Linux'
+      shell: bash
+      run: |
+        python -m build --sdist
+
+    - name: Build Wheel (Linux)
+      if: inputs.os == 'Linux'
+      shell: bash
+      run: python -m cibuildwheel --output-dir dist
+      env:
+        CIBW_BEFORE_ALL_LINUX: |
+          echo "Building deps"
+          yum install -y sudo;
+          sudo ./scripts/download_install_libraries.sh capnp compile
+          sudo ./scripts/download_install_libraries.sh capnp install
+        CIBW_BUILD: "*manylinux_x86_64"
+        CIBW_SKIP: "pp*"
+        CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@db8f07d3871a0a180efa06b95d467625c19d5d5f # release/v1
+      with:
+        packages_dir: ./dist/

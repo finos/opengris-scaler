@@ -20,7 +20,7 @@ void syncBindSocket(std::shared_ptr<IOSocket> socket, std::string address)
     auto bind_promise = std::promise<std::expected<void, Error>>();
     auto bind_future  = bind_promise.get_future();
     // Optionally handle result in the callback
-    socket->bindTo(address, [&bind_promise](std::expected<void, Error> result) { bind_promise.set_value({}); });
+    socket->bindTo(address, [&bind_promise](std::expected<void, Error> result) { bind_promise.set_value(result); });
     bind_future.wait();
 }
 
@@ -30,7 +30,7 @@ void syncConnectSocket(std::shared_ptr<IOSocket> socket, std::string address)
     auto connect_future  = connect_promise.get_future();
 
     socket->connectTo(
-        address, [&connect_promise](std::expected<void, Error> result) { connect_promise.set_value({}); });
+        address, [&connect_promise](std::expected<void, Error> result) { connect_promise.set_value(result); });
 
     connect_future.wait();
 }
@@ -54,7 +54,7 @@ std::future<std::pair<Message, Error>> futureRecvMessage(std::shared_ptr<IOSocke
     socket->recvMessage([recv_promise = std::move(recv_promise_ptr)](std::pair<Message, Error> msg) {
         recv_promise->set_value(std::move(msg));
     });
-    return {std::move(recv_future)};
+    return recv_future;
 }
 
 std::future<std::expected<void, Error>> futureSendMessage(std::shared_ptr<IOSocket> socket, Message message)
@@ -65,7 +65,7 @@ std::future<std::expected<void, Error>> futureSendMessage(std::shared_ptr<IOSock
         std::move(message), [send_promise = std::move(send_promise_ptr)](std::expected<void, Error> msg) {
             send_promise->set_value(std::move(msg));
         });
-    return {std::move(send_future)};
+    return send_future;
 }
 
 }  // namespace ymq

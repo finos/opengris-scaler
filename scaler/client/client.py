@@ -210,11 +210,7 @@ class Client:
         return self.submit_verbose(fn, args, kwargs)
 
     def submit_verbose(
-        self,
-        fn: Callable,
-        args: Tuple[Any, ...],
-        kwargs: Dict[str, Any],
-        capabilities: Optional[Dict[str, int]] = None,
+        self, fn: Callable, args: Tuple[Any, ...], kwargs: Dict[str, Any], capabilities: Optional[Dict[str, int]] = None
     ) -> ScalerFuture:
         """
         Submit a single task (function with arguments) to the scheduler, and return a future. Possibly route the task to
@@ -242,10 +238,7 @@ class Client:
         return future
 
     def map(
-        self,
-        fn: Callable,
-        iterable: Iterable[Tuple[Any, ...]],
-        capabilities: Optional[Dict[str, int]] = None
+        self, fn: Callable, iterable: Iterable[Tuple[Any, ...]], capabilities: Optional[Dict[str, int]] = None
     ) -> List[Any]:
         if not all(isinstance(args, (tuple, list)) for args in iterable):
             raise TypeError("iterable should be list of arguments(list or tuple-like) of function")
@@ -309,7 +302,7 @@ class Client:
         self.__check_graph(node_name_to_argument, call_graph, keys)
 
         graph_task, compute_futures, finished_futures = self.__construct_graph(
-            node_name_to_argument, call_graph, keys, block, capabilities,
+            node_name_to_argument, call_graph, keys, block, capabilities
         )
         self._object_buffer.commit_send_objects()
         self._connector_agent.send(graph_task)

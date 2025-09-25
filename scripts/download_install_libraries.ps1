@@ -14,7 +14,7 @@ foreach ($arg in $args) {
 $NUM_CORES = [Environment]::ProcessorCount
 
 [Environment]::SetEnvironmentVariable("Path",
-  [Environment]::GetEnvironmentVariable("Path", 
+  [Environment]::GetEnvironmentVariable("Path",
     [EnvironmentVariableTarget]::Machine) + ";$PREFIX",
     [EnvironmentVariableTarget]::Machine)
 
@@ -35,7 +35,7 @@ if ($dependency -eq "boost") {
         $url = "https://archives.boost.org/release/$BOOST_VERSION/source/$BOOST_PACKAGE_NAME"
 
         # Download and extract Boost
-	# Necessary exe because of local dev env
+        # Necessary exe because of local dev env
         curl.exe -O $url --retry 100 --retry-max-time 3600
         tar -xzf $BOOST_PACKAGE_NAME
         Rename-Item -Path $BOOST_FOLDER_NAME -NewName "boost"
@@ -68,6 +68,8 @@ elseif ($dependency -eq "capnp") {
         cmake --build build --config Release
     }
     elseif ($action -eq "install") {
+        $CAPNP_FOLDER_NAME = "capnproto-c++-$CAPNP_VERSION"
+        Rename-Item -Path $CAPNP_FOLDER_NAME -NewName "capnp"
         Set-Location -Path "capnp"
         cmake --install build --config Release --prefix $PREFIX
         Write-Host "Installed capnp into $PREFIX"
@@ -76,10 +78,9 @@ elseif ($dependency -eq "capnp") {
         Write-Host "Argument needs to be either compile or install"
         exit 1
     }
-}
 
 else {
-    Write-Host "Usage: .\download_install_dependencies.ps1 [boost|capnp] [compile|install] [--prefix=DIR]"
+    Write-Host "Usage: .\download_install_dependencies.ps1 [boost|capnp] [--prefix=DIR]"
     exit 1
 }
 

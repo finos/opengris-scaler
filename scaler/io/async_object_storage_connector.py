@@ -1,11 +1,10 @@
 import asyncio
 import logging
-import socket
-from typing import Dict, Optional, Tuple
-
-import uuid
 import os
+import socket
 import struct
+import uuid
+from typing import Dict, Optional, Tuple
 
 from scaler.io.mixins import AsyncObjectStorageConnector
 from scaler.protocol.capnp._python import _object_storage  # noqa

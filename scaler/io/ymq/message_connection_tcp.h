@@ -54,6 +54,7 @@ private:
         Drained,
         Aborted,
         Disconnected,
+        MessageTooLarge,
     };
 
     void onRead();
@@ -70,6 +71,8 @@ private:
     std::expected<size_t, IOError> trySendQueuedMessages();
     void updateWriteOperations(size_t n);
     void updateReadOperation();
+
+    void setRemoteIdentity() noexcept;
 
     std::unique_ptr<EventManager> _eventManager;
     int _connFd;

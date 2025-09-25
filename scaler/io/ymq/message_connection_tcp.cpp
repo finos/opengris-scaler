@@ -3,6 +3,8 @@
 
 #include <future>
 
+#include "scaler/io/ymq/configuration.h"
+
 #ifdef __linux__
 #include <unistd.h>
 #endif  // __linux__
@@ -55,15 +57,15 @@ MessageConnectionTCP::MessageConnectionTCP(
     bool responsibleForRetry,
     std::shared_ptr<std::queue<RecvMessageCallback>> pendingRecvMessageCallbacks) noexcept
     : _eventLoopThread(eventLoopThread)
+    , _remoteAddr(std::move(remoteAddr))
+    , _responsibleForRetry(responsibleForRetry)
+    , _remoteIOSocketIdentity(std::nullopt)
     , _eventManager(std::make_unique<EventManager>())
     , _connFd(std::move(connFd))
     , _localAddr(std::move(localAddr))
-    , _remoteAddr(std::move(remoteAddr))
     , _localIOSocketIdentity(std::move(localIOSocketIdentity))
-    , _remoteIOSocketIdentity(std::nullopt)
-    , _responsibleForRetry(responsibleForRetry)
-    , _pendingRecvMessageCallbacks(pendingRecvMessageCallbacks)
     , _sendCursor {}
+    , _pendingRecvMessageCallbacks(pendingRecvMessageCallbacks)
     , _disconnect {false}
 {
     _eventManager->onRead  = [this] { this->onRead(); };
@@ -78,15 +80,15 @@ MessageConnectionTCP::MessageConnectionTCP(
     std::string remoteIOSocketIdentity,
     std::shared_ptr<std::queue<RecvMessageCallback>> pendingRecvMessageCallbacks) noexcept
     : _eventLoopThread(eventLoopThread)
+    , _remoteAddr {}
+    , _responsibleForRetry(false)
+    , _remoteIOSocketIdentity(std::move(remoteIOSocketIdentity))
     , _eventManager(std::make_unique<EventManager>())
     , _connFd {}
     , _localAddr {}
-    , _remoteAddr {}
     , _localIOSocketIdentity(std::move(localIOSocketIdentity))
-    , _remoteIOSocketIdentity(std::move(remoteIOSocketIdentity))
-    , _responsibleForRetry(false)
-    , _pendingRecvMessageCallbacks(pendingRecvMessageCallbacks)
     , _sendCursor {}
+    , _pendingRecvMessageCallbacks(pendingRecvMessageCallbacks)
     , _disconnect {false}
 {
     _eventManager->onRead  = [this] { this->onRead(); };
@@ -146,6 +148,9 @@ std::expected<void, MessageConnectionTCP::IOError> MessageConnectionTCP::tryRead
             readTo        = (char*)&message._header + message._cursor;
             remainingSize = HEADER_SIZE - message._cursor;
         } else if (message._cursor == HEADER_SIZE) {
+            if (message._header >= LARGEST_PAYLOAD_SIZE) {
+                return std::unexpected {IOError::MessageTooLarge};
+            }
             message._payload = Bytes::alloc(message._header);
             readTo           = (char*)message._payload.data();
             remainingSize    = message._payload.len();
@@ -260,7 +265,6 @@ void MessageConnectionTCP::updateReadOperation()
             Bytes address(_remoteIOSocketIdentity->data(), _remoteIOSocketIdentity->size());
             Bytes payload(std::move(_receivedReadOperations.front()._payload));
             _receivedReadOperations.pop();
-
             auto recvMessageCallback = std::move(_pendingRecvMessageCallbacks->front());
             _pendingRecvMessageCallbacks->pop();
 
@@ -273,6 +277,18 @@ void MessageConnectionTCP::updateReadOperation()
     }
 }
 
+void MessageConnectionTCP::setRemoteIdentity() noexcept
+{
+    if (!_remoteIOSocketIdentity &&
+        (_receivedReadOperations.size() && isCompleteMessage(_receivedReadOperations.front()))) {
+        auto id = std::move(_receivedReadOperations.front());
+        _remoteIOSocketIdentity.emplace((char*)id._payload.data(), id._payload.len());
+        _receivedReadOperations.pop();
+        auto sock = this->_eventLoopThread->_identityToIOSocket[_localIOSocketIdentity];
+        sock->onConnectionIdentityReceived(this);
+    }
+}
+
 void MessageConnectionTCP::onRead()
 {
     if (_connFd == 0) {
@@ -280,11 +296,19 @@ void MessageConnectionTCP::onRead()
     }
 
     auto maybeCloseConn = [this](IOError err) -> std::expected<void, IOError> {
+        setRemoteIdentity();
+
+        if (_remoteIOSocketIdentity) {
+            updateReadOperation();
+        }
+
         switch (err) {
             case IOError::Drained: return {};
-            case IOError::Disconnected: _disconnect = true; break;
             case IOError::Aborted: _disconnect = false; break;
+            case IOError::Disconnected: _disconnect = true; break;
+            case IOError::MessageTooLarge: _disconnect = false; break;
         }
+
         onClose();
         return std::unexpected {err};
     };
@@ -294,16 +318,7 @@ void MessageConnectionTCP::onRead()
                        auto _ = tryReadOneMessage()
                                     .or_else(maybeCloseConn)  //
                                     .and_then([this]() -> std::expected<void, IOError> {
-                                        if (_receivedReadOperations.empty() ||
-                                            !isCompleteMessage(_receivedReadOperations.front())) {
-                                            return {};
-                                        }
-
-                                        auto id = std::move(_receivedReadOperations.front());
-                                        _remoteIOSocketIdentity.emplace((char*)id._payload.data(), id._payload.len());
-                                        _receivedReadOperations.pop();
-                                        auto sock = this->_eventLoopThread->_identityToIOSocket[_localIOSocketIdentity];
-                                        sock->onConnectionIdentityReceived(this);
+                                        setRemoteIdentity();
                                         return {};
                                     });
                        return _remoteIOSocketIdentity;

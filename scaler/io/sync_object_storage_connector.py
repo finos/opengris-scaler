@@ -1,10 +1,8 @@
 import collections
-import socket
-
-import uuid
-import struct
 import os
-
+import socket
+import struct
+import uuid
 from threading import Lock
 from typing import Iterable, List, Optional, Tuple
 
@@ -147,10 +145,9 @@ class PySyncObjectStorageConnector(SyncObjectStorageConnector):
         header_bytes = header.get_message().to_bytes()
 
         if payload is not None:
-            self.__send_buffers([struct.pack("<Q", len(header_bytes)),
-                                 header_bytes,
-                                 struct.pack("<Q", len(payload)),
-                                 payload])
+            self.__send_buffers(
+                [struct.pack("<Q", len(header_bytes)), header_bytes, struct.pack("<Q", len(payload)), payload]
+            )
         else:
             self.__send_buffers([struct.pack("<Q", len(header_bytes)), header_bytes])
 

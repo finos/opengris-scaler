@@ -8,8 +8,8 @@ from scaler.protocol.capnp._python import _message  # noqa
 from scaler.protocol.python.common import (
     ObjectMetadata,
     ObjectStorageAddress,
-    TaskCapability,
     TaskCancelConfirmType,
+    TaskCapability,
     TaskResultType,
     TaskState,
 )
