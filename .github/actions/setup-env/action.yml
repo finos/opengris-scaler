@@ -35,19 +35,29 @@ runs:
       uses: actions/cache@v4
       with:
         path: |
-          /usr/local/bin
-          /usr/local/include
-          /usr/local/lib
+          capnproto-*
         key: ${{ inputs.os }}-${{ hashFiles('scripts/download_install_libraries.*') }}
 
     - name: Download/Compile Libraries (Linux)
       shell: bash
       if: (inputs.os == 'Linux') && (steps.cache-library.outputs.cache-hit != 'true')
       run: |
-        sudo ./scripts/download_install_libraries.sh capnp
+        sudo ./scripts/download_install_libraries.sh capnp compile
 
     - name: Download/Compile Libraries (Windows)
       shell: pwsh
       if: (inputs.os == 'Windows') && (steps.cache-boost-windows.outputs.cache-hit != 'true')
       run: |
-        ./scripts/download_install_libraries.ps1 capnp
+        ./scripts/download_install_libraries.ps1 capnp compile
+
+    - name: Install Libraries (Linux)
+      shell: bash
+      if: inputs.os == 'Linux'
+      run: |
+        sudo ./scripts/download_install_libraries.sh capnp install
+
+    - name: Install Libraries (Windows)
+      shell: pwsh
+      if: inputs.os == 'Windows'
+      run: |
+        ./scripts/download_install_libraries.ps1 capnp install
