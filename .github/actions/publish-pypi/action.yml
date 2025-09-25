@@ -30,7 +30,8 @@ runs:
         CIBW_BEFORE_ALL_LINUX: |
           echo "Building deps"
           yum install -y sudo;
-          sudo ./scripts/download_install_libraries.sh capnp
+          sudo ./scripts/download_install_libraries.sh capnp compile
+          sudo ./scripts/download_install_libraries.sh capnp install
         CIBW_BUILD: "*manylinux_x86_64"
         CIBW_SKIP: "pp*"
         CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"

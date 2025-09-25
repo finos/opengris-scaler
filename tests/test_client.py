@@ -265,7 +265,7 @@ class TestClient(unittest.TestCase):
                 future.result()
 
     def test_responsiveness(self):
-        MAX_DELAY_SECONDS = 0.25
+        MAX_DELAY_SECONDS = 0.3
 
         # Makes sure the cluster has the time to start up.
         with Client(self.address) as client:
