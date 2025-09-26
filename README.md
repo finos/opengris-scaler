@@ -103,18 +103,12 @@ This will start a scheduler with 4 workers on port `2345`.
 ### Setting up a computing cluster from the CLI
 
 The object storage server, scheduler and workers can also be started from the command line with
-`scaler_object_storage_server`, `scaler_scheduler` and `scaler_cluster`.
+`scaler_scheduler` and `scaler_cluster`.
 
-First, start the object storage server:
-
-```bash
-$ scaler_object_storage_server tcp://127.0.0.1:2346
-```
-
-Then, start the scheduler, and make it connect to the object storage server:
+First, start the scheduler, and make it connect to the object storage server:
 
 ```bash
-$ scaler_scheduler tcp://127.0.0.1:2345
+$ scaler_scheduler --scheduler-address "tcp://127.0.0.1:2345"
 [INFO]2025-06-06 13:13:15+0200: logging to ('/dev/stdout',)
 [INFO]2025-06-06 13:13:15+0200: use event loop: builtin
 [INFO]2025-06-06 13:13:15+0200: Scheduler: listen to scheduler address tcp://127.0.0.1:2345
@@ -126,7 +120,7 @@ $ scaler_scheduler tcp://127.0.0.1:2345
 Finally, start a set of workers (a.k.a. a Scaler *cluster*) that connects to the previously started scheduler:
 
 ```bash
-$ scaler_cluster -n 4 tcp://127.0.0.1:2345
+$ scaler_cluster -n 4 --scheduler-address "tcp://127.0.0.1:2345"
 [INFO]2023-03-19 12:19:19-0400: logging to ('/dev/stdout',)
 [INFO]2023-03-19 12:19:19-0400: ClusterProcess: starting 4 workers, heartbeat_interval_seconds=2, object_retention_seconds=3600
 [INFO]2023-03-19 12:19:19-0400: Worker[0] started

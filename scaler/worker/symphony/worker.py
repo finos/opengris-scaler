@@ -22,7 +22,7 @@ from scaler.utility.event_loop import create_async_loop_routine, register_event_
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.config.config import ZMQConfig
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 from scaler.worker.symphony.heartbeat_manager import SymphonyHeartbeatManager
 from scaler.worker.symphony.task_manager import SymphonyTaskManager

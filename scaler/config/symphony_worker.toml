@@ -1,0 +1,13 @@
+scheduler_address = "tcp://127.0.0.1:6378"
+service_name = "MySymphonyService"
+base_concurrency = 4
+worker_name = "symphony-worker-01"
+worker_capabilities = "linux,cpu=4"
+worker_task_queue_size = 1000
+heartbeat_interval_seconds = 2
+death_timeout_seconds = 300
+event_loop = "builtin"
+io_threads = 1
+logging_level = "INFO"
+logging_paths = ["/dev/stdout"]
+# logging_config_file = "/path/to/logging.conf"

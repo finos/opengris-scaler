@@ -3,6 +3,7 @@ import curses
 import functools
 from typing import Dict, List, Literal, Union
 
+from scaler.config.config import TopConfig
 from scaler.io.sync_subscriber import ZMQSyncSubscriber
 from scaler.protocol.python.message import StateScheduler
 from scaler.protocol.python.mixins import Message
@@ -13,7 +14,6 @@ from scaler.utility.formatter import (
     format_percentage,
     format_seconds,
 )
-from scaler.utility.zmq_config import ZMQConfig
 
 SORT_BY_OPTIONS = {
     ord("g"): "group",
@@ -37,26 +37,28 @@ def get_args():
     parser = argparse.ArgumentParser(
         "monitor scheduler as top like", formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
+    parser.add_argument("--config", type=str, default=None, help="Path to the TOML configuration file.")
     parser.add_argument("--timeout", "-t", type=int, default=5, help="timeout seconds")
-    parser.add_argument("address", help="scheduler address to connect to")
+    parser.add_argument("monitor_address", nargs="?", type=str, help="scheduler monitor address to connect to")
     return parser.parse_args()
 
 
 def main():
     args = get_args()
-    curses.wrapper(poke, args)
+    top_config = TopConfig.get_config(args.config, args)
+    curses.wrapper(poke, top_config)
 
 
-def poke(screen, args):
+def poke(screen, config: TopConfig):
     screen.nodelay(1)
 
     try:
         subscriber = ZMQSyncSubscriber(
-            address=ZMQConfig.from_string(args.address),
+            address=config.monitor_address,
             callback=functools.partial(show_status, screen=screen),
             topic=b"",
             daemonic=False,
-            timeout_seconds=args.timeout,
+            timeout_seconds=config.timeout,
         )
         subscriber.run()
     except KeyboardInterrupt:
