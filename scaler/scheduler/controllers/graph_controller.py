@@ -259,15 +259,14 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
             return
 
         task_info = graph_info.tasks[task_cancel_confirm.task_id]
-        match task_cancel_confirm.cancel_confirm_type:
-            case TaskCancelConfirmType.Canceled:
-                task_info.state = _NodeTaskState.Canceled
-            case TaskCancelConfirmType.CancelFailed:
-                pass
-            case TaskCancelConfirmType.CancelNotFound:
-                task_info.state = _NodeTaskState.Canceled
-            case _:
-                raise ValueError(f"received unexpected task cancel confirm {task_cancel_confirm}")
+        if task_cancel_confirm.cancel_confirm_type == TaskCancelConfirmType.Canceled:
+            task_info.state = _NodeTaskState.Canceled
+        elif task_cancel_confirm.cancel_confirm_type == TaskCancelConfirmType.CancelFailed:
+            pass
+        elif task_cancel_confirm.cancel_confirm_type == TaskCancelConfirmType.CancelNotFound:
+            task_info.state = _NodeTaskState.Canceled
+        else:
+            raise ValueError(f"received unexpected task cancel confirm {task_cancel_confirm}")
 
         graph_info.sorter.done(task_cancel_confirm.task_id)
 
@@ -323,15 +322,14 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
 
         task_info.result_object_ids = [ObjectID(object_id_bytes) for object_id_bytes in result.results]
 
-        match result.result_type:
-            case TaskResultType.Success:
-                task_info.state = _NodeTaskState.Success
-            case TaskResultType.Failed:
-                task_info.state = _NodeTaskState.Failed
-            case TaskResultType.FailedWorkerDied:
-                task_info.state = _NodeTaskState.Failed
-            case _:
-                raise ValueError(f"received unexpected task result {result}")
+        if result.result_type == TaskResultType.Success:
+            task_info.state = _NodeTaskState.Success
+        elif result.result_type == TaskResultType.Failed:
+            task_info.state = _NodeTaskState.Failed
+        elif result.result_type == TaskResultType.FailedWorkerDied:
+            task_info.state = _NodeTaskState.Failed
+        else:
+            raise ValueError(f"received unexpected task result {result}")
 
         self.__clean_intermediate_result(graph_task_id, result.task_id)
         graph_info.sorter.done(result.task_id)
