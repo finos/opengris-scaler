@@ -27,4 +27,4 @@ cmake --build --preset $BUILD_PRESET
 cmake --install $BUILD_DIR
 
 # Tests
-ctest --preset $BUILD_PRESET
+ctest --preset $BUILD_PRESET -VV

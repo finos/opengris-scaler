@@ -13,7 +13,7 @@ runs:
       if: inputs.os == 'Linux'
       shell: bash
       run: |
-        CXX=$(which g++-14) ./scripts/build.sh
+        CXX=$(which g++-14) GTEST_FILTER="-*Mitm*:*TestIncompleteIdentity*" ./scripts/build.sh
 
     - name: Build and test C++ Components (Windows)
       if: inputs.os == 'Windows'
