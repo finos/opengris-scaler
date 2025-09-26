@@ -3,6 +3,7 @@
 #include <expected>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <span>
 
 #include "scaler/io/ymq/configuration.h"
@@ -22,7 +23,7 @@ namespace object_storage {
 class ObjectStorageServer {
 public:
     using Identity          = ymq::Configuration::IOSocketIdentity;
-    using SendMessageFuture = std::future<std::expected<void, ymq::Error>>;
+    using SendMessageFuture = std::future<std::optional<ymq::Error>>;
 
     ObjectStorageServer();
 

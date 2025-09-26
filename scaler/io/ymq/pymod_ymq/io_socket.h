@@ -156,10 +156,6 @@ static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args)
                     if (!pyMessage)
                         return YMQ_GetRaisedException();
 
-                    // TODO: why is leaking necessary?
-                    address.forget();
-                    payload.forget();
-
                     return (PyObject*)pyMessage.take();
                 });
             } catch (...) {
@@ -220,10 +216,6 @@ static PyObject* PyIOSocket_recv_sync(PyIOSocket* self, PyObject* args)
         (PyMessage*)PyObject_CallFunction(*state->PyMessageType, "OO", *address, *payload);
     if (!pyMessage)
         return nullptr;
-
-    // TODO: why is leaking necessary?
-    address.forget();
-    payload.forget();
 
     return (PyObject*)pyMessage.take();
 }
@@ -378,7 +370,7 @@ static PyObject* PyIOSocket_socket_type_getter(PyIOSocket* self, void* closure)
     if (!state)
         return nullptr;
 
-    const IOSocketType socketType        = self->socket->socketType();
+    const IOSocketType socketType  = self->socket->socketType();
     OwnedPyObject socketTypeIntObj = PyLong_FromLong((long)socketType);
 
     if (!socketTypeIntObj)
