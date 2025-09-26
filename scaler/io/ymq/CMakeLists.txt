@@ -97,5 +97,3 @@ if(WIN32)
     target_link_libraries(ymq_objs PRIVATE "ws2_32")
     target_compile_definitions(ymq_objs PRIVATE _WINSOCKAPI_=) # Yes, trailing equal to guarantee empty def
 endif()
-
-add_subdirectory(examples)
