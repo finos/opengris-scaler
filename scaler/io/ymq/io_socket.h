@@ -113,7 +113,8 @@ private:
     // does not care which connection a message is coming from.
     std::shared_ptr<std::queue<RecvMessageCallback>> _pendingRecvMessages;
 
-    std::atomic<bool> _stopped;
+    bool _stopped;
+    bool _connectorDisconnected;
 };
 
 }  // namespace ymq

@@ -27,6 +27,7 @@ IOSocket::IOSocket(
     , _socketType(std::move(socketType))
     , _pendingRecvMessages(std::make_shared<std::queue<RecvMessageCallback>>())
     , _stopped {false}
+    , _connectorDisconnected {false}
 {
 }
 
@@ -34,6 +35,14 @@ void IOSocket::sendMessage(Message message, SendMessageCallback onMessageSent) n
 {
     _eventLoopThread->_eventLoop.executeNow(
         [this, message = std::move(message), callback = std::move(onMessageSent)] mutable {
+            if (_stopped) {
+                callback(std::unexpected {Error::ErrorCode::IOSocketStopRequested});
+                return;
+            }
+            if (_connectorDisconnected) {
+                callback(std::unexpected {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd});
+                return;
+            }
             MessageConnectionTCP* conn = nullptr;
 
             std::string address = std::string((char*)message.address.data(), message.address.len());
@@ -69,6 +78,16 @@ void IOSocket::sendMessage(Message message, SendMessageCallback onMessageSent) n
 void IOSocket::recvMessage(RecvMessageCallback onRecvMessage) noexcept
 {
     _eventLoopThread->_eventLoop.executeNow([this, callback = std::move(onRecvMessage)] mutable {
+        if (_stopped) {
+            callback({{}, Error::ErrorCode::IOSocketStopRequested});
+            return;
+        }
+
+        if (_connectorDisconnected) {
+            callback({{}, Error::ErrorCode::ConnectorSocketClosedByRemoteEnd});
+            return;
+        }
+
         this->_pendingRecvMessages->emplace(std::move(callback));
         if (_pendingRecvMessages->size() == 1) {
             for (const auto& [fd, conn]: _identityToConnection) {
@@ -121,12 +140,15 @@ void IOSocket::bindTo(std::string networkAddress, BindReturnCallback onBindRetur
 
 void IOSocket::closeConnection(Identity remoteSocketIdentity) noexcept
 {
-    if (_stopped) {
-        return;
-    }
-    _eventLoopThread->_eventLoop.executeNow([this, remoteIdentity = std::move(remoteSocketIdentity)] mutable {
-        _eventLoopThread->_eventLoop.executeLater(
-            [this, remoteIdentity = std::move(remoteIdentity)] { _identityToConnection.erase(remoteIdentity); });
+    _eventLoopThread->_eventLoop.executeNow([this, remoteIdentity = std::move(remoteSocketIdentity)] {
+        _eventLoopThread->_eventLoop.executeLater([this, remoteIdentity = std::move(remoteIdentity)] {
+            if (_stopped) {
+                return;
+            }
+            // _identityToConnection.erase(remoteIdentity);
+            if (_identityToConnection.contains(remoteIdentity))
+                _identityToConnection[remoteIdentity]->disconnect();
+        });
     });
 }
 
@@ -146,6 +168,7 @@ void IOSocket::onConnectionDisconnected(MessageConnectionTCP* conn, bool keepInB
 
     if (!keepInBook) {
         if (IOSocketType::Connector == this->_socketType) {
+            _connectorDisconnected = true;
             while (this->_pendingRecvMessages->size()) {
                 auto top = std::move(this->_pendingRecvMessages->front());
                 top({Message {}, {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd}});
@@ -261,10 +284,6 @@ void IOSocket::requestStop() noexcept
 
 IOSocket::~IOSocket() noexcept
 {
-    for (const auto& [k, v]: _identityToConnection) {
-        v->disconnect();
-    }
-
     while (_pendingRecvMessages->size()) {
         auto readOp = std::move(_pendingRecvMessages->front());
         _pendingRecvMessages->pop();

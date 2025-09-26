@@ -71,8 +71,7 @@ void ObjectStorageServer::waitUntilReady()
 
 void ObjectStorageServer::shutdown()
 {
-    if (_ioSocket)
-        _ioContext.requestIOSocketStop(_ioSocket);
+    _ioContext.requestIOSocketStop(_ioSocket);
 }
 
 void ObjectStorageServer::initServerReadyFds()
@@ -139,12 +138,25 @@ void ObjectStorageServer::processRequests()
 
             if (error._errorCode != ymq::Error::ErrorCode::Uninit) {
                 if (error._errorCode == ymq::Error::ErrorCode::IOSocketStopRequested) {
-                    _logger.log(
-                        scaler::ymq::Logger::LoggingLevel::info,
-                        "ObjectStorageServer: stopped, number of messages leftover in the system = ",
-                        std::ranges::count_if(_pendingSendMessageFuts, [](auto& x) {
-                            return x.valid() && x.wait_for(0s) == std::future_status::timeout;
-                        }));
+                    auto n = std::ranges::count_if(_pendingSendMessageFuts, [](auto& x) {
+                        return x.valid() && x.wait_for(0s) == std::future_status::timeout;
+                    });
+                    if (!n) {
+                        _logger.log(
+                            scaler::ymq::Logger::LoggingLevel::info,
+                            "ObjectStorageServer: stopped, number of messages leftover in the system = ",
+                            std::ranges::count_if(_pendingSendMessageFuts, [](auto& x) {
+                                return x.valid() && x.wait_for(0s) == std::future_status::timeout;
+                            }));
+                    }
+
+                    if (pendingRequests.size()) {
+                        _logger.log(
+                            scaler::ymq::Logger::LoggingLevel::info,
+                            "ObjectStorageServer: stopped, number of pending requests leftover in the system = ",
+                            pendingRequests.size());
+                        pendingRequests.clear();
+                    }
                     return;
                 } else {
                     throw error;

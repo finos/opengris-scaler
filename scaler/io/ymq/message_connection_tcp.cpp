@@ -641,10 +641,9 @@ bool MessageConnectionTCP::recvMessage()
 void MessageConnectionTCP::disconnect()
 {
 #ifdef __linux__
-    if (!_connFd) {
-        return;
-    }
+    _disconnect = true;
     shutdown(_connFd, SHUT_WR);
+    onClose();
 #endif
 }
 

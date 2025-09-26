@@ -93,12 +93,13 @@ protected:
     std::string serverPort;
     std::thread serverThread;
 
-    std::shared_ptr<IOContext> ioContext;
+    inline static std::shared_ptr<IOContext> ioContext;
+    static void SetUpTestSuite() { ioContext = std::make_shared<IOContext>(); }
+    static void TearDownTestSuite() { ioContext.reset(); }
 
     void SetUp() override
     {
-        ioContext = std::make_shared<IOContext>();
-        server    = std::make_unique<ObjectStorageServer>();
+        server = std::make_unique<ObjectStorageServer>();
 
         serverPort = std::to_string(getAvailableTCPPort());
 
