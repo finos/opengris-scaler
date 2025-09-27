@@ -1,11 +1,11 @@
-from typing import Optional
+from typing import Optional, Dict
 
 from scaler.protocol.python.common import TaskState, TaskTransition
 
 
 class TaskStateMachine:
     # see https://github.com/finos/opengris-scaler/issues/56
-    TRANSITION_MAP: dict[TaskState, dict[TaskTransition, TaskState]] = {
+    TRANSITION_MAP: Dict[TaskState, Dict[TaskTransition, TaskState]] = {
         TaskState.Inactive: {
             TaskTransition.HasCapacity: TaskState.Running,
             TaskTransition.TaskCancel: TaskState.Canceled,

@@ -7,6 +7,7 @@
 inline void ymqUnrecoverableError(scaler::ymq::Error e)
 {
     PyGILState_STATE gstate = PyGILState_Ensure();
+    (void)gstate;  // silent the warning
     PyErr_SetString(PyExc_SystemExit, e.what());
     PyErr_WriteUnraisable(nullptr);
     Py_Finalize();
