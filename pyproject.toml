@@ -5,7 +5,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "scaler"
 description = "Scaler Distribution Framework"
-requires-python = ">=3.10"
+requires-python = ">=3.8"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { text = "Apache 2.0" }
 authors = [{ name = "Citi", email = "opensource@citi.com" }]
@@ -26,6 +26,27 @@ dependencies = [
     "sortedcontainers==2.4.0",
     "tblib",
     "aiohttp",
+    "graphlib-backport; python_version < '3.9'",
+]
+
+[project.optional-dependencies]
+uvloop = [
+    "uvloop; platform_system != 'Windows'",
+]
+gui = ["nicegui[plotly]==2.24.2"]
+graphblas = [
+    "python-graphblas",
+    "numpy==1.24.4; python_version == '3.8'",
+    "numpy==2.0.2; python_version == '3.9'",
+    "numpy==2.2.6; python_version >= '3.10'"
+]
+all = [
+    "nicegui[plotly]==2.24.2",
+    "python-graphblas",
+    "numpy==1.24.4; python_version == '3.8'",
+    "numpy==2.0.2; python_version == '3.9'",
+    "numpy==2.2.6; python_version >= '3.10'",
+    "uvloop; platform_system != 'Windows'",
 ]
 
 [dependency-groups]
@@ -52,12 +73,6 @@ scaler_top = "scaler.entry_points.top:main"
 scaler_ui = "scaler.entry_points.webui:main"
 scaler_object_storage_server = "scaler.entry_points.object_storage_server:main"
 scaler_native_worker_adapter = "scaler.entry_points.native_adapter:main"
-
-[project.optional-dependencies]
-uvloop = ["uvloop"]
-graphblas = ["python-graphblas", "numpy==2.2.6"]
-gui = ["nicegui[plotly]==2.24.2"]
-all = ["python-graphblas", "numpy==2.2.6", "uvloop", "nicegui[plotly]==2.24.2"]
 
 [tool.scikit-build]
 cmake.source-dir = "."

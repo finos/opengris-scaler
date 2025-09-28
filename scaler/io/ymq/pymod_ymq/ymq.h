@@ -1,9 +1,7 @@
 #pragma once
 
 // Python
-#define PY_SSIZE_T_CLEAN
-#include <Python.h>
-#include <structmember.h>
+#include "scaler/io/ymq/pymod_ymq/python.h"
 
 // C
 #include <fcntl.h>
@@ -115,6 +113,10 @@ static YMQState* YMQStateFromSelf(PyObject* self)
     PyObject* pyModule = PyType_GetModule(Py_TYPE(self));
     if (!pyModule)
         return nullptr;
+
+#if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION == 8
+    Py_DECREF(pyModule);  // As we get a real ref in 3.8 backport
+#endif
 
     return (YMQState*)PyModule_GetState(pyModule);
 }
@@ -304,8 +306,8 @@ static int YMQ_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
     // docs and examples are unfortunately scarce for this
     // for now this will work just fine
     OwnedPyObject item {};
-    while (item = PyIter_Next(*iter)) {
-        OwnedPyObject fn = PyCMethod_New(&YMQErrorCode_explanation_def, *item, pyModule, nullptr);
+    while ((item = PyIter_Next(*iter))) {
+        OwnedPyObject fn = PyCFunction_NewEx(&YMQErrorCode_explanation_def, *item, pyModule);
         if (!fn)
             return -1;
 
@@ -346,13 +348,36 @@ static int YMQ_createType(
     // whether or not to add this type to the module
     bool add = true,
     // the types base classes
-    PyObject* bases = nullptr)
+    PyObject* bases                 = nullptr,
+    getbufferproc getbuffer         = nullptr,
+    releasebufferproc releasebuffer = nullptr)
 {
     assert(storage != nullptr);
 
     *storage = PyType_FromModuleAndSpec(pyModule, spec, bases);
     if (!*storage)
         return -1;
+
+#if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION == 8
+    if (PyObject_SetAttrString(**storage, "__module_object__", pyModule) < 0)
+        return -1;
+
+    if (getbuffer && releasebuffer) {
+        PyTypeObject* type_obj = (PyTypeObject*)**storage;
+
+        if (!type_obj->tp_as_buffer) {
+            type_obj->tp_as_buffer = (PyBufferProcs*)PyMem_Calloc(1, sizeof(PyBufferProcs));
+            if (!type_obj->tp_as_buffer) {
+                PyErr_NoMemory();
+                return -1;
+            }
+        }
+
+        type_obj->tp_as_buffer->bf_getbuffer     = getbuffer;
+        type_obj->tp_as_buffer->bf_releasebuffer = releasebuffer;
+        type_obj->tp_flags |= 0;  // Do I need to add tp_flags? Seems not
+    }
+#endif
 
     if (add)
         if (PyModule_AddObjectRef(pyModule, name, **storage) < 0)
@@ -405,8 +430,21 @@ static int YMQ_exec(PyObject* pyModule)
     if (YMQ_createErrorCodeEnum(pyModule, state) < 0)
         return -1;
 
+#if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION == 8
+    if (YMQ_createType(
+            pyModule,
+            &state->PyBytesYMQType,
+            &PyBytesYMQ_spec,
+            "Bytes",
+            true,
+            nullptr,
+            (getbufferproc)PyBytesYMQ_getbuffer,
+            (releasebufferproc)PyBytesYMQ_releasebuffer) < 0)
+        return -1;
+#else
     if (YMQ_createType(pyModule, &state->PyBytesYMQType, &PyBytesYMQ_spec, "Bytes") < 0)
         return -1;
+#endif
 
     if (YMQ_createType(pyModule, &state->PyMessageType, &PyMessage_spec, "Message") < 0)
         return -1;
@@ -417,9 +455,16 @@ static int YMQ_exec(PyObject* pyModule)
     if (YMQ_createType(pyModule, &state->PyIOContextType, &PyIOContext_spec, "IOContext") < 0)
         return -1;
 
-    if (YMQ_createType(pyModule, &state->PyExceptionType, &YMQException_spec, "YMQException", true, PyExc_Exception) <
-        0)
+    PyObject* exceptionBases = PyTuple_Pack(1, PyExc_Exception);
+    if (!exceptionBases)
         return -1;
+
+    if (YMQ_createType(pyModule, &state->PyExceptionType, &YMQException_spec, "YMQException", true, exceptionBases) <
+        0) {
+        Py_DECREF(exceptionBases);
+        return -1;
+    }
+    Py_DECREF(exceptionBases);
 
     if (YMQ_createInterruptedException(pyModule, &state->PyInterruptedExceptionType) < 0)
         return -1;

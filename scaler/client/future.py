@@ -223,13 +223,12 @@ class ScalerFuture(concurrent.futures.Future):
                 # TODO: graph task results could also be deleted if these are not required by another task of the graph.
                 self._connector_storage.delete_object(self._result_object_id)
 
-            match self._task_state:
-                case TaskState.Success:
-                    self.set_result(self._serializer.deserialize(object_bytes))
-                case TaskState.Failed:
-                    self.set_exception(deserialize_failure(object_bytes))
-                case _:
-                    raise ValueError(f"unexpected task status: {self._task_state}")
+            if self._task_state == TaskState.Success:
+                self.set_result(self._serializer.deserialize(object_bytes))
+            elif self._task_state == TaskState.Failed:
+                self.set_exception(deserialize_failure(object_bytes))
+            else:
+                raise ValueError(f"unexpected task status: {self._task_state}")
 
     def _wait_result_ready(self, timeout: Optional[float] = None):
         """

@@ -36,19 +36,19 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         self._task_id_to_task: Dict[TaskID, Task] = dict()
         self._task_state_manager: TaskStateManager = TaskStateManager(debug=True)
 
-        self._unassigned: Deque[TaskID] = deque()
+        self._unassigned: Deque[TaskID] = deque()  # type: ignore[misc]
 
         self._state_functions: Dict[TaskState, Callable[[*Tuple[Any, ...]], Awaitable[None]]] = {
-            TaskState.Inactive: self.__state_inactive,
-            TaskState.Running: self.__state_running,
-            TaskState.Canceling: self.__state_canceling,
-            TaskState.BalanceCanceling: self.__state_balance_canceling,
-            TaskState.WorkerDisconnecting: self.__state_worker_disconnecting,
-            TaskState.Canceled: self.__state_canceled,
-            TaskState.CanceledNotFound: self.__state_canceled_not_found,
-            TaskState.Success: self.__state_success,
-            TaskState.Failed: self.__state_failed,
-            TaskState.FailedWorkerDied: self.__state_failed_worker_died,
+            TaskState.Inactive: self.__state_inactive,  # type: ignore[dict-item]
+            TaskState.Running: self.__state_running,  # type: ignore[dict-item]
+            TaskState.Canceling: self.__state_canceling,  # type: ignore[dict-item]
+            TaskState.BalanceCanceling: self.__state_balance_canceling,  # type: ignore[dict-item]
+            TaskState.WorkerDisconnecting: self.__state_worker_disconnecting,  # type: ignore[dict-item]
+            TaskState.Canceled: self.__state_canceled,  # type: ignore[dict-item]
+            TaskState.CanceledNotFound: self.__state_canceled_not_found,  # type: ignore[dict-item]
+            TaskState.Success: self.__state_success,  # type: ignore[dict-item]
+            TaskState.Failed: self.__state_failed,  # type: ignore[dict-item]
+            TaskState.FailedWorkerDied: self.__state_failed_worker_died,  # type: ignore[dict-item]
         }
         self._task_result_transition_map = {
             TaskResultType.Success: TaskTransition.TaskResultSuccess,

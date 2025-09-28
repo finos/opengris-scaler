@@ -1,16 +1,14 @@
 #pragma once
 
 // Python
-#define PY_SSIZE_T_CLEAN
-#include <Python.h>
-#include <structmember.h>
+#include "scaler/io/ymq/pymod_ymq/python.h"
 
 // C++
 #include <functional>
 
 // First-party
-#include "scaler/io/ymq/pymod_ymq/ymq.h"
 #include "scaler/io/ymq/pymod_ymq/utils.h"
+#include "scaler/io/ymq/pymod_ymq/ymq.h"
 
 // the order of the members in the exception args tuple
 const Py_ssize_t YMQException_errorCodeIndex = 0;

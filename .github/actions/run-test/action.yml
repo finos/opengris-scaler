@@ -10,16 +10,27 @@ runs:
   using: "composite"
   steps:
     # TODO: build wheel first, then run the test
-    - name: Run Unittests And Examples
+    - name: Run Unittests
       shell: bash
       run: |
         python -m unittest discover -v tests
+
+    - name: Run Examples
+      shell: bash
+      run: |
         uv pip install --system -r examples/applications/requirements_applications.txt
         for example in "./examples"/*.py; do
           echo "Running $example"
           PYTHONPATH=. python $example
         done
         for example in "./examples/applications"/*.py; do
+          if python -c 'import sys; sys.exit(not sys.version_info <= (3, 10))'; then
+            if [ "$example" = "./examples/applications/yfinance_historical_price.py" ]; then
+              echo "Skipping $example"
+              continue;
+            fi
+          fi
+
           echo "Running $example"
           PYTHONPATH=. python $example
         done
