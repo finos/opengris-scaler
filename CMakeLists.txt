@@ -111,4 +111,5 @@ add_subdirectory(scaler)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_subdirectory(tests)
+  add_subdirectory(examples)
 endif()
