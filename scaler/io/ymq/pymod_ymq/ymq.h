@@ -365,14 +365,6 @@ static int YMQ_createType(
     if (getbuffer && releasebuffer) {
         PyTypeObject* type_obj = (PyTypeObject*)**storage;
 
-        if (!type_obj->tp_as_buffer) {
-            type_obj->tp_as_buffer = (PyBufferProcs*)PyMem_Calloc(1, sizeof(PyBufferProcs));
-            if (!type_obj->tp_as_buffer) {
-                PyErr_NoMemory();
-                return -1;
-            }
-        }
-
         type_obj->tp_as_buffer->bf_getbuffer     = getbuffer;
         type_obj->tp_as_buffer->bf_releasebuffer = releasebuffer;
         type_obj->tp_flags |= 0;  // Do I need to add tp_flags? Seems not

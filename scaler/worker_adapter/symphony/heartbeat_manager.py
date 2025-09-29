@@ -4,28 +4,32 @@ from typing import Dict, Optional
 import psutil
 
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
-from scaler.protocol.python.message import Resource, WorkerHeartbeat, WorkerHeartbeatEcho
+from scaler.protocol.python.message import WorkerHeartbeat, WorkerHeartbeatEcho
+from scaler.protocol.python.status import Resource
 from scaler.utility.mixins import Looper
 from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.worker.agent.mixins import HeartbeatManager, TimeoutManager
-from scaler.worker.symphony.task_manager import SymphonyTaskManager
+from scaler.worker_adapter.symphony.task_manager import SymphonyTaskManager
 
 
 class SymphonyHeartbeatManager(Looper, HeartbeatManager):
-    def __init__(self, capabilities: Dict[str, int], task_queue_size: int):
+    def __init__(
+        self, storage_address: Optional[ObjectStorageConfig], capabilities: Dict[str, int], task_queue_size: int
+    ):
         self._capabilities = capabilities
         self._task_queue_size = task_queue_size
 
         self._agent_process = psutil.Process()
 
         self._connector_external: Optional[AsyncConnector] = None
+        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
         self._worker_task_manager: Optional[SymphonyTaskManager] = None
         self._timeout_manager: Optional[TimeoutManager] = None
 
         self._start_timestamp_ns = 0
         self._latency_us = 0
 
-        self._storage_address: Optional[ObjectStorageConfig] = None
+        self._storage_address: Optional[ObjectStorageConfig] = storage_address
 
     def register(
         self,
@@ -53,7 +57,7 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
             self._storage_address = ObjectStorageConfig(address_message.host, address_message.port)
             await self._connector_storage.connect(self._storage_address.host, self._storage_address.port)
 
-    def get_storage_address(self) -> ObjectStorageConfig:
+    def get_storage_address(self) -> Optional[ObjectStorageConfig]:
         return self._storage_address
 
     async def routine(self):

@@ -16,7 +16,8 @@ from scaler.utility.mixins import Looper
 from scaler.utility.queues.async_sorted_priority_queue import AsyncSortedPriorityQueue
 from scaler.utility.serialization import serialize_failure
 from scaler.worker.agent.mixins import HeartbeatManager, TaskManager
-from scaler.worker.symphony.session_callback import SessionCallback, SoamMessage
+from scaler.worker_adapter.symphony.callback import SessionCallback
+from scaler.worker_adapter.symphony.message import SoamMessage
 
 try:
     import soamapi
@@ -207,7 +208,7 @@ class SymphonyTaskManager(Looper, TaskManager):
                 )
 
                 await self._connector_external.send(
-                    TaskResult.new_msg(task_id, result_type, metadata=b"", results=[result_object_id])
+                    TaskResult.new_msg(task_id, result_type, metadata=b"", results=[bytes(result_object_id)])
                 )
 
             elif task_id in self._canceled_task_ids:
