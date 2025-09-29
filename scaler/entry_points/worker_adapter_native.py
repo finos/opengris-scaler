@@ -13,7 +13,8 @@ from scaler.io.config import (
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
     DEFAULT_WORKER_DEATH_TIMEOUT,
 )
-from scaler.utility.event_loop import EventLoopType
+from scaler.utility.event_loop import EventLoopType, register_event_loop
+from scaler.utility.logging.utility import setup_logger
 from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker_adapter.native import NativeWorkerAdapter
@@ -133,6 +134,9 @@ def get_args():
 
 def main():
     args = get_args()
+    register_event_loop(args.event_loop)
+
+    setup_logger(args.logging_paths, args.logging_config_file, args.logging_level)
 
     native_worker_adapter = NativeWorkerAdapter(
         address=args.scheduler_address,
