@@ -275,7 +275,7 @@ might be added in the future.
 A Scaler scheduler can interface with IBM Spectrum Symphony to provide distributed computing across Symphony clusters.
 
 ```bash
-$ scaler_symphony_cluster tcp://127.0.0.1:2345 ScalerService --base-concurrency 4
+$ scaler_worker_adapter_symphony tcp://127.0.0.1:2345 --service-name ScalerService --base-concurrency 4 --host 127.0.0.1 --port 8080
 ```
 
 This will start a Scaler worker that connects to the Scaler scheduler at `tcp://127.0.0.1:2345` and uses the Symphony
@@ -371,7 +371,7 @@ Please check the OpenGRIS standard for more details on the Worker Adapter specif
 Starting a Native Worker Adapter server at `http://127.0.0.1:8080`:
 
 ```bash
-$ scaler_native_worker_adapter tcp://127.0.0.1:2345 --host 127.0.0.1 --port 8080
+$ scaler_worker_adapter_native tcp://127.0.0.1:2345 --host 127.0.0.1 --port 8080
 ```
 
 Pass the `--adapter-webhook-url` argument to the Scaler scheduler to connect to the Worker Adapter:

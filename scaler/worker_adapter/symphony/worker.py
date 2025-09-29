@@ -2,12 +2,13 @@ import asyncio
 import logging
 import multiprocessing
 import signal
+from collections import deque
 from typing import Dict, Optional
 
 import zmq
-import zmq.asyncio
 
 from scaler.io.async_connector import ZMQAsyncConnector
+from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -22,10 +23,11 @@ from scaler.utility.event_loop import create_async_loop_routine, register_event_
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
-from scaler.worker.symphony.heartbeat_manager import SymphonyHeartbeatManager
-from scaler.worker.symphony.task_manager import SymphonyTaskManager
+from scaler.worker_adapter.symphony.heartbeat_manager import SymphonyHeartbeatManager
+from scaler.worker_adapter.symphony.task_manager import SymphonyTaskManager
 
 
 class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ignore
@@ -38,6 +40,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         self,
         name: str,
         address: ZMQConfig,
+        storage_address: Optional[ObjectStorageConfig],
         service_name: str,
         capabilities: Dict[str, int],
         base_concurrency: int,
@@ -52,6 +55,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         self._event_loop = event_loop
         self._name = name
         self._address = address
+        self._storage_address = storage_address
         self._capabilities = capabilities
         self._io_threads = io_threads
 
@@ -69,6 +73,13 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
         self._task_manager: Optional[SymphonyTaskManager] = None
         self._heartbeat_manager: Optional[SymphonyHeartbeatManager] = None
+
+        """
+        Sometimes the first message received is not a heartbeat echo, so we need to backoff processing other tasks
+        until we receive the first heartbeat echo.
+        """
+        self._heartbeat_received: bool = False
+        self._backoff_message_queue: deque = deque()
 
     @property
     def identity(self) -> WorkerID:
@@ -93,8 +104,12 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
             identity=self._ident,
         )
 
+        self._connector_storage = PyAsyncObjectStorageConnector()
+
         self._heartbeat_manager = SymphonyHeartbeatManager(
-            capabilities=self._capabilities, task_queue_size=self._task_queue_size
+            storage_address=self._storage_address,
+            capabilities=self._capabilities,
+            task_queue_size=self._task_queue_size,
         )
         self._task_manager = SymphonyTaskManager(
             base_concurrency=self._base_concurrency, service_name=self._service_name
@@ -119,8 +134,18 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         self._task = self._loop.create_task(self.__get_loops())
 
     async def __on_receive_external(self, message: Message):
+        if not self._heartbeat_received and not isinstance(message, WorkerHeartbeatEcho):
+            self._backoff_message_queue.append(message)
+            return
+
         if isinstance(message, WorkerHeartbeatEcho):
             await self._heartbeat_manager.on_heartbeat_echo(message)
+            self._heartbeat_received = True
+
+            while self._backoff_message_queue:
+                backoff_message = self._backoff_message_queue.popleft()
+                await self.__on_receive_external(backoff_message)
+
             return
 
         if isinstance(message, Task):
@@ -144,6 +169,10 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         raise TypeError(f"Unknown {message=}")
 
     async def __get_loops(self):
+        if self._storage_address is not None:
+            # With a manually set storage address, immediately connect to the object storage server.
+            await self._connector_storage.connect(self._storage_address.host, self._storage_address.port)
+
         try:
             await asyncio.gather(
                 create_async_loop_routine(self._connector_external.routine, 0),
@@ -158,6 +187,8 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
             pass
         except (ClientShutdownException, TimeoutError) as e:
             logging.info(f"{self.identity!r}: {str(e)}")
+        except Exception as e:
+            logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
         await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
 
