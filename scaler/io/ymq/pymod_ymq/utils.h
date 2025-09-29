@@ -2,8 +2,8 @@
 
 // Python
 #include <stdexcept>
-#define PY_SSIZE_T_CLEAN
-#include <Python.h>
+
+#include "scaler/io/ymq/pymod_ymq/python.h"
 
 // C++
 #include <memory>
@@ -50,7 +50,7 @@ public:
     ~OwnedPyObject() { this->free(); }
 
     // creates a new OwnedPyObject from a borrowed reference
-    static OwnedPyObject fromBorrowed(T* ptr) { return OwnedPyObject((T*)Py_XNewRef(ptr)); }
+    static OwnedPyObject fromBorrowed(T* ptr) { return OwnedPyObject((T*)Py_XNewRef((PyObject*)ptr)); }
 
     // convenience method for creating an OwnedPyObject that holds Py_None
     static OwnedPyObject none() { return OwnedPyObject((T*)Py_NewRef(Py_None)); }

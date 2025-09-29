@@ -306,7 +306,7 @@ void MessageConnectionTCP::onRead()
             case IOError::Drained: return {};
             case IOError::Aborted: _disconnect = false; break;
             case IOError::Disconnected: _disconnect = true; break;
-            case IOError::MessageTooLarge: _disconnect = false; break;
+            case IOError::MessageTooLarge: _disconnect = true; break;
         }
 
         onClose();
@@ -641,10 +641,9 @@ bool MessageConnectionTCP::recvMessage()
 void MessageConnectionTCP::disconnect()
 {
 #ifdef __linux__
-    if (!_connFd) {
-        return;
-    }
+    _disconnect = true;
     shutdown(_connFd, SHUT_WR);
+    onClose();
 #endif
 }
 

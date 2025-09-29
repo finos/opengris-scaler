@@ -1,9 +1,7 @@
 #pragma once
 
 // Python
-#define PY_SSIZE_T_CLEAN
-#include <Python.h>
-#include <structmember.h>
+#include "scaler/io/ymq/pymod_ymq/python.h"
 
 // First-party
 #include "scaler/io/ymq/bytes.h"
@@ -107,8 +105,10 @@ static PyType_Slot PyBytesYMQ_slots[] = {
     {Py_tp_repr, (void*)PyBytesYMQ_repr},
     {Py_mp_length, (void*)PyBytesYMQ_len},
     {Py_tp_getset, (void*)PyBytesYMQ_properties},
+#if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION > 8
     {Py_bf_getbuffer, (void*)PyBytesYMQ_getbuffer},
     {Py_bf_releasebuffer, (void*)PyBytesYMQ_releasebuffer},
+#endif
     {0, nullptr},
 };
 

@@ -2,7 +2,7 @@ import datetime
 from collections import deque
 from queue import SimpleQueue
 from threading import Lock
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Deque, Dict, List, Optional, Set, Tuple
 
 from nicegui import ui
 
@@ -59,7 +59,7 @@ class TaskStream:
         self._busy_workers: Set[str] = set()
         self._busy_workers_update_time: datetime.datetime = datetime.datetime.now()
 
-        self._dead_workers: deque[Tuple[datetime.datetime, str]] = deque()
+        self._dead_workers: Deque[Tuple[datetime.datetime, str]] = deque()  # type: ignore[misc]
 
     def setup_task_stream(self, settings: Settings):
         with ui.card().classes("w-full").style("height: 85vh"):

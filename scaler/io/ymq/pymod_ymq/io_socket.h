@@ -1,9 +1,7 @@
 #pragma once
 
 // Python
-#define PY_SSIZE_T_CLEAN
-#include <Python.h>
-#include <structmember.h>
+#include "scaler/io/ymq/pymod_ymq/python.h"
 
 // C++
 #include <chrono>
@@ -378,7 +376,7 @@ static PyObject* PyIOSocket_socket_type_getter(PyIOSocket* self, void* closure)
     if (!state)
         return nullptr;
 
-    const IOSocketType socketType        = self->socket->socketType();
+    const IOSocketType socketType  = self->socket->socketType();
     OwnedPyObject socketTypeIntObj = PyLong_FromLong((long)socketType);
 
     if (!socketTypeIntObj)
@@ -426,6 +424,7 @@ static PyType_Slot PyIOSocket_slots[] = {
     {Py_tp_repr, (void*)PyIOSocket_repr},
     {Py_tp_getset, (void*)PyIOSocket_properties},
     {Py_tp_methods, (void*)PyIOSocket_methods},
+    {Py_tp_new, NULL},
     {0, nullptr},
 };
 

@@ -1,9 +1,7 @@
 #pragma once
 
 // Python
-#define PY_SSIZE_T_CLEAN
-#include <Python.h>
-#include <structmember.h>
+#include "scaler/io/ymq/pymod_ymq/python.h"
 
 // C++
 #include <functional>
