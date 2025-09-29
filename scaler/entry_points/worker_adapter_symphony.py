@@ -14,7 +14,7 @@ from scaler.utility.event_loop import EventLoopType, register_event_loop
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
-from scaler.worker_adapter.symphony import SymphonyWorkerAdapter
+from scaler.worker_adapter.symphony.worker_adapter import SymphonyWorkerAdapter
 
 
 def get_args():
