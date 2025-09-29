@@ -424,7 +424,7 @@ static PyType_Slot PyIOSocket_slots[] = {
     {Py_tp_repr, (void*)PyIOSocket_repr},
     {Py_tp_getset, (void*)PyIOSocket_properties},
     {Py_tp_methods, (void*)PyIOSocket_methods},
-    {Py_tp_new, NULL},
+    {Py_tp_new, nullptr},
     {0, nullptr},
 };
 

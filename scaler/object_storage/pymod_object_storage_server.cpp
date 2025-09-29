@@ -35,11 +35,11 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
     const char* identity;
     const char* log_level;
     const char* log_format;
-    PyObject* logging_paths_tuple = NULL;
+    PyObject* logging_paths_tuple = nullptr;
 
     if (!PyArg_ParseTuple(
             args, "sisssO!", &addr, &port, &identity, &log_level, &log_format, &PyTuple_Type, &logging_paths_tuple))
-        return NULL;
+        return nullptr;
 
     std::vector<std::string> logging_paths;
     Py_ssize_t num_paths = PyTuple_Size(logging_paths_tuple);
@@ -47,7 +47,7 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
         PyObject* path_obj = PyTuple_GetItem(logging_paths_tuple, i);
         if (!PyUnicode_Check(path_obj)) {
             PyErr_SetString(PyExc_TypeError, "logging_paths must be a tuple of strings");
-            return NULL;
+            return nullptr;
         }
         logging_paths.push_back(PyUnicode_AsUTF8(path_obj));
     }
@@ -67,7 +67,7 @@ static PyObject* PyObjectStorageServerWaitUntilReady(PyObject* self, [[maybe_unu
 static PyMethodDef PyObjectStorageServerMethods[] = {
     {"run", PyObjectStorageServerRun, METH_VARARGS, "Run object storage server on address:port with logging config"},
     {"wait_until_ready", PyObjectStorageServerWaitUntilReady, METH_NOARGS, "Wait until the server is ready"},
-    {NULL, NULL, 0, NULL},
+    {nullptr, nullptr, 0, nullptr},
 };
 
 static PyTypeObject PyObjectStorageServerType = {
@@ -91,11 +91,11 @@ PyMODINIT_FUNC PyInit_object_storage_server(void)
 {
     PyObject* m;
     if (PyType_Ready(&PyObjectStorageServerType) < 0)
-        return NULL;
+        return nullptr;
 
     m = PyModule_Create(&PyObjectStorageServerModule);
-    if (m == NULL)
-        return NULL;
+    if (m == nullptr)
+        return nullptr;
 
     Py_INCREF(&PyObjectStorageServerType);
     PyModule_AddObject(m, "ObjectStorageServer", (PyObject*)&PyObjectStorageServerType);
