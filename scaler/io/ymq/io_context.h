@@ -1,10 +1,8 @@
 #pragma once
 
-// C++
 #include <memory>
 #include <vector>
 
-// First-party
 #include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/typedefs.h"
 

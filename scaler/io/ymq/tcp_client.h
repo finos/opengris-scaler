@@ -1,8 +1,8 @@
 #pragma once
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
 #include <sys/socket.h>
-#endif  // __linux__
+#endif  // __linux__ || __APPLE__
 #ifdef _WIN32
 // clang-format off
 #include <windows.h>

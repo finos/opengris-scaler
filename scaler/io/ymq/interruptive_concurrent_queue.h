@@ -10,9 +10,12 @@
 #include <winsock2.h>
 // clang-format on
 #endif  // _WIN32
+#ifdef __APPLE__
+#include <sys/event.h>
+#include <cerrno>
+#include <cstring>
+#endif  // __APPLE__
 
-// C++
-#include <cstdlib>
 #include <vector>
 
 #include "scaler/io/ymq/error.h"
@@ -26,9 +29,6 @@ class EventManager;
 #ifdef __linux__
 template <typename T>
 class InterruptiveConcurrentQueue {
-    int _eventFd;
-    moodycamel::ConcurrentQueue<T> _queue;
-
 public:
     InterruptiveConcurrentQueue(): _queue()
     {
@@ -116,16 +116,16 @@ public:
     InterruptiveConcurrentQueue& operator=(InterruptiveConcurrentQueue&&)      = delete;
 
     ~InterruptiveConcurrentQueue() { close(_eventFd); }
+
+private:
+    int _eventFd;
+    moodycamel::ConcurrentQueue<T> _queue;
 };
 #endif  // __linux__
 
 #ifdef _WIN32
 template <typename T>
 class InterruptiveConcurrentQueue {
-    HANDLE _completionPort;
-    const size_t _key;
-    moodycamel::ConcurrentQueue<T> _queue;
-
 public:
     InterruptiveConcurrentQueue(HANDLE completionPort, size_t key): _queue(), _completionPort(completionPort), _key(key)
     {
@@ -161,9 +161,38 @@ public:
     InterruptiveConcurrentQueue& operator=(const InterruptiveConcurrentQueue&) = delete;
     InterruptiveConcurrentQueue(InterruptiveConcurrentQueue&&)                 = delete;
     InterruptiveConcurrentQueue& operator=(InterruptiveConcurrentQueue&&)      = delete;
+
+private:
+    HANDLE _completionPort;
+    const size_t _key;
+    moodycamel::ConcurrentQueue<T> _queue;
 };
 
 #endif  // _WIN32
+
+#ifdef __APPLE__
+template <typename T>
+class InterruptiveConcurrentQueue {
+public:
+    InterruptiveConcurrentQueue(int kqfd, uintptr_t ident): _kqfd(kqfd), _ident(ident) {}
+
+    uintptr_t ident() const { return _ident; }
+
+    void enqueue(T item);
+    std::vector<T> dequeue();
+
+    // unmovable, uncopyable
+    InterruptiveConcurrentQueue(const InterruptiveConcurrentQueue&)            = delete;
+    InterruptiveConcurrentQueue& operator=(const InterruptiveConcurrentQueue&) = delete;
+    InterruptiveConcurrentQueue(InterruptiveConcurrentQueue&&)                 = delete;
+    InterruptiveConcurrentQueue& operator=(InterruptiveConcurrentQueue&&)      = delete;
+
+private:
+    int _kqfd;  // shared kqueue descriptor
+    uintptr_t _ident;  // EVFILT_USER ident reserved for this queue
+    moodycamel::ConcurrentQueue<T> _queue;
+};
+#endif  // __APPLE__
 
 }  // namespace ymq
 }  // namespace scaler

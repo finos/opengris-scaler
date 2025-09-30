@@ -15,7 +15,7 @@ extern "C" {
 
 static int PyBytesYMQ_init(PyBytesYMQ* self, PyObject* args, PyObject* kwds)
 {
-    Py_buffer view {.buf = nullptr};
+    Py_buffer view {};
     const char* keywords[] = {"bytes", nullptr};
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|y*", (char**)keywords, &view))
         return -1;  // Error parsing arguments
@@ -57,22 +57,24 @@ static PyObject* PyBytesYMQ_repr(PyBytesYMQ* self)
     }
 }
 
-static PyObject* PyBytesYMQ_data_getter(PyBytesYMQ* self)
+static PyObject* PyBytesYMQ_data_getter(PyObject* selfObject, void*)
 {
+    auto* self = reinterpret_cast<PyBytesYMQ*>(selfObject);
     if (self->bytes.is_null())
         Py_RETURN_NONE;
 
     return PyBytes_FromStringAndSize((const char*)self->bytes.data(), self->bytes.len());
 }
 
-static Py_ssize_t PyBytesYMQ_len(PyBytesYMQ* self)
+static Py_ssize_t PyBytesYMQ_len(PyObject* selfObject)
 {
+    auto* self = reinterpret_cast<PyBytesYMQ*>(selfObject);
     return self->bytes.len();
 }
 
-static PyObject* PyBytesYMQ_len_getter(PyBytesYMQ* self)
+static PyObject* PyBytesYMQ_len_getter(PyObject* selfObject, void*)
 {
-    return PyLong_FromSize_t(self->bytes.len());
+    return PyLong_FromSize_t(PyBytesYMQ_len(selfObject));
 }
 
 static int PyBytesYMQ_getbuffer(PyBytesYMQ* self, Py_buffer* view, int flags)
@@ -82,6 +84,8 @@ static int PyBytesYMQ_getbuffer(PyBytesYMQ* self, Py_buffer* view, int flags)
 
 static void PyBytesYMQ_releasebuffer(PyBytesYMQ* self, Py_buffer* view)
 {
+    (void)self;
+    (void)view;
 }
 }
 

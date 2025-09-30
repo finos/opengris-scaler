@@ -1,10 +1,9 @@
 #ifdef _WIN32
 
-#include "scaler/io/ymq/iocp_context.h"
-
 #include <cerrno>
 #include <functional>
 
+#include "scaler/io/ymq/iocp_context.h"
 #include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/event_manager.h"
 

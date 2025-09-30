@@ -1,14 +1,18 @@
 #pragma once
 
-// C++
 #include <concepts>
 #include <cstdint>  // uint64_t
-#include <functional>
+#include <utility>  // std::move
 
-// First-party
 #include "scaler/io/ymq/configuration.h"
+
+#if defined(__linux__)
 #include "scaler/io/ymq/epoll_context.h"
+#elif defined(_WIN32)
 #include "scaler/io/ymq/iocp_context.h"
+#elif defined(__APPLE__)
+#include "scaler/io/ymq/kqueue_context.h"
+#endif
 
 namespace scaler {
 namespace ymq {
@@ -27,7 +31,7 @@ concept EventLoopBackend = requires(Backend backend, Backend::Function f) {
     { backend.removeFdFromLoop(int {}) } -> std::same_as<void>;
 };
 
-template <EventLoopBackend Backend = EpollContext>
+template <EventLoopBackend Backend>
 class EventLoop {
     Backend backend;
 

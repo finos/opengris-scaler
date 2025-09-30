@@ -69,7 +69,7 @@ static PyObject* YMQException_message_getter(YMQException* self, void* Py_UNUSED
 static PyGetSetDef YMQException_getset[] = {
     {"code", (getter)YMQException_code_getter, nullptr, PyDoc_STR("error code"), nullptr},
     {"message", (getter)YMQException_message_getter, nullptr, PyDoc_STR("error message"), nullptr},
-    {nullptr}  // Sentinel
+    {nullptr, nullptr, nullptr, nullptr, nullptr}  // Sentinel
 };
 
 static PyType_Slot YMQException_slots[] = {
