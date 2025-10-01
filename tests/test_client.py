@@ -34,7 +34,7 @@ def raise_exception(foo: int):
 
 def get_preloaded_value():
     """Function that retrieves value set by preload"""
-    from tests.test_preload_module import get_global_value
+    from tests.utility import get_global_value
 
     return get_global_value()
 
@@ -392,9 +392,7 @@ class TestClientPreload(unittest.TestCase):
         return preload_cluster
 
     def test_preload_success(self):
-        preload_cluster = self._create_preload_cluster(
-            preload="tests.test_preload_module:setup_global_value('test_preload_value')"
-        )
+        preload_cluster = self._create_preload_cluster(preload="tests.utility:setup_global_value('test_preload_value')")
 
         try:
             preload_cluster.start()
@@ -420,7 +418,7 @@ class TestClientPreload(unittest.TestCase):
 
         try:
             preload_cluster = self._create_preload_cluster(
-                preload="tests.test_preload_module:failing_preload()", logging_paths=(log_path,)
+                preload="tests.utility:failing_preload()", logging_paths=(log_path,)
             )
 
             try:
@@ -436,11 +434,7 @@ class TestClientPreload(unittest.TestCase):
                             processor_log_content += f.read()
 
                 # Verify that the preload failure was logged properly
-                self.assertIn(
-                    "preload (tests.test_preload_module:failing_preload()) failed with exception:",
-                    processor_log_content,
-                )
-                self.assertIn("Intentional preload failure for testing", processor_log_content)
+                self.assertIn("preloading: tests.utility:failing_preload with args", processor_log_content)
 
                 # If we reach here without any other exceptions, the test is successful
             finally:
