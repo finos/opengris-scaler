@@ -473,13 +473,13 @@ We showcased Scaler at FOSDEM 2025. Check out the slides
 To contribute to Scaler, you might need to manually build its C++ components.
 
 These C++ components depend on the Boost and Cap'n Proto libraries. If these libraries are not available on your system,
-you can use the `download_install_dependencies.sh` script to download, compile, and install them (You might need `sudo`):
+you can use the `download_install_libraries.sh` script to download, compile, and install them (You might need `sudo`):
 
 ```bash
-./scripts/download_install_dependencies.sh boost compile
-./scripts/download_install_dependencies.sh boost install
-./scripts/download_install_dependencies.sh capnp compile
-./scripts/download_install_dependencies.sh capnp install
+./scripts/download_install_libraries.sh boost compile
+./scripts/download_install_libraries.sh boost install
+./scripts/download_install_libraries.sh capnp compile
+./scripts/download_install_libraries.sh capnp install
 ```
 
 After installing these dependencies, use the `build.sh` script to configure, build, and install Scaler's C++ components:
@@ -494,13 +494,13 @@ within the main source tree, as compiled Python modules. You can specify the com
 
 ### Building on Windows
 
-*Building on Windows requires _Visual Studio 17 2022_*. Similar to the former section, you can use the `download_install_dependencies.ps1` script to download, compile, and install them (You might need `Run as administrator`):
+*Building on Windows requires _Visual Studio 17 2022_*. Similar to the former section, you can use the `download_install_libraries.ps1` script to download, compile, and install them (You might need `Run as administrator`):
 
 ```bash
-./scripts/download_install_dependencies.ps1 boost compile
-./scripts/download_install_dependencies.ps1 boost install
-./scripts/download_install_dependencies.ps1 capnp compile
-./scripts/download_install_dependencies.ps1 capnp install
+./scripts/download_install_libraries.ps1 boost compile
+./scripts/download_install_libraries.ps1 boost install
+./scripts/download_install_libraries.ps1 capnp compile
+./scripts/download_install_libraries.ps1 capnp install
 ```
 
 After installing these dependencies, if you are using _Visual Studio_ for developing, you may open the project folder with it, select preset `windows-x64`, and build the project. You may also run the following commands to configure, build, and install Scaler's C++ components:
@@ -523,10 +523,10 @@ pip install build cibuildwheel==2.23.3
 # Parametrize the cibuildwheel's container to build the Boost and Cap'n Proto dependencies.
 export CIBW_BEFORE_ALL='
             yum install sudo -y;
-            sudo ./scripts/download_install_dependencies.sh capnp compile
-            sudo ./scripts/download_install_dependencies.sh capnp install
-            sudo ./scripts/download_install_dependencies.sh boost compile
-            sudo ./scripts/download_install_dependencies.sh boost install'
+            sudo ./scripts/download_install_libraries.sh capnp compile
+            sudo ./scripts/download_install_libraries.sh capnp install
+            sudo ./scripts/download_install_libraries.sh boost compile
+            sudo ./scripts/download_install_libraries.sh boost install'
 export CIBW_BUILD="*manylinux_x86_64"
 export CIBW_SKIP="pp*"
 export CIBW_MANYLINUX_X86_64_IMAGE="manylinux_2_28"

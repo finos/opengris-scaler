@@ -33,7 +33,7 @@ runs:
           sudo ./scripts/download_install_libraries.sh capnp compile
           sudo ./scripts/download_install_libraries.sh capnp install
         CIBW_BUILD: "*manylinux_x86_64"
-        CIBW_SKIP: "pp*"
+        CIBW_SKIP: "pp* cp39-*"
         CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
 
     - name: Publish to PyPI
