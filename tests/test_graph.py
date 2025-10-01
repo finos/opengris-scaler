@@ -107,6 +107,9 @@ class TestGraph(unittest.TestCase):
         def func(a):
             return a
 
+        # If we don't sleep, then cluster will shutdown before OSS address get exchanged
+        # between scheduler and cluster. Thus, cluster will wait OSS address for a long time.
+        time.sleep(2)
         with Client(self.address) as client:
             result = client.get({"a": (func, "b"), "b": [1]}, keys=["b"])
             self.assertEqual(result["b"], [1])

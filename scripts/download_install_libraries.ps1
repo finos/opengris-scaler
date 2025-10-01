@@ -20,7 +20,7 @@ $NUM_CORES = [Environment]::ProcessorCount
 
 # Main logic
 if ($args.Count -lt 2) {
-    Write-Host "Usage: .\download_install_dependencies.ps1 [boost|capnp] [compile|install] [--prefix=DIR]"
+    Write-Host "Usage: .\download_install_libraries.ps1 [boost|capnp] [compile|install] [--prefix=DIR]"
     exit 1
 }
 
@@ -80,7 +80,7 @@ elseif ($dependency -eq "capnp") {
     }
 
 else {
-    Write-Host "Usage: .\download_install_dependencies.ps1 [boost|capnp] [--prefix=DIR]"
+    Write-Host "Usage: .\download_install_libraries.ps1 [boost|capnp] [--prefix=DIR]"
     exit 1
 }
 

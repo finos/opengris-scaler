@@ -2,7 +2,7 @@
 # This script builds and installs the required 3rd party C++ libraries.
 #
 # Usage:
-#    	./scripts/download_install_dependencies.sh [boost|capnp] [compile|install] [--prefix=PREFIX]
+#    	./scripts/download_install_libraries.sh [boost|capnp] [compile|install] [--prefix=PREFIX]
 
 # Remember:
 #	Update the usage string when you are add/remove dependency
@@ -37,8 +37,8 @@ show_help() {
 }
 
 if [ "$1" == "boost" ]; then
+    BOOST_FOLDER_NAME="boost_$(echo $BOOST_VERSION | tr '.' '_')"
     if [ "$2" == "compile" ]; then
-        BOOST_FOLDER_NAME="boost_$(echo $BOOST_VERSION | tr '.' '_')"
         BOOST_PACKAGE_NAME=${BOOST_FOLDER_NAME}.tar.gz
         curl -O https://archives.boost.io/release/${BOOST_VERSION}/source/${BOOST_PACKAGE_NAME} --retry 100 --retry-max-time 3600
         tar -xzf ${BOOST_PACKAGE_NAME}

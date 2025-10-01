@@ -1,8 +1,6 @@
 
 #include "scaler/io/ymq/message_connection_tcp.h"
 
-#include <future>
-
 #include "scaler/io/ymq/configuration.h"
 
 #ifdef __linux__
@@ -269,7 +267,6 @@ void MessageConnectionTCP::updateReadOperation()
             _pendingRecvMessageCallbacks->pop();
 
             recvMessageCallback({Message(std::move(address), std::move(payload)), {}});
-
         } else {
             assert(_pendingRecvMessageCallbacks->size());
             break;

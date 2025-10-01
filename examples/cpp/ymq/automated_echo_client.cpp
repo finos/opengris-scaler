@@ -70,7 +70,7 @@ int main()
         auto future = x.get_future();
         Message msg = future.get().first;
         if (msg.payload.as_string() != longStr) {
-            printf("Checksum failed, %s\n", msg.payload.as_string().c_str());
+            printf("Checksum failed, %s\n", msg.payload.as_string()->c_str());
             exit(1);
         }
     }
