@@ -56,18 +56,12 @@ def main():
 
         # Submit a task that requires GPU capabilities, this will be redirected to the GPU worker.
         gpu_future = client.submit_verbose(
-            gpu_task,
-            args=(16.0,),
-            kwargs={},
-            capabilities={"gpu": 1}  # Requires a GPU capability
+            gpu_task, args=(16.0,), kwargs={}, capabilities={"gpu": 1}  # Requires a GPU capability
         )
 
         # Submit a task that does not require GPU capabilities, this will be routed to any available worker.
         cpu_future = client.submit_verbose(
-            cpu_task,
-            args=(16.0,),
-            kwargs={},
-            capabilities={}  # No GPU capability required
+            cpu_task, args=(16.0,), kwargs={}, capabilities={}  # No GPU capability required
         )
 
         # Waits for the tasks for finish

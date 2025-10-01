@@ -1,6 +1,8 @@
 
 #include "scaler/io/ymq/simple_interface.h"
 
+#include <optional>
+
 namespace scaler {
 namespace ymq {
 
@@ -35,35 +37,41 @@ void syncConnectSocket(std::shared_ptr<IOSocket> socket, std::string address)
     connect_future.wait();
 }
 
-std::pair<Message, Error> syncRecvMessage(std::shared_ptr<IOSocket> socket)
+std::expected<Message, Error> syncRecvMessage(std::shared_ptr<IOSocket> socket)
 {
     auto fut = futureRecvMessage(std::move(socket));
     return fut.get();
 }
 
-std::expected<void, Error> syncSendMessage(std::shared_ptr<IOSocket> socket, Message message)
+std::optional<Error> syncSendMessage(std::shared_ptr<IOSocket> socket, Message message)
 {
     auto fut = futureSendMessage(std::move(socket), std::move(message));
     return fut.get();
 }
 
-std::future<std::pair<Message, Error>> futureRecvMessage(std::shared_ptr<IOSocket> socket)
+std::future<std::expected<Message, Error>> futureRecvMessage(std::shared_ptr<IOSocket> socket)
 {
-    auto recv_promise_ptr = std::make_unique<std::promise<std::pair<Message, Error>>>();
+    auto recv_promise_ptr = std::make_unique<std::promise<std::expected<Message, Error>>>();
     auto recv_future      = recv_promise_ptr->get_future();
-    socket->recvMessage([recv_promise = std::move(recv_promise_ptr)](std::pair<Message, Error> msg) {
-        recv_promise->set_value(std::move(msg));
+    socket->recvMessage([recv_promise = std::move(recv_promise_ptr)](std::pair<Message, Error> result) {
+        if (result.second._errorCode == Error::ErrorCode::Uninit)
+            recv_promise->set_value(std::move(result.first));
+        else
+            recv_promise->set_value(std::unexpected {std::move(result.second)});
     });
     return recv_future;
 }
 
-std::future<std::expected<void, Error>> futureSendMessage(std::shared_ptr<IOSocket> socket, Message message)
+std::future<std::optional<Error>> futureSendMessage(std::shared_ptr<IOSocket> socket, Message message)
 {
-    auto send_promise_ptr = std::make_unique<std::promise<std::expected<void, Error>>>();
+    auto send_promise_ptr = std::make_unique<std::promise<std::optional<Error>>>();
     auto send_future      = send_promise_ptr->get_future();
     socket->sendMessage(
-        std::move(message), [send_promise = std::move(send_promise_ptr)](std::expected<void, Error> msg) {
-            send_promise->set_value(std::move(msg));
+        std::move(message), [send_promise = std::move(send_promise_ptr)](std::expected<void, Error> result) {
+            if (result)
+                send_promise->set_value(std::nullopt);
+            else
+                send_promise->set_value(std::move(result.error()));
         });
     return send_future;
 }

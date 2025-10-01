@@ -10,7 +10,7 @@
 #include "scaler/io/ymq/pymod_ymq/ymq.h"
 
 // wraps an async callback that accepts a Python asyncio future
-static PyObject* async_wrapper(PyObject* self, const std::function<void(YMQState* state, PyObject* future)>& callback)
+static PyObject* async_wrapper(PyObject* self, const std::function<void(YMQState* state, PyObject* future)>&& callback)
 {
     auto state = YMQStateFromSelf(self);
     if (!state)
@@ -23,7 +23,6 @@ static PyObject* async_wrapper(PyObject* self, const std::function<void(YMQState
     }
 
     OwnedPyObject future = PyObject_CallMethod(*loop, "create_future", nullptr);
-
     if (!future) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create future");
         return nullptr;
