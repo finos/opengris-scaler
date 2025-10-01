@@ -24,7 +24,7 @@ def get_args():
 
     # Server configuration
     parser.add_argument(
-        "--host", type=str, default="localhost", help="host address for the native worker adapter HTTP server"
+        "--host", type=str, default="127.0.0.1", help="host address for the native worker adapter HTTP server"
     )
     parser.add_argument("--port", "-p", type=int, required=True, help="port for the native worker adapter HTTP server")
 

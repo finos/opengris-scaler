@@ -14,11 +14,11 @@ std::shared_ptr<IOSocket> syncCreateSocket(IOContext& context, IOSocketType type
 void syncBindSocket(std::shared_ptr<IOSocket> socket, std::string address);
 void syncConnectSocket(std::shared_ptr<IOSocket> socket, std::string address);
 
-std::pair<Message, Error> syncRecvMessage(std::shared_ptr<IOSocket> socket);
-std::expected<void, Error> syncSendMessage(std::shared_ptr<IOSocket> socket, Message message);
+std::expected<Message, Error> syncRecvMessage(std::shared_ptr<IOSocket> socket);
+std::optional<Error> syncSendMessage(std::shared_ptr<IOSocket> socket, Message message);
 
-std::future<std::pair<Message, Error>> futureRecvMessage(std::shared_ptr<IOSocket> socket);
-std::future<std::expected<void, Error>> futureSendMessage(std::shared_ptr<IOSocket> socket, Message message);
+std::future<std::expected<Message, Error>> futureRecvMessage(std::shared_ptr<IOSocket> socket);
+std::future<std::optional<Error>> futureSendMessage(std::shared_ptr<IOSocket> socket, Message message);
 
 }  // namespace ymq
 }  // namespace scaler

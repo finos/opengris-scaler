@@ -5,9 +5,9 @@ import signal
 from collections import deque
 from typing import Dict, Optional
 
-import zmq
+from scaler.io.ymq import ymq
 
-from scaler.io.async_connector import ZMQAsyncConnector
+from scaler.io.ymq_async_connector import YMQAsyncConnector
 from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.python.message import (
@@ -68,7 +68,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         self._death_timeout_seconds = death_timeout_seconds
         self._task_queue_size = task_queue_size
 
-        self._context: Optional[zmq.asyncio.Context] = None
+        self._context: Optional[ymq.IOContext] = None
         self._connector_external: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
         self._task_manager: Optional[SymphonyTaskManager] = None
@@ -93,11 +93,11 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         setup_logger()
         register_event_loop(self._event_loop)
 
-        self._context = zmq.asyncio.Context()
-        self._connector_external = ZMQAsyncConnector(
+        self._context = ymq.IOContext()
+        self._connector_external = YMQAsyncConnector(
             context=self._context,
             name=self.name,
-            socket_type=zmq.DEALER,
+            socket_type=ymq.IOSocketType.Connector,
             address=self._address,
             bind_or_connect="connect",
             callback=self.__on_receive_external,

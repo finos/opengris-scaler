@@ -2,10 +2,9 @@ import asyncio
 import functools
 import logging
 
-import zmq.asyncio
-
-from scaler.io.async_binder import ZMQAsyncBinder
-from scaler.io.async_connector import ZMQAsyncConnector
+from scaler.io.ymq import ymq
+from scaler.io.ymq_async_binder import YMQAsyncBinder
+from scaler.io.ymq_async_connector import YMQAsyncConnector
 from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
 from scaler.io.config import CLEANUP_INTERVAL_SECONDS, STATUS_REPORT_INTERVAL_SECONDS
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
@@ -66,18 +65,18 @@ class Scheduler:
             monitor_address = config.monitor_address
         self._config_controller.update_config("monitor_address", monitor_address)
 
-        self._context = zmq.asyncio.Context(io_threads=config.io_threads)
+        self._context = ymq.IOContext(config.io_threads)
 
-        self._binder: AsyncBinder = ZMQAsyncBinder(context=self._context, name="scheduler", address=config.address)
+        self._binder: AsyncBinder = YMQAsyncBinder(context=self._context, name="scheduler", address=config.address)
         logging.info(f"{self.__class__.__name__}: listen to scheduler address {config.address}")
 
         self._connector_storage: AsyncObjectStorageConnector = PyAsyncObjectStorageConnector()
         logging.info(f"{self.__class__.__name__}: connect to object storage server {object_storage_address!r}")
 
-        self._binder_monitor: AsyncConnector = ZMQAsyncConnector(
+        self._binder_monitor: AsyncConnector = YMQAsyncConnector(
             context=self._context,
             name="scheduler_monitor",
-            socket_type=zmq.PUB,
+            socket_type=ymq.IOSocketType.Multicast,
             address=monitor_address,
             bind_or_connect="bind",
             callback=None,

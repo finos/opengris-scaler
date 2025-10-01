@@ -157,8 +157,7 @@ static PyObject* PyIOContext_createIOSocket_sync(PyIOContext* self, PyObject* ar
                         waiter.signal();
                     });
 
-                if (waiter.wait())
-                    CHECK_SIGNALS;
+                WAIT(waiter);
             } catch (...) {
                 PyEval_RestoreThread(_save);
                 PyErr_SetString(PyExc_RuntimeError, "Failed to create io socket synchronously");

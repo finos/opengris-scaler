@@ -5,7 +5,7 @@ import threading
 from concurrent.futures import Future
 from typing import Optional
 
-import zmq.asyncio
+from scaler.io.ymq import ymq
 
 from scaler.client.agent.disconnect_manager import ClientDisconnectManager
 from scaler.client.agent.future_manager import ClientFutureManager
@@ -13,7 +13,7 @@ from scaler.client.agent.heartbeat_manager import ClientHeartbeatManager
 from scaler.client.agent.object_manager import ClientObjectManager
 from scaler.client.agent.task_manager import ClientTaskManager
 from scaler.client.serializer.mixins import Serializer
-from scaler.io.async_connector import ZMQAsyncConnector
+from scaler.io.ymq_async_connector import YMQAsyncConnector
 from scaler.io.mixins import AsyncConnector
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
@@ -41,7 +41,7 @@ class ClientAgent(threading.Thread):
         identity: ClientID,
         client_agent_address: ZMQConfig,
         scheduler_address: ZMQConfig,
-        context: zmq.Context,
+        context: ymq.IOContext,
         future_manager: ClientFutureManager,
         stop_event: threading.Event,
         timeout_seconds: int,
@@ -63,19 +63,19 @@ class ClientAgent(threading.Thread):
 
         self._future_manager = future_manager
 
-        self._connector_internal: AsyncConnector = ZMQAsyncConnector(
-            context=zmq.asyncio.Context.shadow(self._context),
+        self._connector_internal: AsyncConnector = YMQAsyncConnector(
+            context=self._context,
             name="client_agent_internal",
-            socket_type=zmq.PAIR,
+            socket_type=ymq.IOSocketType.Binder,
             bind_or_connect="bind",
             address=self._client_agent_address,
             callback=self.__on_receive_from_client,
             identity=None,
         )
-        self._connector_external: AsyncConnector = ZMQAsyncConnector(
-            context=zmq.asyncio.Context.shadow(self._context),
+        self._connector_external: AsyncConnector = YMQAsyncConnector(
+            context=self._context,
             name="client_agent_external",
-            socket_type=zmq.DEALER,
+            socket_type=ymq.IOSocketType.Connector,
             address=self._scheduler_address,
             bind_or_connect="connect",
             callback=self.__on_receive_from_scheduler,

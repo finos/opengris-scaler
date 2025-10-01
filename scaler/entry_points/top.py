@@ -3,7 +3,7 @@ import curses
 import functools
 from typing import Dict, List, Literal, Union
 
-from scaler.io.sync_subscriber import ZMQSyncSubscriber
+from scaler.io.ymq_sync_subscriber import YMQSyncSubscriber
 from scaler.protocol.python.message import StateScheduler
 from scaler.protocol.python.mixins import Message
 from scaler.utility.formatter import (
@@ -51,7 +51,7 @@ def poke(screen, args):
     screen.nodelay(1)
 
     try:
-        subscriber = ZMQSyncSubscriber(
+        subscriber = YMQSyncSubscriber(
             address=ZMQConfig.from_string(args.address),
             callback=functools.partial(show_status, screen=screen),
             topic=b"",

@@ -2,13 +2,13 @@ import dataclasses
 import functools
 import logging
 import threading
+import random
 import uuid
 from collections import Counter
 from inspect import signature
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
-import zmq
-
+from scaler.io.ymq import ymq
 from scaler.client.agent.client_agent import ClientAgent
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.future import ScalerFuture
@@ -18,7 +18,7 @@ from scaler.client.serializer.default import DefaultSerializer
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.config import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
-from scaler.io.sync_connector import ZMQSyncConnector
+from scaler.io.ymq_sync_connector import YMQSyncConnector
 from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector
 from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
@@ -89,15 +89,16 @@ class Client:
         self._stream_output = stream_output
         self._identity = ClientID.generate_client_id()
 
-        self._client_agent_address = ZMQConfig(ZMQType.inproc, host=f"scaler_client_{uuid.uuid4().hex}")
+        # self._client_agent_address = ZMQConfig(ZMQType.inproc, host=f"scaler_client_{uuid.uuid4().hex}")
+        self._client_agent_address = ZMQConfig(ZMQType.tcp, host="127.0.0.1", port=random.randint(20000, 30000))
         self._scheduler_address = ZMQConfig.from_string(address)
         self._timeout_seconds = timeout_seconds
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
 
         self._stop_event = threading.Event()
-        self._context = zmq.Context()
-        self._connector_agent: SyncConnector = ZMQSyncConnector(
-            context=self._context, socket_type=zmq.PAIR, address=self._client_agent_address, identity=self._identity
+        self._context = ymq.IOContext()
+        self._connector_agent: SyncConnector = YMQSyncConnector(
+            context=self._context, socket_type=ymq.IOSocketType.Connector, address=self._client_agent_address, identity=self._identity.extend("|agent")
         )
 
         self._future_manager = ClientFutureManager(self._serializer)

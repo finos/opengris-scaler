@@ -23,11 +23,12 @@ runs:
         sudo chmod 755 ./scripts/download_install_libraries.sh
         sudo chmod 755 ./scripts/build.sh
 
-    - name: Install Python Base Packages
+    - name: Install Python Packages
       shell: bash
       run: |
         pip install uv
         uv pip install --system --upgrade pip
+        uv pip install --system 'scapy==2.*'
 
     - name: Cache Library Install
       if: inputs.os == 'Linux'

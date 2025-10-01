@@ -34,16 +34,24 @@ struct YMQState {
     OwnedPyObject<> PyIOContextType;             // Reference to the IOContext type
     OwnedPyObject<> PyExceptionType;             // Reference to the Exception type
     OwnedPyObject<> PyInterruptedExceptionType;  // Reference to the YMQInterruptedException type
+    OwnedPyObject<> PyTimeoutExceptionType;      // Reference to the YMQTimeoutException type
     OwnedPyObject<> PyAwaitableType;             // Reference to the Awaitable type
 };
 
-#define CHECK_SIGNALS                                                                                           \
-    do {                                                                                                        \
-        PyEval_RestoreThread(_save);                                                                            \
-        if (PyErr_CheckSignals() >= 0)                                                                          \
-            PyErr_SetString(                                                                                    \
-                *state->PyInterruptedExceptionType, "A synchronous YMQ operation was interrupted by a signal"); \
-        return (PyObject*)nullptr;                                                                              \
+#define WAIT(waiter)                                                                                                \
+    do {                                                                                                            \
+        auto result = waiter.wait();                                                                                \
+        if (result == WaitResult::Signal) {                                                                         \
+            PyEval_RestoreThread(_save);                                                                            \
+            if (PyErr_CheckSignals() >= 0)                                                                          \
+                PyErr_SetString(                                                                                    \
+                    *state->PyInterruptedExceptionType, "A synchronous YMQ operation was interrupted by a signal"); \
+            return (PyObject*)nullptr;                                                                              \
+        } else if (result == WaitResult::Timeout) {                                                                 \
+            PyEval_RestoreThread(_save);                                                                            \
+            PyErr_SetString(*state->PyTimeoutExceptionType, "A synchronous YMQ operation timed out");               \
+            return (PyObject*)nullptr;                                                                              \
+        }                                                                                                           \
     } while (0);
 
 static bool future_do_(PyObject* future_, const std::function<std::expected<PyObject*, PyObject*>()>& fn)
@@ -174,6 +182,7 @@ static void YMQ_free(YMQState* state)
         state->PyIOContextType.~OwnedPyObject();
         state->PyExceptionType.~OwnedPyObject();
         state->PyInterruptedExceptionType.~OwnedPyObject();
+        state->PyTimeoutExceptionType.~OwnedPyObject();
         state->PyAwaitableType.~OwnedPyObject();
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to free YMQState");
@@ -335,6 +344,18 @@ static int YMQ_createInterruptedException(PyObject* pyModule, OwnedPyObject<>* s
     return 0;
 }
 
+static int YMQ_createTimeoutException(PyObject* pyModule, OwnedPyObject<>* storage)
+{
+    *storage = PyErr_NewExceptionWithDoc(
+        "ymq.YMQTimeoutException", "Raised when a synchronous method times out", PyExc_Exception, nullptr);
+
+    if (!*storage)
+        return -1;
+    if (PyModule_AddObjectRef(pyModule, "YMQTimeoutException", **storage) < 0)
+        return -1;
+    return 0;
+}
+
 // internal convenience function to create a type and add it to the module
 static int YMQ_createType(
     // the module object
@@ -459,6 +480,9 @@ static int YMQ_exec(PyObject* pyModule)
     Py_DECREF(exceptionBases);
 
     if (YMQ_createInterruptedException(pyModule, &state->PyInterruptedExceptionType) < 0)
+        return -1;
+
+    if (YMQ_createTimeoutException(pyModule, &state->PyTimeoutExceptionType) < 0)
         return -1;
 
     if (YMQ_createType(pyModule, &state->PyAwaitableType, &Awaitable_spec, "Awaitable", false) < 0)

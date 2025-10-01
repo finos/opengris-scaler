@@ -1,6 +1,5 @@
 # NOTE: NOT IMPLEMENTATION, TYPE INFORMATION ONLY
 # This file contains type stubs for the Ymq Python C Extension module
-import abc
 import sys
 from collections.abc import Awaitable
 from enum import IntEnum
@@ -11,12 +10,17 @@ if sys.version_info >= (3, 12):
 else:
     Buffer = object
 
-class Bytes(Buffer, metaclass=abc.ABCMeta):
-    data: bytes
+class Bytes(Buffer):
+    data: bytes | None
     len: int
 
-    def __init__(self, data: SupportsBytes | bytes) -> None: ...
+    def __init__(self, data: Buffer | None = None) -> None: ...
     def __repr__(self) -> str: ...
+    def __len__(self) -> int: ...
+
+    # this type signature is not 100% accurate because it's implemented in C
+    # but this satisfies the type check and is good enough
+    def __buffer__(self, flags: int, /) -> memoryview: ...
 
 class Message:
     address: Bytes | None
@@ -63,16 +67,16 @@ class IOSocket:
     async def connect(self, address: str) -> None:
         """Connect to a remote socket"""
 
-    def send_sync(self, message: Message) -> None:
+    def send_sync(self, message: Message, timeout_secs: int = -1) -> None:
         """Send a message to one of the socket's peers synchronously"""
 
-    def recv_sync(self) -> Message:
+    def recv_sync(self, timeout_secs: int = -1) -> Message:
         """Receive a message from one of the socket's peers synchronously"""
 
-    def bind_sync(self, address: str) -> None:
+    def bind_sync(self, address: str, timeout_secs: int = -1) -> None:
         """Bind the socket to an address and listen for incoming connections synchronously"""
 
-    def connect_sync(self, address: str) -> None:
+    def connect_sync(self, address: str, timeout_secs: int = -1) -> None:
         """Connect to a remote socket synchronously"""
 
 class ErrorCode(IntEnum):
@@ -99,9 +103,12 @@ class YMQException(Exception):
     code: ErrorCode
     message: str
 
-    def __init__(self, code: ErrorCode, message: str) -> None: ...
+    def __init__(self, /, code: ErrorCode, message: str) -> None: ...
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
 
 class YMQInterruptedException(YMQException):
+    def __init__(self) -> None: ...
+
+class YMQTimeoutException(YMQException):
     def __init__(self) -> None: ...

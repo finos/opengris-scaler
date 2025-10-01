@@ -7,10 +7,12 @@
 #include <chrono>
 #include <expected>
 #include <memory>
+#include <optional>
 #include <thread>
 #include <utility>
 
 // C
+#include <methodobject.h>
 #include <semaphore.h>
 #include <sys/eventfd.h>
 #include <sys/poll.h>
@@ -40,6 +42,7 @@ extern "C" {
 static void PyIOSocket_dealloc(PyIOSocket* self)
 {
     try {
+        self->ioContext->requestIOSocketStop(self->socket);
         self->ioContext->removeIOSocket(self->socket);
         self->ioContext.~shared_ptr();
         self->socket.~shared_ptr();
@@ -90,8 +93,9 @@ static PyObject* PyIOSocket_send_sync(PyIOSocket* self, PyObject* args, PyObject
 
     // borrowed reference
     PyMessage* message   = nullptr;
-    const char* kwlist[] = {"message", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O", (char**)kwlist, &message))
+    int timeout_secs     = -1;
+    const char* kwlist[] = {"message", "timeout_secs", nullptr};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|i", (char**)kwlist, &message, &timeout_secs))
         return nullptr;
 
     Bytes address = message->address.is_none() ? Bytes() : std::move(message->address->bytes);
@@ -101,15 +105,14 @@ static PyObject* PyIOSocket_send_sync(PyIOSocket* self, PyObject* args, PyObject
 
     std::shared_ptr<std::expected<void, Error>> result = std::make_shared<std::expected<void, Error>>();
     try {
-        Waiter waiter(state->wakeupfd_rd);
+        Waiter waiter(state->wakeupfd_rd, timeout_secs == -1 ? std::nullopt : std::optional {timeout_secs});
 
         self->socket->sendMessage({.address = std::move(address), .payload = std::move(payload)}, [=](auto r) mutable {
             *result = std::move(r);
             waiter.signal();
         });
 
-        if (waiter.wait())
-            CHECK_SIGNALS;
+        WAIT(waiter);
     } catch (...) {
         PyEval_RestoreThread(_save);
         PyErr_SetString(PyExc_RuntimeError, "Failed to send synchronously");
@@ -154,10 +157,6 @@ static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args)
                     if (!pyMessage)
                         return YMQ_GetRaisedException();
 
-                    // TODO: why is leaking necessary?
-                    address.forget();
-                    payload.forget();
-
                     return (PyObject*)pyMessage.take();
                 });
             } catch (...) {
@@ -168,25 +167,29 @@ static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args)
     });
 }
 
-static PyObject* PyIOSocket_recv_sync(PyIOSocket* self, PyObject* args)
+static PyObject* PyIOSocket_recv_sync(PyIOSocket* self, PyObject* args, PyObject* kwargs)
 {
     auto state = YMQStateFromSelf((PyObject*)self);
     if (!state)
+        return nullptr;
+
+    int timeout_secs     = -1;
+    const char* kwlist[] = {"timeout_secs", nullptr};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|i", (char**)kwlist, &timeout_secs))
         return nullptr;
 
     PyThreadState* _save = PyEval_SaveThread();
 
     std::shared_ptr<std::pair<Message, Error>> result = std::make_shared<std::pair<Message, Error>>();
     try {
-        Waiter waiter(state->wakeupfd_rd);
+        Waiter waiter(state->wakeupfd_rd, timeout_secs == -1 ? std::nullopt : std::optional {timeout_secs});
 
         self->socket->recvMessage([=](auto r) mutable {
             *result = std::move(r);
             waiter.signal();
         });
 
-        if (waiter.wait())
-            CHECK_SIGNALS;
+        WAIT(waiter);
     } catch (...) {
         PyEval_RestoreThread(_save);
         PyErr_SetString(PyExc_RuntimeError, "Failed to recv synchronously");
@@ -218,10 +221,6 @@ static PyObject* PyIOSocket_recv_sync(PyIOSocket* self, PyObject* args)
         (PyMessage*)PyObject_CallFunction(*state->PyMessageType, "OO", *address, *payload);
     if (!pyMessage)
         return nullptr;
-
-    // TODO: why is leaking necessary?
-    address.forget();
-    payload.forget();
 
     return (PyObject*)pyMessage.take();
 }
@@ -260,23 +259,23 @@ static PyObject* PyIOSocket_bind_sync(PyIOSocket* self, PyObject* args, PyObject
 
     const char* address   = nullptr;
     Py_ssize_t addressLen = 0;
-    const char* kwlist[]  = {"address", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#", (char**)kwlist, &address, &addressLen))
+    int timeout_secs      = -1;
+    const char* kwlist[]  = {"address", "timeout_secs", nullptr};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|i", (char**)kwlist, &address, &addressLen, &timeout_secs))
         return nullptr;
 
     PyThreadState* _save = PyEval_SaveThread();
 
     auto result = std::make_shared<std::expected<void, Error>>();
     try {
-        Waiter waiter(state->wakeupfd_rd);
+        Waiter waiter(state->wakeupfd_rd, timeout_secs == -1 ? std::nullopt : std::optional {timeout_secs});
 
         self->socket->bindTo(std::string(address, addressLen), [=](auto r) mutable {
             *result = std::move(r);
             waiter.signal();
         });
 
-        if (waiter.wait())
-            CHECK_SIGNALS;
+        WAIT(waiter);
     } catch (...) {
         PyEval_RestoreThread(_save);
         PyErr_SetString(PyExc_RuntimeError, "Failed to bind synchronously");
@@ -327,23 +326,23 @@ static PyObject* PyIOSocket_connect_sync(PyIOSocket* self, PyObject* args, PyObj
 
     const char* address   = nullptr;
     Py_ssize_t addressLen = 0;
-    const char* kwlist[]  = {"address", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#", (char**)kwlist, &address, &addressLen))
+    int timeout_secs      = -1;
+    const char* kwlist[]  = {"address", "timeout_secs", nullptr};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s#|i", (char**)kwlist, &address, &addressLen, timeout_secs))
         return nullptr;
 
     PyThreadState* _save = PyEval_SaveThread();
 
     std::shared_ptr<std::expected<void, Error>> result = std::make_shared<std::expected<void, Error>>();
     try {
-        Waiter waiter(state->wakeupfd_rd);
+        Waiter waiter(state->wakeupfd_rd, timeout_secs == -1 ? std::nullopt : std::optional {timeout_secs});
 
         self->socket->connectTo(std::string(address, addressLen), [=](auto r) mutable {
             *result = std::move(r);
             waiter.signal();
         });
 
-        if (waiter.wait())
-            CHECK_SIGNALS;
+        WAIT(waiter);
     } catch (...) {
         PyEval_RestoreThread(_save);
         PyErr_SetString(PyExc_RuntimeError, "Failed to connect synchronously");
@@ -407,7 +406,10 @@ static PyMethodDef PyIOSocket_methods[] = {
      (PyCFunction)PyIOSocket_send_sync,
      METH_VARARGS | METH_KEYWORDS,
      PyDoc_STR("Send data through the IOSocket synchronously")},
-    {"recv_sync", (PyCFunction)PyIOSocket_recv_sync, METH_NOARGS, PyDoc_STR("Receive data from the IOSocket")},
+    {"recv_sync",
+     (PyCFunction)PyIOSocket_recv_sync,
+     METH_VARARGS | METH_KEYWORDS,
+     PyDoc_STR("Receive data from the IOSocket")},
     {"bind_sync",
      (PyCFunction)PyIOSocket_bind_sync,
      METH_VARARGS | METH_KEYWORDS,

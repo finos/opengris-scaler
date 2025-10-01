@@ -9,10 +9,10 @@ from multiprocessing.synchronize import Event as EventType
 from typing import IO, Callable, List, Optional, Tuple, cast
 
 import tblib.pickling_support
-import zmq
+from scaler.io.ymq import ymq
 
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
-from scaler.io.sync_connector import ZMQSyncConnector
+from scaler.io.ymq_sync_connector import YMQSyncConnector
 from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata, TaskResultType
 from scaler.protocol.python.message import ObjectInstruction, ProcessorInitialized, Task, TaskLog, TaskResult
@@ -65,6 +65,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def run(self) -> None:
         self.__initialize()
         self.__run_forever()
+        print("PROCESSOR EXITING..........")
 
     @staticmethod
     def get_current_processor() -> Optional["Processor"]:
@@ -83,8 +84,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         setup_logger(log_paths=tuple(logging_paths), logging_level=self._logging_level)
         tblib.pickling_support.install()
 
-        self._connector_agent: SyncConnector = ZMQSyncConnector(
-            context=zmq.Context(), socket_type=zmq.DEALER, address=self._agent_address, identity=None
+        self._connector_agent: SyncConnector = YMQSyncConnector(
+            context=ymq.IOContext(), socket_type=ymq.IOSocketType.Connector, address=self._agent_address, identity=None
         )
         self._connector_storage: SyncObjectStorageConnector = PySyncObjectStorageConnector(
             self._storage_address.host, self._storage_address.port
@@ -127,11 +128,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
                 self.__on_connector_receive(message)
 
-        except zmq.error.ZMQError as e:
-            if e.errno != zmq.ENOTSOCK:  # ignore if socket got closed
-                raise
-
-        except (KeyboardInterrupt, InterruptedError):
+        except (KeyboardInterrupt, InterruptedError, ymq.YMQInterruptedException):
             pass
 
         except Exception as e:

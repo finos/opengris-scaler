@@ -4,13 +4,14 @@ import multiprocessing
 import os
 import signal
 import tempfile
+import random
 import uuid
 from typing import Dict, Optional, Tuple
 
-import zmq.asyncio
+from scaler.io.ymq import ymq
 
-from scaler.io.async_binder import ZMQAsyncBinder
-from scaler.io.async_connector import ZMQAsyncConnector
+from scaler.io.ymq_async_binder import YMQAsyncBinder
+from scaler.io.ymq_async_connector import YMQAsyncConnector
 from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
 from scaler.io.config import PROFILING_INTERVAL_SECONDS
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
@@ -70,8 +71,9 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self._ident = WorkerID.generate_worker_id(name)  # _identity is internal to multiprocessing.Process
 
-        self._address_path_internal = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
-        self._address_internal = ZMQConfig(ZMQType.ipc, host=self._address_path_internal)
+        # self._address_path_internal = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
+        # self._address_internal = ZMQConfig(ZMQType.ipc, host=self._address_path_internal)
+        self._address_internal = ZMQConfig(ZMQType.tcp, host="127.0.0.1", port=random.randint(20000, 30000))
 
         self._task_queue_size = task_queue_size
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
@@ -84,7 +86,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._logging_paths = logging_paths
         self._logging_level = logging_level
 
-        self._context: Optional[zmq.asyncio.Context] = None
+        self._context: Optional[ymq.IOContext] = None
         self._connector_external: Optional[AsyncConnector] = None
         self._binder_internal: Optional[AsyncBinder] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
@@ -105,19 +107,19 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         setup_logger()
         register_event_loop(self._event_loop)
 
-        self._context = zmq.asyncio.Context()
-        self._connector_external = ZMQAsyncConnector(
+        self._context = ymq.IOContext()
+        self._connector_external = YMQAsyncConnector(
             context=self._context,
             name=self.name,
-            socket_type=zmq.DEALER,
+            socket_type=ymq.IOSocketType.Connector,
             address=self._address,
             bind_or_connect="connect",
             callback=self.__on_receive_external,
             identity=self._ident,
         )
 
-        self._binder_internal = ZMQAsyncBinder(
-            context=self._context, name=self.name, address=self._address_internal, identity=self._ident
+        self._binder_internal = YMQAsyncBinder(
+            context=self._context, name=self.name, address=self._address_internal, identity=self._ident.extend("|internal")
         )
         self._binder_internal.register(self.__on_receive_internal)
 
@@ -228,7 +230,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
                 create_async_loop_routine(self._profiling_manager.routine, PROFILING_INTERVAL_SECONDS),
             )
         except asyncio.CancelledError:
-            pass
+            print("WORKER TASK CANCELED")
         except (ClientShutdownException, TimeoutError) as e:
             logging.info(f"{self.identity!r}: {str(e)}")
         except Exception as e:
@@ -236,10 +238,11 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
 
+
         self._connector_external.destroy()
         self._processor_manager.destroy("quit")
         self._binder_internal.destroy()
-        os.remove(self._address_path_internal)
+        # os.remove(self._address_path_internal)
 
         logging.info(f"{self.identity!r}: quit")
 

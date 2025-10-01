@@ -14,6 +14,7 @@ runs:
       shell: bash
       run: |
         CXX=$(which g++-14) ./scripts/build.sh
+        sudo ./scripts/test.sh
 
     - name: Build and test C++ Components (Windows)
       if: inputs.os == 'Windows'

@@ -1,6 +1,7 @@
 #pragma once
 
 // Python
+#include <optional>
 #include <stdexcept>
 
 #include "scaler/io/ymq/pymod_ymq/python.h"
@@ -11,6 +12,7 @@
 // C
 #include <sys/eventfd.h>
 #include <sys/poll.h>
+#include <sys/timerfd.h>
 
 #include <print>
 
@@ -18,21 +20,37 @@
 #include "scaler/io/ymq/common.h"
 #include "scaler/io/ymq/pymod_ymq/ymq.h"
 
+enum class WaitResult {
+    Ok,
+    Signal,
+    Timeout,
+};
+
 class Waiter {
 public:
-    Waiter(int wakeFd): _waiter(std::shared_ptr<int>(new int, &destroy_efd)), _wakeFd(wakeFd)
+    Waiter(int wakeFd, std::optional<int> timeout_secs = std::nullopt)
+        : _timeout_secs(timeout_secs)
+        , _timer_fd(std::shared_ptr<int>(new int, &destroy_fd))
+        , _waiter(std::shared_ptr<int>(new int, &destroy_fd))
+        , _wake_fd(wakeFd)
     {
-        auto fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-        if (fd < 0)
+        auto efd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+        if (efd < 0)
             throw std::runtime_error("failed to create eventfd");
 
-        *_waiter = fd;
+        *_waiter = efd;
+
+        auto tfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+        if (tfd < 0)
+            throw std::runtime_error("failed to create timerfd");
+
+        *_timer_fd = tfd;
     }
 
-    Waiter(const Waiter& other): _waiter(other._waiter), _wakeFd(other._wakeFd) {}
-    Waiter(Waiter&& other) noexcept: _waiter(std::move(other._waiter)), _wakeFd(other._wakeFd)
+    Waiter(const Waiter& other): _waiter(other._waiter), _wake_fd(other._wake_fd) {}
+    Waiter(Waiter&& other) noexcept: _waiter(std::move(other._waiter)), _wake_fd(other._wake_fd)
     {
-        other._wakeFd = -1;  // invalidate the moved-from object
+        other._wake_fd = -1;  // invalidate the moved-from object
     }
 
     Waiter& operator=(const Waiter& other)
@@ -40,8 +58,8 @@ public:
         if (this == &other)
             return *this;
 
-        this->_waiter = other._waiter;
-        this->_wakeFd = other._wakeFd;
+        this->_waiter  = other._waiter;
+        this->_wake_fd = other._wake_fd;
         return *this;
     }
 
@@ -50,9 +68,9 @@ public:
         if (this == &other)
             return *this;
 
-        this->_waiter = std::move(other._waiter);
-        this->_wakeFd = other._wakeFd;
-        other._wakeFd = -1;  // invalidate the moved-from object
+        this->_waiter  = std::move(other._waiter);
+        this->_wake_fd = other._wake_fd;
+        other._wake_fd = -1;  // invalidate the moved-from object
         return *this;
     }
 
@@ -63,24 +81,37 @@ public:
         }
     }
 
-    // true -> error
-    // false -> ok
-    bool wait()
+    WaitResult wait()
     {
-        pollfd pfds[2] = {
+        pollfd pfds[3] = {
             {
                 .fd      = *_waiter,
                 .events  = POLLIN,
                 .revents = 0,
             },
             {
-                .fd      = _wakeFd,
+                .fd      = _wake_fd,
+                .events  = POLLIN,
+                .revents = 0,
+            },
+            {
+                .fd      = *_timer_fd,
                 .events  = POLLIN,
                 .revents = 0,
             }};
 
+        if (_timeout_secs) {
+            itimerspec new_value {
+                .it_interval = {0, 0},
+                .it_value    = {*_timeout_secs, 0},
+            };
+
+            if (timerfd_settime(*_timer_fd, 0, &new_value, nullptr) < 0)
+                throw std::runtime_error("failed to set timerfd");
+        }
+
         for (;;) {
-            int ready = poll(pfds, 2, -1);
+            int ready = poll(pfds, 3, -1);
             if (ready < 0) {
                 if (errno == EINTR)
                     continue;
@@ -88,18 +119,23 @@ public:
             }
 
             if (pfds[0].revents & POLLIN)
-                return false;  // we got a message
+                return WaitResult::Ok;  // we got a message
 
             if (pfds[1].revents & POLLIN)
-                return true;  // signal received
+                return WaitResult::Signal;  // signal received
+
+            if (pfds[2].revents & POLLIN)
+                return WaitResult::Timeout;  // timeout
         }
     }
 
 private:
+    std::optional<int> _timeout_secs;
+    std::shared_ptr<int> _timer_fd;
     std::shared_ptr<int> _waiter;
-    int _wakeFd;
+    int _wake_fd;
 
-    static void destroy_efd(int* fd)
+    static void destroy_fd(int* fd)
     {
         if (!fd)
             return;

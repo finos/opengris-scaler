@@ -4,7 +4,7 @@ from functools import partial
 
 from nicegui import ui
 
-from scaler.io.sync_subscriber import ZMQSyncSubscriber
+from scaler.io.ymq_sync_subscriber import YMQSyncSubscriber
 from scaler.protocol.python.message import StateScheduler, StateTask
 from scaler.protocol.python.mixins import Message
 from scaler.ui.constants import (
@@ -75,7 +75,7 @@ def start_webui(address: str, host: str, port: int):
         with ui.tab_panel(settings_tab):
             tables.settings_section.draw_section()
 
-    subscriber = ZMQSyncSubscriber(
+    subscriber = YMQSyncSubscriber(
         address=ZMQConfig.from_string(address),
         callback=partial(__show_status, tables=tables),
         topic=b"",

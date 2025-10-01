@@ -51,10 +51,12 @@ all = [
 
 [dependency-groups]
 dev = [
-    "black>=25.1.0",
+    "black>=24.8.0; python_version == '3.8'",
+    "black>=25.1.0; python_version >= '3.8'",
     "flake8>=7.3.0",
     "flake8-pyproject>=1.2.3",
     "mypy>=1.17.1",
+    "scapy==2.*",
 ]
 
 [tool.scikit-build.metadata.version]
