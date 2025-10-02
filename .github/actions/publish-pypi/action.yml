@@ -37,5 +37,6 @@ runs:
         CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
 
     - name: Publish to PyPI
+      shell: bash
       run: |
         twine upload -r scaler -u "$PYPI_USERNAME" -p "$PYPI_PASSWORD" dist/*
