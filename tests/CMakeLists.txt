@@ -11,6 +11,8 @@ set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
 set(BUILD_GTEST ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+find_package(Python3 COMPONENTS Development REQUIRED)
+
 # This function compiles, links, and adds a C++ test executable using Google Test.
 # It is shared by all test subdirectories.
 function(add_test_executable test_name source_file)
@@ -26,11 +28,11 @@ function(add_test_executable test_name source_file)
         CapnProto::capnp
         CapnProto::kj
         GTest::gtest_main
+        Python3::Python
     )
 
     add_test(NAME ${test_name} COMMAND ${test_name})
 endfunction()
-
 
 if(LINUX OR APPLE)
   # This directory fetches Google Test, so it must be included first.
@@ -38,4 +40,5 @@ if(LINUX OR APPLE)
 
   # Add the new directory for io tests.
   add_subdirectory(io/ymq)
+  add_subdirectory(cpp)
 endif()
