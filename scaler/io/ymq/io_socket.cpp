@@ -43,6 +43,10 @@ void IOSocket::sendMessage(Message message, SendMessageCallback onMessageSent) n
                 callback(std::unexpected {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd});
                 return;
             }
+            if (!message.address.data() && this->socketType() == IOSocketType::Binder) {
+                callback(std::unexpected {Error::ErrorCode::BinderSendMessageWithNoAddress});
+            }
+
             MessageConnectionTCP* conn = nullptr;
 
             std::string address = std::string((char*)message.address.data(), message.address.len());

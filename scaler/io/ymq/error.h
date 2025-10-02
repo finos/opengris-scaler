@@ -32,6 +32,7 @@ struct Error: public std::exception {
         RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery,
         ConnectorSocketClosedByRemoteEnd,
         IOSocketStopRequested,
+        BinderSendMessageWithNoAddress,
     };
 
     // NOTE:
@@ -83,6 +84,8 @@ struct Error: public std::exception {
             case ErrorCode::ConnectorSocketClosedByRemoteEnd:
                 return "You have an IOSocket with Connector type but the only connection is closed by remote end";
             case ErrorCode::IOSocketStopRequested: return "Current IOSocket is requested to stop by another thread";
+            case ErrorCode::BinderSendMessageWithNoAddress:
+                return "You call sendMessage with a Binder IOSocket but failed to provide an address";
         }
         fprintf(stderr, "Unrecognized ErrorCode value, program exits\n");
         std::exit(1);
