@@ -1,0 +1,1 @@
+add_test_executable(test_cc_ymq test_cc_ymq.cpp)
