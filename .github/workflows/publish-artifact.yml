@@ -3,6 +3,11 @@ name: Publish Python package to PyPI
 on:
   release:
     types: [ created ]
+    secrets:
+      PYPI_USERNAME:
+        required: true
+      PYPI_PASSWORD:
+        required: true
 
 permissions:
   contents: read
@@ -18,7 +23,6 @@ jobs:
     permissions:
       id-token: write
     steps:
-      # - uses: ./.github/actions/checkout
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
         with:
@@ -34,3 +38,5 @@ jobs:
       - uses: ./.github/actions/publish-pypi
         with:
           os: ${{ runner.os }}
+          username: ${{ secrets.PYPI_USERNAME }}
+          password: ${{ secrets.PYPI_PASSWORD }}
