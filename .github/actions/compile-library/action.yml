@@ -9,11 +9,16 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Install dependencies for MITM tests
+      shell: bash
+      run: uv pip install --system scapy==2.*
+
     - name: Build and test C++ Components (Linux)
       if: inputs.os == 'Linux'
       shell: bash
       run: |
         CXX=$(which g++-14) ./scripts/build.sh
+        sudo ./scripts/test.sh
 
     - name: Build and test C++ Components (Windows)
       if: inputs.os == 'Windows'
