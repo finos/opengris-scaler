@@ -5,12 +5,6 @@ inputs:
   os:
     description: "operating system"
     required: true
-  username:
-    description: "username"
-    required: true
-  password:
-    description: "password"
-    required: true
 
 
 runs:
@@ -46,11 +40,9 @@ runs:
     - name: Publish to PyPI
       shell: bash
       run: |
-        twine upload -r pypi -u "${{ inputs.username }}" -p "${{ inputs.password }}" dist/*
+        twine upload -r pypi dist/*
 
     #- name: Publish to PyPI
     #  uses: pypa/gh-action-pypi-publish@release/v1
     #  with:
-    #    user: ${{ inputs.username }}
-    #    password: ${{ inputs.password }}
     #    packages-dir: ./dist/
