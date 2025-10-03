@@ -21,8 +21,8 @@ class NullScalingController(ScalingController):
 
 
 class VanillaScalingController(ScalingController):
-    def __init__(self, adapter_webhook_url: str, lower_task_ratio: float = 1, upper_task_ratio: float = 10):
-        self._adapter_webhook_url = adapter_webhook_url
+    def __init__(self, manager_webhook_url: str, lower_task_ratio: float = 1, upper_task_ratio: float = 10):
+        self._manager_webhook_url = manager_webhook_url
         self._lower_task_ratio = lower_task_ratio
         self._upper_task_ratio = upper_task_ratio
         assert upper_task_ratio >= lower_task_ratio
@@ -71,7 +71,7 @@ class VanillaScalingController(ScalingController):
             {"action": "shutdown_worker_group", "worker_group_id": worker_group_id.decode()}
         )
         if status == web.HTTPNotFound.status_code:
-            logging.error(f"Worker group with ID {worker_group_id.decode()} not found in adapter.")
+            logging.error(f"Worker group with ID {worker_group_id.decode()} not found in worker manager.")
             return
         if status == web.HTTPInternalServerError.status_code:
             logging.error(f"Failed to shutdown worker group: {response.get('error', 'Unknown error')}")
@@ -82,5 +82,5 @@ class VanillaScalingController(ScalingController):
 
     async def _make_request(self, payload):
         async with aiohttp.ClientSession() as session:
-            async with session.post(self._adapter_webhook_url, json=payload) as response:
+            async with session.post(self._manager_webhook_url, json=payload) as response:
                 return await response.json(), response.status

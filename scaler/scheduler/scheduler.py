@@ -104,8 +104,8 @@ class Scheduler:
         )
         self._information_controller = VanillaInformationController(config_controller=self._config_controller)
         self._scaling_controller = (
-            VanillaScalingController(config.adapter_webhook_url)
-            if config.adapter_webhook_url
+            VanillaScalingController(config.manager_webhook_url)
+            if config.manager_webhook_url
             else NullScalingController()
         )
 

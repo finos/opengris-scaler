@@ -3,24 +3,24 @@ import argparse
 from aiohttp import web
 
 from scaler.config.loader import load_config
-from scaler.config.section.symphony_worker_adapter import SymphonyWorkerConfig
+from scaler.config.section.worker_manager_symphony import WorkerManagerSymphonyConfig
 from scaler.utility.event_loop import EventLoopType, register_event_loop
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_adapter.symphony.worker_adapter import SymphonyWorkerAdapter
+from scaler.worker_manager.symphony.worker_manager import WorkerManagerSymphony
 
 
 def get_args():
     parser = argparse.ArgumentParser(
-        "scaler Symphony worker adapter", formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        "scaler_symphony_worker_manager", formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument("--config", "-c", type=str, default=None, help="Path to the TOML configuration file.")
 
     # Server configuration
     parser.add_argument(
-        "--server-http-host", "-h", type=str, help="host address for the native worker adapter HTTP server"
+        "--server-http-host", "-h", type=str, help="host address for the native Worker Manager HTTP server"
     )
     parser.add_argument(
-        "--server-http-port", "-p", type=int, required=True, help="port for the native worker adapter HTTP server"
+        "--server-http-port", "-p", type=int, required=True, help="port for the native Worker Manager HTTP server"
     )
 
     # Symphony configuration
@@ -73,12 +73,14 @@ def get_args():
 
 def main():
     args = get_args()
-    symphony_config = load_config(SymphonyWorkerConfig, args.config, args, section_name="symphony_worker_adapter")
+    symphony_config = load_config(
+        WorkerManagerSymphonyConfig, args.config, args, section_name="worker_manager_symphony"
+    )
     register_event_loop(symphony_config.event_loop)
 
     setup_logger(symphony_config.logging_paths, symphony_config.logging_config_file, symphony_config.logging_level)
 
-    symphony_worker_adapter = SymphonyWorkerAdapter(
+    worker_manager_symphony = WorkerManagerSymphony(
         address=symphony_config.scheduler_address,
         object_storage_address=symphony_config.object_storage_address,
         capabilities=symphony_config.worker_capabilities.capabilities,
@@ -94,7 +96,7 @@ def main():
         logging_config_file=symphony_config.logging_config_file,
     )
 
-    app = symphony_worker_adapter.create_app()
+    app = worker_manager_symphony.create_app()
     web.run_app(app, host=symphony_config.server_http_host, port=symphony_config.server_http_port)
 
 

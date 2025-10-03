@@ -22,7 +22,7 @@ class WorkerGroupNotFoundError(Exception):
     pass
 
 
-class NativeWorkerAdapter:
+class WorkerManagerNative:
     def __init__(
         self,
         address: ZMQConfig,
@@ -60,7 +60,7 @@ class NativeWorkerAdapter:
         self._logging_config_file = logging_config_file
 
         """
-        Although a worker group can contain multiple workers, in this native adapter implementation,
+        Although a worker group can contain multiple workers, in this native worker manager implementation,
         each worker group will only contain one worker.
         """
         self._worker_groups: Dict[WorkerGroupID, Dict[WorkerID, Worker]] = {}

@@ -1,4 +1,4 @@
-from scaler.entry_points.worker_adapter_symphony import main
+from scaler.entry_points.worker_manager_native import main
 from scaler.utility.debug import pdb_wrapped
 
 if __name__ == "__main__":

@@ -76,8 +76,8 @@ scaler_cluster = "scaler.entry_points.cluster:main"
 scaler_top = "scaler.entry_points.top:main"
 scaler_ui = "scaler.entry_points.webui:main"
 scaler_object_storage_server = "scaler.entry_points.object_storage_server:main"
-scaler_worker_adapter_native = "scaler.entry_points.worker_adapter_native:main"
-scaler_worker_adapter_symphony = "scaler.entry_points.worker_adapter_symphony:main"
+scaler_worker_manager_native = "scaler.entry_points.worker_manager_native:main"
+scaler_worker_manager_symphony = "scaler.entry_points.worker_manager_symphony:main"
 
 [tool.scikit-build]
 cmake.source-dir = "."

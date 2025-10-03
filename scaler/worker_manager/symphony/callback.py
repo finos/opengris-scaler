@@ -4,7 +4,7 @@ from typing import Dict
 
 import cloudpickle
 
-from scaler.worker_adapter.symphony.message import SoamMessage
+from scaler.worker_manager.symphony.message import SoamMessage
 
 try:
     import soamapi

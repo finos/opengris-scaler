@@ -16,8 +16,8 @@ from scaler.utility.mixins import Looper
 from scaler.utility.queues.async_sorted_priority_queue import AsyncSortedPriorityQueue
 from scaler.utility.serialization import serialize_failure
 from scaler.worker.agent.mixins import HeartbeatManager, TaskManager
-from scaler.worker_adapter.symphony.callback import SessionCallback
-from scaler.worker_adapter.symphony.message import SoamMessage
+from scaler.worker_manager.symphony.callback import SessionCallback
+from scaler.worker_manager.symphony.message import SoamMessage
 
 try:
     import soamapi
