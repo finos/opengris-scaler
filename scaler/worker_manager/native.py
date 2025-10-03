@@ -22,7 +22,7 @@ class WorkerGroupNotFoundError(Exception):
     pass
 
 
-class NativeWorkerAdapter:
+class WorkerManagerNative:
     def __init__(
         self,
         address: ZMQConfig,

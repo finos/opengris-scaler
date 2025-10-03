@@ -26,8 +26,8 @@ from scaler.utility.logging.utility import setup_logger
 from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
-from scaler.worker_adapter.symphony.heartbeat_manager import SymphonyHeartbeatManager
-from scaler.worker_adapter.symphony.task_manager import SymphonyTaskManager
+from scaler.worker_manager.symphony.heartbeat_manager import SymphonyHeartbeatManager
+from scaler.worker_manager.symphony.task_manager import SymphonyTaskManager
 
 
 class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ignore
