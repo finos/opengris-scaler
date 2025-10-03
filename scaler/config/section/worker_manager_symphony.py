@@ -9,7 +9,7 @@ from scaler.utility.logging.utility import LoggingLevel
 
 
 @dataclasses.dataclass
-class SymphonyWorkerConfig:
+class WorkerManagerSymphonyConfig:
     scheduler_address: ZMQConfig
     object_storage_address: Optional[ObjectStorageConfig]
     service_name: str

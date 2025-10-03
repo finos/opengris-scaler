@@ -9,7 +9,7 @@ from aiohttp.web_request import Request
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.utility.identifiers import WorkerID
-from scaler.worker_adapter.symphony.worker import SymphonyWorker
+from scaler.worker_manager.symphony.worker import SymphonyWorker
 
 WorkerGroupID = bytes
 
@@ -22,7 +22,7 @@ class WorkerGroupNotFoundError(Exception):
     pass
 
 
-class SymphonyWorkerAdapter:
+class WorkerManagerSymphony:
     def __init__(
         self,
         address: ZMQConfig,
@@ -54,7 +54,7 @@ class SymphonyWorkerAdapter:
         self._logging_config_file = logging_config_file
 
         """
-        Although a worker group can contain multiple workers, in this Symphony adapter implementation,
+        Although a worker group can contain multiple workers, in this Symphony worker manager implementation,
         there will be only one worker group which contains one Symphony worker.
         """
         self._worker_groups: Dict[WorkerGroupID, Dict[WorkerID, SymphonyWorker]] = {}
