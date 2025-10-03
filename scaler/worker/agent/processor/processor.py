@@ -25,6 +25,7 @@ from scaler.utility.serialization import serialize_failure
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.processor.object_cache import ObjectCache
 from scaler.worker.agent.processor.streaming_buffer import StreamingBuffer
+from scaler.worker.preload import execute_preload
 
 SUSPEND_SIGNAL = "SIGUSR1"  # use str instead of a signal.Signal to not trigger an import error on unsupported systems.
 
@@ -37,6 +38,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         event_loop: str,
         agent_address: ZMQConfig,
         storage_address: ObjectStorageConfig,
+        preload: Optional[str],
         resume_event: Optional[EventType],
         resumed_event: Optional[EventType],
         garbage_collect_interval_seconds: int,
@@ -49,6 +51,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._event_loop = event_loop
         self._agent_address = agent_address
         self._storage_address = storage_address
+        self._preload = preload
 
         self._resume_event = resume_event
         self._resumed_event = resumed_event
@@ -97,6 +100,15 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._object_cache.start()
 
         self.__register_signals()
+
+        # Execute optional preload hook if provided
+        if self._preload is not None:
+            try:
+                execute_preload(self._preload)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Processor[{self.pid}] initialization failed due to preload error: {self._preload}"
+                ) from e
 
     def __register_signals(self):
         self.__register_signal("SIGTERM", self.__interrupt)

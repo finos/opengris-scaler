@@ -80,6 +80,45 @@ For the list of available settings, use the CLI command:
 
     scaler_cluster -h
 
+**Preload Hook**
+
+Workers can execute an optional initialization function before processing tasks using the ``--preload`` option. This enables workers to:
+
+* Set up environments on demand
+* Preload data, libraries, or models  
+* Initialize connections or state
+
+The preload specification follows the format ``module.path:function(args, kwargs)`` where:
+
+* ``module.path`` is the Python module to import
+* ``function`` is the callable to execute
+* ``args`` and ``kwargs`` are literal values (strings, numbers, booleans, lists, dicts)
+
+.. code:: bash
+
+    # Simple function call with no arguments
+    scaler_cluster tcp://127.0.0.1:8516 --preload "mypackage.init:setup"
+    
+    # Function call with arguments
+    scaler_cluster tcp://127.0.0.1:8516 --preload "mypackage.init:configure('production', debug=False)"
+
+The preload function is executed once per processor during initialization, before any tasks are processed. If the preload function fails, the error is logged and the processor will terminate.
+
+Example preload module (``mypackage/init.py``):
+
+.. code:: python
+
+    import logging
+    
+    def setup():
+        """Basic setup with no arguments"""
+        logging.info("Worker initialized")
+    
+    def configure(environment, debug=True):
+        """Setup with configuration parameters"""
+        logging.info(f"Configuring for {environment}, debug={debug}")
+        # Initialize connections, load models, etc.
+
 **Death Timeout**
 
 Workers are spun up with a ``death_timeout_seconds``, which indicates how long the worker will stay alive without being connected to a Scheduler. The default setting is 300 seconds. This is intended for the workers to clean up if the Scheduler crashes.
