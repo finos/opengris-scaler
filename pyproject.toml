@@ -124,3 +124,21 @@ skip-magic-trailing-comma = true
 [tool.isort]
 profile = "black"
 line_length = 120
+
+[tool.cibuildwheel]
+skip = "cp39-*"
+
+[tool.cibuildwheel.linux]
+before-all = """
+yum install -y sudo; \
+sudo ./scripts/download_install_libraries.sh capnp compile; \
+sudo ./scripts/download_install_libraries.sh capnp install;
+"""
+
+[[tool.cibuildwheel.overrides]]
+select = "*-musllinux*"
+before-all = """
+apk add sudo; \
+sudo ./scripts/download_install_libraries.sh capnp compile; \
+sudo ./scripts/download_install_libraries.sh capnp install;
+"""
