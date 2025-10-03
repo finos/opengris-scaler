@@ -32,7 +32,7 @@ from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientCancelledException, ClientQuitException, ClientShutdownException
 from scaler.utility.identifiers import ClientID
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.config.types.zmq import ZMQConfig
 
 
 class ClientAgent(threading.Thread):

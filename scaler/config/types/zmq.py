@@ -2,6 +2,9 @@ import dataclasses
 import enum
 from typing import Optional
 
+from typing_extensions import Self
+from scaler.config.mixins import ConfigType
+
 
 class ZMQType(enum.Enum):
     inproc = "inproc"
@@ -14,7 +17,7 @@ class ZMQType(enum.Enum):
 
 
 @dataclasses.dataclass
-class ZMQConfig:
+class ZMQConfig(ConfigType):
     type: ZMQType
     host: str
     port: Optional[int] = None
@@ -45,12 +48,12 @@ class ZMQConfig:
 
         raise TypeError(f"Unsupported ZMQ type: {self.type}")
 
-    @staticmethod
-    def from_string(string: str) -> "ZMQConfig":
-        if "://" not in string:
+    @classmethod
+    def from_string(cls, value: str) -> Self:
+        if "://" not in value:
             raise ValueError("valid ZMQ config should be like tcp://127.0.0.1:12345")
 
-        socket_type, host_port = string.split("://", 1)
+        socket_type, host_port = value.split("://", 1)
         if socket_type not in ZMQType.allowed_types():
             raise ValueError(f"supported ZMQ types are: {ZMQType.allowed_types()}")
 
@@ -67,7 +70,10 @@ class ZMQConfig:
         else:
             raise ValueError(f"Unsupported ZMQ type: {socket_type}")
 
-        return ZMQConfig(socket_type_enum, host, port_int)
+        return cls(socket_type_enum, host, port_int)
+
+    def __str__(self) -> str:
+        return self.to_address()
 
     def __repr__(self) -> str:
         return self.to_address()

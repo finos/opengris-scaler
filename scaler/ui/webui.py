@@ -20,7 +20,7 @@ from scaler.ui.task_graph import TaskStream
 from scaler.ui.task_log import TaskLogTable
 from scaler.ui.worker_processors import WorkerProcessors
 from scaler.utility.formatter import format_bytes, format_percentage
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.config.types.zmq import ZMQConfig
 
 
 @dataclasses.dataclass

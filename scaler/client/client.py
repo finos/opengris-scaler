@@ -27,7 +27,7 @@ from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
-from scaler.utility.zmq_config import ZMQConfig, ZMQType
+from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.worker.agent.processor.processor import Processor
 
 

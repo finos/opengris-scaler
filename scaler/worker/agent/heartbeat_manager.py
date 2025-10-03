@@ -7,7 +7,7 @@ from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.python.message import Resource, WorkerHeartbeat, WorkerHeartbeatEcho
 from scaler.protocol.python.status import ProcessorStatus
 from scaler.utility.mixins import Looper
-from scaler.utility.object_storage_config import ObjectStorageConfig
+from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.worker.agent.mixins import HeartbeatManager, ProcessorManager, TaskManager, TimeoutManager
 from scaler.worker.agent.processor_holder import ProcessorHolder
 
