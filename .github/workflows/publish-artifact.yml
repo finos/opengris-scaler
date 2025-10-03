@@ -30,7 +30,11 @@ jobs:
         with:
           os: ${{ runner.os }}
 
-      - uses: ./.github/actions/publish-pypi
+      - uses: ./.github/actions/create-artifacts
         with:
           os: ${{ runner.os }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: ./dist/
