@@ -5,6 +5,9 @@ inputs:
   os:
     description: "operating system"
     required: true
+  github_token:
+    description: "github token"
+    required: true
 
 
 runs:
@@ -37,10 +40,12 @@ runs:
         CIBW_SKIP: "pp* cp39-*"
         CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
 
-    #- name: Publish to PyPI
-    #  shell: bash
-    #  run: |
-    #    twine upload -r pypi dist/*
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.github_token }}
 
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1

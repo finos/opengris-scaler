@@ -33,3 +33,4 @@ jobs:
       - uses: ./.github/actions/publish-pypi
         with:
           os: ${{ runner.os }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
