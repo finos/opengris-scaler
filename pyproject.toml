@@ -126,19 +126,31 @@ profile = "black"
 line_length = 120
 
 [tool.cibuildwheel]
-skip = "cp39-*"
+skip = "pp* cp39-*"
 
 [tool.cibuildwheel.linux]
+archs = ["x86_64"]
+manylinux-x86_64-image = "manylinux_2_28"
 before-all = """
 yum install -y sudo; \
-sudo ./scripts/download_install_libraries.sh capnp compile; \
-sudo ./scripts/download_install_libraries.sh capnp install;
+sudo ./scripts/library_tool.sh capnp compile; \
+sudo ./scripts/library_tool.sh capnp install;
 """
 
 [[tool.cibuildwheel.overrides]]
 select = "*-musllinux*"
 before-all = """
 apk add sudo; \
-sudo ./scripts/download_install_libraries.sh capnp compile; \
-sudo ./scripts/download_install_libraries.sh capnp install;
+sudo ./scripts/library_tool.sh capnp compile; \
+sudo ./scripts/library_tool.sh capnp install;
 """
+
+#[tool.cibuildwheel.macos]
+#archs = ["x86_64", "arm64"]
+#before-all = """
+#yum install -y sudo; \
+#sudo ./scripts/library_tool.sh capnp compile; \
+#sudo ./scripts/library_tool.sh capnp install;
+#"""
+
+

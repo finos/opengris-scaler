@@ -6,7 +6,6 @@ inputs:
     description: "operating system"
     required: true
 
-
 runs:
   using: "composite"
   steps:

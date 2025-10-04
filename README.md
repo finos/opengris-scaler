@@ -26,7 +26,8 @@
 
 <br />
 
-**OpenGRIS Scaler provides a simple, efficient, and reliable way to perform distributed computing** using a centralized scheduler,
+**OpenGRIS Scaler provides a simple, efficient, and reliable way to perform distributed computing** using a centralized
+scheduler,
 with a stable and language-agnostic protocol for client and worker communications.
 
 ```python
@@ -43,7 +44,8 @@ with Client(address="tcp://127.0.0.1:2345") as client:
     print(sum(results))  # 661.46
 ```
 
-OpenGRIS Scaler is a suitable Dask replacement, offering significantly better scheduling performance for jobs with a large number
+OpenGRIS Scaler is a suitable Dask replacement, offering significantly better scheduling performance for jobs with a
+large number
 of lightweight tasks while improving on load balancing, messaging, and deadlocks.
 
 ## Features
@@ -51,14 +53,15 @@ of lightweight tasks while improving on load balancing, messaging, and deadlocks
 - Distributed computing across **multiple cores and multiple servers**
 - **Python** reference implementation, with **language-agnostic messaging protocol** built on top of
   [Cap'n Proto](https://capnproto.org/) and [ZeroMQ](https://zeromq.org)
-- **Graph** scheduling, which supports [Dask](https://www.dask.org)-like graph computing, with optional [GraphBLAS](https://graphblas.org)
+- **Graph** scheduling, which supports [Dask](https://www.dask.org)-like graph computing, with
+  optional [GraphBLAS](https://graphblas.org)
   support for very large graph tasks
-- **Automated load balancing**, which automatically balances load from busy workers to idle workers, ensuring uniform utilization across workers
+- **Automated load balancing**, which automatically balances load from busy workers to idle workers, ensuring uniform
+  utilization across workers
 - **Automated task recovery** from worker-related hardware, OS, or network failures
 - Support for **nested tasks**, allowing tasks to submit new tasks
 - `top`-like **monitoring tools**
 - GUI monitoring tool
-
 
 ## Installation
 
@@ -79,10 +82,12 @@ Scaler has 3 main components:
 
 - A **scheduler**, responsible for routing tasks to available computing resources.
 - An **object storage server** that stores the task data objects (task arguments and task results).
-- A set of **workers** that form a _cluster_. Workers are independent computing units, each capable of executing a single task.
+- A set of **workers** that form a _cluster_. Workers are independent computing units, each capable of executing a
+  single task.
 - **Clients** running inside applications, responsible for submitting tasks to the scheduler.
 
-Please be noted that **Clients** are cross platform, supporting Windows and GNU/Linux, while other components can only be run on GNU/Linux.
+Please be noted that **Clients** are cross platform, supporting Windows and GNU/Linux, while other components can only
+be run on GNU/Linux.
 
 ### Start local scheduler and cluster programmatically in code
 
@@ -136,7 +141,8 @@ $ scaler_cluster -n 4 tcp://127.0.0.1:2345
 ...
 ```
 
-Multiple Scaler clusters can be connected to the same scheduler, providing distributed computation over multiple servers.
+Multiple Scaler clusters can be connected to the same scheduler, providing distributed computation over multiple
+servers.
 
 `-h` lists the available options for the object storage server, scheduler and the cluster executables:
 
@@ -159,8 +165,8 @@ def square(value: int):
 
 
 with Client(address="tcp://127.0.0.1:2345") as client:
-    future = client.submit(square, 4) # submits a single task
-    print(future.result()) # 16
+    future = client.submit(square, 4)  # submits a single task
+    print(future.result())  # 16
 ```
 
 `Client.submit()` returns a standard Python future.
@@ -221,7 +227,7 @@ def fibonacci(client: Client, n: int):
 
 with Client(address="tcp://127.0.0.1:2345") as client:
     future = client.submit(fibonacci, client, 8)
-    print(future.result()) # 21
+    print(future.result())  # 21
 ```
 
 ## Task Routing and Capability Management
@@ -266,7 +272,8 @@ with Client(address="tcp://127.0.0.1:2345") as client:
 
 The scheduler will route a task to a worker if `task.capabilities.is_subset(worker.capabilities)`.
 
-Integer values specified for capabilities (e.g., `gpu=10`) are *currently* ignored by the capabilities allocation policy.
+Integer values specified for capabilities (e.g., `gpu=10`) are *currently* ignored by the capabilities allocation
+policy.
 This means that the presence of a capabilities is considered, but not its quantity. Support for capabilities tracking
 might be added in the future.
 
@@ -307,6 +314,7 @@ class Message(soamapi.Message):
     def on_deserialize(self, stream):
         self.set_payload(stream.read_byte_array("b"))
 
+
 class ServiceContainer(soamapi.ServiceContainer):
     def on_create_service(self, service_context):
         return
@@ -330,6 +338,7 @@ class ServiceContainer(soamapi.ServiceContainer):
     def on_destroy_service(self):
         return
 ```
+
 </details>
 
 ### Nested tasks
@@ -354,7 +363,8 @@ A good heuristic for setting the base concurrency is to use the following formul
 base_concurrency = number_of_cores - deepest_nesting_level
 ```
 
-where `deepest_nesting_level` is the deepest nesting level a task has in your workload. For instance, if you have a workload that has
+where `deepest_nesting_level` is the deepest nesting level a task has in your workload. For instance, if you have a
+workload that has
 a base task that calls a nested task that calls another nested task, then the deepest nesting level is 2.
 
 ## Worker Adapter usage
@@ -364,7 +374,8 @@ a base task that calls a nested task that calls another nested task, then the de
 Scaler provides a Worker Adapter webhook interface to integrate with other job schedulers or resource managers. The
 Worker Adapter allows external systems to request the creation and termination of Scaler workers dynamically.
 
-Please check the OpenGRIS standard for more details on the Worker Adapter specification [here](https://github.com/finos/opengris).
+Please check the OpenGRIS standard for more details on the Worker Adapter
+specification [here](https://github.com/finos/opengris).
 
 ### Starting the Native Worker Adapter
 
@@ -443,8 +454,9 @@ W|Linux|15943|a7fe8b5e+    0.0%   30.7m  0.0% 28.3m 1000    0      0 |
 - **scheduler_sent** section shows count for each type of messages scheduler sent
 - **scheduler_received** section shows count for each type of messages scheduler received
 - **function_id_to_tasks** section shows task count for each function used
-- **worker** section shows worker details, , you can use shortcuts to sort by columns, and the * in the column header shows
-which column is being used for sorting
+- **worker** section shows worker details, , you can use shortcuts to sort by columns, and the * in the column header
+  shows
+  which column is being used for sorting
     - `agt_cpu/agt_rss` means cpu/memory usage of worker agent
     - `cpu/rss` means cpu/memory usage of worker
     - `free` means number of free task slots for this worker
@@ -473,13 +485,13 @@ We showcased Scaler at FOSDEM 2025. Check out the slides
 To contribute to Scaler, you might need to manually build its C++ components.
 
 These C++ components depend on the Boost and Cap'n Proto libraries. If these libraries are not available on your system,
-you can use the `download_install_libraries.sh` script to download, compile, and install them (You might need `sudo`):
+you can use the `library_tool.sh` script to download, compile, and install them (You might need `sudo`):
 
 ```bash
-./scripts/download_install_libraries.sh boost compile
-./scripts/download_install_libraries.sh boost install
-./scripts/download_install_libraries.sh capnp compile
-./scripts/download_install_libraries.sh capnp install
+./scripts/library_tool.sh boost compile
+./scripts/library_tool.sh boost install
+./scripts/library_tool.sh capnp compile
+./scripts/library_tool.sh capnp install
 ```
 
 After installing these dependencies, use the `build.sh` script to configure, build, and install Scaler's C++ components:
@@ -494,16 +506,19 @@ within the main source tree, as compiled Python modules. You can specify the com
 
 ### Building on Windows
 
-*Building on Windows requires _Visual Studio 17 2022_*. Similar to the former section, you can use the `download_install_libraries.ps1` script to download, compile, and install them (You might need `Run as administrator`):
+*Building on Windows requires _Visual Studio 17 2022_*. Similar to the former section, you can use the
+`library_tool.ps1` script to download, compile, and install them (You might need `Run as administrator`):
 
 ```bash
-./scripts/download_install_libraries.ps1 boost compile
-./scripts/download_install_libraries.ps1 boost install
-./scripts/download_install_libraries.ps1 capnp compile
-./scripts/download_install_libraries.ps1 capnp install
+./scripts/library_tool.ps1 boost compile
+./scripts/library_tool.ps1 boost install
+./scripts/library_tool.ps1 capnp compile
+./scripts/library_tool.ps1 capnp install
 ```
 
-After installing these dependencies, if you are using _Visual Studio_ for developing, you may open the project folder with it, select preset `windows-x64`, and build the project. You may also run the following commands to configure, build, and install Scaler's C++ components:
+After installing these dependencies, if you are using _Visual Studio_ for developing, you may open the project folder
+with it, select preset `windows-x64`, and build the project. You may also run the following commands to configure,
+build, and install Scaler's C++ components:
 
 ```bash
 cmake --preset windows-x64
@@ -511,7 +526,8 @@ cmake --build --preset windows-x64 --config (Debug|Release)
 cmake --install build_windows_x64 --config (Debug|Release)
 ```
 
-The output will be similar to what described in the former section. We recommend using _Visual Studio_ for developing on Windows.
+The output will be similar to what described in the former section. We recommend using _Visual Studio_ for developing on
+Windows.
 
 ### Building the Python wheel
 
@@ -523,10 +539,10 @@ pip install build cibuildwheel==2.23.3
 # Parametrize the cibuildwheel's container to build the Boost and Cap'n Proto dependencies.
 export CIBW_BEFORE_ALL='
             yum install sudo -y;
-            sudo ./scripts/download_install_libraries.sh capnp compile
-            sudo ./scripts/download_install_libraries.sh capnp install
-            sudo ./scripts/download_install_libraries.sh boost compile
-            sudo ./scripts/download_install_libraries.sh boost install'
+            sudo ./scripts/library_tool.sh capnp compile
+            sudo ./scripts/library_tool.sh capnp install
+            sudo ./scripts/library_tool.sh boost compile
+            sudo ./scripts/library_tool.sh boost install'
 export CIBW_BUILD="*manylinux_x86_64"
 export CIBW_SKIP="pp*"
 export CIBW_MANYLINUX_X86_64_IMAGE="manylinux_2_28"
@@ -549,7 +565,12 @@ We welcome you to:
 
 Please review [functional contribution guidelines](./CONTRIBUTING.md) to get started 👍.
 
-_NOTE:_ Commits and pull requests to FINOS repositories will only be accepted from those contributors with an active, executed Individual Contributor License Agreement (ICLA) with FINOS OR contributors who are covered under an existing and active Corporate Contribution License Agreement (CCLA) executed with FINOS. Commits from individuals not covered under an ICLA or CCLA will be flagged and blocked by the ([EasyCLA](https://community.finos.org/docs/governance/Software-Projects/easycla)) tool. Please note that some CCLAs require individuals/employees to be explicitly named on the CCLA.
+_NOTE:_ Commits and pull requests to FINOS repositories will only be accepted from those contributors with an active,
+executed Individual Contributor License Agreement (ICLA) with FINOS OR contributors who are covered under an existing
+and active Corporate Contribution License Agreement (CCLA) executed with FINOS. Commits from individuals not covered
+under an ICLA or CCLA will be flagged and blocked by
+the ([EasyCLA](https://community.finos.org/docs/governance/Software-Projects/easycla)) tool. Please note that some CCLAs
+require individuals/employees to be explicitly named on the CCLA.
 
 *Need an ICLA? Unsure if you are covered under an existing CCLA? Email [help@finos.org](mailto:help@finos.org)*
 
@@ -568,5 +589,6 @@ SPDX-License-Identifier: [Apache-2.0](https://spdx.org/licenses/Apache-2.0)
 
 ## Contact
 
-If you have a query or require support with this project, [raise an issue](https://github.com/finos/opengris-scaler/issues).
+If you have a query or require support with this
+project, [raise an issue](https://github.com/finos/opengris-scaler/issues).
 Otherwise, reach out to [opensource@citi.com](mailto:opensource@citi.com).

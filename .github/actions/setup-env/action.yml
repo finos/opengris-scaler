@@ -20,7 +20,7 @@ runs:
       run: |
         sudo apt update -y
         sudo apt install -y build-essential tzdata cmake clang curl pkg-config g++-14
-        sudo chmod 755 ./scripts/download_install_libraries.sh
+        sudo chmod 755 ./scripts/library_tool.sh
         sudo chmod 755 ./scripts/build.sh
 
     - name: Install Python Base Packages
@@ -28,36 +28,3 @@ runs:
       run: |
         pip install uv
         uv pip install --system --upgrade pip
-
-    - name: Cache Library Install
-      if: inputs.os == 'Linux'
-      id: cache-library
-      uses: actions/cache@v4
-      with:
-        path: |
-          capnproto-*
-        key: ${{ inputs.os }}-${{ hashFiles('scripts/download_install_libraries.*') }}
-
-    - name: Download/Compile Libraries (Linux)
-      shell: bash
-      if: (inputs.os == 'Linux') && (steps.cache-library.outputs.cache-hit != 'true')
-      run: |
-        sudo ./scripts/download_install_libraries.sh capnp compile
-
-    - name: Download/Compile Libraries (Windows)
-      shell: pwsh
-      if: (inputs.os == 'Windows') && (steps.cache-boost-windows.outputs.cache-hit != 'true')
-      run: |
-        ./scripts/download_install_libraries.ps1 capnp compile
-
-    - name: Install Libraries (Linux)
-      shell: bash
-      if: inputs.os == 'Linux'
-      run: |
-        sudo ./scripts/download_install_libraries.sh capnp install
-
-    - name: Install Libraries (Windows)
-      shell: pwsh
-      if: inputs.os == 'Windows'
-      run: |
-        ./scripts/download_install_libraries.ps1 capnp install

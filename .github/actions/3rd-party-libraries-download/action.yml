@@ -1,0 +1,30 @@
+name: "3rd Party Libraries Download"
+description: "3rd Party Libraries Download"
+
+inputs:
+  os:
+    description: "operating system"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Cache Library Download
+      uses: actions/cache@v4
+      id: download-libraries
+      with:
+        path: |
+          downloaded
+        key: download-libraries-${{ inputs.os }}-${{ hashFiles('scripts/library_tool.*') }}
+
+    - name: Download Libraries (Linux)
+      shell: bash
+      if: (inputs.os == 'Linux') && (steps.download-libraries.outputs.cache-hit != 'true')
+      run: |
+        ./scripts/library_tool.sh capnp download
+
+    - name: Download Libraries (Windows)
+      shell: pwsh
+      if: (inputs.os == 'Windows') && (steps.download-libraries.outputs.cache-hit != 'true')
+      run: |
+        ./scripts/library_tool.ps1 capnp download

@@ -30,6 +30,10 @@ jobs:
         with:
           os: ${{ runner.os }}
 
+      - uses: ./.github/actions/3rd-party-libraries-download
+        with:
+          os: ${{ runner.os }}
+
       - uses: ./.github/actions/create-artifacts
         with:
           os: ${{ runner.os }}
