@@ -14,7 +14,7 @@ from scaler.utility.event_loop import EventLoopType, register_event_loop
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
-from scaler.worker_adapter.symphony.worker_adapter import SymphonyWorkerAdapter
+from scaler.worker_manager.symphony.worker_manager import WorkerManagerSymphony
 
 
 def get_args():
@@ -106,7 +106,7 @@ def main():
 
     setup_logger(args.logging_paths, args.logging_config_file, args.logging_level)
 
-    symphony_worker_adapter = SymphonyWorkerAdapter(
+    worker_manager_symphony = WorkerManagerSymphony(
         address=args.address,
         storage_address=args.object_storage_address,
         capabilities=args.worker_capabilities,
@@ -122,7 +122,7 @@ def main():
         logging_config_file=args.logging_config_file,
     )
 
-    app = symphony_worker_adapter.create_app()
+    app = worker_manager_symphony.create_app()
     web.run_app(app, host=args.host, port=args.port)
 
 
