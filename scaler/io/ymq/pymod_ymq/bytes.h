@@ -6,8 +6,6 @@
 // First-party
 #include "scaler/io/ymq/bytes.h"
 
-using namespace scaler::ymq;
-
 struct PyBytesYMQ {
     PyObject_HEAD;
     Bytes bytes;
@@ -19,9 +17,8 @@ static int PyBytesYMQ_init(PyBytesYMQ* self, PyObject* args, PyObject* kwds)
 {
     Py_buffer view {.buf = nullptr};
     const char* keywords[] = {"bytes", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|y*", (char**)keywords, &view)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|y*", (char**)keywords, &view))
         return -1;  // Error parsing arguments
-    }
 
     if (!view.buf) {
         // If no bytes were provided, initialize with an empty Bytes object
@@ -94,11 +91,6 @@ static PyGetSetDef PyBytesYMQ_properties[] = {
     {nullptr, nullptr, nullptr, nullptr, nullptr},  // Sentinel
 };
 
-static PyBufferProcs PyBytesYMQBufferProcs = {
-    .bf_getbuffer     = (getbufferproc)PyBytesYMQ_getbuffer,
-    .bf_releasebuffer = (releasebufferproc)PyBytesYMQ_releasebuffer,
-};
-
 static PyType_Slot PyBytesYMQ_slots[] = {
     {Py_tp_init, (void*)PyBytesYMQ_init},
     {Py_tp_dealloc, (void*)PyBytesYMQ_dealloc},
@@ -113,7 +105,7 @@ static PyType_Slot PyBytesYMQ_slots[] = {
 };
 
 static PyType_Spec PyBytesYMQ_spec = {
-    .name      = "ymq.Bytes",
+    .name      = "_ymq.Bytes",
     .basicsize = sizeof(PyBytesYMQ),
     .itemsize  = 0,
     .flags     = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_IMMUTABLETYPE,
