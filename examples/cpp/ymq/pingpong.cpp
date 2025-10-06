@@ -1,12 +1,7 @@
-
-
-// C++
-#include <stdio.h>
-
 #include <chrono>
 #include <future>
+#include <iostream>
 #include <memory>
-#include <print>
 #include <string>
 #include <thread>
 
@@ -23,7 +18,7 @@ using namespace std::chrono_literals;
 int main(int argc, char* argv[])
 {
     if (argc != 5) {
-        printf("Usage: %s <Identity> <MessageSize> <MessageCount> <AddressString>\n", argv[0]);
+        std::cout << "Usage: " << argv[0] << " <Identity> <MessageSize> <MessageCount> <AddressString>\n";
         exit(1);
     }
     const std::string identity(argv[1]);
@@ -34,10 +29,10 @@ int main(int argc, char* argv[])
     IOContext context;
 
     auto clientSocket = syncCreateSocket(context, IOSocketType::Connector, identity);
-    printf("Successfully created socket.\n");
+    std::cout << "Successfully created socket.\n";
 
     syncConnectSocket(clientSocket, address);
-    printf("Connected to server.\n");
+    std::cout << "Connected to server.\n";
 
     const std::string_view line = longStr;
 
@@ -62,10 +57,10 @@ int main(int argc, char* argv[])
 
     time_point<system_clock> end = system_clock::now();
 
-    printf("Send and recv %lu messages with %lu bytes.\n", msgCnt, longStr.size());
+    std::cout << "Send and recv " << msgCnt << " messages with " << longStr.size() << " bytes.\n";
     auto milli = duration_cast<milliseconds>(end - start);
-    std::print("Spend {}\n", milli);
-    std::print("Throughput {} Bpms\n", msgCnt * (longStr.size()) * 1.0 / milli.count());
+    std::cout << "Spend " << milli.count() << "ms.\n";
+    std::cout << "Throughput " << msgCnt * (longStr.size()) * 1.0 / milli.count() << " Bpms.\n";
 
     context.removeIOSocket(clientSocket);
 

@@ -5,7 +5,6 @@
 #include <format>
 #include <fstream>
 #include <memory>
-#include <print>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -99,8 +98,7 @@ public:
 
         for (auto log_path: _log_paths) {
             if (log_path.empty() || log_path == "/dev/stdout") {
-                // Use std::print and flush for immediate output to the terminal
-                std::print("{}\n", formatted_message);
+                std::cout << formatted_message << std::endl;
                 std::fflush(stdout);
             } else {
                 // Open the file in append mode and write the log message
@@ -108,7 +106,7 @@ public:
                 if (log_file.is_open()) {
                     log_file << formatted_message << std::endl;
                 } else {
-                    throw std::runtime_error("Error: Could not open log file: " + log_path + "\n" + formatted_message);
+                    throw std::runtime_error("Error: Could not open log file: " + log_path + '\n' + formatted_message);
                 }
             }
         }

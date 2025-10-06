@@ -1,5 +1,4 @@
-#include <stdio.h>
-
+#include <iostream>
 #include <memory>
 #include <string>
 
@@ -13,10 +12,10 @@ int main()
 {
     IOContext context;
     auto clientSocket = syncCreateSocket(context, IOSocketType::Connector, "ServerSocket");
-    printf("Successfully created socket.\n");
+    std::cout << "Successfully created socket.\n";
 
     syncConnectSocket(clientSocket, "tcp://127.0.0.1:8080");
-    printf("Connected to server.\n");
+    std::cout << "Connected to server.\n";
 
     context.removeIOSocket(clientSocket);
 
