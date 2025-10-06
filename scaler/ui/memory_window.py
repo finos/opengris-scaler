@@ -7,7 +7,7 @@ from scaler.protocol.python.message import StateTask
 from scaler.ui.setting_page import Settings
 from scaler.ui.utility import format_timediff, get_bounds, make_tick_text, make_ticks
 from scaler.utility.formatter import format_bytes
-from scaler.utility.metadata.profile_result import ProfileResult
+from scaler.utility.metadata.state_task_flags import StateTaskFlags
 
 CHART_NAME = "Memory Usage"
 X_AXIS_GRID_LINES = False
@@ -69,16 +69,19 @@ class MemoryChart:
             self._plot = ui.plotly(self._figure).classes("w-full h-full")
             self._settings = settings
 
-    def handle_task_state(self, state: StateTask):
+    def handle_task_state(self, state_task: StateTask):
         """
         Only completed tasks have profiling data.
         Use this data to fill in history.
         """
-
-        if state.metadata == b"":
+        if state_task.metadata == b"":
             return
 
-        profile_result = ProfileResult.deserialize(state.metadata)
+        metadata = StateTaskFlags.deserialize(state_task.metadata)
+        if not metadata.is_profiling():
+            return
+
+        profile_result = metadata.get_profiling()
 
         worker_memory = profile_result.memory_peak
         worker_duration = profile_result.duration_s
