@@ -1,0 +1,28 @@
+name: create-artifacts
+description: Build Artifacts
+
+inputs:
+  os:
+    description: "operating system"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Python Packages
+      if: inputs.os == 'Linux'
+      shell: bash
+      run: |
+        uv pip install --system --upgrade build cibuildwheel twine
+        rm -rf dist
+
+    - name: Build Sdist
+      if: inputs.os == 'Linux'
+      shell: bash
+      run: |
+        python -m build --sdist
+
+    - name: Build Wheel (Linux)
+      if: inputs.os == 'Linux'
+      shell: bash
+      run: python -m cibuildwheel --output-dir dist

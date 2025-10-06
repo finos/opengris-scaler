@@ -31,10 +31,9 @@ function(add_test_executable test_name source_file)
     add_test(NAME ${test_name} COMMAND ${test_name})
 endfunction()
 
-
 if(LINUX OR APPLE)
-  # This directory fetches Google Test, so it must be included first.
-  add_subdirectory(object_storage)
+  # Add the directory for the C++ tests.
+  add_subdirectory(cpp)
 
   # Add the new directory for io tests.
   add_subdirectory(io/ymq)

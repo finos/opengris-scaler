@@ -18,7 +18,6 @@ jobs:
     permissions:
       id-token: write
     steps:
-      # - uses: ./.github/actions/checkout
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
         with:
@@ -31,6 +30,15 @@ jobs:
         with:
           os: ${{ runner.os }}
 
-      - uses: ./.github/actions/publish-pypi
+      - uses: ./.github/actions/3rd-party-libraries-download
         with:
           os: ${{ runner.os }}
+
+      - uses: ./.github/actions/create-artifacts
+        with:
+          os: ${{ runner.os }}
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: ./dist/

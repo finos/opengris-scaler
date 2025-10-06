@@ -1,38 +1,11 @@
 #pragma once
 
-// C
-#ifdef __linux__
-#include <execinfo.h>
-#endif  // __linux__
-
 // C++
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <format>
-#include <iostream>
-#include <source_location>
-#include <string>
 
 using Errno = int;
-
-inline void print_trace(void)
-{
-#ifdef __linux__
-    void* array[10];
-    char** strings;
-    int size, i;
-
-    size    = backtrace(array, 10);
-    strings = backtrace_symbols(array, size);
-    if (strings != NULL) {
-        printf("Obtained %d stack frames.\n", size);
-        for (i = 0; i < size; i++)
-            printf("%s\n", strings[i]);
-    }
-
-    free(strings);
-#endif  // __linux__
-}
 
 [[nodiscard("Memory is allocated but not used, likely causing a memory leak")]]
 inline uint8_t* datadup(const uint8_t* data, size_t len) noexcept

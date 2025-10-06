@@ -96,6 +96,8 @@ class ErrorCode(IntEnum):
     IPv6NotSupported = 13
     RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery = 14
     ConnectorSocketClosedByRemoteEnd = 15
+    IOSocketStopRequested = 16
+    BinderSendMessageWithNoAddress = 17
 
     def explanation(self) -> str: ...
 
