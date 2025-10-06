@@ -5,8 +5,11 @@
 // the test cases are at the bottom of this file, after the clients and servers
 // the documentation for each case is found on the TEST() definition
 
+#include <fcntl.h>
 #include <gtest/gtest.h>
 #include <netinet/ip.h>
+#include <semaphore.h>
+#include <sys/mman.h>
 
 #include <cassert>
 #include <cstdint>
@@ -310,13 +313,23 @@ TestResult client_sends_empty_messages(std::string host, uint16_t port)
     return TestResult::Success;
 }
 
-TestResult pubsub_subscriber(std::string host, uint16_t port, std::string topic, int differentiator)
+TestResult pubsub_subscriber(std::string host, uint16_t port, std::string topic, int differentiator, sem_t* sem)
 {
     IOContext context(1);
 
     auto socket =
         syncCreateSocket(context, IOSocketType::Unicast, std::format("{}_subscriber_{}", topic, differentiator));
+
+    std::this_thread::sleep_for(500ms);
+
     syncConnectSocket(socket, format_address(host, port));
+
+    std::this_thread::sleep_for(500ms);
+
+    if (sem_post(sem) < 0)
+        throw std::system_error(errno, std::generic_category(), "failed to signal semaphore");
+    sem_close(sem);
+
     auto msg = syncRecvMessage(socket);
     RETURN_FAILURE_IF_FALSE(msg.has_value());
     RETURN_FAILURE_IF_FALSE(msg->payload.as_string() == "hello topic " + topic);
@@ -325,15 +338,21 @@ TestResult pubsub_subscriber(std::string host, uint16_t port, std::string topic,
     return TestResult::Success;
 }
 
-TestResult pubsub_publisher(std::string host, uint16_t port, std::string topic)
+// topic: the identifier of the topic, must match what's passed to the subscribers
+// sem: a semaphore to synchronize the publisher and subscriber processes
+// n: the number of subscribers
+TestResult pubsub_publisher(std::string host, uint16_t port, std::string topic, sem_t* sem, int n)
 {
     IOContext context(1);
 
     auto socket = syncCreateSocket(context, IOSocketType::Multicast, "publisher");
     syncBindSocket(socket, format_address(host, port));
 
-    // wait a second to ensure that the subscribers are ready
-    std::this_thread::sleep_for(1s);
+    // wait for the subscribers to be ready
+    for (int i = 0; i < n; i++)
+        if (sem_wait(sem) < 0)
+            throw std::system_error(errno, std::generic_category(), "failed to wait on semaphore");
+    sem_close(sem);
 
     // the topic is wrong, so no one should receive this
     auto error = syncSendMessage(
@@ -513,10 +532,24 @@ TEST(CcYmqTestSuite, TestPubSub)
     auto port  = 2900;
     auto topic = "mytopic";
 
+    // allocate a semaphore to synchronize the publisher and subscriber processes
+    sem_t* sem =
+        static_cast<sem_t*>(mmap(nullptr, sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0));
+
+    if (sem == MAP_FAILED)
+        throw std::system_error(errno, std::generic_category(), "failed to map shared memory for semaphore");
+
+    if (sem_init(sem, 1, 0) < 0)
+        throw std::system_error(errno, std::generic_category(), "failed to initialize semaphore");
+
     auto result = test(
         20,
-        {[=] { return pubsub_publisher(host, port, topic); },
-         [=] { return pubsub_subscriber(host, port, topic, 0); },
-         [=] { return pubsub_subscriber(host, port, topic, 1); }});
+        {[=] { return pubsub_publisher(host, port, topic, sem, 2); },
+         [=] { return pubsub_subscriber(host, port, topic, 0, sem); },
+         [=] { return pubsub_subscriber(host, port, topic, 1, sem); }});
+
+    sem_destroy(sem);
+    munmap(sem, sizeof(sem_t));
+
     EXPECT_EQ(result, TestResult::Success);
 }

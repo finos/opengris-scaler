@@ -1,12 +1,11 @@
 #pragma once
 
 // C++
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <cstdint>
 
 using Errno = int;
-
 
 [[nodiscard("Memory is allocated but not used, likely causing a memory leak")]]
 inline uint8_t* datadup(const uint8_t* data, size_t len) noexcept

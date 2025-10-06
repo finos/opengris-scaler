@@ -1,6 +1,5 @@
 #pragma once
 
-#include <filesystem>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <ifaddrs.h>
@@ -29,7 +28,6 @@
 #include <format>
 #include <functional>
 #include <iostream>
-#include <numeric>
 #include <optional>
 #include <print>
 #include <stdexcept>
@@ -243,8 +241,7 @@ inline void fork_wrapper(std::function<TestResult()> fn, int timeout_secs, Owned
 
 // run a test
 // forks and runs each of the provided closures
-inline TestResult test(
-    int timeout_secs, std::vector<std::function<TestResult()>> closures)
+inline TestResult test(int timeout_secs, std::vector<std::function<TestResult()>> closures)
 {
     std::vector<std::pair<int, int>> pipes {};
     std::vector<int> pids {};
