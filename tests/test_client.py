@@ -1,6 +1,7 @@
 import functools
 import os
 import random
+import tempfile
 import time
 import unittest
 from concurrent.futures import CancelledError
@@ -9,6 +10,7 @@ from scaler import Client, Cluster, SchedulerClusterCombo
 from scaler.utility.exceptions import MissingObjects, ProcessorDiedError
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
+from scaler.worker.preload import PreloadSpecError, _parse_preload_spec, execute_preload
 from tests.utility import logging_test_name
 
 
@@ -28,6 +30,13 @@ def heavy_function(sec: int, payload: bytes):
 def raise_exception(foo: int):
     if foo == 11:
         raise ValueError("foo cannot be 100")
+
+
+def get_preloaded_value():
+    """Function that retrieves value set by preload"""
+    from tests.utility import get_global_value
+
+    return get_global_value()
 
 
 class TestClient(unittest.TestCase):
@@ -325,6 +334,7 @@ class TestClient(unittest.TestCase):
             gpu_cluster = Cluster(
                 address=base_cluster._address,
                 storage_address=None,
+                preload=None,
                 worker_io_threads=1,
                 worker_names=["gpu_worker"],
                 per_worker_capabilities={"gpu": -1},
@@ -345,3 +355,111 @@ class TestClient(unittest.TestCase):
             self.assertEqual(future.result(), 3.0)
 
             gpu_cluster.terminate()
+
+
+class TestClientPreload(unittest.TestCase):
+    # Separate class for preload functionality with separate cluster to avoid interfering with time-sensitive tests
+
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+        self.combo = SchedulerClusterCombo(n_workers=0, event_loop="builtin")
+
+    def tearDown(self) -> None:
+        self.combo.shutdown()
+
+    def _create_preload_cluster(self, preload: str, logging_paths: tuple = ("/dev/stdout",)):
+        base_cluster = self.combo._cluster
+        preload_cluster = Cluster(
+            address=self.combo._address,
+            storage_address=self.combo._storage_address,
+            preload=preload,
+            worker_io_threads=base_cluster._worker_io_threads,
+            worker_names=["preload_worker"],
+            per_worker_capabilities={},
+            per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
+            heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
+            task_timeout_seconds=base_cluster._task_timeout_seconds,
+            death_timeout_seconds=base_cluster._death_timeout_seconds,
+            garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
+            trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
+            hard_processor_suspend=base_cluster._hard_processor_suspend,
+            event_loop=base_cluster._event_loop,
+            logging_paths=logging_paths,
+            logging_level=base_cluster._logging_level,
+            logging_config_file=base_cluster._logging_config_file,
+        )
+        return preload_cluster
+
+    def test_preload_success(self):
+        preload_cluster = self._create_preload_cluster(preload="tests.utility:setup_global_value('test_preload_value')")
+
+        try:
+            preload_cluster.start()
+            time.sleep(2)
+
+            with Client(self.combo.get_address()) as client:
+                # Submit a task that should access the preloaded global value
+                future = client.submit(get_preloaded_value)
+                result = future.result()
+
+                # Verify the preloaded value is accessible
+                self.assertEqual(result, "test_preload_value")
+        finally:
+            preload_cluster.terminate()
+            preload_cluster.join()
+
+    def test_preload_failure(self):
+        # For checking if the failure was logged, Processor will create log_path-{pid}
+        log_file = tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".log")
+        log_path = log_file.name
+        log_dir = os.path.dirname(log_path)
+        log_basename = os.path.basename(log_path)
+
+        try:
+            preload_cluster = self._create_preload_cluster(
+                preload="tests.utility:failing_preload()", logging_paths=(log_path,)
+            )
+
+            try:
+                preload_cluster.start()
+                time.sleep(10)
+
+                # Find processor log files by looking for files with PID suffixes
+                processor_log_content = ""
+                for file in os.listdir(log_dir):
+                    if file.startswith(log_basename + "-") and file != log_basename:
+                        processor_log_path = os.path.join(log_dir, file)
+                        with open(processor_log_path, "r") as f:
+                            processor_log_content += f.read()
+
+                # Verify that the preload failure was logged properly
+                self.assertIn("preloading: tests.utility:failing_preload with args", processor_log_content)
+
+                # If we reach here without any other exceptions, the test is successful
+            finally:
+                preload_cluster.terminate()
+                preload_cluster.join()
+        finally:
+            # Clean up log files
+            try:
+                os.unlink(log_path)
+                for file in os.listdir(log_dir):
+                    if file.startswith(log_basename + "-") and file != log_basename:
+                        os.unlink(os.path.join(log_dir, file))
+            except FileNotFoundError:
+                pass
+
+    def test_parse_preload_spec_error(self):
+        # Test that _parse_preload_spec raises PreloadSpecError for invalid specs
+        with self.assertRaises(PreloadSpecError) as cm:
+            _parse_preload_spec("module_without_colon")
+
+        self.assertIn("preload must be in 'module.sub:func(...)' format", str(cm.exception))
+
+    def test_execute_preload_error(self):
+        # Test that execute_preload raises PreloadSpecError for non-callable targets
+        with self.assertRaises(PreloadSpecError) as cm:
+            execute_preload("sys:version")  # sys.version is a string, not callable
+
+        self.assertIn("Preload target must be callable", str(cm.exception))
