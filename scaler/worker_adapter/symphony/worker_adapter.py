@@ -6,9 +6,9 @@ from typing import Dict, Optional, Tuple
 from aiohttp import web
 from aiohttp.web_request import Request
 
+from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.zmq import ZMQConfig
 from scaler.utility.identifiers import WorkerID
-from scaler.utility.object_storage_config import ObjectStorageConfig
-from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker_adapter.symphony.worker import SymphonyWorker
 
 WorkerGroupID = bytes

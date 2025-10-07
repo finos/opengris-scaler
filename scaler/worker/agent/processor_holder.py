@@ -6,11 +6,11 @@ from typing import Optional, Tuple
 
 import psutil
 
-from scaler.io.config import DEFAULT_PROCESSOR_KILL_DELAY_SECONDS
+from scaler.config.defaults import DEFAULT_PROCESSOR_KILL_DELAY_SECONDS
 from scaler.protocol.python.message import Task
 from scaler.utility.identifiers import ProcessorID
-from scaler.utility.object_storage_config import ObjectStorageConfig
-from scaler.utility.zmq_config import ZMQConfig
+from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.zmq import ZMQConfig
 from scaler.worker.agent.processor.processor import SUSPEND_SIGNAL, Processor
 
 

@@ -7,6 +7,8 @@ from typing import Dict, Optional
 
 import zmq
 
+from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.zmq import ZMQConfig
 from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
@@ -23,8 +25,6 @@ from scaler.utility.event_loop import create_async_loop_routine, register_event_
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.object_storage_config import ObjectStorageConfig
-from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 from scaler.worker_adapter.symphony.heartbeat_manager import SymphonyHeartbeatManager
 from scaler.worker_adapter.symphony.task_manager import SymphonyTaskManager

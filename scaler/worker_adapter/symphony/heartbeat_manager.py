@@ -3,11 +3,11 @@ from typing import Dict, Optional
 
 import psutil
 
+from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.python.message import WorkerHeartbeat, WorkerHeartbeatEcho
 from scaler.protocol.python.status import Resource
 from scaler.utility.mixins import Looper
-from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.worker.agent.mixins import HeartbeatManager, TimeoutManager
 from scaler.worker_adapter.symphony.task_manager import SymphonyTaskManager
 

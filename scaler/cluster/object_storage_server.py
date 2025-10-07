@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 
 from scaler.object_storage.object_storage_server import ObjectStorageServer
 from scaler.utility.logging.utility import get_logger_info, setup_logger
-from scaler.utility.object_storage_config import ObjectStorageConfig
+from scaler.config.types.object_storage_server import ObjectStorageConfig
 
 
 class ObjectStorageServerProcess(multiprocessing.get_context("fork").Process):  # type: ignore[misc]

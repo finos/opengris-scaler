@@ -1,115 +1,70 @@
 import argparse
 import socket
-from typing import Dict
 
 from scaler.cluster.cluster import Cluster
-from scaler.io.config import (
-    DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
-    DEFAULT_HARD_PROCESSOR_SUSPEND,
-    DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
-    DEFAULT_IO_THREADS,
-    DEFAULT_NUMBER_OF_WORKER,
-    DEFAULT_PER_WORKER_QUEUE_SIZE,
-    DEFAULT_TASK_TIMEOUT_SECONDS,
-    DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
-    DEFAULT_WORKER_DEATH_TIMEOUT,
-)
+from scaler.config.section.cluster import ClusterConfig
+from scaler.config.loader import load_config
 from scaler.utility.event_loop import EventLoopType, register_event_loop
-from scaler.utility.object_storage_config import ObjectStorageConfig
-from scaler.utility.zmq_config import ZMQConfig
 
 
 def get_args():
     parser = argparse.ArgumentParser(
         "standalone compute cluster", formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
+    parser.add_argument("--config", "-c", type=str, default=None, help="Path to the TOML configuration file.")
+
     parser.add_argument(
         "--preload",
         type=str,
         default=None,
         help='optional module init in the form "pkg.mod:func(arg1, arg2)" executed in each processor before tasks',
     )
-    parser.add_argument(
-        "--num-of-workers", "-n", type=int, default=DEFAULT_NUMBER_OF_WORKER, help="number of workers in cluster"
-    )
+    parser.add_argument("--num-of-workers", "-n", type=int, help="number of workers in cluster")
     parser.add_argument(
         "--worker-names",
         "-wn",
         type=str,
-        default=None,
         help="worker names to replace default worker names (host names), separate by comma",
     )
     parser.add_argument(
         "--per-worker-capabilities",
         "-pwc",
-        type=parse_capabilities,
-        default="",
+        type=str,
         help='comma-separated capabilities provided by the workers (e.g. "-pwc linux,cpu=4")',
     )
+    parser.add_argument("--per-worker-task-queue-size", "-wtqs", type=int, help="specify per worker queue size")
     parser.add_argument(
-        "--worker-task-queue-size",
-        "-wtqs",
-        type=int,
-        default=DEFAULT_PER_WORKER_QUEUE_SIZE,
-        help="specify per worker queue size",
-    )
-    parser.add_argument(
-        "--heartbeat-interval",
-        "-hi",
-        type=int,
-        default=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
-        help="number of seconds to send heartbeat interval",
+        "--heartbeat-interval-seconds", "-hi", type=int, help="number of seconds to send heartbeat interval"
     )
     parser.add_argument(
         "--task-timeout-seconds",
         "-tts",
         type=int,
-        default=DEFAULT_TASK_TIMEOUT_SECONDS,
         help="number of seconds task treat as timeout and return an exception",
     )
+    parser.add_argument("--garbage-collect-interval-seconds", "-gc", type=int, help="garbage collect interval seconds")
+    parser.add_argument("--death-timeout-seconds", "-ds", type=int, help="death timeout seconds")
     parser.add_argument(
-        "--garbage-collect-interval-seconds",
-        "-gc",
-        type=int,
-        default=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
-        help="garbage collect interval seconds",
+        "--trim-memory-threshold-bytes", "-tm", type=int, help="number of bytes threshold to enable libc to trim memory"
     )
-    parser.add_argument(
-        "--death-timeout-seconds", "-ds", type=int, default=DEFAULT_WORKER_DEATH_TIMEOUT, help="death timeout seconds"
-    )
-    parser.add_argument(
-        "--trim-memory-threshold-bytes",
-        "-tm",
-        type=int,
-        default=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
-        help="number of bytes threshold to enable libc to trim memory",
-    )
-    parser.add_argument(
-        "--event-loop", "-el", default="builtin", choices=EventLoopType.allowed_types(), help="select event loop type"
-    )
-    parser.add_argument(
-        "--io-threads", "-it", default=DEFAULT_IO_THREADS, help="specify number of io threads per worker"
-    )
+    parser.add_argument("--event-loop", "-el", choices=EventLoopType.allowed_types(), help="select event loop type")
+    parser.add_argument("--io-threads", "-it", type=int, help="specify number of io threads per worker")
     parser.add_argument(
         "--hard-processor-suspend",
         "-hps",
         action="store_true",
-        default=DEFAULT_HARD_PROCESSOR_SUSPEND,
         help=(
             "When set, suspends worker processors using the SIGTSTP signal instead of a synchronization event, "
             "fully halting computation on suspended tasks. Note that this may cause some tasks to fail if they "
             "do not support being paused at the OS level (e.g. tasks requiring active network connections)."
         ),
     )
-    parser.add_argument(
-        "--log-hub-address", "-la", default=None, type=ZMQConfig.from_string, help="address for Worker send logs"
-    )
+    parser.add_argument("--log-hub-address", "-la", type=str, help="address for Worker send logs")
     parser.add_argument(
         "--logging-paths",
         "-lp",
         nargs="*",
         type=str,
-        default=("/dev/stdout",),
         help='specify where cluster log should logged to, it can be multiple paths, "/dev/stdout" is default for '
         "standard output, each worker will have its own log file with process id appended to the path",
     )
@@ -118,70 +73,61 @@ def get_args():
         "-ll",
         type=str,
         choices=("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
-        default="INFO",
         help="specify the logging level",
     )
     parser.add_argument(
         "--logging-config-file",
+        "-lcf",
         type=str,
-        default=None,
         help="use standard python the .conf file the specify python logging file configuration format, this will "
         "bypass --logging-paths and --logging-level at the same time, and this will not work on per worker logging",
     )
     parser.add_argument(
         "--object-storage-address",
         "-osa",
-        type=ObjectStorageConfig.from_string,
-        default=None,
+        type=str,
         help="specify the object storage server address, e.g. tcp://localhost:2346. If not specified, use the address "
         "provided by the scheduler",
     )
-    parser.add_argument("address", type=ZMQConfig.from_string, help="scheduler address to connect to")
+    parser.add_argument("scheduler_address", nargs="?", type=str, help="scheduler address to connect to")
+
     return parser.parse_args()
-
-
-def parse_capabilities(capability_string: str) -> Dict[str, int]:
-    capabilities = {}
-    for item in capability_string.split(","):
-        name, _, value = item.partition("=")
-        if value != "":
-            capabilities[name] = int(value)
-        else:
-            capabilities[name] = -1
-    return capabilities
 
 
 def main():
     args = get_args()
-    register_event_loop(args.event_loop)
 
-    if args.worker_names is None:
-        worker_names = [f"{socket.gethostname().split('.')[0]}" for _ in range(args.num_of_workers)]
-    else:
-        worker_names = args.worker_names.split(",")
-        if len(worker_names) != args.num_of_workers:
-            raise ValueError(
-                f"number of worker names ({len(args.worker_names)}) must match number of workers "
-                f"({args.num_of_workers})"
-            )
+    cluster_config = load_config(ClusterConfig, args.config, args, section_name="cluster")
+
+    register_event_loop(cluster_config.event_loop)
+
+    worker_names = cluster_config.worker_names.names
+    if not worker_names:
+        worker_names = [f"{socket.gethostname().split('.')[0]}" for _ in range(cluster_config.num_of_workers)]
+
+    if len(worker_names) != cluster_config.num_of_workers:
+        raise ValueError(
+            f"Number of worker names ({len(worker_names)}) must match the number of workers "
+            f"({cluster_config.num_of_workers})."
+        )
 
     cluster = Cluster(
-        address=args.address,
-        storage_address=args.object_storage_address,
-        preload=args.preload,
+        address=cluster_config.scheduler_address,
+        storage_address=cluster_config.storage_address,
+        preload=cluster_config.preload,
         worker_names=worker_names,
-        per_worker_capabilities=args.per_worker_capabilities,
-        per_worker_task_queue_size=args.worker_task_queue_size,
-        heartbeat_interval_seconds=args.heartbeat_interval,
-        task_timeout_seconds=args.task_timeout_seconds,
-        garbage_collect_interval_seconds=args.garbage_collect_interval_seconds,
-        trim_memory_threshold_bytes=args.trim_memory_threshold_bytes,
-        death_timeout_seconds=args.death_timeout_seconds,
-        hard_processor_suspend=args.hard_processor_suspend,
-        event_loop=args.event_loop,
-        worker_io_threads=args.io_threads,
-        logging_paths=args.logging_paths,
-        logging_level=args.logging_level,
-        logging_config_file=args.logging_config_file,
+        per_worker_capabilities=cluster_config.per_worker_capabilities.capabilities,
+        per_worker_task_queue_size=cluster_config.per_worker_task_queue_size,
+        heartbeat_interval_seconds=cluster_config.heartbeat_interval_seconds,
+        task_timeout_seconds=cluster_config.task_timeout_seconds,
+        garbage_collect_interval_seconds=cluster_config.garbage_collect_interval_seconds,
+        trim_memory_threshold_bytes=cluster_config.trim_memory_threshold_bytes,
+        death_timeout_seconds=cluster_config.death_timeout_seconds,
+        hard_processor_suspend=cluster_config.hard_processor_suspend,
+        event_loop=cluster_config.event_loop,
+        worker_io_threads=cluster_config.worker_io_threads,
+        logging_paths=cluster_config.logging_paths,
+        logging_level=cluster_config.logging_level,
+        logging_config_file=cluster_config.logging_config_file,
     )
     cluster.run()

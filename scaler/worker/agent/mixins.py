@@ -11,7 +11,7 @@ from scaler.protocol.python.message import (
 )
 from scaler.utility.identifiers import ProcessorID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
-from scaler.utility.object_storage_config import ObjectStorageConfig
+from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.worker.agent.processor_holder import ProcessorHolder
 
 
