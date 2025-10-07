@@ -356,6 +356,14 @@ class TestClient(unittest.TestCase):
 
             gpu_cluster.terminate()
 
+    def test_client_no_address_outside_worker(self):
+        """Test that creating a Client without an address outside worker context raises ValueError."""
+        with self.assertRaises(ValueError) as context:
+            Client()
+
+        self.assertIn("No scheduler address provided", str(context.exception))
+        self.assertIn("not running inside a worker context", str(context.exception))
+
 
 class TestClientPreload(unittest.TestCase):
     # Separate class for preload functionality with separate cluster to avoid interfering with time-sensitive tests
