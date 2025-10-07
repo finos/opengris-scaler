@@ -5,7 +5,6 @@
 
 // First-party
 #include "scaler/io/ymq/pymod_ymq/bytes.h"
-#include "scaler/io/ymq/pymod_ymq/utils.h"
 #include "scaler/io/ymq/pymod_ymq/ymq.h"
 
 struct PyMessage {
@@ -92,7 +91,7 @@ static PyType_Slot PyMessage_slots[] = {
 };
 
 static PyType_Spec PyMessage_spec = {
-    .name      = "ymq.Message",
+    .name      = "_ymq.Message",
     .basicsize = sizeof(PyMessage),
     .itemsize  = 0,
     .flags     = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_IMMUTABLETYPE,

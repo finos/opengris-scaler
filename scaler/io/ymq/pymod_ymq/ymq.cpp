@@ -15,7 +15,7 @@ inline void ymqUnrecoverableError(scaler::ymq::Error e)
     std::exit(EXIT_FAILURE);
 }
 
-PyMODINIT_FUNC PyInit_ymq(void)
+PyMODINIT_FUNC PyInit__ymq(void)
 {
     unrecoverableErrorFunctionHookPtr = ymqUnrecoverableError;
 

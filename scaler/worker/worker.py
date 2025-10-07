@@ -14,6 +14,7 @@ from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
 from scaler.io.config import PROFILING_INTERVAL_SECONDS
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
+from scaler.io.ymq import ymq
 from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,
@@ -232,6 +233,13 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             )
         except asyncio.CancelledError:
             pass
+
+        # TODO: Should the object storage connector catch this error?
+        except ymq.YMQException as e:
+            if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
+                pass
+            else:
+                logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
         except (ClientShutdownException, TimeoutError) as e:
             logging.info(f"{self.identity!r}: {str(e)}")
         except Exception as e:

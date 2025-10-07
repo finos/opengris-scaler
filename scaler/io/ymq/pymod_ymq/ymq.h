@@ -9,20 +9,14 @@
 
 // C++
 #include <expected>
-#include <format>
-#include <functional>
 #include <string>
 #include <string_view>
 #include <utility>
 
 // First-party
 #include "scaler/io/ymq/error.h"
-#include "scaler/io/ymq/pymod_ymq/utils.h"
 
 struct YMQState {
-    int wakeupfd_wr;
-    int wakeupfd_rd;
-
     OwnedPyObject<> enumModule;     // Reference to the enum module
     OwnedPyObject<> asyncioModule;  // Reference to the asyncio module
 
@@ -33,78 +27,7 @@ struct YMQState {
     OwnedPyObject<> PyIOSocketType;              // Reference to the IOSocket type
     OwnedPyObject<> PyIOContextType;             // Reference to the IOContext type
     OwnedPyObject<> PyExceptionType;             // Reference to the Exception type
-    OwnedPyObject<> PyInterruptedExceptionType;  // Reference to the YMQInterruptedException type
-    OwnedPyObject<> PyAwaitableType;             // Reference to the Awaitable type
 };
-
-#define CHECK_SIGNALS                                                                                           \
-    do {                                                                                                        \
-        PyEval_RestoreThread(_save);                                                                            \
-        if (PyErr_CheckSignals() >= 0)                                                                          \
-            PyErr_SetString(                                                                                    \
-                *state->PyInterruptedExceptionType, "A synchronous YMQ operation was interrupted by a signal"); \
-        return (PyObject*)nullptr;                                                                              \
-    } while (0);
-
-static bool future_do_(PyObject* future_, const std::function<std::expected<PyObject*, PyObject*>()>& fn)
-{
-    // this is an owned reference to the future created in `async_wrapper()`
-    OwnedPyObject future(future_);
-    OwnedPyObject loop = PyObject_CallMethod(*future, "get_loop", nullptr);
-    if (!loop)
-        return true;
-
-    // if future is already done, no need to call the method
-    OwnedPyObject result1 = PyObject_CallMethod(*future, "done", nullptr);
-    if (*result1 == Py_True)
-        return false;
-
-    const char* method_name = nullptr;
-    OwnedPyObject arg {};
-
-    if (auto result = fn()) {
-        method_name = "set_result";
-        arg         = *result;
-    } else {
-        method_name = "set_exception";
-        arg         = result.error();
-    }
-
-    OwnedPyObject method = PyObject_GetAttrString(*future, method_name);
-    if (!method)
-        return true;
-
-    OwnedPyObject obj = PyObject_GetAttrString(*loop, "call_soon_threadsafe");
-
-    // auto result = PyObject_CallMethod(loop, "call_soon_threadsafe", "OO", method, fn());
-    OwnedPyObject result2 = PyObject_CallFunctionObjArgs(*obj, *method, *arg, nullptr);
-    return !result2;
-}
-
-// this function must be called from a C++ thread
-// this function will lock the GIL, call `fn()` and use its return value to set the future's result/exception
-static void future_do(PyObject* future, const std::function<std::expected<PyObject*, PyObject*>()>& fn)
-{
-    PyGILState_STATE gstate = PyGILState_Ensure();
-    // begin python critical section
-
-    auto error = future_do_(future, fn);
-    if (error)
-        PyErr_WriteUnraisable(future);
-
-    // end python critical section
-    PyGILState_Release(gstate);
-}
-
-static void future_set_result(PyObject* future, std::function<std::expected<PyObject*, PyObject*>()> fn)
-{
-    return future_do(future, fn);
-}
-
-static void future_raise_exception(PyObject* future, std::function<PyObject*()> fn)
-{
-    return future_do(future, [=] { return std::unexpected {fn()}; });
-}
 
 static YMQState* YMQStateFromSelf(PyObject* self)
 {
@@ -151,8 +74,13 @@ std::expected<PyObject*, PyObject*> YMQ_GetRaisedException()
 #endif
 }
 
+void completeCallbackWithRaisedException(PyObject* callback)
+{
+    auto result = YMQ_GetRaisedException();
+    OwnedPyObject _   =PyObject_CallFunctionObjArgs(callback, result.value_or(result.error()));
+}
+
 // First-Party
-#include "scaler/io/ymq/pymod_ymq/async.h"
 #include "scaler/io/ymq/pymod_ymq/bytes.h"
 #include "scaler/io/ymq/pymod_ymq/exception.h"
 #include "scaler/io/ymq/pymod_ymq/io_context.h"
@@ -173,20 +101,8 @@ static void YMQ_free(YMQState* state)
         state->PyIOSocketType.~OwnedPyObject();
         state->PyIOContextType.~OwnedPyObject();
         state->PyExceptionType.~OwnedPyObject();
-        state->PyInterruptedExceptionType.~OwnedPyObject();
-        state->PyAwaitableType.~OwnedPyObject();
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to free YMQState");
-        PyErr_WriteUnraisable(nullptr);
-    }
-
-    if (close(state->wakeupfd_wr) < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to close waitfd_wr");
-        PyErr_WriteUnraisable(nullptr);
-    }
-
-    if (close(state->wakeupfd_rd) < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to close waitfd_rd");
         PyErr_WriteUnraisable(nullptr);
     }
 }
@@ -322,21 +238,6 @@ static int YMQ_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
 }
 }
 
-static int YMQ_createInterruptedException(PyObject* pyModule, OwnedPyObject<>* storage)
-{
-    *storage = PyErr_NewExceptionWithDoc(
-        "ymq.YMQInterruptedException",
-        "Raised when a synchronous method is interrupted by a signal",
-        PyExc_Exception,
-        nullptr);
-
-    if (!*storage)
-        return -1;
-    if (PyModule_AddObjectRef(pyModule, "YMQInterruptedException", **storage) < 0)
-        return -1;
-    return 0;
-}
-
 // internal convenience function to create a type and add it to the module
 static int YMQ_createType(
     // the module object
@@ -380,34 +281,10 @@ static int YMQ_createType(
     return 0;
 }
 
-static int YMQ_setupWakeupFd(YMQState* state)
-{
-    int pipefd[2];
-    if (pipe2(pipefd, O_NONBLOCK | O_CLOEXEC) < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create pipe for wakeup fd");
-        return -1;
-    }
-
-    state->wakeupfd_rd = pipefd[0];
-    state->wakeupfd_wr = pipefd[1];
-
-    OwnedPyObject signalModule = PyImport_ImportModule("signal");
-    if (!signalModule)
-        return -1;
-
-    OwnedPyObject result = PyObject_CallMethod(*signalModule, "set_wakeup_fd", "i", state->wakeupfd_wr);
-    if (!result)
-        return -1;
-    return 0;
-}
-
 static int YMQ_exec(PyObject* pyModule)
 {
     auto state = (YMQState*)PyModule_GetState(pyModule);
     if (!state)
-        return -1;
-
-    if (YMQ_setupWakeupFd(state) < 0)
         return -1;
 
     state->enumModule = PyImport_ImportModule("enum");
@@ -443,10 +320,10 @@ static int YMQ_exec(PyObject* pyModule)
     if (YMQ_createType(pyModule, &state->PyMessageType, &PyMessage_spec, "Message") < 0)
         return -1;
 
-    if (YMQ_createType(pyModule, &state->PyIOSocketType, &PyIOSocket_spec, "IOSocket") < 0)
+    if (YMQ_createType(pyModule, &state->PyIOSocketType, &PyIOSocket_spec, "BaseIOSocket") < 0)
         return -1;
 
-    if (YMQ_createType(pyModule, &state->PyIOContextType, &PyIOContext_spec, "IOContext") < 0)
+    if (YMQ_createType(pyModule, &state->PyIOContextType, &PyIOContext_spec, "BaseIOContext") < 0)
         return -1;
 
     PyObject* exceptionBases = PyTuple_Pack(1, PyExc_Exception);
@@ -460,12 +337,6 @@ static int YMQ_exec(PyObject* pyModule)
     }
     Py_DECREF(exceptionBases);
 
-    if (YMQ_createInterruptedException(pyModule, &state->PyInterruptedExceptionType) < 0)
-        return -1;
-
-    if (YMQ_createType(pyModule, &state->PyAwaitableType, &Awaitable_spec, "Awaitable", false) < 0)
-        return -1;
-
     return 0;
 }
 
@@ -476,7 +347,7 @@ static PyModuleDef_Slot YMQ_slots[] = {
 
 static PyModuleDef YMQ_module = {
     .m_base  = PyModuleDef_HEAD_INIT,
-    .m_name  = "ymq",
+    .m_name  = "_ymq",
     .m_doc   = PyDoc_STR("YMQ Python bindings"),
     .m_size  = sizeof(YMQState),
     .m_slots = YMQ_slots,
