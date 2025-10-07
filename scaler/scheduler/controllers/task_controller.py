@@ -18,8 +18,6 @@ from scaler.scheduler.controllers.mixins import (
 from scaler.scheduler.task.task_state_machine import TaskStateMachine
 from scaler.scheduler.task.task_state_manager import TaskStateManager
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
-from scaler.utility.metadata.state_task_flags import StateTaskFlags
-from scaler.utility.metadata.task_info_metadata import TaskInfoMetadata
 from scaler.utility.mixins import Looper, Reporter
 
 
@@ -186,13 +184,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             return
 
         await self.__routing(task_id, TaskTransition.HasCapacity, worker_id=worker_id)
-
-        # On task start, send task flags as metadata
-        task_flags = list(task.capabilities.keys())
-        task_info = TaskInfoMetadata(task_flags=task_flags)
-        metadata = StateTaskFlags.from_task_info(task_info).serialize()
-
-        await self.__send_monitor(task.task_id, self._object_controller.get_object_name(task.func_object_id), metadata)
+        await self.__send_monitor(task.task_id, self._object_controller.get_object_name(task.func_object_id))
 
     async def __state_running(self, task_id: TaskID, state_machine: TaskStateMachine, worker_id: WorkerID):
         if state_machine.previous_state() in {TaskState.Canceling, TaskState.BalanceCanceling}:
@@ -315,10 +307,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         await self._worker_controller.on_task_done(task_result.task_id)
         client = self._client_controller.on_task_finish(task_result.task_id)
         await self._binder.send(client, task_result)
-        metadata = task_result.metadata
-        if metadata is not None:
-            metadata = StateTaskFlags.from_profiling_bytes(task_result.metadata).serialize()
-        await self.__send_monitor(task_result.task_id, b"", metadata)
+        await self.__send_monitor(task_result.task_id, b"", task_result.metadata)
 
         self._task_state_manager.remove_state_machine(task_result.task_id)
         self._task_id_to_task.pop(task_result.task_id)
@@ -343,7 +332,8 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     async def __send_monitor(self, task_id: TaskID, function_name: bytes, metadata: bytes = b""):
         worker = self._worker_controller.get_worker_by_task_id(task_id)
         task_state = self._task_state_manager.get_state_machine(task_id).current_state()
-        await self._binder_monitor.send(StateTask.new_msg(task_id, function_name, task_state, worker, metadata))
+        capabilities = self._task_id_to_task[task_id].capabilities if task_id in self._task_id_to_task else {}
+        await self._binder_monitor.send(StateTask.new_msg(task_id, function_name, task_state, worker, capabilities, metadata))
 
     async def __routing(self, task_id: TaskID, transition: TaskTransition, **kwargs):
         state_machine = self._task_state_manager.on_transition(task_id, transition)

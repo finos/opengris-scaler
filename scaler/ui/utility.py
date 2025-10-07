@@ -1,7 +1,16 @@
 import datetime
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
+from scaler.protocol.python.common import TaskState
 from scaler.ui.setting_page import Settings
+
+COMPLETED_TASK_STATUSES = {
+    TaskState.Success,
+    TaskState.Canceled,
+    TaskState.CanceledNotFound,
+    TaskState.Failed,
+    TaskState.FailedWorkerDied,
+}
 
 
 def format_timediff(a: datetime.datetime, b: datetime.datetime) -> float:
@@ -33,3 +42,12 @@ def make_tick_text(window_length: int) -> List[int]:
     lower = -1 * window_length
     distance = (upper - lower) // 6
     return list(range(lower, upper + 1, distance))
+
+
+def display_capabilities(capabilities: Dict[str, int]) -> str:
+    if not capabilities or len(capabilities) == 0:
+        return "<no capabilities>"
+
+    # Ensure equivalent capabilities produce the same string
+    sorted_items = sorted(capabilities.items(), key=lambda item: (item[0], item[1]))
+    return " & ".join([f"{key}: {value}" for key, value in sorted_items])

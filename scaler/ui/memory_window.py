@@ -7,7 +7,7 @@ from scaler.protocol.python.message import StateTask
 from scaler.ui.setting_page import Settings
 from scaler.ui.utility import format_timediff, get_bounds, make_tick_text, make_ticks
 from scaler.utility.formatter import format_bytes
-from scaler.utility.metadata.state_task_flags import StateTaskFlags
+from scaler.utility.metadata.profile_result import ProfileResult
 
 CHART_NAME = "Memory Usage"
 X_AXIS_GRID_LINES = False
@@ -77,11 +77,7 @@ class MemoryChart:
         if state_task.metadata == b"":
             return
 
-        metadata = StateTaskFlags.deserialize(state_task.metadata)
-        if not metadata.is_profiling():
-            return
-
-        profile_result = metadata.get_profiling()
+        profile_result = ProfileResult.deserialize(state_task.metadata)
 
         worker_memory = profile_result.memory_peak
         worker_duration = profile_result.duration_s
