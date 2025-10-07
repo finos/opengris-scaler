@@ -34,7 +34,10 @@ dependencies = [
 uvloop = [
     "uvloop; platform_system != 'Windows'",
 ]
-gui = ["nicegui[plotly]==2.24.2"]
+gui = [
+    "nicegui[plotly]==2.24.2; python_version == '3.8'",
+    "nicegui[plotly]==3.0.3; python_version >= '3.9'",
+]
 graphblas = [
     "python-graphblas",
     "numpy==1.24.4; python_version == '3.8'",
@@ -42,7 +45,8 @@ graphblas = [
     "numpy==2.2.6; python_version >= '3.10'"
 ]
 all = [
-    "nicegui[plotly]==2.24.2",
+    "nicegui[plotly]==2.24.2; python_version == '3.8'",
+    "nicegui[plotly]==3.0.3; python_version >= '3.9'",
     "python-graphblas",
     "numpy==1.24.4; python_version == '3.8'",
     "numpy==2.0.2; python_version == '3.9'",
@@ -52,10 +56,10 @@ all = [
 
 [dependency-groups]
 dev = [
-    "black>=25.1.0",
-    "flake8>=7.3.0",
+    "black>=24.8.0",
+    "flake8>=5.0.4",
     "flake8-pyproject>=1.2.3",
-    "mypy>=1.17.1",
+    "mypy>=1.14.1",
 ]
 
 [tool.scikit-build.metadata.version]
