@@ -62,7 +62,6 @@ class TaskStream:
 
         self._dead_workers: Deque[Tuple[datetime.datetime, str]] = deque()  # type: ignore[misc]
 
-
     def setup_task_stream(self, settings: Settings):
         with ui.card().classes("w-full").style("height: 85vh"):
             fig = {
@@ -94,7 +93,7 @@ class TaskStream:
             self._plot = ui.plotly(self._figure).classes("w-full h-full")
             self._plot.on('plotly_relayout', self._on_plotly_relayout)
             self._settings = settings
-    
+
     def _on_plotly_relayout(self, e):
         x0 = e.args.get('xaxis.range[0]')
         x1 = e.args.get('xaxis.range[1]')
