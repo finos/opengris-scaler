@@ -382,6 +382,10 @@ class Client:
         disconnect from connected scheduler, this will not shut down the scheduler
         """
 
+        # Handle case where client wasn't fully initialized
+        if not hasattr(self, "_stop_event"):
+            return
+
         if self._stop_event.is_set():
             self.__destroy()
             return
