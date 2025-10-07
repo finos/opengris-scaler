@@ -11,7 +11,7 @@ import cloudpickle
 import psutil
 
 from scaler.client.serializer.mixins import Serializer
-from scaler.io.config import CLEANUP_INTERVAL_SECONDS
+from scaler.config.defaults import CLEANUP_INTERVAL_SECONDS
 from scaler.utility.exceptions import DeserializeObjectError
 from scaler.utility.identifiers import ClientID, ObjectID
 

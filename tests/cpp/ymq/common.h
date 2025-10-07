@@ -1,5 +1,7 @@
 #pragma once
 
+#define PY_SSIZE_T_CLEAN
+#include <Python.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <ifaddrs.h>
@@ -25,6 +27,7 @@
 #include <cstring>
 #include <ctime>
 #include <exception>
+#include <filesystem>
 #include <format>
 #include <functional>
 #include <iostream>
@@ -239,9 +242,50 @@ inline void fork_wrapper(std::function<TestResult()> fn, int timeout_secs, Owned
     pipe_wr.write_all((char*)&result, sizeof(TestResult));
 }
 
+// this function along with `wait_for_python_ready_sigwait()`
+// work together to wait on a signal from the python process
+// indicating that the tuntap interface has been created, and that the mitm is ready
+inline void wait_for_python_ready_sigblock()
+{
+    sigset_t set {};
+
+    if (sigemptyset(&set) < 0)
+        throw std::system_error(errno, std::generic_category(), "failed to create empty signal set");
+
+    if (sigaddset(&set, SIGUSR1) < 0)
+        throw std::system_error(errno, std::generic_category(), "failed to add sigusr1 to the signal set");
+
+    if (sigprocmask(SIG_BLOCK, &set, nullptr) < 0)
+        throw std::system_error(errno, std::generic_category(), "failed to mask sigusr1");
+
+    std::println("blocked signal...");
+}
+
+inline void wait_for_python_ready_sigwait(int timeout_secs)
+{
+    sigset_t set {};
+    siginfo_t sig {};
+
+    if (sigemptyset(&set) < 0)
+        throw std::system_error(errno, std::generic_category(), "failed to create empty signal set");
+
+    if (sigaddset(&set, SIGUSR1) < 0)
+        throw std::system_error(errno, std::generic_category(), "failed to add sigusr1 to the signal set");
+
+    std::println("waiting for python to be ready...");
+    timespec ts {.tv_sec = timeout_secs, .tv_nsec = 0};
+    if (sigtimedwait(&set, &sig, &ts) < 0)
+        throw std::system_error(errno, std::generic_category(), "failed to wait on sigusr1");
+
+    sigprocmask(SIG_UNBLOCK, &set, nullptr);
+    std::println("signal received; python is ready");
+}
+
 // run a test
 // forks and runs each of the provided closures
-inline TestResult test(int timeout_secs, std::vector<std::function<TestResult()>> closures)
+// if `wait_for_python` is true, wait for SIGUSR1 after forking and executing the first closure
+inline TestResult test(
+    int timeout_secs, std::vector<std::function<TestResult()>> closures, bool wait_for_python = false)
 {
     std::vector<std::pair<int, int>> pipes {};
     std::vector<int> pids {};
@@ -259,6 +303,9 @@ inline TestResult test(int timeout_secs, std::vector<std::function<TestResult()>
     }
 
     for (size_t i = 0; i < closures.size(); i++) {
+        if (wait_for_python && i == 0)
+            wait_for_python_ready_sigblock();
+
         auto pid = fork();
         if (pid < 0) {
             std::for_each(pipes.begin(), pipes.end(), [](const auto& pipe) {
@@ -287,6 +334,9 @@ inline TestResult test(int timeout_secs, std::vector<std::function<TestResult()>
         }
 
         pids.push_back(pid);
+
+        if (wait_for_python && i == 0)
+            wait_for_python_ready_sigwait(3);
     }
 
     // close all write halves of the pipes
@@ -404,4 +454,102 @@ end:
         return TestResult::Failure;
 
     return TestResult::Success;
+}
+
+inline TestResult run_python(const char* path, std::vector<const wchar_t*> argv = {})
+{
+    // insert the pid at the start of the argv, this is important for signalling readiness
+    pid_t pid   = getppid();
+    auto pid_ws = std::to_wstring(pid);
+    argv.insert(argv.begin(), pid_ws.c_str());
+
+    PyStatus status;
+    PyConfig config;
+    PyConfig_InitPythonConfig(&config);
+
+    status = PyConfig_SetBytesString(&config, &config.program_name, "mitm");
+    if (PyStatus_Exception(status))
+        goto exception;
+
+    status = Py_InitializeFromConfig(&config);
+    if (PyStatus_Exception(status))
+        goto exception;
+    PyConfig_Clear(&config);
+
+    argv.insert(argv.begin(), L"mitm");
+    PySys_SetArgv(argv.size(), (wchar_t**)argv.data());
+
+    {
+        auto file = fopen(path, "r");
+        if (!file)
+            throw std::system_error(errno, std::generic_category(), "failed to open python file");
+
+        PyRun_SimpleFile(file, path);
+        fclose(file);
+    }
+
+    if (Py_FinalizeEx() < 0) {
+        std::println("finalization failure");
+        return TestResult::Failure;
+    }
+
+    return TestResult::Success;
+
+exception:
+    PyConfig_Clear(&config);
+    Py_ExitStatusException(status);
+
+    return TestResult::Failure;
+}
+
+// change the current working directory to the project root
+// this is important for finding the python mitm script
+inline void chdir_to_project_root()
+{
+    auto cwd = std::filesystem::current_path();
+
+    // if pyproject.toml is in `path`, it's the project root
+    for (auto path = cwd; !path.empty(); path = path.parent_path()) {
+        if (std::filesystem::exists(path / "pyproject.toml")) {
+            // change to the project root
+            std::filesystem::current_path(path);
+            return;
+        }
+    }
+}
+
+inline TestResult run_mitm(
+    std::string testcase,
+    std::string mitm_ip,
+    uint16_t mitm_port,
+    std::string remote_ip,
+    uint16_t remote_port,
+    std::vector<std::string> extra_args = {})
+{
+    auto cwd = std::filesystem::current_path();
+    chdir_to_project_root();
+
+    // we build the args for the user to make calling the function more convenient
+    std::vector<std::string> args {
+        testcase, mitm_ip, std::to_string(mitm_port), remote_ip, std::to_string(remote_port)};
+
+    for (auto arg: extra_args)
+        args.push_back(arg);
+
+    // we need to convert to wide strings to pass to Python
+    std::vector<std::wstring> wide_args_owned {};
+
+    // the strings are ascii so we can just make them into wstrings
+    for (const auto& str: args)
+        wide_args_owned.emplace_back(str.begin(), str.end());
+
+    std::vector<const wchar_t*> wide_args {};
+    for (const auto& wstr: wide_args_owned)
+        wide_args.push_back(wstr.c_str());
+
+    auto result = run_python("tests/cpp/ymq/py_mitm/main.py", wide_args);
+
+    // change back to the original working directory
+    std::filesystem::current_path(cwd);
+    return result;
 }
