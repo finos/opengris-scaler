@@ -598,7 +598,12 @@ class StateTask(Message):
 
     @staticmethod
     def new_msg(
-        task_id: TaskID, function_name: bytes, task_state: TaskState, worker: WorkerID, capabilities: Dict[str, int], metadata: bytes = b""
+        task_id: TaskID,
+        function_name: bytes,
+        task_state: TaskState,
+        worker: WorkerID,
+        capabilities: Dict[str, int],
+        metadata: bytes = b"",
     ) -> "StateTask":
         return StateTask(
             _message.StateTask(

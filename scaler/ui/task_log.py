@@ -5,7 +5,6 @@ from typing import Deque, Dict, Optional
 
 from nicegui import ui
 
-from scaler.protocol.python.common import TaskState
 from scaler.protocol.python.message import StateTask
 from scaler.ui.utility import COMPLETED_TASK_STATUSES, display_capabilities
 from scaler.utility.formatter import format_bytes

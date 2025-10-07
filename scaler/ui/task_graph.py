@@ -11,7 +11,15 @@ from scaler.protocol.python.common import TaskState
 from scaler.protocol.python.message import StateTask
 from scaler.ui.live_display import WorkersSection
 from scaler.ui.setting_page import Settings
-from scaler.ui.utility import COMPLETED_TASK_STATUSES, display_capabilities, format_timediff, format_worker_name, get_bounds, make_tick_text, make_ticks
+from scaler.ui.utility import (
+    COMPLETED_TASK_STATUSES,
+    display_capabilities,
+    format_timediff,
+    format_worker_name,
+    get_bounds,
+    make_tick_text,
+    make_ticks,
+)
 
 
 class TaskShapes:
@@ -192,7 +200,7 @@ class TaskStream:
             task_outline_width=task_outline_width,
             shape=task_shape,
             hovertext=task_hovertext,
-            capabilities_display_string=capabilities_display_string
+            capabilities_display_string=capabilities_display_string,
         )
 
     def __add_bar(
@@ -220,7 +228,7 @@ class TaskStream:
             #   - get a clean bar instead of many ~0 width lines
             #   - more importantly, make the ui significantly more responsive
             if task_color != TaskColors.NO_WORK and len(worker_history["y"]) > 2:
-                _ , penult_color, penult_text, penult_shape = self.__get_history_fields(worker, -2)
+                _, penult_color, penult_text, penult_shape = self.__get_history_fields(worker, -2)
 
                 if (
                     last_time_taken < 0.1
@@ -303,7 +311,7 @@ class TaskStream:
                 task_outline_width=0,
                 shape=TaskShapes.NO_WORK,
                 hovertext="",
-                capabilities_display_string=""
+                capabilities_display_string="",
             )
         self._seen_workers.add(worker)
 
@@ -345,7 +353,7 @@ class TaskStream:
                 task_outline_width=0,
                 shape=TaskShapes.NO_WORK,
                 hovertext="",
-                capabilities_display_string=""
+                capabilities_display_string="",
             )
 
     def handle_task_state(self, state_task: StateTask):
@@ -482,10 +490,14 @@ class TaskStream:
             return
 
         task_ids = [t for (_, _, t, _) in workers_doing_tasks]
-        task_capabilities = [f"Capabilities: {self._task_id_to_printable_capabilities.get(task_id, '')}"
-                             if task_id in self._task_id_to_printable_capabilities
-                             else ""
-                             for task_id in task_ids]
+        task_capabilities = [
+            (
+                f"Capabilities: {self._task_id_to_printable_capabilities.get(task_id, '')}"
+                if task_id in self._task_id_to_printable_capabilities
+                else ""
+            )
+            for task_id in task_ids
+        ]
         task_colors = [self.__get_task_color(t) for t in task_ids]
         working_data = {
             "type": "bar",

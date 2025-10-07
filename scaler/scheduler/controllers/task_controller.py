@@ -333,7 +333,9 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         worker = self._worker_controller.get_worker_by_task_id(task_id)
         task_state = self._task_state_manager.get_state_machine(task_id).current_state()
         capabilities = self._task_id_to_task[task_id].capabilities if task_id in self._task_id_to_task else {}
-        await self._binder_monitor.send(StateTask.new_msg(task_id, function_name, task_state, worker, capabilities, metadata))
+        await self._binder_monitor.send(
+            StateTask.new_msg(task_id, function_name, task_state, worker, capabilities, metadata)
+        )
 
     async def __routing(self, task_id: TaskID, transition: TaskTransition, **kwargs):
         state_machine = self._task_state_manager.on_transition(task_id, transition)
