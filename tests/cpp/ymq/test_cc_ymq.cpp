@@ -2,6 +2,10 @@
 // each test case is comprised of at least one client and one server, and possibly a middleman
 // the clients and servers used in these tests are defined in the first part of this file
 //
+// the men in the middle (mitm) are implemented using Python and are found in py_mitm/
+// in that directory, `main.py` is the entrypoint and framework for all the mitm,
+// and the individual mitm implementations are found in their respective files
+//
 // the test cases are at the bottom of this file, after the clients and servers
 // the documentation for each case is found on the TEST() definition
 
@@ -13,6 +17,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <future>
 #include <limits>
 #include <print>
 #include <string>
@@ -128,9 +133,9 @@ TestResult reconnect_server_main(std::string host, uint16_t port)
     auto result = syncRecvMessage(socket);
 
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "hello!!");
+    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "sync");
 
-    auto error = syncSendMessage(socket, {.address = Bytes("client"), .payload = Bytes("world!!")});
+    auto error = syncSendMessage(socket, {.address = Bytes("client"), .payload = Bytes("acknowledge")});
     RETURN_FAILURE_IF_FALSE(!error);
 
     context.removeIOSocket(socket);
@@ -144,14 +149,37 @@ TestResult reconnect_client_main(std::string host, uint16_t port)
 
     auto socket = syncCreateSocket(context, IOSocketType::Connector, "client");
     syncConnectSocket(socket, format_address(host, port));
-    auto result = syncSendMessage(socket, {.address = Bytes("server"), .payload = Bytes("hello!!")});
-    auto msg    = syncRecvMessage(socket);
-    RETURN_FAILURE_IF_FALSE(msg.has_value());
-    RETURN_FAILURE_IF_FALSE(msg->payload.as_string() == "world!!");
 
-    context.removeIOSocket(socket);
+    // create the recv future in advance, this remains active between reconnects
+    auto future = futureRecvMessage(socket);
 
-    return TestResult::Success;
+    // send "sync" and wait for "acknowledge" in a loop
+    // the mitm will send a RST after the first "sync"
+    // the "sync" message will be lost, but YMQ should automatically reconnect
+    // therefore the next "sync" message should succeed
+    for (size_t i = 0; i < 10; i++) {
+        auto error = syncSendMessage(socket, {.address = Bytes("server"), .payload = Bytes("sync")});
+        RETURN_FAILURE_IF_FALSE(!error);
+
+        auto result = future.wait_for(1s);
+        if (result == std::future_status::ready) {
+            auto msg = future.get();
+            RETURN_FAILURE_IF_FALSE(msg.has_value());
+            RETURN_FAILURE_IF_FALSE(msg->payload.as_string() == "acknowledge");
+            context.removeIOSocket(socket);
+
+            return TestResult::Success;
+        } else if (result == std::future_status::timeout) {
+            // timeout, try again
+            continue;
+        } else {
+            std::println("future status error");
+            return TestResult::Failure;
+        }
+    }
+
+    std::println("failed to reconnect after 10 attempts");
+    return TestResult::Failure;
 }
 
 TestResult client_simulated_slow_network(const char* host, uint16_t port)
@@ -387,7 +415,8 @@ TEST(CcYmqTestSuite, TestBasicYMQClientYMQServer)
     auto host = "localhost";
     auto port = 2889;
 
-    // this is the test harness, it accepts a timeout, and a list of functions to run
+    // this is the test harness, it accepts a timeout, a list of functions to run,
+    // and an optional third argument used to coordinate the execution of python (for mitm)
     auto result =
         test(10, {[=] { return basic_client_ymq(host, port); }, [=] { return basic_server_ymq(host, port); }});
 
@@ -401,6 +430,8 @@ TEST(CcYmqTestSuite, TestBasicRawClientYMQServer)
     auto host = "localhost";
     auto port = 2890;
 
+    // this is the test harness, it accepts a timeout, a list of functions to run,
+    // and an optional third argument used to coordinate the execution of python (for mitm)
     auto result =
         test(10, {[=] { return basic_client_raw(host, port); }, [=] { return basic_server_ymq(host, port); }});
 
@@ -413,6 +444,8 @@ TEST(CcYmqTestSuite, TestBasicRawClientRawServer)
     auto host = "localhost";
     auto port = 2891;
 
+    // this is the test harness, it accepts a timeout, a list of functions to run,
+    // and an optional third argument used to coordinate the execution of python (for mitm)
     auto result =
         test(10, {[=] { return basic_client_raw(host, port); }, [=] { return basic_server_raw(host, port); }});
 
@@ -436,6 +469,8 @@ TEST(CcYmqTestSuite, TestBasicDelayYMQClientRawServer)
     auto host = "localhost";
     auto port = 2893;
 
+    // this is the test harness, it accepts a timeout, a list of functions to run,
+    // and an optional third argument used to coordinate the execution of python (for mitm)
     auto result =
         test(10, {[=] { return basic_client_ymq(host, port); }, [=] { return basic_server_raw(host, port); }});
 
@@ -454,6 +489,70 @@ TEST(CcYmqTestSuite, TestClientSendBigMessageToServer)
         10,
         {[=] { return client_sends_big_message(host, port); },
          [=] { return server_receives_big_message(host, port); }});
+    EXPECT_EQ(result, TestResult::Success);
+}
+
+// this is the no-op/passthrough man in the middle test
+// for this test case we use YMQ on both the client side and the server side
+// the client connects to the mitm, and the mitm connects to the server
+// when the mitm receives packets from the client, it forwards it to the server without changing it
+// and similarly when it receives packets from the server, it forwards them to the client
+//
+// the mitm is implemented in Python. we pass the name of the test case, which corresponds to the Python filename,
+// and a list of arguments, which are: mitm ip, mitm port, remote ip, remote port
+// this defines the address of the mitm, and the addresses that can connect to it
+// for more, see the python mitm files
+TEST(CcYmqTestSuite, TestMitmPassthrough)
+{
+    auto mitm_ip     = "192.0.2.4";
+    auto mitm_port   = 2323;
+    auto remote_ip   = "192.0.2.3";
+    auto remote_port = 23571;
+
+    // the Python program must be the first and only the first function passed to test()
+    // we must also pass `true` as the third argument to ensure that Python is fully started
+    // before beginning the test
+    auto result = test(
+        20,
+        {[=] { return run_mitm("passthrough", mitm_ip, mitm_port, remote_ip, remote_port); },
+         [=] { return basic_client_ymq(mitm_ip, mitm_port); },
+         [=] { return basic_server_ymq(remote_ip, remote_port); }},
+        true);
+    EXPECT_EQ(result, TestResult::Success);
+}
+
+// this test uses the mitm to test the reconnect logic of YMQ by sending RST packets
+TEST(CcYmqTestSuite, TestMitmReconnect)
+{
+    auto mitm_ip     = "192.0.2.4";
+    auto mitm_port   = 2525;
+    auto remote_ip   = "192.0.2.3";
+    auto remote_port = 23575;
+
+    auto result = test(
+        10,
+        {[=] { return run_mitm("send_rst_to_client", mitm_ip, mitm_port, remote_ip, remote_port); },
+         [=] { return reconnect_client_main(mitm_ip, mitm_port); },
+         [=] { return reconnect_server_main(remote_ip, remote_port); }},
+        true);
+    EXPECT_EQ(result, TestResult::Success);
+}
+
+// TODO: Make this more reliable, and re-enable it
+// in this test, the mitm drops a random % of packets arriving from the client and server
+TEST(CcYmqTestSuite, TestMitmRandomlyDropPackets)
+{
+    auto mitm_ip     = "192.0.2.4";
+    auto mitm_port   = 2828;
+    auto remote_ip   = "192.0.2.3";
+    auto remote_port = 23591;
+
+    auto result = test(
+        60,
+        {[=] { return run_mitm("randomly_drop_packets", mitm_ip, mitm_port, remote_ip, remote_port, {"0.3"}); },
+         [=] { return basic_client_ymq(mitm_ip, mitm_port); },
+         [=] { return basic_server_ymq(remote_ip, remote_port); }},
+        true);
     EXPECT_EQ(result, TestResult::Success);
 }
 

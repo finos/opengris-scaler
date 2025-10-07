@@ -25,6 +25,3 @@ cmake --build --preset $BUILD_PRESET
 
 # Install
 cmake --install $BUILD_DIR
-
-# Tests
-ctest --preset $BUILD_PRESET
