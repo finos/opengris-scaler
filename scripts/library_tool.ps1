@@ -70,7 +70,7 @@ elseif ($dependency -eq "capnp")
         $url = "https://capnproto.org/$CAPNP_FOLDER_NAME.tar.gz"
         curl.exe --retry 100 --retry-max-time 3600 -L $url -o "$DOWNLOAD_DIR\$CAPNP_FOLDER_NAME.tar.gz"
     }
-    if ($action -eq "compile")
+    elseif ($action -eq "compile")
     {
         Remove-Item -Path "$CAPNP_FOLDER_NAME" -Recurse -Force
         tar -xzvf "$DOWNLOAD_DIR\$CAPNP_FOLDER_NAME.tar.gz" -C .\
@@ -92,8 +92,9 @@ elseif ($dependency -eq "capnp")
         exit 1
     }
 
-    else {
-        Write-Host "Usage: .\library_tool.ps1 [download|boost|capnp] [--prefix=DIR]"
-        exit 1
-    }
 }
+else {
+    Write-Host "Usage: .\library_tool.ps1 [download|boost|capnp] [--prefix=DIR]"
+    exit 1
+}
+
