@@ -35,7 +35,7 @@ uvloop = [
     "uvloop; platform_system != 'Windows'",
 ]
 gui = [
-    "nicegui[plotly]==2.24.2; python_version == '3.8'",
+    "nicegui[plotly]==3.0.3; python_version == '3.8'",
     "nicegui[plotly]==3.0.3; python_version >= '3.9'",
 ]
 graphblas = [
@@ -45,7 +45,7 @@ graphblas = [
     "numpy==2.2.6; python_version >= '3.10'"
 ]
 all = [
-    "nicegui[plotly]==2.24.2; python_version == '3.8'",
+    "nicegui[plotly]==3.0.3; python_version == '3.8'",
     "nicegui[plotly]==3.0.3; python_version >= '3.9'",
     "python-graphblas",
     "numpy==1.24.4; python_version == '3.8'",
