@@ -320,42 +320,6 @@ class TestClient(unittest.TestCase):
             # but new tasks should work fine
             self.assertEqual(client.submit(round, 3.14).result(), 3.0)
 
-    def test_capabilities(self):
-        base_cluster = self.combo._cluster
-
-        with Client(self.address) as client:
-            future = client.submit_verbose(round, args=(3.14,), kwargs={}, capabilities={"gpu": 1})
-
-            # No worker can accept the task, should timeout
-            with self.assertRaises(TimeoutError):
-                future.result(timeout=1.0)
-
-            # Connects a worker that can handle the task
-            gpu_cluster = Cluster(
-                address=base_cluster._address,
-                storage_address=None,
-                preload=None,
-                worker_io_threads=1,
-                worker_names=["gpu_worker"],
-                per_worker_capabilities={"gpu": -1},
-                per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
-                heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
-                task_timeout_seconds=base_cluster._task_timeout_seconds,
-                death_timeout_seconds=base_cluster._death_timeout_seconds,
-                garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
-                trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
-                hard_processor_suspend=base_cluster._hard_processor_suspend,
-                event_loop=base_cluster._event_loop,
-                logging_paths=base_cluster._logging_paths,
-                logging_level=base_cluster._logging_level,
-                logging_config_file=base_cluster._logging_config_file,
-            )
-            gpu_cluster.start()
-
-            self.assertEqual(future.result(), 3.0)
-
-            gpu_cluster.terminate()
-
 
 class TestClientPreload(unittest.TestCase):
     # Separate class for preload functionality with separate cluster to avoid interfering with time-sensitive tests

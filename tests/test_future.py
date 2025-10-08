@@ -2,7 +2,7 @@ import math
 import threading
 import time
 import unittest
-from concurrent.futures import CancelledError, InvalidStateError, as_completed
+from concurrent.futures import CancelledError, InvalidStateError, TimeoutError, as_completed
 from threading import Event
 from typing import Tuple
 from unittest.mock import Mock

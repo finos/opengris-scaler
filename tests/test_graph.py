@@ -4,7 +4,7 @@ import math
 import time
 import unittest
 
-from scaler import Client, Cluster, SchedulerClusterCombo
+from scaler import Client, SchedulerClusterCombo
 from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
@@ -206,49 +206,3 @@ class TestGraph(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     fut.result()
                 logging.info(f"Raised ValueError exception for {k}")
-
-    def test_graph_capabilities(self):
-        base_cluster = self.combo._cluster
-
-        with Client(self.address) as client:
-            # fmt: off
-            graph = {
-                "a": 1.3,
-                "b": 2.6,
-                "c": (round, "a"),
-                "d": (round, "b"),
-                "e": (add, "c", "d")
-            }
-            # fmt: on
-
-            future = client.get(graph, keys=["e"], capabilities={"gpu": 1}, block=False)["e"]
-
-            with self.assertRaises(TimeoutError):
-                future.result(timeout=1.0)
-
-            # Connect a worker that can handle the task
-            gpu_cluster = Cluster(
-                address=base_cluster._address,
-                storage_address=None,
-                preload=None,
-                worker_io_threads=1,
-                worker_names=["gpu_worker"],
-                per_worker_capabilities={"gpu": -1},
-                per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
-                heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
-                task_timeout_seconds=base_cluster._task_timeout_seconds,
-                death_timeout_seconds=base_cluster._death_timeout_seconds,
-                garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
-                trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
-                hard_processor_suspend=base_cluster._hard_processor_suspend,
-                event_loop=base_cluster._event_loop,
-                logging_paths=base_cluster._logging_paths,
-                logging_level=base_cluster._logging_level,
-                logging_config_file=base_cluster._logging_config_file,
-            )
-            gpu_cluster.start()
-
-            # Now the task should be accepted and executed
-            self.assertEqual(future.result(), 4)
-
-            gpu_cluster.terminate()

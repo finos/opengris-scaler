@@ -215,7 +215,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
                 metadata=task_info.task.metadata,
                 func_object_id=task_info.task.func_object_id,
                 function_args=[self.__get_argument_object(graph_task_id, arg) for arg in task_info.task.function_args],
-                capabilities={},
+                capabilities=task_info.task.capabilities,
             )
 
             await self._task_controller.on_task_new(task)
