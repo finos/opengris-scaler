@@ -3,8 +3,8 @@ requires = ["scikit-build-core>=0.5.0", "setuptools-scm", "mypy", "black", "flak
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "scaler"
-description = "Scaler Distribution Framework"
+name = "opengris-scaler"
+description = "OpenGRIS Scaler Distribution Framework"
 requires-python = ">=3.8"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { text = "Apache 2.0" }

@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath(os.path.join("..", "..")))
 
 # -- Project information -----------------------------------------------------
 
-project = "Scaler"
+project = "OpenGRIS Scaler"
 author = "Citi"
 
 with open("../../scaler/version.txt", "rt") as f:

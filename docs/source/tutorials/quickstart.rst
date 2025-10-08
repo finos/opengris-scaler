@@ -35,7 +35,13 @@ The `scaler` package is available on PyPI and can be installed using any compati
 
 .. code:: bash
 
-    pip install scaler
+    pip install opengris-scaler
+
+    # or with graphblas and uvloop and webui support
+    pip install opengris-scaler[graphblas,uvloop,gui]
+
+    # or install all dependencies
+    pip install opengris-scaler[all]
 
 
 First Look (Code API)
