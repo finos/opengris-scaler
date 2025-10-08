@@ -153,7 +153,7 @@ class TaskStream:
             "showlegend": False,
         }
 
-    def __get_history_fields(self, worker: str, index: int) -> Tuple[float, str, str]:
+    def __get_history_fields(self, worker: str, index: int) -> Tuple[float, str, str, str]:
         worker_data = self._completed_data_cache[worker]
         time_taken = worker_data["x"][index]
         color = worker_data["marker"]["color"][index]
@@ -185,7 +185,7 @@ class TaskStream:
         color = self.__get_capabilities_color(capabilities)
         return color
 
-    def __add_task_to_chart(self, worker: str, task_id: bytes, task_state: TaskState, task_time: str):
+    def __add_task_to_chart(self, worker: str, task_id: bytes, task_state: TaskState, task_time: float):
         task_color = self.__get_task_color(task_id)
         task_shape = TaskShapes.from_status(task_state)
         task_outline_color, task_outline_width = TaskShapes.get_outline(task_shape)
