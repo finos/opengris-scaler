@@ -237,7 +237,7 @@ class ScalerFuture(concurrent.futures.Future):
         Raises a `TimeoutError` if it blocks more than `timeout` seconds.
         """
         if not self.done() and not self._condition.wait(timeout):
-            raise TimeoutError()
+            raise concurrent.futures.TimeoutError()
 
     def _is_simple_task(self):
         return self._group_task_id is None and self._task_id is not None
