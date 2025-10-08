@@ -642,24 +642,17 @@ class Client:
 
     def _resolve_scheduler_address(self, address: Optional[str]) -> str:
         """Resolve the scheduler address based on the provided address and worker context."""
+        # Provided address always takes precedence
         if address is not None:
             return address
 
-        scheduler_address = None
+        # No address provided, check if we're running inside a worker context
         current_processor = Processor.get_current_processor()
-        if current_processor is not None:
-            scheduler_address = current_processor.scheduler_address()
-
         if current_processor is None:
             raise ValueError(
                 "No scheduler address provided and not running inside a worker context. "
                 "Please provide a scheduler address when creating the Client outside of a worker."
             )
 
-        if scheduler_address is None:
-            raise ValueError(
-                "Running inside worker context but unable to determine worker's scheduler address. "
-                "Please provide a scheduler address explicitly."
-            )
-
-        return scheduler_address.to_address()
+        # Return the scheduler address from the current processor
+        return current_processor.scheduler_address().to_address()
