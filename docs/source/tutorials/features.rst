@@ -118,6 +118,28 @@ Tasks can depend on other tasks' result without using graph.
 .. literalinclude:: ../../../examples/nested_client.py
    :language: python
 
+Nested Client Scheduler Address
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When creating a ``Client`` inside a task (nested client), the scheduler ``address`` parameter is optional. If omitted, the client automatically detects and uses the scheduler address from the worker context. This is particularly useful when workers are behind firewalls or NAT, where the scheduler address accessible from inside the worker may differ from external addresses.
+
+**Automatic Address Detection:**
+
+.. code:: python
+
+    from scaler import Client
+
+    def nested_task():
+        # Automatically uses worker's scheduler address if no address is provided to Client()
+        with Client() as client:
+            result = client.submit(lambda x: x * 2, 5).result()
+        return result
+
+    # Main client
+    client = Client(address="tcp://127.0.0.1:2345")
+    future = client.submit(nested_task)
+    print(future.result())  # 10
+
 Dynamically Building Graph Within a Task
 ----------------------------------------
 
