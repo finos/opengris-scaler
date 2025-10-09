@@ -1,11 +1,12 @@
 import argparse
 import dataclasses
 import enum
+import sys
 from typing import Any, cast, Dict, Optional, Type, TypeVar, Union, get_args, get_origin
 
-try:
+if sys.version_info >= (3, 11):
     import tomllib
-except ImportError:
+else:
     import tomli as tomllib
 
 from scaler.config.mixins import ConfigType
