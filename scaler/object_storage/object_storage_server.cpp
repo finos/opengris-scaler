@@ -29,7 +29,8 @@ void ObjectStorageServer::run(
     ObjectStorageServer::Identity identity,
     std::string log_level,
     std::string log_format,
-    std::vector<std::string> log_paths)
+    std::vector<std::string> log_paths,
+    std::function<bool()> running)
 {
     _logger = scaler::ymq::Logger(log_format, std::move(log_paths), scaler::ymq::Logger::stringToLogLevel(log_level));
 
@@ -44,7 +45,7 @@ void ObjectStorageServer::run(
 
         _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: started");
 
-        processRequests();
+        processRequests(running);
 
         _ioContext.removeIOSocket(_ioSocket);
     } catch (const std::exception& e) {
@@ -117,7 +118,7 @@ void ObjectStorageServer::closeServerReadyFds()
     }
 }
 
-void ObjectStorageServer::processRequests()
+void ObjectStorageServer::processRequests(std::function<bool()> running)
 {
     using namespace std::chrono_literals;
     Identity lastMessageIdentity;
@@ -134,7 +135,15 @@ void ObjectStorageServer::processRequests()
                 }
             });
 
-            auto maybeMessage = ymq::syncRecvMessage(_ioSocket);
+            auto maybeMessageFuture = ymq::futureRecvMessage(_ioSocket);
+            while (maybeMessageFuture.wait_for(100ms) == std::future_status::timeout) {
+                if (!running()) {
+                    _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: stopped by user");
+                    pendingRequests.clear();
+                    return;
+                }
+            }
+            auto maybeMessage = maybeMessageFuture.get();
 
             if (!maybeMessage) {
                 auto error = maybeMessage.error();
