@@ -1,11 +1,12 @@
 #pragma once
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <unistd.h>
-#endif  // __linux__
+#endif  // __linux__ || __APPLE__
+
 #ifdef _WIN32
 // clang-format off
 #include <windows.h>
@@ -26,22 +27,20 @@ namespace ymq {
 
 inline auto GetErrorCode()
 {
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
     return errno;
-#endif  // __linux__
-#ifdef _WIN32
+#elif defined(_WIN32)
     return WSAGetLastError();
-#endif  // _WIN32
+#endif
 }
 
 inline constexpr void CloseAndZeroSocket(auto& fd)
 {
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
     close(fd);
-#endif  // __linux__
-#ifdef _WIN32
+#elif defined(_WIN32)
     closesocket(fd);
-#endif  // _WIN32
+#endif
     fd = 0;
 }
 

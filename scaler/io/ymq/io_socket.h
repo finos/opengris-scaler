@@ -8,15 +8,12 @@
 #undef SendMessageCallback
 #endif  // _WIN32
 
-// C++
-#include <atomic>
 #include <map>
 #include <memory>
 #include <optional>
 #include <queue>
 #include <string>
 
-// First-party
 #include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/message.h"
 #include "scaler/io/ymq/tcp_client.h"

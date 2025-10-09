@@ -1,12 +1,11 @@
 #ifdef __linux__
 
-#include "scaler/io/ymq/epoll_context.h"
-
 #include <sys/epoll.h>
 
 #include <cerrno>
 #include <functional>
 
+#include "scaler/io/ymq/epoll_context.h"
 #include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/event_manager.h"
 

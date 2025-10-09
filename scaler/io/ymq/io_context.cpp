@@ -1,10 +1,9 @@
 
-#include "scaler/io/ymq/io_context.h"
-
 #include <algorithm>  // std::ranges::generate
 #include <cassert>    // assert
 #include <future>
 #include <memory>  // std::make_shared
+
 #ifdef _WIN32
 // clang-format off
 #include <winsock2.h>
@@ -13,6 +12,7 @@
 #endif  // _WIN32
 
 #include "scaler/io/ymq/event_loop_thread.h"
+#include "scaler/io/ymq/io_context.h"
 #include "scaler/io/ymq/io_socket.h"
 #include "scaler/io/ymq/typedefs.h"
 

@@ -1,9 +1,9 @@
 #pragma once
 
 // C++
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
 #include <sys/socket.h>
-#endif  // __linux__
+#endif  // __linux__ || __APPLE__
 #ifdef _WIN32
 // clang-format off
 #include <winsock2.h>
@@ -55,8 +55,7 @@ private:
     // Because here we need to pass the sizeof _serverFd to setsockopt.
 #ifdef _WIN32
     SOCKET _serverFd;
-#endif
-#ifdef __linux__
+#elif defined(__linux__) || defined(__APPLE__)
     int _serverFd;
 #endif
     sockaddr _addr;

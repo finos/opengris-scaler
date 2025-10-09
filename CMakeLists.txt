@@ -5,7 +5,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
-set(CMAKE_VERBOSE_MAKEFILE OFF)
+set(CMAKE_VERBOSE_MAKEFILE ON)
 set(BUILD_SHARED_LIBS ON CACHE BOOL "Build shared libraries")
 
 if(NOT SKBUILD_PROJECT_NAME)
@@ -63,13 +63,11 @@ elseif(APPLE)
         message(STATUS "macOS on ARM64")
 
         add_compile_options(-Wall -Wextra)
-        add_link_options(-Wl,-rpath,@loader_path)
     else()
         # Mac Intel
         message(STATUS "macOS on x86_64")
 
         add_compile_options(-Wall -Wextra)
-        add_link_options(-Wl,-rpath,@loader_path)
     endif()
 
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")

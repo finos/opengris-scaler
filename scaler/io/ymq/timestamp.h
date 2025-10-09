@@ -79,6 +79,18 @@ inline LARGE_INTEGER convertToLARGE_INTEGER(Timestamp ts)
 }
 #endif  // _WIN32
 
+#ifdef __APPLE__
+// For kqueue EVFILT_TIMER - expects microseconds (NOTE_USECONDS)
+inline int64_t convertToKqueueTimer(Timestamp ts)
+{
+    using namespace std::chrono;
+    const auto duration = ts.timestamp - std::chrono::system_clock::now();
+    assert(duration.count() >= 0);
+    const auto microsecs = duration_cast<microseconds>(duration);
+    return microsecs.count();
+}
+#endif  // __APPLE__
+
 }  // namespace ymq
 }  // namespace scaler
 
