@@ -244,7 +244,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 task_result=TaskResult.new_msg(task_id, TaskResultType.FailedWorkerDied),
             )
         else:
-            await self.__routing(task_id, TaskTransition.SchedulerHasNoTask, task=task)
+            await self.__routing(task_id, TaskTransition.SchedulerHasTask, task=task)
 
     async def __state_canceled(
         self, task_id: TaskID, state_machine: TaskStateMachine, task_cancel_confirm: TaskCancelConfirm
