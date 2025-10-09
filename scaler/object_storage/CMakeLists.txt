@@ -21,8 +21,6 @@ add_library(object_storage_server_objs OBJECT
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/scaler/object_storage)
 
 # object_storage_server python =========================================================================================
-find_package(Python3 REQUIRED COMPONENTS Development.Module)
-
 add_library(py_object_storage_server MODULE
     pymod_object_storage_server.cpp
 )

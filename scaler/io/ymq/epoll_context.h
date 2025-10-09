@@ -12,7 +12,6 @@
 #include "scaler/io/ymq/timed_queue.h"
 
 // First-party
-#include "scaler/io/ymq/file_descriptor.h"
 #include "scaler/io/ymq/interruptive_concurrent_queue.h"
 #include "scaler/io/ymq/timestamp.h"
 

@@ -42,7 +42,7 @@ int main(int argc, char* argv[])
     const std::string_view line = longStr;
 
     time_point<system_clock> start = system_clock::now();
-    for (int cnt = 0; cnt < msgCnt; ++cnt) {
+    for (size_t cnt = 0; cnt < msgCnt; ++cnt) {
         Message message {};
         message.payload = Bytes {const_cast<char*>(line.data()), line.size()};
 
