@@ -11,6 +11,7 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 
 import os
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join("..", "..")))
@@ -30,6 +31,12 @@ rst_prolog = f"""
 .. |version| replace:: {version}
 .. |release| replace:: {release}
 """
+
+# -- Auto-generate TOML config for docs --------------------------------------
+script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "_scripts", "generate_config.py"))
+print(f"Executing script to generate TOML config: {script_path}")
+subprocess.run([sys.executable, script_path], check=True)
+# ---------------------------------------------------------------------------
 
 # -- General configuration ---------------------------------------------------
 
