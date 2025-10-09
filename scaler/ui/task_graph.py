@@ -125,7 +125,7 @@ class TaskStream:
             return
         self._completed_data_cache[worker] = {
             "type": "bar",
-            "name": "History",
+            "name": "Completed",
             "y": [],
             "x": [],
             "orientation": "h",
@@ -172,8 +172,6 @@ class TaskStream:
 
     def __add_task_to_chart(self, worker: str, task_id: bytes, task_state: TaskState, task_time: float):
         task_color = self.__get_task_color(task_id)
-        task_shape = TaskShapes.from_status(task_state)
-        task_outline_color, task_outline_width = TaskShapes.get_outline(task_state)
         task_hovertext = self._worker_to_object_name.get(worker, "")
         capabilities_display_string = self._task_id_to_printable_capabilities.get(task_id, "")
 
@@ -181,9 +179,7 @@ class TaskStream:
             worker=worker,
             time_taken=task_time,
             task_color=task_color,
-            task_outline_color=task_outline_color,
-            task_outline_width=task_outline_width,
-            shape=task_shape,
+            state=task_state,
             hovertext=task_hovertext,
             capabilities_display_string=capabilities_display_string,
         )
@@ -193,12 +189,19 @@ class TaskStream:
         worker: str,
         time_taken: float,
         task_color: str,
-        task_outline_color: str,
-        task_outline_width: int,
-        shape: str,
+        state: Optional[TaskState],
         hovertext: str,
         capabilities_display_string: str,
     ):
+        if state:
+            shape = TaskShapes.from_status(state)
+            task_outline_color, task_outline_width = TaskShapes.get_outline(state)
+            state_text = state.name
+        else:
+            shape = TaskShape.NONE.value
+            task_outline_color, task_outline_width = ("rgba(0,0,0,0)", 0)
+            state_text = ""
+
         worker_history = self._completed_data_cache[worker]
         if len(worker_history["y"]) > 1:
             last_time_taken, last_color, last_text, last_shape = self.__get_history_fields(worker, -1)
@@ -206,6 +209,7 @@ class TaskStream:
             # lengthen last bar if they're the same type
             if last_color == task_color and last_text == hovertext and last_shape == shape:
                 worker_history["x"][-1] += time_taken
+                worker_history["customdata"][-1]["task_count"] += 1
                 return
 
             # if there's a short gap from last task to current task, merge the bars
@@ -222,6 +226,7 @@ class TaskStream:
                     and penult_shape == shape
                 ):
                     worker_history["x"][-2] += time_taken + last_time_taken
+                    worker_history["customdata"][-2]["task_count"] += 1
                     self.__remove_last_elements(worker)
                     return
 
@@ -232,10 +237,17 @@ class TaskStream:
         self._completed_data_cache[worker]["marker"]["line"]["color"].append(task_outline_color)
         self._completed_data_cache[worker]["marker"]["line"]["width"].append(task_outline_width)
         self._completed_data_cache[worker]["hovertext"].append(hovertext)
-        self._completed_data_cache[worker]["customdata"].append(capabilities_display_string)
+        self._completed_data_cache[worker]["customdata"].append(
+            {"state": state_text, "task_count": 1, "capabilities": capabilities_display_string}
+        )
 
         if hovertext:
-            self._completed_data_cache[worker]["hovertemplate"].append("%{hovertext} (%{x})<br>%{customdata}")
+            self._completed_data_cache[worker]["hovertemplate"].append(
+                "%{hovertext} (%{x})<br>"
+                "%{customdata.state}<br>"
+                "Tasks: %{customdata.task_count}<br>"
+                "Capabilities: %{customdata.capabilities}"
+            )
         else:
             self._completed_data_cache[worker]["hovertemplate"].append("")
 
@@ -292,9 +304,7 @@ class TaskStream:
                 worker=worker,
                 time_taken=format_timediff(self._start_time, now),
                 task_color=TASK_STREAM_BACKGROUND_COLOR,
-                task_outline_color="rgba(0,0,0,0)",
-                task_outline_width=0,
-                shape=TaskShape.NONE.value,
+                state=None,
                 hovertext="",
                 capabilities_display_string="",
             )
@@ -334,9 +344,7 @@ class TaskStream:
                 worker=worker,
                 time_taken=format_timediff(start_time, now),
                 task_color=TASK_STREAM_BACKGROUND_COLOR,
-                task_outline_color="rgba(0,0,0,0)",
-                task_outline_width=0,
-                shape=TaskShape.NONE.value,
+                state=None,
                 hovertext="",
                 capabilities_display_string="",
             )
