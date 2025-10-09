@@ -85,8 +85,8 @@ wheel.packages = ["scaler"]
 build.targets = ["py_ymq", "py_object_storage_server"]
 
 [tool.scikit-build.cmake.define]
-CMAKE_C_COMPILER = { env = "CMAKE_C_COMPILER", default = "gcc" }
-CMAKE_CXX_COMPILER = { env = "CMAKE_CXX_COMPILER", default = "g++" }
+CMAKE_C_COMPILER = { env = "CMAKE_C_COMPILER", default = "gcc-14" }
+CMAKE_CXX_COMPILER = { env = "CMAKE_CXX_COMPILER", default = "g++-14" }
 
 [tool.mypy]
 no_strict_optional = true
