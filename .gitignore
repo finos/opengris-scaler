@@ -32,3 +32,5 @@ CMakeFiles/
 .vs/
 scaler/protocol/capnp/*.c++
 scaler/protocol/capnp/*.h
+
+docs/source/_static/example_config.toml

@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 from scaler.config import defaults
+from scaler.config.mixins import config_section
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
@@ -10,6 +11,7 @@ from scaler.scheduler.controllers.scaling_policies.types import ScalingControlle
 from scaler.utility.logging.utility import LoggingLevel
 
 
+@config_section
 @dataclasses.dataclass
 class SchedulerConfig:
     scheduler_address: ZMQConfig = dataclasses.field()
