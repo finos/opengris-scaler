@@ -156,13 +156,14 @@ class TaskStream:
             "showlegend": False,
         }
 
-    def __get_history_fields(self, worker: str, index: int) -> Tuple[float, str, str, str]:
+    def __get_history_fields(self, worker: str, index: int) -> Tuple[float, str, str, str, str]:
         worker_data = self._completed_data_cache[worker]
         time_taken = worker_data["x"][index]
         color = worker_data["marker"]["color"][index]
         text = worker_data["hovertext"][index]
         shape = worker_data["marker"]["pattern"]["shape"][-1]
-        return time_taken, color, text, shape
+        capabilities = worker_data["customdata"][index]["capabilities"]
+        return time_taken, color, text, shape, capabilities
 
     def __remove_last_elements(self, worker: str):
         worker_data = self._completed_data_cache[worker]
@@ -224,10 +225,17 @@ class TaskStream:
 
         worker_history = self._completed_data_cache[worker]
         if len(worker_history["y"]) > 1:
-            last_time_taken, last_color, last_text, last_shape = self.__get_history_fields(worker, -1)
+            last_time_taken, last_color, last_text, last_shape, last_capabilities = self.__get_history_fields(
+                worker, -1
+            )
 
             # lengthen last bar if they're the same type
-            if last_color == task_color and last_text == hovertext and last_shape == shape:
+            if (
+                last_color == task_color
+                and last_text == hovertext
+                and last_shape == shape
+                and last_capabilities == capabilities_display_string
+            ):
                 worker_history["x"][-1] += time_taken
                 worker_history["customdata"][-1]["task_count"] += 1
                 return
@@ -237,13 +245,14 @@ class TaskStream:
             #   - get a clean bar instead of many ~0 width lines
             #   - more importantly, make the ui significantly more responsive
             if task_color != TASK_STREAM_BACKGROUND_COLOR and len(worker_history["y"]) > 2:
-                _, penult_color, penult_text, penult_shape = self.__get_history_fields(worker, -2)
+                _, penult_color, penult_text, penult_shape, penult_capabilities = self.__get_history_fields(worker, -2)
 
                 if (
                     last_time_taken < 0.1
                     and penult_color == task_color
                     and penult_text == hovertext
                     and penult_shape == shape
+                    and penult_capabilities == capabilities_display_string
                 ):
                     worker_history["x"][-2] += time_taken + last_time_taken
                     worker_history["customdata"][-2]["task_count"] += 1
