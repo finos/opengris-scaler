@@ -138,6 +138,8 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
             auto maybeMessageFuture = ymq::futureRecvMessage(_ioSocket);
             while (maybeMessageFuture.wait_for(100ms) == std::future_status::timeout) {
                 if (!running()) {
+                    _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: stopped by user");
+                    pendingRequests.clear();
                     return;
                 }
             }

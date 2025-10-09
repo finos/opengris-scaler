@@ -1,5 +1,6 @@
 import argparse
 import logging
+import sys
 
 from scaler.config.loader import load_config
 from scaler.config.section.object_storage_server import ObjectStorageServerConfig
@@ -31,11 +32,14 @@ def main():
 
     log_format_str, log_level_str, log_paths = get_logger_info(logging.getLogger())
 
-    ObjectStorageServer().run(
-        oss_config.object_storage_address.host,
-        oss_config.object_storage_address.port,
-        oss_config.object_storage_address.identity,
-        log_level_str,
-        log_format_str,
-        log_paths,
-    )
+    try:
+        ObjectStorageServer().run(
+            oss_config.object_storage_address.host,
+            oss_config.object_storage_address.port,
+            oss_config.object_storage_address.identity,
+            log_level_str,
+            log_format_str,
+            log_paths,
+        )
+    except KeyboardInterrupt:
+        sys.exit(0)
