@@ -35,7 +35,8 @@ public:
         Identity identity                  = "ObjectStorageServer",
         std::string log_level              = "INFO",
         std::string log_format             = "%(levelname)s: %(message)s",
-        std::vector<std::string> log_paths = {"/dev/stdout"});
+        std::vector<std::string> log_paths = {"/dev/stdout"},
+        std::function<bool()> running      = []() { return true; });
 
     void waitUntilReady();
 
@@ -78,7 +79,7 @@ private:
 
     void closeServerReadyFds();
 
-    void processRequests();
+    void processRequests(std::function<bool()> stopCondition);
 
     void processSetRequest(std::shared_ptr<Client> client, std::pair<ObjectRequestHeader, Bytes> request);
 
