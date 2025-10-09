@@ -1,5 +1,6 @@
 import datetime
 from collections import deque
+from enum import Enum
 import hashlib
 from queue import SimpleQueue
 from threading import Lock
@@ -21,60 +22,42 @@ from scaler.ui.utility import (
     make_ticks,
 )
 
+TASK_STREAM_BACKGROUND_COLOR = "white"
+TASK_STREAM_BACKGROUND_COLOR_RGB = "#000000"
 
-class TaskShapes:
-    SUCCESS = ""
-    RUNNING = ""
-    NO_WORK = ""
+
+class TaskShape(Enum):
+    NONE = ""
     FAILED = "x"
     CANCELED = "/"
 
-    __task_status_to_shape = {
-        TaskState.Success: SUCCESS,
-        TaskState.Running: RUNNING,
-        TaskState.Failed: FAILED,
-        TaskState.FailedWorkerDied: FAILED,
-        TaskState.Canceled: CANCELED,
-        TaskState.CanceledNotFound: CANCELED,
+
+class TaskShapes:
+    _task_status_to_shape = {
+        TaskState.Success: TaskShape.NONE.value,
+        TaskState.Running: TaskShape.NONE.value,
+        TaskState.Failed: TaskShape.FAILED.value,
+        TaskState.FailedWorkerDied: TaskShape.FAILED.value,
+        TaskState.Canceled: TaskShape.CANCELED.value,
+        TaskState.CanceledNotFound: TaskShape.CANCELED.value,
     }
 
-    __task_shape_to_outline = {
-        SUCCESS: ("black", 2),
-        NO_WORK: ("rgba(0,0,0,0)", 0),
-        RUNNING: ("yellow", 2),
-        FAILED: ("red", 2),
-        CANCELED: ("black", 2),
+    _task_shape_to_outline = {
+        TaskState.Success: ("black", 2),
+        TaskState.Running: ("yellow", 2),
+        TaskState.Failed: ("red", 2),
+        TaskState.FailedWorkerDied: ("red", 2),
+        TaskState.Canceled: ("black", 2),
+        TaskState.CanceledNotFound: ("black", 2),
     }
 
-    @staticmethod
-    def from_status(status: TaskState) -> str:
-        return TaskShapes.__task_status_to_shape[status]
+    @classmethod
+    def from_status(cls, status: TaskState) -> str:
+        return cls._task_status_to_shape[status]
 
-    @staticmethod
-    def get_outline(shape: str) -> Tuple[str, int]:
-        return TaskShapes.__task_shape_to_outline[shape]
-
-
-class TaskColors:
-    RUNNING = "yellow"
-    NO_WORK = "white"
-    SUCCESS = "green"
-    FAILED = "red"
-    INACTIVE = "lightgray"
-    CANCELED = "black"
-    CANCELING = CANCELED
-
-    __task_status_to_color = {
-        TaskState.Inactive: INACTIVE,
-        TaskState.Running: RUNNING,
-        TaskState.Success: SUCCESS,
-        TaskState.Canceled: CANCELED,
-        TaskState.Canceling: CANCELING,
-    }
-
-    @staticmethod
-    def from_status(status: TaskState) -> str:
-        return TaskColors.__task_status_to_color[status]
+    @classmethod
+    def get_outline(cls, status: TaskState) -> Tuple[str, int]:
+        return cls._task_shape_to_outline[status]
 
 
 class TaskStream:
@@ -177,6 +160,8 @@ class TaskStream:
         if capabilities not in self._capabilities_color_map:
             h = hashlib.md5(capabilities.encode()).hexdigest()
             color = f"#{h[:6]}"
+            if color == TASK_STREAM_BACKGROUND_COLOR_RGB:
+                color = "#0000ff"
             self._capabilities_color_map[capabilities] = color
         return self._capabilities_color_map[capabilities]
 
@@ -188,7 +173,7 @@ class TaskStream:
     def __add_task_to_chart(self, worker: str, task_id: bytes, task_state: TaskState, task_time: float):
         task_color = self.__get_task_color(task_id)
         task_shape = TaskShapes.from_status(task_state)
-        task_outline_color, task_outline_width = TaskShapes.get_outline(task_shape)
+        task_outline_color, task_outline_width = TaskShapes.get_outline(task_state)
         task_hovertext = self._worker_to_object_name.get(worker, "")
         capabilities_display_string = self._task_id_to_printable_capabilities.get(task_id, "")
 
@@ -227,7 +212,7 @@ class TaskStream:
             # this serves two purposes:
             #   - get a clean bar instead of many ~0 width lines
             #   - more importantly, make the ui significantly more responsive
-            if task_color != TaskColors.NO_WORK and len(worker_history["y"]) > 2:
+            if task_color != TASK_STREAM_BACKGROUND_COLOR and len(worker_history["y"]) > 2:
                 _, penult_color, penult_text, penult_shape = self.__get_history_fields(worker, -2)
 
                 if (
@@ -306,10 +291,10 @@ class TaskStream:
             self.__add_bar(
                 worker=worker,
                 time_taken=format_timediff(self._start_time, now),
-                task_color=TaskColors.NO_WORK,
+                task_color=TASK_STREAM_BACKGROUND_COLOR,
                 task_outline_color="rgba(0,0,0,0)",
                 task_outline_width=0,
-                shape=TaskShapes.NO_WORK,
+                shape=TaskShape.NONE.value,
                 hovertext="",
                 capabilities_display_string="",
             )
@@ -348,10 +333,10 @@ class TaskStream:
             self.__add_bar(
                 worker=worker,
                 time_taken=format_timediff(start_time, now),
-                task_color=TaskColors.NO_WORK,
+                task_color=TASK_STREAM_BACKGROUND_COLOR,
                 task_outline_color="rgba(0,0,0,0)",
                 task_outline_width=0,
-                shape=TaskShapes.NO_WORK,
+                shape=TaskShape.NONE.value,
                 hovertext="",
                 capabilities_display_string="",
             )
@@ -499,6 +484,7 @@ class TaskStream:
             for task_id in task_ids
         ]
         task_colors = [self.__get_task_color(t) for t in task_ids]
+        running_shape = TaskShapes.from_status(TaskState.Running)
         working_data = {
             "type": "bar",
             "name": "Working",
@@ -510,7 +496,7 @@ class TaskStream:
             "marker": {
                 "color": task_colors,
                 "width": 5,
-                "pattern": {"shape": ["+" for _ in workers_doing_tasks]},
+                "pattern": {"shape": [running_shape for _ in workers_doing_tasks]},
                 "line": {"color": ["yellow" for _ in workers_doing_tasks], "width": [2 for _ in workers_doing_tasks]},
             },
             "textfont": {"color": "black", "outline": "white", "outlinewidth": 5},
