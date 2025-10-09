@@ -58,7 +58,6 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/scaler/io/ymq)
 
 if(LINUX)
     # ymq python =======================================================================================================
-    find_package(Python3 COMPONENTS Development.Module REQUIRED)
 
     add_library(py_ymq SHARED
         pymod_ymq/bytes.h

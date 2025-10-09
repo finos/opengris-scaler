@@ -68,10 +68,13 @@ of lightweight tasks while improving on load balancing, messaging, and deadlocks
 Scaler is available on PyPI and can be installed using any compatible package manager.
 
 ```bash
-$ pip install scaler
+$ pip install opengris-scaler
 
-# or with graphblas and uvloop support
-$ pip install scaler[graphblas,uvloop]
+# or with graphblas and uvloop and webui support
+$ pip install opengris-scaler[graphblas,uvloop,gui]
+
+# or simply
+$ pip install opengris-scaler[all]
 ```
 
 ## Quick Start
@@ -202,9 +205,12 @@ with Client(address="tcp://127.0.0.1:2345") as client:
 
 ## Configuring with TOML Files
 
-While all Scaler components can be configured using command-line flags, using TOML files is the recommended approach for production or shareable setups. Configuration files make your setup explicit, easier to manage, and allow you to check your infrastructure's configuration into version control.
+While all Scaler components can be configured using command-line flags, using TOML files is the recommended approach for
+production or shareable setups. Configuration files make your setup explicit, easier to manage, and allow you to check
+your infrastructure's configuration into version control.
 
-For convenience, you can define the settings for all components in a single, sectioned TOML file. Each component automatically loads its configuration from its corresponding section.
+For convenience, you can define the settings for all components in a single, sectioned TOML file. Each component
+automatically loads its configuration from its corresponding section.
 
 ### Core Concepts
 
@@ -216,9 +222,10 @@ For convenience, you can define the settings for all components in a single, sec
 
 * **Precedence**: Settings are loaded in a specific order, with later sources overriding earlier ones. The hierarchy is:
 
-    Command-Line Flags > TOML File Settings > Built-in Default Values
+  Command-Line Flags > TOML File Settings > Built-in Default Values
 
-* **Naming Convention**: The keys in the TOML file must match the long-form command-line arguments. The rule is to replace any hyphens (`-`) with underscores (`_`).
+* **Naming Convention**: The keys in the TOML file must match the long-form command-line arguments. The rule is to
+  replace any hyphens (`-`) with underscores (`_`).
     * For example, the flag `--num-of-workers` becomes the TOML key `num_of_workers`.
     * One can discover all available keys by running any command with the `-h` or `--help` flag.
 
@@ -226,15 +233,15 @@ For convenience, you can define the settings for all components in a single, sec
 
 The following table maps each Scaler command to its corresponding section name in the TOML file.
 
-| Command                          | TOML Section Name          |
-| -------------------------------- | -------------------------- |
-| `scaler_scheduler`               | `[scheduler]`              |
-| `scaler_cluster`                 | `[cluster]`                |
-| `scaler_object_storage_server`   | `[object_storage_server]`  |
-| `scaler_ui`                      | `[webui]`                  |
-| `scaler_top`                     | `[top]`                    |
-| `scaler_worker_adapter_native`   | `[native_worker_adapter]`  |
-| `scaler_worker_adapter_symphony` | `[symphony_worker_adapter]`|
+| Command                          | TOML Section Name           |
+|----------------------------------|-----------------------------|
+| `scaler_scheduler`               | `[scheduler]`               |
+| `scaler_cluster`                 | `[cluster]`                 |
+| `scaler_object_storage_server`   | `[object_storage_server]`   |
+| `scaler_ui`                      | `[webui]`                   |
+| `scaler_top`                     | `[top]`                     |
+| `scaler_worker_adapter_native`   | `[native_worker_adapter]`   |
+| `scaler_worker_adapter_symphony` | `[symphony_worker_adapter]` |
 
 ### Practical Scenarios & Examples
 
@@ -270,22 +277,26 @@ web_port = 8081
 ```
 
 With this single file, starting your entire stack is simple and consistent:
+
 ```bash
 scaler_object_storage_server --config example_config.toml &
 scaler_scheduler --config example_config.toml &
 scaler_cluster --config example_config.toml &
 scaler_ui --config example_config.toml &
 ```
+
 #### Scenario 2: Overriding a Section's Setting
 
-You can override any value from the TOML file by providing it as a command-line flag. For example, to use the example_config.toml file but test the cluster with 12 workers instead of 8:
+You can override any value from the TOML file by providing it as a command-line flag. For example, to use the
+example_config.toml file but test the cluster with 12 workers instead of 8:
 
 ```bash
 # The --num-of-workers flag will take precedence over the [cluster] section
 scaler_cluster --config example_config.toml --num-of-workers 12
 ```
 
-The cluster will start with 12 workers, but all other settings (like `scheduler_address`) will still be loaded from the `[cluster]` section of example_config.toml.
+The cluster will start with 12 workers, but all other settings (like `scheduler_address`) will still be loaded from the
+`[cluster]` section of example_config.toml.
 
 ## Nested computations
 

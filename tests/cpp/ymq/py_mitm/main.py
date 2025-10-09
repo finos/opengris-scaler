@@ -8,7 +8,6 @@ import argparse
 import os
 import signal
 import subprocess
-import types
 from typing import List
 from scapy.all import IP, TCP, TunTapInterface  # type: ignore
 

@@ -40,7 +40,7 @@ int main()
 
     const std::string_view line = longStr;
 
-    for (int cnt = 0; cnt < msgCnt; ++cnt) {
+    for (size_t cnt = 0; cnt < msgCnt; ++cnt) {
         Message message;
         std::string destAddress = "ServerSocket";
 

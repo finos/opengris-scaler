@@ -28,12 +28,10 @@
 #include <ctime>
 #include <exception>
 #include <filesystem>
-#include <format>
 #include <functional>
 #include <iostream>
 #include <optional>
 #include <print>
-#include <stdexcept>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -471,13 +469,26 @@ inline TestResult run_python(const char* path, std::vector<const wchar_t*> argv 
     if (PyStatus_Exception(status))
         goto exception;
 
+    argv.insert(argv.begin(), L"mitm");
+    status = PyConfig_SetArgv(&config, argv.size(), (wchar_t**)argv.data());
+    if (PyStatus_Exception(status))
+        goto exception;
+
+    // pass argv to the script as-is
+    config.parse_argv = 0;
+
     status = Py_InitializeFromConfig(&config);
     if (PyStatus_Exception(status))
         goto exception;
     PyConfig_Clear(&config);
 
-    argv.insert(argv.begin(), L"mitm");
-    PySys_SetArgv(argv.size(), (wchar_t**)argv.data());
+    // add the cwd to the path
+    {
+        PyObject* sysPath = PySys_GetObject("path");
+        PyObject* newPath = PyUnicode_FromString(".");
+        PyList_Append(sysPath, newPath);
+        Py_DECREF(newPath);
+    }
 
     {
         auto file = fopen(path, "r");
