@@ -91,6 +91,26 @@ class TaskStream:
 
     def setup_task_stream(self, settings: Settings):
         with ui.card().classes("w-full").style("height: 85vh"):
+            ui.html(
+                """
+                <div style="margin-bottom:8px;">
+                    <b>Legend:</b>
+                    <span style="display:inline-block;width:18px;height:18px;border:2px solid black;
+                        vertical-align:middle;margin-right:4px;
+                        background:
+                            repeating-linear-gradient(135deg, transparent, transparent 4px, black 4px, black 6px),
+                            repeating-linear-gradient(225deg, transparent, transparent 4px, black 4px, black 6px);
+                    "></span>
+                    Failed
+                    <span style="display:inline-block;width:18px;height:18px;border:2px solid black;
+                        vertical-align:middle;margin-left:16px;margin-right:4px;
+                        background:
+                            repeating-linear-gradient(-45deg, transparent, transparent 4px, black 4px, black 6px);
+                    "></span>
+                    Canceled
+                </div>
+                """
+            )
             fig = {
                 "data": [],
                 "layout": {
