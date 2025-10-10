@@ -44,6 +44,7 @@ class TaskStream:
 
         self._start_time = datetime.datetime.now() - datetime.timedelta(minutes=30)
         self._last_task_tick = datetime.datetime.now()
+        self._user_axis_range: Optional[List[int]] = None
 
         self._current_tasks: Dict[str, Tuple[bool, Set[bytes], Optional[datetime.datetime]]] = {}
         self._completed_data_cache: Dict[str, Dict] = {}
@@ -90,7 +91,16 @@ class TaskStream:
             self._figure = fig
             self._completed_data_cache = {}
             self._plot = ui.plotly(self._figure).classes("w-full h-full")
+            self._plot.on('plotly_relayout', self._on_plotly_relayout)
             self._settings = settings
+
+    def _on_plotly_relayout(self, e):
+        x0 = e.args.get('xaxis.range[0]')
+        x1 = e.args.get('xaxis.range[1]')
+        if x0 is not None and x1 is not None:
+            self._user_axis_range = [x0, x1]
+        else:
+            self._user_axis_range = None
 
     def __setup_worker_cache(self, worker: str):
         if worker in self._completed_data_cache:
@@ -364,7 +374,10 @@ class TaskStream:
         ticks = make_ticks(lower_bound, upper_bound)
         tick_text = make_tick_text(int(self._settings.stream_window.total_seconds()))
 
-        self._figure["layout"]["xaxis"]["range"] = [lower_bound, upper_bound]
+        if self._user_axis_range:
+            self._figure["layout"]["xaxis"]["range"] = self._user_axis_range
+        else:
+            self._figure["layout"]["xaxis"]["range"] = [lower_bound, upper_bound]
         self._figure["layout"]["xaxis"]["tickvals"] = ticks
         self._figure["layout"]["xaxis"]["ticktext"] = tick_text
         self._plot.update()
