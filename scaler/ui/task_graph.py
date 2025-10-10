@@ -228,9 +228,7 @@ class TaskStream:
             "showlegend": False,
         }
 
-    def __get_history_fields(
-        self, worker: str, index: int
-    ) -> Tuple[float, str, str, str, str, str, int, str]:
+    def __get_history_fields(self, worker: str, index: int) -> Tuple[float, str, str, str, str, str, int, str]:
         row_data = self._completed_data_cache[worker]
         time_taken = row_data["x"][index]
         color = row_data["marker"]["color"][index]
