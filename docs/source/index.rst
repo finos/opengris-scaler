@@ -28,3 +28,4 @@ Content
    tutorials/features
    tutorials/configuration
    tutorials/examples
+   tutorials/development

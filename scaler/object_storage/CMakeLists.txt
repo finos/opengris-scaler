@@ -31,11 +31,9 @@ set_target_properties(py_object_storage_server PROPERTIES
 )
 
 target_link_libraries(py_object_storage_server PRIVATE
-    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wl,-Bstatic>
     capnp_objs
     ymq_objs
     object_storage_server_objs
-    $<$<CXX_COMPILER_ID:GNU,Clang>:-Wl,-Bdynamic>
     CapnProto::capnp
     CapnProto::kj
     Python3::Module

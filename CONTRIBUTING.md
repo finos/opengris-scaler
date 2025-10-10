@@ -7,6 +7,7 @@ This document describes the contribution process and governance policies of the 
 
 ## Helpful Resources
 
+* [Development Guidelines](https://finos.github.io/opengris-scaler/tutorials/development.html)
 
 * [README.md](./README.md)
 
