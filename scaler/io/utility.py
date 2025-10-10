@@ -6,8 +6,13 @@ from scaler.protocol.capnp._python import _message  # noqa
 from scaler.protocol.python.message import PROTOCOL
 from scaler.protocol.python.mixins import Message
 
+try:
+    from collections.abc import Buffer  # type: ignore[attr-defined]
+except ImportError:
+    from typing_extensions import Buffer
 
-def deserialize(data: bytes) -> Optional[Message]:
+
+def deserialize(data: Buffer) -> Optional[Message]:
     with _message.Message.from_bytes(data, traversal_limit_in_words=CAPNP_MESSAGE_SIZE_LIMIT) as payload:
         if not hasattr(payload, payload.which()):
             logging.error(f"unknown message type: {payload.which()}")
