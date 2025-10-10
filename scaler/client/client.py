@@ -16,9 +16,13 @@ from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.object_reference import ObjectReference
 from scaler.client.serializer.default import DefaultSerializer
 from scaler.client.serializer.mixins import Serializer
-from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
+from scaler.config.defaults import (
+    DEFAULT_CLIENT_TIMEOUT_SECONDS,
+    DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+    DEFAULT_TRANSPORT_TYPE,
+)
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
-from scaler.io.sync_connector import ZMQSyncConnector
+from scaler.io.zmq_sync_connector import ZMQSyncConnector
 from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector
 from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
@@ -28,7 +32,10 @@ from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
 from scaler.config.types.zmq import ZMQConfig, ZMQType
+from scaler.config.types.transport_type import TransportType
 from scaler.worker.agent.processor.processor import Processor
+
+from scaler.io.ymq import ymq
 
 
 @dataclasses.dataclass
@@ -55,6 +62,7 @@ class Client:
         profiling: bool = False,
         timeout_seconds: int = DEFAULT_CLIENT_TIMEOUT_SECONDS,
         heartbeat_interval_seconds: int = DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+        transport_type: TransportType = DEFAULT_TRANSPORT_TYPE,
         serializer: Serializer = DefaultSerializer(),
         stream_output: bool = False,
     ):
@@ -72,7 +80,9 @@ class Client:
         :param stream_output: If True, stdout/stderr will be streamed to client during task execution
         :type stream_output: bool
         """
-        self.__initialize__(address, profiling, timeout_seconds, heartbeat_interval_seconds, serializer, stream_output)
+        self.__initialize__(
+            address, profiling, timeout_seconds, heartbeat_interval_seconds, transport_type, serializer, stream_output
+        )
 
     def __initialize__(
         self,
@@ -80,6 +90,7 @@ class Client:
         profiling: bool,
         timeout_seconds: int,
         heartbeat_interval_seconds: int,
+        transport_type: TransportType,
         serializer: Serializer = DefaultSerializer(),
         stream_output: bool = False,
     ):
@@ -100,6 +111,11 @@ class Client:
             context=self._context, socket_type=zmq.PAIR, address=self._client_agent_address, identity=self._identity
         )
 
+        if transport_type == TransportType.YMQ:
+            self._ymq_context = ymq.IOContext()
+        else:
+            self._ymq_context = None
+
         self._future_manager = ClientFutureManager(self._serializer)
         self._agent = ClientAgent(
             identity=self._identity,
@@ -111,6 +127,8 @@ class Client:
             timeout_seconds=self._timeout_seconds,
             heartbeat_interval_seconds=self._heartbeat_interval_seconds,
             serializer=self._serializer,
+            transport_type=transport_type,
+            ymq_context=self._ymq_context,
         )
         self._agent.start()
 
@@ -191,6 +209,7 @@ class Client:
             stream_output=state["stream_output"],
             timeout_seconds=state["timeout_seconds"],
             heartbeat_interval_seconds=state["heartbeat_interval_seconds"],
+            transport_type=state["transport_type"],
         )
 
     def submit(self, fn: Callable, *args, **kwargs) -> ScalerFuture:

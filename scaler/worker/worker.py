@@ -9,14 +9,15 @@ from typing import Dict, Optional, Tuple
 
 import zmq.asyncio
 
+from scaler.io.ymq import ymq
+from scaler.io.ymq_async_connector import YMQAsyncConnector
+from scaler.io.zmq_async_binder import ZMQAsyncBinder
+from scaler.io.zmq_async_connector import ZMQAsyncConnector
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig, ZMQType
-from scaler.io.async_binder import ZMQAsyncBinder
-from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
 from scaler.config.defaults import PROFILING_INTERVAL_SECONDS
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
-from scaler.io.ymq import ymq
 from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,
@@ -29,6 +30,7 @@ from scaler.protocol.python.message import (
     WorkerHeartbeatEcho,
 )
 from scaler.protocol.python.mixins import Message
+from scaler.config.types.transport_type import TransportType
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ProcessorID, WorkerID
@@ -59,6 +61,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         hard_processor_suspend: bool,
         logging_paths: Tuple[str, ...],
         logging_level: str,
+        transport_type: TransportType,
     ):
         multiprocessing.Process.__init__(self, name="Agent")
 
@@ -87,6 +90,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._logging_paths = logging_paths
         self._logging_level = logging_level
 
+        self._transport_type = transport_type
+
         self._context: Optional[zmq.asyncio.Context] = None
         self._connector_external: Optional[AsyncConnector] = None
         self._binder_internal: Optional[AsyncBinder] = None
@@ -109,15 +114,28 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         register_event_loop(self._event_loop)
 
         self._context = zmq.asyncio.Context()
-        self._connector_external = ZMQAsyncConnector(
-            context=self._context,
-            name=self.name,
-            socket_type=zmq.DEALER,
-            address=self._address,
-            bind_or_connect="connect",
-            callback=self.__on_receive_external,
-            identity=self._ident,
-        )
+
+        if self._transport_type == TransportType.ZMQ:
+            self._connector_external = ZMQAsyncConnector(
+                context=self._context,
+                name=self.name,
+                socket_type=zmq.DEALER,
+                address=self._address,
+                bind_or_connect="connect",
+                callback=self.__on_receive_external,
+                identity=self._ident,
+            )
+        elif self._transport_type == TransportType.YMQ:
+            self._ymq_context = ymq.IOContext()
+            self._connector_external = YMQAsyncConnector(
+                context=self._ymq_context,
+                name=self.name,
+                socket_type=ymq.IOSocketType.Connector,
+                address=self._address,
+                bind_or_connect="connect",
+                callback=self.__on_receive_external,
+                identity=self._ident,
+            )
 
         self._binder_internal = ZMQAsyncBinder(
             context=self._context, name=self.name, address=self._address_internal, identity=self._ident

@@ -85,6 +85,7 @@ def get_args():
     parser.add_argument(
         "scheduler_address", nargs="?", type=str, help="scheduler address to connect to, e.g.: `tcp://localhost:6378`"
     )
+    parser.add_argument("--transport-type", type=str, help="the transport type to use, for example 'ymq' or 'zmq'")
     return parser.parse_args()
 
 
@@ -124,6 +125,7 @@ def main():
         protected=scheduler_config.protected,
         allocate_policy=scheduler_config.allocate_policy,
         event_loop=scheduler_config.event_loop,
+        transport_type=scheduler_config.transport_type,
         logging_paths=scheduler_config.logging_paths,
         logging_config_file=scheduler_config.logging_config_file,
         logging_level=scheduler_config.logging_level,

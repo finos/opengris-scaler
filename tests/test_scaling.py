@@ -20,6 +20,7 @@ from scaler.config.defaults import (
     DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
     DEFAULT_OBJECT_RETENTION_SECONDS,
     DEFAULT_TASK_TIMEOUT_SECONDS,
+    DEFAULT_TRANSPORT_TYPE,
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
@@ -52,6 +53,7 @@ def _run_native_worker_adapter(address: str, webhook_port: int) -> None:
         logging_paths=("/dev/stdout",),
         logging_config_file=None,
         logging_level="INFO",
+        transport_type=DEFAULT_TRANSPORT_TYPE,
     )
 
     app = adapter.create_app()
@@ -95,6 +97,7 @@ class TestScaling(unittest.TestCase):
             logging_paths=("/dev/stdout",),
             logging_config_file=None,
             logging_level="INFO",
+            transport_type=DEFAULT_TRANSPORT_TYPE,
         )
         scheduler.start()
 

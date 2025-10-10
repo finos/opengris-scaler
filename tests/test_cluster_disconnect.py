@@ -44,6 +44,7 @@ class TestClusterDisconnect(unittest.TestCase):
             logging_paths=DEFAULT_LOGGING_PATHS,
             logging_level=base_cluster._logging_level,
             logging_config_file=base_cluster._logging_config_file,
+            transport_type=base_cluster._transport_type,
         )
         dying_cluster.start()
 

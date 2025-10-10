@@ -4,6 +4,7 @@ import os
 import signal
 from typing import Dict, List, Optional, Tuple
 
+from scaler.config.types.transport_type import TransportType
 from scaler.utility.logging.utility import setup_logger
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
@@ -31,6 +32,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         logging_paths: Tuple[str, ...],
         logging_config_file: Optional[str],
         logging_level: str,
+        transport_type: TransportType,
     ):
         multiprocessing.Process.__init__(self, name="WorkerMaster")
 
@@ -53,6 +55,8 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         self._logging_paths = logging_paths
         self._logging_config_file = logging_config_file
         self._logging_level = logging_level
+
+        self._transport_type = transport_type
 
         self._workers: List[Worker] = []
 
@@ -96,6 +100,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
                 hard_processor_suspend=self._hard_processor_suspend,
                 logging_paths=self._logging_paths,
                 logging_level=self._logging_level,
+                transport_type=self._transport_type,
             )
             for name in self._worker_names
         ]

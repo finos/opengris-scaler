@@ -92,6 +92,7 @@ def get_args():
         type=str,
         help="scheduler address to connect workers to, e.g.: `tcp://localhost:6378",
     )
+    parser.add_argument("--transport-type", type=str, help="the transport type to use, for example 'ymq' or 'zmq'")
 
     return parser.parse_args()
 
@@ -127,6 +128,7 @@ def main():
         logging_paths=native_adapter_config.logging_paths,
         logging_level=native_adapter_config.logging_level,
         logging_config_file=native_adapter_config.logging_config_file,
+        transport_type=args.transport_type,
     )
 
     app = native_worker_adapter.create_app()

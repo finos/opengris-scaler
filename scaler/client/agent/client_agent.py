@@ -13,7 +13,8 @@ from scaler.client.agent.heartbeat_manager import ClientHeartbeatManager
 from scaler.client.agent.object_manager import ClientObjectManager
 from scaler.client.agent.task_manager import ClientTaskManager
 from scaler.client.serializer.mixins import Serializer
-from scaler.io.async_connector import ZMQAsyncConnector
+from scaler.io.zmq_async_connector import ZMQAsyncConnector
+from scaler.io.ymq_async_connector import YMQAsyncConnector
 from scaler.io.mixins import AsyncConnector
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
@@ -33,6 +34,9 @@ from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientCancelledException, ClientQuitException, ClientShutdownException
 from scaler.utility.identifiers import ClientID
 from scaler.config.types.zmq import ZMQConfig
+from scaler.config.types.transport_type import TransportType
+
+from scaler.io.ymq import ymq
 
 
 class ClientAgent(threading.Thread):
@@ -47,6 +51,8 @@ class ClientAgent(threading.Thread):
         timeout_seconds: int,
         heartbeat_interval_seconds: int,
         serializer: Serializer,
+        transport_type: TransportType,
+        ymq_context: Optional[ymq.IOContext],
     ):
         threading.Thread.__init__(self, daemon=True)
 
@@ -59,6 +65,7 @@ class ClientAgent(threading.Thread):
         self._client_agent_address = client_agent_address
         self._scheduler_address = scheduler_address
         self._context = context
+        self._ymq_context = ymq_context
         self._storage_address: Future[ObjectStorageAddress] = Future()
 
         self._future_manager = future_manager
@@ -72,15 +79,30 @@ class ClientAgent(threading.Thread):
             callback=self.__on_receive_from_client,
             identity=None,
         )
-        self._connector_external: AsyncConnector = ZMQAsyncConnector(
-            context=zmq.asyncio.Context.shadow(self._context),
-            name="client_agent_external",
-            socket_type=zmq.DEALER,
-            address=self._scheduler_address,
-            bind_or_connect="connect",
-            callback=self.__on_receive_from_scheduler,
-            identity=self._identity,
-        )
+
+        self._connector_external: AsyncConnector
+        if transport_type == TransportType.ZMQ:
+            self._connector_external = ZMQAsyncConnector(
+                context=zmq.asyncio.Context.shadow(self._context),
+                name="client_agent_external",
+                socket_type=zmq.DEALER,
+                address=self._scheduler_address,
+                bind_or_connect="connect",
+                callback=self.__on_receive_from_scheduler,
+                identity=self._identity,
+            )
+        elif transport_type == TransportType.YMQ:
+            if self._ymq_context is None:
+                raise ValueError("transport type is ymq but not ymq io context was passed to client agent")
+            self._connector_external = YMQAsyncConnector(
+                context=self._ymq_context,
+                name="client_agent_external",
+                socket_type=ymq.IOSocketType.Connector,
+                address=self._scheduler_address,
+                bind_or_connect="connect",
+                callback=self.__on_receive_from_scheduler,
+                identity=self._identity,
+            )
 
         self._disconnect_manager: Optional[ClientDisconnectManager] = None
         self._heartbeat_manager: Optional[ClientHeartbeatManager] = None

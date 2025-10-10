@@ -4,7 +4,7 @@ from functools import partial
 
 from nicegui import ui
 
-from scaler.io.sync_subscriber import ZMQSyncSubscriber
+from scaler.io.zmq_sync_subscriber import ZMQSyncSubscriber
 from scaler.protocol.python.message import StateScheduler, StateTask
 from scaler.protocol.python.mixins import Message
 from scaler.ui.constants import (
