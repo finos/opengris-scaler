@@ -18,8 +18,7 @@ def format_timediff(a: datetime.datetime, b: datetime.datetime) -> float:
 
 
 def format_worker_name(worker_name: str) -> str:
-    pid, _, host_name, hash_code = worker_name.split("|")
-    return f"{host_name}|{pid}"
+    return worker_name[:15]
 
 
 def get_bounds(now: datetime.datetime, start_time: datetime.datetime, settings: Settings) -> Tuple[int, int]:
