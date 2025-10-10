@@ -1,7 +1,4 @@
 
-// C++
-#include <stdio.h>
-
 #include <future>
 #include <iostream>
 #include <memory>
@@ -21,10 +18,10 @@ int main()
     IOContext context;
 
     auto clientSocket = syncCreateSocket(context, IOSocketType::Connector, "ClientSocket");
-    printf("Successfully created socket.\n");
+    std::cout << "Successfully created socket.\n";
 
     syncConnectSocket(clientSocket, "tcp://127.0.0.1:8080");
-    printf("Connected to server.\n");
+    std::cout << "Connected to server.\n";
 
     for (int cnt = 0; cnt < 10; ++cnt) {
         std::string line;
@@ -48,7 +45,7 @@ int main()
             std::move(message), [&send_promise](std::expected<void, Error>) { send_promise.set_value({}); });
 
         send_future.wait();
-        printf("Message sent, waiting for response...\n");
+        std::cout << "Message sent, waiting for response...\n";
 
         auto recv_promise = std::promise<std::pair<Message, Error>>();
         auto recv_future  = recv_promise.get_future();
@@ -58,7 +55,7 @@ int main()
 
         Message reply = recv_future.get().first;
         std::string reply_str(reply.payload.data(), reply.payload.data() + reply.payload.len());
-        printf("Received echo: '%s'\n", reply_str.c_str());
+        std::cout << "Received echo: '" << reply_str << "'.\n";
     }
 
     // TODO: remove IOSocket also needs a future

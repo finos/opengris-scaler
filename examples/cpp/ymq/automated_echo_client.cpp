@@ -1,9 +1,6 @@
 
-
-// C++
-#include <stdio.h>
-
 #include <future>
+#include <iostream>
 #include <memory>
 #include <string>
 
@@ -25,7 +22,7 @@ int main()
         longStr += "1234567890";
 
     auto clientSocket = syncCreateSocket(context, IOSocketType::Connector, "ClientSocket");
-    printf("Successfully created socket.\n");
+    std::cout << "Successfully created socket.\n";
 
     constexpr size_t msgCnt = 100'000;
 
@@ -34,9 +31,8 @@ int main()
     std::vector<std::promise<std::pair<Message, Error>>> recvPromises;
     recvPromises.reserve(msgCnt + 10);
 
-    // syncConnectSocket(clientSocket, "tcp://51.15.214.200:32912");
     syncConnectSocket(clientSocket, "tcp://127.0.0.1:8080");
-    printf("Connected to server.\n");
+    std::cout << "Connected to server.\n";
 
     const std::string_view line = longStr;
 
@@ -64,19 +60,19 @@ int main()
         auto future = x.get_future();
         future.wait();
     }
-    printf("send completes\n");
+    std::cout << "Send completes.\n";
 
     for (auto&& x: recvPromises) {
         auto future = x.get_future();
         Message msg = future.get().first;
         if (msg.payload.as_string() != longStr) {
-            printf("Checksum failed, %s\n", msg.payload.as_string()->c_str());
+            std::cerr << "Checksum failed, " << *msg.payload.as_string() << std::endl;
             exit(1);
         }
     }
-    printf("recv completes\n");
+    std::cout << "Recv completes.\n";
 
-    printf("Send and recv %lu messages, checksum fits, exiting.\n", msgCnt);
+    std::cout << "Send and recv " << msgCnt << " messages, checksum fits, exiting.\n";
 
     context.removeIOSocket(clientSocket);
 

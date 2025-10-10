@@ -1,8 +1,6 @@
-
-#include <stdio.h>
-
 #include <chrono>
 #include <future>
+#include <iostream>
 #include <memory>
 #include <thread>
 
@@ -18,10 +16,10 @@ int main()
     IOContext context;
 
     auto socket = syncCreateSocket(context, IOSocketType::Multicast, "ServerSocket");
-    printf("Successfully created socket.\n");
+    std::cout << "Successfully created socket.\n";
 
     syncBindSocket(socket, "tcp://127.0.0.1:8080");
-    printf("Successfully bound socket\n");
+    std::cout << "Successfully bound socket.\n";
 
     while (true) {
         std::string address("");
@@ -37,7 +35,7 @@ int main()
             std::move(publishContent), [&send_promise](std::expected<void, Error>) { send_promise.set_value({}); });
         send_future.wait();
 
-        printf("One message published, sleep for 10 sec\n");
+        std::cout << "One message published, sleep for 10 sec.\n";
         using namespace std::chrono_literals;
         std::this_thread::sleep_for(10s);
     }
