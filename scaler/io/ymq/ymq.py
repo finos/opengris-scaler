@@ -5,7 +5,7 @@ __all__ = ["IOSocket", "IOContext", "Message", "IOSocketType", "YMQException", "
 
 import asyncio
 import concurrent.futures
-from typing import Optional, Callable, TypeVar, Union
+from typing import Any, Optional, Callable, TypeVar, Union
 
 try:
     from typing import ParamSpec, Concatenate  # type: ignore[attr-defined]
@@ -81,27 +81,35 @@ class IOContext:
         return IOSocket(call_sync(self._base.createIOSocket, identity, socket_type))
 
 
+def safe_set_result(future: asyncio.Future, result: Any) -> None:
+    if future.done():
+        return
+    future.set_result(result)
+
+
+def safe_set_exception(future: asyncio.Future, exc: BaseException) -> None:
+    if future.done():
+        return
+    future.set_exception(exc)
+
+
 P = ParamSpec("P")
 T = TypeVar("T")
 
 
 async def call_async(
-    func: Callable[Concatenate[Callable[[Union[T, Exception]], None], P], None],  # type: ignore
+    func: Callable[Concatenate[Callable[[Union[T, BaseException]], None], P], None],  # type: ignore
     *args: P.args,  # type: ignore
     **kwargs: P.kwargs,  # type: ignore
 ) -> T:
-    future = asyncio.get_event_loop().create_future()
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
 
-    def callback(result: Union[T, Exception]):
-        if future.done():
-            return
-
-        loop = future.get_loop()
-
-        if isinstance(result, Exception):
-            loop.call_soon_threadsafe(future.set_exception, result)
+    def callback(result: Union[T, BaseException]):
+        if isinstance(result, BaseException):
+            loop.call_soon_threadsafe(safe_set_exception, future, result)
         else:
-            loop.call_soon_threadsafe(future.set_result, result)
+            loop.call_soon_threadsafe(safe_set_result, future, result)
 
     func(callback, *args, **kwargs)
     return await future
@@ -110,18 +118,18 @@ async def call_async(
 # about the ignore directives: mypy cannot properly handle typing extension's ParamSpec and Concatenate in python <=3.9
 # these type hints are correctly understood in Python 3.10+
 def call_sync(  # type: ignore[valid-type]
-    func: Callable[Concatenate[Callable[[Union[T, Exception]], None], P], None],  # type: ignore
+    func: Callable[Concatenate[Callable[[Union[T, BaseException]], None], P], None],  # type: ignore
     *args: P.args,  # type: ignore
     timeout: Optional[float] = None,
     **kwargs: P.kwargs,  # type: ignore
 ) -> T:  # type: ignore
     future: concurrent.futures.Future = concurrent.futures.Future()
 
-    def callback(result: Union[T, Exception]):
+    def callback(result: Union[T, BaseException]):
         if future.done():
             return
 
-        if isinstance(result, Exception):
+        if isinstance(result, BaseException):
             future.set_exception(result)
         else:
             future.set_result(result)

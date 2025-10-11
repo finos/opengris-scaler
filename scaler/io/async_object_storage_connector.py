@@ -31,9 +31,7 @@ class PyAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         self._io_socket = self._io_context.createIOSocket_sync(self._identity, IOSocketType.Connector)
 
     def __del__(self):
-        if not self.is_connected():
-            return
-        self._io_socket = None
+        self.destroy()
 
     async def connect(self, host: str, port: int):
         self._host = host
@@ -50,9 +48,10 @@ class PyAsyncObjectStorageConnector(AsyncObjectStorageConnector):
     def is_connected(self) -> bool:
         return self._connected_event.is_set()
 
-    async def destroy(self):
+    def destroy(self):
         if not self.is_connected():
             return
+        self._io_context = None
         self._io_socket = None
 
     @property
