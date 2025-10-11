@@ -51,7 +51,7 @@ class _CallNode:
 class Client:
     def __init__(
         self,
-        address: str,
+        address: Optional[str] = None,
         profiling: bool = False,
         timeout_seconds: int = DEFAULT_CLIENT_TIMEOUT_SECONDS,
         heartbeat_interval_seconds: int = DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
@@ -61,8 +61,9 @@ class Client:
         """
         The Scaler Client used to send tasks to a scheduler.
 
-        :param address: Address of Scheduler to submit work to
-        :type address: str
+        :param address: Address of Scheduler to submit work to. If None, will attempt to auto-detect
+                       when running inside a worker context.
+        :type address: Optional[str]
         :param profiling: If True, the returned futures will have the `task_duration()` property enabled.
         :type profiling: bool
         :param timeout_seconds: Seconds until heartbeat times out
@@ -72,6 +73,7 @@ class Client:
         :param stream_output: If True, stdout/stderr will be streamed to client during task execution
         :type stream_output: bool
         """
+        address = self._resolve_scheduler_address(address)
         self.__initialize__(address, profiling, timeout_seconds, heartbeat_interval_seconds, serializer, stream_output)
 
     def __initialize__(
@@ -380,6 +382,10 @@ class Client:
         disconnect from connected scheduler, this will not shut down the scheduler
         """
 
+        # Handle case where client wasn't fully initialized
+        if not hasattr(self, "_stop_event"):
+            return
+
         if self._stop_event.is_set():
             self.__destroy()
             return
@@ -633,3 +639,20 @@ class Client:
         assert current_task is not None
 
         return retrieve_task_flags_from_task(current_task).priority
+
+    def _resolve_scheduler_address(self, address: Optional[str]) -> str:
+        """Resolve the scheduler address based on the provided address and worker context."""
+        # Provided address always takes precedence
+        if address is not None:
+            return address
+
+        # No address provided, check if we're running inside a worker context
+        current_processor = Processor.get_current_processor()
+        if current_processor is None:
+            raise ValueError(
+                "No scheduler address provided and not running inside a worker context. "
+                "Please provide a scheduler address when creating the Client outside of a worker."
+            )
+
+        # Return the scheduler address from the current processor
+        return current_processor.scheduler_address().to_address()

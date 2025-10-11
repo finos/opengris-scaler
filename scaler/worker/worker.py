@@ -139,6 +139,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             identity=self._ident,
             event_loop=self._event_loop,
             address_internal=self._address_internal,
+            scheduler_address=self._address,
             preload=self._preload,
             garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,

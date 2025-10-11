@@ -19,6 +19,7 @@ class ProcessorHolder:
         self,
         event_loop: str,
         agent_address: ZMQConfig,
+        scheduler_address: ZMQConfig,
         storage_address: ObjectStorageConfig,
         preload: Optional[str],
         garbage_collect_interval_seconds: int,
@@ -43,6 +44,7 @@ class ProcessorHolder:
         self._processor = Processor(
             event_loop=event_loop,
             agent_address=agent_address,
+            scheduler_address=scheduler_address,
             storage_address=storage_address,
             preload=preload,
             resume_event=self._resume_event,

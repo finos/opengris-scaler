@@ -322,6 +322,8 @@ with Client(address="tcp://127.0.0.1:2345") as client:
     print(future.result())  # 21
 ```
 
+**Note**: When creating a `Client` inside a task (nested client), the `address` parameter is optional. If omitted, the client automatically uses the scheduler address from the worker context. If provided, the specified address takes precedence.
+
 ## Task Routing and Capability Management
 
 > **Note**: This feature is experimental and may change in future releases.

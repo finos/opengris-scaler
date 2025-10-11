@@ -37,6 +37,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self,
         event_loop: str,
         agent_address: ZMQConfig,
+        scheduler_address: ZMQConfig,
         storage_address: ObjectStorageConfig,
         preload: Optional[str],
         resume_event: Optional[EventType],
@@ -50,6 +51,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self._event_loop = event_loop
         self._agent_address = agent_address
+        self._scheduler_address = scheduler_address
         self._storage_address = storage_address
         self._preload = preload
 
@@ -73,6 +75,10 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def get_current_processor() -> Optional["Processor"]:
         """Returns the current Processor instance controlling the current process, if any."""
         return _current_processor.get()
+
+    def scheduler_address(self) -> ZMQConfig:
+        """Returns the scheduler address this processor's worker is connected to."""
+        return self._scheduler_address
 
     def current_task(self) -> Optional[Task]:
         return self._current_task

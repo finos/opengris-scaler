@@ -320,6 +320,14 @@ class TestClient(unittest.TestCase):
             # but new tasks should work fine
             self.assertEqual(client.submit(round, 3.14).result(), 3.0)
 
+    def test_client_no_address_outside_worker(self):
+        """Test that creating a Client without an address outside worker context raises ValueError."""
+        with self.assertRaises(ValueError) as context:
+            Client()
+
+        self.assertIn("No scheduler address provided", str(context.exception))
+        self.assertIn("not running inside a worker context", str(context.exception))
+
 
 class TestClientPreload(unittest.TestCase):
     # Separate class for preload functionality with separate cluster to avoid interfering with time-sensitive tests
