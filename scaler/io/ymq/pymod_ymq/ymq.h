@@ -20,13 +20,13 @@ struct YMQState {
     OwnedPyObject<> enumModule;     // Reference to the enum module
     OwnedPyObject<> asyncioModule;  // Reference to the asyncio module
 
-    OwnedPyObject<> PyIOSocketEnumType;          // Reference to the IOSocketType enum
-    OwnedPyObject<> PyErrorCodeType;             // Reference to the Error enum
-    OwnedPyObject<> PyBytesYMQType;              // Reference to the PyBytesYMQ type
-    OwnedPyObject<> PyMessageType;               // Reference to the Message type
-    OwnedPyObject<> PyIOSocketType;              // Reference to the IOSocket type
-    OwnedPyObject<> PyIOContextType;             // Reference to the IOContext type
-    OwnedPyObject<> PyExceptionType;             // Reference to the Exception type
+    OwnedPyObject<> PyIOSocketEnumType;  // Reference to the IOSocketType enum
+    OwnedPyObject<> PyErrorCodeType;     // Reference to the Error enum
+    OwnedPyObject<> PyBytesYMQType;      // Reference to the PyBytesYMQ type
+    OwnedPyObject<> PyMessageType;       // Reference to the Message type
+    OwnedPyObject<> PyIOSocketType;      // Reference to the IOSocket type
+    OwnedPyObject<> PyIOContextType;     // Reference to the IOContext type
+    OwnedPyObject<> PyExceptionType;     // Reference to the Exception type
 };
 
 static YMQState* YMQStateFromSelf(PyObject* self)
@@ -76,8 +76,8 @@ std::expected<PyObject*, PyObject*> YMQ_GetRaisedException()
 
 void completeCallbackWithRaisedException(PyObject* callback)
 {
-    auto result = YMQ_GetRaisedException();
-    OwnedPyObject _   =PyObject_CallFunctionObjArgs(callback, result.value_or(result.error()));
+    auto result     = YMQ_GetRaisedException();
+    OwnedPyObject _ = PyObject_CallFunctionObjArgs(callback, result.value_or(result.error()), nullptr);
 }
 
 // First-Party

@@ -41,7 +41,7 @@ void EpollContext::loop()
                 // todo: investigate better error handling
                 // the epoll thread is not expected to receive signals(?)
                 // but occasionally does (e.g. sigwinch) and we shouldn't stop the thread in that case
-                break;
+                return;
             case EBADF:
             case EFAULT:
             case EINVAL:

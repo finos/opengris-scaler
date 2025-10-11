@@ -62,8 +62,9 @@ private:
     void onClose();
     void onError()
     {
-        onRead();
-        // onClose();
+        if (_connFd) {
+            onRead();
+        }
     };
 
     std::expected<void, IOError> tryReadOneMessage();

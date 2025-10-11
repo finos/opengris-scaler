@@ -69,8 +69,6 @@ private:
 
     scaler::ymq::Logger _logger;
 
-    std::atomic<bool> _stopped;
-
     std::vector<SendMessageFuture> _pendingSendMessageFuts;
 
     void initServerReadyFds();

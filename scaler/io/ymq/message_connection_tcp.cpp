@@ -321,6 +321,9 @@ void MessageConnectionTCP::onRead()
                        return _remoteIOSocketIdentity;
                    })
                    .and_then([this, maybeCloseConn](const std::string&) -> std::optional<std::string> {
+                       if (!_connFd) {
+                           return _remoteIOSocketIdentity;
+                       }
                        auto _ = tryReadMessages()
                                     .or_else(maybeCloseConn)  //
                                     .and_then([this]() -> std::expected<void, IOError> {

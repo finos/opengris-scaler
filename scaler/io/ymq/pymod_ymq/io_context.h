@@ -105,20 +105,21 @@ static PyObject* PyIOContext_createIOSocket(PyIOContext* self, PyObject* args, P
     if (!ioSocket)
         return nullptr;
 
-    Py_INCREF(callback);
-
     try {
         // ensure the fields are init
         new (&ioSocket->socket) std::shared_ptr<IOSocket>();
         new (&ioSocket->ioContext) std::shared_ptr<IOContext>();
         ioSocket->ioContext = self->ioContext;
 
+        Py_INCREF(callback);
+
         self->ioContext->createIOSocket(
             std::string(identity, identityLen), socketType, [callback, ioSocket](auto socket) {
                 AcquireGIL _;
 
-                ioSocket->socket = socket;
-                OwnedPyObject _result  = PyObject_CallFunctionObjArgs(callback, *ioSocket, nullptr);
+                ioSocket->socket      = socket;
+                OwnedPyObject _result = PyObject_CallFunctionObjArgs(callback, *ioSocket, nullptr);
+
                 Py_DECREF(callback);
             });
     } catch (...) {
