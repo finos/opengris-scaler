@@ -9,12 +9,17 @@ from typing import Dict, Optional, Tuple
 
 import zmq.asyncio
 
+from scaler.config.defaults import (
+    DEFAULT_OSS_CLIENT_TRANSPORTATION,
+    PROFILING_INTERVAL_SECONDS,
+    SCALER_OSS_USE_RAW_TCP,
+    SCALER_OSS_USE_YMQ,
+)
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.io.async_binder import ZMQAsyncBinder
 from scaler.io.async_connector import ZMQAsyncConnector
-from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
-from scaler.config.defaults import PROFILING_INTERVAL_SECONDS
+from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector, PyYMQAsyncObjectStorageConnector
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
 from scaler.io.ymq import ymq
 from scaler.protocol.python.message import (
@@ -124,7 +129,12 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         )
         self._binder_internal.register(self.__on_receive_internal)
 
-        self._connector_storage = PyAsyncObjectStorageConnector()
+        if DEFAULT_OSS_CLIENT_TRANSPORTATION == SCALER_OSS_USE_RAW_TCP:
+            self._connector_storage = PyAsyncObjectStorageConnector()
+        elif DEFAULT_OSS_CLIENT_TRANSPORTATION == SCALER_OSS_USE_YMQ:
+            self._connector_storage = PyYMQAsyncObjectStorageConnector()
+        else:
+            logging.error("Cannot determine which OSS Connector to use")
 
         self._heartbeat_manager = VanillaHeartbeatManager(
             storage_address=self._storage_address,

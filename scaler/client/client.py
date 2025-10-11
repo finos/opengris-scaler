@@ -16,10 +16,17 @@ from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.object_reference import ObjectReference
 from scaler.client.serializer.default import DefaultSerializer
 from scaler.client.serializer.mixins import Serializer
-from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
+from scaler.config.defaults import (
+    DEFAULT_CLIENT_TIMEOUT_SECONDS,
+    DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+    DEFAULT_OSS_CLIENT_TRANSPORTATION,
+    SCALER_OSS_USE_RAW_TCP,
+    SCALER_OSS_USE_YMQ,
+)
+from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
 from scaler.io.sync_connector import ZMQSyncConnector
-from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector
+from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector, PyYMQSyncObjectStorageConnector
 from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
 from scaler.utility.graph.optimization import cull_graph
@@ -27,7 +34,6 @@ from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
-from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.worker.agent.processor.processor import Processor
 
 
@@ -122,9 +128,17 @@ class Client:
         self._storage_address = self._agent.get_storage_address()
 
         logging.info(f"ScalerClient: connect to object storage at {self._storage_address}")
-        self._connector_storage: SyncObjectStorageConnector = PySyncObjectStorageConnector(
-            self._storage_address.host, self._storage_address.port
-        )
+        self._connector_storage: SyncObjectStorageConnector
+        if DEFAULT_OSS_CLIENT_TRANSPORTATION == SCALER_OSS_USE_RAW_TCP:
+            self._connector_storage = PySyncObjectStorageConnector(
+                self._storage_address.host, self._storage_address.port
+            )
+        elif DEFAULT_OSS_CLIENT_TRANSPORTATION == SCALER_OSS_USE_YMQ:
+            self._connector_storage = PyYMQSyncObjectStorageConnector(
+                self._storage_address.host, self._storage_address.port
+            )
+        else:
+            raise ValueError("Cannot determine which OSS Connector to use")
 
         self._object_buffer = ObjectBuffer(
             self._identity, self._serializer, self._connector_agent, self._connector_storage

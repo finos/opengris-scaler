@@ -7,10 +7,11 @@ from typing import Dict, Optional
 
 import zmq
 
+from scaler.config.defaults import DEFAULT_OSS_CLIENT_TRANSPORTATION, SCALER_OSS_USE_RAW_TCP, SCALER_OSS_USE_YMQ
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.io.async_connector import ZMQAsyncConnector
-from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
+from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector, PyYMQAsyncObjectStorageConnector
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -104,7 +105,12 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
             identity=self._ident,
         )
 
-        self._connector_storage = PyAsyncObjectStorageConnector()
+        if DEFAULT_OSS_CLIENT_TRANSPORTATION == SCALER_OSS_USE_RAW_TCP:
+            self._connector_storage = PyAsyncObjectStorageConnector()
+        elif DEFAULT_OSS_CLIENT_TRANSPORTATION == SCALER_OSS_USE_YMQ:
+            self._connector_storage = PyYMQAsyncObjectStorageConnector()
+        else:
+            logging.error("Cannot determine which OSS Connector to use")
 
         self._heartbeat_manager = SymphonyHeartbeatManager(
             storage_address=self._storage_address,

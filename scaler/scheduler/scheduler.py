@@ -4,10 +4,18 @@ import logging
 
 import zmq.asyncio
 
+from scaler.config.defaults import (
+    CLEANUP_INTERVAL_SECONDS,
+    DEFAULT_OSS_CLIENT_TRANSPORTATION,
+    SCALER_OSS_USE_RAW_TCP,
+    SCALER_OSS_USE_YMQ,
+    STATUS_REPORT_INTERVAL_SECONDS,
+)
+from scaler.config.section.scheduler import SchedulerConfig
+from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.io.async_binder import ZMQAsyncBinder
 from scaler.io.async_connector import ZMQAsyncConnector
-from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
-from scaler.config.defaults import CLEANUP_INTERVAL_SECONDS, STATUS_REPORT_INTERVAL_SECONDS
+from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector, PyYMQAsyncObjectStorageConnector
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
@@ -25,8 +33,6 @@ from scaler.protocol.python.message import (
     WorkerHeartbeat,
 )
 from scaler.protocol.python.mixins import Message
-from scaler.config.types.zmq import ZMQConfig, ZMQType
-from scaler.config.section.scheduler import SchedulerConfig
 from scaler.scheduler.controllers.balance_controller import VanillaBalanceController
 from scaler.scheduler.controllers.client_controller import VanillaClientController
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
@@ -76,7 +82,13 @@ class Scheduler:
         )
         logging.info(f"{self.__class__.__name__}: listen to scheduler address {config.scheduler_address}")
 
-        self._connector_storage: AsyncObjectStorageConnector = PyAsyncObjectStorageConnector()
+        self._connector_storage: AsyncObjectStorageConnector
+        if DEFAULT_OSS_CLIENT_TRANSPORTATION == SCALER_OSS_USE_RAW_TCP:
+            self._connector_storage = PyAsyncObjectStorageConnector()
+        elif DEFAULT_OSS_CLIENT_TRANSPORTATION == SCALER_OSS_USE_YMQ:
+            self._connector_storage = PyYMQAsyncObjectStorageConnector()
+        else:
+            raise ValueError("Cannot determine which OSS Connector to use")
         logging.info(f"{self.__class__.__name__}: connect to object storage server {object_storage_address!r}")
 
         self._binder_monitor: AsyncConnector = ZMQAsyncConnector(
