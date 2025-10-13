@@ -76,15 +76,14 @@ void IOContext::removeIOSocket(std::shared_ptr<IOSocket>& socket) noexcept
         }
     }
     if (id != -1) {
-        assert(_threads[id].use_count() == 1);
+        _threads[id]->tryJoin();
         _threads[id] = std::make_shared<EventLoopThread>();
     }
 }
 
 void IOContext::requestIOSocketStop(std::shared_ptr<IOSocket> socket) noexcept
 {
-    socket->_eventLoopThread->_eventLoop.executeNow(
-        [socket] { socket->_eventLoopThread->_eventLoop.executeLater([socket] { socket->requestStop(); }); });
+    socket->_eventLoopThread->_eventLoop.executeNow([socket] { socket->requestStop(); });
 }
 
 IOContext::~IOContext() noexcept

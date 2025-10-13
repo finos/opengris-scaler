@@ -145,14 +145,11 @@ void IOSocket::bindTo(std::string networkAddress, BindReturnCallback onBindRetur
 void IOSocket::closeConnection(Identity remoteSocketIdentity) noexcept
 {
     _eventLoopThread->_eventLoop.executeNow([this, remoteIdentity = std::move(remoteSocketIdentity)] {
-        _eventLoopThread->_eventLoop.executeLater([this, remoteIdentity = std::move(remoteIdentity)] {
-            if (_stopped) {
-                return;
-            }
-            // _identityToConnection.erase(remoteIdentity);
-            if (_identityToConnection.contains(remoteIdentity))
-                _identityToConnection[remoteIdentity]->disconnect();
-        });
+        if (_stopped) {
+            return;
+        }
+        if (_identityToConnection.contains(remoteIdentity))
+            _identityToConnection[remoteIdentity]->disconnect();
     });
 }
 
@@ -179,6 +176,7 @@ void IOSocket::onConnectionDisconnected(MessageConnectionTCP* conn, bool keepInB
                 this->_pendingRecvMessages->pop();
             }
         }
+        _eventLoopThread->_eventLoop.executeLater([conn = std::move(connPtr)]() {});
         _unestablishedConnection.pop_back();
         return;
     }
@@ -244,6 +242,7 @@ void IOSocket::onConnectionIdentityReceived(MessageConnectionTCP* conn) noexcept
     assert(targetConn->_receivedReadOperations.empty());
     targetConn->_receivedReadOperations = std::move((*c)->_receivedReadOperations);
 
+    assert((*c)->_connFd == 0);
     _unestablishedConnection.erase(c);
 }
 

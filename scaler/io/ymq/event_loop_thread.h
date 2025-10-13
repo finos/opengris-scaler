@@ -38,6 +38,12 @@ public:
     EventLoopThread& operator=(const EventLoopThread&) = delete;
     EventLoopThread()                                  = default;
 
+    void tryJoin()
+    {
+        if (thread.joinable())
+            thread.join();
+    }
+
 private:
     std::jthread thread;
 };
