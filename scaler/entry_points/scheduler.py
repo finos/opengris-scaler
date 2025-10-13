@@ -93,7 +93,10 @@ def main():
 
     scheduler_config = load_config(SchedulerConfig, args.config, args, section_name="scheduler")
 
-    if args.object_storage_address is None:
+    object_storage_address = scheduler_config.object_storage_address
+    object_storage = None
+
+    if object_storage_address is None:
         object_storage_address = ObjectStorageConfig(
             host=scheduler_config.scheduler_address.host, port=get_available_tcp_port()
         )
@@ -105,9 +108,6 @@ def main():
         )
         object_storage.start()
         object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
-    else:
-        object_storage_address = scheduler_config.object_storage_address
-        object_storage = None
 
     scheduler = SchedulerProcess(
         address=scheduler_config.scheduler_address,
