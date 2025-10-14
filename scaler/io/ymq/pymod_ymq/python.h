@@ -1,8 +1,10 @@
-// Python
 #pragma once
+
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <structmember.h>
+
+#include "scaler/io/ymq/error.h"
 
 #if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION == 8
 static inline PyObject* Py_NewRef(PyObject* obj)
@@ -134,8 +136,11 @@ private:
         if (!_ptr)
             return;
 
-        if (!PyGILState_Check())
+        if (!PyGILState_Check()) {
+            unrecoverableError(
+                {scaler::ymq::Error::ErrorCode::CoreBug, "trying to free OwnedPyObject outside of the Python GIL"});
             return;
+        }
 
         Py_CLEAR(_ptr);
     }
