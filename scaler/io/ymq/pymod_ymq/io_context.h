@@ -111,16 +111,18 @@ static PyObject* PyIOContext_createIOSocket(PyIOContext* self, PyObject* args, P
         new (&ioSocket->ioContext) std::shared_ptr<IOContext>();
         ioSocket->ioContext = self->ioContext;
 
-        Py_INCREF(callback);
-
         self->ioContext->createIOSocket(
-            std::string(identity, identityLen), socketType, [callback, ioSocket](auto socket) {
+            std::string(identity, identityLen),
+            socketType,
+            [callback_ = OwnedPyObject<>::fromBorrowed(callback), ioSocket_ = std::move(ioSocket)](auto socket) {
                 AcquireGIL _;
 
-                ioSocket->socket      = socket;
-                OwnedPyObject _result = PyObject_CallFunctionObjArgs(callback, *ioSocket, nullptr);
+                // Redefine the captured Python objects to ensure these are destroyed before the GIL is released.
+                OwnedPyObject callback             = std::move(callback_);
+                OwnedPyObject<PyIOSocket> ioSocket = std::move(ioSocket_);
 
-                Py_DECREF(callback);
+                ioSocket->socket      = socket;
+                OwnedPyObject _result = PyObject_CallFunctionObjArgs(*callback, *ioSocket, nullptr);
             });
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create IOSocket");
