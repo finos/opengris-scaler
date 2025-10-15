@@ -5,8 +5,9 @@ This MITM should have no effect on the client and server,
 and they should behave as if the MITM is not present
 """
 
-from tests.cpp.ymq.py_mitm.types import AbstractMITM, TunTapInterface, IP, TCPConnection
 from typing import Optional
+
+from tests.cpp.ymq.py_mitm.types import IP, AbstractMITM, TCPConnection, TunTapInterface
 
 
 class MITM(AbstractMITM):

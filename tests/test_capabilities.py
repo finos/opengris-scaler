@@ -13,9 +13,7 @@ class TestCapabilities(unittest.TestCase):
         logging_test_name(self)
         self._workers = 3
         self.combo = SchedulerClusterCombo(
-            n_workers=self._workers,
-            event_loop="builtin",
-            allocate_policy=AllocatePolicy.capability,
+            n_workers=self._workers, event_loop="builtin", allocate_policy=AllocatePolicy.capability
         )
         self.address = self.combo.get_address()
 
@@ -37,7 +35,7 @@ class TestCapabilities(unittest.TestCase):
             # Connects a worker that can handle the task
             gpu_cluster = Cluster(
                 address=base_cluster._address,
-                storage_address=None,
+                object_storage_address=None,
                 preload=None,
                 worker_io_threads=1,
                 worker_names=["gpu_worker"],
@@ -66,13 +64,7 @@ class TestCapabilities(unittest.TestCase):
         with Client(self.address) as client:
             client.submit(round, 3.14).result()  # Ensures the cluster is ready
 
-            graph = {
-                "a": 2.3,
-                "b": 3.1,
-                "c": (round, "a"),
-                "d": (round, "b"),
-                "e": (pow, "c", "d")
-            }
+            graph = {"a": 2.3, "b": 3.1, "c": (round, "a"), "d": (round, "b"), "e": (pow, "c", "d")}
 
             future = client.get(graph, keys=["e"], capabilities={"gpu": 1}, block=False)["e"]
 
@@ -83,7 +75,7 @@ class TestCapabilities(unittest.TestCase):
             gpu_cluster = Cluster(
                 address=base_cluster._address,
                 preload=None,
-                storage_address=None,
+                object_storage_address=None,
                 worker_io_threads=1,
                 worker_names=["gpu_worker"],
                 per_worker_capabilities={"gpu": -1},

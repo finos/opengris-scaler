@@ -3,11 +3,10 @@ from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 from scaler.config import defaults
-from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
-from scaler.utility.logging.utility import LoggingLevel
-
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
+from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
+from scaler.utility.logging.utility import LoggingLevel
 
 
 @dataclasses.dataclass

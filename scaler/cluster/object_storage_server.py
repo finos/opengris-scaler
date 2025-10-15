@@ -2,15 +2,15 @@ import logging
 import multiprocessing
 from typing import Optional, Tuple
 
+from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.object_storage.object_storage_server import ObjectStorageServer
 from scaler.utility.logging.utility import get_logger_info, setup_logger
-from scaler.config.types.object_storage_server import ObjectStorageConfig
 
 
 class ObjectStorageServerProcess(multiprocessing.get_context("fork").Process):  # type: ignore[misc]
     def __init__(
         self,
-        storage_address: ObjectStorageConfig,
+        object_storage_address: ObjectStorageConfig,
         logging_paths: Tuple[str, ...],
         logging_level: str,
         logging_config_file: Optional[str],
@@ -21,7 +21,7 @@ class ObjectStorageServerProcess(multiprocessing.get_context("fork").Process):  
         self._logging_level = logging_level
         self._logging_config_file = logging_config_file
 
-        self._storage_address = storage_address
+        self._object_storage_address = object_storage_address
 
         self._server = ObjectStorageServer()
 
@@ -31,14 +31,14 @@ class ObjectStorageServerProcess(multiprocessing.get_context("fork").Process):  
 
     def run(self) -> None:
         setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
-        logging.info(f"ObjectStorageServer: start and listen to {self._storage_address.to_string()}")
+        logging.info(f"ObjectStorageServer: start and listen to {self._object_storage_address.to_string()}")
 
         log_format_str, log_level_str, logging_paths = get_logger_info(logging.getLogger())
 
         self._server.run(
-            self._storage_address.host,
-            self._storage_address.port,
-            self._storage_address.identity,
+            self._object_storage_address.host,
+            self._object_storage_address.port,
+            self._object_storage_address.identity,
             log_level_str,
             log_format_str,
             logging_paths,

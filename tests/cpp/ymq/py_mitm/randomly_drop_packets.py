@@ -3,8 +3,9 @@ This MITM drops a % of packets
 """
 
 import random
-from tests.cpp.ymq.py_mitm.types import AbstractMITM, TunTapInterface, IP, TCPConnection
 from typing import Optional
+
+from tests.cpp.ymq.py_mitm.types import IP, AbstractMITM, TCPConnection, TunTapInterface
 
 
 class MITM(AbstractMITM):

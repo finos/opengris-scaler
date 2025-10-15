@@ -6,9 +6,9 @@ from typing import Dict, Optional, Tuple
 from aiohttp import web
 from aiohttp.web_request import Request
 
-from scaler.utility.identifiers import WorkerID
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
+from scaler.utility.identifiers import WorkerID
 from scaler.worker.worker import Worker
 
 WorkerGroupID = bytes
@@ -26,7 +26,7 @@ class NativeWorkerAdapter:
     def __init__(
         self,
         address: ZMQConfig,
-        storage_address: Optional[ObjectStorageConfig],
+        object_storage_address: Optional[ObjectStorageConfig],
         capabilities: Dict[str, int],
         io_threads: int,
         task_queue_size: int,
@@ -43,7 +43,7 @@ class NativeWorkerAdapter:
         logging_config_file: Optional[str],
     ):
         self._address = address
-        self._storage_address = storage_address
+        self._object_storage_address = object_storage_address
         self._capabilities = capabilities
         self._io_threads = io_threads
         self._task_queue_size = task_queue_size
@@ -73,7 +73,7 @@ class NativeWorkerAdapter:
         worker = Worker(
             name=uuid.uuid4().hex,
             address=self._address,
-            storage_address=self._storage_address,
+            object_storage_address=self._object_storage_address,
             preload=None,
             capabilities=self._capabilities,
             io_threads=self._io_threads,

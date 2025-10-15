@@ -26,7 +26,7 @@ class SymphonyWorkerAdapter:
     def __init__(
         self,
         address: ZMQConfig,
-        storage_address: Optional[ObjectStorageConfig],
+        object_storage_address: Optional[ObjectStorageConfig],
         service_name: str,
         base_concurrency: int,
         capabilities: Dict[str, int],
@@ -40,7 +40,7 @@ class SymphonyWorkerAdapter:
         logging_config_file: Optional[str],
     ):
         self._address = address
-        self._storage_address = storage_address
+        self._object_storage_address = object_storage_address
         self._service_name = service_name
         self._base_concurrency = base_concurrency
         self._capabilities = capabilities
@@ -66,7 +66,7 @@ class SymphonyWorkerAdapter:
         worker = SymphonyWorker(
             name=uuid.uuid4().hex,
             address=self._address,
-            storage_address=self._storage_address,
+            object_storage_address=self._object_storage_address,
             service_name=self._service_name,
             base_concurrency=self._base_concurrency,
             capabilities=self._capabilities,

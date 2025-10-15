@@ -40,7 +40,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         self,
         name: str,
         address: ZMQConfig,
-        storage_address: Optional[ObjectStorageConfig],
+        object_storage_address: Optional[ObjectStorageConfig],
         service_name: str,
         capabilities: Dict[str, int],
         base_concurrency: int,
@@ -55,7 +55,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         self._event_loop = event_loop
         self._name = name
         self._address = address
-        self._storage_address = storage_address
+        self._object_storage_address = object_storage_address
         self._capabilities = capabilities
         self._io_threads = io_threads
 
@@ -107,7 +107,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         self._connector_storage = PyAsyncObjectStorageConnector()
 
         self._heartbeat_manager = SymphonyHeartbeatManager(
-            storage_address=self._storage_address,
+            object_storage_address=self._object_storage_address,
             capabilities=self._capabilities,
             task_queue_size=self._task_queue_size,
         )
@@ -169,9 +169,9 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         raise TypeError(f"Unknown {message=}")
 
     async def __get_loops(self):
-        if self._storage_address is not None:
+        if self._object_storage_address is not None:
             # With a manually set storage address, immediately connect to the object storage server.
-            await self._connector_storage.connect(self._storage_address.host, self._storage_address.port)
+            await self._connector_storage.connect(self._object_storage_address.host, self._object_storage_address.port)
 
         try:
             await asyncio.gather(

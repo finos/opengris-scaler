@@ -33,7 +33,7 @@ def main():
     base_cluster = cluster._cluster
     regular_cluster = Cluster(
         address=base_cluster._address,
-        storage_address=None,
+        object_storage_address=None,
         preload=None,
         worker_io_threads=1,
         worker_names=["gpu_worker"],

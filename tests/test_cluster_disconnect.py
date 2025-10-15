@@ -28,7 +28,7 @@ class TestClusterDisconnect(unittest.TestCase):
         base_cluster = self.combo._cluster
         dying_cluster = Cluster(
             address=self.combo._address,
-            storage_address=self.combo._storage_address,
+            object_storage_address=self.combo._object_storage_address,
             preload=None,
             worker_io_threads=base_cluster._worker_io_threads,
             worker_names=["dying_worker"],  # Just one worker would suffice

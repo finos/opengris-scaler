@@ -38,7 +38,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         event_loop: str,
         agent_address: ZMQConfig,
         scheduler_address: ZMQConfig,
-        storage_address: ObjectStorageConfig,
+        object_storage_address: ObjectStorageConfig,
         preload: Optional[str],
         resume_event: Optional[EventType],
         resumed_event: Optional[EventType],
@@ -52,7 +52,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._event_loop = event_loop
         self._agent_address = agent_address
         self._scheduler_address = scheduler_address
-        self._storage_address = storage_address
+        self._object_storage_address = object_storage_address
         self._preload = preload
 
         self._resume_event = resume_event
@@ -96,7 +96,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             context=zmq.Context(), socket_type=zmq.DEALER, address=self._agent_address, identity=None
         )
         self._connector_storage: SyncObjectStorageConnector = PySyncObjectStorageConnector(
-            self._storage_address.host, self._storage_address.port
+            self._object_storage_address.host, self._object_storage_address.port
         )
 
         self._object_cache = ObjectCache(

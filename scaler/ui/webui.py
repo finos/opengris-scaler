@@ -4,6 +4,7 @@ from functools import partial
 
 from nicegui import ui
 
+from scaler.config.types.zmq import ZMQConfig
 from scaler.io.sync_subscriber import ZMQSyncSubscriber
 from scaler.protocol.python.message import StateScheduler, StateTask
 from scaler.protocol.python.mixins import Message
@@ -20,7 +21,6 @@ from scaler.ui.task_graph import TaskStream
 from scaler.ui.task_log import TaskLogTable
 from scaler.ui.worker_processors import WorkerProcessors
 from scaler.utility.formatter import format_bytes, format_percentage
-from scaler.config.types.zmq import ZMQConfig
 
 
 @dataclasses.dataclass

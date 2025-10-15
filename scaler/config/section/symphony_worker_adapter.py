@@ -1,10 +1,10 @@
 import dataclasses
 from typing import Optional, Tuple
 
+from scaler.config import defaults
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.config.types.zmq import ZMQConfig
-from scaler.config import defaults
 from scaler.utility.logging.utility import LoggingLevel
 
 
