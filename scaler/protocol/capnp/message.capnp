@@ -150,7 +150,8 @@ struct StateTask {
     functionName @1 :Data;
     state @2 :CommonType.TaskState;
     worker @3 :Data;
-    metadata @4 :Data;
+    capabilities @4 :List(CommonType.TaskCapability);
+    metadata @5 :Data;
 }
 
 struct StateGraphTask {
