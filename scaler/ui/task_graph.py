@@ -69,6 +69,7 @@ class TaskStream:
 
         self._start_time = datetime.datetime.now() - datetime.timedelta(minutes=30)
         self._last_task_tick = datetime.datetime.now()
+        self._user_axis_range: Optional[List[int]] = None
 
         self._current_tasks: Dict[str, Dict[bytes, datetime.datetime]] = {}
         self._completed_data_cache: Dict[str, Dict] = {}
@@ -212,7 +213,16 @@ class TaskStream:
             self._figure = fig
             self._completed_data_cache = {}
             self._plot = ui.plotly(self._figure).classes("w-full h-full")
+            self._plot.on("plotly_relayout", self._on_plotly_relayout)
             self._settings = settings
+
+    def _on_plotly_relayout(self, e):
+        x0 = e.args.get("xaxis.range[0]")
+        x1 = e.args.get("xaxis.range[1]")
+        if x0 is not None and x1 is not None:
+            self._user_axis_range = [x0, x1]
+        else:
+            self._user_axis_range = None
 
     def __setup_row_cache(self, row_label: str):
         if row_label in self._completed_data_cache:
@@ -430,9 +440,9 @@ class TaskStream:
         task_state = state.state
         task_time = format_timediff(start, now)
 
+        row_label = self.__add_task_to_chart(worker, state.task_id, task_state, task_time)
         with self._data_update_lock:
             self.__remove_task_from_worker(worker=worker, task_id=state.task_id, now=now, force_new_time=False)
-        row_label = self.__add_task_to_chart(worker, state.task_id, task_state, task_time)
         self._row_last_used[row_label] = now
 
         self._task_id_to_printable_capabilities.pop(state.task_id, None)
@@ -455,6 +465,7 @@ class TaskStream:
 
     def __remove_task_from_worker(self, worker: str, task_id: bytes, now: datetime.datetime, force_new_time: bool):
         # Remove a single task from the worker's current task mapping.
+        self._task_row_assignment.pop(task_id, None)
         task_map = self._current_tasks.get(worker)
         if not task_map:
             return
@@ -558,7 +569,7 @@ class TaskStream:
         for row_label in self._worker_rows.pop(worker, []):
             if row_label in self._completed_data_cache:
                 self._completed_data_cache.pop(row_label)
-            self._seen_workers.remove(worker)
+        self._seen_workers.remove(worker)
 
     def __remove_old_tasks_from_history(self, store_duration: datetime.timedelta):
         for row_label in self._completed_data_cache.keys():
@@ -690,7 +701,10 @@ class TaskStream:
         ticks = make_ticks(lower_bound, upper_bound)
         tick_text = make_tick_text(int(self._settings.stream_window.total_seconds()))
 
-        self._figure["layout"]["xaxis"]["range"] = [lower_bound, upper_bound]
+        if self._user_axis_range:
+            self._figure["layout"]["xaxis"]["range"] = self._user_axis_range
+        else:
+            self._figure["layout"]["xaxis"]["range"] = [lower_bound, upper_bound]
         self._figure["layout"]["xaxis"]["tickvals"] = ticks
         self._figure["layout"]["xaxis"]["ticktext"] = tick_text
         self._plot.update()
