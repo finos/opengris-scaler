@@ -1,5 +1,7 @@
 import datetime
 from collections import deque
+from enum import Enum
+import hashlib
 from queue import SimpleQueue
 from threading import Lock
 from typing import Deque, Dict, List, Optional, Set, Tuple
@@ -10,29 +12,52 @@ from scaler.protocol.python.common import TaskState
 from scaler.protocol.python.message import StateTask
 from scaler.ui.live_display import WorkersSection
 from scaler.ui.setting_page import Settings
-from scaler.ui.utility import format_timediff, format_worker_name, get_bounds, make_tick_text, make_ticks
+from scaler.ui.utility import (
+    COMPLETED_TASK_STATUSES,
+    display_capabilities,
+    format_timediff,
+    format_worker_name,
+    get_bounds,
+    make_tick_text,
+    make_ticks,
+)
+
+TASK_STREAM_BACKGROUND_COLOR = "white"
+TASK_STREAM_BACKGROUND_COLOR_RGB = "#000000"
 
 
-class TaskColors:
-    RUNNING = "yellow"
-    NO_WORK = "white"
-    SUCCESS = "green"
-    FAILED = "red"
-    INACTIVE = "lightgray"
-    CANCELED = "black"
-    CANCELING = CANCELED
+class TaskShape(Enum):
+    NONE = ""
+    FAILED = "x"
+    CANCELED = "/"
 
-    __task_status_to_color = {
-        TaskState.Inactive: INACTIVE,
-        TaskState.Running: RUNNING,
-        TaskState.Success: SUCCESS,
-        TaskState.Canceled: CANCELED,
-        TaskState.Canceling: CANCELING,
+
+class TaskShapes:
+    _task_status_to_shape = {
+        TaskState.Success: TaskShape.NONE.value,
+        TaskState.Running: TaskShape.NONE.value,
+        TaskState.Failed: TaskShape.FAILED.value,
+        TaskState.FailedWorkerDied: TaskShape.FAILED.value,
+        TaskState.Canceled: TaskShape.CANCELED.value,
+        TaskState.CanceledNotFound: TaskShape.CANCELED.value,
     }
 
-    @staticmethod
-    def from_status(status: TaskState) -> str:
-        return TaskColors.__task_status_to_color[status]
+    _task_shape_to_outline = {
+        TaskState.Success: ("black", 2),
+        TaskState.Running: ("yellow", 2),
+        TaskState.Failed: ("red", 2),
+        TaskState.FailedWorkerDied: ("red", 2),
+        TaskState.Canceled: ("black", 2),
+        TaskState.CanceledNotFound: ("black", 2),
+    }
+
+    @classmethod
+    def from_status(cls, status: TaskState) -> str:
+        return cls._task_status_to_shape[status]
+
+    @classmethod
+    def get_outline(cls, status: TaskState) -> Tuple[str, int]:
+        return cls._task_shape_to_outline[status]
 
 
 class TaskStream:
@@ -45,12 +70,13 @@ class TaskStream:
         self._start_time = datetime.datetime.now() - datetime.timedelta(minutes=30)
         self._last_task_tick = datetime.datetime.now()
 
-        self._current_tasks: Dict[str, Tuple[bool, Set[bytes], Optional[datetime.datetime]]] = {}
+        self._current_tasks: Dict[str, Dict[bytes, datetime.datetime]] = {}
         self._completed_data_cache: Dict[str, Dict] = {}
 
         self._worker_to_object_name: Dict[str, str] = {}
         self._worker_last_update: Dict[str, datetime.datetime] = {}
         self._task_id_to_worker: Dict[bytes, str] = {}
+        self._task_id_to_printable_capabilities: Dict[bytes, str] = {}
 
         self._seen_workers = set()
         self._lost_workers_queue: SimpleQueue[Tuple[datetime.datetime, str]] = SimpleQueue()
@@ -61,8 +87,104 @@ class TaskStream:
 
         self._dead_workers: Deque[Tuple[datetime.datetime, str]] = deque()  # type: ignore[misc]
 
+        self._capabilities_color_map: Dict[str, str] = {"<no capabilities>": "green"}
+
+        self._worker_rows: Dict[str, List[str]] = {}
+        self._task_row_assignment: Dict[bytes, str] = {}
+        self._row_last_used: Dict[str, datetime.datetime] = {}
+
+    def __ensure_worker_rows(self, worker: str, needed: int = 1):
+        base = format_worker_name(worker)
+        rows = self._worker_rows.get(worker)
+        if rows is None:
+            # first row is [1]
+            rows = [f"{base} [1]"]
+            self._worker_rows[worker] = rows
+        # later rows are [2], [3], ...
+        while len(rows) < needed:
+            index = len(rows) + 1
+            new_row = f"{base} [{index}]"
+            rows.append(new_row)
+
+    def __allocate_row_for_task(self, worker: str, task_id: bytes) -> str:
+        if task_id in self._task_row_assignment:
+            return self._task_row_assignment[task_id]
+
+        if worker not in self._worker_rows:
+            self._worker_rows[worker] = [f"{format_worker_name(worker)} [1]"]
+
+        # pick first unused row label
+        used_rows = set(self._task_row_assignment.values())
+        for row in self._worker_rows[worker]:
+            if row not in used_rows:
+                self._task_row_assignment[task_id] = row
+
+                if row not in self._completed_data_cache:
+                    self.__setup_row_cache(row)
+                row_data = self._completed_data_cache.get(row)
+                if row_data is not None and row not in row_data.get("y", []):
+                    now = datetime.datetime.now()
+                    self.__add_bar(
+                        worker=worker,
+                        time_taken=format_timediff(self._start_time, now),
+                        task_color=TASK_STREAM_BACKGROUND_COLOR,
+                        state=None,
+                        hovertext="",
+                        capabilities_display_string="",
+                        row_label=row,
+                    )
+                    self._row_last_used[row] = now
+
+                return row
+
+        # need to add a new row
+        new_row = f"{format_worker_name(worker)} [{len(self._worker_rows[worker]) + 1}]"
+        self._worker_rows[worker].append(new_row)
+        self._task_row_assignment[task_id] = new_row
+
+        self.__setup_row_cache(new_row)
+        row_data = self._completed_data_cache.get(new_row)
+        if row_data is not None and new_row not in row_data.get("y", []):
+            now = datetime.datetime.now()
+            self.__add_bar(
+                worker=worker,
+                time_taken=format_timediff(self._start_time, now),
+                task_color=TASK_STREAM_BACKGROUND_COLOR,
+                state=None,
+                hovertext="",
+                capabilities_display_string="",
+                row_label=new_row,
+            )
+            self._row_last_used[new_row] = now
+
+        return new_row
+
+    def __free_row_for_task(self, task_id: bytes):
+        if task_id in self._task_row_assignment:
+            self._task_row_assignment.pop(task_id)
+
     def setup_task_stream(self, settings: Settings):
         with ui.card().classes("w-full").style("height: 85vh"):
+            ui.html(
+                """
+                <div style="margin-bottom:8px;">
+                    <b>Legend:</b>
+                    <span style="display:inline-block;width:18px;height:18px;border:2px solid black;
+                        vertical-align:middle;margin-right:4px;
+                        background:
+                            repeating-linear-gradient(135deg, transparent, transparent 4px, black 4px, black 6px),
+                            repeating-linear-gradient(225deg, transparent, transparent 4px, black 4px, black 6px);
+                    "></span>
+                    Failed
+                    <span style="display:inline-block;width:18px;height:18px;border:2px solid black;
+                        vertical-align:middle;margin-left:16px;margin-right:4px;
+                        background:
+                            repeating-linear-gradient(-45deg, transparent, transparent 4px, black 4px, black 6px);
+                    "></span>
+                    Canceled
+                </div>
+                """
+            )
             fig = {
                 "data": [],
                 "layout": {
@@ -92,127 +214,303 @@ class TaskStream:
             self._plot = ui.plotly(self._figure).classes("w-full h-full")
             self._settings = settings
 
-    def __setup_worker_cache(self, worker: str):
-        if worker in self._completed_data_cache:
+    def __setup_row_cache(self, row_label: str):
+        if row_label in self._completed_data_cache:
             return
-        self._completed_data_cache[worker] = {
+        self._completed_data_cache[row_label] = {
             "type": "bar",
-            "name": "History",
+            "name": "Completed",
             "y": [],
             "x": [],
             "orientation": "h",
-            "marker": {"color": [], "width": 5},
+            "marker": {"color": [], "width": 5, "pattern": {"shape": []}, "line": {"color": [], "width": []}},
             "hovertemplate": [],
             "hovertext": [],
+            "customdata": [],
             "showlegend": False,
         }
 
-    def __get_history_fields(self, worker: str, index: int) -> Tuple[float, str, str]:
-        worker_data = self._completed_data_cache[worker]
-        time_taken = worker_data["x"][index]
-        color = worker_data["marker"]["color"][index]
-        text = worker_data["hovertext"][index]
-        return time_taken, color, text
+    def __get_history_fields(self, worker: str, index: int) -> Tuple[float, str, str, str, str, str, int, str]:
+        row_data = self._completed_data_cache[worker]
+        time_taken = row_data["x"][index]
+        color = row_data["marker"]["color"][index]
+        text = row_data["hovertext"][index]
+        shape = row_data["marker"]["pattern"]["shape"][index]
+        capabilities = row_data["customdata"][index]["capabilities"]
+        row_label = row_data["y"][index]
+        outline_color = row_data["marker"]["line"]["color"][index]
+        outline_width = row_data["marker"]["line"]["width"][index]
+        return time_taken, color, text, shape, capabilities, row_label, outline_width, outline_color
 
-    def __remove_last_elements(self, worker: str):
-        worker_data = self._completed_data_cache[worker]
-        del worker_data["y"][-1]
-        del worker_data["x"][-1]
-        del worker_data["marker"]["color"][-1]
-        del worker_data["hovertext"][-1]
-        del worker_data["hovertemplate"][-1]
+    def __remove_last_elements(self, row_label: str):
+        row_data = self._completed_data_cache[row_label]
+        del row_data["y"][-1]
+        del row_data["x"][-1]
+        del row_data["marker"]["color"][-1]
+        del row_data["marker"]["pattern"]["shape"][-1]
+        del row_data["marker"]["line"]["color"][-1]
+        del row_data["marker"]["line"]["width"][-1]
+        del row_data["hovertext"][-1]
+        del row_data["hovertemplate"][-1]
+        del row_data["customdata"][-1]
 
-    def __add_bar(self, worker: str, time_taken: float, task_color: str, hovertext: str):
-        worker_history = self._completed_data_cache[worker]
-        if len(worker_history["y"]) > 1:
-            last_time_taken, last_color, last_text = self.__get_history_fields(worker, -1)
+    def __get_capabilities_color(self, capabilities: str) -> str:
+        if capabilities not in self._capabilities_color_map:
+            h = hashlib.md5(capabilities.encode()).hexdigest()
+            color = f"#{h[:6]}"
+            if color == TASK_STREAM_BACKGROUND_COLOR_RGB:
+                color = "#0000ff"
+            self._capabilities_color_map[capabilities] = color
+        return self._capabilities_color_map[capabilities]
 
-            # lengthen last bar if they're the same type
-            if last_color == task_color and last_text == hovertext:
-                worker_history["x"][-1] += time_taken
+    def __get_task_color(self, task_id: bytes) -> str:
+        capabilities = self._task_id_to_printable_capabilities.get(task_id, "<no capabilities>")
+        color = self.__get_capabilities_color(capabilities)
+        return color
+
+    def __add_task_to_chart(self, worker: str, task_id: bytes, task_state: TaskState, task_time: float) -> str:
+        task_color = self.__get_task_color(task_id)
+        task_hovertext = self._worker_to_object_name.get(worker, "")
+        capabilities_display_string = self._task_id_to_printable_capabilities.get(task_id, "")
+
+        row_label = self._task_row_assignment.get(task_id)
+
+        self.__add_bar(
+            worker=worker,
+            time_taken=task_time,
+            task_color=task_color,
+            state=task_state,
+            hovertext=task_hovertext,
+            capabilities_display_string=capabilities_display_string,
+            row_label=row_label,
+        )
+
+        self.__free_row_for_task(task_id)
+
+        return row_label
+
+    def __add_bar(
+        self,
+        worker: str,
+        time_taken: float,
+        task_color: str,
+        state: Optional[TaskState],
+        hovertext: str,
+        capabilities_display_string: str,
+        row_label: Optional[str] = None,
+    ):
+        if row_label is None:
+            row_label = f"{format_worker_name(worker)} [1]"
+
+        if state:
+            shape = TaskShapes.from_status(state)
+            task_outline_color, task_outline_width = TaskShapes.get_outline(state)
+            state_text = state.name
+        else:
+            shape = TaskShape.NONE.value
+            task_outline_color, task_outline_width = ("rgba(0,0,0,0)", 0)
+            state_text = ""
+        row_history = self._completed_data_cache[row_label]
+
+        # if this is the same task repeated, merge the bars
+        if len(row_history["y"]) > 1:
+            (
+                last_time_taken,
+                last_color,
+                last_text,
+                last_shape,
+                last_capabilities,
+                last_row,
+                last_outline_width,
+                last_outline_color,
+            ) = self.__get_history_fields(row_label, -1)
+
+            if (
+                last_row == row_label
+                and last_color == task_color
+                and last_text == hovertext
+                and last_shape == shape
+                and last_capabilities == capabilities_display_string
+                and last_outline_width == task_outline_width
+                and last_outline_color == task_outline_color
+            ):
+                row_history["x"][-1] += time_taken
+                row_history["customdata"][-1]["task_count"] += 1
                 return
 
-            # if there's a short gap from last task to current task, merge the bars
-            # this serves two purposes:
-            #   - get a clean bar instead of many ~0 width lines
-            #   - more importantly, make the ui significantly more responsive
-            if task_color != TaskColors.NO_WORK and len(worker_history["y"]) > 2:
-                penult_time_taken, penult_color, penult_text = self.__get_history_fields(worker, -2)
+            # if there's a very short gap from last task to current task, merge the bars
+            if task_color != TASK_STREAM_BACKGROUND_COLOR and len(row_history["y"]) > 2:
+                (
+                    _,
+                    penult_color,
+                    penult_text,
+                    penult_shape,
+                    penult_capabilities,
+                    penult_row,
+                    penult_outline_width,
+                    penult_outline_color,
+                ) = self.__get_history_fields(row_label, -2)
 
-                if last_time_taken < 0.1 and penult_color == task_color and penult_text == hovertext:
-                    worker_history["x"][-2] += time_taken + last_time_taken
-                    self.__remove_last_elements(worker)
+                if (
+                    last_time_taken < 0.1
+                    and penult_row == row_label
+                    and penult_color == task_color
+                    and penult_text == hovertext
+                    and penult_shape == shape
+                    and penult_capabilities == capabilities_display_string
+                    and penult_outline_width == task_outline_width
+                    and penult_outline_color == task_outline_color
+                ):
+                    row_history["x"][-2] += time_taken + last_time_taken
+                    row_history["customdata"][-2]["task_count"] += 1
+                    self.__remove_last_elements(row_label)
                     return
 
-        self._completed_data_cache[worker]["y"].append(format_worker_name(worker))
-        self._completed_data_cache[worker]["x"].append(time_taken)
-        self._completed_data_cache[worker]["marker"]["color"].append(task_color)
-        self._completed_data_cache[worker]["hovertext"].append(hovertext)
+        self._completed_data_cache[row_label]["y"].append(row_label)
+        self._completed_data_cache[row_label]["x"].append(time_taken)
+        self._completed_data_cache[row_label]["marker"]["color"].append(task_color)
+        self._completed_data_cache[row_label]["marker"]["pattern"]["shape"].append(shape)
+        self._completed_data_cache[row_label]["marker"]["line"]["color"].append(task_outline_color)
+        self._completed_data_cache[row_label]["marker"]["line"]["width"].append(task_outline_width)
+        self._completed_data_cache[row_label]["hovertext"].append(hovertext)
+        self._completed_data_cache[row_label]["customdata"].append(
+            {"state": state_text, "task_count": 1, "capabilities": capabilities_display_string}
+        )
 
         if hovertext:
-            self._completed_data_cache[worker]["hovertemplate"].append("%{hovertext} (%{x})")
+            self._completed_data_cache[row_label]["hovertemplate"].append(
+                "%{hovertext} (%{x})<br>"
+                "%{customdata.state}<br>"
+                "Tasks: %{customdata.task_count}<br>"
+                "Capabilities: %{customdata.capabilities}"
+            )
         else:
-            self._completed_data_cache[worker]["hovertemplate"].append("")
+            self._completed_data_cache[row_label]["hovertemplate"].append("")
 
-    def __remove_old_tasks_from_cache(self, worker: str, cutoff_index: int):
-        self._completed_data_cache[worker]["y"] = self._completed_data_cache[worker]["y"][: cutoff_index + 1]
-        self._completed_data_cache[worker]["x"] = self._completed_data_cache[worker]["x"][: cutoff_index + 1]
+    def __cutoff_keep_first(self, data_list: list, cutoff_index: int):
+        return [data_list[0]] + data_list[cutoff_index:]
+
+    def __remove_old_tasks_from_cache(self, row_label: str, cutoff_index: int):
+        row_data = self._completed_data_cache[row_label]
+        removed_time = sum([row_data["x"][i] for i in range(1, cutoff_index)])
+
+        row_data["y"] = self.__cutoff_keep_first(row_data["y"], cutoff_index)
+        row_data["x"] = self.__cutoff_keep_first(row_data["x"], cutoff_index)
+        row_data["marker"]["color"] = self.__cutoff_keep_first(row_data["marker"]["color"], cutoff_index)
+        row_data["marker"]["pattern"]["shape"] = self.__cutoff_keep_first(
+            row_data["marker"]["pattern"]["shape"], cutoff_index
+        )
+        row_data["marker"]["line"]["color"] = self.__cutoff_keep_first(
+            row_data["marker"]["line"]["color"], cutoff_index
+        )
+        row_data["marker"]["line"]["width"] = self.__cutoff_keep_first(
+            row_data["marker"]["line"]["width"], cutoff_index
+        )
+        row_data["hovertext"] = self.__cutoff_keep_first(row_data["hovertext"], cutoff_index)
+        row_data["hovertemplate"] = self.__cutoff_keep_first(row_data["hovertemplate"], cutoff_index)
+
+        row_data["x"][0] += removed_time
 
     def __handle_task_result(self, state: StateTask, now: datetime.datetime):
         worker = self._task_id_to_worker.get(state.task_id, "")
         if worker == "":
             return
 
-        task_state = state.state
         self._worker_last_update[worker] = now
 
-        _, _, start = self._current_tasks.get(worker, (False, set(), None))
+        start = None
+        task_map = self._current_tasks.get(worker)
+        if task_map:
+            start = task_map.get(state.task_id)
 
         if start is None:
             # we don't know when this task started, so just ignore
             return
 
+        task_state = state.state
+        task_time = format_timediff(start, now)
+
         with self._data_update_lock:
-            self.__remove_task_from_worker(worker=worker, task_id=state.task_id, now=now, force_new_time=True)
-        self.__add_bar(
-            worker,
-            format_timediff(start, now),
-            TaskColors.from_status(task_state),
-            self._worker_to_object_name.get(worker, ""),
-        )
+            self.__remove_task_from_worker(worker=worker, task_id=state.task_id, now=now, force_new_time=False)
+        row_label = self.__add_task_to_chart(worker, state.task_id, task_state, task_time)
+        self._row_last_used[row_label] = now
+
+        self._task_id_to_printable_capabilities.pop(state.task_id, None)
 
     def __handle_new_worker(self, worker: str, now: datetime.datetime):
-        if worker not in self._completed_data_cache:
-            self.__setup_worker_cache(worker)
-            self.__add_bar(worker, format_timediff(self._start_time, now), TaskColors.NO_WORK, "")
+        row_label = f"{format_worker_name(worker)} [1]"
+        if row_label not in self._completed_data_cache:
+            self.__setup_row_cache(row_label)
+            self.__ensure_worker_rows(worker, 1)
+            self.__add_bar(
+                worker=worker,
+                time_taken=format_timediff(self._start_time, now),
+                task_color=TASK_STREAM_BACKGROUND_COLOR,
+                state=None,
+                hovertext="",
+                capabilities_display_string="",
+                row_label=row_label,
+            )
         self._seen_workers.add(worker)
 
     def __remove_task_from_worker(self, worker: str, task_id: bytes, now: datetime.datetime, force_new_time: bool):
-        doing_job, task_list, prev_start_time = self._current_tasks[worker]
+        # Remove a single task from the worker's current task mapping.
+        task_map = self._current_tasks.get(worker)
+        if not task_map:
+            return
+        task_map.pop(task_id, None)
+        if not task_map:
+            # no more tasks for this worker, remove the worker entry
+            self._current_tasks.pop(worker, None)
 
-        task_list.remove(task_id)
+    def __pad_inactive_time(self, worker: str, row_label: str, now: datetime.datetime):
+        """If a row is re-used, it needs to be padded until current time"""
+        last_update = self._row_last_used.get(row_label)
+        self._row_last_used[row_label] = now
+        if not last_update:
+            return
+        idle_time = format_timediff(last_update, now)
+        if idle_time < 0.1:
+            return
+        self.__add_bar(
+            worker=worker,
+            time_taken=idle_time,
+            task_color=TASK_STREAM_BACKGROUND_COLOR,
+            state=None,
+            hovertext="",
+            capabilities_display_string="",
+            row_label=row_label,
+        )
 
-        self._current_tasks[worker] = (len(task_list) != 0, task_list, now if force_new_time else prev_start_time)
+    def __handle_running_task(self, state_task: StateTask, worker: str, now: datetime.datetime):
+        if state_task.task_id not in self._task_id_to_printable_capabilities:
+            self._task_id_to_printable_capabilities[state_task.task_id] = display_capabilities(state_task.capabilities)
 
-    def __handle_running_task(self, state: StateTask, worker: str, now: datetime.datetime):
         # if another worker was previously assigned this task, remove it
-        previous_worker = self._task_id_to_worker.get(state.task_id)
+        previous_worker = self._task_id_to_worker.get(state_task.task_id)
         if previous_worker and previous_worker != worker:
-            self.__remove_task_from_worker(worker=previous_worker, task_id=state.task_id, now=now, force_new_time=False)
+            self.__remove_task_from_worker(
+                worker=previous_worker, task_id=state_task.task_id, now=now, force_new_time=False
+            )
 
-        self._task_id_to_worker[state.task_id] = worker
-        self._worker_to_object_name[worker] = state.function_name.decode()
+        self._task_id_to_worker[state_task.task_id] = worker
+        self._worker_to_object_name[worker] = state_task.function_name.decode()
 
-        doing_job, task_list, start_time = self._current_tasks.get(worker, (False, set(), None))
-        if doing_job:
+        # Per-task start times: store start time for this task only.
+        task_map = self._current_tasks.get(worker)
+        if task_map:
             with self._data_update_lock:
-                self._current_tasks[worker][1].add(state.task_id)
-                return
+                task_map[state_task.task_id] = now
+                # allocate a row for this additional task so it shows on its own row
+                row_label = self.__allocate_row_for_task(worker, state_task.task_id)
+                self.__pad_inactive_time(worker, row_label, now)
+            return
 
+        # first task for this worker
         with self._data_update_lock:
-            self._current_tasks[worker] = (True, {state.task_id}, now)
-        if start_time:
-            self.__add_bar(worker, format_timediff(start_time, now), TaskColors.NO_WORK, "")
+            self._current_tasks[worker] = {state_task.task_id: now}
+            # allocate a row for the running task
+            self.__allocate_row_for_task(worker, state_task.task_id)
 
     def handle_task_state(self, state_task: StateTask):
         """
@@ -226,7 +524,7 @@ class TaskStream:
         now = datetime.datetime.now()
         self._last_task_tick = now
 
-        if task_state in {TaskState.Success, TaskState.Canceling}:
+        if task_state in COMPLETED_TASK_STATUSES:
             self.__handle_task_result(state_task, now)
             return
 
@@ -257,21 +555,23 @@ class TaskStream:
             self._current_tasks.pop(worker)
 
     def __remove_worker_from_history(self, worker: str):
-        if worker in self._completed_data_cache:
-            self._completed_data_cache.pop(worker)
+        for row_label in self._worker_rows.pop(worker, []):
+            if row_label in self._completed_data_cache:
+                self._completed_data_cache.pop(row_label)
             self._seen_workers.remove(worker)
 
-    def __remove_old_tasks_from_history(self, remove_up_to: datetime.datetime):
-        for worker in self._completed_data_cache.keys():
-            worker_data = self._completed_data_cache[worker]
+    def __remove_old_tasks_from_history(self, store_duration: datetime.timedelta):
+        for row_label in self._completed_data_cache.keys():
+            row_data = self._completed_data_cache[row_label]
 
-            storage_cutoff_index = len(worker_data["x"]) - 1
+            storage_cutoff_index = len(row_data["x"]) - 1
             time_taken = 0
-            while storage_cutoff_index > 0 and time_taken < remove_up_to.second:
-                time_taken += worker_data["x"][storage_cutoff_index]
+            store_seconds = store_duration.total_seconds()
+            while storage_cutoff_index > 0 and time_taken < store_seconds:
+                time_taken += row_data["x"][storage_cutoff_index]
                 storage_cutoff_index -= 1
             if storage_cutoff_index > 0:
-                self.__remove_old_tasks_from_cache(worker, storage_cutoff_index)
+                self.__remove_old_tasks_from_cache(row_label, storage_cutoff_index)
 
     def __remove_old_workers(self, remove_up_to: datetime.datetime):
         while not self._lost_workers_queue.empty():
@@ -286,15 +586,23 @@ class TaskStream:
             _, worker = self._dead_workers.popleft()
             self.__remove_worker_from_history(worker)
 
-    def __split_workers_by_status(self, now: datetime.datetime) -> List[Tuple[str, float, str]]:
-        workers_doing_jobs = []
-        for worker, (doing_job, task_list, start_time) in self._current_tasks.items():
-            if doing_job:
-                worker_name = format_worker_name(worker)
-                duration = format_timediff(start_time, now)
-                object_name = self._worker_to_object_name.get(worker, "")
+    def __split_workers_by_status(self, now: datetime.datetime) -> List[Tuple[str, float, bytes, str]]:
+        workers_doing_jobs: List[Tuple[str, float, bytes, str]] = []
+        for worker, task_map in self._current_tasks.items():
+            if not task_map:
+                continue
+            object_name = self._worker_to_object_name.get(worker, "")
 
-                workers_doing_jobs.append((worker_name, duration, object_name))
+            # For each concurrent task, allocate/lookup a row and produce a separate entry.
+            for task_id, start_time in list(task_map.items()):
+                # determine duration relative to the task's start time
+                duration = format_timediff(start_time, now)
+                row_label = self._task_row_assignment.get(task_id)
+                if row_label is None:
+                    # allocate row if needed
+                    row_label = self.__allocate_row_for_task(worker, task_id)
+
+                workers_doing_jobs.append((row_label, duration, task_id, object_name))
         return workers_doing_jobs
 
     def mark_dead_worker(self, worker_name: str):
@@ -330,12 +638,12 @@ class TaskStream:
             self.__detect_lost_workers(now)
             worker_history_time = now - self._settings.memory_store_time
             self.__remove_old_workers(worker_history_time)
-            self.__remove_old_tasks_from_history(worker_history_time)
+            self.__remove_old_tasks_from_history(self._settings.memory_store_time)
 
             worker_retention_time = now - self._settings.worker_retention_time
             self.__remove_dead_workers(worker_retention_time)
 
-            completed_cache_values = list(self._completed_data_cache.values())
+            completed_cache_values = sorted(list(self._completed_data_cache.values()), key=lambda d: d["y"][0])
 
         if now - task_update_time >= datetime.timedelta(seconds=30):
             # get rid of the in-progress plots in ['data']
@@ -343,15 +651,33 @@ class TaskStream:
             self.__render_plot(now)
             return
 
+        task_ids = [t for (_, _, t, _) in workers_doing_tasks]
+        task_capabilities = [
+            (
+                f"Capabilities: {self._task_id_to_printable_capabilities.get(task_id, '')}"
+                if task_id in self._task_id_to_printable_capabilities
+                else ""
+            )
+            for task_id in task_ids
+        ]
+        task_colors = [self.__get_task_color(t) for t in task_ids]
+        running_shape = TaskShapes.from_status(TaskState.Running)
         working_data = {
             "type": "bar",
             "name": "Working",
-            "y": [w for (w, _, _) in workers_doing_tasks],
-            "x": [t for (_, t, _) in workers_doing_tasks],
+            "y": [w for (w, _, _, _) in workers_doing_tasks],
+            "x": [t for (_, t, _, _) in workers_doing_tasks],
             "orientation": "h",
-            "text": [f for (_, _, f) in workers_doing_tasks],
-            "hovertemplate": "%{text} (%{x})",
-            "marker": {"color": TaskColors.RUNNING, "width": 5},
+            "text": [f for (_, _, _, f) in workers_doing_tasks],
+            "hovertemplate": "%{text} (%{x})<br>%{customdata}",
+            "marker": {
+                "color": task_colors,
+                "width": 5,
+                "pattern": {"shape": [running_shape for _ in workers_doing_tasks]},
+                "line": {"color": ["yellow" for _ in workers_doing_tasks], "width": [2 for _ in workers_doing_tasks]},
+            },
+            "textfont": {"color": "black", "outline": "white", "outlinewidth": 5},
+            "customdata": task_capabilities,
             "showlegend": False,
         }
         plot_data = completed_cache_values + [working_data]
