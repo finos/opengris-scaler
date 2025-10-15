@@ -9,12 +9,12 @@ from typing import Dict, Optional, Tuple
 
 import zmq.asyncio
 
+from scaler.config.defaults import PROFILING_INTERVAL_SECONDS
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.io.async_binder import ZMQAsyncBinder
 from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
-from scaler.config.defaults import PROFILING_INTERVAL_SECONDS
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
 from scaler.io.ymq import ymq
 from scaler.protocol.python.message import (

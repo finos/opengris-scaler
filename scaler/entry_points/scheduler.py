@@ -1,11 +1,11 @@
 import argparse
 
-from scaler.config.loader import load_config
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
-from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
+from scaler.config.loader import load_config
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.utility.event_loop import EventLoopType
 from scaler.utility.network_util import get_available_tcp_port
 

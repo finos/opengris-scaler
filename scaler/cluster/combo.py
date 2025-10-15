@@ -13,6 +13,8 @@ from scaler.config.defaults import (
     DEFAULT_IO_THREADS,
     DEFAULT_LOAD_BALANCE_SECONDS,
     DEFAULT_LOAD_BALANCE_TRIGGER_TIMES,
+    DEFAULT_LOGGING_LEVEL,
+    DEFAULT_LOGGING_PATHS,
     DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
     DEFAULT_OBJECT_RETENTION_SECONDS,
     DEFAULT_PER_WORKER_QUEUE_SIZE,
@@ -20,13 +22,11 @@ from scaler.config.defaults import (
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
-    DEFAULT_LOGGING_LEVEL,
-    DEFAULT_LOGGING_PATHS,
 )
-from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
-from scaler.utility.network_util import get_available_tcp_port
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
+from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
+from scaler.utility.network_util import get_available_tcp_port
 
 
 class SchedulerClusterCombo:

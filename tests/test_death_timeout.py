@@ -7,15 +7,15 @@ from scaler.config.defaults import (
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
     DEFAULT_IO_THREADS,
+    DEFAULT_LOGGING_LEVEL,
+    DEFAULT_LOGGING_PATHS,
     DEFAULT_PER_WORKER_QUEUE_SIZE,
     DEFAULT_TASK_TIMEOUT_SECONDS,
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
-    DEFAULT_LOGGING_LEVEL,
-    DEFAULT_LOGGING_PATHS,
 )
+from scaler.config.types.zmq import ZMQConfig
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
-from scaler.config.types.zmq import ZMQConfig
 from tests.utility import logging_test_name
 
 # This is a manual test because it can loop infinitely if it fails

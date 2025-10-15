@@ -1,4 +1,5 @@
 import dataclasses
+
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 
 

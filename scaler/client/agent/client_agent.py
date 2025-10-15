@@ -13,6 +13,7 @@ from scaler.client.agent.heartbeat_manager import ClientHeartbeatManager
 from scaler.client.agent.object_manager import ClientObjectManager
 from scaler.client.agent.task_manager import ClientTaskManager
 from scaler.client.serializer.mixins import Serializer
+from scaler.config.types.zmq import ZMQConfig
 from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.mixins import AsyncConnector
 from scaler.protocol.python.common import ObjectStorageAddress
@@ -32,7 +33,6 @@ from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientCancelledException, ClientQuitException, ClientShutdownException
 from scaler.utility.identifiers import ClientID
-from scaler.config.types.zmq import ZMQConfig
 
 
 class ClientAgent(threading.Thread):

@@ -2,8 +2,8 @@ import argparse
 import socket
 
 from scaler.cluster.cluster import Cluster
-from scaler.config.section.cluster import ClusterConfig
 from scaler.config.loader import load_config
+from scaler.config.section.cluster import ClusterConfig
 from scaler.utility.event_loop import EventLoopType, register_event_loop
 
 

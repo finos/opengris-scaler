@@ -4,9 +4,9 @@ import os
 import signal
 from typing import Dict, List, Optional, Tuple
 
-from scaler.utility.logging.utility import setup_logger
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
+from scaler.utility.logging.utility import setup_logger
 from scaler.worker.worker import Worker
 
 

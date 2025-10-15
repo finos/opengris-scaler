@@ -1,6 +1,7 @@
 import abc
 from typing import List, Optional
 
+from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.protocol.python.message import (
     ObjectInstruction,
     ProcessorInitialized,
@@ -11,7 +12,6 @@ from scaler.protocol.python.message import (
 )
 from scaler.utility.identifiers import ProcessorID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
-from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.worker.agent.processor_holder import ProcessorHolder
 
 
