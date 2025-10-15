@@ -34,7 +34,7 @@ class SchedulerClusterCombo:
         self,
         n_workers: int,
         address: Optional[str] = None,
-        storage_address: Optional[str] = None,
+        object_storage_address: Optional[str] = None,
         monitor_address: Optional[str] = None,
         per_worker_capabilities: Optional[Dict[str, int]] = None,
         worker_io_threads: int = DEFAULT_IO_THREADS,
@@ -64,10 +64,10 @@ class SchedulerClusterCombo:
         else:
             self._address = ZMQConfig.from_string(address)
 
-        if storage_address is None:
-            self._storage_address = ObjectStorageConfig(self._address.host, get_available_tcp_port())
+        if object_storage_address is None:
+            self._object_storage_address = ObjectStorageConfig(self._address.host, get_available_tcp_port())
         else:
-            self._storage_address = ObjectStorageConfig.from_string(storage_address)
+            self._object_storage_address = ObjectStorageConfig.from_string(object_storage_address)
 
         if monitor_address is None:
             self._monitor_address = None
@@ -75,7 +75,7 @@ class SchedulerClusterCombo:
             self._monitor_address = ZMQConfig.from_string(monitor_address)
 
         self._object_storage = ObjectStorageServerProcess(
-            storage_address=self._storage_address,
+            object_storage_address=self._object_storage_address,
             logging_paths=logging_paths,
             logging_level=logging_level,
             logging_config_file=logging_config_file,
@@ -85,7 +85,7 @@ class SchedulerClusterCombo:
 
         self._cluster = Cluster(
             address=self._address,
-            storage_address=self._storage_address,
+            object_storage_address=self._object_storage_address,
             preload=None,
             worker_io_threads=worker_io_threads,
             worker_names=[f"{socket.gethostname().split('.')[0]}_{i}" for i in range(n_workers)],
@@ -105,7 +105,7 @@ class SchedulerClusterCombo:
 
         self._scheduler = SchedulerProcess(
             address=self._address,
-            storage_address=self._storage_address,
+            object_storage_address=self._object_storage_address,
             monitor_address=self._monitor_address,
             io_threads=scheduler_io_threads,
             max_number_of_tasks_waiting=max_number_of_tasks_waiting,

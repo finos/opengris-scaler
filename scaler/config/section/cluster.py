@@ -12,7 +12,7 @@ from scaler.config.types.zmq import ZMQConfig
 @dataclasses.dataclass
 class ClusterConfig:
     scheduler_address: ZMQConfig
-    storage_address: Optional[ObjectStorageConfig] = None
+    object_storage_address: Optional[ObjectStorageConfig] = None
     preload: Optional[str] = None
     worker_io_threads: int = defaults.DEFAULT_IO_THREADS
     worker_names: WorkerNames = dataclasses.field(default_factory=lambda: WorkerNames.from_string(""))

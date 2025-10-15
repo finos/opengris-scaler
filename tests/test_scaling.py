@@ -37,7 +37,7 @@ def _run_native_worker_adapter(address: str, webhook_port: int) -> None:
     """Construct a NativeWorkerAdapter and run its aiohttp app. Runs in a separate process."""
     adapter = NativeWorkerAdapter(
         address=ZMQConfig.from_string(address),
-        storage_address=None,
+        object_storage_address=None,
         capabilities={},
         io_threads=DEFAULT_IO_THREADS,
         task_queue_size=10,
@@ -69,7 +69,7 @@ class TestScaling(unittest.TestCase):
 
     def test_scaling_basic(self):
         object_storage = ObjectStorageServerProcess(
-            storage_address=self.object_storage_config,
+            object_storage_address=self.object_storage_config,
             logging_paths=("/dev/stdout",),
             logging_config_file=None,
             logging_level="INFO",
@@ -79,7 +79,7 @@ class TestScaling(unittest.TestCase):
 
         scheduler = SchedulerProcess(
             address=ZMQConfig.from_string(self.scheduler_address),
-            storage_address=self.object_storage_config,
+            object_storage_address=self.object_storage_config,
             monitor_address=None,
             adapter_webhook_url=f"http://127.0.0.1:{self.webhook_port}",
             io_threads=DEFAULT_IO_THREADS,

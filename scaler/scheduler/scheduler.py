@@ -147,8 +147,8 @@ class Scheduler:
         )
 
     async def connect_to_storage(self):
-        storage_address = self._config_controller.get_config("object_storage_address")
-        await self._connector_storage.connect(storage_address.host, storage_address.port)
+        object_storage_address = self._config_controller.get_config("object_storage_address")
+        await self._connector_storage.connect(object_storage_address.host, object_storage_address.port)
 
     async def on_receive_message(self, source: bytes, message: Message):
         # =====================================================================================

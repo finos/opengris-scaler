@@ -101,7 +101,7 @@ def main():
             host=scheduler_config.scheduler_address.host, port=get_available_tcp_port()
         )
         object_storage = ObjectStorageServerProcess(
-            storage_address=object_storage_address,
+            object_storage_address=object_storage_address,
             logging_paths=scheduler_config.logging_paths,
             logging_config_file=scheduler_config.logging_config_file,
             logging_level=scheduler_config.logging_level,
@@ -111,7 +111,7 @@ def main():
 
     scheduler = SchedulerProcess(
         address=scheduler_config.scheduler_address,
-        storage_address=object_storage_address,
+        object_storage_address=object_storage_address,
         monitor_address=scheduler_config.monitor_address,
         adapter_webhook_url=scheduler_config.adapter_webhook_url,
         io_threads=scheduler_config.io_threads,

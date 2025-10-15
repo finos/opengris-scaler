@@ -11,7 +11,7 @@ from scaler.config import defaults
 @dataclasses.dataclass
 class NativeWorkerAdapterConfig:
     scheduler_address: ZMQConfig
-    storage_address: Optional[ObjectStorageConfig] = None
+    object_storage_address: Optional[ObjectStorageConfig] = None
     adapter_web_host: str = "localhost"
     adapter_web_port: int = 8080
     per_worker_capabilities: WorkerCapabilities = dataclasses.field(

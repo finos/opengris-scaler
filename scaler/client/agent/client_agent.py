@@ -59,7 +59,7 @@ class ClientAgent(threading.Thread):
         self._client_agent_address = client_agent_address
         self._scheduler_address = scheduler_address
         self._context = context
-        self._storage_address: Future[ObjectStorageAddress] = Future()
+        self._object_storage_address: Future[ObjectStorageAddress] = Future()
 
         self._future_manager = future_manager
 
@@ -89,7 +89,7 @@ class ClientAgent(threading.Thread):
     def __initialize(self):
         self._disconnect_manager = ClientDisconnectManager()
         self._heartbeat_manager = ClientHeartbeatManager(
-            death_timeout_seconds=self._timeout_seconds, storage_address_future=self._storage_address
+            death_timeout_seconds=self._timeout_seconds, storage_address_future=self._object_storage_address
         )
         self._object_manager = ClientObjectManager(identity=self._identity)
         self._task_manager = ClientTaskManager()
@@ -120,7 +120,7 @@ class ClientAgent(threading.Thread):
 
     def get_storage_address(self) -> ObjectStorageAddress:
         """Returns the object storage address, or block until it receives it."""
-        return self._storage_address.result()
+        return self._object_storage_address.result()
 
     async def __on_receive_from_client(self, message: Message):
         if isinstance(message, ClientDisconnect):
@@ -194,8 +194,8 @@ class ClientAgent(threading.Thread):
         if exception is None:
             return
 
-        if not self._storage_address.done():
-            self._storage_address.set_exception(exception)
+        if not self._object_storage_address.done():
+            self._object_storage_address.set_exception(exception)
 
         if isinstance(exception, asyncio.CancelledError):
             logging.error("ClientAgent: async. loop cancelled")
