@@ -47,6 +47,5 @@ def display_capabilities(capabilities: Dict[str, int]) -> str:
     if not capabilities or len(capabilities) == 0:
         return "<no capabilities>"
 
-    # Ensure equivalent capabilities produce the same string
-    sorted_items = sorted(capabilities.items(), key=lambda item: (item[0], item[1]))
-    return " & ".join([f"{key}: {value}" for key, value in sorted_items])
+    # Capabilities is just the keys, value is ignored.
+    return " & ".join(sorted(capabilities.keys()))
