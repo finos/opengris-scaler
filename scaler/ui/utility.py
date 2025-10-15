@@ -17,8 +17,8 @@ def format_timediff(a: datetime.datetime, b: datetime.datetime) -> float:
     return (b - a).total_seconds()
 
 
-def format_worker_name(worker_name: str) -> str:
-    return worker_name[:15]
+def format_worker_name(worker_name: str, cutoff: int = 15) -> str:
+    return worker_name[:cutoff] + "+" if len(worker_name) > cutoff else worker_name
 
 
 def get_bounds(now: datetime.datetime, start_time: datetime.datetime, settings: Settings) -> Tuple[int, int]:

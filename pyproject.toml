@@ -27,7 +27,9 @@ dependencies = [
     "tblib",
     "aiohttp",
     "graphlib-backport; python_version < '3.9'",
-    "typing-extensions>=4.0; python_version < '3.10'"
+    "typing-extensions>=4.0; python_version < '3.10'",
+    "tomli; python_version < '3.11'",
+    "boto3"
 ]
 
 [project.optional-dependencies]
@@ -78,6 +80,7 @@ scaler_ui = "scaler.entry_points.webui:main"
 scaler_object_storage_server = "scaler.entry_points.object_storage_server:main"
 scaler_worker_adapter_native = "scaler.entry_points.worker_adapter_native:main"
 scaler_worker_adapter_symphony = "scaler.entry_points.worker_adapter_symphony:main"
+scaler_worker_adapter_ecs = "scaler.entry_points.worker_adapter_ecs:main"
 
 [tool.scikit-build]
 cmake.source-dir = "."
