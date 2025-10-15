@@ -20,7 +20,7 @@ from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEART
 from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
 from scaler.io.sync_connector import ZMQSyncConnector
-from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector
+from scaler.io.utility import create_sync_object_storage_connector
 from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
 from scaler.utility.graph.optimization import cull_graph
@@ -122,7 +122,7 @@ class Client:
         self._object_storage_address = self._agent.get_object_storage_address()
 
         logging.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
-        self._connector_storage: SyncObjectStorageConnector = PySyncObjectStorageConnector(
+        self._connector_storage: SyncObjectStorageConnector = create_sync_object_storage_connector(
             self._object_storage_address.host, self._object_storage_address.port
         )
 

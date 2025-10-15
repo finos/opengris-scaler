@@ -9,8 +9,8 @@ from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.io.async_binder import ZMQAsyncBinder
 from scaler.io.async_connector import ZMQAsyncConnector
-from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
+from scaler.io.utility import create_async_object_storage_connector
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -76,7 +76,7 @@ class Scheduler:
         )
         logging.info(f"{self.__class__.__name__}: listen to scheduler address {config.scheduler_address}")
 
-        self._connector_storage: AsyncObjectStorageConnector = PyAsyncObjectStorageConnector()
+        self._connector_storage: AsyncObjectStorageConnector = create_async_object_storage_connector()
         logging.info(f"{self.__class__.__name__}: connect to object storage server {object_storage_address!r}")
 
         self._binder_monitor: AsyncConnector = ZMQAsyncConnector(

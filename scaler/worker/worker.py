@@ -14,8 +14,8 @@ from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.io.async_binder import ZMQAsyncBinder
 from scaler.io.async_connector import ZMQAsyncConnector
-from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
+from scaler.io.utility import create_async_object_storage_connector
 from scaler.io.ymq import ymq
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -124,7 +124,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         )
         self._binder_internal.register(self.__on_receive_internal)
 
-        self._connector_storage = PyAsyncObjectStorageConnector()
+        self._connector_storage = create_async_object_storage_connector()
 
         self._heartbeat_manager = VanillaHeartbeatManager(
             object_storage_address=self._object_storage_address,
