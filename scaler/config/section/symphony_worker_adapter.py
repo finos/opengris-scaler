@@ -17,8 +17,8 @@ class SymphonyWorkerConfig:
     worker_capabilities: WorkerCapabilities = dataclasses.field(
         default_factory=lambda: WorkerCapabilities.from_string("")
     )
-    server_http_host: str = "localhost"
-    server_http_port: int = 0
+    adapter_web_host: str = "localhost"
+    adapter_web_port: int = 0
     io_threads: int = defaults.DEFAULT_IO_THREADS
     worker_task_queue_size: int = defaults.DEFAULT_PER_WORKER_QUEUE_SIZE
     heartbeat_interval: int = defaults.DEFAULT_HEARTBEAT_INTERVAL_SECONDS

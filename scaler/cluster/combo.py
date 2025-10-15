@@ -23,6 +23,7 @@ from scaler.config.defaults import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
+from scaler.scheduler.controllers.scaling_controller import ScalingControllerStrategy
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
@@ -110,7 +111,8 @@ class SchedulerClusterCombo:
             io_threads=scheduler_io_threads,
             max_number_of_tasks_waiting=max_number_of_tasks_waiting,
             client_timeout_seconds=client_timeout_seconds,
-            adapter_webhook_url=None,
+            scaling_controller_strategy=ScalingControllerStrategy.NULL,
+            adapter_webhook_urls=(),
             worker_timeout_seconds=worker_timeout_seconds,
             object_retention_seconds=object_retention_seconds,
             load_balance_seconds=load_balance_seconds,
