@@ -297,7 +297,7 @@ class VanillaProcessorManager(ProcessorManager):
         return len(self._suspended_holders_by_task_id)
 
     def __start_new_processor(self):
-        object_storage_address = self._heartbeat_manager.get_storage_address()
+        object_storage_address = self._heartbeat_manager.get_object_storage_address()
 
         self._current_holder = ProcessorHolder(
             self._event_loop,

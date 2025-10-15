@@ -57,7 +57,7 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
             self._object_storage_address = ObjectStorageConfig(address_message.host, address_message.port)
             await self._connector_storage.connect(self._object_storage_address.host, self._object_storage_address.port)
 
-    def get_storage_address(self) -> Optional[ObjectStorageConfig]:
+    def get_object_storage_address(self) -> Optional[ObjectStorageConfig]:
         return self._object_storage_address
 
     async def routine(self):

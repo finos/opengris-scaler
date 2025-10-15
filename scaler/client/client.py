@@ -119,7 +119,7 @@ class Client:
         logging.info(f"ScalerClient: connect to scheduler at {self._scheduler_address}")
 
         # Blocks until the agent receives the object storage address
-        self._object_storage_address = self._agent.get_storage_address()
+        self._object_storage_address = self._agent.get_object_storage_address()
 
         logging.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
         self._connector_storage: SyncObjectStorageConnector = PySyncObjectStorageConnector(

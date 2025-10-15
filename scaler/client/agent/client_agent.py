@@ -118,7 +118,7 @@ class ClientAgent(threading.Thread):
         self.__initialize()
         self.__run_loop()
 
-    def get_storage_address(self) -> ObjectStorageAddress:
+    def get_object_storage_address(self) -> ObjectStorageAddress:
         """Returns the object storage address, or block until it receives it."""
         return self._object_storage_address.result()
 

@@ -89,7 +89,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
         )
         self._start_timestamp_ns = time.time_ns()
 
-    def get_storage_address(self) -> Optional[ObjectStorageConfig]:
+    def get_object_storage_address(self) -> Optional[ObjectStorageConfig]:
         return self._object_storage_address
 
     @staticmethod

@@ -21,7 +21,7 @@ class HeartbeatManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_storage_address(self) -> ObjectStorageConfig:
+    def get_object_storage_address(self) -> ObjectStorageConfig:
         raise NotImplementedError()
 
 
