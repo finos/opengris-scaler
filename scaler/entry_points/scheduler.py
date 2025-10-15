@@ -7,6 +7,7 @@ from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.scheduler.controllers.scaling_controller import ScalingControllerStrategy
+from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.utility.event_loop import EventLoopType
 from scaler.utility.network_util import get_available_tcp_port
 
