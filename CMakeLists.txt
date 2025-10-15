@@ -13,7 +13,7 @@ if(NOT SKBUILD_PROJECT_NAME)
 endif()
 
 # Path to the version file
-set(VERSION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/scaler/version.txt")
+set(VERSION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/scaler/version.txt")
 
 # Check if the version file exists
 if(NOT EXISTS "${VERSION_FILE}")
@@ -118,8 +118,10 @@ message(STATUS "Python ABI: ${Python3_SOABI}")
 # Make LSP happy
 include_directories(${CAPNP_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR})
+include_directories(${PROJECT_SOURCE_DIR}/src)
+include_directories(${PROJECT_SOURCE_DIR}/src/cpp)
 
-add_subdirectory(scaler)
+add_subdirectory(src/cpp/scaler)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_subdirectory(tests)

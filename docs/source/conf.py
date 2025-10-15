@@ -13,7 +13,7 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath(os.path.join("..", "..")))
+sys.path.insert(0, os.path.abspath(os.path.join("..", "..", "src")))
 
 
 # -- Project information -----------------------------------------------------
@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.abspath(os.path.join("..", "..")))
 project = "OpenGRIS Scaler"
 author = "Citi"
 
-with open("../../scaler/version.txt", "rt") as f:
+with open("../../src/scaler/version.txt", "rt") as f:
     version = f.read().strip()
 
 release = f"{version}-py3-none-any"
