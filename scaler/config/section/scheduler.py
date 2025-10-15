@@ -8,6 +8,7 @@ from scaler.utility.logging.utility import LoggingLevel
 
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
+from scaler.config.types.transport_type import TransportType
 
 
 @dataclasses.dataclass
@@ -29,6 +30,7 @@ class SchedulerConfig:
     logging_paths: Tuple[str, ...] = defaults.DEFAULT_LOGGING_PATHS
     logging_config_file: Optional[str] = None
     logging_level: str = defaults.DEFAULT_LOGGING_LEVEL
+    transport_type: TransportType = defaults.DEFAULT_TRANSPORT_TYPE
 
     def __post_init__(self):
         if self.io_threads <= 0:

@@ -9,7 +9,7 @@ import zmq
 
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
-from scaler.io.async_connector import ZMQAsyncConnector
+from scaler.io.zmq_async_connector import ZMQAsyncConnector
 from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.python.message import (

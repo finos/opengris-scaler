@@ -90,6 +90,7 @@ def get_args():
         "provided by the scheduler",
     )
     parser.add_argument("scheduler_address", nargs="?", type=str, help="scheduler address to connect to")
+    parser.add_argument("--transport-type", type=str, help="the transport type to use, for example 'ymq' or 'zmq'")
 
     return parser.parse_args()
 
@@ -126,6 +127,7 @@ def main():
         hard_processor_suspend=cluster_config.hard_processor_suspend,
         event_loop=cluster_config.event_loop,
         worker_io_threads=cluster_config.worker_io_threads,
+        transport_type=args.transport_type,
         logging_paths=cluster_config.logging_paths,
         logging_level=cluster_config.logging_level,
         logging_config_file=cluster_config.logging_config_file,

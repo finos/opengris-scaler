@@ -7,6 +7,7 @@ from scaler.utility.logging.utility import LoggingLevel
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.worker import WorkerCapabilities, WorkerNames
 from scaler.config.types.zmq import ZMQConfig
+from scaler.config.types.transport_type import TransportType
 
 
 @dataclasses.dataclass
@@ -28,6 +29,7 @@ class ClusterConfig:
     trim_memory_threshold_bytes: int = defaults.DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES
     hard_processor_suspend: bool = defaults.DEFAULT_HARD_PROCESSOR_SUSPEND
     event_loop: str = "builtin"
+    transport_type: TransportType = defaults.DEFAULT_TRANSPORT_TYPE
     logging_paths: Tuple[str, ...] = defaults.DEFAULT_LOGGING_PATHS
     logging_config_file: Optional[str] = None
     logging_level: str = defaults.DEFAULT_LOGGING_LEVEL

@@ -10,6 +10,7 @@ from scaler.utility.identifiers import WorkerID
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.worker.worker import Worker
+from scaler.config.types.transport_type import TransportType
 
 WorkerGroupID = bytes
 
@@ -41,6 +42,7 @@ class NativeWorkerAdapter:
         logging_paths: Tuple[str, ...],
         logging_level: str,
         logging_config_file: Optional[str],
+        transport_type: TransportType,
     ):
         self._address = address
         self._storage_address = storage_address
@@ -58,6 +60,7 @@ class NativeWorkerAdapter:
         self._logging_paths = logging_paths
         self._logging_level = logging_level
         self._logging_config_file = logging_config_file
+        self._transport_type = transport_type
 
         """
         Although a worker group can contain multiple workers, in this native adapter implementation,
@@ -87,6 +90,7 @@ class NativeWorkerAdapter:
             event_loop=self._event_loop,
             logging_paths=self._logging_paths,
             logging_level=self._logging_level,
+            transport_type=self._transport_type,
         )
 
         worker.start()

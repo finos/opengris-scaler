@@ -60,6 +60,7 @@ class TestBalance(unittest.TestCase):
             logging_paths=combo._cluster._logging_paths,
             logging_level=combo._cluster._logging_level,
             logging_config_file=combo._cluster._logging_config_file,
+            transport_type=combo._cluster._transport_type,
         )
         new_cluster.start()
 

@@ -1,4 +1,5 @@
 import logging
+import sys
 from typing import List, Optional
 
 from scaler.config.defaults import CAPNP_DATA_SIZE_LIMIT, CAPNP_MESSAGE_SIZE_LIMIT
@@ -6,8 +7,13 @@ from scaler.protocol.capnp._python import _message  # noqa
 from scaler.protocol.python.message import PROTOCOL
 from scaler.protocol.python.mixins import Message
 
+if sys.version_info >= (3, 12):
+    from collections.abc import Buffer
+else:
+    Buffer = object
 
-def deserialize(data: bytes) -> Optional[Message]:
+
+def deserialize(data: Buffer) -> Optional[Message]:
     with _message.Message.from_bytes(data, traversal_limit_in_words=CAPNP_MESSAGE_SIZE_LIMIT) as payload:
         if not hasattr(payload, payload.which()):
             logging.error(f"unknown message type: {payload.which()}")

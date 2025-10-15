@@ -6,6 +6,7 @@ from typing import Any, Optional, Tuple
 
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.config.section.scheduler import SchedulerConfig
+from scaler.config.types.transport_type import TransportType
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.scheduler import Scheduler, scheduler_main
@@ -33,6 +34,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         logging_paths: Tuple[str, ...],
         logging_config_file: Optional[str],
         logging_level: str,
+        transport_type: TransportType,
     ):
         multiprocessing.Process.__init__(self, name="Scheduler")
         self._scheduler_config = SchedulerConfig(
@@ -50,6 +52,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
             load_balance_trigger_times=load_balance_trigger_times,
             protected=protected,
             allocate_policy=allocate_policy,
+            transport_type=transport_type,
         )
 
         self._logging_paths = logging_paths

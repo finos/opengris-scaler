@@ -14,7 +14,7 @@ import zmq
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
-from scaler.io.sync_connector import ZMQSyncConnector
+from scaler.io.zmq_sync_connector import ZMQSyncConnector
 from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata, TaskResultType
 from scaler.protocol.python.message import ObjectInstruction, ProcessorInitialized, Task, TaskLog, TaskResult
