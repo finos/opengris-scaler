@@ -70,7 +70,6 @@ def get_args():
         "--per-worker-capabilities",
         "-pwc",
         type=str,
-        default="",
         help='comma-separated capabilities provided by the workers (e.g. "-pwc linux,cpu=4")',
     )
     parser.add_argument("--worker-task-queue-size", "-wtqs", type=int, help="specify worker queue size")

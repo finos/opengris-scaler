@@ -55,7 +55,7 @@ class SymphonyWorkerAdapter:
             raise CapacityExceededError("Symphony worker already started")
 
         worker = SymphonyWorker(
-            name=uuid.uuid4().hex,
+            name=f"SYM|{uuid.uuid4().hex}",
             address=self._address,
             object_storage_address=self._object_storage_address,
             service_name=self._service_name,
