@@ -3,9 +3,10 @@
 
 #include "scaler/io/ymq/configuration.h"
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
 #include <unistd.h>
-#endif  // __linux__
+#endif  // __linux__ || __APPLE__
+
 #ifdef _WIN32
 // clang-format off
 #include <windows.h>
@@ -103,7 +104,12 @@ void MessageConnectionTCP::onCreated()
             _connFd, EPOLLIN | EPOLLOUT | EPOLLET, this->_eventManager.get());
         _writeOperations.emplace_back(
             Bytes {_localIOSocketIdentity.data(), _localIOSocketIdentity.size()}, [](auto) {});
-#endif  // __linux__
+#elif defined(__APPLE__)
+        this->_eventLoopThread->_eventLoop.addFdToLoop(
+            _connFd, EVFILT_READ | EVFILT_WRITE, this->_eventManager.get());
+        _writeOperations.emplace_back(
+            Bytes {_localIOSocketIdentity.data(), _localIOSocketIdentity.size()}, [](auto) {});
+#endif  // __linux__ || __APPLE__
 #ifdef _WIN32
         // This probably need handle the addtwice problem
         this->_eventLoopThread->_eventLoop.addFdToLoop(_connFd, 0, nullptr);
@@ -190,7 +196,7 @@ std::expected<void, MessageConnectionTCP::IOError> MessageConnectionTCP::tryRead
                 });
             }
 #endif  // _WIN32
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
             if (myErrno == ECONNRESET) {
                 return std::unexpected {IOError::Aborted};
             }
@@ -237,7 +243,7 @@ std::expected<void, MessageConnectionTCP::IOError> MessageConnectionTCP::tryRead
                         });
                 }
             }
-#endif  // __linux__
+#endif  // __linux__ || __APPLE__
         } else {
             message._cursor += n;
         }
@@ -498,12 +504,17 @@ std::expected<size_t, MessageConnectionTCP::IOError> MessageConnectionTCP::trySe
     });
 #endif  // _WIN32
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
     struct msghdr msg {};
     msg.msg_iov    = iovecs.data();
     msg.msg_iovlen = iovecs.size();
 
+#ifdef __linux__
     ssize_t bytesSent = ::sendmsg(_connFd, &msg, MSG_NOSIGNAL);
+#else  // __APPLE__
+    // macOS doesn't support MSG_NOSIGNAL, use SO_NOSIGPIPE socket option instead
+    ssize_t bytesSent = ::sendmsg(_connFd, &msg, 0);
+#endif
     if (bytesSent == -1) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             return std::unexpected {IOError::Drained};
@@ -570,7 +581,7 @@ std::expected<size_t, MessageConnectionTCP::IOError> MessageConnectionTCP::trySe
     }
 
     return bytesSent;
-#endif  // __linux__
+#endif  // __linux__ || __APPLE__
 
 #ifdef _WIN32
 #undef iovec
@@ -640,7 +651,7 @@ bool MessageConnectionTCP::recvMessage()
 
 void MessageConnectionTCP::disconnect()
 {
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
     _disconnect = true;
     shutdown(_connFd, SHUT_WR);
     onClose();

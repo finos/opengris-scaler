@@ -1,7 +1,8 @@
 #pragma once
-#ifdef __linux__
+#ifdef __APPLE__
 
-#include <sys/epoll.h>
+#include <sys/event.h>
+#include <sys/types.h>
 
 #include <functional>
 #include <queue>
@@ -17,36 +18,15 @@ namespace ymq {
 
 class EventManager;
 
-// In the constructor, the epoll context should register eventfd/timerfd from
-// This way, the queues need not know about the event manager. We don't use callbacks.
-class EpollContext {
+// macOS kqueue-based event loop context
+class KqueueContext {
 public:
     using Function             = Configuration::ExecutionFunction;
     using DelayedFunctionQueue = std::queue<Function>;
     using Identifier           = Configuration::ExecutionCancellationIdentifier;
 
-    EpollContext()
-    {
-        _epfd = epoll_create1(0);
-        epoll_event event {};
-
-        event.events   = EPOLLIN | EPOLLET;
-        event.data.u64 = _isInterruptiveFd;
-        epoll_ctl(_epfd, EPOLL_CTL_ADD, _interruptiveFunctions.eventFd(), &event);
-
-        event          = {};
-        event.events   = EPOLLIN | EPOLLET;
-        event.data.u64 = _isTimingFd;
-        epoll_ctl(_epfd, EPOLL_CTL_ADD, _timingFunctions.timingFd(), &event);
-    }
-
-    ~EpollContext()
-    {
-        epoll_ctl(_epfd, EPOLL_CTL_DEL, _interruptiveFunctions.eventFd(), nullptr);
-        epoll_ctl(_epfd, EPOLL_CTL_DEL, _timingFunctions.timingFd(), nullptr);
-
-        close(_epfd);
-    }
+    KqueueContext();
+    ~KqueueContext();
 
     void loop();
 
@@ -66,16 +46,16 @@ public:
 
 private:
     void execPendingFunctions();
-    int _epfd;
+    int _kqfd;
     TimedQueue _timingFunctions;
     DelayedFunctionQueue _delayedFunctions;
     InterruptiveConcurrentQueue<Function> _interruptiveFunctions;
-    constexpr static const size_t _isInterruptiveFd = 0;
-    constexpr static const size_t _isTimingFd       = 1;
-    constexpr static const size_t _reventSize       = 1024;
+    constexpr static const uintptr_t _isInterruptiveFd = 0;
+    constexpr static const uintptr_t _isTimingFd       = 1;
+    constexpr static const size_t _reventSize          = 1024;
 };
 
 }  // namespace ymq
 }  // namespace scaler
 
-#endif  // __linux__
+#endif  // __APPLE__

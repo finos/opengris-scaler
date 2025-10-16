@@ -10,7 +10,9 @@
 // C
 #include <object.h>
 #include <semaphore.h>
+#ifdef __linux__
 #include <sys/eventfd.h>
+#endif  // __linux__
 #include <sys/poll.h>
 
 // First-party
@@ -51,9 +53,10 @@ static void PyIOSocket_dealloc(PyIOSocket* self)
     Py_DECREF(tp);
 }
 
-static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwargs)
+static PyObject* PyIOSocket_send(PyObject* selfObject, PyObject* args, PyObject* kwargs)
 {
-    auto state = YMQStateFromSelf((PyObject*)self);
+    auto* self = reinterpret_cast<PyIOSocket*>(selfObject);
+    auto state = YMQStateFromSelf(selfObject);
     if (!state)
         return nullptr;
 
@@ -97,9 +100,10 @@ static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwa
     Py_RETURN_NONE;
 }
 
-static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args, PyObject* kwargs)
+static PyObject* PyIOSocket_recv(PyObject* selfObject, PyObject* args, PyObject* kwargs)
 {
-    auto state = YMQStateFromSelf((PyObject*)self);
+    auto* self = reinterpret_cast<PyIOSocket*>(selfObject);
+    auto state = YMQStateFromSelf(selfObject);
     if (!state)
         return nullptr;
 
@@ -159,9 +163,10 @@ static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args, PyObject* kwa
     Py_RETURN_NONE;
 }
 
-static PyObject* PyIOSocket_bind(PyIOSocket* self, PyObject* args, PyObject* kwargs)
+static PyObject* PyIOSocket_bind(PyObject* selfObject, PyObject* args, PyObject* kwargs)
 {
-    auto state = YMQStateFromSelf((PyObject*)self);
+    auto* self = reinterpret_cast<PyIOSocket*>(selfObject);
+    auto state = YMQStateFromSelf(selfObject);
     if (!state)
         return nullptr;
 
@@ -195,9 +200,10 @@ static PyObject* PyIOSocket_bind(PyIOSocket* self, PyObject* args, PyObject* kwa
     Py_RETURN_NONE;
 }
 
-static PyObject* PyIOSocket_connect(PyIOSocket* self, PyObject* args, PyObject* kwargs)
+static PyObject* PyIOSocket_connect(PyObject* selfObject, PyObject* args, PyObject* kwargs)
 {
-    auto state = YMQStateFromSelf((PyObject*)self);
+    auto* self = reinterpret_cast<PyIOSocket*>(selfObject);
+    auto state = YMQStateFromSelf(selfObject);
     if (!state)
         return nullptr;
 
@@ -231,19 +237,24 @@ static PyObject* PyIOSocket_connect(PyIOSocket* self, PyObject* args, PyObject* 
     Py_RETURN_NONE;
 }
 
-static PyObject* PyIOSocket_repr(PyIOSocket* self)
+static PyObject* PyIOSocket_repr(PyObject* selfObject)
 {
+    auto* self = reinterpret_cast<PyIOSocket*>(selfObject);
     return PyUnicode_FromFormat("<IOSocket at %p>", (void*)self->socket.get());
 }
 
-static PyObject* PyIOSocket_identity_getter(PyIOSocket* self, void* closure)
+static PyObject* PyIOSocket_identity_getter(PyObject* selfObject, void* closure)
 {
+    auto* self = reinterpret_cast<PyIOSocket*>(selfObject);
+    (void)closure;
     return PyUnicode_FromStringAndSize(self->socket->identity().data(), self->socket->identity().size());
 }
 
-static PyObject* PyIOSocket_socket_type_getter(PyIOSocket* self, void* closure)
+static PyObject* PyIOSocket_socket_type_getter(PyObject* selfObject, void* closure)
 {
-    auto state = YMQStateFromSelf((PyObject*)self);
+    (void)closure;
+    auto* self = reinterpret_cast<PyIOSocket*>(selfObject);
+    auto state = YMQStateFromSelf(selfObject);
     if (!state)
         return nullptr;
 
@@ -263,6 +274,10 @@ static PyGetSetDef PyIOSocket_properties[] = {
     {nullptr, nullptr, nullptr, nullptr, nullptr},
 };
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static PyMethodDef PyIOSocket_methods[] = {
     {"send", (PyCFunction)PyIOSocket_send, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("Send data through the IOSocket")},
     {"recv", (PyCFunction)PyIOSocket_recv, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("Receive data from the IOSocket")},
@@ -276,6 +291,9 @@ static PyMethodDef PyIOSocket_methods[] = {
      PyDoc_STR("Connect to a remote IOSocket")},
     {nullptr, nullptr, 0, nullptr},
 };
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 static PyType_Slot PyIOSocket_slots[] = {
     {Py_tp_dealloc, (void*)PyIOSocket_dealloc},

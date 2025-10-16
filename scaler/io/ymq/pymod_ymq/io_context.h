@@ -57,19 +57,22 @@ static void PyIOContext_dealloc(PyIOContext* self)
     Py_DECREF(tp);
 }
 
-static PyObject* PyIOContext_repr(PyIOContext* self)
+static PyObject* PyIOContext_repr(PyObject* selfObject)
 {
+    auto* self = reinterpret_cast<PyIOContext*>(selfObject);
     return PyUnicode_FromFormat("<IOContext at %p>", (void*)self->ioContext.get());
 }
 
-static PyObject* PyIOContext_numThreads_getter(PyIOContext* self, void* Py_UNUSED(closure))
+static PyObject* PyIOContext_numThreads_getter(PyObject* selfObject, void* Py_UNUSED(closure))
 {
+    auto* self = reinterpret_cast<PyIOContext*>(selfObject);
     return PyLong_FromSize_t(self->ioContext->numThreads());
 }
 
-static PyObject* PyIOContext_createIOSocket(PyIOContext* self, PyObject* args, PyObject* kwargs)
+static PyObject* PyIOContext_createIOSocket(PyObject* selfObject, PyObject* args, PyObject* kwargs)
 {
-    YMQState* state = YMQStateFromSelf((PyObject*)self);
+    auto* self = reinterpret_cast<PyIOContext*>(selfObject);
+    YMQState* state = YMQStateFromSelf(selfObject);
     if (!state)
         return nullptr;
 
@@ -132,6 +135,10 @@ static PyObject* PyIOContext_createIOSocket(PyIOContext* self, PyObject* args, P
 
 }  // extern "C"
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static PyMethodDef PyIOContext_methods[] = {
     {"createIOSocket",
      (PyCFunction)PyIOContext_createIOSocket,
@@ -139,6 +146,9 @@ static PyMethodDef PyIOContext_methods[] = {
      PyDoc_STR("Create a new IOSocket")},
     {nullptr, nullptr, 0, nullptr},
 };
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 static PyGetSetDef PyIOContext_properties[] = {
     {"num_threads",

@@ -3,7 +3,10 @@
 set(CAPNPC_SRC_PREFIX "${PROJECT_SOURCE_DIR}/scaler/protocol/capnp" CACHE STRING "" FORCE)
 set(CAPNPC_OUTPUT_DIR "${PROJECT_SOURCE_DIR}/scaler/protocol/capnp" CACHE STRING "" FORCE)
 file(MAKE_DIRECTORY "${CAPNPC_OUTPUT_DIR}")
+
 capnp_generate_cpp(OBJECT_STORAGE_CAPNP_SRCS OBJECT_STORAGE_CAPNP_HEADERS "../protocol/capnp/object_storage.capnp")
+message("generating capnp header files: ${OBJECT_STORAGE_CAPNP_HEADERS}")
+message("generating capnp source files: ${OBJECT_STORAGE_CAPNP_SRCS}")
 
 add_library(capnp_objs OBJECT
     ${OBJECT_STORAGE_CAPNP_SRCS}
@@ -31,8 +34,8 @@ set_target_properties(py_object_storage_server PROPERTIES
 )
 
 target_link_libraries(py_object_storage_server PRIVATE
-    capnp_objs
     ymq_objs
+    capnp_objs
     object_storage_server_objs
     CapnProto::capnp
     CapnProto::kj

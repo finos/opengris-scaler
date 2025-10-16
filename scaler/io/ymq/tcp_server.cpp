@@ -1,12 +1,21 @@
 #include "scaler/io/ymq/tcp_server.h"
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif  // __linux__ || __APPLE__
+
+#ifdef __linux__
+#include <sys/epoll.h>
 #endif  // __linux__
+
+#ifdef __APPLE__
+#include <sys/event.h>
+#endif  // __APPLE__
+
 #ifdef _WIN32
 // clang-format off
 #include <windows.h>
@@ -94,8 +103,13 @@ void TcpServer::prepareAcceptSocket()
 
 int TcpServer::createAndBindSocket()
 {
+#if defined(__linux__) || defined(__APPLE__)
+    int server_fd;
 #ifdef __linux__
-    int server_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+    server_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+#else  // __APPLE__
+    server_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+#endif
     if (server_fd == -1) {
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
@@ -110,7 +124,25 @@ int TcpServer::createAndBindSocket()
         // _onBindReturn(std::unexpected(Error {Error::ErrorCode::ConfigurationError}));
         return -1;
     }
-#endif  // __linux__
+
+#ifdef __APPLE__
+    // Set non-blocking mode on macOS
+    int flags = fcntl(server_fd, F_GETFL, 0);
+    if (flags == -1 || fcntl(server_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        unrecoverableError({
+            Error::ErrorCode::ConfigurationError,
+            "Originated from",
+            "fcntl(F_SETFL, O_NONBLOCK)",
+            "Errno is",
+            strerror(errno),
+            "server_fd",
+            server_fd,
+        });
+        close(server_fd);
+        return -1;
+    }
+#endif  // __APPLE__
+#endif  // __linux__ || __APPLE__
 #ifdef _WIN32
     auto server_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (server_fd == -1) {
@@ -226,7 +258,9 @@ void TcpServer::onCreated()
     }
 #ifdef __linux__
     _eventLoopThread->_eventLoop.addFdToLoop(_serverFd, EPOLLIN | EPOLLET, this->_eventManager.get());
-#endif  // __linux__
+#elif defined(__APPLE__)
+    _eventLoopThread->_eventLoop.addFdToLoop(_serverFd, EVFILT_READ, this->_eventManager.get());
+#endif  // __linux__ || __APPLE__
 #ifdef _WIN32
     // Events and EventManager are not used here.
     _eventLoopThread->_eventLoop.addFdToLoop(_serverFd, 0, nullptr);
@@ -261,12 +295,27 @@ void TcpServer::onCreated()
 
 void TcpServer::onRead()
 {
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
     while (true) {
         sockaddr remoteAddr {};
         socklen_t remoteAddrLen = sizeof(remoteAddr);
 
-        int fd = accept4(_serverFd, &remoteAddr, &remoteAddrLen, SOCK_NONBLOCK | SOCK_CLOEXEC);
+        int fd;
+#ifdef __linux__
+        fd = accept4(_serverFd, &remoteAddr, &remoteAddrLen, SOCK_NONBLOCK | SOCK_CLOEXEC);
+#else  // __APPLE__
+        fd = accept(_serverFd, &remoteAddr, &remoteAddrLen);
+        if (fd >= 0) {
+            // Set non-blocking mode on macOS
+            int flags = fcntl(fd, F_GETFL, 0);
+            if (flags == -1 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+                close(fd);
+                continue;
+            }
+            // Set close-on-exec flag
+            fcntl(fd, F_SETFD, FD_CLOEXEC);
+        }
+#endif
         if (fd < 0) {
             const int myErrno = errno;
             switch (myErrno) {
@@ -340,7 +389,7 @@ void TcpServer::onRead()
         auto sock      = this->_eventLoopThread->_identityToIOSocket.at(id);
         sock->onConnectionCreated(setNoDelay(fd), getLocalAddr(fd), remoteAddr, false);
     }
-#endif
+#endif  // __linux__ || __APPLE__
 #ifdef _WIN32
     if (setsockopt(
             _newConn, SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT, reinterpret_cast<char*>(&_serverFd), sizeof(_serverFd)) ==

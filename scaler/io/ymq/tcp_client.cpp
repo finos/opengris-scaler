@@ -1,13 +1,22 @@
 #include "scaler/io/ymq/tcp_client.h"
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <unistd.h>
+#endif  // __linux__ || __APPLE__
+
+#ifdef __linux__
+#include <sys/epoll.h>
 #endif  // __linux__
+
+#ifdef __APPLE__
+#include <sys/event.h>
+#endif  // __APPLE__
 
 #include <cerrno>
 #include <chrono>
-#include <functional>
 #include <memory>
 
 #include "scaler/io/ymq/error.h"
@@ -25,8 +34,13 @@ void TcpClient::onCreated()
 {
     assert(_connFd == 0);
     assert(_eventManager.get() != nullptr);
+#if defined(__linux__) || defined(__APPLE__)
+    int sockfd;
 #ifdef __linux__
-    int sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+    sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+#else  // __APPLE__
+    sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+#endif
 
     if (sockfd == -1) {
         const int myErrno = errno;
@@ -61,6 +75,25 @@ void TcpClient::onCreated()
         return;
     }
 
+#ifdef __APPLE__
+    // Set non-blocking mode on macOS
+    int flags = fcntl(sockfd, F_GETFL, 0);
+    if (flags == -1 || fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        const int myErrno = errno;
+        unrecoverableError({
+            Error::ErrorCode::ConfigurationError,
+            "Originated from",
+            "fcntl(F_SETFL, O_NONBLOCK)",
+            "Errno is",
+            strerror(myErrno),
+            "sockfd",
+            sockfd,
+        });
+        close(sockfd);
+        return;
+    }
+#endif  // __APPLE__
+
     this->_connFd = sockfd;
     const int ret = connect(sockfd, (sockaddr*)&_remoteAddr, sizeof(_remoteAddr));
     if (ret >= 0) [[unlikely]] {
@@ -75,7 +108,11 @@ void TcpClient::onCreated()
     }
 
     if (errno == EINPROGRESS) {
+#if defined(__linux__)
         _eventLoopThread->_eventLoop.addFdToLoop(sockfd, EPOLLOUT | EPOLLET, this->_eventManager.get());
+#elif defined(__APPLE__)
+        _eventLoopThread->_eventLoop.addFdToLoop(sockfd, EVFILT_WRITE, this->_eventManager.get());
+#endif
         if (_retryTimes == 0) {
             _onConnectReturn(std::unexpected {Error::ErrorCode::InitialConnectFailedWithInProgress});
         }
@@ -138,7 +175,7 @@ void TcpClient::onCreated()
         case ECONNREFUSED:
         default: break;
     }
-#endif  // __linux__
+#endif  // __linux__ || __APPLE__
 #ifdef _WIN32
     _connFd         = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     u_long nonblock = 1;
@@ -250,7 +287,7 @@ void TcpClient::onRead()
 
 void TcpClient::onWrite()
 {
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
     _eventLoopThread->_eventLoop.removeFdFromLoop(_connFd);
     int err {};
     socklen_t errLen {sizeof(err)};
@@ -314,7 +351,7 @@ void TcpClient::onWrite()
 
     _eventLoopThread->_eventLoop.executeLater([sock] { sock->removeConnectedTcpClient(); });
 
-#endif  // __linux__
+#endif  // __linux__ || __APPLE__
 #ifdef _WIN32
     const int iResult = setsockopt(_connFd, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
     if (iResult == -1) {

@@ -46,7 +46,7 @@
   "buildPresets": [
     {
       "name": "linux-x86_64",
-      "displayName": "Linux 64 bit Intel build",
+      "displayName": "Linux 64 bit build",
       "configurePreset": "linux-x86_64",
       "condition": {
         "type": "equals",
@@ -74,8 +74,7 @@
         "rhs": "Darwin"
       },
       "targets": [
-        "object_storage_server",
-        "cc_object_storage_server",
+        "py_object_storage_server",
         "test_object_manager",
         "test_object_storage_server",
         "test_logging"
@@ -115,6 +114,18 @@
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
+      }
+    },
+    {
+      "name": "darwin-arm64",
+      "configurePreset": "darwin-arm64",
+      "output": {
+        "outputOnFailure": true
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
       }
     }
   ]
