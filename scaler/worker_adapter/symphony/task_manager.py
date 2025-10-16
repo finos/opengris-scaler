@@ -47,7 +47,7 @@ class SymphonyTaskManager(Looper, TaskManager):
         self._processing_task_ids: Set[TaskID] = set()
         self._canceled_task_ids: Set[TaskID] = set()
 
-        self._storage_address: Optional[ObjectStorageAddress] = None
+        self._object_storage_address: Optional[ObjectStorageAddress] = None
 
         self._connector_external: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None

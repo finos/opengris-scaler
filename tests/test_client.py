@@ -344,7 +344,7 @@ class TestClientPreload(unittest.TestCase):
         base_cluster = self.combo._cluster
         preload_cluster = Cluster(
             address=self.combo._address,
-            storage_address=self.combo._storage_address,
+            object_storage_address=self.combo._object_storage_address,
             preload=preload,
             worker_io_threads=base_cluster._worker_io_threads,
             worker_names=["preload_worker"],

@@ -5,10 +5,10 @@ __all__ = ["IOSocket", "IOContext", "Message", "IOSocketType", "YMQException", "
 
 import asyncio
 import concurrent.futures
-from typing import Optional, Callable, TypeVar, Union
+from typing import Callable, Optional, TypeVar, Union
 
 try:
-    from typing import ParamSpec, Concatenate  # type: ignore[attr-defined]
+    from typing import Concatenate, ParamSpec  # type: ignore[attr-defined]
 except ImportError:
     from typing_extensions import ParamSpec, Concatenate  # type: ignore[assignment]
 

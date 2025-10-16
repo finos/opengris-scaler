@@ -17,9 +17,10 @@ from scaler.client.object_reference import ObjectReference
 from scaler.client.serializer.default import DefaultSerializer
 from scaler.client.serializer.mixins import Serializer
 from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
+from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
 from scaler.io.sync_connector import ZMQSyncConnector
-from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector
+from scaler.io.utility import create_sync_object_storage_connector
 from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
 from scaler.utility.graph.optimization import cull_graph
@@ -27,7 +28,6 @@ from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
-from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.worker.agent.processor.processor import Processor
 
 
@@ -119,11 +119,11 @@ class Client:
         logging.info(f"ScalerClient: connect to scheduler at {self._scheduler_address}")
 
         # Blocks until the agent receives the object storage address
-        self._storage_address = self._agent.get_storage_address()
+        self._object_storage_address = self._agent.get_object_storage_address()
 
-        logging.info(f"ScalerClient: connect to object storage at {self._storage_address}")
-        self._connector_storage: SyncObjectStorageConnector = PySyncObjectStorageConnector(
-            self._storage_address.host, self._storage_address.port
+        logging.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
+        self._connector_storage: SyncObjectStorageConnector = create_sync_object_storage_connector(
+            self._object_storage_address.host, self._object_storage_address.port
         )
 
         self._object_buffer = ObjectBuffer(

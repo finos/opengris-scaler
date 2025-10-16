@@ -2,8 +2,9 @@
 This MITM inserts an unexpected TCP RST
 """
 
-from tests.cpp.ymq.py_mitm.types import IP, TCP, AbstractMITM, TCPConnection, TunTapInterface
 from typing import Optional
+
+from tests.cpp.ymq.py_mitm.types import IP, TCP, AbstractMITM, TCPConnection, TunTapInterface
 
 
 class MITM(AbstractMITM):

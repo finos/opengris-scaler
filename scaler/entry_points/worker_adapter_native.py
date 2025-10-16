@@ -112,7 +112,7 @@ def main():
 
     native_worker_adapter = NativeWorkerAdapter(
         address=native_adapter_config.scheduler_address,
-        storage_address=native_adapter_config.storage_address,
+        object_storage_address=native_adapter_config.object_storage_address,
         capabilities=native_adapter_config.per_worker_capabilities.capabilities,
         io_threads=native_adapter_config.io_threads,
         task_queue_size=native_adapter_config.worker_task_queue_size,

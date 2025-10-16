@@ -2,8 +2,8 @@ import argparse
 import socket
 
 from scaler.cluster.cluster import Cluster
-from scaler.config.section.cluster import ClusterConfig
 from scaler.config.loader import load_config
+from scaler.config.section.cluster import ClusterConfig
 from scaler.utility.event_loop import EventLoopType, register_event_loop
 
 
@@ -113,7 +113,7 @@ def main():
 
     cluster = Cluster(
         address=cluster_config.scheduler_address,
-        storage_address=cluster_config.storage_address,
+        object_storage_address=cluster_config.object_storage_address,
         preload=cluster_config.preload,
         worker_names=worker_names,
         per_worker_capabilities=cluster_config.per_worker_capabilities.capabilities,

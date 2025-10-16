@@ -15,7 +15,7 @@ from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
 from scaler.io.sync_connector import ZMQSyncConnector
-from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector
+from scaler.io.utility import create_sync_object_storage_connector
 from scaler.protocol.python.common import ObjectMetadata, TaskResultType
 from scaler.protocol.python.message import ObjectInstruction, ProcessorInitialized, Task, TaskLog, TaskResult
 from scaler.protocol.python.mixins import Message
@@ -38,7 +38,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         event_loop: str,
         agent_address: ZMQConfig,
         scheduler_address: ZMQConfig,
-        storage_address: ObjectStorageConfig,
+        object_storage_address: ObjectStorageConfig,
         preload: Optional[str],
         resume_event: Optional[EventType],
         resumed_event: Optional[EventType],
@@ -52,7 +52,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._event_loop = event_loop
         self._agent_address = agent_address
         self._scheduler_address = scheduler_address
-        self._storage_address = storage_address
+        self._object_storage_address = object_storage_address
         self._preload = preload
 
         self._resume_event = resume_event
@@ -95,8 +95,9 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._connector_agent: SyncConnector = ZMQSyncConnector(
             context=zmq.Context(), socket_type=zmq.DEALER, address=self._agent_address, identity=None
         )
-        self._connector_storage: SyncObjectStorageConnector = PySyncObjectStorageConnector(
-            self._storage_address.host, self._storage_address.port
+
+        self._connector_storage: SyncObjectStorageConnector = create_sync_object_storage_connector(
+            self._object_storage_address.host, self._object_storage_address.port
         )
 
         self._object_cache = ObjectCache(
