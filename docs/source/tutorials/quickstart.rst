@@ -128,11 +128,11 @@ Here we use localhost addresses for demonstration, however the scheduler and wor
 
 .. code:: console
 
-[INFO]2025-06-06 13:30:05+0200: logging to ('/dev/stdout',)
-[INFO]2025-06-06 13:30:05+0200: use event loop: builtin
-[INFO]2025-06-06 13:30:05+0200: Scheduler: listen to scheduler address tcp://127.0.0.1:8516
-[INFO]2025-06-06 13:30:05+0200: Scheduler: connect to object storage server tcp://127.0.0.1:8517
-[INFO]2025-06-06 13:30:05+0200: Scheduler: listen to scheduler monitor address tcp://127.0.0.1:8518
+    [INFO]2025-06-06 13:30:05+0200: logging to ('/dev/stdout',)
+    [INFO]2025-06-06 13:30:05+0200: use event loop: builtin
+    [INFO]2025-06-06 13:30:05+0200: Scheduler: listen to scheduler address tcp://127.0.0.1:8516
+    [INFO]2025-06-06 13:30:05+0200: Scheduler: connect to object storage server tcp://127.0.0.1:8517
+    [INFO]2025-06-06 13:30:05+0200: Scheduler: listen to scheduler monitor address tcp://127.0.0.1:8518
 
 
 .. code:: bash
