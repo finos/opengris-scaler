@@ -62,7 +62,7 @@ class NativeWorkerAdapter:
             raise CapacityExceededError(f"Maximum number of workers ({self._max_workers}) reached.")
 
         worker = Worker(
-            name=uuid.uuid4().hex,
+            name=f"NAT|{uuid.uuid4().hex}",
             address=self._address,
             object_storage_address=self._object_storage_address,
             preload=None,
