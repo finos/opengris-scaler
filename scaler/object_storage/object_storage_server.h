@@ -87,6 +87,8 @@ private:
 
     void processDuplicateRequest(std::shared_ptr<Client> client, std::pair<ObjectRequestHeader, Bytes> request);
 
+    void processInfoGetTotalRequest(std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader);
+
     template <ObjectStorageMessage T>
     void writeMessage(std::shared_ptr<Client> client, T& message, std::span<const unsigned char> payload)
     {

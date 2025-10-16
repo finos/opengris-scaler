@@ -1,6 +1,7 @@
 #include "scaler/object_storage/object_manager.h"
 
 #include <algorithm>
+#include <cassert>
 
 template <>
 struct std::hash<scaler::object_storage::ObjectPayload> {
@@ -13,7 +14,7 @@ struct std::hash<scaler::object_storage::ObjectPayload> {
 namespace scaler {
 namespace object_storage {
 
-ObjectManager::ObjectManager()
+ObjectManager::ObjectManager(): totalObjectsBytes {}
 {
 }
 
@@ -41,6 +42,7 @@ std::shared_ptr<const ObjectPayload> ObjectManager::setObject(
                                .payload  = std::make_shared<const ObjectPayload>(std::move(payload)),
                            })
                        .first;
+        totalObjectsBytes += objectIt->second.payload->size();
     } else {
         // Known object payload
         ++(objectIt->second.useCount);
@@ -74,6 +76,9 @@ bool ObjectManager::deleteObject(const ObjectID& objectID) noexcept
 
     --objectIt->second.useCount;
     if (objectIt->second.useCount < 1) {
+        assert(totalObjectsBytes >= objectIt->second.payload->size());
+        totalObjectsBytes -= objectIt->second.payload->size();
+
         hashToObject.erase(objectIt);
     }
 

@@ -1,6 +1,7 @@
 #include "scaler/object_storage/object_storage_server.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <exception>
 #include <future>
 
@@ -213,6 +214,10 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
                     processDuplicateRequest(client, request);
                     break;
                 }
+                case ObjectRequestType::INFO_GET_TOTAL: {
+                    processInfoGetTotalRequest(client, request.first);
+                    break;
+                }
             }
         } catch (const kj::Exception& e) {
             _ioSocket->closeConnection(std::move(lastMessageIdentity));
@@ -304,6 +309,30 @@ void ObjectStorageServer::processDuplicateRequest(
         // We don't have the referenced original object yet. Send the response later once we receive the SET
         pendingRequests[originalObjectID].emplace_back(client, requestHeader);
     }
+}
+
+void ObjectStorageServer::processInfoGetTotalRequest(
+    std::shared_ptr<Client> client, const ObjectRequestHeader& requestHeader)
+{
+    const uint64_t numOfFields   = 3;
+    const uint64_t payloadLength = numOfFields * sizeof(uint64_t);
+    // Guaranteed to be aligned with 8, but to be sure we have alignas(8)
+    alignas(sizeof(uint64_t)) unsigned char serializedPayload[payloadLength];
+
+    const uint64_t numIDs    = objectManager.size();
+    const uint64_t numObjs   = objectManager.sizeUnique();
+    const uint64_t totalSize = objectManager.totalObjectsSize();
+    std::memcpy(&serializedPayload[0 * sizeof(uint64_t)], &numIDs, sizeof(uint64_t));
+    std::memcpy(&serializedPayload[1 * sizeof(uint64_t)], &numObjs, sizeof(uint64_t));
+    std::memcpy(&serializedPayload[2 * sizeof(uint64_t)], &totalSize, sizeof(uint64_t));
+
+    ObjectResponseHeader responseHeader {
+        .objectID      = requestHeader.objectID,
+        .payloadLength = payloadLength,
+        .responseID    = requestHeader.requestID,
+        .responseType  = ObjectResponseType::INFO_GET_TOTAL_O_K,
+    };
+    writeMessage(client, responseHeader, {serializedPayload, payloadLength});
 }
 
 void ObjectStorageServer::sendGetResponse(

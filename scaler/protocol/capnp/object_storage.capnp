@@ -26,6 +26,10 @@ struct ObjectRequestHeader {
         # Overrides the object content if the new object ID already exists.
         # If the referenced object does not exist, delays the duplicateOK response until the original object is created.
         duplicateObjectID @3;
+
+        # Request the server to give back internal information, result is returned as payload.
+        # schema: three uint64_t tuple (number of ids, number of objects (hashes), total actual object size in bytes)
+        infoGetTotal @4;
     }
 }
 
@@ -48,5 +52,6 @@ struct ObjectResponseHeader {
         delOK @2;
         delNotExists @3;
         duplicateOK @4;
+        infoGetTotalOK @5;
     }
 }
