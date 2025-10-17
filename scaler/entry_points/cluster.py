@@ -16,7 +16,6 @@ def get_args():
     parser.add_argument(
         "--preload",
         type=str,
-        default=None,
         help='optional module init in the form "pkg.mod:func(arg1, arg2)" executed in each processor before tasks',
     )
     parser.add_argument("--num-of-workers", "-n", type=int, help="number of workers in cluster")
