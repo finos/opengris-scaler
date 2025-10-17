@@ -1,7 +1,6 @@
 
-#include <stdio.h>
-
 #include <future>
+#include <iostream>
 #include <memory>
 
 #include "scaler/io/ymq/error.h"
@@ -16,10 +15,10 @@ int main()
     IOContext context;
 
     auto socket = syncCreateSocket(context, IOSocketType::Binder, "ServerSocket");
-    printf("Successfully created socket.\n");
+    std::cout << "Successfully created socket." << std::endl;
 
     syncBindSocket(socket, "tcp://127.0.0.1:8080");
-    printf("Successfully bound socket\n");
+    std::cout << "Successfully bound socket." << std::endl;
 
     while (true) {
         auto recv_promise = std::promise<std::pair<Message, Error>>();
