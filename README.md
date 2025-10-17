@@ -240,8 +240,8 @@ The following table maps each Scaler command to its corresponding section name i
 | `scaler_object_storage_server`   | `[object_storage_server]`   |
 | `scaler_ui`                      | `[webui]`                   |
 | `scaler_top`                     | `[top]`                     |
-| `scaler_worker_adapter_native`   | `[native_worker_adapter]`   |
-| `scaler_worker_adapter_symphony` | `[symphony_worker_adapter]` |
+| `scaler_worker_manager_native`   | `[worker_manager_native]`   |
+| `scaler_worker_manager_symphony` | `[worker_manager_symphony]` |
 
 ### Practical Scenarios & Examples
 
@@ -376,7 +376,7 @@ might be added in the future.
 A Scaler scheduler can interface with IBM Spectrum Symphony to provide distributed computing across Symphony clusters.
 
 ```bash
-$ scaler_worker_adapter_symphony tcp://127.0.0.1:2345 --service-name ScalerService --base-concurrency 4 --host 127.0.0.1 --port 8080
+$ scaler_worker_manager_symphony tcp://127.0.0.1:2345 --service-name ScalerService --base-concurrency 4 --host 127.0.0.1 --port 8080
 ```
 
 This will start a Scaler worker that connects to the Scaler scheduler at `tcp://127.0.0.1:2345` and uses the Symphony
@@ -461,31 +461,31 @@ where `deepest_nesting_level` is the deepest nesting level a task has in your wo
 workload that has
 a base task that calls a nested task that calls another nested task, then the deepest nesting level is 2.
 
-## Worker Adapter usage
+## Worker Manager usage
 
 > **Note**: This feature is experimental and may change in future releases.
 
-Scaler provides a Worker Adapter webhook interface to integrate with other job schedulers or resource managers. The
-Worker Adapter allows external systems to request the creation and termination of Scaler workers dynamically.
+Scaler provides a Worker Manager webhook interface to integrate with other job schedulers or resource managers. The
+Worker Manager allows external systems to request the creation and termination of Scaler workers dynamically.
 
-Please check the OpenGRIS standard for more details on the Worker Adapter
+Please check the OpenGRIS standard for more details on the Worker Manager
 specification [here](https://github.com/finos/opengris).
 
-### Starting the Native Worker Adapter
+### Starting the Native Worker Manager
 
-Starting a Native Worker Adapter server at `http://127.0.0.1:8080`:
+Starting a Native Worker Manager server at `http://127.0.0.1:8080`:
 
 ```bash
-$ scaler_worker_adapter_native tcp://127.0.0.1:2345 --host 127.0.0.1 --port 8080
+$ scaler_worker_manager_native tcp://127.0.0.1:2345 --host 127.0.0.1 --port 8080
 ```
 
-Pass the `--adapter-webhook-url` argument to the Scaler scheduler to connect to the Worker Adapter:
+Pass the `--manager-webhook-url` argument to the Scaler scheduler to connect to the Worker Manager:
 
 ```bash
-$ scaler_scheduler tcp://127.0.0.1:2345 --adapter-webhook-url http://127.0.0.1:8080
+$ scaler_scheduler tcp://127.0.0.1:2345 --manager-webhook-url http://127.0.0.1:8080
 ````
 
-To check that the Worker Adapter is working, you can bring up `scaler_top` to see workers spawning and terminating as
+To check that the Worker Manager is working, you can bring up `scaler_top` to see workers spawning and terminating as
 there is task load changes.
 
 ## Performance

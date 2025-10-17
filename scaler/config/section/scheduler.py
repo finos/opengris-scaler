@@ -14,7 +14,7 @@ class SchedulerConfig:
     scheduler_address: ZMQConfig = dataclasses.field()
     object_storage_address: Optional[ObjectStorageConfig] = None
     monitor_address: Optional[ZMQConfig] = None
-    adapter_webhook_url: Optional[str] = None
+    manager_webhook_url: Optional[str] = None
     protected: bool = True
     allocate_policy: AllocatePolicy = AllocatePolicy.even
     event_loop: str = "builtin"
@@ -43,10 +43,10 @@ class SchedulerConfig:
             raise ValueError("All timeout/retention/balance second values must be positive.")
         if self.load_balance_trigger_times <= 0:
             raise ValueError("load_balance_trigger_times must be a positive integer.")
-        if self.adapter_webhook_url:
-            parsed_url = urlparse(self.adapter_webhook_url)
+        if self.manager_webhook_url:
+            parsed_url = urlparse(self.manager_webhook_url)
             if not all([parsed_url.scheme, parsed_url.netloc]):
-                raise ValueError(f"adapter_webhook_url '{self.adapter_webhook_url}' is not a valid URL.")
+                raise ValueError(f"manager_webhook_url '{self.manager_webhook_url}' is not a valid URL.")
         valid_levels = {level.name for level in LoggingLevel}
         if self.logging_level.upper() not in valid_levels:
             raise ValueError(f"logging_level must be one of {valid_levels}, but got '{self.logging_level}'")

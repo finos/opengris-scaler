@@ -29,13 +29,13 @@ from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
-from scaler.worker_adapter.native import NativeWorkerAdapter
+from scaler.worker_manager.native import WorkerManagerNative
 from tests.utility import logging_test_name
 
 
-def _run_native_worker_adapter(address: str, webhook_port: int) -> None:
-    """Construct a NativeWorkerAdapter and run its aiohttp app. Runs in a separate process."""
-    adapter = NativeWorkerAdapter(
+def _run_worker_manager_native(address: str, webhook_port: int) -> None:
+    """Construct a WorkerManagerNative and run its aiohttp app. Runs in a separate process."""
+    worker_manager = WorkerManagerNative(
         address=ZMQConfig.from_string(address),
         object_storage_address=None,
         capabilities={},
@@ -54,7 +54,7 @@ def _run_native_worker_adapter(address: str, webhook_port: int) -> None:
         logging_level="INFO",
     )
 
-    app = adapter.create_app()
+    app = worker_manager.create_app()
     web.run_app(app, host="127.0.0.1", port=webhook_port)
 
 
@@ -81,7 +81,7 @@ class TestScaling(unittest.TestCase):
             address=ZMQConfig.from_string(self.scheduler_address),
             object_storage_address=self.object_storage_config,
             monitor_address=None,
-            adapter_webhook_url=f"http://127.0.0.1:{self.webhook_port}",
+            manager_webhook_url=f"http://127.0.0.1:{self.webhook_port}",
             io_threads=DEFAULT_IO_THREADS,
             max_number_of_tasks_waiting=DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
             client_timeout_seconds=DEFAULT_CLIENT_TIMEOUT_SECONDS,
@@ -98,7 +98,7 @@ class TestScaling(unittest.TestCase):
         )
         scheduler.start()
 
-        webhook_server = Process(target=_run_native_worker_adapter, args=(self.scheduler_address, self.webhook_port))
+        webhook_server = Process(target=_run_worker_manager_native, args=(self.scheduler_address, self.webhook_port))
         webhook_server.start()
 
         with Client(self.scheduler_address) as client:
