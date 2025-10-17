@@ -39,7 +39,7 @@ def get_args():
         "monitor scheduler as top like", formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument("--config", "-c", type=str, default=None, help="Path to the TOML configuration file.")
-    parser.add_argument("--timeout", "-t", type=int, default=5, help="timeout seconds")
+    parser.add_argument("--timeout", "-t", type=int, help="timeout seconds")
     parser.add_argument("monitor_address", nargs="?", type=str, help="scheduler monitor address to connect to")
     return parser.parse_args()
 
