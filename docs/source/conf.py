@@ -13,6 +13,8 @@
 import os
 import sys
 
+import generate_config
+
 sys.path.insert(0, os.path.abspath(os.path.join("..", "..")))
 
 
@@ -30,6 +32,13 @@ rst_prolog = f"""
 .. |version| replace:: {version}
 .. |release| replace:: {release}
 """
+
+# -- Auto-generate TOML config for docs --------------------------------------
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "_scripts")))
+
+print("Executing script to generate TOML config...")
+generate_config.main()
+# ---------------------------------------------------------------------------
 
 # -- General configuration ---------------------------------------------------
 
