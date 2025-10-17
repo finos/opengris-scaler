@@ -19,6 +19,14 @@
 namespace scaler {
 namespace ymq {
 
+struct TimedCallback {
+    Timestamp timestamp;
+    Configuration::TimedQueueCallback callback;
+    Configuration::ExecutionCancellationIdentifier identifier;
+
+    constexpr bool operator<(const TimedCallback& other) const { return timestamp < other.timestamp; }
+};
+
 #ifdef __linux__
 inline int createTimerfd()
 {
@@ -61,12 +69,6 @@ inline int createTimerfd()
 
 class TimedQueue {
 public:
-    using Callback            = Configuration::TimedQueueCallback;
-    using Identifier          = Configuration::ExecutionCancellationIdentifier;
-    using TimedFunc           = std::tuple<Timestamp, Callback, Identifier>;
-    constexpr static auto cmp = [](const auto& x, const auto& y) { return std::get<0>(x) < std::get<0>(y); };
-    using PriorityQueue       = std::priority_queue<TimedFunc, std::vector<TimedFunc>, decltype(cmp)>;
-
     TimedQueue(): _timerFd(createTimerfd()), _currentId {} { assert(_timerFd); }
     ~TimedQueue()
     {
@@ -74,10 +76,10 @@ public:
             close(_timerFd);
     }
 
-    Identifier push(Timestamp timestamp, Callback cb)
+    Configuration::ExecutionCancellationIdentifier push(Timestamp timestamp, Configuration::TimedQueueCallback cb)
     {
         auto ts = convertToItimerspec(timestamp);
-        if (pq.empty() || timestamp < std::get<0>(pq.top())) {
+        if (pq.empty() || timestamp < pq.top().timestamp) {
             int ret = timerfd_settime(_timerFd, 0, &ts, nullptr);
             if (ret == -1) {
                 unrecoverableError({
@@ -93,9 +95,9 @@ public:
         return _currentId++;
     }
 
-    void cancelExecution(Identifier id) { _cancelledFunctions.insert(id); }
+    void cancelExecution(Configuration::ExecutionCancellationIdentifier id) { _cancelledFunctions.insert(id); }
 
-    std::vector<Callback> dequeue()
+    std::vector<Configuration::TimedQueueCallback> dequeue()
     {
         uint64_t numItems;
         ssize_t n = read(_timerFd, &numItems, sizeof numItems);
@@ -110,12 +112,12 @@ public:
             });
         }
 
-        std::vector<Callback> callbacks;
+        std::vector<Configuration::TimedQueueCallback> callbacks;
 
         Timestamp now;
         while (pq.size()) {
-            if (std::get<0>(pq.top()) < now) {
-                auto [ts, cb, id] = std::move(const_cast<PriorityQueue::reference>(pq.top()));
+            if (pq.top().timestamp < now) {
+                auto [ts, cb, id] = std::move(const_cast<std::priority_queue<TimedCallback>::reference>(pq.top()));
                 pq.pop();
                 auto cancelled = _cancelledFunctions.find(id);
                 if (cancelled != _cancelledFunctions.end()) {
@@ -128,7 +130,7 @@ public:
         }
 
         if (!pq.empty()) {
-            auto nextTs = std::get<0>(pq.top());
+            auto nextTs = pq.top().timestamp;
             auto ts     = convertToItimerspec(nextTs);
             int ret     = timerfd_settime(_timerFd, 0, &ts, nullptr);
             if (ret == -1) {
@@ -171,9 +173,9 @@ public:
 
 private:
     int _timerFd;
-    Identifier _currentId;
-    PriorityQueue pq;
-    std::set<Identifier> _cancelledFunctions;
+    Configuration::ExecutionCancellationIdentifier _currentId;
+    std::priority_queue<TimedCallback> pq;
+    std::set<Configuration::ExecutionCancellationIdentifier> _cancelledFunctions;
 };
 
 #endif  // __linux__
@@ -181,11 +183,6 @@ private:
 #ifdef _WIN32
 class TimedQueue {
 public:
-    using Callback            = Configuration::TimedQueueCallback;
-    using Identifier          = Configuration::ExecutionCancellationIdentifier;
-    using TimedFunc           = std::tuple<Timestamp, Callback, Identifier>;
-    constexpr static auto cmp = [](const auto& x, const auto& y) { return std::get<0>(x) < std::get<0>(y); };
-    using PriorityQueue       = std::priority_queue<TimedFunc, std::vector<TimedFunc>, decltype(cmp)>;
     HANDLE _completionPort;
     const size_t _key;
 
