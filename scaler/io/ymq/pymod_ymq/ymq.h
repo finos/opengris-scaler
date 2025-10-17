@@ -54,30 +54,26 @@ PyObject* PyErr_CreateFromString(PyObject* type, const char* message)
 }
 
 // this is a polyfill for PyErr_GetRaisedException() added in Python 3.12+
-std::expected<PyObject*, PyObject*> YMQ_GetRaisedException()
+OwnedPyObject<> YMQ_GetRaisedException()
 {
 #if (PY_MAJOR_VERSION <= 3) && (PY_MINOR_VERSION <= 12)
     PyObject *excType, *excValue, *excTraceback;
     PyErr_Fetch(&excType, &excValue, &excTraceback);
     Py_XDECREF(excType);
     Py_XDECREF(excTraceback);
-    if (!excValue)
-        Py_RETURN_NONE;
-
-    return std::unexpected {excValue};
 #else
     PyObject* excValue = PyErr_GetRaisedException();
-    if (!excValue)
-        Py_RETURN_NONE;
-
-    return std::unexpected {excValue};
 #endif
+    if (!excValue)
+        return OwnedPyObject<>::none();
+
+    return OwnedPyObject {excValue};
 }
 
 void completeCallbackWithRaisedException(PyObject* callback)
 {
-    auto result     = YMQ_GetRaisedException();
-    OwnedPyObject _ = PyObject_CallFunctionObjArgs(callback, result.value_or(result.error()), nullptr);
+    OwnedPyObject exception = YMQ_GetRaisedException();
+    OwnedPyObject _         = PyObject_CallFunctionObjArgs(callback, *exception, nullptr);
 }
 
 // First-Party

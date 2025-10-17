@@ -74,20 +74,20 @@ static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwa
     auto payload = std::move(message->payload->bytes);
 
     try {
-        Py_INCREF(callback);
-
         self->socket->sendMessage(
-            {.address = std::move(address), .payload = std::move(payload)}, [callback, state](auto result) {
+            {.address = std::move(address), .payload = std::move(payload)},
+            [callback_ = OwnedPyObject<>::fromBorrowed(callback), state](auto result) {
                 AcquireGIL _;
 
+                // Redefine the callback to ensure it is destroyed before the GIL is released.
+                OwnedPyObject callback = std::move(callback_);
+
                 if (result) {
-                    OwnedPyObject result = PyObject_CallFunctionObjArgs(callback, Py_None, nullptr);
+                    OwnedPyObject result = PyObject_CallFunctionObjArgs(*callback, Py_None, nullptr);
                 } else {
                     OwnedPyObject obj = YMQException_createFromCoreError(state, &result.error());
-                    OwnedPyObject _   = PyObject_CallFunctionObjArgs(callback, *obj, nullptr);
+                    OwnedPyObject _   = PyObject_CallFunctionObjArgs(*callback, *obj, nullptr);
                 }
-
-                Py_DECREF(callback);
             });
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to send message");
@@ -109,48 +109,45 @@ static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args, PyObject* kwa
         return nullptr;
 
     try {
-        Py_INCREF(callback);
+        self->socket->recvMessage(
+            [callback_ = OwnedPyObject<>::fromBorrowed(callback), state](std::pair<Message, Error> result) {
+                AcquireGIL _;
 
-        self->socket->recvMessage([callback, state](std::pair<Message, Error> result) {
-            AcquireGIL _;
+                // Redefine the callback to ensure it is destroyed before the GIL is released.
+                OwnedPyObject callback = std::move(callback_);
 
-            if (result.second._errorCode != Error::ErrorCode::Uninit) {
-                OwnedPyObject obj = YMQException_createFromCoreError(state, &result.second);
-                OwnedPyObject _   = PyObject_CallFunctionObjArgs(callback, *obj, nullptr);
-                Py_DECREF(callback);
-                return;
-            }
+                if (result.second._errorCode != Error::ErrorCode::Uninit) {
+                    OwnedPyObject obj = YMQException_createFromCoreError(state, &result.second);
+                    OwnedPyObject _   = PyObject_CallFunctionObjArgs(*callback, *obj, nullptr);
+                    return;
+                }
 
-            auto message                      = result.first;
-            OwnedPyObject<PyBytesYMQ> address = (PyBytesYMQ*)PyObject_CallNoArgs(*state->PyBytesYMQType);
-            if (!address) {
-                completeCallbackWithRaisedException(callback);
-                Py_DECREF(callback);
-                return;
-            }
+                auto message                      = result.first;
+                OwnedPyObject<PyBytesYMQ> address = (PyBytesYMQ*)PyObject_CallNoArgs(*state->PyBytesYMQType);
+                if (!address) {
+                    completeCallbackWithRaisedException(*callback);
+                    return;
+                }
 
-            address->bytes = std::move(message.address);
+                address->bytes = std::move(message.address);
 
-            OwnedPyObject<PyBytesYMQ> payload = (PyBytesYMQ*)PyObject_CallNoArgs(*state->PyBytesYMQType);
-            if (!payload) {
-                completeCallbackWithRaisedException(callback);
-                Py_DECREF(callback);
-                return;
-            }
+                OwnedPyObject<PyBytesYMQ> payload = (PyBytesYMQ*)PyObject_CallNoArgs(*state->PyBytesYMQType);
+                if (!payload) {
+                    completeCallbackWithRaisedException(*callback);
+                    return;
+                }
 
-            payload->bytes = std::move(message.payload);
+                payload->bytes = std::move(message.payload);
 
-            OwnedPyObject<PyMessage> pyMessage =
-                (PyMessage*)PyObject_CallFunction(*state->PyMessageType, "OO", *address, *payload);
-            if (!pyMessage) {
-                completeCallbackWithRaisedException(callback);
-                Py_DECREF(callback);
-                return;
-            }
+                OwnedPyObject<PyMessage> pyMessage =
+                    (PyMessage*)PyObject_CallFunction(*state->PyMessageType, "OO", *address, *payload);
+                if (!pyMessage) {
+                    completeCallbackWithRaisedException(*callback);
+                    return;
+                }
 
-            OwnedPyObject _result = PyObject_CallFunctionObjArgs(callback, *pyMessage, nullptr);
-            Py_DECREF(callback);
-        });
+                OwnedPyObject _result = PyObject_CallFunctionObjArgs(*callback, *pyMessage, nullptr);
+            });
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to receive message");
         return nullptr;
@@ -173,20 +170,21 @@ static PyObject* PyIOSocket_bind(PyIOSocket* self, PyObject* args, PyObject* kwa
         return nullptr;
 
     try {
-        Py_INCREF(callback);
+        self->socket->bindTo(
+            std::string(address, addressLen),
+            [callback_ = OwnedPyObject<>::fromBorrowed(callback), state](auto result) {
+                AcquireGIL _;
 
-        self->socket->bindTo(std::string(address, addressLen), [callback, state](auto result) {
-            AcquireGIL _;
+                // Redefine the callback to ensure it is destroyed before the GIL is released.
+                OwnedPyObject callback = std::move(callback_);
 
-            if (!result) {
-                OwnedPyObject exc = YMQException_createFromCoreError(state, &result.error());
-                OwnedPyObject _   = PyObject_CallFunctionObjArgs(callback, *exc, nullptr);
-            } else {
-                OwnedPyObject _ = PyObject_CallFunctionObjArgs(callback, Py_None, nullptr);
-            }
-
-            Py_DECREF(callback);
-        });
+                if (!result) {
+                    OwnedPyObject exc = YMQException_createFromCoreError(state, &result.error());
+                    OwnedPyObject _   = PyObject_CallFunctionObjArgs(*callback, *exc, nullptr);
+                } else {
+                    OwnedPyObject _ = PyObject_CallFunctionObjArgs(*callback, Py_None, nullptr);
+                }
+            });
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to bind to address");
         return nullptr;
@@ -209,20 +207,21 @@ static PyObject* PyIOSocket_connect(PyIOSocket* self, PyObject* args, PyObject* 
         return nullptr;
 
     try {
-        Py_INCREF(callback);
+        self->socket->connectTo(
+            std::string(address, addressLen),
+            [callback_ = OwnedPyObject<>::fromBorrowed(callback), state](auto result) {
+                AcquireGIL _;
 
-        self->socket->connectTo(std::string(address, addressLen), [callback, state](auto result) {
-            AcquireGIL _;
+                // Redefine the callback to ensure it is destroyed before the GIL is released.
+                OwnedPyObject callback = std::move(callback_);
 
-            if (result || result.error()._errorCode == Error::ErrorCode::InitialConnectFailedWithInProgress) {
-                OwnedPyObject _ = PyObject_CallFunctionObjArgs(callback, Py_None, nullptr);
-            } else {
-                OwnedPyObject exc = YMQException_createFromCoreError(state, &result.error());
-                OwnedPyObject _   = PyObject_CallFunctionObjArgs(callback, *exc, nullptr);
-            }
-
-            Py_DECREF(callback);
-        });
+                if (result || result.error()._errorCode == Error::ErrorCode::InitialConnectFailedWithInProgress) {
+                    OwnedPyObject _ = PyObject_CallFunctionObjArgs(*callback, Py_None, nullptr);
+                } else {
+                    OwnedPyObject exc = YMQException_createFromCoreError(state, &result.error());
+                    OwnedPyObject _   = PyObject_CallFunctionObjArgs(*callback, *exc, nullptr);
+                }
+            });
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to connect to address");
         return nullptr;
