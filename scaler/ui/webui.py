@@ -1,6 +1,7 @@
 import dataclasses
 import threading
 from functools import partial
+from typing import Optional, Tuple
 
 from nicegui import ui
 
@@ -21,6 +22,7 @@ from scaler.ui.task_graph import TaskStream
 from scaler.ui.task_log import TaskLogTable
 from scaler.ui.worker_processors import WorkerProcessors
 from scaler.utility.formatter import format_bytes, format_percentage
+from scaler.utility.logging.utility import setup_logger
 
 
 @dataclasses.dataclass
@@ -34,7 +36,17 @@ class Sections:
     settings_section: Settings
 
 
-def start_webui(address: str, host: str, port: int):
+def start_webui(
+    address: str,
+    host: str,
+    port: int,
+    logging_paths: Tuple[str, ...],
+    logging_config_file: Optional[str],
+    logging_level: str,
+):
+
+    setup_logger(logging_paths, logging_config_file, logging_level)
+
     tables = Sections(
         scheduler_section=SchedulerSection(),
         workers_section=WorkersSection(),

@@ -2,6 +2,7 @@ import datetime
 from collections import deque
 from enum import Enum
 import hashlib
+import logging
 from queue import SimpleQueue
 from threading import Lock
 from typing import Deque, Dict, List, Optional, Set, Tuple
@@ -43,12 +44,12 @@ class TaskShapes:
     }
 
     _task_shape_to_outline = {
-        TaskState.Success: ("black", 2),
-        TaskState.Running: ("yellow", 2),
-        TaskState.Failed: ("red", 2),
-        TaskState.FailedWorkerDied: ("red", 2),
-        TaskState.Canceled: ("black", 2),
-        TaskState.CanceledNotFound: ("black", 2),
+        TaskState.Success: ("black", 1),
+        TaskState.Running: ("yellow", 1),
+        TaskState.Failed: ("red", 1),
+        TaskState.FailedWorkerDied: ("red", 1),
+        TaskState.Canceled: ("black", 1),
+        TaskState.CanceledNotFound: ("black", 1),
     }
 
     @classmethod
@@ -78,6 +79,7 @@ class TaskStream:
         self._worker_last_update: Dict[str, datetime.datetime] = {}
         self._task_id_to_worker: Dict[bytes, str] = {}
         self._task_id_to_printable_capabilities: Dict[bytes, str] = {}
+        self._worker_to_task_ids: Dict[str, Set[bytes]] = {}
 
         self._seen_workers = set()
         self._lost_workers_queue: SimpleQueue[Tuple[datetime.datetime, str]] = SimpleQueue()
@@ -421,6 +423,17 @@ class TaskStream:
 
         row_data["x"][0] += removed_time
 
+    def check_row_total_time(self, row_label: str):
+        row_total_time = sum(self._completed_data_cache[row_label]["x"])
+        now = datetime.datetime.now()
+        since_start = format_timediff(self._start_time, now)
+        delta = since_start - row_total_time
+
+        if delta > 0.1:
+            # hack. need to reproduce drifting behavior and find the cause.
+            logging.info(f"Adjusting row {row_label} by {delta:.2f}s to match total runtime")
+            self._completed_data_cache[row_label]["x"][0] += delta
+
     def __handle_task_result(self, state: StateTask, now: datetime.datetime):
         worker = self._task_id_to_worker.get(state.task_id, "")
         if worker == "":
@@ -441,11 +454,16 @@ class TaskStream:
         task_time = format_timediff(start, now)
 
         row_label = self.__add_task_to_chart(worker, state.task_id, task_state, task_time)
+        self.check_row_total_time(row_label)
         with self._data_update_lock:
             self.__remove_task_from_worker(worker=worker, task_id=state.task_id, now=now, force_new_time=False)
         self._row_last_used[row_label] = now
 
+        self._task_id_to_worker.pop(state.task_id, None)
         self._task_id_to_printable_capabilities.pop(state.task_id, None)
+
+        if worker_tasks := self._worker_to_task_ids.get(worker):
+            worker_tasks.discard(state.task_id)
 
     def __handle_new_worker(self, worker: str, now: datetime.datetime):
         row_label = f"{format_worker_name(worker)} [1]"
@@ -461,11 +479,12 @@ class TaskStream:
                 capabilities_display_string="",
                 row_label=row_label,
             )
+            self._row_last_used[row_label] = now
         self._seen_workers.add(worker)
 
     def __remove_task_from_worker(self, worker: str, task_id: bytes, now: datetime.datetime, force_new_time: bool):
         # Remove a single task from the worker's current task mapping.
-        self._task_row_assignment.pop(task_id, None)
+        self.__free_row_for_task(task_id)
         task_map = self._current_tasks.get(worker)
         if not task_map:
             return
@@ -481,8 +500,6 @@ class TaskStream:
         if not last_update:
             return
         idle_time = format_timediff(last_update, now)
-        if idle_time < 0.1:
-            return
         self.__add_bar(
             worker=worker,
             time_taken=idle_time,
@@ -506,6 +523,10 @@ class TaskStream:
 
         self._task_id_to_worker[state_task.task_id] = worker
         self._worker_to_object_name[worker] = state_task.function_name.decode()
+
+        worker_tasks = self._worker_to_task_ids.get(worker, set())
+        worker_tasks.add(state_task.task_id)
+        self._worker_to_task_ids[worker] = worker_tasks
 
         # Per-task start times: store start time for this task only.
         task_map = self._current_tasks.get(worker)
@@ -569,7 +590,14 @@ class TaskStream:
         for row_label in self._worker_rows.pop(worker, []):
             if row_label in self._completed_data_cache:
                 self._completed_data_cache.pop(row_label)
-        self._seen_workers.remove(worker)
+
+        worker_tasks = self._worker_to_task_ids.pop(worker, set())
+        for task_id in worker_tasks:
+            self._task_id_to_worker.pop(task_id, None)
+            self._task_id_to_printable_capabilities.pop(task_id, None)
+            self.__free_row_for_task(task_id)
+
+        self._seen_workers.discard(worker)
 
     def __remove_old_tasks_from_history(self, store_duration: datetime.timedelta):
         for row_label in self._completed_data_cache.keys():
@@ -685,7 +713,7 @@ class TaskStream:
                 "color": task_colors,
                 "width": 5,
                 "pattern": {"shape": [running_shape for _ in workers_doing_tasks]},
-                "line": {"color": ["yellow" for _ in workers_doing_tasks], "width": [2 for _ in workers_doing_tasks]},
+                "line": {"color": ["yellow" for _ in workers_doing_tasks], "width": [1 for _ in workers_doing_tasks]},
             },
             "textfont": {"color": "black", "outline": "white", "outlinewidth": 5},
             "customdata": task_capabilities,
