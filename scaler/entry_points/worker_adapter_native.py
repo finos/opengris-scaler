@@ -28,7 +28,7 @@ def get_args():
         type=str,
         help='comma-separated capabilities provided by the workers (e.g. "-pwc linux,cpu=4")',
     )
-    parser.add_argument("--worker-task-queue-size", "-wtqs", type=int, default=10, help="specify worker queue size")
+    parser.add_argument("--worker-task-queue-size", "-wtqs", type=int, help="specify worker queue size")
     parser.add_argument(
         "--max-workers", "-mw", type=int, help="maximum number of workers that can be started, -1 means no limit"
     )

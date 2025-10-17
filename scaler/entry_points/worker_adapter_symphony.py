@@ -53,15 +53,11 @@ def get_args():
     parser.add_argument(
         "--logging-config-file",
         type=str,
-        default=None,
         help="use standard python the .conf file the specify python logging file configuration format, this will "
         "bypass --logging-paths and --logging-level at the same time, and this will not work on per worker logging",
     )
     parser.add_argument(
-        "--object-storage-address",
-        "-osa",
-        default=None,
-        help="specify the object storage server address, e.g.: tcp://localhost:2346",
+        "--object-storage-address", "-osa", help="specify the object storage server address, e.g.: tcp://localhost:2346"
     )
     parser.add_argument("scheduler_address", nargs="?", type=str, help="scheduler address to connect to")
     return parser.parse_args()
