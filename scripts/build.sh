@@ -12,8 +12,8 @@ BUILD_DIR="build_${OS}_${ARCH}"
 BUILD_PRESET="${OS}-${ARCH}"
 
 rm -rf $BUILD_DIR
-rm -f scaler/protocol/capnp/*.c++
-rm -f scaler/protocol/capnp/*.h
+rm -f src/scaler/protocol/capnp/*.c++
+rm -f src/scaler/protocol/capnp/*.h
 echo "Build directory: $BUILD_DIR"
 echo "Build preset: $BUILD_PRESET"
 
