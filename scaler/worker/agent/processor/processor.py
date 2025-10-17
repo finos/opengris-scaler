@@ -95,7 +95,6 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._connector_agent: SyncConnector = ZMQSyncConnector(
             context=zmq.Context(), socket_type=zmq.DEALER, address=self._agent_address, identity=None
         )
-
         self._connector_storage: SyncObjectStorageConnector = create_sync_object_storage_connector(
             self._object_storage_address.host, self._object_storage_address.port
         )

@@ -9,17 +9,8 @@ from aiohttp.web_request import Request
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.utility.identifiers import WorkerID
+from scaler.worker_adapter.common import CapacityExceededError, WorkerGroupID, WorkerGroupNotFoundError
 from scaler.worker_adapter.symphony.worker import SymphonyWorker
-
-WorkerGroupID = bytes
-
-
-class CapacityExceededError(Exception):
-    pass
-
-
-class WorkerGroupNotFoundError(Exception):
-    pass
 
 
 class SymphonyWorkerAdapter:
@@ -64,7 +55,7 @@ class SymphonyWorkerAdapter:
             raise CapacityExceededError("Symphony worker already started")
 
         worker = SymphonyWorker(
-            name=uuid.uuid4().hex,
+            name=f"SYM|{uuid.uuid4().hex}",
             address=self._address,
             object_storage_address=self._object_storage_address,
             service_name=self._service_name,
@@ -100,7 +91,13 @@ class SymphonyWorkerAdapter:
 
         action = request_json["action"]
 
-        if action == "start_worker_group":
+        if action == "get_worker_adapter_info":
+            return web.json_response(
+                {"max_worker_groups": 1, "workers_per_group": 1, "base_capabilities": self._capabilities},
+                status=web.HTTPOk.status_code,
+            )
+
+        elif action == "start_worker_group":
             try:
                 worker_group_id = await self.start_worker_group()
             except CapacityExceededError as e:
