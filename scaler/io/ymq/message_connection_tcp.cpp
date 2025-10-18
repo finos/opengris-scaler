@@ -119,6 +119,7 @@ void MessageConnectionTCP::onCreated()
         if (lastError == ERROR_IO_PENDING) {
             return;
         }
+
         unrecoverableError({
             Error::ErrorCode::CoreBug,
             "Originated from",
@@ -337,6 +338,10 @@ void MessageConnectionTCP::onRead()
     }
 
 #ifdef _WIN32
+    // TODO: This need rewrite to better logic
+    if (!_connFd) {
+        return;
+    }
     const bool ok = ReadFile((HANDLE)(SOCKET)_connFd, nullptr, 0, nullptr, this->_eventManager.get());
     if (ok) {
         onRead();

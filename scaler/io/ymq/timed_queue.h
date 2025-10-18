@@ -199,10 +199,10 @@ public:
         }
     }
 
-    Identifier push(Timestamp timestamp, Callback cb)
+    Configuration::ExecutionCancellationIdentifier push(Timestamp timestamp, Configuration::TimedQueueCallback cb)
     {
         auto ts = convertToLARGE_INTEGER(timestamp);
-        if (pq.empty() || timestamp < std::get<0>(pq.top())) {
+        if (pq.empty() || timestamp < pq.top().timestamp) {
             SetWaitableTimer(
                 _timerFd,
                 (LARGE_INTEGER*)&ts,
@@ -218,16 +218,16 @@ public:
         return _currentId++;
     }
 
-    void cancelExecution(Identifier id) { _cancelledFunctions.insert(id); }
+    void cancelExecution(Configuration::ExecutionCancellationIdentifier id) { _cancelledFunctions.insert(id); }
 
-    std::vector<Callback> dequeue()
+    std::vector<Configuration::TimedQueueCallback> dequeue()
     {
-        std::vector<Callback> callbacks;
+        std::vector<Configuration::TimedQueueCallback> callbacks;
 
         Timestamp now;
         while (pq.size()) {
-            if (std::get<0>(pq.top()) < now) {
-                auto [ts, cb, id] = std::move(const_cast<PriorityQueue::reference>(pq.top()));
+            if (pq.top().timestamp < now) {
+                auto [ts, cb, id] = std::move(const_cast<std::priority_queue<TimedCallback>::reference>(pq.top()));
                 pq.pop();
                 auto cancelled = _cancelledFunctions.find(id);
                 if (cancelled != _cancelledFunctions.end()) {
@@ -240,7 +240,7 @@ public:
         }
 
         if (!pq.empty()) {
-            auto nextTs = std::get<0>(pq.top());
+            auto nextTs = pq.top().timestamp;
             auto ts     = convertToLARGE_INTEGER(nextTs);
             SetWaitableTimer(
                 _timerFd,
@@ -258,9 +258,9 @@ public:
 
 private:
     HANDLE _timerFd;
-    Identifier _currentId;
-    PriorityQueue pq;
-    std::set<Identifier> _cancelledFunctions;
+    Configuration::ExecutionCancellationIdentifier _currentId;
+    std::priority_queue<TimedCallback> pq;
+    std::set<Configuration::ExecutionCancellationIdentifier> _cancelledFunctions;
 };
 
 #endif  // _WIN32
