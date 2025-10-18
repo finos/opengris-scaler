@@ -38,14 +38,36 @@
 #include <utility>
 #include <vector>
 
-#define RETURN_FAILURE_IF_FALSE(condition) \
-    if (!(condition)) {                    \
-        return TestResult::Failure;        \
-    }
-
 using namespace std::chrono_literals;
 
 enum class TestResult : char { Success = 1, Failure = 2 };
+
+inline TestResult return_failure_if_false(
+    bool cond, const char* msg = nullptr, const char* cond_str = nullptr, const char* file = nullptr, int line = 0)
+{
+    if (!cond) {
+        std::cerr << "Failure";
+        if (cond_str)
+            std::cerr << ": " << cond_str;
+        if (msg)
+            std::cerr << " (" << msg << ")";
+        if (file)
+            std::cerr << " at " << file << ":" << line;
+        std::cerr << '\n';
+        return TestResult::Failure;
+    }
+    return TestResult::Success;
+}
+
+// in the case that there's no msg, delegate
+inline TestResult return_failure_if_false(bool cond, const char* cond_str, const char* file, int line)
+{
+    return return_failure_if_false(cond, nullptr, cond_str, file, line);
+}
+
+#define RETURN_FAILURE_IF_FALSE(cond, ...)                                                                \
+    if (return_failure_if_false((cond), ##__VA_ARGS__, #cond, __FILE__, __LINE__) == TestResult::Failure) \
+        return TestResult::Failure;
 
 inline const char* check_localhost(const char* host)
 {
