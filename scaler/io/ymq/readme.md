@@ -1,114 +1,18 @@
-
 # YMQ
 
-Welcome. This file contains schedule for each day, for each person.
+## Introduction
 
-Each person maintains a todo and done list.
+This is an internal README intended for development reference. It covers only the code in this directory, along with its relevant tests and examples. Since this module is entirely hidden from the end user, this document may not be particularly helpful if you're just looking to use the project. For an overview of the entire project, please refer to `scaler/README.md`.
 
-## gxu
+YMQ is an internal networking utility that facilitates communication between the Object Storage Server and the following components: `Client`, `Cluster`, and `Scheduler` (as of the latest update to this file). It offers functionality similar to `zmq`, including guaranteed message delivery, automatic reconnection in unstable network conditions, and an easy-to-use callback-style send/receive message interface.
 
-### DONE
+YMQ is primarily written in C++ and makes extensive use of the newly adopted C++23 standard. To compile YMQ, you will need a relatively recent compiler, and, if using `clang`, possibly a newer runtime as well. The authors recommend compiling YMQ with GNU's `g++-14` or higher.
 
-- CMake integration, generate C++ stuff in build dir
-- Basic coroutine API
-- develop the so-called coro_context and their utility DEAD
-- write up interfaces(not impl) that uses coroutine DEAD
+YMQ also provides a Python binding implemented as a Python C extension. This interface bridges YMQ's C++ core with Python's `asyncio`, enabling message sending and receiving using the `await` syntax.
 
-## DONE:
- - Remember (or remove) the IOSocketIdentity of closed connection
- - Basic coroutine API (DEAD)
- - develop the so-called coro_context and their utility (DEAD)
- - write up interfaces(not impl) that uses coroutine (DEAD)
- - Use unified file path (only include dir is project dir)
- - Start organize files that they can be compiled in one go
- - Write delayed execution utility
- - Write timed execution utility
- - IOSocket exchange identity on connected
- - General message passing assuming user passed in Message with header
- - Guaranteed message delivery
- - Retry on disconnect
- - Delete fd from eventloop on disconnect
- - Put Recv on iosocket level because user don't know which connection it should recv from
- - cleanup: IOSocket destructor should release resources bound to it
- - cleanup: Clarify Bytes ownership of send/recv messages
- - Provide connect(str) function that parse the string to a sockaddr.
- - make connectTo takes a callback
- - Implement bind function with interface address (str) and callback
- - cleanup: report error when no connection with desired identity presents
- - cleanup: Give user more control about port/addr
- - test the project (now working when user kills the program)
- - cleanup: Provide actual remote sockaddr in the connection class
- - test the user provided callback logic and think about sync issue
- - connect do not happen twice, monitor for read/write instead
- - remove the end of each loop hook, this is stupid
- - test the abnormal breakup (break up due to network issue instead of killing)
- - Per action cancellation
- - refactor: Ownership, Public/Private, destructor
- - cleanup: Do not constraint thee size of identity (current maximum being 128-8 bytes)
- - make IO with send/recv msg
- - automatically destroy threads when no ioSocket is running on it
- - update numbers -> constants
- - cleanup: Change InterruptiveConcurrentQueue behavior
- - Fix issue lambda captures being copied instead of move
- - allow user to change how many times they want to retry
- - cleanup: make sure when eventloop is destructed all resources is freed
- - remove bytes ownership code 
- - add constexpr, noexcept, overloads, explicit to the code
- - make sure every call is moved instead of being copied
- - iosocket behaves differently when provided with different IOSocketType
- - Refactor: MessageConnectionTCP is easier to construct correctly
- - provide reference implementation of the error type (Error)
- - reference usage of the error type
- -
- -
- -
- -
- -
- - LEAVE A FEW BLANKS HERE TO AVOID CONFLICT
+For more comprehensive documentation and architectural details, see [this discussion page on GitHub](https://github.com/finos/opengris-scaler/discussions/330). For known limitations of YMQ, refer to [this discussion page on GitHub](https://github.com/finos/opengris-scaler/discussions/294).
 
-## TODO:
- - resolve github comment (there are still some)
- - cleanup: Do not use std::string as identity type
- - cleanup: Error handling
- - Use one consistent print logic
- - add proper logging message
- - configuration won't work because we are compiliing it on github box, figure out a new way
- - write tests
- - examples
- - performance measurement
- - Determine what happens when user close socket but there are pending send/recv
- - multiple connectTo issue consecutively support
- -
- -
- -
- -
- -
- -
- -
- -
- -
- -
- -
- - allow staticlly linking the project
- - Namespace support, and move third_party code to top directory.
- - Optimize performance in `updateWriteOperations`
- - LEAVE A FEW BLANKS HERE TO AVOID CONFLICT
+For issues related to the C++ implementation of YMQ (excluding the Python C extension), please contact @gxuu. For questions about the Python interface, reach out to @magniloquency.
 
+**Primary Authors**: @gxuu, @magniloquency, et al.
 
-## magniloquency
-=======
- - support for cancel of execution
- -
- -
- -
- -
- - LEAVE A FEW BLANKS HERE TO AVOID CONFLICT
-
-
-### DONE
-
-- CPython module stub
-
-### TODO
-
-- ?
