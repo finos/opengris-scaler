@@ -5,15 +5,12 @@ from nicegui import ui
 
 from scaler.protocol.python.message import StateTask
 from scaler.ui.setting_page import Settings
-from scaler.ui.utility import format_timediff, get_bounds, make_tick_text, make_ticks
+from scaler.ui.utility import format_timediff, get_bounds, make_tick_text, make_taskstream_ticks
 from scaler.utility.formatter import format_bytes
 from scaler.utility.metadata.profile_result import ProfileResult
 
-CHART_NAME = "Memory Usage"
+CHART_NAME = "Memory Usage (in bytes)"
 X_AXIS_GRID_LINES = False
-
-Y_AXIS_TICK_VALS = [0, 1024, 1024 * 1024, 1024 * 1024 * 1024, 1024 * 1024 * 1024 * 1024]
-Y_AXIS_TICK_TEXT = ["0", "1KB", "1MB", "1GB", "1TB"]
 Y_AXIS_GRID_LINES = True
 
 
@@ -28,7 +25,7 @@ class MemoryChart:
         self._start_time = datetime.datetime.now() - datetime.timedelta(minutes=30)
 
     def setup_memory_chart(self, settings: Settings):
-        with ui.card().classes("w-full").style("height: 30vh"):
+        with ui.card().classes("w-full").style("height: 600px"):
             self._plot_data = {
                 "type": "scatter",
                 "fill": "tozeroy",
@@ -55,8 +52,9 @@ class MemoryChart:
                         "zeroline": False,
                     },
                     "yaxis": {
-                        "tickvals": Y_AXIS_TICK_VALS,
-                        "ticktext": Y_AXIS_TICK_TEXT,
+                        "tickmode": "auto",
+                        "nticks": 4,
+                        "tickformat": "~s",
                         "autorange": True,
                         "automargin": True,
                         "rangemode": "nonnegative",
@@ -134,7 +132,7 @@ class MemoryChart:
     def __render_plot(self, now: datetime.datetime):
         lower_bound, upper_bound = get_bounds(now, self._start_time, self._settings)
 
-        ticks = make_ticks(lower_bound, upper_bound)
+        ticks = make_taskstream_ticks(lower_bound, upper_bound)
         tick_text = make_tick_text(int(self._settings.stream_window.total_seconds()))
 
         self._figure["layout"]["xaxis"]["range"] = [lower_bound, upper_bound]
