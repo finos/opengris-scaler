@@ -10,6 +10,10 @@
 
 #include "scaler/io/ymq/logging.h"
 
+#ifdef max
+#undef max
+#endif
+
 // Test fixture for direct unit testing of the log() function's formatting
 class LoggingUnitTest: public ::testing::Test {
 protected:
