@@ -27,7 +27,7 @@ class WorkerProcessors:
                 processor_table = self.workers.get(worker_name)
 
                 if processor_table is None:
-                    processor_table = WorkerProcessorTable(worker_name, worker.rss_free, worker.processor_statuses)
+                    processor_table = WorkerProcessorTable(worker_name, 0, worker.rss_free, worker.processor_statuses)
                     self.workers[worker_name] = processor_table
                 elif processor_table.processor_statuses != worker.processor_statuses:
                     processor_table.processor_statuses = worker.processor_statuses
@@ -40,6 +40,7 @@ class WorkerProcessors:
 @dataclasses.dataclass
 class WorkerProcessorTable:
     worker_name: str
+    rss_max: int
     rss_free: int
     processor_statuses: List[ProcessorStatus]
 
@@ -52,29 +53,35 @@ class WorkerProcessorTable:
 
             ui.markdown(f"Worker **{formatted_worker_name}**").classes("text-xl")
 
-            with ui.grid(columns=6).classes("w-full"):
+            with ui.grid(columns=7).classes("w-full"):
                 self.draw_titles()
                 for processor in sorted(self.processor_statuses, key=lambda x: x.pid):
-                    self.draw_row(processor, self.rss_free)
+                    if processor.resource.rss > self.rss_max:
+                        self.rss_max = processor.resource.rss
+
+                    self.draw_row(processor, self.rss_free, self.rss_max)
 
     @staticmethod
     def draw_titles():
         ui.label("Processor PID")
         ui.label("CPU %")
         ui.label("RSS (in MB)")
+        ui.label("Max RSS (in MB)")
         ui.label("Initialized")
         ui.label("Has Task")
         ui.label("Suspended")
 
     @staticmethod
-    def draw_row(processor_status: ProcessorStatus, rss_free: int):
+    def draw_row(processor_status: ProcessorStatus, rss_free: int, rss_max: int):
         cpu = processor_status.resource.cpu / 10
         rss = int(processor_status.resource.rss / 1e6)
+        rss_max = int(rss_max / 1e6)
         rss_free = int(rss_free / 1e6)
 
         ui.label(str(processor_status.pid))
         ui.knob(value=cpu, track_color="grey-2", show_value=True, min=0, max=100)
         ui.knob(value=rss, track_color="grey-2", show_value=True, min=0, max=rss + rss_free)
+        ui.knob(value=rss_max, track_color="grey-2", show_value=True, min=0, max=rss + rss_free)
         ui.checkbox().bind_value_from(processor_status, "initialized")
         ui.checkbox().bind_value_from(processor_status, "has_task")
         ui.checkbox().bind_value_from(processor_status, "suspended")
