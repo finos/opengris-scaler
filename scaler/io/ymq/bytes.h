@@ -101,7 +101,7 @@ public:
     }
 
     [[nodiscard("Allocated Bytes is not used, likely causing a memory leak")]]
-    static Bytes alloc(size_t len) noexcept
+    static Bytes alloc(size_t len)
     {
         auto ptr = new uint8_t[len];  // we just assume the allocation will succeed
         return Bytes {ptr, len};

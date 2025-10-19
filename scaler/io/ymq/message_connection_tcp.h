@@ -7,6 +7,7 @@
 
 #include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/io_socket.h"
+#include "scaler/io/ymq/logging.h"
 #include "scaler/io/ymq/message_connection.h"
 #include "scaler/io/ymq/tcp_operations.h"
 
@@ -87,6 +88,7 @@ private:
     std::queue<TcpReadOperation> _receivedReadOperations;
 
     bool _disconnect;
+    Logger _logger;
 
     constexpr static bool isCompleteMessage(const TcpReadOperation& x);
     friend void IOSocket::onConnectionIdentityReceived(MessageConnectionTCP* conn) noexcept;
