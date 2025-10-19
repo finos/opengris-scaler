@@ -20,7 +20,7 @@ from scaler.ui.utility import (
     format_worker_name,
     get_bounds,
     make_tick_text,
-    make_ticks,
+    make_taskstream_ticks,
 )
 
 TASK_STREAM_BACKGROUND_COLOR = "white"
@@ -63,6 +63,7 @@ class TaskShapes:
 
 class TaskStream:
     def __init__(self):
+        self._card: Optional[ui.card] = None
         self._figure = {}
         self._plot = None
 
@@ -77,9 +78,10 @@ class TaskStream:
 
         self._worker_to_object_name: Dict[str, str] = {}
         self._worker_last_update: Dict[str, datetime.datetime] = {}
+        self._worker_to_task_ids: Dict[str, Set[bytes]] = {}
+        self._worker_capabilities: Dict[str, Set[str]] = {}
         self._task_id_to_worker: Dict[bytes, str] = {}
         self._task_id_to_printable_capabilities: Dict[bytes, str] = {}
-        self._worker_to_task_ids: Dict[str, Set[bytes]] = {}
 
         self._seen_workers = set()
         self._lost_workers_queue: SimpleQueue[Tuple[datetime.datetime, str]] = SimpleQueue()
@@ -93,8 +95,24 @@ class TaskStream:
         self._capabilities_color_map: Dict[str, str] = {"<no capabilities>": "green"}
 
         self._worker_rows: Dict[str, List[str]] = {}
+        self._row_to_worker: Dict[str, str] = {}
         self._task_row_assignment: Dict[bytes, str] = {}
         self._row_last_used: Dict[str, datetime.datetime] = {}
+
+    def __set_worker_rows(self, worker: str, rows: List[str]):
+        self._worker_rows[worker] = rows
+        for row in rows:
+            self._row_to_worker[row] = worker
+
+    def __add_worker_row(self, worker: str, row: str):
+        self._worker_rows[worker].append(row)
+        self._row_to_worker[row] = worker
+
+    def __clear_worker_rows(self, worker: str) -> List[str]:
+        rows = self._worker_rows.pop(worker, [])
+        for row in rows:
+            self._row_to_worker.pop(row, None)
+        return rows
 
     def __ensure_worker_rows(self, worker: str, needed: int = 1):
         base = format_worker_name(worker)
@@ -102,7 +120,7 @@ class TaskStream:
         if rows is None:
             # first row is [1]
             rows = [f"{base} [1]"]
-            self._worker_rows[worker] = rows
+            self.__set_worker_rows(worker, rows)
         # later rows are [2], [3], ...
         while len(rows) < needed:
             index = len(rows) + 1
@@ -114,7 +132,7 @@ class TaskStream:
             return self._task_row_assignment[task_id]
 
         if worker not in self._worker_rows:
-            self._worker_rows[worker] = [f"{format_worker_name(worker)} [1]"]
+            self.__set_worker_rows(worker, [f"{format_worker_name(worker)} [1]"])
 
         # pick first unused row label
         used_rows = set(self._task_row_assignment.values())
@@ -142,7 +160,7 @@ class TaskStream:
 
         # need to add a new row
         new_row = f"{format_worker_name(worker)} [{len(self._worker_rows[worker]) + 1}]"
-        self._worker_rows[worker].append(new_row)
+        self.__add_worker_row(worker, new_row)
         self._task_row_assignment[task_id] = new_row
 
         self.__setup_row_cache(new_row)
@@ -167,7 +185,9 @@ class TaskStream:
             self._task_row_assignment.pop(task_id)
 
     def setup_task_stream(self, settings: Settings):
-        with ui.card().classes("w-full").style("height: 85vh"):
+        self._card = ui.card()
+        self._card.classes("w-full").style("height: 800px; overflow:auto;")
+        with self._card:
             ui.html(
                 """
                 <div style="margin-bottom:8px;">
@@ -325,7 +345,7 @@ class TaskStream:
         row_history = self._completed_data_cache[row_label]
 
         # if this is the same task repeated, merge the bars
-        if len(row_history["y"]) > 1:
+        if len(row_history["y"]) > 0:
             (
                 last_time_taken,
                 last_color,
@@ -459,9 +479,6 @@ class TaskStream:
             self.__remove_task_from_worker(worker=worker, task_id=state.task_id, now=now, force_new_time=False)
         self._row_last_used[row_label] = now
 
-        self._task_id_to_worker.pop(state.task_id, None)
-        self._task_id_to_printable_capabilities.pop(state.task_id, None)
-
         if worker_tasks := self._worker_to_task_ids.get(worker):
             worker_tasks.discard(state.task_id)
 
@@ -485,6 +502,7 @@ class TaskStream:
     def __remove_task_from_worker(self, worker: str, task_id: bytes, now: datetime.datetime, force_new_time: bool):
         # Remove a single task from the worker's current task mapping.
         self.__free_row_for_task(task_id)
+        self._worker_to_task_ids.get(worker, set()).discard(task_id)
         task_map = self._current_tasks.get(worker)
         if not task_map:
             return
@@ -492,6 +510,11 @@ class TaskStream:
         if not task_map:
             # no more tasks for this worker, remove the worker entry
             self._current_tasks.pop(worker, None)
+
+    def __add_worker_capabilities(self, worker: str, capabilities: Dict[str, int]):
+        worker_capabilities = self._worker_capabilities.get(worker, set())
+        worker_capabilities.update(capabilities.keys())
+        self._worker_capabilities[worker] = worker_capabilities
 
     def __pad_inactive_time(self, worker: str, row_label: str, now: datetime.datetime):
         """If a row is re-used, it needs to be padded until current time"""
@@ -513,6 +536,8 @@ class TaskStream:
     def __handle_running_task(self, state_task: StateTask, worker: str, now: datetime.datetime):
         if state_task.task_id not in self._task_id_to_printable_capabilities:
             self._task_id_to_printable_capabilities[state_task.task_id] = display_capabilities(state_task.capabilities)
+
+        self.__add_worker_capabilities(worker, state_task.capabilities)
 
         # if another worker was previously assigned this task, remove it
         previous_worker = self._task_id_to_worker.get(state_task.task_id)
@@ -586,17 +611,28 @@ class TaskStream:
         for worker in removed_workers:
             self._current_tasks.pop(worker)
 
+    def __clear_all_task_data(self, task_id: bytes):
+        self._task_id_to_worker.pop(task_id, None)
+        self._task_id_to_printable_capabilities.pop(task_id, None)
+
+    def __clear_all_worker_data(self, worker: str):
+        self._worker_to_object_name.pop(worker, None)
+        self._worker_last_update.pop(worker, None)
+        self._worker_to_task_ids.pop(worker, None)
+        self._worker_capabilities.pop(worker, None)
+        self.__clear_worker_rows(worker)
+
     def __remove_worker_from_history(self, worker: str):
-        for row_label in self._worker_rows.pop(worker, []):
+        for row_label in self.__clear_worker_rows(worker):
             if row_label in self._completed_data_cache:
                 self._completed_data_cache.pop(row_label)
 
         worker_tasks = self._worker_to_task_ids.pop(worker, set())
         for task_id in worker_tasks:
-            self._task_id_to_worker.pop(task_id, None)
-            self._task_id_to_printable_capabilities.pop(task_id, None)
+            self.__clear_all_task_data(task_id)
             self.__free_row_for_task(task_id)
 
+        self.__clear_all_worker_data(worker)
         self._seen_workers.discard(worker)
 
     def __remove_old_tasks_from_history(self, store_duration: datetime.timedelta):
@@ -647,6 +683,7 @@ class TaskStream:
     def mark_dead_worker(self, worker_name: str):
         now = datetime.datetime.now()
         with self._data_update_lock:
+            self._current_tasks.pop(worker_name, None)
             self._dead_workers.append((now, worker_name))
 
     def update_data(self, workers_section: WorkersSection):
@@ -723,10 +760,81 @@ class TaskStream:
         self._figure["data"] = plot_data
         self.__render_plot(now)
 
+    def __build_capability_boxes(self, labels: List[str], lower_bound: int, upper_bound: int) -> Tuple[Dict, Dict]:
+        """
+        Creates a legend-style set of colored boxes indicating worker capabilities.
+        Returns two traces: one for the colored boxes, and one for white background boxes to hide bars underneath.
+        """
+        window = max(1, upper_bound - lower_bound)
+        base_x = lower_bound + window * 0.01
+        offset = window * 0.01
+
+        worker_data: Dict[str, Dict] = {}
+        for worker, capabilities in self._worker_capabilities.items():
+            worker_data[worker] = {"x_vals": [], "colors": [], "customdata": []}
+            # capability_count = len(capabilities)
+            for index, capability in enumerate(capabilities):
+                color = self.__get_capabilities_color(capability)
+                x = base_x + index * offset
+                worker_data[worker]["x_vals"].append(x)
+                worker_data[worker]["colors"].append(color)
+                worker_data[worker]["customdata"].append(capability)
+
+        x_vals = []
+        y_vals = []
+        colors = []
+        customdata = []
+
+        for row in labels:
+            worker = self._row_to_worker.get(row)
+            box_data = worker_data.get(worker)
+            if not box_data:
+                continue
+
+            x_vals.extend(box_data["x_vals"])
+            y_vals.extend([row] * len(box_data["x_vals"]))
+            colors.extend(box_data["colors"])
+            customdata.extend(box_data["customdata"])
+
+        # Background trace: slightly larger white squares to hide underlying bars where capability boxes sit
+        background_trace = {
+            "type": "scatter",
+            "mode": "markers",
+            "name": "",
+            "x": x_vals,
+            "y": y_vals,
+            "marker": {"symbol": "square", "size": 12, "color": "white", "line": {"color": "white", "width": 1}},
+            "hoverinfo": "skip",
+            "showlegend": False,
+        }
+
+        trace = {
+            "type": "scatter",
+            "mode": "markers",
+            "name": "Capabilities",
+            "x": x_vals,
+            "y": y_vals,
+            "marker": {"symbol": "square", "size": 10, "color": colors, "line": {"color": "black", "width": 1}},
+            "customdata": customdata,
+            "hovertemplate": "%{customdata}",
+            "showlegend": False,
+        }
+
+        return trace, background_trace
+
+    def __adjust_card_height(self, num_rows: int):
+        # these are estimates, may need adjustments for large row counts
+        min_height = 800
+        row_height = 20
+        header_height = 140
+        estimated_height = header_height + (num_rows * row_height)
+        target_height = max(min_height, estimated_height)
+        self._card.style(f"height: {target_height}px; overflow:auto;")
+
     def __render_plot(self, now: datetime.datetime):
         lower_bound, upper_bound = get_bounds(now, self._start_time, self._settings)
 
-        ticks = make_ticks(lower_bound, upper_bound)
+        ticks = make_taskstream_ticks(lower_bound, upper_bound)
         tick_text = make_tick_text(int(self._settings.stream_window.total_seconds()))
 
         if self._user_axis_range:
@@ -735,4 +843,20 @@ class TaskStream:
             self._figure["layout"]["xaxis"]["range"] = [lower_bound, upper_bound]
         self._figure["layout"]["xaxis"]["tickvals"] = ticks
         self._figure["layout"]["xaxis"]["ticktext"] = tick_text
+
+        seen = set()
+        category_array: List[str] = []
+        for trace in self._figure.get("data", []):
+            if trace.get("orientation") == "h" and trace.get("y"):
+                for yval in trace.get("y", []):
+                    if yval not in seen:
+                        seen.add(yval)
+                        category_array.append(yval)
+
+        capability_traces, background_trace = self.__build_capability_boxes(category_array, lower_bound, upper_bound)
+
+        self._figure["data"].append(background_trace)
+        self._figure["data"].append(capability_traces)
+
+        self.__adjust_card_height(len(category_array))
         self._plot.update()
