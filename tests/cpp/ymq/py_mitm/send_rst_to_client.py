@@ -10,7 +10,7 @@ from tests.cpp.ymq.py_mitm.types import IP, TCP, AbstractMITM, TCPConnection, Tu
 class MITM(AbstractMITM):
     def __init__(self):
         # count the number of psh-acks sent by the client
-        self.client_pshack_counter = 0
+        self._client_pshack_counter = 0
 
     def proxy(
         self,
@@ -22,10 +22,10 @@ class MITM(AbstractMITM):
     ) -> bool:
         if sender == client_conn or client_conn is None:
             if pkt[TCP].flags == "PA":
-                self.client_pshack_counter += 1
+                self._client_pshack_counter += 1
 
                 # on the second psh-ack, send a rst instead
-                if self.client_pshack_counter == 2:
+                if self._client_pshack_counter == 2:
                     rst_pkt = IP(src=client_conn.local_ip, dst=client_conn.remote_ip) / TCP(
                         sport=client_conn.local_port, dport=client_conn.remote_port, flags="R", seq=pkt[TCP].ack
                     )

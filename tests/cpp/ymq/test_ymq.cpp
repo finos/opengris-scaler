@@ -25,7 +25,9 @@
 
 #include "common.h"
 #include "scaler/io/ymq/bytes.h"
+#include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/io_context.h"
+#include "scaler/io/ymq/io_socket.h"
 #include "scaler/io/ymq/simple_interface.h"
 #include "tests/cpp/ymq/common.h"
 
@@ -360,7 +362,7 @@ TestResult pubsub_subscriber(std::string host, uint16_t port, std::string topic,
 
     auto msg = syncRecvMessage(socket);
     RETURN_FAILURE_IF_FALSE(msg.has_value());
-    RETURN_FAILURE_IF_FALSE(msg->payload.as_string() == "hello topic " + topic);
+    RETURN_FAILURE_IF_FALSE(msg->payload.as_string() == "hello");
 
     context.removeIOSocket(socket);
     return TestResult::Success;
@@ -393,8 +395,132 @@ TestResult pubsub_publisher(std::string host, uint16_t port, std::string topic, 
         Message {.address = Bytes(std::format("{}x", topic)), .payload = Bytes("no one should get this either")});
     RETURN_FAILURE_IF_FALSE(!error);
 
-    error = syncSendMessage(socket, Message {.address = Bytes(topic), .payload = Bytes("hello topic " + topic)});
+    error = syncSendMessage(socket, Message {.address = Bytes(topic), .payload = Bytes("hello")});
     RETURN_FAILURE_IF_FALSE(!error);
+
+    context.removeIOSocket(socket);
+    return TestResult::Success;
+}
+
+TestResult client_close_established_connection_client(std::string host, uint16_t port)
+{
+    IOContext context(1);
+
+    auto socket = syncCreateSocket(context, IOSocketType::Connector, "client");
+    syncConnectSocket(socket, format_address(host, port));
+
+    auto error = syncSendMessage(socket, Message {.address = Bytes("server"), .payload = Bytes("0")});
+    RETURN_FAILURE_IF_FALSE(!error);
+    auto result = syncRecvMessage(socket);
+    RETURN_FAILURE_IF_FALSE(result.has_value());
+    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "1");
+
+    socket->closeConnection("server");
+    socket->requestStop();
+
+    context.removeIOSocket(socket);
+    return TestResult::Success;
+}
+
+TestResult client_close_established_connection_server(std::string host, uint16_t port)
+{
+    IOContext context(1);
+
+    auto socket = syncCreateSocket(context, IOSocketType::Connector, "server");
+    syncBindSocket(socket, format_address(host, port));
+
+    auto error = syncSendMessage(socket, Message {.address = Bytes("client"), .payload = Bytes("1")});
+    RETURN_FAILURE_IF_FALSE(!error);
+    auto result = syncRecvMessage(socket);
+    RETURN_FAILURE_IF_FALSE(result.has_value());
+    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "0");
+
+    result = syncRecvMessage(socket);
+    RETURN_FAILURE_IF_FALSE(!result.has_value(), "expected recv message to fail");
+    RETURN_FAILURE_IF_FALSE(
+        result.error()._errorCode == scaler::ymq::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd)
+
+    context.removeIOSocket(socket);
+    return TestResult::Success;
+}
+
+TestResult close_nonexistent_connection()
+{
+    IOContext context(1);
+
+    auto socket = syncCreateSocket(context, IOSocketType::Connector, "client");
+
+    // note: we're not connected to anything; this connection does not exist
+    // this should be a no-op..
+    socket->closeConnection("server");
+
+    context.removeIOSocket(socket);
+    return TestResult::Success;
+}
+
+TestResult test_request_stop()
+{
+    IOContext context(1);
+
+    auto socket = syncCreateSocket(context, IOSocketType::Connector, "client");
+
+    auto future = futureRecvMessage(socket);
+    socket->requestStop();
+
+    auto result = future.wait_for(100ms);
+    RETURN_FAILURE_IF_FALSE(result == std::future_status::ready, "future should have completed");
+
+    // the future created beore requestion stop should have been cancelled with an error
+    auto result2 = future.get();
+    RETURN_FAILURE_IF_FALSE(!result2.has_value());
+    RETURN_FAILURE_IF_FALSE(result2.error()._errorCode == scaler::ymq::Error::ErrorCode::IOSocketStopRequested);
+
+    // and the same for any attempts to use the socket after it's been closed
+    auto result3 = syncRecvMessage(socket);
+    RETURN_FAILURE_IF_FALSE(!result3.has_value());
+    RETURN_FAILURE_IF_FALSE(result3.error()._errorCode == scaler::ymq::Error::ErrorCode::IOSocketStopRequested);
+
+    context.removeIOSocket(socket);
+    return TestResult::Success;
+}
+
+TestResult client_socket_stop_before_close_connection(std::string host, uint16_t port)
+{
+    IOContext context(1);
+
+    auto socket = syncCreateSocket(context, IOSocketType::Connector, "client");
+    syncConnectSocket(socket, format_address(host, port));
+
+    auto error = syncSendMessage(socket, Message {.address = Bytes("server"), .payload = Bytes("0")});
+    RETURN_FAILURE_IF_FALSE(!error);
+    auto result = syncRecvMessage(socket);
+    RETURN_FAILURE_IF_FALSE(result.has_value());
+    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "1");
+
+    socket->requestStop();
+    socket->closeConnection("server");
+
+    context.removeIOSocket(socket);
+    return TestResult::Success;
+}
+
+TestResult server_socket_stop_before_close_connection(std::string host, uint16_t port)
+{
+    IOContext context(1);
+
+    auto socket = syncCreateSocket(context, IOSocketType::Connector, "server");
+    syncBindSocket(socket, format_address(host, port));
+
+    auto error = syncSendMessage(socket, Message {.address = Bytes("client"), .payload = Bytes("1")});
+    RETURN_FAILURE_IF_FALSE(!error);
+    auto result = syncRecvMessage(socket);
+    RETURN_FAILURE_IF_FALSE(result.has_value());
+    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "0");
+
+    result = syncRecvMessage(socket);
+    RETURN_FAILURE_IF_FALSE(!result.has_value(), "expected recv message to fail");
+    RETURN_FAILURE_IF_FALSE(
+        result.error()._errorCode == scaler::ymq::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd)
 
     context.removeIOSocket(socket);
     return TestResult::Success;
@@ -412,8 +538,8 @@ TestResult pubsub_publisher(std::string host, uint16_t port, std::string topic, 
 // at the moment, if this delay is missing, YMQ will not shut down correctly
 TEST(CcYmqTestSuite, TestBasicYMQClientYMQServer)
 {
-    auto host = "localhost";
-    auto port = 2889;
+    const auto host = "localhost";
+    const auto port = 2889;
 
     // this is the test harness, it accepts a timeout, a list of functions to run,
     // and an optional third argument used to coordinate the execution of python (for mitm)
@@ -427,8 +553,8 @@ TEST(CcYmqTestSuite, TestBasicYMQClientYMQServer)
 // same as above, except YMQs protocol is directly implemented on top of a TCP socket
 TEST(CcYmqTestSuite, TestBasicRawClientYMQServer)
 {
-    auto host = "localhost";
-    auto port = 2890;
+    const auto host = "localhost";
+    const auto port = 2890;
 
     // this is the test harness, it accepts a timeout, a list of functions to run,
     // and an optional third argument used to coordinate the execution of python (for mitm)
@@ -441,8 +567,8 @@ TEST(CcYmqTestSuite, TestBasicRawClientYMQServer)
 
 TEST(CcYmqTestSuite, TestBasicRawClientRawServer)
 {
-    auto host = "localhost";
-    auto port = 2891;
+    const auto host = "localhost";
+    const auto port = 2891;
 
     // this is the test harness, it accepts a timeout, a list of functions to run,
     // and an optional third argument used to coordinate the execution of python (for mitm)
@@ -456,8 +582,8 @@ TEST(CcYmqTestSuite, TestBasicRawClientRawServer)
 // this is the same as above, except that it has no delay before calling close() on the socket
 TEST(CcYmqTestSuite, TestBasicRawClientRawServerNoDelay)
 {
-    auto host = "localhost";
-    auto port = 2892;
+    const auto host = "localhost";
+    const auto port = 2892;
 
     auto result =
         test(10, {[=] { return basic_client_raw(host, port); }, [=] { return basic_server_ymq(host, port); }});
@@ -466,8 +592,8 @@ TEST(CcYmqTestSuite, TestBasicRawClientRawServerNoDelay)
 
 TEST(CcYmqTestSuite, TestBasicDelayYMQClientRawServer)
 {
-    auto host = "localhost";
-    auto port = 2893;
+    const auto host = "localhost";
+    const auto port = 2893;
 
     // this is the test harness, it accepts a timeout, a list of functions to run,
     // and an optional third argument used to coordinate the execution of python (for mitm)
@@ -482,8 +608,8 @@ TEST(CcYmqTestSuite, TestBasicDelayYMQClientRawServer)
 // YMQ should be able to handle this without issue
 TEST(CcYmqTestSuite, TestClientSendBigMessageToServer)
 {
-    auto host = "localhost";
-    auto port = 2894;
+    const auto host = "localhost";
+    const auto port = 2894;
 
     auto result = test(
         10,
@@ -560,8 +686,8 @@ TEST(CcYmqTestSuite, TestMitmRandomlyDropPackets)
 // but we simulate a slow network connection by sending the message in segmented chunks
 TEST(CcYmqTestSuite, TestSlowNetwork)
 {
-    auto host = "localhost";
-    auto port = 2895;
+    const auto host = "localhost";
+    const auto port = 2895;
 
     auto result = test(
         20, {[=] { return client_simulated_slow_network(host, port); }, [=] { return basic_server_ymq(host, port); }});
@@ -575,8 +701,8 @@ TEST(CcYmqTestSuite, TestSlowNetwork)
 // YMQ should be able to recover from a poorly-behaved client like this
 TEST(CcYmqTestSuite, TestClientSendIncompleteIdentity)
 {
-    auto host = "localhost";
-    auto port = 2896;
+    const auto host = "localhost";
+    const auto port = 2896;
 
     auto result = test(
         20,
@@ -592,8 +718,8 @@ TEST(CcYmqTestSuite, TestClientSendIncompleteIdentity)
 // both for resilence against attacks and to guard against errors
 TEST(CcYmqTestSuite, TestClientSendHugeHeader)
 {
-    auto host = "localhost";
-    auto port = 2897;
+    const auto host = "localhost";
+    const auto port = 2897;
 
     auto result = test(
         20,
@@ -609,8 +735,8 @@ TEST(CcYmqTestSuite, TestClientSendHugeHeader)
 // it's important that the behaviour of YMQ is known for both of these cases
 TEST(CcYmqTestSuite, TestClientSendEmptyMessage)
 {
-    auto host = "localhost";
-    auto port = 2898;
+    const auto host = "localhost";
+    const auto port = 2898;
 
     auto result = test(
         20,
@@ -627,9 +753,9 @@ TEST(CcYmqTestSuite, TestClientSendEmptyMessage)
 // both subscribers should receive this message
 TEST(CcYmqTestSuite, TestPubSub)
 {
-    auto host  = "localhost";
-    auto port  = 2900;
-    auto topic = "mytopic";
+    const auto host = "localhost";
+    const auto port = 2900;
+    auto topic      = "mytopic";
 
     // allocate a semaphore to synchronize the publisher and subscriber processes
     sem_t* sem =
@@ -650,5 +776,74 @@ TEST(CcYmqTestSuite, TestPubSub)
     sem_destroy(sem);
     munmap(sem, sizeof(sem_t));
 
+    EXPECT_EQ(result, TestResult::Success);
+}
+
+// this sets the publisher with an empty topic and the subscribers with two other topics
+// both subscribers should get all messages
+TEST(CcYmqTestSuite, TestPubSubEmptyTopic)
+{
+    const auto host = "localhost";
+    const auto port = 2906;
+
+    // allocate a semaphore to synchronize the publisher and subscriber processes
+    sem_t* sem =
+        static_cast<sem_t*>(mmap(nullptr, sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0));
+
+    if (sem == MAP_FAILED)
+        throw std::system_error(errno, std::generic_category(), "failed to map shared memory for semaphore");
+
+    if (sem_init(sem, 1, 0) < 0)
+        throw std::system_error(errno, std::generic_category(), "failed to initialize semaphore");
+
+    auto result = test(
+        20,
+        {[=] { return pubsub_publisher(host, port, "", sem, 2); },
+         [=] { return pubsub_subscriber(host, port, "abc", 0, sem); },
+         [=] { return pubsub_subscriber(host, port, "def", 1, sem); }});
+
+    sem_destroy(sem);
+    munmap(sem, sizeof(sem_t));
+
+    EXPECT_EQ(result, TestResult::Success);
+}
+
+// in this test case, the client establishes a connection with the server and then explicitly closes it
+TEST(CcYmqTestSuite, TestClientCloseEstablishedConnection)
+{
+    const auto host = "localhost";
+    const auto port = 2902;
+
+    auto result = test(
+        20,
+        {[=] { return client_close_established_connection_client(host, port); },
+         [=] { return client_close_established_connection_server(host, port); }});
+    EXPECT_EQ(result, TestResult::Success);
+}
+
+// this test case is similar to the one above, except that it requests the socket stop before closing the connection
+TEST(CcYmqTestSuite, TestClientSocketStopBeforeCloseConnection)
+{
+    const auto host = "localhost";
+    const auto port = 2904;
+
+    auto result = test(
+        20,
+        {[=] { return client_socket_stop_before_close_connection(host, port); },
+         [=] { return server_socket_stop_before_close_connection(host, port); }});
+    EXPECT_EQ(result, TestResult::Success);
+}
+
+// in this test case, the we try to close a connection that does not exist
+TEST(CcYmqTestSuite, TestClientCloseNonexistentConnection)
+{
+    auto result = close_nonexistent_connection();
+    EXPECT_EQ(result, TestResult::Success);
+}
+
+// this test case verifies that requesting a socket stop causes pending and subsequent operations to be cancelled
+TEST(CcYmqTestSuite, TestRequestSocketStop)
+{
+    auto result = test_request_stop();
     EXPECT_EQ(result, TestResult::Success);
 }
