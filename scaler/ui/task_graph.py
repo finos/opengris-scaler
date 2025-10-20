@@ -1,8 +1,8 @@
 import datetime
-from collections import deque
-from enum import Enum
 import hashlib
 import logging
+from collections import deque
+from enum import Enum
 from queue import SimpleQueue
 from threading import Lock
 from typing import Deque, Dict, List, Optional, Set, Tuple
@@ -19,8 +19,8 @@ from scaler.ui.utility import (
     format_timediff,
     format_worker_name,
     get_bounds,
-    make_tick_text,
     make_taskstream_ticks,
+    make_tick_text,
 )
 
 TASK_STREAM_BACKGROUND_COLOR = "white"

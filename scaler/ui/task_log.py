@@ -11,7 +11,6 @@ from scaler.ui.utility import COMPLETED_TASK_STATUSES, display_capabilities
 from scaler.utility.formatter import format_bytes
 from scaler.utility.metadata.profile_result import ProfileResult
 
-
 TASK_ID_HTML_TEMPLATE = (
     "<span "
     "style='display:inline-block;max-width:12rem;overflow:hidden;text-overflow:ellipsis;"
