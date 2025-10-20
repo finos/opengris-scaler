@@ -23,7 +23,7 @@ from scaler.config.defaults import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
-from scaler.scheduler.controllers.scaling_controller import ScalingControllerStrategy
+from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy

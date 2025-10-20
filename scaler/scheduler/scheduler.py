@@ -33,12 +33,10 @@ from scaler.scheduler.controllers.config_controller import VanillaConfigControll
 from scaler.scheduler.controllers.graph_controller import VanillaGraphTaskController
 from scaler.scheduler.controllers.information_controller import VanillaInformationController
 from scaler.scheduler.controllers.object_controller import VanillaObjectController
-from scaler.scheduler.controllers.scaling_controller import (
-    NullScalingController,
-    VanillaScalingController,
-    ScalingControllerStrategy,
-    FixedElasticScalingController,
-)
+from scaler.scheduler.controllers.scaling_policies.fixed_elastic import FixedElasticScalingController
+from scaler.scheduler.controllers.scaling_policies.vanilla import VanillaScalingController
+from scaler.scheduler.controllers.scaling_policies.null import NullScalingController
+from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
 from scaler.utility.event_loop import create_async_loop_routine

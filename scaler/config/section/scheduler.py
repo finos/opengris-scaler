@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 from scaler.config import defaults
-from scaler.scheduler.controllers.scaling_controller import ScalingControllerStrategy
+from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy

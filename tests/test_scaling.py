@@ -27,7 +27,7 @@ from scaler.config.defaults import (
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
-from scaler.scheduler.controllers.scaling_controller import ScalingControllerStrategy
+from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.worker_adapter.native import NativeWorkerAdapter
