@@ -43,9 +43,9 @@ allocate_policy = "even"
 
     def test_command_line_overrides_toml(self):
         """Test that argparse args correctly override TOML values."""
-        args = Namespace(scheduler_address="tcp://localhost:1111", io_threads=5)
+        args = Namespace(scheduler_address="tcp://127.0.0.1:1111", io_threads=5)
         config = load_config(SchedulerConfig, self.config_path, args)
-        self.assertEqual(str(config.scheduler_address), "tcp://localhost:1111")
+        self.assertEqual(str(config.scheduler_address), "tcp://127.0.0.1:1111")
         self.assertEqual(config.io_threads, 5)
         self.assertEqual(config.allocate_policy, AllocatePolicy.even)
 
@@ -66,7 +66,8 @@ allocate_policy = "even"
     def test_optional_field_handling(self):
         """Test that an Optional field is None by default and can be set."""
         config_no_storage = load_config(SchedulerConfig, self.config_path, Namespace())
-        self.assertIsNone(config_no_storage.object_storage_address)
+        self.assertEqual(config_no_storage.object_storage_address.host, "127.0.0.1")
+        self.assertEqual(config_no_storage.object_storage_address.port, 10000)
 
         optional_toml_path = os.path.join(self.temp_dir.name, "optional.toml")
         with open(optional_toml_path, "w") as f:

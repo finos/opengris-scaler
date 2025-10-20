@@ -31,7 +31,19 @@ class SchedulerConfig:
     logging_config_file: Optional[str] = None
     logging_level: str = defaults.DEFAULT_LOGGING_LEVEL
 
+    # Internal flag to control the creation of a local object storage server
+    _create_local_object_storage: bool = False
+
     def __post_init__(self):
+        if self.object_storage_address is None:
+            self._create_local_object_storage = True
+            self.object_storage_address = ObjectStorageConfig(
+                host=self.scheduler_address.host, port=self.scheduler_address.port + 1
+            )
+        if self.monitor_address is None:
+            self.monitor_address = ZMQConfig(
+                type=self.scheduler_address.type, host=self.scheduler_address.host, port=self.scheduler_address.port + 2
+            )
         if self.io_threads <= 0:
             raise ValueError("io_threads must be a positive integer.")
         if self.max_number_of_tasks_waiting < -1:

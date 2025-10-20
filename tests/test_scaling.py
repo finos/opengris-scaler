@@ -9,24 +9,10 @@ from aiohttp import web
 from scaler import Client
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
-from scaler.config.defaults import (
-    DEFAULT_CLIENT_TIMEOUT_SECONDS,
-    DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
-    DEFAULT_HARD_PROCESSOR_SUSPEND,
-    DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
-    DEFAULT_IO_THREADS,
-    DEFAULT_LOAD_BALANCE_SECONDS,
-    DEFAULT_LOAD_BALANCE_TRIGGER_TIMES,
-    DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
-    DEFAULT_OBJECT_RETENTION_SECONDS,
-    DEFAULT_TASK_TIMEOUT_SECONDS,
-    DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
-    DEFAULT_WORKER_DEATH_TIMEOUT,
-    DEFAULT_WORKER_TIMEOUT_SECONDS,
-)
+from scaler.config.section.native_worker_adapter import NativeWorkerAdapterConfig
+from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
-from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
@@ -36,24 +22,10 @@ from tests.utility import logging_test_name
 
 def _run_native_worker_adapter(address: str, webhook_port: int) -> None:
     """Construct a NativeWorkerAdapter and run its aiohttp app. Runs in a separate process."""
-    adapter = NativeWorkerAdapter(
-        address=ZMQConfig.from_string(address),
-        object_storage_address=None,
-        capabilities={},
-        io_threads=DEFAULT_IO_THREADS,
-        task_queue_size=10,
-        max_workers=4,
-        heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
-        task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
-        death_timeout_seconds=DEFAULT_WORKER_DEATH_TIMEOUT,
-        garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
-        trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
-        hard_processor_suspend=DEFAULT_HARD_PROCESSOR_SUSPEND,
-        event_loop="builtin",
-        logging_paths=("/dev/stdout",),
-        logging_config_file=None,
-        logging_level="INFO",
+    native_config = NativeWorkerAdapterConfig(
+        scheduler_address=ZMQConfig.from_string(address), worker_task_queue_size=10, max_workers=4
     )
+    adapter = NativeWorkerAdapter(config=native_config)
 
     app = adapter.create_app()
     web.run_app(app, host="127.0.0.1", port=webhook_port)
@@ -78,26 +50,15 @@ class TestScaling(unittest.TestCase):
         object_storage.start()
         object_storage.wait_until_ready()
 
-        scheduler = SchedulerProcess(
-            address=ZMQConfig.from_string(self.scheduler_address),
+        scheduler_config = SchedulerConfig(
+            scheduler_address=ZMQConfig.from_string(self.scheduler_address),
             object_storage_address=self.object_storage_config,
             monitor_address=None,
             scaling_controller_strategy=ScalingControllerStrategy.VANILLA,
             adapter_webhook_urls=(f"http://127.0.0.1:{self.webhook_port}",),
-            io_threads=DEFAULT_IO_THREADS,
-            max_number_of_tasks_waiting=DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
-            client_timeout_seconds=DEFAULT_CLIENT_TIMEOUT_SECONDS,
-            worker_timeout_seconds=DEFAULT_WORKER_TIMEOUT_SECONDS,
-            object_retention_seconds=DEFAULT_OBJECT_RETENTION_SECONDS,
-            load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
-            load_balance_trigger_times=DEFAULT_LOAD_BALANCE_TRIGGER_TIMES,
             protected=False,
-            allocate_policy=AllocatePolicy.even,
-            event_loop="builtin",
-            logging_paths=("/dev/stdout",),
-            logging_config_file=None,
-            logging_level="INFO",
         )
+        scheduler = SchedulerProcess(config=scheduler_config)
         scheduler.start()
 
         webhook_server = Process(target=_run_native_worker_adapter, args=(self.scheduler_address, self.webhook_port))

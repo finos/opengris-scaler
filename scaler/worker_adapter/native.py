@@ -1,54 +1,20 @@
 import os
 import signal
 import uuid
-from typing import Dict, Optional, Tuple
+from typing import Dict
 
 from aiohttp import web
 from aiohttp.web_request import Request
 
-from scaler.config.types.object_storage_server import ObjectStorageConfig
-from scaler.config.types.zmq import ZMQConfig
+from scaler.config.section.native_worker_adapter import NativeWorkerAdapterConfig
 from scaler.utility.identifiers import WorkerID
 from scaler.worker.worker import Worker
 from scaler.worker_adapter.common import CapacityExceededError, WorkerGroupID, WorkerGroupNotFoundError
 
 
 class NativeWorkerAdapter:
-    def __init__(
-        self,
-        address: ZMQConfig,
-        object_storage_address: Optional[ObjectStorageConfig],
-        capabilities: Dict[str, int],
-        io_threads: int,
-        task_queue_size: int,
-        max_workers: int,
-        heartbeat_interval_seconds: int,
-        task_timeout_seconds: int,
-        death_timeout_seconds: int,
-        garbage_collect_interval_seconds: int,
-        trim_memory_threshold_bytes: int,
-        hard_processor_suspend: bool,
-        event_loop: str,
-        logging_paths: Tuple[str, ...],
-        logging_level: str,
-        logging_config_file: Optional[str],
-    ):
-        self._address = address
-        self._object_storage_address = object_storage_address
-        self._capabilities = capabilities
-        self._io_threads = io_threads
-        self._task_queue_size = task_queue_size
-        self._max_workers = max_workers
-        self._heartbeat_interval_seconds = heartbeat_interval_seconds
-        self._task_timeout_seconds = task_timeout_seconds
-        self._death_timeout_seconds = death_timeout_seconds
-        self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
-        self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
-        self._hard_processor_suspend = hard_processor_suspend
-        self._event_loop = event_loop
-        self._logging_paths = logging_paths
-        self._logging_level = logging_level
-        self._logging_config_file = logging_config_file
+    def __init__(self, config: NativeWorkerAdapterConfig):
+        self._native_worker_adapter_config = config
 
         """
         Although a worker group can contain multiple workers, in this native adapter implementation,
@@ -58,26 +24,28 @@ class NativeWorkerAdapter:
 
     async def start_worker_group(self) -> WorkerGroupID:
         num_of_workers = sum(len(workers) for workers in self._worker_groups.values())
-        if num_of_workers >= self._max_workers != -1:
-            raise CapacityExceededError(f"Maximum number of workers ({self._max_workers}) reached.")
+        if num_of_workers >= self._native_worker_adapter_config.max_workers != -1:
+            raise CapacityExceededError(
+                f"Maximum number of workers ({self._native_worker_adapter_config.max_workers}) reached."
+            )
 
         worker = Worker(
             name=f"NAT|{uuid.uuid4().hex}",
-            address=self._address,
-            object_storage_address=self._object_storage_address,
+            address=self._native_worker_adapter_config.scheduler_address,
+            object_storage_address=self._native_worker_adapter_config.object_storage_address,
             preload=None,
-            capabilities=self._capabilities,
-            io_threads=self._io_threads,
-            task_queue_size=self._task_queue_size,
-            heartbeat_interval_seconds=self._heartbeat_interval_seconds,
-            task_timeout_seconds=self._task_timeout_seconds,
-            death_timeout_seconds=self._death_timeout_seconds,
-            garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
-            trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
-            hard_processor_suspend=self._hard_processor_suspend,
-            event_loop=self._event_loop,
-            logging_paths=self._logging_paths,
-            logging_level=self._logging_level,
+            capabilities=self._native_worker_adapter_config.per_worker_capabilities.capabilities,
+            io_threads=self._native_worker_adapter_config.io_threads,
+            task_queue_size=self._native_worker_adapter_config.worker_task_queue_size,
+            heartbeat_interval_seconds=self._native_worker_adapter_config.heartbeat_interval_seconds,
+            task_timeout_seconds=self._native_worker_adapter_config.task_timeout_seconds,
+            death_timeout_seconds=self._native_worker_adapter_config.death_timeout_seconds,
+            garbage_collect_interval_seconds=self._native_worker_adapter_config.garbage_collect_interval_seconds,
+            trim_memory_threshold_bytes=self._native_worker_adapter_config.trim_memory_threshold_bytes,
+            hard_processor_suspend=self._native_worker_adapter_config.hard_processor_suspend,
+            event_loop=self._native_worker_adapter_config.event_loop,
+            logging_paths=self._native_worker_adapter_config.logging_paths,
+            logging_level=self._native_worker_adapter_config.logging_level,
         )
 
         worker.start()
@@ -106,9 +74,9 @@ class NativeWorkerAdapter:
         if action == "get_worker_adapter_info":
             return web.json_response(
                 {
-                    "max_worker_groups": self._max_workers,
+                    "max_worker_groups": self._native_worker_adapter_config.max_workers,
                     "workers_per_group": 1,
-                    "base_capabilities": self._capabilities,
+                    "base_capabilities": self._native_worker_adapter_config.per_worker_capabilities.capabilities,
                 },
                 status=web.HTTPOk.status_code,
             )

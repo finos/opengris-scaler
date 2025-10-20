@@ -1,5 +1,4 @@
 import argparse
-import socket
 
 from scaler.cluster.cluster import Cluster
 from scaler.config.loader import load_config
@@ -100,33 +99,6 @@ def main():
 
     register_event_loop(cluster_config.event_loop)
 
-    worker_names = cluster_config.worker_names.names
-    if not worker_names:
-        worker_names = [f"{socket.gethostname().split('.')[0]}" for _ in range(cluster_config.num_of_workers)]
+    cluster = Cluster(config=cluster_config)
 
-    if len(worker_names) != cluster_config.num_of_workers:
-        raise ValueError(
-            f"Number of worker names ({len(worker_names)}) must match the number of workers "
-            f"({cluster_config.num_of_workers})."
-        )
-
-    cluster = Cluster(
-        address=cluster_config.scheduler_address,
-        object_storage_address=cluster_config.object_storage_address,
-        preload=cluster_config.preload,
-        worker_names=worker_names,
-        per_worker_capabilities=cluster_config.per_worker_capabilities.capabilities,
-        per_worker_task_queue_size=cluster_config.per_worker_task_queue_size,
-        heartbeat_interval_seconds=cluster_config.heartbeat_interval_seconds,
-        task_timeout_seconds=cluster_config.task_timeout_seconds,
-        garbage_collect_interval_seconds=cluster_config.garbage_collect_interval_seconds,
-        trim_memory_threshold_bytes=cluster_config.trim_memory_threshold_bytes,
-        death_timeout_seconds=cluster_config.death_timeout_seconds,
-        hard_processor_suspend=cluster_config.hard_processor_suspend,
-        event_loop=cluster_config.event_loop,
-        worker_io_threads=cluster_config.worker_io_threads,
-        logging_paths=cluster_config.logging_paths,
-        logging_level=cluster_config.logging_level,
-        logging_config_file=cluster_config.logging_config_file,
-    )
     cluster.run()

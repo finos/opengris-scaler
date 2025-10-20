@@ -70,21 +70,7 @@ def main():
 
     setup_logger(symphony_config.logging_paths, symphony_config.logging_config_file, symphony_config.logging_level)
 
-    symphony_worker_adapter = SymphonyWorkerAdapter(
-        address=symphony_config.scheduler_address,
-        object_storage_address=symphony_config.object_storage_address,
-        capabilities=symphony_config.worker_capabilities.capabilities,
-        task_queue_size=symphony_config.worker_task_queue_size,
-        service_name=symphony_config.service_name,
-        base_concurrency=symphony_config.base_concurrency,
-        heartbeat_interval_seconds=symphony_config.heartbeat_interval,
-        death_timeout_seconds=symphony_config.death_timeout_seconds,
-        event_loop=symphony_config.event_loop,
-        io_threads=symphony_config.io_threads,
-        logging_paths=symphony_config.logging_paths,
-        logging_level=symphony_config.logging_level,
-        logging_config_file=symphony_config.logging_config_file,
-    )
+    symphony_worker_adapter = SymphonyWorkerAdapter(config=symphony_config)
 
     app = symphony_worker_adapter.create_app()
     web.run_app(app, host=symphony_config.adapter_web_host, port=symphony_config.adapter_web_port)

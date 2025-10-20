@@ -2,62 +2,26 @@ import logging
 import multiprocessing
 import os
 import signal
-from typing import Dict, List, Optional, Tuple
+from typing import List
 
-from scaler.config.types.object_storage_server import ObjectStorageConfig
-from scaler.config.types.zmq import ZMQConfig
+from scaler.config.section.cluster import ClusterConfig
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.worker import Worker
 
 
 class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
 
-    def __init__(
-        self,
-        address: ZMQConfig,
-        object_storage_address: Optional[ObjectStorageConfig],
-        preload: Optional[str],
-        worker_io_threads: int,
-        worker_names: List[str],
-        per_worker_capabilities: Dict[str, int],
-        per_worker_task_queue_size: int,
-        heartbeat_interval_seconds: int,
-        task_timeout_seconds: int,
-        death_timeout_seconds: int,
-        garbage_collect_interval_seconds: int,
-        trim_memory_threshold_bytes: int,
-        hard_processor_suspend: bool,
-        event_loop: str,
-        logging_paths: Tuple[str, ...],
-        logging_config_file: Optional[str],
-        logging_level: str,
-    ):
+    def __init__(self, config: ClusterConfig):
         multiprocessing.Process.__init__(self, name="WorkerMaster")
-
-        self._address = address
-        self._object_storage_address = object_storage_address
-        self._preload = preload
-        self._worker_io_threads = worker_io_threads
-        self._worker_names = worker_names
-        self._per_worker_capabilities = per_worker_capabilities
-
-        self._per_worker_task_queue_size = per_worker_task_queue_size
-        self._heartbeat_interval_seconds = heartbeat_interval_seconds
-        self._task_timeout_seconds = task_timeout_seconds
-        self._death_timeout_seconds = death_timeout_seconds
-        self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
-        self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
-        self._hard_processor_suspend = hard_processor_suspend
-        self._event_loop = event_loop
-
-        self._logging_paths = logging_paths
-        self._logging_config_file = logging_config_file
-        self._logging_level = logging_level
-
+        self._cluster_config = config
         self._workers: List[Worker] = []
 
     def run(self):
-        setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
+        setup_logger(
+            self._cluster_config.logging_paths,
+            self._cluster_config.logging_config_file,
+            self._cluster_config.logging_level,
+        )
         self.__register_signal()
         self.__start_workers_and_run_forever()
 
@@ -74,30 +38,31 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
 
     def __start_workers_and_run_forever(self):
         logging.info(
-            f"{self.__get_prefix()} starting {len(self._worker_names)} workers, heartbeat_interval_seconds="
-            f"{self._heartbeat_interval_seconds}, task_timeout_seconds={self._task_timeout_seconds}"
+            f"{self.__get_prefix()} starting {self._cluster_config.num_of_workers} workers, heartbeat_interval_seconds="
+            f"{self._cluster_config.heartbeat_interval_seconds},\
+                task_timeout_seconds={self._cluster_config.task_timeout_seconds}"
         )
 
         self._workers = [
             Worker(
-                event_loop=self._event_loop,
+                event_loop=self._cluster_config.event_loop,
                 name=name,
-                address=self._address,
-                object_storage_address=self._object_storage_address,
-                capabilities=self._per_worker_capabilities,
-                preload=self._preload,
-                io_threads=self._worker_io_threads,
-                task_queue_size=self._per_worker_task_queue_size,
-                heartbeat_interval_seconds=self._heartbeat_interval_seconds,
-                garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
-                trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
-                task_timeout_seconds=self._task_timeout_seconds,
-                death_timeout_seconds=self._death_timeout_seconds,
-                hard_processor_suspend=self._hard_processor_suspend,
-                logging_paths=self._logging_paths,
-                logging_level=self._logging_level,
+                address=self._cluster_config.scheduler_address,
+                object_storage_address=self._cluster_config.object_storage_address,
+                capabilities=self._cluster_config.per_worker_capabilities.capabilities,
+                preload=self._cluster_config.preload,
+                io_threads=self._cluster_config.worker_io_threads,
+                task_queue_size=self._cluster_config.per_worker_task_queue_size,
+                heartbeat_interval_seconds=self._cluster_config.heartbeat_interval_seconds,
+                garbage_collect_interval_seconds=self._cluster_config.garbage_collect_interval_seconds,
+                trim_memory_threshold_bytes=self._cluster_config.trim_memory_threshold_bytes,
+                task_timeout_seconds=self._cluster_config.task_timeout_seconds,
+                death_timeout_seconds=self._cluster_config.death_timeout_seconds,
+                hard_processor_suspend=self._cluster_config.hard_processor_suspend,
+                logging_paths=self._cluster_config.logging_paths,
+                logging_level=self._cluster_config.logging_level,
             )
-            for name in self._worker_names
+            for name in self._cluster_config.worker_names.names
         ]
 
         for worker in self._workers:

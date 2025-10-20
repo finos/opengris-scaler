@@ -110,24 +110,7 @@ def main():
         native_adapter_config.logging_level,
     )
 
-    native_worker_adapter = NativeWorkerAdapter(
-        address=native_adapter_config.scheduler_address,
-        object_storage_address=native_adapter_config.object_storage_address,
-        capabilities=native_adapter_config.per_worker_capabilities.capabilities,
-        io_threads=native_adapter_config.io_threads,
-        task_queue_size=native_adapter_config.worker_task_queue_size,
-        max_workers=native_adapter_config.max_workers,
-        heartbeat_interval_seconds=native_adapter_config.heartbeat_interval_seconds,
-        task_timeout_seconds=native_adapter_config.task_timeout_seconds,
-        death_timeout_seconds=native_adapter_config.death_timeout_seconds,
-        garbage_collect_interval_seconds=native_adapter_config.garbage_collect_interval_seconds,
-        trim_memory_threshold_bytes=native_adapter_config.trim_memory_threshold_bytes,
-        hard_processor_suspend=native_adapter_config.hard_processor_suspend,
-        event_loop=native_adapter_config.event_loop,
-        logging_paths=native_adapter_config.logging_paths,
-        logging_level=native_adapter_config.logging_level,
-        logging_config_file=native_adapter_config.logging_config_file,
-    )
+    native_worker_adapter = NativeWorkerAdapter(config=native_adapter_config)
 
     app = native_worker_adapter.create_app()
     web.run_app(app, host=native_adapter_config.adapter_web_host, port=native_adapter_config.adapter_web_port)
