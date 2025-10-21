@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <string>
@@ -566,6 +567,122 @@ TEST_F(ObjectStorageServerTest, TestMalformedHeader)
 
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::SET_O_K);
     }
+}
+
+TEST_F(ObjectStorageServerTest, TestInfoGetTotalRequest)
+{
+    uint64_t requestID = 999;
+    ObjectResponseHeader responseHeader;
+    std::optional<ObjectPayload> responsePayload;
+    auto client = getClient();
+
+    const uint64_t numOfFields   = 3;
+    const uint64_t payloadLength = numOfFields * sizeof(uint64_t);
+
+    auto deserialize = [](const Bytes& bytes) -> std::tuple<uint64_t, uint64_t, uint64_t> {
+        uint64_t numIDs {};
+        uint64_t numObjs {};
+        uint64_t numBytes {};
+        std::memcpy(&numIDs, bytes.data() + 0 * sizeof(uint64_t), sizeof(uint64_t));
+        std::memcpy(&numObjs, bytes.data() + 1 * sizeof(uint64_t), sizeof(uint64_t));
+        std::memcpy(&numBytes, bytes.data() + 2 * sizeof(uint64_t), sizeof(uint64_t));
+        return {numIDs, numObjs, numBytes};
+    };
+
+    auto testInfoGetTotalRequest = [&](uint64_t expectedNumIDs, uint64_t expectedNumObjs, uint64_t expectedNumBytes) {
+        ObjectRequestHeader requestHeader {
+            .objectID      = {0, 1, 2, 3},
+            .payloadLength = 0,
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::INFO_GET_TOTAL,
+        };
+
+        client->writeRequest(requestHeader, std::nullopt);
+        client->readResponse(responseHeader, responsePayload);
+
+        EXPECT_EQ(responseHeader.objectID, requestHeader.objectID);
+        EXPECT_EQ(responseHeader.payloadLength, payloadLength);
+        EXPECT_EQ(responseHeader.responseType, ObjectResponseType::INFO_GET_TOTAL_O_K);
+        EXPECT_TRUE(responsePayload.has_value());
+        EXPECT_EQ(responsePayload.value().size(), payloadLength);
+
+        auto [numIDs, numObjs, numBytes] = deserialize(responsePayload.value());
+        EXPECT_EQ(numIDs, expectedNumIDs);
+        EXPECT_EQ(numObjs, expectedNumObjs);
+        EXPECT_EQ(numBytes, expectedNumBytes);
+    };
+
+    testInfoGetTotalRequest(0, 0, 0);
+
+    // Set an object, we should see numXXX increase:
+    {
+        ObjectRequestHeader requestHeader {
+            .objectID      = {0, 1, 2, 3},
+            .payloadLength = payload.size(),
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::SET_OBJECT,
+        };
+
+        client->writeRequest(requestHeader, {payload});
+        client->readResponse(responseHeader, responsePayload);
+    }
+
+    testInfoGetTotalRequest(1, 1, payload.size());
+
+    // Duplicate the object, we should see numID increases but not the other two
+    {
+        ObjectRequestHeader requestHeader {
+            .objectID      = {2, 3, 4, 5},
+            .payloadLength = ObjectID::bufferSize(),
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::DUPLICATE_OBJECT_I_D,
+        };
+
+        ObjectID originalObjectID {0, 1, 2, 3};
+
+        auto originalObjectIDBuffer = originalObjectID.toBuffer();
+        ObjectPayload originalObjectIDPayload {
+            reinterpret_cast<char*>(const_cast<unsigned char*>(originalObjectIDBuffer.asBytes().begin())),
+            originalObjectIDBuffer.asBytes().size()};
+
+        client->writeRequest(requestHeader, {originalObjectIDPayload});
+
+        client->readResponse(responseHeader, responsePayload);
+        EXPECT_EQ(responseHeader.responseType, ObjectResponseType::DUPLICATE_O_K);
+    }
+    testInfoGetTotalRequest(2, 1, payload.size());
+
+    // Delete the object represented by this objectID, notice that the actual object is
+    // still in the system because there is another ID tied to it (2, 3, 4, 5).
+    {
+        ObjectRequestHeader requestHeader {
+            .objectID      = {0, 1, 2, 3},
+            .payloadLength = 0,
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::DELETE_OBJECT,
+        };
+
+        client->writeRequest(requestHeader, std::nullopt);
+        client->readResponse(responseHeader, responsePayload);
+    }
+
+    testInfoGetTotalRequest(1, 1, payload.size());
+
+    // Actually delete the object
+    {
+        ObjectRequestHeader requestHeader {
+            .objectID      = {2, 3, 4, 5},
+            .payloadLength = 0,
+            .requestID     = requestID++,
+            .requestType   = ObjectRequestType::DELETE_OBJECT,
+        };
+
+        client->writeRequest(requestHeader, std::nullopt);
+        client->readResponse(responseHeader, responsePayload);
+    }
+
+    // The system shouldn't own any objects
+    testInfoGetTotalRequest(0, 0, 0);
 }
 
 // This test fixture is specifically for verifying server logging behavior.

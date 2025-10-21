@@ -9,10 +9,11 @@ import os
 import signal
 import subprocess
 from typing import List
+
 from scapy.all import IP, TCP, TunTapInterface  # type: ignore
 
-from tests.cpp.ymq.py_mitm.types import AbstractMITM, TCPConnection
 from tests.cpp.ymq.py_mitm import passthrough, randomly_drop_packets, send_rst_to_client
+from tests.cpp.ymq.py_mitm.types import AbstractMITM, TCPConnection
 
 
 def echo_call(cmd: List[str]):

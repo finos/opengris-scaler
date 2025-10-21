@@ -36,6 +36,8 @@ public:
     // Returns the total number of unique objects stored (i.e. only count duplicate payloads once).
     size_t sizeUnique() const noexcept;
 
+    size_t totalObjectsSize() const noexcept { return totalObjectsBytes; };
+
 private:
     using ObjectHash = std::size_t;
 
@@ -46,6 +48,7 @@ private:
 
     std::map<ObjectID, ObjectHash> objectIDToHash;
     std::map<ObjectHash, ManagedObject> hashToObject;
+    size_t totalObjectsBytes;
 };
 
 };  // namespace object_storage

@@ -16,8 +16,10 @@ class TestCluster(unittest.TestCase):
         N_WORKERS = N_TASKS
 
         address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        storage_address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        combo = SchedulerClusterCombo(address=address, storage_address=storage_address, n_workers=N_WORKERS)
+        object_storage_address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
+        combo = SchedulerClusterCombo(
+            address=address, object_storage_address=object_storage_address, n_workers=N_WORKERS
+        )
 
         with Client(address=address) as client:
             future = client.submit(round, 3.14)

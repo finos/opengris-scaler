@@ -2,10 +2,11 @@
 This is the common code for implementing man in the middle in Python
 """
 
-from abc import ABC, abstractmethod
 import dataclasses
+from abc import ABC, abstractmethod
 from typing import Optional
-from scapy.all import TunTapInterface, IP, TCP  # type: ignore
+
+from scapy.all import IP, TCP, TunTapInterface  # type: ignore
 
 
 @dataclasses.dataclass

@@ -80,7 +80,7 @@ def main():
 
     symphony_worker_adapter = SymphonyWorkerAdapter(
         address=symphony_config.scheduler_address,
-        storage_address=symphony_config.object_storage_address,
+        object_storage_address=symphony_config.object_storage_address,
         capabilities=symphony_config.worker_capabilities.capabilities,
         task_queue_size=symphony_config.worker_task_queue_size,
         service_name=symphony_config.service_name,

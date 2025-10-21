@@ -24,11 +24,11 @@ from scaler.config.defaults import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
+from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
-from scaler.config.types.object_storage_server import ObjectStorageConfig
-from scaler.config.types.zmq import ZMQConfig
 from scaler.worker_adapter.native import NativeWorkerAdapter
 from tests.utility import logging_test_name
 
@@ -37,7 +37,7 @@ def _run_native_worker_adapter(address: str, webhook_port: int) -> None:
     """Construct a NativeWorkerAdapter and run its aiohttp app. Runs in a separate process."""
     adapter = NativeWorkerAdapter(
         address=ZMQConfig.from_string(address),
-        storage_address=None,
+        object_storage_address=None,
         capabilities={},
         io_threads=DEFAULT_IO_THREADS,
         task_queue_size=10,
@@ -69,7 +69,7 @@ class TestScaling(unittest.TestCase):
 
     def test_scaling_basic(self):
         object_storage = ObjectStorageServerProcess(
-            storage_address=self.object_storage_config,
+            object_storage_address=self.object_storage_config,
             logging_paths=("/dev/stdout",),
             logging_config_file=None,
             logging_level="INFO",
@@ -79,7 +79,7 @@ class TestScaling(unittest.TestCase):
 
         scheduler = SchedulerProcess(
             address=ZMQConfig.from_string(self.scheduler_address),
-            storage_address=self.object_storage_config,
+            object_storage_address=self.object_storage_config,
             monitor_address=None,
             adapter_webhook_url=f"http://127.0.0.1:{self.webhook_port}",
             io_threads=DEFAULT_IO_THREADS,

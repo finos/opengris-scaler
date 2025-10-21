@@ -34,8 +34,7 @@ template <typename T>
 using MoveOnlyFunction = std::function<T>;
 #endif
 
-constexpr const uint64_t IOCP_SOCKET_CLOSED   = 4;
-constexpr const uint64_t LARGEST_PAYLOAD_SIZE = 6000'000'000'000;  // 6TB
+constexpr const uint64_t IOCP_SOCKET_CLOSED = 4;
 
 struct Configuration {
 #ifdef __linux__

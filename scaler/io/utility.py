@@ -1,10 +1,54 @@
 import logging
+import os
 from typing import List, Optional
 
 from scaler.config.defaults import CAPNP_DATA_SIZE_LIMIT, CAPNP_MESSAGE_SIZE_LIMIT
+from scaler.config.types.network_backend import NetworkBackend
+from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
+from scaler.io.mixins import AsyncObjectStorageConnector, SyncObjectStorageConnector
+from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector
 from scaler.protocol.capnp._python import _message  # noqa
 from scaler.protocol.python.message import PROTOCOL
 from scaler.protocol.python.mixins import Message
+
+
+def get_scaler_network_backend_from_env():
+    backend_str = os.environ.get("SCALER_NETWORK_BACKEND", "tcp_zmq")  # Default to tcp_zmq
+    try:
+        return NetworkBackend[backend_str]
+    except KeyError:
+        return None
+
+
+def create_async_object_storage_connector(*args, **kwargs) -> AsyncObjectStorageConnector:
+    connector_type = get_scaler_network_backend_from_env()
+    if connector_type == NetworkBackend.ymq:
+        from scaler.io.ymq_async_object_storage_connector import PyYMQAsyncObjectStorageConnector
+
+        return PyYMQAsyncObjectStorageConnector(*args, **kwargs)
+
+    elif connector_type == NetworkBackend.tcp_zmq:
+        return PyAsyncObjectStorageConnector(*args, **kwargs)
+
+    else:
+        raise ValueError(
+            f"Invalid SCALER_NETWORK_BACKEND value." f"Expected one of: {[e.name for e in NetworkBackend]}"
+        )
+
+
+def create_sync_object_storage_connector(*args, **kwargs) -> SyncObjectStorageConnector:
+    connector_type = get_scaler_network_backend_from_env()
+    if connector_type == NetworkBackend.ymq:
+        from scaler.io.ymq_sync_object_storage_connector import PyYMQSyncObjectStorageConnector
+
+        return PyYMQSyncObjectStorageConnector(*args, **kwargs)
+
+    elif connector_type == NetworkBackend.tcp_zmq:
+        return PySyncObjectStorageConnector(*args, **kwargs)
+    else:
+        raise ValueError(
+            f"Invalid SCALER_NETWORK_BACKEND value." f"Expected one of: {[e.name for e in NetworkBackend]}"
+        )
 
 
 def deserialize(data: bytes) -> Optional[Message]:

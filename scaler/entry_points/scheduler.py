@@ -1,11 +1,11 @@
 import argparse
 
-from scaler.config.loader import load_config
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
-from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
+from scaler.config.loader import load_config
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.utility.event_loop import EventLoopType
 from scaler.utility.network_util import get_available_tcp_port
 
@@ -101,7 +101,7 @@ def main():
             host=scheduler_config.scheduler_address.host, port=get_available_tcp_port()
         )
         object_storage = ObjectStorageServerProcess(
-            storage_address=object_storage_address,
+            object_storage_address=object_storage_address,
             logging_paths=scheduler_config.logging_paths,
             logging_config_file=scheduler_config.logging_config_file,
             logging_level=scheduler_config.logging_level,
@@ -111,7 +111,7 @@ def main():
 
     scheduler = SchedulerProcess(
         address=scheduler_config.scheduler_address,
-        storage_address=object_storage_address,
+        object_storage_address=object_storage_address,
         monitor_address=scheduler_config.monitor_address,
         adapter_webhook_url=scheduler_config.adapter_webhook_url,
         io_threads=scheduler_config.io_threads,

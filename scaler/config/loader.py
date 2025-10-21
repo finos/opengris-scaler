@@ -2,7 +2,7 @@ import argparse
 import dataclasses
 import enum
 import sys
-from typing import Any, cast, Dict, Optional, Type, TypeVar, Union, get_args, get_origin
+from typing import Any, Dict, Optional, Type, TypeVar, Union, cast, get_args, get_origin
 
 if sys.version_info >= (3, 11):
     import tomllib

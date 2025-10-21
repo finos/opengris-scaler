@@ -589,12 +589,21 @@ class StateTask(Message):
         return WorkerID(self._msg.worker)
 
     @property
+    def capabilities(self) -> Dict[str, int]:
+        return {capability.name: capability.value for capability in self._msg.capabilities}
+
+    @property
     def metadata(self) -> bytes:
         return self._msg.metadata
 
     @staticmethod
     def new_msg(
-        task_id: TaskID, function_name: bytes, task_state: TaskState, worker: WorkerID, metadata: bytes = b""
+        task_id: TaskID,
+        function_name: bytes,
+        task_state: TaskState,
+        worker: WorkerID,
+        capabilities: Dict[str, int],
+        metadata: bytes = b"",
     ) -> "StateTask":
         return StateTask(
             _message.StateTask(
@@ -602,6 +611,9 @@ class StateTask(Message):
                 functionName=function_name,
                 state=task_state.value,
                 worker=bytes(worker),
+                capabilities=[
+                    TaskCapability.new_msg(name, value).get_message() for name, value in capabilities.items()
+                ],
                 metadata=metadata,
             )
         )

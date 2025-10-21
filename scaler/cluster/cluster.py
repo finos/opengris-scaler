@@ -4,9 +4,9 @@ import os
 import signal
 from typing import Dict, List, Optional, Tuple
 
-from scaler.utility.logging.utility import setup_logger
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
+from scaler.utility.logging.utility import setup_logger
 from scaler.worker.worker import Worker
 
 
@@ -15,7 +15,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
     def __init__(
         self,
         address: ZMQConfig,
-        storage_address: Optional[ObjectStorageConfig],
+        object_storage_address: Optional[ObjectStorageConfig],
         preload: Optional[str],
         worker_io_threads: int,
         worker_names: List[str],
@@ -35,7 +35,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         multiprocessing.Process.__init__(self, name="WorkerMaster")
 
         self._address = address
-        self._storage_address = storage_address
+        self._object_storage_address = object_storage_address
         self._preload = preload
         self._worker_io_threads = worker_io_threads
         self._worker_names = worker_names
@@ -83,7 +83,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
                 event_loop=self._event_loop,
                 name=name,
                 address=self._address,
-                storage_address=self._storage_address,
+                object_storage_address=self._object_storage_address,
                 capabilities=self._per_worker_capabilities,
                 preload=self._preload,
                 io_threads=self._worker_io_threads,

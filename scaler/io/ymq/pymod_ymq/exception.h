@@ -111,14 +111,11 @@ inline void YMQException_setFromCoreError(YMQState* state, const Error* error)
     PyErr_SetObject(*state->PyExceptionType, *tuple);
 }
 
-inline PyObject* YMQException_createFromCoreError(YMQState* state, const Error* error)
+inline OwnedPyObject<> YMQException_createFromCoreError(YMQState* state, const Error* error)
 {
     auto tuple = YMQException_argtupleFromCoreError(state, error);
     if (!tuple)
         return nullptr;
 
-    OwnedPyObject exc = PyObject_CallObject(*state->PyExceptionType, *tuple);
-
-    // transfer ownership to caller
-    return exc.take();
+    return PyObject_CallObject(*state->PyExceptionType, *tuple);
 }

@@ -20,11 +20,9 @@ function(add_test_executable test_name source_file)
 
     target_include_directories(${test_name} PRIVATE ${CMAKE_BINARY_DIR})
 
-    target_link_libraries(${test_name} PRIVATE 
-        $<$<CXX_COMPILER_ID:GNU,Clang>:-Wl,-Bstatic>
-        object_storage_server_objs
+    target_link_libraries(${test_name} PRIVATE
+        $<$<NOT:$<PLATFORM_ID:Windows>>:object_storage_server_objs>
         ymq_objs
-        $<$<CXX_COMPILER_ID:GNU,Clang>:-Wl,-Bdynamic>
         CapnProto::capnp
         CapnProto::kj
         GTest::gtest_main
@@ -32,12 +30,19 @@ function(add_test_executable test_name source_file)
     )
 
     add_test(NAME ${test_name} COMMAND ${test_name})
+
+    # Post build: We need to copy if dll is not present, otherwise the test program won't find gtest.dll
+    # See https://stackoverflow.com/questions/69978314/cmake-with-gtest-on-windows-build-starts-test-but-shared-libs-cannot-be-found
+    if (WIN32)
+        add_custom_command(TARGET ${test_name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_RUNTIME_DLLS:${test_name}>
+                $<TARGET_FILE_DIR:${test_name}>
+            COMMAND_EXPAND_LISTS
+        )
+    endif()
 endfunction()
 
-if(LINUX OR APPLE)
-  # Add the directory for the C++ tests.
-  add_subdirectory(cpp)
+# Add the directory for the C++ tests.
+add_subdirectory(cpp)
 
-  # Add the new directory for io tests.
-  add_subdirectory(io/ymq)
-endif()

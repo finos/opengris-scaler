@@ -9,13 +9,13 @@ from typing import Dict, Optional, Tuple
 
 import zmq.asyncio
 
+from scaler.config.defaults import PROFILING_INTERVAL_SECONDS
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.io.async_binder import ZMQAsyncBinder
 from scaler.io.async_connector import ZMQAsyncConnector
-from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
-from scaler.config.defaults import PROFILING_INTERVAL_SECONDS
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
+from scaler.io.utility import create_async_object_storage_connector
 from scaler.io.ymq import ymq
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -46,7 +46,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         event_loop: str,
         name: str,
         address: ZMQConfig,
-        storage_address: Optional[ObjectStorageConfig],
+        object_storage_address: Optional[ObjectStorageConfig],
         preload: Optional[str],
         capabilities: Dict[str, int],
         io_threads: int,
@@ -65,7 +65,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._event_loop = event_loop
         self._name = name
         self._address = address
-        self._storage_address = storage_address
+        self._object_storage_address = object_storage_address
         self._preload = preload
         self._capabilities = capabilities
         self._io_threads = io_threads
@@ -124,10 +124,10 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         )
         self._binder_internal.register(self.__on_receive_internal)
 
-        self._connector_storage = PyAsyncObjectStorageConnector()
+        self._connector_storage = create_async_object_storage_connector()
 
         self._heartbeat_manager = VanillaHeartbeatManager(
-            storage_address=self._storage_address,
+            object_storage_address=self._object_storage_address,
             capabilities=self._capabilities,
             task_queue_size=self._task_queue_size,
         )
@@ -217,9 +217,9 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         raise TypeError(f"Unknown message from {processor_id!r}: {message}")
 
     async def __get_loops(self):
-        if self._storage_address is not None:
+        if self._object_storage_address is not None:
             # With a manually set storage address, immediately connect to the object storage server.
-            await self._connector_storage.connect(self._storage_address.host, self._storage_address.port)
+            await self._connector_storage.connect(self._object_storage_address.host, self._object_storage_address.port)
 
         try:
             await asyncio.gather(

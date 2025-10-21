@@ -154,7 +154,7 @@ Capability Allocation
 Scaler provides an *experimental* task routing and capability management, allowing you to specify capability
 requirements for tasks and allocate them to workers supporting these.
 
-.. literalinclude:: ../../../examples/capabilities_client.py
+.. literalinclude:: ../../../examples/task_capabilities.py
    :language: python
 
 Client Disconnect and Shutdown

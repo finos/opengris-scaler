@@ -79,26 +79,30 @@ Test Cases
 C++ Guidelines
 --------------
 
-Naming
-~~~~~~
+C++ Naming
+~~~~~~~~~~
 
 Please use PascalCase for namespaces and classes. Capitalize the first character, for example:
+
  * SomeClass
  * LongNameClass
 
-Use all capital letters for global variables or macros. System or third-party library definitions are exempt from this
-rule:
+Use all capital letters for global variables or macros. System or third-party library definitions are exempt from this rule:
+
  * GLOBAL_VARIABLE
 
 Use camelCase for variable and function names, with the first character lower case:
+
  * addSomeValue
  * deleteSomeValue
 
 Keep abbreviations uppercase, for example:
+
  * TCPAcceptor instead of TcpAcceptor
  * IOSocket instead of IoSocket
 
 File names should use snake_case. Use the `.h` extension for headers and `.cpp` for source files:
+
  * header files: message_connection.h
  * source files: message_connection.cpp
 
@@ -118,12 +122,12 @@ Includes
 
  * Remove include files when none of their symbols are used.
  * Always include the header that defines the symbols you rely on; avoid depending on transitive includes. For example:
+
    * There are files `common.h`, `some_module.h`, and `application.cpp`.
    * At the top of `common.h`, there is `#include <cstring>`.
    * At the top of `some_module.h`, there is `#include "common.h"`.
    * At the top of `application.cpp`, there is `#include "some_module.h"`.
-   * Even though `application.cpp` compiles because `<cstring>` is indirectly included through `common.h`, explicitly
-     include `<cstring>` in `application.cpp`.
+   * Even though `application.cpp` compiles because `<cstring>` is indirectly included through `common.h`, explicitly include `<cstring>` in `application.cpp`.
 
 Struct/Class
 ~~~~~~~~~~~~
