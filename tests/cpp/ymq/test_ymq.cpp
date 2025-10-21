@@ -19,7 +19,6 @@
 #include <cstdint>
 #include <future>
 #include <limits>
-#include <print>
 #include <string>
 #include <thread>
 
@@ -175,12 +174,12 @@ TestResult reconnect_client_main(std::string host, uint16_t port)
             // timeout, try again
             continue;
         } else {
-            std::println("future status error");
+            std::cerr << "future status error\n";
             return TestResult::Failure;
         }
     }
 
-    std::println("failed to reconnect after 10 attempts");
+    std::cerr << "failed to reconnect after 10 attempts\n";
     return TestResult::Failure;
 }
 
@@ -279,7 +278,7 @@ TestResult client_sends_huge_header(const char* host, uint16_t port)
                 socket.write_all("yi er san si wu liu");
             } catch (const std::system_error& e) {
                 if (e.code().value() == EPIPE) {
-                    std::println("writing failed with EPIPE as expected after sending huge header, continuing..");
+                    std::cout << "writing failed with EPIPE as expected after sending huge header, continuing...\n";
                     break;  // this is expected
                 }
 
@@ -288,7 +287,7 @@ TestResult client_sends_huge_header(const char* host, uint16_t port)
         }
 
         if (i == 10) {
-            std::println("expected EPIPE after sending huge header");
+            std::cout << "expected EPIPE after sending huge header\n";
             return TestResult::Failure;
         }
     }

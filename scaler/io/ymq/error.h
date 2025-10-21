@@ -4,7 +4,7 @@
 #include <exception>  // std::terminate
 #include <format>
 #include <functional>
-#include <print>
+#include <iostream>
 #include <string>
 
 #include "scaler/io/ymq/timestamp.h"
@@ -87,7 +87,7 @@ struct Error: public std::exception {
             case ErrorCode::BinderSendMessageWithNoAddress:
                 return "You call sendMessage with a Binder IOSocket but failed to provide an address";
         }
-        fprintf(stderr, "Unrecognized ErrorCode value, program exits\n");
+        std::cerr << "Unrecognized ErrorCode value, program exits\n";
         std::exit(1);
     }
 
@@ -119,7 +119,7 @@ using UnrecoverableErrorFunctionHookPtr = std::function<void(scaler::ymq::Error)
 
 [[noreturn]] inline void defaultUnrecoverableError(scaler::ymq::Error e) noexcept
 {
-    std::print(stderr, "{}\n", e);
+    std::cerr << e.what() << '\n';
     std::exit(1);
 }
 

@@ -28,10 +28,10 @@
 #include <ctime>
 #include <exception>
 #include <filesystem>
+#include <format>
 #include <functional>
 #include <iostream>
 #include <optional>
-#include <print>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -104,7 +104,7 @@ public:
     ~OwnedFd()
     {
         if (fd > 0 && close(fd) < 0)
-            std::println(std::cerr, "failed to close fd!");
+            std::cerr << "failed to close fd!" << std::endl;
     }
 
     size_t write(const void* data, size_t len)
@@ -255,10 +255,10 @@ inline void fork_wrapper(std::function<TestResult()> fn, int timeout_secs, Owned
     try {
         result = fn();
     } catch (const std::exception& e) {
-        std::println(stderr, "Exception: {}", e.what());
+        std::cerr << "Exception: " << e.what() << std::endl;
         result = TestResult::Failure;
     } catch (...) {
-        std::println(stderr, "Unknown exception");
+        std::cerr << "Unknown exception" << std::endl;
         result = TestResult::Failure;
     }
 
@@ -281,7 +281,7 @@ inline void wait_for_python_ready_sigblock()
     if (sigprocmask(SIG_BLOCK, &set, nullptr) < 0)
         throw std::system_error(errno, std::generic_category(), "failed to mask sigusr1");
 
-    std::println("blocked signal...");
+    std::cout << "blocked signal..." << std::endl;
 }
 
 inline void wait_for_python_ready_sigwait(int timeout_secs)
@@ -295,13 +295,13 @@ inline void wait_for_python_ready_sigwait(int timeout_secs)
     if (sigaddset(&set, SIGUSR1) < 0)
         throw std::system_error(errno, std::generic_category(), "failed to add sigusr1 to the signal set");
 
-    std::println("waiting for python to be ready...");
+    std::cout << "waiting for python to be ready..." << std::endl;
     timespec ts {.tv_sec = timeout_secs, .tv_nsec = 0};
     if (sigtimedwait(&set, &sig, &ts) < 0)
         throw std::system_error(errno, std::generic_category(), "failed to wait on sigusr1");
 
     sigprocmask(SIG_UNBLOCK, &set, nullptr);
-    std::println("signal received; python is ready");
+    std::cout << "signal received; python is ready" << std::endl;
 }
 
 // run a test
@@ -419,7 +419,7 @@ inline TestResult test(
 
             // timed out
             if (pfd.fd == timerfd) {
-                std::println("Timed out!");
+                std::cout << "Timed out!\n";
 
                 std::for_each(pipes.begin(), pipes.end(), [](const auto& pipe) { close(pipe.first); });
                 std::for_each(pids.begin(), pids.end(), [](const auto& pid) { kill(pid, SIGKILL); });
@@ -434,10 +434,10 @@ inline TestResult test(
             char buffer       = 0;
             auto n            = read(pfd.fd, &buffer, sizeof(TestResult));
             if (n == 0) {
-                std::println("failed to read from pipe: pipe closed unexpectedly");
+                std::cout << "failed to read from pipe: pipe closed unexpectedly\n";
                 result = TestResult::Failure;
             } else if (n < 0) {
-                std::println("failed to read from pipe: {}", std::strerror(errno));
+                std::cout << "failed to read from pipe: " << std::strerror(errno) << std::endl;
                 result = TestResult::Failure;
             } else
                 result = (TestResult)buffer;
@@ -446,16 +446,17 @@ inline TestResult test(
             // check its exit status
             int status;
             if (waitpid(pids[idx], &status, 0) < 0)
-                std::println("failed to wait on subprocess[{}]: {}", idx, std::strerror(errno));
+                std::cout << "failed to wait on subprocess[" << idx << "]: " << std::strerror(errno) << std::endl;
 
             auto exit_status = WEXITSTATUS(status);
             if (WIFEXITED(status) && exit_status != EXIT_SUCCESS) {
-                std::println("subprocess[{}] exited with status {}", idx, exit_status);
+                std::cout << "subprocess[" << idx << "] exited with status " << exit_status << std::endl;
             } else if (WIFSIGNALED(status)) {
-                std::println("subprocess[{}] killed by signal {}", idx, WTERMSIG(status));
-            } else
-                std::println(
-                    "subprocess[{}] completed with {}", idx, result == TestResult::Success ? "Success" : "Failure");
+                std::cout << "subprocess[" << idx << "] killed by signal " << WTERMSIG(status) << std::endl;
+            } else {
+                std::cout << "subprocess[" << idx << "] completed with "
+                          << (result == TestResult::Success ? "Success" : "Failure") << std::endl;
+            }
 
             // store the result
             results[idx] = result;
@@ -525,7 +526,7 @@ inline TestResult run_python(const char* path, std::vector<const wchar_t*> argv 
     }
 
     if (Py_FinalizeEx() < 0) {
-        std::println("finalization failure");
+        std::cerr << "finalization failure" << std::endl;
         return TestResult::Failure;
     }
 

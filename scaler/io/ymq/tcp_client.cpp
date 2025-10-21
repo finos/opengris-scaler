@@ -338,12 +338,12 @@ void TcpClient::onWrite()
 void TcpClient::retry()
 {
     if (_retryTimes > _maxRetryTimes) {
-        _logger.log(Logger::LoggingLevel::error, "Retried times has reached maximum", _maxRetryTimes);
+        _logger.log(Logger::LoggingLevel::error, "Retried times has reached maximum: ", _maxRetryTimes);
         // exit(1);
         return;
     }
 
-    _logger.log(Logger::LoggingLevel::debug, "Client retrying times", _retryTimes);
+    _logger.log(Logger::LoggingLevel::debug, "Client retrying ", _retryTimes, " time(s)");
     CloseAndZeroSocket(_connFd);
 
     Timestamp now;
