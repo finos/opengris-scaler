@@ -138,7 +138,7 @@ std::expected<uint64_t, RawTCPConnectionFD::IOError> RawTCPConnectionFD::writeBy
             break;
         }
         iovec current;
-        current.iov_base = (void*)ptr;
+        current.iov_base = (char*)ptr;
         current.iov_len  = len;
         iovecs.push_back(std::move(current));
         // iovecs.emplace_back((void*)ptr, len);
