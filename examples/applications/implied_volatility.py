@@ -5,7 +5,7 @@ This program is revised based on
 https://stackoverflow.com/questions/61289020/fast-implied-volatility-calculation-in-python
 
 Usage:
-    $ git clone https://github.com/Citi/scaler && cd scaler
+    $ git clone https://github.com/finos/opengris-scaler && cd opengris-scaler
     $ pip install -r examples/applications/requirements_applications.txt
     $ python -m examples.applications.implied_volatility
 """

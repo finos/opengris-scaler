@@ -96,7 +96,7 @@ class ProcessorHolder:
             # the process to wait on a synchronization event. That will stop the main thread while allowing the helper
             # threads to continue running.
             #
-            # See https://github.com/Citi/scaler/issues/14
+            # See https://github.com/finos/opengris-scaler/issues/14
 
             assert self._resume_event is not None
             assert self._resumed_event is not None

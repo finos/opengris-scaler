@@ -135,7 +135,7 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         # Balancing algorithms that can find this optimal balancing exist (assignment problem), but these are complex
         # and slow. These might also cause a lot of messages to be propagated through the cluster.
         #
-        # See <https://github.com/Citi/scaler/issues/32#issuecomment-2541897645> for more details.
+        # See <https://github.com/finos/opengris-scaler/issues/32#issuecomment-2541897645> for more details.
 
         n_tasks = sum(worker.n_tasks() for worker in self._worker_id_to_worker.values())
         avg_tasks_per_worker = n_tasks / len(self._worker_id_to_worker)
