@@ -137,7 +137,11 @@ std::expected<uint64_t, RawTCPConnectionFD::IOError> RawTCPConnectionFD::writeBy
         if (iovecs.size() == IOV_MAX) {
             break;
         }
-        iovecs.emplace_back((void*)ptr, len);
+        iovec current;
+        current.iov_base = (void*)ptr;
+        current.iov_len  = len;
+        iovecs.push_back(std::move(current));
+        // iovecs.emplace_back((void*)ptr, len);
     }
 
     if (iovecs.empty()) {
