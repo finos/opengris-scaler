@@ -9,6 +9,7 @@
 #include "scaler/io/ymq/io_socket.h"
 #include "scaler/io/ymq/logging.h"
 #include "scaler/io/ymq/message_connection.h"
+#include "scaler/io/ymq/system/raw_tcp_connection_fd.h"
 #include "scaler/io/ymq/tcp_operations.h"
 
 namespace scaler {
@@ -89,6 +90,8 @@ private:
 
     bool _disconnect;
     Logger _logger;
+
+    RawTCPConnectionFD _rawTCPConnectionFD;
 
     constexpr static bool isCompleteMessage(const TcpReadOperation& x);
     friend void IOSocket::onConnectionIdentityReceived(MessageConnectionTCP* conn) noexcept;

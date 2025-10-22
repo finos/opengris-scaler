@@ -52,6 +52,9 @@ add_library(ymq_objs OBJECT
 
     simple_interface.h
     simple_interface.cpp
+
+    system/raw_tcp_connection_fd.h
+    system/raw_tcp_connection_fd.cpp
 )
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/scaler/io/ymq)
