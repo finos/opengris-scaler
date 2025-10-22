@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <exception>  // std::terminate
 #include <format>
 #include <functional>
