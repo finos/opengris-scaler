@@ -77,10 +77,10 @@ def get_args():
         "tcp://localhost:2347",
     )
     parser.add_argument(
-        "--adapter-webhook-url",
+        "--manager-webhook-url",
         "-awu",
         type=str,
-        help="specify the adapter webhook url, if not specified, the adapter will not be used",
+        help="specify the worker manager webhook url, if not specified, the worker manager will not be used",
     )
     parser.add_argument(
         "scheduler_address", nargs="?", type=str, help="scheduler address to connect to, e.g.: `tcp://localhost:6378`"
@@ -113,7 +113,7 @@ def main():
         address=scheduler_config.scheduler_address,
         object_storage_address=object_storage_address,
         monitor_address=scheduler_config.monitor_address,
-        adapter_webhook_url=scheduler_config.adapter_webhook_url,
+        manager_webhook_url=scheduler_config.manager_webhook_url,
         io_threads=scheduler_config.io_threads,
         max_number_of_tasks_waiting=scheduler_config.max_number_of_tasks_waiting,
         client_timeout_seconds=scheduler_config.client_timeout_seconds,

@@ -8,11 +8,11 @@ from scaler.config.types.zmq import ZMQConfig
 
 
 @dataclasses.dataclass
-class NativeWorkerAdapterConfig:
+class WorkerManagerNativeConfig:
     scheduler_address: ZMQConfig
     object_storage_address: Optional[ObjectStorageConfig] = None
-    adapter_web_host: str = "localhost"
-    adapter_web_port: int = 8080
+    manager_web_host: str = "localhost"
+    manager_web_port: int = 8080
     per_worker_capabilities: WorkerCapabilities = dataclasses.field(
         default_factory=lambda: WorkerCapabilities.from_string("")
     )
@@ -31,10 +31,10 @@ class NativeWorkerAdapterConfig:
     logging_config_file: Optional[str] = None
 
     def __post_init__(self):
-        if not isinstance(self.adapter_web_host, str):
-            raise TypeError(f"adapter_web_host should be string, given {self.adapter_web_host}")
-        if not isinstance(self.adapter_web_port, int):
-            raise TypeError(f"adapter_web_port must be between 1 and 65535, but got {self.adapter_web_port}")
+        if not isinstance(self.manager_web_host, str):
+            raise TypeError(f"manager_web_host should be string, given {self.manager_web_host}")
+        if not isinstance(self.manager_web_port, int):
+            raise TypeError(f"manager_web_port must be between 1 and 65535, but got {self.manager_web_port}")
         if self.io_threads <= 0:
             raise ValueError("io_threads must be a positive integer.")
         if self.worker_task_queue_size <= 0:
