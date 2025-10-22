@@ -57,7 +57,7 @@ class ECSWorkerAdapter:
         self._object_storage_address = object_storage_address
         self._capabilities = capabilities
         self._io_threads = io_threads
-        self._task_queue_size = per_worker_task_queue_size
+        self._per_worker_task_queue_size = per_worker_task_queue_size
         self._max_instances = max_instances
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._task_timeout_seconds = task_timeout_seconds
@@ -92,6 +92,8 @@ class ECSWorkerAdapter:
         if not clusters or clusters[0]["status"] != "ACTIVE":
             logging.info(f"ECS cluster '{self._ecs_cluster}' missing, creating it.")
             self._ecs_client.create_cluster(clusterName=self._ecs_cluster)
+
+        self._worker_groups: Dict[WorkerGroupID, WorkerGroupInfo] = {}
 
         try:
             resp = self._ecs_client.describe_task_definition(taskDefinition=self._ecs_task_definition)
@@ -128,8 +130,6 @@ class ECSWorkerAdapter:
             )
         self._ecs_task_definition = resp["taskDefinition"]["taskDefinitionArn"]
 
-        self._worker_groups: Dict[WorkerGroupID, WorkerGroupInfo] = {}
-
     async def start_worker_group(self) -> WorkerGroupID:
         if len(self._worker_groups) >= self._max_instances != -1:
             raise CapacityExceededError(f"Maximum number of instances ({self._max_instances}) reached.")
@@ -139,7 +139,7 @@ class ECSWorkerAdapter:
             f"scaler_cluster {self._address.to_address()} "
             f"--num-of-workers {self._ecs_task_cpu} "
             f"--worker-names \"{','.join(worker_names)}\" "
-            f"--per-worker-task-queue-size {self._task_queue_size} "
+            f"--per-worker-task-queue-size {self._per_worker_task_queue_size} "
             f"--heartbeat-interval-seconds {self._heartbeat_interval_seconds} "
             f"--task-timeout-seconds {self._task_timeout_seconds} "
             f"--garbage-collect-interval-seconds {self._garbage_collect_interval_seconds} "
