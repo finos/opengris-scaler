@@ -16,15 +16,11 @@ def get_args():
     parser.add_argument("--config", "-c", type=str, default=None, help="Path to the TOML configuration file.")
 
     # Server configuration
-    parser.add_argument(
-        "--server-http-host", "-h", type=str, help="host address for the native worker adapter HTTP server"
-    )
-    parser.add_argument(
-        "--server-http-port", "-p", type=int, required=True, help="port for the native worker adapter HTTP server"
-    )
+    parser.add_argument("--adapter-web-host", type=str, help="host address for symphony worker adapter HTTP server")
+    parser.add_argument("--adapter-web-port", "-p", type=int, help="port for symphony worker adapter HTTP server")
 
     # Symphony configuration
-    parser.add_argument("--service-name", "-sn", type=str, required=True, help="symphony service name")
+    parser.add_argument("--service-name", "-sn", type=str, help="symphony service name")
     parser.add_argument("--base-concurrency", "-n", type=int, help="base task concurrency")
 
     # Worker configuration
@@ -95,7 +91,7 @@ def main():
     )
 
     app = symphony_worker_adapter.create_app()
-    web.run_app(app, host=symphony_config.server_http_host, port=symphony_config.server_http_port)
+    web.run_app(app, host=symphony_config.adapter_web_host, port=symphony_config.adapter_web_port)
 
 
 if __name__ == "__main__":

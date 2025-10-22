@@ -48,7 +48,7 @@ def get_args():
         "--trim-memory-threshold-bytes", "-tm", type=int, help="number of bytes threshold to enable libc to trim memory"
     )
     parser.add_argument("--event-loop", "-el", choices=EventLoopType.allowed_types(), help="select event loop type")
-    parser.add_argument("--io-threads", "-it", type=int, help="specify number of io threads per worker")
+    parser.add_argument("--worker-io-threads", "-wit", type=int, help="specify number of io threads per worker")
     parser.add_argument(
         "--hard-processor-suspend",
         "-hps",

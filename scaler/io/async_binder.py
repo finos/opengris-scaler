@@ -48,9 +48,13 @@ class ZMQAsyncBinder(AsyncBinder):
             return
 
         source, payload = frames
-        message: Optional[Message] = deserialize(payload.bytes)
-        if message is None:
-            logging.error(f"received unknown message from {source.bytes!r}: {payload!r}")
+        try:
+            message: Optional[Message] = deserialize(payload.bytes)
+            if message is None:
+                logging.error(f"received unknown message from {source.bytes!r}: {payload!r}")
+                return
+        except Exception as e:
+            logging.error(f"{self.__get_prefix()} failed to deserialize message from {source.bytes!r}: {e}")
             return
 
         self.__count_received(message.__class__.__name__)
@@ -69,7 +73,7 @@ class ZMQAsyncBinder(AsyncBinder):
         self._socket.setsockopt(zmq.RCVHWM, 0)
 
     def __is_valid_message(self, frames: List[Frame]) -> bool:
-        if len(frames) < 2:
+        if len(frames) != 2:
             logging.error(f"{self.__get_prefix()} received unexpected frames {frames}")
             return False
 

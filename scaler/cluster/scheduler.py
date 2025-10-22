@@ -8,6 +8,7 @@ from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
+from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
 from scaler.scheduler.scheduler import Scheduler, scheduler_main
 from scaler.utility.event_loop import register_event_loop
 from scaler.utility.logging.utility import setup_logger
@@ -19,7 +20,8 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         address: ZMQConfig,
         object_storage_address: Optional[ObjectStorageConfig],
         monitor_address: Optional[ZMQConfig],
-        adapter_webhook_url: Optional[str],
+        scaling_controller_strategy: ScalingControllerStrategy,
+        adapter_webhook_urls: Tuple[str, ...],
         io_threads: int,
         max_number_of_tasks_waiting: int,
         client_timeout_seconds: int,
@@ -40,7 +42,8 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
             scheduler_address=address,
             object_storage_address=object_storage_address,
             monitor_address=monitor_address,
-            adapter_webhook_url=adapter_webhook_url,
+            scaling_controller_strategy=scaling_controller_strategy,
+            adapter_webhook_urls=adapter_webhook_urls,
             io_threads=io_threads,
             max_number_of_tasks_waiting=max_number_of_tasks_waiting,
             client_timeout_seconds=client_timeout_seconds,

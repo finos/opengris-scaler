@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import Dict, List
 
 import aiohttp
@@ -6,26 +7,16 @@ from aiohttp import web
 
 from scaler.protocol.python.message import InformationSnapshot
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.mixins import ScalingController
+from scaler.scheduler.controllers.scaling_policies.mixins import ScalingController
+from scaler.scheduler.controllers.scaling_policies.types import WorkerGroupID
 from scaler.utility.identifiers import WorkerID
-
-WorkerGroupID = bytes
-
-
-class NullScalingController(ScalingController):
-    def get_status(self):
-        return ScalingManagerStatus.new_msg(worker_groups={})
-
-    async def on_snapshot(self, information_snapshot: InformationSnapshot):
-        pass
 
 
 class VanillaScalingController(ScalingController):
-    def __init__(self, adapter_webhook_url: str, lower_task_ratio: float = 1, upper_task_ratio: float = 10):
+    def __init__(self, adapter_webhook_url: str):
         self._adapter_webhook_url = adapter_webhook_url
-        self._lower_task_ratio = lower_task_ratio
-        self._upper_task_ratio = upper_task_ratio
-        assert upper_task_ratio >= lower_task_ratio
+        self._lower_task_ratio = 1
+        self._upper_task_ratio = 10
 
         self._worker_groups: Dict[WorkerGroupID, List[WorkerID]] = {}
 
@@ -43,13 +34,31 @@ class VanillaScalingController(ScalingController):
             await self._start_worker_group()
         elif task_ratio < self._lower_task_ratio:
             worker_group_task_counts = {
-                worker_group_id: sum(information_snapshot.workers[worker_id].queued_tasks for worker_id in worker_ids)
+                worker_group_id: sum(
+                    information_snapshot.workers[worker_id].queued_tasks
+                    for worker_id in worker_ids
+                    if worker_id in information_snapshot.workers
+                )
                 for worker_group_id, worker_ids in self._worker_groups.items()
             }
+            if not worker_group_task_counts:
+                logging.warning(
+                    "No worker groups available to shut down. There might be statically provisioned workers."
+                )
+                return
+
             worker_group_id = min(worker_group_task_counts, key=worker_group_task_counts.get)
             await self._shutdown_worker_group(worker_group_id)
 
     async def _start_worker_group(self):
+        response, status = await self._make_request({"action": "get_worker_adapter_info"})
+        if status != web.HTTPOk.status_code:
+            logging.warning("Failed to get worker adapter info.")
+            return
+
+        if len(self._worker_groups) >= response.get("max_worker_groups", math.inf):
+            return
+
         response, status = await self._make_request({"action": "start_worker_group"})
         if status == web.HTTPTooManyRequests.status_code:
             logging.warning("Capacity exceeded, cannot start new worker group.")

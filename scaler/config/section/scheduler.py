@@ -6,6 +6,7 @@ from scaler.config import defaults
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
+from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
 from scaler.utility.logging.utility import LoggingLevel
 
 
@@ -14,7 +15,8 @@ class SchedulerConfig:
     scheduler_address: ZMQConfig = dataclasses.field()
     object_storage_address: Optional[ObjectStorageConfig] = None
     monitor_address: Optional[ZMQConfig] = None
-    adapter_webhook_url: Optional[str] = None
+    scaling_controller_strategy: ScalingControllerStrategy = ScalingControllerStrategy.NULL
+    adapter_webhook_urls: Tuple[str, ...] = ()
     protected: bool = True
     allocate_policy: AllocatePolicy = AllocatePolicy.even
     event_loop: str = "builtin"
@@ -43,10 +45,10 @@ class SchedulerConfig:
             raise ValueError("All timeout/retention/balance second values must be positive.")
         if self.load_balance_trigger_times <= 0:
             raise ValueError("load_balance_trigger_times must be a positive integer.")
-        if self.adapter_webhook_url:
-            parsed_url = urlparse(self.adapter_webhook_url)
+        for adapter_webhook_url in self.adapter_webhook_urls:
+            parsed_url = urlparse(adapter_webhook_url)
             if not all([parsed_url.scheme, parsed_url.netloc]):
-                raise ValueError(f"adapter_webhook_url '{self.adapter_webhook_url}' is not a valid URL.")
+                raise ValueError(f"adapter_webhook_urls contains url '{adapter_webhook_url}' which is not a valid URL.")
         valid_levels = {level.name for level in LoggingLevel}
         if self.logging_level.upper() not in valid_levels:
             raise ValueError(f"logging_level must be one of {valid_levels}, but got '{self.logging_level}'")

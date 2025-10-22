@@ -10,16 +10,7 @@ from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.utility.identifiers import WorkerID
 from scaler.worker.worker import Worker
-
-WorkerGroupID = bytes
-
-
-class CapacityExceededError(Exception):
-    pass
-
-
-class WorkerGroupNotFoundError(Exception):
-    pass
+from scaler.worker_adapter.common import CapacityExceededError, WorkerGroupID, WorkerGroupNotFoundError
 
 
 class NativeWorkerAdapter:
@@ -71,7 +62,7 @@ class NativeWorkerAdapter:
             raise CapacityExceededError(f"Maximum number of workers ({self._max_workers}) reached.")
 
         worker = Worker(
-            name=uuid.uuid4().hex,
+            name=f"NAT|{uuid.uuid4().hex}",
             address=self._address,
             object_storage_address=self._object_storage_address,
             preload=None,
@@ -112,7 +103,17 @@ class NativeWorkerAdapter:
 
         action = request_json["action"]
 
-        if action == "start_worker_group":
+        if action == "get_worker_adapter_info":
+            return web.json_response(
+                {
+                    "max_worker_groups": self._max_workers,
+                    "workers_per_group": 1,
+                    "base_capabilities": self._capabilities,
+                },
+                status=web.HTTPOk.status_code,
+            )
+
+        elif action == "start_worker_group":
             try:
                 worker_group_id = await self.start_worker_group()
             except CapacityExceededError as e:

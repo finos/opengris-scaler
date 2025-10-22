@@ -1,6 +1,5 @@
 import abc
 import hashlib
-import os
 import uuid
 from typing import Optional
 
@@ -20,7 +19,7 @@ class ClientID(Identifier):
         if name is None:
             name = uuid.uuid4().bytes.hex()
 
-        return ClientID(f"{os.getpid()}|Client|{name}".encode())
+        return ClientID(f"Client|{name}".encode())
 
 
 class WorkerID(Identifier):
@@ -36,7 +35,7 @@ class WorkerID(Identifier):
 
     @staticmethod
     def generate_worker_id(name: str) -> "WorkerID":
-        return WorkerID(f"{os.getpid()}|Worker|{name}|{uuid.uuid4().bytes.hex()}".encode())
+        return WorkerID(f"Worker|{name}".encode())
 
 
 _INVALID_WORKER_ID = WorkerID(b"")

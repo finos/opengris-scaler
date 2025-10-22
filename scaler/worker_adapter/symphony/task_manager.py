@@ -173,6 +173,7 @@ class SymphonyTaskManager(Looper, TaskManager):
 
     async def resolve_tasks(self):
         if not self._task_id_to_future:
+            await asyncio.sleep(0)
             return
 
         done, _ = await asyncio.wait(self._task_id_to_future.values(), return_when=asyncio.FIRST_COMPLETED)

@@ -8,7 +8,6 @@ from scaler.protocol.python.message import (
     DisconnectRequest,
     GraphTask,
     InformationRequest,
-    InformationSnapshot,
     ObjectInstruction,
     Task,
     TaskCancel,
@@ -186,12 +185,6 @@ class WorkerController(Reporter):
 
     @abc.abstractmethod
     def get_worker_ids(self) -> Set[WorkerID]:
-        raise NotImplementedError()
-
-
-class ScalingController(Reporter):
-    @abc.abstractmethod
-    async def on_snapshot(self, snapshot: InformationSnapshot):
         raise NotImplementedError()
 
 

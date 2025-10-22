@@ -3,7 +3,7 @@ This program gets closing price of a given ticker and start dates. This program 
 https://stackoverflow.com/a/77342764
 
 Usage:
-    $ git clone https://github.com/Citi/scaler && cd scaler
+    $ git clone https://github.com/finos/opengris-scaler && cd opengris-scaler
     $ pip install -r examples/applications/requirements_applications.txt
     $ python -m examples.applications.yfinance_historical_price
 """

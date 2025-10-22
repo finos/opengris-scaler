@@ -6,6 +6,7 @@ from scaler.config.loader import load_config
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
+from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
 from scaler.utility.event_loop import EventLoopType
 from scaler.utility.network_util import get_available_tcp_port
 
@@ -77,10 +78,17 @@ def get_args():
         "tcp://localhost:2347",
     )
     parser.add_argument(
-        "--adapter-webhook-url",
+        "--scaling-controller-strategy",
+        "-scs",
+        choices=[s.name for s in ScalingControllerStrategy],
+        help="specify the scaling controller strategy, if not specified, no scaling controller will be used",
+    )
+    parser.add_argument(
+        "--adapter-webhook-urls",
         "-awu",
+        nargs="*",
         type=str,
-        help="specify the adapter webhook url, if not specified, the adapter will not be used",
+        help="specify the adapter webhook urls for the scaling controller to send scaling events to",
     )
     parser.add_argument(
         "scheduler_address", nargs="?", type=str, help="scheduler address to connect to, e.g.: `tcp://localhost:6378`"
@@ -113,7 +121,8 @@ def main():
         address=scheduler_config.scheduler_address,
         object_storage_address=object_storage_address,
         monitor_address=scheduler_config.monitor_address,
-        adapter_webhook_url=scheduler_config.adapter_webhook_url,
+        scaling_controller_strategy=scheduler_config.scaling_controller_strategy,
+        adapter_webhook_urls=scheduler_config.adapter_webhook_urls,
         io_threads=scheduler_config.io_threads,
         max_number_of_tasks_waiting=scheduler_config.max_number_of_tasks_waiting,
         client_timeout_seconds=scheduler_config.client_timeout_seconds,
