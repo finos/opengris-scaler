@@ -1,7 +1,6 @@
 import asyncio
 import functools
 import logging
-from typing import Optional
 
 import zmq.asyncio
 
@@ -34,11 +33,7 @@ from scaler.scheduler.controllers.config_controller import VanillaConfigControll
 from scaler.scheduler.controllers.graph_controller import VanillaGraphTaskController
 from scaler.scheduler.controllers.information_controller import VanillaInformationController
 from scaler.scheduler.controllers.object_controller import VanillaObjectController
-from scaler.scheduler.controllers.scaling_policies.fixed_elastic import FixedElasticScalingController
-from scaler.scheduler.controllers.scaling_policies.mixins import ScalingController
-from scaler.scheduler.controllers.scaling_policies.null import NullScalingController
-from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
-from scaler.scheduler.controllers.scaling_policies.vanilla import VanillaScalingController
+from scaler.scheduler.controllers.scaling_policies.utility import create_scaling_controller
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
 from scaler.utility.event_loop import create_async_loop_routine
@@ -108,19 +103,9 @@ class Scheduler:
             config_controller=self._config_controller, task_allocate_policy=self._task_allocate_policy
         )
         self._information_controller = VanillaInformationController(config_controller=self._config_controller)
-
-        self._scaling_controller: Optional[ScalingController] = None
-        if config.scaling_controller_strategy == ScalingControllerStrategy.NULL:
-            self._scaling_controller = NullScalingController(*config.adapter_webhook_urls)
-        elif config.scaling_controller_strategy == ScalingControllerStrategy.VANILLA:
-            self._scaling_controller = VanillaScalingController(*config.adapter_webhook_urls)
-        elif config.scaling_controller_strategy == ScalingControllerStrategy.FIXED_ELASTIC:
-            self._scaling_controller = FixedElasticScalingController(*config.adapter_webhook_urls)
-        else:
-            raise ValueError(
-                f"{self.__class__.__name__}: unsupported scaling controller strategy: "
-                f"{config.scaling_controller_strategy}"
-            )
+        self._scaling_controller = create_scaling_controller(
+            config.scaling_controller_strategy, config.adapter_webhook_urls
+        )
 
         # register
         self._binder.register(self.on_receive_message)

@@ -161,7 +161,7 @@ def main():
         object_storage_address=ecs_config.object_storage_address,
         capabilities=ecs_config.per_worker_capabilities.capabilities,
         io_threads=ecs_config.io_threads,
-        per_worker_task_queue_size=ecs_config.worker_task_queue_size,
+        per_worker_task_queue_size=ecs_config.per_worker_task_queue_size,
         max_instances=ecs_config.max_instances,
         heartbeat_interval_seconds=ecs_config.heartbeat_interval_seconds,
         task_timeout_seconds=ecs_config.task_timeout_seconds,
