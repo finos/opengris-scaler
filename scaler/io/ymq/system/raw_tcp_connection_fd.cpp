@@ -249,14 +249,14 @@ std::expected<uint64_t, RawTCPConnectionFD::IOError> RawTCPConnectionFD::writeBy
 #endif  // __linux__
 }
 
-bool RawTCPConnectionFD::prepareReadBytes()
+bool RawTCPConnectionFD::prepareReadBytes(void* notifyHandle)
 {
 #ifdef _WIN32
     // TODO: This need rewrite to better logic
     if (!_fd) {
         return false;
     }
-    const bool ok = ReadFile((HANDLE)(SOCKET)_fd, nullptr, 0, nullptr, this->_eventManager.get());
+    const bool ok = ReadFile((HANDLE)(SOCKET)_fd, nullptr, 0, nullptr, (LPOVERLAPPED)notifyHandle);
     if (ok) {
         // onRead();
         return true;
@@ -271,8 +271,8 @@ bool RawTCPConnectionFD::prepareReadBytes()
         "ReadFile",
         "Errno is",
         lastError,
-        "_connfd",
-        _connFd,
+        "_fd",
+        _fd,
     });
     std::unreachable();
 #endif  // _WIN32
@@ -291,7 +291,7 @@ std::pair<size_t, bool> RawTCPConnectionFD::prepareWriteBytes(char* dest, size_t
     // NOTE: Precondition is the queue still has messages (perhaps a partial one).
     // We don't need to update the queue because trySendQueuedMessages is okay with a complete message in front.
 
-    const bool writeFileRes = WriteFile((HANDLE)(SOCKET)_fd, dest, 1, nullptr, notifyHandle);
+    const bool writeFileRes = WriteFile((HANDLE)(SOCKET)_fd, dest, 1, nullptr, (LPOVERLAPPED)notifyHandle);
     if (writeFileRes) {
         return {1, true};
     }

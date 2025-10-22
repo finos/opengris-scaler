@@ -19,7 +19,7 @@ struct RawTCPConnectionFD {
 
     // I need the semantic that, if this return certain value,
     // i need to immediatley read bytes
-    bool prepareReadBytes();
+    bool prepareReadBytes(void* notifyHandle);
     // TODO: This might need error handling
     std::pair<size_t, bool> prepareWriteBytes(char* dest, size_t len, void* notifyHandle);
 
