@@ -3,13 +3,12 @@ import os
 
 from aiohttp import web
 
+from scaler.config import defaults
+from scaler.config.loader import load_config
+from scaler.config.section.ecs_worker_adapter import ECSWorkerAdapterConfig
 from scaler.utility.event_loop import EventLoopType, register_event_loop
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_adapter.ecs import ECSWorkerAdapter
-
-from scaler.config.loader import load_config
-from scaler.config.section.ecs_worker_adapter import ECSWorkerAdapterConfig
-from scaler.config import defaults
 
 
 def get_args():
@@ -20,9 +19,7 @@ def get_args():
     parser.add_argument("--config", "-c", type=str, default=None, help="Path to the TOML configuration file.")
 
     # Server configuration (match dataclass field names)
-    parser.add_argument(
-        "--adapter-web-host", type=str, help="host address for the ecs worker adapter HTTP server"
-    )
+    parser.add_argument("--adapter-web-host", type=str, help="host address for the ecs worker adapter HTTP server")
     parser.add_argument("--adapter-web-port", "-p", type=int, help="port for the ecs worker adapter HTTP server")
 
     # AWS / ECS configuration
@@ -40,27 +37,13 @@ def get_args():
     )
     parser.add_argument("--aws-region", type=str, default="us-east-1", help="AWS region for ECS cluster")
     parser.add_argument("--ecs-cluster", type=str, help="ECS cluster name")
-    parser.add_argument(
-        "--ecs-task-image",
-        type=str,
-        help="Container image used for ECS tasks",
-    )
-    parser.add_argument(
-        "--ecs-python-requirements",
-        type=str,
-        help="Python requirements string passed to the ECS task",
-    )
+    parser.add_argument("--ecs-task-image", type=str, help="Container image used for ECS tasks")
+    parser.add_argument("--ecs-python-requirements", type=str, help="Python requirements string passed to the ECS task")
     parser.add_argument("--ecs-python-version", type=str, help="Python version for ECS task")
     parser.add_argument("--ecs-task-definition", type=str, help="ECS task definition")
-    parser.add_argument(
-        "--ecs-task-cpu", type=int, help="Number of vCPUs for task (used to derive worker count)"
-    )
+    parser.add_argument("--ecs-task-cpu", type=int, help="Number of vCPUs for task (used to derive worker count)")
     parser.add_argument("--ecs-task-memory", type=int, help="Task memory in GB for Fargate")
-    parser.add_argument(
-        "--ecs-subnets",
-        type=str,
-        help="Comma-separated list of AWS subnet IDs for ECS tasks",
-    )
+    parser.add_argument("--ecs-subnets", type=str, help="Comma-separated list of AWS subnet IDs for ECS tasks")
 
     # Worker configuration
     parser.add_argument(
@@ -77,7 +60,8 @@ def get_args():
         "--max-instances",
         "-mi",
         type=int,
-        help="maximum number of ECS task instances that can be started, required to avoid unexpected surprise bills, -1 means no limit",
+        help="maximum number of ECS task instances that can be started, required to avoid unexpected surprise bills, "
+        "-1 means no limit",
     )
     parser.add_argument(
         "--heartbeat-interval-seconds",

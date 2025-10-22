@@ -7,9 +7,9 @@ import boto3
 from aiohttp import web
 from aiohttp.web_request import Request
 
-from scaler.utility.identifiers import WorkerID
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
+from scaler.utility.identifiers import WorkerID
 from scaler.worker_adapter.common import (
     CapacityExceededError,
     WorkerGroupID,
@@ -95,7 +95,7 @@ class ECSWorkerAdapter:
 
         try:
             resp = self._ecs_client.describe_task_definition(taskDefinition=self._ecs_task_definition)
-        except self._ecs_client.exceptions.ClientException as e:
+        except self._ecs_client.exceptions.ClientException:
             logging.info(f"ECS task definition '{self._ecs_task_definition}' missing, creating it.")
             iam_client = aws_session.client("iam")
             try:
@@ -104,7 +104,11 @@ class ECSWorkerAdapter:
             except iam_client.exceptions.NoSuchEntityException:
                 resp = iam_client.create_role(
                     RoleName="ecsTaskExecutionRole",
-                    AssumeRolePolicyDocument='{"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Principal": {"Service": "ecs-tasks.amazonaws.com"}, "Action": "sts:AssumeRole"}]}',
+                    AssumeRolePolicyDocument=(
+                        '{"Version": "2012-10-17", '
+                        '"Statement": [{"Effect": "Allow", '
+                        '"Principal": {"Service": "ecs-tasks.amazonaws.com"}, "Action": "sts:AssumeRole"}]}'
+                    ),
                 )
                 execution_role_arn = resp["Role"]["Arn"]
                 iam_client.attach_role_policy(

@@ -1,0 +1,38 @@
+{
+  "name": "Cpp Dev (amd64, CMake + Cap'n Proto)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "..",
+    "args": {
+      "DEBIAN_VERSION": "bookworm",
+      "LLVM_VERSION": "17",
+      "USE_CLANG": "0"
+    }
+  },
+  "runArgs": ["--platform=linux/amd64"],
+  "containerUser": "vscode",
+  "remoteUser": "vscode",
+  "features": {},
+  "mounts": [
+    "source=devcontainer-ccache,target=/home/vscode/.cache/ccache,type=volume"
+  ],
+  "settings": {
+    "cmake.generator": "Ninja",
+    "cmake.configureOnOpen": true,
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "C_Cpp.default.compilerPath": "/usr/bin/g++"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cmake-tools",
+        "ms-vscode.cpptools",
+        "twxs.cmake",
+        "ms-vscode.cpptools-themes",
+        "eamodio.gitlens"
+      ]
+    }
+  },
+  "postCreateCommand": "git config --global --add safe.directory ${containerWorkspaceFolder} && cmake --version && capnp --version && c++ --version",
+  "updateRemoteUserUID": true
+}

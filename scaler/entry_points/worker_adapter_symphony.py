@@ -16,12 +16,8 @@ def get_args():
     parser.add_argument("--config", "-c", type=str, default=None, help="Path to the TOML configuration file.")
 
     # Server configuration
-    parser.add_argument(
-        "--adapter-web-host", type=str, help="host address for symphony worker adapter HTTP server"
-    )
-    parser.add_argument(
-        "--adapter-web-port", "-p", type=int, help="port for symphony worker adapter HTTP server"
-    )
+    parser.add_argument("--adapter-web-host", type=str, help="host address for symphony worker adapter HTTP server")
+    parser.add_argument("--adapter-web-port", "-p", type=int, help="port for symphony worker adapter HTTP server")
 
     # Symphony configuration
     parser.add_argument("--service-name", "-sn", type=str, help="symphony service name")
