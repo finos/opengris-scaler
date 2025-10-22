@@ -28,10 +28,10 @@ class ECSWorkerAdapter:
     def __init__(
         self,
         address: ZMQConfig,
-        storage_address: Optional[ObjectStorageConfig],
+        object_storage_address: Optional[ObjectStorageConfig],
         capabilities: Dict[str, int],
         io_threads: int,
-        task_queue_size: int,
+        per_worker_task_queue_size: int,
         max_instances: int,
         heartbeat_interval_seconds: int,
         task_timeout_seconds: int,
@@ -54,10 +54,10 @@ class ECSWorkerAdapter:
         ecs_task_memory: int,  # 30 GB, Fargate has weird supported sizes
     ):
         self._address = address
-        self._storage_address = storage_address
+        self._object_storage_address = object_storage_address
         self._capabilities = capabilities
         self._io_threads = io_threads
-        self._task_queue_size = task_queue_size
+        self._task_queue_size = per_worker_task_queue_size
         self._max_instances = max_instances
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._task_timeout_seconds = task_timeout_seconds
@@ -152,8 +152,8 @@ class ECSWorkerAdapter:
         if self._hard_processor_suspend:
             command += " --hard-processor-suspend"
 
-        if self._storage_address:
-            command += f" --object-storage-address {self._storage_address.to_string()}"
+        if self._object_storage_address:
+            command += f" --object-storage-address {self._object_storage_address.to_string()}"
 
         if format_capabilities(self._capabilities).strip():
             command += f" --per-worker-capabilities {format_capabilities(self._capabilities)}"

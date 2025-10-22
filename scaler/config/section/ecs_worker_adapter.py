@@ -35,7 +35,7 @@ class ECSWorkerAdapterConfig:
     per_worker_capabilities: WorkerCapabilities = dataclasses.field(
         default_factory=lambda: WorkerCapabilities.from_string("")
     )
-    worker_task_queue_size: int = defaults.DEFAULT_PER_WORKER_QUEUE_SIZE
+    per_worker_task_queue_size: int = defaults.DEFAULT_PER_WORKER_QUEUE_SIZE
     max_instances: int = defaults.DEFAULT_NUMBER_OF_WORKER
     heartbeat_interval_seconds: int = defaults.DEFAULT_HEARTBEAT_INTERVAL_SECONDS
     task_timeout_seconds: int = defaults.DEFAULT_TASK_TIMEOUT_SECONDS
@@ -58,7 +58,7 @@ class ECSWorkerAdapterConfig:
         # Validate numeric and collection values
         if self.io_threads <= 0:
             raise ValueError("io_threads must be a positive integer.")
-        if self.worker_task_queue_size <= 0:
+        if self.per_worker_task_queue_size <= 0:
             raise ValueError("worker_task_queue_size must be positive.")
         if self.ecs_task_cpu <= 0:
             raise ValueError("ecs_task_cpu must be a positive integer.")

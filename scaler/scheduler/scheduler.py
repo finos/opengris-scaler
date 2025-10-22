@@ -33,9 +33,9 @@ from scaler.scheduler.controllers.client_controller import VanillaClientControll
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.graph_controller import VanillaGraphTaskController
 from scaler.scheduler.controllers.information_controller import VanillaInformationController
-from scaler.scheduler.controllers.mixins import ScalingController
 from scaler.scheduler.controllers.object_controller import VanillaObjectController
 from scaler.scheduler.controllers.scaling_policies.fixed_elastic import FixedElasticScalingController
+from scaler.scheduler.controllers.scaling_policies.mixins import ScalingController
 from scaler.scheduler.controllers.scaling_policies.null import NullScalingController
 from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
 from scaler.scheduler.controllers.scaling_policies.vanilla import VanillaScalingController

@@ -55,7 +55,7 @@ def get_args():
         type=str,
         help='comma-separated capabilities provided by the workers (e.g. "-pwc linux,cpu=4")',
     )
-    parser.add_argument("--worker-task-queue-size", "-wtqs", type=int, help="specify worker queue size")
+    parser.add_argument("--per-worker-task-queue-size", "-wtqs", type=int, help="specify worker queue size")
     parser.add_argument(
         "--max-instances",
         "-mi",
@@ -158,10 +158,10 @@ def main():
 
     ecs_worker_adapter = ECSWorkerAdapter(
         address=ecs_config.scheduler_address,
-        storage_address=ecs_config.object_storage_address,
+        object_storage_address=ecs_config.object_storage_address,
         capabilities=ecs_config.per_worker_capabilities.capabilities,
         io_threads=ecs_config.io_threads,
-        task_queue_size=ecs_config.worker_task_queue_size,
+        per_worker_task_queue_size=ecs_config.worker_task_queue_size,
         max_instances=ecs_config.max_instances,
         heartbeat_interval_seconds=ecs_config.heartbeat_interval_seconds,
         task_timeout_seconds=ecs_config.task_timeout_seconds,
