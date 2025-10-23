@@ -277,6 +277,10 @@ void MessageConnectionTCP::onRead()
         return;
     }
 
+    if (!_connFd) {
+        return;
+    }
+
     if (_rawTCPConnectionFD.prepareReadBytes(this->_eventManager.get())) {
         onRead();
     }
