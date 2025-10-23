@@ -328,6 +328,7 @@ void MessageConnectionTCP::onWrite()
             onWrite();
             return;
         }
+        return;
     }
 
     std::unreachable();
