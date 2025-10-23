@@ -34,5 +34,7 @@ int main()
         send_future.wait();
     }
 
+    context.removeIOSocket(socket);
+
     return 0;
 }

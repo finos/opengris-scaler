@@ -233,56 +233,42 @@ void MessageConnectionTCP::onRead()
         return;
     }
 
-    auto maybeCloseConn = [this](IOError err) -> std::expected<void, IOError> {
-        setRemoteIdentity();
-
-        if (_remoteIOSocketIdentity) {
-            updateReadOperation();
+    if (!_remoteIOSocketIdentity) {
+        auto res = tryReadOneMessage();
+        if (res) {
+            setRemoteIdentity();
+        } else {
+            switch (res.error()) {
+                case IOError::Drained: {
+                    if (_rawTCPConnectionFD.prepareReadBytes(this->_eventManager.get())) {
+                        onRead();
+                    }
+                    return;
+                }
+                case IOError::Aborted: _disconnect = false; break;
+                case IOError::Disconnected: _disconnect = true; break;
+                case IOError::MessageTooLarge: _disconnect = true; break;
+            }
+            onClose();
+            return;
         }
-
-        switch (err) {
-            case IOError::Drained: return {};
+    }
+    auto res = tryReadMessages();
+    updateReadOperation();
+    if (!res) {
+        switch (res.error()) {
+            case IOError::Drained: {
+                if (_rawTCPConnectionFD.prepareReadBytes(this->_eventManager.get())) {
+                    onRead();
+                }
+                return;
+            }
             case IOError::Aborted: _disconnect = false; break;
             case IOError::Disconnected: _disconnect = true; break;
             case IOError::MessageTooLarge: _disconnect = true; break;
         }
-
         onClose();
-        return std::unexpected {err};
-    };
-
-    auto res = _remoteIOSocketIdentity
-                   .or_else([this, maybeCloseConn] {
-                       auto _ = tryReadOneMessage()
-                                    .or_else(maybeCloseConn)  //
-                                    .and_then([this]() -> std::expected<void, IOError> {
-                                        setRemoteIdentity();
-                                        return {};
-                                    });
-                       return _remoteIOSocketIdentity;
-                   })
-                   .and_then([this, maybeCloseConn](const std::string&) -> std::optional<std::string> {
-                       if (!_connFd) {
-                           return _remoteIOSocketIdentity;
-                       }
-                       auto _ = tryReadMessages()
-                                    .or_else(maybeCloseConn)  //
-                                    .and_then([this]() -> std::expected<void, IOError> {
-                                        updateReadOperation();
-                                        return {};
-                                    });
-                       return _remoteIOSocketIdentity;
-                   });
-    if (!res) {
         return;
-    }
-
-    if (!_connFd) {
-        return;
-    }
-
-    if (_rawTCPConnectionFD.prepareReadBytes(this->_eventManager.get())) {
-        onRead();
     }
 }
 
