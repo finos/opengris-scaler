@@ -253,6 +253,9 @@ std::expected<uint64_t, RawTCPConnectionFD::IOError> RawTCPConnectionFD::writeBy
 #endif  // __linux__
 }
 
+// TODO: This notifyHandle is a bad name but I don't have a better name for it now.
+// Later, I will give it a better name. The purpose of it is to just "pass something"
+// to the event loop.
 bool RawTCPConnectionFD::prepareReadBytes(void* notifyHandle)
 {
 #ifdef _WIN32

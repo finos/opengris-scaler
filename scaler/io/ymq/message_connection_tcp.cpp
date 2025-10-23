@@ -9,8 +9,8 @@
 
 #ifdef __linux__
 #include <unistd.h>
-#endif  // __linux__
-#ifdef _WIN32
+#endif         // __linux__
+#ifdef _WIN32  // TODO: Maybe this can be removed.
 // clang-format off
 #include <windows.h>
 #include <winsock2.h>
@@ -19,7 +19,6 @@
 #endif  // _WIN32
 
 #include <algorithm>
-#include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -112,31 +111,15 @@ void MessageConnectionTCP::onCreated()
             Bytes {_localIOSocketIdentity.data(), _localIOSocketIdentity.size()}, [](auto) {});
 #endif  // __linux__
 #ifdef _WIN32
-        // This probably need handle the addtwice problem
+        // TODO: Leave it as is, but remove it in the future (once we define EPOLLIN etc.)
         this->_eventLoopThread->_eventLoop.addFdToLoop(_connFd, 0, nullptr);
         _writeOperations.emplace_back(
             Bytes {_localIOSocketIdentity.data(), _localIOSocketIdentity.size()}, [](auto) {});
         onWrite();
-        const bool ok = ReadFile((HANDLE)(SOCKET)_connFd, nullptr, 0, nullptr, this->_eventManager.get());
-        if (ok) {
-            onRead();
-            return;
-        }
-        const int lastError = GetLastError();
-        if (lastError == ERROR_IO_PENDING) {
-            return;
-        }
-
-        unrecoverableError({
-            Error::ErrorCode::CoreBug,
-            "Originated from",
-            "ReadFile",
-            "Errno is",
-            lastError,
-            "_connfd",
-            _connFd,
-        });
 #endif  // _WIN32
+        if (_rawTCPConnectionFD.prepareReadBytes(this->_eventManager.get())) {
+            onRead();
+        }
     }
 }
 
@@ -183,84 +166,21 @@ std::expected<void, MessageConnectionTCP::IOError> MessageConnectionTCP::tryRead
             return {};
         }
 
-        int n = ::recv(_connFd, readTo, remainingSize, 0);
-        if (n == 0) {
-            return std::unexpected {IOError::Disconnected};
-        } else if (n == -1) {
-            const int myErrno = GetErrorCode();
-#ifdef _WIN32
-            if (myErrno == WSAEWOULDBLOCK) {
-                return std::unexpected {IOError::Drained};
-            }
-            if (myErrno == WSAECONNRESET || myErrno == WSAENOTSOCK) {
-                return std::unexpected {IOError::Aborted};
-            } else {
-                // NOTE: On Windows we don't have signals and weird IO Errors
-                unrecoverableError({
-                    Error::ErrorCode::CoreBug,
-                    "Originated from",
-                    "recv",
-                    "Errno is",
-                    myErrno,
-                    "_connfd",
-                    _connFd,
-                    "readTo",
-                    (void*)readTo,
-                    "remainingSize",
-                    remainingSize,
-                });
-            }
-#endif  // _WIN32
-#ifdef __linux__
-            if (myErrno == ECONNRESET) {
-                return std::unexpected {IOError::Aborted};
-            }
-            if (myErrno == EAGAIN || myErrno == EWOULDBLOCK) {
-                return std::unexpected {IOError::Drained};
-            } else {
-                const int myErrno = errno;
-                switch (myErrno) {
-                    case EBADF:
-                    case EISDIR:
-                    case EINVAL:
-                        unrecoverableError({
-                            Error::ErrorCode::CoreBug,
-                            "Originated from",
-                            "read(2)",
-                            "Errno is",
-                            strerror(myErrno),
-                            "_connfd",
-                            _connFd,
-                            "readTo",
-                            (void*)readTo,
-                            "remainingSize",
-                            remainingSize,
-                        });
-
-                    case EINTR:
-                        unrecoverableError({
-                            Error::ErrorCode::SignalNotSupported,
-                            "Originated from",
-                            "read(2)",
-                            "Errno is",
-                            strerror(myErrno),
-                        });
-
-                    case EFAULT:
-                    case EIO:
-                    default:
-                        unrecoverableError({
-                            Error::ErrorCode::ConfigurationError,
-                            "Originated from",
-                            "read(2)",
-                            "Errno is",
-                            strerror(myErrno),
-                        });
+        auto res = _rawTCPConnectionFD.readBytes(readTo, remainingSize);
+        if (res) {
+            message._cursor += res.value();
+        } else {
+            switch (res.error()) {
+                case RawTCPConnectionFD::IOError::Disconnected: {
+                    return std::unexpected {IOError::Disconnected};
+                }
+                case RawTCPConnectionFD::IOError::Aborted: {
+                    return std::unexpected {IOError::Aborted};
+                }
+                case RawTCPConnectionFD::IOError::Drained: {
+                    return std::unexpected {IOError::Drained};
                 }
             }
-#endif  // __linux__
-        } else {
-            message._cursor += n;
         }
     }
     return {};
@@ -357,30 +277,9 @@ void MessageConnectionTCP::onRead()
         return;
     }
 
-#ifdef _WIN32
-    // TODO: This need rewrite to better logic
-    if (!_connFd) {
-        return;
-    }
-    const bool ok = ReadFile((HANDLE)(SOCKET)_connFd, nullptr, 0, nullptr, this->_eventManager.get());
-    if (ok) {
+    if (_rawTCPConnectionFD.prepareReadBytes(this->_eventManager.get())) {
         onRead();
-        return;
     }
-    const auto lastError = GetLastError();
-    if (lastError == ERROR_IO_PENDING) {
-        return;
-    }
-    unrecoverableError({
-        Error::ErrorCode::CoreBug,
-        "Originated from",
-        "ReadFile",
-        "Errno is",
-        lastError,
-        "_connfd",
-        _connFd,
-    });
-#endif  // _WIN32
 }
 
 void MessageConnectionTCP::onWrite()
