@@ -1,13 +1,12 @@
 # NOTE: NOT IMPLEMENTATION, TYPE INFORMATION ONLY
 # This file contains type stubs for the Ymq Python C Extension module
-import sys
 from enum import IntEnum
 from typing import Callable, Optional, SupportsBytes, Union
 
-if sys.version_info >= (3, 12):
-    from collections.abc import Buffer
-else:
-    Buffer = object
+try:
+    from collections.abc import Buffer  # type: ignore[attr-defined]
+except ImportError:
+    from typing_extensions import Buffer
 
 class Bytes(Buffer):
     data: bytes | None

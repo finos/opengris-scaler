@@ -158,6 +158,7 @@ int TcpServer::createAndBindSocket()
         );
         CloseAndZeroSocket(server_fd);
         _onBindReturn(std::unexpected(Error {Error::ErrorCode::SetSockOptNonFatalFailure}));
+        _onBindReturn = {};
         return -1;
     }
 
@@ -257,6 +258,7 @@ void TcpServer::onCreated()
 #endif  // _WIN32
 
     _onBindReturn({});
+    _onBindReturn = {};
 }
 
 void TcpServer::onRead()
@@ -403,6 +405,13 @@ TcpServer::~TcpServer() noexcept
     if (_serverFd != 0) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_serverFd);
         CloseAndZeroSocket(_serverFd);
+    }
+    // TODO: Do we think this is an error? In extreme cases:
+    // bindTo(...);
+    // removeIOSocket(...);
+    // Below callback may not be called.
+    if (_onBindReturn) {
+        _onBindReturn({});
     }
 }
 

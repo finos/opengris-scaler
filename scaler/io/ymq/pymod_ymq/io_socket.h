@@ -38,9 +38,13 @@ extern "C" {
 static void PyIOSocket_dealloc(PyIOSocket* self)
 {
     try {
-        self->ioContext->removeIOSocket(self->socket);
-        self->ioContext.~shared_ptr();
-        self->socket.~shared_ptr();
+        std::shared_ptr<IOSocket> ioSocket   = std::move(self->socket);
+        std::shared_ptr<IOContext> ioContext = std::move(self->ioContext);
+
+        // this function blocks so it's important to release the GIL
+        Py_BEGIN_ALLOW_THREADS;
+        ioContext->removeIOSocket(ioSocket);
+        Py_END_ALLOW_THREADS;
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to deallocate IOSocket");
         PyErr_WriteUnraisable((PyObject*)self);

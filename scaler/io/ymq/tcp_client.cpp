@@ -70,6 +70,7 @@ void TcpClient::onCreated()
         sock->onConnectionCreated(setNoDelay(sockfd), getLocalAddr(sockfd), getRemoteAddr(sockfd), responsibleForRetry);
         if (_retryTimes == 0) {
             _onConnectReturn({});
+            _onConnectReturn = {};
         }
         return;
     }
@@ -78,6 +79,7 @@ void TcpClient::onCreated()
         _eventLoopThread->_eventLoop.addFdToLoop(sockfd, EPOLLOUT | EPOLLET, this->_eventManager.get());
         if (_retryTimes == 0) {
             _onConnectReturn(std::unexpected {Error::ErrorCode::InitialConnectFailedWithInProgress});
+            _onConnectReturn = {};
         }
         return;
     }
@@ -202,6 +204,7 @@ void TcpClient::onCreated()
     if (myErrno == ERROR_IO_PENDING) {
         if (_retryTimes == 0) {
             _onConnectReturn(std::unexpected {Error::ErrorCode::InitialConnectFailedWithInProgress});
+            _onConnectReturn = {};
         }
         return;
     }
@@ -360,6 +363,10 @@ TcpClient::~TcpClient() noexcept
     }
     if (_retryTimes > 0) {
         _eventLoopThread->_eventLoop.cancelExecution(_retryIdentifier);
+    }
+    // TODO: Do we think this is an error? See TcpServer::~TcpServer for detail.
+    if (_onConnectReturn) {
+        _onConnectReturn({});
     }
 }
 
