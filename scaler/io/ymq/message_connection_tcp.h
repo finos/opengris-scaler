@@ -90,6 +90,9 @@ private:
     bool _disconnect;
     Logger _logger;
 
+    // TODO: This variable records whether we have read some bytes in the last read operation.
+    // The semantic of readMessage is completely broken. But that will be fixed in the refactor.
+    bool _readSomeBytes;
     constexpr static bool isCompleteMessage(const TcpReadOperation& x);
     friend void IOSocket::onConnectionIdentityReceived(MessageConnectionTCP* conn) noexcept;
     friend void IOSocket::onConnectionDisconnected(MessageConnectionTCP* conn, bool keepInBook) noexcept;

@@ -90,6 +90,7 @@ MessageConnectionTCP::MessageConnectionTCP(
     , _sendCursor {}
     , _pendingRecvMessageCallbacks(pendingRecvMessageCallbacks)
     , _disconnect {false}
+    , _readSomeBytes {false}
 {
     _eventManager->onRead  = [this] { this->onRead(); };
     _eventManager->onWrite = [this] { this->onWrite(); };
@@ -179,6 +180,10 @@ std::expected<void, MessageConnectionTCP::IOError> MessageConnectionTCP::tryRead
         }
 
         int n = ::recv(_connFd, readTo, remainingSize, 0);
+        if (n > 0) {
+            _readSomeBytes = true;
+        }
+
         if (n == 0) {
             return std::unexpected {IOError::Disconnected};
         } else if (n == -1) {
@@ -187,7 +192,7 @@ std::expected<void, MessageConnectionTCP::IOError> MessageConnectionTCP::tryRead
             if (myErrno == WSAEWOULDBLOCK) {
                 return std::unexpected {IOError::Drained};
             }
-            if (myErrno == WSAECONNRESET || myErrno == WSAENOTSOCK) {
+            if (myErrno == WSAECONNRESET || myErrno == WSAENOTSOCK || myErrno == WSAECONNABORTED) {
                 return std::unexpected {IOError::Aborted};
             } else {
                 // NOTE: On Windows we don't have signals and weird IO Errors
@@ -307,6 +312,7 @@ void MessageConnectionTCP::onRead()
     if (_connFd == 0) {
         return;
     }
+    _readSomeBytes = false;
 
     auto maybeCloseConn = [this](IOError err) -> std::expected<void, IOError> {
         setRemoteIdentity();
@@ -355,6 +361,17 @@ void MessageConnectionTCP::onRead()
 #ifdef _WIN32
     // TODO: This need rewrite to better logic
     if (!_connFd) {
+        return;
+    }
+
+    // NOTE:
+    // Because there was no way to differentiate Read/Write operation on Windows, current behaviour is that whenever an
+    // operation arrives, I call both onRead and onWrite. This creates erroneous behaviour as we are posting too much
+    // operations into the queue maintained by the kernel.
+    // Sometimes, we don't really need to queued in another operation, as we typically know that when onRead is being
+    // called with no bytes being read, we know this is a false positive call (introduce by a write-available
+    // notification for example) and the previous ReadFile notification is still in the operating system's kernel.
+    if (!_readSomeBytes) {
         return;
     }
     const bool ok = ReadFile((HANDLE)(SOCKET)_connFd, nullptr, 0, nullptr, this->_eventManager.get());
@@ -407,13 +424,18 @@ void MessageConnectionTCP::onWrite()
         } else {
             addr = (char*)_writeOperations.front()._payload.data() + _sendCursor - HEADER_SIZE;
         }
-        ++_sendCursor;  // Next onWrite() will not be called until the asyncop complete
 
-        const bool writeFileRes = WriteFile((HANDLE)(SOCKET)_connFd, addr, 1, nullptr, _eventManager.get());
+        const size_t len        = 1;
+        const bool writeFileRes = WriteFile((HANDLE)(SOCKET)_connFd, addr, len, nullptr, _eventManager.get());
         if (writeFileRes) {
             onWrite();
             return;
         }
+
+        // NOTE:
+        // If you don't updateWriteOperations, the _sendCursor will not be reset and that breaks the assumption that
+        // 0 <= _sendCursor <= HEADER_SIZE + message.payload.length
+        updateWriteOperations(len);
 
         const auto lastError = GetLastError();
         if (lastError == ERROR_IO_PENDING) {
@@ -502,7 +524,10 @@ std::expected<size_t, MessageConnectionTCP::IOError> MessageConnectionTCP::trySe
     if (myErrno == WSAEWOULDBLOCK) {
         return std::unexpected {IOError::Drained};
     }
-    if (myErrno == WSAESHUTDOWN || myErrno == WSAENOTCONN) {
+
+    // NOTE: On Windows, the behaviour of connection aborting is not very clear -
+    // You can get WSAECONNABORTED (Note that ECONNABORTED is not presented on GNU) when the remote connection aborts.
+    if (myErrno == WSAESHUTDOWN || myErrno == WSAENOTCONN || myErrno == WSAECONNRESET) {
         return std::unexpected {IOError::Aborted};
     }
     unrecoverableError({
