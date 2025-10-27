@@ -1,8 +1,10 @@
 import dataclasses
 
+from scaler.config.mixins import config_section
 from scaler.config.types.zmq import ZMQConfig
 
 
+@config_section
 @dataclasses.dataclass
 class TopConfig:
     monitor_address: ZMQConfig

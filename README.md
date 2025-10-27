@@ -247,7 +247,15 @@ The following table maps each Scaler command to its corresponding section name i
 
 #### Scenario 1: Unified Configuration File
 
-Here is an example of a single `example_config.toml` file that configures multiple components using sections.
+To get a complete template with all available options and their default values, you can generate a `example_config.toml` file by running the script included in the `docs` folder:
+
+```bash
+python3 docs/source/_scripts/generate_config.py
+```
+
+This will create a `example_config.toml` file, which you can then customize.
+
+For simplicity, here is a condensed example of a `example_config.toml` file that configures multiple components:
 
 **example_config.toml**
 

@@ -2,9 +2,11 @@ import dataclasses
 from typing import Optional, Tuple
 
 from scaler.config import defaults
+from scaler.config.mixins import config_section
 from scaler.config.types.zmq import ZMQConfig
 
 
+@config_section
 @dataclasses.dataclass
 class WebUIConfig:
     monitor_address: ZMQConfig
