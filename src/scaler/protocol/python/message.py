@@ -12,6 +12,7 @@ from scaler.protocol.python.common import (
     TaskCapability,
     TaskResultType,
     TaskState,
+    WorkerState,
 )
 from scaler.protocol.python.mixins import Message
 from scaler.protocol.python.status import (
@@ -560,12 +561,24 @@ class StateWorker(Message):
         return WorkerID(self._msg.workerId)
 
     @property
-    def message(self) -> bytes:
-        return self._msg.message
+    def state(self) -> WorkerState:
+        return WorkerState(self._msg.state.raw)
+
+    @property
+    def capabilities(self) -> Dict[str, int]:
+        return {capability.name: capability.value for capability in self._msg.capabilities}
 
     @staticmethod
-    def new_msg(worker_id: WorkerID, message: bytes) -> "StateWorker":
-        return StateWorker(_message.StateWorker(workerId=bytes(worker_id), message=message))
+    def new_msg(worker_id: WorkerID, state: WorkerState, capabilities: Dict[str, int]) -> "StateWorker":
+        return StateWorker(
+            _message.StateWorker(
+                workerId=bytes(worker_id),
+                state=state.value,
+                capabilities=[
+                    TaskCapability.new_msg(name, value).get_message() for name, value in capabilities.items()
+                ],
+            )
+        )
 
 
 class StateTask(Message):

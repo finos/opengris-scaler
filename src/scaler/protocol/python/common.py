@@ -47,6 +47,11 @@ class TaskState(enum.Enum):
     WorkerDisconnecting = _common.TaskState.workerDisconnecting  # task is lost due to worker disconnecting
 
 
+class WorkerState(enum.Enum):
+    Connected = _common.WorkerState.connected
+    Disconnected = _common.WorkerState.disconnected
+
+
 @dataclasses.dataclass
 class TaskCapability(Message):
     def __init__(self, msg):
