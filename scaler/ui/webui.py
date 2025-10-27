@@ -1,11 +1,10 @@
 import dataclasses
 import threading
 from functools import partial
-from typing import Optional, Tuple
 
 from nicegui import ui
 
-from scaler.config.types.zmq import ZMQConfig
+from scaler.config.section.webui import WebUIConfig
 from scaler.io.sync_subscriber import ZMQSyncSubscriber
 from scaler.protocol.python.message import StateScheduler, StateTask
 from scaler.protocol.python.mixins import Message
@@ -36,16 +35,9 @@ class Sections:
     settings_section: Settings
 
 
-def start_webui(
-    address: str,
-    host: str,
-    port: int,
-    logging_paths: Tuple[str, ...],
-    logging_config_file: Optional[str],
-    logging_level: str,
-):
+def start_webui(config: WebUIConfig):
 
-    setup_logger(logging_paths, logging_config_file, logging_level)
+    setup_logger(config.logging_paths, config.logging_config_file, config.logging_level)
 
     tables = Sections(
         scheduler_section=SchedulerSection(),
@@ -88,14 +80,13 @@ def start_webui(
             tables.settings_section.draw_section()
 
     subscriber = ZMQSyncSubscriber(
-        address=ZMQConfig.from_string(address),
-        callback=partial(__show_status, tables=tables),
-        topic=b"",
-        timeout_seconds=-1,
+        address=config.monitor_address, callback=partial(__show_status, tables=tables), topic=b"", timeout_seconds=-1
     )
     subscriber.start()
 
-    ui_thread = threading.Thread(target=partial(ui.run, host=host, port=port, reload=False), daemon=False)
+    ui_thread = threading.Thread(
+        target=partial(ui.run, host=config.web_host, port=config.web_port, reload=False), daemon=False
+    )
     ui_thread.start()
     ui_thread.join()
 

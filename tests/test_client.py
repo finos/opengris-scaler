@@ -1,3 +1,4 @@
+import dataclasses
 import functools
 import os
 import random
@@ -7,6 +8,7 @@ import unittest
 from concurrent.futures import CancelledError
 
 from scaler import Client, Cluster, SchedulerClusterCombo
+from scaler.config.types.worker import WorkerCapabilities, WorkerNames
 from scaler.utility.exceptions import MissingObjects, ProcessorDiedError
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
@@ -341,26 +343,18 @@ class TestClientPreload(unittest.TestCase):
         self.combo.shutdown()
 
     def _create_preload_cluster(self, preload: str, logging_paths: tuple = ("/dev/stdout",)):
-        base_cluster = self.combo._cluster
-        preload_cluster = Cluster(
-            address=self.combo._address,
+        base_config = self.combo._cluster._cluster_config
+        preload_config = dataclasses.replace(
+            base_config,
+            scheduler_address=self.combo._address,
             object_storage_address=self.combo._object_storage_address,
             preload=preload,
-            worker_io_threads=base_cluster._worker_io_threads,
-            worker_names=["preload_worker"],
-            per_worker_capabilities={},
-            per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
-            heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
-            task_timeout_seconds=base_cluster._task_timeout_seconds,
-            death_timeout_seconds=base_cluster._death_timeout_seconds,
-            garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
-            trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
-            hard_processor_suspend=base_cluster._hard_processor_suspend,
-            event_loop=base_cluster._event_loop,
+            worker_names=WorkerNames(names=["preload_worker"]),
+            num_of_workers=1,
+            per_worker_capabilities=WorkerCapabilities(capabilities={}),
             logging_paths=logging_paths,
-            logging_level=base_cluster._logging_level,
-            logging_config_file=base_cluster._logging_config_file,
         )
+        preload_cluster = Cluster(config=preload_config)
         return preload_cluster
 
     def test_preload_success(self):

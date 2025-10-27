@@ -1,9 +1,11 @@
+import dataclasses
 import time
 import unittest
 from concurrent.futures import CancelledError
 
 from scaler import Client, Cluster, SchedulerClusterCombo
 from scaler.config.defaults import DEFAULT_LOGGING_PATHS
+from scaler.config.types.worker import WorkerCapabilities, WorkerNames
 from scaler.utility.logging.utility import setup_logger
 from tests.utility import logging_test_name
 
@@ -25,26 +27,18 @@ class TestClusterDisconnect(unittest.TestCase):
         pass
 
     def test_cluster_disconnect(self):
-        base_cluster = self.combo._cluster
-        dying_cluster = Cluster(
-            address=self.combo._address,
+        base_config = self.combo._cluster._cluster_config
+        dying_config = dataclasses.replace(
+            base_config,
+            scheduler_address=self.combo._address,
             object_storage_address=self.combo._object_storage_address,
             preload=None,
-            worker_io_threads=base_cluster._worker_io_threads,
-            worker_names=["dying_worker"],  # Just one worker would suffice
-            per_worker_capabilities={},
-            per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
-            heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
-            task_timeout_seconds=base_cluster._task_timeout_seconds,
-            death_timeout_seconds=base_cluster._death_timeout_seconds,
-            garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
-            trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
-            hard_processor_suspend=base_cluster._hard_processor_suspend,
-            event_loop=base_cluster._event_loop,
+            worker_names=WorkerNames(names=["dying_worker"]),
+            num_of_workers=1,
+            per_worker_capabilities=WorkerCapabilities(capabilities={}),
             logging_paths=DEFAULT_LOGGING_PATHS,
-            logging_level=base_cluster._logging_level,
-            logging_config_file=base_cluster._logging_config_file,
         )
+        dying_cluster = Cluster(config=dying_config)
         dying_cluster.start()
 
         client = Client(self.address)

@@ -1,5 +1,4 @@
 import logging
-import socket
 from typing import Dict, Optional, Tuple
 
 from scaler.cluster.cluster import Cluster
@@ -23,6 +22,8 @@ from scaler.config.defaults import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
+from scaler.config.section.cluster import ClusterConfig
+from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
@@ -66,12 +67,12 @@ class SchedulerClusterCombo:
             self._address = ZMQConfig.from_string(address)
 
         if object_storage_address is None:
-            self._object_storage_address = ObjectStorageConfig(self._address.host, get_available_tcp_port())
+            self._object_storage_address = ObjectStorageConfig(self._address.host, self._address.port + 1)
         else:
             self._object_storage_address = ObjectStorageConfig.from_string(object_storage_address)
 
         if monitor_address is None:
-            self._monitor_address = None
+            self._monitor_address = ZMQConfig(self._address.type, self._address.host, self._address.port + 2)
         else:
             self._monitor_address = ZMQConfig.from_string(monitor_address)
 
@@ -84,13 +85,11 @@ class SchedulerClusterCombo:
         self._object_storage.start()
         self._object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
 
-        self._cluster = Cluster(
-            address=self._address,
+        cluster_config = ClusterConfig(
+            scheduler_address=self._address,
             object_storage_address=self._object_storage_address,
-            preload=None,
             worker_io_threads=worker_io_threads,
-            worker_names=[f"{socket.gethostname().split('.')[0]}_{i}" for i in range(n_workers)],
-            per_worker_capabilities=per_worker_capabilities or {},
+            num_of_workers=n_workers,
             per_worker_task_queue_size=per_worker_task_queue_size,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
             task_timeout_seconds=task_timeout_seconds,
@@ -103,9 +102,10 @@ class SchedulerClusterCombo:
             logging_config_file=logging_config_file,
             logging_level=logging_level,
         )
+        self._cluster = Cluster(config=cluster_config)
 
-        self._scheduler = SchedulerProcess(
-            address=self._address,
+        scheduler_config = SchedulerConfig(
+            scheduler_address=self._address,
             object_storage_address=self._object_storage_address,
             monitor_address=self._monitor_address,
             io_threads=scheduler_io_threads,
@@ -124,6 +124,7 @@ class SchedulerClusterCombo:
             logging_config_file=logging_config_file,
             logging_level=logging_level,
         )
+        self._scheduler = SchedulerProcess(config=scheduler_config)
 
         self._cluster.start()
         self._scheduler.start()

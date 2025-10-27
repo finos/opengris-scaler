@@ -4,10 +4,12 @@ This example demonstrates how to use capabilities with submit_verbose().
 It shows how to route tasks to workers with specific capabilities (like GPU) using the capabilities routing feature.
 """
 
+import dataclasses
 import math
 
 from scaler import Client, Cluster
 from scaler.cluster.combo import SchedulerClusterCombo
+from scaler.config.types.worker import WorkerCapabilities, WorkerNames
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 
 
@@ -30,26 +32,17 @@ def main():
     cluster = SchedulerClusterCombo(n_workers=2, allocate_policy=AllocatePolicy.capability)
 
     # Adds an additional worker with GPU support
-    base_cluster = cluster._cluster
-    regular_cluster = Cluster(
-        address=base_cluster._address,
+    base_config = cluster._cluster._cluster_config
+    cluster_config = dataclasses.replace(
+        base_config,
         object_storage_address=None,
         preload=None,
+        worker_names=WorkerNames(names=["gpu_worker"]),
+        num_of_workers=1,
+        per_worker_capabilities=WorkerCapabilities(capabilities={"gpu": -1}),
         worker_io_threads=1,
-        worker_names=["gpu_worker"],
-        per_worker_capabilities={"gpu": -1},
-        per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
-        heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
-        task_timeout_seconds=base_cluster._task_timeout_seconds,
-        death_timeout_seconds=base_cluster._death_timeout_seconds,
-        garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
-        trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
-        hard_processor_suspend=base_cluster._hard_processor_suspend,
-        event_loop=base_cluster._event_loop,
-        logging_paths=base_cluster._logging_paths,
-        logging_level=base_cluster._logging_level,
-        logging_config_file=base_cluster._logging_config_file,
     )
+    regular_cluster = Cluster(config=cluster_config)
     regular_cluster.start()
 
     with Client(address=cluster.get_address()) as client:

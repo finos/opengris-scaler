@@ -1,7 +1,9 @@
+import dataclasses
 import unittest
 from concurrent.futures import TimeoutError
 
 from scaler import Client, Cluster, SchedulerClusterCombo
+from scaler.config.types.worker import WorkerCapabilities, WorkerNames
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.utility.logging.utility import setup_logger
 from tests.utility import logging_test_name
@@ -21,7 +23,7 @@ class TestCapabilities(unittest.TestCase):
         self.combo.shutdown()
 
     def test_capabilities(self):
-        base_cluster = self.combo._cluster
+        base_config = self.combo._cluster._cluster_config
 
         with Client(self.address) as client:
             client.submit(round, 3.14).result()  # Ensures the cluster is ready
@@ -32,26 +34,18 @@ class TestCapabilities(unittest.TestCase):
             with self.assertRaises(TimeoutError):
                 future.result(timeout=1)
 
-            # Connects a worker that can handle the task
-            gpu_cluster = Cluster(
-                address=base_cluster._address,
+            gpu_config = dataclasses.replace(
+                base_config,
                 object_storage_address=None,
                 preload=None,
+                worker_names=WorkerNames(names=["gpu_worker"]),
+                num_of_workers=1,
+                per_worker_capabilities=WorkerCapabilities(capabilities={"gpu": -1}),
                 worker_io_threads=1,
-                worker_names=["gpu_worker"],
-                per_worker_capabilities={"gpu": -1},
-                per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
-                heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
-                task_timeout_seconds=base_cluster._task_timeout_seconds,
-                death_timeout_seconds=base_cluster._death_timeout_seconds,
-                garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
-                trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
-                hard_processor_suspend=base_cluster._hard_processor_suspend,
-                event_loop=base_cluster._event_loop,
-                logging_paths=base_cluster._logging_paths,
-                logging_level=base_cluster._logging_level,
-                logging_config_file=base_cluster._logging_config_file,
             )
+
+            # Connects a worker that can handle the task
+            gpu_cluster = Cluster(config=gpu_config)
             gpu_cluster.start()
 
             self.assertEqual(future.result(), 3.0)
@@ -59,7 +53,7 @@ class TestCapabilities(unittest.TestCase):
             gpu_cluster.terminate()
 
     def test_graph_capabilities(self):
-        base_cluster = self.combo._cluster
+        base_config = self.combo._cluster._cluster_config
 
         with Client(self.address) as client:
             client.submit(round, 3.14).result()  # Ensures the cluster is ready
@@ -71,26 +65,17 @@ class TestCapabilities(unittest.TestCase):
             with self.assertRaises(TimeoutError):
                 future.result(timeout=1)
 
-            # Connect a worker that can handle the task
-            gpu_cluster = Cluster(
-                address=base_cluster._address,
+            gpu_config = dataclasses.replace(
+                base_config,
                 preload=None,
                 object_storage_address=None,
+                worker_names=WorkerNames(names=["gpu_worker"]),
+                num_of_workers=1,
+                per_worker_capabilities=WorkerCapabilities(capabilities={"gpu": -1}),
                 worker_io_threads=1,
-                worker_names=["gpu_worker"],
-                per_worker_capabilities={"gpu": -1},
-                per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
-                heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
-                task_timeout_seconds=base_cluster._task_timeout_seconds,
-                death_timeout_seconds=base_cluster._death_timeout_seconds,
-                garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
-                trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
-                hard_processor_suspend=base_cluster._hard_processor_suspend,
-                event_loop=base_cluster._event_loop,
-                logging_paths=base_cluster._logging_paths,
-                logging_level=base_cluster._logging_level,
-                logging_config_file=base_cluster._logging_config_file,
             )
+            # Connect a worker that can handle the task
+            gpu_cluster = Cluster(config=gpu_config)
             gpu_cluster.start()
 
             self.assertEqual(future.result(), 8)

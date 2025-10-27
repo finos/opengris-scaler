@@ -1,48 +1,20 @@
 import os
 import signal
 import uuid
-from typing import Dict, Optional, Tuple
+from typing import Dict
 
 from aiohttp import web
 from aiohttp.web_request import Request
 
-from scaler.config.types.object_storage_server import ObjectStorageConfig
-from scaler.config.types.zmq import ZMQConfig
+from scaler.config.section.symphony_worker_adapter import SymphonyWorkerConfig
 from scaler.utility.identifiers import WorkerID
 from scaler.worker_adapter.common import CapacityExceededError, WorkerGroupID, WorkerGroupNotFoundError
 from scaler.worker_adapter.symphony.worker import SymphonyWorker
 
 
 class SymphonyWorkerAdapter:
-    def __init__(
-        self,
-        address: ZMQConfig,
-        object_storage_address: Optional[ObjectStorageConfig],
-        service_name: str,
-        base_concurrency: int,
-        capabilities: Dict[str, int],
-        io_threads: int,
-        task_queue_size: int,
-        heartbeat_interval_seconds: int,
-        death_timeout_seconds: int,
-        event_loop: str,
-        logging_paths: Tuple[str, ...],
-        logging_level: str,
-        logging_config_file: Optional[str],
-    ):
-        self._address = address
-        self._object_storage_address = object_storage_address
-        self._service_name = service_name
-        self._base_concurrency = base_concurrency
-        self._capabilities = capabilities
-        self._io_threads = io_threads
-        self._task_queue_size = task_queue_size
-        self._heartbeat_interval_seconds = heartbeat_interval_seconds
-        self._death_timeout_seconds = death_timeout_seconds
-        self._event_loop = event_loop
-        self._logging_paths = logging_paths
-        self._logging_level = logging_level
-        self._logging_config_file = logging_config_file
+    def __init__(self, config: SymphonyWorkerConfig):
+        self._symphony_worker_adapter_config = config
 
         """
         Although a worker group can contain multiple workers, in this Symphony adapter implementation,
@@ -56,16 +28,16 @@ class SymphonyWorkerAdapter:
 
         worker = SymphonyWorker(
             name=f"SYM|{uuid.uuid4().hex}",
-            address=self._address,
-            object_storage_address=self._object_storage_address,
-            service_name=self._service_name,
-            base_concurrency=self._base_concurrency,
-            capabilities=self._capabilities,
-            io_threads=self._io_threads,
-            task_queue_size=self._task_queue_size,
-            heartbeat_interval_seconds=self._heartbeat_interval_seconds,
-            death_timeout_seconds=self._death_timeout_seconds,
-            event_loop=self._event_loop,
+            address=self._symphony_worker_adapter_config.scheduler_address,
+            object_storage_address=self._symphony_worker_adapter_config.object_storage_address,
+            service_name=self._symphony_worker_adapter_config.service_name,
+            base_concurrency=self._symphony_worker_adapter_config.base_concurrency,
+            capabilities=self._symphony_worker_adapter_config.worker_capabilities.capabilities,
+            io_threads=self._symphony_worker_adapter_config.io_threads,
+            task_queue_size=self._symphony_worker_adapter_config.worker_task_queue_size,
+            heartbeat_interval_seconds=self._symphony_worker_adapter_config.heartbeat_interval,
+            death_timeout_seconds=self._symphony_worker_adapter_config.death_timeout_seconds,
+            event_loop=self._symphony_worker_adapter_config.event_loop,
         )
 
         worker.start()
@@ -93,7 +65,11 @@ class SymphonyWorkerAdapter:
 
         if action == "get_worker_adapter_info":
             return web.json_response(
-                {"max_worker_groups": 1, "workers_per_group": 1, "base_capabilities": self._capabilities},
+                {
+                    "max_worker_groups": 1,
+                    "workers_per_group": 1,
+                    "base_capabilities": self._symphony_worker_adapter_config.worker_capabilities.capabilities,
+                },
                 status=web.HTTPOk.status_code,
             )
 

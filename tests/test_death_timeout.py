@@ -13,6 +13,8 @@ from scaler.config.defaults import (
     DEFAULT_TASK_TIMEOUT_SECONDS,
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
 )
+from scaler.config.section.cluster import ClusterConfig
+from scaler.config.types.worker import WorkerCapabilities, WorkerNames
 from scaler.config.types.zmq import ZMQConfig
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
@@ -28,14 +30,14 @@ class TestDeathTimeout(unittest.TestCase):
 
     def test_no_scheduler(self):
         logging.info("test with no scheduler")
-        # Test 1: Spinning up a cluster with no scheduler. Death timeout should apply
-        cluster = Cluster(
-            address=ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
+        cluster_config = ClusterConfig(
+            scheduler_address=ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
             object_storage_address=None,
             preload=None,
             worker_io_threads=DEFAULT_IO_THREADS,
-            worker_names=["a", "b"],
-            per_worker_capabilities={},
+            worker_names=WorkerNames(names=["a", "b"]),
+            num_of_workers=2,
+            per_worker_capabilities=WorkerCapabilities(capabilities={}),
             per_worker_task_queue_size=DEFAULT_PER_WORKER_QUEUE_SIZE,
             heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
             garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
@@ -48,6 +50,8 @@ class TestDeathTimeout(unittest.TestCase):
             logging_level=DEFAULT_LOGGING_LEVEL,
             logging_config_file=None,
         )
+        # Test 1: Spinning up a cluster with no scheduler. Death timeout should apply
+        cluster = Cluster(config=cluster_config)
         cluster.start()
         time.sleep(15)
 

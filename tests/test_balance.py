@@ -1,9 +1,11 @@
+import dataclasses
 import os
 import time
 import unittest
 
 from scaler import Client, Cluster, SchedulerClusterCombo
 from scaler.config.defaults import DEFAULT_LOAD_BALANCE_SECONDS
+from scaler.config.types.worker import WorkerCapabilities, WorkerNames
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from tests.utility import logging_test_name
@@ -42,25 +44,20 @@ class TestBalance(unittest.TestCase):
 
         time.sleep(3)
 
-        new_cluster = Cluster(
-            address=combo._cluster._address,
+        base_config = combo._cluster._cluster_config
+
+        # Create a new config for the new cluster by replacing fields in the base config
+        new_cluster_config = dataclasses.replace(
+            base_config,
             object_storage_address=None,
             preload=None,
             worker_io_threads=1,
-            worker_names=[str(i) for i in range(0, N_WORKERS - 1)],
-            per_worker_capabilities={},
-            per_worker_task_queue_size=combo._cluster._per_worker_task_queue_size,
-            heartbeat_interval_seconds=combo._cluster._heartbeat_interval_seconds,
-            task_timeout_seconds=combo._cluster._task_timeout_seconds,
-            death_timeout_seconds=combo._cluster._death_timeout_seconds,
-            garbage_collect_interval_seconds=combo._cluster._garbage_collect_interval_seconds,
-            trim_memory_threshold_bytes=combo._cluster._trim_memory_threshold_bytes,
-            hard_processor_suspend=combo._cluster._hard_processor_suspend,
-            event_loop=combo._cluster._event_loop,
-            logging_paths=combo._cluster._logging_paths,
-            logging_level=combo._cluster._logging_level,
-            logging_config_file=combo._cluster._logging_config_file,
+            worker_names=WorkerNames(names=[str(i) for i in range(0, N_WORKERS - 1)]),
+            per_worker_capabilities=WorkerCapabilities(capabilities={}),
+            num_of_workers=N_WORKERS - 1,
         )
+
+        new_cluster = Cluster(config=new_cluster_config)
         new_cluster.start()
 
         pids = {f.result() for f in futures}

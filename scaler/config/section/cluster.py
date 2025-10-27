@@ -1,4 +1,5 @@
 import dataclasses
+import socket
 from typing import Optional, Tuple
 
 from scaler.config import defaults
@@ -34,7 +35,10 @@ class ClusterConfig:
     def __post_init__(self):
         if self.worker_io_threads <= 0:
             raise ValueError("worker_io_threads must be a positive integer.")
-        if self.worker_names.names and len(self.worker_names.names) != self.num_of_workers:
+        if not self.worker_names.names:
+            self.worker_names.names = [f"{socket.gethostname().split('.')[0]}_{i}" for i in range(self.num_of_workers)]
+
+        if len(self.worker_names.names) != self.num_of_workers:
             raise ValueError(
                 f"The number of worker_names ({len(self.worker_names.names)}) \
                     must match num_of_workers ({self.num_of_workers})."
