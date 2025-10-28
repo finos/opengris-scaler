@@ -30,5 +30,5 @@ build*/
 CMakeUserPresets.json
 CMakeFiles/
 .vs/
-scaler/protocol/capnp/*.c++
-scaler/protocol/capnp/*.h
+src/scaler/protocol/capnp/*.c++
+src/scaler/protocol/capnp/*.h
