@@ -1,25 +1,12 @@
 #include "scaler/io/ymq/tcp_server.h"
 
-#ifdef __linux__
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <sys/epoll.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#endif  // __linux__
-#ifdef _WIN32
-// clang-format off
-#include <windows.h>
-#include <winsock2.h>
-// clang-format on
-#endif  // _WIN32
-
 #include <expected>
 #include <memory>
 
 #include "scaler/io/ymq/error.h"
 #include "scaler/io/ymq/event_loop_thread.h"
 #include "scaler/io/ymq/event_manager.h"
+#include "scaler/io/ymq/internal/defs.h"  // system compatible header
 #include "scaler/io/ymq/io_socket.h"
 #include "scaler/io/ymq/message_connection_tcp.h"
 #include "scaler/io/ymq/network_utils.h"

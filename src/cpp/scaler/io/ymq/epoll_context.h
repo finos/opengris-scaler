@@ -1,6 +1,7 @@
 #pragma once
 #ifdef __linux__
 
+// No sense pulling in other system header like timerfd.h as this file already __linux__ only
 // System
 #include <sys/epoll.h>
 

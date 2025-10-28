@@ -1,21 +1,10 @@
 #pragma once
 
-#ifdef __linux__
-#include <sys/eventfd.h>
-#include <unistd.h>
-#endif  // __linux__
-#ifdef _WIN32
-// clang-format off
-#include <windows.h>
-#include <winsock2.h>
-// clang-format on
-#endif  // _WIN32
-
 // C++
-#include <cstdlib>
 #include <vector>
 
 #include "scaler/io/ymq/error.h"
+#include "scaler/io/ymq/internal/defs.h"  // system compatible header
 #include "third_party/concurrentqueue.h"
 
 namespace scaler {

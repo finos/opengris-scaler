@@ -1,25 +1,12 @@
 #pragma once
 
-#ifdef __linux__
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <unistd.h>
-#endif  // __linux__
-#ifdef _WIN32
-// clang-format off
-#include <windows.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-// clang-format on
-#endif  // _WIN32
-
 #include <string.h>
 
 #include <cassert>
 #include <expected>
 
 #include "scaler/io/ymq/error.h"
+#include "scaler/io/ymq/internal/defs.h"
 
 namespace scaler {
 namespace ymq {

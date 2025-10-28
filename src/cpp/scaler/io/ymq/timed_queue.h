@@ -1,19 +1,12 @@
 #pragma once
 
-#ifdef __linux__
-#include <sys/timerfd.h>
-#include <unistd.h>
-#endif  // __linux__
-#ifdef _WIN32
-#include <windows.h>
-#endif  // _WIN32
-
 #include <cassert>
 #include <queue>
 #include <set>
 
 #include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/error.h"
+#include "scaler/io/ymq/internal/defs.h"
 #include "scaler/io/ymq/timestamp.h"
 
 namespace scaler {

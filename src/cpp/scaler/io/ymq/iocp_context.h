@@ -1,10 +1,7 @@
 #pragma once
 #ifdef _WIN32
 
-// clang-format off
-#include <windows.h>
-#include <winsock2.h>
-// clang-format on
+#include "scaler/io/ymq/internal/defs.h"  // system compatible header
 
 // C++
 #include <functional>

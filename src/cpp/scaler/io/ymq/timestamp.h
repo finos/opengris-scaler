@@ -1,11 +1,6 @@
 #pragma once
 
-#ifdef __linux__
-#include <sys/time.h>  // itimerspec
-#endif                 // __linux__
-#ifdef _WIN32
-#include <windows.h>
-#endif  // _WIN32
+#include "scaler/io/ymq/internal/defs.h"
 
 #include <cassert>
 #include <chrono>
