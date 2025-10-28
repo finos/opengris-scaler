@@ -70,7 +70,13 @@ dev = [
 [tool.scikit-build.metadata.version]
 provider = "scikit_build_core.metadata.regex"
 regex = '(?P<value>\d+\.\d+\.\d+(\.[1-9]\d*)?)'
-input = "./scaler/version.txt"
+input = "./src/scaler/version.txt"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [project.urls]
 Home = "https://github.com/finos/opengris-scaler"
@@ -87,7 +93,7 @@ scaler_worker_adapter_ecs = "scaler.entry_points.worker_adapter_ecs:main"
 
 [tool.scikit-build]
 cmake.source-dir = "."
-wheel.packages = ["scaler"]
+wheel.packages = ["src/scaler"]
 build.targets = ["py_ymq", "py_object_storage_server"]
 
 [tool.scikit-build.cmake.define]
