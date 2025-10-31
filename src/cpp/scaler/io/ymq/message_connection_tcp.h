@@ -6,6 +6,7 @@
 #include <queue>
 
 #include "scaler/io/ymq/configuration.h"
+#include "scaler/io/ymq/internal/raw_connection_tcp_fd.h"
 #include "scaler/io/ymq/io_socket.h"
 #include "scaler/io/ymq/logging.h"
 #include "scaler/io/ymq/message_connection.h"
@@ -29,13 +30,15 @@ public:
         sockaddr remoteAddr,
         std::string localIOSocketIdentity,
         bool responsibleForRetry,
-        std::shared_ptr<std::queue<RecvMessageCallback>> _pendingRecvMessageCallbacks) noexcept;
+        std::queue<RecvMessageCallback>* _pendingRecvMessageCallbacks,
+        std::queue<Message>* leftoverMessagesAfterConnectionDied) noexcept;
 
     MessageConnectionTCP(
         std::shared_ptr<EventLoopThread> eventLoopThread,
         std::string localIOSocketIdentity,
         std::string remoteIOSocketIdentity,
-        std::shared_ptr<std::queue<RecvMessageCallback>> _pendingRecvMessageCallbacks) noexcept;
+        std::queue<RecvMessageCallback>* _pendingRecvMessageCallbacks,
+        std::queue<Message>* leftoverMessagesAfterConnectionDied) noexcept;
 
     ~MessageConnectionTCP() noexcept;
 
@@ -50,6 +53,9 @@ public:
     const bool _responsibleForRetry;
     std::optional<std::string> _remoteIOSocketIdentity;
 
+    // Returns true when nativeHandle is _closed_, not shutdown.
+    bool disconnected();
+
 private:
     enum class IOError {
         Drained,
@@ -63,7 +69,7 @@ private:
     void onClose();
     void onError()
     {
-        if (_connFd) {
+        if (_rawConn.nativeHandle()) {
             onRead();
         }
     };
@@ -77,22 +83,25 @@ private:
     void setRemoteIdentity() noexcept;
 
     std::unique_ptr<EventManager> _eventManager;
-    int _connFd;
+    RawConnectionTCPFD _rawConn;
     sockaddr _localAddr;
     std::string _localIOSocketIdentity;
 
     std::deque<TcpWriteOperation> _writeOperations;
     size_t _sendCursor;
 
-    std::shared_ptr<std::queue<RecvMessageCallback>> _pendingRecvMessageCallbacks;
+    std::queue<RecvMessageCallback>* _pendingRecvMessageCallbacks;
+    std::queue<Message>* _leftoverMessagesAfterConnectionDied;
+
     std::queue<TcpReadOperation> _receivedReadOperations;
 
-    bool _disconnect;
+    bool _disconnect;  // Disconnect or Abort, use to feed to IOSocket
     Logger _logger;
 
     // TODO: This variable records whether we have read some bytes in the last read operation.
     // The semantic of readMessage is completely broken. But that will be fixed in the refactor.
     bool _readSomeBytes;
+
     constexpr static bool isCompleteMessage(const TcpReadOperation& x);
     friend void IOSocket::onConnectionIdentityReceived(MessageConnectionTCP* conn) noexcept;
     friend void IOSocket::onConnectionDisconnected(MessageConnectionTCP* conn, bool keepInBook) noexcept;

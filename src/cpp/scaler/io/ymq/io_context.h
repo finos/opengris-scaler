@@ -1,6 +1,7 @@
 #pragma once
 
 // C++
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -38,6 +39,7 @@ public:
 
 private:
     std::vector<std::shared_ptr<EventLoopThread>> _threads;
+    std::atomic<size_t> _threadsRoundRobin;
 };
 
 }  // namespace ymq

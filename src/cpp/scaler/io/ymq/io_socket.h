@@ -83,6 +83,8 @@ public:
 
     std::shared_ptr<EventLoopThread> _eventLoopThread;
 
+    size_t numOfConnections();
+
 private:
     const Identity _identity;
     const IOSocketType _socketType;
@@ -111,7 +113,9 @@ private:
 
     // NOTE: This variable needs to present in the IOSocket level because the user
     // does not care which connection a message is coming from.
-    std::shared_ptr<std::queue<RecvMessageCallback>> _pendingRecvMessages;
+    std::queue<RecvMessageCallback> _pendingRecvMessages;
+
+    std::queue<Message> _leftoverMessagesAfterConnectionDied;
 
     bool _stopped;
     bool _connectorDisconnected;

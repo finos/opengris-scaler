@@ -19,7 +19,7 @@
 namespace scaler {
 namespace ymq {
 
-IOContext::IOContext(size_t threadCount) noexcept: _threads(threadCount)
+IOContext::IOContext(size_t threadCount) noexcept: _threads(threadCount), _threadsRoundRobin {}
 {
     assert(threadCount > 0);
     std::ranges::generate(_threads, std::make_shared<EventLoopThread>);
@@ -41,10 +41,9 @@ IOContext::IOContext(size_t threadCount) noexcept: _threads(threadCount)
 void IOContext::createIOSocket(
     Identity identity, IOSocketType socketType, CreateIOSocketCallback onIOSocketCreated) & noexcept
 {
-    static std::atomic<size_t> threadsRoundRobin = 0;
-    auto& thread                                 = _threads[threadsRoundRobin];
-    ++threadsRoundRobin;
-    threadsRoundRobin = threadsRoundRobin % _threads.size();
+    auto& thread = _threads[_threadsRoundRobin];
+    ++_threadsRoundRobin;
+    _threadsRoundRobin = _threadsRoundRobin % _threads.size();
     thread->createIOSocket(std::move(identity), socketType, std::move(onIOSocketCreated));
 }
 
@@ -61,15 +60,26 @@ void IOContext::removeIOSocket(std::shared_ptr<IOSocket>& socket) noexcept
     {
         // NOTE: Keep the eventloop thread alive
         auto eventLoopThread = rawSocket->_eventLoopThread;
+        rawSocket->_eventLoopThread->_eventLoop.executeNow([=] { rawSocket->requestStop(); });
         std::promise<void> promise;
         auto future = promise.get_future();
-        rawSocket->_eventLoopThread->_eventLoop.executeNow([&promise, rawSocket] {
-            rawSocket->_eventLoopThread->_eventLoop.executeLater([&promise, rawSocket] {
-                rawSocket->_eventLoopThread->removeIOSocket(rawSocket);
-                promise.set_value();
+
+        auto waitToRemoveIOSocket = [&](const auto& self) -> void {
+            rawSocket->_eventLoopThread->_eventLoop.executeNow([&] {
+                rawSocket->_eventLoopThread->_eventLoop.executeLater([&] {
+                    if (rawSocket->numOfConnections()) {
+                        self(self);
+                        return;
+                    }
+                    rawSocket->_eventLoopThread->removeIOSocket(rawSocket);
+                    promise.set_value();
+                });
             });
-        });
+        };
+        waitToRemoveIOSocket(waitToRemoveIOSocket);
+
         future.wait();
+
         if (eventLoopThread->stopRequested()) {
             auto it = std::ranges::find_if(_threads, [&](const auto& x) { return x.get() == eventLoopThread.get(); });
             id      = std::distance(_threads.begin(), it);

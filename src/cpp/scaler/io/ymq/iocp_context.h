@@ -64,6 +64,7 @@ public:
     void cancelExecution(Identifier identifier) { _timingFunctions.cancelExecution(identifier); }
 
 private:
+    std::set<int> _sockets;
     void execPendingFunctions();
     TimedQueue _timingFunctions;
     DelayedFunctionQueue _delayedFunctions;

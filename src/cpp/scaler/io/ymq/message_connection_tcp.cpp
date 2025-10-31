@@ -2,7 +2,6 @@
 #include "scaler/io/ymq/message_connection_tcp.h"
 
 #include <algorithm>
-#include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -44,17 +43,19 @@ MessageConnectionTCP::MessageConnectionTCP(
     sockaddr remoteAddr,
     std::string localIOSocketIdentity,
     bool responsibleForRetry,
-    std::shared_ptr<std::queue<RecvMessageCallback>> pendingRecvMessageCallbacks) noexcept
+    std::queue<RecvMessageCallback>* pendingRecvMessageCallbacks,
+    std::queue<Message>* leftoverMessagesAfterConnectionDied) noexcept
     : _eventLoopThread(eventLoopThread)
     , _remoteAddr(std::move(remoteAddr))
     , _responsibleForRetry(responsibleForRetry)
     , _remoteIOSocketIdentity(std::nullopt)
     , _eventManager(std::make_unique<EventManager>())
-    , _connFd(std::move(connFd))
+    , _rawConn(std::move(connFd))
     , _localAddr(std::move(localAddr))
     , _localIOSocketIdentity(std::move(localIOSocketIdentity))
     , _sendCursor {}
     , _pendingRecvMessageCallbacks(pendingRecvMessageCallbacks)
+    , _leftoverMessagesAfterConnectionDied(leftoverMessagesAfterConnectionDied)
     , _disconnect {false}
 {
     _eventManager->onRead  = [this] { this->onRead(); };
@@ -67,17 +68,19 @@ MessageConnectionTCP::MessageConnectionTCP(
     std::shared_ptr<EventLoopThread> eventLoopThread,
     std::string localIOSocketIdentity,
     std::string remoteIOSocketIdentity,
-    std::shared_ptr<std::queue<RecvMessageCallback>> pendingRecvMessageCallbacks) noexcept
+    std::queue<RecvMessageCallback>* pendingRecvMessageCallbacks,
+    std::queue<Message>* leftoverMessagesAfterConnectionDied) noexcept
     : _eventLoopThread(eventLoopThread)
     , _remoteAddr {}
     , _responsibleForRetry(false)
     , _remoteIOSocketIdentity(std::move(remoteIOSocketIdentity))
     , _eventManager(std::make_unique<EventManager>())
-    , _connFd {}
+    , _rawConn {}
     , _localAddr {}
     , _localIOSocketIdentity(std::move(localIOSocketIdentity))
     , _sendCursor {}
     , _pendingRecvMessageCallbacks(pendingRecvMessageCallbacks)
+    , _leftoverMessagesAfterConnectionDied(leftoverMessagesAfterConnectionDied)
     , _disconnect {false}
     , _readSomeBytes {false}
 {
@@ -89,40 +92,26 @@ MessageConnectionTCP::MessageConnectionTCP(
 
 void MessageConnectionTCP::onCreated()
 {
-    if (_connFd != 0) {
-#ifdef __linux__
+    if (_rawConn.nativeHandle() != 0) {
         this->_eventLoopThread->_eventLoop.addFdToLoop(
-            _connFd, EPOLLIN | EPOLLOUT | EPOLLET, this->_eventManager.get());
+            _rawConn.nativeHandle(), EPOLLIN | EPOLLOUT | EPOLLET, this->_eventManager.get());
         _writeOperations.emplace_back(
             Bytes {_localIOSocketIdentity.data(), _localIOSocketIdentity.size()}, [](auto) {});
-#endif  // __linux__
-#ifdef _WIN32
-        // This probably need handle the addtwice problem
-        this->_eventLoopThread->_eventLoop.addFdToLoop(_connFd, 0, nullptr);
-        _writeOperations.emplace_back(
-            Bytes {_localIOSocketIdentity.data(), _localIOSocketIdentity.size()}, [](auto) {});
-        onWrite();
-        const bool ok = ReadFile((HANDLE)(SOCKET)_connFd, nullptr, 0, nullptr, this->_eventManager.get());
-        if (ok) {
-            onRead();
-            return;
-        }
-        const int lastError = GetLastError();
-        if (lastError == ERROR_IO_PENDING) {
-            return;
-        }
 
-        unrecoverableError({
-            Error::ErrorCode::CoreBug,
-            "Originated from",
-            "ReadFile",
-            "Errno is",
-            lastError,
-            "_connfd",
-            _connFd,
-        });
-#endif  // _WIN32
+        const size_t len = 1;
+        const auto [n, immediateResult] =
+            _rawConn.prepareWriteBytes(&_writeOperations.back()._header, len, _eventManager.get());
+        (void)immediateResult;
+
+        updateWriteOperations(n);
+
+        _rawConn.prepareReadBytes(this->_eventManager.get());
     }
+}
+
+bool MessageConnectionTCP::disconnected()
+{
+    return _rawConn.nativeHandle() == 0;
 }
 
 std::expected<void, MessageConnectionTCP::IOError> MessageConnectionTCP::tryReadOneMessage()
@@ -168,88 +157,28 @@ std::expected<void, MessageConnectionTCP::IOError> MessageConnectionTCP::tryRead
             return {};
         }
 
-        int n = ::recv(_connFd, readTo, remainingSize, 0);
-        if (n > 0) {
+        auto [bytesRead, status] = _rawConn.tryReadUntilComplete(readTo, remainingSize);
+        message._cursor += bytesRead;
+
+        if (bytesRead > 0) {
             _readSomeBytes = true;
         }
 
-        if (n == 0) {
-            return std::unexpected {IOError::Disconnected};
-        } else if (n == -1) {
-            const int myErrno = GetErrorCode();
-#ifdef _WIN32
-            if (myErrno == WSAEWOULDBLOCK) {
-                return std::unexpected {IOError::Drained};
-            }
-            if (myErrno == WSAECONNRESET || myErrno == WSAENOTSOCK || myErrno == WSAECONNABORTED) {
-                return std::unexpected {IOError::Aborted};
-            } else {
-                // NOTE: On Windows we don't have signals and weird IO Errors
-                unrecoverableError({
-                    Error::ErrorCode::CoreBug,
-                    "Originated from",
-                    "recv",
-                    "Errno is",
-                    myErrno,
-                    "_connfd",
-                    _connFd,
-                    "readTo",
-                    (void*)readTo,
-                    "remainingSize",
-                    remainingSize,
-                });
-            }
-#endif  // _WIN32
-#ifdef __linux__
-            if (myErrno == ECONNRESET) {
-                return std::unexpected {IOError::Aborted};
-            }
-            if (myErrno == EAGAIN || myErrno == EWOULDBLOCK) {
-                return std::unexpected {IOError::Drained};
-            } else {
-                const int myErrno = errno;
-                switch (myErrno) {
-                    case EBADF:
-                    case EISDIR:
-                    case EINVAL:
-                        unrecoverableError({
-                            Error::ErrorCode::CoreBug,
-                            "Originated from",
-                            "read(2)",
-                            "Errno is",
-                            strerror(myErrno),
-                            "_connfd",
-                            _connFd,
-                            "readTo",
-                            (void*)readTo,
-                            "remainingSize",
-                            remainingSize,
-                        });
-
-                    case EINTR:
-                        unrecoverableError({
-                            Error::ErrorCode::SignalNotSupported,
-                            "Originated from",
-                            "read(2)",
-                            "Errno is",
-                            strerror(myErrno),
-                        });
-
-                    case EFAULT:
-                    case EIO:
-                    default:
-                        unrecoverableError({
-                            Error::ErrorCode::ConfigurationError,
-                            "Originated from",
-                            "read(2)",
-                            "Errno is",
-                            strerror(myErrno),
-                        });
+        if (status != RawConnectionTCPFD::IOStatus::MoreBytesAvailable) {
+            switch (status) {
+                case RawConnectionTCPFD::IOStatus::Aborted: {
+                    return std::unexpected {IOError::Aborted};
+                }
+                case RawConnectionTCPFD::IOStatus::Disconnected: {
+                    return std::unexpected {IOError::Disconnected};
+                }
+                case RawConnectionTCPFD::IOStatus::Drained: {
+                    return std::unexpected {IOError::Drained};
+                }
+                case RawConnectionTCPFD::IOStatus::MoreBytesAvailable: {
+                    std::unreachable();
                 }
             }
-#endif  // __linux__
-        } else {
-            message._cursor += n;
         }
     }
     return {};
@@ -298,59 +227,57 @@ void MessageConnectionTCP::setRemoteIdentity() noexcept
 
 void MessageConnectionTCP::onRead()
 {
-    if (_connFd == 0) {
+    if (_rawConn.nativeHandle() == 0) {
         return;
     }
+
     _readSomeBytes = false;
 
-    auto maybeCloseConn = [this](IOError err) -> std::expected<void, IOError> {
-        setRemoteIdentity();
+    if (!_remoteIOSocketIdentity) {
+        auto maybeIdentity = tryReadOneMessage();
+        if (maybeIdentity) {
+            setRemoteIdentity();
+        } else {
+            switch (maybeIdentity.error()) {
+                case IOError::Aborted:
+                    _disconnect = false;
+                    onClose();
+                    return;
+                case IOError::Disconnected:
+                    _disconnect = true;
+                    onClose();
+                    return;
+                case IOError::MessageTooLarge:
+                    _disconnect = true;
+                    onClose();
+                    return;
 
-        if (_remoteIOSocketIdentity) {
-            updateReadOperation();
+                case IOError::Drained: {
+                    _rawConn.prepareReadBytes(this->_eventManager.get());
+                    return;
+                }
+            }
         }
-
-        switch (err) {
-            case IOError::Drained: return {};
-            case IOError::Aborted: _disconnect = false; break;
-            case IOError::Disconnected: _disconnect = true; break;
-            case IOError::MessageTooLarge: _disconnect = true; break;
-        }
-
-        onClose();
-        return std::unexpected {err};
-    };
-
-    auto res = _remoteIOSocketIdentity
-                   .or_else([this, maybeCloseConn] {
-                       auto _ = tryReadOneMessage()
-                                    .or_else(maybeCloseConn)  //
-                                    .and_then([this]() -> std::expected<void, IOError> {
-                                        setRemoteIdentity();
-                                        return {};
-                                    });
-                       return _remoteIOSocketIdentity;
-                   })
-                   .and_then([this, maybeCloseConn](const std::string&) -> std::optional<std::string> {
-                       if (!_connFd) {
-                           return _remoteIOSocketIdentity;
-                       }
-                       auto _ = tryReadMessages()
-                                    .or_else(maybeCloseConn)  //
-                                    .and_then([this]() -> std::expected<void, IOError> {
-                                        updateReadOperation();
-                                        return {};
-                                    });
-                       return _remoteIOSocketIdentity;
-                   });
-    if (!res) {
-        return;
     }
 
-#ifdef _WIN32
-    // TODO: This need rewrite to better logic
-    if (!_connFd) {
-        return;
+    auto maybeMessages = tryReadMessages();
+    updateReadOperation();
+    if (!maybeMessages) {
+        switch (maybeMessages.error()) {
+            case IOError::Aborted:
+                _disconnect = false;
+                onClose();
+                return;
+            case IOError::Disconnected:
+                _disconnect = true;
+                onClose();
+                return;
+            case IOError::MessageTooLarge:
+                _disconnect = true;
+                onClose();
+                return;
+            case IOError::Drained: break;
+        }
     }
 
     // NOTE:
@@ -360,35 +287,20 @@ void MessageConnectionTCP::onRead()
     // Sometimes, we don't really need to queued in another operation, as we typically know that when onRead is being
     // called with no bytes being read, we know this is a false positive call (introduce by a write-available
     // notification for example) and the previous ReadFile notification is still in the operating system's kernel.
+    // Perhaps, we should refactor tryReadOneMessage etc so that it returns bytes read.
+    // We will do it in near future.
     if (!_readSomeBytes) {
         return;
     }
-    const bool ok = ReadFile((HANDLE)(SOCKET)_connFd, nullptr, 0, nullptr, this->_eventManager.get());
-    if (ok) {
-        onRead();
-        return;
-    }
-    const auto lastError = GetLastError();
-    if (lastError == ERROR_IO_PENDING) {
-        return;
-    }
-    unrecoverableError({
-        Error::ErrorCode::CoreBug,
-        "Originated from",
-        "ReadFile",
-        "Errno is",
-        lastError,
-        "_connfd",
-        _connFd,
-    });
-#endif  // _WIN32
+
+    _rawConn.prepareReadBytes(this->_eventManager.get());
 }
 
 void MessageConnectionTCP::onWrite()
 {
     // This is because after disconnected, onRead will be called first, and that will set
     // _connFd to 0. There's no way to not call onWrite in this case. So we return early.
-    if (_connFd == 0) {
+    if (_rawConn.nativeHandle() == 0) {
         return;
     }
 
@@ -398,12 +310,19 @@ void MessageConnectionTCP::onWrite()
         return;
     }
 
-    if (res.error() == IOError::Aborted) {
-        onClose();
-        return;
+    switch (res.error()) {
+        case IOError::Aborted:
+            _disconnect = false;
+            onClose();
+            return;
+        case IOError::Disconnected:
+            _disconnect = true;
+            onClose();
+            return;
+        case IOError::MessageTooLarge: std::unreachable(); return;
+        case IOError::Drained: break;
     }
 
-#ifdef _WIN32
     // NOTE: Precondition is the queue still has messages (perhaps a partial one).
     // We don't need to update the queue because trySendQueuedMessages is okay with a complete message in front.
     if (res.error() == IOError::Drained) {
@@ -414,40 +333,30 @@ void MessageConnectionTCP::onWrite()
             addr = (char*)_writeOperations.front()._payload.data() + _sendCursor - HEADER_SIZE;
         }
 
-        const size_t len        = 1;
-        const bool writeFileRes = WriteFile((HANDLE)(SOCKET)_connFd, addr, len, nullptr, _eventManager.get());
-        if (writeFileRes) {
-            onWrite();
-            return;
-        }
-
-        // NOTE:
-        // If you don't updateWriteOperations, the _sendCursor will not be reset and that breaks the assumption that
-        // 0 <= _sendCursor <= HEADER_SIZE + message.payload.length
-        updateWriteOperations(len);
-
-        const auto lastError = GetLastError();
-        if (lastError == ERROR_IO_PENDING) {
-            return;
-        }
-        unrecoverableError({
-            Error::ErrorCode::CoreBug,
-            "Originated from",
-            "WriteFile",
-            "Errno is",
-            lastError,
-            "_connfd",
-            _connFd,
-        });
+        const size_t len                = 1;
+        const auto [n, immediateResult] = _rawConn.prepareWriteBytes(addr, len, _eventManager.get());
+        // NOTE: We do need to update the queue afterwards, though
+        updateWriteOperations(n);
+        (void)immediateResult;
     }
-#endif  // _WIN32
 }
 
 void MessageConnectionTCP::onClose()
 {
-    if (_connFd) {
-        _eventLoopThread->_eventLoop.removeFdFromLoop(_connFd);
-        CloseAndZeroSocket(_connFd);
+    if (_rawConn.nativeHandle()) {
+        if (_remoteIOSocketIdentity) {
+            while (_receivedReadOperations.size() && isCompleteMessage(_receivedReadOperations.front())) {
+                Bytes address(_remoteIOSocketIdentity->data(), _remoteIOSocketIdentity->size());
+                auto msg = std::move(_receivedReadOperations.front());
+                Bytes payload(std::move(msg._payload));
+                _leftoverMessagesAfterConnectionDied->emplace(std::move(address), std::move(payload));
+                _receivedReadOperations.pop();
+            }
+        }
+
+        _eventLoopThread->_eventLoop.removeFdFromLoop(_rawConn.nativeHandle());
+        _rawConn.shutdownBoth();
+        _rawConn.closeAndZero();
         auto& sock = _eventLoopThread->_identityToIOSocket.at(_localIOSocketIdentity);
         sock->onConnectionDisconnected(this, !_disconnect);
     }
@@ -455,163 +364,57 @@ void MessageConnectionTCP::onClose()
 
 std::expected<size_t, MessageConnectionTCP::IOError> MessageConnectionTCP::trySendQueuedMessages()
 {
-// typedef struct _WSABUF {
-//     ULONG(same to sizet on x64 machine) len;     /* the length of the buffer */
-//     _Field_size_bytes_(len) CHAR FAR *buf; /* the pointer to the buffer */
-// } WSABUF, FAR * LPWSABUF;
-#ifdef _WIN32
-#define iovec    ::WSABUF
-#define IOV_MAX  (1024)
-#define iov_base buf
-#define iov_len  len
-#endif  // _WIN32
-
-    std::vector<iovec> iovecs;
-    iovecs.reserve(IOV_MAX);
-    for (auto it = _writeOperations.begin(); it != _writeOperations.end(); ++it) {
-        if (iovecs.size() > IOV_MAX - 2) {
-            break;
-        }
-
-        iovec iovHeader {};
-        iovec iovPayload {};
-        if (it == _writeOperations.begin()) {
-            if (_sendCursor < HEADER_SIZE) {
-                iovHeader.iov_base  = (char*)(&it->_header) + _sendCursor;
-                iovHeader.iov_len   = HEADER_SIZE - _sendCursor;
-                iovPayload.iov_base = (char*)(it->_payload.data());
-                iovPayload.iov_len  = it->_payload.len();
-            } else {
-                iovHeader.iov_base  = nullptr;
-                iovHeader.iov_len   = 0;
-                iovPayload.iov_base = (char*)(it->_payload.data()) + (_sendCursor - HEADER_SIZE);
-                iovPayload.iov_len  = it->_payload.len() - (_sendCursor - HEADER_SIZE);
-            }
-        } else {
-            iovHeader.iov_base  = (char*)(&it->_header);
-            iovHeader.iov_len   = HEADER_SIZE;
-            iovPayload.iov_base = (char*)(it->_payload.data());
-            iovPayload.iov_len  = it->_payload.len();
-        }
-
-        iovecs.push_back(iovHeader);
-        iovecs.push_back(iovPayload);
-    }
-
-    if (iovecs.empty()) {
+    // TODO: Should this accept 0 length send?
+    if (_writeOperations.empty()) {
         return 0;
     }
-
-#ifdef _WIN32
-    DWORD bytesSent {};
-    const int sendToResult =
-        WSASendTo(_connFd, iovecs.data(), iovecs.size(), &bytesSent, 0, nullptr, 0, nullptr, nullptr);
-    if (sendToResult == 0) {
-        return bytesSent;
-    }
-    const int myErrno = GetErrorCode();
-    if (myErrno == WSAEWOULDBLOCK) {
-        return std::unexpected {IOError::Drained};
-    }
-
-    // NOTE: On Windows, the behaviour of connection aborting is not very clear -
-    // You can get WSAECONNABORTED (Note that ECONNABORTED is not presented on GNU) when the remote connection aborts.
-    if (myErrno == WSAESHUTDOWN || myErrno == WSAENOTCONN || myErrno == WSAECONNRESET) {
-        return std::unexpected {IOError::Aborted};
-    }
-    unrecoverableError({
-        Error::ErrorCode::CoreBug,
-        "Originated from",
-        "WSASendTo",
-        "Errno is",
-        myErrno,
-        "_connfd",
-        _connFd,
-        "iovecs.size()",
-        iovecs.size(),
-    });
-#endif  // _WIN32
-
-#ifdef __linux__
-    struct msghdr msg {};
-    msg.msg_iov    = iovecs.data();
-    msg.msg_iovlen = iovecs.size();
-
-    ssize_t bytesSent = ::sendmsg(_connFd, &msg, MSG_NOSIGNAL);
-    if (bytesSent == -1) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            return std::unexpected {IOError::Drained};
-        } else {
-            const int myErrno = errno;
-            switch (myErrno) {
-                case EAFNOSUPPORT:
-                case EBADF:
-                case EINVAL:
-                case EMSGSIZE:
-                case ENOTCONN:
-                case ENOTSOCK:
-                case EOPNOTSUPP:
-                case ENAMETOOLONG:
-                case ENOENT:
-                case ENOTDIR:
-                case ELOOP:
-                case EDESTADDRREQ:
-                case EHOSTUNREACH:
-                case EISCONN:
-                    unrecoverableError({
-                        Error::ErrorCode::CoreBug,
-                        "Originated from",
-                        "sendmsg(2)",
-                        "Errno is",
-                        strerror(myErrno),
-                        "_connfd",
-                        _connFd,
-                        "msg.msg_iovlen",
-                        msg.msg_iovlen,
-                    });
-                    break;
-
-                case ECONNRESET:
-                case EPIPE: return std::unexpected {IOError::Aborted}; break;
-
-                case EINTR:
-                    unrecoverableError({
-                        Error::ErrorCode::SignalNotSupported,
-                        "Originated from",
-                        "sendmsg(2)",
-                        "Errno is",
-                        strerror(myErrno),
-                    });
-                    break;
-
-                case EIO:
-                case EACCES:
-                case ENETDOWN:
-                case ENETUNREACH:
-                case ENOBUFS:
-                case ENOMEM:
-                default:
-                    unrecoverableError({
-                        Error::ErrorCode::ConfigurationError,
-                        "Originated from",
-                        "sendmsg(2)",
-                        "Errno is",
-                        strerror(myErrno),
-                    });
-                    break;
+    std::vector<std::pair<void*, size_t>> args;
+    args.reserve(_writeOperations.size());
+    for (auto it = _writeOperations.begin(); it != _writeOperations.end(); ++it) {
+        std::pair<void*, size_t> header;
+        std::pair<void*, size_t> payload;
+        if (it == _writeOperations.begin()) {
+            if (_sendCursor < HEADER_SIZE) {
+                header.first   = (char*)(&it->_header) + _sendCursor;
+                header.second  = HEADER_SIZE - _sendCursor;
+                payload.first  = (char*)(it->_payload.data());
+                payload.second = it->_payload.len();
+            } else {
+                header.first   = nullptr;
+                header.second  = 0;
+                payload.first  = (char*)(it->_payload.data()) + (_sendCursor - HEADER_SIZE);
+                payload.second = it->_payload.len() - (_sendCursor - HEADER_SIZE);
             }
+        } else {
+            header.first   = (char*)(&it->_header);
+            header.second  = HEADER_SIZE;
+            payload.first  = (char*)(it->_payload.data());
+            payload.second = it->_payload.len();
+        }
+
+        args.push_back(header);
+        args.push_back(payload);
+    }
+
+    auto [n, status] = _rawConn.tryWriteUntilComplete(args);
+    if (n > 0) {
+        return n;
+    }
+    switch (status) {
+        case RawConnectionTCPFD::IOStatus::Drained: {
+            return std::unexpected {IOError::Drained};
+        }
+        case RawConnectionTCPFD::IOStatus::Disconnected: {
+            return std::unexpected {IOError::Disconnected};
+        }
+        case RawConnectionTCPFD::IOStatus::Aborted: {
+            return std::unexpected {IOError::Aborted};
+        }
+        case RawConnectionTCPFD::IOStatus::MoreBytesAvailable: {
+            std::unreachable();
         }
     }
-
-    return bytesSent;
-#endif  // __linux__
-
-#ifdef _WIN32
-#undef iovec
-#undef IOV_MAX
-#undef iov_base
-#undef iov_len
-#endif  // _WIN32
+    std::unreachable();
 }
 
 // TODO: There is a classic optimization that can (and should) be done. That is, we store
@@ -655,7 +458,7 @@ void MessageConnectionTCP::sendMessage(Message msg, SendMessageCallback onMessag
     TcpWriteOperation writeOp(std::move(msg), std::move(onMessageSent));
     _writeOperations.emplace_back(std::move(writeOp));
 
-    if (_connFd == 0) {
+    if (_rawConn.nativeHandle() == 0) {
         return;
     }
     onWrite();
@@ -674,27 +477,15 @@ bool MessageConnectionTCP::recvMessage()
 
 void MessageConnectionTCP::disconnect()
 {
-#ifdef __linux__
-    _disconnect = true;
-    shutdown(_connFd, SHUT_WR);
-    onClose();
-#endif
+    if (_rawConn.nativeHandle()) {
+        _rawConn.shutdownWrite();
+    }
 }
 
 MessageConnectionTCP::~MessageConnectionTCP() noexcept
 {
-    if (_connFd != 0) {
-        _eventLoopThread->_eventLoop.removeFdFromLoop(_connFd);
-
-#ifdef __linux__
-        shutdown(_connFd, SHUT_RD);
-
-#endif  // __linux__
-#ifdef _WIN32
-        shutdown(_connFd, SD_BOTH);
-#endif  // _WIN32
-
-        CloseAndZeroSocket(_connFd);
+    if (_rawConn.nativeHandle() != 0) {
+        _eventLoopThread->_eventLoop.removeFdFromLoop(_rawConn.nativeHandle());
     }
 
     std::ranges::for_each(_writeOperations, [](auto&& x) {

@@ -55,10 +55,19 @@ void IocpContext::loop()
             std::ranges::for_each(vec, [](auto&& x) { x(); });
             continue;
         }
-        if (current_event.lpCompletionKey == _isSocket) {
+        if ((int)current_event.lpCompletionKey == _isSocket) {
+            const int fd = (int)(current_event.lpCompletionKey >> 32);
+            if (_sockets.find(fd) == _sockets.end()) {
+                continue;
+            }
+
             auto event = (EventManager*)(current_event.lpOverlapped);
+            // NOTE: Below code was written long time ago where there are other bugs in the system. In practice,
+            // it looks like the `event` is never null. I would like to confirm it with assert(false) for now.
+            // Ideally, this should be removed when the refactor branch is merged. - gxu
             // TODO: Figure out whether there is a better way to remove overlapped entry from the IOCP queue
             if (!event) {
+                assert(false);
                 continue;
             }
             // TODO: Figure out the best stuff to put in
@@ -71,7 +80,7 @@ void IocpContext::loop()
 void IocpContext::addFdToLoop(int fd, uint64_t, EventManager*)
 {
     const DWORD threadCount = 1;
-    if (!CreateIoCompletionPort((HANDLE)(SOCKET)fd, _completionPort, _isSocket, threadCount)) {
+    if (!CreateIoCompletionPort((HANDLE)(SOCKET)fd, _completionPort, ((uint64_t)fd << 32) | _isSocket, threadCount)) {
         const int lastError = GetLastError();
         // NOTE: This is when the same fd being added to the loop more than once, normal.
         if (lastError == ERROR_INVALID_PARAMETER) {
@@ -86,6 +95,7 @@ void IocpContext::addFdToLoop(int fd, uint64_t, EventManager*)
             lastError,
         });
     }
+    _sockets.insert(fd);
 }
 
 // NOTE: IOCP is based on single action instead of the file handle.
@@ -94,6 +104,8 @@ void IocpContext::addFdToLoop(int fd, uint64_t, EventManager*)
 //  Instead of relaxing constraint, we leave the implementation empty.
 void IocpContext::removeFdFromLoop(int fd)
 {
+    CancelIoEx((HANDLE)(SOCKET)fd, nullptr);
+    _sockets.erase(fd);
 }
 
 }  // namespace ymq
