@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 
 from nicegui import ui
 
-from scaler.protocol.python.message import StateTask
+from scaler.protocol.python.message import StateTask, StateWorker
 from scaler.ui.setting_page import Settings
 from scaler.ui.utility import format_timediff, get_bounds, make_taskstream_ticks, make_tick_text
 from scaler.utility.formatter import format_bytes
@@ -84,6 +84,9 @@ class MemoryChart:
             return
 
         self.__add_memory_usage(worker_duration, worker_memory)
+
+    def handle_worker_state(self, _: StateWorker):
+        return
 
     def update_plot(self):
         now = datetime.datetime.now()

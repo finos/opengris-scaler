@@ -3,15 +3,13 @@ import hashlib
 import logging
 from collections import deque
 from enum import Enum
-from queue import SimpleQueue
 from threading import Lock
 from typing import Deque, Dict, List, Optional, Set, Tuple
 
 from nicegui import ui
 
-from scaler.protocol.python.common import TaskState
-from scaler.protocol.python.message import StateTask
-from scaler.ui.live_display import WorkersSection
+from scaler.protocol.python.common import TaskState, WorkerState
+from scaler.protocol.python.message import StateTask, StateWorker
 from scaler.ui.setting_page import Settings
 from scaler.ui.utility import (
     COMPLETED_TASK_STATUSES,
@@ -70,25 +68,20 @@ class TaskStream:
         self._settings: Optional[Settings] = None
 
         self._start_time = datetime.datetime.now() - datetime.timedelta(minutes=30)
-        self._last_task_tick = datetime.datetime.now()
         self._user_axis_range: Optional[List[int]] = None
 
         self._current_tasks: Dict[str, Dict[bytes, datetime.datetime]] = {}
         self._completed_data_cache: Dict[str, Dict] = {}
 
         self._worker_to_object_name: Dict[str, str] = {}
-        self._worker_last_update: Dict[str, datetime.datetime] = {}
         self._worker_to_task_ids: Dict[str, Set[bytes]] = {}
         self._worker_capabilities: Dict[str, Set[str]] = {}
         self._task_id_to_worker: Dict[bytes, str] = {}
         self._task_id_to_printable_capabilities: Dict[bytes, str] = {}
 
         self._seen_workers = set()
-        self._lost_workers_queue: SimpleQueue[Tuple[datetime.datetime, str]] = SimpleQueue()
 
         self._data_update_lock = Lock()
-        self._busy_workers: Set[str] = set()
-        self._busy_workers_update_time: datetime.datetime = datetime.datetime.now()
 
         self._dead_workers: Deque[Tuple[datetime.datetime, str]] = deque()  # type: ignore[misc]
 
@@ -112,27 +105,23 @@ class TaskStream:
         rows = self._worker_rows.pop(worker, [])
         for row in rows:
             self._row_to_worker.pop(row, None)
+            self._row_last_used.pop(row, None)
         return rows
 
-    def __ensure_worker_rows(self, worker: str, needed: int = 1):
+    def __make_initial_row(self, worker: str):
         base = format_worker_name(worker)
         rows = self._worker_rows.get(worker)
         if rows is None:
             # first row is [1]
             rows = [f"{base} [1]"]
             self.__set_worker_rows(worker, rows)
-        # later rows are [2], [3], ...
-        while len(rows) < needed:
-            index = len(rows) + 1
-            new_row = f"{base} [{index}]"
-            rows.append(new_row)
 
     def __allocate_row_for_task(self, worker: str, task_id: bytes) -> str:
         if task_id in self._task_row_assignment:
             return self._task_row_assignment[task_id]
 
         if worker not in self._worker_rows:
-            self.__set_worker_rows(worker, [f"{format_worker_name(worker)} [1]"])
+            self.__make_initial_row(worker)
 
         # pick first unused row label
         used_rows = set(self._task_row_assignment.values())
@@ -459,8 +448,6 @@ class TaskStream:
         if worker == "":
             return
 
-        self._worker_last_update[worker] = now
-
         start = None
         task_map = self._current_tasks.get(worker)
         if task_map:
@@ -482,11 +469,20 @@ class TaskStream:
         if worker_tasks := self._worker_to_task_ids.get(worker):
             worker_tasks.discard(state.task_id)
 
-    def __handle_new_worker(self, worker: str, now: datetime.datetime):
+    def __handle_new_worker(self, worker: str, now: datetime.datetime, capabilities: Set[str]):
+        if worker in self._seen_workers:
+            # If for some reason we receive a task for the worker before
+            # the StateWorker connect message, just update capabilities.
+            logging.debug(f"Handling new worker {worker} but worker is already known.")
+
+            if self._worker_capabilities.get(worker) is None and capabilities is not None:
+                self._worker_capabilities[worker] = capabilities
+            return
+
         row_label = f"{format_worker_name(worker)} [1]"
         if row_label not in self._completed_data_cache:
             self.__setup_row_cache(row_label)
-            self.__ensure_worker_rows(worker, 1)
+            self.__make_initial_row(worker)
             self.__add_bar(
                 worker=worker,
                 time_taken=format_timediff(self._start_time, now),
@@ -498,6 +494,7 @@ class TaskStream:
             )
             self._row_last_used[row_label] = now
         self._seen_workers.add(worker)
+        self._worker_capabilities[worker] = capabilities
 
     def __remove_task_from_worker(self, worker: str, task_id: bytes, now: datetime.datetime, force_new_time: bool):
         # Remove a single task from the worker's current task mapping.
@@ -510,11 +507,6 @@ class TaskStream:
         if not task_map:
             # no more tasks for this worker, remove the worker entry
             self._current_tasks.pop(worker, None)
-
-    def __add_worker_capabilities(self, worker: str, capabilities: Dict[str, int]):
-        worker_capabilities = self._worker_capabilities.get(worker, set())
-        worker_capabilities.update(capabilities.keys())
-        self._worker_capabilities[worker] = worker_capabilities
 
     def __pad_inactive_time(self, worker: str, row_label: str, now: datetime.datetime):
         """If a row is re-used, it needs to be padded until current time"""
@@ -535,13 +527,17 @@ class TaskStream:
 
     def __handle_running_task(self, state_task: StateTask, worker: str, now: datetime.datetime):
         if state_task.task_id not in self._task_id_to_printable_capabilities:
-            self._task_id_to_printable_capabilities[state_task.task_id] = display_capabilities(state_task.capabilities)
-
-        self.__add_worker_capabilities(worker, state_task.capabilities)
+            self._task_id_to_printable_capabilities[state_task.task_id] = display_capabilities(
+                set(state_task.capabilities.keys())
+            )
 
         # if another worker was previously assigned this task, remove it
         previous_worker = self._task_id_to_worker.get(state_task.task_id)
         if previous_worker and previous_worker != worker:
+            task_start_time = self._current_tasks.get(previous_worker, {}).get(state_task.task_id)
+            if task_start_time:
+                duration = format_timediff(task_start_time, now)
+                self.__add_task_to_chart(previous_worker, state_task.task_id, TaskState.Canceled, duration)
             self.__remove_task_from_worker(
                 worker=previous_worker, task_id=state_task.task_id, now=now, force_new_time=False
             )
@@ -569,6 +565,17 @@ class TaskStream:
             # allocate a row for the running task
             self.__allocate_row_for_task(worker, state_task.task_id)
 
+    def handle_worker_state(self, state_worker: StateWorker):
+        worker_id = state_worker.worker_id.decode()
+        worker_state = state_worker.state
+
+        now = datetime.datetime.now()
+
+        if worker_state == WorkerState.Connected:
+            self.__handle_new_worker(worker_id, now, set(state_worker.capabilities.keys()))
+        elif worker_state == WorkerState.Disconnected:
+            self.mark_dead_worker(worker_id)
+
     def handle_task_state(self, state_task: StateTask):
         """
         The scheduler sends out `state.worker` while a Task is running.
@@ -579,7 +586,6 @@ class TaskStream:
 
         task_state = state_task.state
         now = datetime.datetime.now()
-        self._last_task_tick = now
 
         if task_state in COMPLETED_TASK_STATUSES:
             self.__handle_task_result(state_task, now)
@@ -589,27 +595,17 @@ class TaskStream:
             return
 
         worker_string = worker.decode()
-        self._worker_last_update[worker_string] = now
 
         if worker_string not in self._seen_workers:
-            self.__handle_new_worker(worker_string, now)
+            logging.warning(
+                f"Unknown worker seen in handle_task_state: {worker_string}. "
+                "Did this worker connect before the UI started?"
+            )
+            self.__handle_new_worker(worker_string, now, set())
+            return
 
         if task_state in {TaskState.Running}:
             self.__handle_running_task(state_task, worker_string, now)
-
-    def __add_lost_worker(self, worker: str, now: datetime.datetime):
-        self._lost_workers_queue.put((now, worker))
-
-    def __detect_lost_workers(self, now: datetime.datetime):
-        removed_workers = []
-        for worker in self._current_tasks.keys():
-            last_tick = self._worker_last_update[worker]
-            if now - last_tick > self._settings.memory_store_time:
-                self.__add_lost_worker(worker, now)
-                removed_workers.append(worker)
-
-        for worker in removed_workers:
-            self._current_tasks.pop(worker)
 
     def __clear_all_task_data(self, task_id: bytes):
         self._task_id_to_worker.pop(task_id, None)
@@ -617,12 +613,12 @@ class TaskStream:
 
     def __clear_all_worker_data(self, worker: str):
         self._worker_to_object_name.pop(worker, None)
-        self._worker_last_update.pop(worker, None)
         self._worker_to_task_ids.pop(worker, None)
         self._worker_capabilities.pop(worker, None)
         self.__clear_worker_rows(worker)
 
     def __remove_worker_from_history(self, worker: str):
+        logging.info(f"Removing worker {worker} from task stream history")
         for row_label in self.__clear_worker_rows(worker):
             if row_label in self._completed_data_cache:
                 self._completed_data_cache.pop(row_label)
@@ -648,14 +644,6 @@ class TaskStream:
             if storage_cutoff_index > 0:
                 self.__remove_old_tasks_from_cache(row_label, storage_cutoff_index)
 
-    def __remove_old_workers(self, remove_up_to: datetime.datetime):
-        while not self._lost_workers_queue.empty():
-            timestamp, worker = self._lost_workers_queue.get()
-            if timestamp > remove_up_to:
-                self._lost_workers_queue.put((timestamp, worker))
-                return
-            self.__remove_worker_from_history(worker)
-
     def __remove_dead_workers(self, remove_up_to: datetime.datetime):
         while self._dead_workers and self._dead_workers[0][0] < remove_up_to:
             _, worker = self._dead_workers.popleft()
@@ -674,8 +662,8 @@ class TaskStream:
                 duration = format_timediff(start_time, now)
                 row_label = self._task_row_assignment.get(task_id)
                 if row_label is None:
-                    # allocate row if needed
                     row_label = self.__allocate_row_for_task(worker, task_id)
+                    logging.warning(f"split worker needed to allocate row {row_label} for task {task_id.hex()}")
 
                 workers_doing_jobs.append((row_label, duration, task_id, object_name))
         return workers_doing_jobs
@@ -686,46 +674,28 @@ class TaskStream:
             self._current_tasks.pop(worker_name, None)
             self._dead_workers.append((now, worker_name))
 
-    def update_data(self, workers_section: WorkersSection):
-        now = datetime.datetime.now()
-        worker_names = sorted(workers_section.workers.keys())
-        itls = {w: workers_section.workers[w].itl for w in worker_names}
-        busy_workers = {w for w in worker_names if len(itls[w]) == 3 and itls[w][1] == "1" and itls[w][2] == "1"}
-        for worker in worker_names:
-            self._worker_last_update[worker] = now
-
-        with self._data_update_lock:
-            self._busy_workers = busy_workers
-            self._busy_workers_update_time = now
-
-    def clear_stale_busy_workers(self, now: datetime.datetime):
-        if now - self._busy_workers_update_time > datetime.timedelta(seconds=2):
-            self._busy_workers = set()
-
     def update_plot(self):
         with self._data_update_lock:
             now = datetime.datetime.now()
 
-            self.clear_stale_busy_workers(now)
-
-            task_update_time = self._last_task_tick
             workers_doing_tasks = self.__split_workers_by_status(now)
 
-            self.__detect_lost_workers(now)
-            worker_history_time = now - self._settings.memory_store_time
-            self.__remove_old_workers(worker_history_time)
             self.__remove_old_tasks_from_history(self._settings.memory_store_time)
 
-            worker_retention_time = now - self._settings.worker_retention_time
+            worker_retention_time = now - self._settings.memory_store_time
             self.__remove_dead_workers(worker_retention_time)
 
-            completed_cache_values = sorted(list(self._completed_data_cache.values()), key=lambda d: d["y"][0])
+            worker_display_time = now - self._settings.stream_window
+            hidden_rows = {
+                row
+                for row in self._row_last_used.keys()
+                if self._row_last_used[row] < worker_display_time and self._row_to_worker[row] in self._dead_workers
+            }
 
-        if now - task_update_time >= datetime.timedelta(seconds=30):
-            # get rid of the in-progress plots in ['data']
-            self._figure["data"] = completed_cache_values
-            self.__render_plot(now)
-            return
+            completed_cache_values = sorted(
+                list(x for x in self._completed_data_cache.values() if x["y"] and x["y"][0] not in hidden_rows),
+                key=lambda d: d["y"][0],
+            )
 
         task_ids = [t for (_, _, t, _) in workers_doing_tasks]
         task_capabilities = [
@@ -773,7 +743,7 @@ class TaskStream:
         for worker, capabilities in self._worker_capabilities.items():
             worker_data[worker] = {"x_vals": [], "colors": [], "customdata": []}
             # capability_count = len(capabilities)
-            for index, capability in enumerate(capabilities):
+            for index, capability in enumerate(sorted(capabilities)):
                 color = self.__get_capabilities_color(capability)
                 x = base_x + index * offset
                 worker_data[worker]["x_vals"].append(x)

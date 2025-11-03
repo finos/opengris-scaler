@@ -1,12 +1,14 @@
 import dataclasses
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from nicegui import ui
 from nicegui.element import Element
 
+from scaler.protocol.python.common import WorkerState
+from scaler.protocol.python.message import StateTask, StateWorker
 from scaler.protocol.python.status import WorkerStatus
-from scaler.ui.utility import format_worker_name
+from scaler.ui.utility import display_capabilities, format_worker_name
 from scaler.utility.formatter import format_microseconds, format_seconds
 
 
@@ -17,6 +19,12 @@ class SchedulerSection:
     rss_free: str = dataclasses.field(default="")
 
     handler: Optional[Element] = dataclasses.field(default=None)
+
+    def handle_task_state(self, _: StateTask):
+        return
+
+    def handle_worker_state(self, _: StateWorker):
+        return
 
     def draw_section(self):
         with ui.card().classes("w-full"), ui.row() as handler:
@@ -52,6 +60,8 @@ class WorkerRow:
     lag: str = dataclasses.field(default="")
     itl: str = dataclasses.field(default="")
     last_seen: str = dataclasses.field(default="")
+    capabilities: Set[str] = dataclasses.field(default_factory=set)
+    display_capabilities: str = dataclasses.field(default="")
 
     handlers: List[Element] = dataclasses.field(default_factory=list)
 
@@ -70,6 +80,10 @@ class WorkerRow:
         self.itl = data.itl
         self.last_seen = format_seconds(data.last_s)
 
+    def set_capabilities(self, capabilities: Set[str]):
+        self.capabilities = capabilities
+        self.display_capabilities = display_capabilities(self.capabilities)
+
     def draw_row(self):
         total_rss = self.rss + self.rss_free
 
@@ -85,6 +99,7 @@ class WorkerRow:
         ui.label().bind_text_from(self, "lag")
         ui.label().bind_text_from(self, "ITL")
         ui.label().bind_text_from(self, "last_seen")
+        ui.label().bind_text_from(self, "display_capabilities")
 
     def delete_row(self):
         for element in self.handlers:
@@ -97,10 +112,23 @@ class WorkersSection:
 
     @ui.refreshable
     def draw_section(self):
-        with ui.row().classes("h-max"), ui.card().classes("w-full"), ui.grid(columns=12):
+        with ui.row().classes("h-max"), ui.card().classes("w-full"), ui.grid(columns=13):
             self.__draw_titles()
             for worker_row in self.workers.values():
                 worker_row.draw_row()
+
+    def handle_task_state(self, _: StateTask):
+        return
+
+    def handle_worker_state(self, state_worker: StateWorker):
+        worker_id = state_worker.worker_id.decode()
+        state = state_worker.state
+
+        if state == WorkerState.Connected:
+            self.workers[worker_id].set_capabilities(set(state_worker.capabilities.keys()))
+        if state == WorkerState.Disconnected:
+            self.workers.pop(worker_id, None)
+            self.draw_section.refresh()
 
     @staticmethod
     def __draw_titles():
@@ -116,3 +144,4 @@ class WorkersSection:
         ui.label("Lag")
         ui.label("ITL")
         ui.label("Last Seen")
+        ui.label("Capabilities")

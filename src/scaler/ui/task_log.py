@@ -6,7 +6,7 @@ from typing import Deque, Dict, Optional
 from nicegui import ui
 
 from scaler.protocol.python.common import TaskState
-from scaler.protocol.python.message import StateTask
+from scaler.protocol.python.message import StateTask, StateWorker
 from scaler.ui.utility import COMPLETED_TASK_STATUSES, display_capabilities
 from scaler.utility.formatter import format_bytes
 from scaler.utility.metadata.profile_result import ProfileResult
@@ -48,7 +48,7 @@ class TaskData:
             self.duration = "N/A"
             self.peak_mem = "N/A"
 
-        self.capabilities = display_capabilities(task_capabilities)
+        self.capabilities = display_capabilities(set(task_capabilities.keys()))
 
     def draw_row(self):
         color = "color: green" if self.status == TaskState.Success.name else "color: red"
@@ -94,6 +94,9 @@ class TaskLogTable:
 
         with self._lock:
             self._task_log.appendleft(row)
+
+    def handle_worker_state(self, _: StateWorker):
+        return
 
     @ui.refreshable
     def draw_section(self):

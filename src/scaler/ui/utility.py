@@ -1,5 +1,5 @@
 import datetime
-from typing import Dict, List, Tuple
+from typing import List, Set, Tuple
 
 from scaler.protocol.python.common import TaskState
 from scaler.ui.setting_page import Settings
@@ -59,9 +59,8 @@ def make_tick_text(window_length: int) -> List[int]:
     return list(range(lower, upper + 1, distance))
 
 
-def display_capabilities(capabilities: Dict[str, int]) -> str:
+def display_capabilities(capabilities: Set[str]) -> str:
     if not capabilities or len(capabilities) == 0:
         return "<no capabilities>"
 
-    # Capabilities is just the keys, value is ignored.
-    return " & ".join(sorted(capabilities.keys()))
+    return " & ".join(sorted(capabilities))

@@ -1,4 +1,5 @@
 import dataclasses
+import logging
 import threading
 from functools import partial
 from typing import Optional, Tuple
@@ -7,7 +8,7 @@ from nicegui import ui
 
 from scaler.config.types.zmq import ZMQConfig
 from scaler.io.sync_subscriber import ZMQSyncSubscriber
-from scaler.protocol.python.message import StateScheduler, StateTask
+from scaler.protocol.python.message import StateBalanceAdvice, StateScheduler, StateTask, StateWorker
 from scaler.protocol.python.mixins import Message
 from scaler.ui.constants import (
     MEMORY_USAGE_UPDATE_INTERVAL,
@@ -105,11 +106,33 @@ def __show_status(status: Message, tables: Sections):
         __update_scheduler_state(status, tables)
         return
 
+    if isinstance(status, StateWorker):
+        logging.info(f"Received StateWorker update for worker {status.worker_id.decode()} with {status.state.name}")
+        tables.scheduler_section.handle_worker_state(status)
+        tables.workers_section.handle_worker_state(status)
+        tables.task_stream_section.handle_worker_state(status)
+        tables.memory_usage_section.handle_worker_state(status)
+        tables.tasklog_section.handle_worker_state(status)
+        tables.worker_processors.handle_worker_state(status)
+        tables.settings_section.handle_worker_state(status)
+        return
+
     if isinstance(status, StateTask):
+        logging.debug(f"Received StateTask update for task {status.task_id.hex()} with {status.state.name}")
+        tables.scheduler_section.handle_task_state(status)
+        tables.workers_section.handle_task_state(status)
         tables.task_stream_section.handle_task_state(status)
         tables.memory_usage_section.handle_task_state(status)
         tables.tasklog_section.handle_task_state(status)
+        tables.worker_processors.handle_task_state(status)
+        tables.settings_section.handle_task_state(status)
         return
+
+    if isinstance(status, StateBalanceAdvice):
+        logging.debug(f"Received StateBalanceAdvice for {status.worker_id.decode()} with {len(status.task_ids)} tasks")
+        return
+
+    logging.info(f"Unhandled message received: {type(status)}")
 
 
 def __update_scheduler_state(data: StateScheduler, tables: Sections):
@@ -117,21 +140,8 @@ def __update_scheduler_state(data: StateScheduler, tables: Sections):
     tables.scheduler_section.rss = format_bytes(data.scheduler.rss)
     tables.scheduler_section.rss_free = format_bytes(data.rss_free)
 
-    previous_workers = set(tables.workers_section.workers.keys())
-    current_workers = set(worker_data.worker_id.decode() for worker_data in data.worker_manager.workers)
-
     for worker_data in data.worker_manager.workers:
         worker_name = worker_data.worker_id.decode()
         tables.workers_section.workers[worker_name].populate(worker_data)
-
-    for died_worker in previous_workers - current_workers:
-        tables.workers_section.workers.pop(died_worker)
-        tables.worker_processors.remove_worker(died_worker)
-        tables.task_stream_section.mark_dead_worker(died_worker)
-
-    if previous_workers != current_workers:
-        tables.workers_section.draw_section.refresh()
-
-    tables.task_stream_section.update_data(tables.workers_section)
 
     tables.worker_processors.update_data(data.worker_manager.workers)

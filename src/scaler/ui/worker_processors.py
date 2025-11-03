@@ -5,6 +5,8 @@ from typing import Dict, List, Optional
 from nicegui import ui
 from nicegui.element import Element
 
+from scaler.protocol.python.common import WorkerState
+from scaler.protocol.python.message import StateTask, StateWorker
 from scaler.protocol.python.status import ProcessorStatus, WorkerStatus
 from scaler.ui.utility import format_worker_name
 
@@ -35,6 +37,16 @@ class WorkerProcessors:
     def remove_worker(self, dead_worker: str):
         with self._lock:
             self.workers.pop(dead_worker, None)
+
+    def handle_task_state(self, _: StateTask):
+        return
+
+    def handle_worker_state(self, state_worker: StateWorker):
+        worker_id = state_worker.worker_id.decode()
+        state = state_worker.state
+
+        if state == WorkerState.Disconnected:
+            self.remove_worker(worker_id)
 
 
 @dataclasses.dataclass
