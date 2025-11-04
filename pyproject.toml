@@ -20,7 +20,7 @@ dynamic = ["version"]
 dependencies = [
     "bidict",
     "cloudpickle",
-    "psutil==7.1.2",
+    "psutil==7.1.3",
     "pycapnp==2.1.0",
     "pyzmq",
     "sortedcontainers==2.4.0",
