@@ -1,4 +1,4 @@
-#include "scaler/io/ymq/timestamp.h"
+#include "scaler/ymq/timestamp.h"
 
 #include <iostream>
 

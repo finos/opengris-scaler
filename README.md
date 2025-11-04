@@ -628,21 +628,9 @@ Windows.
 Build the Python wheel for Scaler using `cibuildwheel`:
 
 ```bash
-pip install build cibuildwheel==2.23.3
-
-# Parametrize the cibuildwheel's container to build the Boost and Cap'n Proto dependencies.
-export CIBW_BEFORE_ALL='
-            yum install sudo -y;
-            sudo ./scripts/library_tool.sh capnp compile
-            sudo ./scripts/library_tool.sh capnp install
-            sudo ./scripts/library_tool.sh boost compile
-            sudo ./scripts/library_tool.sh boost install'
-export CIBW_BUILD="*manylinux_x86_64"
-export CIBW_SKIP="pp*"
-export CIBW_MANYLINUX_X86_64_IMAGE="manylinux_2_28"
+pip install build cibuildwheel
 
 python -m cibuildwheel --output-dir wheelhouse
-
 python -m build --sdist
 ```
 

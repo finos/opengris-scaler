@@ -2,7 +2,7 @@
 
 #include <memory>  // std::shared_ptr
 
-#include "scaler/io/ymq/bytes.h"
+#include "scaler/ymq/bytes.h"
 
 namespace scaler {
 namespace object_storage {
