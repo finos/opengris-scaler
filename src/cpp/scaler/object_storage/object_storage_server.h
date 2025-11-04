@@ -6,11 +6,11 @@
 #include <optional>
 #include <span>
 
-#include "scaler/io/ymq/configuration.h"
-#include "scaler/io/ymq/io_context.h"
-#include "scaler/io/ymq/io_socket.h"
-#include "scaler/io/ymq/logging.h"
-#include "scaler/io/ymq/simple_interface.h"
+#include "scaler/ymq/configuration.h"
+#include "scaler/ymq/io_context.h"
+#include "scaler/ymq/io_socket.h"
+#include "scaler/ymq/simple_interface.h"
+#include "scaler/logging/logging.h"
 #include "scaler/object_storage/constants.h"
 #include "scaler/object_storage/defs.h"
 #include "scaler/object_storage/io_helper.h"

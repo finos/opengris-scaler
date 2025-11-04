@@ -3,6 +3,7 @@ import time
 from typing import Dict, Optional, Set, Tuple
 
 from scaler.io.mixins import AsyncBinder, AsyncConnector
+from scaler.protocol.python.common import WorkerState
 from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,
@@ -60,7 +61,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
     async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat):
         if self._allocator_policy.add_worker(worker_id, info.capabilities, info.queue_size):
             logging.info(f"worker {worker_id!r} connected")
-            await self._binder_monitor.send(StateWorker.new_msg(worker_id, b"connected"))
+            await self._binder_monitor.send(StateWorker.new_msg(worker_id, WorkerState.Connected, info.capabilities))
             await self._task_controller.on_worker_connect(worker_id)
 
         self._worker_alive_since[worker_id] = (time.time(), info)
@@ -152,7 +153,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             return
 
         logging.info(f"{worker_id!r} disconnected")
-        await self._binder_monitor.send(StateWorker.new_msg(worker_id, b"disconnected"))
+        await self._binder_monitor.send(StateWorker.new_msg(worker_id, WorkerState.Disconnected, {}))
         self._worker_alive_since.pop(worker_id)
 
         task_ids = self._allocator_policy.remove_worker(worker_id)

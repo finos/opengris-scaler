@@ -142,7 +142,8 @@ struct StateScheduler {
 
 struct StateWorker {
     workerId @0 :Data;
-    message @1 :Data;
+    state@1 :CommonType.WorkerState;
+    capabilities @2 :List(CommonType.TaskCapability);
 }
 
 struct StateTask {

@@ -5,10 +5,10 @@
 #include <exception>
 #include <future>
 
-#include "scaler/io/ymq/configuration.h"
-#include "scaler/io/ymq/error.h"
-#include "scaler/io/ymq/simple_interface.h"
-#include "scaler/io/ymq/typedefs.h"
+#include "scaler/ymq/configuration.h"
+#include "scaler/error/error.h"
+#include "scaler/ymq/simple_interface.h"
+#include "scaler/ymq/typedefs.h"
 #include "scaler/object_storage/message.h"
 
 namespace scaler {

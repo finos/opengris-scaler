@@ -4,3 +4,4 @@ if(LINUX OR APPLE)
 endif()
 
 add_subdirectory(ymq)
+add_subdirectory(logging)

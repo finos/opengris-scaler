@@ -23,11 +23,11 @@
 #include <thread>
 
 #include "common.h"
-#include "scaler/io/ymq/bytes.h"
-#include "scaler/io/ymq/error.h"
-#include "scaler/io/ymq/io_context.h"
-#include "scaler/io/ymq/io_socket.h"
-#include "scaler/io/ymq/simple_interface.h"
+#include "scaler/ymq/bytes.h"
+#include "scaler/error/error.h"
+#include "scaler/ymq/io_context.h"
+#include "scaler/ymq/io_socket.h"
+#include "scaler/ymq/simple_interface.h"
 #include "tests/cpp/ymq/common.h"
 
 using namespace scaler::ymq;

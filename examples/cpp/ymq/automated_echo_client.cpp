@@ -4,10 +4,10 @@
 #include <memory>
 #include <string>
 
-#include "scaler/io/ymq/io_context.h"
-#include "scaler/io/ymq/io_socket.h"
-#include "scaler/io/ymq/simple_interface.h"
-#include "scaler/io/ymq/typedefs.h"
+#include "scaler/ymq/io_context.h"
+#include "scaler/ymq/io_socket.h"
+#include "scaler/ymq/simple_interface.h"
+#include "scaler/ymq/typedefs.h"
 
 std::string longStr = "1234567890";
 
