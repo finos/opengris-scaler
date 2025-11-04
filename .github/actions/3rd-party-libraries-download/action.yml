@@ -14,7 +14,7 @@ runs:
       id: download-libraries
       with:
         path: |
-          downloaded
+          thirdparties/downloaded
         key: download-libraries-${{ inputs.os }}-${{ hashFiles('scripts/library_tool.*') }}
 
     - name: Download Libraries (Linux)

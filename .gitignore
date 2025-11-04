@@ -21,6 +21,8 @@ venv*/
 dask-worker-space/*
 .pre-commit-config.yaml
 
+thirdparties/*
+
 .DS_Store
 
 .clangd
