@@ -2,7 +2,11 @@
 $BOOST_VERSION = "1.88.0"
 $CAPNP_VERSION = "1.1.0"
 
-$DOWNLOAD_DIR = ".\downloaded"
+$THIRD_PARTY_DIRECTORY = ".\thirdparties"
+
+$THIRD_PARTY_DOWNLOADED = "$THIRD_PARTY_DIRECTORY\downloaded"
+$THIRD_PARTY_COMPILED = "$THIRD_PARTY_DIRECTORY\compiled"
+
 $PREFIX = "C:\Program Files"
 
 # Parse optional --prefix argument from $args
@@ -39,17 +43,20 @@ if ($dependency -eq "boost")
 
     if ($action -eq "download")
     {
-        mkdir "$DOWNLOAD_DIR" -Force
+        mkdir "$THIRD_PARTY_DOWNLOADED" -Force
         $url = "https://archives.boost.org/release/$BOOST_VERSION/source/$BOOST_FOLDER_NAME.tar.gz"
-        curl.exe --retry 100 --retry-max-time 3600 -L $url -o "$DOWNLOAD_DIR\$BOOST_FOLDER_NAME.tar.gz"
+        curl.exe --retry 100 --retry-max-time 3600 -L $url -o "$THIRD_PARTY_DOWNLOADED\$BOOST_FOLDER_NAME.tar.gz"
+        Write-Host "Downloaded Boost into $THIRD_PARTY_DOWNLOADED\$BOOST_FOLDER_NAME.tar.gz"
     }
     elseif ($action -eq "compile")
     {
-        tar -xzvf "$DOWNLOAD_DIR\$BOOST_FOLDER_NAME.tar.gz" -C .\
+        mkdir "$THIRD_PARTY_COMPILED" -Force
+        tar -xzvf "$THIRD_PARTY_DOWNLOADED\$BOOST_FOLDER_NAME.tar.gz" -C "$THIRD_PARTY_COMPILED"
+        Write-Host "Compiled Boost into $THIRD_PARTY_COMPILED\$BOOST_FOLDER_NAME"
     }
     elseif ($action -eq "install")
     {
-        Copy-Item -Recurse -Path "boost\boost" -Destination "$PREFIX\include\boost"
+        Copy-Item -Recurse -Path "$THIRD_PARTY_COMPILED\$BOOST_FOLDER_NAME\boost" -Destination "$PREFIX\include\boost"
         Write-Host "Installed Boost into $PREFIX\include\boost"
     }
     else
@@ -66,23 +73,25 @@ elseif ($dependency -eq "capnp")
 
     if ($action -eq "download")
     {
-        mkdir "$DOWNLOAD_DIR" -Force
+        mkdir "$THIRD_PARTY_DOWNLOADED" -Force
         $url = "https://capnproto.org/$CAPNP_FOLDER_NAME.tar.gz"
-        curl.exe --retry 100 --retry-max-time 3600 -L $url -o "$DOWNLOAD_DIR\$CAPNP_FOLDER_NAME.tar.gz"
+        curl.exe --retry 100 --retry-max-time 3600 -L $url -o "$THIRD_PARTY_DOWNLOADED\$CAPNP_FOLDER_NAME.tar.gz"
+        Write-Host "Downloaded capnp into $THIRD_PARTY_DOWNLOADED\$CAPNP_FOLDER_NAME.tar.gz"
     }
     elseif ($action -eq "compile")
     {
-        Remove-Item -Path "$CAPNP_FOLDER_NAME" -Recurse -Force
-        tar -xzvf "$DOWNLOAD_DIR\$CAPNP_FOLDER_NAME.tar.gz" -C .\
+        Remove-Item -Path "$THIRD_PARTY_DOWNLOADED\$CAPNP_FOLDER_NAME" -Recurse -Force
+        tar -xzvf "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME.tar.gz" -C "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
 
         # Configure and build with Visual Studio using CMake
-        Set-Location -Path "$CAPNP_FOLDER_NAME"
+        Set-Location -Path "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
         cmake -G "Visual Studio 17 2022" -B build
         cmake --build build --config Release
+        Write-Host "Compiled capnp into $THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
     }
     elseif ($action -eq "install")
     {
-        Set-Location -Path "$CAPNP_FOLDER_NAME"
+        Set-Location -Path "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
         cmake --install build --config Release --prefix $PREFIX
         Write-Host "Installed capnp into $PREFIX"
     }

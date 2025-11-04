@@ -14,7 +14,7 @@ runs:
       id: compiled-libraries
       with:
         path: |
-          capnproto-*
+          thirdparties/compiled
         key: compiled-libraries-${{ inputs.os }}-${{ hashFiles('scripts/library_tool.*') }}
 
     - name: Compile Libraries (Linux)
