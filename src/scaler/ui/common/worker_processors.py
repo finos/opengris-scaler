@@ -8,7 +8,7 @@ from nicegui.element import Element
 from scaler.protocol.python.common import WorkerState
 from scaler.protocol.python.message import StateTask, StateWorker
 from scaler.protocol.python.status import ProcessorStatus, WorkerStatus
-from scaler.ui.utility import format_worker_name
+from scaler.ui.common.utility import format_worker_name
 
 
 @dataclasses.dataclass

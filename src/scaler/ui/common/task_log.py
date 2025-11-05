@@ -7,7 +7,8 @@ from nicegui import ui
 
 from scaler.protocol.python.common import TaskState
 from scaler.protocol.python.message import StateTask, StateWorker
-from scaler.ui.utility import COMPLETED_TASK_STATUSES, display_capabilities
+from scaler.ui.util import NICEGUI_MAJOR_VERSION
+from scaler.ui.common.utility import COMPLETED_TASK_STATUSES, display_capabilities
 from scaler.utility.formatter import format_bytes
 from scaler.utility.metadata.profile_result import ProfileResult
 
@@ -52,7 +53,10 @@ class TaskData:
 
     def draw_row(self):
         color = "color: green" if self.status == TaskState.Success.name else "color: red"
-        ui.html(TASK_ID_HTML_TEMPLATE.format(task=self.task))
+        if NICEGUI_MAJOR_VERSION < 3:
+            ui.html(TASK_ID_HTML_TEMPLATE.format(task=self.task))
+        else:
+            ui.html(TASK_ID_HTML_TEMPLATE.format(task=self.task), sanitize=False)  # type: ignore[call-arg]
         ui.label(self.function)
         ui.label(self.duration)
         ui.label(self.peak_mem)
