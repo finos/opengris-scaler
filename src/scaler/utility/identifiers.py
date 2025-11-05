@@ -16,10 +16,12 @@ class ClientID(Identifier):
 
     @staticmethod
     def generate_client_id(name: Optional[str] = None) -> "ClientID":
-        if name is None:
-            name = uuid.uuid4().bytes.hex()
+        unique_client_tag = uuid.uuid4().bytes.hex()
 
-        return ClientID(f"Client|{name}".encode())
+        if name is None:
+            return ClientID(f"Client|{unique_client_tag}".encode())
+        else:
+            return ClientID(f"Client|{name}|{unique_client_tag}".encode())
 
 
 class WorkerID(Identifier):
@@ -35,7 +37,8 @@ class WorkerID(Identifier):
 
     @staticmethod
     def generate_worker_id(name: str) -> "WorkerID":
-        return WorkerID(f"Worker|{name}".encode())
+        unique_worker_tag = uuid.uuid4().bytes.hex()
+        return WorkerID(f"Worker|{name}|{unique_worker_tag}".encode())
 
 
 _INVALID_WORKER_ID = WorkerID(b"")
