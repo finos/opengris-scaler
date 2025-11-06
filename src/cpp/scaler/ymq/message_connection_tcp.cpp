@@ -12,8 +12,8 @@
 #include <optional>
 #include <utility>
 
-#include "scaler/ymq/configuration.h"
 #include "scaler/error/error.h"
+#include "scaler/ymq/configuration.h"
 #include "scaler/ymq/event_loop_thread.h"
 #include "scaler/ymq/event_manager.h"
 #include "scaler/ymq/internal/defs.h"

@@ -1,21 +1,12 @@
 #pragma once
 
-// C++
-#ifdef __linux__
-#include <sys/socket.h>
-#endif  // __linux__
-#ifdef _WIN32
-// clang-format off
-#include <winsock2.h>
-#include <mswsock.h>
-// clang-format on
-#endif  // _WIN32
-
 #include <memory>
 
+#include "scaler/ymq/internal/raw_server_tcp_fd.h"
+
 // First-party
-#include "scaler/ymq/configuration.h"
 #include "scaler/logging/logging.h"
+#include "scaler/ymq/configuration.h"
 
 namespace scaler {
 namespace ymq {
@@ -49,16 +40,9 @@ private:
     void onClose() { printf("%s\n", __PRETTY_FUNCTION__); }
     void onError() { printf("%s\n", __PRETTY_FUNCTION__); }
 
-    int createAndBindSocket();
+    bool createAndBindSocket();
 
     BindReturnCallback _onBindReturn;
-    // Because here we need to pass the sizeof _serverFd to setsockopt.
-#ifdef _WIN32
-    SOCKET _serverFd;
-#endif
-#ifdef __linux__
-    int _serverFd;
-#endif
     sockaddr _addr;
     std::string _localIOSocketIdentity;
 
@@ -66,13 +50,7 @@ private:
 
     Logger _logger;
 
-#ifdef _WIN32
-    // We break the decl rule here because otherwise the implementation would be messy.
-    LPFN_ACCEPTEX _acceptExFunc;
-    SOCKET _newConn;
-    char _buffer[128];
-    void prepareAcceptSocket();
-#endif  // _WIN32
+    RawServerTCPFD _rawServer;
 };
 
 }  // namespace ymq
