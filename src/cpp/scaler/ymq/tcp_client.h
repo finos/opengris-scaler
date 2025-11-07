@@ -3,9 +3,9 @@
 #include <memory>
 
 // First-party
-#include "scaler/ymq/configuration.h"
-#include "scaler/ymq/internal/defs.h"
 #include "scaler/logging/logging.h"
+#include "scaler/ymq/configuration.h"
+#include "scaler/ymq/internal/raw_client_tcp_fd.h"
 
 namespace scaler {
 namespace ymq {
@@ -44,9 +44,7 @@ private:
     void onError() {}
 
     ConnectReturnCallback _onConnectReturn;
-    int _connFd;
     std::string _localIOSocketIdentity;
-    sockaddr _remoteAddr;
     int _retryIdentifier;
 
     Logger _logger;
@@ -56,9 +54,7 @@ private:
 
     const size_t _maxRetryTimes;
 
-#ifdef _WIN32
-    LPFN_CONNECTEX _connectExFunc;
-#endif  // _WIN32
+    RawClientTCPFD _rawClient;
 };
 
 }  // namespace ymq
