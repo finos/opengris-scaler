@@ -28,4 +28,5 @@ Content
    tutorials/features
    tutorials/configuration
    tutorials/examples
-   tutorials/development
+   tutorials/development/devcontainer
+   tutorials/development/guidelines
