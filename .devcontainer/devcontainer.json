@@ -24,7 +24,8 @@
                     "files.trimTrailingWhitespace": true
                 },
                 "black-formatter.args": ["-l", "120", "-C"],
-                "isort.args": ["--profile", "black", "--line-length", "120"]
+                "isort.args": ["--profile", "black", "--line-length", "120"],
+                "cmake.configureOnOpen": false
             }
         }
     }
