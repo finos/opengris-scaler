@@ -574,6 +574,17 @@ We showcased Scaler at FOSDEM 2025. Check out the slides
 
 ## Building from source
 
+### Using the Dev Container (Recommended)
+
+The easiest way to set up a development environment is using the provided dev container:
+
+1. Open this repository in VS Code (you'll need the ["Dev Containers"](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension installed)
+2. Click "Reopen in Container" when prompted (or use the command "Dev Containers: Reopen in Container")
+3. Once the container starts, open a terminal in VS Code and run `uv sync` to build and install all dependencies
+4. Activate the virtual environment with `source .venv/bin/activate`
+
+You can now run and debug Scaler from within the dev container.
+
 ### Building on GNU/Linux
 
 To contribute to Scaler, you might need to manually build its C++ components.
