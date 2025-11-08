@@ -24,6 +24,8 @@ public:
     void bindAndListen();
     auto nativeHandle() const noexcept { return (RawSocketType)_serverFD; }
 
+    void destroy();
+
 private:
     uint64_t _serverFD;
     sockaddr _addr;

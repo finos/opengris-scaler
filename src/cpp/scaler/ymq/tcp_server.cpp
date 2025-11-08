@@ -34,7 +34,7 @@ bool TcpServer::createAndBindSocket()
 }
 
 TcpServer::TcpServer(
-    std::shared_ptr<EventLoopThread> eventLoopThread,
+    EventLoopThread* eventLoopThread,
     std::string localIOSocketIdentity,
     sockaddr addr,
     BindReturnCallback onBindReturn) noexcept
@@ -64,8 +64,20 @@ void TcpServer::onCreated()
     _onBindReturn = {};
 }
 
+void TcpServer::disconnect()
+{
+    if (_rawServer.nativeHandle()) {
+        _eventLoopThread->_eventLoop.removeFdFromLoop(_rawServer.nativeHandle());
+        _rawServer.destroy();
+    }
+}
+
 void TcpServer::onRead()
 {
+    if (!_rawServer.nativeHandle()) {
+        return;
+    }
+
     const auto& id = this->_localIOSocketIdentity;
     auto sock      = this->_eventLoopThread->_identityToIOSocket.at(id);
 
@@ -81,9 +93,7 @@ void TcpServer::onRead()
 
 TcpServer::~TcpServer() noexcept
 {
-    if (_rawServer.nativeHandle() != 0) {
-        _eventLoopThread->_eventLoop.removeFdFromLoop(_rawServer.nativeHandle());
-    }
+    disconnect();
     // TODO: Do we think this is an error? In extreme cases:
     // bindTo(...);
     // removeIOSocket(...);

@@ -6,7 +6,6 @@
 #include <expected>
 
 #include "scaler/error/error.h"
-#include "scaler/ymq/internal/defs.h"
 
 namespace scaler {
 namespace ymq {
@@ -25,9 +24,9 @@ inline std::expected<sockaddr, int> stringToSockaddr(const std::string& address)
         });
     }
 
-    std::string addr_part = address.substr(prefix.size());
-    size_t colon_pos      = addr_part.find(':');
-    if (colon_pos == std::string::npos) {
+    const std::string addrPart = address.substr(prefix.size());
+    const size_t colonPos      = addrPart.find(':');
+    if (colonPos == std::string::npos) {
         unrecoverableError({
             Error::ErrorCode::InvalidAddressFormat,
             "Originated from",
@@ -37,12 +36,12 @@ inline std::expected<sockaddr, int> stringToSockaddr(const std::string& address)
         });
     }
 
-    std::string ip       = addr_part.substr(0, colon_pos);
-    std::string port_str = addr_part.substr(colon_pos + 1);
+    const std::string ip      = addrPart.substr(0, colonPos);
+    const std::string portStr = addrPart.substr(colonPos + 1);
 
     int port = 0;
     try {
-        port = std::stoi(port_str);
+        port = std::stoi(portStr);
     } catch (...) {
         unrecoverableError({
             Error::ErrorCode::InvalidAddressFormat,
@@ -53,11 +52,11 @@ inline std::expected<sockaddr, int> stringToSockaddr(const std::string& address)
         });
     }
 
-    sockaddr_in out_addr {};
-    out_addr.sin_family = AF_INET;
-    out_addr.sin_port   = htons(port);
+    sockaddr_in outAddr {};
+    outAddr.sin_family = AF_INET;
+    outAddr.sin_port   = htons(port);
 
-    int res = inet_pton(AF_INET, ip.c_str(), &out_addr.sin_addr);
+    int res = inet_pton(AF_INET, ip.c_str(), &outAddr.sin_addr);
     if (res == 0) {
         unrecoverableError({
             Error::ErrorCode::InvalidAddressFormat,
@@ -76,13 +75,13 @@ inline std::expected<sockaddr, int> stringToSockaddr(const std::string& address)
             "Errno is",
             strerror(errno),
             "out_addr.sin_family",
-            out_addr.sin_family,
+            outAddr.sin_family,
             "out_addr.sin_port",
-            out_addr.sin_port,
+            outAddr.sin_port,
         });
     }
 
-    return *(sockaddr*)&out_addr;
+    return *(sockaddr*)&outAddr;
 }
 
 inline int setNoDelay(int fd)

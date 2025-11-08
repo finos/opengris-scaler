@@ -45,7 +45,7 @@ void TcpClient::onCreated()
 }
 
 TcpClient::TcpClient(
-    std::shared_ptr<EventLoopThread> eventLoopThread,
+    EventLoopThread* eventLoopThread,
     std::string localIOSocketIdentity,
     sockaddr remoteAddr,
     ConnectReturnCallback onConnectReturn,
@@ -72,6 +72,10 @@ void TcpClient::onRead()
 
 void TcpClient::onWrite()
 {
+    if (!_rawClient.nativeHandle()) {
+        return;
+    }
+
     if (_rawClient.needRetry()) {
         _rawClient.destroy();
         retry();
@@ -109,12 +113,17 @@ void TcpClient::retry()
     _retryIdentifier = _eventLoopThread->_eventLoop.executeAt(at, [this] { this->onCreated(); });
 }
 
-TcpClient::~TcpClient() noexcept
+void TcpClient::disconnect()
 {
     if (_rawClient.nativeHandle()) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_rawClient.nativeHandle());
         _rawClient.destroy();
     }
+}
+
+TcpClient::~TcpClient() noexcept
+{
+    disconnect();
     if (_retryTimes > 0) {
         _eventLoopThread->_eventLoop.cancelExecution(_retryIdentifier);
     }

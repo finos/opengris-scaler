@@ -19,7 +19,7 @@ public:
     using BindReturnCallback = Configuration::BindReturnCallback;
 
     TcpServer(
-        std::shared_ptr<EventLoopThread> eventLoop,
+        EventLoopThread* eventLoop,
         std::string localIOSocketIdentity,
         sockaddr addr,
         BindReturnCallback onBindReturn) noexcept;
@@ -27,8 +27,9 @@ public:
     TcpServer& operator=(const TcpServer&) = delete;
     ~TcpServer() noexcept;
 
+    void disconnect();
     void onCreated();
-    std::shared_ptr<EventLoopThread> _eventLoopThread;
+    EventLoopThread* _eventLoopThread;
 
 private:
     // Implementation defined method. accept(3) should happen here.
