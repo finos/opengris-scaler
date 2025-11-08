@@ -574,6 +574,11 @@ We showcased Scaler at FOSDEM 2025. Check out the slides
 
 ## Building from source
 
+### Using the Dev Container (Recommended)
+
+The easiest way to build Scaler is by using the provided dev container.
+See the [Dev Container Setup documentation](https://finos.github.io/opengris-scaler/tutorials/development/devcontainer.html) for more details.
+
 ### Building on GNU/Linux
 
 To contribute to Scaler, you might need to manually build its C++ components.
