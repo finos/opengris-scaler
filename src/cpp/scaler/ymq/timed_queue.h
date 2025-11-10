@@ -4,8 +4,8 @@
 #include <queue>
 #include <set>
 
-#include "scaler/ymq/configuration.h"
 #include "scaler/error/error.h"
+#include "scaler/ymq/configuration.h"
 #include "scaler/ymq/internal/defs.h"
 #include "scaler/ymq/timestamp.h"
 

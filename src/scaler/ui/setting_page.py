@@ -1,6 +1,7 @@
 import datetime
 
 from nicegui import ui
+
 from scaler.protocol.python.message import StateTask, StateWorker
 
 SLIDING_WINDOW_OPTIONS = {

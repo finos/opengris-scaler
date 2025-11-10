@@ -1,7 +1,8 @@
+import array
 import unittest
 from enum import IntEnum
+
 from scaler.io.ymq import ymq
-import array
 
 
 class TestTypes(unittest.TestCase):

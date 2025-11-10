@@ -1,7 +1,8 @@
 import asyncio
 import unittest
+
+from scaler.io.utility import deserialize, serialize
 from scaler.io.ymq import ymq
-from scaler.io.utility import serialize, deserialize
 from scaler.protocol.python.message import TaskCancel
 from scaler.utility.identifiers import TaskID
 

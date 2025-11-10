@@ -9,13 +9,13 @@
 
 // C
 #include <object.h>
+#include <poll.h>
 #include <semaphore.h>
 #include <sys/eventfd.h>
-#include <poll.h>
 
 // First-party
-#include "scaler/ymq/bytes.h"
 #include "scaler/error/error.h"
+#include "scaler/ymq/bytes.h"
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/io_socket.h"
 #include "scaler/ymq/message.h"

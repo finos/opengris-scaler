@@ -28,7 +28,7 @@ static inline int PyModule_AddObjectRef(PyObject* mod, const char* name, PyObjec
     Py_INCREF(value);  // Since PyModule_AddObject steals a ref, we balance it
     return PyModule_AddObject(mod, name, value);
 }
-#endif // <3.10
+#endif  // <3.10
 
 #if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 9
 // This is a very dirty hack, we basically place the raw pointer to this dict when init,
@@ -68,7 +68,7 @@ static inline PyObject* PyType_FromModuleAndSpec(PyObject* pymodule, PyType_Spec
     }
     return PyType_FromSpecWithBases(spec, bases);
 }
-#endif // <3.9
+#endif  // <3.9
 
 // NOTE: We define this no matter what version of Python we use.
 // an owned handle to a PyObject with automatic reference counting via RAII

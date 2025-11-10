@@ -1,11 +1,11 @@
 #pragma once
 
-#include "scaler/ymq/internal/defs.h"
-
 #include <cassert>
 #include <chrono>
 #include <ostream>
 #include <sstream>  // stringify
+
+#include "scaler/ymq/internal/defs.h"
 
 namespace scaler {
 namespace ymq {
