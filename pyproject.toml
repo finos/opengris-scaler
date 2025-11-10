@@ -36,8 +36,7 @@ uvloop = [
     "uvloop; platform_system != 'Windows'",
 ]
 gui = [
-    "nicegui[plotly]==2.24.2; python_version == '3.8'",
-    "nicegui[plotly]==3.2.0; python_version >= '3.9'",
+    "nicegui[plotly]"
 ]
 graphblas = [
     "python-graphblas",
@@ -49,8 +48,7 @@ aws = [
     "boto3",
 ]
 all = [
-    "nicegui[plotly]==2.24.2; python_version == '3.8'",
-    "nicegui[plotly]==3.2.0; python_version >= '3.9'",
+    "nicegui[plotly]",
     "python-graphblas",
     "numpy==1.24.4; python_version == '3.8'",
     "numpy==2.0.2; python_version == '3.9'",
