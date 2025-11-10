@@ -354,5 +354,17 @@ std::vector<std::pair<uint64_t, sockaddr>> RawServerTCPFD::getNewConns()
 #endif
 }
 
+void RawServerTCPFD::destroy()
+{
+#ifdef _WIN32
+    if (_serverFD) {
+        CancelIoEx((HANDLE)_serverFD, nullptr);
+    }
+#endif
+    if (_serverFD) {
+        CloseAndZeroSocket(_serverFD);
+    }
+}
+
 }  // namespace ymq
 }  // namespace scaler

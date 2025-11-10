@@ -5,10 +5,10 @@
 #include <optional>
 #include <queue>
 
+#include "scaler/logging/logging.h"
 #include "scaler/ymq/configuration.h"
 #include "scaler/ymq/internal/raw_connection_tcp_fd.h"
 #include "scaler/ymq/io_socket.h"
-#include "scaler/logging/logging.h"
 #include "scaler/ymq/message_connection.h"
 #include "scaler/ymq/tcp_operations.h"
 
@@ -24,7 +24,7 @@ public:
     using RecvMessageCallback = Configuration::RecvMessageCallback;
 
     MessageConnectionTCP(
-        std::shared_ptr<EventLoopThread> eventLoopThread,
+        EventLoopThread* eventLoopThread,
         int connFd,
         sockaddr localAddr,
         sockaddr remoteAddr,
@@ -34,7 +34,7 @@ public:
         std::queue<Message>* leftoverMessagesAfterConnectionDied) noexcept;
 
     MessageConnectionTCP(
-        std::shared_ptr<EventLoopThread> eventLoopThread,
+        EventLoopThread* eventLoopThread,
         std::string localIOSocketIdentity,
         std::string remoteIOSocketIdentity,
         std::queue<RecvMessageCallback>* _pendingRecvMessageCallbacks,
@@ -48,7 +48,7 @@ public:
     bool recvMessage();
     void disconnect();
 
-    std::shared_ptr<EventLoopThread> _eventLoopThread;
+    EventLoopThread* _eventLoopThread;
     const sockaddr _remoteAddr;
     const bool _responsibleForRetry;
     std::optional<std::string> _remoteIOSocketIdentity;

@@ -41,29 +41,43 @@ void IOSocket::sendMessage(Message message, SendMessageCallback onMessageSent) n
                 callback(std::unexpected {Error::ErrorCode::IOSocketStopRequested});
                 return;
             }
-            if (_connectorDisconnected) {
-                callback(std::unexpected {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd});
-                return;
-            }
-            if (!message.address.data() && this->socketType() == IOSocketType::Binder) {
-                callback(std::unexpected {Error::ErrorCode::BinderSendMessageWithNoAddress});
+
+            std::string address = std::string((char*)message.address.data(), message.address.len());
+
+            // Preparation and early out
+            switch (socketType()) {
+                case IOSocketType::Binder: {
+                    if (!message.address.data()) {
+                        callback(std::unexpected {Error::ErrorCode::BinderSendMessageWithNoAddress});
+                        return;
+                    }
+                    break;
+                }
+                case IOSocketType::Connector: {
+                    if (_connectorDisconnected) {
+                        callback(std::unexpected {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd});
+                        return;
+                    }
+                    address = "";
+                    break;
+                }
+                case IOSocketType::Multicast: {
+                    callback({});  // SUCCESS
+                    for (const auto& [addr, conn]: _identityToConnection) {
+                        // TODO: Currently doing N copies of the messages. Find a place to
+                        // store this message and pass in reference.
+                        if (addr.starts_with(address))
+                            conn->sendMessage(message, [](auto) {});
+                    }
+                    return;
+                }
+
+                case IOSocketType::Uninit:
+                case IOSocketType::Unicast:
+                default: break;
             }
 
             MessageConnectionTCP* conn = nullptr;
-
-            std::string address = std::string((char*)message.address.data(), message.address.len());
-            if (this->socketType() == IOSocketType::Connector) {
-                address = "";
-            } else if (this->socketType() == IOSocketType::Multicast) {
-                callback({});  // SUCCESS
-                for (const auto& [addr, conn]: _identityToConnection) {
-                    // TODO: Currently doing N copies of the messages. Find a place to
-                    // store this message and pass in reference.
-                    if (addr.starts_with(address))
-                        conn->sendMessage(message, [](auto) {});
-                }
-                return;
-            }
 
             if (this->_identityToConnection.contains(address)) {
                 conn = this->_identityToConnection[address].get();
@@ -123,7 +137,8 @@ void IOSocket::connectTo(sockaddr addr, ConnectReturnCallback onConnectReturn, s
                 });
             }
 
-            _tcpClient.emplace(_eventLoopThread, this->identity(), std::move(addr), std::move(callback), maxRetryTimes);
+            _tcpClient.emplace(
+                _eventLoopThread.get(), this->identity(), std::move(addr), std::move(callback), maxRetryTimes);
             _tcpClient->onCreated();
         });
 }
@@ -146,7 +161,7 @@ void IOSocket::bindTo(std::string networkAddress, BindReturnCallback onBindRetur
             auto res = stringToSockaddr(std::move(networkAddress));
             assert(res);
 
-            _tcpServer.emplace(_eventLoopThread, this->identity(), std::move(res.value()), std::move(callback));
+            _tcpServer.emplace(_eventLoopThread.get(), this->identity(), std::move(res.value()), std::move(callback));
             _tcpServer->onCreated();
         });
 }
@@ -183,11 +198,7 @@ void IOSocket::onConnectionDisconnected(MessageConnectionTCP* conn, bool keepInB
     if (!keepInBook) {
         if (IOSocketType::Connector == this->_socketType) {
             _connectorDisconnected = true;
-            while (this->_pendingRecvMessages.size()) {
-                auto top = std::move(this->_pendingRecvMessages.front());
-                top({Message {}, {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd}});
-                this->_pendingRecvMessages.pop();
-            }
+            fillPendingRecvMessagesWithErr(Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
         }
         _eventLoopThread->_eventLoop.executeLater([conn = std::move(connPtr)]() {});
         _unestablishedConnection.pop_back();
@@ -197,11 +208,7 @@ void IOSocket::onConnectionDisconnected(MessageConnectionTCP* conn, bool keepInB
     if (socketType() == IOSocketType::Unicast || socketType() == IOSocketType::Multicast) {
         auto destructWriteOp = std::move(connPtr->_writeOperations);
         connPtr->_writeOperations.clear();
-        while (_pendingRecvMessages.size()) {
-            _pendingRecvMessages.front()(
-                {{}, Error::ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery});
-            _pendingRecvMessages.pop();
-        }
+        fillPendingRecvMessagesWithErr(Error::ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery);
         auto destructReadOp = std::move(connPtr->_receivedReadOperations);
     }
 
@@ -263,7 +270,7 @@ void IOSocket::onConnectionCreated(std::string remoteIOSocketIdentity) noexcept
 {
     _unestablishedConnection.push_back(
         std::make_unique<MessageConnectionTCP>(
-            _eventLoopThread,
+            _eventLoopThread.get(),
             this->identity(),
             std::move(remoteIOSocketIdentity),
             &_pendingRecvMessages,
@@ -275,7 +282,7 @@ void IOSocket::onConnectionCreated(int fd, sockaddr localAddr, sockaddr remoteAd
 {
     _unestablishedConnection.push_back(
         std::make_unique<MessageConnectionTCP>(
-            _eventLoopThread,
+            _eventLoopThread.get(),
             fd,
             std::move(localAddr),
             std::move(remoteAddr),
@@ -296,14 +303,17 @@ void IOSocket::removeConnectedTcpClient() noexcept
 void IOSocket::requestStop() noexcept
 {
     _stopped = true;
-    while (_pendingRecvMessages.size()) {
-        auto readOp = std::move(_pendingRecvMessages.front());
-        _pendingRecvMessages.pop();
-        readOp({{}, Error::ErrorCode::IOSocketStopRequested});
-    }
+    fillPendingRecvMessagesWithErr(Error::ErrorCode::IOSocketStopRequested);
 
     std::ranges::for_each(_identityToConnection, [](const auto& x) { x.second->disconnect(); });
     std::ranges::for_each(_unestablishedConnection, [](const auto& x) { x->disconnect(); });
+
+    if (_tcpServer) {
+        _tcpServer->disconnect();
+    }
+    if (_tcpClient) {
+        _tcpClient->disconnect();
+    }
 }
 
 size_t IOSocket::numOfConnections()
@@ -314,13 +324,18 @@ size_t IOSocket::numOfConnections()
     return connectedConnections;
 }
 
-IOSocket::~IOSocket() noexcept
+void IOSocket::fillPendingRecvMessagesWithErr(Error err)
 {
     while (_pendingRecvMessages.size()) {
         auto readOp = std::move(_pendingRecvMessages.front());
         _pendingRecvMessages.pop();
-        readOp({{}, Error::ErrorCode::IOSocketStopRequested});
+        readOp({{}, err});
     }
+}
+
+IOSocket::~IOSocket() noexcept
+{
+    fillPendingRecvMessagesWithErr(Error::ErrorCode::IOSocketStopRequested);
 }
 
 }  // namespace ymq
