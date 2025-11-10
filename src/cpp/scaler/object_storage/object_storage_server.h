@@ -24,6 +24,7 @@ class ObjectStorageServer {
 public:
     using Identity          = ymq::Configuration::IOSocketIdentity;
     using SendMessageFuture = std::future<std::optional<ymq::Error>>;
+    using Bytes             = ymq::Bytes;
 
     ObjectStorageServer();
 

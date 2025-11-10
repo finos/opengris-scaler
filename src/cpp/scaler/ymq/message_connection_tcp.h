@@ -9,7 +9,6 @@
 #include "scaler/ymq/configuration.h"
 #include "scaler/ymq/internal/raw_connection_tcp_fd.h"
 #include "scaler/ymq/io_socket.h"
-#include "scaler/ymq/message_connection.h"
 #include "scaler/ymq/tcp_operations.h"
 
 namespace scaler {
@@ -18,7 +17,7 @@ namespace ymq {
 class EventLoopThread;
 class EventManager;
 
-class MessageConnectionTCP: public MessageConnection {
+class MessageConnectionTCP {
 public:
     using SendMessageCallback = Configuration::SendMessageCallback;
     using RecvMessageCallback = Configuration::RecvMessageCallback;

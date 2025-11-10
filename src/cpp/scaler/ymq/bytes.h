@@ -16,7 +16,9 @@
 // First-party
 #include "scaler/ymq/common.h"
 
-// TODO: This is not in the namespace
+namespace scaler {
+namespace ymq {
+
 class Bytes {
     uint8_t* _data;
     size_t _len;
@@ -112,3 +114,6 @@ public:
     [[nodiscard]] constexpr const uint8_t* data() const { return _data; }
     [[nodiscard]] constexpr uint8_t* data() { return _data; }
 };
+
+}  // namespace ymq
+}  // namespace scaler

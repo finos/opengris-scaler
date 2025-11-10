@@ -7,7 +7,7 @@
 namespace scaler {
 namespace object_storage {
 
-using ObjectPayload       = Bytes;
+using ObjectPayload       = ymq::Bytes;
 using SharedObjectPayload = std::shared_ptr<ObjectPayload>;
 
 };  // namespace object_storage

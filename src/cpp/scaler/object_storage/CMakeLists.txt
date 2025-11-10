@@ -18,7 +18,7 @@ add_library(object_storage_server_objs OBJECT
     object_manager.cpp
 )
 
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/src/scaler/object_storage)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/scaler/object_storage)
 
 # object_storage_server python =========================================================================================
 add_library(py_object_storage_server MODULE
@@ -45,6 +45,6 @@ target_link_libraries(py_object_storage_server PRIVATE
 
 install(
     TARGETS py_object_storage_server
-    LIBRARY DESTINATION scaler/object_storage/
+    LIBRARY DESTINATION src/scaler/object_storage/
     COMPONENT object_storage_server
 )

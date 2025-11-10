@@ -8,7 +8,7 @@
 
 struct PyBytesYMQ {
     PyObject_HEAD;
-    Bytes bytes;
+    scaler::ymq::Bytes bytes;
 };
 
 extern "C" {
@@ -22,13 +22,13 @@ static int PyBytesYMQ_init(PyBytesYMQ* self, PyObject* args, PyObject* kwds)
 
     if (!view.buf) {
         // If no bytes were provided, initialize with an empty Bytes object
-        self->bytes = Bytes();
+        self->bytes = scaler::ymq::Bytes();
         return 0;
     }
 
     // copy the data into the Bytes object
     // it might be possible to make this zero-copy in the future
-    self->bytes = Bytes((char*)view.buf, view.len);
+    self->bytes = scaler::ymq::Bytes((char*)view.buf, view.len);
 
     PyBuffer_Release(&view);
     return 0;
