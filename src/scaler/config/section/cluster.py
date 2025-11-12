@@ -1,6 +1,6 @@
 import dataclasses
 import socket
-from typing import Optional, Tuple, override
+from typing import Optional, Tuple
 
 from scaler.config import defaults
 from scaler.config.config_class import ConfigClass
@@ -9,6 +9,11 @@ from scaler.config.types.worker import WorkerCapabilities, WorkerNames
 from scaler.config.types.zmq import ZMQConfig
 from scaler.utility.event_loop import EventLoopType
 from scaler.utility.logging.utility import LoggingLevel
+
+try:
+    from typing import override  # type: ignore[attr-defined]
+except ImportError:
+    from typing_extensions import override  # type: ignore[attr-defined]
 
 
 @dataclasses.dataclass
