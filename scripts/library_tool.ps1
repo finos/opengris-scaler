@@ -80,7 +80,7 @@ elseif ($dependency -eq "capnp")
     }
     elseif ($action -eq "compile")
     {
-        Remove-Item -Path "$THIRD_PARTY_DOWNLOADED\$CAPNP_FOLDER_NAME" -Recurse -Force
+        Remove-Item -Path "$THIRD_PARTY_DOWNLOADED\$CAPNP_FOLDER_NAME" -Recurse -Force -ErrorAction SilentlyContinue
         tar -xzvf "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME.tar.gz" -C "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
 
         # Configure and build with Visual Studio using CMake
