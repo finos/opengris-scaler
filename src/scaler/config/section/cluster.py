@@ -18,7 +18,9 @@ except ImportError:
 
 @dataclasses.dataclass
 class ClusterConfig(ConfigClass):
-    scheduler_address: ZMQConfig = dataclasses.field(metadata=dict(nargs="?", help="scheduler address to connect to"))
+    scheduler_address: ZMQConfig = dataclasses.field(
+        metadata=dict(positional=True, nargs="?", help="scheduler address to connect to")
+    )
     object_storage_address: Optional[ObjectStorageConfig] = dataclasses.field(
         default=None,
         metadata=dict(
@@ -146,5 +148,5 @@ class ClusterConfig(ConfigClass):
 
     @override
     @staticmethod
-    def description() -> str:
-        return "standalone compute cluster"
+    def program_name() -> str:
+        return "cluster"
