@@ -35,33 +35,76 @@ class ConfigClass(ABC):
 
     Any parameter can be configured to read from an environment variable by adding `env="NAME"` to the field metadata.
 
+    ```python
+    # can be set as --my-field on the command line or in a config file, or using the environment variable `NAME`
+    my_field: int = dataclasses.field(metadata=dict(env="NAME"))
+    ```
+
     ## Precedence
 
     When a parameter is supplied in multiple ways, the following precedence is observed:
     command line > environment variables > config file > defaults
 
+    ## Customization
+
+    Any key values included in the field's metadata will be passed through to `.add_argument()`
+    and will always take precedence over derived values, except for `default`.
+
+    The value for `default` is taken from the field's default. Providing `default` in the field
+    metadata will result in a `TypeError`.
+
+    ```python
+    # passes through options
+    custom_field: int = dataclasses.field(
+        metadata=dict(
+            choices=["apples", "oranges"],
+            help="choose a fruit",
+        )
+    )
+
+    # TypeError!
+    bad: int = dataclasses.field(metadata=dict(default=0))
+    ```
+
     ## Naming Fields
 
     The name of the dataclass fields (replacing underscores with hyphens) is used
-    as the long option name for command-line parameters.
-    A short name for the argument can be provided in the field metadata using the "short" key.
-    The value is the short option name and must include the hyphen, e.g. "-n".
+    as the long option name for command line and config file parameters.
+    A short name for the argument can be provided in the field metadata using the `short` key.
+    The value is the short option name and must include the hyphen, e.g. `-n`.
     You can also override the long name using the "long" key, and the name must includes the
-    hyphens as well, e.g. "--number".
+    hyphens as well, e.g. `--number`.
 
     There is one restriction: `--config` and `-c` are reserved for the config file.
+
+    ```python
+    # this will have long name --field-one, and no short name
+    field_one: int = 5
+
+    # overrides the long name, and sets a short name
+    field_two: int = dataclasses.field(default=5, metadata=dict(long="--custom", short="-f2"))
+    ```
 
     ## Default Values
 
     The default value of the field is also used as the default for the argument parser.
-    Any additional fields present in the metadata dict are passed through to `add_argument()`
-    and take precedence over other sources.
+
+    ```python
+    lang: str = "en"
+    name: str = dataclasses.field(default="Arthur")
+    ```
 
     ## Positional Parameters
 
     You can set `positional=True` in the metadata dict to make an argument positional.
     In this case long and short names are ignored, use `name` to override the name of the option.
     The position is dependent on field ordering.
+
+    ```python
+    # both of these are positional, and field one must be specified before field two
+    field_one: int = dataclasses.field(metadata=dict(positional=True))
+    field_two: int = dataclasses.field(metadata=dict(positional=True))
+    ```
 
     ## Parameter Types
 
@@ -79,6 +122,30 @@ class ConfigClass(ABC):
     will still use `T.from_string()`.
 
     as usual, all of these can be overriden by setting the option in the metadata.
+
+    ```python
+    # this provides a custom `type` to parse the input as hexadecimal
+    # `type` must be a callable that accepts a string
+    # refer to the argparse docs for more
+    hex: int = dataclasses.field(metadata=dict(type=lambda s: int(s, 16)))
+
+    class MyConfigType(ConfigType):
+        ...
+
+    # this will work as expected
+    my_field: MyConfigType
+
+    # this requires special handling
+    tuples: Tuple[int, ...] = dataclasses.field(metadata=dict(type=int, nargs="*"))
+
+    # works automatically, defaults to `nargs="*"`
+    integers: List[int]
+
+    # ... but we can override that
+    integers2: List[int] = dataclasses.field(metadata=dict(nargs="+"))
+
+    # this will automatically have `required=False` set
+    maybe: Optional[str]
     """
 
     @staticmethod
@@ -122,6 +189,9 @@ class ConfigClass(ABC):
                     args = [long_name, kwargs.pop("short")]
                 else:
                     args = [long_name]
+
+            if "default" in kwargs:
+                raise TypeError("'default' cannot be provided in field metadata")
 
             if field.default != dataclasses.MISSING:
                 kwargs["default"] = field.default
