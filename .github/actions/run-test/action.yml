@@ -9,23 +9,34 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Install dependencies for MITM tests
-      if: inputs.os == 'Linux'
+    - name: Install scapy for MITM tests
       shell: bash
       run: uv pip install --system scapy==2.*
+
+    - name: Install pydivert and pywin32 for MITM tests (Windows)
+      if: inputs.os == 'Windows'
+      shell: pwsh
+      run: uv pip install --system pydivert pywin32
 
     - name: Run C++ Tests (Linux)
       if: inputs.os == 'Linux'
       shell: bash
       run: sudo ./scripts/test.sh
 
+    - name: Run C++ Tests (Windows)
+      if: inputs.os == 'Windows'
+      shell: pwsh
+      run: ./scripts/test.ps1 -C Debug
+
     # TODO: build wheel first, then run the test
     - name: Run Unittests
+      if: inputs.os != 'Windows'
       shell: bash
       run: |
         PYTHONPATH=src python -m unittest discover -v tests
 
     - name: Run Examples
+      if: inputs.os != 'Windows'
       shell: bash
       run: |
         uv pip install --system -r examples/applications/requirements_applications.txt

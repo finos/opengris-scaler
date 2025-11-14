@@ -16,7 +16,6 @@ from scaler.io.async_binder import ZMQAsyncBinder
 from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
 from scaler.io.utility import create_async_object_storage_connector
-from scaler.io.ymq import ymq
 from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,
@@ -38,6 +37,11 @@ from scaler.worker.agent.processor_manager import VanillaProcessorManager
 from scaler.worker.agent.profiling_manager import VanillaProfilingManager
 from scaler.worker.agent.task_manager import VanillaTaskManager
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
+
+try:
+    from scaler.io.ymq import ymq
+except ImportError:
+    ymq = None
 
 
 class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
@@ -234,17 +238,18 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             )
         except asyncio.CancelledError:
             pass
-
-        # TODO: Should the object storage connector catch this error?
-        except ymq.YMQException as e:
-            if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
-                pass
-            else:
-                logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
         except (ClientShutdownException, TimeoutError) as e:
             logging.info(f"{self.identity!r}: {str(e)}")
         except Exception as e:
-            logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
+            # TODO: Should the object storage connector catch this error?
+            if (
+                ymq is not None
+                and isinstance(e, ymq.YMQException)
+                and e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd
+            ):
+                pass
+            else:
+                logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
         await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
 

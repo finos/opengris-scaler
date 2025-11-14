@@ -6,7 +6,7 @@ import dataclasses
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from scapy.all import IP, TCP, TunTapInterface  # type: ignore
+from scapy.all import IP, TCP, Packet  # type: ignore
 
 
 @dataclasses.dataclass
@@ -36,20 +36,35 @@ class TCPConnection:
         Returns:
             The rewritten packet, suitable for sending over TUNTAP
         """
+        ip = pkt[IP]
         tcp = pkt[TCP]
 
         return (
-            IP(src=self.local_ip, dst=self.remote_ip)
-            / TCP(sport=self.local_port, dport=self.remote_port, flags=tcp.flags, seq=tcp.seq, ack=ack or tcp.ack)
+            IP(src=self.local_ip or ip.src, dst=self.remote_ip)
+            / TCP(
+                sport=self.local_port or tcp.sport,
+                dport=self.remote_port,
+                flags=tcp.flags,
+                seq=tcp.seq,
+                ack=ack or tcp.ack,
+            )
             / bytes(data or tcp.payload)
         )
+
+
+class AbstractMITMInterface(ABC):
+    @abstractmethod
+    def recv(self) -> Packet: ...
+
+    @abstractmethod
+    def send(self, pkt: Packet) -> None: ...
 
 
 class AbstractMITM(ABC):
     @abstractmethod
     def proxy(
         self,
-        tuntap: TunTapInterface,
+        interface: AbstractMITMInterface,
         pkt: IP,
         sender: TCPConnection,
         client_conn: Optional[TCPConnection],
