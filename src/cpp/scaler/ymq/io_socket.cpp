@@ -177,11 +177,27 @@ void IOSocket::closeConnection(Identity remoteSocketIdentity) noexcept
     });
 }
 
+void IOSocket::onConnectorMaxedOutRetry() noexcept
+{
+    assert(_unestablishedConnection.size());
+    assert(IOSocketType::Connector == this->_socketType);
+    _connectorDisconnected = true;
+    fillPendingRecvMessagesWithErr(Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
+    auto& connPtr = _unestablishedConnection.back();
+    _eventLoopThread->_eventLoop.executeLater([conn = std::move(connPtr)]() {});
+    _unestablishedConnection.pop_back();
+}
+
 // TODO: The function should be separated into onConnectionAborted, onConnectionDisconnected,
 // and probably onConnectionAbortedBeforeEstablished(?)
 void IOSocket::onConnectionDisconnected(MessageConnectionTCP* conn, bool keepInBook) noexcept
 {
     if (!conn->_remoteIOSocketIdentity) {
+        // TODO: This should perhaps do retry?
+        if (IOSocketType::Connector == this->_socketType) {
+            _connectorDisconnected = true;
+            fillPendingRecvMessagesWithErr(Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
+        }
         auto connIt = std::ranges::find_if(_unestablishedConnection, [&](const auto& x) { return x.get() == conn; });
         assert(connIt != _unestablishedConnection.end());
         _eventLoopThread->_eventLoop.executeLater([conn = std::move(*connIt)] {});
@@ -293,9 +309,9 @@ void IOSocket::onConnectionCreated(int fd, sockaddr localAddr, sockaddr remoteAd
     _unestablishedConnection.back()->onCreated();
 }
 
-void IOSocket::removeConnectedTcpClient() noexcept
+void IOSocket::removeTcpClient() noexcept
 {
-    if (this->_tcpClient && this->_tcpClient->_connected) {
+    if (this->_tcpClient) {
         this->_tcpClient.reset();
     }
 }

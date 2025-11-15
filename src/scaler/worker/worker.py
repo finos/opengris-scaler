@@ -13,9 +13,8 @@ from scaler.config.defaults import PROFILING_INTERVAL_SECONDS
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.io.async_binder import ZMQAsyncBinder
-from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
-from scaler.io.utility import create_async_object_storage_connector
+from scaler.io.utility import create_async_connector, create_async_object_storage_connector
 from scaler.io.ymq import ymq
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -30,7 +29,7 @@ from scaler.protocol.python.message import (
 )
 from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop
-from scaler.utility.exceptions import ClientShutdownException
+from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ProcessorID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
@@ -109,8 +108,9 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         register_event_loop(self._event_loop)
 
         self._context = zmq.asyncio.Context()
-        self._connector_external = ZMQAsyncConnector(
-            context=self._context,
+
+        self._connector_external = create_async_connector(
+            self._context,
             name=self.name,
             socket_type=zmq.DEALER,
             address=self._address,
@@ -235,6 +235,9 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         except asyncio.CancelledError:
             pass
 
+        except ObjectStorageException:
+            pass
+
         # TODO: Should the object storage connector catch this error?
         except ymq.YMQException as e:
             if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
@@ -246,11 +249,23 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         except Exception as e:
             logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
-        await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
+        try:
+            await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
+        except ymq.YMQException as e:
+            if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
+                pass
+            else:
+                logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
         self._connector_external.destroy()
         self._processor_manager.destroy("quit")
         self._binder_internal.destroy()
+        # TODO: If we have this statement, then when SCALER_NETWORK_BACKEND is tcp_zmq, it would sometimes block on
+        # closing. However, if we don't have this statement, sometimes there are log output
+        # "terminate called without an active exception" without a reason (no usual coredump or abort message). It
+        # doesn't look like a bug, perhaps pytest cleanup has gone wrong. This might need investigation.
+        # - 20251114, gxu
+        # await self._connector_storage.destroy()
         os.remove(self._address_path_internal)
 
         logging.info(f"{self.identity!r}: quit")

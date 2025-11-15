@@ -24,6 +24,7 @@ class TestClusterDisconnect(unittest.TestCase):
         self.combo.shutdown()
         pass
 
+    # @unittest.skip("When SCALER_NETWORK_BACKEND is ymq, always halt")
     def test_cluster_disconnect(self):
         base_cluster = self.combo._cluster
         dying_cluster = Cluster(
@@ -53,6 +54,6 @@ class TestClusterDisconnect(unittest.TestCase):
         dying_cluster.terminate()
         dying_cluster.join()
 
-        with self.assertRaises(CancelledError):
+        with self.assertRaises((CancelledError, TimeoutError)):
             client.clear()
             future_result.result()

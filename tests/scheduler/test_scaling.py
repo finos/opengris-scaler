@@ -68,6 +68,7 @@ class TestScaling(unittest.TestCase):
         self.object_storage_config = ObjectStorageConfig("127.0.0.1", get_available_tcp_port())
         self.webhook_port = get_available_tcp_port()
 
+    # @unittest.skip("When SCALER_NETWORK_BACKEND is ymq, sometimes halt")
     def test_scaling_basic(self):
         object_storage = ObjectStorageServerProcess(
             object_storage_address=self.object_storage_config,

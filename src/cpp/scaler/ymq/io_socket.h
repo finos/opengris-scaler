@@ -49,9 +49,9 @@ public:
     void sendMessage(Message message, SendMessageCallback onMessageSent) noexcept;
     void recvMessage(RecvMessageCallback onRecvMessage) noexcept;
 
-    void connectTo(sockaddr addr, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes = 8) noexcept;
+    void connectTo(sockaddr addr, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes = 4) noexcept;
     void connectTo(
-        std::string networkAddress, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes = 8) noexcept;
+        std::string networkAddress, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes = 4) noexcept;
 
     void bindTo(std::string networkAddress, BindReturnCallback onBindReturn) noexcept;
 
@@ -69,6 +69,9 @@ public:
     // From Connection Class only
     void onConnectionIdentityReceived(MessageConnectionTCP* conn) noexcept;
 
+    // From CONNECTOR only
+    void onConnectorMaxedOutRetry() noexcept;
+
     // NOTE: These two functions are called respectively by sendMessage and server/client.
     // Notice that in the each case only the needed information are passed in; so it's less
     // likely the user passed in combinations that does not make sense. These two calls are
@@ -77,7 +80,7 @@ public:
     void onConnectionCreated(int fd, sockaddr localAddr, sockaddr remoteAddr, bool responsibleForRetry) noexcept;
 
     // From TcpClient class only
-    void removeConnectedTcpClient() noexcept;
+    void removeTcpClient() noexcept;
 
     void requestStop() noexcept;
 
