@@ -45,6 +45,6 @@ target_link_libraries(py_object_storage_server PRIVATE
 
 install(
     TARGETS py_object_storage_server
-    LIBRARY DESTINATION src/scaler/object_storage/
+    LIBRARY DESTINATION scaler/object_storage/
     COMPONENT object_storage_server
 )
