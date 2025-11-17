@@ -40,9 +40,9 @@
 using namespace scaler::ymq;
 using namespace std::chrono_literals;
 
-// ━━━━━━━━━━━━━━━━━━━
+// --------------------
 //  clients and servers
-// ━━━━━━━━━━━━━━━━━━━
+// --------------------
 
 TestResult basic_server_ymq(std::string host, uint16_t port)
 {
@@ -552,9 +552,9 @@ TestResult client_sends_huge_header(const char* host, uint16_t port)
         return TestResult::Success;
     }
 
-    // ━━━━━━━━━━━━━
+    // -------------
     //   test cases
-    // ━━━━━━━━━━━━━
+    // -------------
 
     // this is a 'basic' test which sends a single message from a client to a server
     // in this variant, both the client and server are implemented using YMQ
