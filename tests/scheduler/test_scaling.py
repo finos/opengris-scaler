@@ -24,7 +24,9 @@ from scaler.config.defaults import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
+from scaler.config.section.native_worker_adapter import NativeWorkerAdapterConfig
 from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.worker import WorkerCapabilities
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
@@ -37,22 +39,24 @@ from tests.utility.utility import logging_test_name
 def _run_native_worker_adapter(address: str, webhook_port: int) -> None:
     """Construct a NativeWorkerAdapter and run its aiohttp app. Runs in a separate process."""
     adapter = NativeWorkerAdapter(
-        address=ZMQConfig.from_string(address),
-        object_storage_address=None,
-        capabilities={},
-        io_threads=DEFAULT_IO_THREADS,
-        task_queue_size=10,
-        max_workers=4,
-        heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
-        task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
-        death_timeout_seconds=DEFAULT_WORKER_DEATH_TIMEOUT,
-        garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
-        trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
-        hard_processor_suspend=DEFAULT_HARD_PROCESSOR_SUSPEND,
-        event_loop="builtin",
-        logging_paths=("/dev/stdout",),
-        logging_config_file=None,
-        logging_level="INFO",
+        NativeWorkerAdapterConfig(
+            scheduler_address=ZMQConfig.from_string(address),
+            object_storage_address=None,
+            per_worker_capabilities=WorkerCapabilities({}),
+            io_threads=DEFAULT_IO_THREADS,
+            worker_task_queue_size=10,
+            max_workers=4,
+            heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+            task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
+            death_timeout_seconds=DEFAULT_WORKER_DEATH_TIMEOUT,
+            garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
+            trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
+            hard_processor_suspend=DEFAULT_HARD_PROCESSOR_SUSPEND,
+            event_loop="builtin",
+            logging_paths=("/dev/stdout",),
+            logging_config_file=None,
+            logging_level="INFO",
+        )
     )
 
     app = adapter.create_app()
