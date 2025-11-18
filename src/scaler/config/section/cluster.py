@@ -41,14 +41,14 @@ class ClusterConfig(ConfigClass):
         default=defaults.DEFAULT_IO_THREADS, metadata=dict(short="-wit", help="specify number of io threads per worker")
     )
     worker_names: WorkerNames = dataclasses.field(
-        default_factory=lambda: WorkerNames.from_string(""),
+        default_factory=lambda: WorkerNames([]),
         metadata=dict(short="-wn", help="worker names to replace default worker names (host names), separate by comma"),
     )
     num_of_workers: int = dataclasses.field(
         default=defaults.DEFAULT_NUMBER_OF_WORKER, metadata=dict(short="-n", help="number of workers in cluster")
     )
     per_worker_capabilities: WorkerCapabilities = dataclasses.field(
-        default_factory=lambda: WorkerCapabilities.from_string(""),
+        default_factory=lambda: WorkerCapabilities({}),
         metadata=dict(
             short="-pwc", help='comma-separated capabilities provided by the workers (e.g. "-pwc linux,cpu=4")'
         ),
@@ -122,8 +122,8 @@ class ClusterConfig(ConfigClass):
             raise ValueError("worker_io_threads must be a positive integer.")
         if self.worker_names.names and len(self.worker_names.names) != self.num_of_workers:
             raise ValueError(
-                f"The number of worker_names ({len(self.worker_names.names)}) \
-                    must match num_of_workers ({self.num_of_workers})."
+                f"The number of worker_names ({len(self.worker_names.names)}) "
+                    "must match num_of_workers ({self.num_of_workers})."
             )
         if not self.worker_names.names:
             self.worker_names.names = [f"{socket.gethostname().split('.')[0]}" for _ in range(self.num_of_workers)]

@@ -92,7 +92,7 @@ class SchedulerClusterCombo:
                 object_storage_address=self._object_storage_address,
                 preload=None,
                 worker_io_threads=worker_io_threads,
-                worker_names=WorkerNames([f"{socket.gethostname().split('.')[0]}" for _ in range(n_workers)]),
+                num_of_workers=n_workers,
                 per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),
                 per_worker_task_queue_size=per_worker_task_queue_size,
                 heartbeat_interval_seconds=heartbeat_interval_seconds,
