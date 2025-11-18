@@ -2,7 +2,6 @@ import argparse
 
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
-from scaler.config.loader import load_config
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
@@ -97,9 +96,7 @@ def get_args():
 
 
 def main():
-    args = get_args()
-
-    scheduler_config = load_config(SchedulerConfig, args.config, args, section_name="scheduler")
+    scheduler_config = SchedulerConfig.parse()
 
     object_storage_address = scheduler_config.object_storage_address
     object_storage = None

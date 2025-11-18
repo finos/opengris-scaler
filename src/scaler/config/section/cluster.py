@@ -95,6 +95,7 @@ class ClusterConfig(ConfigClass):
     logging_paths: Tuple[str, ...] = dataclasses.field(
         default=defaults.DEFAULT_LOGGING_PATHS,
         metadata=dict(
+            type=str,
             short="-lp",
             nargs="*",
             help='specify where cluster log should logged to, it can be multiple paths, "/dev/stdout" is default for '
