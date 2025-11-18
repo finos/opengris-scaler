@@ -1,7 +1,17 @@
 #pragma once
 
 #define PY_SSIZE_T_CLEAN
+
+// if on Windows and in debug mode, undefine _DEBUG before including Python.h
+// this prevents issues including the debug version of the Python library
+#if defined(_WIN32) && defined(_DEBUG)
+#undef _DEBUG
 #include <Python.h>
+#define _DEBUG
+#else
+#include <Python.h>
+#endif
+
 #include <structmember.h>
 
 #include "scaler/error/error.h"

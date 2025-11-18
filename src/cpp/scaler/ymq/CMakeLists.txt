@@ -94,7 +94,7 @@ if(LINUX)
 
     install(
         TARGETS py_ymq
-        LIBRARY DESTINATION src/scaler/io/ymq
+        LIBRARY DESTINATION scaler/io/ymq
     )
 endif()
 

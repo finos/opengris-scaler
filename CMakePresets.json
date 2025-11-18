@@ -6,7 +6,7 @@
       "displayName": "Linux 64 bit Intel build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_INSTALL_PREFIX": "${sourceDir}"
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/src"
       },
       "binaryDir": "${sourceDir}/build_linux_x86_64"
     },
@@ -15,7 +15,7 @@
       "displayName": "Linux 64 bit ARM build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_INSTALL_PREFIX": "${sourceDir}"
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/src"
       },
       "binaryDir": "${sourceDir}/build_linux_aarch64"
     },
@@ -24,7 +24,7 @@
       "displayName": "Apple ARM 64 bit build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_INSTALL_PREFIX": "${sourceDir}"
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/src"
       },
       "binaryDir": "${sourceDir}/build_darwin_arm64"
     },
@@ -34,7 +34,7 @@
       "generator": "Visual Studio 17 2022",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_INSTALL_PREFIX": "${sourceDir}"
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/src"
       },
       "architecture": {
         "value": "x64",

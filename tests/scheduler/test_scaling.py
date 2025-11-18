@@ -109,7 +109,7 @@ class TestScaling(unittest.TestCase):
         os.kill(scheduler.pid, signal.SIGINT)
         scheduler.join()
 
-        os.kill(object_storage.pid, signal.SIGKILL)
+        object_storage.kill()
         object_storage.join()
 
         os.kill(webhook_server.pid, signal.SIGINT)

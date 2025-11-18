@@ -104,11 +104,11 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         #
         # The overall worst-case time complexity of the balancing algorithm is:
         #
-        #     O(n_workers • log(n_workers) + n_tasks • n_workers • n_capabilities)
+        #     O(n_workers * log(n_workers) + n_tasks * n_workers * n_capabilities)
         #
         # However, if the cluster does not use any capability, time complexity is always:
         #
-        #     O(n_workers • log(n_workers) + n_tasks • log(n_workers))
+        #     O(n_workers * log(n_workers) + n_tasks * log(n_workers))
         #
         # If capability constraints are used, this might result in less than optimal balancing. That's because, in some
         # cases, the optimal balancing might require to move tasks between more than two workers. Consider this
@@ -152,7 +152,7 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
 
         # Then, we sort the remaining workers by the number of queued tasks.
         #
-        # Time complexity is O(n_workers • log(n_workers))
+        # Time complexity is O(n_workers * log(n_workers))
 
         sorted_workers: SortedList[_WorkerHolder] = SortedList(workers, key=lambda worker: worker.n_tasks())
 
@@ -161,8 +161,8 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         # - all workers are balanced;
         # - we cannot find a low-load worker than can accept tasks from a high-load worker.
         #
-        # Worst-case time complexity is O(n_tasks • n_workers • n_capabilities).
-        # If no tag is used in the cluster, complexity is always O(n_tasks • log(n_workers))
+        # Worst-case time complexity is O(n_tasks * n_workers * n_capabilities).
+        # If no tag is used in the cluster, complexity is always O(n_tasks * log(n_workers))
 
         balancing_advice: Dict[WorkerID, List[TaskID]] = defaultdict(list)
         unbalanceable_tasks: Set[bytes] = set()
@@ -218,7 +218,7 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
     def __balance_try_reassign_task(task: _TaskHolder, worker_candidates: Iterable[_WorkerHolder]) -> Optional[int]:
         """Returns the index of the first worker that can accept the task."""
 
-        # Time complexity is O(n_workers • len(task.capabilities))
+        # Time complexity is O(n_workers * len(task.capabilities))
 
         for worker_index, worker in enumerate(worker_candidates):
             if task.capabilities.issubset(worker.capabilities):
@@ -227,7 +227,7 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         return None
 
     def assign_task(self, task: Task) -> WorkerID:
-        # Worst-case time complexity is O(n_workers • len(task.capabilities))
+        # Worst-case time complexity is O(n_workers * len(task.capabilities))
 
         available_workers = self.__get_available_workers_for_capabilities(task.capabilities)
 
@@ -265,7 +265,7 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         }
 
     def __get_available_workers_for_capabilities(self, capabilities: Dict[str, int]) -> List[_WorkerHolder]:
-        # Worst-case time complexity is O(n_workers • len(capabilities))
+        # Worst-case time complexity is O(n_workers * len(capabilities))
 
         if any(capability not in self._capability_to_worker_ids for capability in capabilities.keys()):
             return []
