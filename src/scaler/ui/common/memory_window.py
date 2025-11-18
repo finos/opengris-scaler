@@ -4,8 +4,8 @@ from typing import Any, Dict, Optional
 from nicegui import ui
 
 from scaler.protocol.python.message import StateTask, StateWorker
-from scaler.ui.setting_page import Settings
-from scaler.ui.utility import format_timediff, get_bounds, make_taskstream_ticks, make_tick_text
+from scaler.ui.common.setting_page import Settings
+from scaler.ui.common.utility import format_timediff, get_bounds, make_taskstream_ticks, make_tick_text
 from scaler.utility.formatter import format_bytes
 from scaler.utility.metadata.profile_result import ProfileResult
 
