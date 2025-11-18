@@ -8,7 +8,7 @@ from nicegui.element import Element
 from scaler.protocol.python.common import WorkerState
 from scaler.protocol.python.message import StateTask, StateWorker
 from scaler.protocol.python.status import WorkerStatus
-from scaler.ui.utility import display_capabilities, format_worker_name
+from scaler.ui.common.utility import display_capabilities, format_worker_name
 from scaler.utility.formatter import format_microseconds, format_seconds
 
 
@@ -97,7 +97,7 @@ class WorkerRow:
         ui.label().bind_text_from(self, "queued")
         ui.label().bind_text_from(self, "suspended")
         ui.label().bind_text_from(self, "lag")
-        ui.label().bind_text_from(self, "ITL")
+        ui.label().bind_text_from(self, "itl")
         ui.label().bind_text_from(self, "last_seen")
         ui.label().bind_text_from(self, "display_capabilities")
 

@@ -10,8 +10,9 @@ from nicegui import ui
 
 from scaler.protocol.python.common import TaskState, WorkerState
 from scaler.protocol.python.message import StateTask, StateWorker
-from scaler.ui.setting_page import Settings
-from scaler.ui.utility import (
+from scaler.ui.util import NICEGUI_MAJOR_VERSION
+from scaler.ui.common.setting_page import Settings
+from scaler.ui.common.utility import (
     COMPLETED_TASK_STATUSES,
     display_capabilities,
     format_timediff,
@@ -176,8 +177,15 @@ class TaskStream:
     def setup_task_stream(self, settings: Settings):
         self._card = ui.card()
         self._card.classes("w-full").style("height: 800px; overflow:auto;")
+
+        # TODO: remove when v1 and v2 are separated
+        def html_func(x: str):
+            if NICEGUI_MAJOR_VERSION < 3:
+                return ui.html(x)
+            return ui.html(x, sanitize=False)  # type: ignore[call-arg]
+
         with self._card:
-            ui.html(
+            html_func(
                 """
                 <div style="margin-bottom:8px;">
                     <b>Legend:</b>
