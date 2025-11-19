@@ -1,5 +1,4 @@
 import logging
-import socket
 from typing import Dict, Optional, Tuple
 
 from scaler.cluster.cluster import Cluster
@@ -25,7 +24,7 @@ from scaler.config.defaults import (
 )
 from scaler.config.section.cluster import ClusterConfig
 from scaler.config.types.object_storage_server import ObjectStorageConfig
-from scaler.config.types.worker import WorkerCapabilities, WorkerNames
+from scaler.config.types.worker import WorkerCapabilities
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy

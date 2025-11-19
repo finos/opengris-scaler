@@ -161,7 +161,7 @@ class ConfigClass(ABC):
         ...
 
     @classmethod
-    def parse(cls: Type[T]) -> T:
+    def parser(cls: Type[T]) -> ArgParser:
         if not dataclasses.is_dataclass(cls):
             raise RuntimeError("config class must be a dataclass")
 
@@ -213,6 +213,12 @@ class ConfigClass(ABC):
                             kwargs[key] = value
 
             parser.add_argument(*args, **kwargs)
+
+        return parser
+
+    @classmethod
+    def parse(cls: Type[T]) -> T:
+        parser = cls.parser()
 
         # positional arg keys are treated differently for some reason
         # we need to ensure we replace all hyphens will underscores to match the original field name

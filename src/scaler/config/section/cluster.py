@@ -123,7 +123,7 @@ class ClusterConfig(ConfigClass):
         if self.worker_names.names and len(self.worker_names.names) != self.num_of_workers:
             raise ValueError(
                 f"The number of worker_names ({len(self.worker_names.names)}) "
-                    "must match num_of_workers ({self.num_of_workers})."
+                "must match num_of_workers ({self.num_of_workers})."
             )
         if not self.worker_names.names:
             self.worker_names.names = [f"{socket.gethostname().split('.')[0]}" for _ in range(self.num_of_workers)]
