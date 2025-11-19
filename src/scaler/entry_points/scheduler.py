@@ -8,7 +8,6 @@ from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
 from scaler.utility.event_loop import EventLoopType
-from scaler.utility.network_util import get_available_tcp_port
 
 
 def get_args():
@@ -105,8 +104,9 @@ def main():
     object_storage = None
 
     if object_storage_address is None:
+        assert scheduler_config.scheduler_address.port is not None, "Scheduler address must have a port"
         object_storage_address = ObjectStorageConfig(
-            host=scheduler_config.scheduler_address.host, port=get_available_tcp_port()
+            host=scheduler_config.scheduler_address.host, port=scheduler_config.scheduler_address.port + 1
         )
         object_storage = ObjectStorageServerProcess(
             object_storage_address=object_storage_address,
