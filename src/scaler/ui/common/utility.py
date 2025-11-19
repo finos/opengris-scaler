@@ -2,7 +2,7 @@ import datetime
 from typing import List, Set, Tuple
 
 from scaler.protocol.python.common import TaskState
-from scaler.ui.setting_page import Settings
+from scaler.ui.common.setting_page import Settings
 
 COMPLETED_TASK_STATUSES = {
     TaskState.Success,
