@@ -17,7 +17,7 @@ except ImportError:
 @dataclasses.dataclass
 class SymphonyWorkerConfig(ConfigClass):
     scheduler_address: ZMQConfig = dataclasses.field(
-        metadata=dict(nargs="?", help="scheduler address to connect workers to")
+        metadata=dict(positional=True, nargs="?", help="scheduler address to connect workers to")
     )
     service_name: str = dataclasses.field(metadata=dict(short="-sn", help="symphony service name"))
     object_storage_address: Optional[ObjectStorageConfig] = dataclasses.field(
@@ -51,11 +51,11 @@ class SymphonyWorkerConfig(ConfigClass):
     )
     death_timeout_seconds: int = dataclasses.field(
         default=defaults.DEFAULT_WORKER_DEATH_TIMEOUT,
-        metadata=dict(short="-dt", help="number of seconds without scheduler contact before worker shuts down"),
+        metadata=dict(short="-ds", help="number of seconds without scheduler contact before worker shuts down"),
     )
     event_loop: str = dataclasses.field(
         default="builtin",
-        metadata=dict(short="-e", choices=EventLoopType.allowed_types(), help="select event loop type"),
+        metadata=dict(short="-el", choices=EventLoopType.allowed_types(), help="select event loop type"),
     )
     logging_paths: Tuple[str, ...] = dataclasses.field(
         default=defaults.DEFAULT_LOGGING_PATHS,
@@ -98,4 +98,4 @@ class SymphonyWorkerConfig(ConfigClass):
     @override
     @staticmethod
     def program_name() -> str:
-        return "scaler symphony worker adapter"
+        return "scaler Symphony worker adapter"

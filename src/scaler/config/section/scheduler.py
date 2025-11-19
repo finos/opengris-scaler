@@ -158,4 +158,4 @@ class SchedulerConfig(ConfigClass):
     @override
     @staticmethod
     def program_name() -> str:
-        return "scheduler"
+        return "scaler_scheduler"

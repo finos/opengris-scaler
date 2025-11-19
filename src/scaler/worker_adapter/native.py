@@ -20,7 +20,7 @@ class NativeWorkerAdapter:
         self._io_threads = config.io_threads
         self._task_queue_size = config.worker_task_queue_size
         self._max_workers = config.max_workers
-        self._heartbeat_interval_seconds = config.heartbeat_interval_seconds
+        self._heartbeat_interval_seconds = config.heartbeat_interval
         self._task_timeout_seconds = config.task_timeout_seconds
         self._death_timeout_seconds = config.death_timeout_seconds
         self._garbage_collect_interval_seconds = config.garbage_collect_interval_seconds

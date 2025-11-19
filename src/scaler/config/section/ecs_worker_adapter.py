@@ -25,7 +25,7 @@ class ECSWorkerAdapterConfig(ConfigClass):
     )
 
     scheduler_address: ZMQConfig = dataclasses.field(
-        metadata=dict(nargs="?", help="scheduler address to connect workers to")
+        metadata=dict(positional=True, nargs="?", help="scheduler address to connect workers to")
     )
 
     object_storage_address: Optional[ObjectStorageConfig] = dataclasses.field(
@@ -75,7 +75,7 @@ class ECSWorkerAdapterConfig(ConfigClass):
             short="-pwc", help='comma-separated capabilities provided by the workers (e.g. "-pwc linux,cpu=4")'
         ),
     )
-    worker_task_queue_size: int = dataclasses.field(
+    per_worker_task_queue_size: int = dataclasses.field(
         default=defaults.DEFAULT_PER_WORKER_QUEUE_SIZE, metadata=dict(short="-wtqs", help="specify worker queue size")
     )
     max_instances: int = dataclasses.field(
@@ -147,7 +147,7 @@ class ECSWorkerAdapterConfig(ConfigClass):
         # Validate numeric and collection values
         if self.io_threads <= 0:
             raise ValueError("io_threads must be a positive integer.")
-        if self.worker_task_queue_size <= 0:
+        if self.per_worker_task_queue_size <= 0:
             raise ValueError("worker_task_queue_size must be positive.")
         if self.ecs_task_cpu <= 0:
             raise ValueError("ecs_task_cpu must be a positive integer.")

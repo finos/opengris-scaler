@@ -92,6 +92,9 @@ class ClusterConfig(ConfigClass):
         default="builtin",
         metadata=dict(short="-el", choices=EventLoopType.allowed_types(), help="select event loop type"),
     )
+    log_hub_address: Optional[str] = dataclasses.field(
+        default=None, metadata=dict(short="-la", help="Address for Worker send logs")
+    )
     logging_paths: Tuple[str, ...] = dataclasses.field(
         default=defaults.DEFAULT_LOGGING_PATHS,
         metadata=dict(
@@ -150,4 +153,4 @@ class ClusterConfig(ConfigClass):
     @override
     @staticmethod
     def program_name() -> str:
-        return "cluster"
+        return "standalone compute cluster"

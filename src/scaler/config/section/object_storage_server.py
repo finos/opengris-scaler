@@ -13,7 +13,9 @@ except ImportError:
 class ObjectStorageServerConfig(ConfigClass):
     object_storage_address: ObjectStorageConfig = dataclasses.field(
         metadata=dict(
-            positional=True, help="specify the object storage server address to listen to, e.g. tcp://localhost:2345."
+            positional=True,
+            nargs="?",
+            help="specify the object storage server address to listen to, e.g. tcp://localhost:2345.",
         )
     )
 
@@ -25,4 +27,4 @@ class ObjectStorageServerConfig(ConfigClass):
     @override
     @staticmethod
     def program_name() -> str:
-        return "object storage server"
+        return "scaler_object_storage_server"

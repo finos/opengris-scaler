@@ -46,7 +46,7 @@ def _run_native_worker_adapter(address: str, webhook_port: int) -> None:
             io_threads=DEFAULT_IO_THREADS,
             worker_task_queue_size=10,
             max_workers=4,
-            heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+            heartbeat_interval=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
             task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
             death_timeout_seconds=DEFAULT_WORKER_DEATH_TIMEOUT,
             garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,

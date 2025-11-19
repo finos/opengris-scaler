@@ -29,7 +29,7 @@ class ECSWorkerAdapter:
         self._object_storage_address = config.object_storage_address
         self._capabilities = config.per_worker_capabilities.capabilities
         self._io_threads = config.io_threads
-        self._per_worker_task_queue_size = config.worker_task_queue_size
+        self._per_worker_task_queue_size = config.per_worker_task_queue_size
         self._max_instances = config.max_instances
         self._heartbeat_interval_seconds = config.heartbeat_interval_seconds
         self._task_timeout_seconds = config.task_timeout_seconds

@@ -17,7 +17,7 @@ except ImportError:
 @dataclasses.dataclass
 class NativeWorkerAdapterConfig(ConfigClass):
     scheduler_address: ZMQConfig = dataclasses.field(
-        metadata=dict(nargs="?", help="scheduler address to connect workers to")
+        metadata=dict(positional=True, nargs="?", help="scheduler address to connect workers to")
     )
 
     object_storage_address: Optional[ObjectStorageConfig] = dataclasses.field(
@@ -35,7 +35,7 @@ class NativeWorkerAdapterConfig(ConfigClass):
 
     # Generic worker adapter options
     io_threads: int = dataclasses.field(
-        default=defaults.DEFAULT_IO_THREADS, metadata=dict(short="-it", help="number of io threads for zmq")
+        default=defaults.DEFAULT_IO_THREADS, metadata=dict(help="number of io threads for zmq")
     )
     per_worker_capabilities: WorkerCapabilities = dataclasses.field(
         default_factory=lambda: WorkerCapabilities.from_string(""),
@@ -44,13 +44,13 @@ class NativeWorkerAdapterConfig(ConfigClass):
         ),
     )
     worker_task_queue_size: int = dataclasses.field(
-        default=defaults.DEFAULT_PER_WORKER_QUEUE_SIZE, metadata=dict(short="-wtqs", help="specify worker queue size")
+        default=10, metadata=dict(short="-wtqs", help="specify worker queue size")
     )
     max_workers: int = dataclasses.field(
         default=defaults.DEFAULT_NUMBER_OF_WORKER,
         metadata=dict(short="-mw", help="maximum number of workers that can be started, -1 means no limit"),
     )
-    heartbeat_interval_seconds: int = dataclasses.field(
+    heartbeat_interval: int = dataclasses.field(
         default=defaults.DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
         metadata=dict(short="-hi", help="number of seconds that worker agent send heartbeat to scheduler"),
     )
@@ -111,7 +111,7 @@ class NativeWorkerAdapterConfig(ConfigClass):
     @override
     @staticmethod
     def program_name() -> str:
-        return "scaler native worker adapter"
+        return "scaler_native_worker_adapter"
 
     def __post_init__(self):
         if not (1 <= self.adapter_web_port <= 65535):
@@ -120,5 +120,5 @@ class NativeWorkerAdapterConfig(ConfigClass):
             raise ValueError("io_threads must be a positive integer.")
         if self.worker_task_queue_size <= 0:
             raise ValueError("worker_task_queue_size must be positive.")
-        if self.heartbeat_interval_seconds <= 0 or self.task_timeout_seconds < 0 or self.death_timeout_seconds <= 0:
+        if self.heartbeat_interval <= 0 or self.task_timeout_seconds < 0 or self.death_timeout_seconds <= 0:
             raise ValueError("All interval/timeout second values must be positive.")
