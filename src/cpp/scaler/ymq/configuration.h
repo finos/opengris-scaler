@@ -9,6 +9,7 @@
 // Because the devil says "You shall live with errors".
 // ^-- The linker complains when the file is not here.
 #include "scaler/error/error.h"
+#include "scaler/utility/move_only_function.h"
 
 namespace scaler {
 namespace ymq {
@@ -17,16 +18,6 @@ class EpollContext;
 class IOCPContext;
 struct Message;
 class IOSocket;
-
-// Use feature-test macro to detect support for std::move_only_function.
-// This works across GCC, Clang, and MSVC on all platforms.
-#if defined(__cpp_lib_move_only_function) && __cpp_lib_move_only_function >= 202110L
-template <typename T>
-using MoveOnlyFunction = std::move_only_function<T>;
-#else
-template <typename T>
-using MoveOnlyFunction = std::function<T>;
-#endif
 
 constexpr const uint64_t IOCP_SOCKET_CLOSED = 4;
 
@@ -39,13 +30,13 @@ struct Configuration {
 #endif  // _WIN32
 
     using IOSocketIdentity                = std::string;
-    using SendMessageCallback             = MoveOnlyFunction<void(std::expected<void, Error>)>;
-    using RecvMessageCallback             = MoveOnlyFunction<void(std::pair<Message, Error>)>;
-    using ConnectReturnCallback           = MoveOnlyFunction<void(std::expected<void, Error>)>;
-    using BindReturnCallback              = MoveOnlyFunction<void(std::expected<void, Error>)>;
-    using CreateIOSocketCallback          = MoveOnlyFunction<void(std::shared_ptr<IOSocket>)>;
-    using TimedQueueCallback              = MoveOnlyFunction<void()>;
-    using ExecutionFunction               = MoveOnlyFunction<void()>;
+    using SendMessageCallback             = scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
+    using RecvMessageCallback             = scaler::utility::MoveOnlyFunction<void(std::pair<Message, Error>)>;
+    using ConnectReturnCallback           = scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
+    using BindReturnCallback              = scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
+    using CreateIOSocketCallback          = scaler::utility::MoveOnlyFunction<void(std::shared_ptr<IOSocket>)>;
+    using TimedQueueCallback              = scaler::utility::MoveOnlyFunction<void()>;
+    using ExecutionFunction               = scaler::utility::MoveOnlyFunction<void()>;
     using ExecutionCancellationIdentifier = size_t;
 };
 
