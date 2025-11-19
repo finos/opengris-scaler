@@ -2,6 +2,8 @@
 
 #include <cassert>
 #include <chrono>
+#include <format>
+#include <iomanip>
 #include <ostream>
 #include <sstream>  // stringify
 
@@ -44,19 +46,19 @@ struct Timestamp {
     }
 };
 
-// For possibly logging purposes
 inline std::string stringifyTimestamp(Timestamp ts)
 {
+    const auto ts_seconds {std::chrono::floor<std::chrono::seconds>(ts.timestamp)};
+    const std::time_t system_time = std::chrono::system_clock::to_time_t(ts_seconds);
+    const std::tm local_time      = *std::localtime(&system_time);
+
     std::ostringstream oss;
-    const auto ts_point {std::chrono::floor<std::chrono::seconds>(ts.timestamp)};
-    const std::chrono::zoned_time z {std::chrono::current_zone(), ts_point};
-    oss << std::format("{0:%F %T%z}", z);
+    oss << std::put_time(&local_time, "%F %T%z");
     return oss.str();
 }
 
 inline std::ostream& operator<<(std::ostream& os, const Timestamp& ts)
 {
-    // Use the existing stringify function
     os << stringifyTimestamp(ts);
     return os;
 }
@@ -104,12 +106,8 @@ struct std::formatter<scaler::ymq::Timestamp, char> {
     }
 
     template <class FmtContext>
-    constexpr FmtContext::iterator format(scaler::ymq::Timestamp e, FmtContext& ctx) const
+    constexpr FmtContext::iterator format(scaler::ymq::Timestamp ts, FmtContext& ctx) const
     {
-        std::ostringstream out;
-        const auto ts {std::chrono::floor<std::chrono::seconds>(e.timestamp)};
-        const std::chrono::zoned_time z {std::chrono::current_zone(), ts};
-        out << std::format("{0:%F %T%z}", z);
-        return std::ranges::copy(std::move(out).str(), ctx.out()).out;
+        return std::format_to(ctx.out(), "{}", scaler::ymq::stringifyTimestamp(ts));
     }
 };
