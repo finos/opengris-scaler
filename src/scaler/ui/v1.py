@@ -4,7 +4,6 @@ from functools import partial
 from nicegui import ui
 
 from scaler.config.section.webui import WebUIConfig
-from scaler.config.types.zmq import ZMQConfig
 from scaler.io.sync_subscriber import ZMQSyncSubscriber
 from scaler.ui.common.constants import (
     MEMORY_USAGE_UPDATE_INTERVAL,

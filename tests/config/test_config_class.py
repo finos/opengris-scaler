@@ -1,6 +1,6 @@
 import dataclasses
 import unittest
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from unittest.mock import mock_open, patch
 
 from scaler.config.config_class import ConfigClass, parse_bool
@@ -19,9 +19,9 @@ except ImportError:
 
 class MockArgParser:
     prog_name: str
-    args: List[str]
+    args: List[Tuple[Tuple, Dict]]
 
-    init_args: List
+    init_args: Tuple
     init_kwargs: Dict
 
     def __init__(self, prog_name: str, *args, **kwargs) -> None:
@@ -98,7 +98,7 @@ class TestConfigClass(unittest.TestCase):
         self.assertEqual(parser.init_kwargs["config_file_parser_class"].sections, ["my_config"])
 
         # first arg is the config file, drop it
-        args: List[List, Dict] = parser.args[1:]
+        args = parser.args[1:]
         self.assertEqual(args[0], (("--my-int",), {"type": int}))
         self.assertEqual(args[1], (("positional-one",), {"type": str}))
         self.assertEqual(args[2], (("positional-two",), {"type": str}))
