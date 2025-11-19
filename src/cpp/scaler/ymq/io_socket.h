@@ -28,7 +28,7 @@ namespace ymq {
 
 class EventLoopThread;
 class MessageConnection;
-class TcpWriteOperation;
+struct TcpWriteOperation;
 
 class IOSocket {
 public:
