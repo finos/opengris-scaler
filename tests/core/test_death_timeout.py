@@ -38,6 +38,7 @@ class TestDeathTimeout(unittest.TestCase):
                 preload=None,
                 worker_io_threads=DEFAULT_IO_THREADS,
                 worker_names=WorkerNames(["a", "b"]),
+                num_of_workers=2,
                 per_worker_capabilities=WorkerCapabilities({}),
                 per_worker_task_queue_size=DEFAULT_PER_WORKER_QUEUE_SIZE,
                 heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,

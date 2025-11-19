@@ -351,6 +351,7 @@ class TestClientPreload(unittest.TestCase):
                 preload=preload,
                 worker_io_threads=base_cluster._worker_io_threads,
                 worker_names=WorkerNames(["preload_worker"]),
+                num_of_workers=1,
                 per_worker_capabilities=WorkerCapabilities({}),
                 per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
                 heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
