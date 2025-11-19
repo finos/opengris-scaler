@@ -44,6 +44,8 @@ class TestBalance(unittest.TestCase):
 
         time.sleep(3)
 
+        print("creating new cluster..")
+
         new_cluster = Cluster(
             config=ClusterConfig(
                 scheduler_address=combo._cluster._address,
@@ -51,6 +53,7 @@ class TestBalance(unittest.TestCase):
                 preload=None,
                 worker_io_threads=1,
                 worker_names=WorkerNames([str(i) for i in range(0, N_WORKERS - 1)]),
+                num_of_workers=N_WORKERS-1,
                 per_worker_capabilities=WorkerCapabilities({}),
                 per_worker_task_queue_size=combo._cluster._per_worker_task_queue_size,
                 heartbeat_interval_seconds=combo._cluster._heartbeat_interval_seconds,
@@ -65,9 +68,14 @@ class TestBalance(unittest.TestCase):
                 logging_config_file=combo._cluster._logging_config_file,
             )
         )
+        print("cluster created, actually starting now...")
         new_cluster.start()
 
+        print("getting results")
+
         pids = {f.result() for f in futures}
+
+        print("results!", pids)
 
         self.assertEqual(len(pids), N_WORKERS)
 

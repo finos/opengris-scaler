@@ -1,4 +1,5 @@
 import logging
+import socket
 from typing import Dict, Optional, Tuple
 
 from scaler.cluster.cluster import Cluster
@@ -24,7 +25,7 @@ from scaler.config.defaults import (
 )
 from scaler.config.section.cluster import ClusterConfig
 from scaler.config.types.object_storage_server import ObjectStorageConfig
-from scaler.config.types.worker import WorkerCapabilities
+from scaler.config.types.worker import WorkerCapabilities, WorkerNames
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
@@ -91,6 +92,7 @@ class SchedulerClusterCombo:
                 object_storage_address=self._object_storage_address,
                 preload=None,
                 worker_io_threads=worker_io_threads,
+                worker_names=WorkerNames([f"{socket.gethostname().split('.')[0]}" for _ in range(n_workers)]),
                 num_of_workers=n_workers,
                 per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),
                 per_worker_task_queue_size=per_worker_task_queue_size,
