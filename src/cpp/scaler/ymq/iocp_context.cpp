@@ -71,7 +71,11 @@ void IOCPContext::loop()
                 continue;
             }
             // TODO: Figure out the best stuff to put in
-            event->onEvents(revent);
+            event->onRead();
+            event->onWrite();
+            if (events & IOCP_SOCKET_CLOSED) {
+                event->onClose();
+            }
         }
     }
     execPendingFunctions();
