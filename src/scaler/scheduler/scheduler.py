@@ -7,10 +7,10 @@ import zmq.asyncio
 from scaler.config.defaults import CLEANUP_INTERVAL_SECONDS, STATUS_REPORT_INTERVAL_SECONDS
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.zmq import ZMQConfig, ZMQType
-from scaler.io.async_binder import ZMQAsyncBinder
 from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
-from scaler.io.utility import create_async_object_storage_connector
+from scaler.io.utility import create_async_binder, create_async_object_storage_connector
+from scaler.io.ymq.ymq import YMQException
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -37,7 +37,7 @@ from scaler.scheduler.controllers.scaling_policies.utility import create_scaling
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
 from scaler.utility.event_loop import create_async_loop_routine
-from scaler.utility.exceptions import ClientShutdownException
+from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ClientID, WorkerID
 
 
@@ -71,9 +71,10 @@ class Scheduler:
 
         self._context = zmq.asyncio.Context(io_threads=config.io_threads)
 
-        self._binder: AsyncBinder = ZMQAsyncBinder(
-            context=self._context, name="scheduler", address=config.scheduler_address
+        self._binder: AsyncBinder = create_async_binder(
+            self._context, name="scheduler", address=config.scheduler_address
         )
+
         logging.info(f"{self.__class__.__name__}: listen to scheduler address {config.scheduler_address}")
 
         self._connector_storage: AsyncObjectStorageConnector = create_async_object_storage_connector()
@@ -240,9 +241,19 @@ class Scheduler:
         except ClientShutdownException as e:
             logging.info(f"{self.__class__.__name__}: {e}")
             pass
+        except YMQException:
+            pass
+        except ObjectStorageException:
+            pass
 
         self._binder.destroy()
         self._binder_monitor.destroy()
+        # TODO: If we have this statement, then when SCALER_NETWORK_BACKEND is tcp_zmq, it would sometimes block on
+        # closing. However, if we don't have this statement, sometimes there are log output
+        # "terminate called without an active exception" without a reason (no usual coredump or abort message). It
+        # doesn't look like a bug, perhaps pytest cleanup has gone wrong. This might need investigation.
+        # - 20251114, gxu
+        # await self._connector_storage.destroy()
 
 
 @functools.wraps(Scheduler)

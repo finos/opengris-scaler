@@ -13,6 +13,7 @@ namespace ymq {
 class EventLoopThread;
 class EventManager;
 
+// TODO: Change this class to TCPClient
 class TcpClient {
 public:
     using ConnectReturnCallback = Configuration::ConnectReturnCallback;

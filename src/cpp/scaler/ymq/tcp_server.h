@@ -14,6 +14,7 @@ namespace ymq {
 class EventLoopThread;
 class EventManager;
 
+// TODO: Change this class to TCPServer
 class TcpServer {
 public:
     using BindReturnCallback = Configuration::BindReturnCallback;
