@@ -22,6 +22,7 @@ function(add_test_executable test_name source_file)
 
     target_link_libraries(${test_name} PRIVATE
         $<$<NOT:$<PLATFORM_ID:Windows>>:object_storage_server_objs>
+        scaler_utility
         ymq_objs
         CapnProto::capnp
         CapnProto::kj
