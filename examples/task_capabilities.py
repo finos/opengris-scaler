@@ -8,7 +8,7 @@ import math
 
 from scaler import Client, Cluster
 from scaler.cluster.combo import SchedulerClusterCombo
-from scaler.config.common.common import CommonConfig
+
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.section.cluster import ClusterConfig
@@ -43,7 +43,8 @@ def main():
             preload=None,
             worker_names=WorkerNames(["gpu_worker"]),
             num_of_workers=1,
-            common_config=CommonConfig(event_loop=base_cluster._event_loop, worker_io_threads=1),
+            event_loop=base_cluster._event_loop,
+            worker_io_threads=1,
             worker_config=WorkerConfig(
                 per_worker_capabilities=WorkerCapabilities({"gpu": -1}),
                 per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,

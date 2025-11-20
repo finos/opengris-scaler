@@ -4,7 +4,6 @@ import signal
 from asyncio import AbstractEventLoop, Task
 from typing import Any, Optional, Tuple
 
-from scaler.config.common.common import CommonConfig
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
@@ -52,7 +51,8 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
             object_retention_seconds=object_retention_seconds,
             load_balance_seconds=load_balance_seconds,
             load_balance_trigger_times=load_balance_trigger_times,
-            common_config=CommonConfig(event_loop=event_loop, worker_io_threads=io_threads),
+            event_loop=event_loop,
+            worker_io_threads=io_threads,
         )
 
         self._logging_paths = logging_paths
@@ -66,7 +66,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
     def run(self) -> None:
         # scheduler have its own single process
         setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
-        register_event_loop(self._scheduler_config.common_config.event_loop)
+        register_event_loop(self._scheduler_config.event_loop)
 
         self._loop = asyncio.get_event_loop()
         SchedulerProcess.__register_signal(self._loop)

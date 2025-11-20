@@ -3,7 +3,7 @@ import time
 import unittest
 
 from scaler import Client, Cluster, SchedulerClusterCombo
-from scaler.config.common.common import CommonConfig
+
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.defaults import DEFAULT_LOAD_BALANCE_SECONDS
@@ -54,7 +54,8 @@ class TestBalance(unittest.TestCase):
                 preload=None,
                 worker_names=WorkerNames([str(i) for i in range(0, N_WORKERS - 1)]),
                 num_of_workers=N_WORKERS - 1,
-                common_config=CommonConfig(event_loop=combo._cluster._event_loop, worker_io_threads=1),
+                event_loop=combo._cluster._event_loop,
+                worker_io_threads=1,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities({}),
                     per_worker_task_queue_size=combo._cluster._per_worker_task_queue_size,

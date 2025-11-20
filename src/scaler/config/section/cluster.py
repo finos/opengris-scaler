@@ -3,13 +3,13 @@ import socket
 from typing import Optional
 
 from scaler.config import defaults
-from scaler.config.common.common import CommonConfig
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.config_class import ConfigClass
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.worker import WorkerNames
 from scaler.config.types.zmq import ZMQConfig
+from scaler.utility.event_loop import EventLoopType
 
 
 @dataclasses.dataclass
@@ -42,8 +42,15 @@ class ClusterConfig(ConfigClass):
     num_of_workers: int = dataclasses.field(
         default=defaults.DEFAULT_NUMBER_OF_WORKER, metadata=dict(short="-n", help="the number of workers in cluster")
     )
+    event_loop: str = dataclasses.field(
+        default="builtin",
+        metadata=dict(short="-el", choices=EventLoopType.allowed_types(), help="select the event loop type"),
+    )
 
-    common_config: CommonConfig = CommonConfig()
+    worker_io_threads: int = dataclasses.field(
+        default=defaults.DEFAULT_IO_THREADS,
+        metadata=dict(short="-wit", help="set the number of io threads for io backend per worker"),
+    )
     worker_config: WorkerConfig = WorkerConfig()
     logging_config: LoggingConfig = LoggingConfig()
 
@@ -55,3 +62,5 @@ class ClusterConfig(ConfigClass):
             )
         if not self.worker_names.names:
             self.worker_names.names = [f"{socket.gethostname().split('.')[0]}" for _ in range(self.num_of_workers)]
+        if self.worker_io_threads <= 0:
+            raise ValueError("worker_io_threads must be a positive integer.")

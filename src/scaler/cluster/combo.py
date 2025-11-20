@@ -5,7 +5,7 @@ from typing import Dict, Optional, Tuple
 from scaler.cluster.cluster import Cluster
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
-from scaler.config.common.common import CommonConfig
+
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.defaults import (
@@ -96,7 +96,8 @@ class SchedulerClusterCombo:
                 preload=None,
                 worker_names=WorkerNames([f"{socket.gethostname().split('.')[0]}" for _ in range(n_workers)]),
                 num_of_workers=n_workers,
-                common_config=CommonConfig(event_loop=event_loop, worker_io_threads=worker_io_threads),
+                event_loop=event_loop,
+                worker_io_threads=worker_io_threads,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),
                     per_worker_task_queue_size=per_worker_task_queue_size,

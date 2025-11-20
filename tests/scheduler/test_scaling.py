@@ -9,7 +9,7 @@ from aiohttp import web
 from scaler import Client
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
-from scaler.config.common.common import CommonConfig
+
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.web import WebConfig
 from scaler.config.common.worker import WorkerConfig
@@ -49,7 +49,8 @@ def _run_native_worker_adapter(scheduler_address: str, webhook_port: int) -> Non
             worker_adapter_config=WorkerAdapterConfig(
                 scheduler_address=ZMQConfig.from_string(scheduler_address), object_storage_address=None, max_workers=4
             ),
-            common_config=CommonConfig(event_loop="builtin", worker_io_threads=DEFAULT_IO_THREADS),
+            event_loop="builtin",
+            worker_io_threads=DEFAULT_IO_THREADS,
             worker_config=WorkerConfig(
                 per_worker_capabilities=WorkerCapabilities({}),
                 per_worker_task_queue_size=10,

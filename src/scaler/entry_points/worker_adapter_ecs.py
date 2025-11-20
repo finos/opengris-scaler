@@ -8,7 +8,7 @@ from scaler.worker_adapter.ecs import ECSWorkerAdapter
 
 def main():
     ecs_config = ECSWorkerAdapterConfig.parse("Scaler ECS Worker Adapter", "ecs_worker_adapter")
-    register_event_loop(ecs_config.common_config.event_loop)
+    register_event_loop(ecs_config.event_loop)
     setup_logger(
         ecs_config.logging_config.paths, ecs_config.logging_config.config_file, ecs_config.logging_config.level
     )

@@ -195,8 +195,6 @@ class ConfigClass:
                         if key not in kwargs:
                             kwargs[key] = value
 
-            print(args, kwargs)
-
             parser.add_argument(*args, **kwargs)
 
     @classmethod

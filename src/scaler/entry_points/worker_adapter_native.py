@@ -98,7 +98,7 @@ def get_args():
 def main():
     native_adapter_config = NativeWorkerAdapterConfig.parse("Scaler Native WWorker Adapter", "native_worker_adapter")
 
-    register_event_loop(native_adapter_config.common_config.event_loop)
+    register_event_loop(native_adapter_config.event_loop)
 
     setup_logger(
         native_adapter_config.logging_config.paths,

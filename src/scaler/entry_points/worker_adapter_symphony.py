@@ -8,7 +8,7 @@ from scaler.worker_adapter.symphony.worker_adapter import SymphonyWorkerAdapter
 
 def main():
     symphony_config = SymphonyWorkerConfig.parse("Scaler Symphony Worker Adapter", "symphony_worker_adapter")
-    register_event_loop(symphony_config.common_config.event_loop)
+    register_event_loop(symphony_config.event_loop)
 
     setup_logger(
         symphony_config.logging_config.paths,

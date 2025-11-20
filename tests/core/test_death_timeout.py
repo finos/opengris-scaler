@@ -3,7 +3,7 @@ import time
 import unittest
 
 from scaler import Client, Cluster, SchedulerClusterCombo
-from scaler.config.common.common import CommonConfig
+
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.defaults import (
@@ -41,7 +41,8 @@ class TestDeathTimeout(unittest.TestCase):
                 preload=None,
                 worker_names=WorkerNames(["a", "b"]),
                 num_of_workers=2,
-                common_config=CommonConfig(event_loop="builtin", worker_io_threads=DEFAULT_IO_THREADS),
+                event_loop="builtin",
+                worker_io_threads=DEFAULT_IO_THREADS,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities({}),
                     per_worker_task_queue_size=DEFAULT_PER_WORKER_QUEUE_SIZE,

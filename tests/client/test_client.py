@@ -7,7 +7,7 @@ import unittest
 from concurrent.futures import CancelledError
 
 from scaler import Client, Cluster, SchedulerClusterCombo
-from scaler.config.common.common import CommonConfig
+
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.section.cluster import ClusterConfig
@@ -354,9 +354,8 @@ class TestClientPreload(unittest.TestCase):
                 preload=preload,
                 worker_names=WorkerNames(["preload_worker"]),
                 num_of_workers=1,
-                common_config=CommonConfig(
-                    event_loop=base_cluster._event_loop, worker_io_threads=base_cluster._worker_io_threads
-                ),
+                event_loop=base_cluster._event_loop,
+                worker_io_threads=base_cluster._worker_io_threads,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities({}),
                     per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,

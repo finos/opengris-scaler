@@ -17,7 +17,7 @@ class NativeWorkerAdapter:
         self._address = config.worker_adapter_config.scheduler_address
         self._object_storage_address = config.worker_adapter_config.object_storage_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
-        self._io_threads = config.common_config.worker_io_threads
+        self._io_threads = config.worker_io_threads
         self._task_queue_size = config.worker_config.per_worker_task_queue_size
         self._max_workers = config.worker_adapter_config.max_workers
         self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
@@ -26,7 +26,7 @@ class NativeWorkerAdapter:
         self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
         self._hard_processor_suspend = config.worker_config.hard_processor_suspend
-        self._event_loop = config.common_config.event_loop
+        self._event_loop = config.event_loop
         self._adapter_web_host = config.web_config.adapter_web_host
         self._adapter_web_port = config.web_config.adapter_web_port
         self._logging_paths = config.logging_config.paths

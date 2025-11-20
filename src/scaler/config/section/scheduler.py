@@ -3,13 +3,13 @@ from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 from scaler.config import defaults
-from scaler.config.common.common import CommonConfig
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.config_class import ConfigClass
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
+from scaler.utility.event_loop import EventLoopType
 
 
 @dataclasses.dataclass
@@ -95,8 +95,15 @@ class SchedulerConfig(ConfigClass):
             help="exact number of repeated load balance advices when trigger load balance operation in scheduler",
         ),
     )
+    event_loop: str = dataclasses.field(
+        default="builtin",
+        metadata=dict(short="-el", choices=EventLoopType.allowed_types(), help="select the event loop type"),
+    )
 
-    common_config: CommonConfig = CommonConfig()
+    worker_io_threads: int = dataclasses.field(
+        default=defaults.DEFAULT_IO_THREADS,
+        metadata=dict(short="-wit", help="set the number of io threads for io backend per worker"),
+    )
     logging_config: LoggingConfig = LoggingConfig()
 
     def __post_init__(self):
@@ -115,3 +122,5 @@ class SchedulerConfig(ConfigClass):
             parsed_url = urlparse(adapter_webhook_url)
             if not all([parsed_url.scheme, parsed_url.netloc]):
                 raise ValueError(f"adapter_webhook_urls contains url '{adapter_webhook_url}' which is not a valid URL.")
+        if self.worker_io_threads <= 0:
+            raise ValueError("worker_io_threads must be a positive integer.")
