@@ -2,8 +2,12 @@
 
 #include <cstddef>
 
-#include "tests/cpp/ymq/common/utils.h"
-#include "tests/cpp/ymq/pipe/pipe_reader.h"
+#include "scaler/utility/error.h"
+#include "scaler/utility/pipe/pipe_reader.h"
+
+namespace scaler {
+namespace utility {
+namespace pipe {
 
 PipeReader::PipeReader(long long fd): _fd(fd)
 {
@@ -32,17 +36,26 @@ const long long PipeReader::fd() const noexcept
     return this->_fd;
 }
 
-int PipeReader::read(void* buffer, size_t size) const
+int PipeReader::read(void* buffer, size_t size) const noexcept
 {
     DWORD bytes_read = 0;
-    if (!ReadFile((HANDLE)this->_fd, buffer, (DWORD)size, &bytes_read, nullptr))
-        raise_system_error("failed to read");
+    if (!ReadFile((HANDLE)this->_fd, buffer, (DWORD)size, &bytes_read, nullptr)) {
+        unrecoverableError({
+            Error::ErrorCode::CoreBug,
+            "Originated from",
+            "ReadFile()",
+        });
+    }
     return bytes_read;
 }
 
-void PipeReader::read_exact(void* buffer, size_t size) const
+void PipeReader::read_exact(void* buffer, size_t size) const noexcept
 {
     size_t cursor = 0;
     while (cursor < size)
         cursor += (size_t)this->read((char*)buffer + cursor, size - cursor);
 }
+
+}  // namespace pipe
+}  // namespace utility
+}  // namespace scaler

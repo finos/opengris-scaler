@@ -1,8 +1,12 @@
 #pragma once
 
-#include "tests/cpp/ymq/pipe/pipe_reader.h"
-#include "tests/cpp/ymq/pipe/pipe_utils.h"
-#include "tests/cpp/ymq/pipe/pipe_writer.h"
+#include "scaler/utility/pipe/pipe_reader.h"
+#include "scaler/utility/pipe/pipe_utils.h"
+#include "scaler/utility/pipe/pipe_writer.h"
+
+namespace scaler {
+namespace utility {
+namespace pipe {
 
 struct Pipe {
 public:
@@ -35,3 +39,7 @@ public:
     PipeReader reader;
     PipeWriter writer;
 };
+
+}  // namespace pipe
+}  // namespace utility
+}  // namespace scaler
