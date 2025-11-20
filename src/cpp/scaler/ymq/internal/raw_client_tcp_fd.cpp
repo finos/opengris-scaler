@@ -1,6 +1,6 @@
 #include "scaler/ymq/internal/raw_client_tcp_fd.h"
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 
 namespace scaler {
 namespace ymq {
@@ -26,7 +26,7 @@ RawClientTCPFD::RawClientTCPFD(sockaddr remoteAddr): _clientFD {}, _remoteAddr(s
     closesocket(tmp);
     if (!_connectExFunc) {
         unrecoverableError({
-            Error::ErrorCode::CoreBug,
+            utility::Error::ErrorCode::CoreBug,
             "Originated from",
             "WSAIoctl",
             "Errno is",
@@ -53,7 +53,7 @@ void RawClientTCPFD::create()
             case ENOBUFS:
             case ENOMEM:
                 unrecoverableError({
-                    Error::ErrorCode::ConfigurationError,
+                    utility::Error::ErrorCode::ConfigurationError,
                     "Originated from",
                     "socket(2)",
                     "Errno is",
@@ -64,7 +64,7 @@ void RawClientTCPFD::create()
             case EPROTONOSUPPORT:
             default:
                 unrecoverableError({
-                    Error::ErrorCode::CoreBug,
+                    utility::Error::ErrorCode::CoreBug,
                     "Originated from",
                     "socket(2)",
                     "Errno is",
@@ -79,7 +79,7 @@ void RawClientTCPFD::create()
     _clientFD = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (_clientFD == -1) {
         unrecoverableError({
-            Error::ErrorCode::CoreBug,
+            utility::Error::ErrorCode::CoreBug,
             "Originated from",
             "socket(2)",
             "Errno is",
@@ -111,7 +111,7 @@ bool RawClientTCPFD::prepConnect(void* notifyHandle)
         case EPROTOTYPE:
         case ETIMEDOUT:
             unrecoverableError({
-                Error::ErrorCode::ConfigurationError,
+                utility::Error::ErrorCode::ConfigurationError,
                 "Originated from",
                 "connect(2)",
                 "Errno is",
@@ -122,7 +122,7 @@ bool RawClientTCPFD::prepConnect(void* notifyHandle)
 
         case EINTR:
             unrecoverableError({
-                Error::ErrorCode::SignalNotSupported,
+                utility::Error::ErrorCode::SignalNotSupported,
                 "Originated from",
                 "connect(2)",
                 "Errno is",
@@ -142,7 +142,7 @@ bool RawClientTCPFD::prepConnect(void* notifyHandle)
         case ECONNREFUSED:
         default:
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 "connect(2)",
                 "Errno is",
@@ -162,7 +162,7 @@ bool RawClientTCPFD::prepConnect(void* notifyHandle)
     const int bindRes = bind(_clientFD, (struct sockaddr*)&localAddr, sizeof(struct sockaddr_in));
     if (bindRes == -1) {
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             "bind",
             "Errno is",
@@ -176,7 +176,7 @@ bool RawClientTCPFD::prepConnect(void* notifyHandle)
         _connectExFunc(_clientFD, &_remoteAddr, sizeof(struct sockaddr), NULL, 0, NULL, (LPOVERLAPPED)notifyHandle);
     if (ok) {
         unrecoverableError({
-            Error::ErrorCode::CoreBug,
+            utility::Error::ErrorCode::CoreBug,
             "Originated from",
             "connectEx",
             "_clientFD",
@@ -190,7 +190,7 @@ bool RawClientTCPFD::prepConnect(void* notifyHandle)
     }
 
     unrecoverableError({
-        Error::ErrorCode::CoreBug,
+        utility::Error::ErrorCode::CoreBug,
         "Originated from",
         "connectEx",
         "Errno is",
@@ -213,7 +213,7 @@ bool RawClientTCPFD::needRetry()
             case ENOBUFS:
             case EACCES:
                 unrecoverableError({
-                    Error::ErrorCode::ConfigurationError,
+                    utility::Error::ErrorCode::ConfigurationError,
                     "Originated from",
                     "getsockopt(3)",
                     "Errno is",
@@ -227,7 +227,7 @@ bool RawClientTCPFD::needRetry()
             case EINVAL:
             default:
                 unrecoverableError({
-                    Error::ErrorCode::CoreBug,
+                    utility::Error::ErrorCode::CoreBug,
                     "Originated from",
                     "getsockopt(3)",
                     "Errno is",
@@ -244,7 +244,7 @@ bool RawClientTCPFD::needRetry()
 
         // Since connect(2) error has been checked previously
         unrecoverableError({
-            Error::ErrorCode::CoreBug,
+            utility::Error::ErrorCode::CoreBug,
             "Originated from",
             "connect(2)",
             "Errno is",
