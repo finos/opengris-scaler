@@ -548,7 +548,7 @@ TEST_F(ObjectStorageServerTest, TestMalformedHeader)
         // Server should disconnect before or while we are reading the response
         auto result = client->readYMQMessage();
         EXPECT_TRUE(!result);
-        EXPECT_EQ(result.error()._errorCode, Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
+        EXPECT_EQ(result.error()._errorCode, scaler::utility::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
     }
 
     // Server must still answers to requests from other clients

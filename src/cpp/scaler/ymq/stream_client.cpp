@@ -3,7 +3,7 @@
 #include <chrono>
 #include <memory>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/utility/timestamp.h"
 #include "scaler/ymq/event_loop_thread.h"
 #include "scaler/ymq/event_manager.h"
@@ -42,7 +42,7 @@ void StreamClient::onCreated()
         return;
     } else {
         if (_retryTimes == 0) {
-            _onConnectReturn(std::unexpected {Error::ErrorCode::InitialConnectFailedWithInProgress});
+            _onConnectReturn(std::unexpected {utility::Error::ErrorCode::InitialConnectFailedWithInProgress});
             _onConnectReturn = {};
         }
 
@@ -111,12 +111,12 @@ void StreamClient::onWrite()
 void StreamClient::retry()
 {
     if (_retryTimes > _maxRetryTimes) {
-        _logger.log(Logger::LoggingLevel::error, "Retried times has reached maximum: ", _maxRetryTimes);
+        _logger.log(utility::Logger::LoggingLevel::error, "Retried times has reached maximum: ", _maxRetryTimes);
         // exit(1);
         return;
     }
 
-    _logger.log(Logger::LoggingLevel::debug, "Client retrying ", _retryTimes, " time(s)");
+    _logger.log(utility::Logger::LoggingLevel::debug, "Client retrying ", _retryTimes, " time(s)");
 
     utility::Timestamp now;
     auto at = now + std::chrono::seconds(2 << _retryTimes++);

@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cassert>  // assert
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/internal/network_utils.h"
 #include "scaler/ymq/internal/raw_stream_connection_handle.h"
 
@@ -72,7 +72,7 @@ std::expected<uint64_t, RawStreamConnectionHandle::IOStatus> RawStreamConnection
         } else {
             // NOTE: On Windows we don't have signals and weird IO Errors
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 "recv(2)",
                 "Errno is",
@@ -175,7 +175,7 @@ bool RawStreamConnectionHandle::prepareReadBytes(void* notifyHandle)
         return false;
     }
     unrecoverableError({
-        Error::ErrorCode::CoreBug,
+        utility::Error::ErrorCode::CoreBug,
         "Originated from",
         "ReadFile",
         "Errno is",
@@ -201,7 +201,7 @@ std::pair<size_t, bool> RawStreamConnectionHandle::prepareWriteBytes(void* dest,
         return {1, false};
     }
     unrecoverableError({
-        Error::ErrorCode::CoreBug,
+        utility::Error::ErrorCode::CoreBug,
         "Originated from",
         "prepareWriteBytes",
         "Errno is",

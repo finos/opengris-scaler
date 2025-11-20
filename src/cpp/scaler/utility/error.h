@@ -7,11 +7,11 @@
 #include <iostream>
 #include <string>
 
+#include "scaler/utility/format.h"
 #include "scaler/utility/timestamp.h"
-#include "scaler/ymq/utils.h"
 
 namespace scaler {
-namespace ymq {
+namespace utility {
 
 struct Error: public std::exception {
     enum struct ErrorCode {
@@ -45,8 +45,7 @@ struct Error: public std::exception {
     //     Other := ["Originated from", Function Name, "Errno is", strerror(errno), items...]
     template <typename... Args>
     constexpr Error(ErrorCode e, Args&&... args) noexcept
-        : _errorCode(e)
-        , _logMsg(argsToString(utility::Timestamp {}, convertErrorToExplanation(e), std::forward<Args>(args)...))
+        : _errorCode(e), _logMsg(argsToString(Timestamp {}, convertErrorToExplanation(e), std::forward<Args>(args)...))
     {
     }
 
@@ -102,11 +101,11 @@ struct Error: public std::exception {
     std::string _logMsg;
 };
 
-}  // namespace ymq
+}  // namespace utility
 }  // namespace scaler
 
 template <>
-struct std::formatter<scaler::ymq::Error, char> {
+struct std::formatter<scaler::utility::Error, char> {
     template <class ParseContext>
     constexpr ParseContext::iterator parse(ParseContext& ctx) noexcept
     {
@@ -114,15 +113,15 @@ struct std::formatter<scaler::ymq::Error, char> {
     }
 
     template <class FmtContext>
-    constexpr FmtContext::iterator format(scaler::ymq::Error e, FmtContext& ctx) const noexcept
+    constexpr FmtContext::iterator format(scaler::utility::Error e, FmtContext& ctx) const noexcept
     {
         return std::ranges::copy(e._logMsg, ctx.out()).out;
     }
 };
 
-using UnrecoverableErrorFunctionHookPtr = std::function<void(scaler::ymq::Error)>;
+using UnrecoverableErrorFunctionHookPtr = std::function<void(scaler::utility::Error)>;
 
-[[noreturn]] inline void defaultUnrecoverableError(scaler::ymq::Error e) noexcept
+[[noreturn]] inline void defaultUnrecoverableError(scaler::utility::Error e) noexcept
 {
     std::cerr << e.what() << '\n';
     std::exit(1);
@@ -130,7 +129,7 @@ using UnrecoverableErrorFunctionHookPtr = std::function<void(scaler::ymq::Error)
 
 inline UnrecoverableErrorFunctionHookPtr unrecoverableErrorFunctionHookPtr = defaultUnrecoverableError;
 
-[[noreturn]] inline void unrecoverableError(scaler::ymq::Error e) noexcept
+[[noreturn]] inline void unrecoverableError(scaler::utility::Error e) noexcept
 {
     unrecoverableErrorFunctionHookPtr(std::move(e));
     std::exit(1);

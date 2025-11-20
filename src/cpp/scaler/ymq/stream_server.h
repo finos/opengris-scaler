@@ -6,7 +6,7 @@
 #include "scaler/ymq/internal/socket_address.h"
 
 // First-party
-#include "scaler/logging/logging.h"
+#include "scaler/utility/logging.h"
 #include "scaler/ymq/configuration.h"
 #include "scaler/ymq/internal/socket_address.h"
 
@@ -52,7 +52,7 @@ private:
 
     std::unique_ptr<EventManager> _eventManager;  // will copy the `onRead()` to itself
 
-    Logger _logger;
+    utility::Logger _logger;
 
     RawStreamServerHandle _rawServer;
 };

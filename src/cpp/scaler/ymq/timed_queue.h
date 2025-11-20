@@ -4,7 +4,7 @@
 #include <queue>
 #include <set>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/utility/timestamp.h"
 #include "scaler/ymq/configuration.h"
 
@@ -59,7 +59,7 @@ inline int createTimerfd()
         case ENOMEM:
         case EPERM:
             unrecoverableError({
-                Error::ErrorCode::ConfigurationError,
+                utility::Error::ErrorCode::ConfigurationError,
                 "Originated from",
                 __PRETTY_FUNCTION__,
                 "Errno is",
@@ -73,7 +73,7 @@ inline int createTimerfd()
         case ECANCELED:
         default:
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 __PRETTY_FUNCTION__,
                 "Errno is",
@@ -100,7 +100,7 @@ public:
             int ret = timerfd_settime(_timerFd, 0, &ts, nullptr);
             if (ret == -1) {
                 unrecoverableError({
-                    Error::ErrorCode::CoreBug,
+                    utility::Error::ErrorCode::CoreBug,
                     "Originated from",
                     __PRETTY_FUNCTION__,
                     "Errno is",
@@ -121,7 +121,7 @@ public:
         if (n != sizeof numItems) [[unlikely]] {
             // This should never happen anyway
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 __PRETTY_FUNCTION__,
                 "Errno is",
@@ -159,7 +159,7 @@ public:
                     case ENOMEM:
                     case EPERM:
                         unrecoverableError({
-                            Error::ErrorCode::ConfigurationError,
+                            utility::Error::ErrorCode::ConfigurationError,
                             "Originated from",
                             __PRETTY_FUNCTION__,
                             "Errno is",
@@ -173,7 +173,7 @@ public:
                     case ECANCELED:
                     default:
                         unrecoverableError({
-                            Error::ErrorCode::CoreBug,
+                            utility::Error::ErrorCode::CoreBug,
                             "Originated from",
                             __PRETTY_FUNCTION__,
                             "Errno is",
