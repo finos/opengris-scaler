@@ -1,37 +1,21 @@
 import dataclasses
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
-from scaler.config import defaults
+from scaler.config.common.common import CommonConfig
+from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.web import WebConfig
+from scaler.config.common.worker import WorkerConfig
+from scaler.config.common.worker_adapter import WorkerAdapterConfig
 from scaler.config.config_class import ConfigClass
-from scaler.config.types.object_storage_server import ObjectStorageConfig
-from scaler.config.types.worker import WorkerCapabilities
-from scaler.config.types.zmq import ZMQConfig
-from scaler.utility.event_loop import EventLoopType
-
-try:
-    from typing import override  # type: ignore[attr-defined]
-except ImportError:
-    from typing_extensions import override  # type: ignore[attr-defined]
 
 
 @dataclasses.dataclass
 class ECSWorkerAdapterConfig(ConfigClass):
-    # Server (adapter) configuration
-    adapter_web_host: str = dataclasses.field(
-        metadata=dict(required=True, help="host address for the ecs worker adapter HTTP server")
-    )
-    adapter_web_port: int = dataclasses.field(
-        metadata=dict(short="-p", required=True, help="port for the ecs worker adapter HTTP server")
-    )
-
-    scheduler_address: ZMQConfig = dataclasses.field(
-        metadata=dict(positional=True, nargs="?", help="scheduler address to connect workers to")
-    )
-
-    object_storage_address: Optional[ObjectStorageConfig] = dataclasses.field(
-        default=None,
-        metadata=dict(short="-osa", help="specify the object storage server address, e.g.: tcp://localhost:2346"),
-    )
+    web_config: WebConfig
+    worker_adapter_config: WorkerAdapterConfig
+    common_config: CommonConfig = CommonConfig()
+    worker_config: WorkerConfig = WorkerConfig()
+    logging_config: LoggingConfig = LoggingConfig()
 
     # AWS / ECS specific configuration
     aws_access_key_id: Optional[str] = dataclasses.field(
@@ -65,98 +49,12 @@ class ECSWorkerAdapterConfig(ConfigClass):
     )
     ecs_task_memory: int = dataclasses.field(default=30, metadata=dict(help="Task memory in GB for Fargate"))
 
-    # Generic worker adapter options
-    io_threads: int = dataclasses.field(
-        default=defaults.DEFAULT_IO_THREADS, metadata=dict(short="-it", help="number of io threads for zmq")
-    )
-    per_worker_capabilities: WorkerCapabilities = dataclasses.field(
-        default_factory=lambda: WorkerCapabilities.from_string(""),
-        metadata=dict(
-            short="-pwc", help='comma-separated capabilities provided by the workers (e.g. "-pwc linux,cpu=4")'
-        ),
-    )
-    per_worker_task_queue_size: int = dataclasses.field(
-        default=defaults.DEFAULT_PER_WORKER_QUEUE_SIZE, metadata=dict(short="-wtqs", help="specify worker queue size")
-    )
-    max_instances: int = dataclasses.field(
-        default=defaults.DEFAULT_NUMBER_OF_WORKER,
-        metadata=dict(
-            short="-mi",
-            help="maximum number of ECS task instances that can be started, "
-            "required to avoid unexpected surprise bills, -1 means no limit",
-        ),
-    )
-    heartbeat_interval_seconds: int = dataclasses.field(
-        default=defaults.DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
-        metadata=dict(short="-hi", help="number of seconds that worker agent send heartbeat to scheduler"),
-    )
-    task_timeout_seconds: int = dataclasses.field(
-        default=defaults.DEFAULT_TASK_TIMEOUT_SECONDS,
-        metadata=dict(short="-tt", help="default task timeout seconds, 0 means never timeout"),
-    )
-    death_timeout_seconds: int = dataclasses.field(
-        default=defaults.DEFAULT_WORKER_DEATH_TIMEOUT,
-        metadata=dict(short="-dt", help="number of seconds without scheduler contact before worker shuts down"),
-    )
-    garbage_collect_interval_seconds: int = dataclasses.field(
-        default=defaults.DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
-        metadata=dict(short="-gc", help="number of seconds worker doing garbage collection"),
-    )
-    trim_memory_threshold_bytes: int = dataclasses.field(
-        default=defaults.DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
-        metadata=dict(
-            short="-tm", help="number of bytes threshold for worker process that trigger deep garbage collection"
-        ),
-    )
-    hard_processor_suspend: bool = dataclasses.field(
-        default=defaults.DEFAULT_HARD_PROCESSOR_SUSPEND,
-        metadata=dict(
-            short="-hps",
-            action="store_true",
-            help="if true, suspended worker's processors will be actively suspended with a SIGTSTP signal",
-        ),
-    )
-    event_loop: str = dataclasses.field(
-        default="builtin",
-        metadata=dict(short="-e", choices=EventLoopType.allowed_types(), help="select event loop type"),
-    )
-    logging_paths: Tuple[str, ...] = dataclasses.field(
-        default=defaults.DEFAULT_LOGGING_PATHS,
-        metadata=dict(
-            short="-lp", nargs="*", help="specify where worker logs should be logged to, it can accept multiple files"
-        ),
-    )
-    logging_level: str = dataclasses.field(
-        default=defaults.DEFAULT_LOGGING_LEVEL,
-        metadata=dict(
-            short="-ll", choices=("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"), help="specify the logging level"
-        ),
-    )
-    logging_config_file: Optional[str] = dataclasses.field(
-        default=None,
-        metadata=dict(
-            short="-lc", help="use standard python .conf file to specify python logging file configuration format"
-        ),
-    )
-
     def __post_init__(self):
-        # Validate server fields
-        if not (1 <= self.adapter_web_port <= 65535):
-            raise ValueError(f"adapter_web_port must be between 1 and 65535, but got {self.adapter_web_port}")
-
         # Validate numeric and collection values
-        if self.io_threads <= 0:
-            raise ValueError("io_threads must be a positive integer.")
-        if self.per_worker_task_queue_size <= 0:
-            raise ValueError("worker_task_queue_size must be positive.")
         if self.ecs_task_cpu <= 0:
             raise ValueError("ecs_task_cpu must be a positive integer.")
         if self.ecs_task_memory <= 0:
             raise ValueError("ecs_task_memory must be a positive integer.")
-        if self.heartbeat_interval_seconds <= 0 or self.death_timeout_seconds <= 0:
-            raise ValueError("All interval/timeout second values must be positive.")
-        if self.max_instances != -1 and self.max_instances <= 0:
-            raise ValueError("max_instances must be -1 (no limit) or a positive integer.")
         if not isinstance(self.ecs_subnets, list) or len(self.ecs_subnets) == 0:
             raise ValueError("ecs_subnets must be a non-empty list of subnet ids.")
 
@@ -167,13 +65,3 @@ class ECSWorkerAdapterConfig(ConfigClass):
             raise ValueError("ecs_task_definition cannot be an empty string.")
         if not self.ecs_task_image:
             raise ValueError("ecs_task_image cannot be an empty string.")
-
-    @override
-    @staticmethod
-    def section_name() -> str:
-        return "ecs_worker_adapter"
-
-    @override
-    @staticmethod
-    def program_name() -> str:
-        return "scaler ECS worker adapter"

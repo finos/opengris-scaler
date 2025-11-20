@@ -14,22 +14,24 @@ from scaler.worker_adapter.common import CapacityExceededError, WorkerGroupID, W
 
 class NativeWorkerAdapter:
     def __init__(self, config: NativeWorkerAdapterConfig):
-        self._address = config.scheduler_address
-        self._object_storage_address = config.object_storage_address
-        self._capabilities = config.per_worker_capabilities.capabilities
-        self._io_threads = config.io_threads
-        self._task_queue_size = config.worker_task_queue_size
-        self._max_workers = config.max_workers
-        self._heartbeat_interval_seconds = config.heartbeat_interval
-        self._task_timeout_seconds = config.task_timeout_seconds
-        self._death_timeout_seconds = config.death_timeout_seconds
-        self._garbage_collect_interval_seconds = config.garbage_collect_interval_seconds
-        self._trim_memory_threshold_bytes = config.trim_memory_threshold_bytes
-        self._hard_processor_suspend = config.hard_processor_suspend
-        self._event_loop = config.event_loop
-        self._logging_paths = config.logging_paths
-        self._logging_level = config.logging_level
-        self._logging_config_file = config.logging_config_file
+        self._address = config.worker_adapter_config.scheduler_address
+        self._object_storage_address = config.worker_adapter_config.object_storage_address
+        self._capabilities = config.worker_config.per_worker_capabilities.capabilities
+        self._io_threads = config.common_config.worker_io_threads
+        self._task_queue_size = config.worker_config.per_worker_task_queue_size
+        self._max_workers = config.worker_adapter_config.max_workers
+        self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
+        self._task_timeout_seconds = config.worker_config.task_timeout_seconds
+        self._death_timeout_seconds = config.worker_config.death_timeout_seconds
+        self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
+        self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
+        self._hard_processor_suspend = config.worker_config.hard_processor_suspend
+        self._event_loop = config.common_config.event_loop
+        self._adapter_web_host = config.web_config.adapter_web_host
+        self._adapter_web_port = config.web_config.adapter_web_port
+        self._logging_paths = config.logging_config.paths
+        self._logging_level = config.logging_config.level
+        self._logging_config_file = config.logging_config.config_file
 
         """
         Although a worker group can contain multiple workers, in this native adapter implementation,

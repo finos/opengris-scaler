@@ -25,19 +25,19 @@ class WorkerGroupInfo:
 
 class ECSWorkerAdapter:
     def __init__(self, config: ECSWorkerAdapterConfig):
-        self._address = config.scheduler_address
-        self._object_storage_address = config.object_storage_address
-        self._capabilities = config.per_worker_capabilities.capabilities
-        self._io_threads = config.io_threads
-        self._per_worker_task_queue_size = config.per_worker_task_queue_size
-        self._max_instances = config.max_instances
-        self._heartbeat_interval_seconds = config.heartbeat_interval_seconds
-        self._task_timeout_seconds = config.task_timeout_seconds
-        self._death_timeout_seconds = config.death_timeout_seconds
-        self._garbage_collect_interval_seconds = config.garbage_collect_interval_seconds
-        self._trim_memory_threshold_bytes = config.trim_memory_threshold_bytes
-        self._hard_processor_suspend = config.hard_processor_suspend
-        self._event_loop = config.event_loop
+        self._address = config.worker_adapter_config.scheduler_address
+        self._object_storage_address = config.worker_adapter_config.object_storage_address
+        self._capabilities = config.worker_config.per_worker_capabilities.capabilities
+        self._io_threads = config.common_config.worker_io_threads
+        self._per_worker_task_queue_size = config.worker_config.per_worker_task_queue_size
+        self._max_instances = config.worker_adapter_config.max_workers
+        self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
+        self._task_timeout_seconds = config.worker_config.task_timeout_seconds
+        self._death_timeout_seconds = config.worker_config.death_timeout_seconds
+        self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
+        self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
+        self._hard_processor_suspend = config.worker_config.hard_processor_suspend
+        self._event_loop = config.common_config.event_loop
 
         self._aws_access_key_id = config.aws_access_key_id
         self._aws_secret_access_key = config.aws_secret_access_key

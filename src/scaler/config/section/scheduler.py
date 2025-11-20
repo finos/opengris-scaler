@@ -3,18 +3,13 @@ from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 from scaler.config import defaults
+from scaler.config.common.common import CommonConfig
+from scaler.config.common.logging import LoggingConfig
 from scaler.config.config_class import ConfigClass
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
-from scaler.utility.event_loop import EventLoopType
-from scaler.utility.logging.utility import LoggingLevel
-
-try:
-    from typing import override  # type: ignore[attr-defined]
-except ImportError:
-    from typing_extensions import override  # type: ignore[attr-defined]
 
 
 @dataclasses.dataclass
@@ -73,13 +68,6 @@ class SchedulerConfig(ConfigClass):
             "including balancing tasks",
         ),
     )
-    event_loop: str = dataclasses.field(
-        default="builtin",
-        metadata=dict(short="-e", choices=EventLoopType.allowed_types(), help="select event loop type"),
-    )
-    io_threads: int = dataclasses.field(
-        default=defaults.DEFAULT_IO_THREADS, metadata=dict(help="number of io threads for io backend")
-    )
     max_number_of_tasks_waiting: int = dataclasses.field(
         default=defaults.DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
         metadata=dict(short="-mt", help="max number of tasks can wait in scheduler while all workers are full"),
@@ -107,30 +95,11 @@ class SchedulerConfig(ConfigClass):
             help="exact number of repeated load balance advices when trigger load balance operation in scheduler",
         ),
     )
-    logging_paths: Tuple[str, ...] = dataclasses.field(
-        default=defaults.DEFAULT_LOGGING_PATHS,
-        metadata=dict(
-            short="-lp",
-            type=str,
-            nargs="*",
-            help="specify where scheduler log should logged to, it can accept multiple files, default is /dev/stdout",
-        ),
-    )
-    logging_config_file: Optional[str] = dataclasses.field(
-        default=None,
-        metadata=dict(
-            short="-lc",
-            help="use standard python the .conf file the specify python logging file configuration format, this will "
-            "bypass --logging-path",
-        ),
-    )
-    logging_level: str = dataclasses.field(
-        default=defaults.DEFAULT_LOGGING_LEVEL, metadata=dict(short="-ll", help="specify the logging level")
-    )
+
+    common_config: CommonConfig = CommonConfig()
+    logging_config: LoggingConfig = LoggingConfig()
 
     def __post_init__(self):
-        if self.io_threads <= 0:
-            raise ValueError("io_threads must be a positive integer.")
         if self.max_number_of_tasks_waiting < -1:
             raise ValueError("max_number_of_tasks_waiting must be -1 (for unlimited) or non-negative.")
         if (
@@ -146,16 +115,3 @@ class SchedulerConfig(ConfigClass):
             parsed_url = urlparse(adapter_webhook_url)
             if not all([parsed_url.scheme, parsed_url.netloc]):
                 raise ValueError(f"adapter_webhook_urls contains url '{adapter_webhook_url}' which is not a valid URL.")
-        valid_levels = {level.name for level in LoggingLevel}
-        if self.logging_level.upper() not in valid_levels:
-            raise ValueError(f"logging_level must be one of {valid_levels}, but got '{self.logging_level}'")
-
-    @override
-    @staticmethod
-    def section_name() -> str:
-        return "scheduler"
-
-    @override
-    @staticmethod
-    def program_name() -> str:
-        return "scaler_scheduler"

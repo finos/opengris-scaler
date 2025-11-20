@@ -14,19 +14,19 @@ from scaler.worker_adapter.symphony.worker import SymphonyWorker
 
 class SymphonyWorkerAdapter:
     def __init__(self, config: SymphonyWorkerConfig):
-        self._address = config.scheduler_address
-        self._object_storage_address = config.object_storage_address
+        self._address = config.worker_adapter_config.scheduler_address
+        self._object_storage_address = config.worker_adapter_config.object_storage_address
         self._service_name = config.service_name
-        self._base_concurrency = config.base_concurrency
-        self._capabilities = config.worker_capabilities.capabilities
-        self._io_threads = config.io_threads
-        self._task_queue_size = config.worker_task_queue_size
-        self._heartbeat_interval_seconds = config.heartbeat_interval
-        self._death_timeout_seconds = config.death_timeout_seconds
-        self._event_loop = config.event_loop
-        self._logging_paths = config.logging_paths
-        self._logging_level = config.logging_level
-        self._logging_config_file = config.logging_config_file
+        self._base_concurrency = config.worker_adapter_config.max_workers
+        self._capabilities = config.worker_config.per_worker_capabilities.capabilities
+        self._io_threads = config.common_config.worker_io_threads
+        self._task_queue_size = config.worker_config.per_worker_task_queue_size
+        self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
+        self._death_timeout_seconds = config.worker_config.death_timeout_seconds
+        self._event_loop = config.common_config.event_loop
+        self._logging_paths = config.logging_config.paths
+        self._logging_level = config.logging_config.level
+        self._logging_config_file = config.logging_config.config_file
 
         """
         Although a worker group can contain multiple workers, in this Symphony adapter implementation,

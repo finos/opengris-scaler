@@ -7,13 +7,15 @@ from scaler.worker_adapter.ecs import ECSWorkerAdapter
 
 
 def main():
-    ecs_config = ECSWorkerAdapterConfig.parse()
-    register_event_loop(ecs_config.event_loop)
-    setup_logger(ecs_config.logging_paths, ecs_config.logging_config_file, ecs_config.logging_level)
+    ecs_config = ECSWorkerAdapterConfig.parse("Scaler ECS Worker Adapter", "ecs_worker_adapter")
+    register_event_loop(ecs_config.common_config.event_loop)
+    setup_logger(
+        ecs_config.logging_config.paths, ecs_config.logging_config.config_file, ecs_config.logging_config.level
+    )
     ecs_worker_adapter = ECSWorkerAdapter(ecs_config)
 
     app = ecs_worker_adapter.create_app()
-    web.run_app(app, host=ecs_config.adapter_web_host, port=ecs_config.adapter_web_port)
+    web.run_app(app, host=ecs_config.web_config.adapter_web_host, port=ecs_config.web_config.adapter_web_port)
 
 
 if __name__ == "__main__":

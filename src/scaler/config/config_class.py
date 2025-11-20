@@ -1,6 +1,5 @@
 import dataclasses
 import typing
-from abc import ABC, abstractmethod
 from typing import Any, Dict, Type, TypeVar
 
 from configargparse import ArgParser, ArgumentDefaultsHelpFormatter, TomlConfigParser
@@ -10,21 +9,12 @@ from scaler.config.mixins import ConfigType
 T = TypeVar("T", bound="ConfigClass")
 
 
-class ConfigClass(ABC):
+class ConfigClass:
     """
     An abstract interface for dataclasses where the fields define command line options,
     config file options, and environment variables.
 
     Subclasses of `ConfigClass` must be dataclasses.
-
-    ## Required Methods
-
-    Subclasses are required to implement the following methods:
-
-    - `.section_name() -> str`: this is the section to pull arguments from
-    when parsing a TOML file
-    - `.program_name() -> str`: this is used as the program name in the argument parser
-    and will show in the help dialogue
 
     ## Config Files
 
@@ -72,8 +62,6 @@ class ConfigClass(ABC):
     as the long option name for command line and config file parameters.
     A short name for the argument can be provided in the field metadata using the `short` key.
     The value is the short option name and must include the hyphen, e.g. `-n`.
-    You can also override the long name using the "long" key, and the name must includes the
-    hyphens as well, e.g. `--number`.
 
     There is one restriction: `--config` and `-c` are reserved for the config file.
 
@@ -81,8 +69,8 @@ class ConfigClass(ABC):
     # this will have long name --field-one, and no short name
     field_one: int = 5
 
-    # overrides the long name, and sets a short name
-    field_two: int = dataclasses.field(default=5, metadata=dict(long="--custom", short="-f2"))
+    # sets a short name
+    field_two: int = dataclasses.field(default=5, metadata=dict(short="-f2"))
     ```
 
     ## Default Values
@@ -105,6 +93,10 @@ class ConfigClass(ABC):
     field_one: int = dataclasses.field(metadata=dict(positional=True))
     field_two: int = dataclasses.field(metadata=dict(positional=True))
     ```
+
+    ## Composition
+
+    Subclasses of `ConfigClass` can be composed. If
 
     ## Parameter Types
 
@@ -148,47 +140,30 @@ class ConfigClass(ABC):
     maybe: Optional[str]
     """
 
-    @staticmethod
-    @abstractmethod
-    def section_name() -> str:
-        """the section name for this config in a toml file"""
-        ...
-
-    @staticmethod
-    @abstractmethod
-    def program_name() -> str:
-        """the description of this entrypoint used in the help"""
-        ...
-
     @classmethod
-    def parser(cls: Type[T]) -> ArgParser:
-        if not dataclasses.is_dataclass(cls):
-            raise RuntimeError("config class must be a dataclass")
-
-        parser = ArgParser(
-            cls.program_name(),
-            formatter_class=ArgumentDefaultsHelpFormatter,
-            config_file_parser_class=TomlConfigParser(sections=[cls.section_name()]),
-        )
-
-        parser.add_argument("--config", "-c", is_config_file=True, help="Path to the TOML configuration file.")
-
+    def configure_parser(cls: type, parser: ArgParser):
         fields = dataclasses.fields(cls)
 
         for field in fields:
+            if is_config_class(field.type):
+                field.type.configure_parser(parser)  # type: ignore[union-attr]
+                continue
+
             kwargs = dict(field.metadata)
 
             # usually command line options use hyphens instead of underscores
-            safe_field_name = field.name.replace("_", "-")
 
             if kwargs.pop("positional", False):
-                args = [kwargs.pop("name", safe_field_name)]
+                args = [kwargs.pop("name", field.name)]
             else:
-                long_name = kwargs.pop("long", f"--{safe_field_name}")
+                long_name = kwargs.pop("long", f"--{field.name.replace('_', '-')}")
                 if "short" in kwargs:
                     args = [long_name, kwargs.pop("short")]
                 else:
                     args = [long_name]
+
+                # this sets the key given back when args are parsed
+                kwargs["dest"] = field.name
 
             if "default" in kwargs:
                 raise TypeError("'default' cannot be provided in field metadata")
@@ -212,22 +187,40 @@ class ConfigClass(ABC):
                         if key not in kwargs:
                             kwargs[key] = value
 
+            print(args, kwargs)
+
             parser.add_argument(*args, **kwargs)
 
-        return parser
-
     @classmethod
-    def parse(cls: Type[T]) -> T:
-        parser = cls.parser()
+    def parse(cls: Type[T], program_name: str, section: str) -> T:
+        parser = ArgParser(
+            program_name,
+            formatter_class=ArgumentDefaultsHelpFormatter,
+            config_file_parser_class=TomlConfigParser(sections=[section]),
+        )
 
-        # positional arg keys are treated differently for some reason
-        # we need to ensure we replace all hyphens will underscores to match the original field name
-        args = {k.replace("-", "_"): v for k, v in vars(parser.parse_args()).items()}
+        parser.add_argument("--config", "-c", is_config_file=True, help="Path to the TOML configuration file.")
+        cls.configure_parser(parser)
+
+        kwargs = vars(parser.parse_args())
 
         # remove this from the args
-        args.pop("config")
+        kwargs.pop("config")
 
-        return cls(**args)
+        # we need to manually handle any ConfigClass fields
+        for field in dataclasses.fields(cls):  # type: ignore[arg-type]
+            if is_config_class(field.type):
+
+                # steal arguments for the config class
+                inner_kwargs = {}
+                for f in dataclasses.fields(field.type):  # type: ignore[arg-type]
+                    if f.name in kwargs:
+                        inner_kwargs[f.name] = kwargs.pop(f.name)
+
+                # instantiate and update the args
+                kwargs[field.name] = field.type(**inner_kwargs)  # type: ignore[operator]
+
+        return cls(**kwargs)
 
 
 def parse_bool(s: str) -> bool:
@@ -266,6 +259,14 @@ def is_config_type(ty: Any) -> bool:
     """determines if ty is a subclass of ConfigType"""
     try:
         return issubclass(ty, ConfigType)
+    except TypeError:
+        return False
+
+
+def is_config_class(ty: Any) -> bool:
+    """determines if ty is a subclass of ConfigClass"""
+    try:
+        return issubclass(ty, ConfigClass)
     except TypeError:
         return False
 

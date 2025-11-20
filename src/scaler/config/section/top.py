@@ -3,11 +3,6 @@ import dataclasses
 from scaler.config.config_class import ConfigClass
 from scaler.config.types.zmq import ZMQConfig
 
-try:
-    from typing import override  # type: ignore[attr-defined]
-except ImportError:
-    from typing_extensions import override  # type: ignore[attr-defined]
-
 
 @dataclasses.dataclass
 class TopConfig(ConfigClass):
@@ -19,13 +14,3 @@ class TopConfig(ConfigClass):
     def __post_init__(self):
         if self.timeout <= 0:
             raise ValueError("timeout must be a positive integer.")
-
-    @override
-    @staticmethod
-    def section_name() -> str:
-        return "top"
-
-    @override
-    @staticmethod
-    def program_name() -> str:
-        return "monitor scheduler as top like"

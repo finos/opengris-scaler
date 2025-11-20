@@ -9,6 +9,12 @@ from aiohttp import web
 from scaler import Client
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
+from scaler.config.common.common import CommonConfig
+from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.web import WebConfig
+from scaler.config.common.worker import WorkerConfig
+from scaler.config.common.worker_adapter import WorkerAdapterConfig
+from scaler.config.config_class import ConfigClass
 from scaler.config.defaults import (
     DEFAULT_CLIENT_TIMEOUT_SECONDS,
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
@@ -40,27 +46,27 @@ def _run_native_worker_adapter(address: str, webhook_port: int) -> None:
     """Construct a NativeWorkerAdapter and run its aiohttp app. Runs in a separate process."""
     adapter = NativeWorkerAdapter(
         NativeWorkerAdapterConfig(
-            scheduler_address=ZMQConfig.from_string(address),
-            object_storage_address=None,
-            per_worker_capabilities=WorkerCapabilities({}),
-            io_threads=DEFAULT_IO_THREADS,
-            worker_task_queue_size=10,
-            max_workers=4,
-            heartbeat_interval=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
-            task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
-            death_timeout_seconds=DEFAULT_WORKER_DEATH_TIMEOUT,
-            garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
-            trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
-            hard_processor_suspend=DEFAULT_HARD_PROCESSOR_SUSPEND,
-            event_loop="builtin",
-            logging_paths=("/dev/stdout",),
-            logging_config_file=None,
-            logging_level="INFO",
+            web_config=WebConfig(adapter_web_host=address, adapter_web_port=webhook_port),
+            worker_adapter_config=WorkerAdapterConfig(
+                scheduler_address=ZMQConfig.from_string(address), object_storage_address=None, max_workers=4
+            ),
+            common_config=CommonConfig(event_loop="builtin", worker_io_threads=DEFAULT_IO_THREADS),
+            worker_config=WorkerConfig(
+                per_worker_capabilities=WorkerCapabilities({}),
+                per_worker_task_queue_size=10,
+                heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+                task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
+                death_timeout_seconds=DEFAULT_WORKER_DEATH_TIMEOUT,
+                garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
+                trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
+                hard_processor_suspend=DEFAULT_HARD_PROCESSOR_SUSPEND,
+            ),
+            logging_config=LoggingConfig(paths=("/dev/stdout",), level="INFO", config_file=None),
         )
     )
 
     app = adapter.create_app()
-    web.run_app(app, host="127.0.0.1", port=webhook_port)
+    web.run_app(app, host=adapter._adapter_web_host, port=adapter._adapter_web_port)
 
 
 class TestScaling(unittest.TestCase):

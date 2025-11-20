@@ -18,17 +18,10 @@ except ImportError:
 
 
 class MockArgParser:
-    prog_name: str
     args: List[Tuple[Tuple, Dict]]
 
-    init_args: Tuple
-    init_kwargs: Dict
-
-    def __init__(self, prog_name: str, *args, **kwargs) -> None:
-        self.prog_name = prog_name
+    def __init__(self, *args, **kwargs) -> None:
         self.args = []
-        self.init_args = args
-        self.init_kwargs = kwargs
 
     def add_argument(self, *args, **kwargs) -> None:
         self.args.append((args, kwargs))
@@ -37,7 +30,6 @@ class MockArgParser:
 class TestConfigClass(unittest.TestCase):
     """Tests the behavior of ConfigClass"""
 
-    @patch("scaler.config.config_class.ArgParser", MockArgParser)
     def test_config_class(self) -> None:
         def parse_hex(s: str) -> int:
             return int(s, 16)
@@ -82,58 +74,62 @@ class TestConfigClass(unittest.TestCase):
                 default=-1, metadata=dict(any=0, field=1, can=2, be=3, passed=4, through=5)
             )
 
-            @override
-            @staticmethod
-            def section_name() -> str:
-                return "my_config"
+            renamed: int = dataclasses.field(default=0, metadata=dict(long="--new-name"))
 
-            @override
-            @staticmethod
-            def program_name() -> str:
-                return "this is a test config"
+        parser = MockArgParser()
+        MyConfig.configure_parser(parser)
+        args = parser.args
 
-        parser: MockArgParser = MyConfig.parser()
-
-        self.assertEqual(parser.prog_name, "this is a test config")
-        self.assertEqual(parser.init_kwargs["config_file_parser_class"].sections, ["my_config"])
-
-        # first arg is the config file, drop it
-        args = parser.args[1:]
-        self.assertEqual(args[0], (("--my-int",), {"type": int}))
-        self.assertEqual(args[1], (("positional-one",), {"type": str}))
-        self.assertEqual(args[2], (("positional-two",), {"type": str}))
-        self.assertEqual(args[3], (("--config-type", "-ct"), {"type": MyConfigType.from_string, "help": "help"}))
-        self.assertEqual(args[4], (("--optional-int",), {"type": int, "required": False}))
-        self.assertEqual(args[5], (("--optional-config-type",), {"type": MyConfigType.from_string, "required": False}))
-        self.assertEqual(args[6], (("--a-bool",), {"type": parse_bool}))
-        self.assertEqual(args[7], (("--flag",), {"action": "store_true"}))
-        self.assertEqual(args[8], (("--list-one",), {"type": int, "nargs": "*"}))
-        self.assertEqual(args[9], (("--list-two",), {"type": int, "nargs": "+"}))
-        self.assertEqual(args[10], (("--custom-type",), {"type": parse_hex}))
-        self.assertEqual(args[11], (("--with-default",), {"type": int, "default": 42}))
+        # Q: What is the "dest" kwarg?
+        # A: It sets the key returned in dict when arguments are parsed
+        # it helps us be more robust, we know exactly what the key will be
+        self.assertEqual(args[0], (("--my-int",), {"type": int, "dest": "my_int"}))
+        self.assertEqual(args[1], (("positional_one",), {"type": str}))
+        self.assertEqual(args[2], (("positional_two",), {"type": str}))
+        self.assertEqual(
+            args[3],
+            (("--config-type", "-ct"), {"type": MyConfigType.from_string, "help": "help", "dest": "config_type"}),
+        )
+        self.assertEqual(args[4], (("--optional-int",), {"type": int, "required": False, "dest": "optional_int"}))
+        self.assertEqual(
+            args[5],
+            (
+                ("--optional-config-type",),
+                {"type": MyConfigType.from_string, "required": False, "dest": "optional_config_type"},
+            ),
+        )
+        self.assertEqual(args[6], (("--a-bool",), {"type": parse_bool, "dest": "a_bool"}))
+        self.assertEqual(args[7], (("--flag",), {"action": "store_true", "dest": "flag"}))
+        self.assertEqual(args[8], (("--list-one",), {"type": int, "nargs": "*", "dest": "list_one"}))
+        self.assertEqual(args[9], (("--list-two",), {"type": int, "nargs": "+", "dest": "list_two"}))
+        self.assertEqual(args[10], (("--custom-type",), {"type": parse_hex, "dest": "custom_type"}))
+        self.assertEqual(args[11], (("--with-default",), {"type": int, "default": 42, "dest": "with_default"}))
         self.assertEqual(
             args[12],
             (
                 ("--passthrough",),
-                {"type": int, "default": -1, "any": 0, "field": 1, "can": 2, "be": 3, "passed": 4, "through": 5},
+                {
+                    "type": int,
+                    "default": -1,
+                    "any": 0,
+                    "field": 1,
+                    "can": 2,
+                    "be": 3,
+                    "passed": 4,
+                    "through": 5,
+                    "dest": "passthrough",
+                },
             ),
         )
+        self.assertEqual(args[13], (("--new-name",), {"type": int, "default": 0, "dest": "renamed"}))
 
     @patch("sys.argv", ["script"])
     def test_empty(self) -> None:
         @dataclasses.dataclass
         class MyConfigClass(ConfigClass):
-            @override
-            @staticmethod
-            def section_name() -> str:
-                return "my_config"
+            pass
 
-            @override
-            @staticmethod
-            def program_name() -> str:
-                return "this is a test config"
-
-        MyConfigClass.parse()
+        MyConfigClass.parse("this is a test config", "my_config")
 
     @patch("sys.argv", ["script", "--config", "file", "--command-line", "99"])
     @patch.dict("os.environ", {"ENV_VAR_ONE": "99", "ENV_VAR_TWO": "98"})
@@ -157,16 +153,24 @@ class TestConfigClass(unittest.TestCase):
             env_var: int = dataclasses.field(default=2, metadata=dict(env_var="ENV_VAR_ONE"))
             command_line: int = dataclasses.field(default=3, metadata=dict(env_var="ENV_VAR_TWO"))
 
-            @override
-            @staticmethod
-            def section_name() -> str:
-                return "my_config"
-
-            @override
-            @staticmethod
-            def program_name() -> str:
-                return "this is a test config"
-
-        config = MyConfigClass.parse()
+        config = MyConfigClass.parse("this is a test config", "my_config")
 
         self.assertEqual(config, MyConfigClass(default=0, config_file=99, env_var=99, command_line=99))
+
+    @patch("sys.argv", ["script", "--outer", "0", "--inner", "1"])
+    def test_config_class_field(self) -> None:
+        @dataclasses.dataclass
+        class InnerConfig(ConfigClass):
+            inner: int
+
+        @dataclasses.dataclass
+        class OuterConfig(ConfigClass):
+            outer: int
+
+            # nested
+            inner_config: InnerConfig
+
+        config = OuterConfig.parse(program_name="outer", section="the outer config")
+
+        self.assertEqual(config.outer, 0)
+        self.assertEqual(config.inner_config.inner, 1)

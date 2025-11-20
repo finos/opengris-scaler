@@ -33,7 +33,7 @@ SORT_BY_STATE: Dict[str, Union[str, bool]] = {"sort_by": "cpu", "sort_by_previou
 
 
 def main():
-    curses.wrapper(poke, TopConfig.parse())
+    curses.wrapper(poke, TopConfig.parse("A Top-like Application for Scaler Monitoring", "top"))
 
 
 def poke(screen, config: TopConfig):

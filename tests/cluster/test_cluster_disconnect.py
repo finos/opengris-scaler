@@ -3,6 +3,9 @@ import unittest
 from concurrent.futures import CancelledError
 
 from scaler import Client, Cluster, SchedulerClusterCombo
+from scaler.config.common.common import CommonConfig
+from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.worker import WorkerConfig
 from scaler.config.defaults import DEFAULT_LOGGING_PATHS
 from scaler.config.section.cluster import ClusterConfig
 from scaler.config.types.worker import WorkerCapabilities, WorkerNames
@@ -33,21 +36,26 @@ class TestClusterDisconnect(unittest.TestCase):
                 scheduler_address=self.combo._address,
                 object_storage_address=self.combo._object_storage_address,
                 preload=None,
-                worker_io_threads=base_cluster._worker_io_threads,
                 worker_names=WorkerNames(["dying_worker"]),  # Just one worker would suffice
                 num_of_workers=1,
-                per_worker_capabilities=WorkerCapabilities({}),
-                per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
-                heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
-                task_timeout_seconds=base_cluster._task_timeout_seconds,
-                death_timeout_seconds=base_cluster._death_timeout_seconds,
-                garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
-                trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
-                hard_processor_suspend=base_cluster._hard_processor_suspend,
-                event_loop=base_cluster._event_loop,
-                logging_paths=DEFAULT_LOGGING_PATHS,
-                logging_level=base_cluster._logging_level,
-                logging_config_file=base_cluster._logging_config_file,
+                common_config=CommonConfig(
+                    event_loop=base_cluster._event_loop, worker_io_threads=base_cluster._worker_io_threads
+                ),
+                worker_config=WorkerConfig(
+                    per_worker_capabilities=WorkerCapabilities({}),
+                    per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
+                    heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
+                    task_timeout_seconds=base_cluster._task_timeout_seconds,
+                    death_timeout_seconds=base_cluster._death_timeout_seconds,
+                    garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
+                    trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
+                    hard_processor_suspend=base_cluster._hard_processor_suspend,
+                ),
+                logging_config=LoggingConfig(
+                    paths=DEFAULT_LOGGING_PATHS,
+                    level=base_cluster._logging_level,
+                    config_file=base_cluster._logging_config_file,
+                ),
             )
         )
         dying_cluster.start()

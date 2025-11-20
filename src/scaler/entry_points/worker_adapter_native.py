@@ -96,20 +96,24 @@ def get_args():
 
 
 def main():
-    native_adapter_config = NativeWorkerAdapterConfig.parse()
+    native_adapter_config = NativeWorkerAdapterConfig.parse("Scaler Native WWorker Adapter", "native_worker_adapter")
 
-    register_event_loop(native_adapter_config.event_loop)
+    register_event_loop(native_adapter_config.common_config.event_loop)
 
     setup_logger(
-        native_adapter_config.logging_paths,
-        native_adapter_config.logging_config_file,
-        native_adapter_config.logging_level,
+        native_adapter_config.logging_config.paths,
+        native_adapter_config.logging_config.config_file,
+        native_adapter_config.logging_config.level,
     )
 
     native_worker_adapter = NativeWorkerAdapter(native_adapter_config)
 
     app = native_worker_adapter.create_app()
-    web.run_app(app, host=native_adapter_config.adapter_web_host, port=native_adapter_config.adapter_web_port)
+    web.run_app(
+        app,
+        host=native_adapter_config.web_config.adapter_web_host,
+        port=native_adapter_config.web_config.adapter_web_port,
+    )
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ from scaler.utility.logging.utility import get_logger_info, setup_logger
 
 
 def main():
-    oss_config = ObjectStorageServerConfig.parse()
+    oss_config = ObjectStorageServerConfig.parse("Scaler Object Storage Server", "object_storage_server")
 
     setup_logger()
 

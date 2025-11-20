@@ -17,22 +17,22 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         self._address = config.scheduler_address
         self._object_storage_address = config.object_storage_address
         self._preload = config.preload
-        self._worker_io_threads = config.worker_io_threads
+        self._worker_io_threads = config.common_config.worker_io_threads
         self._worker_names = config.worker_names.names
-        self._per_worker_capabilities = config.per_worker_capabilities.capabilities
+        self._per_worker_capabilities = config.worker_config.per_worker_capabilities.capabilities
 
-        self._per_worker_task_queue_size = config.per_worker_task_queue_size
-        self._heartbeat_interval_seconds = config.heartbeat_interval_seconds
-        self._task_timeout_seconds = config.task_timeout_seconds
-        self._death_timeout_seconds = config.death_timeout_seconds
-        self._garbage_collect_interval_seconds = config.garbage_collect_interval_seconds
-        self._trim_memory_threshold_bytes = config.trim_memory_threshold_bytes
-        self._hard_processor_suspend = config.hard_processor_suspend
-        self._event_loop = config.event_loop
+        self._per_worker_task_queue_size = config.worker_config.per_worker_task_queue_size
+        self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
+        self._task_timeout_seconds = config.worker_config.task_timeout_seconds
+        self._death_timeout_seconds = config.worker_config.death_timeout_seconds
+        self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
+        self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
+        self._hard_processor_suspend = config.worker_config.hard_processor_suspend
+        self._event_loop = config.common_config.event_loop
 
-        self._logging_paths = config.logging_paths
-        self._logging_config_file = config.logging_config_file
-        self._logging_level = config.logging_level
+        self._logging_paths = config.logging_config.paths
+        self._logging_config_file = config.logging_config.config_file
+        self._logging_level = config.logging_config.level
 
         self._workers: List[Worker] = []
 

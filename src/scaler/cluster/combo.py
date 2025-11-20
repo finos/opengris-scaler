@@ -5,6 +5,10 @@ from typing import Dict, Optional, Tuple
 from scaler.cluster.cluster import Cluster
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
+from scaler.config.common.common import CommonConfig
+from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.worker import WorkerConfig
+from scaler.config.config_class import ConfigClass
 from scaler.config.defaults import (
     DEFAULT_CLIENT_TIMEOUT_SECONDS,
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
@@ -91,21 +95,20 @@ class SchedulerClusterCombo:
                 scheduler_address=self._address,
                 object_storage_address=self._object_storage_address,
                 preload=None,
-                worker_io_threads=worker_io_threads,
                 worker_names=WorkerNames([f"{socket.gethostname().split('.')[0]}" for _ in range(n_workers)]),
                 num_of_workers=n_workers,
-                per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),
-                per_worker_task_queue_size=per_worker_task_queue_size,
-                heartbeat_interval_seconds=heartbeat_interval_seconds,
-                task_timeout_seconds=task_timeout_seconds,
-                death_timeout_seconds=death_timeout_seconds,
-                garbage_collect_interval_seconds=garbage_collect_interval_seconds,
-                trim_memory_threshold_bytes=trim_memory_threshold_bytes,
-                hard_processor_suspend=hard_processor_suspend,
-                event_loop=event_loop,
-                logging_paths=logging_paths,
-                logging_config_file=logging_config_file,
-                logging_level=logging_level,
+                common_config=CommonConfig(event_loop=event_loop, worker_io_threads=worker_io_threads),
+                worker_config=WorkerConfig(
+                    per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),
+                    per_worker_task_queue_size=per_worker_task_queue_size,
+                    heartbeat_interval_seconds=heartbeat_interval_seconds,
+                    task_timeout_seconds=task_timeout_seconds,
+                    death_timeout_seconds=death_timeout_seconds,
+                    garbage_collect_interval_seconds=garbage_collect_interval_seconds,
+                    trim_memory_threshold_bytes=trim_memory_threshold_bytes,
+                    hard_processor_suspend=hard_processor_suspend,
+                ),
+                logging_config=LoggingConfig(paths=logging_paths, config_file=logging_config_file, level=logging_level),
             )
         )
 

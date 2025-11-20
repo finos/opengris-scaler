@@ -31,4 +31,4 @@ def get_args():
 
 
 def main():
-    start_webui(WebUIConfig.parse())
+    start_webui(WebUIConfig.parse("Web UI for Scaler Monitoring", "webui"))
