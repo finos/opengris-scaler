@@ -15,6 +15,7 @@ class ConfigClass:
     config file options, and environment variables.
 
     Subclasses of `ConfigClass` must be dataclasses.
+    Subclasses of `ConfigClass` are called "config classes".
 
     ## Config Files
 
@@ -96,7 +97,14 @@ class ConfigClass:
 
     ## Composition
 
-    Subclasses of `ConfigClass` can be composed. If
+    Config classes can be composed. If a config class has fields that are config classes,
+    then the options of the child config class are inherited as if that child config class'
+    fields were added to the parent, for the purpose of parsing arguments. When the dataclass
+    is created, the structure is kept.
+
+    Care needs to be taken so that field names do not conflict with each other.
+    The name of fields in nested config classes are in the same namespace as those
+    in the parent and other nested config classes.
 
     ## Parameter Types
 
