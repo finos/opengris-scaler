@@ -42,13 +42,13 @@ from scaler.worker_adapter.native import NativeWorkerAdapter
 from tests.utility.utility import logging_test_name
 
 
-def _run_native_worker_adapter(address: str, webhook_port: int) -> None:
+def _run_native_worker_adapter(scheduler_address: str, webhook_port: int) -> None:
     """Construct a NativeWorkerAdapter and run its aiohttp app. Runs in a separate process."""
     adapter = NativeWorkerAdapter(
         NativeWorkerAdapterConfig(
-            web_config=WebConfig(adapter_web_host=address, adapter_web_port=webhook_port),
+            web_config=WebConfig(),
             worker_adapter_config=WorkerAdapterConfig(
-                scheduler_address=ZMQConfig.from_string(address), object_storage_address=None, max_workers=4
+                scheduler_address=ZMQConfig.from_string(scheduler_address), object_storage_address=None, max_workers=4
             ),
             common_config=CommonConfig(event_loop="builtin", worker_io_threads=DEFAULT_IO_THREADS),
             worker_config=WorkerConfig(
@@ -66,7 +66,7 @@ def _run_native_worker_adapter(address: str, webhook_port: int) -> None:
     )
 
     app = adapter.create_app()
-    web.run_app(app, host=adapter._adapter_web_host, port=adapter._adapter_web_port)
+    web.run_app(app, host="127.0.0.1", port=webhook_port)
 
 
 class TestScaling(unittest.TestCase):
