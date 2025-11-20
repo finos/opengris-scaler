@@ -5,15 +5,15 @@
 #include <set>
 
 #include "scaler/error/error.h"
+#include "scaler/utility/timestamp.h"
 #include "scaler/ymq/configuration.h"
 #include "scaler/ymq/internal/defs.h"
-#include "scaler/ymq/timestamp.h"
 
 namespace scaler {
 namespace ymq {
 
 struct TimedCallback {
-    Timestamp timestamp;
+    utility::Timestamp timestamp;
     Configuration::TimedQueueCallback callback;
     Configuration::ExecutionCancellationIdentifier identifier;
 
@@ -69,7 +69,8 @@ public:
             close(_timerFd);
     }
 
-    Configuration::ExecutionCancellationIdentifier push(Timestamp timestamp, Configuration::TimedQueueCallback cb)
+    Configuration::ExecutionCancellationIdentifier push(
+        utility::Timestamp timestamp, Configuration::TimedQueueCallback cb)
     {
         auto ts = convertToItimerspec(timestamp);
         if (pq.empty() || timestamp < pq.top().timestamp) {
@@ -107,7 +108,7 @@ public:
 
         std::vector<Configuration::TimedQueueCallback> callbacks;
 
-        Timestamp now;
+        utility::Timestamp now;
         while (pq.size()) {
             if (pq.top().timestamp < now) {
                 auto [ts, cb, id] = std::move(const_cast<std::priority_queue<TimedCallback>::reference>(pq.top()));
@@ -192,7 +193,8 @@ public:
         }
     }
 
-    Configuration::ExecutionCancellationIdentifier push(Timestamp timestamp, Configuration::TimedQueueCallback cb)
+    Configuration::ExecutionCancellationIdentifier push(
+        utility::Timestamp timestamp, Configuration::TimedQueueCallback cb)
     {
         auto ts = convertToLARGE_INTEGER(timestamp);
         if (pq.empty() || timestamp < pq.top().timestamp) {
@@ -217,7 +219,7 @@ public:
     {
         std::vector<Configuration::TimedQueueCallback> callbacks;
 
-        Timestamp now;
+        utility::Timestamp now;
         while (pq.size()) {
             if (pq.top().timestamp < now) {
                 auto [ts, cb, id] = std::move(const_cast<std::priority_queue<TimedCallback>::reference>(pq.top()));

@@ -30,13 +30,13 @@ struct Configuration {
 #endif  // _WIN32
 
     using IOSocketIdentity                = std::string;
-    using SendMessageCallback             = scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
-    using RecvMessageCallback             = scaler::utility::MoveOnlyFunction<void(std::pair<Message, Error>)>;
-    using ConnectReturnCallback           = scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
-    using BindReturnCallback              = scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
-    using CreateIOSocketCallback          = scaler::utility::MoveOnlyFunction<void(std::shared_ptr<IOSocket>)>;
-    using TimedQueueCallback              = scaler::utility::MoveOnlyFunction<void()>;
-    using ExecutionFunction               = scaler::utility::MoveOnlyFunction<void()>;
+    using SendMessageCallback             = utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
+    using RecvMessageCallback             = utility::MoveOnlyFunction<void(std::pair<Message, Error>)>;
+    using ConnectReturnCallback           = utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
+    using BindReturnCallback              = utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
+    using CreateIOSocketCallback          = utility::MoveOnlyFunction<void(std::shared_ptr<IOSocket>)>;
+    using TimedQueueCallback              = utility::MoveOnlyFunction<void()>;
+    using ExecutionFunction               = utility::MoveOnlyFunction<void()>;
     using ExecutionCancellationIdentifier = size_t;
 };
 
