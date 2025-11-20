@@ -4,12 +4,12 @@
 #include <memory>
 
 #include "scaler/error/error.h"
+#include "scaler/utility/timestamp.h"
 #include "scaler/ymq/event_loop_thread.h"
 #include "scaler/ymq/event_manager.h"
 #include "scaler/ymq/internal/network_utils.h"
 #include "scaler/ymq/io_socket.h"
 #include "scaler/ymq/message_connection.h"
-#include "scaler/ymq/timestamp.h"
 
 namespace scaler {
 namespace ymq {
@@ -118,8 +118,8 @@ void StreamClient::retry()
 
     _logger.log(Logger::LoggingLevel::debug, "Client retrying ", _retryTimes, " time(s)");
 
-    Timestamp now;
-    auto at = now.createTimestampByOffsetDuration(std::chrono::seconds(2 << _retryTimes++));
+    utility::Timestamp now;
+    auto at = now + std::chrono::seconds(2 << _retryTimes++);
 
     _retryIdentifier = _eventLoopThread->_eventLoop.executeAt(at, [this] { this->onCreated(); });
 }

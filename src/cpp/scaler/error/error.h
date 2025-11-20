@@ -7,7 +7,7 @@
 #include <iostream>
 #include <string>
 
-#include "scaler/ymq/timestamp.h"
+#include "scaler/utility/timestamp.h"
 #include "scaler/ymq/utils.h"
 
 namespace scaler {
@@ -45,7 +45,8 @@ struct Error: public std::exception {
     //     Other := ["Originated from", Function Name, "Errno is", strerror(errno), items...]
     template <typename... Args>
     constexpr Error(ErrorCode e, Args&&... args) noexcept
-        : _errorCode(e), _logMsg(argsToString(Timestamp {}, convertErrorToExplanation(e), std::forward<Args>(args)...))
+        : _errorCode(e)
+        , _logMsg(argsToString(utility::Timestamp {}, convertErrorToExplanation(e), std::forward<Args>(args)...))
     {
     }
 
