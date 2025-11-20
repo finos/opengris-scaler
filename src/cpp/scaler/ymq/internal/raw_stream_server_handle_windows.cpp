@@ -2,7 +2,7 @@
 
 #include <utility>  // std::move
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/internal/defs.h"
 #include "scaler/ymq/internal/network_utils.h"
 #include "scaler/ymq/internal/raw_stream_server_handle.h"
@@ -29,7 +29,7 @@ RawStreamServerHandle::RawStreamServerHandle(sockaddr addr)
             case WSAENETDOWN:
             case WSAEPROVIDERFAILEDINIT:
                 unrecoverableError({
-                    Error::ErrorCode::ConfigurationError,
+                    utility::Error::ErrorCode::ConfigurationError,
                     "Originated from",
                     "socket(2)",
                     "Errno is",
@@ -40,7 +40,7 @@ RawStreamServerHandle::RawStreamServerHandle(sockaddr addr)
             case WSAEAFNOSUPPORT:
             default:
                 unrecoverableError({
-                    Error::ErrorCode::CoreBug,
+                    utility::Error::ErrorCode::CoreBug,
                     "Originated from",
                     "socket(2)",
                     "Errno is",
@@ -66,7 +66,7 @@ RawStreamServerHandle::RawStreamServerHandle(sockaddr addr)
             nullptr,
             nullptr) == SOCKET_ERROR) {
         unrecoverableError({
-            Error::ErrorCode::CoreBug,
+            utility::Error::ErrorCode::CoreBug,
             "Originated from",
             "WSAIoctl",
             "Errno is",
@@ -93,7 +93,7 @@ void RawStreamServerHandle::bindAndListen()
         const auto serverFD = _serverFD;
         CloseAndZeroSocket(_serverFD);
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             "bind(2)",
             "Errno is",
@@ -109,7 +109,7 @@ void RawStreamServerHandle::bindAndListen()
         const auto serverFD = _serverFD;
         CloseAndZeroSocket(_serverFD);
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             "listen(2)",
             "Errno is",
@@ -144,7 +144,7 @@ void RawStreamServerHandle::prepareAcceptSocket(void* notifyHandle)
             case WSAENETDOWN:
             case WSAEPROVIDERFAILEDINIT:
                 unrecoverableError({
-                    Error::ErrorCode::ConfigurationError,
+                    utility::Error::ErrorCode::ConfigurationError,
                     "Originated from",
                     "socket(2)",
                     "Errno is",
@@ -156,7 +156,7 @@ void RawStreamServerHandle::prepareAcceptSocket(void* notifyHandle)
             case WSAEAFNOSUPPORT:
             default:
                 unrecoverableError({
-                    Error::ErrorCode::CoreBug,
+                    utility::Error::ErrorCode::CoreBug,
                     "Originated from",
                     "socket(2)",
                     "Errno is",
@@ -182,7 +182,7 @@ void RawStreamServerHandle::prepareAcceptSocket(void* notifyHandle)
         if (myErrno != ERROR_IO_PENDING) {
             CloseAndZeroSocket(_newConn);
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 "AcceptEx",
                 "Errno is",
@@ -206,7 +206,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawStreamServerHandle::getNewConns()
         CloseAndZeroSocket(_serverFD);
         CloseAndZeroSocket(_newConn);
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             "setsockopt(SO_UPDATE_ACCEPT_CONTEXT)",
             "Errno is",
@@ -224,7 +224,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawStreamServerHandle::getNewConns()
             case WSAEINPROGRESS:
             case WSAENOTSOCK:
                 unrecoverableError({
-                    Error::ErrorCode::CoreBug,
+                    utility::Error::ErrorCode::CoreBug,
                     "Originated from",
                     "ioctlsocket(FIONBIO)",
                     "Errno is",
@@ -237,7 +237,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawStreamServerHandle::getNewConns()
             case WSAEFAULT:
             default:
                 unrecoverableError({
-                    Error::ErrorCode::ConfigurationError,
+                    utility::Error::ErrorCode::ConfigurationError,
                     "Originated from",
                     "ioctlsocket(FIONBIO)",
                     "Errno is",

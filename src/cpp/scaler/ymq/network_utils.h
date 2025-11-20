@@ -5,7 +5,7 @@
 #include <cassert>
 #include <expected>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 
 namespace scaler {
 namespace ymq {
@@ -16,7 +16,7 @@ inline std::expected<sockaddr, int> stringToSockaddr(const std::string& address)
     static const std::string prefix = "tcp://";
     if (address.substr(0, prefix.size()) != prefix) {
         unrecoverableError({
-            Error::ErrorCode::InvalidAddressFormat,
+            utility::Error::ErrorCode::InvalidAddressFormat,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Your input is",
@@ -28,7 +28,7 @@ inline std::expected<sockaddr, int> stringToSockaddr(const std::string& address)
     const size_t colonPos      = addrPart.find(':');
     if (colonPos == std::string::npos) {
         unrecoverableError({
-            Error::ErrorCode::InvalidAddressFormat,
+            utility::Error::ErrorCode::InvalidAddressFormat,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Your input is",
@@ -44,7 +44,7 @@ inline std::expected<sockaddr, int> stringToSockaddr(const std::string& address)
         port = std::stoi(portStr);
     } catch (...) {
         unrecoverableError({
-            Error::ErrorCode::InvalidAddressFormat,
+            utility::Error::ErrorCode::InvalidAddressFormat,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Your input is",
@@ -59,7 +59,7 @@ inline std::expected<sockaddr, int> stringToSockaddr(const std::string& address)
     int res = inet_pton(AF_INET, ip.c_str(), &outAddr.sin_addr);
     if (res == 0) {
         unrecoverableError({
-            Error::ErrorCode::InvalidAddressFormat,
+            utility::Error::ErrorCode::InvalidAddressFormat,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Your input is",
@@ -69,7 +69,7 @@ inline std::expected<sockaddr, int> stringToSockaddr(const std::string& address)
 
     if (res == -1) {
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Errno is",
@@ -89,7 +89,7 @@ inline int setNoDelay(int fd)
     int optval = 1;
     if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const char*)&optval, sizeof(optval)) == -1) {
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Errno is",
@@ -108,7 +108,7 @@ inline sockaddr getLocalAddr(int fd)
     socklen_t localAddrLen = sizeof(localAddr);
     if (getsockname(fd, &localAddr, &localAddrLen) == -1) {
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Errno is",
@@ -127,7 +127,7 @@ inline sockaddr getRemoteAddr(int fd)
 
     if (getpeername(fd, &remoteAddr, &remoteAddrLen) == -1) {
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Errno is",
