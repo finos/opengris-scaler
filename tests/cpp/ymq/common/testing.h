@@ -64,11 +64,12 @@ const LONGLONG ns_per_unit   = 100LL;  // 1 unit = 100 nanoseconds
 #include <utility>
 #include <vector>
 
+#include "scaler/utility/pipe/pipe.h"
 #include "tests/cpp/ymq/common/utils.h"
 #include "tests/cpp/ymq/net/socket.h"
-#include "tests/cpp/ymq/pipe/pipe.h"
 
 using namespace std::chrono_literals;
+using namespace scaler::utility::pipe;
 
 enum class TestResult : char { Success = 1, Failure = 2 };
 
