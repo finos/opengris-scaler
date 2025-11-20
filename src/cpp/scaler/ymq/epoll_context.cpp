@@ -71,7 +71,19 @@ void EpollContext::loop()
             auto vec = _timingFunctions.dequeue();
             std::ranges::for_each(vec, [](auto& x) { x(); });
         } else {
-            event->onEvents(current_event.events);
+            int eventType = current_event.events;
+            if ((eventType & EPOLLHUP) && !(eventType & EPOLLIN)) {
+                event->onClose();
+            }
+            if (eventType & (EPOLLERR | EPOLLHUP)) {
+                event->onError();
+            }
+            if (eventType & (EPOLLIN | EPOLLRDHUP)) {
+                event->onRead();
+            }
+            if (eventType & EPOLLOUT) {
+                event->onWrite();
+            }
         }
     }
 
