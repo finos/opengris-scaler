@@ -8,7 +8,7 @@
 
 // Because the devil says "You shall live with errors".
 // ^-- The linker complains when the file is not here.
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/utility/move_only_function.h"
 
 namespace scaler {
@@ -30,10 +30,10 @@ struct Configuration {
 #endif  // _WIN32
 
     using IOSocketIdentity                = std::string;
-    using SendMessageCallback             = utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
-    using RecvMessageCallback             = utility::MoveOnlyFunction<void(std::pair<Message, Error>)>;
-    using ConnectReturnCallback           = utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
-    using BindReturnCallback              = utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
+    using SendMessageCallback             = utility::MoveOnlyFunction<void(std::expected<void, utility::Error>)>;
+    using RecvMessageCallback             = utility::MoveOnlyFunction<void(std::pair<Message, utility::Error>)>;
+    using ConnectReturnCallback           = utility::MoveOnlyFunction<void(std::expected<void, utility::Error>)>;
+    using BindReturnCallback              = utility::MoveOnlyFunction<void(std::expected<void, utility::Error>)>;
     using CreateIOSocketCallback          = utility::MoveOnlyFunction<void(std::shared_ptr<IOSocket>)>;
     using TimedQueueCallback              = utility::MoveOnlyFunction<void()>;
     using ExecutionFunction               = utility::MoveOnlyFunction<void()>;

@@ -14,7 +14,7 @@
 #include <sys/eventfd.h>
 
 // First-party
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/bytes.h"
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/io_socket.h"
@@ -113,45 +113,45 @@ static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args, PyObject* kwa
         return nullptr;
 
     try {
-        self->socket->recvMessage(
-            [callback_ = OwnedPyObject<>::fromBorrowed(callback), state](std::pair<Message, Error> result) {
-                AcquireGIL _;
+        self->socket->recvMessage([callback_ = OwnedPyObject<>::fromBorrowed(callback),
+                                   state](std::pair<Message, scaler::utility::Error> result) {
+            AcquireGIL _;
 
-                // Redefine the callback to ensure it is destroyed before the GIL is released.
-                OwnedPyObject callback = std::move(callback_);
+            // Redefine the callback to ensure it is destroyed before the GIL is released.
+            OwnedPyObject callback = std::move(callback_);
 
-                if (result.second._errorCode != Error::ErrorCode::Uninit) {
-                    OwnedPyObject obj = YMQException_createFromCoreError(state, &result.second);
-                    OwnedPyObject _   = PyObject_CallFunctionObjArgs(*callback, *obj, nullptr);
-                    return;
-                }
+            if (result.second._errorCode != scaler::utility::Error::ErrorCode::Uninit) {
+                OwnedPyObject obj = YMQException_createFromCoreError(state, &result.second);
+                OwnedPyObject _   = PyObject_CallFunctionObjArgs(*callback, *obj, nullptr);
+                return;
+            }
 
-                auto message                      = result.first;
-                OwnedPyObject<PyBytesYMQ> address = (PyBytesYMQ*)PyObject_CallNoArgs(*state->PyBytesYMQType);
-                if (!address) {
-                    completeCallbackWithRaisedException(*callback);
-                    return;
-                }
+            auto message                      = result.first;
+            OwnedPyObject<PyBytesYMQ> address = (PyBytesYMQ*)PyObject_CallNoArgs(*state->PyBytesYMQType);
+            if (!address) {
+                completeCallbackWithRaisedException(*callback);
+                return;
+            }
 
-                address->bytes = std::move(message.address);
+            address->bytes = std::move(message.address);
 
-                OwnedPyObject<PyBytesYMQ> payload = (PyBytesYMQ*)PyObject_CallNoArgs(*state->PyBytesYMQType);
-                if (!payload) {
-                    completeCallbackWithRaisedException(*callback);
-                    return;
-                }
+            OwnedPyObject<PyBytesYMQ> payload = (PyBytesYMQ*)PyObject_CallNoArgs(*state->PyBytesYMQType);
+            if (!payload) {
+                completeCallbackWithRaisedException(*callback);
+                return;
+            }
 
-                payload->bytes = std::move(message.payload);
+            payload->bytes = std::move(message.payload);
 
-                OwnedPyObject<PyMessage> pyMessage =
-                    (PyMessage*)PyObject_CallFunction(*state->PyMessageType, "OO", *address, *payload);
-                if (!pyMessage) {
-                    completeCallbackWithRaisedException(*callback);
-                    return;
-                }
+            OwnedPyObject<PyMessage> pyMessage =
+                (PyMessage*)PyObject_CallFunction(*state->PyMessageType, "OO", *address, *payload);
+            if (!pyMessage) {
+                completeCallbackWithRaisedException(*callback);
+                return;
+            }
 
-                OwnedPyObject _result = PyObject_CallFunctionObjArgs(*callback, *pyMessage, nullptr);
-            });
+            OwnedPyObject _result = PyObject_CallFunctionObjArgs(*callback, *pyMessage, nullptr);
+        });
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to receive message");
         return nullptr;
@@ -219,7 +219,8 @@ static PyObject* PyIOSocket_connect(PyIOSocket* self, PyObject* args, PyObject* 
                 // Redefine the callback to ensure it is destroyed before the GIL is released.
                 OwnedPyObject callback = std::move(callback_);
 
-                if (result || result.error()._errorCode == Error::ErrorCode::InitialConnectFailedWithInProgress) {
+                if (result || result.error()._errorCode ==
+                                  scaler::utility::Error::ErrorCode::InitialConnectFailedWithInProgress) {
                     OwnedPyObject _ = PyObject_CallFunctionObjArgs(*callback, Py_None, nullptr);
                 } else {
                     OwnedPyObject exc = YMQException_createFromCoreError(state, &result.error());

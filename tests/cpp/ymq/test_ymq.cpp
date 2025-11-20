@@ -30,7 +30,7 @@
 #include <string>
 #include <thread>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/bytes.h"
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/simple_interface.h"
@@ -465,7 +465,7 @@ TestResult client_sends_huge_header(const char* host, uint16_t port)
         result = syncRecvMessage(socket);
         RETURN_FAILURE_IF_FALSE(!result.has_value(), "expected recv message to fail");
         RETURN_FAILURE_IF_FALSE(
-            result.error()._errorCode == scaler::ymq::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd)
+            result.error()._errorCode == scaler::utility::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd)
 
         context.removeIOSocket(socket);
         return TestResult::Success;
@@ -500,12 +500,12 @@ TestResult client_sends_huge_header(const char* host, uint16_t port)
         // the future created beore requestion stop should have been cancelled with an error
         auto result2 = future.get();
         RETURN_FAILURE_IF_FALSE(!result2.has_value());
-        RETURN_FAILURE_IF_FALSE(result2.error()._errorCode == scaler::ymq::Error::ErrorCode::IOSocketStopRequested);
+        RETURN_FAILURE_IF_FALSE(result2.error()._errorCode == scaler::utility::Error::ErrorCode::IOSocketStopRequested);
 
         // and the same for any attempts to use the socket after it's been closed
         auto result3 = syncRecvMessage(socket);
         RETURN_FAILURE_IF_FALSE(!result3.has_value());
-        RETURN_FAILURE_IF_FALSE(result3.error()._errorCode == scaler::ymq::Error::ErrorCode::IOSocketStopRequested);
+        RETURN_FAILURE_IF_FALSE(result3.error()._errorCode == scaler::utility::Error::ErrorCode::IOSocketStopRequested);
 
         context.removeIOSocket(socket);
         return TestResult::Success;
@@ -547,7 +547,7 @@ TestResult client_sends_huge_header(const char* host, uint16_t port)
         result = syncRecvMessage(socket);
         RETURN_FAILURE_IF_FALSE(!result.has_value(), "expected recv message to fail");
         RETURN_FAILURE_IF_FALSE(
-            result.error()._errorCode == scaler::ymq::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd)
+            result.error()._errorCode == scaler::utility::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd)
 
         context.removeIOSocket(socket);
         return TestResult::Success;

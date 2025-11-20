@@ -8,11 +8,11 @@
 #include <type_traits>
 #include <vector>
 
+#include "scaler/utility/format.h"
 #include "scaler/utility/timestamp.h"
-#include "scaler/ymq/utils.h"
 
 namespace scaler {
-namespace ymq {
+namespace utility {
 
 class Logger {
 public:
@@ -75,7 +75,7 @@ public:
                 if (part.content == "levelname") {
                     output_stream << convertLevelToString(level);
                 } else if (part.content == "asctime") {
-                    output_stream << utility::Timestamp {};
+                    output_stream << Timestamp {};
                 } else if (part.content == "message") {
                     if constexpr (sizeof...(args) > 0) {
                         (output_stream << ... << std::forward<Args>(args));
@@ -156,5 +156,5 @@ private:
     }
 };
 
-}  // namespace ymq
+}  // namespace utility
 }  // namespace scaler

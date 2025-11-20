@@ -7,7 +7,7 @@
 #include <cerrno>
 #include <functional>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/event_manager.h"
 
 namespace scaler {
@@ -31,7 +31,7 @@ void EpollContext::loop()
         switch (myErrno) {
             case EINTR:
                 // unrecoverableError({
-                //     Error::ErrorCode::SignalNotSupported,
+                //     utility::Error::ErrorCode::SignalNotSupported,
                 //     "Originated from",
                 //     "epoll_wait(2)",
                 //     "Errno is",
@@ -47,7 +47,7 @@ void EpollContext::loop()
             case EINVAL:
             default:
                 unrecoverableError({
-                    Error::ErrorCode::CoreBug,
+                    utility::Error::ErrorCode::CoreBug,
                     "Originated from",
                     "epoll_wait(2)",
                     "Errno is",
@@ -99,7 +99,7 @@ void EpollContext::addFdToLoop(int fd, uint64_t events, EventManager* manager)
         case ENOMEM:
         case ENOSPC:
             unrecoverableError({
-                Error::ErrorCode::ConfigurationError,
+                utility::Error::ErrorCode::ConfigurationError,
                 "Originated from",
                 "epoll_ctl(2)",
                 "Errno is",
@@ -120,7 +120,7 @@ void EpollContext::addFdToLoop(int fd, uint64_t events, EventManager* manager)
         case ENOENT:
         default:
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 "epoll_ctl(2)",
                 "Errno is",
@@ -146,7 +146,7 @@ void EpollContext::removeFdFromLoop(int fd)
         case ENOMEM:
         case ENOSPC:
             unrecoverableError({
-                Error::ErrorCode::ConfigurationError,
+                utility::Error::ErrorCode::ConfigurationError,
                 "Originated from",
                 __PRETTY_FUNCTION__,
                 "Errno is",
@@ -165,7 +165,7 @@ void EpollContext::removeFdFromLoop(int fd)
         case ENOENT:
         default:
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 __PRETTY_FUNCTION__,
                 "Errno is",

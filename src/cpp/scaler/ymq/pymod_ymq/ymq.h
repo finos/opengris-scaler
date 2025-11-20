@@ -14,7 +14,7 @@
 #include <utility>
 
 // First-party
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/typedefs.h"
 
 struct YMQState {
@@ -172,7 +172,8 @@ static PyObject* YMQErrorCode_explanation(PyObject* self, PyObject* Py_UNUSED(ar
     if (value == -1 && PyErr_Occurred())
         return nullptr;
 
-    std::string_view explanation = Error::convertErrorToExplanation(static_cast<Error::ErrorCode>(value));
+    std::string_view explanation =
+        scaler::utility::Error::convertErrorToExplanation(static_cast<scaler::utility::Error::ErrorCode>(value));
     return PyUnicode_FromString(std::string(explanation).c_str());
 }
 
@@ -181,26 +182,28 @@ static PyObject* YMQErrorCode_explanation(PyObject* self, PyObject* Py_UNUSED(ar
 static int YMQ_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
 {
     std::vector<std::pair<std::string, int>> errorCodeValues = {
-        {"Uninit", (int)Error::ErrorCode::Uninit},
-        {"InvalidPortFormat", (int)Error::ErrorCode::InvalidPortFormat},
-        {"InvalidAddressFormat", (int)Error::ErrorCode::InvalidAddressFormat},
-        {"ConfigurationError", (int)Error::ErrorCode::ConfigurationError},
-        {"SignalNotSupported", (int)Error::ErrorCode::SignalNotSupported},
-        {"CoreBug", (int)Error::ErrorCode::CoreBug},
-        {"RepetetiveIOSocketIdentity", (int)Error::ErrorCode::RepetetiveIOSocketIdentity},
-        {"RedundantIOSocketRefCount", (int)Error::ErrorCode::RedundantIOSocketRefCount},
-        {"MultipleConnectToNotSupported", (int)Error::ErrorCode::MultipleConnectToNotSupported},
-        {"MultipleBindToNotSupported", (int)Error::ErrorCode::MultipleBindToNotSupported},
-        {"InitialConnectFailedWithInProgress", (int)Error::ErrorCode::InitialConnectFailedWithInProgress},
-        {"SendMessageRequestCouldNotComplete", (int)Error::ErrorCode::SendMessageRequestCouldNotComplete},
-        {"SetSockOptNonFatalFailure", (int)Error::ErrorCode::SetSockOptNonFatalFailure},
-        {"IPv6NotSupported", (int)Error::ErrorCode::IPv6NotSupported},
+        {"Uninit", (int)scaler::utility::Error::ErrorCode::Uninit},
+        {"InvalidPortFormat", (int)scaler::utility::Error::ErrorCode::InvalidPortFormat},
+        {"InvalidAddressFormat", (int)scaler::utility::Error::ErrorCode::InvalidAddressFormat},
+        {"ConfigurationError", (int)scaler::utility::Error::ErrorCode::ConfigurationError},
+        {"SignalNotSupported", (int)scaler::utility::Error::ErrorCode::SignalNotSupported},
+        {"CoreBug", (int)scaler::utility::Error::ErrorCode::CoreBug},
+        {"RepetetiveIOSocketIdentity", (int)scaler::utility::Error::ErrorCode::RepetetiveIOSocketIdentity},
+        {"RedundantIOSocketRefCount", (int)scaler::utility::Error::ErrorCode::RedundantIOSocketRefCount},
+        {"MultipleConnectToNotSupported", (int)scaler::utility::Error::ErrorCode::MultipleConnectToNotSupported},
+        {"MultipleBindToNotSupported", (int)scaler::utility::Error::ErrorCode::MultipleBindToNotSupported},
+        {"InitialConnectFailedWithInProgress",
+         (int)scaler::utility::Error::ErrorCode::InitialConnectFailedWithInProgress},
+        {"SendMessageRequestCouldNotComplete",
+         (int)scaler::utility::Error::ErrorCode::SendMessageRequestCouldNotComplete},
+        {"SetSockOptNonFatalFailure", (int)scaler::utility::Error::ErrorCode::SetSockOptNonFatalFailure},
+        {"IPv6NotSupported", (int)scaler::utility::Error::ErrorCode::IPv6NotSupported},
         {"RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery",
-         (int)Error::ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery},
-        {"ConnectorSocketClosedByRemoteEnd", (int)Error::ErrorCode::ConnectorSocketClosedByRemoteEnd},
-        {"IOSocketStopRequested", (int)Error::ErrorCode::IOSocketStopRequested},
-        {"BinderSendMessageWithNoAddress", (int)Error::ErrorCode::BinderSendMessageWithNoAddress},
-        {"IPCOnWinNotSupported", (int)Error::ErrorCode::IPCOnWinNotSupported},
+         (int)scaler::utility::Error::ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery},
+        {"ConnectorSocketClosedByRemoteEnd", (int)scaler::utility::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd},
+        {"IOSocketStopRequested", (int)scaler::utility::Error::ErrorCode::IOSocketStopRequested},
+        {"BinderSendMessageWithNoAddress", (int)scaler::utility::Error::ErrorCode::BinderSendMessageWithNoAddress},
+        {"IPCOnWinNotSupported", (int)scaler::utility::Error::ErrorCode::IPCOnWinNotSupported},
     };
 
     if (YMQ_createIntEnum(pyModule, &state->PyErrorCodeType, "ErrorCode", errorCodeValues) < 0)

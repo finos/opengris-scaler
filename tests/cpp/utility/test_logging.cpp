@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "scaler/logging/logging.h"
+#include "scaler/utility/logging.h"
 
 // Test fixture for direct unit testing of the log() function's formatting
 class LoggingUnitTest: public ::testing::Test {
@@ -48,43 +48,45 @@ protected:
 
 TEST_F(LoggingUnitTest, TestLogsEmptyMessage)
 {
-    scaler::ymq::Logger logger(
-        "%(levelname)s: %(message)s", {curr_log_filename}, scaler::ymq::Logger::LoggingLevel::info);
-    logger.log(scaler::ymq::Logger::LoggingLevel::info, "");
+    scaler::utility::Logger logger(
+        "%(levelname)s: %(message)s", {curr_log_filename}, scaler::utility::Logger::LoggingLevel::info);
+    logger.log(scaler::utility::Logger::LoggingLevel::info, "");
     EXPECT_EQ(readLogFile(curr_log_filename), "INFO: ");
 }
 
 TEST_F(LoggingUnitTest, TestLogsPercentEscape)
 {
-    scaler::ymq::Logger logger(
-        "This is a test %% with percent signs", {curr_log_filename}, scaler::ymq::Logger::LoggingLevel::debug);
-    logger.log(scaler::ymq::Logger::LoggingLevel::debug);
+    scaler::utility::Logger logger(
+        "This is a test %% with percent signs", {curr_log_filename}, scaler::utility::Logger::LoggingLevel::debug);
+    logger.log(scaler::utility::Logger::LoggingLevel::debug);
     EXPECT_EQ(readLogFile(curr_log_filename), "This is a test % with percent signs");
 }
 
 TEST_F(LoggingUnitTest, TestLogsUnknownToken)
 {
-    scaler::ymq::Logger logger(
-        "Token %(invalid)s should not be replaced.", {curr_log_filename}, scaler::ymq::Logger::LoggingLevel::error);
-    logger.log(scaler::ymq::Logger::LoggingLevel::error);
+    scaler::utility::Logger logger(
+        "Token %(invalid)s should not be replaced.", {curr_log_filename}, scaler::utility::Logger::LoggingLevel::error);
+    logger.log(scaler::utility::Logger::LoggingLevel::error);
     EXPECT_EQ(readLogFile(curr_log_filename), "Token %(invalid)s should not be replaced.");
 }
 
 TEST_F(LoggingUnitTest, TestLogsMultipleArgumentTypes)
 {
-    scaler::ymq::Logger logger(
-        "%(levelname)s: Error on line %(message)s", {curr_log_filename}, scaler::ymq::Logger::LoggingLevel::critical);
+    scaler::utility::Logger logger(
+        "%(levelname)s: Error on line %(message)s",
+        {curr_log_filename},
+        scaler::utility::Logger::LoggingLevel::critical);
     int line_number = 42;
     double value    = 3.14;
-    logger.log(scaler::ymq::Logger::LoggingLevel::critical, line_number, " with value ", value);
+    logger.log(scaler::utility::Logger::LoggingLevel::critical, line_number, " with value ", value);
     EXPECT_EQ(readLogFile(curr_log_filename), "CTIC: Error on line 42 with value 3.14");
 }
 
 TEST_F(LoggingUnitTest, TestLogsLargeNumbers)
 {
-    scaler::ymq::Logger logger("%(message)s", {curr_log_filename}, scaler::ymq::Logger::LoggingLevel::info);
+    scaler::utility::Logger logger("%(message)s", {curr_log_filename}, scaler::utility::Logger::LoggingLevel::info);
     long long large_number = std::numeric_limits<long long>::max();
-    logger.log(scaler::ymq::Logger::LoggingLevel::info, "Large number: ", large_number);
+    logger.log(scaler::utility::Logger::LoggingLevel::info, "Large number: ", large_number);
 
     std::string expected = "Large number: " + std::to_string(large_number);
     EXPECT_EQ(readLogFile(curr_log_filename), expected);
@@ -92,25 +94,27 @@ TEST_F(LoggingUnitTest, TestLogsLargeNumbers)
 
 TEST_F(LoggingUnitTest, TestLogsMalformedToken)
 {
-    scaler::ymq::Logger logger(
-        "Malformed token %(message should be literal", {curr_log_filename}, scaler::ymq::Logger::LoggingLevel::info);
-    logger.log(scaler::ymq::Logger::LoggingLevel::info);
+    scaler::utility::Logger logger(
+        "Malformed token %(message should be literal",
+        {curr_log_filename},
+        scaler::utility::Logger::LoggingLevel::info);
+    logger.log(scaler::utility::Logger::LoggingLevel::info);
     EXPECT_EQ(readLogFile(curr_log_filename), "Malformed token %(message should be literal");
 }
 
 TEST_F(LoggingUnitTest, TestLogsTrailingPercent)
 {
-    scaler::ymq::Logger logger(
-        "Message with a trailing percent%", {curr_log_filename}, scaler::ymq::Logger::LoggingLevel::info);
-    logger.log(scaler::ymq::Logger::LoggingLevel::info);
+    scaler::utility::Logger logger(
+        "Message with a trailing percent%", {curr_log_filename}, scaler::utility::Logger::LoggingLevel::info);
+    logger.log(scaler::utility::Logger::LoggingLevel::info);
     EXPECT_EQ(readLogFile(curr_log_filename), "Message with a trailing percent%");
 }
 
 TEST_F(LoggingUnitTest, TestLogsMismatchedArguments)
 {
-    scaler::ymq::Logger logger(
-        "[%(levelname)s] No message token here", {curr_log_filename}, scaler::ymq::Logger::LoggingLevel::info);
-    logger.log(scaler::ymq::Logger::LoggingLevel::info, "this part is ignored", 123);
+    scaler::utility::Logger logger(
+        "[%(levelname)s] No message token here", {curr_log_filename}, scaler::utility::Logger::LoggingLevel::info);
+    logger.log(scaler::utility::Logger::LoggingLevel::info, "this part is ignored", 123);
     EXPECT_EQ(readLogFile(curr_log_filename), "[INFO] No message token here");
 }
 
@@ -126,9 +130,10 @@ TEST_F(LoggingUnitTest, TestLogsToMultipleFiles)
 
     std::vector<std::string> paths = {log_file1, log_file2};
 
-    scaler::ymq::Logger logger("%(levelname)s - %(message)s", paths, scaler::ymq::Logger::LoggingLevel::warning);
+    scaler::utility::Logger logger(
+        "%(levelname)s - %(message)s", paths, scaler::utility::Logger::LoggingLevel::warning);
 
-    logger.log(scaler::ymq::Logger::LoggingLevel::warning, "This message should appear in both files.");
+    logger.log(scaler::utility::Logger::LoggingLevel::warning, "This message should appear in both files.");
 
     std::string expected_output = "WARN - This message should appear in both files.";
 

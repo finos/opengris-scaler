@@ -59,7 +59,7 @@ RawStreamClientHandle::RawStreamClientHandle(SocketAddress remoteAddr)
     closesocket(tmp);
     if (!_impl->_connectExFunc) {
         unrecoverableError({
-            Error::ErrorCode::CoreBug,
+            utility::Error::ErrorCode::CoreBug,
             "Originated from",
             "WSAIoctl",
             "Errno is",
@@ -79,7 +79,7 @@ void RawStreamClientHandle::create()
     }
     if (_impl->_clientFD == -1) {
         unrecoverableError({
-            Error::ErrorCode::CoreBug,
+            utility::Error::ErrorCode::CoreBug,
             "Originated from",
             "socket(2)",
             "Errno is",
@@ -100,7 +100,7 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
     const int bindRes = bind(_impl->_clientFD, (struct sockaddr*)&localAddr, _impl->_remoteAddr.nativeHandleLen());
     if (bindRes == -1) {
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             "bind",
             "Errno is",
@@ -120,7 +120,7 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
         (LPOVERLAPPED)notifyHandle);
     if (ok) {
         unrecoverableError({
-            Error::ErrorCode::CoreBug,
+            utility::Error::ErrorCode::CoreBug,
             "Originated from",
             "connectEx",
             "_impl->_clientFD",
@@ -134,7 +134,7 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
     }
 
     unrecoverableError({
-        Error::ErrorCode::CoreBug,
+        utility::Error::ErrorCode::CoreBug,
         "Originated from",
         "connectEx",
         "Errno is",

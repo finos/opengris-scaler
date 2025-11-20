@@ -2,9 +2,9 @@
 
 #include <cstdlib>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 
-inline void ymqUnrecoverableError(scaler::ymq::Error e)
+inline void ymqUnrecoverableError(scaler::utility::Error e)
 {
     PyGILState_STATE gstate = PyGILState_Ensure();
     (void)gstate;  // silent the warning

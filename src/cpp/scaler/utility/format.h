@@ -7,7 +7,7 @@
 #include <string>
 
 namespace scaler {
-namespace ymq {
+namespace utility {
 
 template <std::size_t N>
     requires(N > 0)
@@ -31,5 +31,5 @@ constexpr std::string argsToString(Args&&... args)
     return res;
 }
 
-}  // namespace ymq
+}  // namespace utility
 }  // namespace scaler
