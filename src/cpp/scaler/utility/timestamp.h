@@ -28,21 +28,32 @@
 
 
 namespace scaler {
-namespace ymq {
+namespace utility {
 
 // Simple timestamp utility
 struct Timestamp {
     std::chrono::time_point<std::chrono::system_clock> timestamp;
 
-    friend std::strong_ordering operator<=>(Timestamp x, Timestamp y) { return x.timestamp <=> y.timestamp; }
-
     Timestamp(): timestamp(std::chrono::system_clock::now()) {}
     Timestamp(std::chrono::time_point<std::chrono::system_clock> t) { timestamp = std::move(t); }
 
-    template <class Rep, class Period = std::ratio<1>>
-    Timestamp createTimestampByOffsetDuration(std::chrono::duration<Rep, Period> offset)
+    template <typename Rep, typename Period = std::ratio<1>>
+    Timestamp operator+(std::chrono::duration<Rep, Period> offset) const
     {
         return {timestamp + offset};
+    }
+
+    template <typename Rep, typename Period = std::ratio<1>>
+    Timestamp operator-(std::chrono::duration<Rep, Period> offset) const
+    {
+        return {timestamp - offset};
+    }
+
+    friend std::strong_ordering operator<=>(Timestamp x, Timestamp y) { return x.timestamp <=> y.timestamp; }
+
+    friend std::chrono::milliseconds operator-(Timestamp lhs, Timestamp rhs)
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(lhs.timestamp - rhs.timestamp);
     }
 };
 
@@ -94,20 +105,20 @@ inline LARGE_INTEGER convertToLARGE_INTEGER(Timestamp ts)
 }
 #endif  // _WIN32
 
-}  // namespace ymq
+}  // namespace utility
 }  // namespace scaler
 
 template <>
-struct std::formatter<scaler::ymq::Timestamp, char> {
-    template <class ParseContext>
+struct std::formatter<scaler::utility::Timestamp, char> {
+    template <typename ParseContext>
     constexpr ParseContext::iterator parse(ParseContext& ctx)
     {
         return ctx.begin();
     }
 
-    template <class FmtContext>
-    constexpr FmtContext::iterator format(scaler::ymq::Timestamp ts, FmtContext& ctx) const
+    template <typename FmtContext>
+    constexpr FmtContext::iterator format(scaler::utility::Timestamp ts, FmtContext& ctx) const
     {
-        return std::format_to(ctx.out(), "{}", scaler::ymq::stringifyTimestamp(ts));
+        return std::format_to(ctx.out(), "{}", scaler::utility::stringifyTimestamp(ts));
     }
 };
