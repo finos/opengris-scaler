@@ -5,7 +5,6 @@ from typing import Dict, Optional, Tuple
 from scaler.cluster.cluster import Cluster
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
-
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.defaults import (
@@ -27,7 +26,7 @@ from scaler.config.defaults import (
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
 from scaler.config.section.cluster import ClusterConfig
-from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.worker import WorkerCapabilities, WorkerNames
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
@@ -71,9 +70,9 @@ class SchedulerClusterCombo:
             self._address = ZMQConfig.from_string(address)
 
         if object_storage_address is None:
-            self._object_storage_address = ObjectStorageConfig(self._address.host, get_available_tcp_port())
+            self._object_storage_address = ObjectStorageAddressConfig(self._address.host, get_available_tcp_port())
         else:
-            self._object_storage_address = ObjectStorageConfig.from_string(object_storage_address)
+            self._object_storage_address = ObjectStorageAddressConfig.from_string(object_storage_address)
 
         if monitor_address is None:
             self._monitor_address = None

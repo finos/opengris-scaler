@@ -3,7 +3,6 @@ import time
 import unittest
 
 from scaler import Client, Cluster, SchedulerClusterCombo
-
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.defaults import DEFAULT_LOAD_BALANCE_SECONDS

@@ -1,12 +1,12 @@
 import dataclasses
 
 from scaler.config.config_class import ConfigClass
-from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 
 
 @dataclasses.dataclass
 class ObjectStorageServerConfig(ConfigClass):
-    object_storage_address: ObjectStorageConfig = dataclasses.field(
+    object_storage_address: ObjectStorageAddressConfig = dataclasses.field(
         metadata=dict(
             positional=True,
             nargs="?",

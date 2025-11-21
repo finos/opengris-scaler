@@ -1,7 +1,7 @@
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
 from scaler.config.section.scheduler import SchedulerConfig
-from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 
 
 def main():
@@ -12,7 +12,7 @@ def main():
 
     if object_storage_address is None:
         assert scheduler_config.scheduler_address.port is not None, "Scheduler address must have a port"
-        object_storage_address = ObjectStorageConfig(
+        object_storage_address = ObjectStorageAddressConfig(
             host=scheduler_config.scheduler_address.host, port=scheduler_config.scheduler_address.port + 1
         )
         object_storage = ObjectStorageServerProcess(

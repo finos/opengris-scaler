@@ -2,7 +2,6 @@ import unittest
 from concurrent.futures import TimeoutError
 
 from scaler import Client, Cluster, SchedulerClusterCombo
-
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.section.cluster import ClusterConfig

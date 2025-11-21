@@ -8,7 +8,6 @@ import math
 
 from scaler import Client, Cluster
 from scaler.cluster.combo import SchedulerClusterCombo
-
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.section.cluster import ClusterConfig

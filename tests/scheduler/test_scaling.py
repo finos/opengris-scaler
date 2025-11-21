@@ -9,7 +9,6 @@ from aiohttp import web
 from scaler import Client
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
-
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.web import WebConfig
 from scaler.config.common.worker import WorkerConfig
@@ -30,7 +29,7 @@ from scaler.config.defaults import (
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
 from scaler.config.section.native_worker_adapter import NativeWorkerAdapterConfig
-from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
@@ -75,7 +74,7 @@ class TestScaling(unittest.TestCase):
         logging_test_name(self)
 
         self.scheduler_address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        self.object_storage_config = ObjectStorageConfig("127.0.0.1", get_available_tcp_port())
+        self.object_storage_config = ObjectStorageAddressConfig("127.0.0.1", get_available_tcp_port())
         self.webhook_port = get_available_tcp_port()
 
     def test_scaling_basic(self):

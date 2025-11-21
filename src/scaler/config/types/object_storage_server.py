@@ -5,7 +5,7 @@ from scaler.config.mixins import ConfigType
 
 
 @dataclasses.dataclass
-class ObjectStorageConfig(ConfigType):
+class ObjectStorageAddressConfig(ConfigType):
     host: str
     port: int
     identity: str = "ObjectStorageServer"
@@ -29,7 +29,7 @@ class ObjectStorageConfig(ConfigType):
         return f"tcp://{self.host}:{self.port}"
 
     @classmethod
-    def from_string(cls, value: str) -> "ObjectStorageConfig":
+    def from_string(cls, value: str) -> "ObjectStorageAddressConfig":
         if not value.startswith("tcp://"):
             raise ValueError("Address must start with 'tcp://'")
 

@@ -3,7 +3,7 @@ from typing import Optional
 
 from scaler.config import defaults
 from scaler.config.config_class import ConfigClass
-from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.zmq import ZMQConfig
 
 
@@ -13,7 +13,7 @@ class WorkerAdapterConfig(ConfigClass):
         metadata=dict(positional=True, nargs="?", help="scheduler address to connect workers to")
     )
 
-    object_storage_address: Optional[ObjectStorageConfig] = dataclasses.field(
+    object_storage_address: Optional[ObjectStorageAddressConfig] = dataclasses.field(
         default=None,
         metadata=dict(short="-osa", help="specify the object storage server address, e.g.: tcp://localhost:2346"),
     )

@@ -5,7 +5,7 @@ from asyncio import AbstractEventLoop, Task
 from typing import Any, Optional, Tuple
 
 from scaler.config.section.scheduler import SchedulerConfig
-from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
@@ -18,7 +18,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
     def __init__(
         self,
         address: ZMQConfig,
-        object_storage_address: Optional[ObjectStorageConfig],
+        object_storage_address: Optional[ObjectStorageAddressConfig],
         monitor_address: Optional[ZMQConfig],
         scaling_controller_strategy: ScalingControllerStrategy,
         adapter_webhook_urls: Tuple[str, ...],

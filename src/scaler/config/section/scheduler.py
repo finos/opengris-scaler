@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from scaler.config import defaults
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.config_class import ConfigClass
-from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
@@ -17,7 +17,7 @@ class SchedulerConfig(ConfigClass):
     scheduler_address: ZMQConfig = dataclasses.field(
         metadata=dict(positional=True, nargs="?", help="scheduler address to connect to, e.g.: `tcp://localhost:6378`")
     )
-    object_storage_address: Optional[ObjectStorageConfig] = dataclasses.field(
+    object_storage_address: Optional[ObjectStorageAddressConfig] = dataclasses.field(
         default=None,
         metadata=dict(
             short="-osa",

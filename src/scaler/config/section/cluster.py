@@ -6,7 +6,7 @@ from scaler.config import defaults
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.config_class import ConfigClass
-from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.worker import WorkerNames
 from scaler.config.types.zmq import ZMQConfig
 from scaler.utility.event_loop import EventLoopType
@@ -17,7 +17,7 @@ class ClusterConfig(ConfigClass):
     scheduler_address: ZMQConfig = dataclasses.field(
         metadata=dict(positional=True, nargs="?", help="the scheduler address to connect to")
     )
-    object_storage_address: Optional[ObjectStorageConfig] = dataclasses.field(
+    object_storage_address: Optional[ObjectStorageAddressConfig] = dataclasses.field(
         default=None,
         metadata=dict(
             short="-osa",
