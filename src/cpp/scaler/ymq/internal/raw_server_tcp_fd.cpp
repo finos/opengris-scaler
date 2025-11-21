@@ -3,7 +3,7 @@
 
 #include <utility>  // std::move
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/internal/defs.h"
 #include "scaler/ymq/network_utils.h"
 
@@ -25,7 +25,7 @@ RawServerTCPFD::RawServerTCPFD(sockaddr addr)
     _serverFD = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
     if ((int)_serverFD == -1) {
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             "socket(2)",
             "Errno is",
@@ -47,7 +47,7 @@ RawServerTCPFD::RawServerTCPFD(sockaddr addr)
             case WSAENETDOWN:
             case WSAEPROVIDERFAILEDINIT:
                 unrecoverableError({
-                    Error::ErrorCode::ConfigurationError,
+                    utility::Error::ErrorCode::ConfigurationError,
                     "Originated from",
                     "socket(2)",
                     "Errno is",
@@ -58,7 +58,7 @@ RawServerTCPFD::RawServerTCPFD(sockaddr addr)
             case WSAEAFNOSUPPORT:
             default:
                 unrecoverableError({
-                    Error::ErrorCode::CoreBug,
+                    utility::Error::ErrorCode::CoreBug,
                     "Originated from",
                     "socket(2)",
                     "Errno is",
@@ -84,7 +84,7 @@ RawServerTCPFD::RawServerTCPFD(sockaddr addr)
             nullptr,
             nullptr) == SOCKET_ERROR) {
         unrecoverableError({
-            Error::ErrorCode::CoreBug,
+            utility::Error::ErrorCode::CoreBug,
             "Originated from",
             "WSAIoctl",
             "Errno is",
@@ -126,7 +126,7 @@ void RawServerTCPFD::bindAndListen()
     if (bind(_serverFD, &_addr, sizeof(_addr)) == -1) {
         CloseAndZeroSocket(_serverFD);
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             "bind(2)",
             "Errno is",
@@ -141,7 +141,7 @@ void RawServerTCPFD::bindAndListen()
     if (listen(_serverFD, SOMAXCONN) == -1) {
         CloseAndZeroSocket(_serverFD);
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             "listen(2)",
             "Errno is",
@@ -166,7 +166,7 @@ void RawServerTCPFD::prepareAcceptSocket(void* notifyHandle)
             case WSAENETDOWN:
             case WSAEPROVIDERFAILEDINIT:
                 unrecoverableError({
-                    Error::ErrorCode::ConfigurationError,
+                    utility::Error::ErrorCode::ConfigurationError,
                     "Originated from",
                     "socket(2)",
                     "Errno is",
@@ -178,7 +178,7 @@ void RawServerTCPFD::prepareAcceptSocket(void* notifyHandle)
             case WSAEAFNOSUPPORT:
             default:
                 unrecoverableError({
-                    Error::ErrorCode::CoreBug,
+                    utility::Error::ErrorCode::CoreBug,
                     "Originated from",
                     "socket(2)",
                     "Errno is",
@@ -204,7 +204,7 @@ void RawServerTCPFD::prepareAcceptSocket(void* notifyHandle)
         if (myErrno != ERROR_IO_PENDING) {
             CloseAndZeroSocket(_newConn);
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 "AcceptEx",
                 "Errno is",
@@ -241,7 +241,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawServerTCPFD::getNewConns()
                 case EINVAL:
                 case EBADF:
                     unrecoverableError({
-                        Error::ErrorCode::CoreBug,
+                        utility::Error::ErrorCode::CoreBug,
                         "Originated from",
                         "accept4(2)",
                         "Errno is",
@@ -252,7 +252,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawServerTCPFD::getNewConns()
 
                 case EINTR:
                     unrecoverableError({
-                        Error::ErrorCode::SignalNotSupported,
+                        utility::Error::ErrorCode::SignalNotSupported,
                         "Originated from",
                         "accept4(2)",
                         "Errno is",
@@ -273,7 +273,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawServerTCPFD::getNewConns()
                 case ETIMEDOUT:
                 default:
                     unrecoverableError({
-                        Error::ErrorCode::ConfigurationError,
+                        utility::Error::ErrorCode::ConfigurationError,
                         "Originated from",
                         "accept4(2)",
                         "Errno is",
@@ -284,7 +284,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawServerTCPFD::getNewConns()
 
         if (remoteAddrLen > sizeof(remoteAddr)) {
             unrecoverableError({
-                Error::ErrorCode::IPv6NotSupported,
+                utility::Error::ErrorCode::IPv6NotSupported,
                 "Originated from",
                 "accept4(2)",
                 "remoteAddrLen",
@@ -304,7 +304,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawServerTCPFD::getNewConns()
         CloseAndZeroSocket(_serverFD);
         CloseAndZeroSocket(_newConn);
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             "setsockopt(SO_UPDATE_ACCEPT_CONTEXT)",
             "Errno is",
@@ -322,7 +322,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawServerTCPFD::getNewConns()
             case WSAEINPROGRESS:
             case WSAENOTSOCK:
                 unrecoverableError({
-                    Error::ErrorCode::CoreBug,
+                    utility::Error::ErrorCode::CoreBug,
                     "Originated from",
                     "ioctlsocket(FIONBIO)",
                     "Errno is",
@@ -335,7 +335,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawServerTCPFD::getNewConns()
             case WSAEFAULT:
             default:
                 unrecoverableError({
-                    Error::ErrorCode::ConfigurationError,
+                    utility::Error::ErrorCode::ConfigurationError,
                     "Originated from",
                     "ioctlsocket(FIONBIO)",
                     "Errno is",

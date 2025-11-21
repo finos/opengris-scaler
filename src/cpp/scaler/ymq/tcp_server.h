@@ -5,7 +5,7 @@
 #include "scaler/ymq/internal/raw_server_tcp_fd.h"
 
 // First-party
-#include "scaler/logging/logging.h"
+#include "scaler/utility/logging.h"
 #include "scaler/ymq/configuration.h"
 
 namespace scaler {
@@ -49,7 +49,7 @@ private:
 
     std::unique_ptr<EventManager> _eventManager;  // will copy the `onRead()` to itself
 
-    Logger _logger;
+    utility::Logger _logger;
 
     RawServerTCPFD _rawServer;
 };

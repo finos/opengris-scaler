@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cassert>  // assert
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/internal/defs.h"
 
 namespace scaler {
@@ -101,7 +101,7 @@ std::expected<uint64_t, RawConnectionTCPFD::IOStatus> RawConnectionTCPFD::readBy
                 case EISDIR:
                 case EINVAL:
                     unrecoverableError({
-                        Error::ErrorCode::CoreBug,
+                        utility::Error::ErrorCode::CoreBug,
                         "Originated from",
                         "recv(2)",
                         "Errno is",
@@ -116,7 +116,7 @@ std::expected<uint64_t, RawConnectionTCPFD::IOStatus> RawConnectionTCPFD::readBy
 
                 case EINTR:
                     unrecoverableError({
-                        Error::ErrorCode::SignalNotSupported,
+                        utility::Error::ErrorCode::SignalNotSupported,
                         "Originated from",
                         "recv(2)",
                         "Errno is",
@@ -127,7 +127,7 @@ std::expected<uint64_t, RawConnectionTCPFD::IOStatus> RawConnectionTCPFD::readBy
                 case EIO:
                 default:
                     unrecoverableError({
-                        Error::ErrorCode::ConfigurationError,
+                        utility::Error::ErrorCode::ConfigurationError,
                         "Originated from",
                         "recv(2)",
                         "Errno is",
@@ -152,7 +152,7 @@ std::expected<uint64_t, RawConnectionTCPFD::IOStatus> RawConnectionTCPFD::readBy
         } else {
             // NOTE: On Windows we don't have signals and weird IO Errors
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 "recv(2)",
                 "Errno is",
@@ -224,7 +224,7 @@ std::expected<uint64_t, RawConnectionTCPFD::IOStatus> RawConnectionTCPFD::writeB
         }
     }
     unrecoverableError({
-        Error::ErrorCode::CoreBug,
+        utility::Error::ErrorCode::CoreBug,
         "Originated from",
         "WSASendTo",
         "Errno is",
@@ -267,7 +267,7 @@ std::expected<uint64_t, RawConnectionTCPFD::IOStatus> RawConnectionTCPFD::writeB
                 case EHOSTUNREACH:
                 case EISCONN:
                     unrecoverableError({
-                        Error::ErrorCode::CoreBug,
+                        utility::Error::ErrorCode::CoreBug,
                         "Originated from",
                         "sendmsg(2)",
                         "Errno is",
@@ -288,7 +288,7 @@ std::expected<uint64_t, RawConnectionTCPFD::IOStatus> RawConnectionTCPFD::writeB
 
                 case EINTR:
                     unrecoverableError({
-                        Error::ErrorCode::SignalNotSupported,
+                        utility::Error::ErrorCode::SignalNotSupported,
                         "Originated from",
                         "sendmsg(2)",
                         "Errno is",
@@ -304,7 +304,7 @@ std::expected<uint64_t, RawConnectionTCPFD::IOStatus> RawConnectionTCPFD::writeB
                 case ENOMEM:
                 default:
                     unrecoverableError({
-                        Error::ErrorCode::ConfigurationError,
+                        utility::Error::ErrorCode::ConfigurationError,
                         "Originated from",
                         "sendmsg(2)",
                         "Errno is",
@@ -339,7 +339,7 @@ bool RawConnectionTCPFD::prepareReadBytes(void* notifyHandle)
         return false;
     }
     unrecoverableError({
-        Error::ErrorCode::CoreBug,
+        utility::Error::ErrorCode::CoreBug,
         "Originated from",
         "ReadFile",
         "Errno is",
@@ -372,7 +372,7 @@ std::pair<size_t, bool> RawConnectionTCPFD::prepareWriteBytes(void* dest, size_t
         return {1, false};
     }
     unrecoverableError({
-        Error::ErrorCode::CoreBug,
+        utility::Error::ErrorCode::CoreBug,
         "Originated from",
         "prepareWriteBytes",
         "Errno is",

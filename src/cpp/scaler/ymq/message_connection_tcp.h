@@ -5,7 +5,7 @@
 #include <optional>
 #include <queue>
 
-#include "scaler/logging/logging.h"
+#include "scaler/utility/logging.h"
 #include "scaler/ymq/configuration.h"
 #include "scaler/ymq/internal/raw_connection_tcp_fd.h"
 #include "scaler/ymq/io_socket.h"
@@ -95,7 +95,7 @@ private:
     std::queue<TcpReadOperation> _receivedReadOperations;
 
     bool _disconnect;  // Disconnect or Abort, use to feed to IOSocket
-    Logger _logger;
+    utility::Logger _logger;
 
     // TODO: This variable records whether we have read some bytes in the last read operation.
     // The semantic of readMessage is completely broken. But that will be fixed in the refactor.

@@ -4,7 +4,7 @@
 #include <cassert>
 #include <memory>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/event_manager.h"
 #include "scaler/ymq/io_socket.h"
 
@@ -27,7 +27,7 @@ void EventLoopThread::createIOSocket(std::string identity, IOSocketType socketTy
 
         if (!inserted) {
             unrecoverableError({
-                Error::ErrorCode::RepetetiveIOSocketIdentity,
+                utility::Error::ErrorCode::RepetetiveIOSocketIdentity,
                 "Originated from (in EventLoopThread::createIOSocket)",
                 __PRETTY_FUNCTION__,
                 "Your input identity",
@@ -46,7 +46,7 @@ void EventLoopThread::removeIOSocket(IOSocket* target)
     auto useCount = _identityToIOSocket[target->identity()].use_count();
     if (useCount != 1) {
         unrecoverableError({
-            Error::ErrorCode::RedundantIOSocketRefCount,
+            utility::Error::ErrorCode::RedundantIOSocketRefCount,
             "Originated from",
             __PRETTY_FUNCTION__,
             "use_count",

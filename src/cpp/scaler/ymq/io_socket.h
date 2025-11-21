@@ -28,7 +28,7 @@ namespace ymq {
 
 class EventLoopThread;
 class MessageConnectionTCP;
-class TcpWriteOperation;
+struct TcpWriteOperation;
 
 class IOSocket {
 public:
@@ -86,7 +86,7 @@ public:
     size_t numOfConnections();
 
 private:
-    void fillPendingRecvMessagesWithErr(Error err);
+    void fillPendingRecvMessagesWithErr(utility::Error err);
 
     const Identity _identity;
     const IOSocketType _socketType;
