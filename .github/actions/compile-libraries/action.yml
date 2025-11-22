@@ -19,6 +19,4 @@ runs:
       if: inputs.os == 'Windows'
       shell: pwsh
       run: |
-        cmake --preset windows-x64
-        cmake --build --preset windows-x64 --config Debug
-        cmake --install build_windows_x64 --config Debug
+        ./scripts/build.ps1

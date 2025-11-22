@@ -80,20 +80,24 @@ elseif ($dependency -eq "capnp")
     }
     elseif ($action -eq "compile")
     {
-        Remove-Item -Path "$THIRD_PARTY_DOWNLOADED\$CAPNP_FOLDER_NAME" -Recurse -Force -ErrorAction SilentlyContinue
-        tar -xzvf "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME.tar.gz" -C "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
+        mkdir "$THIRD_PARTY_COMPILED" -Force
+        tar -xzvf "$THIRD_PARTY_DOWNLOADED\$CAPNP_FOLDER_NAME.tar.gz" -C "$THIRD_PARTY_COMPILED"
 
         # Configure and build with Visual Studio using CMake
+        $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
         cmake -G "Visual Studio 17 2022" -B build
         cmake --build build --config Release
         Write-Host "Compiled capnp into $THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
+        Set-Location $oldDir
     }
     elseif ($action -eq "install")
     {
+        $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
         cmake --install build --config Release --prefix $PREFIX
         Write-Host "Installed capnp into $PREFIX"
+        Set-Location $oldDir
     }
     else
     {
