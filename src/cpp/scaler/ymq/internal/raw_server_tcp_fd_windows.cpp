@@ -1,10 +1,11 @@
-
-#include "scaler/ymq/internal/raw_server_tcp_fd.h"
+#ifdef _WIN32
 
 #include <utility>  // std::move
 
 #include "scaler/error/error.h"
 #include "scaler/ymq/internal/defs.h"
+#include "scaler/ymq/internal/network_utils.h"
+#include "scaler/ymq/internal/raw_server_tcp_fd.h"
 #include "scaler/ymq/network_utils.h"
 
 namespace scaler {
@@ -15,29 +16,10 @@ RawServerTCPFD::RawServerTCPFD(sockaddr addr)
     _serverFD = {};
     _addr     = std::move(addr);
 
-#ifdef _WIN32
     _newConn      = {};
     _acceptExFunc = {};
     memset(_buffer, 0, sizeof(_buffer));
-#endif  // _WIN32
 
-#ifdef __linux__
-    _serverFD = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
-    if ((int)_serverFD == -1) {
-        unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
-            "Originated from",
-            "socket(2)",
-            "Errno is",
-            strerror(errno),
-            "_serverFD",
-            _serverFD,
-        });
-
-        return;
-    }
-#endif  // __linux__
-#ifdef _WIN32
     _serverFD = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (_serverFD == -1) {
         const int myErrno = GetErrorCode();
@@ -93,37 +75,22 @@ RawServerTCPFD::RawServerTCPFD(sockaddr addr)
             _serverFD,
         });
     }
-#endif  // _WIN32
-}
-
-RawServerTCPFD::~RawServerTCPFD()
-{
-#ifdef _WIN32
-    if (_newConn) {
-        CloseAndZeroSocket(_newConn);
-    }
-#endif
-    if (_serverFD) {
-#ifdef _WIN32
-        CancelIoEx((HANDLE)_serverFD, nullptr);
-#endif
-        CloseAndZeroSocket(_serverFD);
-    }
 }
 
 bool RawServerTCPFD::setReuseAddress()
 {
-    int optval = 1;
-    if (setsockopt(_serverFD, SOL_SOCKET, SO_REUSEADDR, (const char*)&optval, sizeof(optval)) == -1) {
+    if (::scaler::ymq::setReuseAddress(_serverFD)) {
+        return true;
+    } else {
         CloseAndZeroSocket(_serverFD);
         return false;
     }
-    return true;
 }
 
 void RawServerTCPFD::bindAndListen()
 {
     if (bind(_serverFD, &_addr, sizeof(_addr)) == -1) {
+        const auto serverFD = _serverFD;
         CloseAndZeroSocket(_serverFD);
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
@@ -132,13 +99,14 @@ void RawServerTCPFD::bindAndListen()
             "Errno is",
             strerror(GetErrorCode()),
             "_serverFD",
-            _serverFD,
+            serverFD,
         });
 
         return;
     }
 
     if (listen(_serverFD, SOMAXCONN) == -1) {
+        const auto serverFD = _serverFD;
         CloseAndZeroSocket(_serverFD);
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
@@ -147,16 +115,26 @@ void RawServerTCPFD::bindAndListen()
             "Errno is",
             strerror(GetErrorCode()),
             "_serverFD",
-            _serverFD,
+            serverFD,
         });
 
         return;
     }
 }
 
+RawServerTCPFD::~RawServerTCPFD()
+{
+    if (_newConn) {
+        CloseAndZeroSocket(_newConn);
+    }
+    if (_serverFD) {
+        CancelIoEx((HANDLE)_serverFD, nullptr);
+        CloseAndZeroSocket(_serverFD);
+    }
+}
+
 void RawServerTCPFD::prepareAcceptSocket(void* notifyHandle)
 {
-#ifdef _WIN32
     _newConn = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (_newConn == INVALID_SOCKET) {
         const int myErrno = GetErrorCode();
@@ -216,88 +194,12 @@ void RawServerTCPFD::prepareAcceptSocket(void* notifyHandle)
         return;
     }
     // acceptEx never succeed.
-#endif  // _WIN32
 }
 
 std::vector<std::pair<uint64_t, sockaddr>> RawServerTCPFD::getNewConns()
 {
     std::vector<std::pair<uint64_t, sockaddr>> res;
-#ifdef __linux__
-    while (true) {
-        sockaddr remoteAddr {};
-        socklen_t remoteAddrLen = sizeof(remoteAddr);
 
-        int fd = accept4(_serverFD, &remoteAddr, &remoteAddrLen, SOCK_NONBLOCK | SOCK_CLOEXEC);
-        if (fd < 0) {
-            const int myErrno = errno;
-            switch (myErrno) {
-                // Not an error
-                // case EWOULDBLOCK: // same as EAGAIN
-                case EAGAIN:
-                case ECONNABORTED: return res;
-
-                case ENOTSOCK:
-                case EOPNOTSUPP:
-                case EINVAL:
-                case EBADF:
-                    unrecoverableError({
-                        Error::ErrorCode::CoreBug,
-                        "Originated from",
-                        "accept4(2)",
-                        "Errno is",
-                        strerror(myErrno),
-                        "_serverFD",
-                        _serverFD,
-                    });
-
-                case EINTR:
-                    unrecoverableError({
-                        Error::ErrorCode::SignalNotSupported,
-                        "Originated from",
-                        "accept4(2)",
-                        "Errno is",
-                        strerror(myErrno),
-                    });
-
-                // config
-                case EMFILE:
-                case ENFILE:
-                case ENOBUFS:
-                case ENOMEM:
-                case EFAULT:
-                case EPERM:
-                case EPROTO:
-                case ENOSR:
-                case ESOCKTNOSUPPORT:
-                case EPROTONOSUPPORT:
-                case ETIMEDOUT:
-                default:
-                    unrecoverableError({
-                        Error::ErrorCode::ConfigurationError,
-                        "Originated from",
-                        "accept4(2)",
-                        "Errno is",
-                        strerror(myErrno),
-                    });
-            }
-        }
-
-        if (remoteAddrLen > sizeof(remoteAddr)) {
-            unrecoverableError({
-                Error::ErrorCode::IPv6NotSupported,
-                "Originated from",
-                "accept4(2)",
-                "remoteAddrLen",
-                remoteAddrLen,
-                "sizeof(remoteAddr)",
-                sizeof(remoteAddr),
-            });
-        }
-        res.push_back({fd, remoteAddr});
-    }
-#endif
-
-#ifdef _WIN32
     if (setsockopt(
             _newConn, SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT, reinterpret_cast<char*>(&_serverFD), sizeof(_serverFD)) ==
         SOCKET_ERROR) {
@@ -351,16 +253,13 @@ std::vector<std::pair<uint64_t, sockaddr>> RawServerTCPFD::getNewConns()
     _newConn = 0;  // This _newConn will be handled by connection class
 
     return res;
-#endif
 }
 
 void RawServerTCPFD::destroy()
 {
-#ifdef _WIN32
     if (_serverFD) {
         CancelIoEx((HANDLE)_serverFD, nullptr);
     }
-#endif
     if (_serverFD) {
         CloseAndZeroSocket(_serverFD);
     }
@@ -368,3 +267,5 @@ void RawServerTCPFD::destroy()
 
 }  // namespace ymq
 }  // namespace scaler
+
+#endif

@@ -11,7 +11,7 @@
 namespace scaler {
 namespace ymq {
 
-void IocpContext::execPendingFunctions()
+void IOCPContext::execPendingFunctions()
 {
     while (_delayedFunctions.size()) {
         auto top = std::move(_delayedFunctions.front());
@@ -20,7 +20,7 @@ void IocpContext::execPendingFunctions()
     }
 }
 
-void IocpContext::loop()
+void IOCPContext::loop()
 {
     std::array<OVERLAPPED_ENTRY, _reventSize> events {};
     ULONG n         = 0;
@@ -77,7 +77,7 @@ void IocpContext::loop()
     execPendingFunctions();
 }
 
-void IocpContext::addFdToLoop(int fd, uint64_t, EventManager*)
+void IOCPContext::addFdToLoop(int fd, uint64_t, EventManager*)
 {
     const DWORD threadCount = 1;
     if (!CreateIoCompletionPort((HANDLE)(SOCKET)fd, _completionPort, ((uint64_t)fd << 32) | _isSocket, threadCount)) {
@@ -102,7 +102,7 @@ void IocpContext::addFdToLoop(int fd, uint64_t, EventManager*)
 //  The file handle is automaticaly released when one call closesocket(fd).
 //  This interface is required by the concept, and we need it for select(2) or poll(2).
 //  Instead of relaxing constraint, we leave the implementation empty.
-void IocpContext::removeFdFromLoop(int fd)
+void IOCPContext::removeFdFromLoop(int fd)
 {
     CancelIoEx((HANDLE)(SOCKET)fd, nullptr);
     _sockets.erase(fd);

@@ -76,8 +76,8 @@ public:
     void onConnectionCreated(std::string remoteIOSocketIdentity) noexcept;
     void onConnectionCreated(int fd, sockaddr localAddr, sockaddr remoteAddr, bool responsibleForRetry) noexcept;
 
-    // From TcpClient class only
-    void removeConnectedTcpClient() noexcept;
+    // From TCPClient class only
+    void removeConnectedTCPClient() noexcept;
 
     void requestStop() noexcept;
 
@@ -91,12 +91,12 @@ private:
     const Identity _identity;
     const IOSocketType _socketType;
 
-    // NOTE: Owning one TcpClient means the user cannot issue another connectTo
+    // NOTE: Owning one TCPClient means the user cannot issue another connectTo
     // when some message connection is retring to connect.
-    std::optional<TcpClient> _tcpClient;
+    std::optional<TCPClient> _tcpClient;
 
-    // NOTE: Owning one TcpServer means the user cannot bindTo multiple addresses.
-    std::optional<TcpServer> _tcpServer;
+    // NOTE: Owning one TCPServer means the user cannot bindTo multiple addresses.
+    std::optional<TCPServer> _tcpServer;
 
     // Remote identity to connection map
     std::map<std::string, std::unique_ptr<MessageConnectionTCP>> _identityToConnection;

@@ -13,19 +13,19 @@ namespace ymq {
 class EventLoopThread;
 class EventManager;
 
-class TcpClient {
+class TCPClient {
 public:
     using ConnectReturnCallback = Configuration::ConnectReturnCallback;
 
-    TcpClient(
+    TCPClient(
         EventLoopThread* eventLoopThread,
         std::string localIOSocketIdentity,
         sockaddr remoteAddr,
         ConnectReturnCallback onConnectReturn,
         size_t maxRetryTimes) noexcept;
-    TcpClient(const TcpClient&)            = delete;
-    TcpClient& operator=(const TcpClient&) = delete;
-    ~TcpClient() noexcept;
+    TCPClient(const TCPClient&)            = delete;
+    TCPClient& operator=(const TCPClient&) = delete;
+    ~TCPClient() noexcept;
 
     void onCreated();
     void retry();

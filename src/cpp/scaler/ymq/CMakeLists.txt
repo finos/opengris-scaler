@@ -15,7 +15,6 @@ add_library(ymq_objs OBJECT
     event_loop_thread.cpp
 
     event_manager.h
-    # file_descriptor.h
 
     message_connection_tcp.h
     message_connection_tcp.cpp
@@ -51,14 +50,26 @@ add_library(ymq_objs OBJECT
     internal/defs.h
 
     internal/raw_connection_tcp_fd.h
-    internal/raw_connection_tcp_fd.cpp
 
     internal/raw_server_tcp_fd.h
-    internal/raw_server_tcp_fd.cpp
 
     internal/raw_client_tcp_fd.h
-    internal/raw_client_tcp_fd.cpp
 )
+
+# System dependent file for YMQ internal
+if(LINUX)
+    target_sources(ymq_objs PRIVATE
+        internal/raw_connection_tcp_fd_linux.cpp
+        internal/raw_server_tcp_fd_linux.cpp
+        internal/raw_client_tcp_fd_linux.cpp
+    )
+elseif(WIN32)
+    target_sources(ymq_objs PRIVATE
+        internal/raw_connection_tcp_fd_windows.cpp
+        internal/raw_server_tcp_fd_windows.cpp
+        internal/raw_client_tcp_fd_windows.cpp
+    )
+endif()
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/scaler/ymq)
 

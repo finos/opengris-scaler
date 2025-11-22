@@ -6,8 +6,6 @@
 #include <utility>  // std::pair
 #include <vector>
 
-#include "scaler/ymq/internal/defs.h"  // system compatible header
-
 namespace scaler {
 namespace ymq {
 
@@ -39,17 +37,7 @@ public:
     // TODO: This might need error handling
     std::pair<size_t, bool> prepareWriteBytes(void* dest, size_t len, void* notifyHandle);
 
-    // It has to be here, as the return type is different
-    auto nativeHandle() const noexcept
-    {
-#ifdef _WIN32
-        return (SOCKET)_fd;
-#endif  //_WIN32
-
-#ifdef __linux__
-        return (int)_fd;
-#endif  //__linux__
-    }
+    int nativeHandle() const noexcept { return (int)_fd; }
 
     void shutdownRead() noexcept;
     void shutdownWrite() noexcept;

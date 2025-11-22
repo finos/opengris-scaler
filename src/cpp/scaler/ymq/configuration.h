@@ -14,7 +14,7 @@ namespace scaler {
 namespace ymq {
 
 class EpollContext;
-class IocpContext;
+class IOCPContext;
 class Message;
 class IOSocket;
 
@@ -35,7 +35,7 @@ struct Configuration {
     using PollingContext = EpollContext;
 #endif  // __linux__
 #ifdef _WIN32
-    using PollingContext = IocpContext;
+    using PollingContext = IOCPContext;
 #endif  // _WIN32
 
     using IOSocketIdentity                = std::string;

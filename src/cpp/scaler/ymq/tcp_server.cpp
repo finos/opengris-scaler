@@ -13,7 +13,7 @@
 namespace scaler {
 namespace ymq {
 
-bool TcpServer::createAndBindSocket()
+bool TCPServer::createAndBindSocket()
 {
     if (!_rawServer.setReuseAddress()) {
         _logger.log(
@@ -33,7 +33,7 @@ bool TcpServer::createAndBindSocket()
     return true;
 }
 
-TcpServer::TcpServer(
+TCPServer::TCPServer(
     EventLoopThread* eventLoopThread,
     std::string localIOSocketIdentity,
     sockaddr addr,
@@ -51,7 +51,7 @@ TcpServer::TcpServer(
     _eventManager->onError = [this] { this->onError(); };
 }
 
-void TcpServer::onCreated()
+void TCPServer::onCreated()
 {
     if (!createAndBindSocket()) {
         return;
@@ -64,7 +64,7 @@ void TcpServer::onCreated()
     _onBindReturn = {};
 }
 
-void TcpServer::disconnect()
+void TCPServer::disconnect()
 {
     if (_rawServer.nativeHandle()) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_rawServer.nativeHandle());
@@ -72,7 +72,7 @@ void TcpServer::disconnect()
     }
 }
 
-void TcpServer::onRead()
+void TCPServer::onRead()
 {
     if (!_rawServer.nativeHandle()) {
         return;
@@ -91,7 +91,7 @@ void TcpServer::onRead()
     _rawServer.prepareAcceptSocket((void*)_eventManager.get());
 }
 
-TcpServer::~TcpServer() noexcept
+TCPServer::~TCPServer() noexcept
 {
     disconnect();
     // TODO: Do we think this is an error? In extreme cases:
