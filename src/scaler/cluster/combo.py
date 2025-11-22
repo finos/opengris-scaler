@@ -5,6 +5,8 @@ from typing import Dict, Optional, Tuple
 from scaler.cluster.cluster import Cluster
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
+from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.worker import WorkerConfig
 from scaler.config.defaults import (
     DEFAULT_CLIENT_TIMEOUT_SECONDS,
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
@@ -23,7 +25,9 @@ from scaler.config.defaults import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
-from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.section.cluster import ClusterConfig
+from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
+from scaler.config.types.worker import WorkerCapabilities, WorkerNames
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
@@ -66,9 +70,9 @@ class SchedulerClusterCombo:
             self._address = ZMQConfig.from_string(address)
 
         if object_storage_address is None:
-            self._object_storage_address = ObjectStorageConfig(self._address.host, get_available_tcp_port())
+            self._object_storage_address = ObjectStorageAddressConfig(self._address.host, get_available_tcp_port())
         else:
-            self._object_storage_address = ObjectStorageConfig.from_string(object_storage_address)
+            self._object_storage_address = ObjectStorageAddressConfig.from_string(object_storage_address)
 
         if monitor_address is None:
             self._monitor_address = None
@@ -85,23 +89,26 @@ class SchedulerClusterCombo:
         self._object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
 
         self._cluster = Cluster(
-            address=self._address,
-            object_storage_address=self._object_storage_address,
-            preload=None,
-            worker_io_threads=worker_io_threads,
-            worker_names=[f"{socket.gethostname().split('.')[0]}" for _ in range(n_workers)],
-            per_worker_capabilities=per_worker_capabilities or {},
-            per_worker_task_queue_size=per_worker_task_queue_size,
-            heartbeat_interval_seconds=heartbeat_interval_seconds,
-            task_timeout_seconds=task_timeout_seconds,
-            death_timeout_seconds=death_timeout_seconds,
-            garbage_collect_interval_seconds=garbage_collect_interval_seconds,
-            trim_memory_threshold_bytes=trim_memory_threshold_bytes,
-            hard_processor_suspend=hard_processor_suspend,
-            event_loop=event_loop,
-            logging_paths=logging_paths,
-            logging_config_file=logging_config_file,
-            logging_level=logging_level,
+            config=ClusterConfig(
+                scheduler_address=self._address,
+                object_storage_address=self._object_storage_address,
+                preload=None,
+                worker_names=WorkerNames([f"{socket.gethostname().split('.')[0]}" for _ in range(n_workers)]),
+                num_of_workers=n_workers,
+                event_loop=event_loop,
+                worker_io_threads=worker_io_threads,
+                worker_config=WorkerConfig(
+                    per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),
+                    per_worker_task_queue_size=per_worker_task_queue_size,
+                    heartbeat_interval_seconds=heartbeat_interval_seconds,
+                    task_timeout_seconds=task_timeout_seconds,
+                    death_timeout_seconds=death_timeout_seconds,
+                    garbage_collect_interval_seconds=garbage_collect_interval_seconds,
+                    trim_memory_threshold_bytes=trim_memory_threshold_bytes,
+                    hard_processor_suspend=hard_processor_suspend,
+                ),
+                logging_config=LoggingConfig(paths=logging_paths, config_file=logging_config_file, level=logging_level),
+            )
         )
 
         self._scheduler = SchedulerProcess(

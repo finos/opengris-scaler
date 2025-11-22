@@ -1,6 +1,5 @@
 import argparse
 
-from scaler.config.loader import load_config
 from scaler.config.section.webui import WebUIConfig
 from scaler.ui.webui import start_webui
 
@@ -32,17 +31,4 @@ def get_args():
 
 
 def main():
-    args = get_args()
-
-    webui_config = load_config(WebUIConfig, args.config, args, section_name="webui")
-
-    assert webui_config.monitor_address is not None, "scheduler monitor address has to be set"
-
-    start_webui(
-        webui_config.monitor_address.to_address(),
-        webui_config.web_host,
-        webui_config.web_port,
-        logging_paths=webui_config.logging_paths,
-        logging_config_file=webui_config.logging_config_file,
-        logging_level=webui_config.logging_level,
-    )
+    start_webui(WebUIConfig.parse("Web UI for Scaler Monitoring", "webui"))

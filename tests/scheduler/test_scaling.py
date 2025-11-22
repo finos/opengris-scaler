@@ -9,6 +9,10 @@ from aiohttp import web
 from scaler import Client
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
+from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.web import WebConfig
+from scaler.config.common.worker import WorkerConfig
+from scaler.config.common.worker_adapter import WorkerAdapterConfig
 from scaler.config.defaults import (
     DEFAULT_CLIENT_TIMEOUT_SECONDS,
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
@@ -24,7 +28,9 @@ from scaler.config.defaults import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
-from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.section.native_worker_adapter import NativeWorkerAdapterConfig
+from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
+from scaler.config.types.worker import WorkerCapabilities
 from scaler.config.types.zmq import ZMQConfig
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
@@ -34,25 +40,28 @@ from scaler.worker_adapter.native import NativeWorkerAdapter
 from tests.utility.utility import logging_test_name
 
 
-def _run_native_worker_adapter(address: str, webhook_port: int) -> None:
+def _run_native_worker_adapter(scheduler_address: str, webhook_port: int) -> None:
     """Construct a NativeWorkerAdapter and run its aiohttp app. Runs in a separate process."""
     adapter = NativeWorkerAdapter(
-        address=ZMQConfig.from_string(address),
-        object_storage_address=None,
-        capabilities={},
-        io_threads=DEFAULT_IO_THREADS,
-        task_queue_size=10,
-        max_workers=4,
-        heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
-        task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
-        death_timeout_seconds=DEFAULT_WORKER_DEATH_TIMEOUT,
-        garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
-        trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
-        hard_processor_suspend=DEFAULT_HARD_PROCESSOR_SUSPEND,
-        event_loop="builtin",
-        logging_paths=("/dev/stdout",),
-        logging_config_file=None,
-        logging_level="INFO",
+        NativeWorkerAdapterConfig(
+            web_config=WebConfig(),
+            worker_adapter_config=WorkerAdapterConfig(
+                scheduler_address=ZMQConfig.from_string(scheduler_address), object_storage_address=None, max_workers=4
+            ),
+            event_loop="builtin",
+            worker_io_threads=DEFAULT_IO_THREADS,
+            worker_config=WorkerConfig(
+                per_worker_capabilities=WorkerCapabilities({}),
+                per_worker_task_queue_size=10,
+                heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+                task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
+                death_timeout_seconds=DEFAULT_WORKER_DEATH_TIMEOUT,
+                garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
+                trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
+                hard_processor_suspend=DEFAULT_HARD_PROCESSOR_SUSPEND,
+            ),
+            logging_config=LoggingConfig(paths=("/dev/stdout",), level="INFO", config_file=None),
+        )
     )
 
     app = adapter.create_app()
@@ -65,7 +74,7 @@ class TestScaling(unittest.TestCase):
         logging_test_name(self)
 
         self.scheduler_address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        self.object_storage_config = ObjectStorageConfig("127.0.0.1", get_available_tcp_port())
+        self.object_storage_config = ObjectStorageAddressConfig("127.0.0.1", get_available_tcp_port())
         self.webhook_port = get_available_tcp_port()
 
     def test_scaling_basic(self):

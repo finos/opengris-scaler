@@ -3,7 +3,7 @@ from typing import Dict, Optional
 
 import psutil
 
-from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.python.message import WorkerHeartbeat, WorkerHeartbeatEcho
 from scaler.protocol.python.status import Resource
@@ -14,7 +14,10 @@ from scaler.worker_adapter.symphony.task_manager import SymphonyTaskManager
 
 class SymphonyHeartbeatManager(Looper, HeartbeatManager):
     def __init__(
-        self, object_storage_address: Optional[ObjectStorageConfig], capabilities: Dict[str, int], task_queue_size: int
+        self,
+        object_storage_address: Optional[ObjectStorageAddressConfig],
+        capabilities: Dict[str, int],
+        task_queue_size: int,
     ):
         self._capabilities = capabilities
         self._task_queue_size = task_queue_size
@@ -29,7 +32,7 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
         self._start_timestamp_ns = 0
         self._latency_us = 0
 
-        self._object_storage_address: Optional[ObjectStorageConfig] = object_storage_address
+        self._object_storage_address: Optional[ObjectStorageAddressConfig] = object_storage_address
 
     def register(
         self,
@@ -54,10 +57,10 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
 
         if self._object_storage_address is None:
             address_message = heartbeat.object_storage_address()
-            self._object_storage_address = ObjectStorageConfig(address_message.host, address_message.port)
+            self._object_storage_address = ObjectStorageAddressConfig(address_message.host, address_message.port)
             await self._connector_storage.connect(self._object_storage_address.host, self._object_storage_address.port)
 
-    def get_object_storage_address(self) -> Optional[ObjectStorageConfig]:
+    def get_object_storage_address(self) -> Optional[ObjectStorageAddressConfig]:
         return self._object_storage_address
 
     async def routine(self):

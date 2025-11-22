@@ -2,57 +2,37 @@ import logging
 import multiprocessing
 import os
 import signal
-from typing import Dict, List, Optional, Tuple
+from typing import List
 
-from scaler.config.types.object_storage_server import ObjectStorageConfig
-from scaler.config.types.zmq import ZMQConfig
+from scaler.config.section.cluster import ClusterConfig
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.worker import Worker
 
 
 class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
 
-    def __init__(
-        self,
-        address: ZMQConfig,
-        object_storage_address: Optional[ObjectStorageConfig],
-        preload: Optional[str],
-        worker_io_threads: int,
-        worker_names: List[str],
-        per_worker_capabilities: Dict[str, int],
-        per_worker_task_queue_size: int,
-        heartbeat_interval_seconds: int,
-        task_timeout_seconds: int,
-        death_timeout_seconds: int,
-        garbage_collect_interval_seconds: int,
-        trim_memory_threshold_bytes: int,
-        hard_processor_suspend: bool,
-        event_loop: str,
-        logging_paths: Tuple[str, ...],
-        logging_config_file: Optional[str],
-        logging_level: str,
-    ):
+    def __init__(self, config: ClusterConfig):
         multiprocessing.Process.__init__(self, name="WorkerMaster")
 
-        self._address = address
-        self._object_storage_address = object_storage_address
-        self._preload = preload
-        self._worker_io_threads = worker_io_threads
-        self._worker_names = worker_names
-        self._per_worker_capabilities = per_worker_capabilities
+        self._address = config.scheduler_address
+        self._object_storage_address = config.object_storage_address
+        self._preload = config.preload
+        self._worker_io_threads = config.worker_io_threads
+        self._worker_names = config.worker_names.names
+        self._per_worker_capabilities = config.worker_config.per_worker_capabilities.capabilities
 
-        self._per_worker_task_queue_size = per_worker_task_queue_size
-        self._heartbeat_interval_seconds = heartbeat_interval_seconds
-        self._task_timeout_seconds = task_timeout_seconds
-        self._death_timeout_seconds = death_timeout_seconds
-        self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
-        self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
-        self._hard_processor_suspend = hard_processor_suspend
-        self._event_loop = event_loop
+        self._per_worker_task_queue_size = config.worker_config.per_worker_task_queue_size
+        self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
+        self._task_timeout_seconds = config.worker_config.task_timeout_seconds
+        self._death_timeout_seconds = config.worker_config.death_timeout_seconds
+        self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
+        self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
+        self._hard_processor_suspend = config.worker_config.hard_processor_suspend
+        self._event_loop = config.event_loop
 
-        self._logging_paths = logging_paths
-        self._logging_config_file = logging_config_file
-        self._logging_level = logging_level
+        self._logging_paths = config.logging_config.paths
+        self._logging_config_file = config.logging_config.config_file
+        self._logging_level = config.logging_config.level
 
         self._workers: List[Worker] = []
 
