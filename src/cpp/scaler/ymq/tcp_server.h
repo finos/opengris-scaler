@@ -14,18 +14,18 @@ namespace ymq {
 class EventLoopThread;
 class EventManager;
 
-class TcpServer {
+class TCPServer {
 public:
     using BindReturnCallback = Configuration::BindReturnCallback;
 
-    TcpServer(
+    TCPServer(
         EventLoopThread* eventLoop,
         std::string localIOSocketIdentity,
         sockaddr addr,
         BindReturnCallback onBindReturn) noexcept;
-    TcpServer(const TcpServer&)            = delete;
-    TcpServer& operator=(const TcpServer&) = delete;
-    ~TcpServer() noexcept;
+    TCPServer(const TCPServer&)            = delete;
+    TCPServer& operator=(const TCPServer&) = delete;
+    ~TCPServer() noexcept;
 
     void disconnect();
     void onCreated();

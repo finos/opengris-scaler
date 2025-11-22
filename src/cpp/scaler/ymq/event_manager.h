@@ -46,7 +46,7 @@ public:
         }
 #endif  // __linux__
 #ifdef _WIN32
-        if constexpr (std::same_as<Configuration::PollingContext, IocpContext>) {
+        if constexpr (std::same_as<Configuration::PollingContext, IOCPContext>) {
             onRead();
             onWrite();
             if (events & IOCP_SOCKET_CLOSED) {

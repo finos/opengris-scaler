@@ -14,7 +14,7 @@
 namespace scaler {
 namespace ymq {
 
-void TcpClient::onCreated()
+void TCPClient::onCreated()
 {
     assert(_rawClient.nativeHandle() == 0);
     assert(_eventManager.get() != nullptr);
@@ -44,7 +44,7 @@ void TcpClient::onCreated()
     }
 }
 
-TcpClient::TcpClient(
+TCPClient::TCPClient(
     EventLoopThread* eventLoopThread,
     std::string localIOSocketIdentity,
     sockaddr remoteAddr,
@@ -66,11 +66,11 @@ TcpClient::TcpClient(
     _eventManager->onError = [this] { this->onError(); };
 }
 
-void TcpClient::onRead()
+void TCPClient::onRead()
 {
 }
 
-void TcpClient::onWrite()
+void TCPClient::onWrite()
 {
     if (!_rawClient.nativeHandle()) {
         return;
@@ -94,10 +94,10 @@ void TcpClient::onWrite()
     _rawClient.zeroNativeHandle();
     _connected = true;
 
-    _eventLoopThread->_eventLoop.executeLater([sock] { sock->removeConnectedTcpClient(); });
+    _eventLoopThread->_eventLoop.executeLater([sock] { sock->removeConnectedTCPClient(); });
 }
 
-void TcpClient::retry()
+void TCPClient::retry()
 {
     if (_retryTimes > _maxRetryTimes) {
         _logger.log(Logger::LoggingLevel::error, "Retried times has reached maximum: ", _maxRetryTimes);
@@ -113,7 +113,7 @@ void TcpClient::retry()
     _retryIdentifier = _eventLoopThread->_eventLoop.executeAt(at, [this] { this->onCreated(); });
 }
 
-void TcpClient::disconnect()
+void TCPClient::disconnect()
 {
     if (_rawClient.nativeHandle()) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_rawClient.nativeHandle());
@@ -121,13 +121,13 @@ void TcpClient::disconnect()
     }
 }
 
-TcpClient::~TcpClient() noexcept
+TCPClient::~TCPClient() noexcept
 {
     disconnect();
     if (_retryTimes > 0) {
         _eventLoopThread->_eventLoop.cancelExecution(_retryIdentifier);
     }
-    // TODO: Do we think this is an error? See TcpServer::~TcpServer for detail.
+    // TODO: Do we think this is an error? See TCPServer::~TCPServer for detail.
     if (_onConnectReturn) {
         _onConnectReturn({});
     }

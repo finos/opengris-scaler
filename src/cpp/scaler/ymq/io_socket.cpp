@@ -293,7 +293,7 @@ void IOSocket::onConnectionCreated(int fd, sockaddr localAddr, sockaddr remoteAd
     _unestablishedConnection.back()->onCreated();
 }
 
-void IOSocket::removeConnectedTcpClient() noexcept
+void IOSocket::removeConnectedTCPClient() noexcept
 {
     if (this->_tcpClient && this->_tcpClient->_connected) {
         this->_tcpClient.reset();

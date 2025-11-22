@@ -21,7 +21,7 @@ class EventManager;
 
 // In the constructor, the epoll context should register eventfd/timerfd from
 // This way, the queues need not know about the event manager. We don't use callbacks.
-class IocpContext {
+class IOCPContext {
 public:
     using Function             = Configuration::ExecutionFunction;
     using DelayedFunctionQueue = std::queue<Function>;
@@ -29,7 +29,7 @@ public:
     HANDLE _completionPort;
 
     // TODO: Handle error with unrecoverable error in the next PR.
-    IocpContext()
+    IOCPContext()
         : _completionPort(CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, (ULONG_PTR)0, 1))
         , _timingFunctions(_completionPort, _isTimingFd)
         , _interruptiveFunctions(_completionPort, _isInterruptiveFd)
@@ -45,7 +45,7 @@ public:
         }
     }
 
-    ~IocpContext() { CloseHandle(_completionPort); }
+    ~IOCPContext() { CloseHandle(_completionPort); }
 
     void loop();
 
