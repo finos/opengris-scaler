@@ -19,15 +19,15 @@
 // First-party
 #include "scaler/ymq/configuration.h"
 #include "scaler/ymq/message.h"
-#include "scaler/ymq/tcp_client.h"
-#include "scaler/ymq/tcp_server.h"
+#include "scaler/ymq/stream_client.h"
+#include "scaler/ymq/stream_server.h"
 #include "scaler/ymq/typedefs.h"
 
 namespace scaler {
 namespace ymq {
 
 class EventLoopThread;
-class MessageConnectionTCP;
+class MessageConnection;
 class TcpWriteOperation;
 
 class IOSocket {
@@ -65,9 +65,9 @@ public:
     // TODO: Maybe figure out a better name than keepInBook. When keepInBook is true, the system will remember this
     // remote identity and will treat the next connection with that identity as the reincarnation of this identity.
     // Thus, keeping the identity in the book.
-    void onConnectionDisconnected(MessageConnectionTCP* conn, bool keepInBook = true) noexcept;
+    void onConnectionDisconnected(MessageConnection* conn, bool keepInBook = true) noexcept;
     // From Connection Class only
-    void onConnectionIdentityReceived(MessageConnectionTCP* conn) noexcept;
+    void onConnectionIdentityReceived(MessageConnection* conn) noexcept;
 
     // NOTE: These two functions are called respectively by sendMessage and server/client.
     // Notice that in the each case only the needed information are passed in; so it's less
@@ -93,13 +93,13 @@ private:
 
     // NOTE: Owning one TCPClient means the user cannot issue another connectTo
     // when some message connection is retring to connect.
-    std::optional<TCPClient> _tcpClient;
+    std::optional<StreamClient> _tcpClient;
 
     // NOTE: Owning one TCPServer means the user cannot bindTo multiple addresses.
-    std::optional<TCPServer> _tcpServer;
+    std::optional<StreamServer> _tcpServer;
 
     // Remote identity to connection map
-    std::map<std::string, std::unique_ptr<MessageConnectionTCP>> _identityToConnection;
+    std::map<std::string, std::unique_ptr<MessageConnection>> _identityToConnection;
 
     // NOTE: An unestablished connection can be in the following states:
     //  1. The underlying socket is not yet defined. This happens when user call sendMessage
@@ -111,7 +111,7 @@ private:
     //  On the other hand, `Established Connection` are stored in _identityToConnection map.
     //  An established connection is a network connection that is currently connected, and
     //  exchanged their identity.
-    std::vector<std::unique_ptr<MessageConnectionTCP>> _unestablishedConnection;
+    std::vector<std::unique_ptr<MessageConnection>> _unestablishedConnection;
 
     // NOTE: This variable needs to present in the IOSocket level because the user
     // does not care which connection a message is coming from.

@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "scaler/ymq/internal/raw_server_tcp_fd.h"
+#include "scaler/ymq/internal/raw_stream_server_handle.h"
 
 // First-party
 #include "scaler/logging/logging.h"
@@ -14,18 +14,18 @@ namespace ymq {
 class EventLoopThread;
 class EventManager;
 
-class TCPServer {
+class StreamServer {
 public:
     using BindReturnCallback = Configuration::BindReturnCallback;
 
-    TCPServer(
+    StreamServer(
         EventLoopThread* eventLoop,
         std::string localIOSocketIdentity,
         sockaddr addr,
         BindReturnCallback onBindReturn) noexcept;
-    TCPServer(const TCPServer&)            = delete;
-    TCPServer& operator=(const TCPServer&) = delete;
-    ~TCPServer() noexcept;
+    StreamServer(const StreamServer&)            = delete;
+    StreamServer& operator=(const StreamServer&) = delete;
+    ~StreamServer() noexcept;
 
     void disconnect();
     void onCreated();
@@ -51,7 +51,7 @@ private:
 
     Logger _logger;
 
-    RawServerTCPFD _rawServer;
+    RawStreamServerHandle _rawServer;
 };
 
 }  // namespace ymq

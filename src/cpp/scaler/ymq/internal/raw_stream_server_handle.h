@@ -7,16 +7,16 @@
 namespace scaler {
 namespace ymq {
 
-class RawServerTCPFD {
+class RawStreamServerHandle {
 public:
-    RawServerTCPFD(sockaddr addr);
+    RawStreamServerHandle(sockaddr addr);
 
-    RawServerTCPFD(const RawServerTCPFD&)            = delete;
-    RawServerTCPFD(RawServerTCPFD&&)                 = delete;
-    RawServerTCPFD& operator=(const RawServerTCPFD&) = delete;
-    RawServerTCPFD& operator=(RawServerTCPFD&&)      = delete;
+    RawStreamServerHandle(const RawStreamServerHandle&)            = delete;
+    RawStreamServerHandle(RawStreamServerHandle&&)                 = delete;
+    RawStreamServerHandle& operator=(const RawStreamServerHandle&) = delete;
+    RawStreamServerHandle& operator=(RawStreamServerHandle&&)      = delete;
 
-    ~RawServerTCPFD();
+    ~RawStreamServerHandle();
     void prepareAcceptSocket(void* notifyHandle);
     std::vector<std::pair<uint64_t, sockaddr>> getNewConns();
 

@@ -5,13 +5,13 @@
 #include "scaler/error/error.h"
 #include "scaler/ymq/internal/defs.h"
 #include "scaler/ymq/internal/network_utils.h"
-#include "scaler/ymq/internal/raw_server_tcp_fd.h"
+#include "scaler/ymq/internal/raw_stream_server_handle.h"
 #include "scaler/ymq/network_utils.h"
 
 namespace scaler {
 namespace ymq {
 
-RawServerTCPFD::RawServerTCPFD(sockaddr addr)
+RawStreamServerHandle::RawStreamServerHandle(sockaddr addr)
 {
     _serverFD = {};
     _addr     = std::move(addr);
@@ -77,7 +77,7 @@ RawServerTCPFD::RawServerTCPFD(sockaddr addr)
     }
 }
 
-bool RawServerTCPFD::setReuseAddress()
+bool RawStreamServerHandle::setReuseAddress()
 {
     if (::scaler::ymq::setReuseAddress(_serverFD)) {
         return true;
@@ -87,7 +87,7 @@ bool RawServerTCPFD::setReuseAddress()
     }
 }
 
-void RawServerTCPFD::bindAndListen()
+void RawStreamServerHandle::bindAndListen()
 {
     if (bind(_serverFD, &_addr, sizeof(_addr)) == -1) {
         const auto serverFD = _serverFD;
@@ -122,7 +122,7 @@ void RawServerTCPFD::bindAndListen()
     }
 }
 
-RawServerTCPFD::~RawServerTCPFD()
+RawStreamServerHandle::~RawStreamServerHandle()
 {
     if (_newConn) {
         CloseAndZeroSocket(_newConn);
@@ -133,7 +133,7 @@ RawServerTCPFD::~RawServerTCPFD()
     }
 }
 
-void RawServerTCPFD::prepareAcceptSocket(void* notifyHandle)
+void RawStreamServerHandle::prepareAcceptSocket(void* notifyHandle)
 {
     _newConn = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (_newConn == INVALID_SOCKET) {
@@ -196,7 +196,7 @@ void RawServerTCPFD::prepareAcceptSocket(void* notifyHandle)
     // acceptEx never succeed.
 }
 
-std::vector<std::pair<uint64_t, sockaddr>> RawServerTCPFD::getNewConns()
+std::vector<std::pair<uint64_t, sockaddr>> RawStreamServerHandle::getNewConns()
 {
     std::vector<std::pair<uint64_t, sockaddr>> res;
 
@@ -255,7 +255,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawServerTCPFD::getNewConns()
     return res;
 }
 
-void RawServerTCPFD::destroy()
+void RawStreamServerHandle::destroy()
 {
     if (_serverFD) {
         CancelIoEx((HANDLE)_serverFD, nullptr);

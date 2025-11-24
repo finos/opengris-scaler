@@ -5,7 +5,7 @@
 // First-party
 #include "scaler/logging/logging.h"
 #include "scaler/ymq/configuration.h"
-#include "scaler/ymq/internal/raw_client_tcp_fd.h"
+#include "scaler/ymq/internal/raw_stream_client_handle.h"
 
 namespace scaler {
 namespace ymq {
@@ -13,19 +13,19 @@ namespace ymq {
 class EventLoopThread;
 class EventManager;
 
-class TCPClient {
+class StreamClient {
 public:
     using ConnectReturnCallback = Configuration::ConnectReturnCallback;
 
-    TCPClient(
+    StreamClient(
         EventLoopThread* eventLoopThread,
         std::string localIOSocketIdentity,
         sockaddr remoteAddr,
         ConnectReturnCallback onConnectReturn,
         size_t maxRetryTimes) noexcept;
-    TCPClient(const TCPClient&)            = delete;
-    TCPClient& operator=(const TCPClient&) = delete;
-    ~TCPClient() noexcept;
+    StreamClient(const StreamClient&)            = delete;
+    StreamClient& operator=(const StreamClient&) = delete;
+    ~StreamClient() noexcept;
 
     void onCreated();
     void retry();
@@ -55,7 +55,7 @@ private:
 
     const size_t _maxRetryTimes;
 
-    RawClientTCPFD _rawClient;
+    RawStreamClientHandle _rawClient;
 };
 
 }  // namespace ymq

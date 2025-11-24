@@ -7,7 +7,7 @@
 
 #include "scaler/logging/logging.h"
 #include "scaler/ymq/configuration.h"
-#include "scaler/ymq/internal/raw_connection_tcp_fd.h"
+#include "scaler/ymq/internal/raw_stream_connection_handle.h"
 #include "scaler/ymq/io_socket.h"
 #include "scaler/ymq/tcp_operations.h"
 
@@ -17,12 +17,12 @@ namespace ymq {
 class EventLoopThread;
 class EventManager;
 
-class MessageConnectionTCP {
+class MessageConnection {
 public:
     using SendMessageCallback = Configuration::SendMessageCallback;
     using RecvMessageCallback = Configuration::RecvMessageCallback;
 
-    MessageConnectionTCP(
+    MessageConnection(
         EventLoopThread* eventLoopThread,
         int connFd,
         sockaddr localAddr,
@@ -32,14 +32,14 @@ public:
         std::queue<RecvMessageCallback>* _pendingRecvMessageCallbacks,
         std::queue<Message>* leftoverMessagesAfterConnectionDied) noexcept;
 
-    MessageConnectionTCP(
+    MessageConnection(
         EventLoopThread* eventLoopThread,
         std::string localIOSocketIdentity,
         std::string remoteIOSocketIdentity,
         std::queue<RecvMessageCallback>* _pendingRecvMessageCallbacks,
         std::queue<Message>* leftoverMessagesAfterConnectionDied) noexcept;
 
-    ~MessageConnectionTCP() noexcept;
+    ~MessageConnection() noexcept;
 
     void onCreated();
 
@@ -82,7 +82,7 @@ private:
     void setRemoteIdentity() noexcept;
 
     std::unique_ptr<EventManager> _eventManager;
-    RawConnectionTCPFD _rawConn;
+    RawStreamConnectionHandle _rawConn;
     sockaddr _localAddr;
     std::string _localIOSocketIdentity;
 
@@ -102,8 +102,8 @@ private:
     bool _readSomeBytes;
 
     constexpr static bool isCompleteMessage(const TcpReadOperation& x);
-    friend void IOSocket::onConnectionIdentityReceived(MessageConnectionTCP* conn) noexcept;
-    friend void IOSocket::onConnectionDisconnected(MessageConnectionTCP* conn, bool keepInBook) noexcept;
+    friend void IOSocket::onConnectionIdentityReceived(MessageConnection* conn) noexcept;
+    friend void IOSocket::onConnectionDisconnected(MessageConnection* conn, bool keepInBook) noexcept;
 };
 
 }  // namespace ymq

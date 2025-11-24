@@ -7,15 +7,15 @@
 namespace scaler {
 namespace ymq {
 
-class RawClientTCPFD {
+class RawStreamClientHandle {
 public:
-    RawClientTCPFD(sockaddr remoteAddr);
-    ~RawClientTCPFD();
+    RawStreamClientHandle(sockaddr remoteAddr);
+    ~RawStreamClientHandle();
 
-    RawClientTCPFD(RawClientTCPFD&&)                  = delete;
-    RawClientTCPFD& operator=(RawClientTCPFD&& other) = delete;
-    RawClientTCPFD(const RawClientTCPFD&)             = delete;
-    RawClientTCPFD& operator=(const RawClientTCPFD&)  = delete;
+    RawStreamClientHandle(RawStreamClientHandle&&)                  = delete;
+    RawStreamClientHandle& operator=(RawStreamClientHandle&& other) = delete;
+    RawStreamClientHandle(const RawStreamClientHandle&)             = delete;
+    RawStreamClientHandle& operator=(const RawStreamClientHandle&)  = delete;
 
     void create();
     void destroy();

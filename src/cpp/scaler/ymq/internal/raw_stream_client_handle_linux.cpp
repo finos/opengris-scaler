@@ -1,15 +1,15 @@
 #ifdef __linux__
 #include "scaler/error/error.h"
-#include "scaler/ymq/internal/raw_client_tcp_fd.h"
+#include "scaler/ymq/internal/raw_stream_client_handle.h"
 
 namespace scaler {
 namespace ymq {
 
-RawClientTCPFD::RawClientTCPFD(sockaddr remoteAddr): _clientFD {}, _remoteAddr(std::move(remoteAddr))
+RawStreamClientHandle::RawStreamClientHandle(sockaddr remoteAddr): _clientFD {}, _remoteAddr(std::move(remoteAddr))
 {
 }
 
-void RawClientTCPFD::create()
+void RawStreamClientHandle::create()
 {
     _clientFD = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
 
@@ -45,7 +45,7 @@ void RawClientTCPFD::create()
     }
 }
 
-bool RawClientTCPFD::prepConnect(void* notifyHandle)
+bool RawStreamClientHandle::prepConnect(void* notifyHandle)
 {
     const int ret = connect((int)_clientFD, (sockaddr*)&_remoteAddr, sizeof(_remoteAddr));
 
@@ -106,7 +106,7 @@ bool RawClientTCPFD::prepConnect(void* notifyHandle)
     }
 }
 
-bool RawClientTCPFD::needRetry()
+bool RawStreamClientHandle::needRetry()
 {
     int err {};
     socklen_t errLen {sizeof(err)};
@@ -160,19 +160,19 @@ bool RawClientTCPFD::needRetry()
     return false;
 }
 
-void RawClientTCPFD::destroy()
+void RawStreamClientHandle::destroy()
 {
     if (_clientFD) {
         CloseAndZeroSocket(_clientFD);
     }
 }
 
-void RawClientTCPFD::zeroNativeHandle() noexcept
+void RawStreamClientHandle::zeroNativeHandle() noexcept
 {
     _clientFD = 0;
 }
 
-RawClientTCPFD::~RawClientTCPFD()
+RawStreamClientHandle::~RawStreamClientHandle()
 {
     destroy();
 }

@@ -16,8 +16,8 @@ add_library(ymq_objs OBJECT
 
     event_manager.h
 
-    message_connection_tcp.h
-    message_connection_tcp.cpp
+    message_connection.h
+    message_connection.cpp
 
     third_party/concurrentqueue.h
     interruptive_concurrent_queue.h
@@ -30,11 +30,11 @@ add_library(ymq_objs OBJECT
     io_socket.h
     io_socket.cpp
 
-    tcp_server.h
-    tcp_server.cpp
+    stream_server.h
+    stream_server.cpp
 
-    tcp_client.h
-    tcp_client.cpp
+    stream_client.h
+    stream_client.cpp
 
     tcp_operations.h
 
@@ -49,25 +49,25 @@ add_library(ymq_objs OBJECT
 
     internal/defs.h
 
-    internal/raw_connection_tcp_fd.h
+    internal/raw_stream_connection_handle.h
 
-    internal/raw_server_tcp_fd.h
+    internal/raw_stream_server_handle.h
 
-    internal/raw_client_tcp_fd.h
+    internal/raw_stream_client_handle.h
 )
 
 # System dependent file for YMQ internal
 if(LINUX)
     target_sources(ymq_objs PRIVATE
-        internal/raw_connection_tcp_fd_linux.cpp
-        internal/raw_server_tcp_fd_linux.cpp
-        internal/raw_client_tcp_fd_linux.cpp
+        internal/raw_stream_connection_handle_linux.cpp
+        internal/raw_stream_server_handle_linux.cpp
+        internal/raw_stream_client_handle_linux.cpp
     )
 elseif(WIN32)
     target_sources(ymq_objs PRIVATE
-        internal/raw_connection_tcp_fd_windows.cpp
-        internal/raw_server_tcp_fd_windows.cpp
-        internal/raw_client_tcp_fd_windows.cpp
+        internal/raw_stream_connection_handle_windows.cpp
+        internal/raw_stream_server_handle_windows.cpp
+        internal/raw_stream_client_handle_windows.cpp
     )
 endif()
 

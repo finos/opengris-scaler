@@ -1,4 +1,4 @@
-#include "scaler/ymq/tcp_client.h"
+#include "scaler/ymq/stream_client.h"
 
 #include <chrono>
 #include <memory>
@@ -7,14 +7,14 @@
 #include "scaler/ymq/event_loop_thread.h"
 #include "scaler/ymq/event_manager.h"
 #include "scaler/ymq/io_socket.h"
-#include "scaler/ymq/message_connection_tcp.h"
+#include "scaler/ymq/message_connection.h"
 #include "scaler/ymq/network_utils.h"
 #include "scaler/ymq/timestamp.h"
 
 namespace scaler {
 namespace ymq {
 
-void TCPClient::onCreated()
+void StreamClient::onCreated()
 {
     assert(_rawClient.nativeHandle() == 0);
     assert(_eventManager.get() != nullptr);
@@ -44,7 +44,7 @@ void TCPClient::onCreated()
     }
 }
 
-TCPClient::TCPClient(
+StreamClient::StreamClient(
     EventLoopThread* eventLoopThread,
     std::string localIOSocketIdentity,
     sockaddr remoteAddr,
@@ -66,11 +66,11 @@ TCPClient::TCPClient(
     _eventManager->onError = [this] { this->onError(); };
 }
 
-void TCPClient::onRead()
+void StreamClient::onRead()
 {
 }
 
-void TCPClient::onWrite()
+void StreamClient::onWrite()
 {
     if (!_rawClient.nativeHandle()) {
         return;
@@ -97,7 +97,7 @@ void TCPClient::onWrite()
     _eventLoopThread->_eventLoop.executeLater([sock] { sock->removeConnectedTCPClient(); });
 }
 
-void TCPClient::retry()
+void StreamClient::retry()
 {
     if (_retryTimes > _maxRetryTimes) {
         _logger.log(Logger::LoggingLevel::error, "Retried times has reached maximum: ", _maxRetryTimes);
@@ -113,7 +113,7 @@ void TCPClient::retry()
     _retryIdentifier = _eventLoopThread->_eventLoop.executeAt(at, [this] { this->onCreated(); });
 }
 
-void TCPClient::disconnect()
+void StreamClient::disconnect()
 {
     if (_rawClient.nativeHandle()) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_rawClient.nativeHandle());
@@ -121,7 +121,7 @@ void TCPClient::disconnect()
     }
 }
 
-TCPClient::~TCPClient() noexcept
+StreamClient::~StreamClient() noexcept
 {
     disconnect();
     if (_retryTimes > 0) {

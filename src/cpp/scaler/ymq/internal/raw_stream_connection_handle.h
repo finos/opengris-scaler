@@ -9,7 +9,7 @@
 namespace scaler {
 namespace ymq {
 
-class RawConnectionTCPFD {
+class RawStreamConnectionHandle {
 public:
     enum class IOStatus {
         MoreBytesAvailable,
@@ -44,19 +44,19 @@ public:
     void shutdownBoth() noexcept;
     void closeAndZero() noexcept;
 
-    RawConnectionTCPFD(uint64_t fd): _socketStatus(SocketStatus::Connected), _fd(fd) {}
-    RawConnectionTCPFD(): _fd {} {}
-    ~RawConnectionTCPFD() noexcept
+    RawStreamConnectionHandle(uint64_t fd): _socketStatus(SocketStatus::Connected), _fd(fd) {}
+    RawStreamConnectionHandle(): _fd {} {}
+    ~RawStreamConnectionHandle() noexcept
     {
         if (_fd) {
             closeAndZero();
         }
     }
 
-    RawConnectionTCPFD(const RawConnectionTCPFD&)            = delete;
-    RawConnectionTCPFD(RawConnectionTCPFD&&)                 = delete;
-    RawConnectionTCPFD& operator=(const RawConnectionTCPFD&) = delete;
-    RawConnectionTCPFD& operator=(RawConnectionTCPFD&&)      = delete;
+    RawStreamConnectionHandle(const RawStreamConnectionHandle&)            = delete;
+    RawStreamConnectionHandle(RawStreamConnectionHandle&&)                 = delete;
+    RawStreamConnectionHandle& operator=(const RawStreamConnectionHandle&) = delete;
+    RawStreamConnectionHandle& operator=(RawStreamConnectionHandle&&)      = delete;
 
 private:
     std::expected<uint64_t, IOStatus> readBytes(void* dest, size_t size);

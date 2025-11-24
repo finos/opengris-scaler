@@ -11,11 +11,11 @@
 #include "scaler/error/error.h"
 #include "scaler/ymq/event_loop_thread.h"
 #include "scaler/ymq/event_manager.h"
-#include "scaler/ymq/internal/raw_connection_tcp_fd.h"
-#include "scaler/ymq/message_connection_tcp.h"
+#include "scaler/ymq/internal/raw_stream_connection_handle.h"
+#include "scaler/ymq/message_connection.h"
 #include "scaler/ymq/network_utils.h"
-#include "scaler/ymq/tcp_client.h"
-#include "scaler/ymq/tcp_server.h"
+#include "scaler/ymq/stream_client.h"
+#include "scaler/ymq/stream_server.h"
 #include "scaler/ymq/typedefs.h"
 
 namespace scaler {
@@ -77,13 +77,13 @@ void IOSocket::sendMessage(Message message, SendMessageCallback onMessageSent) n
                 default: break;
             }
 
-            MessageConnectionTCP* conn = nullptr;
+            MessageConnection* conn = nullptr;
 
             if (this->_identityToConnection.contains(address)) {
                 conn = this->_identityToConnection[address].get();
             } else {
-                const auto it = std::ranges::find(
-                    _unestablishedConnection, address, &MessageConnectionTCP::_remoteIOSocketIdentity);
+                const auto it =
+                    std::ranges::find(_unestablishedConnection, address, &MessageConnection::_remoteIOSocketIdentity);
                 if (it != _unestablishedConnection.end()) {
                     conn = it->get();
                 } else {
@@ -179,7 +179,7 @@ void IOSocket::closeConnection(Identity remoteSocketIdentity) noexcept
 
 // TODO: The function should be separated into onConnectionAborted, onConnectionDisconnected,
 // and probably onConnectionAbortedBeforeEstablished(?)
-void IOSocket::onConnectionDisconnected(MessageConnectionTCP* conn, bool keepInBook) noexcept
+void IOSocket::onConnectionDisconnected(MessageConnection* conn, bool keepInBook) noexcept
 {
     if (!conn->_remoteIOSocketIdentity) {
         auto connIt = std::ranges::find_if(_unestablishedConnection, [&](const auto& x) { return x.get() == conn; });
@@ -227,7 +227,7 @@ void IOSocket::onConnectionDisconnected(MessageConnectionTCP* conn, bool keepInB
 // - look up _unconnectedConnections to find if there's a connection with the same identity
 //   if so, merge it to this connection that currently resides in _connectingConnections
 // Similar thing for disconnection as well.
-void IOSocket::onConnectionIdentityReceived(MessageConnectionTCP* conn) noexcept
+void IOSocket::onConnectionIdentityReceived(MessageConnection* conn) noexcept
 {
     auto& s = conn->_remoteIOSocketIdentity;
     if (socketType() == IOSocketType::Connector) {
@@ -269,7 +269,7 @@ void IOSocket::onConnectionIdentityReceived(MessageConnectionTCP* conn) noexcept
 void IOSocket::onConnectionCreated(std::string remoteIOSocketIdentity) noexcept
 {
     _unestablishedConnection.push_back(
-        std::make_unique<MessageConnectionTCP>(
+        std::make_unique<MessageConnection>(
             _eventLoopThread.get(),
             this->identity(),
             std::move(remoteIOSocketIdentity),
@@ -281,7 +281,7 @@ void IOSocket::onConnectionCreated(std::string remoteIOSocketIdentity) noexcept
 void IOSocket::onConnectionCreated(int fd, sockaddr localAddr, sockaddr remoteAddr, bool responsibleForRetry) noexcept
 {
     _unestablishedConnection.push_back(
-        std::make_unique<MessageConnectionTCP>(
+        std::make_unique<MessageConnection>(
             _eventLoopThread.get(),
             fd,
             std::move(localAddr),

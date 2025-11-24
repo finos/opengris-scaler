@@ -5,12 +5,12 @@
 #include "scaler/error/error.h"
 #include "scaler/ymq/internal/defs.h"
 #include "scaler/ymq/internal/network_utils.h"
-#include "scaler/ymq/internal/raw_server_tcp_fd.h"
+#include "scaler/ymq/internal/raw_stream_server_handle.h"
 
 namespace scaler {
 namespace ymq {
 
-RawServerTCPFD::RawServerTCPFD(sockaddr addr)
+RawStreamServerHandle::RawStreamServerHandle(sockaddr addr)
 {
     _serverFD = {};
     _addr     = std::move(addr);
@@ -31,7 +31,7 @@ RawServerTCPFD::RawServerTCPFD(sockaddr addr)
     }
 }
 
-bool RawServerTCPFD::setReuseAddress()
+bool RawStreamServerHandle::setReuseAddress()
 {
     if (::scaler::ymq::setReuseAddress(_serverFD)) {
         return true;
@@ -41,7 +41,7 @@ bool RawServerTCPFD::setReuseAddress()
     }
 }
 
-void RawServerTCPFD::bindAndListen()
+void RawStreamServerHandle::bindAndListen()
 {
     if (bind(_serverFD, &_addr, sizeof(_addr)) == -1) {
         const auto serverFD = _serverFD;
@@ -76,19 +76,19 @@ void RawServerTCPFD::bindAndListen()
     }
 }
 
-RawServerTCPFD::~RawServerTCPFD()
+RawStreamServerHandle::~RawStreamServerHandle()
 {
     if (_serverFD) {
         CloseAndZeroSocket(_serverFD);
     }
 }
 
-void RawServerTCPFD::prepareAcceptSocket(void* notifyHandle)
+void RawStreamServerHandle::prepareAcceptSocket(void* notifyHandle)
 {
     (void)notifyHandle;
 }
 
-std::vector<std::pair<uint64_t, sockaddr>> RawServerTCPFD::getNewConns()
+std::vector<std::pair<uint64_t, sockaddr>> RawStreamServerHandle::getNewConns()
 {
     std::vector<std::pair<uint64_t, sockaddr>> res;
     while (true) {
@@ -165,7 +165,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawServerTCPFD::getNewConns()
     }
 }
 
-void RawServerTCPFD::destroy()
+void RawStreamServerHandle::destroy()
 {
     if (_serverFD) {
         CloseAndZeroSocket(_serverFD);

@@ -1,4 +1,4 @@
-#include "scaler/ymq/tcp_server.h"
+#include "scaler/ymq/stream_server.h"
 
 #include <expected>
 #include <memory>
@@ -7,13 +7,13 @@
 #include "scaler/ymq/event_loop_thread.h"
 #include "scaler/ymq/event_manager.h"
 #include "scaler/ymq/io_socket.h"
-#include "scaler/ymq/message_connection_tcp.h"
+#include "scaler/ymq/message_connection.h"
 #include "scaler/ymq/network_utils.h"
 
 namespace scaler {
 namespace ymq {
 
-bool TCPServer::createAndBindSocket()
+bool StreamServer::createAndBindSocket()
 {
     if (!_rawServer.setReuseAddress()) {
         _logger.log(
@@ -33,7 +33,7 @@ bool TCPServer::createAndBindSocket()
     return true;
 }
 
-TCPServer::TCPServer(
+StreamServer::StreamServer(
     EventLoopThread* eventLoopThread,
     std::string localIOSocketIdentity,
     sockaddr addr,
@@ -51,7 +51,7 @@ TCPServer::TCPServer(
     _eventManager->onError = [this] { this->onError(); };
 }
 
-void TCPServer::onCreated()
+void StreamServer::onCreated()
 {
     if (!createAndBindSocket()) {
         return;
@@ -64,7 +64,7 @@ void TCPServer::onCreated()
     _onBindReturn = {};
 }
 
-void TCPServer::disconnect()
+void StreamServer::disconnect()
 {
     if (_rawServer.nativeHandle()) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_rawServer.nativeHandle());
@@ -72,7 +72,7 @@ void TCPServer::disconnect()
     }
 }
 
-void TCPServer::onRead()
+void StreamServer::onRead()
 {
     if (!_rawServer.nativeHandle()) {
         return;
@@ -91,7 +91,7 @@ void TCPServer::onRead()
     _rawServer.prepareAcceptSocket((void*)_eventManager.get());
 }
 
-TCPServer::~TCPServer() noexcept
+StreamServer::~StreamServer() noexcept
 {
     disconnect();
     // TODO: Do we think this is an error? In extreme cases:

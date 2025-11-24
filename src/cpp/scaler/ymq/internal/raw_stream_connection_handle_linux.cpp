@@ -4,18 +4,19 @@
 #include "scaler/error/error.h"
 #include "scaler/ymq/internal/defs.h"
 #include "scaler/ymq/internal/network_utils.h"
-#include "scaler/ymq/internal/raw_connection_tcp_fd.h"
+#include "scaler/ymq/internal/raw_stream_connection_handle.h"
 
 namespace scaler {
 namespace ymq {
 
-std::pair<uint64_t, RawConnectionTCPFD::IOStatus> RawConnectionTCPFD::tryReadUntilComplete(void* dest, size_t size)
+std::pair<uint64_t, RawStreamConnectionHandle::IOStatus> RawStreamConnectionHandle::tryReadUntilComplete(
+    void* dest, size_t size)
 {
     return scaler::ymq::tryReadUntilComplete(
         dest, size, [&](char* dest, size_t size) { return this->readBytes(dest, size); });
 }
 
-std::pair<uint64_t, RawConnectionTCPFD::IOStatus> RawConnectionTCPFD::tryWriteUntilComplete(
+std::pair<uint64_t, RawStreamConnectionHandle::IOStatus> RawStreamConnectionHandle::tryWriteUntilComplete(
     const std::vector<std::pair<void*, size_t>>& buffers)
 {
     return scaler::ymq::tryWriteUntilComplete(buffers, [&](std::vector<std::pair<void*, size_t>> currentBuffers) {
@@ -23,13 +24,14 @@ std::pair<uint64_t, RawConnectionTCPFD::IOStatus> RawConnectionTCPFD::tryWriteUn
     });
 }
 
-void RawConnectionTCPFD::shutdownBoth() noexcept
+void RawStreamConnectionHandle::shutdownBoth() noexcept
 {
     shutdownWrite();
     shutdownRead();
 }
 
-std::expected<uint64_t, RawConnectionTCPFD::IOStatus> RawConnectionTCPFD::readBytes(void* dest, size_t size)
+std::expected<uint64_t, RawStreamConnectionHandle::IOStatus> RawStreamConnectionHandle::readBytes(
+    void* dest, size_t size)
 {
     assert(_fd);
     assert(dest);
@@ -106,7 +108,7 @@ std::expected<uint64_t, RawConnectionTCPFD::IOStatus> RawConnectionTCPFD::readBy
     std::unreachable();
 }
 
-std::expected<uint64_t, RawConnectionTCPFD::IOStatus> RawConnectionTCPFD::writeBytes(
+std::expected<uint64_t, RawStreamConnectionHandle::IOStatus> RawStreamConnectionHandle::writeBytes(
     const std::vector<std::pair<void*, size_t>>& buffers)
 {
     assert(buffers.size());
@@ -210,31 +212,31 @@ std::expected<uint64_t, RawConnectionTCPFD::IOStatus> RawConnectionTCPFD::writeB
     return bytesSent;
 }
 
-bool RawConnectionTCPFD::prepareReadBytes(void* notifyHandle)
+bool RawStreamConnectionHandle::prepareReadBytes(void* notifyHandle)
 {
     (void)notifyHandle;
     return false;
 }
 
-std::pair<size_t, bool> RawConnectionTCPFD::prepareWriteBytes(void* dest, size_t size, void* notifyHandle)
+std::pair<size_t, bool> RawStreamConnectionHandle::prepareWriteBytes(void* dest, size_t size, void* notifyHandle)
 {
     (void)size;
     (void)notifyHandle;
     return {0, false};
 }
 
-void RawConnectionTCPFD::shutdownRead() noexcept
+void RawStreamConnectionHandle::shutdownRead() noexcept
 {
     shutdown(_fd, SHUT_RD);
 }
 
-void RawConnectionTCPFD::shutdownWrite() noexcept
+void RawStreamConnectionHandle::shutdownWrite() noexcept
 {
     shutdown(_fd, SHUT_WR);
     _socketStatus = SocketStatus::Disconnecting;
 }
 
-void RawConnectionTCPFD::closeAndZero() noexcept
+void RawStreamConnectionHandle::closeAndZero() noexcept
 {
     close(_fd);
     _fd           = 0;

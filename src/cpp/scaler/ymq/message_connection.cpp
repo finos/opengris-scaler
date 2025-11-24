@@ -1,5 +1,5 @@
 
-#include "scaler/ymq/message_connection_tcp.h"
+#include "scaler/ymq/message_connection.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -23,7 +23,7 @@ namespace ymq {
 
 static constexpr const size_t HEADER_SIZE = sizeof(uint64_t);
 
-constexpr bool MessageConnectionTCP::isCompleteMessage(const TcpReadOperation& x)
+constexpr bool MessageConnection::isCompleteMessage(const TcpReadOperation& x)
 {
     if (x._cursor < HEADER_SIZE) {
         return false;
@@ -34,7 +34,7 @@ constexpr bool MessageConnectionTCP::isCompleteMessage(const TcpReadOperation& x
     return false;
 }
 
-MessageConnectionTCP::MessageConnectionTCP(
+MessageConnection::MessageConnection(
     EventLoopThread* eventLoopThread,
     int connFd,
     sockaddr localAddr,
@@ -62,7 +62,7 @@ MessageConnectionTCP::MessageConnectionTCP(
     _eventManager->onError = [this] { this->onError(); };
 }
 
-MessageConnectionTCP::MessageConnectionTCP(
+MessageConnection::MessageConnection(
     EventLoopThread* eventLoopThread,
     std::string localIOSocketIdentity,
     std::string remoteIOSocketIdentity,
@@ -88,7 +88,7 @@ MessageConnectionTCP::MessageConnectionTCP(
     _eventManager->onError = [this] { this->onError(); };
 }
 
-void MessageConnectionTCP::onCreated()
+void MessageConnection::onCreated()
 {
     if (_rawConn.nativeHandle() != 0) {
         this->_eventLoopThread->_eventLoop.addFdToLoop(
@@ -107,12 +107,12 @@ void MessageConnectionTCP::onCreated()
     }
 }
 
-bool MessageConnectionTCP::disconnected()
+bool MessageConnection::disconnected()
 {
     return _rawConn.nativeHandle() == 0;
 }
 
-std::expected<void, MessageConnectionTCP::IOError> MessageConnectionTCP::tryReadOneMessage()
+std::expected<void, MessageConnection::IOError> MessageConnection::tryReadOneMessage()
 {
     if (_receivedReadOperations.empty() || isCompleteMessage(_receivedReadOperations.back())) {
         _receivedReadOperations.emplace();
@@ -162,18 +162,18 @@ std::expected<void, MessageConnectionTCP::IOError> MessageConnectionTCP::tryRead
             _readSomeBytes = true;
         }
 
-        if (status != RawConnectionTCPFD::IOStatus::MoreBytesAvailable) {
+        if (status != RawStreamConnectionHandle::IOStatus::MoreBytesAvailable) {
             switch (status) {
-                case RawConnectionTCPFD::IOStatus::Aborted: {
+                case RawStreamConnectionHandle::IOStatus::Aborted: {
                     return std::unexpected {IOError::Aborted};
                 }
-                case RawConnectionTCPFD::IOStatus::Disconnected: {
+                case RawStreamConnectionHandle::IOStatus::Disconnected: {
                     return std::unexpected {IOError::Disconnected};
                 }
-                case RawConnectionTCPFD::IOStatus::Drained: {
+                case RawStreamConnectionHandle::IOStatus::Drained: {
                     return std::unexpected {IOError::Drained};
                 }
-                case RawConnectionTCPFD::IOStatus::MoreBytesAvailable: {
+                case RawStreamConnectionHandle::IOStatus::MoreBytesAvailable: {
                     std::unreachable();
                 }
             }
@@ -183,7 +183,7 @@ std::expected<void, MessageConnectionTCP::IOError> MessageConnectionTCP::tryRead
 }
 
 // on Return, unexpected value shall be interpreted as this - 0 = close, other -> errno
-std::expected<void, MessageConnectionTCP::IOError> MessageConnectionTCP::tryReadMessages()
+std::expected<void, MessageConnection::IOError> MessageConnection::tryReadMessages()
 {
     while (true) {
         auto res = tryReadOneMessage();
@@ -193,7 +193,7 @@ std::expected<void, MessageConnectionTCP::IOError> MessageConnectionTCP::tryRead
     }
 }
 
-void MessageConnectionTCP::updateReadOperation()
+void MessageConnection::updateReadOperation()
 {
     while (_pendingRecvMessageCallbacks->size() && _receivedReadOperations.size()) {
         if (isCompleteMessage(_receivedReadOperations.front())) {
@@ -211,7 +211,7 @@ void MessageConnectionTCP::updateReadOperation()
     }
 }
 
-void MessageConnectionTCP::setRemoteIdentity() noexcept
+void MessageConnection::setRemoteIdentity() noexcept
 {
     if (!_remoteIOSocketIdentity &&
         (_receivedReadOperations.size() && isCompleteMessage(_receivedReadOperations.front()))) {
@@ -223,7 +223,7 @@ void MessageConnectionTCP::setRemoteIdentity() noexcept
     }
 }
 
-void MessageConnectionTCP::onRead()
+void MessageConnection::onRead()
 {
     if (_rawConn.nativeHandle() == 0) {
         return;
@@ -294,7 +294,7 @@ void MessageConnectionTCP::onRead()
     _rawConn.prepareReadBytes(this->_eventManager.get());
 }
 
-void MessageConnectionTCP::onWrite()
+void MessageConnection::onWrite()
 {
     // This is because after disconnected, onRead will be called first, and that will set
     // _connFd to 0. There's no way to not call onWrite in this case. So we return early.
@@ -339,7 +339,7 @@ void MessageConnectionTCP::onWrite()
     }
 }
 
-void MessageConnectionTCP::onClose()
+void MessageConnection::onClose()
 {
     if (_rawConn.nativeHandle()) {
         if (_remoteIOSocketIdentity) {
@@ -360,7 +360,7 @@ void MessageConnectionTCP::onClose()
     }
 };
 
-std::expected<size_t, MessageConnectionTCP::IOError> MessageConnectionTCP::trySendQueuedMessages()
+std::expected<size_t, MessageConnection::IOError> MessageConnection::trySendQueuedMessages()
 {
     // TODO: Should this accept 0 length send?
     if (_writeOperations.empty()) {
@@ -399,16 +399,16 @@ std::expected<size_t, MessageConnectionTCP::IOError> MessageConnectionTCP::trySe
         return n;
     }
     switch (status) {
-        case RawConnectionTCPFD::IOStatus::Drained: {
+        case RawStreamConnectionHandle::IOStatus::Drained: {
             return std::unexpected {IOError::Drained};
         }
-        case RawConnectionTCPFD::IOStatus::Disconnected: {
+        case RawStreamConnectionHandle::IOStatus::Disconnected: {
             return std::unexpected {IOError::Disconnected};
         }
-        case RawConnectionTCPFD::IOStatus::Aborted: {
+        case RawStreamConnectionHandle::IOStatus::Aborted: {
             return std::unexpected {IOError::Aborted};
         }
-        case RawConnectionTCPFD::IOStatus::MoreBytesAvailable: {
+        case RawStreamConnectionHandle::IOStatus::MoreBytesAvailable: {
             std::unreachable();
         }
     }
@@ -418,7 +418,7 @@ std::expected<size_t, MessageConnectionTCP::IOError> MessageConnectionTCP::trySe
 // TODO: There is a classic optimization that can (and should) be done. That is, we store
 // prefix sum in each write operation, and perform binary search instead of linear search
 // to find the first write operation we haven't complete. - gxu
-void MessageConnectionTCP::updateWriteOperations(size_t n)
+void MessageConnection::updateWriteOperations(size_t n)
 {
     auto firstIncomplete = _writeOperations.begin();
     _sendCursor += n;
@@ -451,7 +451,7 @@ void MessageConnectionTCP::updateWriteOperations(size_t n)
     // _writeOperations.shrink_to_fit();
 }
 
-void MessageConnectionTCP::sendMessage(Message msg, SendMessageCallback onMessageSent)
+void MessageConnection::sendMessage(Message msg, SendMessageCallback onMessageSent)
 {
     TcpWriteOperation writeOp(std::move(msg), std::move(onMessageSent));
     _writeOperations.emplace_back(std::move(writeOp));
@@ -462,7 +462,7 @@ void MessageConnectionTCP::sendMessage(Message msg, SendMessageCallback onMessag
     onWrite();
 }
 
-bool MessageConnectionTCP::recvMessage()
+bool MessageConnection::recvMessage()
 {
     if (_receivedReadOperations.empty() || _pendingRecvMessageCallbacks->empty() ||
         !isCompleteMessage(_receivedReadOperations.front())) {
@@ -473,14 +473,14 @@ bool MessageConnectionTCP::recvMessage()
     return true;
 }
 
-void MessageConnectionTCP::disconnect()
+void MessageConnection::disconnect()
 {
     if (_rawConn.nativeHandle()) {
         _rawConn.shutdownWrite();
     }
 }
 
-MessageConnectionTCP::~MessageConnectionTCP() noexcept
+MessageConnection::~MessageConnection() noexcept
 {
     if (_rawConn.nativeHandle() != 0) {
         _eventLoopThread->_eventLoop.removeFdFromLoop(_rawConn.nativeHandle());

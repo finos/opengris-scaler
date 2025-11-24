@@ -1,12 +1,12 @@
 #ifdef _WIN32
 #include "scaler/error/error.h"
 #include "scaler/ymq/internal/defs.h"
-#include "scaler/ymq/internal/raw_client_tcp_fd.h"
+#include "scaler/ymq/internal/raw_stream_client_handle.h"
 
 namespace scaler {
 namespace ymq {
 
-RawClientTCPFD::RawClientTCPFD(sockaddr remoteAddr): _clientFD {}, _remoteAddr(std::move(remoteAddr))
+RawStreamClientHandle::RawStreamClientHandle(sockaddr remoteAddr): _clientFD {}, _remoteAddr(std::move(remoteAddr))
 {
     _connectExFunc = {};
 
@@ -37,7 +37,7 @@ RawClientTCPFD::RawClientTCPFD(sockaddr remoteAddr): _clientFD {}, _remoteAddr(s
     }
 }
 
-void RawClientTCPFD::create()
+void RawStreamClientHandle::create()
 {
     _clientFD = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (_clientFD == -1) {
@@ -53,7 +53,7 @@ void RawClientTCPFD::create()
     ioctlsocket(_clientFD, FIONBIO, &nonblock);
 }
 
-bool RawClientTCPFD::prepConnect(void* notifyHandle)
+bool RawStreamClientHandle::prepConnect(void* notifyHandle)
 {
     sockaddr_in localAddr      = {};
     localAddr.sin_family       = AF_INET;
@@ -101,13 +101,13 @@ bool RawClientTCPFD::prepConnect(void* notifyHandle)
     });
 }
 
-bool RawClientTCPFD::needRetry()
+bool RawStreamClientHandle::needRetry()
 {
     const int iResult = setsockopt(_clientFD, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
     return iResult == -1;
 }
 
-void RawClientTCPFD::destroy()
+void RawStreamClientHandle::destroy()
 {
     if (_clientFD) {
         CancelIoEx((HANDLE)_clientFD, nullptr);
@@ -117,12 +117,12 @@ void RawClientTCPFD::destroy()
     }
 }
 
-void RawClientTCPFD::zeroNativeHandle() noexcept
+void RawStreamClientHandle::zeroNativeHandle() noexcept
 {
     _clientFD = 0;
 }
 
-RawClientTCPFD::~RawClientTCPFD()
+RawStreamClientHandle::~RawStreamClientHandle()
 {
     destroy();
 }

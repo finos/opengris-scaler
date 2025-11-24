@@ -2,7 +2,7 @@
 #include <algorithm>  // std::upper_bound
 
 #include "scaler/ymq/internal/defs.h"
-#include "scaler/ymq/internal/raw_connection_tcp_fd.h"
+#include "scaler/ymq/internal/raw_stream_connection_handle.h"
 
 namespace scaler {
 namespace ymq {
@@ -13,7 +13,7 @@ bool setReuseAddress(auto fd)
     return !(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&optval, sizeof(optval)) == -1);
 }
 
-std::pair<uint64_t, RawConnectionTCPFD::IOStatus> tryReadUntilComplete(void* dest, size_t size, auto readBytes)
+std::pair<uint64_t, RawStreamConnectionHandle::IOStatus> tryReadUntilComplete(void* dest, size_t size, auto readBytes)
 {
     uint64_t cnt = 0;
     while (size) {
@@ -25,14 +25,14 @@ std::pair<uint64_t, RawConnectionTCPFD::IOStatus> tryReadUntilComplete(void* des
             return {cnt, current.error()};
         }
     }
-    return {cnt, RawConnectionTCPFD::IOStatus::MoreBytesAvailable};
+    return {cnt, RawStreamConnectionHandle::IOStatus::MoreBytesAvailable};
 }
 
-std::pair<uint64_t, RawConnectionTCPFD::IOStatus> tryWriteUntilComplete(
+std::pair<uint64_t, RawStreamConnectionHandle::IOStatus> tryWriteUntilComplete(
     const std::vector<std::pair<void*, size_t>>& buffers, auto writeBytes)
 {
     if (buffers.empty()) {
-        return {0, RawConnectionTCPFD::IOStatus::MoreBytesAvailable};
+        return {0, RawStreamConnectionHandle::IOStatus::MoreBytesAvailable};
     }
 
     std::vector<size_t> prefixSum(buffers.size() + 1);
@@ -63,7 +63,7 @@ std::pair<uint64_t, RawConnectionTCPFD::IOStatus> tryWriteUntilComplete(
             return {sent, res.error()};
         }
     }
-    return {total, RawConnectionTCPFD::IOStatus::MoreBytesAvailable};
+    return {total, RawStreamConnectionHandle::IOStatus::MoreBytesAvailable};
 }
 
 }  // namespace ymq
