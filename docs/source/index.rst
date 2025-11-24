@@ -27,6 +27,7 @@ Content
    tutorials/quickstart
    tutorials/features
    tutorials/configuration
+   tutorials/redis_backend
    tutorials/examples
    tutorials/development/devcontainer
    tutorials/development/guidelines
