@@ -76,17 +76,23 @@ if ! groups | grep -q docker; then
     exit 1
 fi
 
-# Check if image exists
+# Check if image exists and if rebuild is needed
+REBUILD="${REBUILD:-auto}"
 if ! docker image inspect scaler-dev &> /dev/null; then
     echo "Building scaler-dev image..."
     docker build -f "$SCRIPT_DIR/Dockerfile" -t scaler-dev "$PROJECT_DIR"
-else
+elif [ "$REBUILD" = "yes" ] || [ "$REBUILD" = "y" ]; then
+    echo "Rebuilding scaler-dev image..."
+    docker build -f "$SCRIPT_DIR/Dockerfile" -t scaler-dev "$PROJECT_DIR"
+elif [ "$REBUILD" = "auto" ]; then
     echo "scaler-dev image already exists"
     read -p "Rebuild image? (y/N): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         docker build -f "$SCRIPT_DIR/Dockerfile" -t scaler-dev "$PROJECT_DIR"
     fi
+else
+    echo "Using existing scaler-dev image"
 fi
 
 # Stop existing container if running
