@@ -5,7 +5,7 @@ This MITM drops a % of packets
 import random
 from typing import Optional
 
-from tests.cpp.ymq.py_mitm.types import IP, AbstractMITM, TCPConnection, TunTapInterface
+from tests.cpp.ymq.py_mitm.mitm_types import IP, AbstractMITM, AbstractMITMInterface, TCPConnection
 
 
 class MITM(AbstractMITM):
@@ -25,7 +25,7 @@ class MITM(AbstractMITM):
 
     def proxy(
         self,
-        tuntap: TunTapInterface,
+        tuntap: AbstractMITMInterface,
         pkt: IP,
         sender: TCPConnection,
         client_conn: Optional[TCPConnection],

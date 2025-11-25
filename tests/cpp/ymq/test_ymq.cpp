@@ -35,6 +35,7 @@
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/simple_interface.h"
 #include "tests/cpp/ymq/common/testing.h"
+#include "tests/cpp/ymq/common/utils.h"
 #include "tests/cpp/ymq/net/socket.h"
 
 using namespace scaler::ymq;
@@ -654,9 +655,15 @@ TestResult client_sends_huge_header(const char* host, uint16_t port)
     // for more, see the python mitm files
     TEST(CcYmqTestSuite, TestMitmPassthrough)
     {
-        auto mitm_ip     = "192.0.2.4";
-        auto mitm_port   = 2323;
-        auto remote_ip   = "192.0.2.3";
+#ifdef __linux__
+        auto mitm_ip   = "192.0.2.4";
+        auto remote_ip = "192.0.2.3";
+#endif  // __linux__
+#ifdef _WIN32
+        auto mitm_ip   = "127.0.0.1";
+        auto remote_ip = "127.0.0.1";
+#endif  // _WIN32
+        auto mitm_port   = random_port();
         auto remote_port = 23571;
 
         // the Python program must be the first and only the first function passed to test()
@@ -671,16 +678,48 @@ TestResult client_sends_huge_header(const char* host, uint16_t port)
         EXPECT_EQ(result, TestResult::Success);
     }
 
+    // this is the same as the above, but both the client and server use raw sockets
+    TEST(CcYmqTestSuite, TestMitmPassthroughRaw)
+    {
+#ifdef __linux__
+        auto mitm_ip   = "192.0.2.4";
+        auto remote_ip = "192.0.2.3";
+#endif  // __linux__
+#ifdef _WIN32
+        auto mitm_ip   = "127.0.0.1";
+        auto remote_ip = "127.0.0.1";
+#endif  // _WIN32
+        auto mitm_port   = random_port();
+        auto remote_port = 23574;
+
+        // the Python program must be the first and only the first function passed to test()
+        // we must also pass `true` as the third argument to ensure that Python is fully started
+        // before beginning the test
+        auto result = test(
+            20,
+            {[=] { return run_mitm("passthrough", mitm_ip, mitm_port, remote_ip, remote_port); },
+             [=] { return basic_client_raw(mitm_ip, mitm_port); },
+             [=] { return basic_server_raw(remote_port); }},
+            true);
+        EXPECT_EQ(result, TestResult::Success);
+    }
+
     // this test uses the mitm to test the reconnect logic of YMQ by sending RST packets
     TEST(CcYmqTestSuite, TestMitmReconnect)
     {
-        auto mitm_ip     = "192.0.2.4";
-        auto mitm_port   = 2525;
-        auto remote_ip   = "192.0.2.3";
-        auto remote_port = 23575;
+#ifdef __linux__
+        auto mitm_ip   = "192.0.2.4";
+        auto remote_ip = "192.0.2.3";
+#endif  // __linux__
+#ifdef _WIN32
+        auto mitm_ip   = "127.0.0.1";
+        auto remote_ip = "127.0.0.1";
+#endif  // _WIN32
+        auto mitm_port   = random_port();
+        auto remote_port = 23572;
 
         auto result = test(
-            10,
+            30,
             {[=] { return run_mitm("send_rst_to_client", mitm_ip, mitm_port, remote_ip, remote_port); },
              [=] { return reconnect_client_main(mitm_ip, mitm_port); },
              [=] { return reconnect_server_main(remote_ip, remote_port); }},
@@ -692,10 +731,16 @@ TestResult client_sends_huge_header(const char* host, uint16_t port)
     // in this test, the mitm drops a random % of packets arriving from the client and server
     TEST(CcYmqTestSuite, TestMitmRandomlyDropPackets)
     {
-        auto mitm_ip     = "192.0.2.4";
-        auto mitm_port   = 2828;
-        auto remote_ip   = "192.0.2.3";
-        auto remote_port = 23591;
+#ifdef __linux__
+        auto mitm_ip   = "192.0.2.4";
+        auto remote_ip = "192.0.2.3";
+#endif  // __linux__
+#ifdef _WIN32
+        auto mitm_ip   = "127.0.0.1";
+        auto remote_ip = "127.0.0.1";
+#endif  // _WIN32
+        auto mitm_port   = random_port();
+        auto remote_port = 23573;
 
         auto result = test(
             60,
@@ -910,6 +955,8 @@ TestResult client_sends_huge_header(const char* host, uint16_t port)
 
     int main(int argc, char** argv)
     {
+        ensure_python_initialized();
+
 #ifdef _WIN32
         // initialize winsock
         WSADATA wsaData = {};
@@ -927,5 +974,6 @@ TestResult client_sends_huge_header(const char* host, uint16_t port)
         WSACleanup();
 #endif  // _WIN32
 
+        maybe_finalize_python();
         return result;
     }
