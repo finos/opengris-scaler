@@ -109,21 +109,35 @@ docker run -d \
   -p 2222:22 \
   -v "$PROJECT_DIR:/workspace" \
   -w /workspace \
-  scaler-dev
+  scaler-dev \
+  tail -f /dev/null
+
+# Wait for container to be ready
+sleep 2
+
+# Start SSH service
+echo "Starting SSH service..."
+docker exec scaler-dev service ssh start
 
 # Setup SSH key for vscode user
 echo "Setting up SSH key for vscode user..."
-# Try to find authorized_keys from ubuntu user
 if [ -f "$HOME/.ssh/authorized_keys" ]; then
     echo "Copying SSH keys from ubuntu user's authorized_keys..."
     docker exec scaler-dev bash -c "mkdir -p /home/vscode/.ssh && chmod 700 /home/vscode/.ssh"
     docker cp "$HOME/.ssh/authorized_keys" scaler-dev:/home/vscode/.ssh/authorized_keys
     docker exec scaler-dev bash -c "chown -R vscode:vscode /home/vscode/.ssh && chmod 600 /home/vscode/.ssh/authorized_keys"
-    docker exec scaler-dev bash -c "service ssh restart" 2>/dev/null || true
     echo "SSH keys installed successfully"
 else
     echo "WARNING: No SSH keys found at $HOME/.ssh/authorized_keys"
     echo "Container SSH may not work without keys"
+fi
+
+# Verify SSH is working
+echo "Verifying SSH connectivity..."
+if docker exec scaler-dev ps aux | grep -q "[s]shd"; then
+    echo "SSH service is running"
+else
+    echo "WARNING: SSH service may not be running properly"
 fi
 
 echo ""
