@@ -132,6 +132,22 @@ else
     echo "Container SSH may not work without keys"
 fi
 
+# Setup AWS credentials for CodeCommit
+echo "Setting up AWS credentials..."
+if [ -f "$HOME/.aws/credentials" ]; then
+    docker exec scaler-dev bash -c "mkdir -p /home/vscode/.aws"
+    docker cp "$HOME/.aws/credentials" scaler-dev:/home/vscode/.aws/credentials
+    docker cp "$HOME/.aws/config" scaler-dev:/home/vscode/.aws/config 2>/dev/null || true
+    docker exec scaler-dev bash -c "chown -R vscode:vscode /home/vscode/.aws"
+    echo "AWS credentials installed"
+fi
+
+# Configure git to use AWS CodeCommit credential helper
+echo "Configuring git for CodeCommit..."
+docker exec -u vscode scaler-dev bash -c "git config --global credential.helper '!aws codecommit credential-helper \$@'"
+docker exec -u vscode scaler-dev bash -c "git config --global credential.UseHttpPath true"
+echo "Git configured for CodeCommit"
+
 # Verify SSH is working
 echo "Verifying SSH connectivity..."
 if docker exec scaler-dev ps aux | grep -q "[s]shd"; then
@@ -149,6 +165,9 @@ echo "Authentication: SSH key only (password disabled)"
 echo ""
 echo "Connect from local machine:"
 echo "  ssh -p 2222 -i ~/.ssh/intellij-dev-key vscode@<EC2_IP>"
+echo ""
+echo "Clone CodeCommit repo:"
+echo "  git clone https://git-codecommit.us-east-1.amazonaws.com/v1/repos/opengris-scaler"
 echo ""
 echo "IntelliJ IDEA Remote Development:"
 echo "  1. File → Remote Development → SSH"

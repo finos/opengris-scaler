@@ -1,7 +1,7 @@
 FROM mcr.microsoft.com/devcontainers/base:noble
 RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get update \
-    && apt-get -y install cmake pkg-config gcc-14 g++-14 python3-pip python3-venv pipx openssh-server sudo \
+    && apt-get -y install cmake pkg-config gcc-14 g++-14 python3-pip python3-venv pipx openssh-server sudo awscli git-remote-codecommit \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100 \
