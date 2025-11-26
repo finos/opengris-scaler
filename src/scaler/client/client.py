@@ -21,6 +21,7 @@ from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
 from scaler.io.sync_connector import ZMQSyncConnector
 from scaler.io.utility import create_sync_object_storage_connector
+from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
 from scaler.utility.graph.optimization import cull_graph
@@ -57,6 +58,7 @@ class Client:
         heartbeat_interval_seconds: int = DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
         serializer: Serializer = DefaultSerializer(),
         stream_output: bool = False,
+        object_storage_address: Optional[str] = None,
     ):
         """
         The Scaler Client used to send tasks to a scheduler.
@@ -72,9 +74,20 @@ class Client:
         :type heartbeat_interval_seconds: int
         :param stream_output: If True, stdout/stderr will be streamed to client during task execution
         :type stream_output: bool
+        :param object_storage_address: Override object storage address (e.g., for Docker/Kubernetes port mapping).
+                                       If None, will use address received from scheduler.
+        :type object_storage_address: Optional[str]
         """
         address = self._resolve_scheduler_address(address)
-        self.__initialize__(address, profiling, timeout_seconds, heartbeat_interval_seconds, serializer, stream_output)
+        self.__initialize__(
+            address,
+            profiling,
+            timeout_seconds,
+            heartbeat_interval_seconds,
+            serializer,
+            stream_output,
+            object_storage_address,
+        )
 
     def __initialize__(
         self,
@@ -84,6 +97,7 @@ class Client:
         heartbeat_interval_seconds: int,
         serializer: Serializer = DefaultSerializer(),
         stream_output: bool = False,
+        object_storage_address: Optional[str] = None,
     ):
         self._serializer = serializer
 
@@ -118,10 +132,18 @@ class Client:
 
         logging.info(f"ScalerClient: connect to scheduler at {self._scheduler_address}")
 
-        # Blocks until the agent receives the object storage address
-        self._object_storage_address = self._agent.get_object_storage_address()
+        # Determine object storage address: use manual override if provided, otherwise get from scheduler
+        if object_storage_address is not None:
+            manual_config = ZMQConfig.from_string(object_storage_address)
+            self._object_storage_address = ObjectStorageAddress.new_msg(manual_config.host, manual_config.port)
+            logging.info(f"ScalerClient: using manual object storage address: {self._object_storage_address}")
+        else:
+            # Blocks until the agent receives the object storage address from scheduler
+            self._object_storage_address = self._agent.get_object_storage_address()
+            logging.info(
+                f"ScalerClient: received object storage address from scheduler: {self._object_storage_address}"
+            )
 
-        logging.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
         self._connector_storage: SyncObjectStorageConnector = create_sync_object_storage_connector(
             self._object_storage_address.host, self._object_storage_address.port
         )
