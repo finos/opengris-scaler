@@ -53,7 +53,7 @@ The `isort`, `black` and `flake8` packages can be installed through Python's PIP
 
 #### Bump version number
 
-You must update the version defined in [about.py](scaler/about.py) for every contribution. Please follow
+You must update the version defined in [about.py](scaler_aws_batch/about.py) for every contribution. Please follow
 [semantic versioning](https://semver.org) in the format `MAJOR.MINOR.PATCH`.
 
 
