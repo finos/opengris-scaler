@@ -70,7 +70,7 @@ def main():
         time.sleep(3)
         
         # 2. Start AWS Batch Worker Adapter
-        adapter_cmd = f"python {PROJECT_ROOT}/src/scaler/entry_points/worker_adapter_aws_batch_working.py tcp://127.0.0.1:2345 --port 8080"
+        adapter_cmd = f"python {PROJECT_ROOT}/src/scaler/entry_points/worker_adapter_aws_batch_with_task_manager.py tcp://127.0.0.1:2345 --port 8080"
         processes['adapter'] = run_process(adapter_cmd, "AWS Batch Worker Adapter")
         
         # Wait for adapter to start
