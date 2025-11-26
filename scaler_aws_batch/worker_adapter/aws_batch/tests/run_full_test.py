@@ -62,7 +62,7 @@ def main():
     
     try:
         # 1. Start Scheduler
-        scheduler_cmd = "python ./src/run_scheduler.py tcp://127.0.0.1:2345"
+        scheduler_cmd = f"python {PROJECT_ROOT}/src/run_scheduler.py tcp://127.0.0.1:2345"
         processes['scheduler'] = run_process(scheduler_cmd, "Scheduler")
         
         # Wait for scheduler to start
@@ -70,7 +70,7 @@ def main():
         time.sleep(3)
         
         # 2. Start AWS Batch Worker Adapter
-        adapter_cmd = "python src/scaler/entry_points/worker_adapter_aws_batch_working.py tcp://127.0.0.1:2345 --port 8080"
+        adapter_cmd = f"python {PROJECT_ROOT}/src/scaler/entry_points/worker_adapter_aws_batch_working.py tcp://127.0.0.1:2345 --port 8080"
         processes['adapter'] = run_process(adapter_cmd, "AWS Batch Worker Adapter")
         
         # Wait for adapter to start
@@ -108,7 +108,7 @@ def main():
         print("RUNNING AWS BATCH TEST")
         print("="*50)
         
-        test_cmd = "python scaler_aws_batch/worker_adapter/aws_batch/tests/aws_batch_test_harness.py --scheduler tcp://127.0.0.1:2345"
+        test_cmd = f"python {PROJECT_ROOT}/scaler_aws_batch/worker_adapter/aws_batch/tests/aws_batch_test_harness.py --scheduler tcp://127.0.0.1:2345"
         test_process = subprocess.run(test_cmd, shell=True, capture_output=True, text=True)
         
         print("STDOUT:")
