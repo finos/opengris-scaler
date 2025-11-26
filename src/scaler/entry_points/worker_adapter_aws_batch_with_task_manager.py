@@ -8,8 +8,8 @@ import asyncio
 import logging
 from aiohttp import web
 
-from scaler.worker_adapter.aws_batch.worker_adapter import AWSBatchWorkerAdapter
 from scaler.worker_adapter.aws_batch.worker import AWSBatchWorker
+from scaler.config.types.zmq import ZMQConfig
 
 
 class TestAWSBatchWorkerAdapter:
@@ -21,20 +21,29 @@ class TestAWSBatchWorkerAdapter:
         worker_id = "aws-batch-worker-1"
         worker = AWSBatchWorker(
             name=worker_id,
-            scheduler_address=self._scheduler_address,
-            base_concurrency=1,
+            address=ZMQConfig.from_string(self._scheduler_address),
+            object_storage_address=None,
             job_queue="test-queue",
             job_definition="test-job-def",
-            aws_region="us-east-1"
+            aws_region="us-east-1",
+            capabilities={},
+            base_concurrency=1,
+            heartbeat_interval_seconds=2,
+            death_timeout_seconds=60,
+            task_queue_size=1000,
+            io_threads=1,
+            event_loop="builtin",
+            vcpus=1,
+            memory=2048
         )
-        await worker.start()
+        worker.start()
         self._workers[worker_id] = worker
         return worker_id.encode()
     
     async def shutdown_worker_group(self, worker_group_id):
         worker_id = worker_group_id.decode()
         if worker_id in self._workers:
-            await self._workers[worker_id].shutdown()
+            self._workers[worker_id].terminate()
             del self._workers[worker_id]
     
     async def webhook_handler(self, request):
