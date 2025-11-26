@@ -1,16 +1,39 @@
 import asyncio
 import logging
+import multiprocessing
+import signal
+from collections import deque
 from typing import Dict, Optional
+
+import zmq
 
 from scaler.config.types.object_storage_server import ObjectStorageConfig
 from scaler.config.types.zmq import ZMQConfig
+from scaler.io.async_connector import ZMQAsyncConnector
+from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
+from scaler.io.utility import create_async_object_storage_connector
+from scaler.protocol.python.message import (
+    ClientDisconnect,
+    DisconnectRequest,
+    ObjectInstruction,
+    Task,
+    TaskCancel,
+    WorkerHeartbeatEcho,
+)
+from scaler.protocol.python.mixins import Message
+from scaler.utility.event_loop import create_async_loop_routine, register_event_loop
+from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import WorkerID
+from scaler.utility.logging.utility import setup_logger
+from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
+from scaler.worker_adapter.aws_batch.heartbeat_manager import AWSBatchHeartbeatManager
+from scaler.worker_adapter.aws_batch.task_manager import AWSBatchTaskManager
 
 
-class AWSBatchWorker:
+class AWSBatchWorker(multiprocessing.get_context("spawn").Process):  # type: ignore
     """
-    AWS Batch Worker that represents a single AWS Batch job running Scaler worker.
-    Unlike Symphony worker which is a process, this tracks an AWS Batch job.
+    AWS Batch Worker that handles multiple tasks concurrently using AWS Batch.
+    Similar to Symphony worker but submits tasks to AWS Batch instead of Symphony.
     """
 
     def __init__(
@@ -34,175 +57,164 @@ class AWSBatchWorker:
         aws_access_key_id: Optional[str] = None,
         aws_secret_access_key: Optional[str] = None,
     ):
+        multiprocessing.Process.__init__(self, name="Agent")
+        self._event_loop = event_loop
         self._name = name
         self._address = address
         self._object_storage_address = object_storage_address
+        self._capabilities = capabilities
+        self._io_threads = io_threads
+
+        self._ident = WorkerID.generate_worker_id(name)  # _identity is internal to multiprocessing.Process
+
         self._job_queue = job_queue
         self._job_definition = job_definition
         self._aws_region = aws_region
-        self._capabilities = capabilities
         self._base_concurrency = base_concurrency
-        self._heartbeat_interval_seconds = heartbeat_interval_seconds
-        self._death_timeout_seconds = death_timeout_seconds
-        self._task_queue_size = task_queue_size
-        self._io_threads = io_threads
-        self._event_loop = event_loop
-        self._vcpus = vcpus
-        self._memory = memory
         self._aws_access_key_id = aws_access_key_id
         self._aws_secret_access_key = aws_secret_access_key
 
-        self._identity = WorkerID.generate_worker_id(name)
-        
-        # AWS Batch job tracking
-        self._job_id: Optional[str] = None
-        self._job_status: str = "NOT_STARTED"
-        self._batch_client = None
+        self._heartbeat_interval_seconds = heartbeat_interval_seconds
+        self._death_timeout_seconds = death_timeout_seconds
+        self._task_queue_size = task_queue_size
+
+        self._context: Optional[zmq.asyncio.Context] = None
+        self._connector_external: Optional[AsyncConnector] = None
+        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
+        self._task_manager: Optional[AWSBatchTaskManager] = None
+        self._heartbeat_manager: Optional[AWSBatchHeartbeatManager] = None
+
+        """
+        Sometimes the first message received is not a heartbeat echo, so we need to backoff processing other tasks
+        until we receive the first heartbeat echo.
+        """
+        self._heartbeat_received: bool = False
+        self._backoff_message_queue: deque = deque()
 
     @property
     def identity(self) -> WorkerID:
-        return self._identity
+        return self._ident
 
-    @property
-    def job_id(self) -> Optional[str]:
-        return self._job_id
+    def run(self) -> None:
+        self.__initialize()
+        self.__run_forever()
 
-    @property
-    def job_status(self) -> str:
-        return self._job_status
+    def __initialize(self):
+        setup_logger()
+        register_event_loop(self._event_loop)
 
-    def start(self):
-        """
-        Start the AWS Batch job for this worker.
-        This replaces the process.start() from Symphony worker.
-        """
-        # TODO: Implement AWS Batch job submission
-        # 1. Initialize AWS Batch client if not done
-        # 2. Create job parameters with Scaler worker command
-        # 3. Submit job to AWS Batch
-        # 4. Store job ID and update status
-        raise NotImplementedError("AWS Batch job start is not yet implemented")
+        self._context = zmq.asyncio.Context()
+        self._connector_external = ZMQAsyncConnector(
+            context=self._context,
+            name=self.name,
+            socket_type=zmq.DEALER,
+            address=self._address,
+            bind_or_connect="connect",
+            callback=self.__on_receive_external,
+            identity=self._ident,
+        )
 
-    def terminate(self):
-        """
-        Terminate the AWS Batch job for this worker.
-        This replaces the process termination from Symphony worker.
-        """
-        # TODO: Implement AWS Batch job termination
-        # 1. Cancel the running job if possible
-        # 2. Update job status
-        # 3. Clean up resources
-        raise NotImplementedError("AWS Batch job termination is not yet implemented")
+        self._connector_storage = create_async_object_storage_connector()
 
-    def is_alive(self) -> bool:
-        """
-        Check if the AWS Batch job is still running.
-        This replaces the process.is_alive() from Symphony worker.
-        """
-        # TODO: Query AWS Batch for current job status
-        # Return True if job is in SUBMITTED, PENDING, RUNNABLE, STARTING, or RUNNING state
-        raise NotImplementedError("AWS Batch job status check is not yet implemented")
+        self._heartbeat_manager = AWSBatchHeartbeatManager(
+            object_storage_address=self._object_storage_address,
+            capabilities=self._capabilities,
+            task_queue_size=self._task_queue_size,
+        )
+        self._task_manager = AWSBatchTaskManager(
+            base_concurrency=self._base_concurrency,
+            job_queue=self._job_queue,
+            job_definition=self._job_definition,
+            aws_region=self._aws_region,
+            aws_access_key_id=self._aws_access_key_id,
+            aws_secret_access_key=self._aws_secret_access_key,
+        )
+        self._timeout_manager = VanillaTimeoutManager(death_timeout_seconds=self._death_timeout_seconds)
 
-    def join(self, timeout: Optional[float] = None):
-        """
-        Wait for the AWS Batch job to complete.
-        This replaces the process.join() from Symphony worker.
-        """
-        # TODO: Implement waiting for job completion
-        # 1. Poll job status until completion
-        # 2. Handle timeout if specified
-        # 3. Return when job reaches terminal state
-        raise NotImplementedError("AWS Batch job join is not yet implemented")
+        # register
+        self._heartbeat_manager.register(
+            connector_external=self._connector_external,
+            connector_storage=self._connector_storage,
+            worker_task_manager=self._task_manager,
+            timeout_manager=self._timeout_manager,
+        )
+        self._task_manager.register(
+            connector_external=self._connector_external,
+            connector_storage=self._connector_storage,
+            heartbeat_manager=self._heartbeat_manager,
+        )
 
-    def _initialize_batch_client(self):
-        """Initialize AWS Batch client with proper credentials."""
-        # TODO: Create boto3 Batch client
-        # Handle different credential methods:
-        # - Explicit access key/secret
-        # - IAM roles
-        # - Default credential chain
-        raise NotImplementedError("AWS Batch client initialization is not yet implemented")
+        self._loop = asyncio.get_event_loop()
+        self.__register_signal()
+        self._task = self._loop.create_task(self.__get_loops())
 
-    def _create_job_parameters(self) -> dict:
-        """
-        Create AWS Batch job submission parameters.
-        
-        Returns:
-            dict: Job parameters for AWS Batch submitJob API
-        """
-        # TODO: Build job parameters including:
-        # - jobName: unique name for this worker job
-        # - jobQueue: target queue for execution
-        # - jobDefinition: job definition ARN or name
-        # - parameters: any job-specific parameters
-        # - containerOverrides: environment variables and command overrides
-        #   - Environment variables should include:
-        #     - SCALER_SCHEDULER_ADDRESS
-        #     - SCALER_OBJECT_STORAGE_ADDRESS (if set)
-        #     - SCALER_WORKER_NAME
-        #     - SCALER_CAPABILITIES
-        #     - SCALER_CONCURRENCY
-        #     - Other Scaler configuration
-        #   - Command override to run scaler_cluster with proper arguments
-        # - timeout: job timeout configuration
-        # - retryStrategy: retry configuration
-        raise NotImplementedError("AWS Batch job parameter creation is not yet implemented")
+    async def __on_receive_external(self, message: Message):
+        if not self._heartbeat_received and not isinstance(message, WorkerHeartbeatEcho):
+            self._backoff_message_queue.append(message)
+            return
 
-    def _build_scaler_command(self) -> list:
-        """
-        Build the scaler_cluster command to run in the AWS Batch job.
-        
-        Returns:
-            list: Command and arguments for running Scaler worker
-        """
-        # TODO: Build command like:
-        # ["scaler_cluster", 
-        #  self._address.to_address(),
-        #  "--num-of-workers", str(self._base_concurrency),
-        #  "--worker-names", self._name,
-        #  "--per-worker-task-queue-size", str(self._task_queue_size),
-        #  "--heartbeat-interval-seconds", str(self._heartbeat_interval_seconds),
-        #  "--death-timeout-seconds", str(self._death_timeout_seconds),
-        #  "--event-loop", self._event_loop,
-        #  "--worker-io-threads", str(self._io_threads)]
-        # Add object storage address if configured
-        # Add capabilities if configured
-        raise NotImplementedError("Scaler command building is not yet implemented")
+        if isinstance(message, WorkerHeartbeatEcho):
+            await self._heartbeat_manager.on_heartbeat_echo(message)
+            self._heartbeat_received = True
 
-    def _build_environment_variables(self) -> dict:
-        """
-        Build environment variables for the AWS Batch job container.
-        
-        Returns:
-            dict: Environment variables for the container
-        """
-        # TODO: Build environment variables including:
-        # - AWS credentials if provided
-        # - Scaler configuration
-        # - Any other required environment setup
-        raise NotImplementedError("Environment variable building is not yet implemented")
+            while self._backoff_message_queue:
+                backoff_message = self._backoff_message_queue.popleft()
+                await self.__on_receive_external(backoff_message)
 
-    async def monitor_job_status(self):
-        """
-        Continuously monitor the AWS Batch job status.
-        This can be used for health checking and status updates.
-        """
-        # TODO: Implement periodic job status monitoring
-        # 1. Query AWS Batch describe_jobs API
-        # 2. Update internal job status
-        # 3. Handle job state transitions
-        # 4. Log important status changes
-        raise NotImplementedError("AWS Batch job monitoring is not yet implemented")
+            return
 
-    def get_job_logs(self) -> Optional[str]:
-        """
-        Retrieve logs from the AWS Batch job.
-        
-        Returns:
-            Optional[str]: Job logs if available
-        """
-        # TODO: Implement log retrieval
-        # 1. Get log group and stream from job details
-        # 2. Query CloudWatch Logs for job output
-        # 3. Return formatted log content
-        raise NotImplementedError("AWS Batch job log retrieval is not yet implemented")
+        if isinstance(message, Task):
+            await self._task_manager.on_task_new(message)
+            return
+
+        if isinstance(message, TaskCancel):
+            await self._task_manager.on_cancel_task(message)
+            return
+
+        if isinstance(message, ObjectInstruction):
+            await self._task_manager.on_object_instruction(message)
+            return
+
+        if isinstance(message, ClientDisconnect):
+            if message.disconnect_type == ClientDisconnect.DisconnectType.Shutdown:
+                raise ClientShutdownException("received client shutdown, quitting")
+            logging.error(f"Worker received invalid ClientDisconnect type, ignoring {message=}")
+            return
+
+        raise TypeError(f"Unknown {message=}")
+
+    async def __get_loops(self):
+        if self._object_storage_address is not None:
+            # With a manually set storage address, immediately connect to the object storage server.
+            await self._connector_storage.connect(self._object_storage_address.host, self._object_storage_address.port)
+
+        try:
+            await asyncio.gather(
+                create_async_loop_routine(self._connector_external.routine, 0),
+                create_async_loop_routine(self._connector_storage.routine, 0),
+                create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
+                create_async_loop_routine(self._timeout_manager.routine, 1),
+                create_async_loop_routine(self._task_manager.process_task, 0),
+                create_async_loop_routine(self._task_manager.resolve_tasks, 0),
+            )
+        except asyncio.CancelledError:
+            pass
+        except (ClientShutdownException, TimeoutError) as e:
+            logging.info(f"{self.identity!r}: {str(e)}")
+        except Exception as e:
+            logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
+
+        await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
+
+        self._connector_external.destroy()
+        logging.info(f"{self.identity!r}: quit")
+
+    def __run_forever(self):
+        self._loop.run_until_complete(self._task)
+
+    def __register_signal(self):
+        self._loop.add_signal_handler(signal.SIGINT, self.__destroy)
+
+    def __destroy(self):
+        self._task.cancel()
+
