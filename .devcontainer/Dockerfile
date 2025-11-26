@@ -1,12 +1,13 @@
 FROM mcr.microsoft.com/devcontainers/base:noble
 RUN export DEBIAN_FRONTEND=noninteractive \
     && apt-get update \
-    && apt-get -y install cmake pkg-config gcc-14 g++-14 python3-pip python3-venv pipx openssh-server sudo awscli git-remote-codecommit \
+    && apt-get -y install cmake pkg-config gcc-14 g++-14 python3-pip python3-venv pipx openssh-server sudo \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100 \
     && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100 \
     && sudo -u vscode pipx install uv \
+    && sudo -u vscode pipx install awscli \
     && mkdir -p /run/sshd /home/vscode/.ssh \
     && chown vscode:vscode /home/vscode/.ssh \
     && chmod 700 /home/vscode/.ssh \

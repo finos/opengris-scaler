@@ -6,6 +6,21 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 echo "=== OpenGRIS Scaler Dev Container Setup ==="
 
+# Check if we're already inside a container
+if [ -f /.dockerenv ] || grep -q 'docker\|lxc' /proc/1/cgroup 2>/dev/null; then
+    echo "Already running inside a container. Skipping Docker setup."
+    echo "Project directory: $PROJECT_DIR"
+    echo "Development environment ready!"
+    exit 0
+fi
+
+# Check if we can use sudo
+if ! sudo -n true 2>/dev/null; then
+    echo "ERROR: This script requires sudo privileges."
+    echo "Please run with a user that has sudo access or run 'sudo -v' first."
+    exit 1
+fi
+
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
     echo "Docker not found. Installing Docker..."
@@ -64,15 +79,28 @@ if ! sudo systemctl is-active --quiet docker; then
 fi
 
 # Fix Docker socket permissions
-sudo chown root:docker /var/run/docker.sock 2>/dev/null || true
-sudo chmod 660 /var/run/docker.sock 2>/dev/null || true
+if [ -S /var/run/docker.sock ]; then
+    sudo chown root:docker /var/run/docker.sock 2>/dev/null || true
+    sudo chmod 660 /var/run/docker.sock 2>/dev/null || true
+fi
 
 # Check if user is in docker group
 if ! groups | grep -q docker; then
     echo "Adding current user to docker group..."
-    sudo usermod -aG docker $USER
-    echo "WARNING: You need to log out and back in for group changes to take effect."
-    echo "Run 'newgrp docker' to activate in current session, then re-run this script."
+    if sudo usermod -aG docker $USER; then
+        echo "User added to docker group successfully."
+        echo "WARNING: You need to log out and back in for group changes to take effect."
+        echo "Run 'newgrp docker' to activate in current session, then re-run this script."
+        exit 1
+    else
+        echo "ERROR: Failed to add user to docker group"
+        exit 1
+    fi
+fi
+
+# Test Docker access
+if ! docker ps >/dev/null 2>&1; then
+    echo "ERROR: Cannot access Docker. Please check Docker installation and permissions."
     exit 1
 fi
 

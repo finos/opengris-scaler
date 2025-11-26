@@ -17,11 +17,11 @@ ssh -i "$SSH_KEY" ubuntu@$EC2_HOST "mkdir -p ~/IdeaProjects/opengris-scaler"
 
 # Copy devcontainer files to EC2
 echo "Copying devcontainer files to EC2..."
-scp -i "$SSH_KEY" -r .devcontainer ubuntu@$EC2_HOST:~/IdeaProjects/opengris-scaler/
+scp -i "$SSH_KEY" -r . ubuntu@$EC2_HOST:~/IdeaProjects/opengris-scaler/.devcontainer/
 
 # Copy scripts directory (needed for Dockerfile)
 echo "Copying scripts directory to EC2..."
-scp -i "$SSH_KEY" -r scripts ubuntu@$EC2_HOST:~/IdeaProjects/opengris-scaler/
+scp -i "$SSH_KEY" -r ../scripts ubuntu@$EC2_HOST:~/IdeaProjects/opengris-scaler/
 
 # Run setup script on EC2
 echo "Running setup script on EC2..."
