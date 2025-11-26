@@ -7,9 +7,13 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100 \
     && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100 \
     && sudo -u vscode pipx install uv \
-    && mkdir -p /run/sshd \
-    && echo 'vscode:vscode' | chpasswd \
-    && echo 'vscode ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+    && mkdir -p /run/sshd /home/vscode/.ssh \
+    && chown vscode:vscode /home/vscode/.ssh \
+    && chmod 700 /home/vscode/.ssh \
+    && echo 'vscode ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
+    && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config \
+    && sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config \
+    && echo 'PubkeyAuthentication yes' >> /etc/ssh/sshd_config
 COPY scripts/library_tool.sh /library_tool.sh
 RUN /library_tool.sh boost download \
     && /library_tool.sh boost compile \

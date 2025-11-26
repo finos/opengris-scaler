@@ -111,20 +111,35 @@ docker run -d \
   -w /workspace \
   scaler-dev
 
+# Setup SSH key for vscode user
+echo "Setting up SSH key for vscode user..."
+# Try to find authorized_keys from ubuntu user
+if [ -f "$HOME/.ssh/authorized_keys" ]; then
+    echo "Copying SSH keys from ubuntu user's authorized_keys..."
+    docker exec scaler-dev bash -c "mkdir -p /home/vscode/.ssh && chmod 700 /home/vscode/.ssh"
+    docker cp "$HOME/.ssh/authorized_keys" scaler-dev:/home/vscode/.ssh/authorized_keys
+    docker exec scaler-dev bash -c "chown -R vscode:vscode /home/vscode/.ssh && chmod 600 /home/vscode/.ssh/authorized_keys"
+    docker exec scaler-dev bash -c "service ssh restart" 2>/dev/null || true
+    echo "SSH keys installed successfully"
+else
+    echo "WARNING: No SSH keys found at $HOME/.ssh/authorized_keys"
+    echo "Container SSH may not work without keys"
+fi
+
 echo ""
 echo "=== Container Started Successfully ==="
 echo "Container name: scaler-dev"
 echo "SSH port: 2222"
 echo "Project mounted at: /workspace"
+echo "Authentication: SSH key only (password disabled)"
 echo ""
 echo "Connect from local machine:"
-echo "  ssh -p 2222 vscode@<EC2_IP>"
-echo "  Password: vscode"
+echo "  ssh -p 2222 -i ~/.ssh/intellij-dev-key vscode@<EC2_IP>"
 echo ""
 echo "IntelliJ IDEA Remote Development:"
 echo "  1. File → Remote Development → SSH"
 echo "  2. Host: <EC2_IP>, Port: 2222, User: vscode"
-echo "  3. Password: vscode"
+echo "  3. Auth: SSH key (intellij-dev-key)"
 echo "  4. Open project: /workspace"
 echo ""
 echo "To stop container: docker stop scaler-dev"
