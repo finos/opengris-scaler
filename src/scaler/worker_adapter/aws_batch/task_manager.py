@@ -278,13 +278,38 @@ class AWSBatchTaskManager(Looper, TaskManager):
         Returns:
             asyncio.Future: Future that will resolve when the batch job completes
         """
-        # TODO: Implement AWS Batch task execution
-        # 1. Fetch serializer and task objects from object storage
-        # 2. Create AWS Batch job parameters for this specific task
-        # 3. Submit job to AWS Batch
-        # 4. Create and return a future that monitors the job
-        # 5. Store batch job ID for tracking
-        raise NotImplementedError("AWS Batch task execution is not yet implemented")
+        serializer_id = ObjectID.generate_serializer_object_id(task.source)
+
+        if serializer_id not in self._serializers:
+            serializer_bytes = await self._connector_storage.get_object(serializer_id)
+            serializer = cloudpickle.loads(serializer_bytes)
+            self._serializers[serializer_id] = serializer
+        else:
+            serializer = self._serializers[serializer_id]
+
+        # Fetches the function object and the argument objects concurrently
+        get_tasks = [
+            self._connector_storage.get_object(object_id)
+            for object_id in [task.function_object_id, *(ObjectID(arg) for arg in task.function_args)]
+        ]
+
+        function_bytes, *arg_bytes = await asyncio.gather(*get_tasks)
+
+        function = serializer.deserialize(function_bytes)
+        arg_objects = [serializer.deserialize(object_bytes) for object_bytes in arg_bytes]
+
+        # TODO: Submit to AWS Batch instead of executing locally
+        # For now, execute locally for testing
+        future: Future = Future()
+        future.set_running_or_notify_cancel()
+        
+        try:
+            result = function(*arg_objects)
+            future.set_result(result)
+        except Exception as e:
+            future.set_exception(e)
+
+        return asyncio.wrap_future(future)
 
     async def _cancel_batch_job(self, job_id: str):
         """Cancel an AWS Batch job."""
