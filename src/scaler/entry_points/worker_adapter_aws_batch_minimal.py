@@ -2,7 +2,6 @@
 """
 Minimal AWS Batch Worker Adapter for testing on_task_new().
 """
-
 import argparse
 import asyncio
 import logging
