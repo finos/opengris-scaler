@@ -1,4 +1,4 @@
-add_test_executable(test_ymq test_ymq.cpp)
+add_test_executable(test_ymq SOURCES test_ymq.cpp)
 
 target_sources(test_ymq PRIVATE
 	common/testing.h

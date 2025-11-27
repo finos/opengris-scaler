@@ -3,61 +3,46 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 
 #include "scaler/utility/error.h"
+#include "scaler/utility/io_result.h"
 #include "scaler/utility/pipe/pipe_writer.h"
 
 namespace scaler {
 namespace utility {
 namespace pipe {
 
-PipeWriter::PipeWriter(int64_t fd): _fd(fd)
-{
-}
-
 PipeWriter::~PipeWriter()
 {
+    if (this->_fd == -1) {
+        return;
+    }
+
     close(this->_fd);
 }
 
-PipeWriter::PipeWriter(PipeWriter&& other) noexcept
+IOResult PipeWriter::write(std::span<const uint8_t> buffer) const noexcept
 {
-    this->_fd = other._fd;
-    other._fd = -1;
-}
+    ssize_t n;
+    do {
+        n = ::write(this->_fd, buffer.data(), buffer.size());
+    } while (n < 0 && errno == EINTR);
 
-PipeWriter& PipeWriter::operator=(PipeWriter&& other) noexcept
-{
-    this->_fd = other._fd;
-    other._fd = -1;
-    return *this;
-}
-
-const int64_t PipeWriter::fd() const noexcept
-{
-    return this->_fd;
-}
-
-int PipeWriter::write(const void* buffer, size_t size) noexcept
-{
-    ssize_t n = ::write(this->_fd, buffer, size);
     if (n < 0) {
-        unrecoverableError({
-            Error::ErrorCode::CoreBug,
-            "Originated from",
-            "write(2)",
-            "Errno is",
-            strerror(errno),
-        });
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return IOResult::failure(IOResult::Error::WouldBlock);
+        } else {
+            unrecoverableError({
+                Error::ErrorCode::CoreBug,
+                "Originated from",
+                "write(2)",
+                "Errno is",
+                strerror(errno),
+            });
+        }
     }
-    return n;
-}
-
-void PipeWriter::write_all(const void* buffer, size_t size) noexcept
-{
-    size_t cursor = 0;
-    while (cursor < size)
-        cursor += (size_t)this->write((char*)buffer + cursor, size - cursor);
+    return IOResult::success(n);
 }
 
 }  // namespace pipe
