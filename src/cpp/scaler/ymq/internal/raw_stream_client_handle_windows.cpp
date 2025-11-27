@@ -1,5 +1,5 @@
 #ifdef _WIN32
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/internal/network_utils.h"
 #include "scaler/ymq/internal/raw_stream_client_handle.h"
 

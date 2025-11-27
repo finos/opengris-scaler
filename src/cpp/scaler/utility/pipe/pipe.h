@@ -14,7 +14,7 @@ struct Pipe {
 public:
     Pipe(): reader(-1), writer(-1)
     {
-        std::pair<int64_t, int64_t> pair = create_pipe();
+        std::pair<int64_t, int64_t> pair = createPipe();
         this->reader                     = PipeReader(pair.first);
         this->writer                     = PipeWriter(pair.second);
     }

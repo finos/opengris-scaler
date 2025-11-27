@@ -117,7 +117,7 @@ inline void fork_wrapper(std::function<TestResult()> fn, int timeout_secs, PipeW
         result = TestResult::Failure;
     }
 
-    pipe_wr.write_all((char*)&result, sizeof(TestResult));
+    pipe_wr.writeAll({(uint8_t*)&result, sizeof(TestResult)});
 
 #ifdef _WIN32
     SetEvent((HANDLE)hEvent);
