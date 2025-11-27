@@ -3,13 +3,12 @@
 #include <cstdint>
 
 #include "scaler/utility/error.h"
-#include "scaler/utility/pipe/pipe.h"
 
 namespace scaler {
 namespace utility {
 namespace pipe {
 
-std::pair<int64_t, int64_t> create_pipe()
+std::pair<int64_t, int64_t> createPipe()
 {
     SECURITY_ATTRIBUTES sa {};
     sa.nLength        = sizeof(sa);
@@ -27,6 +26,19 @@ std::pair<int64_t, int64_t> create_pipe()
     }
 
     return std::make_pair((int64_t)reader, (int64_t)writer);
+}
+
+void setNonBlocking(int64_t handle)
+{
+    HANDLE h   = (HANDLE)handle;
+    DWORD mode = PIPE_READMODE_BYTE | PIPE_NOWAIT;
+    if (!SetNamedPipeHandleState(h, &mode, nullptr, nullptr)) {
+        unrecoverableError({
+            Error::ErrorCode::CoreBug,
+            "Originated from",
+            "SetNamedPipeHandleState()",
+        });
+    }
 }
 
 }  // namespace pipe

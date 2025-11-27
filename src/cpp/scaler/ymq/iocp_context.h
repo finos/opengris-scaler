@@ -6,11 +6,11 @@
 #include <functional>
 #include <queue>
 
-#include "scaler/ymq/configuration.h"
-#include "scaler/ymq/timed_queue.h"
-
 // First-party
+#include "scaler/utility/error.h"
+#include "scaler/ymq/configuration.h"
 #include "scaler/ymq/interruptive_concurrent_queue.h"
+#include "scaler/ymq/timed_queue.h"
 #include "scaler/ymq/timestamp.h"
 // clang-format off
 #define NOMINMAX
@@ -49,7 +49,7 @@ public:
     {
         if (!_completionPort) {
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 "CreateIoCompletionPort",
                 "Errno is",

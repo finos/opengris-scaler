@@ -2,59 +2,44 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 
 #include "scaler/utility/error.h"
+#include "scaler/utility/io_result.h"
 #include "scaler/utility/pipe/pipe_reader.h"
 
 namespace scaler {
 namespace utility {
 namespace pipe {
 
-PipeReader::PipeReader(int64_t fd): _fd(fd)
-{
-}
-
 PipeReader::~PipeReader()
 {
+    if (this->_fd == -1) {
+        return;
+    }
+
     CloseHandle((HANDLE)this->_fd);
 }
 
-PipeReader::PipeReader(PipeReader&& other) noexcept
+IOResult PipeReader::read(std::span<uint8_t> buffer) const noexcept
 {
-    this->_fd = other._fd;
-    other._fd = -1;
-}
+    DWORD n = 0;
 
-PipeReader& PipeReader::operator=(PipeReader&& other) noexcept
-{
-    this->_fd = other._fd;
-    other._fd = -1;
-    return *this;
-}
-
-const int64_t PipeReader::fd() const noexcept
-{
-    return this->_fd;
-}
-
-int PipeReader::read(void* buffer, size_t size) const noexcept
-{
-    DWORD bytes_read = 0;
-    if (!ReadFile((HANDLE)this->_fd, buffer, (DWORD)size, &bytes_read, nullptr)) {
-        unrecoverableError({
-            Error::ErrorCode::CoreBug,
-            "Originated from",
-            "ReadFile()",
-        });
+    if (!ReadFile((HANDLE)this->_fd, buffer.data(), (DWORD)buffer.size(), &n, nullptr)) {
+        DWORD error = GetLastError();
+        switch (error) {
+            case ERROR_BROKEN_PIPE: return IOResult::failure(IOResult::Error::EndOfFile, 0);
+            case ERROR_NO_DATA: return IOResult::failure(IOResult::Error::WouldBlock, 0);
+            default:
+                unrecoverableError({
+                    Error::ErrorCode::CoreBug,
+                    "Originated from",
+                    "ReadFile()",
+                });
+        }
     }
-    return bytes_read;
-}
 
-void PipeReader::read_exact(void* buffer, size_t size) const noexcept
-{
-    size_t cursor = 0;
-    while (cursor < size)
-        cursor += (size_t)this->read((char*)buffer + cursor, size - cursor);
+    return IOResult::success(n);
 }
 
 }  // namespace pipe
