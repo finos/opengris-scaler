@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #include <sys/time.h>  // itimerspec
 #include <sys/timerfd.h>
+#include <sys/un.h>
 #include <unistd.h>
 #endif  // __linux__
 #ifdef _WIN32
@@ -62,6 +63,16 @@ using RawSocketType = int;
 #endif  // __linux__
 #ifdef _WIN32
 using RawSocketType = SOCKET;
+#endif  // _WIN32
+
+// Windows doesn't define this symbol, but has support with AF_UNIX. So we define it ourselves.
+#ifdef _WIN32
+#define UNIX_PATH_MAX 108
+
+struct sockaddr_un {
+    ADDRESS_FAMILY sun_family;    /* AF_UNIX */
+    char sun_path[UNIX_PATH_MAX]; /* pathname */
+};
 #endif  // _WIN32
 }  // namespace ymq
 }  // namespace scaler
