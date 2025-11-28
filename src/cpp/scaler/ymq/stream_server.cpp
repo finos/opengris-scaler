@@ -6,6 +6,7 @@
 #include "scaler/error/error.h"
 #include "scaler/ymq/event_loop_thread.h"
 #include "scaler/ymq/event_manager.h"
+#include "scaler/ymq/internal/network_utils.h"
 #include "scaler/ymq/io_socket.h"
 #include "scaler/ymq/message_connection.h"
 #include "scaler/ymq/network_utils.h"
@@ -19,9 +20,7 @@ bool StreamServer::createAndBindSocket()
         _logger.log(
             Logger::LoggingLevel::error,
             "Originated from",
-            "setsockopt(2)",
-            "Errno is",
-            strerror(GetErrorCode())  // ,
+            "setsockopt(2)"  //,
         );
         _onBindReturn(std::unexpected(Error {Error::ErrorCode::SetSockOptNonFatalFailure}));
         _onBindReturn = {};

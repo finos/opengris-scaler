@@ -1,5 +1,6 @@
 #ifdef __linux__
 #include "scaler/error/error.h"
+#include "scaler/ymq/internal/network_utils.h"
 #include "scaler/ymq/internal/raw_stream_client_handle.h"
 
 namespace scaler {

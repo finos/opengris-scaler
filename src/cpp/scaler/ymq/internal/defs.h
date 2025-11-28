@@ -36,15 +36,6 @@
 
 namespace scaler {
 namespace ymq {
-inline auto GetErrorCode()
-{
-#ifdef __linux__
-    return errno;
-#endif  // __linux__
-#ifdef _WIN32
-    return WSAGetLastError();
-#endif  // _WIN32
-}
 
 inline constexpr void CloseAndZeroSocket(auto& fd)
 {

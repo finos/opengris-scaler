@@ -51,7 +51,7 @@ void RawStreamServerHandle::bindAndListen()
             "Originated from",
             "bind(2)",
             "Errno is",
-            strerror(GetErrorCode()),
+            strerror(errno),
             "_serverFD",
             serverFD,
         });
@@ -67,7 +67,7 @@ void RawStreamServerHandle::bindAndListen()
             "Originated from",
             "listen(2)",
             "Errno is",
-            strerror(GetErrorCode()),
+            strerror(errno),
             "_serverFD",
             serverFD,
         });

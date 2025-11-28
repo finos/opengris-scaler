@@ -30,7 +30,7 @@ RawStreamClientHandle::RawStreamClientHandle(sockaddr remoteAddr): _clientFD {},
             "Originated from",
             "WSAIoctl",
             "Errno is",
-            GetErrorCode(),
+            WSAGetLastError(),
             "_connectExFunc",
             (void*)_connectExFunc,
         });
@@ -46,7 +46,7 @@ void RawStreamClientHandle::create()
             "Originated from",
             "socket(2)",
             "Errno is",
-            strerror(GetErrorCode()),
+            strerror(WSAGetLastError()),
         });
     }
     u_long nonblock = 1;
@@ -67,7 +67,7 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
             "Originated from",
             "bind",
             "Errno is",
-            GetErrorCode(),
+            WSAGetLastError(),
             "_clientFD",
             _clientFD,
         });
@@ -85,7 +85,7 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
         });
     }
 
-    const int myErrno = GetErrorCode();
+    const int myErrno = WSAGetLastError();
     if (myErrno == ERROR_IO_PENDING) {
         return false;
     }

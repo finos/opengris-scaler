@@ -22,7 +22,7 @@ RawStreamServerHandle::RawStreamServerHandle(sockaddr addr)
 
     _serverFD = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (_serverFD == -1) {
-        const int myErrno = GetErrorCode();
+        const int myErrno = WSAGetLastError();
         switch (myErrno) {
             case WSAENOBUFS:
             case WSAEMFILE:
@@ -70,7 +70,7 @@ RawStreamServerHandle::RawStreamServerHandle(sockaddr addr)
             "Originated from",
             "WSAIoctl",
             "Errno is",
-            strerror(GetErrorCode()),
+            strerror(WSAGetLastError()),
             "_serverFD",
             _serverFD,
         });
@@ -97,7 +97,7 @@ void RawStreamServerHandle::bindAndListen()
             "Originated from",
             "bind(2)",
             "Errno is",
-            strerror(GetErrorCode()),
+            strerror(WSAGetLastError()),
             "_serverFD",
             serverFD,
         });
@@ -113,7 +113,7 @@ void RawStreamServerHandle::bindAndListen()
             "Originated from",
             "listen(2)",
             "Errno is",
-            strerror(GetErrorCode()),
+            strerror(WSAGetLastError()),
             "_serverFD",
             serverFD,
         });
@@ -137,7 +137,7 @@ void RawStreamServerHandle::prepareAcceptSocket(void* notifyHandle)
 {
     _newConn = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (_newConn == INVALID_SOCKET) {
-        const int myErrno = GetErrorCode();
+        const int myErrno = WSAGetLastError();
         switch (myErrno) {
             case WSAENOBUFS:
             case WSAEMFILE:
@@ -178,7 +178,7 @@ void RawStreamServerHandle::prepareAcceptSocket(void* notifyHandle)
             sizeof(sockaddr_in) + requiredRedundantSpace,
             &bytesReturned,
             (LPOVERLAPPED)notifyHandle)) {
-        const int myErrno = GetErrorCode();
+        const int myErrno = WSAGetLastError();
         if (myErrno != ERROR_IO_PENDING) {
             CloseAndZeroSocket(_newConn);
             unrecoverableError({
@@ -210,7 +210,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawStreamServerHandle::getNewConns()
             "Originated from",
             "setsockopt(SO_UPDATE_ACCEPT_CONTEXT)",
             "Errno is",
-            strerror(GetErrorCode()),
+            strerror(WSAGetLastError()),
             "_serverFD",
             _serverFD,
         });
@@ -218,7 +218,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawStreamServerHandle::getNewConns()
 
     unsigned long mode = 1;
     if (ioctlsocket(_newConn, FIONBIO, &mode) == SOCKET_ERROR) {
-        const int myErrno = GetErrorCode();
+        const int myErrno = WSAGetLastError();
         switch (myErrno) {
             case WSANOTINITIALISED:
             case WSAEINPROGRESS:
