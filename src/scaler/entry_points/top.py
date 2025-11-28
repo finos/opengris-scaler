@@ -1,9 +1,7 @@
-import argparse
 import curses
 import functools
 from typing import Dict, List, Literal, Union
 
-from scaler.config.loader import load_config
 from scaler.config.section.top import TopConfig
 from scaler.io.sync_subscriber import ZMQSyncSubscriber
 from scaler.protocol.python.message import StateScheduler
@@ -34,20 +32,8 @@ SORT_BY_OPTIONS = {
 SORT_BY_STATE: Dict[str, Union[str, bool]] = {"sort_by": "cpu", "sort_by_previous": "cpu", "sort_reverse": True}
 
 
-def get_args():
-    parser = argparse.ArgumentParser(
-        "monitor scheduler as top like", formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    parser.add_argument("--config", "-c", type=str, default=None, help="Path to the TOML configuration file.")
-    parser.add_argument("--timeout", "-t", type=int, help="timeout seconds")
-    parser.add_argument("monitor_address", nargs="?", type=str, help="scheduler monitor address to connect to")
-    return parser.parse_args()
-
-
 def main():
-    args = get_args()
-    top_config = load_config(TopConfig, args.config, args, section_name="top")
-    curses.wrapper(poke, top_config)
+    curses.wrapper(poke, TopConfig.parse("A Top-like Application for Scaler Monitoring", "top"))
 
 
 def poke(screen, config: TopConfig):

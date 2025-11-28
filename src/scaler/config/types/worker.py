@@ -14,7 +14,7 @@ from scaler.config.mixins import ConfigType
 class WorkerNames(ConfigType):
     """Parses a comma-separated string of worker names into a list."""
 
-    names: List[str]
+    names: List[str] = dataclasses.field(default_factory=list)
 
     @classmethod
     def from_string(cls, value: str) -> Self:
@@ -24,7 +24,9 @@ class WorkerNames(ConfigType):
         return cls(names)
 
     def __str__(self) -> str:
-        return ",".join(self.names)
+        if self.names:
+            return ",".join(self.names)
+        return "<empty>"
 
     def __len__(self) -> int:
         return len(self.names)
@@ -34,7 +36,7 @@ class WorkerNames(ConfigType):
 class WorkerCapabilities(ConfigType):
     """Parses a string of worker capabilities."""
 
-    capabilities: Dict[str, int]
+    capabilities: Dict[str, int] = dataclasses.field(default_factory=dict)
 
     @classmethod
     def from_string(cls, value: str) -> Self:
@@ -53,6 +55,9 @@ class WorkerCapabilities(ConfigType):
         return cls(capabilities)
 
     def __str__(self) -> str:
+        if not self.capabilities:
+            return "<empty>"
+
         items = []
         for name, cap in self.capabilities.items():
             if cap == -1:

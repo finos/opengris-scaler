@@ -11,7 +11,7 @@ from typing import IO, Callable, List, Optional, Tuple, cast
 import tblib.pickling_support
 import zmq
 
-from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
 from scaler.io.sync_connector import ZMQSyncConnector
@@ -38,7 +38,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         event_loop: str,
         agent_address: ZMQConfig,
         scheduler_address: ZMQConfig,
-        object_storage_address: ObjectStorageConfig,
+        object_storage_address: ObjectStorageAddressConfig,
         preload: Optional[str],
         resume_event: Optional[EventType],
         resumed_event: Optional[EventType],

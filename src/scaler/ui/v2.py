@@ -1,7 +1,9 @@
 import threading
 from typing import Optional
+
 from nicegui import Event, app, ui  # type: ignore[attr-defined]
-from scaler.config.types.zmq import ZMQConfig
+
+from scaler.config.section.webui import WebUIConfig
 from scaler.io.sync_subscriber import ZMQSyncSubscriber
 from scaler.protocol.python.mixins import Message
 from scaler.ui.common.constants import (
@@ -87,12 +89,12 @@ class WebUI:
         process_scheduler_message(status, self.tables)
 
 
-def start_webui_v2(address: str, host: str, port: int):
+def start_webui_v2(config: WebUIConfig):
     webui = WebUI()
-    webui.start(host, port)
+    webui.start(config.web_host, config.web_port)
 
     subscriber = ZMQSyncSubscriber(
-        address=ZMQConfig.from_string(address), callback=webui.new_message, topic=b"", timeout_seconds=-1
+        address=config.monitor_address, callback=webui.new_message, topic=b"", timeout_seconds=-1
     )
     subscriber.start()
 

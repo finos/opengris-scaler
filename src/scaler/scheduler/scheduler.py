@@ -69,7 +69,7 @@ class Scheduler:
             monitor_address = config.monitor_address
         self._config_controller.update_config("monitor_address", monitor_address)
 
-        self._context = zmq.asyncio.Context(io_threads=config.io_threads)
+        self._context = zmq.asyncio.Context(io_threads=config.worker_io_threads)
 
         self._binder: AsyncBinder = ZMQAsyncBinder(
             context=self._context, name="scheduler", address=config.scheduler_address

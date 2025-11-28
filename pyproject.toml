@@ -19,6 +19,8 @@ classifiers = [
 dynamic = ["version"]
 dependencies = [
     "bidict",
+    "configargparse",
+    "toml", # required by configargparse
     "cloudpickle",
     "psutil==7.1.3",
     "pycapnp==2.1.0",
