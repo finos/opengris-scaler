@@ -1,6 +1,8 @@
 import threading
 from typing import Optional
+
 from nicegui import Event, app, ui  # type: ignore[attr-defined]
+
 from scaler.config.types.zmq import ZMQConfig
 from scaler.io.sync_subscriber import ZMQSyncSubscriber
 from scaler.protocol.python.mixins import Message

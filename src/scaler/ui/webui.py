@@ -1,5 +1,6 @@
 import logging
 from typing import Optional, Tuple
+
 from scaler.ui.util import NICEGUI_MAJOR_VERSION
 from scaler.utility.logging.utility import setup_logger
 

@@ -5,13 +5,13 @@ This MITM drops a % of packets
 import random
 from typing import Optional
 
-from tests.cpp.ymq.py_mitm.mitm_types import IP, AbstractMITM, AbstractMITMInterface, TCPConnection
+from tests.cpp.ymq.py_mitm.mitm_types import IP, MITM, MITMInterface, TCPConnection
 
 
-class MITM(AbstractMITM):
+class RandomlyDropPacketsMITM(MITM):
     def __init__(self, drop_percentage: str):
         self._drop_percentage = float(drop_percentage)
-        self._consecutive_drop_limit = 3
+        self._consecutive_drop_limit = 2
         self._client_consecutive_drops = 0
         self._server_consecutive_drops = 0
 
@@ -25,7 +25,7 @@ class MITM(AbstractMITM):
 
     def proxy(
         self,
-        tuntap: AbstractMITMInterface,
+        tuntap: MITMInterface,
         pkt: IP,
         sender: TCPConnection,
         client_conn: Optional[TCPConnection],

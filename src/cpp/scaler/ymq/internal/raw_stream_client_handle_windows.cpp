@@ -6,8 +6,14 @@
 namespace scaler {
 namespace ymq {
 
-RawStreamClientHandle::RawStreamClientHandle(sockaddr remoteAddr): _clientFD {}, _remoteAddr(std::move(remoteAddr))
+RawStreamClientHandle::RawStreamClientHandle(SocketAddress remoteAddress)
+    : _clientFD {}, _remoteAddress(std::move(remoteAddress))
 {
+    if (remoteAddress._type == SocketAddress::Type::IPC) {
+        std::cerr << "Hitting IPC Socket address type, not supported on this system!\n";
+        assert(false);
+    }
+
     _connectExFunc = {};
 
     auto tmp = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -39,7 +45,12 @@ RawStreamClientHandle::RawStreamClientHandle(sockaddr remoteAddr): _clientFD {},
 
 void RawStreamClientHandle::create()
 {
-    _clientFD = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    _clientFD = {};
+    switch (_remoteAddress._type) {
+        case SocketAddress::Type::TCP: _clientFD = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); break;
+        case SocketAddress::Type::IPC: _clientFD = socket(AF_UNIX, SOCK_STREAM, 0); break;
+        default: std::unreachable();
+    }
     if (_clientFD == -1) {
         unrecoverableError({
             Error::ErrorCode::CoreBug,
@@ -60,7 +71,7 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
     const char ip4[]           = {127, 0, 0, 1};
     *(int*)&localAddr.sin_addr = *(int*)ip4;
 
-    const int bindRes = bind(_clientFD, (struct sockaddr*)&localAddr, sizeof(struct sockaddr_in));
+    const int bindRes = bind(_clientFD, (struct sockaddr*)&localAddr, _remoteAddress._addrLen);
     if (bindRes == -1) {
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
@@ -73,8 +84,14 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
         });
     }
 
-    const bool ok =
-        _connectExFunc(_clientFD, &_remoteAddr, sizeof(struct sockaddr), NULL, 0, NULL, (LPOVERLAPPED)notifyHandle);
+    const bool ok = _connectExFunc(
+        _clientFD,
+        (sockaddr*)&_remoteAddress._addr,
+        _remoteAddress._addrLen,
+        NULL,
+        0,
+        NULL,
+        (LPOVERLAPPED)notifyHandle);
     if (ok) {
         unrecoverableError({
             Error::ErrorCode::CoreBug,
