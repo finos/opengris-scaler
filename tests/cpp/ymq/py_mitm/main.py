@@ -133,7 +133,7 @@ def get_interface(mitm_ip: str, mitm_port: int, remote_ip: str, server_port: int
         from tests.cpp.ymq.py_mitm.tuntap import create_tuntap_interface
 
         return create_tuntap_interface("tun0", mitm_ip, remote_ip)
-    
+
     raise RuntimeError("unsupported platform")
 
 

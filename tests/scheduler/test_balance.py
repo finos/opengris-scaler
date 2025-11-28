@@ -3,7 +3,11 @@ import time
 import unittest
 
 from scaler import Client, Cluster, SchedulerClusterCombo
+from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.worker import WorkerConfig
 from scaler.config.defaults import DEFAULT_LOAD_BALANCE_SECONDS
+from scaler.config.section.cluster import ClusterConfig
+from scaler.config.types.worker import WorkerCapabilities, WorkerNames
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from tests.utility.utility import logging_test_name
@@ -43,23 +47,30 @@ class TestBalance(unittest.TestCase):
         time.sleep(3)
 
         new_cluster = Cluster(
-            address=combo._cluster._address,
-            object_storage_address=None,
-            preload=None,
-            worker_io_threads=1,
-            worker_names=[str(i) for i in range(0, N_WORKERS - 1)],
-            per_worker_capabilities={},
-            per_worker_task_queue_size=combo._cluster._per_worker_task_queue_size,
-            heartbeat_interval_seconds=combo._cluster._heartbeat_interval_seconds,
-            task_timeout_seconds=combo._cluster._task_timeout_seconds,
-            death_timeout_seconds=combo._cluster._death_timeout_seconds,
-            garbage_collect_interval_seconds=combo._cluster._garbage_collect_interval_seconds,
-            trim_memory_threshold_bytes=combo._cluster._trim_memory_threshold_bytes,
-            hard_processor_suspend=combo._cluster._hard_processor_suspend,
-            event_loop=combo._cluster._event_loop,
-            logging_paths=combo._cluster._logging_paths,
-            logging_level=combo._cluster._logging_level,
-            logging_config_file=combo._cluster._logging_config_file,
+            config=ClusterConfig(
+                scheduler_address=combo._cluster._address,
+                object_storage_address=None,
+                preload=None,
+                worker_names=WorkerNames([str(i) for i in range(0, N_WORKERS - 1)]),
+                num_of_workers=N_WORKERS - 1,
+                event_loop=combo._cluster._event_loop,
+                worker_io_threads=1,
+                worker_config=WorkerConfig(
+                    per_worker_capabilities=WorkerCapabilities({}),
+                    per_worker_task_queue_size=combo._cluster._per_worker_task_queue_size,
+                    heartbeat_interval_seconds=combo._cluster._heartbeat_interval_seconds,
+                    task_timeout_seconds=combo._cluster._task_timeout_seconds,
+                    death_timeout_seconds=combo._cluster._death_timeout_seconds,
+                    garbage_collect_interval_seconds=combo._cluster._garbage_collect_interval_seconds,
+                    trim_memory_threshold_bytes=combo._cluster._trim_memory_threshold_bytes,
+                    hard_processor_suspend=combo._cluster._hard_processor_suspend,
+                ),
+                logging_config=LoggingConfig(
+                    paths=combo._cluster._logging_paths,
+                    level=combo._cluster._logging_level,
+                    config_file=combo._cluster._logging_config_file,
+                ),
+            )
         )
         new_cluster.start()
 

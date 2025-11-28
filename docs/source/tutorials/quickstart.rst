@@ -137,7 +137,7 @@ Here we use localhost addresses for demonstration, however the scheduler and wor
 
 .. code:: bash
 
-    scaler_worker -n 10 tcp://127.0.0.1:8516
+    scaler_cluster -n 10 tcp://127.0.0.1:8516
 
 
 .. code:: console

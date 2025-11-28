@@ -1,54 +1,37 @@
 import os
 import signal
 import uuid
-from typing import Dict, Optional, Tuple
+from typing import Dict
 
 from aiohttp import web
 from aiohttp.web_request import Request
 
-from scaler.config.types.object_storage_server import ObjectStorageConfig
-from scaler.config.types.zmq import ZMQConfig
+from scaler.config.section.native_worker_adapter import NativeWorkerAdapterConfig
 from scaler.utility.identifiers import WorkerID
 from scaler.worker.worker import Worker
 from scaler.worker_adapter.common import CapacityExceededError, WorkerGroupID, WorkerGroupNotFoundError
 
 
 class NativeWorkerAdapter:
-    def __init__(
-        self,
-        address: ZMQConfig,
-        object_storage_address: Optional[ObjectStorageConfig],
-        capabilities: Dict[str, int],
-        io_threads: int,
-        task_queue_size: int,
-        max_workers: int,
-        heartbeat_interval_seconds: int,
-        task_timeout_seconds: int,
-        death_timeout_seconds: int,
-        garbage_collect_interval_seconds: int,
-        trim_memory_threshold_bytes: int,
-        hard_processor_suspend: bool,
-        event_loop: str,
-        logging_paths: Tuple[str, ...],
-        logging_level: str,
-        logging_config_file: Optional[str],
-    ):
-        self._address = address
-        self._object_storage_address = object_storage_address
-        self._capabilities = capabilities
-        self._io_threads = io_threads
-        self._task_queue_size = task_queue_size
-        self._max_workers = max_workers
-        self._heartbeat_interval_seconds = heartbeat_interval_seconds
-        self._task_timeout_seconds = task_timeout_seconds
-        self._death_timeout_seconds = death_timeout_seconds
-        self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
-        self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
-        self._hard_processor_suspend = hard_processor_suspend
-        self._event_loop = event_loop
-        self._logging_paths = logging_paths
-        self._logging_level = logging_level
-        self._logging_config_file = logging_config_file
+    def __init__(self, config: NativeWorkerAdapterConfig):
+        self._address = config.worker_adapter_config.scheduler_address
+        self._object_storage_address = config.worker_adapter_config.object_storage_address
+        self._capabilities = config.worker_config.per_worker_capabilities.capabilities
+        self._io_threads = config.worker_io_threads
+        self._task_queue_size = config.worker_config.per_worker_task_queue_size
+        self._max_workers = config.worker_adapter_config.max_workers
+        self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
+        self._task_timeout_seconds = config.worker_config.task_timeout_seconds
+        self._death_timeout_seconds = config.worker_config.death_timeout_seconds
+        self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
+        self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
+        self._hard_processor_suspend = config.worker_config.hard_processor_suspend
+        self._event_loop = config.event_loop
+        self._adapter_web_host = config.web_config.adapter_web_host
+        self._adapter_web_port = config.web_config.adapter_web_port
+        self._logging_paths = config.logging_config.paths
+        self._logging_level = config.logging_config.level
+        self._logging_config_file = config.logging_config.config_file
 
         """
         Although a worker group can contain multiple workers, in this native adapter implementation,

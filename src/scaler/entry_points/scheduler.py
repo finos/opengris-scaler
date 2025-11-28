@@ -1,118 +1,25 @@
-import argparse
-
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
-from scaler.config.loader import load_config
 from scaler.config.section.scheduler import SchedulerConfig
-from scaler.config.types.object_storage_server import ObjectStorageConfig
-from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
-from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
-from scaler.utility.event_loop import EventLoopType
-
-
-def get_args():
-    parser = argparse.ArgumentParser("scaler_scheduler", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-
-    parser.add_argument("--config", "-c", type=str, default=None, help="Path to the TOML configuration file.")
-    parser.add_argument("--io-threads", type=int, help="number of io threads for zmq")
-    parser.add_argument(
-        "--max-number-of-tasks-waiting",
-        "-mt",
-        type=int,
-        help="max number of tasks can wait in scheduler while all workers are full",
-    )
-    parser.add_argument("--client-timeout-seconds", "-ct", type=int, help="discard client when timeout seconds reached")
-    parser.add_argument("--worker-timeout-seconds", "-wt", type=int, help="discard worker when timeout seconds reached")
-    parser.add_argument(
-        "--object-retention-seconds", "-ot", type=int, help="discard function in scheduler when timeout seconds reached"
-    )
-    parser.add_argument(
-        "--load-balance-seconds", "-ls", type=int, help="number of seconds for load balance operation in scheduler"
-    )
-    parser.add_argument(
-        "--load-balance-trigger-times",
-        "-lbt",
-        type=int,
-        help="exact number of repeated load balance advices when trigger load balance operation in scheduler",
-    )
-    parser.add_argument("--event-loop", "-e", choices=EventLoopType.allowed_types(), help="select event loop type")
-    parser.add_argument(
-        "--protected", "-p", action="store_true", help="protect scheduler and worker from being shutdown by client"
-    )
-    parser.add_argument(
-        "--allocate-policy",
-        "-ap",
-        choices=[p.name for p in AllocatePolicy],
-        help="specify allocate policy, this controls how scheduler will prioritize tasks, including balancing tasks",
-    )
-    parser.add_argument(
-        "--logging-paths",
-        "-lp",
-        nargs="*",
-        type=str,
-        help="specify where scheduler log should logged to, it can accept multiple files, default is /dev/stdout",
-    )
-    parser.add_argument("--logging-level", "-ll", type=str, help="specify the logging level")
-    parser.add_argument(
-        "--logging-config-file",
-        "-lc",
-        type=str,
-        help="use standard python the .conf file the specify python logging file configuration format, this will "
-        "bypass --logging-path",
-    )
-    parser.add_argument(
-        "--object-storage-address",
-        "-osa",
-        type=str,
-        help="specify the object storage server address, if not specified, the address is scheduler address with port "
-        "number plus 1, e.g.: if scheduler address is tcp://localhost:2345, then object storage address is "
-        "tcp://localhost:2346",
-    )
-    parser.add_argument(
-        "--monitor-address",
-        "-ma",
-        type=str,
-        help="specify monitoring address, if not specified, the monitoring address is scheduler address with port "
-        "number plus 2, e.g.: if scheduler address is tcp://localhost:2345, then monitoring address is "
-        "tcp://localhost:2347",
-    )
-    parser.add_argument(
-        "--scaling-controller-strategy",
-        "-scs",
-        choices=[s.name for s in ScalingControllerStrategy],
-        help="specify the scaling controller strategy, if not specified, no scaling controller will be used",
-    )
-    parser.add_argument(
-        "--adapter-webhook-urls",
-        "-awu",
-        nargs="*",
-        type=str,
-        help="specify the adapter webhook urls for the scaling controller to send scaling events to",
-    )
-    parser.add_argument(
-        "scheduler_address", nargs="?", type=str, help="scheduler address to connect to, e.g.: `tcp://localhost:6378`"
-    )
-    return parser.parse_args()
+from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 
 
 def main():
-    args = get_args()
-
-    scheduler_config = load_config(SchedulerConfig, args.config, args, section_name="scheduler")
+    scheduler_config = SchedulerConfig.parse("Scaler Scheduler", "scheduler")
 
     object_storage_address = scheduler_config.object_storage_address
     object_storage = None
 
     if object_storage_address is None:
         assert scheduler_config.scheduler_address.port is not None, "Scheduler address must have a port"
-        object_storage_address = ObjectStorageConfig(
+        object_storage_address = ObjectStorageAddressConfig(
             host=scheduler_config.scheduler_address.host, port=scheduler_config.scheduler_address.port + 1
         )
         object_storage = ObjectStorageServerProcess(
             object_storage_address=object_storage_address,
-            logging_paths=scheduler_config.logging_paths,
-            logging_config_file=scheduler_config.logging_config_file,
-            logging_level=scheduler_config.logging_level,
+            logging_paths=scheduler_config.logging_config.paths,
+            logging_config_file=scheduler_config.logging_config.config_file,
+            logging_level=scheduler_config.logging_config.level,
         )
         object_storage.start()
         object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
@@ -123,7 +30,7 @@ def main():
         monitor_address=scheduler_config.monitor_address,
         scaling_controller_strategy=scheduler_config.scaling_controller_strategy,
         adapter_webhook_urls=scheduler_config.adapter_webhook_urls,
-        io_threads=scheduler_config.io_threads,
+        io_threads=scheduler_config.worker_io_threads,
         max_number_of_tasks_waiting=scheduler_config.max_number_of_tasks_waiting,
         client_timeout_seconds=scheduler_config.client_timeout_seconds,
         worker_timeout_seconds=scheduler_config.worker_timeout_seconds,
@@ -133,9 +40,9 @@ def main():
         protected=scheduler_config.protected,
         allocate_policy=scheduler_config.allocate_policy,
         event_loop=scheduler_config.event_loop,
-        logging_paths=scheduler_config.logging_paths,
-        logging_config_file=scheduler_config.logging_config_file,
-        logging_level=scheduler_config.logging_level,
+        logging_paths=scheduler_config.logging_config.paths,
+        logging_config_file=scheduler_config.logging_config.config_file,
+        logging_level=scheduler_config.logging_config.level,
     )
     scheduler.start()
 

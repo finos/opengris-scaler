@@ -7,7 +7,7 @@ from typing import Dict, Optional
 
 import zmq
 
-from scaler.config.types.object_storage_server import ObjectStorageConfig
+from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
@@ -40,7 +40,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         self,
         name: str,
         address: ZMQConfig,
-        object_storage_address: Optional[ObjectStorageConfig],
+        object_storage_address: Optional[ObjectStorageAddressConfig],
         service_name: str,
         capabilities: Dict[str, int],
         base_concurrency: int,

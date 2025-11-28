@@ -3,7 +3,7 @@ from functools import partial
 
 from nicegui import ui
 
-from scaler.config.types.zmq import ZMQConfig
+from scaler.config.section.webui import WebUIConfig
 from scaler.io.sync_subscriber import ZMQSyncSubscriber
 from scaler.ui.common.constants import (
     MEMORY_USAGE_UPDATE_INTERVAL,
@@ -20,7 +20,7 @@ from scaler.ui.common.webui import Sections, process_scheduler_message
 from scaler.ui.common.worker_processors import WorkerProcessors
 
 
-def start_webui_v1(address: str, host: str, port: int):
+def start_webui_v1(config: WebUIConfig):
     tables = Sections(
         scheduler_section=SchedulerSection(),
         workers_section=WorkersSection(),
@@ -62,13 +62,15 @@ def start_webui_v1(address: str, host: str, port: int):
             tables.settings_section.draw_section()
 
     subscriber = ZMQSyncSubscriber(
-        address=ZMQConfig.from_string(address),
+        address=config.monitor_address,
         callback=partial(process_scheduler_message, tables=tables),
         topic=b"",
         timeout_seconds=-1,
     )
     subscriber.start()
 
-    ui_thread = threading.Thread(target=partial(ui.run, host=host, port=port, reload=False), daemon=False)
+    ui_thread = threading.Thread(
+        target=partial(ui.run, host=config.web_host, port=config.web_port, reload=False), daemon=False
+    )
     ui_thread.start()
     ui_thread.join()

@@ -1,48 +1,32 @@
 import os
 import signal
 import uuid
-from typing import Dict, Optional, Tuple
+from typing import Dict
 
 from aiohttp import web
 from aiohttp.web_request import Request
 
-from scaler.config.types.object_storage_server import ObjectStorageConfig
-from scaler.config.types.zmq import ZMQConfig
+from scaler.config.section.symphony_worker_adapter import SymphonyWorkerConfig
 from scaler.utility.identifiers import WorkerID
 from scaler.worker_adapter.common import CapacityExceededError, WorkerGroupID, WorkerGroupNotFoundError
 from scaler.worker_adapter.symphony.worker import SymphonyWorker
 
 
 class SymphonyWorkerAdapter:
-    def __init__(
-        self,
-        address: ZMQConfig,
-        object_storage_address: Optional[ObjectStorageConfig],
-        service_name: str,
-        base_concurrency: int,
-        capabilities: Dict[str, int],
-        io_threads: int,
-        task_queue_size: int,
-        heartbeat_interval_seconds: int,
-        death_timeout_seconds: int,
-        event_loop: str,
-        logging_paths: Tuple[str, ...],
-        logging_level: str,
-        logging_config_file: Optional[str],
-    ):
-        self._address = address
-        self._object_storage_address = object_storage_address
-        self._service_name = service_name
-        self._base_concurrency = base_concurrency
-        self._capabilities = capabilities
-        self._io_threads = io_threads
-        self._task_queue_size = task_queue_size
-        self._heartbeat_interval_seconds = heartbeat_interval_seconds
-        self._death_timeout_seconds = death_timeout_seconds
-        self._event_loop = event_loop
-        self._logging_paths = logging_paths
-        self._logging_level = logging_level
-        self._logging_config_file = logging_config_file
+    def __init__(self, config: SymphonyWorkerConfig):
+        self._address = config.worker_adapter_config.scheduler_address
+        self._object_storage_address = config.worker_adapter_config.object_storage_address
+        self._service_name = config.service_name
+        self._base_concurrency = config.worker_adapter_config.max_workers
+        self._capabilities = config.worker_config.per_worker_capabilities.capabilities
+        self._io_threads = config.worker_io_threads
+        self._task_queue_size = config.worker_config.per_worker_task_queue_size
+        self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
+        self._death_timeout_seconds = config.worker_config.death_timeout_seconds
+        self._event_loop = config.event_loop
+        self._logging_paths = config.logging_config.paths
+        self._logging_level = config.logging_config.level
+        self._logging_config_file = config.logging_config.config_file
 
         """
         Although a worker group can contain multiple workers, in this Symphony adapter implementation,

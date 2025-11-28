@@ -3,6 +3,8 @@ import time
 import unittest
 
 from scaler import Client, Cluster, SchedulerClusterCombo
+from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.worker import WorkerConfig
 from scaler.config.defaults import (
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
@@ -13,6 +15,8 @@ from scaler.config.defaults import (
     DEFAULT_TASK_TIMEOUT_SECONDS,
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
 )
+from scaler.config.section.cluster import ClusterConfig
+from scaler.config.types.worker import WorkerCapabilities, WorkerNames
 from scaler.config.types.zmq import ZMQConfig
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
@@ -30,23 +34,28 @@ class TestDeathTimeout(unittest.TestCase):
         logging.info("test with no scheduler")
         # Test 1: Spinning up a cluster with no scheduler. Death timeout should apply
         cluster = Cluster(
-            address=ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
-            object_storage_address=None,
-            preload=None,
-            worker_io_threads=DEFAULT_IO_THREADS,
-            worker_names=["a", "b"],
-            per_worker_capabilities={},
-            per_worker_task_queue_size=DEFAULT_PER_WORKER_QUEUE_SIZE,
-            heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
-            garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
-            trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
-            task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
-            death_timeout_seconds=10,
-            hard_processor_suspend=False,
-            event_loop="builtin",
-            logging_paths=DEFAULT_LOGGING_PATHS,
-            logging_level=DEFAULT_LOGGING_LEVEL,
-            logging_config_file=None,
+            config=ClusterConfig(
+                scheduler_address=ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
+                object_storage_address=None,
+                preload=None,
+                worker_names=WorkerNames(["a", "b"]),
+                num_of_workers=2,
+                event_loop="builtin",
+                worker_io_threads=DEFAULT_IO_THREADS,
+                worker_config=WorkerConfig(
+                    per_worker_capabilities=WorkerCapabilities({}),
+                    per_worker_task_queue_size=DEFAULT_PER_WORKER_QUEUE_SIZE,
+                    heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+                    garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
+                    trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
+                    task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
+                    death_timeout_seconds=10,
+                    hard_processor_suspend=False,
+                ),
+                logging_config=LoggingConfig(
+                    paths=DEFAULT_LOGGING_PATHS, level=DEFAULT_LOGGING_LEVEL, config_file=None
+                ),
+            )
         )
         cluster.start()
         time.sleep(15)

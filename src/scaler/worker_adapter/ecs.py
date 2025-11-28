@@ -1,14 +1,13 @@
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Dict, Optional, Set
+from typing import Dict, Set
 
 import boto3
 from aiohttp import web
 from aiohttp.web_request import Request
 
-from scaler.config.types.object_storage_server import ObjectStorageConfig
-from scaler.config.types.zmq import ZMQConfig
+from scaler.config.section.ecs_worker_adapter import ECSWorkerAdapterConfig
 from scaler.utility.identifiers import WorkerID
 from scaler.worker_adapter.common import (
     CapacityExceededError,
@@ -25,60 +24,33 @@ class WorkerGroupInfo:
 
 
 class ECSWorkerAdapter:
-    def __init__(
-        self,
-        address: ZMQConfig,
-        object_storage_address: Optional[ObjectStorageConfig],
-        capabilities: Dict[str, int],
-        io_threads: int,
-        per_worker_task_queue_size: int,
-        max_instances: int,
-        heartbeat_interval_seconds: int,
-        task_timeout_seconds: int,
-        death_timeout_seconds: int,
-        garbage_collect_interval_seconds: int,
-        trim_memory_threshold_bytes: int,
-        hard_processor_suspend: bool,
-        event_loop: str,
-        # AWS ECS specific configuration
-        aws_access_key_id: str,
-        aws_secret_access_key: str,
-        aws_region: str,
-        ecs_subnets: list,
-        ecs_cluster: str,
-        ecs_task_image: str,
-        ecs_python_requirements: str,
-        ecs_python_version: str,
-        ecs_task_definition: str,
-        ecs_task_cpu: int,  # 4 vCPU
-        ecs_task_memory: int,  # 30 GB, Fargate has weird supported sizes
-    ):
-        self._address = address
-        self._object_storage_address = object_storage_address
-        self._capabilities = capabilities
-        self._io_threads = io_threads
-        self._per_worker_task_queue_size = per_worker_task_queue_size
-        self._max_instances = max_instances
-        self._heartbeat_interval_seconds = heartbeat_interval_seconds
-        self._task_timeout_seconds = task_timeout_seconds
-        self._death_timeout_seconds = death_timeout_seconds
-        self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
-        self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
-        self._hard_processor_suspend = hard_processor_suspend
-        self._event_loop = event_loop
+    def __init__(self, config: ECSWorkerAdapterConfig):
+        self._address = config.worker_adapter_config.scheduler_address
+        self._object_storage_address = config.worker_adapter_config.object_storage_address
+        self._capabilities = config.worker_config.per_worker_capabilities.capabilities
+        self._io_threads = config.worker_io_threads
+        self._per_worker_task_queue_size = config.worker_config.per_worker_task_queue_size
+        self._max_instances = config.worker_adapter_config.max_workers
+        self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
+        self._task_timeout_seconds = config.worker_config.task_timeout_seconds
+        self._death_timeout_seconds = config.worker_config.death_timeout_seconds
+        self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
+        self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
+        self._hard_processor_suspend = config.worker_config.hard_processor_suspend
+        self._event_loop = config.event_loop
 
-        self._aws_access_key_id = aws_access_key_id
-        self._aws_secret_access_key = aws_secret_access_key
-        self._aws_region = aws_region
+        self._aws_access_key_id = config.aws_access_key_id
+        self._aws_secret_access_key = config.aws_secret_access_key
+        self._aws_region = config.aws_region
 
-        self._ecs_cluster = ecs_cluster
-        self._ecs_task_image = ecs_task_image
-        self._ecs_python_requirements = ecs_python_requirements
-        self._ecs_python_version = ecs_python_version
-        self._ecs_task_definition = ecs_task_definition
-        self._ecs_task_cpu = ecs_task_cpu
-        self._ecs_task_memory = ecs_task_memory
-        self._ecs_subnets = ecs_subnets
+        self._ecs_cluster = config.ecs_cluster
+        self._ecs_task_image = config.ecs_task_image
+        self._ecs_python_requirements = config.ecs_python_requirements
+        self._ecs_python_version = config.ecs_python_version
+        self._ecs_task_definition = config.ecs_task_definition
+        self._ecs_task_cpu = config.ecs_task_cpu
+        self._ecs_task_memory = config.ecs_task_memory
+        self._ecs_subnets = config.ecs_subnets
 
         aws_session = boto3.Session(
             aws_access_key_id=self._aws_access_key_id,

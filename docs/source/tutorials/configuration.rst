@@ -26,13 +26,13 @@ For the list of available settings, use the CLI command:
 
 .. _protected:
 
-The Scheduler is started in protected mode by default, which means that it can not be shut down by the Client. This is because multiple Clients can connect to a long-running Scheduler, and calling :py:func:`~Client.shutdown()` may inadverdently kill work that another user is executing. This is also because Scaler encourages strong decoupling between Client, Scheduler, and Workers. To turn off protected mode, start the scheduler with:
+The Scheduler is not in protected mode by default, which means that it can be shut down by the Client. If you plan to have multiple Clients connect and disconnect to a long-running Scheduler, consider setting protected mode with `-p` so that calling :py:func:`~Client.shutdown()` on one client does not kill work from another client. This is also because Scaler encourages strong decoupling between Client, Scheduler, and Workers. To enable protected mode, start the scheduler with:
 
 .. code:: bash
 
-    scaler_scheduler tcp://127.0.0.1:8516 -p False
+    scaler_scheduler tcp://127.0.0.1:8516 -p
 
-Or if using the programmatic API, pass ``protected=False``:
+Or if using the programmatic API, pass ``protected=True``:
 
 .. code:: python
 
@@ -127,11 +127,18 @@ This can be set using the CLI:
 
 .. code:: bash
 
-    scaler_cluster -n 10 tcp://127.0.0.1:8516 -ds 300
+    scaler_cluster -n 10 tcp://127.0.0.1:8516 -dts 300
 
 Or through the programmatic API:
 
+.. code:: python
 
+    from scaler import SchedulerClusterCombo
+
+    cluster = SchedulerClusterCombo(
+        address=f"tcp://127.0.0.1:{port}",
+        death_timeout_seconds=300,
+    )
 
 Configuring with TOML Files
 ---------------------------
@@ -183,6 +190,8 @@ The following table maps each Scaler command to its corresponding section name i
      - ``[native_worker_adapter]``
    * - ``scaler_worker_adapter_symphony``
      - ``[symphony_worker_adapter]``
+   * - ``[ecs_worker_adapter]``
+     - ``scaler_worker_adapter_ecs``
 
 
 Practical Scenarios & Examples

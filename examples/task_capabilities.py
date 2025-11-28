@@ -8,6 +8,10 @@ import math
 
 from scaler import Client, Cluster
 from scaler.cluster.combo import SchedulerClusterCombo
+from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.worker import WorkerConfig
+from scaler.config.section.cluster import ClusterConfig
+from scaler.config.types.worker import WorkerCapabilities, WorkerNames
 from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 
 
@@ -32,23 +36,30 @@ def main():
     # Adds an additional worker with GPU support
     base_cluster = cluster._cluster
     regular_cluster = Cluster(
-        address=base_cluster._address,
-        object_storage_address=None,
-        preload=None,
-        worker_io_threads=1,
-        worker_names=["gpu_worker"],
-        per_worker_capabilities={"gpu": -1},
-        per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
-        heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
-        task_timeout_seconds=base_cluster._task_timeout_seconds,
-        death_timeout_seconds=base_cluster._death_timeout_seconds,
-        garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
-        trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
-        hard_processor_suspend=base_cluster._hard_processor_suspend,
-        event_loop=base_cluster._event_loop,
-        logging_paths=base_cluster._logging_paths,
-        logging_level=base_cluster._logging_level,
-        logging_config_file=base_cluster._logging_config_file,
+        config=ClusterConfig(
+            scheduler_address=base_cluster._address,
+            object_storage_address=None,
+            preload=None,
+            worker_names=WorkerNames(["gpu_worker"]),
+            num_of_workers=1,
+            event_loop=base_cluster._event_loop,
+            worker_io_threads=1,
+            worker_config=WorkerConfig(
+                per_worker_capabilities=WorkerCapabilities({"gpu": -1}),
+                per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
+                heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
+                task_timeout_seconds=base_cluster._task_timeout_seconds,
+                death_timeout_seconds=base_cluster._death_timeout_seconds,
+                garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
+                trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
+                hard_processor_suspend=base_cluster._hard_processor_suspend,
+            ),
+            logging_config=LoggingConfig(
+                paths=base_cluster._logging_paths,
+                level=base_cluster._logging_level,
+                config_file=base_cluster._logging_config_file,
+            ),
+        )
     )
     regular_cluster.start()
 
