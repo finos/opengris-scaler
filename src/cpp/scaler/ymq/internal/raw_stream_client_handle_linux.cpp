@@ -1,5 +1,5 @@
 #ifdef __linux__
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/internal/raw_stream_client_handle.h"
 
 namespace scaler {
@@ -23,7 +23,7 @@ void RawStreamClientHandle::create()
             case ENOBUFS:
             case ENOMEM:
                 unrecoverableError({
-                    Error::ErrorCode::ConfigurationError,
+                    utility::Error::ErrorCode::ConfigurationError,
                     "Originated from",
                     "socket(2)",
                     "Errno is",
@@ -34,7 +34,7 @@ void RawStreamClientHandle::create()
             case EPROTONOSUPPORT:
             default:
                 unrecoverableError({
-                    Error::ErrorCode::CoreBug,
+                    utility::Error::ErrorCode::CoreBug,
                     "Originated from",
                     "socket(2)",
                     "Errno is",
@@ -64,7 +64,7 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
         case EPROTOTYPE:
         case ETIMEDOUT:
             unrecoverableError({
-                Error::ErrorCode::ConfigurationError,
+                utility::Error::ErrorCode::ConfigurationError,
                 "Originated from",
                 "connect(2)",
                 "Errno is",
@@ -75,7 +75,7 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
 
         case EINTR:
             unrecoverableError({
-                Error::ErrorCode::SignalNotSupported,
+                utility::Error::ErrorCode::SignalNotSupported,
                 "Originated from",
                 "connect(2)",
                 "Errno is",
@@ -95,7 +95,7 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
         case ECONNREFUSED:
         default:
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 "connect(2)",
                 "Errno is",
@@ -117,7 +117,7 @@ bool RawStreamClientHandle::needRetry()
             case ENOBUFS:
             case EACCES:
                 unrecoverableError({
-                    Error::ErrorCode::ConfigurationError,
+                    utility::Error::ErrorCode::ConfigurationError,
                     "Originated from",
                     "getsockopt(3)",
                     "Errno is",
@@ -131,7 +131,7 @@ bool RawStreamClientHandle::needRetry()
             case EINVAL:
             default:
                 unrecoverableError({
-                    Error::ErrorCode::CoreBug,
+                    utility::Error::ErrorCode::CoreBug,
                     "Originated from",
                     "getsockopt(3)",
                     "Errno is",
@@ -148,7 +148,7 @@ bool RawStreamClientHandle::needRetry()
 
         // Since connect(2) error has been checked previously
         unrecoverableError({
-            Error::ErrorCode::CoreBug,
+            utility::Error::ErrorCode::CoreBug,
             "Originated from",
             "connect(2)",
             "Errno is",

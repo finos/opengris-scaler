@@ -1,5 +1,5 @@
 #ifdef _WIN32
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/internal/defs.h"
 #include "scaler/ymq/internal/raw_stream_client_handle.h"
 
@@ -26,7 +26,7 @@ RawStreamClientHandle::RawStreamClientHandle(sockaddr remoteAddr): _clientFD {},
     closesocket(tmp);
     if (!_connectExFunc) {
         unrecoverableError({
-            Error::ErrorCode::CoreBug,
+            utility::Error::ErrorCode::CoreBug,
             "Originated from",
             "WSAIoctl",
             "Errno is",
@@ -42,7 +42,7 @@ void RawStreamClientHandle::create()
     _clientFD = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (_clientFD == -1) {
         unrecoverableError({
-            Error::ErrorCode::CoreBug,
+            utility::Error::ErrorCode::CoreBug,
             "Originated from",
             "socket(2)",
             "Errno is",
@@ -63,7 +63,7 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
     const int bindRes = bind(_clientFD, (struct sockaddr*)&localAddr, sizeof(struct sockaddr_in));
     if (bindRes == -1) {
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             "bind",
             "Errno is",
@@ -77,7 +77,7 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
         _connectExFunc(_clientFD, &_remoteAddr, sizeof(struct sockaddr), NULL, 0, NULL, (LPOVERLAPPED)notifyHandle);
     if (ok) {
         unrecoverableError({
-            Error::ErrorCode::CoreBug,
+            utility::Error::ErrorCode::CoreBug,
             "Originated from",
             "connectEx",
             "_clientFD",
@@ -91,7 +91,7 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
     }
 
     unrecoverableError({
-        Error::ErrorCode::CoreBug,
+        utility::Error::ErrorCode::CoreBug,
         "Originated from",
         "connectEx",
         "Errno is",

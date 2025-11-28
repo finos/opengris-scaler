@@ -13,8 +13,8 @@
 #include "scaler/ymq/timed_queue.h"
 
 // First-party
+#include "scaler/utility/timestamp.h"
 #include "scaler/ymq/interruptive_concurrent_queue.h"
-#include "scaler/ymq/timestamp.h"
 
 namespace scaler {
 namespace ymq {
@@ -62,7 +62,7 @@ public:
     // WARN: NOT thread-safe. Thread safety is guaranteed by executeNow.
     void executeLater(Function func) { _delayedFunctions.emplace(std::move(func)); }
     // WARN: NOT thread-safe. Thread safety is guaranteed by executeNow.
-    Identifier executeAt(Timestamp timestamp, Function callback)
+    Identifier executeAt(utility::Timestamp timestamp, Function callback)
     {
         return _timingFunctions.push(timestamp, std::move(callback));
     }
