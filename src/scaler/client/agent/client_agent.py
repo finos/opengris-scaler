@@ -47,6 +47,7 @@ class ClientAgent(threading.Thread):
         timeout_seconds: int,
         heartbeat_interval_seconds: int,
         serializer: Serializer,
+        object_storage_address: Optional[str] = None,
     ):
         threading.Thread.__init__(self, daemon=True)
 
@@ -60,6 +61,11 @@ class ClientAgent(threading.Thread):
         self._scheduler_address = scheduler_address
         self._context = context
         self._object_storage_address: Future[ObjectStorageAddress] = Future()
+        if object_storage_address is not None:
+            manual_config = ZMQConfig.from_string(object_storage_address)
+            self._object_storage_address_override = ObjectStorageAddress.new_msg(manual_config.host, manual_config.port)
+        else:
+            self._object_storage_address_override = None
 
         self._future_manager = future_manager
 
@@ -120,6 +126,8 @@ class ClientAgent(threading.Thread):
 
     def get_object_storage_address(self) -> ObjectStorageAddress:
         """Returns the object storage address, or block until it receives it."""
+        if self._object_storage_address_override is not None:
+            return self._object_storage_address_override
         return self._object_storage_address.result()
 
     async def __on_receive_from_client(self, message: Message):

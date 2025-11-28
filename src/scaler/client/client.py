@@ -57,6 +57,7 @@ class Client:
         heartbeat_interval_seconds: int = DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
         serializer: Serializer = DefaultSerializer(),
         stream_output: bool = False,
+        object_storage_address: Optional[str] = None,
     ):
         """
         The Scaler Client used to send tasks to a scheduler.
@@ -72,9 +73,20 @@ class Client:
         :type heartbeat_interval_seconds: int
         :param stream_output: If True, stdout/stderr will be streamed to client during task execution
         :type stream_output: bool
+        :param object_storage_address: Override object storage address (e.g., for Docker/Kubernetes port mapping).
+                                       If None, will use address received from scheduler.
+        :type object_storage_address: Optional[str]
         """
         address = self._resolve_scheduler_address(address)
-        self.__initialize__(address, profiling, timeout_seconds, heartbeat_interval_seconds, serializer, stream_output)
+        self.__initialize__(
+            address,
+            profiling,
+            timeout_seconds,
+            heartbeat_interval_seconds,
+            serializer,
+            stream_output,
+            object_storage_address,
+        )
 
     def __initialize__(
         self,
@@ -84,6 +96,7 @@ class Client:
         heartbeat_interval_seconds: int,
         serializer: Serializer = DefaultSerializer(),
         stream_output: bool = False,
+        object_storage_address: Optional[str] = None,
     ):
         self._serializer = serializer
 
@@ -113,6 +126,7 @@ class Client:
             timeout_seconds=self._timeout_seconds,
             heartbeat_interval_seconds=self._heartbeat_interval_seconds,
             serializer=self._serializer,
+            object_storage_address=object_storage_address,
         )
         self._agent.start()
 
