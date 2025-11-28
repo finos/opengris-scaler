@@ -7,6 +7,7 @@
 // First-party
 #include "scaler/logging/logging.h"
 #include "scaler/ymq/configuration.h"
+#include "scaler/ymq/internal/socket_address.h"
 
 namespace scaler {
 namespace ymq {
@@ -21,7 +22,7 @@ public:
     StreamServer(
         EventLoopThread* eventLoop,
         std::string localIOSocketIdentity,
-        sockaddr addr,
+        SocketAddress addr,
         BindReturnCallback onBindReturn) noexcept;
     StreamServer(const StreamServer&)            = delete;
     StreamServer& operator=(const StreamServer&) = delete;
@@ -44,7 +45,6 @@ private:
     bool createAndBindSocket();
 
     BindReturnCallback _onBindReturn;
-    sockaddr _addr;
     std::string _localIOSocketIdentity;
 
     std::unique_ptr<EventManager> _eventManager;  // will copy the `onRead()` to itself

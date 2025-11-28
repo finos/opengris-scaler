@@ -11,10 +11,14 @@
 namespace scaler {
 namespace ymq {
 
-RawStreamServerHandle::RawStreamServerHandle(sockaddr addr)
+RawStreamServerHandle::RawStreamServerHandle(SocketAddress address): _address(std::move(address))
 {
+    if (_address._type == SocketAddress::Type::IPC) {
+        std::cerr << "Hitting IPC Socket address type, not supported on this system!\n";
+        assert(false);
+    }
+
     _serverFD = {};
-    _addr     = std::move(addr);
 
     _newConn      = {};
     _acceptExFunc = {};
@@ -89,7 +93,8 @@ bool RawStreamServerHandle::setReuseAddress()
 
 void RawStreamServerHandle::bindAndListen()
 {
-    if (bind(_serverFD, &_addr, sizeof(_addr)) == -1) {
+    // TODO: Should we support IPC on Windows, handle existed socket file here.
+    if (bind(_serverFD, (sockaddr*)&_address._addr, _address._addrLen) == -1) {
         const auto serverFD = _serverFD;
         CloseAndZeroSocket(_serverFD);
         unrecoverableError({
@@ -196,9 +201,9 @@ void RawStreamServerHandle::prepareAcceptSocket(void* notifyHandle)
     // acceptEx never succeed.
 }
 
-std::vector<std::pair<uint64_t, sockaddr>> RawStreamServerHandle::getNewConns()
+std::vector<std::pair<uint64_t, SocketAddress>> RawStreamServerHandle::getNewConns()
 {
-    std::vector<std::pair<uint64_t, sockaddr>> res;
+    std::vector<std::pair<uint64_t, SocketAddress>> res;
 
     if (setsockopt(
             _newConn, SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT, reinterpret_cast<char*>(&_serverFD), sizeof(_serverFD)) ==
@@ -248,7 +253,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawStreamServerHandle::getNewConns()
                 break;
         }
     }
-    res.push_back({_newConn, getRemoteAddr(_newConn)});
+    res.push_back({_newConn, getRemoteAddr(_newConn, this->addrSize())});
 
     _newConn = 0;  // This _newConn will be handled by connection class
 

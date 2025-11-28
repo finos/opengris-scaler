@@ -3,13 +3,14 @@
 #include <cstdint>  // uint64_t
 
 #include "scaler/ymq/internal/defs.h"
+#include "scaler/ymq/internal/socket_address.h"
 
 namespace scaler {
 namespace ymq {
 
 class RawStreamClientHandle {
 public:
-    RawStreamClientHandle(sockaddr remoteAddr);
+    RawStreamClientHandle(SocketAddress remoteAddress);
     ~RawStreamClientHandle();
 
     RawStreamClientHandle(RawStreamClientHandle&&)                  = delete;
@@ -26,9 +27,13 @@ public:
 
     auto nativeHandle() const noexcept { return (RawSocketType)_clientFD; }
 
+    bool isNetworkFD() const noexcept { return _remoteAddress._type == SocketAddress::Type::TCP; }
+
+    socklen_t addrSize() const noexcept { return _remoteAddress._addrLen; }
+
 private:
     uint64_t _clientFD;
-    sockaddr _remoteAddr;
+    SocketAddress _remoteAddress;
 #ifdef _WIN32
     LPFN_CONNECTEX _connectExFunc;
 #endif  // _WIN32

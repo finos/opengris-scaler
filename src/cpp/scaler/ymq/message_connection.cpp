@@ -16,6 +16,7 @@
 #include "scaler/ymq/configuration.h"
 #include "scaler/ymq/event_loop_thread.h"
 #include "scaler/ymq/event_manager.h"
+#include "scaler/ymq/internal/socket_address.h"
 #include "scaler/ymq/io_socket.h"
 
 namespace scaler {
@@ -37,8 +38,8 @@ constexpr bool MessageConnection::isCompleteMessage(const TcpReadOperation& x)
 MessageConnection::MessageConnection(
     EventLoopThread* eventLoopThread,
     int connFd,
-    sockaddr localAddr,
-    sockaddr remoteAddr,
+    SocketAddress localAddr,
+    SocketAddress remoteAddr,
     std::string localIOSocketIdentity,
     bool responsibleForRetry,
     std::queue<RecvMessageCallback>* pendingRecvMessageCallbacks,
