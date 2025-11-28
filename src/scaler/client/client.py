@@ -21,7 +21,6 @@ from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
 from scaler.io.sync_connector import ZMQSyncConnector
 from scaler.io.utility import create_sync_object_storage_connector
-from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
 from scaler.utility.graph.optimization import cull_graph
@@ -127,23 +126,16 @@ class Client:
             timeout_seconds=self._timeout_seconds,
             heartbeat_interval_seconds=self._heartbeat_interval_seconds,
             serializer=self._serializer,
+            object_storage_address=object_storage_address,
         )
         self._agent.start()
 
         logging.info(f"ScalerClient: connect to scheduler at {self._scheduler_address}")
 
-        # Determine object storage address: use manual override if provided, otherwise get from scheduler
-        if object_storage_address is not None:
-            manual_config = ZMQConfig.from_string(object_storage_address)
-            self._object_storage_address = ObjectStorageAddress.new_msg(manual_config.host, manual_config.port)
-            logging.info(f"ScalerClient: using manual object storage address: {self._object_storage_address}")
-        else:
-            # Blocks until the agent receives the object storage address from scheduler
-            self._object_storage_address = self._agent.get_object_storage_address()
-            logging.info(
-                f"ScalerClient: received object storage address from scheduler: {self._object_storage_address}"
-            )
+        # Blocks until the agent receives the object storage address
+        self._object_storage_address = self._agent.get_object_storage_address()
 
+        logging.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
         self._connector_storage: SyncObjectStorageConnector = create_sync_object_storage_connector(
             self._object_storage_address.host, self._object_storage_address.port
         )
