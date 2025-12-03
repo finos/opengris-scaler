@@ -8,6 +8,7 @@
 #include "scaler/logging/logging.h"
 #include "scaler/ymq/configuration.h"
 #include "scaler/ymq/internal/raw_stream_connection_handle.h"
+#include "scaler/ymq/internal/socket_address.h"
 #include "scaler/ymq/io_socket.h"
 #include "scaler/ymq/tcp_operations.h"
 
@@ -25,8 +26,8 @@ public:
     MessageConnection(
         EventLoopThread* eventLoopThread,
         int connFd,
-        sockaddr localAddr,
-        sockaddr remoteAddr,
+        SocketAddress localAddr,
+        SocketAddress remoteAddr,
         std::string localIOSocketIdentity,
         bool responsibleForRetry,
         std::queue<RecvMessageCallback>* _pendingRecvMessageCallbacks,
@@ -48,7 +49,7 @@ public:
     void disconnect();
 
     EventLoopThread* _eventLoopThread;
-    const sockaddr _remoteAddr;
+    const SocketAddress _remoteAddr;
     const bool _responsibleForRetry;
     std::optional<std::string> _remoteIOSocketIdentity;
 
@@ -83,7 +84,7 @@ private:
 
     std::unique_ptr<EventManager> _eventManager;
     RawStreamConnectionHandle _rawConn;
-    sockaddr _localAddr;
+    SocketAddress _localAddr;
     std::string _localIOSocketIdentity;
 
     std::deque<TcpWriteOperation> _writeOperations;
