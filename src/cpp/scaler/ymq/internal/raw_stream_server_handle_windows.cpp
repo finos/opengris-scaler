@@ -38,6 +38,10 @@ RawStreamServerHandle::RawStreamServerHandle(SocketAddress addr): _impl(std::mak
     _impl->_newConn      = {};
     _impl->_acceptExFunc = {};
     memset(_impl->_buffer, 0, sizeof(_impl->_buffer));
+    if (_impl->_addr.nativeHandleType() == SocketAddress::Type::IPC) {
+        std::cerr << "Hitting IPC Socket address type, not supported on this system!\n";
+        assert(false);
+    }
 
     _impl->_serverFD = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (_impl->_serverFD == -1) {
@@ -272,7 +276,6 @@ std::vector<std::pair<uint64_t, SocketAddress>> RawStreamServerHandle::getNewCon
         }
     }
     res.push_back({_impl->_newConn, getRemoteAddr(_impl->_newConn)});
-
     _impl->_newConn = 0;  // This _impl->_newConn will be handled by connection class
 
     return res;

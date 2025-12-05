@@ -30,6 +30,11 @@ void StreamClient::onCreated()
             getLocalAddr(_rawClient.nativeHandle()),
             getRemoteAddr(_rawClient.nativeHandle()),
             responsibleForRetry);
+
+        _rawClient.zeroNativeHandle();
+        _connected = true;
+        _eventLoopThread->_eventLoop.executeLater([sock] { sock->removeConnectedStreamClient(); });
+
         if (_retryTimes == 0) {
             _onConnectReturn({});
             _onConnectReturn = {};
@@ -40,6 +45,12 @@ void StreamClient::onCreated()
             _onConnectReturn(std::unexpected {Error::ErrorCode::InitialConnectFailedWithInProgress});
             _onConnectReturn = {};
         }
+
+        if (!_rawClient.isNetworkFD()) {
+            _rawClient.destroy();
+            retry();
+        }
+
         return;
     }
 }
@@ -94,7 +105,7 @@ void StreamClient::onWrite()
     _rawClient.zeroNativeHandle();
     _connected = true;
 
-    _eventLoopThread->_eventLoop.executeLater([sock] { sock->removeConnectedTCPClient(); });
+    _eventLoopThread->_eventLoop.executeLater([sock] { sock->removeConnectedStreamClient(); });
 }
 
 void StreamClient::retry()
