@@ -11,9 +11,10 @@
 #include "scaler/error/error.h"
 #include "scaler/ymq/event_loop_thread.h"
 #include "scaler/ymq/event_manager.h"
+#include "scaler/ymq/internal/network_utils.h"
 #include "scaler/ymq/internal/raw_stream_connection_handle.h"
+#include "scaler/ymq/internal/socket_address.h"
 #include "scaler/ymq/message_connection.h"
-#include "scaler/ymq/network_utils.h"
 #include "scaler/ymq/stream_client.h"
 #include "scaler/ymq/stream_server.h"
 #include "scaler/ymq/typedefs.h"
@@ -125,7 +126,7 @@ void IOSocket::recvMessage(RecvMessageCallback onRecvMessage) noexcept
     });
 }
 
-void IOSocket::connectTo(sockaddr addr, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes) noexcept
+void IOSocket::connectTo(SocketAddress addr, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes) noexcept
 {
     _eventLoopThread->_eventLoop.executeNow(
         [this, addr = std::move(addr), callback = std::move(onConnectReturn), maxRetryTimes] mutable {
@@ -278,7 +279,8 @@ void IOSocket::onConnectionCreated(std::string remoteIOSocketIdentity) noexcept
     _unestablishedConnection.back()->onCreated();
 }
 
-void IOSocket::onConnectionCreated(int fd, sockaddr localAddr, sockaddr remoteAddr, bool responsibleForRetry) noexcept
+void IOSocket::onConnectionCreated(
+    int fd, SocketAddress localAddr, SocketAddress remoteAddr, bool responsibleForRetry) noexcept
 {
     _unestablishedConnection.push_back(
         std::make_unique<MessageConnection>(

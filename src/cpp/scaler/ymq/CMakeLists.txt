@@ -42,29 +42,33 @@ add_library(ymq_objs OBJECT
 
     timed_queue.h
 
-    network_utils.h
-
     simple_interface.h
     simple_interface.cpp
 
-    internal/defs.h
+    internal/network_utils.h
 
     internal/raw_stream_connection_handle.h
 
     internal/raw_stream_server_handle.h
 
     internal/raw_stream_client_handle.h
+
+    internal/socket_address.h
 )
 
 # System dependent file for YMQ internal
 if(LINUX)
     target_sources(ymq_objs PRIVATE
+        internal/network_utils_linux.cpp
+        internal/socket_address_linux.cpp
         internal/raw_stream_connection_handle_linux.cpp
         internal/raw_stream_server_handle_linux.cpp
         internal/raw_stream_client_handle_linux.cpp
     )
 elseif(WIN32)
     target_sources(ymq_objs PRIVATE
+        internal/network_utils_windows.cpp
+        internal/socket_address_windows.cpp
         internal/raw_stream_connection_handle_windows.cpp
         internal/raw_stream_server_handle_windows.cpp
         internal/raw_stream_client_handle_windows.cpp

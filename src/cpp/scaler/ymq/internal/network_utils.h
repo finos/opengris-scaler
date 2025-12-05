@@ -1,17 +1,18 @@
 #pragma once
 #include <algorithm>  // std::upper_bound
+#include <string>
 
-#include "scaler/ymq/internal/defs.h"
 #include "scaler/ymq/internal/raw_stream_connection_handle.h"
+#include "scaler/ymq/internal/socket_address.h"
+struct sockaddr;
 
 namespace scaler {
 namespace ymq {
 
-bool setReuseAddress(auto fd)
-{
-    int optval = 1;
-    return !(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&optval, sizeof(optval)) == -1);
-}
+std::expected<SocketAddress, int> stringToSockaddr(const std::string& address);
+int setNoDelay(int fd);
+SocketAddress getLocalAddr(int fd);
+SocketAddress getRemoteAddr(int fd);
 
 std::pair<uint64_t, RawStreamConnectionHandle::IOStatus> tryReadUntilComplete(void* dest, size_t size, auto readBytes)
 {
@@ -65,6 +66,8 @@ std::pair<uint64_t, RawStreamConnectionHandle::IOStatus> tryWriteUntilComplete(
     }
     return {total, RawStreamConnectionHandle::IOStatus::MoreBytesAvailable};
 }
+
+void closeAndZeroSocket(void* fd);
 
 }  // namespace ymq
 }  // namespace scaler

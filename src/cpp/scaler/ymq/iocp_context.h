@@ -1,7 +1,6 @@
 #pragma once
 #ifdef _WIN32
 
-#include "scaler/ymq/internal/defs.h"  // system compatible header
 
 // C++
 #include <functional>
@@ -13,6 +12,20 @@
 // First-party
 #include "scaler/ymq/interruptive_concurrent_queue.h"
 #include "scaler/ymq/timestamp.h"
+// clang-format off
+#define NOMINMAX
+#include <windows.h>
+#include <winsock2.h>
+#include <mswsock.h>
+#include <ws2tcpip.h> // inet_pton
+// clang-format on
+
+#undef SendMessageCallback
+#define __PRETTY_FUNCTION__ __FUNCSIG__
+#define EPOLLIN             (0)
+#define EPOLLOUT            (0)
+#define EPOLLET             (0)
+
 
 namespace scaler {
 namespace ymq {

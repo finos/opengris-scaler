@@ -1,16 +1,32 @@
-#pragma once
+#ifdef _WIN32
 
-#include <string.h>
+#include <cstdint>
+#include <string>
 
-#include <cassert>
-#include <expected>
-
+#include "scaler/ymq/internal/network_utils.h"
 #include "scaler/error/error.h"
+
+// clang-format off
+#define NOMINMAX
+#include <windows.h>
+#include <winsock2.h>
+#include <mswsock.h>
+// clang-format on
+
+#undef SendMessageCallback
+#define __PRETTY_FUNCTION__ __FUNCSIG__
 
 namespace scaler {
 namespace ymq {
 
-inline std::expected<sockaddr, int> stringToSockaddr(const std::string& address)
+void closeAndZeroSocket(void* fd)
+{
+    uint64_t* tmp = (uint64_t*)fd;
+    closesocket(*tmp);
+    *tmp = 0;
+}
+
+std::expected<SocketAddress, int> stringToSockaddr(const std::string& address)
 {
     // Check and strip the "tcp://" prefix
     static const std::string prefix = "tcp://";
@@ -84,7 +100,7 @@ inline std::expected<sockaddr, int> stringToSockaddr(const std::string& address)
     return *(sockaddr*)&outAddr;
 }
 
-inline int setNoDelay(int fd)
+int setNoDelay(int fd)
 {
     int optval = 1;
     if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const char*)&optval, sizeof(optval)) == -1) {
@@ -102,7 +118,7 @@ inline int setNoDelay(int fd)
     return fd;
 }
 
-inline sockaddr getLocalAddr(int fd)
+SocketAddress getLocalAddr(int fd)
 {
     sockaddr localAddr     = {};
     socklen_t localAddrLen = sizeof(localAddr);
@@ -120,7 +136,7 @@ inline sockaddr getLocalAddr(int fd)
     return localAddr;
 }
 
-inline sockaddr getRemoteAddr(int fd)
+SocketAddress getRemoteAddr(int fd)
 {
     sockaddr remoteAddr     = {};
     socklen_t remoteAddrLen = sizeof(remoteAddr);
@@ -142,3 +158,5 @@ inline sockaddr getRemoteAddr(int fd)
 
 }  // namespace ymq
 }  // namespace scaler
+
+#endif

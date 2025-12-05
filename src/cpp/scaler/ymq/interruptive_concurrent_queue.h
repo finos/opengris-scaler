@@ -4,7 +4,6 @@
 #include <vector>
 
 #include "scaler/error/error.h"
-#include "scaler/ymq/internal/defs.h"  // system compatible header
 #include "third_party/concurrentqueue.h"
 
 namespace scaler {

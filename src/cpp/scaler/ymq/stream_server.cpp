@@ -6,9 +6,9 @@
 #include "scaler/error/error.h"
 #include "scaler/ymq/event_loop_thread.h"
 #include "scaler/ymq/event_manager.h"
+#include "scaler/ymq/internal/network_utils.h"
 #include "scaler/ymq/io_socket.h"
 #include "scaler/ymq/message_connection.h"
-#include "scaler/ymq/network_utils.h"
 
 namespace scaler {
 namespace ymq {
@@ -19,9 +19,7 @@ bool StreamServer::createAndBindSocket()
         _logger.log(
             Logger::LoggingLevel::error,
             "Originated from",
-            "setsockopt(2)",
-            "Errno is",
-            strerror(GetErrorCode())  // ,
+            "setsockopt(2)"  //,
         );
         _onBindReturn(std::unexpected(Error {Error::ErrorCode::SetSockOptNonFatalFailure}));
         _onBindReturn = {};
@@ -36,7 +34,7 @@ bool StreamServer::createAndBindSocket()
 StreamServer::StreamServer(
     EventLoopThread* eventLoopThread,
     std::string localIOSocketIdentity,
-    sockaddr addr,
+    SocketAddress addr,
     BindReturnCallback onBindReturn) noexcept
     : _eventLoopThread(eventLoopThread)
     , _onBindReturn(std::move(onBindReturn))

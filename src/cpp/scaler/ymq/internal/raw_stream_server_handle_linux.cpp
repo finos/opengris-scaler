@@ -1,22 +1,47 @@
 #ifdef __linux__
 
+#include <arpa/inet.h>  // inet_pton
+#include <errno.h>      // EAGAIN etc.
+#include <limits.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/epoll.h>
+#include <sys/eventfd.h>
+#include <sys/socket.h>
+#include <sys/socket.h>  // ::recv
+#include <sys/socket.h>
+#include <sys/time.h>  // itimerspec
+#include <sys/timerfd.h>
+#include <unistd.h>
+
+#include <memory>
 #include <utility>  // std::move
 
 #include "scaler/error/error.h"
-#include "scaler/ymq/internal/defs.h"
 #include "scaler/ymq/internal/network_utils.h"
 #include "scaler/ymq/internal/raw_stream_server_handle.h"
+#include "scaler/ymq/internal/socket_address.h"
 
 namespace scaler {
 namespace ymq {
 
-RawStreamServerHandle::RawStreamServerHandle(sockaddr addr)
-{
-    _serverFD = {};
-    _addr     = std::move(addr);
+struct RawStreamServerHandle::Impl {
+    int _serverFD;
+    SocketAddress _addr;
+};
 
-    _serverFD = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
-    if ((int)_serverFD == -1) {
+uint64_t RawStreamServerHandle::nativeHandle()
+{
+    return _impl->_serverFD;
+}
+
+RawStreamServerHandle::RawStreamServerHandle(SocketAddress addr): _impl(std::make_unique<RawStreamServerHandle::Impl>())
+{
+    _impl->_serverFD = {};
+    _impl->_addr     = std::move(addr);
+
+    _impl->_serverFD = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+    if (_impl->_serverFD == -1) {
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
             "Originated from",
@@ -24,7 +49,7 @@ RawStreamServerHandle::RawStreamServerHandle(sockaddr addr)
             "Errno is",
             strerror(errno),
             "_serverFD",
-            _serverFD,
+            _impl->_serverFD,
         });
 
         return;
@@ -33,25 +58,26 @@ RawStreamServerHandle::RawStreamServerHandle(sockaddr addr)
 
 bool RawStreamServerHandle::setReuseAddress()
 {
-    if (::scaler::ymq::setReuseAddress(_serverFD)) {
+    int optval = 1;
+    if (setsockopt(_impl->_serverFD, SOL_SOCKET, SO_REUSEADDR, (const char*)&optval, sizeof(optval)) != -1) {
         return true;
     } else {
-        CloseAndZeroSocket(_serverFD);
+        closeAndZeroSocket(&_impl->_serverFD);
         return false;
     }
 }
 
 void RawStreamServerHandle::bindAndListen()
 {
-    if (bind(_serverFD, &_addr, sizeof(_addr)) == -1) {
-        const auto serverFD = _serverFD;
-        CloseAndZeroSocket(_serverFD);
+    if (bind(_impl->_serverFD, _impl->_addr.nativeHandle(), _impl->_addr.nativeHandleLen()) == -1) {
+        const auto serverFD = _impl->_serverFD;
+        closeAndZeroSocket(&_impl->_serverFD);
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
             "Originated from",
             "bind(2)",
             "Errno is",
-            strerror(GetErrorCode()),
+            strerror(errno),
             "_serverFD",
             serverFD,
         });
@@ -59,15 +85,15 @@ void RawStreamServerHandle::bindAndListen()
         return;
     }
 
-    if (listen(_serverFD, SOMAXCONN) == -1) {
-        const auto serverFD = _serverFD;
-        CloseAndZeroSocket(_serverFD);
+    if (listen(_impl->_serverFD, SOMAXCONN) == -1) {
+        const auto serverFD = _impl->_serverFD;
+        closeAndZeroSocket(&_impl->_serverFD);
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
             "Originated from",
             "listen(2)",
             "Errno is",
-            strerror(GetErrorCode()),
+            strerror(errno),
             "_serverFD",
             serverFD,
         });
@@ -78,8 +104,8 @@ void RawStreamServerHandle::bindAndListen()
 
 RawStreamServerHandle::~RawStreamServerHandle()
 {
-    if (_serverFD) {
-        CloseAndZeroSocket(_serverFD);
+    if (_impl->_serverFD) {
+        closeAndZeroSocket(&_impl->_serverFD);
     }
 }
 
@@ -88,14 +114,14 @@ void RawStreamServerHandle::prepareAcceptSocket(void* notifyHandle)
     (void)notifyHandle;
 }
 
-std::vector<std::pair<uint64_t, sockaddr>> RawStreamServerHandle::getNewConns()
+std::vector<std::pair<uint64_t, SocketAddress>> RawStreamServerHandle::getNewConns()
 {
-    std::vector<std::pair<uint64_t, sockaddr>> res;
+    std::vector<std::pair<uint64_t, SocketAddress>> res;
     while (true) {
         sockaddr remoteAddr {};
         socklen_t remoteAddrLen = sizeof(remoteAddr);
 
-        int fd = accept4(_serverFD, &remoteAddr, &remoteAddrLen, SOCK_NONBLOCK | SOCK_CLOEXEC);
+        int fd = accept4(_impl->_serverFD, &remoteAddr, &remoteAddrLen, SOCK_NONBLOCK | SOCK_CLOEXEC);
         if (fd < 0) {
             const int myErrno = errno;
             switch (myErrno) {
@@ -115,7 +141,7 @@ std::vector<std::pair<uint64_t, sockaddr>> RawStreamServerHandle::getNewConns()
                         "Errno is",
                         strerror(myErrno),
                         "_serverFD",
-                        _serverFD,
+                        _impl->_serverFD,
                     });
 
                 case EINTR:
@@ -167,8 +193,8 @@ std::vector<std::pair<uint64_t, sockaddr>> RawStreamServerHandle::getNewConns()
 
 void RawStreamServerHandle::destroy()
 {
-    if (_serverFD) {
-        CloseAndZeroSocket(_serverFD);
+    if (_impl->_serverFD) {
+        closeAndZeroSocket(&_impl->_serverFD);
     }
 }
 

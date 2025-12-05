@@ -1,14 +1,37 @@
 #ifdef _WIN32
 #include "scaler/error/error.h"
-#include "scaler/ymq/internal/defs.h"
+#include "scaler/ymq/internal/network_utils.h"
 #include "scaler/ymq/internal/raw_stream_client_handle.h"
+
+// clang-format off
+#define NOMINMAX
+#include <windows.h>
+#include <winsock2.h>
+#include <mswsock.h>
+#include <ws2tcpip.h> // inet_pton
+// clang-format on
 
 namespace scaler {
 namespace ymq {
 
-RawStreamClientHandle::RawStreamClientHandle(sockaddr remoteAddr): _clientFD {}, _remoteAddr(std::move(remoteAddr))
+struct RawStreamClientHandle::Impl {
+    uint64_t _clientFD;
+    SocketAddress _remoteAddr;
+    LPFN_CONNECTEX _connectExFunc;
+};
+
+uint64_t RawStreamClientHandle::nativeHandle()
 {
-    _connectExFunc = {};
+    return _impl->_clientFD;
+}
+
+RawStreamClientHandle::RawStreamClientHandle(SocketAddress remoteAddr)
+    : _impl(std::make_unique<RawStreamClientHandle::Impl>())
+{
+    _impl->_clientFD   = 0;
+    _impl->_remoteAddr = std::move(remoteAddr);
+
+    _impl->_connectExFunc = {};
 
     auto tmp = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     DWORD res;
@@ -18,39 +41,39 @@ RawStreamClientHandle::RawStreamClientHandle(sockaddr remoteAddr): _clientFD {},
         SIO_GET_EXTENSION_FUNCTION_POINTER,
         (void*)&guid,
         sizeof(GUID),
-        &_connectExFunc,
-        sizeof(_connectExFunc),
+        &_impl->_connectExFunc,
+        sizeof(_impl->_connectExFunc),
         &res,
         0,
         0);
     closesocket(tmp);
-    if (!_connectExFunc) {
+    if (!_impl->_connectExFunc) {
         unrecoverableError({
             Error::ErrorCode::CoreBug,
             "Originated from",
             "WSAIoctl",
             "Errno is",
-            GetErrorCode(),
-            "_connectExFunc",
-            (void*)_connectExFunc,
+            WSAGetLastError(),
+            "_impl->_connectExFunc",
+            (void*)_impl->_connectExFunc,
         });
     }
 }
 
 void RawStreamClientHandle::create()
 {
-    _clientFD = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (_clientFD == -1) {
+    _impl->_clientFD = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (_impl->_clientFD == -1) {
         unrecoverableError({
             Error::ErrorCode::CoreBug,
             "Originated from",
             "socket(2)",
             "Errno is",
-            strerror(GetErrorCode()),
+            strerror(WSAGetLastError()),
         });
     }
     u_long nonblock = 1;
-    ioctlsocket(_clientFD, FIONBIO, &nonblock);
+    ioctlsocket(_impl->_clientFD, FIONBIO, &nonblock);
 }
 
 bool RawStreamClientHandle::prepConnect(void* notifyHandle)
@@ -60,32 +83,38 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
     const char ip4[]           = {127, 0, 0, 1};
     *(int*)&localAddr.sin_addr = *(int*)ip4;
 
-    const int bindRes = bind(_clientFD, (struct sockaddr*)&localAddr, sizeof(struct sockaddr_in));
+    const int bindRes = bind(_impl->_clientFD, (struct sockaddr*)&localAddr, sizeof(struct sockaddr_in));
     if (bindRes == -1) {
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
             "Originated from",
             "bind",
             "Errno is",
-            GetErrorCode(),
-            "_clientFD",
-            _clientFD,
+            WSAGetLastError(),
+            "_impl->_clientFD",
+            _impl->_clientFD,
         });
     }
 
-    const bool ok =
-        _connectExFunc(_clientFD, &_remoteAddr, sizeof(struct sockaddr), NULL, 0, NULL, (LPOVERLAPPED)notifyHandle);
+    const bool ok = _impl->_connectExFunc(
+        _impl->_clientFD,
+        _impl->_remoteAddr.nativeHandle(),
+        _impl->_remoteAddr.nativeHandleLen(),
+        NULL,
+        0,
+        NULL,
+        (LPOVERLAPPED)notifyHandle);
     if (ok) {
         unrecoverableError({
             Error::ErrorCode::CoreBug,
             "Originated from",
             "connectEx",
-            "_clientFD",
-            _clientFD,
+            "_impl->_clientFD",
+            _impl->_clientFD,
         });
     }
 
-    const int myErrno = GetErrorCode();
+    const int myErrno = WSAGetLastError();
     if (myErrno == ERROR_IO_PENDING) {
         return false;
     }
@@ -96,30 +125,30 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
         "connectEx",
         "Errno is",
         myErrno,
-        "_clientFD",
-        _clientFD,
+        "_impl->_clientFD",
+        _impl->_clientFD,
     });
 }
 
 bool RawStreamClientHandle::needRetry()
 {
-    const int iResult = setsockopt(_clientFD, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
+    const int iResult = setsockopt(_impl->_clientFD, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
     return iResult == -1;
 }
 
 void RawStreamClientHandle::destroy()
 {
-    if (_clientFD) {
-        CancelIoEx((HANDLE)_clientFD, nullptr);
+    if (_impl->_clientFD) {
+        CancelIoEx((HANDLE)_impl->_clientFD, nullptr);
     }
-    if (_clientFD) {
-        CloseAndZeroSocket(_clientFD);
+    if (_impl->_clientFD) {
+        closeAndZeroSocket(&_impl->_clientFD);
     }
 }
 
 void RawStreamClientHandle::zeroNativeHandle() noexcept
 {
-    _clientFD = 0;
+    _impl->_clientFD = 0;
 }
 
 RawStreamClientHandle::~RawStreamClientHandle()

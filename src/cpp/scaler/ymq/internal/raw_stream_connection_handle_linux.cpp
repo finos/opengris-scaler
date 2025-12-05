@@ -1,8 +1,20 @@
 #ifdef __linux__
+#include <arpa/inet.h>  // inet_pton
+#include <errno.h>      // EAGAIN etc.
+#include <limits.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/epoll.h>
+#include <sys/eventfd.h>
+#include <sys/socket.h>  // ::recv
+#include <sys/socket.h>
+#include <sys/time.h>  // itimerspec
+#include <sys/timerfd.h>
+#include <unistd.h>
+
 #include <cassert>  // assert
 
 #include "scaler/error/error.h"
-#include "scaler/ymq/internal/defs.h"
 #include "scaler/ymq/internal/network_utils.h"
 #include "scaler/ymq/internal/raw_stream_connection_handle.h"
 

@@ -1,15 +1,17 @@
 #pragma once
 
 #include <cstdint>  // uint64_t
+#include <memory>
 
-#include "scaler/ymq/internal/defs.h"
+#include "scaler/ymq/internal/socket_address.h"
 
+struct sockaddr;
 namespace scaler {
 namespace ymq {
 
 class RawStreamClientHandle {
 public:
-    RawStreamClientHandle(sockaddr remoteAddr);
+    RawStreamClientHandle(SocketAddress remoteAddr);
     ~RawStreamClientHandle();
 
     RawStreamClientHandle(RawStreamClientHandle&&)                  = delete;
@@ -24,14 +26,11 @@ public:
 
     void zeroNativeHandle() noexcept;
 
-    auto nativeHandle() const noexcept { return (RawSocketType)_clientFD; }
+    uint64_t nativeHandle();
 
 private:
-    uint64_t _clientFD;
-    sockaddr _remoteAddr;
-#ifdef _WIN32
-    LPFN_CONNECTEX _connectExFunc;
-#endif  // _WIN32
+    struct Impl;
+    std::unique_ptr<Impl> _impl;
 };
 
 }  // namespace ymq

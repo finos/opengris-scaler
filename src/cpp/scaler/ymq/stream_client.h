@@ -6,6 +6,7 @@
 #include "scaler/logging/logging.h"
 #include "scaler/ymq/configuration.h"
 #include "scaler/ymq/internal/raw_stream_client_handle.h"
+#include "scaler/ymq/internal/socket_address.h"
 
 namespace scaler {
 namespace ymq {
@@ -20,7 +21,7 @@ public:
     StreamClient(
         EventLoopThread* eventLoopThread,
         std::string localIOSocketIdentity,
-        sockaddr remoteAddr,
+        SocketAddress remoteAddr,
         ConnectReturnCallback onConnectReturn,
         size_t maxRetryTimes) noexcept;
     StreamClient(const StreamClient&)            = delete;

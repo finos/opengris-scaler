@@ -1,5 +1,6 @@
 #pragma once
 
+#include "scaler/ymq/internal/socket_address.h"
 #ifdef _WIN32
 // clang-format off
 #include <winsock2.h>
@@ -49,7 +50,7 @@ public:
     void sendMessage(Message message, SendMessageCallback onMessageSent) noexcept;
     void recvMessage(RecvMessageCallback onRecvMessage) noexcept;
 
-    void connectTo(sockaddr addr, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes = 8) noexcept;
+    void connectTo(SocketAddress addr, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes = 8) noexcept;
     void connectTo(
         std::string networkAddress, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes = 8) noexcept;
 
@@ -74,7 +75,8 @@ public:
     // likely the user passed in combinations that does not make sense. These two calls are
     // mutual exclusive. Perhaps we need better name, but I failed to come up with one. - gxu
     void onConnectionCreated(std::string remoteIOSocketIdentity) noexcept;
-    void onConnectionCreated(int fd, sockaddr localAddr, sockaddr remoteAddr, bool responsibleForRetry) noexcept;
+    void onConnectionCreated(
+        int fd, SocketAddress localAddr, SocketAddress remoteAddr, bool responsibleForRetry) noexcept;
 
     // From TCPClient class only
     void removeConnectedTCPClient() noexcept;
