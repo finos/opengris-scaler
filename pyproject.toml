@@ -68,6 +68,7 @@ dev = [
     "flake8-pyproject>=1.2.3",
     "mypy>=1.14.1",
     "sphinx>=7.1.2",
+    "ray[default]",
 ]
 
 [tool.scikit-build.metadata.version]
