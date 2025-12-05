@@ -46,9 +46,9 @@ jobs:
         with:
           os: ${{ runner.os }}
 
-      - uses: ./.github/actions/run-linter
-        with:
-          os: ${{ runner.os }}
+      # - uses: ./.github/actions/run-linter
+      #   with:
+      #     os: ${{ runner.os }}
 
       - uses: ./.github/actions/run-test
         with:

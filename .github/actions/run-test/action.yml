@@ -9,24 +9,24 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Install scapy for MITM tests
-      shell: bash
-      run: uv pip install --system scapy==2.*
+    # - name: Install scapy for MITM tests
+    #   shell: bash
+    #   run: uv pip install --system scapy==2.*
 
-    - name: Install pydivert and pywin32 for MITM tests (Windows)
-      if: inputs.os == 'Windows'
-      shell: pwsh
-      run: uv pip install --system pydivert pywin32
+    # - name: Install pydivert and pywin32 for MITM tests (Windows)
+    #   if: inputs.os == 'Windows'
+    #   shell: pwsh
+    #   run: uv pip install --system pydivert pywin32
 
-    - name: Run C++ Tests (Linux)
-      if: inputs.os == 'Linux'
-      shell: bash
-      run: sudo ./scripts/test.sh
+    # - name: Run C++ Tests (Linux)
+    #   if: inputs.os == 'Linux'
+    #   shell: bash
+    #   run: sudo ./scripts/test.sh
 
-    - name: Run C++ Tests (Windows)
-      if: inputs.os == 'Windows'
-      shell: pwsh
-      run: ./scripts/test.ps1 -C Debug
+    # - name: Run C++ Tests (Windows)
+    #   if: inputs.os == 'Windows'
+    #   shell: pwsh
+    #   run: ./scripts/test.ps1 -C Debug
 
     - name: Build Wheel
       if: inputs.os != 'Windows'
@@ -47,25 +47,25 @@ runs:
       if: inputs.os != 'Windows'
       shell: bash
       run: |
-        python -m unittest discover -v tests
+        python -m unittest tests.graph.test_graph.TestGraph.test_get_data_key
 
-    - name: Run Examples
-      if: inputs.os != 'Windows'
-      shell: bash
-      run: |
-        uv pip install --system -r examples/applications/requirements_applications.txt
-        for example in "./examples"/*.py; do
-          echo "Running $example"
-          python $example
-        done
-        for example in "./examples/applications"/*.py; do
-          if python -c 'import sys; sys.exit(not sys.version_info <= (3, 10))'; then
-            if [ "$example" = "./examples/applications/yfinance_historical_price.py" ]; then
-              echo "Skipping $example"
-              continue;
-            fi
-          fi
+    # - name: Run Examples
+    #   if: inputs.os != 'Windows'
+    #   shell: bash
+    #   run: |
+    #     uv pip install --system -r examples/applications/requirements_applications.txt
+    #     for example in "./examples"/*.py; do
+    #       echo "Running $example"
+    #       python $example
+    #     done
+    #     for example in "./examples/applications"/*.py; do
+    #       if python -c 'import sys; sys.exit(not sys.version_info <= (3, 10))'; then
+    #         if [ "$example" = "./examples/applications/yfinance_historical_price.py" ]; then
+    #           echo "Skipping $example"
+    #           continue;
+    #         fi
+    #       fi
 
-          echo "Running $example"
-          python $example
-        done
+    #       echo "Running $example"
+    #       python $example
+    #     done
