@@ -94,14 +94,19 @@ void StreamClient::onWrite()
     _rawClient.zeroNativeHandle();
     _connected = true;
 
-    _eventLoopThread->_eventLoop.executeLater([sock] { sock->removeConnectedTCPClient(); });
+    _eventLoopThread->_eventLoop.executeLater([sock] { sock->removeTcpClient(); });
 }
 
 void StreamClient::retry()
 {
     if (_retryTimes > _maxRetryTimes) {
         _logger.log(Logger::LoggingLevel::error, "Retried times has reached maximum: ", _maxRetryTimes);
-        // exit(1);
+        disconnect();
+
+        const std::string id = this->_localIOSocketIdentity;
+        auto sock            = this->_eventLoopThread->_identityToIOSocket.at(id);
+        sock->onConnectorMaxedOutRetry();
+        _eventLoopThread->_eventLoop.executeLater([sock] { sock->removeTcpClient(); });
         return;
     }
 
