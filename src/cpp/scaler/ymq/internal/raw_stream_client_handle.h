@@ -28,6 +28,8 @@ public:
 
     uint64_t nativeHandle();
 
+    bool isNetworkFD() const noexcept;
+
 private:
     struct Impl;
     std::unique_ptr<Impl> _impl;

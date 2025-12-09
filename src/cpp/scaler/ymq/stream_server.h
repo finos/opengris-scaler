@@ -8,6 +8,8 @@
 // First-party
 #include "scaler/logging/logging.h"
 #include "scaler/ymq/configuration.h"
+#include "scaler/ymq/internal/socket_address.h"
+
 struct sockaddr;
 
 namespace scaler {
@@ -46,7 +48,6 @@ private:
     bool createAndBindSocket();
 
     BindReturnCallback _onBindReturn;
-    SocketAddress _addr;
     std::string _localIOSocketIdentity;
 
     std::unique_ptr<EventManager> _eventManager;  // will copy the `onRead()` to itself

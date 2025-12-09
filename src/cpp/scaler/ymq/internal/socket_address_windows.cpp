@@ -9,11 +9,10 @@
 #include <ws2tcpip.h> // inet_pton
 // clang-format on
 
-
 // Windows being evil
 #undef SendMessageCallback
 #define __PRETTY_FUNCTION__ __FUNCSIG__
-#define UNIX_PATH_MAX 108
+#define UNIX_PATH_MAX       108
 
 struct sockaddr_un {
     ADDRESS_FAMILY sun_family;    /* AF_UNIX */
@@ -66,18 +65,26 @@ SocketAddress::SocketAddress() noexcept: _impl(new Impl)
     _impl->_type              = SocketAddress::Type::DEFAULT;
 }
 
-SocketAddress::SocketAddress(sockaddr addr) noexcept: _impl(new Impl)
+SocketAddress::SocketAddress(const sockaddr* addr) noexcept: _impl(new Impl)
 {
-    *(sockaddr*)&_impl->_addr = std::move(addr);
-    _impl->_addrLen           = sizeof(addr);
-    _impl->_type              = SocketAddress::Type::TCP;
-}
+    _impl->_addr    = {};
+    _impl->_addrLen = {};
+    _impl->_type    = SocketAddress::Type::DEFAULT;
 
-SocketAddress::SocketAddress(sockaddr_un addr) noexcept: _impl(new Impl)
-{
-    *(sockaddr_un*)&_impl->_addr = std::move(addr);
-    _impl->_addrLen              = sizeof(addr);
-    _impl->_type                 = SocketAddress::Type::IPC;
+    switch (addr->sa_family) {
+        case AF_UNIX:
+            *(sockaddr_un*)(&_impl->_addr) = *(const sockaddr_un*)addr;
+            _impl->_addrLen                = sizeof(sockaddr_un);
+            _impl->_type                   = Type::IPC;
+            break;
+        case AF_INET:
+            *(sockaddr*)(&_impl->_addr) = *(const sockaddr*)addr;
+            _impl->_addrLen             = sizeof(sockaddr);
+            _impl->_type                = Type::TCP;
+            break;
+
+        default: std::unreachable(); break;
+    }
 }
 
 SocketAddress::~SocketAddress() noexcept
@@ -90,9 +97,14 @@ sockaddr* SocketAddress::nativeHandle() noexcept
     return (sockaddr*)&_impl->_addr;
 }
 
-int SocketAddress::nativeHandleLen() noexcept
+int SocketAddress::nativeHandleLen() const noexcept
 {
     return _impl->_addrLen;
+}
+
+SocketAddress::Type SocketAddress::nativeHandleType() const noexcept
+{
+    return _impl->_type;
 }
 
 };  // namespace ymq

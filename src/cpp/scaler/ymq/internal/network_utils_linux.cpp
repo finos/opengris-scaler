@@ -1,14 +1,19 @@
-#include "scaler/ymq/internal/socket_address.h"
 #ifdef __linux__
-
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>  // TCP_NODELAY
+#include <string.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <unistd.h>  // close
+
+#include <cassert>
+#include <expected>
+#include <utility>
 
 #include "scaler/error/error.h"
 #include "scaler/ymq/internal/network_utils.h"
+#include "scaler/ymq/internal/socket_address.h"
 
 namespace scaler {
 namespace ymq {
@@ -20,7 +25,38 @@ void closeAndZeroSocket(void* fd)
     *tmp = 0;
 }
 
-std::expected<SocketAddress, int> stringToSockaddr(const std::string& address)
+SocketAddress stringToSockaddrUn(const std::string& address)
+{
+    static const std::string prefix = "ipc://";
+    if (address.substr(0, prefix.size()) != prefix) {
+        unrecoverableError({
+            Error::ErrorCode::InvalidAddressFormat,
+            "Originated from",
+            __PRETTY_FUNCTION__,
+            "Your input is",
+            address,
+        });
+    }
+    const std::string addrPart = address.substr(prefix.size());
+
+    sockaddr_un addr {};
+    addr.sun_family = AF_UNIX;
+    if (addrPart.size() > sizeof(addr.sun_path) - 1) {
+        unrecoverableError({
+            Error::ErrorCode::InvalidAddressFormat,
+            "Originated from",
+            __PRETTY_FUNCTION__,
+            "Your input is",
+            address,
+            "Failed due to name too long.",
+        });
+    }
+
+    strncpy(addr.sun_path, addrPart.c_str(), sizeof(addr.sun_path) - 1);
+    return SocketAddress((const sockaddr*)&addr);
+}
+
+SocketAddress stringToSockaddr(const std::string& address)
 {
     // Check and strip the "tcp://" prefix
     static const std::string prefix = "tcp://";
@@ -91,13 +127,31 @@ std::expected<SocketAddress, int> stringToSockaddr(const std::string& address)
         });
     }
 
-    return *(sockaddr*)&outAddr;
+    return SocketAddress((const sockaddr*)&outAddr);
+}
+
+SocketAddress stringToSocketAddress(const std::string& address)
+{
+    assert(address.size());
+    switch (address[0]) {
+        case 'i': return stringToSockaddrUn(address);  // IPC
+        case 't': return stringToSockaddr(address);    // TCP
+        default:
+            unrecoverableError({
+                Error::ErrorCode::InvalidAddressFormat,
+                "Originated from",
+                __PRETTY_FUNCTION__,
+                "Your input is",
+                address,
+            });
+            break;
+    }
 }
 
 int setNoDelay(int fd)
 {
     int optval = 1;
-    if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const char*)&optval, sizeof(optval)) == -1) {
+    if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const char*)&optval, sizeof(optval)) == -1 && errno != EOPNOTSUPP) {
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
             "Originated from",
@@ -114,9 +168,9 @@ int setNoDelay(int fd)
 
 SocketAddress getLocalAddr(int fd)
 {
-    sockaddr localAddr     = {};
-    socklen_t localAddrLen = sizeof(localAddr);
-    if (getsockname(fd, &localAddr, &localAddrLen) == -1) {
+    sockaddr_un localAddr  = {};
+    socklen_t localAddrLen = sizeof(sockaddr_un);
+    if (getsockname(fd, (sockaddr*)&localAddr, &localAddrLen) == -1) {
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
             "Originated from",
@@ -127,15 +181,16 @@ SocketAddress getLocalAddr(int fd)
             fd,
         });
     }
-    return localAddr;
+
+    return SocketAddress((const sockaddr*)&localAddr);
 }
 
 SocketAddress getRemoteAddr(int fd)
 {
-    sockaddr remoteAddr     = {};
-    socklen_t remoteAddrLen = sizeof(remoteAddr);
+    sockaddr_un remoteAddr  = {};
+    socklen_t remoteAddrLen = sizeof(sockaddr_un);
 
-    if (getpeername(fd, &remoteAddr, &remoteAddrLen) == -1) {
+    if (getpeername(fd, (sockaddr*)&remoteAddr, &remoteAddrLen) == -1) {
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
             "Originated from",
@@ -147,8 +202,9 @@ SocketAddress getRemoteAddr(int fd)
         });
     }
 
-    return remoteAddr;
+    return SocketAddress((const sockaddr*)&remoteAddr);
 }
+
 }  // namespace ymq
 }  // namespace scaler
 

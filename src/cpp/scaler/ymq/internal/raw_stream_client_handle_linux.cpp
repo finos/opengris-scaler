@@ -5,6 +5,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <utility>
+
 #include "scaler/error/error.h"
 #include "scaler/ymq/internal/network_utils.h"
 #include "scaler/ymq/internal/raw_stream_client_handle.h"
@@ -16,6 +18,11 @@ struct RawStreamClientHandle::Impl {
     int _clientFD;
     SocketAddress _remoteAddr;
 };
+
+bool RawStreamClientHandle::isNetworkFD() const noexcept
+{
+    return _impl->_remoteAddr.nativeHandleType() == SocketAddress::Type::TCP;
+}
 
 uint64_t RawStreamClientHandle::nativeHandle()
 {
@@ -31,7 +38,14 @@ RawStreamClientHandle::RawStreamClientHandle(SocketAddress remoteAddr)
 
 void RawStreamClientHandle::create()
 {
-    _impl->_clientFD = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+    _impl->_clientFD = {};
+    switch (_impl->_remoteAddr.nativeHandleType()) {
+        case SocketAddress::Type::TCP:
+            _impl->_clientFD = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+            break;
+        case SocketAddress::Type::IPC: _impl->_clientFD = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0); break;
+        default: std::unreachable();
+    }
 
     if (_impl->_clientFD == -1) {
         const int myErrno = errno;
@@ -75,6 +89,8 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
 
     const int myErrno = errno;
     switch (myErrno) {
+        case ENOENT:        // this happens with UDS and only UDS
+        case ECONNREFUSED:  // this happens with UDS and only UDS in async mode
         case EINPROGRESS: return false;
 
         case EACCES:
@@ -112,7 +128,6 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
         case EBADF:
         case EISCONN:
         case ENOTSOCK:
-        case ECONNREFUSED:
         default:
             unrecoverableError({
                 Error::ErrorCode::CoreBug,

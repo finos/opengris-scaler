@@ -200,6 +200,7 @@ static int YMQ_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
         {"ConnectorSocketClosedByRemoteEnd", (int)Error::ErrorCode::ConnectorSocketClosedByRemoteEnd},
         {"IOSocketStopRequested", (int)Error::ErrorCode::IOSocketStopRequested},
         {"BinderSendMessageWithNoAddress", (int)Error::ErrorCode::BinderSendMessageWithNoAddress},
+        {"IPCOnWinNotSupported", (int)Error::ErrorCode::IPCOnWinNotSupported},
     };
 
     if (YMQ_createIntEnum(pyModule, &state->PyErrorCodeType, "ErrorCode", errorCodeValues) < 0)

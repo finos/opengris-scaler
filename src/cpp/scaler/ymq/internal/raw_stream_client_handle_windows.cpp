@@ -25,6 +25,11 @@ uint64_t RawStreamClientHandle::nativeHandle()
     return _impl->_clientFD;
 }
 
+bool RawStreamClientHandle::isNetworkFD() const noexcept
+{
+    return _impl->_remoteAddr.nativeHandleType() == SocketAddress::Type::TCP;
+}
+
 RawStreamClientHandle::RawStreamClientHandle(SocketAddress remoteAddr)
     : _impl(std::make_unique<RawStreamClientHandle::Impl>())
 {
@@ -32,6 +37,11 @@ RawStreamClientHandle::RawStreamClientHandle(SocketAddress remoteAddr)
     _impl->_remoteAddr = std::move(remoteAddr);
 
     _impl->_connectExFunc = {};
+    if (_impl->_remoteAddr.nativeHandleType() == SocketAddress::Type::IPC) {
+        unrecoverableError({
+            Error::ErrorCode::IPCOnWinNotSupported,
+        });
+    }
 
     auto tmp = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     DWORD res;
@@ -62,7 +72,11 @@ RawStreamClientHandle::RawStreamClientHandle(SocketAddress remoteAddr)
 
 void RawStreamClientHandle::create()
 {
-    _impl->_clientFD = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    switch (_impl->_remoteAddr.nativeHandleType()) {
+        case SocketAddress::Type::TCP: _impl->_clientFD = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); break;
+        case SocketAddress::Type::IPC: _impl->_clientFD = socket(AF_UNIX, SOCK_STREAM, 0); break;
+        default: std::unreachable();
+    }
     if (_impl->_clientFD == -1) {
         unrecoverableError({
             Error::ErrorCode::CoreBug,
@@ -83,7 +97,7 @@ bool RawStreamClientHandle::prepConnect(void* notifyHandle)
     const char ip4[]           = {127, 0, 0, 1};
     *(int*)&localAddr.sin_addr = *(int*)ip4;
 
-    const int bindRes = bind(_impl->_clientFD, (struct sockaddr*)&localAddr, sizeof(struct sockaddr_in));
+    const int bindRes = bind(_impl->_clientFD, (struct sockaddr*)&localAddr, _impl->_remoteAddr.nativeHandleLen());
     if (bindRes == -1) {
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
