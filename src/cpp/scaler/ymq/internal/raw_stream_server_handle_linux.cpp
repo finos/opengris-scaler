@@ -1,5 +1,4 @@
 #ifdef __linux__
-
 #include <arpa/inet.h>  // inet_pton
 #include <errno.h>      // EAGAIN etc.
 #include <limits.h>
@@ -12,6 +11,7 @@
 #include <sys/socket.h>
 #include <sys/time.h>  // itimerspec
 #include <sys/timerfd.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #include <memory>
@@ -40,7 +40,14 @@ RawStreamServerHandle::RawStreamServerHandle(SocketAddress addr): _impl(std::mak
     _impl->_serverFD = {};
     _impl->_addr     = std::move(addr);
 
-    _impl->_serverFD = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+    switch (_impl->_addr.nativeHandleType()) {
+        case SocketAddress::Type::TCP:
+            _impl->_serverFD = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, IPPROTO_TCP);
+            break;
+        case SocketAddress::Type::IPC: _impl->_serverFD = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0); break;
+        default: std::unreachable();
+    }
+
     if (_impl->_serverFD == -1) {
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
@@ -48,7 +55,7 @@ RawStreamServerHandle::RawStreamServerHandle(SocketAddress addr): _impl(std::mak
             "socket(2)",
             "Errno is",
             strerror(errno),
-            "_serverFD",
+            "_impl->_serverFD",
             _impl->_serverFD,
         });
 
@@ -72,6 +79,10 @@ void RawStreamServerHandle::bindAndListen()
     if (bind(_impl->_serverFD, _impl->_addr.nativeHandle(), _impl->_addr.nativeHandleLen()) == -1) {
         const auto serverFD = _impl->_serverFD;
         closeAndZeroSocket(&_impl->_serverFD);
+        if (_impl->_addr.nativeHandleType() == SocketAddress::Type::IPC) {
+            unlink(((sockaddr_un*)_impl->_addr.nativeHandle())->sun_path);
+        }
+
         unrecoverableError({
             Error::ErrorCode::ConfigurationError,
             "Originated from",
@@ -118,10 +129,11 @@ std::vector<std::pair<uint64_t, SocketAddress>> RawStreamServerHandle::getNewCon
 {
     std::vector<std::pair<uint64_t, SocketAddress>> res;
     while (true) {
-        sockaddr remoteAddr {};
-        socklen_t remoteAddrLen = sizeof(remoteAddr);
+        sockaddr_un remoteAddr {};
+        socklen_t remoteAddrLen = _impl->_addr.nativeHandleLen();
 
-        int fd = accept4(_impl->_serverFD, &remoteAddr, &remoteAddrLen, SOCK_NONBLOCK | SOCK_CLOEXEC);
+        int fd = accept4(_impl->_serverFD, (sockaddr*)&remoteAddr, &remoteAddrLen, SOCK_NONBLOCK | SOCK_CLOEXEC);
+
         if (fd < 0) {
             const int myErrno = errno;
             switch (myErrno) {
@@ -187,7 +199,8 @@ std::vector<std::pair<uint64_t, SocketAddress>> RawStreamServerHandle::getNewCon
                 sizeof(remoteAddr),
             });
         }
-        res.push_back({fd, remoteAddr});
+
+        res.emplace_back(fd, SocketAddress((sockaddr*)&remoteAddr));
     }
 }
 
@@ -195,6 +208,9 @@ void RawStreamServerHandle::destroy()
 {
     if (_impl->_serverFD) {
         closeAndZeroSocket(&_impl->_serverFD);
+    }
+    if (_impl->_addr.nativeHandleType() == SocketAddress::Type::IPC) {
+        unlink(((sockaddr_un*)_impl->_addr.nativeHandle())->sun_path);
     }
 }
 

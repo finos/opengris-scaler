@@ -1,0 +1,65 @@
+
+
+#include <future>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <thread>
+
+#include "scaler/error/error.h"
+#include "scaler/ymq/io_context.h"
+#include "scaler/ymq/io_socket.h"
+#include "scaler/ymq/simple_interface.h"
+#include "scaler/ymq/typedefs.h"
+
+using namespace scaler::ymq;
+
+int main()
+{
+    IOContext context;
+
+    auto clientSocket = syncCreateSocket(context, IOSocketType::Connector, "ClientSocket");
+    std::cout << "Successfully created socket.\n";
+    syncConnectSocket(clientSocket, "ipc:///tmp/uds_echo2.sock");
+
+    std::cout << "Connected to server.\n";
+
+    for (int cnt = 0; cnt < 10; ++cnt) {
+        std::string line;
+        std::cout << "Enter a message to send: ";
+        if (!std::getline(std::cin, line)) {
+            std::cout << "EOF or input error. Exiting...\n";
+            break;
+        }
+        std::cout << "YOU ENTERED THIS MESSAGE: " << line << std::endl;
+
+        Message message;
+        std::string destAddress = "ServerSocket";
+
+        message.address = Bytes {const_cast<char*>(destAddress.data()), destAddress.size()};
+        message.payload = Bytes {const_cast<char*>(line.c_str()), line.size()};
+
+        auto send_promise = std::promise<std::expected<void, Error>>();
+        auto send_future  = send_promise.get_future();
+
+        clientSocket->sendMessage(
+            std::move(message), [&send_promise](std::expected<void, Error>) { send_promise.set_value({}); });
+
+        send_future.wait();
+        std::cout << "Message sent, waiting for response...\n";
+
+        auto recv_promise = std::promise<std::pair<Message, Error>>();
+        auto recv_future  = recv_promise.get_future();
+
+        clientSocket->recvMessage(
+            [&recv_promise](std::pair<Message, Error> msg) { recv_promise.set_value(std::move(msg)); });
+
+        Message reply = recv_future.get().first;
+        std::string reply_str(reply.payload.data(), reply.payload.data() + reply.payload.len());
+        std::cout << "Received echo: '" << reply_str << "'.\n";
+    }
+
+    context.removeIOSocket(clientSocket);
+
+    return 0;
+}

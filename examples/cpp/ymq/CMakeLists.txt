@@ -22,3 +22,9 @@ target_link_libraries(automated_echo_client ymq_objs)
 
 add_executable(pingpong pingpong.cpp)
 target_link_libraries(pingpong ymq_objs)
+
+add_executable(ipc_echo_server ipc_echo_server.cpp)
+target_link_libraries(ipc_echo_server ymq_objs)
+
+add_executable(ipc_echo_client ipc_echo_client.cpp)
+target_link_libraries(ipc_echo_client ymq_objs)

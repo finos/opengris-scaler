@@ -10,7 +10,6 @@
 #endif  // _WIN32
 
 // C++
-#include <atomic>
 #include <map>
 #include <memory>
 #include <optional>
@@ -46,15 +45,16 @@ public:
     IOSocket& operator=(IOSocket&&)      = delete;
     ~IOSocket() noexcept;
 
-    // NOTE: BELOW FIVE FUNCTIONS ARE USERSPACE API
+    // NOTE: BELOW FOUR FUNCTIONS ARE USERSPACE API
     void sendMessage(Message message, SendMessageCallback onMessageSent) noexcept;
     void recvMessage(RecvMessageCallback onRecvMessage) noexcept;
 
-    void connectTo(SocketAddress addr, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes = 8) noexcept;
+    void bindTo(std::string netOrDomainAddr, BindReturnCallback onBindReturn) noexcept;
     void connectTo(
-        std::string networkAddress, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes = 8) noexcept;
+        std::string netOrDomainAddr, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes = 8) noexcept;
 
-    void bindTo(std::string networkAddress, BindReturnCallback onBindReturn) noexcept;
+    // NOTE: BELOW ONE ARE NOT OFFICIAL USERSPACE API. USE WITH CAUTION.
+    void connectTo(SocketAddress addr, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes = 8) noexcept;
 
     void closeConnection(Identity remoteSocketIdentity) noexcept;
 
@@ -79,7 +79,7 @@ public:
         int fd, SocketAddress localAddr, SocketAddress remoteAddr, bool responsibleForRetry) noexcept;
 
     // From TCPClient class only
-    void removeConnectedTCPClient() noexcept;
+    void removeConnectedStreamClient() noexcept;
 
     void requestStop() noexcept;
 
@@ -99,6 +99,10 @@ private:
 
     // NOTE: Owning one TCPServer means the user cannot bindTo multiple addresses.
     std::optional<StreamServer> _tcpServer;
+
+    // NOTE: User may choose to bind to one IP address + one UDS address
+    std::optional<StreamServer> _domainServer;
+    std::optional<StreamClient> _domainClient;
 
     // Remote identity to connection map
     std::map<std::string, std::unique_ptr<MessageConnection>> _identityToConnection;

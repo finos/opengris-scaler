@@ -83,6 +83,7 @@ class ErrorCode(IntEnum):
     ConnectorSocketClosedByRemoteEnd = 15
     IOSocketStopRequested = 16
     BinderSendMessageWithNoAddress = 17
+    IPCOnWinNotSupported = 18
 
     def explanation(self) -> str: ...
 

@@ -9,7 +9,10 @@ struct sockaddr;
 namespace scaler {
 namespace ymq {
 
-std::expected<SocketAddress, int> stringToSockaddr(const std::string& address);
+SocketAddress stringToSockaddr(const std::string& address);
+SocketAddress stringToSockaddrUn(const std::string& address);
+SocketAddress stringToSocketAddress(const std::string& address);
+
 int setNoDelay(int fd);
 SocketAddress getLocalAddr(int fd);
 SocketAddress getRemoteAddr(int fd);

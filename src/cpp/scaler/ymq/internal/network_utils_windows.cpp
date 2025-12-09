@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <string>
 
-#include "scaler/ymq/internal/network_utils.h"
 #include "scaler/error/error.h"
+#include "scaler/ymq/internal/network_utils.h"
 
 // clang-format off
 #define NOMINMAX
@@ -26,7 +26,7 @@ void closeAndZeroSocket(void* fd)
     *tmp = 0;
 }
 
-std::expected<SocketAddress, int> stringToSockaddr(const std::string& address)
+SocketAddress stringToSockaddr(const std::string& address)
 {
     // Check and strip the "tcp://" prefix
     static const std::string prefix = "tcp://";
@@ -97,7 +97,33 @@ std::expected<SocketAddress, int> stringToSockaddr(const std::string& address)
         });
     }
 
-    return *(sockaddr*)&outAddr;
+    return SocketAddress((const sockaddr*)&outAddr);
+}
+
+SocketAddress stringToSocketAddress(const std::string& address)
+{
+    assert(address.size());
+    switch (address[0]) {
+        case 't': return stringToSockaddr(address);  // TCP
+        case 'i':                                    // IPC
+            unrecoverableError({
+                Error::ErrorCode::IPCOnWinNotSupported,
+                "Originated from",
+                __PRETTY_FUNCTION__,
+                "Your input is",
+                address,
+            });
+            break;
+        default:
+            unrecoverableError({
+                Error::ErrorCode::InvalidAddressFormat,
+                "Originated from",
+                __PRETTY_FUNCTION__,
+                "Your input is",
+                address,
+            });
+            break;
+    }
 }
 
 int setNoDelay(int fd)
@@ -133,7 +159,7 @@ SocketAddress getLocalAddr(int fd)
             fd,
         });
     }
-    return localAddr;
+    return SocketAddress((const sockaddr*)&localAddr);
 }
 
 SocketAddress getRemoteAddr(int fd)
@@ -153,7 +179,7 @@ SocketAddress getRemoteAddr(int fd)
         });
     }
 
-    return remoteAddr;
+    return SocketAddress((const sockaddr*)&remoteAddr);
 }
 
 }  // namespace ymq

@@ -38,7 +38,6 @@ StreamServer::StreamServer(
     BindReturnCallback onBindReturn) noexcept
     : _eventLoopThread(eventLoopThread)
     , _onBindReturn(std::move(onBindReturn))
-    , _addr(addr)
     , _localIOSocketIdentity(std::move(localIOSocketIdentity))
     , _eventManager(std::make_unique<EventManager>())
     , _rawServer(std::move(addr))
