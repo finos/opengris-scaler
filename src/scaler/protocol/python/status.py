@@ -51,14 +51,14 @@ class ClientManagerStatus(Message):
 
     @property
     def client_to_num_of_tasks(self) -> Dict[ClientID, int]:
-        return {p.client: p.numTask for p in self._msg.clientToNumOfTask}
+        return {ClientID(p.client): p.numTask for p in self._msg.clientToNumOfTask}
 
     @staticmethod
     def new_msg(client_to_num_of_tasks: Dict[ClientID, int]) -> "ClientManagerStatus":  # type: ignore[override]
         return ClientManagerStatus(
             _status.ClientManagerStatus(
                 clientToNumOfTask=[
-                    _status.ClientManagerStatus.Pair(client=client_id.decode(), numTask=num_tasks)
+                    _status.ClientManagerStatus.Pair(client=bytes(client_id), numTask=num_tasks)
                     for client_id, num_tasks in client_to_num_of_tasks.items()
                 ]
             )

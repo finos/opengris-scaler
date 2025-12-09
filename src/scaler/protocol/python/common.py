@@ -96,7 +96,7 @@ class ObjectMetadata(Message):
 
     @property
     def object_names(self) -> Tuple[bytes, ...]:
-        return tuple(self._msg.objectNames)
+        return tuple(bytes(name) for name in self._msg.objectNames)
 
     @staticmethod
     def new_msg(
