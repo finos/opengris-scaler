@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/internal/network_utils.h"
 
 // clang-format off
@@ -32,7 +32,7 @@ SocketAddress stringToSockaddr(const std::string& address)
     static const std::string prefix = "tcp://";
     if (address.substr(0, prefix.size()) != prefix) {
         unrecoverableError({
-            Error::ErrorCode::InvalidAddressFormat,
+            utility::Error::ErrorCode::InvalidAddressFormat,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Your input is",
@@ -44,7 +44,7 @@ SocketAddress stringToSockaddr(const std::string& address)
     const size_t colonPos      = addrPart.find(':');
     if (colonPos == std::string::npos) {
         unrecoverableError({
-            Error::ErrorCode::InvalidAddressFormat,
+            utility::Error::ErrorCode::InvalidAddressFormat,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Your input is",
@@ -60,7 +60,7 @@ SocketAddress stringToSockaddr(const std::string& address)
         port = std::stoi(portStr);
     } catch (...) {
         unrecoverableError({
-            Error::ErrorCode::InvalidAddressFormat,
+            utility::Error::ErrorCode::InvalidAddressFormat,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Your input is",
@@ -75,7 +75,7 @@ SocketAddress stringToSockaddr(const std::string& address)
     int res = inet_pton(AF_INET, ip.c_str(), &outAddr.sin_addr);
     if (res == 0) {
         unrecoverableError({
-            Error::ErrorCode::InvalidAddressFormat,
+            utility::Error::ErrorCode::InvalidAddressFormat,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Your input is",
@@ -85,7 +85,7 @@ SocketAddress stringToSockaddr(const std::string& address)
 
     if (res == -1) {
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Errno is",
@@ -107,7 +107,7 @@ SocketAddress stringToSocketAddress(const std::string& address)
         case 't': return stringToSockaddr(address);  // TCP
         case 'i':                                    // IPC
             unrecoverableError({
-                Error::ErrorCode::IPCOnWinNotSupported,
+                utility::Error::ErrorCode::IPCOnWinNotSupported,
                 "Originated from",
                 __PRETTY_FUNCTION__,
                 "Your input is",
@@ -116,7 +116,7 @@ SocketAddress stringToSocketAddress(const std::string& address)
             break;
         default:
             unrecoverableError({
-                Error::ErrorCode::InvalidAddressFormat,
+                utility::Error::ErrorCode::InvalidAddressFormat,
                 "Originated from",
                 __PRETTY_FUNCTION__,
                 "Your input is",
@@ -131,7 +131,7 @@ int setNoDelay(int fd)
     int optval = 1;
     if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const char*)&optval, sizeof(optval)) == -1) {
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Errno is",
@@ -150,7 +150,7 @@ SocketAddress getLocalAddr(int fd)
     socklen_t localAddrLen = sizeof(localAddr);
     if (getsockname(fd, &localAddr, &localAddrLen) == -1) {
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Errno is",
@@ -169,7 +169,7 @@ SocketAddress getRemoteAddr(int fd)
 
     if (getpeername(fd, &remoteAddr, &remoteAddrLen) == -1) {
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             __PRETTY_FUNCTION__,
             "Errno is",

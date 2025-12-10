@@ -6,12 +6,13 @@
 #include <string>
 #include <thread>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/io_socket.h"
 #include "scaler/ymq/simple_interface.h"
 #include "scaler/ymq/typedefs.h"
 
+using namespace scaler::utility;
 using namespace scaler::ymq;
 
 int main()

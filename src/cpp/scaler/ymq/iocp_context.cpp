@@ -73,7 +73,7 @@ void IOCPContext::loop()
             // TODO: Figure out the best stuff to put in
             event->onRead();
             event->onWrite();
-            if (events & IOCP_SOCKET_CLOSED) {
+            if (revent & IOCP_SOCKET_CLOSED) {
                 event->onClose();
             }
         }

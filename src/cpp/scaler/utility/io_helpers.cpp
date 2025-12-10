@@ -9,7 +9,7 @@
 namespace scaler {
 namespace utility {
 
-IOResult readExact(std::span<uint8_t> buffer, std::function<IOResult(const std::span<uint8_t>&)> reader) noexcept
+IOResult readExact(std::span<uint8_t> buffer, std::function<IOResult(std::span<uint8_t>)> reader) noexcept
 {
     size_t cursor = 0;
 

@@ -22,27 +22,34 @@ PipeWriter::~PipeWriter()
     close(this->_fd);
 }
 
-IOResult PipeWriter::write(std::span<const uint8_t> buffer) const noexcept
+IOResult PipeWriter::writeBytes(const std::vector<std::span<const uint8_t>>& buffers) const noexcept
 {
-    ssize_t n;
-    do {
-        n = ::write(this->_fd, buffer.data(), buffer.size());
-    } while (n < 0 && errno == EINTR);
+    size_t bytesTransferred = 0;
 
-    if (n < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            return IOResult::failure(IOResult::Error::WouldBlock);
-        } else {
-            unrecoverableError({
-                Error::ErrorCode::CoreBug,
-                "Originated from",
-                "write(2)",
-                "Errno is",
-                strerror(errno),
-            });
+    for (const auto& buffer: buffers) {  // TODO: use sendmsg() instead
+        ssize_t n;
+        do {
+            n = ::write(this->_fd, buffer.data(), buffer.size());
+        } while (n < 0 && errno == EINTR);
+
+        if (n < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return IOResult::failure(IOResult::Error::WouldBlock, bytesTransferred);
+            } else {
+                unrecoverableError({
+                    Error::ErrorCode::CoreBug,
+                    "Originated from",
+                    "write(2)",
+                    "Errno is",
+                    strerror(errno),
+                });
+            }
         }
+
+        bytesTransferred += n;
     }
-    return IOResult::success(n);
+
+    return IOResult::success(bytesTransferred);
 }
 
 }  // namespace pipe

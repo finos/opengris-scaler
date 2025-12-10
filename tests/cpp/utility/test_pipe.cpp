@@ -21,7 +21,7 @@ TEST_F(PipeTest, Blocking)
 
     // Write to the pipe
     {
-        IOResult result = pipe.writer.writeAll(message);
+        IOResult result = pipe.writer.writeAll({message});
         ASSERT_FALSE(result.error);
         ASSERT_EQ(result.bytesTransferred, message.size());
     }
@@ -74,7 +74,7 @@ TEST_F(PipeTest, NonBlocking)
 
     // Write to the pipe
     {
-        IOResult result = pipe.writer.writeAll(message);
+        IOResult result = pipe.writer.writeAll({message});
         ASSERT_FALSE(result.error);
         ASSERT_EQ(result.bytesTransferred, message.size());
     }

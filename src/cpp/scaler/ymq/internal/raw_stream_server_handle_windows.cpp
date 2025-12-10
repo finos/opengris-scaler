@@ -40,7 +40,7 @@ RawStreamServerHandle::RawStreamServerHandle(SocketAddress addr): _impl(std::mak
     memset(_impl->_buffer, 0, sizeof(_impl->_buffer));
     if (_impl->_addr.nativeHandleType() == SocketAddress::Type::IPC) {
         unrecoverableError({
-            Error::ErrorCode::IPCOnWinNotSupported,
+            utility::Error::ErrorCode::IPCOnWinNotSupported,
         });
     }
 
