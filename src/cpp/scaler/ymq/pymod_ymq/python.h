@@ -14,7 +14,7 @@
 
 #include <structmember.h>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/pymod_ymq/gil.h"
 
 #if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 10

@@ -5,7 +5,7 @@
 #include <cerrno>
 #include <functional>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/event_manager.h"
 
 namespace scaler {
@@ -38,7 +38,7 @@ void IOCPContext::loop()
             revent |= IOCP_SOCKET_CLOSED;
         } else {
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 "GetQueuedCompletionStatusEx",
                 "Errno is",
@@ -71,7 +71,11 @@ void IOCPContext::loop()
                 continue;
             }
             // TODO: Figure out the best stuff to put in
-            event->onEvents(revent);
+            event->onRead();
+            event->onWrite();
+            if (revent & IOCP_SOCKET_CLOSED) {
+                event->onClose();
+            }
         }
     }
     execPendingFunctions();
@@ -88,7 +92,7 @@ void IOCPContext::addFdToLoop(int fd, uint64_t, EventManager*)
         }
 
         unrecoverableError({
-            Error::ErrorCode::CoreBug,
+            utility::Error::ErrorCode::CoreBug,
             "Originated from",
             "CreateIoCompletionPort",
             "Errno is",

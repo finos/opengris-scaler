@@ -17,7 +17,7 @@
 #include <memory>
 #include <utility>  // std::move
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/internal/network_utils.h"
 #include "scaler/ymq/internal/raw_stream_server_handle.h"
 #include "scaler/ymq/internal/socket_address.h"
@@ -50,7 +50,7 @@ RawStreamServerHandle::RawStreamServerHandle(SocketAddress addr): _impl(std::mak
 
     if (_impl->_serverFD == -1) {
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             "socket(2)",
             "Errno is",
@@ -84,7 +84,7 @@ void RawStreamServerHandle::bindAndListen()
         }
 
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             "bind(2)",
             "Errno is",
@@ -100,7 +100,7 @@ void RawStreamServerHandle::bindAndListen()
         const auto serverFD = _impl->_serverFD;
         closeAndZeroSocket(&_impl->_serverFD);
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             "listen(2)",
             "Errno is",
@@ -147,7 +147,7 @@ std::vector<std::pair<uint64_t, SocketAddress>> RawStreamServerHandle::getNewCon
                 case EINVAL:
                 case EBADF:
                     unrecoverableError({
-                        Error::ErrorCode::CoreBug,
+                        utility::Error::ErrorCode::CoreBug,
                         "Originated from",
                         "accept4(2)",
                         "Errno is",
@@ -158,7 +158,7 @@ std::vector<std::pair<uint64_t, SocketAddress>> RawStreamServerHandle::getNewCon
 
                 case EINTR:
                     unrecoverableError({
-                        Error::ErrorCode::SignalNotSupported,
+                        utility::Error::ErrorCode::SignalNotSupported,
                         "Originated from",
                         "accept4(2)",
                         "Errno is",
@@ -179,7 +179,7 @@ std::vector<std::pair<uint64_t, SocketAddress>> RawStreamServerHandle::getNewCon
                 case ETIMEDOUT:
                 default:
                     unrecoverableError({
-                        Error::ErrorCode::ConfigurationError,
+                        utility::Error::ErrorCode::ConfigurationError,
                         "Originated from",
                         "accept4(2)",
                         "Errno is",
@@ -190,7 +190,7 @@ std::vector<std::pair<uint64_t, SocketAddress>> RawStreamServerHandle::getNewCon
 
         if (remoteAddrLen > sizeof(remoteAddr)) {
             unrecoverableError({
-                Error::ErrorCode::IPv6NotSupported,
+                utility::Error::ErrorCode::IPv6NotSupported,
                 "Originated from",
                 "accept4(2)",
                 "remoteAddrLen",

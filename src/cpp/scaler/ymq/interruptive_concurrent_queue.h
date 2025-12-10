@@ -3,7 +3,7 @@
 // C++
 #include <vector>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "third_party/concurrentqueue.h"
 
 namespace scaler {
@@ -29,7 +29,7 @@ public:
                 case ENOMEM:
                 case EMFILE:
                     unrecoverableError({
-                        Error::ErrorCode::ConfigurationError,
+                        utility::Error::ErrorCode::ConfigurationError,
                         "Originated from",
                         "eventfd(2)",
                         "Errno is",
@@ -40,7 +40,7 @@ public:
                 case EINVAL:
                 default:
                     unrecoverableError({
-                        Error::ErrorCode::CoreBug,
+                        utility::Error::ErrorCode::CoreBug,
                         "Originated from",
                         "eventfd(2)",
                         "Errno is",
@@ -62,7 +62,7 @@ public:
         uint64_t u = 1;
         if (::eventfd_write(_eventFd, u) < 0) {
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 "eventfd_write(2)",
                 "Errno is",
@@ -81,7 +81,7 @@ public:
             }
 
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 "eventfd_read(2)",
                 "Errno is",
@@ -124,7 +124,7 @@ public:
         _queue.enqueue(std::move(item));
         if (!PostQueuedCompletionStatus(_completionPort, 0, (ULONG_PTR)_key, nullptr)) {
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 "PostQueuedCompletionStatus",
                 "Errno is",
