@@ -21,7 +21,7 @@ PipeReader::~PipeReader()
     CloseHandle((HANDLE)this->_fd);
 }
 
-IOResult PipeReader::read(std::span<uint8_t> buffer) const noexcept
+IOResult PipeReader::readBytes(std::span<uint8_t> buffer) const noexcept
 {
     DWORD n = 0;
 

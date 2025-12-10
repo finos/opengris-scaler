@@ -3,26 +3,17 @@
 #include <cstdint>
 #include <span>
 
+#include "scaler/utility/io_helpers.h"
 #include "scaler/utility/io_result.h"
 
 namespace scaler {
 namespace utility {
 namespace pipe {
 
-IOResult PipeWriter::writeAll(std::span<const uint8_t> buffer) const noexcept
+IOResult PipeWriter::writeAll(const std::vector<std::span<const uint8_t>>& buffers) const noexcept
 {
-    size_t cursor = 0;
-
-    while (cursor < buffer.size()) {
-        IOResult result = this->write(buffer.subspan(cursor));
-        cursor += result.bytesTransferred;
-
-        if (result.error) {
-            return IOResult::failure(result.error.value(), cursor);
-        }
-    }
-
-    return IOResult::success(cursor);
+    return utility::writeAll(
+        buffers, [this](const std::vector<std::span<const uint8_t>>& buffers) { return this->writeBytes(buffers); });
 }
 
 }  // namespace pipe

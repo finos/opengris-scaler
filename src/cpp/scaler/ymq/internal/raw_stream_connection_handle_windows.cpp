@@ -140,7 +140,7 @@ std::expected<uint64_t, RawStreamConnectionHandle::IOStatus> RawStreamConnection
         }
     }
     unrecoverableError({
-        Error::ErrorCode::CoreBug,
+        utility::Error::ErrorCode::CoreBug,
         "Originated from",
         "WSASendTo",
         "Errno is",

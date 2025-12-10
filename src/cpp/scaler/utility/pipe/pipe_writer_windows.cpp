@@ -21,26 +21,32 @@ PipeWriter::~PipeWriter()
     CloseHandle((HANDLE)this->_fd);
 }
 
-IOResult PipeWriter::write(std::span<const uint8_t> buffer) const noexcept
+IOResult PipeWriter::writeBytes(const std::vector<std::span<const uint8_t>>& buffers) const noexcept
 {
-    DWORD n = 0;
+    size_t bytesTransferred = 0;
 
-    if (!WriteFile((HANDLE)this->_fd, buffer.data(), (DWORD)buffer.size(), &n, nullptr)) {
-        DWORD error = GetLastError();
-        switch (error) {
-            case ERROR_NO_DATA: return IOResult::failure(IOResult::Error::WouldBlock, 0);
-            default:
-                unrecoverableError({
-                    Error::ErrorCode::CoreBug,
-                    "Originated from",
-                    "WriteFile()",
-                    "Error is",
-                    std::to_string(error),
-                });
+    for (const auto& buffer: buffers) {
+        DWORD n = 0;
+
+        if (!WriteFile((HANDLE)this->_fd, buffer.data(), (DWORD)buffer.size(), &n, nullptr)) {
+            DWORD error = GetLastError();
+            switch (error) {
+                case ERROR_NO_DATA: return IOResult::failure(IOResult::Error::WouldBlock, bytesTransferred + n);
+                default:
+                    unrecoverableError({
+                        Error::ErrorCode::CoreBug,
+                        "Originated from",
+                        "WriteFile()",
+                        "Error is",
+                        std::to_string(error),
+                    });
+            }
         }
+
+        bytesTransferred += n;
     }
 
-    return IOResult::success(bytes_written);
+    return IOResult::success(bytesTransferred);
 }
 
 }  // namespace pipe

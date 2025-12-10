@@ -39,7 +39,7 @@ RawStreamClientHandle::RawStreamClientHandle(SocketAddress remoteAddr)
     _impl->_connectExFunc = {};
     if (_impl->_remoteAddr.nativeHandleType() == SocketAddress::Type::IPC) {
         unrecoverableError({
-            Error::ErrorCode::IPCOnWinNotSupported,
+            utility::Error::ErrorCode::IPCOnWinNotSupported,
         });
     }
 

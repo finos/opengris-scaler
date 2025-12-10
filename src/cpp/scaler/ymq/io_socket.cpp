@@ -146,7 +146,7 @@ void IOSocket::connectTo(SocketAddress addr, ConnectReturnCallback onConnectRetu
             } else if (addr.nativeHandleType() == SocketAddress::Type::IPC) {
                 if (_domainClient) {
                     unrecoverableError({
-                        Error::ErrorCode::MultipleConnectToNotSupported,
+                        utility::Error::ErrorCode::MultipleConnectToNotSupported,
                         "Originated from",
                         "IOSocket::connectTo",
                     });
@@ -178,7 +178,7 @@ void IOSocket::bindTo(std::string netOrDomainAddr, BindReturnCallback onBindRetu
 
             if (socketAddress.nativeHandleType() == SocketAddress::Type::TCP) {
                 if (_tcpServer) {
-                    callback(std::unexpected {Error::ErrorCode::MultipleBindToNotSupported});
+                    callback(std::unexpected {utility::Error::ErrorCode::MultipleBindToNotSupported});
                     return;
                 }
 
@@ -188,7 +188,7 @@ void IOSocket::bindTo(std::string netOrDomainAddr, BindReturnCallback onBindRetu
 
             } else if (socketAddress.nativeHandleType() == SocketAddress::Type::IPC) {
                 if (_domainServer) {
-                    callback(std::unexpected {Error::ErrorCode::MultipleBindToNotSupported});
+                    callback(std::unexpected {utility::Error::ErrorCode::MultipleBindToNotSupported});
                     return;
                 }
 

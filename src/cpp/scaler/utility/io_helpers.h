@@ -12,7 +12,7 @@ namespace utility {
 // Attempt to read data into the specified buffer using the provided reader function.
 //
 // It continues reading until the buffer is completely filled or an error occurs.
-IOResult readExact(std::span<uint8_t> buffer, std::function<IOResult(const std::span<uint8_t>&)> reader) noexcept;
+IOResult readExact(std::span<uint8_t> buffer, std::function<IOResult(std::span<uint8_t>)> reader) noexcept;
 
 // Writes all data from a sequence of byte spans using a provided writer function.
 //

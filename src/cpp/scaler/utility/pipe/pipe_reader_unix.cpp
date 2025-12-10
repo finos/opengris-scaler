@@ -22,7 +22,7 @@ PipeReader::~PipeReader()
     close(this->_fd);
 }
 
-IOResult PipeReader::read(std::span<uint8_t> buffer) const noexcept
+IOResult PipeReader::readBytes(std::span<uint8_t> buffer) const noexcept
 {
     ssize_t n;
     do {

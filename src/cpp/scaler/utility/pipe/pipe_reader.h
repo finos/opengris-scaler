@@ -33,10 +33,7 @@ public:
     PipeReader(const PipeReader&)            = delete;
     PipeReader& operator=(const PipeReader&) = delete;
 
-    // read up to buffer.size(), returning the number of bytes read.
-    IOResult read(std::span<uint8_t> buffer) const noexcept;
-
-    // read exactly buffer.size().
+    // Read up to buffer.size(), stopping on the first error. Return the total number of bytes written.
     IOResult readExact(std::span<uint8_t> buffer) const noexcept;
 
     // returns the native handle for this pipe reader
@@ -51,6 +48,8 @@ private:
     // on Linux, this is a file descriptor
     // on Windows, this is a HANDLE
     int64_t _fd;
+
+    IOResult readBytes(std::span<uint8_t> buffer) const noexcept;
 };
 
 }  // namespace pipe
