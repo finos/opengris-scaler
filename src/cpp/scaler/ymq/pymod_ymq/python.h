@@ -1,5 +1,6 @@
 #pragma once
 
+#include <pyport.h>
 #define PY_SSIZE_T_CLEAN
 
 // if on Windows and in debug mode, undefine _DEBUG before including Python.h
@@ -141,6 +142,8 @@ public:
     T* operator->() const { return _ptr; }
     T* operator*() const { return _ptr; }
 
+    Py_hash_t hash() const { return PyObject_Hash(_ptr); }
+
 private:
     T* _ptr;
 
@@ -155,6 +158,11 @@ private:
 
         Py_CLEAR(_ptr);
     }
+};
+
+template <>
+struct std::hash<OwnedPyObject<PyObject>> {
+    std::size_t operator()(const OwnedPyObject<PyObject>& obj) const noexcept { return obj.hash(); }
 };
 
 #if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION == 8
