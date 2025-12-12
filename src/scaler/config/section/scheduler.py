@@ -40,7 +40,7 @@ class SchedulerConfig(ConfigClass):
         default=ScalingControllerStrategy.NULL,
         metadata=dict(
             short="-scs",
-            choices=[s.name for s in ScalingControllerStrategy],
+            choices=[s for s in ScalingControllerStrategy if s is not ScalingControllerStrategy.NULL],
             help="specify the scaling controller strategy, if not specified, no scaling controller will be used",
         ),
     )
@@ -63,7 +63,7 @@ class SchedulerConfig(ConfigClass):
         default=AllocatePolicy.even,
         metadata=dict(
             short="-ap",
-            choices=[p.name for p in AllocatePolicy],
+            choices=[p for p in AllocatePolicy],
             help="specify allocate policy, this controls how scheduler will prioritize tasks, "
             "including balancing tasks",
         ),

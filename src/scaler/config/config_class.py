@@ -1,8 +1,9 @@
 import dataclasses
+import enum
 import typing
 from typing import Any, Dict, Type, TypeVar
 
-from configargparse import ArgParser, ArgumentDefaultsHelpFormatter, TomlConfigParser
+from configargparse import ArgParser, ArgumentDefaultsHelpFormatter, ArgumentTypeError, TomlConfigParser
 
 from scaler.config.mixins import ConfigType
 
@@ -106,6 +107,20 @@ class ConfigClass:
     The name of fields in nested config classes are in the same namespace as those
     in the parent and other nested config classes.
 
+    ## Enums
+
+    Enums are parsed by their name, for instance the enum:
+
+    ```python
+    class Color(Enum):
+        RED = "red"
+        GREEN = "green"
+        BLUE = "blue"
+    ```
+
+    Will accept "RED", "GREEN", and "BLUE" as arguments on the command line.
+    As usual this can be overriden by explicitly setting the `type` field.
+
     ## Parameter Types
 
     The type of a field is used as the type in argument parsing, meaning that it must be able
@@ -116,6 +131,7 @@ class ConfigClass:
     - subclasses of `ConfigType`: uses the `.from_string()` method
     - `Optional[T]`, `T | None`: parsed as `T` and sets `required=False`
     - `List[T]`, `list[T]`: parsed as `T`, and sets `nargs="*"`
+    - sublcasses of `enum.Enum`: values are parsed by name
 
     For generic types, the `T` is parsed recursively following the rules here.
     For example, `Optional[T]` where `T` is a subclass of `ConfigType`
@@ -238,7 +254,14 @@ def parse_bool(s: str) -> bool:
     if lower == "false":
         return False
 
-    raise TypeError(f"[{s}] is not a valid bool")
+    raise ArgumentTypeError(f"'{s}' is not a valid bool")
+
+
+def parse_enum(s: str, enumm: Type[enum.Enum]) -> Any:
+    try:
+        return enumm[s]
+    except KeyError as e:
+        raise ArgumentTypeError(f"'{s}' is not a valid {enumm.__name__}") from e
 
 
 def is_optional(ty: Any) -> bool:
@@ -273,6 +296,14 @@ def is_config_class(ty: Any) -> bool:
     """determines if ty is a subclass of ConfigClass"""
     try:
         return issubclass(ty, ConfigClass)
+    except TypeError:
+        return False
+
+
+def is_enum(ty: Any):
+    """determines if ty is a subclass of Enum"""
+    try:
+        return issubclass(ty, enum.Enum)
     except TypeError:
         return False
 
@@ -312,6 +343,10 @@ def get_type_args(ty: Any) -> Dict[str, Any]:
     if is_list(ty):
         opts = get_type_args(get_list_type(ty))
         return {"type": opts["type"], "nargs": "*"}
+
+    # for enums we get their value by name
+    if is_enum(ty):
+        return {"type": lambda name: parse_enum(name, ty)}
 
     # the default, just use the type as-is
     return {"type": ty}

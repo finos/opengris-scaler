@@ -7,3 +7,6 @@ from scaler.scheduler.allocate_policy.even_load_allocate_policy import EvenLoadA
 class AllocatePolicy(enum.Enum):
     even = EvenLoadAllocatePolicy
     capability = CapabilityAllocatePolicy
+
+    def __str__(self):
+        return self.name

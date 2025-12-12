@@ -1,5 +1,6 @@
 import dataclasses
 import unittest
+from enum import Enum
 from typing import Dict, List, Optional, Tuple
 from unittest.mock import mock_open, patch
 
@@ -174,3 +175,18 @@ class TestConfigClass(unittest.TestCase):
 
         self.assertEqual(config.outer, 0)
         self.assertEqual(config.inner_config.inner, 1)
+
+    @patch("sys.argv", ["script", "--color", "RED"])
+    def test_enum_field(self) -> None:
+        class Color(Enum):
+            RED = "red"
+            GREEN = "green"
+            BLUE = "blue"
+
+        @dataclasses.dataclass
+        class MyConfig(ConfigClass):
+            color: Color
+
+        config = MyConfig.parse(program_name="script", section="script")
+
+        self.assertEqual(config.color, Color.RED)
