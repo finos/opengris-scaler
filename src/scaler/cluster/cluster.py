@@ -10,7 +10,6 @@ from scaler.worker.worker import Worker
 
 
 class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
-
     def __init__(self, config: ClusterConfig):
         multiprocessing.Process.__init__(self, name="WorkerMaster")
 

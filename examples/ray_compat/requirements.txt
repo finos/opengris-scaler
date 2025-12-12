@@ -1,0 +1,7 @@
+ray[default]
+beautifulsoup4==4.11.1
+pyarrow==17.0.0
+pandas==2.0.3
+filelock==3.16.1
+torch==2.4.1
+torchvision==0.19.1

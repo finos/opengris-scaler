@@ -54,7 +54,12 @@ runs:
       shell: bash
       run: |
         uv pip install --system -r examples/applications/requirements_applications.txt
+        uv pip install --system -r examples/ray_compat/requirements.txt
         for example in "./examples"/*.py; do
+          echo "Running $example"
+          python $example
+        done
+        for example in "./examples/ray_compat"/*.py; do
           echo "Running $example"
           python $example
         done

@@ -19,3 +19,5 @@ Ensure that the scheduler and cluster are set up before running clients.
     Shows how to send a basic task to scheduler
 - `task_capabilities.py`
     Shows how to use capabilities to route task to various workers
+- `ray_compat/`
+    Shows how to use Scaler's Ray compatibility layer
