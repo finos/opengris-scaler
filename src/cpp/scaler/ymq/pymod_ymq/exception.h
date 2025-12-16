@@ -4,7 +4,7 @@
 #include "scaler/ymq/pymod_ymq/python.h"
 
 // First-party
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/pymod_ymq/ymq.h"
 
 using namespace scaler::ymq;
@@ -82,7 +82,7 @@ static PyType_Slot YMQException_slots[] = {
 static PyType_Spec YMQException_spec = {
     "_ymq.YMQException", sizeof(YMQException), 0, Py_TPFLAGS_DEFAULT, YMQException_slots};
 
-inline OwnedPyObject<> YMQException_argtupleFromCoreError(YMQState* state, const Error* error)
+inline OwnedPyObject<> YMQException_argtupleFromCoreError(YMQState* state, const scaler::utility::Error* error)
 {
     OwnedPyObject code = PyLong_FromLong(static_cast<long>(error->_errorCode));
 
@@ -102,7 +102,7 @@ inline OwnedPyObject<> YMQException_argtupleFromCoreError(YMQState* state, const
     return PyTuple_Pack(2, *pyCode, *message);
 }
 
-inline void YMQException_setFromCoreError(YMQState* state, const Error* error)
+inline void YMQException_setFromCoreError(YMQState* state, const scaler::utility::Error* error)
 {
     auto tuple = YMQException_argtupleFromCoreError(state, error);
     if (!tuple)
@@ -111,7 +111,7 @@ inline void YMQException_setFromCoreError(YMQState* state, const Error* error)
     PyErr_SetObject(*state->PyExceptionType, *tuple);
 }
 
-inline OwnedPyObject<> YMQException_createFromCoreError(YMQState* state, const Error* error)
+inline OwnedPyObject<> YMQException_createFromCoreError(YMQState* state, const scaler::utility::Error* error)
 {
     auto tuple = YMQException_argtupleFromCoreError(state, error);
     if (!tuple)

@@ -2,6 +2,8 @@
 
 #include <cassert>
 #include <chrono>
+#include <format>
+#include <iomanip>
 #include <ostream>
 #include <sstream>  // stringify
 
@@ -26,37 +28,48 @@
 
 
 namespace scaler {
-namespace ymq {
+namespace utility {
 
 // Simple timestamp utility
 struct Timestamp {
     std::chrono::time_point<std::chrono::system_clock> timestamp;
 
-    friend std::strong_ordering operator<=>(Timestamp x, Timestamp y) { return x.timestamp <=> y.timestamp; }
-
     Timestamp(): timestamp(std::chrono::system_clock::now()) {}
     Timestamp(std::chrono::time_point<std::chrono::system_clock> t) { timestamp = std::move(t); }
 
-    template <class Rep, class Period = std::ratio<1>>
-    Timestamp createTimestampByOffsetDuration(std::chrono::duration<Rep, Period> offset)
+    template <typename Rep, typename Period = std::ratio<1>>
+    Timestamp operator+(std::chrono::duration<Rep, Period> offset) const
     {
         return {timestamp + offset};
     }
+
+    template <typename Rep, typename Period = std::ratio<1>>
+    Timestamp operator-(std::chrono::duration<Rep, Period> offset) const
+    {
+        return {timestamp - offset};
+    }
+
+    friend std::strong_ordering operator<=>(Timestamp x, Timestamp y) { return x.timestamp <=> y.timestamp; }
+
+    friend std::chrono::milliseconds operator-(Timestamp lhs, Timestamp rhs)
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(lhs.timestamp - rhs.timestamp);
+    }
 };
 
-// For possibly logging purposes
 inline std::string stringifyTimestamp(Timestamp ts)
 {
+    const auto ts_seconds {std::chrono::floor<std::chrono::seconds>(ts.timestamp)};
+    const std::time_t system_time = std::chrono::system_clock::to_time_t(ts_seconds);
+    const std::tm local_time      = *std::localtime(&system_time);
+
     std::ostringstream oss;
-    const auto ts_point {std::chrono::floor<std::chrono::seconds>(ts.timestamp)};
-    const std::chrono::zoned_time z {std::chrono::current_zone(), ts_point};
-    oss << std::format("{0:%F %T%z}", z);
+    oss << std::put_time(&local_time, "%F %T%z");
     return oss.str();
 }
 
 inline std::ostream& operator<<(std::ostream& os, const Timestamp& ts)
 {
-    // Use the existing stringify function
     os << stringifyTimestamp(ts);
     return os;
 }
@@ -92,24 +105,20 @@ inline LARGE_INTEGER convertToLARGE_INTEGER(Timestamp ts)
 }
 #endif  // _WIN32
 
-}  // namespace ymq
+}  // namespace utility
 }  // namespace scaler
 
 template <>
-struct std::formatter<scaler::ymq::Timestamp, char> {
-    template <class ParseContext>
+struct std::formatter<scaler::utility::Timestamp, char> {
+    template <typename ParseContext>
     constexpr ParseContext::iterator parse(ParseContext& ctx)
     {
         return ctx.begin();
     }
 
-    template <class FmtContext>
-    constexpr FmtContext::iterator format(scaler::ymq::Timestamp e, FmtContext& ctx) const
+    template <typename FmtContext>
+    constexpr FmtContext::iterator format(scaler::utility::Timestamp ts, FmtContext& ctx) const
     {
-        std::ostringstream out;
-        const auto ts {std::chrono::floor<std::chrono::seconds>(e.timestamp)};
-        const std::chrono::zoned_time z {std::chrono::current_zone(), ts};
-        out << std::format("{0:%F %T%z}", z);
-        return std::ranges::copy(std::move(out).str(), ctx.out()).out;
+        return std::format_to(ctx.out(), "{}", scaler::utility::stringifyTimestamp(ts));
     }
 };

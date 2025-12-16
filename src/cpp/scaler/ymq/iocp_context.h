@@ -1,17 +1,16 @@
 #pragma once
 #ifdef _WIN32
 
-
 // C++
 #include <functional>
 #include <queue>
 
-#include "scaler/ymq/configuration.h"
-#include "scaler/ymq/timed_queue.h"
-
 // First-party
+#include "scaler/utility/error.h"
+#include "scaler/utility/timestamp.h"
+#include "scaler/ymq/configuration.h"
 #include "scaler/ymq/interruptive_concurrent_queue.h"
-#include "scaler/ymq/timestamp.h"
+#include "scaler/ymq/timed_queue.h"
 // clang-format off
 #define NOMINMAX
 #include <windows.h>
@@ -25,7 +24,6 @@
 #define EPOLLIN             (0)
 #define EPOLLOUT            (0)
 #define EPOLLET             (0)
-
 
 namespace scaler {
 namespace ymq {
@@ -49,7 +47,7 @@ public:
     {
         if (!_completionPort) {
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 "CreateIoCompletionPort",
                 "Errno is",
@@ -70,7 +68,7 @@ public:
     // WARN: NOT thread-safe. Thread safety is guaranteed by executeNow.
     void executeLater(Function func) { _delayedFunctions.emplace(std::move(func)); }
     // WARN: NOT thread-safe. Thread safety is guaranteed by executeNow.
-    Identifier executeAt(Timestamp timestamp, Function callback)
+    Identifier executeAt(utility::Timestamp timestamp, Function callback)
     {
         return _timingFunctions.push(timestamp, std::move(callback));
     }

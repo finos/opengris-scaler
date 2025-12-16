@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 
+#include "scaler/utility/error.h"
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/io_socket.h"
 #include "scaler/ymq/simple_interface.h"
@@ -11,6 +12,7 @@
 
 std::string longStr = "1234567890";
 
+using namespace scaler::utility;
 using namespace scaler::ymq;
 using namespace std::chrono_literals;
 

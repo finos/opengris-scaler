@@ -5,8 +5,8 @@
 #include <exception>
 #include <future>
 
-#include "scaler/error/error.h"
 #include "scaler/object_storage/message.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/configuration.h"
 #include "scaler/ymq/simple_interface.h"
 #include "scaler/ymq/typedefs.h"
@@ -33,7 +33,7 @@ void ObjectStorageServer::run(
     std::vector<std::string> log_paths,
     std::function<bool()> running)
 {
-    _logger = scaler::ymq::Logger(log_format, std::move(log_paths), scaler::ymq::Logger::stringToLogLevel(log_level));
+    _logger = utility::Logger(log_format, std::move(log_paths), utility::Logger::stringToLogLevel(log_level));
 
     try {
         // NOTE: Setup IOSocket synchronously here because it is a one-time thing.
@@ -44,16 +44,14 @@ void ObjectStorageServer::run(
 
         setServerReadyFd();
 
-        _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: started");
+        _logger.log(utility::Logger::LoggingLevel::info, "ObjectStorageServer: started");
 
         processRequests(running);
 
         _ioContext.removeIOSocket(_ioSocket);
     } catch (const std::exception& e) {
         _logger.log(
-            scaler::ymq::Logger::LoggingLevel::error,
-            "ObjectStorageServer: unexpected server error, reason: ",
-            e.what());
+            utility::Logger::LoggingLevel::error, "ObjectStorageServer: unexpected server error, reason: ", e.what());
     }
 }
 
@@ -64,7 +62,7 @@ void ObjectStorageServer::waitUntilReady()
 
     if (ret != sizeof(uint64_t)) {
         _logger.log(
-            scaler::ymq::Logger::LoggingLevel::error,
+            utility::Logger::LoggingLevel::error,
             "ObjectStorageServer: read from onServerReadyReader failed, errno=",
             errno);
         std::terminate();
@@ -83,7 +81,7 @@ void ObjectStorageServer::initServerReadyFds()
 
     if (ret != 0) {
         _logger.log(
-            scaler::ymq::Logger::LoggingLevel::error,
+            utility::Logger::LoggingLevel::error,
             "ObjectStorageServer: create on server ready FDs failed, errno=",
             errno);
         std::terminate();
@@ -100,7 +98,7 @@ void ObjectStorageServer::setServerReadyFd()
 
     if (ret != sizeof(uint64_t)) {
         _logger.log(
-            scaler::ymq::Logger::LoggingLevel::error,
+            utility::Logger::LoggingLevel::error,
             "ObjectStorageServer: write to onServerReadyWriter failed, errno=",
             errno);
         std::terminate();
@@ -113,7 +111,7 @@ void ObjectStorageServer::closeServerReadyFds()
 
     for (const int fd: fds) {
         if (close(fd) != 0) {
-            _logger.log(scaler::ymq::Logger::LoggingLevel::error, "ObjectStorageServer: close failed, errno=", errno);
+            _logger.log(utility::Logger::LoggingLevel::error, "ObjectStorageServer: close failed, errno=", errno);
             std::terminate();
         }
     }
@@ -139,7 +137,7 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
             auto maybeMessageFuture = ymq::futureRecvMessage(_ioSocket);
             while (maybeMessageFuture.wait_for(100ms) == std::future_status::timeout) {
                 if (!running()) {
-                    _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: stopped by user");
+                    _logger.log(utility::Logger::LoggingLevel::info, "ObjectStorageServer: stopped by user");
                     pendingRequests.clear();
                     return;
                 }
@@ -148,13 +146,13 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
 
             if (!maybeMessage) {
                 auto error = maybeMessage.error();
-                if (error._errorCode == ymq::Error::ErrorCode::IOSocketStopRequested) {
+                if (error._errorCode == utility::Error::ErrorCode::IOSocketStopRequested) {
                     auto n = std::ranges::count_if(_pendingSendMessageFuts, [](auto& x) {
                         return x.valid() && x.wait_for(0s) == std::future_status::timeout;
                     });
                     if (!n) {
                         _logger.log(
-                            scaler::ymq::Logger::LoggingLevel::info,
+                            utility::Logger::LoggingLevel::info,
                             "ObjectStorageServer: stopped, number of messages leftover in the system = ",
                             std::ranges::count_if(_pendingSendMessageFuts, [](auto& x) {
                                 return x.valid() && x.wait_for(0s) == std::future_status::timeout;
@@ -163,7 +161,7 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
 
                     if (pendingRequests.size()) {
                         _logger.log(
-                            scaler::ymq::Logger::LoggingLevel::info,
+                            utility::Logger::LoggingLevel::info,
                             "ObjectStorageServer: stopped, number of pending requests leftover in the system = ",
                             pendingRequests.size());
                         pendingRequests.clear();
@@ -222,12 +220,12 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
         } catch (const kj::Exception& e) {
             _ioSocket->closeConnection(std::move(lastMessageIdentity));
             _logger.log(
-                scaler::ymq::Logger::LoggingLevel::error,
+                utility::Logger::LoggingLevel::error,
                 "ObjectStorageServer: Malformed capnp message. Connection closed, details: ",
                 e.getDescription().cStr());
         } catch (const std::exception& e) {
             _logger.log(
-                scaler::ymq::Logger::LoggingLevel::error, "ObjectStorageServer: unexpected error, reason: ", e.what());
+                utility::Logger::LoggingLevel::error, "ObjectStorageServer: unexpected error, reason: ", e.what());
         }
     }
 }

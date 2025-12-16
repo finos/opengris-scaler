@@ -64,11 +64,12 @@ const LONGLONG ns_per_unit   = 100LL;  // 1 unit = 100 nanoseconds
 #include <utility>
 #include <vector>
 
+#include "scaler/utility/pipe/pipe.h"
 #include "tests/cpp/ymq/common/utils.h"
 #include "tests/cpp/ymq/net/socket.h"
-#include "tests/cpp/ymq/pipe/pipe.h"
 
 using namespace std::chrono_literals;
+using namespace scaler::utility::pipe;
 
 enum class TestResult : char { Success = 1, Failure = 2 };
 
@@ -116,7 +117,7 @@ inline void fork_wrapper(std::function<TestResult()> fn, int timeout_secs, PipeW
         result = TestResult::Failure;
     }
 
-    pipe_wr.write_all((char*)&result, sizeof(TestResult));
+    pipe_wr.writeAll({{(uint8_t*)&result, sizeof(TestResult)}});
 
 #ifdef _WIN32
     SetEvent((HANDLE)hEvent);
@@ -425,7 +426,7 @@ end:
         TestResult result = TestResult::Failure;
         char buffer       = 0;
         try {
-            pipe.reader.read_exact(&buffer, sizeof(TestResult));
+            pipe.reader.readExact(std::span<uint8_t>(reinterpret_cast<uint8_t*>(&buffer), sizeof(TestResult)));
             result = (TestResult)buffer;
         } catch (const std::system_error& e) {
             std::cout << "failed to read from pipe: " << e.what() << std::endl;

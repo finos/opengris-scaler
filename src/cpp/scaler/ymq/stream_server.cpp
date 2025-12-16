@@ -3,7 +3,7 @@
 #include <expected>
 #include <memory>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/event_loop_thread.h"
 #include "scaler/ymq/event_manager.h"
 #include "scaler/ymq/internal/network_utils.h"
@@ -17,11 +17,11 @@ bool StreamServer::createAndBindSocket()
 {
     if (!_rawServer.setReuseAddress()) {
         _logger.log(
-            Logger::LoggingLevel::error,
+            utility::Logger::LoggingLevel::error,
             "Originated from",
             "setsockopt(2)"  //,
         );
-        _onBindReturn(std::unexpected(Error {Error::ErrorCode::SetSockOptNonFatalFailure}));
+        _onBindReturn(std::unexpected(utility::Error {utility::Error::ErrorCode::SetSockOptNonFatalFailure}));
         _onBindReturn = {};
         return false;
     }

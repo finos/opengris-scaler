@@ -12,7 +12,7 @@
 #include <optional>
 #include <utility>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/configuration.h"
 #include "scaler/ymq/event_loop_thread.h"
 #include "scaler/ymq/event_manager.h"
@@ -139,7 +139,7 @@ std::expected<void, MessageConnection::IOError> MessageConnection::tryReadOneMes
                 remainingSize = message._payload.len();
             } catch (const std::bad_alloc& e) {
                 _logger.log(
-                    Logger::LoggingLevel::error,
+                    utility::Logger::LoggingLevel::error,
                     "Trying to allocate ",
                     message._header,
                     " bytes.",
@@ -488,7 +488,7 @@ MessageConnection::~MessageConnection() noexcept
     }
 
     std::ranges::for_each(_writeOperations, [](auto&& x) {
-        x._callbackAfterCompleteWrite(std::unexpected {Error::ErrorCode::SendMessageRequestCouldNotComplete});
+        x._callbackAfterCompleteWrite(std::unexpected {utility::Error::ErrorCode::SendMessageRequestCouldNotComplete});
     });
 
     // TODO: What to do with this?

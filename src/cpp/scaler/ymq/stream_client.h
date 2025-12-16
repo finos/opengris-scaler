@@ -3,7 +3,7 @@
 #include <memory>
 
 // First-party
-#include "scaler/logging/logging.h"
+#include "scaler/utility/logging.h"
 #include "scaler/ymq/configuration.h"
 #include "scaler/ymq/internal/raw_stream_client_handle.h"
 #include "scaler/ymq/internal/socket_address.h"
@@ -49,7 +49,7 @@ private:
     std::string _localIOSocketIdentity;
     int _retryIdentifier;
 
-    Logger _logger;
+    utility::Logger _logger;
 
     std::unique_ptr<EventManager> _eventManager;
     size_t _retryTimes;

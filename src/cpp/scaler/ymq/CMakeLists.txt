@@ -38,8 +38,6 @@ add_library(ymq_objs OBJECT
 
     tcp_operations.h
 
-    timestamp.h
-
     timed_queue.h
 
     simple_interface.h

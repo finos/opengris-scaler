@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
 #include "scaler/ymq/event_loop_thread.h"
 #include "scaler/ymq/event_manager.h"
 #include "scaler/ymq/internal/network_utils.h"
@@ -39,7 +39,7 @@ void IOSocket::sendMessage(Message message, SendMessageCallback onMessageSent) n
     _eventLoopThread->_eventLoop.executeNow(
         [this, message = std::move(message), callback = std::move(onMessageSent)] mutable {
             if (_stopped) {
-                callback(std::unexpected {Error::ErrorCode::IOSocketStopRequested});
+                callback(std::unexpected {utility::Error::ErrorCode::IOSocketStopRequested});
                 return;
             }
 
@@ -49,14 +49,14 @@ void IOSocket::sendMessage(Message message, SendMessageCallback onMessageSent) n
             switch (socketType()) {
                 case IOSocketType::Binder: {
                     if (!message.address.data()) {
-                        callback(std::unexpected {Error::ErrorCode::BinderSendMessageWithNoAddress});
+                        callback(std::unexpected {utility::Error::ErrorCode::BinderSendMessageWithNoAddress});
                         return;
                     }
                     break;
                 }
                 case IOSocketType::Connector: {
                     if (_connectorDisconnected) {
-                        callback(std::unexpected {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd});
+                        callback(std::unexpected {utility::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd});
                         return;
                     }
                     address = "";
@@ -100,19 +100,19 @@ void IOSocket::recvMessage(RecvMessageCallback onRecvMessage) noexcept
 {
     _eventLoopThread->_eventLoop.executeNow([this, callback = std::move(onRecvMessage)] mutable {
         if (_stopped) {
-            callback({{}, Error::ErrorCode::IOSocketStopRequested});
+            callback({{}, utility::Error::ErrorCode::IOSocketStopRequested});
             return;
         }
 
         if (_leftoverMessagesAfterConnectionDied.size()) {
             auto msg = std::move(_leftoverMessagesAfterConnectionDied.front());
             _leftoverMessagesAfterConnectionDied.pop();
-            callback({std::move(msg), Error::ErrorCode::Uninit});
+            callback({std::move(msg), utility::Error::ErrorCode::Uninit});
             return;
         }
 
         if (_connectorDisconnected) {
-            callback({{}, Error::ErrorCode::ConnectorSocketClosedByRemoteEnd});
+            callback({{}, utility::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd});
             return;
         }
 
@@ -133,7 +133,7 @@ void IOSocket::connectTo(SocketAddress addr, ConnectReturnCallback onConnectRetu
             if (addr.nativeHandleType() == SocketAddress::Type::TCP) {
                 if (_tcpClient) {
                     unrecoverableError({
-                        Error::ErrorCode::MultipleConnectToNotSupported,
+                        utility::Error::ErrorCode::MultipleConnectToNotSupported,
                         "Originated from",
                         "IOSocket::connectTo",
                     });
@@ -146,7 +146,7 @@ void IOSocket::connectTo(SocketAddress addr, ConnectReturnCallback onConnectRetu
             } else if (addr.nativeHandleType() == SocketAddress::Type::IPC) {
                 if (_domainClient) {
                     unrecoverableError({
-                        Error::ErrorCode::MultipleConnectToNotSupported,
+                        utility::Error::ErrorCode::MultipleConnectToNotSupported,
                         "Originated from",
                         "IOSocket::connectTo",
                     });
@@ -178,7 +178,7 @@ void IOSocket::bindTo(std::string netOrDomainAddr, BindReturnCallback onBindRetu
 
             if (socketAddress.nativeHandleType() == SocketAddress::Type::TCP) {
                 if (_tcpServer) {
-                    callback(std::unexpected {Error::ErrorCode::MultipleBindToNotSupported});
+                    callback(std::unexpected {utility::Error::ErrorCode::MultipleBindToNotSupported});
                     return;
                 }
 
@@ -188,7 +188,7 @@ void IOSocket::bindTo(std::string netOrDomainAddr, BindReturnCallback onBindRetu
 
             } else if (socketAddress.nativeHandleType() == SocketAddress::Type::IPC) {
                 if (_domainServer) {
-                    callback(std::unexpected {Error::ErrorCode::MultipleBindToNotSupported});
+                    callback(std::unexpected {utility::Error::ErrorCode::MultipleBindToNotSupported});
                     return;
                 }
 
@@ -234,7 +234,7 @@ void IOSocket::onConnectionDisconnected(MessageConnection* conn, bool keepInBook
     if (!keepInBook) {
         if (IOSocketType::Connector == this->_socketType) {
             _connectorDisconnected = true;
-            fillPendingRecvMessagesWithErr(Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
+            fillPendingRecvMessagesWithErr(utility::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
         }
         _eventLoopThread->_eventLoop.executeLater([conn = std::move(connPtr)]() {});
         _unestablishedConnection.pop_back();
@@ -244,7 +244,8 @@ void IOSocket::onConnectionDisconnected(MessageConnection* conn, bool keepInBook
     if (socketType() == IOSocketType::Unicast || socketType() == IOSocketType::Multicast) {
         auto destructWriteOp = std::move(connPtr->_writeOperations);
         connPtr->_writeOperations.clear();
-        fillPendingRecvMessagesWithErr(Error::ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery);
+        fillPendingRecvMessagesWithErr(
+            utility::Error::ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery);
         auto destructReadOp = std::move(connPtr->_receivedReadOperations);
     }
 
@@ -340,7 +341,7 @@ void IOSocket::removeConnectedStreamClient() noexcept
 void IOSocket::requestStop() noexcept
 {
     _stopped = true;
-    fillPendingRecvMessagesWithErr(Error::ErrorCode::IOSocketStopRequested);
+    fillPendingRecvMessagesWithErr(utility::Error::ErrorCode::IOSocketStopRequested);
 
     std::ranges::for_each(_identityToConnection, [](const auto& x) { x.second->disconnect(); });
     std::ranges::for_each(_unestablishedConnection, [](const auto& x) { x->disconnect(); });
@@ -368,7 +369,7 @@ size_t IOSocket::numOfConnections()
     return connectedConnections;
 }
 
-void IOSocket::fillPendingRecvMessagesWithErr(Error err)
+void IOSocket::fillPendingRecvMessagesWithErr(utility::Error err)
 {
     while (_pendingRecvMessages.size()) {
         auto readOp = std::move(_pendingRecvMessages.front());
@@ -379,7 +380,7 @@ void IOSocket::fillPendingRecvMessagesWithErr(Error err)
 
 IOSocket::~IOSocket() noexcept
 {
-    fillPendingRecvMessagesWithErr(Error::ErrorCode::IOSocketStopRequested);
+    fillPendingRecvMessagesWithErr(utility::Error::ErrorCode::IOSocketStopRequested);
 }
 
 }  // namespace ymq

@@ -8,11 +8,11 @@
 #include <type_traits>
 #include <vector>
 
-#include "scaler/ymq/timestamp.h"
-#include "scaler/ymq/utils.h"
+#include "scaler/utility/format.h"
+#include "scaler/utility/timestamp.h"
 
 namespace scaler {
-namespace ymq {
+namespace utility {
 
 class Logger {
 public:
@@ -156,5 +156,5 @@ private:
     }
 };
 
-}  // namespace ymq
+}  // namespace utility
 }  // namespace scaler

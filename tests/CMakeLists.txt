@@ -15,13 +15,15 @@ find_package(Python3 COMPONENTS Development REQUIRED)
 
 # This function compiles, links, and adds a C++ test executable using Google Test.
 # It is shared by all test subdirectories.
-function(add_test_executable test_name source_file)
-    add_executable(${test_name} ${source_file})
+function(add_test_executable test_name)
+    cmake_parse_arguments(ARG "" "" "SOURCES" ${ARGN})
+    add_executable(${test_name} ${ARG_SOURCES})
 
     target_include_directories(${test_name} PRIVATE ${CMAKE_BINARY_DIR})
 
     target_link_libraries(${test_name} PRIVATE
         $<$<NOT:$<PLATFORM_ID:Windows>>:object_storage_server_objs>
+        scaler_utility
         ymq_objs
         CapnProto::capnp
         CapnProto::kj

@@ -4,9 +4,9 @@
 #include <queue>
 #include <set>
 
-#include "scaler/error/error.h"
+#include "scaler/utility/error.h"
+#include "scaler/utility/timestamp.h"
 #include "scaler/ymq/configuration.h"
-#include "scaler/ymq/timestamp.h"
 
 #ifdef __linux__
 #include <sys/eventfd.h>
@@ -32,12 +32,11 @@
 #define EPOLLET             (0)
 #endif  // _WIN32
 
-
 namespace scaler {
 namespace ymq {
 
 struct TimedCallback {
-    Timestamp timestamp;
+    utility::Timestamp timestamp;
     Configuration::TimedQueueCallback callback;
     Configuration::ExecutionCancellationIdentifier identifier;
 
@@ -60,7 +59,7 @@ inline int createTimerfd()
         case ENOMEM:
         case EPERM:
             unrecoverableError({
-                Error::ErrorCode::ConfigurationError,
+                utility::Error::ErrorCode::ConfigurationError,
                 "Originated from",
                 __PRETTY_FUNCTION__,
                 "Errno is",
@@ -74,7 +73,7 @@ inline int createTimerfd()
         case ECANCELED:
         default:
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 __PRETTY_FUNCTION__,
                 "Errno is",
@@ -93,14 +92,15 @@ public:
             close(_timerFd);
     }
 
-    Configuration::ExecutionCancellationIdentifier push(Timestamp timestamp, Configuration::TimedQueueCallback cb)
+    Configuration::ExecutionCancellationIdentifier push(
+        utility::Timestamp timestamp, Configuration::TimedQueueCallback cb)
     {
         auto ts = convertToItimerspec(timestamp);
         if (pq.empty() || timestamp < pq.top().timestamp) {
             int ret = timerfd_settime(_timerFd, 0, &ts, nullptr);
             if (ret == -1) {
                 unrecoverableError({
-                    Error::ErrorCode::CoreBug,
+                    utility::Error::ErrorCode::CoreBug,
                     "Originated from",
                     __PRETTY_FUNCTION__,
                     "Errno is",
@@ -121,7 +121,7 @@ public:
         if (n != sizeof numItems) [[unlikely]] {
             // This should never happen anyway
             unrecoverableError({
-                Error::ErrorCode::CoreBug,
+                utility::Error::ErrorCode::CoreBug,
                 "Originated from",
                 __PRETTY_FUNCTION__,
                 "Errno is",
@@ -131,7 +131,7 @@ public:
 
         std::vector<Configuration::TimedQueueCallback> callbacks;
 
-        Timestamp now;
+        utility::Timestamp now;
         while (pq.size()) {
             if (pq.top().timestamp < now) {
                 auto [ts, cb, id] = std::move(const_cast<std::priority_queue<TimedCallback>::reference>(pq.top()));
@@ -159,7 +159,7 @@ public:
                     case ENOMEM:
                     case EPERM:
                         unrecoverableError({
-                            Error::ErrorCode::ConfigurationError,
+                            utility::Error::ErrorCode::ConfigurationError,
                             "Originated from",
                             __PRETTY_FUNCTION__,
                             "Errno is",
@@ -173,7 +173,7 @@ public:
                     case ECANCELED:
                     default:
                         unrecoverableError({
-                            Error::ErrorCode::CoreBug,
+                            utility::Error::ErrorCode::CoreBug,
                             "Originated from",
                             __PRETTY_FUNCTION__,
                             "Errno is",
@@ -216,7 +216,8 @@ public:
         }
     }
 
-    Configuration::ExecutionCancellationIdentifier push(Timestamp timestamp, Configuration::TimedQueueCallback cb)
+    Configuration::ExecutionCancellationIdentifier push(
+        utility::Timestamp timestamp, Configuration::TimedQueueCallback cb)
     {
         auto ts = convertToLARGE_INTEGER(timestamp);
         if (pq.empty() || timestamp < pq.top().timestamp) {
@@ -241,7 +242,7 @@ public:
     {
         std::vector<Configuration::TimedQueueCallback> callbacks;
 
-        Timestamp now;
+        utility::Timestamp now;
         while (pq.size()) {
             if (pq.top().timestamp < now) {
                 auto [ts, cb, id] = std::move(const_cast<std::priority_queue<TimedCallback>::reference>(pq.top()));

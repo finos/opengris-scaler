@@ -28,7 +28,7 @@ IOContext::IOContext(size_t threadCount) noexcept: _threads(threadCount), _threa
     const int myErrno = WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (myErrno != 0) {
         unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
+            utility::Error::ErrorCode::ConfigurationError,
             "Originated from",
             "WSAStartup",
             "Errno is",

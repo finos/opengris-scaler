@@ -1,16 +1,22 @@
 #pragma once
 
-#include "tests/cpp/ymq/pipe/pipe_reader.h"
-#include "tests/cpp/ymq/pipe/pipe_utils.h"
-#include "tests/cpp/ymq/pipe/pipe_writer.h"
+#include <cstdint>
+
+#include "scaler/utility/pipe/pipe_reader.h"
+#include "scaler/utility/pipe/pipe_utils.h"
+#include "scaler/utility/pipe/pipe_writer.h"
+
+namespace scaler {
+namespace utility {
+namespace pipe {
 
 struct Pipe {
 public:
     Pipe(): reader(-1), writer(-1)
     {
-        std::pair<long long, long long> pair = create_pipe();
-        this->reader                         = PipeReader(pair.first);
-        this->writer                         = PipeWriter(pair.second);
+        std::pair<int64_t, int64_t> pair = createPipe();
+        this->reader                     = PipeReader(pair.first);
+        this->writer                     = PipeWriter(pair.second);
     }
 
     ~Pipe() = default;
@@ -35,3 +41,7 @@ public:
     PipeReader reader;
     PipeWriter writer;
 };
+
+}  // namespace pipe
+}  // namespace utility
+}  // namespace scaler

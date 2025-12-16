@@ -6,12 +6,12 @@
 #include <optional>
 #include <span>
 
-#include "scaler/logging/logging.h"
 #include "scaler/object_storage/constants.h"
 #include "scaler/object_storage/defs.h"
 #include "scaler/object_storage/io_helper.h"
 #include "scaler/object_storage/message.h"
 #include "scaler/object_storage/object_manager.h"
+#include "scaler/utility/logging.h"
 #include "scaler/ymq/configuration.h"
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/io_socket.h"
@@ -23,7 +23,7 @@ namespace object_storage {
 class ObjectStorageServer {
 public:
     using Identity          = ymq::Configuration::IOSocketIdentity;
-    using SendMessageFuture = std::future<std::optional<ymq::Error>>;
+    using SendMessageFuture = std::future<std::optional<utility::Error>>;
     using Bytes             = ymq::Bytes;
 
     ObjectStorageServer();
@@ -68,7 +68,7 @@ private:
     // Some GET and DUPLICATE requests might be delayed if the referenced object isn't available yet.
     std::map<ObjectID, std::vector<PendingRequest>> pendingRequests;
 
-    scaler::ymq::Logger _logger;
+    utility::Logger _logger;
 
     std::vector<SendMessageFuture> _pendingSendMessageFuts;
 
