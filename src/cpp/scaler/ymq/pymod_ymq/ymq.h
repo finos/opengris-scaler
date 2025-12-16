@@ -1,7 +1,7 @@
 #pragma once
 
 // Python
-#include "scaler/ymq/pymod_ymq/python.h"
+#include "scaler/ymq/pymod_ymq/compatibility.h"
 
 // C
 #include <fcntl.h>

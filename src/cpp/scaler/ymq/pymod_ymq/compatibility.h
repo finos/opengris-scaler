@@ -1,4 +1,6 @@
 #pragma once
+// NOTE: This file is needed because of we support backward compatibility to
+// Python 3.8. This file will be removed once we drop the support to Python 3.8.
 
 #define PY_SSIZE_T_CLEAN
 
