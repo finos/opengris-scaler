@@ -289,7 +289,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
     async def __send_task_cancel_to_worker(self, task_cancel: TaskCancel):
         worker = await self._worker_controller.on_task_cancel(task_cancel)
-        if not worker:
+        if not worker.is_valid():
             logging.error(f"{task_cancel.task_id!r}: cannot find task in worker to cancel")
             await self.__routing(
                 task_cancel.task_id,
@@ -300,7 +300,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             )
             return
 
-        await self._binder.send(worker, TaskCancel.new_msg(task_cancel.task_id))
+        await self._binder.send(worker, task_cancel)
         await self.__send_monitor(task_cancel.task_id, b"")
 
     async def __send_task_result_to_client(self, task_result: TaskResult):
