@@ -1,0 +1,27 @@
+#pragma once
+
+#include <uv.h>
+
+#include <string>
+
+namespace scaler {
+namespace event {
+
+struct Error {
+    int code;
+
+    // See UV_xxx error codes.
+    constexpr Error(int code): code(code) {}
+
+    // See uv_err_name
+    std::string name() const noexcept;
+
+    // See uv_strerror
+    std::string message() const noexcept;
+
+    // See uv_translate_sys_error
+    static Error fromSysError(int systemErrorCode) noexcept;
+};
+
+}  // namespace event
+}  // namespace scaler

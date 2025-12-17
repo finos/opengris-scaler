@@ -1,3 +1,5 @@
+add_subdirectory(event)
+
 if(LINUX OR APPLE)
   add_subdirectory(object_storage)
 else()
