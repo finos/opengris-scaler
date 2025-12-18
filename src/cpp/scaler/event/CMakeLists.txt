@@ -4,6 +4,7 @@ pkg_check_modules(UV REQUIRED libuv)
 
 add_library(scaler_event OBJECT
     async.h
+    async.cpp
 
     error.h
     error.cpp

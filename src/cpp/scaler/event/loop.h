@@ -4,6 +4,7 @@
 
 #include <expected>
 #include <initializer_list>
+#include <memory>
 #include <optional>
 
 #include "scaler/event/error.h"
@@ -20,7 +21,7 @@ public:
     };
 
     // See uv_loop_close
-    ~Loop() noexcept;
+    ~Loop() noexcept = default;
 
     Loop(const Loop&)            = delete;
     Loop& operator=(const Loop&) = delete;
@@ -29,7 +30,9 @@ public:
     Loop& operator=(Loop&& other) noexcept = default;
 
     // See uv_loop_init, uv_loop_configure
-    std::expected<Loop, Error> init(std::initializer_list<LoopOption> options = {}) noexcept;
+    static std::expected<Loop, Error> init(std::initializer_list<LoopOption> options = {}) noexcept;
+
+    constexpr uv_loop_t& native() noexcept { return *_native; };
 
     // See uv_run
     int run(uv_run_mode mode = UV_RUN_DEFAULT) noexcept;
@@ -38,7 +41,10 @@ public:
     void stop() noexcept;
 
 private:
-    uv_loop_t _loop;
+    static void loopDeleter(uv_loop_t* loop) noexcept;
+
+    // The uv_loop_t is not movable and has to be heap-allocated, as libuv might hold internal references to it.
+    std::unique_ptr<uv_loop_t, decltype(&loopDeleter)> _native {new uv_loop_t(), &loopDeleter};
 
     Loop() noexcept = default;
 };

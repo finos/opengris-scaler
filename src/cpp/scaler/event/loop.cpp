@@ -2,22 +2,17 @@
 
 #include <cassert>
 #include <expected>
+#include <iostream>
 
 namespace scaler {
 namespace event {
 
-Loop::~Loop() noexcept
-{
-    int err = uv_loop_close(&_loop);
-    assert(err != 0);
-}
-
 std::expected<Loop, Error> Loop::init(std::initializer_list<LoopOption> options) noexcept
 {
-    Loop loop;
+    Loop loop {};
 
     // Initialize the loop
-    int err = uv_loop_init(&_loop);
+    int err = uv_loop_init(&loop.native());
     if (err) {
         return std::unexpected(Error {err});
     }
@@ -26,10 +21,10 @@ std::expected<Loop, Error> Loop::init(std::initializer_list<LoopOption> options)
     for (const auto& option: options) {
         if (option.argument.has_value()) {
             // Option with argument (e.g., UV_LOOP_BLOCK_SIGNAL)
-            err = uv_loop_configure(&_loop, option.option, option.argument.value());
+            err = uv_loop_configure(&loop.native(), option.option, option.argument.value());
         } else {
             // Option without argument
-            err = uv_loop_configure(&_loop, option.option);
+            err = uv_loop_configure(&loop.native(), option.option);
         }
 
         if (err) {
@@ -42,12 +37,18 @@ std::expected<Loop, Error> Loop::init(std::initializer_list<LoopOption> options)
 
 int Loop::run(uv_run_mode mode) noexcept
 {
-    return uv_run(&_loop, mode);
+    return uv_run(&native(), mode);
 }
 
 void Loop::stop() noexcept
 {
-    uv_stop(&_loop);
+    uv_stop(&native());
+}
+
+void Loop::loopDeleter(uv_loop_t* loop) noexcept
+{
+    uv_loop_close(loop);
+    delete loop;
 }
 
 }  // namespace event

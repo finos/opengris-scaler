@@ -1,1 +1,1 @@
-add_test_executable(test_event SOURCES test_event.cpp)
+add_test_executable(test_event test_event.cpp)

@@ -1,0 +1,52 @@
+#include "scaler/event/async.h"
+
+#include <cassert>
+
+namespace scaler {
+namespace event {
+
+std::expected<Async, Error> Async::init(Loop& loop, std::optional<Async::Callback>&& callback) noexcept
+{
+    uv_async_cb nativeCallback;
+
+    if (callback.has_value()) {
+        nativeCallback = &onCallbackCalled;
+    } else {
+        nativeCallback = nullptr;
+    }
+
+    Async async;
+
+    int err = uv_async_init(&loop.native(), &async._handle.native(), nativeCallback);
+    if (err) {
+        return std::unexpected(Error {err});
+    }
+
+    if (callback.has_value()) {
+        async._handle.setData(std::move(*callback));
+    }
+
+    return async;
+}
+
+std::expected<void, Error> Async::send() noexcept
+{
+    int err = uv_async_send(&_handle.native());
+    if (err) {
+        return std::unexpected(Error {err});
+    }
+
+    return {};
+}
+
+void Async::onCallbackCalled(uv_async_t* async) noexcept
+{
+    Callback* callback = reinterpret_cast<Callback*>(uv_handle_get_data(reinterpret_cast<uv_handle_t*>(async)));
+
+    assert(callback != nullptr);
+
+    (*callback)();
+}
+
+}  // namespace event
+}  // namespace scaler

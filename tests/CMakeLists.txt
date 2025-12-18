@@ -22,11 +22,13 @@ function(add_test_executable test_name source_file)
 
     target_link_libraries(${test_name} PRIVATE
         $<$<NOT:$<PLATFORM_ID:Windows>>:object_storage_server_objs>
+        scaler_event
         ymq_objs
         CapnProto::capnp
         CapnProto::kj
         GTest::gtest_main
         Python3::Python
+        ${UV_LIBRARIES}
     )
 
     add_test(NAME ${test_name} COMMAND ${test_name})

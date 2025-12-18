@@ -19,6 +19,9 @@ struct Error {
     // See uv_strerror
     std::string message() const noexcept;
 
+    constexpr bool operator==(const Error&) const noexcept = default;
+    constexpr bool operator!=(const Error&) const noexcept = default;
+
     // See uv_translate_sys_error
     static Error fromSysError(int systemErrorCode) noexcept;
 };
