@@ -34,6 +34,8 @@ public:
 
     constexpr uv_loop_t& native() noexcept { return *_native; };
 
+    constexpr const uv_loop_t& native() const noexcept { return *_native; };
+
     // See uv_run
     int run(uv_run_mode mode = UV_RUN_DEFAULT) noexcept;
 

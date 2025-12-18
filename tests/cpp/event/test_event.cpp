@@ -1,11 +1,14 @@
 #include <errno.h>
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <string>
+#include <type_traits>
 
 #include "scaler/event/async.h"
 #include "scaler/event/error.h"
 #include "scaler/event/loop.h"
+#include "scaler/event/timer.h"
 
 using namespace scaler::event;
 
@@ -18,7 +21,10 @@ protected:
         if (!result.has_value()) {
             throw std::runtime_error("Operation failed: " + result.error().message());
         }
-        return std::move(result.value());
+
+        if constexpr (!std::is_void_v<T>) {
+            return std::move(result.value());
+        }
     }
 };
 
@@ -94,19 +100,68 @@ TEST_F(EventTest, Loop)
 
     // Loop::stop()
     {
-        int nTimesCalled = 0;
-
         // Schedule a timer and a callback, with the callback stopping the loop before the timer can execute.
 
-        // Timer timer = expectSuccess(Timer::init(loop, [&nTimesCalled] { ++nTimesCalled; }));
+        int nTimesCalled = 0;
+
+        Timer timer = expectSuccess(Timer::init(loop));
         Async async = expectSuccess(Async::init(loop, [&loop] { loop.stop(); }));
 
-        // timer.start();
+        expectSuccess(timer.start(std::chrono::milliseconds(1000), std::nullopt, [&]() { nTimesCalled++; }));
         async.send();
 
         int nActiveHandles = loop.run(UV_RUN_DEFAULT);
 
         ASSERT_EQ(nActiveHandles, 1);
         ASSERT_EQ(nTimesCalled, 0);
+    }
+}
+
+TEST_F(EventTest, Timer)
+{
+    constexpr std::chrono::milliseconds DELAY {50};
+
+    Loop loop = expectSuccess(Loop::init());
+
+    // Regular use-case
+    {
+        int nTimesCalled = 0;
+        Timer timer      = expectSuccess(Timer::init(loop));
+
+        expectSuccess(timer.start(DELAY, std::nullopt, [&]() { nTimesCalled++; }));
+
+        // Timer should not be called immediately
+        loop.run(UV_RUN_NOWAIT);
+        ASSERT_EQ(nTimesCalled, 0);
+
+        // Sleep and check timer was called
+        std::this_thread::sleep_for(DELAY * 1.1);
+        loop.run(UV_RUN_NOWAIT);
+        ASSERT_GE(nTimesCalled, 1);
+    }
+
+    // Repeating and stopping timer
+    {
+        int nTimesCalled = 0;
+        Timer timer      = expectSuccess(Timer::init(loop));
+
+        expectSuccess(timer.start(std::chrono::milliseconds::zero(), DELAY, [&]() { nTimesCalled++; }));
+
+        ASSERT_EQ(timer.getRepeat(), DELAY);
+
+        // 0 second timeout should be called immediately.
+        loop.run(UV_RUN_NOWAIT);
+        ASSERT_EQ(nTimesCalled, 1);
+
+        // Sleep and check timer was repeated
+        std::this_thread::sleep_for(DELAY * 1.1);
+        loop.run(UV_RUN_NOWAIT);
+        ASSERT_EQ(nTimesCalled, 2);
+
+        // Stop should prevent further executions
+        expectSuccess(timer.stop());
+        std::this_thread::sleep_for(DELAY * 1.1);
+        loop.run(UV_RUN_NOWAIT);
+        ASSERT_EQ(nTimesCalled, 2);
     }
 }

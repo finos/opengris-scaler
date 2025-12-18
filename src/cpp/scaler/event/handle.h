@@ -16,6 +16,8 @@ class Handle {
 public:
     constexpr NativeHandleType& native() noexcept { return *_native; }
 
+    constexpr const NativeHandleType& native() const noexcept { return *_native; }
+
     // See uv_handle_get_data
     DataType& data() noexcept
     {

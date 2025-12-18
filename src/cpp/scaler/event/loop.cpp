@@ -1,8 +1,6 @@
 #include "scaler/event/loop.h"
 
 #include <cassert>
-#include <expected>
-#include <iostream>
 
 namespace scaler {
 namespace event {

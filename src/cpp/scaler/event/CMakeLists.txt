@@ -23,4 +23,5 @@ add_library(scaler_event OBJECT
     tcp.h
 
     timer.h
+    timer.cpp
 )
