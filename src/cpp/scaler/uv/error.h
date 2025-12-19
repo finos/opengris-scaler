@@ -5,7 +5,7 @@
 #include <string>
 
 namespace scaler {
-namespace event {
+namespace uv {
 
 struct Error {
     int code;
@@ -26,5 +26,5 @@ struct Error {
     static Error fromSysError(int systemErrorCode) noexcept;
 };
 
-}  // namespace event
+}  // namespace uv
 }  // namespace scaler

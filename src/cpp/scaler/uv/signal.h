@@ -2,13 +2,13 @@
 
 #include <uv.h>
 
-#include "scaler/event/error.h"
-#include "scaler/event/handle.h"
-#include "scaler/event/loop.h"
 #include "scaler/utility/move_only_function.h"
+#include "scaler/uv/error.h"
+#include "scaler/uv/handle.h"
+#include "scaler/uv/loop.h"
 
 namespace scaler {
-namespace event {
+namespace uv {
 
 // See uv_signal_t
 class Signal {
@@ -35,5 +35,5 @@ private:
     static void onSignalCallback(uv_signal_t* signal, int signum) noexcept;
 };
 
-}  // namespace event
+}  // namespace uv
 }  // namespace scaler

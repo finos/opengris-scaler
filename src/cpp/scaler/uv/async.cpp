@@ -1,9 +1,9 @@
-#include "scaler/event/async.h"
+#include "scaler/uv/async.h"
 
 #include <cassert>
 
 namespace scaler {
-namespace event {
+namespace uv {
 
 std::expected<Async, Error> Async::init(Loop& loop, std::optional<Async::Callback>&& callback) noexcept
 {
@@ -48,5 +48,5 @@ void Async::onAsyncCallback(uv_async_t* async) noexcept
     (*callback)();
 }
 
-}  // namespace event
+}  // namespace uv
 }  // namespace scaler

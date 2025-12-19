@@ -2,7 +2,7 @@
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(UV REQUIRED libuv)
 
-add_library(scaler_event OBJECT
+add_library(scaler_uv OBJECT
     async.h
     async.cpp
 

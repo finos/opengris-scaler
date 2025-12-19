@@ -1,9 +1,9 @@
-#include "scaler/event/loop.h"
+#include "scaler/uv/loop.h"
 
 #include <cassert>
 
 namespace scaler {
-namespace event {
+namespace uv {
 
 std::expected<Loop, Error> Loop::init(std::initializer_list<LoopOption> options) noexcept
 {
@@ -49,5 +49,5 @@ void Loop::loopDeleter(uv_loop_t* loop) noexcept
     delete loop;
 }
 
-}  // namespace event
+}  // namespace uv
 }  // namespace scaler

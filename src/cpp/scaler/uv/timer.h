@@ -6,13 +6,13 @@
 #include <expected>
 #include <optional>
 
-#include "scaler/event/error.h"
-#include "scaler/event/handle.h"
-#include "scaler/event/loop.h"
 #include "scaler/utility/move_only_function.h"
+#include "scaler/uv/error.h"
+#include "scaler/uv/handle.h"
+#include "scaler/uv/loop.h"
 
 namespace scaler {
-namespace event {
+namespace uv {
 
 // See uv_timer_t
 class Timer {
@@ -48,5 +48,5 @@ private:
     static void onTimerCallback(uv_timer_t* timer) noexcept;
 };
 
-}  // namespace event
+}  // namespace uv
 }  // namespace scaler

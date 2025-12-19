@@ -5,7 +5,7 @@
 #include <memory>
 
 namespace scaler {
-namespace event {
+namespace uv {
 
 // A RAII holder for all libuv handle classes (uv_timer_t, uv_tcp_t ...).
 //
@@ -64,5 +64,5 @@ private:
         new NativeHandleType(), &Handle::handleDeleter};
 };
 
-}  // namespace event
+}  // namespace uv
 }  // namespace scaler

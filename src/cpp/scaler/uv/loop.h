@@ -7,10 +7,10 @@
 #include <memory>
 #include <optional>
 
-#include "scaler/event/error.h"
+#include "scaler/uv/error.h"
 
 namespace scaler {
-namespace event {
+namespace uv {
 
 // See uv_loop_t
 class Loop {
@@ -51,5 +51,5 @@ private:
     Loop() noexcept = default;
 };
 
-}  // namespace event
+}  // namespace uv
 }  // namespace scaler

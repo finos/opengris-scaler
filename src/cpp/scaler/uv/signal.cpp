@@ -1,9 +1,9 @@
-#include "scaler/event/signal.h"
+#include "scaler/uv/signal.h"
 
 #include <cassert>
 
 namespace scaler {
-namespace event {
+namespace uv {
 
 std::expected<Signal, Error> Signal::init(Loop& loop) noexcept
 {
@@ -60,5 +60,5 @@ void Signal::onSignalCallback(uv_signal_t* signal, int signum) noexcept
     (*callback)(signum);
 }
 
-}  // namespace event
+}  // namespace uv
 }  // namespace scaler

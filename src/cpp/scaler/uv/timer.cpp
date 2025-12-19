@@ -1,10 +1,10 @@
-#include "scaler/event/timer.h"
+#include "scaler/uv/timer.h"
 
 #include <cassert>
 #include <cstdint>
 
 namespace scaler {
-namespace event {
+namespace uv {
 
 std::expected<Timer, Error> Timer::init(Loop& loop) noexcept
 {
@@ -78,5 +78,5 @@ void Timer::onTimerCallback(uv_timer_t* timer) noexcept
     (*callback)();
 }
 
-}  // namespace event
+}  // namespace uv
 }  // namespace scaler

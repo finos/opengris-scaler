@@ -6,15 +6,15 @@
 #include <string>
 #include <type_traits>
 
-#include "scaler/event/async.h"
-#include "scaler/event/error.h"
-#include "scaler/event/loop.h"
-#include "scaler/event/signal.h"
-#include "scaler/event/timer.h"
+#include "scaler/uv/async.h"
+#include "scaler/uv/error.h"
+#include "scaler/uv/loop.h"
+#include "scaler/uv/signal.h"
+#include "scaler/uv/timer.h"
 
-using namespace scaler::event;
+using namespace scaler::uv;
 
-class EventTest: public ::testing::Test {
+class UVTest: public ::testing::Test {
 protected:
     // Extract the value from std::expected or fail the test
     template <typename T>
@@ -30,7 +30,7 @@ protected:
     }
 };
 
-TEST_F(EventTest, Async)
+TEST_F(UVTest, Async)
 {
     Loop loop = expectSuccess(Loop::init());
 
@@ -65,7 +65,7 @@ TEST_F(EventTest, Async)
     ASSERT_EQ(nTimesCalled, 0);
 }
 
-TEST_F(EventTest, Error)
+TEST_F(UVTest, Error)
 {
     ASSERT_EQ(Error(UV_EAGAIN), Error(UV_EAGAIN));
     ASSERT_NE(Error(UV_EINTR), Error(UV_EAGAIN));
@@ -76,7 +76,7 @@ TEST_F(EventTest, Error)
     ASSERT_EQ(Error::fromSysError(EACCES), Error(UV_EACCES));
 }
 
-TEST_F(EventTest, Handle)
+TEST_F(UVTest, Handle)
 {
     Loop loop = expectSuccess(Loop::init());
 
@@ -90,7 +90,7 @@ TEST_F(EventTest, Handle)
     ASSERT_EQ(handle.data(), "Some other data");
 }
 
-TEST_F(EventTest, Loop)
+TEST_F(UVTest, Loop)
 {
     Loop loop = expectSuccess(Loop::init());
 
@@ -119,7 +119,7 @@ TEST_F(EventTest, Loop)
     }
 }
 
-TEST_F(EventTest, Signal)
+TEST_F(UVTest, Signal)
 {
     constexpr int SIGNUM = SIGUSR1;
 
@@ -168,7 +168,7 @@ TEST_F(EventTest, Signal)
     }
 }
 
-TEST_F(EventTest, Timer)
+TEST_F(UVTest, Timer)
 {
     constexpr std::chrono::milliseconds DELAY {50};
 

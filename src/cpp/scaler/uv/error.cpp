@@ -1,11 +1,11 @@
-#include "scaler/event/error.h"
+#include "scaler/uv/error.h"
 
 #include <uv.h>
 
 #include <string>
 
 namespace scaler {
-namespace event {
+namespace uv {
 
 std::string Error::name() const noexcept
 {
@@ -22,5 +22,5 @@ Error Error::fromSysError(int systemErrorCode) noexcept
     return {uv_translate_sys_error(systemErrorCode)};
 }
 
-}  // namespace event
+}  // namespace uv
 }  // namespace scaler
