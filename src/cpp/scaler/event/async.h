@@ -28,7 +28,7 @@ private:
 
     Async() noexcept = default;
 
-    static void onCallbackCalled(uv_async_t* async) noexcept;
+    static void onAsyncCallback(uv_async_t* async) noexcept;
 };
 
 }  // namespace event

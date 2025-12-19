@@ -44,7 +44,7 @@ private:
     // We cannot hold the native handle object directly because uv_close() "delays" the deletion of the native handle.
     // It has to be freed while/after uv_close()'s callback is being called.
     //
-    // By heap-allocating the native handle, we allow it to "outlive" the Handle instance.
+    // By heap-allocating the native libuv handle, we allow it to "outlive" the Handle instance.
 
     static void handleDeleter(NativeHandleType* handle) noexcept
     {

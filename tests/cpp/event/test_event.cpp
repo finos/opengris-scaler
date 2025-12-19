@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <gtest/gtest.h>
+#include <uv.h>
 
 #include <chrono>
 #include <string>
@@ -8,6 +9,7 @@
 #include "scaler/event/async.h"
 #include "scaler/event/error.h"
 #include "scaler/event/loop.h"
+#include "scaler/event/signal.h"
 #include "scaler/event/timer.h"
 
 using namespace scaler::event;
@@ -114,6 +116,55 @@ TEST_F(EventTest, Loop)
 
         ASSERT_EQ(nActiveHandles, 1);
         ASSERT_EQ(nTimesCalled, 0);
+    }
+}
+
+TEST_F(EventTest, Signal)
+{
+    constexpr int SIGNUM = SIGUSR1;
+
+    Loop loop = expectSuccess(Loop::init());
+
+    // Regular use-case
+    {
+        int nTimesCalled = 0;
+
+        Signal signal = expectSuccess(Signal::init(loop));
+        expectSuccess(signal.start(SIGNUM, [&](int) { nTimesCalled++; }));
+
+        loop.run(UV_RUN_NOWAIT);
+        ASSERT_EQ(nTimesCalled, 0);
+
+        uv_kill(uv_os_getpid(), SIGNUM);
+        uv_kill(uv_os_getpid(), SIGNUM);
+
+        loop.run(UV_RUN_NOWAIT);
+        ASSERT_EQ(nTimesCalled, 2);
+
+        expectSuccess(signal.stop());
+
+        loop.run(UV_RUN_NOWAIT);
+        ASSERT_EQ(nTimesCalled, 2);  // Not called because signal was stopped
+    }
+
+    // One-shot signal
+    {
+        int nTimesCalled = 0;
+
+        Signal signalOneShot = expectSuccess(Signal::init(loop));
+        expectSuccess(signalOneShot.startOneshot(SIGNUM, [&](int) { nTimesCalled++; }));
+
+        // Setup a 2nd "catch-all" signal handler, or else the 2nd uv_kill() will terminate the process because of the
+        // default signal handler.
+        Signal signal = expectSuccess(Signal::init(loop));
+        expectSuccess(signal.start(SIGNUM, [&](int) {}));
+
+        uv_kill(uv_os_getpid(), SIGNUM);
+        uv_kill(uv_os_getpid(), SIGNUM);
+
+        loop.run(UV_RUN_NOWAIT);
+
+        ASSERT_EQ(nTimesCalled, 1);
     }
 }
 

@@ -14,13 +14,16 @@ add_library(scaler_event OBJECT
     loop.h
     loop.cpp
 
-    pipe.h
+    # pipe.h
+    # pipe.cpp
 
     signal.h
+    signal.cpp
 
-    stream.h
+    # stream.h
 
-    tcp.h
+    # tcp.h
+    # tcp.cpp
 
     timer.h
     timer.cpp

@@ -10,7 +10,7 @@ std::expected<Async, Error> Async::init(Loop& loop, std::optional<Async::Callbac
     uv_async_cb nativeCallback;
 
     if (callback.has_value()) {
-        nativeCallback = &onCallbackCalled;
+        nativeCallback = &onAsyncCallback;
     } else {
         nativeCallback = nullptr;
     }
@@ -39,7 +39,7 @@ std::expected<void, Error> Async::send() noexcept
     return {};
 }
 
-void Async::onCallbackCalled(uv_async_t* async) noexcept
+void Async::onAsyncCallback(uv_async_t* async) noexcept
 {
     Callback* callback = reinterpret_cast<Callback*>(uv_handle_get_data(reinterpret_cast<uv_handle_t*>(async)));
 
