@@ -3,7 +3,7 @@
 #include <pyerrors.h>
 
 #include "scaler/object_storage/object_storage_server.h"
-#include "scaler/ymq/pymod_ymq/gil.h"
+#include "scaler/utility/pymod/gil.h"
 
 extern "C" {
 struct PyObjectStorageServer {
