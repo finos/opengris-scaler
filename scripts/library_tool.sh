@@ -39,7 +39,7 @@ PREFIX=$(readlink -f "${PREFIX}")
 mkdir -p "${PREFIX}/include/"
 
 show_help() {
-    echo "Usage: ./library_tool.sh [boost|capnp] [download|compile|install] [--prefix=DIR]"
+    echo "Usage: ./library_tool.sh [boost|capnp|libuv] [download|compile|install] [--prefix=DIR]"
     exit 1
 }
 
