@@ -289,7 +289,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
     async def __send_task_cancel_to_worker(self, task_cancel: TaskCancel):
         worker = await self._worker_controller.on_task_cancel(task_cancel)
-        assert(isinstance(worker, WorkerID))
+        assert isinstance(worker, WorkerID)
         if not worker.is_valid():
             logging.error(f"{task_cancel.task_id!r}: cannot find task in worker to cancel")
             await self.__routing(
