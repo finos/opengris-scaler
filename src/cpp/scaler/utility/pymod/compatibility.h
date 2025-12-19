@@ -115,6 +115,11 @@ public:
 
     ~OwnedPyObject() { this->free(); }
 
+    inline friend bool operator==(const OwnedPyObject<T>& x, const OwnedPyObject<T>& y)
+    {
+        return PyObject_RichCompareBool(x._ptr, y._ptr, Py_EQ) == 1;
+    }
+
     // creates a new OwnedPyObject from a borrowed reference
     static OwnedPyObject fromBorrowed(T* ptr) { return OwnedPyObject((T*)Py_XNewRef((PyObject*)ptr)); }
 

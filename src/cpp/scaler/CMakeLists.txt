@@ -9,3 +9,5 @@ if(LINUX OR WIN32)
 else()
   message(WARNING "Not building YMQ, as it's not supported on this system currently!")
 endif()
+
+add_subdirectory(utility)
