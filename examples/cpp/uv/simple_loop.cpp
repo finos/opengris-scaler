@@ -1,4 +1,3 @@
-
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
@@ -38,7 +37,7 @@ int main()
     exitOnFailure(signal.start(SIGINT, [&](int signum) {
         std::cout << "\tReceived signal " << signum << ", stopping gracefully...\n";
         loop.stop();
-    });
+    }));
 
     std::cout << "Starting event loop...\n";
     std::cout << "Try pressing Ctrl+C to trigger the signal handler\n";

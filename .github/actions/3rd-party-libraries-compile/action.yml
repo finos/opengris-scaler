@@ -22,9 +22,11 @@ runs:
       if: (inputs.os == 'Linux') && (steps.compiled-libraries.outputs.cache-hit != 'true')
       run: |
         ./scripts/library_tool.sh capnp compile
+        ./scripts/library_tool.sh libuv compile
 
     - name: Compile Libraries (Windows)
       shell: pwsh
       if: (inputs.os == 'Windows') && (steps.compiled-libraries.outputs.cache-hit != 'true')
       run: |
         ./scripts/library_tool.ps1 capnp compile
+        ./scripts/library_tool.ps1 libuv compile

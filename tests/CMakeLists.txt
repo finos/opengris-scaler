@@ -28,7 +28,6 @@ function(add_test_executable test_name source_file)
         CapnProto::kj
         GTest::gtest_main
         Python3::Python
-        ${UV_LIBRARIES}
     )
 
     add_test(NAME ${test_name} COMMAND ${test_name})
@@ -47,4 +46,3 @@ endfunction()
 
 # Add the directory for the C++ tests.
 add_subdirectory(cpp)
-

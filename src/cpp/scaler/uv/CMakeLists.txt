@@ -1,6 +1,4 @@
-# FIXME: PkgConfig might not work on non-unixes
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(UV REQUIRED libuv)
+find_package(libuv REQUIRED)
 
 add_library(scaler_uv OBJECT
     async.h
@@ -28,3 +26,5 @@ add_library(scaler_uv OBJECT
     timer.h
     timer.cpp
 )
+
+target_link_libraries(scaler_uv PUBLIC libuv::uv)

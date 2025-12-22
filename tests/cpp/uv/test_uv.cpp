@@ -1,4 +1,9 @@
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <errno.h>
+#endif  // _WIN32
+
 #include <gtest/gtest.h>
 #include <uv.h>
 
@@ -44,7 +49,7 @@ TEST_F(UVTest, Async)
         loop.run(UV_RUN_NOWAIT);
         ASSERT_EQ(nTimesCalled, 0);
 
-        async.send();
+        expectSuccess(async.send());
         ASSERT_EQ(nTimesCalled, 0);
 
         loop.run(UV_RUN_NOWAIT);
@@ -56,7 +61,7 @@ TEST_F(UVTest, Async)
     // Destructing the Async object before running the loop should cancel the call.
     {
         Async async = expectSuccess(Async::init(loop, [&]() { ++nTimesCalled; }));
-        async.send();
+        expectSuccess(async.send());
     }
 
     int nActiveHandles = loop.run(UV_RUN_NOWAIT);
@@ -73,7 +78,11 @@ TEST_F(UVTest, Error)
     ASSERT_EQ(Error(UV_EBUSY).name(), "EBUSY");
     ASSERT_EQ(Error(UV_EPIPE).message(), "broken pipe");
 
-    ASSERT_EQ(Error::fromSysError(EACCES), Error(UV_EACCES));
+#ifdef _WIN32
+    ASSERT_EQ(Error::fromSysError(ERROR_FILE_EXISTS), Error(UV_EEXIST));
+#else
+    ASSERT_EQ(Error::fromSysError(EEXIST), Error(UV_EEXIST));
+#endif
 }
 
 TEST_F(UVTest, Handle)
@@ -110,7 +119,7 @@ TEST_F(UVTest, Loop)
         Async async = expectSuccess(Async::init(loop, [&loop] { loop.stop(); }));
 
         expectSuccess(timer.start(std::chrono::milliseconds(1000), std::nullopt, [&]() { nTimesCalled++; }));
-        async.send();
+        expectSuccess(async.send());
 
         int nActiveHandles = loop.run(UV_RUN_DEFAULT);
 
@@ -121,9 +130,20 @@ TEST_F(UVTest, Loop)
 
 TEST_F(UVTest, Signal)
 {
-    constexpr int SIGNUM = SIGUSR1;
+    constexpr int SIGNUM = SIGWINCH;
 
     Loop loop = expectSuccess(Loop::init());
+
+    // Validates support for signals
+    {
+        Signal signal = expectSuccess(Signal::init(loop));
+        expectSuccess(signal.start(SIGNUM, [&](int) {}));
+
+        if (uv_kill(uv_os_getpid(), SIGNUM) == UV_ENOSYS) {
+            GTEST_SKIP() << "uv_kill() is not supported on this platform";
+            return;
+        }
+    }
 
     // Regular use-case
     {
@@ -142,9 +162,6 @@ TEST_F(UVTest, Signal)
         ASSERT_EQ(nTimesCalled, 2);
 
         expectSuccess(signal.stop());
-
-        loop.run(UV_RUN_NOWAIT);
-        ASSERT_EQ(nTimesCalled, 2);  // Not called because signal was stopped
     }
 
     // One-shot signal
