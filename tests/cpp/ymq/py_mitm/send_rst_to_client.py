@@ -4,10 +4,10 @@ This MITM inserts an unexpected TCP RST
 
 from typing import Optional
 
-from tests.cpp.ymq.py_mitm.mitm_types import IP, TCP, AbstractMITM, AbstractMITMInterface, TCPConnection
+from tests.cpp.ymq.py_mitm.mitm_types import IP, MITM, TCP, MITMInterface, TCPConnection
 
 
-class MITM(AbstractMITM):
+class SendRSTToClientMITM(MITM):
     def __init__(self):
         # count the number of psh-acks sent by the client
         self._client_pshack_counter = 0
@@ -15,7 +15,7 @@ class MITM(AbstractMITM):
 
     def proxy(
         self,
-        tuntap: AbstractMITMInterface,
+        tuntap: MITMInterface,
         pkt: IP,
         sender: TCPConnection,
         client_conn: Optional[TCPConnection],
