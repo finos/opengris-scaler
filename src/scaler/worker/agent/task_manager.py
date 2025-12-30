@@ -6,7 +6,7 @@ from scaler.protocol.python.message import Task, TaskCancel, TaskCancelConfirm, 
 from scaler.utility.identifiers import TaskID
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper
-from scaler.utility.queues.async_sorted_priority_queue import AsyncSortedPriorityQueue
+from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
 from scaler.worker.agent.mixins import ProcessorManager, TaskManager
 
 _SUSPENDED_TASKS_PRIORITY = 1
@@ -29,7 +29,7 @@ class VanillaTaskManager(Looper, TaskManager):
         #   4. Task(priority=0)
         #
         # We want to execute the tasks in this order: 2-3-1-4.
-        self._queued_task_ids = AsyncSortedPriorityQueue()
+        self._queued_task_ids = AsyncPriorityQueue()
 
         self._processing_task_ids: Set[TaskID] = set()  # Tasks associated with a processor, including suspended tasks
 
