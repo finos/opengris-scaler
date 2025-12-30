@@ -1,5 +1,6 @@
 from asyncio import Queue
-from typing import Any, Dict, List, Tuple, Union
+from dataclasses import dataclass
+from typing import Any, Dict, Tuple, Union
 
 from sortedcontainers import SortedDict
 
@@ -12,46 +13,61 @@ class AsyncPriorityQueue(Queue):
     Input entries are typically list of the form: [priority, data].
     """
 
+    @dataclass(frozen=True)
+    class MapKey:
+        priority: int
+        count: int
+
+        def __lt__(self, other):
+            return (self.priority, self.count) < (other.priority, other.count)
+
+        def __hash__(self):
+            return hash((self.priority, self.count))
+
+    @dataclass
+    class LocatorValue:
+        map_key: "AsyncPriorityQueue.MapKey"
+        data: bytes
+
     def __len__(self):
         return len(self._queue)
 
     def _init(self, maxsize):
-        # self._locator contains {data : List[[priority, data], count]}
-        # self._queue contains {(priority, count) : data}
-        self._locator: Dict[bytes, List] = {}
-        self._queue = SortedDict()
+        self._locator: Dict[bytes, AsyncPriorityQueue.LocatorValue] = {}
+        self._queue: Dict[AsyncPriorityQueue.MapKey, bytes] = SortedDict()
         self._item_counter: int = 0
 
     def _put(self, item):
         if not isinstance(item, list):
             item = list(item)
 
-        self._locator[item[1]] = [item, self._item_counter]
-        self._queue[(item[0], self._item_counter)] = item[1]
+        priority, data = item
+        map_key = AsyncPriorityQueue.MapKey(priority=priority, count=self._item_counter)
+        self._locator[data] = AsyncPriorityQueue.LocatorValue(map_key=map_key, data=data)
+        self._queue[map_key] = data
         self._item_counter += 1
 
     def _get(self):
-        (priority, _), data = self._queue.popitem(0)
+        map_key, data = self._queue.popitem(0)  # type: ignore[call-arg]
         self._locator.pop(data)
-        return priority, data
+        return map_key.priority, data
 
     def remove(self, data):
-        item, count = self._locator.pop(data)
-        self._queue.pop((item[0], count))
+        loc_value = self._locator.pop(data)
+        self._queue.pop(loc_value.map_key)
 
     def decrease_priority(self, data):
-        """Decrease the priority *value* of an item in the queue, effectively move data closer to the front.
+        # Decrease the priority *value* of an item in the queue, effectively move data closer to the front.
+        # Notes:
+        #     - *priority* in the signature means the priority *value* of the item.
+        #     - Time complexity is O(log n) due to the underlying SortedDict structure.
 
-        Notes:
-            - *priority* in the signature means the priority *value* of the item.
-            - Time complexity is O(log n) due to the underlying SortedDict structure.
-        """
-        item, count = self._locator[data]
-        self._locator[data][1] = self._item_counter
-        self._queue.pop((item[0], count))
-
-        item[0] -= 1
-        self._queue[(item[0], self._item_counter)] = item[1]
+        loc_value = self._locator[data]
+        map_key = AsyncPriorityQueue.MapKey(priority=loc_value.map_key.priority - 1, count=self._item_counter)
+        new_loc_value = AsyncPriorityQueue.LocatorValue(map_key=map_key, data=data)
+        self._locator[data] = new_loc_value
+        self._queue.pop(loc_value.map_key)
+        self._queue[map_key] = data
         self._item_counter += 1
 
     def max_priority_item(self) -> Tuple[PriorityType, Any]:
@@ -63,5 +79,5 @@ class AsyncPriorityQueue(Queue):
             - *priority* means the priority in the queue
             - Time complexity is O(1) as we are peeking in the head
         """
-        (priority, _), data = self._queue.peekitem(0)
-        return (priority, data)
+        loc_value = self._queue.peekitem(0)  # type: ignore[attr-defined]
+        return (loc_value[0].priority, loc_value[1])
