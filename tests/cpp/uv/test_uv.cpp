@@ -10,6 +10,7 @@
 #include "scaler/uv/loop.h"
 #include "scaler/uv/request.h"
 #include "scaler/uv/signal.h"
+#include "scaler/uv/socket_address.h"
 #include "scaler/uv/stream.h"
 #include "scaler/uv/tcp.h"
 #include "scaler/uv/timer.h"
@@ -186,6 +187,35 @@ TEST_F(UVTest, Signal)
         loop.run(UV_RUN_NOWAIT);
 
         ASSERT_EQ(nTimesCalled, 1);
+    }
+}
+
+TEST_F(UVTest, SocketAddress)
+{
+    // IPv4 address
+    {
+        auto ipv4 = expectSuccess(SocketAddress::IPv4("192.168.1.12", 8080));
+
+        std::string addressStr = expectSuccess(ipv4.toString());
+        ASSERT_EQ(addressStr, "192.168.1.12:8080");
+
+        const sockaddr* sockAddr = ipv4.toSockAddr();
+        ASSERT_NE(sockAddr, nullptr);
+
+        ASSERT_FALSE(SocketAddress::IPv4("invalid.ipv4.address", 8080).has_value());
+    }
+
+    // IPv6 address
+    {
+        auto ipv6 = expectSuccess(SocketAddress::IPv6("2001:db8::1234", 22));
+
+        std::string addressStr = expectSuccess(ipv6.toString());
+        ASSERT_EQ(addressStr, "2001:db8::1234:22");
+
+        const sockaddr* sockAddr = ipv6.toSockAddr();
+        ASSERT_NE(sockAddr, nullptr);
+
+        ASSERT_FALSE(SocketAddress::IPv6("invalid.ipv6.address", 22).has_value());
     }
 }
 

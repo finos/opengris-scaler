@@ -25,6 +25,9 @@ add_library(scaler_uv OBJECT
     signal.h
     signal.cpp
 
+    socket_address.h
+    socket_address.cpp
+
     stream.h
 
     # tcp.h
