@@ -1,9 +1,5 @@
 #include "scaler/uv/error.h"
 
-#include <uv.h>
-
-#include <string>
-
 namespace scaler {
 namespace uv {
 

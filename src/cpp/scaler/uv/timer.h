@@ -6,7 +6,7 @@
 #include <expected>
 #include <optional>
 
-#include "scaler/utility/move_only_function.h"
+#include "scaler/uv/callback.h"
 #include "scaler/uv/error.h"
 #include "scaler/uv/handle.h"
 #include "scaler/uv/loop.h"
@@ -17,8 +17,6 @@ namespace uv {
 // See uv_timer_t
 class Timer {
 public:
-    using Callback = utility::MoveOnlyFunction<void()>;
-
     // See uv_timer_init
     static std::expected<Timer, Error> init(Loop& loop) noexcept;
 
@@ -26,7 +24,7 @@ public:
     std::expected<void, Error> start(
         std::chrono::milliseconds timeout,
         std::optional<std::chrono::milliseconds> repeat,
-        Callback&& callback) noexcept;
+        TimerCallback&& callback) noexcept;
 
     // See uv_timer_stop
     std::expected<void, Error> stop() noexcept;
@@ -41,7 +39,7 @@ public:
     std::optional<std::chrono::milliseconds> getRepeat() const noexcept;
 
 private:
-    Handle<uv_timer_t, Callback> _handle;
+    Handle<uv_timer_t, TimerCallback> _handle;
 
     Timer() noexcept = default;
 

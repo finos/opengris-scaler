@@ -12,7 +12,7 @@ std::expected<Loop, Error> Loop::init(std::initializer_list<LoopOption> options)
     // Initialize the loop
     int err = uv_loop_init(&loop.native());
     if (err) {
-        return std::unexpected(Error {err});
+        return std::unexpected {Error {err}};
     }
 
     // Configure loop options if provided
@@ -26,7 +26,7 @@ std::expected<Loop, Error> Loop::init(std::initializer_list<LoopOption> options)
         }
 
         if (err) {
-            return std::unexpected(Error {err});
+            return std::unexpected {Error {err}};
         }
     }
 

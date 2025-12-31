@@ -10,6 +10,8 @@
 #include "scaler/uv/loop.h"
 #include "scaler/uv/request.h"
 #include "scaler/uv/signal.h"
+#include "scaler/uv/stream.h"
+#include "scaler/uv/tcp.h"
 #include "scaler/uv/timer.h"
 
 class UVTest: public ::testing::Test {

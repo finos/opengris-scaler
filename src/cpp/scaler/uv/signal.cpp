@@ -11,31 +11,31 @@ std::expected<Signal, Error> Signal::init(Loop& loop) noexcept
 
     int err = uv_signal_init(&loop.native(), &signal._handle.native());
     if (err) {
-        return std::unexpected(Error {err});
+        return std::unexpected {Error {err}};
     }
 
     return signal;
 }
 
-std::expected<void, Error> Signal::start(int signum, Callback&& callback) noexcept
+std::expected<void, Error> Signal::start(int signum, SignalCallback&& callback) noexcept
 {
     _handle.setData(std::move(callback));
 
     int err = uv_signal_start(&_handle.native(), &onSignalCallback, signum);
     if (err) {
-        return std::unexpected(Error {err});
+        return std::unexpected {Error {err}};
     }
 
     return {};
 }
 
-std::expected<void, Error> Signal::startOneshot(int signum, Callback&& callback) noexcept
+std::expected<void, Error> Signal::startOneshot(int signum, SignalCallback&& callback) noexcept
 {
     _handle.setData(std::move(callback));
 
     int err = uv_signal_start_oneshot(&_handle.native(), &onSignalCallback, signum);
     if (err) {
-        return std::unexpected(Error {err});
+        return std::unexpected {Error {err}};
     }
 
     return {};
@@ -45,7 +45,7 @@ std::expected<void, Error> Signal::stop() noexcept
 {
     int err = uv_signal_stop(&_handle.native());
     if (err) {
-        return std::unexpected(Error {err});
+        return std::unexpected {Error {err}};
     }
 
     return {};
@@ -53,7 +53,8 @@ std::expected<void, Error> Signal::stop() noexcept
 
 void Signal::onSignalCallback(uv_signal_t* signal, int signum) noexcept
 {
-    Callback* callback = reinterpret_cast<Callback*>(uv_handle_get_data(reinterpret_cast<uv_handle_t*>(signal)));
+    SignalCallback* callback =
+        reinterpret_cast<SignalCallback*>(uv_handle_get_data(reinterpret_cast<uv_handle_t*>(signal)));
 
     assert(callback != nullptr);
 

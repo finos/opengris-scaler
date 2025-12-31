@@ -12,14 +12,16 @@ std::expected<Timer, Error> Timer::init(Loop& loop) noexcept
 
     int err = uv_timer_init(&loop.native(), &timer._handle.native());
     if (err) {
-        return std::unexpected(Error {err});
+        return std::unexpected {Error {err}};
     }
 
     return timer;
 }
 
 std::expected<void, Error> Timer::start(
-    std::chrono::milliseconds timeout, std::optional<std::chrono::milliseconds> repeat, Callback&& callback) noexcept
+    std::chrono::milliseconds timeout,
+    std::optional<std::chrono::milliseconds> repeat,
+    TimerCallback&& callback) noexcept
 {
     _handle.setData(std::move(callback));
 
@@ -27,7 +29,7 @@ std::expected<void, Error> Timer::start(
 
     int err = uv_timer_start(&_handle.native(), &onTimerCallback, timeout.count(), repeatNative);
     if (err) {
-        return std::unexpected(Error {err});
+        return std::unexpected {Error {err}};
     }
 
     return {};
@@ -37,7 +39,7 @@ std::expected<void, Error> Timer::stop() noexcept
 {
     int err = uv_timer_stop(&_handle.native());
     if (err) {
-        return std::unexpected(Error {err});
+        return std::unexpected {Error {err}};
     }
 
     return {};
@@ -47,7 +49,7 @@ std::expected<void, Error> Timer::again() noexcept
 {
     int err = uv_timer_again(&_handle.native());
     if (err) {
-        return std::unexpected(Error {err});
+        return std::unexpected {Error {err}};
     }
 
     return {};
@@ -71,7 +73,8 @@ std::optional<std::chrono::milliseconds> Timer::getRepeat() const noexcept
 
 void Timer::onTimerCallback(uv_timer_t* timer) noexcept
 {
-    Callback* callback = reinterpret_cast<Callback*>(uv_handle_get_data(reinterpret_cast<uv_handle_t*>(timer)));
+    TimerCallback* callback =
+        reinterpret_cast<TimerCallback*>(uv_handle_get_data(reinterpret_cast<uv_handle_t*>(timer)));
 
     assert(callback != nullptr);
 

@@ -13,8 +13,8 @@ namespace uv {
 
 // A RAII holder for all libuv request classes (uv_connect_t, uv_shutdown_t, uv_, uv_write_t ...).
 //
-// The wrapped libuv request object will be deallocated once the callback has been called AND all Request objects
-// associated with it have been destructed.
+// The wrapped libuv request object will be deallocated once the request's callback has been called AND all Request
+// objects associated with it have been destructed.
 template <typename NativeRequestType, typename... CallbackArgs>
 class Request {
 public:
@@ -73,6 +73,15 @@ private:
 
     std::shared_ptr<Holder> _holder {std::make_shared<Holder>()};
 };
+
+// See uv_connect_t
+using ConnectRequest = Request<uv_connect_t, int>;
+
+// See uv_shutdown_t
+using ShutdownRequest = Request<uv_shutdown_t, int>;
+
+// See uv_write_t
+using WriteRequest = Request<uv_write_t, ssize_t, const uv_buf_t*>;
 
 }  // namespace uv
 }  // namespace scaler
