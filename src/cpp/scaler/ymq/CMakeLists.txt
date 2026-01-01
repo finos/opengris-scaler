@@ -115,7 +115,7 @@ endif()
 
 if(WIN32)
     # ymq python =======================================================================================================
-
+    message(WARNING "Not building Python Interface for YMQ, as it's not supported on this system currently!")
     target_link_libraries(ymq_objs PRIVATE "ws2_32")
     target_compile_definitions(ymq_objs PRIVATE _WINSOCKAPI_=) # Yes, trailing equal to guarantee empty def
 endif()
