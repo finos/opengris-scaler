@@ -1,3 +1,5 @@
+add_subdirectory(uv)
+
 if(LINUX OR APPLE)
   add_subdirectory(object_storage)
 else()

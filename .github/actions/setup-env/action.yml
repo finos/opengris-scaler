@@ -14,7 +14,7 @@ runs:
       with:
         python-version: "3.8"
 
-    - name: Update System (Linux)
+    - name: Setup system and dependencies (Linux)
       shell: bash
       if: inputs.os == 'Linux'
       run: |
