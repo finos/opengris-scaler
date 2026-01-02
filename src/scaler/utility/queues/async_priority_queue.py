@@ -1,7 +1,8 @@
-import heapq
-import sys
 from asyncio import Queue
-from typing import Any, Dict, List, Tuple, Union
+from dataclasses import dataclass
+from typing import Any, Dict, Tuple, Union
+
+from sortedcontainers import SortedDict
 
 PriorityType = Union[int, Tuple["PriorityType", ...]]
 
@@ -9,62 +10,74 @@ PriorityType = Union[int, Tuple["PriorityType", ...]]
 class AsyncPriorityQueue(Queue):
     """A subclass of Queue; retrieves entries in priority order (lowest first).
 
-    Entries are typically list of the form: [priority, data].
+    Input entries are typically list of the form: [priority, data].
     """
+
+    @dataclass(frozen=True)
+    class MapKey:
+        priority: int
+        count: int
+
+        def __lt__(self, other):
+            return (self.priority, self.count) < (other.priority, other.count)
+
+        def __hash__(self):
+            return hash((self.priority, self.count))
+
+    @dataclass
+    class LocatorValue:
+        map_key: "AsyncPriorityQueue.MapKey"
+        data: bytes
 
     def __len__(self):
         return len(self._queue)
 
     def _init(self, maxsize):
-        self._queue: List[List] = []
-        self._locator: Dict[bytes, List] = {}
+        self._locator: Dict[bytes, AsyncPriorityQueue.LocatorValue] = {}
+        self._queue: Dict[AsyncPriorityQueue.MapKey, bytes] = SortedDict()
+        self._item_counter: int = 0
 
     def _put(self, item):
         if not isinstance(item, list):
             item = list(item)
 
-        heapq.heappush(self._queue, item)
-        self._locator[item[1]] = item
+        priority, data = item
+        map_key = AsyncPriorityQueue.MapKey(priority=priority, count=self._item_counter)
+        self._locator[data] = AsyncPriorityQueue.LocatorValue(map_key=map_key, data=data)
+        self._queue[map_key] = data
+        self._item_counter += 1
 
     def _get(self):
-        priority, data = heapq.heappop(self._queue)
+        map_key, data = self._queue.popitem(0)  # type: ignore[call-arg]
         self._locator.pop(data)
-        return priority, data
+        return map_key.priority, data
 
     def remove(self, data):
-        # this operation is O(n), first change priority to -1 and pop from top of the heap, mark it as invalid
-        # entry in the heap is not good idea as those invalid, entry will never get removed, so we used heapq internal
-        # function _siftdown to maintain min heap invariant
-        item = self._locator.pop(data)
-        i = self._queue.index(item)  # O(n)
-        item[0] = self.__to_lowest_priority(item[0])
-        heapq._siftdown(self._queue, 0, i)  # type: ignore[attr-defined]
-        assert heapq.heappop(self._queue) == item
+        loc_value = self._locator.pop(data)
+        self._queue.pop(loc_value.map_key)
 
     def decrease_priority(self, data):
-        # this operation should be O(n), mark it as invalid entry in the heap is not good idea as those invalid
-        # entry will never get removed, so we used heapq internal function _siftdown to maintain min heap invariant
-        item = self._locator[data]
-        i = self._queue.index(item)  # O(n)
-        item[0] = self.__to_lower_priority(item[0])
-        heapq._siftdown(self._queue, 0, i)  # type: ignore[attr-defined]
+        # Decrease the priority *value* of an item in the queue, effectively move data closer to the front.
+        # Notes:
+        #     - *priority* in the signature means the priority *value* of the item.
+        #     - Time complexity is O(log n) due to the underlying SortedDict structure.
+
+        loc_value = self._locator[data]
+        map_key = AsyncPriorityQueue.MapKey(priority=loc_value.map_key.priority - 1, count=self._item_counter)
+        new_loc_value = AsyncPriorityQueue.LocatorValue(map_key=map_key, data=data)
+        self._locator[data] = new_loc_value
+        self._queue.pop(loc_value.map_key)
+        self._queue[map_key] = data
+        self._item_counter += 1
 
     def max_priority_item(self) -> Tuple[PriorityType, Any]:
-        """output the Tuple of top priority number and top priority item"""
-        item = heapq.heappop(self._queue)
-        heapq.heappush(self._queue, item)
-        return item[0], item[1]
+        """Return the current item at the front of the queue without removing it from the queue.
 
-    @classmethod
-    def __to_lowest_priority(cls, original_priority: PriorityType) -> PriorityType:
-        if isinstance(original_priority, tuple):
-            return tuple(cls.__to_lowest_priority(value) for value in original_priority)
-        else:
-            return -sys.maxsize - 1
-
-    @classmethod
-    def __to_lower_priority(cls, original_priority: PriorityType) -> PriorityType:
-        if isinstance(original_priority, tuple):
-            return tuple(cls.__to_lower_priority(value) for value in original_priority)
-        else:
-            return original_priority - 1
+        Notes:
+            - This is a "peek" operation; it does not modify the queue.
+            - For items with the same priority, insertion order determines which item is returned first.
+            - *priority* means the priority in the queue
+            - Time complexity is O(1) as we are peeking in the head
+        """
+        loc_value = self._queue.peekitem(0)  # type: ignore[attr-defined]
+        return (loc_value[0].priority, loc_value[1])

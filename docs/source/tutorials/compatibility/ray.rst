@@ -78,6 +78,7 @@ Full Examples
 -------------
 
 See `the examples directory <https://github.com/finos/opengris-scaler/tree/main/examples/ray_compat>`_ for complete Scaler Ray compatibility layer examples including:
+
 *   `basic_local_cluster.py`: Demonstrates using the Scaler Ray compatibility layer with the implicitly-created local cluster.
 *   `basic_remote_cluster.py`: Demonstrates using the Scaler Ray compatibility layer with an existing remote cluster.
 *   `batch_prediction.py`: Demonstrates using Scaler's Ray compatibility layer for batch prediction, copied from Ray Core's documentation.
