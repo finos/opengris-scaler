@@ -83,7 +83,6 @@ if(LINUX)
     add_library(py_ymq SHARED
         pymod_ymq/bytes.h
         pymod_ymq/exception.h
-        pymod_ymq/gil.h
         pymod_ymq/message.h
         pymod_ymq/io_context.h
         pymod_ymq/io_socket.h

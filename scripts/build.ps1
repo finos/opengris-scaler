@@ -25,4 +25,15 @@ cmake --preset $BUILD_PRESET @args
 cmake --build --preset $BUILD_PRESET
 
 # Install
-cmake --install $BUILD_DIR
+# Simply copy from src to dest here. CMake Install on Windows generally doesn't work
+$srcDebug  = @(".\build_windows_x64\src\cpp\scaler\utility\Debug\one_to_many_dict.pyd")
+$srcRelease = @(".\build_windows_x64\src\cpp\scaler\utility\Release\one_to_many_dict.pyd")
+$dest = @(".\src\scaler\utility\one_to_many_dict.pyd")
+
+for ($i = 0; $i -lt $src.Length; $i++) {
+    if (Test-Path $srcRelease[$i]) {
+        Copy-Item -Path $srcRelease[$i] -Destination $dest[$i] -Force
+    } else {
+        Copy-Item -Path $srcDebug[$i] -Destination $dest[$i] -Force
+    }
+}
