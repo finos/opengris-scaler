@@ -1,227 +1,340 @@
+"""
+AWS Batch Worker Adapter.
+
+Receives tasks from the Scaler scheduler streaming mechanism and submits
+them directly as AWS Batch jobs. Large payloads are compressed before
+submission to stay within AWS Batch limits.
+
+AWS Batch Limits:
+- Container overrides environment: 8KB total
+- Job parameters: 20KB total
+- For larger payloads, data is stored in S3 and referenced by key
+"""
+
+import asyncio
+import gzip
+import logging
 import uuid
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
-from aiohttp import web
-from aiohttp.web_request import Request
+import cloudpickle
 
-from scaler.config.types.object_storage_server import ObjectStorageConfig
-from scaler.config.types.zmq import ZMQConfig
-from scaler.utility.identifiers import WorkerID
-from scaler.worker_adapter.common import CapacityExceededError, WorkerGroupID, WorkerGroupNotFoundError
-from scaler.worker_adapter.aws_batch.worker import AWSBatchWorker
+from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
+from scaler.protocol.python.common import TaskResultType
+from scaler.protocol.python.message import (
+    ObjectInstruction,
+    Task,
+    TaskCancel,
+    TaskResult,
+)
+from scaler.utility.identifiers import ObjectID, TaskID
+from scaler.worker_adapter.aws_batch.callback import BatchJobCallback
+
+# AWS Batch limits
+MAX_ENV_SIZE_BYTES = 8 * 1024  # 8KB for environment variables
+MAX_INLINE_PAYLOAD_BYTES = 6 * 1024  # Leave room for other env vars
+COMPRESSION_THRESHOLD_BYTES = 4 * 1024  # Compress if larger than 4KB
 
 
 class AWSBatchWorkerAdapter:
     """
-    AWS Batch Worker Adapter that manages worker groups using AWS Batch jobs.
-    Similar to Symphony adapter but uses AWS Batch for task execution.
+    AWS Batch Worker Adapter that processes scheduler stream tasks
+    and submits them as AWS Batch jobs.
+    
+    Flow:
+        Scheduler Stream → Task → Compress if needed → AWS Batch Job
+        AWS Batch Job → Result → Scheduler Stream
     """
 
     def __init__(
         self,
-        address: ZMQConfig,
-        object_storage_address: Optional[ObjectStorageConfig],
-        # AWS Batch specific parameters
         job_queue: str,
         job_definition: str,
         aws_region: str,
-        aws_access_key_id: Optional[str],
-        aws_secret_access_key: Optional[str],
-        # Scaler parameters
-        base_concurrency: int,
-        capabilities: Dict[str, int],
-        io_threads: int,
-        task_queue_size: int,
-        heartbeat_interval_seconds: int,
-        death_timeout_seconds: int,
-        event_loop: str,
-        logging_paths: Tuple[str, ...],
-        logging_level: str,
-        logging_config_file: Optional[str],
-        # AWS Batch job parameters
-        vcpus: int = 1,
-        memory: int = 2048,
-        max_worker_groups: int = 10,
+        s3_bucket: str,
+        s3_prefix: str = "scaler-tasks",
+        max_concurrent_jobs: int = 100,
+        poll_interval_seconds: float = 1.0,
+        aws_access_key_id: Optional[str] = None,
+        aws_secret_access_key: Optional[str] = None,
     ):
-        self._address = address
-        self._object_storage_address = object_storage_address
         self._job_queue = job_queue
         self._job_definition = job_definition
         self._aws_region = aws_region
+        self._s3_bucket = s3_bucket
+        self._s3_prefix = s3_prefix
+        self._max_concurrent_jobs = max_concurrent_jobs
+        self._poll_interval = poll_interval_seconds
         self._aws_access_key_id = aws_access_key_id
         self._aws_secret_access_key = aws_secret_access_key
-        self._base_concurrency = base_concurrency
-        self._capabilities = capabilities
-        self._io_threads = io_threads
-        self._task_queue_size = task_queue_size
-        self._heartbeat_interval_seconds = heartbeat_interval_seconds
-        self._death_timeout_seconds = death_timeout_seconds
-        self._event_loop = event_loop
-        self._logging_paths = logging_paths
-        self._logging_level = logging_level
-        self._logging_config_file = logging_config_file
-        self._vcpus = vcpus
-        self._memory = memory
-        self._max_worker_groups = max_worker_groups
 
-        # Track active worker groups: worker_group_id -> {worker_id -> AWSBatchWorker}
-        self._worker_groups: Dict[WorkerGroupID, Dict[WorkerID, AWSBatchWorker]] = {}
+        # Job tracking
+        self._callback = BatchJobCallback()
+        self._task_id_to_batch_job_id: Dict[TaskID, str] = {}
+        self._semaphore = asyncio.Semaphore(max_concurrent_jobs)
 
-        # Initialize AWS Batch client
+        # Connectors (set via register)
+        self._connector_external: Optional[AsyncConnector] = None
+        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
+
+        # AWS clients
         self._batch_client = None
-        self._initialize_aws_batch_client()
+        self._s3_client = None
 
-    def _initialize_aws_batch_client(self):
-        """Initialize AWS Batch client with credentials and region."""
-        # TODO: Initialize boto3 Batch client with proper credentials
-        # Should handle IAM roles, access keys, or default credential chain
-        raise NotImplementedError("AWS Batch client initialization is not yet implemented")
-
-    async def start_worker_group(self) -> WorkerGroupID:
-        """
-        Start a new worker group by submitting an AWS Batch job.
+    def _initialize_aws_clients(self):
+        """Initialize AWS Batch and S3 clients."""
+        import boto3
         
-        Returns:
-            WorkerGroupID: Unique identifier for the created worker group
-            
-        Raises:
-            CapacityExceededError: If maximum worker groups limit is reached
-        """
-        if len(self._worker_groups) >= self._max_worker_groups:
-            raise CapacityExceededError(f"Maximum number of worker groups ({self._max_worker_groups}) reached")
-
-        # TODO: Implement AWS Batch job submission
-        # 1. Generate unique job name
-        # 2. Create job parameters with Scaler configuration
-        # 3. Submit job to AWS Batch queue
-        # 4. Create AWSBatchWorker instance to track the job
-        # 5. Store worker group mapping
-        raise NotImplementedError("AWS Batch worker group creation is not yet implemented")
-
-    async def shutdown_worker_group(self, worker_group_id: WorkerGroupID):
-        """
-        Shutdown a worker group by terminating the AWS Batch job.
+        session_kwargs = {"region_name": self._aws_region}
+        if self._aws_access_key_id and self._aws_secret_access_key:
+            session_kwargs["aws_access_key_id"] = self._aws_access_key_id
+            session_kwargs["aws_secret_access_key"] = self._aws_secret_access_key
         
-        Args:
-            worker_group_id: ID of the worker group to shutdown
-            
-        Raises:
-            WorkerGroupNotFoundError: If worker group ID doesn't exist
-        """
-        if worker_group_id not in self._worker_groups:
-            raise WorkerGroupNotFoundError(f"Worker group with ID {worker_group_id.decode()} does not exist")
+        session = boto3.Session(**session_kwargs)
+        self._batch_client = session.client("batch")
+        self._s3_client = session.client("s3")
+        logging.info(f"AWS Batch adapter initialized: region={self._aws_region}, queue={self._job_queue}")
 
-        # TODO: Implement AWS Batch job termination
-        # 1. Get job ID from worker group
-        # 2. Cancel/terminate the AWS Batch job
-        # 3. Clean up worker group tracking
-        # 4. Handle graceful shutdown vs force termination
-        raise NotImplementedError("AWS Batch worker group shutdown is not yet implemented")
+    def register(
+        self,
+        connector_external: AsyncConnector,
+        connector_storage: AsyncObjectStorageConnector,
+    ):
+        """Register connectors for scheduler communication."""
+        self._connector_external = connector_external
+        self._connector_storage = connector_storage
+        self._initialize_aws_clients()
 
-    def _create_batch_job_parameters(self, worker_group_id: WorkerGroupID) -> dict:
+    async def on_task(self, task: Task):
         """
-        Create AWS Batch job parameters for Scaler worker.
+        Handle incoming task from scheduler stream.
+        Submits task as AWS Batch job.
+        """
+        await self._semaphore.acquire()
         
-        Args:
-            worker_group_id: ID of the worker group being created
-            
-        Returns:
-            dict: AWS Batch job submission parameters
-        """
-        # TODO: Build job parameters including:
-        # - Job name with worker group ID
-        # - Environment variables for Scaler configuration
-        # - Resource requirements (vCPUs, memory)
-        # - Container overrides for Scaler worker command
-        # - Network configuration if needed
-        raise NotImplementedError("AWS Batch job parameter creation is not yet implemented")
-
-    def _monitor_batch_job_status(self, job_id: str) -> str:
-        """
-        Monitor AWS Batch job status.
-        
-        Args:
-            job_id: AWS Batch job ID to monitor
-            
-        Returns:
-            str: Current job status (SUBMITTED, PENDING, RUNNABLE, STARTING, RUNNING, SUCCEEDED, FAILED)
-        """
-        # TODO: Query AWS Batch for job status
-        # Handle different job states and transitions
-        raise NotImplementedError("AWS Batch job status monitoring is not yet implemented")
-
-    async def webhook_handler(self, request: Request):
-        """
-        Handle webhook requests for worker adapter management.
-        Supports OpenGRIS standard worker adapter API.
-        """
         try:
-            request_json = await request.json()
-        except Exception:
-            return web.json_response({"error": "Invalid JSON"}, status=400)
+            batch_job_id = await self._submit_batch_job(task)
+            self._task_id_to_batch_job_id[task.task_id] = batch_job_id
+            logging.info(f"Task {task.task_id.hex()[:8]} submitted as Batch job {batch_job_id}")
+        except Exception as e:
+            logging.exception(f"Failed to submit task {task.task_id.hex()[:8]}: {e}")
+            self._semaphore.release()
+            await self._send_task_failed(task.task_id, task.source, e)
 
-        if "action" not in request_json:
-            return web.json_response({"error": "No action specified"}, status=400)
+    async def on_task_cancel(self, task_cancel: TaskCancel):
+        """Handle task cancellation from scheduler stream."""
+        task_id = task_cancel.task_id
+        batch_job_id = self._task_id_to_batch_job_id.pop(task_id, None)
+        
+        if batch_job_id:
+            try:
+                self._batch_client.terminate_job(
+                    jobId=batch_job_id,
+                    reason="Canceled by Scaler"
+                )
+                logging.info(f"Canceled Batch job {batch_job_id} for task {task_id.hex()[:8]}")
+            except Exception as e:
+                logging.warning(f"Failed to cancel Batch job {batch_job_id}: {e}")
+        
+        self._callback.cancel_task(task_id.hex())
 
-        action = request_json["action"]
-
-        if action == "get_worker_adapter_info":
-            return await self._handle_get_info()
-        elif action == "start_worker_group":
-            return await self._handle_start_worker_group()
-        elif action == "shutdown_worker_group":
-            return await self._handle_shutdown_worker_group(request_json)
+    async def _submit_batch_job(self, task: Task) -> str:
+        """
+        Submit task as AWS Batch job.
+        Compresses payload if it exceeds threshold.
+        Uses S3 for payloads that exceed AWS Batch limits.
+        """
+        task_id_hex = task.task_id.hex()
+        
+        # Serialize task data
+        task_data = {
+            "task_id": task_id_hex,
+            "source": task.source.hex(),
+            "func_object_id": bytes(task.func_object_id).hex(),
+            "args": [
+                {"type": arg.type.name, "data": arg.data.hex() if isinstance(arg.data, bytes) else arg.data}
+                for arg in task.function_args
+            ],
+        }
+        
+        payload = cloudpickle.dumps(task_data)
+        payload_size = len(payload)
+        
+        # Determine storage method based on size
+        if payload_size > COMPRESSION_THRESHOLD_BYTES:
+            # Compress payload
+            compressed = gzip.compress(payload)
+            logging.debug(f"Compressed payload: {payload_size} -> {len(compressed)} bytes")
+            
+            if len(compressed) <= MAX_INLINE_PAYLOAD_BYTES:
+                # Use compressed inline payload
+                return await self._submit_with_inline_payload(task_id_hex, compressed, compressed=True)
+            else:
+                # Store in S3
+                return await self._submit_with_s3_payload(task_id_hex, compressed, compressed=True)
+        elif payload_size <= MAX_INLINE_PAYLOAD_BYTES:
+            # Use uncompressed inline payload
+            return await self._submit_with_inline_payload(task_id_hex, payload, compressed=False)
         else:
-            return web.json_response({"error": "Unknown action"}, status=400)
+            # Store in S3 (uncompressed but too large for inline)
+            return await self._submit_with_s3_payload(task_id_hex, payload, compressed=False)
 
-    async def _handle_get_info(self):
-        """Handle get_worker_adapter_info request."""
-        return web.json_response(
-            {
-                "max_worker_groups": self._max_worker_groups,
-                "workers_per_group": 1,  # Each AWS Batch job = 1 worker group
-                "base_capabilities": self._capabilities,
-                "adapter_type": "aws_batch",
-                "aws_region": self._aws_region,
-                "job_queue": self._job_queue,
-                "job_definition": self._job_definition,
-            },
-            status=200,
+    async def _submit_with_inline_payload(
+        self, 
+        task_id_hex: str, 
+        payload: bytes, 
+        compressed: bool
+    ) -> str:
+        """Submit job with payload in environment variable."""
+        import base64
+        
+        encoded_payload = base64.b64encode(payload).decode("ascii")
+        
+        response = self._batch_client.submit_job(
+            jobName=f"scaler-{task_id_hex[:12]}",
+            jobQueue=self._job_queue,
+            jobDefinition=self._job_definition,
+            containerOverrides={
+                "environment": [
+                    {"name": "SCALER_TASK_ID", "value": task_id_hex},
+                    {"name": "SCALER_PAYLOAD", "value": encoded_payload},
+                    {"name": "SCALER_PAYLOAD_COMPRESSED", "value": "1" if compressed else "0"},
+                    {"name": "SCALER_S3_BUCKET", "value": self._s3_bucket},
+                    {"name": "SCALER_S3_PREFIX", "value": self._s3_prefix},
+                ]
+            }
+        )
+        
+        return response["jobId"]
+
+    async def _submit_with_s3_payload(
+        self, 
+        task_id_hex: str, 
+        payload: bytes, 
+        compressed: bool
+    ) -> str:
+        """Submit job with payload stored in S3."""
+        s3_key = f"{self._s3_prefix}/inputs/{task_id_hex}.pkl"
+        if compressed:
+            s3_key += ".gz"
+        
+        # Upload to S3
+        self._s3_client.put_object(
+            Bucket=self._s3_bucket,
+            Key=s3_key,
+            Body=payload
+        )
+        
+        response = self._batch_client.submit_job(
+            jobName=f"scaler-{task_id_hex[:12]}",
+            jobQueue=self._job_queue,
+            jobDefinition=self._job_definition,
+            containerOverrides={
+                "environment": [
+                    {"name": "SCALER_TASK_ID", "value": task_id_hex},
+                    {"name": "SCALER_S3_BUCKET", "value": self._s3_bucket},
+                    {"name": "SCALER_S3_KEY", "value": s3_key},
+                    {"name": "SCALER_PAYLOAD_COMPRESSED", "value": "1" if compressed else "0"},
+                ]
+            }
+        )
+        
+        return response["jobId"]
+
+    async def poll_jobs(self):
+        """Poll AWS Batch for job status updates."""
+        pending_jobs = list(self._task_id_to_batch_job_id.items())
+        if not pending_jobs:
+            return
+
+        job_ids = [job_id for _, job_id in pending_jobs]
+        
+        try:
+            # Batch API supports up to 100 jobs per describe call
+            for i in range(0, len(job_ids), 100):
+                batch = job_ids[i:i+100]
+                response = self._batch_client.describe_jobs(jobs=batch)
+                
+                for job in response.get("jobs", []):
+                    await self._handle_job_status(job)
+        except Exception as e:
+            logging.exception(f"Error polling Batch jobs: {e}")
+
+    async def _handle_job_status(self, job: dict):
+        """Handle job status update from AWS Batch."""
+        job_id = job["jobId"]
+        status = job["status"]
+        
+        # Find task ID for this job
+        task_id = None
+        for tid, jid in list(self._task_id_to_batch_job_id.items()):
+            if jid == job_id:
+                task_id = tid
+                break
+        
+        if task_id is None:
+            return
+        
+        if status == "SUCCEEDED":
+            await self._handle_job_succeeded(task_id, job_id)
+            self._task_id_to_batch_job_id.pop(task_id, None)
+            self._semaphore.release()
+        elif status == "FAILED":
+            reason = job.get("statusReason", "Unknown failure")
+            await self._handle_job_failed(task_id, job_id, reason)
+            self._task_id_to_batch_job_id.pop(task_id, None)
+            self._semaphore.release()
+
+    async def _handle_job_succeeded(self, task_id: TaskID, job_id: str):
+        """Handle successful job completion."""
+        try:
+            # Fetch result from S3
+            result_key = f"{self._s3_prefix}/results/{job_id}.pkl"
+            response = self._s3_client.get_object(Bucket=self._s3_bucket, Key=result_key)
+            result_bytes = response["Body"].read()
+            
+            # Check if compressed
+            if result_key.endswith(".gz") or self._is_gzipped(result_bytes):
+                result_bytes = gzip.decompress(result_bytes)
+            
+            # Send result to scheduler
+            result_object_id = ObjectID(uuid.uuid4().bytes)
+            await self._connector_storage.set_object(result_object_id, result_bytes)
+            
+            await self._connector_external.send(
+                TaskResult.new_msg(task_id, TaskResultType.Success, results=[bytes(result_object_id)])
+            )
+            
+            # Cleanup S3
+            self._s3_client.delete_object(Bucket=self._s3_bucket, Key=result_key)
+            
+            logging.info(f"Task {task_id.hex()[:8]} completed successfully")
+        except Exception as e:
+            logging.exception(f"Error handling job success for {task_id.hex()[:8]}: {e}")
+            await self._send_task_failed(task_id, b"", e)
+
+    async def _handle_job_failed(self, task_id: TaskID, job_id: str, reason: str):
+        """Handle job failure."""
+        logging.error(f"Task {task_id.hex()[:8]} failed: {reason}")
+        await self._send_task_failed(task_id, b"", RuntimeError(f"Batch job failed: {reason}"))
+
+    async def _send_task_failed(self, task_id: TaskID, source: bytes, exception: Exception):
+        """Send task failure to scheduler."""
+        from scaler.utility.serialization import serialize_failure
+        
+        error_bytes = serialize_failure(exception)
+        result_object_id = ObjectID(uuid.uuid4().bytes)
+        await self._connector_storage.set_object(result_object_id, error_bytes)
+        
+        await self._connector_external.send(
+            TaskResult.new_msg(task_id, TaskResultType.Failed, results=[bytes(result_object_id)])
         )
 
-    async def _handle_start_worker_group(self):
-        """Handle start_worker_group request."""
-        try:
-            worker_group_id = await self.start_worker_group()
-            return web.json_response(
-                {
-                    "status": "Worker group started",
-                    "worker_group_id": worker_group_id.decode(),
-                    "worker_ids": [worker_id.decode() for worker_id in self._worker_groups[worker_group_id].keys()],
-                },
-                status=200,
-            )
-        except CapacityExceededError as e:
-            return web.json_response({"error": str(e)}, status=429)
-        except Exception as e:
-            return web.json_response({"error": str(e)}, status=500)
+    @staticmethod
+    def _is_gzipped(data: bytes) -> bool:
+        """Check if data is gzip compressed."""
+        return len(data) >= 2 and data[0:2] == b'\x1f\x8b'
 
-    async def _handle_shutdown_worker_group(self, request_json: dict):
-        """Handle shutdown_worker_group request."""
-        if "worker_group_id" not in request_json:
-            return web.json_response({"error": "No worker_group_id specified"}, status=400)
-
-        worker_group_id = request_json["worker_group_id"].encode()
-        try:
-            await self.shutdown_worker_group(worker_group_id)
-            return web.json_response({"status": "Worker group shutdown"}, status=200)
-        except WorkerGroupNotFoundError as e:
-            return web.json_response({"error": str(e)}, status=404)
-        except Exception as e:
-            return web.json_response({"error": str(e)}, status=500)
-
-    def create_app(self):
-        """Create aiohttp web application for webhook handling."""
-        app = web.Application()
-        app.router.add_post("/", self.webhook_handler)
-        return app
+    async def routine(self):
+        """Main routine - poll for job completions."""
+        await self.poll_jobs()
