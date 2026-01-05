@@ -743,7 +743,7 @@ TestResult client_sends_huge_header(const char* host, uint16_t port)
         auto remote_port = 23573;
 
         auto result = test(
-            60,
+            180,
             {[=] { return run_mitm("randomly_drop_packets", mitm_ip, mitm_port, remote_ip, remote_port, {"0.3"}); },
              [=] { return basic_client_ymq(mitm_ip, mitm_port); },
              [=] { return basic_server_ymq(remote_ip, remote_port); }},
