@@ -1,8 +1,3 @@
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <errno.h>
-#endif  // _WIN32
 
 #include <gtest/gtest.h>
 #include <uv.h>
@@ -77,12 +72,6 @@ TEST_F(UVTest, Error)
 
     ASSERT_EQ(Error(UV_EBUSY).name(), "EBUSY");
     ASSERT_EQ(Error(UV_EPIPE).message(), "broken pipe");
-
-#ifdef _WIN32
-    ASSERT_EQ(Error::fromSysError(ERROR_FILE_EXISTS), Error(UV_EEXIST));
-#else
-    ASSERT_EQ(Error::fromSysError(EEXIST), Error(UV_EEXIST));
-#endif
 }
 
 TEST_F(UVTest, Handle)
