@@ -2,16 +2,15 @@
 # This script builds and installs the required 3rd party C++ libraries.
 #
 # Usage:
-#    	./scripts/library_tool.sh [boost|capnp] [compile|install] [--prefix=PREFIX]
+#    	./scripts/library_tool.sh [boost|capnp|uv] [compile|install] [--prefix=PREFIX]
 
 # Remember:
 #	Update the usage string when you are add/remove dependency
 #	Bump version should be done through variables, not hard coded strs.
 
-set -x
-
 BOOST_VERSION="1.88.0"
 CAPNP_VERSION="1.0.1"
+UV_VERSION="1.51.0"
 
 THIRD_PARTY_DIRECTORY="./thirdparties"
 
@@ -39,7 +38,7 @@ PREFIX=$(readlink -f "${PREFIX}")
 mkdir -p "${PREFIX}/include/"
 
 show_help() {
-    echo "Usage: ./library_tool.sh [boost|capnp] [download|compile|install] [--prefix=DIR]"
+    echo "Usage: ./library_tool.sh [boost|capnp|libuv] [download|compile|install] [--prefix=DIR]"
     exit 1
 }
 
@@ -90,6 +89,34 @@ elif [ "$1" == "capnp" ]; then
         cd "${THIRD_PARTY_COMPILED}/${CAPNP_FOLDER_NAME}"
         make install
         echo "Installed capnp into ${PREFIX}"
+
+    else
+        show_help
+    fi
+elif [ "$1" == "libuv" ]; then
+    UV_FOLDER_NAME="libuv-${UV_VERSION}"
+
+    if [ "$2" == "download" ]; then
+        mkdir -p "${THIRD_PARTY_DOWNLOADED}"
+        curl --retry 100 --retry-max-time 3600 \
+            -L "https://github.com/libuv/libuv/archive/refs/tags/v${UV_VERSION}.tar.gz" \
+            -o "${THIRD_PARTY_DOWNLOADED}/${UV_FOLDER_NAME}.tar.gz"
+        echo "Downloaded libuv into ${THIRD_PARTY_DOWNLOADED}/${UV_FOLDER_NAME}.tar.gz"
+
+    elif [ "$2" == "compile" ]; then
+        mkdir -p "${THIRD_PARTY_COMPILED}"
+        rm -rf "${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}"
+        tar -xzf "${THIRD_PARTY_DOWNLOADED}/${UV_FOLDER_NAME}.tar.gz" -C "${THIRD_PARTY_COMPILED}"
+
+        cd "${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}"
+        cmake -B build -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DBUILD_TESTING=OFF
+        cmake --build build --config Release
+        echo "Compiled libuv to ${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}"
+
+    elif [ "$2" == "install" ]; then
+        cd "${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}"
+        cmake --install build
+        echo "Installed libuv into ${PREFIX}"
 
     else
         show_help

@@ -14,9 +14,11 @@ runs:
       if: inputs.os == 'Linux'
       run: |
         sudo ./scripts/library_tool.sh capnp install
+        sudo ./scripts/library_tool.sh libuv install
 
     - name: Install Libraries (Windows)
       shell: pwsh
       if: inputs.os == 'Windows'
       run: |
         ./scripts/library_tool.ps1 capnp install
+        ./scripts/library_tool.ps1 libuv install

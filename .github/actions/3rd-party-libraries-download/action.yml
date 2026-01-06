@@ -22,9 +22,11 @@ runs:
       if: (inputs.os == 'Linux') && (steps.download-libraries.outputs.cache-hit != 'true')
       run: |
         ./scripts/library_tool.sh capnp download
+        ./scripts/library_tool.sh libuv download
 
     - name: Download Libraries (Windows)
       shell: pwsh
       if: (inputs.os == 'Windows') && (steps.download-libraries.outputs.cache-hit != 'true')
       run: |
         ./scripts/library_tool.ps1 capnp download
+        ./scripts/library_tool.ps1 libuv download
