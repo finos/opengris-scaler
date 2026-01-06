@@ -1,6 +1,7 @@
 #include "scaler/object_storage/object_storage_server.h"
 
 #include <algorithm>
+#include <csignal>
 #include <cstdint>
 #include <exception>
 #include <future>
@@ -14,9 +15,32 @@
 namespace scaler {
 namespace object_storage {
 
+// Global atomic flag to indicate termination request
+static std::atomic<bool> sigRequestStop {false};
+
+// Signal handler for SIGTERM
+extern "C" void handleSigTerm(int signum)
+{
+    sigRequestStop = true;
+}
+
+// Function to install the signal handler
+void setupSignalHandling()
+{
+    struct sigaction sa {};
+    sa.sa_handler = handleSigTerm;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+
+    if (sigaction(SIGTERM, &sa, nullptr) == -1) {
+        perror("sigaction");
+    }
+}
+
 ObjectStorageServer::ObjectStorageServer()
 {
     initServerReadyFds();
+    setupSignalHandling();
 }
 
 ObjectStorageServer::~ObjectStorageServer()
@@ -138,7 +162,7 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
 
             auto maybeMessageFuture = ymq::futureRecvMessage(_ioSocket);
             while (maybeMessageFuture.wait_for(100ms) == std::future_status::timeout) {
-                if (!running()) {
+                if (!running() || sigRequestStop) {
                     _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: stopped by user");
                     pendingRequests.clear();
                     return;

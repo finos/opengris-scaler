@@ -65,14 +65,12 @@ class PyAsyncObjectStorageConnector(AsyncObjectStorageConnector):
     def is_connected(self) -> bool:
         return self._connected_event.is_set()
 
-    async def destroy(self):
+    def destroy(self):
         if not self.is_connected():
             return
 
         if not self._writer.is_closing:
             self._writer.close()
-
-        await self._writer.wait_closed()
 
     @property
     def reader(self) -> Optional[asyncio.StreamReader]:

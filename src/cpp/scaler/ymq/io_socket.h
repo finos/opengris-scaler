@@ -48,13 +48,12 @@ public:
     // NOTE: BELOW FOUR FUNCTIONS ARE USERSPACE API
     void sendMessage(Message message, SendMessageCallback onMessageSent) noexcept;
     void recvMessage(RecvMessageCallback onRecvMessage) noexcept;
-
     void bindTo(std::string netOrDomainAddr, BindReturnCallback onBindReturn) noexcept;
     void connectTo(
-        std::string netOrDomainAddr, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes = 8) noexcept;
+        std::string netOrDomainAddr, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes = 4) noexcept;
 
     // NOTE: BELOW ONE ARE NOT OFFICIAL USERSPACE API. USE WITH CAUTION.
-    void connectTo(SocketAddress addr, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes = 8) noexcept;
+    void connectTo(SocketAddress addr, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes = 4) noexcept;
 
     void closeConnection(Identity remoteSocketIdentity) noexcept;
 
@@ -70,6 +69,9 @@ public:
     // From Connection Class only
     void onConnectionIdentityReceived(MessageConnection* conn) noexcept;
 
+    // From CONNECTOR only
+    void onConnectorMaxedOutRetry() noexcept;
+
     // NOTE: These two functions are called respectively by sendMessage and server/client.
     // Notice that in the each case only the needed information are passed in; so it's less
     // likely the user passed in combinations that does not make sense. These two calls are
@@ -78,8 +80,8 @@ public:
     void onConnectionCreated(
         int fd, SocketAddress localAddr, SocketAddress remoteAddr, bool responsibleForRetry) noexcept;
 
-    // From TCPClient class only
-    void removeConnectedStreamClient() noexcept;
+    // From StreamClient class only
+    void removeConnectedStreamClient(const StreamClient* client) noexcept;
 
     void requestStop() noexcept;
 
@@ -100,9 +102,9 @@ private:
     // NOTE: Owning one TCPServer means the user cannot bindTo multiple addresses.
     std::optional<StreamServer> _tcpServer;
 
-    // NOTE: User may choose to bind to one IP address + one UDS address
-    std::optional<StreamServer> _domainServer;
-    std::optional<StreamClient> _domainClient;
+    // NOTE: User may choose to bind to one IPv4 address + one IPC address
+    std::optional<StreamServer> _ipcServer;
+    std::optional<StreamClient> _ipcClient;
 
     // Remote identity to connection map
     std::map<std::string, std::unique_ptr<MessageConnection>> _identityToConnection;

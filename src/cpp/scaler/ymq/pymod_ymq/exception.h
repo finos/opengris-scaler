@@ -48,10 +48,9 @@ static int YMQException_init(YMQException* self, PyObject* args, PyObject* kwds)
 
 static void YMQException_dealloc(YMQException* self)
 {
-    self->ob_base.ob_type->tp_base->tp_dealloc((PyObject*)self);
-
     // we still need to release the reference to the heap type
     auto* tp = Py_TYPE(self);
+    self->ob_base.ob_type->tp_base->tp_dealloc((PyObject*)self);
     Py_DECREF(tp);
 }
 

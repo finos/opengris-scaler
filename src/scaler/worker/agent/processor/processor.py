@@ -19,6 +19,7 @@ from scaler.io.utility import create_sync_object_storage_connector
 from scaler.protocol.python.common import ObjectMetadata, TaskResultType
 from scaler.protocol.python.message import ObjectInstruction, ProcessorInitialized, Task, TaskLog, TaskResult
 from scaler.protocol.python.mixins import Message
+from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
@@ -124,6 +125,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
     def __interrupt(self, *args):
         self._connector_agent.destroy()  # interrupts any blocking socket.
+        self._connector_storage.destroy()
 
     def __suspend(self, *args):
         assert self._resume_event is not None
@@ -149,6 +151,9 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             if e.errno != zmq.ENOTSOCK:  # ignore if socket got closed
                 raise
 
+        except ObjectStorageException:
+            pass
+
         except (KeyboardInterrupt, InterruptedError):
             pass
 
@@ -160,6 +165,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             self._connector_agent.destroy()
 
             self._object_cache.join()
+            self._connector_storage.destroy()
 
     def __on_connector_receive(self, message: Message):
         if isinstance(message, ObjectInstruction):

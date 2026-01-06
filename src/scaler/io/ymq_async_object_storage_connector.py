@@ -33,6 +33,7 @@ class PyYMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         if not self.is_connected():
             return
         self._io_socket = None
+        self._io_context = None
 
     async def connect(self, host: str, port: int):
         self._host = host
@@ -49,10 +50,11 @@ class PyYMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
     def is_connected(self) -> bool:
         return self._connected_event.is_set()
 
-    async def destroy(self):
+    def destroy(self):
         if not self.is_connected():
             return
         self._io_socket = None
+        self._io_context = None
 
     @property
     def address(self) -> str:

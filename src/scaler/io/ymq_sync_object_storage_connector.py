@@ -37,6 +37,7 @@ class PyYMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         with self._socket_lock:
             if self._io_socket is not None:
                 self._io_socket = None
+                self._io_context = None
 
     @property
     def address(self) -> str:

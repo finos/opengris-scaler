@@ -16,6 +16,8 @@ from scaler.client.serializer.mixins import Serializer
 from scaler.config.types.zmq import ZMQConfig
 from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.mixins import AsyncConnector
+from scaler.io.utility import create_async_connector
+from scaler.io.ymq.ymq import YMQException
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -78,8 +80,9 @@ class ClientAgent(threading.Thread):
             callback=self.__on_receive_from_client,
             identity=None,
         )
-        self._connector_external: AsyncConnector = ZMQAsyncConnector(
-            context=zmq.asyncio.Context.shadow(self._context),
+
+        self._connector_external: AsyncConnector = create_async_connector(
+            zmq.asyncio.Context.shadow(self._context),
             name="client_agent_external",
             socket_type=zmq.DEALER,
             address=self._scheduler_address,
@@ -194,7 +197,11 @@ class ClientAgent(threading.Thread):
         finally:
             self._stop_event.set()  # always set the stop event before setting futures' exceptions
 
-            await self._object_manager.clear_all_objects(clear_serializer=True)
+            if not isinstance(exception, YMQException):
+                try:
+                    await self._object_manager.clear_all_objects(clear_serializer=True)
+                except YMQException:  # Above call triggers YMQ, which may raise
+                    pass
 
             self._connector_external.destroy()
             self._connector_internal.destroy()
@@ -211,8 +218,8 @@ class ClientAgent(threading.Thread):
         elif isinstance(exception, (ClientQuitException, ClientShutdownException)):
             logging.info("ClientAgent: client quitting")
             self._future_manager.set_all_futures_with_exception(exception)
-        elif isinstance(exception, TimeoutError):
+        elif isinstance(exception, (TimeoutError, YMQException)):
             logging.error(f"ClientAgent: client timeout when connecting to {self._scheduler_address.to_address()}")
-            self._future_manager.set_all_futures_with_exception(exception)
+            self._future_manager.set_all_futures_with_exception(TimeoutError())
         else:
             raise exception
