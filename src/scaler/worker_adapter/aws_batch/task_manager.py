@@ -108,6 +108,8 @@ class AWSBatchTaskManager(Looper, TaskManager):
         Implements priority-based task scheduling similar to Symphony.
         """
         print(f"*** AWS BATCH TASK MANAGER: on_task_new() invoked for task {task.task_id.hex()[:8]} ***")
+        breakpoint()  # This should work now since we're in the same process
+        
         task_priority = self.__get_task_priority(task)
 
         # Priority bypass logic - if semaphore is locked, check if this task has higher priority
