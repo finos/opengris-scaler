@@ -20,6 +20,8 @@ public:
     // See uv_ip6_addr
     static std::expected<SocketAddress, Error> IPv6(const std::string& ip, int port) noexcept;
 
+    static SocketAddress fromSockAddr(const sockaddr* address) noexcept;
+
     const std::variant<sockaddr_in, sockaddr_in6>& value() const noexcept;
 
     // See uv_ip_name

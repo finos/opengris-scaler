@@ -5,3 +5,5 @@ if(WIN32)
 else()
     target_sources(test_uv PRIVATE test_uv_unix.cpp)
 endif()
+
+target_sources(test_uv PRIVATE test_tcp.cpp)

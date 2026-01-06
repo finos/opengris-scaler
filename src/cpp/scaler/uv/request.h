@@ -2,6 +2,7 @@
 
 #include <uv.h>
 
+#include <cassert>
 #include <expected>
 #include <memory>
 
@@ -18,7 +19,7 @@ namespace uv {
 template <typename NativeRequestType, typename... CallbackArgs>
 class Request {
 public:
-    using CallbackType = void(NativeRequestType*, CallbackArgs...);
+    using CallbackType = void(CallbackArgs...);
 
     Request(utility::MoveOnlyFunction<CallbackType>&& callback) noexcept
     {
@@ -53,7 +54,7 @@ public:
         Holder* holder = static_cast<Holder*>(request->data);
         assert(holder->self != nullptr);  // libuv should only call the callback once
 
-        holder->callback(request, args...);
+        holder->callback(args...);
 
         // Release the callback object.
         holder->callback = {};
@@ -81,7 +82,7 @@ using ConnectRequest = Request<uv_connect_t, int>;
 using ShutdownRequest = Request<uv_shutdown_t, int>;
 
 // See uv_write_t
-using WriteRequest = Request<uv_write_t, ssize_t, const uv_buf_t*>;
+using WriteRequest = Request<uv_write_t, int>;
 
 }  // namespace uv
 }  // namespace scaler

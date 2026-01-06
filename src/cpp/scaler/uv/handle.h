@@ -2,6 +2,7 @@
 
 #include <uv.h>
 
+#include <cassert>
 #include <memory>
 
 namespace scaler {
@@ -14,9 +15,17 @@ namespace uv {
 template <typename NativeHandleType, typename DataType>
 class Handle {
 public:
-    constexpr NativeHandleType& native() noexcept { return *_native; }
+    constexpr NativeHandleType& native() noexcept
+    {
+        assert(_native != nullptr && "The handle has been moved");
+        return *_native;
+    }
 
-    constexpr const NativeHandleType& native() const noexcept { return *_native; }
+    constexpr const NativeHandleType& native() const noexcept
+    {
+        assert(_native != nullptr && "The handle has been moved");
+        return *_native;
+    }
 
     // See uv_handle_get_data
     DataType& data() noexcept

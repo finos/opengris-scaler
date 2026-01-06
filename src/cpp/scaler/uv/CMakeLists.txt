@@ -30,8 +30,8 @@ add_library(scaler_uv OBJECT
 
     stream.h
 
-    # tcp.h
-    # tcp.cpp
+    tcp.h
+    tcp.cpp
 
     timer.h
     timer.cpp
