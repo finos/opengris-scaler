@@ -54,19 +54,23 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
         logging_paths.push_back(PyUnicode_AsUTF8(path_obj));
     }
 
-    auto running = []() -> bool {
+    int res {};
+    auto running = [&] -> bool {
         AcquireGIL gil;
         (void)gil;
-        return PyErr_CheckSignals() == 0;
+        res = PyErr_CheckSignals();
+        return res == 0;
     };
 
     ((PyObjectStorageServer*)self)
         ->server.run(
             addr, std::to_string(port), identity, log_level, log_format, std::move(logging_paths), std::move(running));
 
-    // TODO: Ideally, run should return a bool and we return failure with nullptr.
-    return nullptr;
-    // Py_RETURN_NONE;
+    if (!res) {
+        Py_RETURN_NONE;
+    } else {
+        return nullptr;
+    }
 }
 
 static PyObject* PyObjectStorageServerWaitUntilReady(PyObject* self, [[maybe_unused]] PyObject* args)

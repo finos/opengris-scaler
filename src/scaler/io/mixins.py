@@ -92,7 +92,7 @@ class AsyncObjectStorageConnector(Looper, metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def destroy(self):
+    def destroy(self):
         raise NotImplementedError()
 
     @property

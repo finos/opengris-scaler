@@ -2,10 +2,12 @@ import logging
 import os
 from typing import List, Optional
 
-from scaler.config.defaults import CAPNP_DATA_SIZE_LIMIT, CAPNP_MESSAGE_SIZE_LIMIT
+import zmq.asyncio
+
+from scaler.config.defaults import CAPNP_DATA_SIZE_LIMIT, CAPNP_MESSAGE_SIZE_LIMIT, SCALER_NETWORK_BACKEND
 from scaler.config.types.network_backend import NetworkBackend
 from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
-from scaler.io.mixins import AsyncObjectStorageConnector, SyncObjectStorageConnector
+from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector, SyncObjectStorageConnector
 from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector
 from scaler.protocol.capnp._python import _message  # noqa
 from scaler.protocol.python.message import PROTOCOL
@@ -18,11 +20,44 @@ except ImportError:
 
 
 def get_scaler_network_backend_from_env():
-    backend_str = os.environ.get("SCALER_NETWORK_BACKEND", "tcp_zmq")  # Default to tcp_zmq
-    try:
-        return NetworkBackend[backend_str]
-    except KeyError:
-        return None
+    backend_str = os.environ.get("SCALER_NETWORK_BACKEND")  # Default to tcp_zmq
+    if backend_str is None:
+        return SCALER_NETWORK_BACKEND
+    return NetworkBackend[backend_str]
+
+
+def create_async_binder(ctx: zmq.asyncio.Context, *args, **kwargs) -> AsyncBinder:
+    connector_type = get_scaler_network_backend_from_env()
+    if connector_type == NetworkBackend.ymq:
+        from scaler.io.ymq_async_binder import YMQAsyncBinder
+
+        return YMQAsyncBinder(*args, **kwargs)
+    elif connector_type == NetworkBackend.tcp_zmq:
+        from scaler.io.async_binder import ZMQAsyncBinder
+
+        return ZMQAsyncBinder(context=ctx, *args, **kwargs)  # type: ignore[misc]
+    else:
+        raise ValueError(
+            f"Invalid SCALER_NETWORK_BACKEND value." f"Expected one of: {[e.name for e in NetworkBackend]}"
+        )
+
+
+def create_async_connector(ctx: zmq.asyncio.Context, *args, **kwargs) -> AsyncConnector:
+    connector_type = get_scaler_network_backend_from_env()
+    if connector_type == NetworkBackend.ymq:
+        from scaler.io.ymq import ymq
+        from scaler.io.ymq_async_connector import YMQAsyncConnector
+
+        kwargs["socket_type"] = ymq.IOSocketType.Connector
+        return YMQAsyncConnector(*args, **kwargs)
+    elif connector_type == NetworkBackend.tcp_zmq:
+        from scaler.io.async_connector import ZMQAsyncConnector
+
+        return ZMQAsyncConnector(context=ctx, *args, **kwargs)  # type: ignore[misc]
+    else:
+        raise ValueError(
+            f"Invalid SCALER_NETWORK_BACKEND value." f"Expected one of: {[e.name for e in NetworkBackend]}"
+        )
 
 
 def create_async_object_storage_connector(*args, **kwargs) -> AsyncObjectStorageConnector:
