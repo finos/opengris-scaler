@@ -1,7 +1,6 @@
 #include "scaler/uv_ymq/address.h"
 
 #include <cassert>
-#include <utility>
 
 namespace scaler {
 namespace uv_ymq {
