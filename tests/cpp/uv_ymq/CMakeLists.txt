@@ -1,0 +1,1 @@
+add_test_executable(test_uv_ymq test_uv_loop_thread.cpp)

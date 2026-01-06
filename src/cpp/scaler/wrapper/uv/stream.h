@@ -115,6 +115,34 @@ public:
         return request;
     }
 
+    // A single buffer alternative to write().
+    std::expected<WriteRequest, Error> write(std::span<const uint8_t> buffer, WriteCallback&& callback) noexcept
+    {
+        return write(std::span<std::span<const uint8_t>>(&buffer, 1), std::move(callback));
+    }
+
+    // See uv_shutdown
+    std::expected<ShutdownRequest, Error> shutdown(ShutdownCallback callback) noexcept
+    {
+        ShutdownRequest request([callback = std::move(callback)](int status) mutable {
+            if (status < 0) {
+                callback(std::unexpected {Error {status}});
+            } else {
+                callback({});
+            }
+        });
+
+        int err = uv_shutdown(
+            &request.native(), reinterpret_cast<uv_stream_t*>(&handle().native()), ShutdownRequest::onCallback);
+
+        if (err) {
+            request.release();
+            return std::unexpected(Error {err});
+        }
+
+        return request;
+    }
+
 private:
     Handle<NativeHandleType, ReadCallback> _handle;
 
