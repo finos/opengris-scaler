@@ -1,5 +1,7 @@
 #include "scaler/uv/socket_address.h"
 
+#include <cassert>
+
 namespace scaler {
 namespace uv {
 
@@ -25,6 +27,18 @@ std::expected<SocketAddress, Error> SocketAddress::IPv6(const std::string& ip, i
     }
 
     return SocketAddress(addr);
+}
+
+SocketAddress SocketAddress::fromSockAddr(const sockaddr* address) noexcept
+{
+    if (address->sa_family == AF_INET) {
+        const sockaddr_in* addr = reinterpret_cast<const sockaddr_in*>(address);
+        return SocketAddress(*addr);
+    } else {
+        assert(address->sa_family == AF_INET6);
+        const sockaddr_in6* addr = reinterpret_cast<const sockaddr_in6*>(address);
+        return SocketAddress(*addr);
+    }
 }
 
 const std::variant<sockaddr_in, sockaddr_in6>& SocketAddress::value() const noexcept
