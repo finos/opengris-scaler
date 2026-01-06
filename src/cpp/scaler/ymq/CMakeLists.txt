@@ -1,3 +1,4 @@
+# Modified CMakeLists.txt - Windows fixes so installer finds the built Python extension (.pyd)
 add_library(ymq_objs OBJECT
     bytes.h
     common.h
@@ -77,45 +78,72 @@ endif()
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/scaler/ymq)
 
-if(LINUX)
-    # ymq python =======================================================================================================
+# Ensure Python development module support is found
+find_package(Python3 COMPONENTS Development.Module REQUIRED)
 
-    add_library(py_ymq SHARED
-        pymod_ymq/bytes.h
-        pymod_ymq/exception.h
-        pymod_ymq/gil.h
-        pymod_ymq/message.h
-        pymod_ymq/io_context.h
-        pymod_ymq/io_socket.h
-        pymod_ymq/ymq.h
-        pymod_ymq/ymq.cpp
-    )
+# Build the Python extension module and include the compiled object files from ymq_objs
+add_library(py_ymq SHARED
+    pymod_ymq/bytes.h
+    pymod_ymq/exception.h
+    pymod_ymq/gil.h
+    pymod_ymq/message.h
+    pymod_ymq/io_context.h
+    pymod_ymq/io_socket.h
+    pymod_ymq/ymq.h
+    pymod_ymq/ymq.cpp
 
-    target_include_directories(py_ymq PRIVATE
-        ${PROJECT_SOURCE_DIR}/src/cpp
-    )
+    $<TARGET_OBJECTS:ymq_objs>
+)
 
-    target_link_libraries(py_ymq PRIVATE
-        $<$<CXX_COMPILER_ID:GNU,Clang>:-Wl,-Bstatic> ymq_objs
-        $<$<CXX_COMPILER_ID:GNU,Clang>:-Wl,-Bdynamic>
-        Python3::Module
-    )
+target_include_directories(py_ymq PRIVATE
+    ${PROJECT_SOURCE_DIR}/src/cpp
+    ${PROJECT_SOURCE_DIR}/src/cpp/pymod_ymq
+)
 
+target_link_libraries(py_ymq PRIVATE
+    Python3::Module
+)
+
+if(WIN32)
+    # Link Winsock for Windows
+    target_link_libraries(py_ymq PRIVATE ws2_32)
+endif()
+
+# Keep compatibility with name expected by Python imports
+set_target_properties(py_ymq PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "_ymq"
+    LINKER_LANGUAGE CXX
+)
+
+# --- Windows-specific fixes for installer lookup ---
+# On multi-config generators (Visual Studio) the runtime output gets placed into a subdir like "Release".
+# The generated install script will look for the configured runtime output (e.g. .../Release/_ymq.*).
+# CMake on Windows by default will name a shared module as .dll; Python expects .pyd for extensions.
+# Make the target produce a .pyd and put it into the expected runtime output directory for all configs.
+if(WIN32)
+    # Ensure the built Python extension on Windows has a .pyd suffix so the install target looks for _ymq.pyd
     set_target_properties(py_ymq PROPERTIES
-        PREFIX ""
-        OUTPUT_NAME "_ymq"
-        LINKER_LANGUAGE CXX
-    )
-
-    install(
-        TARGETS py_ymq
-        LIBRARY DESTINATION scaler/io/ymq
+        SUFFIX ".pyd"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/scaler/ymq
+        # Set config-specific outputs as well so Visual Studio places them in the same folder (no Release/ subdir)
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/src/scaler/ymq
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/src/scaler/ymq
+        RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_BINARY_DIR}/src/scaler/ymq
+        RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_BINARY_DIR}/src/scaler/ymq
     )
 endif()
 
+# Install the extension; include RUNTIME so .pyd on Windows is handled
+install(
+    TARGETS py_ymq
+    RUNTIME DESTINATION scaler/io/ymq
+    LIBRARY DESTINATION scaler/io/ymq
+    ARCHIVE DESTINATION scaler/io/ymq
+)
+
+# Keep ymq_objs linking/compile defs for Windows
 if(WIN32)
-    # ymq python =======================================================================================================
-    message(WARNING "Not building Python Interface for YMQ, as it's not supported on this system currently!")
-    target_link_libraries(ymq_objs PRIVATE "ws2_32")
-    target_compile_definitions(ymq_objs PRIVATE _WINSOCKAPI_=) # Yes, trailing equal to guarantee empty def
+    target_link_libraries(ymq_objs PRIVATE ws2_32)
+    target_compile_definitions(ymq_objs PRIVATE _WINSOCKAPI_=) # trailing '=' to guarantee empty def
 endif()

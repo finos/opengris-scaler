@@ -7,12 +7,6 @@
 #include <memory>
 #include <utility>
 
-// C
-#include <object.h>
-#include <poll.h>
-#include <semaphore.h>
-#include <sys/eventfd.h>
-
 // First-party
 #include "scaler/error/error.h"
 #include "scaler/ymq/bytes.h"

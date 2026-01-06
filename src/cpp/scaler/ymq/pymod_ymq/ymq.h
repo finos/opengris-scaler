@@ -5,7 +5,6 @@
 
 // C
 #include <fcntl.h>
-#include <unistd.h>
 
 // C++
 #include <expected>
