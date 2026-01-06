@@ -45,7 +45,7 @@ graphblas = [
     "python-graphblas",
     "numpy==1.24.4; python_version == '3.8'",
     "numpy==2.0.2; python_version == '3.9'",
-    "numpy==2.2.6; python_version >= '3.10'",
+    "numpy==2.4.0; python_version >= '3.10'",
 ]
 aws = [
     "boto3",
@@ -56,7 +56,7 @@ all = [
     "python-graphblas",
     "numpy==1.24.4; python_version == '3.8'",
     "numpy==2.0.2; python_version == '3.9'",
-    "numpy==2.2.6; python_version >= '3.10'",
+    "numpy==2.4.0; python_version >= '3.10'",
     "uvloop; platform_system != 'Windows'",
     "boto3",
 ]
