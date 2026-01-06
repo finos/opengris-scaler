@@ -43,13 +43,12 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
     def acquire_worker(self, task: Task) -> WorkerID:
         return self._allocator_policy.assign_task(task)
 
-    async def on_task_cancel(self, task_cancel: TaskCancel):
+    async def on_task_cancel(self, task_cancel: TaskCancel) -> WorkerID:
         worker = self._allocator_policy.remove_task(task_cancel.task_id)
         if not worker.is_valid():
             logging.error(f"cannot find task_id={task_cancel.task_id.hex()} in task workers")
-            return
 
-        await self._binder.send(worker, task_cancel)
+        return worker
 
     async def on_task_done(self, task_id: TaskID) -> WorkerID:
         worker = self._allocator_policy.remove_task(task_id)
