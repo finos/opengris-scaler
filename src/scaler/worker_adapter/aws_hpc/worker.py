@@ -34,8 +34,8 @@ from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
-from scaler.worker_adapter.aws_batch.heartbeat_manager import AWSBatchHeartbeatManager
-from scaler.worker_adapter.aws_batch.worker_adapter import AWSBatchWorkerAdapter
+from scaler.worker_adapter.aws_hpc.heartbeat_manager import AWSBatchHeartbeatManager
+from scaler.worker_adapter.aws_hpc.worker_adapter import AWSBatchWorkerAdapter
 
 
 class AWSBatchWorker(multiprocessing.get_context("spawn").Process):

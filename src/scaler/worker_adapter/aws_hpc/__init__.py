@@ -1,9 +1,8 @@
 """
-AWS Batch Worker Adapter for OpenGRIS Scaler.
+AWS HPC Worker Adapter for OpenGRIS Scaler.
 
-Receives tasks from the Scaler scheduler streaming mechanism and submits
-them directly as AWS Batch jobs. Large payloads are compressed to stay
-within AWS Batch limits.
+Supports multiple AWS HPC backends:
+- AWS Batch: Receives tasks from scheduler and submits as Batch jobs
 
 Architecture:
     Scheduler Stream → AWSBatchWorker → AWSBatchWorkerAdapter → AWS Batch Jobs
@@ -20,10 +19,10 @@ Components:
     - batch_job_runner: Script running inside AWS Batch containers
 """
 
-from scaler.worker_adapter.aws_batch.worker_adapter import AWSBatchWorkerAdapter
-from scaler.worker_adapter.aws_batch.worker import AWSBatchWorker
-from scaler.worker_adapter.aws_batch.heartbeat_manager import AWSBatchHeartbeatManager
-from scaler.worker_adapter.aws_batch.callback import BatchJobCallback
+from scaler.worker_adapter.aws_hpc.worker_adapter import AWSBatchWorkerAdapter
+from scaler.worker_adapter.aws_hpc.worker import AWSBatchWorker
+from scaler.worker_adapter.aws_hpc.heartbeat_manager import AWSBatchHeartbeatManager
+from scaler.worker_adapter.aws_hpc.callback import BatchJobCallback
 
 __all__ = [
     "AWSBatchWorkerAdapter",

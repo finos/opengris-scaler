@@ -28,11 +28,11 @@ from scaler.protocol.python.message import (
     TaskResult,
 )
 from scaler.utility.identifiers import ObjectID, TaskID
-from scaler.worker_adapter.aws_batch.callback import BatchJobCallback
+from scaler.worker_adapter.aws_hpc.callback import BatchJobCallback
 
-# AWS Batch limits
-MAX_ENV_SIZE_BYTES = 8 * 1024  # 8KB for environment variables
-MAX_INLINE_PAYLOAD_BYTES = 6 * 1024  # Leave room for other env vars
+# AWS Batch limits (https://docs.aws.amazon.com/batch/latest/userguide/service_limits.html)
+MAX_PARAMS_SIZE_BYTES = 30 * 1024  # 30KiB for job parameters
+MAX_INLINE_PAYLOAD_BYTES = 28 * 1024  # Leave room for other params
 COMPRESSION_THRESHOLD_BYTES = 4 * 1024  # Compress if larger than 4KB
 
 
@@ -141,20 +141,36 @@ class AWSBatchWorkerAdapter:
     async def _submit_batch_job(self, task: Task) -> str:
         """
         Submit task as AWS Batch job.
+        Fetches function and arguments from object storage and embeds them in payload.
         Compresses payload if it exceeds threshold.
         Uses S3 for payloads that exceed AWS Batch limits.
         """
         task_id_hex = task.task_id.hex()
         
-        # Serialize task data
+        # Fetch the actual function from object storage
+        func_bytes = await self._connector_storage.get_object(task.func_object_id)
+        func = cloudpickle.loads(func_bytes)
+        
+        # Get function name for job naming
+        func_name = getattr(func, '__name__', 'unknown')
+        
+        # Fetch arguments from object storage
+        arguments = []
+        for arg in task.function_args:
+            if isinstance(arg, TaskID):
+                # TaskID means result of another task - this shouldn't happen in simple cases
+                raise ValueError(f"Task dependencies (TaskID args) not yet supported in AWS Batch adapter")
+            else:  # ObjectID
+                arg_bytes = await self._connector_storage.get_object(arg)
+                arg_value = cloudpickle.loads(arg_bytes)
+                arguments.append(arg_value)
+        
+        # Create payload with embedded function and arguments
         task_data = {
             "task_id": task_id_hex,
             "source": task.source.hex(),
-            "func_object_id": bytes(task.func_object_id).hex(),
-            "args": [
-                {"type": arg.type.name, "data": arg.data.hex() if isinstance(arg.data, bytes) else arg.data}
-                for arg in task.function_args
-            ],
+            "function": func,
+            "arguments": arguments,
         }
         
         payload = cloudpickle.dumps(task_data)
@@ -168,76 +184,136 @@ class AWSBatchWorkerAdapter:
             
             if len(compressed) <= MAX_INLINE_PAYLOAD_BYTES:
                 # Use compressed inline payload
-                return await self._submit_with_inline_payload(task_id_hex, compressed, compressed=True)
+                return await self._submit_with_inline_payload(task_id_hex, func_name, compressed, compressed=True)
             else:
                 # Store in S3
-                return await self._submit_with_s3_payload(task_id_hex, compressed, compressed=True)
+                return await self._submit_with_s3_payload(task_id_hex, func_name, compressed, compressed=True)
         elif payload_size <= MAX_INLINE_PAYLOAD_BYTES:
             # Use uncompressed inline payload
-            return await self._submit_with_inline_payload(task_id_hex, payload, compressed=False)
+            return await self._submit_with_inline_payload(task_id_hex, func_name, payload, compressed=False)
         else:
             # Store in S3 (uncompressed but too large for inline)
-            return await self._submit_with_s3_payload(task_id_hex, payload, compressed=False)
+            return await self._submit_with_s3_payload(task_id_hex, func_name, payload, compressed=False)
 
     async def _submit_with_inline_payload(
         self, 
-        task_id_hex: str, 
+        task_id_hex: str,
+        func_name: str,
         payload: bytes, 
         compressed: bool
     ) -> str:
-        """Submit job with payload in environment variable."""
+        """Submit job with payload in job parameters."""
         import base64
+        import re
+        from botocore.exceptions import ClientError
         
         encoded_payload = base64.b64encode(payload).decode("ascii")
         
-        response = self._batch_client.submit_job(
-            jobName=f"scaler-{task_id_hex[:12]}",
-            jobQueue=self._job_queue,
-            jobDefinition=self._job_definition,
-            containerOverrides={
-                "environment": [
-                    {"name": "SCALER_TASK_ID", "value": task_id_hex},
-                    {"name": "SCALER_PAYLOAD", "value": encoded_payload},
-                    {"name": "SCALER_PAYLOAD_COMPRESSED", "value": "1" if compressed else "0"},
-                    {"name": "SCALER_S3_BUCKET", "value": self._s3_bucket},
-                    {"name": "SCALER_S3_PREFIX", "value": self._s3_prefix},
-                ]
-            }
-        )
+        # Create descriptive job name: func_name-task_id (sanitized for AWS Batch)
+        # AWS Batch job names: up to 128 chars, alphanumeric, hyphens, underscores
+        safe_func_name = re.sub(r'[^a-zA-Z0-9_-]', '_', func_name)[:50]
+        job_name = f"{safe_func_name}-{task_id_hex[:12]}"
+        
+        try:
+            response = self._batch_client.submit_job(
+                jobName=job_name,
+                jobQueue=self._job_queue,
+                jobDefinition=self._job_definition,
+                parameters={
+                    "task_id": task_id_hex,
+                    "payload": encoded_payload,
+                    "compressed": "1" if compressed else "0",
+                    "s3_bucket": self._s3_bucket,
+                    "s3_prefix": self._s3_prefix,
+                    "s3_key": "none",
+                },
+            )
+        except ClientError as e:
+            if "ExpiredToken" in str(e) or "expired" in str(e).lower():
+                logging.warning("AWS credentials expired, refreshing...")
+                self._refresh_aws_clients()
+                response = self._batch_client.submit_job(
+                    jobName=job_name,
+                    jobQueue=self._job_queue,
+                    jobDefinition=self._job_definition,
+                    parameters={
+                        "task_id": task_id_hex,
+                        "payload": encoded_payload,
+                        "compressed": "1" if compressed else "0",
+                        "s3_bucket": self._s3_bucket,
+                        "s3_prefix": self._s3_prefix,
+                        "s3_key": "none",
+                    },
+                )
+            else:
+                raise
         
         return response["jobId"]
 
     async def _submit_with_s3_payload(
         self, 
-        task_id_hex: str, 
+        task_id_hex: str,
+        func_name: str,
         payload: bytes, 
         compressed: bool
     ) -> str:
         """Submit job with payload stored in S3."""
+        import re
+        from botocore.exceptions import ClientError
+        
         s3_key = f"{self._s3_prefix}/inputs/{task_id_hex}.pkl"
         if compressed:
             s3_key += ".gz"
         
-        # Upload to S3
-        self._s3_client.put_object(
-            Bucket=self._s3_bucket,
-            Key=s3_key,
-            Body=payload
-        )
+        # Create descriptive job name
+        safe_func_name = re.sub(r'[^a-zA-Z0-9_-]', '_', func_name)[:50]
+        job_name = f"{safe_func_name}-{task_id_hex[:12]}"
         
-        response = self._batch_client.submit_job(
-            jobName=f"scaler-{task_id_hex[:12]}",
-            jobQueue=self._job_queue,
-            jobDefinition=self._job_definition,
-            containerOverrides={
-                "environment": [
-                    {"name": "SCALER_TASK_ID", "value": task_id_hex},
-                    {"name": "SCALER_S3_BUCKET", "value": self._s3_bucket},
-                    {"name": "SCALER_S3_KEY", "value": s3_key},
-                    {"name": "SCALER_PAYLOAD_COMPRESSED", "value": "1" if compressed else "0"},
-                ]
-            }
-        )
+        try:
+            # Upload to S3
+            self._s3_client.put_object(
+                Bucket=self._s3_bucket,
+                Key=s3_key,
+                Body=payload
+            )
+            
+            response = self._batch_client.submit_job(
+                jobName=job_name,
+                jobQueue=self._job_queue,
+                jobDefinition=self._job_definition,
+                parameters={
+                    "task_id": task_id_hex,
+                    "payload": "",  # Empty, use S3
+                    "compressed": "1" if compressed else "0",
+                    "s3_bucket": self._s3_bucket,
+                    "s3_prefix": self._s3_prefix,
+                    "s3_key": s3_key,
+                },
+            )
+        except ClientError as e:
+            if "ExpiredToken" in str(e) or "expired" in str(e).lower():
+                logging.warning("AWS credentials expired, refreshing...")
+                self._refresh_aws_clients()
+                self._s3_client.put_object(
+                    Bucket=self._s3_bucket,
+                    Key=s3_key,
+                    Body=payload
+                )
+                response = self._batch_client.submit_job(
+                    jobName=job_name,
+                    jobQueue=self._job_queue,
+                    jobDefinition=self._job_definition,
+                    parameters={
+                        "task_id": task_id_hex,
+                        "payload": "",
+                        "compressed": "1" if compressed else "0",
+                        "s3_bucket": self._s3_bucket,
+                        "s3_prefix": self._s3_prefix,
+                        "s3_key": s3_key,
+                    },
+                )
+            else:
+                raise
         
         return response["jobId"]
 
@@ -298,7 +374,8 @@ class AWSBatchWorkerAdapter:
                 result_bytes = gzip.decompress(result_bytes)
             
             # Send result to scheduler
-            result_object_id = ObjectID(uuid.uuid4().bytes)
+            # ObjectID requires 32 bytes: 16 bytes owner hash + 16 bytes unique tag
+            result_object_id = ObjectID(uuid.uuid4().bytes + uuid.uuid4().bytes)
             await self._connector_storage.set_object(result_object_id, result_bytes)
             
             await self._connector_external.send(
@@ -316,14 +393,101 @@ class AWSBatchWorkerAdapter:
     async def _handle_job_failed(self, task_id: TaskID, job_id: str, reason: str):
         """Handle job failure."""
         logging.error(f"Task {task_id.hex()[:8]} failed: {reason}")
-        await self._send_task_failed(task_id, b"", RuntimeError(f"Batch job failed: {reason}"))
+        logging.error(f"Fetching CloudWatch logs for job {job_id}...")
+        
+        # Try to fetch CloudWatch logs for debugging
+        log_output = await self._fetch_job_logs(job_id)
+        
+        error_msg = f"Batch job failed: {reason}"
+        if log_output:
+            error_msg += f"\n\n{log_output}"
+            # Print logs prominently
+            logging.error("=" * 60)
+            logging.error(f"BATCH JOB LOGS ({job_id}):")
+            logging.error("=" * 60)
+            logging.error(log_output)
+            logging.error("=" * 60)
+        
+        await self._send_task_failed(task_id, b"", RuntimeError(error_msg))
+
+    async def _fetch_job_logs(self, job_id: str) -> str:
+        """Fetch CloudWatch logs for a failed job."""
+        try:
+            import boto3
+            import time
+            logs_client = boto3.client("logs", region_name=self._aws_region)
+            
+            # AWS Batch logs go to /aws/batch/job log group
+            log_group = "/aws/batch/job"
+            
+            # Get job details to find log stream
+            job_response = self._batch_client.describe_jobs(jobs=[job_id])
+            if not job_response.get("jobs"):
+                return "(Job not found)"
+            
+            job = job_response["jobs"][0]
+            container = job.get("container", {})
+            
+            # Get log stream name - AWS Batch provides this directly
+            log_stream = container.get("logStreamName", "")
+            
+            # Debug info
+            debug_info = []
+            debug_info.append(f"Job status: {job.get('status')}")
+            debug_info.append(f"Status reason: {job.get('statusReason', 'N/A')}")
+            debug_info.append(f"Container exit code: {container.get('exitCode', 'N/A')}")
+            debug_info.append(f"Container reason: {container.get('reason', 'N/A')}")
+            
+            if not log_stream:
+                # Try to construct from task ARN
+                task_arn = container.get("taskArn", "")
+                if task_arn:
+                    task_id_part = task_arn.split("/")[-1]
+                    job_def_name = job.get("jobDefinition", "").split("/")[-1].split(":")[0]
+                    log_stream = f"{job_def_name}/default/{task_id_part}"
+                    debug_info.append(f"Constructed log stream: {log_stream}")
+                else:
+                    debug_info.append("No taskArn available")
+            else:
+                debug_info.append(f"Log stream: {log_stream}")
+            
+            if not log_stream:
+                return "Job debug info:\n" + "\n".join(debug_info) + "\n\n(Could not determine log stream name)"
+            
+            # Wait a moment for logs to be available
+            await asyncio.sleep(2)
+            
+            # Fetch log events
+            try:
+                response = logs_client.get_log_events(
+                    logGroupName=log_group,
+                    logStreamName=log_stream,
+                    limit=100,
+                    startFromHead=True  # Get from beginning to see startup errors
+                )
+                
+                events = response.get("events", [])
+                if not events:
+                    return "Job debug info:\n" + "\n".join(debug_info) + "\n\n(No log events found - container may have crashed before logging)"
+                
+                # Format log output
+                log_lines = [event.get("message", "") for event in events]
+                return "Job debug info:\n" + "\n".join(debug_info) + "\n\nContainer logs:\n" + "\n".join(log_lines)
+                
+            except logs_client.exceptions.ResourceNotFoundException:
+                return "Job debug info:\n" + "\n".join(debug_info) + f"\n\n(Log stream not found: {log_stream})"
+                
+        except Exception as e:
+            logging.warning(f"Failed to fetch logs for job {job_id}: {e}")
+            return f"(Failed to fetch logs: {e})"
 
     async def _send_task_failed(self, task_id: TaskID, source: bytes, exception: Exception):
         """Send task failure to scheduler."""
         from scaler.utility.serialization import serialize_failure
         
         error_bytes = serialize_failure(exception)
-        result_object_id = ObjectID(uuid.uuid4().bytes)
+        # ObjectID requires 32 bytes: 16 bytes owner hash + 16 bytes unique tag
+        result_object_id = ObjectID(uuid.uuid4().bytes + uuid.uuid4().bytes)
         await self._connector_storage.set_object(result_object_id, error_bytes)
         
         await self._connector_external.send(

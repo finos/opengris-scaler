@@ -96,11 +96,11 @@ class AWSBatchHeartbeatManager(Looper, HeartbeatManager):
         agent_resource = Resource.new_msg(cpu=agent_cpu, rss=agent_rss)
         
         # Create processor status for the adapter (simulated as single processor)
-        # pid=0 since AWS Batch jobs run remotely, initialized=1 means ready
+        # pid=0 since AWS Batch jobs run remotely, initialized=True means ready
         processor_resource = Resource.new_msg(cpu=0, rss=0)
         processor_status = ProcessorStatus.new_msg(
             pid=0,
-            initialized=1,
+            initialized=True,
             has_task=has_task,
             suspended=False,
             resource=processor_resource,

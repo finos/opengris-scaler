@@ -15,6 +15,19 @@ This guide walks you through setting up and testing the AWS Batch worker adapter
                                     └──────────┘          └──────────┘
 ```
 
+## Payload Handling
+
+Task payloads are passed to AWS Batch jobs via job parameters (30KiB limit).
+For larger payloads, data is uploaded to S3.
+
+| Raw Payload Size | After Compression | Method |
+|------------------|-------------------|--------|
+| ≤ 4KB | No compression | Job parameters (inline) |
+| 4KB - 100KB | ~28KB (typical 3-5x ratio) | Job parameters (inline) |
+| > 100KB | > 28KB | S3 upload |
+
+Payloads > 4KB are automatically compressed with gzip before submission.
+
 ## Prerequisites
 
 - Docker (for devcontainer)
@@ -22,24 +35,95 @@ This guide walks you through setting up and testing the AWS Batch worker adapter
   - S3 (create bucket, read/write objects)
   - IAM (create roles and policies)
   - AWS Batch (create compute environments, job queues, job definitions)
-- AWS CLI configured with credentials
+  - ECR (create repository, push images)
+- AWS CLI configured with credentials on host (for provisioning only)
+
+## Quick Overview
+
+| Step | Where | What |
+|------|-------|------|
+| 1. Provision | Host | Build image and create AWS resources |
+| 2-6. Everything else | Container | Install, run, test |
+| Cleanup | Host | Delete AWS resources |
 
 ---
 
-## Step 1: Start Development Container
+## Step 1: Provision AWS Resources (Host Only)
+
+This step builds the Docker image, pushes it to ECR, and creates all AWS Batch resources:
 
 ```bash
-# Build the development container
-docker build -t scaler-dev -f .devcontainer/Dockerfile .
+# Create a temporary venv for provisioning (if not already created)
+python3 -m venv .venv-provision
+.venv-provision/bin/pip install boto3
 
-# Run the container with workspace mounted
-docker run -it -v $(pwd):/workspace -w /workspace scaler-dev bash
+# Provision all resources (builds image automatically)
+.venv-provision/bin/python src/scaler/worker_adapter/aws_hpc/provisioner.py provision \
+    --region us-east-1 \
+    --prefix scaler-batch \
+    --vcpus 1 \
+    --memory 2048
 ```
 
-## Step 2: Install Dependencies
+This creates:
+- ECR repository with Docker image
+- S3 bucket for task data (with 1-day lifecycle policy)
+- IAM roles for Batch jobs and EC2 instances
+- EC2 compute environment
+- Job queue and job definition
+- `.scaler_aws_hpc.env` file with configuration
+
+**Memory Configuration:**
+Memory is rounded to the nearest multiple of 2048MB and 90% is allocated to the container.
+For example, `--memory 4000` → 4096MB total → 3686MB effective.
+
+---
+
+## Step 2: Start Development Container (All Remaining Steps Inside Container)
+
+From here on, **everything runs inside the container**.
 
 ```bash
-# Inside the container
+# Build the development container (if not already built)
+docker build -t scaler-dev -f .devcontainer/Dockerfile .
+```
+
+### Option A: Static AWS credentials (~/.aws/credentials file)
+
+If you have static credentials in `~/.aws/credentials`:
+
+```bash
+docker run -it --rm \
+    -v ~/.aws:/root/.aws:ro \
+    -v $(pwd):/workspace -w /workspace scaler-dev bash
+```
+
+### Option B: Assumed role credentials (isengardcli, SSO, etc.)
+
+If you use `credential_process`, SSO, or assumed roles (like isengardcli), export credentials as environment variables first:
+
+```bash
+# On host: Export credentials from AWS CLI
+eval $(aws configure export-credentials --format env)
+
+# Start container with credentials passed as env vars
+docker run -it --rm \
+    -e AWS_ACCESS_KEY_ID \
+    -e AWS_SECRET_ACCESS_KEY \
+    -e AWS_SESSION_TOKEN \
+    -e AWS_DEFAULT_REGION=us-east-1 \
+    -v $(pwd):/workspace -w /workspace scaler-dev bash
+```
+
+**Note:** Session credentials expire (typically 1 hour). If you get credential errors, exit the container and repeat the export/docker run steps.
+
+---
+
+## Step 3: Install Dependencies (Inside Container)
+
+Inside the container:
+
+```bash
 cd /workspace
 
 # Create virtual environment
@@ -47,98 +131,56 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # Install scaler in development mode
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
 
 # Install AWS dependencies
-pip install boto3
+python -m pip install boto3
 ```
 
-## Step 3: Configure AWS Credentials
+---
 
-```bash
-# Option 1: Use AWS CLI
-aws configure
-# Enter your AWS Access Key ID, Secret Access Key, and region
+## Step 4: Start Scheduler and Worker (Inside Container)
 
-# Option 2: Export environment variables
-export AWS_ACCESS_KEY_ID="your-access-key"
-export AWS_SECRET_ACCESS_KEY="your-secret-key"
-export AWS_DEFAULT_REGION="us-east-1"
-```
-
-## Step 4: Provision AWS Resources
-
-```bash
-# Provision S3 bucket, IAM role, Batch compute environment, job queue, and job definition
-python -m scaler.worker_adapter.aws_batch.provisioner provision \
-    --region us-east-1 \
-    --prefix scaler-batch \
-    --image python:3.11-slim \
-    --vcpus 1 \
-    --memory 1843
-```
-
-Copy and run the export commands printed at the end:
-```bash
-export SCALER_AWS_REGION="us-east-1"
-export SCALER_S3_BUCKET="scaler-batch-123456789012-us-east-1"
-export SCALER_JOB_QUEUE="scaler-batch-queue"
-export SCALER_JOB_DEFINITION="scaler-batch-job"
-```
-
-**Note on memory:** For Fargate, use ~90% of the desired memory if it's a multiple of 2048 MB.
-This reserves headroom for container overhead.
-
-| Desired Memory | Recommended `--memory` |
-|----------------|------------------------|
-| 2048 MB (2 GB) | 1843 |
-| 4096 MB (4 GB) | 3686 |
-| 8192 MB (8 GB) | 7372 |
-
-Note the output - you'll need the bucket name, job queue, and job definition names.
-
-## Step 5: Start the Scheduler
-
-Open a new terminal:
+All commands in the **same terminal** inside the container:
 
 ```bash
 source .venv/bin/activate
 
-# Start scheduler on default port 2345
-python -m scaler.entry_points.scheduler \
-    --address tcp://0.0.0.0:2345
-```
+# Start scheduler in background (binds to all interfaces for host access)
+python -c "
+import sys
+sys.argv = ['scheduler', 'tcp://0.0.0.0:2345']
+from scaler.entry_points.scheduler import main
+main()
+" &
 
-## Step 6: Start the AWS Batch Worker
+# Wait for scheduler to start
+sleep 2
 
-Open another terminal:
+# Load AWS config from provisioning
+source .scaler_aws_hpc.env
 
-```bash
-source .venv/bin/activate
-
-# If you haven't set the env vars from Step 4, run:
-# python -m scaler.worker_adapter.aws_batch.provisioner show
-
-# Start AWS Batch worker adapter
-python -m scaler.entry_points.worker_adapter_aws_batch \
+# Start AWS Batch worker adapter in background
+python -m scaler.entry_points.worker_adapter_aws_hpc \
     --scheduler-address tcp://127.0.0.1:2345 \
     --job-queue $SCALER_JOB_QUEUE \
     --job-definition $SCALER_JOB_DEFINITION \
     --s3-bucket $SCALER_S3_BUCKET \
     --aws-region $SCALER_AWS_REGION \
-    --max-concurrent-jobs 10 \
-    --log-level INFO
+    --max-concurrent-jobs 100 \
+    --log-level INFO &
 ```
 
-## Step 7: Run Tests
+You should see log output indicating both are running.
 
-Open another terminal:
+---
+
+## Step 5: Run Tests
+
+Same terminal inside the container:
 
 ```bash
-source .venv/bin/activate
-
-# Run test harness
-python tests/aws_batch_test_harness.py \
+python tests/aws_hpc_test_harness.py \
     --scheduler tcp://127.0.0.1:2345 \
     --test all
 ```
@@ -160,14 +202,33 @@ Connected to scheduler
   PASSED
 
 --- Test: Compute Task ---
-  Result: 666616.46
+  Result: 3328335.00
   PASSED
 
 ==================================================
 Results: 3/3 passed
 ```
 
-## Step 8: Use in Your Code
+---
+
+## Step 6: Stop Background Processes
+
+Inside the container:
+
+```bash
+# List background jobs
+jobs
+
+# Kill all background jobs
+kill %1 %2
+
+# Or kill by name
+pkill -f "scaler.entry_points"
+```
+
+---
+
+## Step 7: Use in Your Code
 
 ```python
 from scaler import Client
@@ -179,18 +240,18 @@ with Client(address="tcp://127.0.0.1:2345") as client:
     result = future.result()
 
     # Submit multiple tasks
-    futures = client.map(my_function, [(arg1,), (arg2,), (arg3,)])
-    results = [f.result() for f in futures]
+    results = client.map(my_function, [(arg1,), (arg2,), (arg3,)])
 ```
 
 ---
 
-## Cleanup
+## Cleanup (Host Only)
 
-When done, clean up AWS resources:
+When done, clean up AWS resources (run on host where you have AWS credentials):
 
 ```bash
-python -m scaler.worker_adapter.aws_batch.provisioner cleanup \
+# On host machine (where you have AWS credentials)
+.venv-provision/bin/python src/scaler/worker_adapter/aws_hpc/provisioner.py cleanup \
     --region us-east-1 \
     --prefix scaler-batch
 ```
@@ -199,22 +260,32 @@ python -m scaler.worker_adapter.aws_batch.provisioner cleanup \
 
 ## Troubleshooting
 
+### Container hangs on startup or AWS operations
+
+This usually means boto3 is trying to resolve credentials but can't. Common causes:
+
+1. **Using `~/.aws` mount with `credential_process`**: The credential helper (like isengardcli) isn't available inside the container. Use Option B (environment variables) instead.
+
+2. **Expired session credentials**: If using assumed roles, credentials expire. Re-export them on the host and restart the container.
+
+3. **Missing credentials entirely**: Verify credentials are set inside container:
+   ```bash
+   env | grep AWS
+   ```
+
 ### "No scaler job queue found"
 
-Run the provisioner:
-```bash
-python -m scaler.worker_adapter.aws_batch.provisioner provision
-```
+Run the provisioner (Step 1).
 
 ### "Failed to connect to scheduler"
 
 1. Check scheduler is running: `ps aux | grep scheduler`
-2. Check address is correct
-3. Check firewall/network settings
+2. Check port mapping: container started with `-p 2345:2345`
+3. Check address is correct
 
 ### "AWS Batch job failed"
 
-1. Check CloudWatch Logs for the job
+1. Check CloudWatch Logs for the job (logs retained for 30 days)
 2. Verify IAM role has S3 permissions
 3. Check S3 bucket exists and is accessible
 
@@ -227,17 +298,8 @@ python -m scaler.worker_adapter.aws_batch.provisioner provision
 ### Container image issues
 
 Make sure your job definition uses an image with:
-- Python 3.8+
+- Python 3.12 (must match client Python version for cloudpickle compatibility)
 - `cloudpickle` and `boto3` installed
-
-Custom image example:
-```dockerfile
-FROM python:3.11-slim
-RUN pip install cloudpickle boto3
-COPY . /app
-WORKDIR /app
-RUN pip install -e .
-```
 
 ---
 
@@ -249,10 +311,12 @@ RUN pip install -e .
 |--------|---------|-------------|
 | `--region` | us-east-1 | AWS region |
 | `--prefix` | scaler-batch | Resource name prefix |
-| `--image` | python:3.11-slim | Container image |
-| `--vcpus` | 1.0 | vCPUs per job |
-| `--memory` | 2048 | Memory per job (MB) |
+| `--image` | (auto-build) | Container image URI (if omitted, builds and pushes to ECR) |
+| `--vcpus` | 1 | vCPUs per job |
+| `--memory` | 2048 | Memory per job (MB, uses 90% of nearest 2048MB multiple) |
 | `--max-vcpus` | 256 | Max vCPUs for compute env |
+| `--instance-types` | default_x86_64 | EC2 instance types (comma-separated) |
+| `--job-timeout` | 3600 | Job timeout in seconds (default: 1 hour) |
 
 ### Worker Options
 
