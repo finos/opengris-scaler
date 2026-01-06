@@ -108,7 +108,13 @@ class AWSBatchTaskManager(Looper, TaskManager):
         Implements priority-based task scheduling similar to Symphony.
         """
         print(f"*** AWS BATCH TASK MANAGER: on_task_new() invoked for task {task.task_id.hex()[:8]} ***")
-        breakpoint()  # This should work now since we're in the same process
+        
+        # Pickle task object to file for debugging
+        import pickle
+        task_file = f"/tmp/task_{task.task_id.hex()[:8]}.pkl"
+        with open(task_file, 'wb') as f:
+            pickle.dump(task, f)
+        print(f"DEBUG: Task pickled to {task_file}")
         
         task_priority = self.__get_task_priority(task)
 

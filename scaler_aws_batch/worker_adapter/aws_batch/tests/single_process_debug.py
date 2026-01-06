@@ -23,8 +23,7 @@ async def main():
     # Start scheduler and worker in same process
     cluster = SchedulerClusterCombo(
         address="tcp://127.0.0.1:2345", 
-        n_workers=1,
-        worker_type="aws_batch"  # This will use our AWS Batch worker
+        n_workers=1
     )
     
     try:
