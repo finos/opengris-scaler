@@ -105,37 +105,14 @@ class AWSBatchTaskManager(Looper, TaskManager):
     async def on_task_new(self, task: Task):
         """
         Handle new task submission.
-        Implements priority-based task scheduling similar to Symphony.
+        Just execute the task directly without queuing or priority logic.
         """
         print(f"*** AWS BATCH TASK MANAGER: on_task_new() invoked for task {task.task_id.hex()[:8]} ***")
         
-        # Pickle task object to file for debugging
-        import pickle
-        task_file = f"/tmp/task_{task.task_id.hex()[:8]}.pkl"
-        with open(task_file, 'wb') as f:
-            pickle.dump(task, f)
-        print(f"DEBUG: Task pickled to {task_file}")
-        
-        task_priority = self.__get_task_priority(task)
-
-        # Priority bypass logic - if semaphore is locked, check if this task has higher priority
-        if self._executor_semaphore.locked():
-            for acquired_task_id in self._acquiring_task_ids:
-                acquired_task = self._task_id_to_task[acquired_task_id]
-                acquired_task_priority = self.__get_task_priority(acquired_task)
-                if task_priority <= acquired_task_priority:
-                    break
-            else:
-                # This task has higher priority than all acquiring tasks
-                self._task_id_to_task[task.task_id] = task
-                self._processing_task_ids.add(task.task_id)
-                self._task_id_to_future[task.task_id] = await self.__execute_task(task)
-                return
-
-        # Normal queuing
+        # Store task and execute immediately
         self._task_id_to_task[task.task_id] = task
-        self._queued_task_id_queue.put_nowait((-task_priority, task.task_id))
-        self._queued_task_ids.add(task.task_id)
+        self._processing_task_ids.add(task.task_id)
+        self._task_id_to_future[task.task_id] = await self.__execute_task(task)
 
     async def on_cancel_task(self, task_cancel: TaskCancel):
         """Handle task cancellation requests."""
