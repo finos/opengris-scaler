@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-AWS Batch Worker Adapter that uses the actual AWS Batch task manager.
+AWS Batch Worker Adapter that uses the TaskManager pattern.
+This is a test entry point for validating the TaskManager implementation.
 """
 
 import argparse
@@ -8,7 +9,7 @@ import asyncio
 import logging
 from aiohttp import web
 
-from scaler.worker_adapter.aws_batch.worker import AWSBatchWorker
+from scaler.worker_adapter.aws_hpc.worker import AWSBatchWorker
 from scaler.config.types.zmq import ZMQConfig
 
 
@@ -26,6 +27,8 @@ class TestAWSBatchWorkerAdapter:
             job_queue="test-queue",
             job_definition="test-job-def",
             aws_region="us-east-1",
+            s3_bucket="test-bucket",
+            s3_prefix="scaler-tasks",
             capabilities={},
             base_concurrency=1,
             heartbeat_interval_seconds=2,
@@ -33,8 +36,7 @@ class TestAWSBatchWorkerAdapter:
             task_queue_size=1000,
             io_threads=1,
             event_loop="builtin",
-            vcpus=1,
-            memory=2048
+            job_timeout_seconds=3600,
         )
         worker.start()
         self._workers[worker_id] = worker

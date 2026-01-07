@@ -5,15 +5,27 @@ This guide walks you through setting up and testing the AWS Batch worker adapter
 ## Architecture
 
 ```
-┌─────────┐     ┌───────────┐     ┌─────────────────┐     ┌───────────┐
-│  Client │────▶│ Scheduler │────▶│ AWSBatchWorker  │────▶│ AWS Batch │
-└─────────┘     └───────────┘     └─────────────────┘     └───────────┘
-                                          │                      │
-                                          ▼                      ▼
-                                    ┌──────────┐          ┌──────────┐
-                                    │ S3 Bucket│◀─────────│ Batch Job│
-                                    └──────────┘          └──────────┘
+┌─────────┐     ┌───────────┐     ┌─────────────────┐     ┌───────────────────┐     ┌───────────┐
+│  Client │────▶│ Scheduler │────▶│ AWSBatchWorker  │────▶│ AWSHPCTaskManager │────▶│ AWS Batch │
+└─────────┘     └───────────┘     └─────────────────┘     └───────────────────┘     └───────────┘
+                                          │                        │                      │
+                                          ▼                        ▼                      ▼
+                                  ┌────────────────┐         ┌──────────┐          ┌──────────┐
+                                  │HeartbeatManager│         │ S3 Bucket│◀─────────│ Batch Job│
+                                  └────────────────┘         └──────────┘          └──────────┘
 ```
+
+### Components
+
+| Component | Description |
+|-----------|-------------|
+| **Client** | Submits tasks to the scheduler using the Scaler API |
+| **Scheduler** | Distributes tasks to available workers via ZMQ streaming |
+| **AWSBatchWorker** | Process that connects to scheduler, routes messages to TaskManager |
+| **AWSHPCTaskManager** | Handles task queuing, priority, concurrency control, and AWS Batch job submission |
+| **HeartbeatManager** | Sends periodic heartbeats to scheduler with worker status |
+| **S3 Bucket** | Stores task payloads (for large tasks) and job results |
+| **AWS Batch** | Executes tasks as containerized jobs on EC2 compute environment |
 
 ## Payload Handling
 
@@ -50,11 +62,21 @@ Payloads > 4KB are automatically compressed with gzip before submission.
 
 ## Step 1: Provision AWS Resources (Host Only)
 
+> **⚠️ Note:** This provisioner creates resources for quick testing and development purposes only. 
+> For production deployments, use your organization's infrastructure-as-code tools (CloudFormation, CDK, Terraform) 
+> with proper security configurations, VPC settings, and resource tagging.
+
+**Prerequisites for this step:**
+1. Valid AWS credentials with sufficient permissions (S3, IAM, ECR, Batch, EC2)
+2. Docker daemon is running
+
 This step builds the Docker image, pushes it to ECR, and creates all AWS Batch resources:
 
 ```bash
 # Create a temporary venv for provisioning (if not already created)
 python3 -m venv .venv-provision
+
+# Install boto3 in the provisioning venv
 .venv-provision/bin/pip install boto3
 
 # Provision all resources (builds image automatically)
@@ -160,7 +182,7 @@ sleep 2
 # Load AWS config from provisioning
 source .scaler_aws_hpc.env
 
-# Start AWS Batch worker adapter in background
+# Start AWS Batch worker in background (default job timeout: 60 minutes)
 python -m scaler.entry_points.worker_adapter_aws_hpc \
     --scheduler-address tcp://127.0.0.1:2345 \
     --job-queue $SCALER_JOB_QUEUE \
@@ -169,6 +191,11 @@ python -m scaler.entry_points.worker_adapter_aws_hpc \
     --aws-region $SCALER_AWS_REGION \
     --max-concurrent-jobs 100 \
     --log-level INFO &
+
+# To override job timeout (e.g., 10 minutes):
+# python -m scaler.entry_points.worker_adapter_aws_hpc \
+#     ... \
+#     --job-timeout 10 &
 ```
 
 You should see log output indicating both are running.
@@ -316,7 +343,7 @@ Make sure your job definition uses an image with:
 | `--memory` | 2048 | Memory per job (MB, uses 90% of nearest 2048MB multiple) |
 | `--max-vcpus` | 256 | Max vCPUs for compute env |
 | `--instance-types` | default_x86_64 | EC2 instance types (comma-separated) |
-| `--job-timeout` | 3600 | Job timeout in seconds (default: 1 hour) |
+| `--job-timeout` | 60 | Job timeout in minutes (default: 1 hour, overridden by worker at runtime) |
 
 ### Worker Options
 
@@ -328,5 +355,5 @@ Make sure your job definition uses an image with:
 | `--s3-bucket` | required | S3 bucket for task data |
 | `--s3-prefix` | scaler-tasks | S3 prefix |
 | `--max-concurrent-jobs` | 100 | Max concurrent Batch jobs |
-| `--poll-interval` | 1.0 | Job status poll interval (s) |
+| `--job-timeout` | 60 | Job timeout in minutes (default: 1 hour, overrides job definition timeout) |
 | `--aws-region` | us-east-1 | AWS region |

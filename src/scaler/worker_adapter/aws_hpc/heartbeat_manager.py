@@ -34,7 +34,7 @@ class AWSBatchHeartbeatManager(Looper, HeartbeatManager):
 
         self._connector_external: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
-        self._adapter = None  # AWSBatchWorkerAdapter
+        self._task_manager = None  # AWSHPCTaskManager
         self._timeout_manager: Optional[TimeoutManager] = None
 
         self._start_timestamp_ns = 0
@@ -45,12 +45,12 @@ class AWSBatchHeartbeatManager(Looper, HeartbeatManager):
         self,
         connector_external: AsyncConnector,
         connector_storage: AsyncObjectStorageConnector,
-        worker_task_manager,  # AWSBatchWorkerAdapter
+        worker_task_manager,  # AWSHPCTaskManager
         timeout_manager: TimeoutManager,
     ):
         self._connector_external = connector_external
         self._connector_storage = connector_storage
-        self._adapter = worker_task_manager
+        self._task_manager = worker_task_manager
         self._timeout_manager = timeout_manager
 
     async def on_heartbeat_echo(self, heartbeat: WorkerHeartbeatEcho):
@@ -87,10 +87,11 @@ class AWSBatchHeartbeatManager(Looper, HeartbeatManager):
 
         rss_free = psutil.virtual_memory().available
         
-        # Get pending job count from adapter
-        pending_jobs = len(self._adapter._task_id_to_batch_job_id) if self._adapter else 0
-        has_task = pending_jobs > 0
-        task_lock = self._adapter._semaphore.locked() if self._adapter else False
+        # Get pending job count from task manager
+        queued_tasks = self._task_manager.get_queued_size() if self._task_manager else 0
+        processing_tasks = len(self._task_manager._processing_task_ids) if self._task_manager else 0
+        has_task = processing_tasks > 0
+        task_lock = not self._task_manager.can_accept_task() if self._task_manager else False
 
         # Create agent resource (cpu percentage, rss memory)
         agent_resource = Resource.new_msg(cpu=agent_cpu, rss=agent_rss)
@@ -110,7 +111,7 @@ class AWSBatchHeartbeatManager(Looper, HeartbeatManager):
             agent=agent_resource,
             rss_free=rss_free,
             queue_size=self._task_queue_size,
-            queued_tasks=pending_jobs,
+            queued_tasks=queued_tasks + processing_tasks,
             latency_us=self._latency_us,
             task_lock=task_lock,
             processors=[processor_status],

@@ -2,7 +2,7 @@
 Entry point for AWS HPC Worker Adapter.
 
 Supports multiple AWS HPC backends:
-- batch: AWS Batch (Fargate/EC2)
+- batch: AWS Batch (EC2 compute environment)
 - (future) parallelcluster: AWS ParallelCluster
 - (future) lambda: AWS Lambda
 """
@@ -78,10 +78,10 @@ def parse_args():
         help="Maximum concurrent jobs"
     )
     parser.add_argument(
-        "--poll-interval",
-        type=float,
-        default=1.0,
-        help="Job status poll interval in seconds"
+        "--job-timeout",
+        type=int,
+        default=60,
+        help="Job timeout in minutes (default: 60 = 1 hour)"
     )
     parser.add_argument(
         "--heartbeat-interval",
@@ -115,7 +115,7 @@ def parse_args():
 
 
 def create_batch_worker(args, scheduler_address, object_storage_address):
-    """Create AWS Batch worker."""
+    """Create AWS Batch worker with TaskManager."""
     from scaler.worker_adapter.aws_hpc.worker import AWSBatchWorker
     
     # Validate required args for batch backend
@@ -135,10 +135,10 @@ def create_batch_worker(args, scheduler_address, object_storage_address):
         aws_region=args.aws_region,
         s3_bucket=args.s3_bucket,
         s3_prefix=args.s3_prefix,
-        max_concurrent_jobs=args.max_concurrent_jobs,
-        poll_interval_seconds=args.poll_interval,
+        base_concurrency=args.max_concurrent_jobs,
         heartbeat_interval_seconds=args.heartbeat_interval,
         death_timeout_seconds=args.death_timeout,
+        job_timeout_seconds=args.job_timeout * 60,  # convert minutes to seconds
     )
 
 
@@ -178,6 +178,7 @@ def main():
         logging.info(f"  Job Definition: {args.job_definition}")
         logging.info(f"  S3: s3://{args.s3_bucket}/{args.s3_prefix}")
     logging.info(f"  Max Concurrent Jobs: {args.max_concurrent_jobs}")
+    logging.info(f"  Job Timeout: {args.job_timeout} minutes")
     
     worker.start()
     worker.join()

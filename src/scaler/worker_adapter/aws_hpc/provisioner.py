@@ -773,7 +773,7 @@ def main():
     parser.add_argument("--memory", type=int, default=2048, help="Memory per job (MB, will use 90%% of nearest 2048MB multiple)")
     parser.add_argument("--max-vcpus", type=int, default=256, help="Max vCPUs for compute env")
     parser.add_argument("--instance-types", default="default_x86_64", help="Comma-separated instance types")
-    parser.add_argument("--job-timeout", type=int, default=3600, help="Job timeout in seconds (default: 3600 = 1 hour)")
+    parser.add_argument("--job-timeout", type=int, default=60, help="Job timeout in minutes (default: 60 = 1 hour)")
     parser.add_argument("--config", default=DEFAULT_CONFIG_FILE, help="Config file path")
     parser.add_argument("--env-file", default=".scaler_aws_hpc.env", help="Env file path")
     
@@ -819,7 +819,7 @@ def main():
             memory_mb=args.memory,
             max_vcpus=args.max_vcpus,
             instance_types=instance_types,
-            job_timeout_seconds=args.job_timeout,
+            job_timeout_seconds=args.job_timeout * 60,  # convert minutes to seconds
         )
         AWSBatchProvisioner.save_config(result, args.config)
         AWSBatchProvisioner.save_env_file(result, args.env_file)

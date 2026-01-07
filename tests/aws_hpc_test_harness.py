@@ -1,161 +1,128 @@
 #!/usr/bin/env python3
 """
-AWS Batch Worker Adapter Test Harness.
+AWS HPC Worker Adapter Test Harness.
 
-Tests the AWS Batch worker adapter with simple tasks, map operations,
-and compute-intensive tasks.
+Validates the AWS Batch worker adapter by submitting tasks to a running scheduler.
 
 Usage:
-    python tests/aws_batch_test_harness.py --scheduler tcp://127.0.0.1:2345 --test all
-    python tests/aws_batch_test_harness.py --scheduler tcp://127.0.0.1:2345 --test simple
+    python tests/aws_hpc_test_harness.py --scheduler tcp://127.0.0.1:2345 --test all
+    python tests/aws_hpc_test_harness.py --scheduler tcp://127.0.0.1:2345 --test sqrt
 """
 
 import argparse
+import math
 import sys
-import time
 
 from scaler import Client
 
-# EC2 cold start can take 2-3 minutes, so use a generous timeout
-DEFAULT_TIMEOUT = 300  # 5 minutes
+DEFAULT_TIMEOUT = 300  # 5 minutes (EC2 cold start can take 2-3 min)
 
 
 def simple_task(x: int) -> int:
-    """Simple task that doubles the input."""
     return x * 2
 
 
-def square(x: int) -> int:
-    """Square a number."""
-    return x * x
-
-
 def compute_task(n: int) -> float:
-    """Compute-intensive task: sum of squares."""
     total = 0.0
     for i in range(n):
         total += i * i * 0.01
     return total
 
 
+def run_sqrt_test(client: Client, timeout: int) -> bool:
+    """Test math.sqrt(16) -> 4.0"""
+    print("\n--- Test: sqrt ---")
+    print("  Submitting: math.sqrt(16)")
+    try:
+        future = client.submit(math.sqrt, 16)
+        result = future.result(timeout=timeout)
+        print(f"  Result: {result}")
+        passed = result == 4.0
+        print(f"  {'PASSED' if passed else 'FAILED: expected 4.0'}")
+        return passed
+    except Exception as e:
+        print(f"  FAILED: {e}")
+        return False
+
+
 def run_simple_test(client: Client, timeout: int) -> bool:
-    """Run a simple test with one task."""
-    print("\n--- Test: Simple Task ---")
+    """Test simple_task(21) -> 42"""
+    print("\n--- Test: simple ---")
+    print("  Submitting: simple_task(21) [returns x * 2]")
     try:
         future = client.submit(simple_task, 21)
         result = future.result(timeout=timeout)
         print(f"  Result: {result}")
-        if result == 42:
-            print("  PASSED")
-            return True
-        else:
-            print(f"  FAILED: Expected 42, got {result}")
-            return False
+        passed = result == 42
+        print(f"  {'PASSED' if passed else 'FAILED: expected 42'}")
+        return passed
     except Exception as e:
         print(f"  FAILED: {e}")
         return False
 
 
 def run_map_test(client: Client, timeout: int) -> bool:
-    """Run a map test with multiple tasks."""
-    print("\n--- Test: Map Tasks ---")
+    """Test client.map with 5 tasks"""
+    print("\n--- Test: map ---")
+    print("  Submitting: client.map(simple_task, [0,1,2,3,4])")
     try:
-        inputs = list(range(5))
-        # client.map() returns results directly, not futures
-        results = client.map(simple_task, [(x,) for x in inputs])
+        results = client.map(simple_task, [(x,) for x in range(5)])
         print(f"  Results: {results}")
         expected = [0, 2, 4, 6, 8]
-        if results == expected:
-            print("  PASSED")
-            return True
-        else:
-            print(f"  FAILED: Expected {expected}, got {results}")
-            return False
+        passed = results == expected
+        print(f"  {'PASSED' if passed else f'FAILED: expected {expected}'}")
+        return passed
     except Exception as e:
         print(f"  FAILED: {e}")
         return False
 
 
 def run_compute_test(client: Client, timeout: int) -> bool:
-    """Run a compute-intensive test."""
-    print("\n--- Test: Compute Task ---")
+    """Test compute-intensive task"""
+    print("\n--- Test: compute ---")
+    print("  Submitting: compute_task(1000) [sum of i*i*0.01 for i in range(1000)]")
     try:
         future = client.submit(compute_task, 1000)
         result = future.result(timeout=timeout)
         print(f"  Result: {result:.2f}")
-        # Expected: sum of i*i*0.01 for i in range(1000) = 332833500 * 0.01 = 3328335.0
-        if 3000000 < result < 4000000:
-            print("  PASSED")
-            return True
-        else:
-            print(f"  FAILED: Result out of expected range")
-            return False
+        passed = 3000000 < result < 4000000
+        print(f"  {'PASSED' if passed else 'FAILED: result out of expected range'}")
+        return passed
     except Exception as e:
         print(f"  FAILED: {e}")
         return False
 
 
-def main():
-    parser = argparse.ArgumentParser(description="AWS Batch Worker Adapter Test Harness")
-    parser.add_argument(
-        "--scheduler",
-        type=str,
-        default="tcp://127.0.0.1:2345",
-        help="Scheduler address (default: tcp://127.0.0.1:2345)",
-    )
-    parser.add_argument(
-        "--test",
-        type=str,
-        default="all",
-        choices=["all", "simple", "map", "compute"],
-        help="Test to run (default: all)",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=DEFAULT_TIMEOUT,
-        help=f"Timeout in seconds for each task (default: {DEFAULT_TIMEOUT})",
-    )
+TESTS = {
+    "sqrt": run_sqrt_test,
+    "simple": run_simple_test,
+    "map": run_map_test,
+    "compute": run_compute_test,
+}
 
+
+def main():
+    parser = argparse.ArgumentParser(description="AWS HPC Worker Adapter Test Harness")
+    parser.add_argument("--scheduler", default="tcp://127.0.0.1:2345", help="Scheduler address")
+    parser.add_argument("--test", default="all", choices=["all"] + list(TESTS.keys()), help="Test to run")
+    parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT, help="Timeout per task (seconds)")
     args = parser.parse_args()
 
     print("=" * 50)
-    print("AWS Batch Worker Adapter Test Harness")
+    print("AWS HPC Worker Adapter Test Harness")
     print("=" * 50)
     print(f"Scheduler: {args.scheduler}")
-    print(f"Timeout: {args.timeout}s")
 
     try:
         with Client(address=args.scheduler) as client:
             print("Connected to scheduler")
 
-            tests = {
-                "simple": run_simple_test,
-                "map": run_map_test,
-                "compute": run_compute_test,
-            }
-
-            if args.test == "all":
-                tests_to_run = list(tests.keys())
-            else:
-                tests_to_run = [args.test]
-
-            passed = 0
-            total = len(tests_to_run)
-
-            for test_name in tests_to_run:
-                if tests[test_name](client, args.timeout):
-                    passed += 1
+            tests_to_run = list(TESTS.keys()) if args.test == "all" else [args.test]
+            passed = sum(1 for t in tests_to_run if TESTS[t](client, args.timeout))
 
             print("\n" + "=" * 50)
-            print(f"Results: {passed}/{total} passed")
-
-            if passed == total:
-                print("All tests passed!")
-                sys.exit(0)
-            else:
-                print("Some tests failed.")
-                sys.exit(1)
+            print(f"Results: {passed}/{len(tests_to_run)} passed")
+            sys.exit(0 if passed == len(tests_to_run) else 1)
 
     except Exception as e:
         print(f"Error: {e}")
