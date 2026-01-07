@@ -13,11 +13,10 @@
 #include "scaler/uv/loop.h"
 #include "scaler/uv/socket_address.h"
 #include "scaler/uv/tcp.h"
-#include "utility.h"
+#include "utility.h"  // exitOnFailure
 
 using namespace scaler;
 
-const int DEFAULT_PORT    = 7000;
 const int DEFAULT_BACKLOG = 128;
 
 class TCPEchoServer {
@@ -28,6 +27,8 @@ public:
         exitOnFailure(server_.bind(address, uv_tcp_flags(0)));
         exitOnFailure(server_.listen(DEFAULT_BACKLOG, std::bind_front(&TCPEchoServer::onNewConnection, this)));
     }
+
+    uv::SocketAddress address() { return exitOnFailure(server_.getSockName()); }
 
 private:
     uv::Loop& loop_;
@@ -51,13 +52,12 @@ private:
 
         std::span<uint8_t> readBuffer = readResult.value();
 
-        // Copy the buffer to ensure it lives until the write operation completes
-        std::vector<uint8_t> writeBuffer(readBuffer.begin(), readBuffer.end());
+        // Copies the received buffer into a std::vector that will be shared with the write callback, to
+        // ensure the written bytes will not be freed until the write completes.
+        auto buffer = std::make_shared<std::vector<uint8_t>>(readBuffer.cbegin(), readBuffer.cend());
 
         exitOnFailure(client->write(
-            writeBuffer, [writeBuffer = std::move(writeBuffer)](std::expected<void, uv::Error> writeResult) {
-                exitOnFailure(std::move(writeResult));
-            }));
+            *buffer, [buffer](std::expected<void, uv::Error> writeResult) { exitOnFailure(std::move(writeResult)); }));
     }
 };
 
@@ -66,13 +66,10 @@ int main()
     // Initialize the event loop
     uv::Loop loop = exitOnFailure(uv::Loop::init());
 
-    // Create server address
-    uv::SocketAddress address = exitOnFailure(uv::SocketAddress::IPv4("0.0.0.0", DEFAULT_PORT));
+    // Initialize the echo server
+    TCPEchoServer server(loop, exitOnFailure(uv::SocketAddress::IPv4("0.0.0.0", 0)));
 
-    std::cout << "TCP echo server listening on " << exitOnFailure(address.toString()) << "\n";
-
-    // Create and run the echo server
-    TCPEchoServer server(loop, address);
+    std::cout << "TCP echo server listening on " << exitOnFailure(server.address().toString()) << "\n";
 
     // Run the event loop
     loop.run(UV_RUN_DEFAULT);

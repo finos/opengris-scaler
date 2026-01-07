@@ -46,9 +46,19 @@ public:
         return {};
     }
 
+    // Triggers an early release of the libuv request object.
+    //
+    // This is useful when the managed request object is no longer needed, and the callback will never be called, for
+    // example on an early syscall error.
+    void release() noexcept
+    {
+        _holder->self = nullptr;
+        _holder.reset();
+    }
+
     // The libuv callback to register when calling uv_write(), uv_read(), uv_shutdown()...
     //
-    // This will call then release the callback provided to the object's constructor.
+    // This will call then release the C++ callback provided to this object's constructor.
     static void onCallback(NativeRequestType* request, CallbackArgs... args) noexcept
     {
         Holder* holder = static_cast<Holder*>(request->data);
