@@ -1,4 +1,6 @@
 #pragma once
+#include <format>
+#include <string_view>
 #include <utility>
 
 struct sockaddr;
@@ -40,3 +42,17 @@ struct SocketAddress {
 
 };  // namespace ymq
 };  // namespace scaler
+
+template <>
+struct std::formatter<scaler::ymq::SocketAddress::Type>: std::formatter<std::string_view> {
+    auto format(scaler::ymq::SocketAddress::Type type, std::format_context& ctx) const
+    {
+        switch (type) {
+            case scaler::ymq::SocketAddress::Type::DEFAULT: return formatter<std::string_view>::format("DEFAULT", ctx);
+            case scaler::ymq::SocketAddress::Type::IPC: return formatter<std::string_view>::format("IPC", ctx);
+            case scaler::ymq::SocketAddress::Type::TCP: return formatter<std::string_view>::format("TCP", ctx);
+        }
+
+        std::unreachable();
+    }
+};

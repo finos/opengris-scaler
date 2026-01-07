@@ -55,18 +55,16 @@ const LONGLONG ns_per_unit   = 100LL;  // 1 unit = 100 nanoseconds
 #include <exception>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <optional>
 #include <string>
-#include <system_error>
-#include <thread>
 #include <utility>
-#include <vector>
 
 #include "tests/cpp/ymq/common/utils.h"
-#include "tests/cpp/ymq/net/socket.h"
 #include "tests/cpp/ymq/pipe/pipe.h"
+#include "tests/cpp/ymq/pipe/pipe_writer.h"
 
 using namespace std::chrono_literals;
 
@@ -116,7 +114,7 @@ inline void fork_wrapper(std::function<TestResult()> fn, int timeout_secs, PipeW
         result = TestResult::Failure;
     }
 
-    pipe_wr.write_all((char*)&result, sizeof(TestResult));
+    pipe_wr.writeAll((char*)&result, sizeof(TestResult));
 
 #ifdef _WIN32
     SetEvent((HANDLE)hEvent);
@@ -425,7 +423,7 @@ end:
         TestResult result = TestResult::Failure;
         char buffer       = 0;
         try {
-            pipe.reader.read_exact(&buffer, sizeof(TestResult));
+            pipe.reader.readExact(&buffer, sizeof(TestResult));
             result = (TestResult)buffer;
         } catch (const std::system_error& e) {
             std::cout << "failed to read from pipe: " << e.what() << std::endl;
@@ -533,7 +531,6 @@ inline void maybe_finalize_python()
 
 inline TestResult run_python(const char* path, std::vector<std::optional<std::string>> argv = {})
 {
-    // ensure_python_initialized();
     PyGILState_STATE gstate = PyGILState_Ensure();
 
 // insert the pid at the start of the argv, this is important for signalling readiness

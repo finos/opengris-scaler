@@ -40,7 +40,7 @@ int PipeReader::read(void* buffer, size_t size) const
     return bytes_read;
 }
 
-void PipeReader::read_exact(void* buffer, size_t size) const
+void PipeReader::readExact(void* buffer, size_t size) const
 {
     size_t cursor = 0;
     while (cursor < size)
