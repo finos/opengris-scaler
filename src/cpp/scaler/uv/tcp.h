@@ -15,7 +15,7 @@ namespace scaler {
 namespace uv {
 
 // See uv_tcp_t
-class TCPSocket: public ConnectingStream<uv_tcp_t> {
+class TCPSocket: public Stream<uv_tcp_t> {
 public:
     // See uv_tcp_init
     static std::expected<TCPSocket, Error> init(Loop& loop) noexcept;
@@ -34,13 +34,16 @@ private:
 };
 
 // See uv_tcp_t
-class TCPServer: public ServerStream<uv_tcp_t, TCPSocket> {
+class TCPServer: public StreamServer<uv_tcp_t, TCPSocket> {
 public:
     // See uv_tcp_init
     static std::expected<TCPServer, Error> init(Loop& loop) noexcept;
 
     // See uv_tcp_bind
     std::expected<void, Error> bind(const SocketAddress& address, uv_tcp_flags flags) noexcept;
+
+    // See uv_tcp_getsockname
+    std::expected<SocketAddress, Error> getSockName() const noexcept;
 
 private:
     TCPServer() noexcept = default;

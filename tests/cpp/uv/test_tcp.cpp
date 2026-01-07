@@ -50,27 +50,29 @@ TEST_F(UVTCPTest, SocketAddress)
 
 class TCPEchoServer {
 public:
-    static const SocketAddress ADDRESS;
-
     TCPEchoServer(Loop& loop): _loop(loop), _server(expectSuccess(TCPServer::init(loop)))
     {
-        expectSuccess(_server.bind(ADDRESS, uv_tcp_flags(0)));
-        expectSuccess(_server.listen(16, [this](std::expected<void, Error>&& result) {
-            expectSuccess(result);
+        SocketAddress address = expectSuccess(SocketAddress::IPv4("127.0.0.1", 0));
 
-            auto client = std::make_shared<TCPSocket>(std::move(expectSuccess(TCPSocket::init(_loop))));
-
-            expectSuccess(_server.accept(*client));
-
-            expectSuccess(client->readStart(std::bind_front(onClientRead, client)));
-        }));
+        expectSuccess(_server.bind(address, uv_tcp_flags(0)));
+        expectSuccess(_server.listen(16, std::bind_front(&TCPEchoServer::onClientConnected, this)));
     }
 
-    void shutdown(ShutdownCallback&& callback) { _server.shutdown(std::move(callback)); }
+    SocketAddress address() const { return expectSuccess(_server.getSockName()); }
 
 private:
     Loop& _loop;
     TCPServer _server;
+
+    void onClientConnected(std::expected<void, Error>&& result)
+    {
+        expectSuccess(result);
+
+        auto client = std::make_shared<TCPSocket>(std::move(expectSuccess(TCPSocket::init(_loop))));
+        expectSuccess(_server.accept(*client));
+
+        expectSuccess(client->readStart(std::bind_front(onClientRead, client)));
+    }
 
     static void onClientRead(std::shared_ptr<TCPSocket> client, std::expected<std::span<uint8_t>, Error>&& readResult)
     {
@@ -82,16 +84,14 @@ private:
 
         std::span<uint8_t> readBuffer = expectSuccess(readResult);
 
-        // Copies the short-lived received buffer into a std::vector that will be owned by the write callback.
-        std::vector<uint8_t> buffer {readBuffer.cbegin(), readBuffer.cend()};
+        // Copies the received buffer into a std::vector that will be shared with the write callback, to
+        // ensure the written bytes will not be freed until the write completes.
+        auto buffer = std::make_shared<std::vector<uint8_t>>(readBuffer.cbegin(), readBuffer.cend());
 
-        expectSuccess(client->write(buffer, [buffer = std::move(buffer)](std::expected<void, Error>&& result) {
-            expectSuccess<void>(std::move(result));
-        }));
+        expectSuccess(client->write(
+            *buffer, [buffer](std::expected<void, Error>&& result) { expectSuccess<void>(std::move(result)); }));
     }
 };
-
-const SocketAddress TCPEchoServer::ADDRESS = expectSuccess(SocketAddress::IPv4("127.0.0.1", 29518));
 
 TEST_F(UVTCPTest, TCP)
 {
@@ -122,13 +122,12 @@ TEST_F(UVTCPTest, TCP)
         expectSuccess(client.getPeerName());
 
         expectSuccess(client.readStart(onClientRead));
+
+        // Send the message to the server
+        expectSuccess(client.write(message, &expectSuccess<void>));
     };
 
-    expectSuccess(client.connect(TCPEchoServer::ADDRESS, onClientConnected));
-
-    // Send a message to the server
-
-    client.write(message, &expectSuccess<void>);
+    expectSuccess(client.connect(server.address(), onClientConnected));
 
     // Loop until the echo response is received
 
@@ -136,12 +135,5 @@ TEST_F(UVTCPTest, TCP)
         loop.run(UV_RUN_ONCE);
     }
 
-    // Shutdown
-
     client.readStop();
-    client.shutdown(&expectSuccess<void>);
-
-    server.shutdown(&expectSuccess<void>);
-
-    loop.run(UV_RUN_ONCE);
 }

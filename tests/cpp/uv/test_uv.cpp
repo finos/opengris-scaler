@@ -65,14 +65,22 @@ TEST_F(UVTest, Handle)
 {
     scaler::uv::Loop loop = expectSuccess(scaler::uv::Loop::init());
 
-    scaler::uv::Handle<uv_timer_t, std::string> handle;
-    uv_timer_init(&loop.native(), &handle.native());
+    {
+        scaler::uv::Handle<uv_timer_t, std::string> handle;
+        uv_timer_init(&loop.native(), &handle.native());
 
-    handle.setData("Some data");
-    ASSERT_EQ(handle.data(), "Some data");
+        handle.setData("Some data");
+        ASSERT_EQ(handle.data(), "Some data");
 
-    handle.setData("Some other data");
-    ASSERT_EQ(handle.data(), "Some other data");
+        handle.setData("Some other data");
+        ASSERT_EQ(handle.data(), "Some other data");
+    }
+
+    // Running the loop again should close the now destructed handle.
+    {
+        int nActiveHandles = loop.run(UV_RUN_NOWAIT);
+        ASSERT_EQ(nActiveHandles, 0);
+    }
 }
 
 TEST_F(UVTest, Loop)

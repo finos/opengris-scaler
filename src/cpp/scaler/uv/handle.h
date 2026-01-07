@@ -65,7 +65,7 @@ private:
                 delete data;
             }
 
-            delete handle;
+            delete reinterpret_cast<NativeHandleType*>(handle);
         });
     }
 
