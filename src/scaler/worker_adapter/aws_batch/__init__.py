@@ -1,1 +1,0 @@
-# AWS Batch Worker Adapter for OpenGRIS Scaler
