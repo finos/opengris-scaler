@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import pickle
 from concurrent.futures import Future
 from typing import Dict, Optional, Set, cast
 
@@ -109,7 +110,6 @@ class AWSBatchTaskManager(Looper, TaskManager):
         """
         print(f"*** AWS BATCH TASK MANAGER: on_task_new() invoked for task {task.task_id.hex()[:8]} ***")
         # Pickle task object to file for debugging
-        import pickle
         task_file = "/tmp/debug_task.pkl"
         with open(task_file, 'wb') as f:
             pickle.dump(task, f)
@@ -281,13 +281,20 @@ class AWSBatchTaskManager(Looper, TaskManager):
         # Fetches the function object and the argument objects concurrently
         get_tasks = [
             self._connector_storage.get_object(object_id)
-            for object_id in [task.func_object_id, *(ObjectID(arg) for arg in task.function_args)]
+            for object_id in [task.func_object_id, *(cast(ObjectID, arg) for arg in task.function_args)]
         ]
 
         function_bytes, *arg_bytes = await asyncio.gather(*get_tasks)
 
         function = serializer.deserialize(function_bytes)
         arg_objects = [serializer.deserialize(object_bytes) for object_bytes in arg_bytes]
+        
+        # Pickle function and args for debugging
+        with open('/tmp/debug_function.pkl', 'wb') as f:
+            pickle.dump(function, f)
+        with open('/tmp/debug_args.pkl', 'wb') as f:
+            pickle.dump(arg_objects, f)
+        print(f"DEBUG: Function and args pickled to /tmp/debug_function.pkl and /tmp/debug_args.pkl")
 
         # TODO: Submit to AWS Batch instead of executing locally
         # For now, execute locally for testing
