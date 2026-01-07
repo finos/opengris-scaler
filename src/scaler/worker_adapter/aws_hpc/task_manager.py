@@ -208,7 +208,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
     async def resolve_tasks(self):
         """Resolve completed task futures and handle results."""
         if not self._task_id_to_future:
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.1)  # Small sleep to avoid CPU spin when idle
             return
 
         done, _ = await asyncio.wait(self._task_id_to_future.values(), return_when=asyncio.FIRST_COMPLETED)
