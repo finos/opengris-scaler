@@ -118,7 +118,7 @@ class AWSBatchTaskManager(Looper, TaskManager):
         # Store task and execute immediately
         self._task_id_to_task[task.task_id] = task
         self._processing_task_ids.add(task.task_id)
-        self._task_id_to_future[task.task_id] = await self.__execute_task(task)
+        self._task_id_to_future[task.task_id] = await self.__execute_task_local(task)
 
     async def on_cancel_task(self, task_cancel: TaskCancel):
         """Handle task cancellation requests."""
@@ -257,9 +257,9 @@ class AWSBatchTaskManager(Looper, TaskManager):
 
         self._acquiring_task_ids.add(task_id)
         self._processing_task_ids.add(task_id)
-        self._task_id_to_future[task.task_id] = await self.__execute_task(task)
+        self._task_id_to_future[task.task_id] = await self.__execute_task_local(task)
 
-    async def __execute_task(self, task: Task) -> asyncio.Future:
+    async def __execute_task_local(self, task: Task) -> asyncio.Future:
         """
         Execute a task via AWS Batch job submission.
         
@@ -308,6 +308,24 @@ class AWSBatchTaskManager(Looper, TaskManager):
             future.set_exception(e)
 
         return asyncio.wrap_future(future)
+
+    async def _submit_batch_job(self, task: Task) -> asyncio.Future:
+        """
+        Submit a task to AWS Batch and return a future that resolves when complete.
+        
+        Args:
+            task: The task to submit to AWS Batch
+            
+        Returns:
+            asyncio.Future: Future that will resolve when the batch job completes
+        """
+        # TODO: Implement AWS Batch job submission
+        # 1. Prepare task data for batch job
+        # 2. Submit job using batch_client.submit_job()
+        # 3. Store job ID for tracking
+        # 4. Start monitoring job status
+        # 5. Return future that resolves when job completes
+        raise NotImplementedError("AWS Batch job submission is not yet implemented")
 
     async def _cancel_batch_job(self, job_id: str):
         """Cancel an AWS Batch job."""
