@@ -1,4 +1,3 @@
-
 #include <gtest/gtest.h>
 #include <uv.h>
 
@@ -9,6 +8,7 @@
 #include "scaler/uv/async.h"
 #include "scaler/uv/error.h"
 #include "scaler/uv/loop.h"
+#include "scaler/uv/request.h"
 #include "scaler/uv/signal.h"
 #include "scaler/uv/timer.h"
 
@@ -115,6 +115,21 @@ TEST_F(UVTest, Loop)
         ASSERT_EQ(nActiveHandles, 1);
         ASSERT_EQ(nTimesCalled, 0);
     }
+}
+
+TEST_F(UVTest, Request)
+{
+    // Mock a write request
+
+    int nTimesCalled = 0;
+
+    using WriteRequest = Request<uv_write_t, int>;
+
+    WriteRequest request {[&](uv_write_t* request, int status) { ++nTimesCalled; }};
+
+    WriteRequest::onCallback(&request.native(), UV_EOVERFLOW);
+
+    ASSERT_EQ(nTimesCalled, 1);
 }
 
 TEST_F(UVTest, Signal)
