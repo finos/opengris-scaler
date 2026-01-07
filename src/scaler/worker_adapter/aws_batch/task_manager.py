@@ -109,6 +109,13 @@ class AWSBatchTaskManager(Looper, TaskManager):
         """
         print(f"*** AWS BATCH TASK MANAGER: on_task_new() invoked for task {task.task_id.hex()[:8]} ***")
         
+        # Pickle task object to file for debugging
+        import pickle
+        task_file = "/tmp/debug_task.pkl"
+        with open(task_file, 'wb') as f:
+            pickle.dump(task, f)
+        print(f"DEBUG: Task pickled to {task_file}")
+        
         # Store task and execute immediately
         self._task_id_to_task[task.task_id] = task
         self._processing_task_ids.add(task.task_id)
