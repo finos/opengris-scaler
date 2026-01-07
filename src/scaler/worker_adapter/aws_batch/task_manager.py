@@ -282,7 +282,7 @@ class AWSBatchTaskManager(Looper, TaskManager):
         # Fetches the function object and the argument objects concurrently
         get_tasks = [
             self._connector_storage.get_object(object_id)
-            for object_id in [task.function_object_id, *(ObjectID(arg) for arg in task.function_args)]
+            for object_id in [task.func_object_id, *(cast(ObjectID, arg) for arg in task.function_args)]
         ]
 
         function_bytes, *arg_bytes = await asyncio.gather(*get_tasks)
