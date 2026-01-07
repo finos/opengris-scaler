@@ -215,25 +215,33 @@ python tests/aws_hpc_test_harness.py \
 Expected output:
 ```
 ==================================================
-AWS Batch Worker Adapter Test Harness
+AWS HPC Worker Adapter Test Harness
 ==================================================
 Scheduler: tcp://127.0.0.1:2345
 Connected to scheduler
 
---- Test: Simple Task ---
+--- Test: sqrt ---
+  Submitting: math.sqrt(16)
+  Result: 4.0
+  PASSED
+
+--- Test: simple ---
+  Submitting: simple_task(21) [returns x * 2]
   Result: 42
   PASSED
 
---- Test: Map Tasks ---
+--- Test: map ---
+  Submitting: client.map(simple_task, [0,1,2,3,4])
   Results: [0, 2, 4, 6, 8]
   PASSED
 
---- Test: Compute Task ---
+--- Test: compute ---
+  Submitting: compute_task(1000) [sum of i*i*0.01 for i in range(1000)]
   Result: 3328335.00
   PASSED
 
 ==================================================
-Results: 3/3 passed
+Results: 4/4 passed
 ```
 
 ---
