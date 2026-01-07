@@ -94,10 +94,26 @@ This creates:
 - EC2 compute environment
 - Job queue and job definition
 - `.scaler_aws_hpc.env` file with configuration
+- `.scaler_aws_batch_config.json` file with full resource details (used for cleanup)
 
 **Memory Configuration:**
 Memory is rounded to the nearest multiple of 2048MB and 90% is allocated to the container.
 For example, `--memory 4000` → 4096MB total → 3686MB effective.
+
+### Using Existing Infrastructure
+
+If you already have AWS Batch resources (created via CloudFormation, CDK, Terraform, etc.), skip the provisioner and create `.scaler_aws_hpc.env` manually:
+
+```bash
+cat > .scaler_aws_hpc.env << 'EOF'
+export SCALER_AWS_REGION="us-east-1"
+export SCALER_S3_BUCKET="your-existing-bucket"
+export SCALER_JOB_QUEUE="your-existing-queue"
+export SCALER_JOB_DEFINITION="your-existing-job-def"
+EOF
+```
+
+Then continue from Step 2. The `.scaler_aws_batch_config.json` file is only needed for the provisioner's `cleanup` command.
 
 ---
 
