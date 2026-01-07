@@ -108,7 +108,6 @@ class AWSBatchTaskManager(Looper, TaskManager):
         Just execute the task directly without queuing or priority logic.
         """
         print(f"*** AWS BATCH TASK MANAGER: on_task_new() invoked for task {task.task_id.hex()[:8]} ***")
-        
         # Pickle task object to file for debugging
         import pickle
         task_file = "/tmp/debug_task.pkl"
