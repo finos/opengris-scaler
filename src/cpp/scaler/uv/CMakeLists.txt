@@ -1,5 +1,15 @@
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(libuv REQUIRED IMPORTED_TARGET libuv)
+# Try to find libuv via CMake config first (works on Windows when libuv is built via CMake)
+find_package(libuv CONFIG QUIET)
+
+if(libuv_FOUND)
+    # libuv found via CMake config
+    set(LIBUV_TARGET libuv::uv)
+else()
+    # Fall back to pkg-config (works on Linux/macOS)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(libuv REQUIRED IMPORTED_TARGET libuv)
+    set(LIBUV_TARGET PkgConfig::libuv)
+endif()
 
 add_library(scaler_uv OBJECT
     async.h
@@ -28,4 +38,4 @@ add_library(scaler_uv OBJECT
     timer.cpp
 )
 
-target_link_libraries(scaler_uv PUBLIC PkgConfig::libuv)
+target_link_libraries(scaler_uv PUBLIC ${LIBUV_TARGET})
