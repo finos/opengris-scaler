@@ -132,6 +132,7 @@ class AWSBatchProvisioner:
     def save_config(config: dict, config_file: str = DEFAULT_CONFIG_FILE):
         """Save provisioned config to file."""
         path = Path(config_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
             json.dump(config, f, indent=2)
         logging.info(f"Config saved to {path.absolute()}")
@@ -157,6 +158,7 @@ class AWSBatchProvisioner:
     def save_env_file(config: dict, env_file: str = ".scaler_aws_hpc.env"):
         """Save config as sourceable shell env file."""
         path = Path(env_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
             f.write(f"export SCALER_AWS_REGION=\"{config['aws_region']}\"\n")
             f.write(f"export SCALER_S3_BUCKET=\"{config['s3_bucket']}\"\n")
@@ -776,8 +778,8 @@ def main():
     parser.add_argument("--max-vcpus", type=int, default=256, help="Max vCPUs for compute env")
     parser.add_argument("--instance-types", default="default_x86_64", help="Comma-separated instance types")
     parser.add_argument("--job-timeout", type=int, default=60, help="Job timeout in minutes (default: 60 = 1 hour)")
-    parser.add_argument("--config", default=DEFAULT_CONFIG_FILE, help="Config file path")
-    parser.add_argument("--env-file", default=".scaler_aws_hpc.env", help="Env file path")
+    parser.add_argument("--config", default="tests/worker_adapter/aws_hpc/.scaler_aws_batch_config.json", help="Config file path")
+    parser.add_argument("--env-file", default="tests/worker_adapter/aws_hpc/.scaler_aws_hpc.env", help="Env file path")
     
     args = parser.parse_args()
     
