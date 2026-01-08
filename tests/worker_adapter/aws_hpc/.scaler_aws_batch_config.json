@@ -1,0 +1,20 @@
+{
+  "aws_region": "us-east-1",
+  "aws_account_id": "614393260192",
+  "prefix": "scaler-batch",
+  "compute_type": "EC2",
+  "s3_bucket": "scaler-batch-614393260192-us-east-1",
+  "s3_prefix": "scaler-tasks",
+  "iam_role_arn": "arn:aws:iam::614393260192:role/scaler-batch-job-role",
+  "compute_environment_arn": "arn:aws:batch:us-east-1:614393260192:compute-environment/scaler-batch-compute",
+  "job_queue_arn": "arn:aws:batch:us-east-1:614393260192:job-queue/scaler-batch-queue",
+  "job_queue_name": "scaler-batch-queue",
+  "job_definition_arn": "arn:aws:batch:us-east-1:614393260192:job-definition/scaler-batch-job:2",
+  "job_definition_name": "scaler-batch-job",
+  "container_image": "614393260192.dkr.ecr.us-east-1.amazonaws.com/scaler-batch-worker:latest",
+  "vcpus": 4,
+  "memory_mb": 7372,
+  "instance_types": [
+    "default_x86_64"
+  ]
+}
