@@ -1,4 +1,5 @@
-find_package(libuv REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(libuv REQUIRED IMPORTED_TARGET libuv)
 
 add_library(scaler_uv OBJECT
     async.h
@@ -27,4 +28,4 @@ add_library(scaler_uv OBJECT
     timer.cpp
 )
 
-target_link_libraries(scaler_uv PUBLIC libuv::uv)
+target_link_libraries(scaler_uv PUBLIC PkgConfig::libuv)
