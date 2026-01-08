@@ -588,8 +588,10 @@ class AWSBatchProvisioner:
         image_uri = f"{self._account_id}.dkr.ecr.{self._region}.amazonaws.com/{repo_name}:latest"
         dockerfile_path = Path(__file__).parent / "Dockerfile.batch"
         
-        # Build from repo root (need src/scaler directory)
-        repo_root = Path(__file__).parent.parent.parent.parent.parent
+        # Build from repo root (Dockerfile expects src/scaler/utility/... paths)
+        # Path(__file__) is: /path/to/repo/src/scaler/utility/worker_adapter/aws_hpc/provisioner.py
+        # Go up 6 levels: provisioner.py -> aws_hpc -> worker_adapter -> utility -> scaler -> src -> repo_root
+        repo_root = Path(__file__).parent.parent.parent.parent.parent.parent
         
         # Build for linux/amd64 (EC2 runs on x86_64)
         build_cmd = [
@@ -597,7 +599,7 @@ class AWSBatchProvisioner:
             "--platform", "linux/amd64",
             "-f", str(dockerfile_path),
             "-t", image_uri,
-            str(repo_root)
+            str(repo_root)  # Use repo root, not src/
         ]
         logging.info(f"Building image for linux/amd64: {image_uri}")
         subprocess.run(build_cmd, check=True)
