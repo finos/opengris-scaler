@@ -12,7 +12,7 @@ std::expected<Loop, Error> Loop::init(std::initializer_list<LoopOption> options)
     // Initialize the loop
     int err = uv_loop_init(&loop.native());
     if (err) {
-        return std::unexpected(Error {err});
+        return std::unexpected {Error {err}};
     }
 
     // Configure loop options if provided
@@ -26,7 +26,7 @@ std::expected<Loop, Error> Loop::init(std::initializer_list<LoopOption> options)
         }
 
         if (err) {
-            return std::unexpected(Error {err});
+            return std::unexpected {Error {err}};
         }
     }
 
@@ -45,7 +45,16 @@ void Loop::stop() noexcept
 
 void Loop::loopDeleter(uv_loop_t* loop) noexcept
 {
-    uv_loop_close(loop);
+    if (uv_loop_alive(loop)) {
+        // Run a non-blocking final iteration.
+        // That's because some handles might still have pending calls to `uv_close()` that were triggered by RAII.
+        int nActiveHandles = uv_run(loop, UV_RUN_NOWAIT);
+        assert(nActiveHandles == 0 && "Loop is still alive");
+    }
+
+    int err = uv_loop_close(loop);
+    assert(!err && "uv_loop_close failed");
+
     delete loop;
 }
 

@@ -5,7 +5,7 @@
 namespace scaler {
 namespace uv {
 
-std::expected<Async, Error> Async::init(Loop& loop, std::optional<Async::Callback>&& callback) noexcept
+std::expected<Async, Error> Async::init(Loop& loop, std::optional<AsyncCallback>&& callback) noexcept
 {
     uv_async_cb nativeCallback;
 
@@ -19,7 +19,7 @@ std::expected<Async, Error> Async::init(Loop& loop, std::optional<Async::Callbac
 
     int err = uv_async_init(&loop.native(), &async._handle.native(), nativeCallback);
     if (err) {
-        return std::unexpected(Error {err});
+        return std::unexpected {Error {err}};
     }
 
     if (callback.has_value()) {
@@ -33,7 +33,7 @@ std::expected<void, Error> Async::send() noexcept
 {
     int err = uv_async_send(&_handle.native());
     if (err) {
-        return std::unexpected(Error {err});
+        return std::unexpected {Error {err}};
     }
 
     return {};
@@ -41,7 +41,8 @@ std::expected<void, Error> Async::send() noexcept
 
 void Async::onAsyncCallback(uv_async_t* async) noexcept
 {
-    Callback* callback = reinterpret_cast<Callback*>(uv_handle_get_data(reinterpret_cast<uv_handle_t*>(async)));
+    AsyncCallback* callback =
+        reinterpret_cast<AsyncCallback*>(uv_handle_get_data(reinterpret_cast<uv_handle_t*>(async)));
 
     assert(callback != nullptr);
 

@@ -1,33 +1,22 @@
-
 #include <gtest/gtest.h>
 #include <uv.h>
 
 #include <chrono>
 #include <string>
-#include <type_traits>
+#include <vector>
 
 #include "scaler/uv/async.h"
 #include "scaler/uv/error.h"
 #include "scaler/uv/loop.h"
+#include "scaler/uv/request.h"
 #include "scaler/uv/signal.h"
 #include "scaler/uv/timer.h"
+#include "tests/cpp/uv/utility.h"
 
 using namespace scaler::uv;
 
 class UVTest: public ::testing::Test {
 protected:
-    // Extract the value from std::expected or fail the test
-    template <typename T>
-    static T expectSuccess(std::expected<T, Error> result)
-    {
-        if (!result.has_value()) {
-            throw std::runtime_error("Operation failed: " + result.error().message());
-        }
-
-        if constexpr (!std::is_void_v<T>) {
-            return std::move(result.value());
-        }
-    }
 };
 
 TEST_F(UVTest, Async)
@@ -78,14 +67,22 @@ TEST_F(UVTest, Handle)
 {
     Loop loop = expectSuccess(Loop::init());
 
-    Handle<uv_timer_t, std::string> handle;
-    uv_timer_init(&loop.native(), &handle.native());
+    {
+        Handle<uv_timer_t, std::string> handle;
+        uv_timer_init(&loop.native(), &handle.native());
 
-    handle.setData("Some data");
-    ASSERT_EQ(handle.data(), "Some data");
+        handle.setData("Some data");
+        ASSERT_EQ(handle.data(), "Some data");
 
-    handle.setData("Some other data");
-    ASSERT_EQ(handle.data(), "Some other data");
+        handle.setData("Some other data");
+        ASSERT_EQ(handle.data(), "Some other data");
+    }
+
+    // Running the loop again should close the now destructed handle.
+    {
+        int nActiveHandles = loop.run(UV_RUN_NOWAIT);
+        ASSERT_EQ(nActiveHandles, 0);
+    }
 }
 
 TEST_F(UVTest, Loop)
@@ -115,6 +112,19 @@ TEST_F(UVTest, Loop)
         ASSERT_EQ(nActiveHandles, 1);
         ASSERT_EQ(nTimesCalled, 0);
     }
+}
+
+TEST_F(UVTest, Request)
+{
+    // Mock a write request
+
+    int nTimesCalled = 0;
+
+    WriteRequest request {[&](int status) { ++nTimesCalled; }};
+
+    WriteRequest::onCallback(&request.native(), UV_EOVERFLOW);
+
+    ASSERT_EQ(nTimesCalled, 1);
 }
 
 TEST_F(UVTest, Signal)

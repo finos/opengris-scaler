@@ -18,10 +18,13 @@ add_library(scaler_uv OBJECT
     signal.h
     signal.cpp
 
-    # stream.h
+    socket_address.h
+    socket_address.cpp
 
-    # tcp.h
-    # tcp.cpp
+    stream.h
+
+    tcp.h
+    tcp.cpp
 
     timer.h
     timer.cpp
