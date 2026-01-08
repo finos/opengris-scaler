@@ -24,5 +24,5 @@ class WorkerAdapterConfig(ConfigClass):
     )
 
     def __post_init__(self) -> None:
-        if self.max_workers != -1 and self.max_workers <= 0:
-            raise ValueError("max_workers must be -1 (no limit) or a positive integer.")
+        if self.max_workers != -1 and self.max_workers < 0:
+            raise ValueError("max_workers must be -1 (no limit) or a non-negative integer.")

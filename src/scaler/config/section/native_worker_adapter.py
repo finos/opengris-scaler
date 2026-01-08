@@ -1,4 +1,5 @@
 import dataclasses
+from typing import Optional
 
 from scaler.config import defaults
 from scaler.config.common.logging import LoggingConfig
@@ -11,8 +12,9 @@ from scaler.utility.event_loop import EventLoopType
 
 @dataclasses.dataclass
 class NativeWorkerAdapterConfig(ConfigClass):
-    web_config: WebConfig
     worker_adapter_config: WorkerAdapterConfig
+    web_config: Optional[WebConfig] = dataclasses.field(metadata=dict(required=True))
+    preload: Optional[str] = None
     worker_config: WorkerConfig = dataclasses.field(default_factory=WorkerConfig)
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
     event_loop: str = dataclasses.field(

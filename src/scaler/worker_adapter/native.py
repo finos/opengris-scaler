@@ -27,8 +27,7 @@ class NativeWorkerAdapter:
         self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
         self._hard_processor_suspend = config.worker_config.hard_processor_suspend
         self._event_loop = config.event_loop
-        self._adapter_web_host = config.web_config.adapter_web_host
-        self._adapter_web_port = config.web_config.adapter_web_port
+        self._preload = config.preload
         self._logging_paths = config.logging_config.paths
         self._logging_level = config.logging_config.level
         self._logging_config_file = config.logging_config.config_file
@@ -39,7 +38,7 @@ class NativeWorkerAdapter:
         """
         self._worker_groups: Dict[WorkerGroupID, Dict[WorkerID, Worker]] = {}
 
-    async def start_worker_group(self) -> WorkerGroupID:
+    def start_worker_group(self) -> WorkerGroupID:
         num_of_workers = sum(len(workers) for workers in self._worker_groups.values())
         if num_of_workers >= self._max_workers != -1:
             raise CapacityExceededError(f"Maximum number of workers ({self._max_workers}) reached.")
@@ -48,7 +47,7 @@ class NativeWorkerAdapter:
             name=f"NAT|{uuid.uuid4().hex}",
             address=self._address,
             object_storage_address=self._object_storage_address,
-            preload=None,
+            preload=self._preload,
             capabilities=self._capabilities,
             io_threads=self._io_threads,
             task_queue_size=self._task_queue_size,
@@ -68,7 +67,11 @@ class NativeWorkerAdapter:
         self._worker_groups[worker_group_id] = {worker.identity: worker}
         return worker_group_id
 
-    async def shutdown_worker_group(self, worker_group_id: WorkerGroupID):
+    def shutdown(self) -> None:
+        for worker_group_id in list(self._worker_groups.keys()):
+            self.shutdown_worker_group(worker_group_id)
+
+    def shutdown_worker_group(self, worker_group_id: WorkerGroupID):
         if worker_group_id not in self._worker_groups:
             raise WorkerGroupNotFoundError(f"Worker group with ID {worker_group_id.decode()} does not exist.")
 
@@ -77,6 +80,11 @@ class NativeWorkerAdapter:
             worker.join()
 
         self._worker_groups.pop(worker_group_id)
+
+    def join(self) -> None:
+        for group in list(self._worker_groups.values()):
+            for worker in group.values():
+                worker.join()
 
     async def webhook_handler(self, request: Request):
         request_json = await request.json()
@@ -98,7 +106,7 @@ class NativeWorkerAdapter:
 
         elif action == "start_worker_group":
             try:
-                worker_group_id = await self.start_worker_group()
+                worker_group_id = self.start_worker_group()
             except CapacityExceededError as e:
                 return web.json_response({"error": str(e)}, status=web.HTTPTooManyRequests.status_code)
             except Exception as e:
@@ -121,7 +129,7 @@ class NativeWorkerAdapter:
 
             worker_group_id = request_json["worker_group_id"].encode()
             try:
-                await self.shutdown_worker_group(worker_group_id)
+                self.shutdown_worker_group(worker_group_id)
             except WorkerGroupNotFoundError as e:
                 return web.json_response({"error": str(e)}, status=web.HTTPNotFound.status_code)
             except Exception as e:
