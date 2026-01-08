@@ -14,6 +14,25 @@ fi
 # Load environment variables
 source "$ENV_FILE"
 
+# Export AWS credentials if using isengardcli or similar
+# Uncomment and modify based on your credential source:
+
+# Option 1: Use AWS profile
+export AWS_PROFILE=fdp
+
+# Option 2: Use isengardcli (if available)
+# if command -v isengardcli &> /dev/null; then
+#     eval $(isengardcli cred export --account 614393260192 --role YourRoleName)
+# fi
+
+# Option 3: Use aws configure export-credentials
+# eval $(aws configure export-credentials --profile your-profile --format env)
+
+# Option 4: Manual export (replace with your actual credentials)
+# export AWS_ACCESS_KEY_ID="your-access-key"
+# export AWS_SECRET_ACCESS_KEY="your-secret-key"
+# export AWS_SESSION_TOKEN="your-session-token"  # if using temporary credentials
+
 echo "Starting AWS Batch integration tests..."
 echo "  Region: $SCALER_AWS_REGION"
 echo "  S3 Bucket: $SCALER_S3_BUCKET"
