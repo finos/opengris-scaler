@@ -77,7 +77,8 @@ class RedisObjectStorageBackend(ObjectStorageBackend):
             raise ConnectionError(f"Failed to connect to Redis at {redis_url}: {e}")
 
         # Track total size (approximate, since Redis doesn't provide this directly)
-        self._size_key = f"{key_prefix}:total_size"
+        # Use _meta: prefix to distinguish from object keys
+        self._size_key = f"{key_prefix}_meta:total_size"
         if not self.client.exists(self._size_key):
             self.client.set(self._size_key, 0)
 
@@ -132,20 +133,18 @@ class RedisObjectStorageBackend(ObjectStorageBackend):
         value = self._serialize(data, metadata)
 
         try:
-            # Check if object already exists to track size correctly
-            existed = self.client.exists(key)
-            old_size = 0
-            if existed:
-                old_value = self.client.get(key)
-                if old_value:
-                    old_size = len(old_value)
+            # Use pipeline for atomicity and fewer round trips
+            pipe = self.client.pipeline()
 
-            # Store the object
-            self.client.set(key, value)
+            # Get old value size if exists (for accurate size tracking)
+            old_value = self.client.get(key)
+            old_size = len(old_value) if old_value else 0
 
-            # Update size tracking
+            # Store the object and update size tracking atomically
+            pipe.set(key, value)
             size_delta = len(value) - old_size
-            self.client.incrby(self._size_key, size_delta)
+            pipe.incrby(self._size_key, size_delta)
+            pipe.execute()
 
             logger.debug(f"Stored object {object_id.hex()} ({total_size} bytes) in Redis")
             return True
@@ -280,8 +279,8 @@ class RedisObjectStorageBackend(ObjectStorageBackend):
         try:
             info = self.client.info("memory")
             pattern = f"{self.key_prefix}*".encode()
-            # Approximate count using SCAN
-            count = sum(1 for _ in self.client.scan_iter(pattern, count=1000))
+            # Count only object keys, excluding metadata keys
+            count = sum(1 for key in self.client.scan_iter(pattern, count=1000) if b"_meta:" not in key)
 
             return {
                 "type": "redis",
@@ -294,3 +293,15 @@ class RedisObjectStorageBackend(ObjectStorageBackend):
         except Exception as e:
             logger.error(f"Failed to get Redis info: {e}")
             return {"type": "redis", "error": str(e)}
+
+    def close(self) -> None:
+        """
+        Close the Redis connection.
+
+        Should be called when the backend is no longer needed.
+        """
+        try:
+            self.client.close()
+            logger.debug("Closed Redis connection")
+        except Exception as e:
+            logger.error(f"Failed to close Redis connection: {e}")

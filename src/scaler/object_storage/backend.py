@@ -83,3 +83,11 @@ class ObjectStorageBackend(ABC):
         Used primarily for testing and cleanup.
         """
         pass
+
+    def close(self) -> None:
+        """
+        Close any resources held by the backend.
+
+        Optional - implementations may override if they have resources to clean up.
+        """
+        pass
