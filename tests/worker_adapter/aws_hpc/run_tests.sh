@@ -19,7 +19,6 @@ source "$ENV_FILE"
 
 # Option 1: Use AWS profile
 export AWS_PROFILE=fdp
-
 # Option 2: Use isengardcli (if available)
 # if command -v isengardcli &> /dev/null; then
 #     eval $(isengardcli cred export --account 614393260192 --role YourRoleName)
