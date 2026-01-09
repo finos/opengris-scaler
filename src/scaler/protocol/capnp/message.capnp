@@ -101,6 +101,10 @@ struct DisconnectRequest {
     worker @0 :Data;
 }
 
+struct WorkerDisconnectNotification {
+    worker @0 :Data;
+}
+
 struct DisconnectResponse {
     worker @0 :Data;
 }
@@ -214,5 +218,6 @@ struct Message {
 
         informationRequest @23 :InformationRequest;
         informationResponse @24 :InformationResponse;
+        workerDisconnectNotification @25 :WorkerDisconnectNotification;
     }
 }
