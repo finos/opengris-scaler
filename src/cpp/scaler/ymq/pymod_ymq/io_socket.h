@@ -1,7 +1,7 @@
 #pragma once
 
 // Python
-#include "scaler/ymq/pymod_ymq/compatibility.h"
+#include "scaler/utility/pymod/compatibility.h"
 
 // C++
 #include <memory>
@@ -9,13 +9,13 @@
 
 // First-party
 #include "scaler/error/error.h"
+#include "scaler/utility/pymod/gil.h"
 #include "scaler/ymq/bytes.h"
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/io_socket.h"
 #include "scaler/ymq/message.h"
 #include "scaler/ymq/pymod_ymq/bytes.h"
 #include "scaler/ymq/pymod_ymq/exception.h"
-#include "scaler/ymq/pymod_ymq/gil.h"
 #include "scaler/ymq/pymod_ymq/message.h"
 #include "scaler/ymq/pymod_ymq/ymq.h"
 
