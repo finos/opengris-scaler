@@ -1,7 +1,6 @@
 #pragma once
 #ifdef _WIN32
 
-
 // C++
 #include <functional>
 #include <queue>
@@ -25,7 +24,6 @@
 #define EPOLLIN             (0)
 #define EPOLLOUT            (0)
 #define EPOLLET             (0)
-
 
 namespace scaler {
 namespace ymq {

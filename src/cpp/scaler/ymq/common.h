@@ -5,6 +5,9 @@
 #include <cstdlib>
 #include <cstring>
 
+namespace scaler {
+namespace ymq {
+
 using Errno = int;
 
 [[nodiscard("Memory is allocated but not used, likely causing a memory leak")]]
@@ -27,3 +30,6 @@ inline void deserialize_u32(const uint8_t buffer[4], uint32_t* x)
 {
     *x = buffer[0] | buffer[1] << 8 | buffer[2] << 16 | buffer[3] << 24;
 }
+
+}  // namespace ymq
+}  // namespace scaler

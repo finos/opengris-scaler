@@ -7,7 +7,8 @@
 #include "scaler/error/error.h"
 #include "scaler/ymq/pymod_ymq/ymq.h"
 
-using namespace scaler::ymq;
+namespace scaler {
+namespace ymq {
 
 // the order of the members in the exception args tuple
 const Py_ssize_t YMQException_errorCodeIndex = 0;
@@ -118,3 +119,6 @@ inline OwnedPyObject<> YMQException_createFromCoreError(YMQState* state, const E
 
     return PyObject_CallObject(*state->PyExceptionType, *tuple);
 }
+
+}  // namespace ymq
+}  // namespace scaler

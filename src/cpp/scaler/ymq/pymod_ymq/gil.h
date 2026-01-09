@@ -3,6 +3,9 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
+namespace scaler {
+namespace ymq {
+
 class AcquireGIL {
 public:
     AcquireGIL(): _state(PyGILState_Ensure()) {}
@@ -16,3 +19,6 @@ public:
 private:
     PyGILState_STATE _state;
 };
+
+}  // namespace ymq
+}  // namespace scaler

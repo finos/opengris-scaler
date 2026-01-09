@@ -56,7 +56,7 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
 
     int res {};
     auto running = [&] -> bool {
-        AcquireGIL gil;
+        scaler::ymq::AcquireGIL gil;
         (void)gil;
         res = PyErr_CheckSignals();
         return res == 0;
