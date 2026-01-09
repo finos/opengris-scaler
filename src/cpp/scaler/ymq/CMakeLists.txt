@@ -81,17 +81,14 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/scaler/ymq)
 # Ensure Python development module support is found
 find_package(Python3 COMPONENTS Development.Module REQUIRED)
 
-# Build the Python extension module and include the compiled object files from ymq_objs
 add_library(py_ymq SHARED
     pymod_ymq/bytes.h
     pymod_ymq/exception.h
-    pymod_ymq/gil.h
     pymod_ymq/message.h
     pymod_ymq/io_context.h
     pymod_ymq/io_socket.h
     pymod_ymq/ymq.h
     pymod_ymq/ymq.cpp
-
     $<TARGET_OBJECTS:ymq_objs>
 )
 
