@@ -32,3 +32,16 @@ runs:
       shell: bash
       run: |
         mypy --install-types --non-interactive .
+
+    - name: Lint with clang-format
+      if: inputs.os == 'Linux'
+      shell: bash
+      run: |
+        find . \
+        -type d -name third_party -prune -o \
+        -type d -name thirdparties -prune -o \
+        -type d -name capnp -prune -o \
+        -type d -name 'build*' -prune -o \
+        -type f \( -name '*.cpp' -o -name '*.h' \) -print0 | \
+        xargs -0 clang-format-21 --Werror --dry-run --
+
