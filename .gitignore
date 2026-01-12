@@ -34,3 +34,7 @@ CMakeFiles/
 .vs/
 src/scaler/protocol/capnp/*.c++
 src/scaler/protocol/capnp/*.h
+
+# AWS HPC config files (contain account-specific info)
+.scaler_aws_batch_config.json
+.scaler_aws_hpc.env
