@@ -28,6 +28,7 @@ Content
    tutorials/features
    tutorials/compatibility/ray
    tutorials/configuration
+   tutorials/redis_backend
    tutorials/examples
    tutorials/development/devcontainer
    tutorials/development/guidelines
