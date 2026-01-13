@@ -1,0 +1,19 @@
+name: 'Validate Dependencies'
+description: 'Validate that dependencies resolve correctly for all supported Python versions'
+
+inputs:
+  os:
+    description: "operating system"
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate dependency resolution with uv
+      if: inputs.os == 'Linux'
+      shell: bash
+      run: |
+        echo "Validating dependency resolution with uv..."
+        uv sync --all-extras
+        rm -rf .venv
+        echo "Dependencies validated successfully!"

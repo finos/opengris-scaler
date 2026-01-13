@@ -50,6 +50,10 @@ jobs:
         with:
           os: ${{ runner.os }}
 
+      - uses: ./.github/actions/validate-dependencies
+        with:
+          os: ${{ runner.os }}
+
       - uses: ./.github/actions/run-test
         with:
           os: ${{ runner.os }}
