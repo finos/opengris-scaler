@@ -14,6 +14,8 @@ namespace uv {
 // See sockaddr_in, sockaddr_in6
 class SocketAddress {
 public:
+    SocketAddress(std::variant<sockaddr_in, sockaddr_in6>&& value) noexcept;
+
     // See uv_ip4_addr
     static std::expected<SocketAddress, Error> IPv4(const std::string& ip, int port) noexcept;
 
@@ -36,8 +38,6 @@ public:
 
 private:
     std::variant<sockaddr_in, sockaddr_in6> _value;
-
-    SocketAddress(std::variant<sockaddr_in, sockaddr_in6>&& value) noexcept;
 };
 
 }  // namespace uv
