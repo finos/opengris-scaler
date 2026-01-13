@@ -11,10 +11,15 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 // First-party
 #include "scaler/error/error.h"
 #include "scaler/ymq/typedefs.h"
+
+namespace scaler {
+namespace ymq {
+namespace pymod {
 
 struct YMQState {
     OwnedPyObject<> enumModule;     // Reference to the enum module
@@ -29,7 +34,7 @@ struct YMQState {
     OwnedPyObject<> PyExceptionType;     // Reference to the Exception type
 };
 
-static YMQState* YMQStateFromSelf(PyObject* self)
+inline YMQState* YMQStateFromSelf(PyObject* self)
 {
     // replace with PyType_GetModuleByDef(Py_TYPE(self), &YMQ_module) in a newer Python version
     // https://docs.python.org/3/c-api/type.html#c.PyType_GetModuleByDef
@@ -44,7 +49,7 @@ static YMQState* YMQStateFromSelf(PyObject* self)
     return (YMQState*)PyModule_GetState(pyModule);
 }
 
-PyObject* PyErr_CreateFromString(PyObject* type, const char* message)
+inline PyObject* PyErr_CreateFromString(PyObject* type, const char* message)
 {
     OwnedPyObject args = Py_BuildValue("(s)", message);
     if (!args)
@@ -54,7 +59,7 @@ PyObject* PyErr_CreateFromString(PyObject* type, const char* message)
 }
 
 // this is a polyfill for PyErr_GetRaisedException() added in Python 3.12+
-OwnedPyObject<> YMQ_GetRaisedException()
+inline OwnedPyObject<> YMQ_GetRaisedException()
 {
 #if (PY_MAJOR_VERSION <= 3) && (PY_MINOR_VERSION <= 12)
     PyObject *excType, *excValue, *excTraceback;
@@ -70,23 +75,30 @@ OwnedPyObject<> YMQ_GetRaisedException()
     return OwnedPyObject {excValue};
 }
 
-void completeCallbackWithRaisedException(PyObject* callback)
+inline void completeCallbackWithRaisedException(PyObject* callback)
 {
     OwnedPyObject exception = YMQ_GetRaisedException();
     OwnedPyObject _         = PyObject_CallFunctionObjArgs(callback, *exception, nullptr);
 }
 
-// First-Party
+}  // namespace pymod
+}  // namespace ymq
+}  // namespace scaler
+
+// Sub-headers that depend on YMQState
 #include "scaler/ymq/pymod_ymq/bytes.h"
 #include "scaler/ymq/pymod_ymq/exception.h"
 #include "scaler/ymq/pymod_ymq/io_context.h"
 #include "scaler/ymq/pymod_ymq/io_socket.h"
 #include "scaler/ymq/pymod_ymq/message.h"
 
-extern "C" {
+namespace scaler {
+namespace ymq {
+namespace pymod {
 
-static void YMQ_free(YMQState* state)
+inline void YMQ_free(void* stateVoid)
 {
+    YMQState* state = (YMQState*)stateVoid;
     try {
         state->enumModule.~OwnedPyObject();
         state->asyncioModule.~OwnedPyObject();
@@ -103,7 +115,7 @@ static void YMQ_free(YMQState* state)
     }
 }
 
-static int YMQ_createIntEnum(
+inline int YMQ_createIntEnum(
     PyObject* pyModule,
     OwnedPyObject<>* storage,
     std::string enumName,
@@ -142,7 +154,7 @@ static int YMQ_createIntEnum(
     return PyModule_AddObjectRef(pyModule, enumName.c_str(), *enumClass);
 }
 
-static int YMQ_createIOSocketTypeEnum(PyObject* pyModule, YMQState* state)
+inline int YMQ_createIOSocketTypeEnum(PyObject* pyModule, YMQState* state)
 {
     std::vector<std::pair<std::string, int>> ioSocketTypes = {
         {"Uninit", (int)IOSocketType::Uninit},
@@ -177,7 +189,7 @@ static PyObject* YMQErrorCode_explanation(PyObject* self, PyObject* Py_UNUSED(ar
 
 // IDEA: CREATE AN INT ENUM AND ATTACH METHOD AFTERWARDS
 // OR: CREATE A NON-INT ENUM AND USE A TUPLE FOR THE VALUES
-static int YMQ_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
+inline int YMQ_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
 {
     std::vector<std::pair<std::string, int>> errorCodeValues = {
         {"Uninit", (int)Error::ErrorCode::Uninit},
@@ -232,7 +244,6 @@ static int YMQ_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
     }
 
     return 0;
-}
 }
 
 // internal convenience function to create a type and add it to the module
@@ -350,5 +361,9 @@ static PyModuleDef YMQ_module = {
     .m_slots = YMQ_slots,
     .m_free  = (freefunc)YMQ_free,
 };
+
+}  // namespace pymod
+}  // namespace ymq
+}  // namespace scaler
 
 PyMODINIT_FUNC PyInit_ymq(void);

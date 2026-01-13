@@ -13,8 +13,10 @@
 #include "scaler/ymq/pymod_ymq/io_socket.h"
 #include "scaler/ymq/pymod_ymq/ymq.h"
 
-// TODO: move ymq's python module into this namespace
-using namespace scaler::ymq;
+namespace scaler {
+namespace ymq {
+namespace pymod {
+
 using Identity = Configuration::IOSocketIdentity;
 
 struct PyIOContext {
@@ -167,3 +169,7 @@ static PyType_Spec PyIOContext_spec = {
     .flags     = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_IMMUTABLETYPE | Py_TPFLAGS_BASETYPE,
     .slots     = PyIOContext_slots,
 };
+
+}  // namespace pymod
+}  // namespace ymq
+}  // namespace scaler

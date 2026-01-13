@@ -4,6 +4,10 @@
 
 #include "scaler/error/error.h"
 
+namespace scaler {
+namespace ymq {
+namespace pymod {
+
 inline void ymqUnrecoverableError(scaler::ymq::Error e)
 {
     PyGILState_STATE gstate = PyGILState_Ensure();
@@ -15,9 +19,13 @@ inline void ymqUnrecoverableError(scaler::ymq::Error e)
     std::exit(EXIT_FAILURE);
 }
 
+}  // namespace pymod
+}  // namespace ymq
+}  // namespace scaler
+
 PyMODINIT_FUNC PyInit__ymq(void)
 {
-    unrecoverableErrorFunctionHookPtr = ymqUnrecoverableError;
+    unrecoverableErrorFunctionHookPtr = scaler::ymq::pymod::ymqUnrecoverableError;
 
-    return PyModuleDef_Init(&YMQ_module);
+    return PyModuleDef_Init(&scaler::ymq::pymod::YMQ_module);
 }

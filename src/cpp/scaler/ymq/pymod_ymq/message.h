@@ -7,6 +7,10 @@
 #include "scaler/ymq/pymod_ymq/bytes.h"
 #include "scaler/ymq/pymod_ymq/ymq.h"
 
+namespace scaler {
+namespace ymq {
+namespace pymod {
+
 struct PyMessage {
     PyObject_HEAD;
     OwnedPyObject<PyBytesYMQ> address;  // Address of the message; can be None
@@ -97,3 +101,7 @@ static PyType_Spec PyMessage_spec = {
     .flags     = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_IMMUTABLETYPE,
     .slots     = PyMessage_slots,
 };
+
+}  // namespace pymod
+}  // namespace ymq
+}  // namespace scaler
