@@ -70,10 +70,6 @@ class TestTypes(unittest.TestCase):
         ctx = ymq.IOContext(num_threads=3)
         self.assertEqual(ctx.num_threads, 3)
 
-    # TODO: backporting to 3.8 broke this somehow
-    # it causes a segmentation fault
-    # re-enable once fixed
-    @unittest.skip("causes segmentation fault")
     def test_io_socket(self):
         # check that we can't create io socket instances directly
         self.assertRaises(TypeError, lambda: ymq.IOSocket())  # type: ignore
