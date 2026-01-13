@@ -1,0 +1,5 @@
+add_executable(simple_loop simple_loop.cpp)
+target_link_libraries(simple_loop scaler_wrapper_uv)
+
+add_executable(tcp_echo_server tcp_echo_server.cpp)
+target_link_libraries(tcp_echo_server scaler_wrapper_uv)

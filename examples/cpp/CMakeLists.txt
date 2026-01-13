@@ -1,2 +1,2 @@
-add_subdirectory(uv)
+add_subdirectory(wrapper/uv)
 add_subdirectory(ymq)
