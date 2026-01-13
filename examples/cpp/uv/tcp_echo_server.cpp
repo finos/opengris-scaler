@@ -31,10 +31,10 @@ public:
     uv::SocketAddress address() { return exitOnFailure(_server.getSockName()); }
 
 private:
-    uv::Loop& loop_;
-    uv::TCPServer server_;
+    uv::Loop& _loop;
+    uv::TCPServer _server;
 
-    void onNewConnection(std::expected<void, uv::Error>&& result)
+    void onNewConnection(std::expected<void, uv::Error> result)
     {
         auto client = std::make_shared<uv::TCPSocket>(exitOnFailure(uv::TCPSocket::init(_loop)));
         exitOnFailure(_server.accept(*client));

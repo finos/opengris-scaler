@@ -173,7 +173,7 @@ public:
 private:
     Handle<NativeHandleType, ConnectionCallback> _handle;
 
-    static void onConnectionCallback(uv_stream_t* stream, int status)
+    static void onConnectionCallback(uv_stream_t* stream, int status) noexcept
     {
         ConnectionCallback* callback = static_cast<ConnectionCallback*>(stream->data);
 

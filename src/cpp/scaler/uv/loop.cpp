@@ -17,12 +17,12 @@ std::expected<Loop, Error> Loop::init(std::initializer_list<LoopOption> options)
 
     // Configure loop options if provided
     for (const auto& option: options) {
-        if (option.argument.has_value()) {
+        if (option._argument.has_value()) {
             // Option with argument (e.g., UV_LOOP_BLOCK_SIGNAL)
-            err = uv_loop_configure(&loop.native(), option.option, option.argument.value());
+            err = uv_loop_configure(&loop.native(), option._option, option._argument.value());
         } else {
             // Option without argument
-            err = uv_loop_configure(&loop.native(), option.option);
+            err = uv_loop_configure(&loop.native(), option._option);
         }
 
         if (err) {

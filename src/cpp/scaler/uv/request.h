@@ -23,23 +23,23 @@ public:
 
     Request(utility::MoveOnlyFunction<CallbackType> callback) noexcept
     {
-        _holder->callback = std::move(callback);
+        _holder->_callback = std::move(callback);
 
         // Add a self-owning reference to the holder to ensure it is not destroyed before the callback is called.
-        _holder->self = _holder;
+        _holder->_self = _holder;
         assert(_holder.use_count() == 2);
 
-        uv_req_set_data(reinterpret_cast<uv_req_t*>(&_holder->native), _holder.get());
+        uv_req_set_data(reinterpret_cast<uv_req_t*>(&_holder->_native), _holder.get());
     }
 
-    constexpr NativeRequestType& native() noexcept { return _holder->native; }
+    constexpr NativeRequestType& native() noexcept { return _holder->_native; }
 
-    constexpr const NativeRequestType& native() const noexcept { return _holder->native; }
+    constexpr const NativeRequestType& native() const noexcept { return _holder->_native; }
 
     // See uv_req_cancel
     std::expected<void, Error> cancel() noexcept
     {
-        const int err = uv_cancel(reinterpret_cast<uv_req_t*>(&_holder->native));
+        const int err = uv_cancel(reinterpret_cast<uv_req_t*>(&_holder->_native));
         if (err) {
             return std::unexpected(Error {err});
         }
@@ -52,7 +52,7 @@ public:
     // example on an early syscall error.
     void release() noexcept
     {
-        _holder->self = nullptr;
+        _holder->_self = nullptr;
         _holder.reset();
     }
 
@@ -62,24 +62,24 @@ public:
     static void onCallback(NativeRequestType* request, CallbackArgs... args) noexcept
     {
         Holder* holder = static_cast<Holder*>(request->data);
-        assert(holder->self != nullptr);  // libuv should only call the callback once
+        assert(holder->_self != nullptr);  // libuv should only call the callback once
 
-        holder->callback(args...);
+        holder->_callback(args...);
 
         // Release the callback object.
-        holder->callback = {};
+        holder->_callback = {};
 
         // Release the self-owning reference. This reduces the ref-count of the holder, and possibly deallocates it.
-        holder->self = nullptr;
+        holder->_self = nullptr;
     }
 
 private:
     struct Holder {
-        NativeRequestType native;
-        utility::MoveOnlyFunction<CallbackType> callback;
+        NativeRequestType _native;
+        utility::MoveOnlyFunction<CallbackType> _callback;
 
         // Maintain a self-owning reference until the callback is called. Required for RAII.
-        std::shared_ptr<Holder> self;
+        std::shared_ptr<Holder> _self;
     };
 
     std::shared_ptr<Holder> _holder {std::make_shared<Holder>()};
