@@ -6,6 +6,10 @@
 namespace scaler {
 namespace uv {
 
+SocketAddress::SocketAddress(std::variant<sockaddr_in, sockaddr_in6> value) noexcept: _value(std::move(value))
+{
+}
+
 std::expected<SocketAddress, Error> SocketAddress::IPv4(const std::string& ip, int port) noexcept
 {
     sockaddr_in addr {};
@@ -73,10 +77,6 @@ std::expected<std::string, Error> SocketAddress::toString() const noexcept
 const sockaddr* SocketAddress::toSockAddr() const noexcept
 {
     return reinterpret_cast<const sockaddr*>(&_value);
-}
-
-SocketAddress::SocketAddress(std::variant<sockaddr_in, sockaddr_in6>&& value) noexcept: _value(std::move(value))
-{
 }
 
 }  // namespace uv
