@@ -6,6 +6,10 @@
 // First-party
 #include "scaler/ymq/bytes.h"
 
+namespace scaler {
+namespace ymq {
+namespace pymod {
+
 struct PyBytesYMQ {
     PyObject_HEAD;
     scaler::ymq::Bytes bytes;
@@ -111,3 +115,7 @@ static PyType_Spec PyBytesYMQ_spec = {
     .flags     = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_IMMUTABLETYPE,
     .slots     = PyBytesYMQ_slots,
 };
+
+}  // namespace pymod
+}  // namespace ymq
+}  // namespace scaler

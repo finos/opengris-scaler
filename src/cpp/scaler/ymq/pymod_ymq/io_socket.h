@@ -19,7 +19,9 @@
 #include "scaler/ymq/pymod_ymq/message.h"
 #include "scaler/ymq/pymod_ymq/ymq.h"
 
-using namespace scaler::ymq;
+namespace scaler {
+namespace ymq {
+namespace pymod {
 
 struct PyIOSocket {
     PyObject_HEAD;
@@ -290,3 +292,7 @@ static PyType_Spec PyIOSocket_spec = {
     .flags     = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_IMMUTABLETYPE | Py_TPFLAGS_DISALLOW_INSTANTIATION,
     .slots     = PyIOSocket_slots,
 };
+
+}  // namespace pymod
+}  // namespace ymq
+}  // namespace scaler
