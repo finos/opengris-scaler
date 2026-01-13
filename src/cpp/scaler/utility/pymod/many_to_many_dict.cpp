@@ -8,6 +8,8 @@ namespace utility {
 namespace many_to_many_dict {
 namespace pymod {
 
+using namespace scaler::utility::pymod;
+
 extern "C" {
 struct PyManyToManyDict {
     PyObject_HEAD;
