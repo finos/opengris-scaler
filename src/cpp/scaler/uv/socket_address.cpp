@@ -1,14 +1,15 @@
 #include "scaler/uv/socket_address.h"
 
 #include <cassert>
+#include <utility>
 
 namespace scaler {
 namespace uv {
 
 std::expected<SocketAddress, Error> SocketAddress::IPv4(const std::string& ip, int port) noexcept
 {
-    sockaddr_in addr;
-    int err = uv_ip4_addr(ip.c_str(), port, &addr);
+    sockaddr_in addr {};
+    const int err = uv_ip4_addr(ip.c_str(), port, &addr);
 
     if (err) {
         return std::unexpected {Error {err}};
@@ -19,8 +20,8 @@ std::expected<SocketAddress, Error> SocketAddress::IPv4(const std::string& ip, i
 
 std::expected<SocketAddress, Error> SocketAddress::IPv6(const std::string& ip, int port) noexcept
 {
-    sockaddr_in6 addr;
-    int err = uv_ip6_addr(ip.c_str(), port, &addr);
+    sockaddr_in6 addr {};
+    const int err = uv_ip6_addr(ip.c_str(), port, &addr);
 
     if (err) {
         return std::unexpected {Error {err}};
@@ -31,14 +32,11 @@ std::expected<SocketAddress, Error> SocketAddress::IPv6(const std::string& ip, i
 
 SocketAddress SocketAddress::fromSockAddr(const sockaddr* address) noexcept
 {
-    if (address->sa_family == AF_INET) {
-        const sockaddr_in* addr = reinterpret_cast<const sockaddr_in*>(address);
-        return SocketAddress(*addr);
-    } else {
-        assert(address->sa_family == AF_INET6);
-        const sockaddr_in6* addr = reinterpret_cast<const sockaddr_in6*>(address);
-        return SocketAddress(*addr);
-    }
+    switch (address->sa_family) {
+        case AF_INET: return SocketAddress(*reinterpret_cast<const sockaddr_in*>(address));
+        case AF_INET6: return SocketAddress(*reinterpret_cast<const sockaddr_in6*>(address));
+        default: std::unreachable();
+    };
 }
 
 const std::variant<sockaddr_in, sockaddr_in6>& SocketAddress::value() const noexcept
@@ -48,8 +46,8 @@ const std::variant<sockaddr_in, sockaddr_in6>& SocketAddress::value() const noex
 
 std::expected<std::string, Error> SocketAddress::name() const noexcept
 {
-    char buffer[INET6_ADDRSTRLEN];
-    int err = uv_ip_name(toSockAddr(), buffer, sizeof(buffer));
+    char buffer[INET6_ADDRSTRLEN] {};
+    const int err = uv_ip_name(toSockAddr(), buffer, sizeof(buffer));
 
     if (err) {
         return std::unexpected {Error {err}};

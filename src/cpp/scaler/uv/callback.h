@@ -21,7 +21,7 @@ using AsyncCallback = utility::MoveOnlyFunction<void()>;
 // See uv_read_cb
 //
 // The std::span buffer is valid only during the execution of this callback.
-using ReadCallback = utility::MoveOnlyFunction<void(std::expected<std::span<uint8_t>, Error> result)>;
+using ReadCallback = utility::MoveOnlyFunction<void(std::expected<std::span<const uint8_t>, Error> result)>;
 
 // See uv_connect_cb
 using ConnectCallback = utility::MoveOnlyFunction<void(std::expected<void, Error> result)>;

@@ -7,7 +7,7 @@ namespace uv {
 
 std::expected<Async, Error> Async::init(Loop& loop, std::optional<AsyncCallback> callback) noexcept
 {
-    uv_async_cb nativeCallback;
+    uv_async_cb nativeCallback {};
 
     if (callback.has_value()) {
         nativeCallback = &onAsyncCallback;
@@ -17,7 +17,7 @@ std::expected<Async, Error> Async::init(Loop& loop, std::optional<AsyncCallback>
 
     Async async;
 
-    int err = uv_async_init(&loop.native(), &async._handle.native(), nativeCallback);
+    const int err = uv_async_init(&loop.native(), &async._handle.native(), nativeCallback);
     if (err) {
         return std::unexpected {Error {err}};
     }
@@ -31,7 +31,7 @@ std::expected<Async, Error> Async::init(Loop& loop, std::optional<AsyncCallback>
 
 std::expected<void, Error> Async::send() noexcept
 {
-    int err = uv_async_send(&_handle.native());
+    const int err = uv_async_send(&_handle.native());
     if (err) {
         return std::unexpected {Error {err}};
     }

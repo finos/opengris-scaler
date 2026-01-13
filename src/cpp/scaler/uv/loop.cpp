@@ -52,7 +52,7 @@ void Loop::loopDeleter(uv_loop_t* loop) noexcept
         assert(nActiveHandles == 0 && "Loop is still alive");
     }
 
-    int err = uv_loop_close(loop);
+    const int err = uv_loop_close(loop);
     assert(!err && "uv_loop_close failed");
 
     delete loop;

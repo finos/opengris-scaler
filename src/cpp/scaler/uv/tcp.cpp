@@ -10,10 +10,10 @@ namespace details {
 
 std::expected<SocketAddress, Error> getSockName(const uv_tcp_t& handle) noexcept
 {
-    sockaddr_storage storage;
+    sockaddr_storage storage {};
     int len = sizeof(storage);
 
-    int err = uv_tcp_getsockname(&handle, reinterpret_cast<sockaddr*>(&storage), &len);
+    const int err = uv_tcp_getsockname(&handle, reinterpret_cast<sockaddr*>(&storage), &len);
     if (err) {
         return std::unexpected(Error {err});
     }
@@ -25,9 +25,9 @@ std::expected<SocketAddress, Error> getSockName(const uv_tcp_t& handle) noexcept
 
 std::expected<TCPSocket, Error> TCPSocket::init(Loop& loop) noexcept
 {
-    TCPSocket socket;
+    TCPSocket socket {};
 
-    int err = uv_tcp_init(&loop.native(), &socket.handle().native());
+    const int err = uv_tcp_init(&loop.native(), &socket.handle().native());
     if (err) {
         return std::unexpected {Error {err}};
     }
@@ -45,7 +45,8 @@ std::expected<ConnectRequest, Error> TCPSocket::connect(const SocketAddress& add
         }
     });
 
-    int err = uv_tcp_connect(&request.native(), &handle().native(), address.toSockAddr(), &ConnectRequest::onCallback);
+    const int err =
+        uv_tcp_connect(&request.native(), &handle().native(), address.toSockAddr(), &ConnectRequest::onCallback);
     if (err) {
         request.release();
         return std::unexpected(Error {err});
@@ -61,10 +62,10 @@ std::expected<SocketAddress, Error> TCPSocket::getSockName() const noexcept
 
 std::expected<SocketAddress, Error> TCPSocket::getPeerName() const noexcept
 {
-    sockaddr_storage storage;
+    sockaddr_storage storage {};
     int len = sizeof(storage);
 
-    int err = uv_tcp_getpeername(&handle().native(), reinterpret_cast<sockaddr*>(&storage), &len);
+    const int err = uv_tcp_getpeername(&handle().native(), reinterpret_cast<sockaddr*>(&storage), &len);
     if (err) {
         return std::unexpected(Error {err});
     }
@@ -74,9 +75,9 @@ std::expected<SocketAddress, Error> TCPSocket::getPeerName() const noexcept
 
 std::expected<TCPServer, Error> TCPServer::init(Loop& loop) noexcept
 {
-    TCPServer server;
+    TCPServer server {};
 
-    int err = uv_tcp_init(&loop.native(), &server.handle().native());
+    const int err = uv_tcp_init(&loop.native(), &server.handle().native());
     if (err) {
         return std::unexpected {Error {err}};
     }
@@ -86,7 +87,7 @@ std::expected<TCPServer, Error> TCPServer::init(Loop& loop) noexcept
 
 std::expected<void, Error> TCPServer::bind(const SocketAddress& address, uv_tcp_flags flags) noexcept
 {
-    int err = uv_tcp_bind(&handle().native(), address.toSockAddr(), flags);
+    const int err = uv_tcp_bind(&handle().native(), address.toSockAddr(), flags);
     if (err) {
         return std::unexpected(Error {err});
     }

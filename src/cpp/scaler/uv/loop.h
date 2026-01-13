@@ -16,8 +16,8 @@ namespace uv {
 class Loop {
 public:
     struct LoopOption {
-        uv_loop_option option;
-        std::optional<int> argument;  // Some options have arguments, e.g. UV_LOOP_BLOCK_SIGNAL
+        const uv_loop_option option;
+        const std::optional<int> argument;  // Some options have arguments, e.g. UV_LOOP_BLOCK_SIGNAL
     };
 
     // See uv_loop_close

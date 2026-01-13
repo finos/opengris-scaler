@@ -22,13 +22,13 @@ const int DEFAULT_BACKLOG = 128;
 class TCPEchoServer {
 public:
     TCPEchoServer(uv::Loop& loop, const uv::SocketAddress& address)
-        : loop_(loop), server_(exitOnFailure(uv::TCPServer::init(loop)))
+        : _loop(loop), _server(exitOnFailure(uv::TCPServer::init(loop)))
     {
-        exitOnFailure(server_.bind(address, uv_tcp_flags(0)));
-        exitOnFailure(server_.listen(DEFAULT_BACKLOG, std::bind_front(&TCPEchoServer::onNewConnection, this)));
+        exitOnFailure(_server.bind(address, uv_tcp_flags(0)));
+        exitOnFailure(_server.listen(DEFAULT_BACKLOG, std::bind_front(&TCPEchoServer::onNewConnection, this)));
     }
 
-    uv::SocketAddress address() { return exitOnFailure(server_.getSockName()); }
+    uv::SocketAddress address() { return exitOnFailure(_server.getSockName()); }
 
 private:
     uv::Loop& loop_;
@@ -36,25 +36,25 @@ private:
 
     void onNewConnection(std::expected<void, uv::Error>&& result)
     {
-        auto client = std::make_shared<uv::TCPSocket>(exitOnFailure(uv::TCPSocket::init(loop_)));
-        exitOnFailure(server_.accept(*client));
+        auto client = std::make_shared<uv::TCPSocket>(exitOnFailure(uv::TCPSocket::init(_loop)));
+        exitOnFailure(_server.accept(*client));
 
         exitOnFailure(client->readStart(std::bind_front(echoRead, client)));
     }
 
     static void echoRead(
-        std::shared_ptr<uv::TCPSocket> client, std::expected<std::span<uint8_t>, uv::Error>&& readResult)
+        std::shared_ptr<uv::TCPSocket> client, std::expected<std::span<const uint8_t>, uv::Error> readResult)
     {
         if (!readResult.has_value() && readResult.error() == uv::Error {UV_EOF}) {
             // Client disconnecting
             return;
         }
 
-        std::span<uint8_t> readBuffer = readResult.value();
+        std::span<const uint8_t> readBuffer = readResult.value();
 
         // Copies the received buffer into a std::vector that will be shared with the write callback, to
         // ensure the written bytes will not be freed until the write completes.
-        auto buffer = std::make_shared<std::vector<uint8_t>>(readBuffer.cbegin(), readBuffer.cend());
+        auto buffer = std::make_shared<const std::vector<uint8_t>>(readBuffer.cbegin(), readBuffer.cend());
 
         exitOnFailure(client->write(
             *buffer, [buffer](std::expected<void, uv::Error> writeResult) { exitOnFailure(std::move(writeResult)); }));

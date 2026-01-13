@@ -74,7 +74,8 @@ private:
         expectSuccess(client->readStart(std::bind_front(onClientRead, client)));
     }
 
-    static void onClientRead(std::shared_ptr<TCPSocket> client, std::expected<std::span<uint8_t>, Error> readResult)
+    static void onClientRead(
+        std::shared_ptr<TCPSocket> client, std::expected<std::span<const uint8_t>, Error> readResult)
     {
         if (!readResult.has_value() && readResult.error() == Error {UV_EOF}) {
             // Client disconnected.
@@ -82,11 +83,11 @@ private:
             return;
         }
 
-        std::span<uint8_t> readBuffer = expectSuccess(readResult);
+        std::span<const uint8_t> readBuffer = expectSuccess(readResult);
 
         // Copies the received buffer into a std::vector that will be shared with the write callback, to
         // ensure the written bytes will not be freed until the write completes.
-        auto buffer = std::make_shared<std::vector<uint8_t>>(readBuffer.cbegin(), readBuffer.cend());
+        auto buffer = std::make_shared<const std::vector<uint8_t>>(readBuffer.cbegin(), readBuffer.cend());
 
         expectSuccess(client->write(
             *buffer, [buffer](std::expected<void, Error> result) { expectSuccess<void>(std::move(result)); }));
@@ -106,8 +107,8 @@ TEST_F(UVTCPTest, TCP)
     TCPSocket client      = expectSuccess(TCPSocket::init(loop));
     bool responseReceived = false;
 
-    auto onClientRead = [&](std::expected<std::span<uint8_t>, Error> result) {
-        std::span<uint8_t> buffer = expectSuccess(result);
+    auto onClientRead = [&](std::expected<std::span<const uint8_t>, Error> result) {
+        std::span<const uint8_t> buffer = expectSuccess(result);
 
         // Check if the received message matches the sent message
         ASSERT_TRUE(std::equal(buffer.begin(), buffer.end(), message.begin(), message.end()));

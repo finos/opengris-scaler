@@ -9,7 +9,7 @@ std::expected<Signal, Error> Signal::init(Loop& loop) noexcept
 {
     Signal signal;
 
-    int err = uv_signal_init(&loop.native(), &signal._handle.native());
+    const int err = uv_signal_init(&loop.native(), &signal._handle.native());
     if (err) {
         return std::unexpected {Error {err}};
     }
@@ -21,7 +21,7 @@ std::expected<void, Error> Signal::start(int signum, SignalCallback callback) no
 {
     _handle.setData(std::move(callback));
 
-    int err = uv_signal_start(&_handle.native(), &onSignalCallback, signum);
+    const int err = uv_signal_start(&_handle.native(), &onSignalCallback, signum);
     if (err) {
         return std::unexpected {Error {err}};
     }
@@ -33,7 +33,7 @@ std::expected<void, Error> Signal::startOneshot(int signum, SignalCallback callb
 {
     _handle.setData(std::move(callback));
 
-    int err = uv_signal_start_oneshot(&_handle.native(), &onSignalCallback, signum);
+    const int err = uv_signal_start_oneshot(&_handle.native(), &onSignalCallback, signum);
     if (err) {
         return std::unexpected {Error {err}};
     }
@@ -43,7 +43,7 @@ std::expected<void, Error> Signal::startOneshot(int signum, SignalCallback callb
 
 std::expected<void, Error> Signal::stop() noexcept
 {
-    int err = uv_signal_stop(&_handle.native());
+    const int err = uv_signal_stop(&_handle.native());
     if (err) {
         return std::unexpected {Error {err}};
     }

@@ -39,7 +39,7 @@ public:
     // See uv_req_cancel
     std::expected<void, Error> cancel() noexcept
     {
-        int err = uv_cancel(reinterpret_cast<uv_req_t*>(&_holder->native));
+        const int err = uv_cancel(reinterpret_cast<uv_req_t*>(&_holder->native));
         if (err) {
             return std::unexpected(Error {err});
         }

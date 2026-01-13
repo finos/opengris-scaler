@@ -28,7 +28,7 @@ public:
     {
         handle().setData(std::move(callback));
 
-        int err =
+        const int err =
             uv_read_start(reinterpret_cast<uv_stream_t*>(&handle().native()), &onAllocateCallback, &onReadCallback);
         if (err) {
             return std::unexpected(Error {err});
@@ -50,13 +50,13 @@ public:
     // The buffers' content (inner std::span<uint8_t>) must remain valid until the callback is called. The user is
     // responsible for freeing these buffers.
     std::expected<WriteRequest, Error> write(
-        std::span<std::span<const uint8_t>> buffers, WriteCallback callback) noexcept
+        std::span<const std::span<const uint8_t>> buffers, WriteCallback callback) noexcept
     {
         std::vector<uv_buf_t> nativeBuffers {};
         nativeBuffers.reserve(buffers.size());
 
         for (auto const& buffer: buffers) {
-            uv_buf_t nativeBuffer = uv_buf_init(
+            const uv_buf_t nativeBuffer = uv_buf_init(
                 const_cast<char*>(reinterpret_cast<const char*>(buffer.data())),
                 static_cast<unsigned int>(buffer.size()));
 
@@ -71,7 +71,7 @@ public:
             }
         });
 
-        int err = uv_write(
+        const int err = uv_write(
             &request.native(),
             reinterpret_cast<uv_stream_t*>(&handle().native()),
             nativeBuffers.data(),
@@ -103,7 +103,7 @@ public:
             }
         });
 
-        int err = uv_shutdown(
+        const int err = uv_shutdown(
             &request.native(), reinterpret_cast<uv_stream_t*>(&handle().native()), ShutdownRequest::onCallback);
 
         if (err) {
@@ -132,9 +132,7 @@ private:
             (*callback)(std::span<uint8_t> {reinterpret_cast<uint8_t*>(buffer->base), static_cast<size_t>(nread)});
         }
 
-        if (buffer->base != nullptr) {
-            delete[] buffer->base;
-        }
+        delete[] buffer->base;
     }
 };
 
@@ -151,7 +149,7 @@ public:
     {
         handle().setData(std::move(callback));
 
-        int err = uv_listen(reinterpret_cast<uv_stream_t*>(&handle().native()), backlog, &onConnectionCallback);
+        const int err = uv_listen(reinterpret_cast<uv_stream_t*>(&handle().native()), backlog, &onConnectionCallback);
         if (err) {
             return std::unexpected(Error {err});
         }
@@ -162,7 +160,7 @@ public:
     // See uv_accept
     std::expected<void, Error> accept(ConnectionType& connection) noexcept
     {
-        int err = uv_accept(
+        const int err = uv_accept(
             reinterpret_cast<uv_stream_t*>(&handle().native()),
             reinterpret_cast<uv_stream_t*>(&connection.handle().native()));
         if (err < 0) {
