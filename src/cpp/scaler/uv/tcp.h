@@ -21,7 +21,7 @@ public:
     static std::expected<TCPSocket, Error> init(Loop& loop) noexcept;
 
     // uv_tcp_connect
-    std::expected<ConnectRequest, Error> connect(const SocketAddress& address, ConnectCallback&& callback) noexcept;
+    std::expected<ConnectRequest, Error> connect(const SocketAddress& address, ConnectCallback callback) noexcept;
 
     // See uv_tcp_getsockname
     std::expected<SocketAddress, Error> getSockName() const noexcept;

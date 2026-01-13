@@ -17,7 +17,7 @@ std::expected<Signal, Error> Signal::init(Loop& loop) noexcept
     return signal;
 }
 
-std::expected<void, Error> Signal::start(int signum, SignalCallback&& callback) noexcept
+std::expected<void, Error> Signal::start(int signum, SignalCallback callback) noexcept
 {
     _handle.setData(std::move(callback));
 
@@ -29,7 +29,7 @@ std::expected<void, Error> Signal::start(int signum, SignalCallback&& callback) 
     return {};
 }
 
-std::expected<void, Error> Signal::startOneshot(int signum, SignalCallback&& callback) noexcept
+std::expected<void, Error> Signal::startOneshot(int signum, SignalCallback callback) noexcept
 {
     _handle.setData(std::move(callback));
 

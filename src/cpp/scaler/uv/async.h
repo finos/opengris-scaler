@@ -16,7 +16,7 @@ namespace uv {
 class Async {
 public:
     // See uv_async_init
-    static std::expected<Async, Error> init(Loop& loop, std::optional<AsyncCallback>&& callback) noexcept;
+    static std::expected<Async, Error> init(Loop& loop, std::optional<AsyncCallback> callback) noexcept;
 
     // See uv_async_send
     std::expected<void, Error> send() noexcept;

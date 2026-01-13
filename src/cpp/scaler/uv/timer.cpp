@@ -19,9 +19,7 @@ std::expected<Timer, Error> Timer::init(Loop& loop) noexcept
 }
 
 std::expected<void, Error> Timer::start(
-    std::chrono::milliseconds timeout,
-    std::optional<std::chrono::milliseconds> repeat,
-    TimerCallback&& callback) noexcept
+    std::chrono::milliseconds timeout, std::optional<std::chrono::milliseconds> repeat, TimerCallback callback) noexcept
 {
     _handle.setData(std::move(callback));
 

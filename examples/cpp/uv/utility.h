@@ -9,7 +9,7 @@ using namespace scaler;
 
 // Simple helper that exits the program when it receives a std::unexpected value.
 template <typename T>
-T exitOnFailure(std::expected<T, uv::Error>&& result)
+T exitOnFailure(std::expected<T, uv::Error> result)
 {
     if (!result.has_value()) {
         uv::Error error = result.error();

@@ -24,7 +24,7 @@ public:
     constexpr const Handle<NativeHandleType, ReadCallback>& handle() const noexcept { return _handle; }
 
     // See uv_read_start
-    std::expected<void, Error> readStart(ReadCallback&& callback) noexcept
+    std::expected<void, Error> readStart(ReadCallback callback) noexcept
     {
         handle().setData(std::move(callback));
 
@@ -50,7 +50,7 @@ public:
     // The buffers' content (inner std::span<uint8_t>) must remain valid until the callback is called. The user is
     // responsible for freeing these buffers.
     std::expected<WriteRequest, Error> write(
-        std::span<std::span<const uint8_t>> buffers, WriteCallback&& callback) noexcept
+        std::span<std::span<const uint8_t>> buffers, WriteCallback callback) noexcept
     {
         std::vector<uv_buf_t> nativeBuffers {};
         nativeBuffers.reserve(buffers.size());
@@ -87,13 +87,13 @@ public:
     }
 
     // A single buffer alternative to write().
-    std::expected<WriteRequest, Error> write(std::span<const uint8_t> buffer, WriteCallback&& callback) noexcept
+    std::expected<WriteRequest, Error> write(std::span<const uint8_t> buffer, WriteCallback callback) noexcept
     {
         return write(std::span<std::span<const uint8_t>>(&buffer, 1), std::move(callback));
     }
 
     // See uv_shutdown
-    std::expected<ShutdownRequest, Error> shutdown(ShutdownCallback&& callback) noexcept
+    std::expected<ShutdownRequest, Error> shutdown(ShutdownCallback callback) noexcept
     {
         ShutdownRequest request([callback = std::move(callback)](int status) mutable {
             if (status < 0) {
@@ -147,7 +147,7 @@ public:
     constexpr const Handle<NativeHandleType, ConnectionCallback>& handle() const noexcept { return _handle; }
 
     // See uv_listen
-    std::expected<void, Error> listen(int backlog, ConnectionCallback&& callback) noexcept
+    std::expected<void, Error> listen(int backlog, ConnectionCallback callback) noexcept
     {
         handle().setData(std::move(callback));
 

@@ -21,7 +21,7 @@ class Request {
 public:
     using CallbackType = void(CallbackArgs...);
 
-    Request(utility::MoveOnlyFunction<CallbackType>&& callback) noexcept
+    Request(utility::MoveOnlyFunction<CallbackType> callback) noexcept
     {
         _holder->callback = std::move(callback);
 

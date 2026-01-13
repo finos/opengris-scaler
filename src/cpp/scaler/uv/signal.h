@@ -17,10 +17,10 @@ public:
     static std::expected<Signal, Error> init(Loop& loop) noexcept;
 
     // See uv_signal_start
-    std::expected<void, Error> start(int signum, SignalCallback&& callback) noexcept;
+    std::expected<void, Error> start(int signum, SignalCallback callback) noexcept;
 
     // See uv_signal_start_oneshot
-    std::expected<void, Error> startOneshot(int signum, SignalCallback&& callback) noexcept;
+    std::expected<void, Error> startOneshot(int signum, SignalCallback callback) noexcept;
 
     // See uv_signal_stop
     std::expected<void, Error> stop() noexcept;

@@ -5,7 +5,7 @@
 namespace scaler {
 namespace uv {
 
-std::expected<Async, Error> Async::init(Loop& loop, std::optional<AsyncCallback>&& callback) noexcept
+std::expected<Async, Error> Async::init(Loop& loop, std::optional<AsyncCallback> callback) noexcept
 {
     uv_async_cb nativeCallback;
 

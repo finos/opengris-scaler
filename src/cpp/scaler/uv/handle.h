@@ -36,7 +36,7 @@ public:
     }
 
     // See uv_handle_set_data
-    void setData(DataType&& value) noexcept
+    void setData(DataType value) noexcept
     {
         uv_handle_t* nativeHandle = reinterpret_cast<uv_handle_t*>(&native());
 

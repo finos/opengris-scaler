@@ -24,7 +24,7 @@ public:
     std::expected<void, Error> start(
         std::chrono::milliseconds timeout,
         std::optional<std::chrono::milliseconds> repeat,
-        TimerCallback&& callback) noexcept;
+        TimerCallback callback) noexcept;
 
     // See uv_timer_stop
     std::expected<void, Error> stop() noexcept;

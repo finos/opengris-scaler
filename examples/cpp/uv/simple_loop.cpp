@@ -8,10 +8,7 @@
 #include "scaler/uv/loop.h"
 #include "scaler/uv/signal.h"
 #include "scaler/uv/timer.h"
-
-// Simple helper that exits the program when it receives a std::unexpected value.
-template <typename T>
-static T exitOnFailure(std::expected<T, scaler::uv::Error>&& result);
+#include "utility.h"  // exitOnFailure
 
 int main()
 {
@@ -46,17 +43,4 @@ int main()
     std::cout << "Event loop completed with " << activeHandles << " active handles remaining\n";
 
     return 0;
-}
-
-template <typename T>
-static T exitOnFailure(std::expected<T, scaler::uv::Error>&& result)
-{
-    if (!result.has_value()) {
-        std::cerr << "Operation failed: " + result.error().message() << '\n';
-        std::exit(1);
-    }
-
-    if constexpr (!std::is_void_v<T>) {
-        return std::move(result.value());
-    }
 }

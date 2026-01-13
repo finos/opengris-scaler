@@ -35,8 +35,7 @@ std::expected<TCPSocket, Error> TCPSocket::init(Loop& loop) noexcept
     return socket;
 }
 
-std::expected<ConnectRequest, Error> TCPSocket::connect(
-    const SocketAddress& address, ConnectCallback&& callback) noexcept
+std::expected<ConnectRequest, Error> TCPSocket::connect(const SocketAddress& address, ConnectCallback callback) noexcept
 {
     ConnectRequest request([callback = std::move(callback)](int status) mutable {
         if (status < 0) {
