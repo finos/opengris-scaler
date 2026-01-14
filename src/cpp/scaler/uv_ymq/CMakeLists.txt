@@ -1,4 +1,7 @@
 add_library(uv_ymq_objs OBJECT
-    uv_loop_thread.h
-    uv_loop_thread.cpp
+    event_loop_thread.h
+    event_loop_thread.cpp
+
+    io_context.h
+    io_context.cpp
 )
