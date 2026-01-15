@@ -8,7 +8,7 @@ namespace utility {
 namespace many_to_many_dict {
 namespace pymod {
 
-using namespace scaler::utility::pymod;
+using scaler::utility::pymod::OwnedPyObject;
 
 extern "C" {
 struct PyManyToManyDict {
@@ -386,7 +386,8 @@ static PyType_Spec PyManyToManyDictSpec = {
 
 PyMODINIT_FUNC PyInit_many_to_many_dict(void)
 {
-    using namespace scaler::utility::many_to_many_dict::pymod;
+    using scaler::utility::many_to_many_dict::pymod::many_to_many_dict_module;
+    using scaler::utility::many_to_many_dict::pymod::PyManyToManyDictSpec;
     PyObject* m = PyModule_Create(&many_to_many_dict_module);
     if (!m) {
         return nullptr;
