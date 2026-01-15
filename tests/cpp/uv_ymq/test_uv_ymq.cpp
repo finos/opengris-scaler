@@ -2,14 +2,16 @@
 
 #include <atomic>
 #include <chrono>
+#include <expected>
 #include <mutex>
 #include <set>
+#include <string>
 #include <thread>
 
+#include "scaler/error/error.h"
+#include "scaler/uv_ymq/address.h"
 #include "scaler/uv_ymq/event_loop_thread.h"
 #include "scaler/uv_ymq/io_context.h"
-
-using namespace scaler::uv_ymq;
 
 class UVYMQTest: public ::testing::Test {
 protected:
@@ -22,10 +24,10 @@ TEST_F(UVYMQTest, EventLoopThread)
     std::atomic<int> nTimesCalled {0};
 
     {
-        EventLoopThread thread {};
+        scaler::uv_ymq::EventLoopThread thread {};
 
         for (size_t i = 0; i < N_TASKS; ++i) {
-            thread.execute([&]() { ++nTimesCalled; });
+            thread.executeThreadSafe([&]() { ++nTimesCalled; });
         }
 
         // Wait for the loop to process the callbacks
@@ -44,11 +46,11 @@ TEST_F(UVYMQTest, IOContext)
     std::mutex uniqueThreadIdsMutex {};
 
     {
-        IOContext context {N_THREADS};
+        scaler::uv_ymq::IOContext context {N_THREADS};
 
         // Execute tasks on different threads in round-robin fashion
         for (size_t i = 0; i < N_TASKS; ++i) {
-            context.nextThread().execute([&]() {
+            context.nextThread().executeThreadSafe([&]() {
                 std::lock_guard<std::mutex> lock(uniqueThreadIdsMutex);
                 uniqueThreadIds.insert(std::this_thread::get_id());
             });
@@ -59,4 +61,41 @@ TEST_F(UVYMQTest, IOContext)
     }
 
     ASSERT_EQ(uniqueThreadIds.size(), N_THREADS);
+}
+
+TEST_F(UVYMQTest, Address)
+{
+    // Valid addresses
+
+    std::expected<scaler::uv_ymq::Address, scaler::ymq::Error> address =
+        scaler::uv_ymq::Address::fromString("tcp://127.0.0.1:8080");
+    ASSERT_TRUE(address.has_value());
+    ASSERT_EQ(address->type(), scaler::uv_ymq::Address::Type::TCP);
+
+    address = scaler::uv_ymq::Address::fromString("tcp://2001:db8::1:1211");
+    ASSERT_TRUE(address.has_value());
+    ASSERT_EQ(address->type(), scaler::uv_ymq::Address::Type::TCP);
+
+    address = scaler::uv_ymq::Address::fromString("tcp://::1:8080");
+    ASSERT_TRUE(address.has_value());
+    ASSERT_EQ(address->type(), scaler::uv_ymq::Address::Type::TCP);
+
+    address = scaler::uv_ymq::Address::fromString("ipc://some_ipc_socket_name");
+    ASSERT_TRUE(address.has_value());
+    ASSERT_EQ(address->type(), scaler::uv_ymq::Address::Type::IPC);
+    ASSERT_EQ(std::get<std::string>(address->value()), "some_ipc_socket_name");
+
+    // Invalid addresses
+
+    address = scaler::uv_ymq::Address::fromString("http://127.0.0.1:8080");
+    ASSERT_FALSE(address.has_value());
+
+    address = scaler::uv_ymq::Address::fromString("127.0.0.1:8080");
+    ASSERT_FALSE(address.has_value());
+
+    address = scaler::uv_ymq::Address::fromString("tcp://127.0.0.1");
+    ASSERT_FALSE(address.has_value());
+
+    address = scaler::uv_ymq::Address::fromString("");
+    ASSERT_FALSE(address.has_value());
 }

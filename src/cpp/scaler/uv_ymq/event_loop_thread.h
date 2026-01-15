@@ -33,7 +33,7 @@ public:
     // Schedule the execution of a function within the event loop thread.
     //
     // Thread-safe.
-    void execute(Callback callback) noexcept;
+    void executeThreadSafe(Callback callback) noexcept;
 
 private:
     scaler::wrapper::uv::Loop _loop;

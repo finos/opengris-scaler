@@ -20,14 +20,14 @@ EventLoopThread::~EventLoopThread() noexcept
 {
     assert(_thread.joinable());
 
-    execute([this]() { _loop.stop(); });  // _loop.stop() must be called from the loop's thread.
+    executeThreadSafe([this]() { _loop.stop(); });  // _loop.stop() must be called from the loop's thread.
 }
 scaler::wrapper::uv::Loop& EventLoopThread::loop() noexcept
 {
     return _loop;
 }
 
-void EventLoopThread::execute(Callback callback) noexcept
+void EventLoopThread::executeThreadSafe(Callback callback) noexcept
 {
     {
         std::lock_guard<std::mutex> lock(_executeMutex);
