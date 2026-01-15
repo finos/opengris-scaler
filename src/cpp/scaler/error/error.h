@@ -34,6 +34,7 @@ struct Error: public std::exception {
         IOSocketStopRequested,
         BinderSendMessageWithNoAddress,
         IPCOnWinNotSupported,
+        UVError,
     };
 
     // NOTE:
@@ -90,6 +91,7 @@ struct Error: public std::exception {
                 return "You call sendMessage with a Binder IOSocket but failed to provide an address";
             case ErrorCode::IPCOnWinNotSupported:
                 return "You called `bindTo` or `connectTo` with an IPC address on Windows, which is not supported yet";
+            case ErrorCode::UVError: return "A libuv error occurred";
         }
         std::cerr << "Unrecognized ErrorCode value, program exits\n";
         std::exit(1);
