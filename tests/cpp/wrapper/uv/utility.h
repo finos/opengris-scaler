@@ -9,7 +9,7 @@ template <typename T>
 static T expectSuccess(std::expected<T, scaler::wrapper::uv::Error> result)
 {
     if (!result.has_value()) {
-        Error error = result.error();
+        scaler::wrapper::uv::Error error = result.error();
         throw std::runtime_error("Operation failed: " + error.message() + " (" + error.name() + ")");
     }
 

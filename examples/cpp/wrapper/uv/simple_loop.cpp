@@ -12,24 +12,24 @@
 
 int main()
 {
-    scaler::uv::Loop loop = exitOnFailure(scaler::uv::Loop::init());
+    scaler::wrapper::uv::Loop loop = exitOnFailure(scaler::wrapper::uv::Loop::init());
 
     std::cout << "Event loop initialized successfully\n";
 
     // Setting up an Async callback
-    scaler::uv::Async async =
-        exitOnFailure(scaler::uv::Async::init(loop, []() { std::cout << "\tAsync callback executed!\n"; }));
+    scaler::wrapper::uv::Async async =
+        exitOnFailure(scaler::wrapper::uv::Async::init(loop, []() { std::cout << "\tAsync callback executed!\n"; }));
     exitOnFailure(async.send());
 
     // Setting up a 1 sec. repeating Timer
-    scaler::uv::Timer timer = exitOnFailure(scaler::uv::Timer::init(loop));
+    scaler::wrapper::uv::Timer timer = exitOnFailure(scaler::wrapper::uv::Timer::init(loop));
     exitOnFailure(timer.start(
         std::chrono::milliseconds(1000),  // Initial delay
         std::chrono::milliseconds(1000),  // Repeat every 1 second
         []() { std::cout << "\tTimer fired\n"; }));
 
     // Add a Signal handler that stops the loop on Ctrl+C
-    scaler::uv::Signal signal = exitOnFailure(scaler::uv::Signal::init(loop));
+    scaler::wrapper::uv::Signal signal = exitOnFailure(scaler::wrapper::uv::Signal::init(loop));
     exitOnFailure(signal.start(SIGINT, [&](int signum) {
         std::cout << "\tReceived signal " << signum << ", stopping gracefully...\n";
         loop.stop();

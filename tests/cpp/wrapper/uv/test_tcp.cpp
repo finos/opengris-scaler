@@ -13,8 +13,6 @@
 #include "scaler/wrapper/uv/tcp.h"
 #include "tests/cpp/wrapper/uv/utility.h"
 
-using namespace scaler::wrapper::uv;
-
 class UVTCPTest: public ::testing::Test {
 protected:
 };
@@ -23,7 +21,7 @@ TEST_F(UVTCPTest, SocketAddress)
 {
     // IPv4 address
     {
-        auto ipv4 = expectSuccess(SocketAddress::IPv4("192.168.1.12", 8080));
+        auto ipv4 = expectSuccess(scaler::wrapper::uv::SocketAddress::IPv4("192.168.1.12", 8080));
 
         std::string addressStr = expectSuccess(ipv4.toString());
         ASSERT_EQ(addressStr, "192.168.1.12:8080");
@@ -31,12 +29,12 @@ TEST_F(UVTCPTest, SocketAddress)
         const sockaddr* sockAddr = ipv4.toSockAddr();
         ASSERT_NE(sockAddr, nullptr);
 
-        ASSERT_FALSE(SocketAddress::IPv4("invalid.ipv4.address", 8080).has_value());
+        ASSERT_FALSE(scaler::wrapper::uv::SocketAddress::IPv4("invalid.ipv4.address", 8080).has_value());
     }
 
     // IPv6 address
     {
-        auto ipv6 = expectSuccess(SocketAddress::IPv6("2001:db8::1234", 22));
+        auto ipv6 = expectSuccess(scaler::wrapper::uv::SocketAddress::IPv6("2001:db8::1234", 22));
 
         std::string addressStr = expectSuccess(ipv6.toString());
         ASSERT_EQ(addressStr, "2001:db8::1234:22");
@@ -44,40 +42,44 @@ TEST_F(UVTCPTest, SocketAddress)
         const sockaddr* sockAddr = ipv6.toSockAddr();
         ASSERT_NE(sockAddr, nullptr);
 
-        ASSERT_FALSE(SocketAddress::IPv6("invalid.ipv6.address", 22).has_value());
+        ASSERT_FALSE(scaler::wrapper::uv::SocketAddress::IPv6("invalid.ipv6.address", 22).has_value());
     }
 }
 
 class TCPEchoServer {
 public:
-    TCPEchoServer(Loop& loop): _loop(loop), _server(expectSuccess(TCPServer::init(loop)))
+    TCPEchoServer(scaler::wrapper::uv::Loop& loop)
+        : _loop(loop), _server(expectSuccess(scaler::wrapper::uv::TCPServer::init(loop)))
     {
-        SocketAddress address = expectSuccess(SocketAddress::IPv4("127.0.0.1", 0));
+        scaler::wrapper::uv::SocketAddress address =
+            expectSuccess(scaler::wrapper::uv::SocketAddress::IPv4("127.0.0.1", 0));
 
         expectSuccess(_server.bind(address, uv_tcp_flags(0)));
         expectSuccess(_server.listen(16, std::bind_front(&TCPEchoServer::onClientConnected, this)));
     }
 
-    SocketAddress address() const { return expectSuccess(_server.getSockName()); }
+    scaler::wrapper::uv::SocketAddress address() const { return expectSuccess(_server.getSockName()); }
 
 private:
-    Loop& _loop;
-    TCPServer _server;
+    scaler::wrapper::uv::Loop& _loop;
+    scaler::wrapper::uv::TCPServer _server;
 
-    void onClientConnected(std::expected<void, Error> result)
+    void onClientConnected(std::expected<void, scaler::wrapper::uv::Error> result)
     {
         expectSuccess(result);
 
-        auto client = std::make_shared<TCPSocket>(std::move(expectSuccess(TCPSocket::init(_loop))));
+        auto client = std::make_shared<scaler::wrapper::uv::TCPSocket>(
+            std::move(expectSuccess(scaler::wrapper::uv::TCPSocket::init(_loop))));
         expectSuccess(_server.accept(*client));
 
         expectSuccess(client->readStart(std::bind_front(onClientRead, client)));
     }
 
     static void onClientRead(
-        std::shared_ptr<TCPSocket> client, std::expected<std::span<const uint8_t>, Error> readResult)
+        std::shared_ptr<scaler::wrapper::uv::TCPSocket> client,
+        std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> readResult)
     {
-        if (!readResult.has_value() && readResult.error() == Error {UV_EOF}) {
+        if (!readResult.has_value() && readResult.error() == scaler::wrapper::uv::Error {UV_EOF}) {
             // Client disconnected.
             client->readStop();
             return;
@@ -89,8 +91,9 @@ private:
         // ensure the written bytes will not be freed until the write completes.
         auto buffer = std::make_shared<const std::vector<uint8_t>>(readBuffer.cbegin(), readBuffer.cend());
 
-        expectSuccess(client->write(
-            *buffer, [buffer](std::expected<void, Error> result) { expectSuccess<void>(std::move(result)); }));
+        expectSuccess(client->write(*buffer, [buffer](std::expected<void, scaler::wrapper::uv::Error> result) {
+            expectSuccess<void>(std::move(result));
+        }));
     }
 };
 
@@ -98,16 +101,16 @@ TEST_F(UVTCPTest, TCP)
 {
     const std::vector<uint8_t> message {'h', 'e', 'l', 'l', 'o'};
 
-    Loop loop = expectSuccess(Loop::init());
+    scaler::wrapper::uv::Loop loop = expectSuccess(scaler::wrapper::uv::Loop::init());
 
     TCPEchoServer server(loop);
 
     // Create a client and connect to the server
 
-    TCPSocket client      = expectSuccess(TCPSocket::init(loop));
-    bool responseReceived = false;
+    scaler::wrapper::uv::TCPSocket client = expectSuccess(scaler::wrapper::uv::TCPSocket::init(loop));
+    bool responseReceived                 = false;
 
-    auto onClientRead = [&](std::expected<std::span<const uint8_t>, Error> result) {
+    auto onClientRead = [&](std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) {
         std::span<const uint8_t> buffer = expectSuccess(result);
 
         // Check if the received message matches the sent message
@@ -116,7 +119,7 @@ TEST_F(UVTCPTest, TCP)
         responseReceived = true;
     };
 
-    auto onClientConnected = [&](std::expected<void, Error> result) {
+    auto onClientConnected = [&](std::expected<void, scaler::wrapper::uv::Error> result) {
         expectSuccess(result);
 
         expectSuccess(client.getSockName());

@@ -8,5 +8,5 @@ class UVTestUnix: public ::testing::Test {};
 
 TEST_F(UVTestUnix, Error)
 {
-    ASSERT_EQ(scaler::uv::Error::fromSysError(EEXIST), scaler::uv::Error(UV_EEXIST));
+    ASSERT_EQ(scaler::wrapper::uv::Error::fromSysError(EEXIST), scaler::wrapper::uv::Error(UV_EEXIST));
 }

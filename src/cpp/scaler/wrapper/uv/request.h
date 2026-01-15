@@ -22,7 +22,7 @@ class Request {
 public:
     using CallbackType = void(CallbackArgs...);
 
-    Request(utility::MoveOnlyFunction<CallbackType> callback) noexcept
+    Request(scaler::utility::MoveOnlyFunction<CallbackType> callback) noexcept
     {
         _holder->_callback = std::move(callback);
 
@@ -77,7 +77,7 @@ public:
 private:
     struct Holder {
         NativeRequestType _native;
-        utility::MoveOnlyFunction<CallbackType> _callback;
+        scaler::utility::MoveOnlyFunction<CallbackType> _callback;
 
         // Maintain a self-owning reference until the callback is called. Required for RAII.
         std::shared_ptr<Holder> _self;
