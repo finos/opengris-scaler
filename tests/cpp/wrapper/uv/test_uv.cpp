@@ -3,39 +3,30 @@
 
 #include <chrono>
 #include <string>
-#include <type_traits>
+#include <vector>
 
-#include "scaler/uv/async.h"
-#include "scaler/uv/error.h"
-#include "scaler/uv/loop.h"
-#include "scaler/uv/signal.h"
-#include "scaler/uv/timer.h"
+#include "scaler/wrapper/uv/async.h"
+#include "scaler/wrapper/uv/error.h"
+#include "scaler/wrapper/uv/loop.h"
+#include "scaler/wrapper/uv/request.h"
+#include "scaler/wrapper/uv/signal.h"
+#include "scaler/wrapper/uv/timer.h"
+#include "tests/cpp/wrapper/uv/utility.h"
 
 class UVTest: public ::testing::Test {
 protected:
-    // Extract the value from std::expected or fail the test
-    template <typename T>
-    static T expectSuccess(std::expected<T, scaler::uv::Error> result)
-    {
-        if (!result.has_value()) {
-            throw std::runtime_error("Operation failed: " + result.error().message());
-        }
-
-        if constexpr (!std::is_void_v<T>) {
-            return std::move(result.value());
-        }
-    }
 };
 
 TEST_F(UVTest, Async)
 {
-    scaler::uv::Loop loop = expectSuccess(scaler::uv::Loop::init());
+    scaler::wrapper::uv::Loop loop = expectSuccess(scaler::wrapper::uv::Loop::init());
 
     int nTimesCalled = 0;
 
     // Regular use-case
     {
-        scaler::uv::Async async = expectSuccess(scaler::uv::Async::init(loop, [&]() { ++nTimesCalled; }));
+        scaler::wrapper::uv::Async async =
+            expectSuccess(scaler::wrapper::uv::Async::init(loop, [&]() { ++nTimesCalled; }));
         ASSERT_EQ(nTimesCalled, 0);
 
         loop.run(UV_RUN_NOWAIT);
@@ -52,7 +43,8 @@ TEST_F(UVTest, Async)
 
     // Destructing the Async object before running the loop should cancel the call.
     {
-        scaler::uv::Async async = expectSuccess(scaler::uv::Async::init(loop, [&]() { ++nTimesCalled; }));
+        scaler::wrapper::uv::Async async =
+            expectSuccess(scaler::wrapper::uv::Async::init(loop, [&]() { ++nTimesCalled; }));
         expectSuccess(async.send());
     }
 
@@ -64,30 +56,38 @@ TEST_F(UVTest, Async)
 
 TEST_F(UVTest, Error)
 {
-    ASSERT_EQ(scaler::uv::Error(UV_EAGAIN), scaler::uv::Error(UV_EAGAIN));
-    ASSERT_NE(scaler::uv::Error(UV_EINTR), scaler::uv::Error(UV_EAGAIN));
+    ASSERT_EQ(scaler::wrapper::uv::Error(UV_EAGAIN), scaler::wrapper::uv::Error(UV_EAGAIN));
+    ASSERT_NE(scaler::wrapper::uv::Error(UV_EINTR), scaler::wrapper::uv::Error(UV_EAGAIN));
 
-    ASSERT_EQ(scaler::uv::Error(UV_EBUSY).name(), "EBUSY");
-    ASSERT_EQ(scaler::uv::Error(UV_EPIPE).message(), "broken pipe");
+    ASSERT_EQ(scaler::wrapper::uv::Error(UV_EBUSY).name(), "EBUSY");
+    ASSERT_EQ(scaler::wrapper::uv::Error(UV_EPIPE).message(), "broken pipe");
 }
 
 TEST_F(UVTest, Handle)
 {
-    scaler::uv::Loop loop = expectSuccess(scaler::uv::Loop::init());
+    scaler::wrapper::uv::Loop loop = expectSuccess(scaler::wrapper::uv::Loop::init());
 
-    scaler::uv::Handle<uv_timer_t, std::string> handle;
-    uv_timer_init(&loop.native(), &handle.native());
+    {
+        scaler::wrapper::uv::Handle<uv_timer_t, std::string> handle;
+        uv_timer_init(&loop.native(), &handle.native());
 
-    handle.setData("Some data");
-    ASSERT_EQ(handle.data(), "Some data");
+        handle.setData("Some data");
+        ASSERT_EQ(handle.data(), "Some data");
 
-    handle.setData("Some other data");
-    ASSERT_EQ(handle.data(), "Some other data");
+        handle.setData("Some other data");
+        ASSERT_EQ(handle.data(), "Some other data");
+    }
+
+    // Running the loop again should close the now destructed handle.
+    {
+        int nActiveHandles = loop.run(UV_RUN_NOWAIT);
+        ASSERT_EQ(nActiveHandles, 0);
+    }
 }
 
 TEST_F(UVTest, Loop)
 {
-    scaler::uv::Loop loop = expectSuccess(scaler::uv::Loop::init());
+    scaler::wrapper::uv::Loop loop = expectSuccess(scaler::wrapper::uv::Loop::init());
 
     // Loop::run()
     {
@@ -101,8 +101,9 @@ TEST_F(UVTest, Loop)
 
         int nTimesCalled = 0;
 
-        scaler::uv::Timer timer = expectSuccess(scaler::uv::Timer::init(loop));
-        scaler::uv::Async async = expectSuccess(scaler::uv::Async::init(loop, [&loop] { loop.stop(); }));
+        scaler::wrapper::uv::Timer timer = expectSuccess(scaler::wrapper::uv::Timer::init(loop));
+        scaler::wrapper::uv::Async async =
+            expectSuccess(scaler::wrapper::uv::Async::init(loop, [&loop] { loop.stop(); }));
 
         expectSuccess(timer.start(std::chrono::milliseconds(1000), std::nullopt, [&]() { nTimesCalled++; }));
         expectSuccess(async.send());
@@ -114,15 +115,28 @@ TEST_F(UVTest, Loop)
     }
 }
 
+TEST_F(UVTest, Request)
+{
+    // Mock a write request
+
+    int nTimesCalled = 0;
+
+    scaler::wrapper::uv::WriteRequest request {[&](int status) { ++nTimesCalled; }};
+
+    scaler::wrapper::uv::WriteRequest::onCallback(&request.native(), UV_EOVERFLOW);
+
+    ASSERT_EQ(nTimesCalled, 1);
+}
+
 TEST_F(UVTest, Signal)
 {
     constexpr int SIGNUM = SIGWINCH;
 
-    scaler::uv::Loop loop = expectSuccess(scaler::uv::Loop::init());
+    scaler::wrapper::uv::Loop loop = expectSuccess(scaler::wrapper::uv::Loop::init());
 
     // Validates support for signals
     {
-        scaler::uv::Signal signal = expectSuccess(scaler::uv::Signal::init(loop));
+        scaler::wrapper::uv::Signal signal = expectSuccess(scaler::wrapper::uv::Signal::init(loop));
         expectSuccess(signal.start(SIGNUM, [&](int) {}));
 
         if (uv_kill(uv_os_getpid(), SIGNUM) == UV_ENOSYS) {
@@ -135,7 +149,7 @@ TEST_F(UVTest, Signal)
     {
         int nTimesCalled = 0;
 
-        scaler::uv::Signal signal = expectSuccess(scaler::uv::Signal::init(loop));
+        scaler::wrapper::uv::Signal signal = expectSuccess(scaler::wrapper::uv::Signal::init(loop));
         expectSuccess(signal.start(SIGNUM, [&](int) { nTimesCalled++; }));
 
         loop.run(UV_RUN_NOWAIT);
@@ -154,12 +168,12 @@ TEST_F(UVTest, Signal)
     {
         int nTimesCalled = 0;
 
-        scaler::uv::Signal signalOneShot = expectSuccess(scaler::uv::Signal::init(loop));
+        scaler::wrapper::uv::Signal signalOneShot = expectSuccess(scaler::wrapper::uv::Signal::init(loop));
         expectSuccess(signalOneShot.startOneshot(SIGNUM, [&](int) { nTimesCalled++; }));
 
         // Setup a 2nd "catch-all" signal handler, or else the 2nd uv_kill() will terminate the process because of the
         // default signal handler.
-        scaler::uv::Signal signal = expectSuccess(scaler::uv::Signal::init(loop));
+        scaler::wrapper::uv::Signal signal = expectSuccess(scaler::wrapper::uv::Signal::init(loop));
         expectSuccess(signal.start(SIGNUM, [&](int) {}));
 
         uv_kill(uv_os_getpid(), SIGNUM);
@@ -175,12 +189,12 @@ TEST_F(UVTest, Timer)
 {
     constexpr std::chrono::milliseconds DELAY {50};
 
-    scaler::uv::Loop loop = expectSuccess(scaler::uv::Loop::init());
+    scaler::wrapper::uv::Loop loop = expectSuccess(scaler::wrapper::uv::Loop::init());
 
     // Regular use-case
     {
-        int nTimesCalled        = 0;
-        scaler::uv::Timer timer = expectSuccess(scaler::uv::Timer::init(loop));
+        int nTimesCalled                 = 0;
+        scaler::wrapper::uv::Timer timer = expectSuccess(scaler::wrapper::uv::Timer::init(loop));
 
         expectSuccess(timer.start(DELAY, std::nullopt, [&]() { nTimesCalled++; }));
 
@@ -196,8 +210,8 @@ TEST_F(UVTest, Timer)
 
     // Repeating and stopping timer
     {
-        int nTimesCalled        = 0;
-        scaler::uv::Timer timer = expectSuccess(scaler::uv::Timer::init(loop));
+        int nTimesCalled                 = 0;
+        scaler::wrapper::uv::Timer timer = expectSuccess(scaler::wrapper::uv::Timer::init(loop));
 
         expectSuccess(timer.start(std::chrono::milliseconds::zero(), DELAY, [&]() { nTimesCalled++; }));
 

@@ -1,4 +1,4 @@
-add_subdirectory(uv)
+add_subdirectory(wrapper/uv)
 
 if(LINUX OR APPLE)
 	add_subdirectory(object_storage)

@@ -7,17 +7,18 @@
 #include <memory>
 #include <optional>
 
-#include "scaler/uv/error.h"
+#include "scaler/wrapper/uv/error.h"
 
 namespace scaler {
+namespace wrapper {
 namespace uv {
 
 // See uv_loop_t
 class Loop {
 public:
     struct LoopOption {
-        uv_loop_option option;
-        std::optional<int> argument;  // Some options have arguments, e.g. UV_LOOP_BLOCK_SIGNAL
+        const uv_loop_option _option;
+        const std::optional<int> _argument;  // Some options have arguments, e.g. UV_LOOP_BLOCK_SIGNAL
     };
 
     // See uv_loop_close
@@ -52,4 +53,5 @@ private:
 };
 
 }  // namespace uv
+}  // namespace wrapper
 }  // namespace scaler

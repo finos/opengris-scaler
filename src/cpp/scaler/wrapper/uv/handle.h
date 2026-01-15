@@ -2,9 +2,11 @@
 
 #include <uv.h>
 
+#include <cassert>
 #include <memory>
 
 namespace scaler {
+namespace wrapper {
 namespace uv {
 
 // A RAII holder for all libuv handle classes (uv_timer_t, uv_tcp_t ...).
@@ -14,9 +16,17 @@ namespace uv {
 template <typename NativeHandleType, typename DataType>
 class Handle {
 public:
-    constexpr NativeHandleType& native() noexcept { return *_native; }
+    constexpr NativeHandleType& native() noexcept
+    {
+        assert(_native != nullptr && "The handle has been moved");
+        return *_native;
+    }
 
-    constexpr const NativeHandleType& native() const noexcept { return *_native; }
+    constexpr const NativeHandleType& native() const noexcept
+    {
+        assert(_native != nullptr && "The handle has been moved");
+        return *_native;
+    }
 
     // See uv_handle_get_data
     DataType& data() noexcept
@@ -27,7 +37,7 @@ public:
     }
 
     // See uv_handle_set_data
-    void setData(DataType&& value) noexcept
+    void setData(DataType value) noexcept
     {
         uv_handle_t* nativeHandle = reinterpret_cast<uv_handle_t*>(&native());
 
@@ -56,7 +66,7 @@ private:
                 delete data;
             }
 
-            delete handle;
+            delete reinterpret_cast<NativeHandleType*>(handle);
         });
     }
 
@@ -65,4 +75,5 @@ private:
 };
 
 }  // namespace uv
+}  // namespace wrapper
 }  // namespace scaler

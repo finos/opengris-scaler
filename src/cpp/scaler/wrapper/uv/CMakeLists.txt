@@ -7,7 +7,7 @@ else()
     set(LIBUV_TARGET PkgConfig::libuv)
 endif()
 
-add_library(scaler_uv OBJECT
+add_library(scaler_wrapper_uv OBJECT
     async.h
     async.cpp
 
@@ -25,13 +25,16 @@ add_library(scaler_uv OBJECT
     signal.h
     signal.cpp
 
-    # stream.h
+    socket_address.h
+    socket_address.cpp
 
-    # tcp.h
-    # tcp.cpp
+    stream.h
+
+    tcp.h
+    tcp.cpp
 
     timer.h
     timer.cpp
 )
 
-target_link_libraries(scaler_uv PUBLIC ${LIBUV_TARGET})
+target_link_libraries(scaler_wrapper_uv PUBLIC ${LIBUV_TARGET})

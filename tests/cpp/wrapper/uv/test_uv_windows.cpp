@@ -3,11 +3,11 @@
 #include <windows.h>
 #include <winerror.h>
 
-#include "scaler/uv/error.h"
+#include "scaler/wrapper/uv/error.h"
 
 class UVTestWindows: public ::testing::Test {};
 
 TEST_F(UVTestWindows, Error)
 {
-    ASSERT_EQ(scaler::uv::Error::fromSysError(ERROR_FILE_EXISTS), scaler::uv::Error(UV_EEXIST));
+    ASSERT_EQ(scaler::wrapper::uv::Error::fromSysError(ERROR_FILE_EXISTS), scaler::wrapper::uv::Error(UV_EEXIST));
 }

@@ -5,13 +5,14 @@
 #include <string>
 
 namespace scaler {
+namespace wrapper {
 namespace uv {
 
 struct Error {
-    int code;
-
     // See UV_xxx error codes.
-    constexpr Error(int code): code(code) {}
+    constexpr Error(int code) noexcept: _code(code) {}
+
+    int code() const noexcept;
 
     // See uv_err_name
     std::string name() const noexcept;
@@ -24,7 +25,11 @@ struct Error {
 
     // See uv_translate_sys_error
     static Error fromSysError(int systemErrorCode) noexcept;
+
+private:
+    int _code;
 };
 
 }  // namespace uv
+}  // namespace wrapper
 }  // namespace scaler
