@@ -35,7 +35,7 @@ int PipeWriter::write(const void* buffer, size_t size)
     return n;
 }
 
-void PipeWriter::write_all(const void* buffer, size_t size)
+void PipeWriter::writeAll(const void* buffer, size_t size)
 {
     size_t cursor = 0;
     while (cursor < size)

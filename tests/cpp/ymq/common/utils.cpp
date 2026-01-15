@@ -33,18 +33,6 @@ void raise_socket_error(const char* msg)
 #endif  // _WIN32
 }
 
-const char* check_localhost(const char* host)
-{
-    return std::strcmp(host, "localhost") == 0 ? "127.0.0.1" : host;
-}
-
-std::string format_address(std::string host, uint16_t port)
-{
-    std::ostringstream oss;
-    oss << "tcp://" << check_localhost(host.c_str()) << ":" << port;
-    return oss.str();
-}
-
 // change the current working directory to the project root
 // this is important for finding the python mitm script
 void chdir_to_project_root()

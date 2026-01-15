@@ -16,7 +16,7 @@ public:
     PipeWriter& operator=(const PipeWriter&) = delete;
 
     // write `size` bytes
-    void write_all(const void* data, size_t size);
+    void writeAll(const void* data, size_t size);
 
 private:
     // the native handle for this pipe reader

@@ -1,52 +1,22 @@
 #pragma once
-#include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 
 class Socket {
 public:
-    Socket(bool nodelay = false);
-    Socket(bool nodelay, long long fd);
-    ~Socket();
+    virtual ~Socket() = default;
 
-    // move-only
-    Socket(Socket&&) noexcept;
-    Socket& operator=(Socket&&) noexcept;
-    Socket(const Socket&)            = delete;
-    Socket& operator=(const Socket&) = delete;
+    virtual void tryConnect(const std::string& address, int tries = 10) const = 0;
+    virtual void bind(const std::string& address) const                       = 0;
+    virtual void listen(int backlog = 5) const                                = 0;
+    virtual std::unique_ptr<Socket> accept() const                            = 0;
 
-    // try to connect, retrying up to `tries` times when the connection is refused
-    void try_connect(const std::string& host, short port, int tries = 10) const;
-    void bind(short port) const;
-    void listen(int backlog = 5) const;
-    Socket accept() const;
+    virtual void writeAll(const void* data, size_t size) const = 0;
+    virtual void writeAll(std::string msg) const               = 0;
 
-    // write an entire buffer
-    void write_all(const void* data, size_t size) const;
-    void write_all(std::string msg) const;
+    virtual void readExact(void* buffer, size_t size) const = 0;
 
-    // read exactly `size` bytes
-    void read_exact(void* buffer, size_t size) const;
+    virtual void writeMessage(std::string msg) const = 0;
 
-    // write a message in the YMQ protocol
-    void write_message(std::string msg) const;
-
-    // read a YMQ message
-    std::string read_message() const;
-
-private:
-    // the native handle for this pipe reader
-    // on Linux, this is a file descriptor
-    // on Windows, this is a SOCKET
-    long long _fd;
-
-    // indicates if nodelay was set
-    bool _nodelay;
-
-    // write up to `size` bytes
-    int write(const void* buffer, size_t size) const;
-
-    // read up to `size` bytes
-    int read(void* buffer, size_t size) const;
+    virtual std::string readMessage() const = 0;
 };

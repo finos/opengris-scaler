@@ -16,7 +16,7 @@ public:
     PipeReader& operator=(const PipeReader&) = delete;
 
     // read exactly `size` bytes
-    void read_exact(void* buffer, size_t size) const;
+    void readExact(void* buffer, size_t size) const;
 
     // returns the native handle for this pipe reader
     // on linux, this is a pointer to the file descriptor
