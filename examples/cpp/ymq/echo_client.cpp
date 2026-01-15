@@ -11,7 +11,13 @@
 #include "scaler/ymq/simple_interface.h"
 #include "scaler/ymq/typedefs.h"
 
-using namespace scaler::ymq;
+using scaler::ymq::Bytes;
+using scaler::ymq::Error;
+using scaler::ymq::IOContext;
+using scaler::ymq::IOSocketType;
+using scaler::ymq::Message;
+using scaler::ymq::syncConnectSocket;
+using scaler::ymq::syncCreateSocket;
 
 int main()
 {
@@ -61,8 +67,7 @@ int main()
     // TODO: remove IOSocket also needs a future
     context.removeIOSocket(clientSocket);
 
-    using namespace std::chrono_literals;
-    std::this_thread::sleep_for(100ms);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     return 0;
 }

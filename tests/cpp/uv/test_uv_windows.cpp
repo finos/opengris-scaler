@@ -5,11 +5,9 @@
 
 #include "scaler/uv/error.h"
 
-using namespace scaler::uv;
-
 class UVTestWindows: public ::testing::Test {};
 
 TEST_F(UVTestWindows, Error)
 {
-    ASSERT_EQ(Error::fromSysError(ERROR_FILE_EXISTS), Error(UV_EEXIST));
+    ASSERT_EQ(scaler::uv::Error::fromSysError(ERROR_FILE_EXISTS), scaler::uv::Error(UV_EEXIST));
 }

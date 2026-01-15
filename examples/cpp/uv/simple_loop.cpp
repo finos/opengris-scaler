@@ -9,31 +9,30 @@
 #include "scaler/uv/signal.h"
 #include "scaler/uv/timer.h"
 
-using namespace scaler;
-
 // Simple helper that exits the program when it receives a std::unexpected value.
 template <typename T>
-static T exitOnFailure(std::expected<T, uv::Error>&& result);
+static T exitOnFailure(std::expected<T, scaler::uv::Error>&& result);
 
 int main()
 {
-    uv::Loop loop = exitOnFailure(uv::Loop::init());
+    scaler::uv::Loop loop = exitOnFailure(scaler::uv::Loop::init());
 
     std::cout << "Event loop initialized successfully\n";
 
     // Setting up an Async callback
-    uv::Async async = exitOnFailure(uv::Async::init(loop, []() { std::cout << "\tAsync callback executed!\n"; }));
+    scaler::uv::Async async =
+        exitOnFailure(scaler::uv::Async::init(loop, []() { std::cout << "\tAsync callback executed!\n"; }));
     exitOnFailure(async.send());
 
     // Setting up a 1 sec. repeating Timer
-    uv::Timer timer = exitOnFailure(uv::Timer::init(loop));
+    scaler::uv::Timer timer = exitOnFailure(scaler::uv::Timer::init(loop));
     exitOnFailure(timer.start(
         std::chrono::milliseconds(1000),  // Initial delay
         std::chrono::milliseconds(1000),  // Repeat every 1 second
         []() { std::cout << "\tTimer fired\n"; }));
 
     // Add a Signal handler that stops the loop on Ctrl+C
-    uv::Signal signal = exitOnFailure(uv::Signal::init(loop));
+    scaler::uv::Signal signal = exitOnFailure(scaler::uv::Signal::init(loop));
     exitOnFailure(signal.start(SIGINT, [&](int signum) {
         std::cout << "\tReceived signal " << signum << ", stopping gracefully...\n";
         loop.stop();
@@ -50,7 +49,7 @@ int main()
 }
 
 template <typename T>
-static T exitOnFailure(std::expected<T, uv::Error>&& result)
+static T exitOnFailure(std::expected<T, scaler::uv::Error>&& result)
 {
     if (!result.has_value()) {
         std::cerr << "Operation failed: " + result.error().message() << '\n';

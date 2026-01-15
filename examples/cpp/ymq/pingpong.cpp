@@ -11,9 +11,13 @@
 #include "scaler/ymq/simple_interface.h"
 #include "scaler/ymq/typedefs.h"
 
-using namespace scaler::ymq;
-using namespace std::chrono;
-using namespace std::chrono_literals;
+using scaler::ymq::Bytes;
+using scaler::ymq::Error;
+using scaler::ymq::IOContext;
+using scaler::ymq::IOSocketType;
+using scaler::ymq::Message;
+using scaler::ymq::syncConnectSocket;
+using scaler::ymq::syncCreateSocket;
 
 int main(int argc, char* argv[])
 {
@@ -36,7 +40,7 @@ int main(int argc, char* argv[])
 
     const std::string_view line = longStr;
 
-    time_point<system_clock> start = system_clock::now();
+    std::chrono::time_point<std::chrono::system_clock> start = std::chrono::system_clock::now();
     for (size_t cnt = 0; cnt < msgCnt; ++cnt) {
         Message message {};
         message.payload = Bytes {const_cast<char*>(line.data()), line.size()};
@@ -55,10 +59,10 @@ int main(int argc, char* argv[])
         recvFuture.wait();
     }
 
-    time_point<system_clock> end = system_clock::now();
+    std::chrono::time_point<std::chrono::system_clock> end = std::chrono::system_clock::now();
 
     std::cout << "Send and recv " << msgCnt << " messages with " << longStr.size() << " bytes.\n";
-    auto milli = duration_cast<milliseconds>(end - start);
+    auto milli = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Spend " << milli.count() << "ms.\n";
     std::cout << "Throughput " << msgCnt * (longStr.size()) * 1.0 / milli.count() << " Bpms.\n";
 

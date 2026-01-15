@@ -11,8 +11,25 @@
 #include "scaler/ymq/io_socket.h"
 #include "scaler/ymq/simple_interface.h"
 
-using namespace scaler::object_storage;
-using namespace scaler::ymq;
+using scaler::object_storage::CAPNP_HEADER_SIZE;
+using scaler::object_storage::CAPNP_WORD_SIZE;
+using scaler::object_storage::getAvailableTCPPort;
+using scaler::object_storage::ObjectID;
+using scaler::object_storage::ObjectPayload;
+using scaler::object_storage::ObjectRequestHeader;
+using scaler::object_storage::ObjectResponseHeader;
+using scaler::object_storage::ObjectStorageServer;
+
+using scaler::ymq::Bytes;
+using scaler::ymq::Error;
+using scaler::ymq::IOContext;
+using scaler::ymq::IOSocket;
+using scaler::ymq::IOSocketType;
+using scaler::ymq::Message;
+using scaler::ymq::syncConnectSocket;
+using scaler::ymq::syncCreateSocket;
+using scaler::ymq::syncRecvMessage;
+using scaler::ymq::syncSendMessage;
 
 using ObjectRequestType  = scaler::protocol::ObjectRequestHeader::ObjectRequestType;
 using ObjectResponseType = scaler::protocol::ObjectResponseHeader::ObjectResponseType;

@@ -9,7 +9,13 @@
 #include "scaler/ymq/io_socket.h"
 #include "scaler/ymq/simple_interface.h"
 
-using namespace scaler::ymq;
+using scaler::ymq::Bytes;
+using scaler::ymq::Error;
+using scaler::ymq::IOContext;
+using scaler::ymq::IOSocketType;
+using scaler::ymq::Message;
+using scaler::ymq::syncBindSocket;
+using scaler::ymq::syncCreateSocket;
 
 int main()
 {
@@ -36,8 +42,7 @@ int main()
         send_future.wait();
 
         std::cout << "One message published, sleep for 10 sec.\n";
-        using namespace std::chrono_literals;
-        std::this_thread::sleep_for(10s);
+        std::this_thread::sleep_for(std::chrono::seconds(10));
     }
 
     return 0;

@@ -11,8 +11,13 @@
 
 std::string longStr = "1234567890";
 
-using namespace scaler::ymq;
-using namespace std::chrono_literals;
+using scaler::ymq::Bytes;
+using scaler::ymq::Error;
+using scaler::ymq::IOContext;
+using scaler::ymq::IOSocketType;
+using scaler::ymq::Message;
+using scaler::ymq::syncConnectSocket;
+using scaler::ymq::syncCreateSocket;
 
 int main()
 {

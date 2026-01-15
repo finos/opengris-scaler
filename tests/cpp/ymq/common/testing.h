@@ -66,8 +66,6 @@ const LONGLONG ns_per_unit   = 100LL;  // 1 unit = 100 nanoseconds
 #include "tests/cpp/ymq/pipe/pipe.h"
 #include "tests/cpp/ymq/pipe/pipe_writer.h"
 
-using namespace std::chrono_literals;
-
 enum class TestResult : char { Success = 1, Failure = 2 };
 
 inline TestResult return_failure_if_false(

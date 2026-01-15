@@ -37,8 +37,17 @@
 #include "tests/cpp/ymq/common/testing.h"
 #include "tests/cpp/ymq/net/socket_utils.h"
 
-using namespace scaler::ymq;
-using namespace std::chrono_literals;
+using scaler::ymq::Bytes;
+using scaler::ymq::Error;
+using scaler::ymq::futureRecvMessage;
+using scaler::ymq::IOContext;
+using scaler::ymq::IOSocketType;
+using scaler::ymq::Message;
+using scaler::ymq::syncBindSocket;
+using scaler::ymq::syncConnectSocket;
+using scaler::ymq::syncCreateSocket;
+using scaler::ymq::syncRecvMessage;
+using scaler::ymq::syncSendMessage;
 
 // a test suite that's parameterized by transport protocol (e.g. "tcp", "ipc")
 class CcYmqTestSuiteParametrized: public ::testing::TestWithParam<std::string> {
@@ -190,7 +199,7 @@ TestResult reconnect_client_main(std::string address)
         auto error = syncSendMessage(socket, {.address = Bytes("server"), .payload = Bytes("sync")});
         RETURN_FAILURE_IF_FALSE(!error);
 
-        auto result = future.wait_for(1s);
+        auto result = future.wait_for(std::chrono::seconds(1));
         if (result == std::future_status::ready) {
             auto msg = future.get();
             RETURN_FAILURE_IF_FALSE(msg.has_value());
@@ -223,11 +232,11 @@ TestResult client_simulated_slow_network(std::string address)
     uint64_t header     = message.length();
 
     socket->writeAll((char*)&header, 4);
-    std::this_thread::sleep_for(2s);
+    std::this_thread::sleep_for(std::chrono::seconds(2));
     socket->writeAll((char*)&header + 4, 4);
-    std::this_thread::sleep_for(3s);
+    std::this_thread::sleep_for(std::chrono::seconds(3));
     socket->writeAll(message.data(), header / 2);
-    std::this_thread::sleep_for(2s);
+    std::this_thread::sleep_for(std::chrono::seconds(2));
     socket->writeAll(message.data() + header / 2, header - header / 2);
 
     return TestResult::Success;
@@ -303,7 +312,7 @@ TestResult client_sends_huge_header(std::string address)
 
         size_t i = 0;
         for (; i < 10; i++) {
-            std::this_thread::sleep_for(1s);
+            std::this_thread::sleep_for(std::chrono::seconds(1));
 
             try {
                 socket->writeAll("yi er san si wu liu");
@@ -380,11 +389,11 @@ TestResult pubsub_subscriber(std::string address, std::string topic, int differe
     auto socket =
         syncCreateSocket(context, IOSocketType::Unicast, std::format("{}_subscriber_{}", topic, differentiator));
 
-    std::this_thread::sleep_for(500ms);
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     syncConnectSocket(socket, address);
 
-    std::this_thread::sleep_for(500ms);
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
 #ifdef __linux__
     if (sem_post((sem_t*)sem) < 0)
@@ -508,7 +517,7 @@ TestResult test_request_stop()
     auto future = futureRecvMessage(socket);
     context.requestIOSocketStop(socket);
 
-    auto result = future.wait_for(100ms);
+    auto result = future.wait_for(std::chrono::milliseconds(100));
     RETURN_FAILURE_IF_FALSE(result == std::future_status::ready, "future should have completed");
 
     // the future created beore requestion stop should have been cancelled with an error

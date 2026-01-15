@@ -145,7 +145,6 @@ void ObjectStorageServer::closeServerReadyFds()
 
 void ObjectStorageServer::processRequests(std::function<bool()> running)
 {
-    using namespace std::chrono_literals;
     Identity lastMessageIdentity;
     std::map<Identity, std::pair<ObjectRequestHeader, Bytes>> identityToFullRequest;
     while (true) {
@@ -154,14 +153,14 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
             _pendingSendMessageFuts.erase(invalids.begin(), invalids.end());
 
             std::ranges::for_each(_pendingSendMessageFuts, [](auto& fut) {
-                if (fut.wait_for(0s) == std::future_status::ready) {
+                if (fut.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                     auto error = fut.get();
                     assert(!error);
                 }
             });
 
             auto maybeMessageFuture = ymq::futureRecvMessage(_ioSocket);
-            while (maybeMessageFuture.wait_for(100ms) == std::future_status::timeout) {
+            while (maybeMessageFuture.wait_for(std::chrono::milliseconds(100)) == std::future_status::timeout) {
                 if (!running() || sigRequestStop) {
                     _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: stopped by user");
                     pendingRequests.clear();
@@ -174,14 +173,14 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
                 auto error = maybeMessage.error();
                 if (error._errorCode == ymq::Error::ErrorCode::IOSocketStopRequested) {
                     auto n = std::ranges::count_if(_pendingSendMessageFuts, [](auto& x) {
-                        return x.valid() && x.wait_for(0s) == std::future_status::timeout;
+                        return x.valid() && x.wait_for(std::chrono::seconds(0)) == std::future_status::timeout;
                     });
                     if (!n) {
                         _logger.log(
                             scaler::ymq::Logger::LoggingLevel::info,
                             "ObjectStorageServer: stopped, number of messages leftover in the system = ",
                             std::ranges::count_if(_pendingSendMessageFuts, [](auto& x) {
-                                return x.valid() && x.wait_for(0s) == std::future_status::timeout;
+                                return x.valid() && x.wait_for(std::chrono::seconds(0)) == std::future_status::timeout;
                             }));
                     }
 

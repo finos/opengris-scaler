@@ -64,14 +64,12 @@ inline std::ostream& operator<<(std::ostream& os, const Timestamp& ts)
 // For timerfd
 inline itimerspec convertToItimerspec(Timestamp ts)
 {
-    using namespace std::chrono;
-
     itimerspec timerspec {};
     const auto duration = ts.timestamp - std::chrono::system_clock::now();
     assert(duration.count() >= 0);
 
-    const auto secs            = duration_cast<seconds>(duration);
-    const auto nanosecs        = duration_cast<nanoseconds>(duration - secs);
+    const auto secs            = std::chrono::duration_cast<std::chrono::seconds>(duration);
+    const auto nanosecs        = std::chrono::duration_cast<std::chrono::nanoseconds>(duration - secs);
     timerspec.it_value.tv_sec  = secs.count();
     timerspec.it_value.tv_nsec = nanosecs.count();
 
@@ -82,10 +80,9 @@ inline itimerspec convertToItimerspec(Timestamp ts)
 // For timerfd
 inline LARGE_INTEGER convertToLARGE_INTEGER(Timestamp ts)
 {
-    using namespace std::chrono;
     const auto duration = ts.timestamp - std::chrono::system_clock::now();
     assert(duration.count() >= 0);
-    const auto nanosecs            = duration_cast<nanoseconds>(duration);
+    const auto nanosecs            = std::chrono::duration_cast<std::chrono::nanoseconds>(duration);
     long long relativeHundredNanos = 1LL * nanosecs.count() / 100 * -1;
     return *(LARGE_INTEGER*)&relativeHundredNanos;
 }

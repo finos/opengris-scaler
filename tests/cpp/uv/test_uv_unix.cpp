@@ -4,11 +4,9 @@
 
 #include "scaler/uv/error.h"
 
-using namespace scaler::uv;
-
 class UVTestUnix: public ::testing::Test {};
 
 TEST_F(UVTestUnix, Error)
 {
-    ASSERT_EQ(Error::fromSysError(EEXIST), Error(UV_EEXIST));
+    ASSERT_EQ(scaler::uv::Error::fromSysError(EEXIST), scaler::uv::Error(UV_EEXIST));
 }

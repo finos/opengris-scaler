@@ -9,7 +9,12 @@
 #include "scaler/ymq/io_socket.h"
 #include "scaler/ymq/simple_interface.h"
 
-using namespace scaler::ymq;
+using scaler::ymq::Error;
+using scaler::ymq::IOContext;
+using scaler::ymq::IOSocketType;
+using scaler::ymq::Message;
+using scaler::ymq::syncBindSocket;
+using scaler::ymq::syncCreateSocket;
 
 int main()
 {

@@ -6,7 +6,10 @@
 #include "scaler/ymq/simple_interface.h"
 #include "scaler/ymq/typedefs.h"
 
-using namespace scaler::ymq;
+using scaler::ymq::IOContext;
+using scaler::ymq::IOSocketType;
+using scaler::ymq::syncConnectSocket;
+using scaler::ymq::syncCreateSocket;
 
 int main()
 {
