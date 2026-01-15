@@ -90,7 +90,7 @@ async def call_async(
     *args: P.args,  # type: ignore
     **kwargs: P.kwargs,  # type: ignore
 ) -> T:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     future = loop.create_future()
 
     def callback(result: Union[T, BaseException]):

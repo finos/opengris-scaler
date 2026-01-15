@@ -86,8 +86,15 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         return self._ident
 
     def run(self) -> None:
+        self._loop = asyncio.new_event_loop()
+        self._loop.run_until_complete(self._run())
+
+    async def _run(self) -> None:
         self.__initialize()
-        self.__run_forever()
+
+        self._task = self._loop.create_task(self.__get_loops())
+        self.__register_signal()
+        await self._task
 
     def __initialize(self):
         setup_logger()
@@ -128,10 +135,6 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
             connector_storage=self._connector_storage,
             heartbeat_manager=self._heartbeat_manager,
         )
-
-        self._loop = asyncio.get_event_loop()
-        self.__register_signal()
-        self._task = self._loop.create_task(self.__get_loops())
 
     async def __on_receive_external(self, message: Message):
         if not self._heartbeat_received and not isinstance(message, WorkerHeartbeatEcho):
@@ -194,11 +197,9 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         self._connector_external.destroy()
         logging.info(f"{self.identity!r}: quit")
 
-    def __run_forever(self):
-        self._loop.run_until_complete(self._task)
-
     def __register_signal(self):
         self._loop.add_signal_handler(signal.SIGINT, self.__destroy)
+        self._loop.add_signal_handler(signal.SIGTERM, self.__destroy)
 
     def __destroy(self):
         self._task.cancel()

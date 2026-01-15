@@ -31,7 +31,7 @@ class ZMQSyncSubscriber(SyncSubscriber, threading.Thread):
         self.daemon = bool(daemonic)
         self._timeout_seconds = timeout_seconds
 
-        self._context: Optional[zmq.Context] = None
+        self._io_context: Optional[zmq.Context] = None
         self._socket: Optional[zmq.Socket] = None
 
     def __close(self):
@@ -55,8 +55,8 @@ class ZMQSyncSubscriber(SyncSubscriber, threading.Thread):
         self.__close()
 
     def __initialize(self):
-        self._context = zmq.Context.instance()
-        self._socket = self._context.socket(zmq.SUB)
+        self._io_context = zmq.Context.instance()
+        self._socket = self._io_context.socket(zmq.SUB)
         self._socket.setsockopt(zmq.RCVHWM, 0)
 
         if self._timeout_seconds == -1:

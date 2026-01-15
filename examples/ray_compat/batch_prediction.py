@@ -4,7 +4,6 @@ This example was copied from https://docs.ray.io/en/latest/ray-core/examples/bat
 Like in `highly_parallel.py`, only minimal changes are needed for the example to work on Scaler.
 """
 
-
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq

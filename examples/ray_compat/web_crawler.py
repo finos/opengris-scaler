@@ -11,7 +11,7 @@ import requests
 from bs4 import BeautifulSoup
 
 # changed line 1/2
-import scaler.compat.ray  # noqa: F401
+import scaler.compat.ray
 
 
 def extract_links(elements, base_url, max_results=100):
@@ -45,6 +45,10 @@ docs = base + "index.html"
 
 
 def main():
+    # initialize the scaler cluster with a fixed number of workers to prevent
+    # excessive memory usage during import in CI environments
+    scaler.compat.ray.scaler_init(n_workers=4)
+
     @ray.remote
     def find_links_task(start_url, base_url, depth=2):
         return find_links(start_url, base_url, depth)
