@@ -1,7 +1,6 @@
 #pragma once
 // NOTE: This file is needed because of we support backward compatibility to
 // Python 3.8. This file will be removed once we drop the support to Python 3.8.
-
 #define PY_SSIZE_T_CLEAN
 
 // if on Windows and in debug mode, undefine _DEBUG before including Python.h
@@ -17,11 +16,7 @@
 #include <structmember.h>
 
 #include "scaler/error/error.h"
-#include "scaler/ymq/pymod_ymq/gil.h"
-
-namespace scaler {
-namespace ymq {
-namespace pymod {
+#include "scaler/utility/pymod/gil.h"
 
 #if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 10
 #define Py_TPFLAGS_IMMUTABLETYPE          (0)
@@ -48,7 +43,7 @@ static inline int PyModule_AddObjectRef(PyObject* mod, const char* name, PyObjec
 
 #if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 9
 // This is a very dirty hack, we basically place the raw pointer to this dict when init,
-// see scaler/ymq/pymod_ymq/ymq.h for more detail
+// see scaler/utility/pymod_ymq/ymq.h for more detail
 PyObject* PyType_GetModule(PyTypeObject* type)
 {
     return PyObject_GetAttrString((PyObject*)(type), "__module_object__");
@@ -86,6 +81,9 @@ static inline PyObject* PyType_FromModuleAndSpec(PyObject* pymodule, PyType_Spec
 }
 #endif  // <3.9
 
+namespace scaler {
+namespace utility {
+namespace pymod {
 // NOTE: We define this no matter what version of Python we use.
 // an owned handle to a PyObject with automatic reference counting via RAII
 template <typename T = PyObject>
@@ -120,6 +118,11 @@ public:
 
     ~OwnedPyObject() { this->free(); }
 
+    inline friend bool operator==(const OwnedPyObject<T>& x, const OwnedPyObject<T>& y)
+    {
+        return PyObject_RichCompareBool(x._ptr, y._ptr, Py_EQ) == 1;
+    }
+
     // creates a new OwnedPyObject from a borrowed reference
     static OwnedPyObject fromBorrowed(T* ptr) { return OwnedPyObject((T*)Py_XNewRef((PyObject*)ptr)); }
 
@@ -147,6 +150,8 @@ public:
     T* operator->() const { return _ptr; }
     T* operator*() const { return _ptr; }
 
+    Py_hash_t hash() const { return PyObject_Hash(_ptr); }
+
 private:
     T* _ptr;
 
@@ -162,11 +167,14 @@ private:
         Py_CLEAR(_ptr);
     }
 };
+}  // namespace pymod
+}  // namespace utility
+}  // namespace scaler
 
 #if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION == 8
 static inline PyObject* PyObject_CallOneArg(PyObject* callable, PyObject* arg)
 {
-    OwnedPyObject<> args = PyTuple_Pack(1, arg);
+    scaler::utility::pymod::OwnedPyObject<> args = PyTuple_Pack(1, arg);
     if (!args)
         return nullptr;
     PyObject* result = PyObject_Call(callable, *args, nullptr);
@@ -174,6 +182,10 @@ static inline PyObject* PyObject_CallOneArg(PyObject* callable, PyObject* arg)
 }
 #endif
 
-}  // namespace pymod
-}  // namespace ymq
-}  // namespace scaler
+template <>
+struct std::hash<scaler::utility::pymod::OwnedPyObject<PyObject>> {
+    std::size_t operator()(const scaler::utility::pymod::OwnedPyObject<PyObject>& obj) const noexcept
+    {
+        return obj.hash();
+    }
+};

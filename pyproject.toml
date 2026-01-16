@@ -101,7 +101,7 @@ scaler_worker_adapter_ecs = "scaler.entry_points.worker_adapter_ecs:main"
 [tool.scikit-build]
 cmake.source-dir = "."
 wheel.packages = ["src/scaler"]
-build.targets = ["py_ymq", "py_object_storage_server"]
+build.targets = ["py_ymq", "py_object_storage_server", "py_one_to_many_dict"]
 
 [tool.scikit-build.cmake.define]
 CMAKE_C_COMPILER = { env = "CMAKE_C_COMPILER", default = "gcc" }

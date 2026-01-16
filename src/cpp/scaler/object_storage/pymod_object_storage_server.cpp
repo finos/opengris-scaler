@@ -3,7 +3,7 @@
 #include <pyerrors.h>
 
 #include "scaler/object_storage/object_storage_server.h"
-#include "scaler/ymq/pymod_ymq/gil.h"
+#include "scaler/utility/pymod/gil.h"
 
 extern "C" {
 struct PyObjectStorageServer {
@@ -56,7 +56,7 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
 
     int res {};
     auto running = [&] -> bool {
-        scaler::ymq::pymod::AcquireGIL gil;
+        scaler::utility::pymod::AcquireGIL gil;
         (void)gil;
         res = PyErr_CheckSignals();
         return res == 0;

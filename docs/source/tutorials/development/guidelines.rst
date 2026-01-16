@@ -195,3 +195,51 @@ Class definitions should follow this order:
         std::string _foobar;
         int _somePrivateVariable;
     };
+
+Caveats
+~~~~~~~
+
+Iterator invalidation:
+----------------------
+
+ * In C++, iterators model pointers possibly equipped with operations
+ * Containers typically shrink and grow memory dynamically.
+ * Containers reallocations happen when adding/removing elements.
+ * Iterators are typically invalidated during memory reallocation.
+ * This behaviour means user should be careful when adding/removing element during loop.
+
+Some iterators invalidation can be easy to spot. However, some cases are harder to spot:
+
+.. code:: cpp
+
+    std::vector<Graph> graphs;
+    void graphDecomposition(const Graph& g);
+    bool graphDecomposePossible(const Graph& g);
+
+    void decomposeGraphs() {
+        // This is likely to cause segfault.
+        for(auto it = graphs.begin(); it != graphs.end(); ++it) {
+            if(graphDecomposePossible(*it)) {
+                graphDecomposition(*it);
+            }
+        }
+    }
+
+    void graphDecomposition(const Graph& g) {
+        graphs.push_back(g.head.minSpanTree());
+        graphs.push_back(g.tail.minSpanTree());
+    }
+
+Things can be even more messy in asynchronous scenario. For example, when interacting with an event loop.
+
+In cases that modifying containers during iteration is necessary, use index:
+
+.. code:: cpp
+
+    void decomposeGraphs() {
+        for(auto i = 0uz; i < graphs.size(); ++i) {
+            if(graphDecomposePossible(graphs[i])) {
+                graphDecomposition(graphs[i]);
+            }
+        }
+    }

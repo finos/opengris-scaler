@@ -4,7 +4,7 @@
 #include <Python.h>
 
 namespace scaler {
-namespace ymq {
+namespace utility {
 namespace pymod {
 
 class AcquireGIL {
@@ -22,5 +22,5 @@ private:
 };
 
 }  // namespace pymod
-}  // namespace ymq
+}  // namespace utility
 }  // namespace scaler

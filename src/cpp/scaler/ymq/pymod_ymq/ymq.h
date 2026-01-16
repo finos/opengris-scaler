@@ -1,7 +1,7 @@
 #pragma once
 
 // Python
-#include "scaler/ymq/pymod_ymq/compatibility.h"
+#include "scaler/utility/pymod/compatibility.h"
 
 // C
 #include <fcntl.h>
@@ -20,6 +20,9 @@
 namespace scaler {
 namespace ymq {
 namespace pymod {
+
+using scaler::utility::pymod::AcquireGIL;
+using scaler::utility::pymod::OwnedPyObject;
 
 struct YMQState {
     OwnedPyObject<> enumModule;     // Reference to the enum module
