@@ -93,7 +93,7 @@ struct ManyToManyDict {
             return false;
         }
 
-        const auto [rightKeyVals, rightKeyValid] = _leftKeyToRightKey.getValues(rightKey);
+        const auto [rightKeyVals, rightKeyValid] = _rightKeyToLeftKey.getValues(rightKey);
         if (!rightKeyValid || !rightKeyVals->contains(leftKey)) {
             return false;
         }
