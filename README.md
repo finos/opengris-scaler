@@ -233,15 +233,16 @@ automatically loads its configuration from its corresponding section.
 
 The following table maps each Scaler command to its corresponding section name in the TOML file.
 
-| Command                          | TOML Section Name           |
-|----------------------------------|-----------------------------|
-| `scaler_scheduler`               | `[scheduler]`               |
-| `scaler_cluster`                 | `[cluster]`                 |
-| `scaler_object_storage_server`   | `[object_storage_server]`   |
-| `scaler_ui`                      | `[webui]`                   |
-| `scaler_top`                     | `[top]`                     |
-| `scaler_worker_adapter_native`   | `[native_worker_adapter]`   |
-| `scaler_worker_adapter_symphony` | `[symphony_worker_adapter]` |
+| Command                              | TOML Section Name               |
+|--------------------------------------|---------------------------------|
+| `scaler_scheduler`                   | `[scheduler]`                   |
+| `scaler_cluster`                     | `[cluster]`                     |
+| `scaler_object_storage_server`       | `[object_storage_server]`       |
+| `scaler_ui`                          | `[webui]`                       |
+| `scaler_top`                         | `[top]`                         |
+| `scaler_worker_adapter_native`       | `[native_worker_adapter]`       |
+| `scaler_worker_adapter_fixed_native` | `[fixed_native_worker_adapter]` |
+| `scaler_worker_adapter_symphony`     | `[symphony_worker_adapter]`     |
 
 ### Practical Scenarios & Examples
 

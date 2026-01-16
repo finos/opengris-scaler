@@ -11,7 +11,7 @@ from scaler.utility.event_loop import EventLoopType
 
 
 @dataclasses.dataclass
-class NativeWorkerAdapterConfig(ConfigClass):
+class FixedNativeWorkerAdapterConfig(ConfigClass):
     web_config: WebConfig
     worker_adapter_config: WorkerAdapterConfig
     preload: Optional[str] = None
@@ -30,3 +30,5 @@ class NativeWorkerAdapterConfig(ConfigClass):
     def __post_init__(self) -> None:
         if self.worker_io_threads <= 0:
             raise ValueError("worker_io_threads must be a positive integer.")
+        if self.worker_adapter_config.max_workers < 0:
+            raise ValueError("max_workers must be >=0 for fixed native worker adapter")
