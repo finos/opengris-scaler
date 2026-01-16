@@ -11,7 +11,6 @@
 #include "scaler/wrapper/uv/loop.h"
 #include "scaler/wrapper/uv/socket_address.h"
 #include "scaler/wrapper/uv/tcp.h"
-#include "tests/cpp/wrapper/uv/utility.h"
 
 class UVTCPTest: public ::testing::Test {
 protected:
@@ -21,9 +20,9 @@ TEST_F(UVTCPTest, SocketAddress)
 {
     // IPv4 address
     {
-        auto ipv4 = expectSuccess(scaler::wrapper::uv::SocketAddress::IPv4("192.168.1.12", 8080));
+        auto ipv4 = UV_EXIT_ON_ERROR(scaler::wrapper::uv::SocketAddress::IPv4("192.168.1.12", 8080));
 
-        std::string addressStr = expectSuccess(ipv4.toString());
+        std::string addressStr = UV_EXIT_ON_ERROR(ipv4.toString());
         ASSERT_EQ(addressStr, "192.168.1.12:8080");
 
         const sockaddr* sockAddr = ipv4.toSockAddr();
@@ -34,9 +33,9 @@ TEST_F(UVTCPTest, SocketAddress)
 
     // IPv6 address
     {
-        auto ipv6 = expectSuccess(scaler::wrapper::uv::SocketAddress::IPv6("2001:db8::1234", 22));
+        auto ipv6 = UV_EXIT_ON_ERROR(scaler::wrapper::uv::SocketAddress::IPv6("2001:db8::1234", 22));
 
-        std::string addressStr = expectSuccess(ipv6.toString());
+        std::string addressStr = UV_EXIT_ON_ERROR(ipv6.toString());
         ASSERT_EQ(addressStr, "2001:db8::1234:22");
 
         const sockaddr* sockAddr = ipv6.toSockAddr();
@@ -49,16 +48,16 @@ TEST_F(UVTCPTest, SocketAddress)
 class TCPEchoServer {
 public:
     TCPEchoServer(scaler::wrapper::uv::Loop& loop)
-        : _loop(loop), _server(expectSuccess(scaler::wrapper::uv::TCPServer::init(loop)))
+        : _loop(loop), _server(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPServer::init(loop)))
     {
         scaler::wrapper::uv::SocketAddress address =
-            expectSuccess(scaler::wrapper::uv::SocketAddress::IPv4("127.0.0.1", 0));
+            UV_EXIT_ON_ERROR(scaler::wrapper::uv::SocketAddress::IPv4("127.0.0.1", 0));
 
-        expectSuccess(_server.bind(address, uv_tcp_flags(0)));
-        expectSuccess(_server.listen(16, std::bind_front(&TCPEchoServer::onClientConnected, this)));
+        UV_EXIT_ON_ERROR(_server.bind(address, uv_tcp_flags(0)));
+        UV_EXIT_ON_ERROR(_server.listen(16, std::bind_front(&TCPEchoServer::onClientConnected, this)));
     }
 
-    scaler::wrapper::uv::SocketAddress address() const { return expectSuccess(_server.getSockName()); }
+    scaler::wrapper::uv::SocketAddress address() const { return UV_EXIT_ON_ERROR(_server.getSockName()); }
 
 private:
     scaler::wrapper::uv::Loop& _loop;
@@ -66,13 +65,13 @@ private:
 
     void onClientConnected(std::expected<void, scaler::wrapper::uv::Error> result)
     {
-        expectSuccess(result);
+        UV_EXIT_ON_ERROR(result);
 
         auto client = std::make_shared<scaler::wrapper::uv::TCPSocket>(
-            std::move(expectSuccess(scaler::wrapper::uv::TCPSocket::init(_loop))));
-        expectSuccess(_server.accept(*client));
+            std::move(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(_loop))));
+        UV_EXIT_ON_ERROR(_server.accept(*client));
 
-        expectSuccess(client->readStart(std::bind_front(onClientRead, client)));
+        UV_EXIT_ON_ERROR(client->readStart(std::bind_front(onClientRead, client)));
     }
 
     static void onClientRead(
@@ -85,14 +84,14 @@ private:
             return;
         }
 
-        std::span<const uint8_t> readBuffer = expectSuccess(readResult);
+        std::span<const uint8_t> readBuffer = UV_EXIT_ON_ERROR(readResult);
 
         // Copies the received buffer into a std::vector that will be shared with the write callback, to
         // ensure the written bytes will not be freed until the write completes.
         auto buffer = std::make_shared<const std::vector<uint8_t>>(readBuffer.cbegin(), readBuffer.cend());
 
-        expectSuccess(client->write(*buffer, [buffer](std::expected<void, scaler::wrapper::uv::Error> result) {
-            expectSuccess<void>(std::move(result));
+        UV_EXIT_ON_ERROR(client->write(*buffer, [buffer](std::expected<void, scaler::wrapper::uv::Error> result) {
+            UV_EXIT_ON_ERROR(std::move(result));
         }));
     }
 };
@@ -101,17 +100,17 @@ TEST_F(UVTCPTest, TCP)
 {
     const std::vector<uint8_t> message {'h', 'e', 'l', 'l', 'o'};
 
-    scaler::wrapper::uv::Loop loop = expectSuccess(scaler::wrapper::uv::Loop::init());
+    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
 
     TCPEchoServer server(loop);
 
     // Create a client and connect to the server
 
-    scaler::wrapper::uv::TCPSocket client = expectSuccess(scaler::wrapper::uv::TCPSocket::init(loop));
+    scaler::wrapper::uv::TCPSocket client = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(loop));
     bool responseReceived                 = false;
 
     auto onClientRead = [&](std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) {
-        std::span<const uint8_t> buffer = expectSuccess(result);
+        std::span<const uint8_t> buffer = UV_EXIT_ON_ERROR(result);
 
         // Check if the received message matches the sent message
         ASSERT_TRUE(std::equal(buffer.begin(), buffer.end(), message.begin(), message.end()));
@@ -120,18 +119,19 @@ TEST_F(UVTCPTest, TCP)
     };
 
     auto onClientConnected = [&](std::expected<void, scaler::wrapper::uv::Error> result) {
-        expectSuccess(result);
+        UV_EXIT_ON_ERROR(result);
 
-        expectSuccess(client.getSockName());
-        expectSuccess(client.getPeerName());
+        UV_EXIT_ON_ERROR(client.getSockName());
+        UV_EXIT_ON_ERROR(client.getPeerName());
 
-        expectSuccess(client.readStart(onClientRead));
+        UV_EXIT_ON_ERROR(client.readStart(onClientRead));
 
         // Send the message to the server
-        expectSuccess(client.write(message, &expectSuccess<void>));
+        UV_EXIT_ON_ERROR(client.write(
+            message, [](std::expected<void, scaler::wrapper::uv::Error>&& result) { UV_EXIT_ON_ERROR(result); }));
     };
 
-    expectSuccess(client.connect(server.address(), onClientConnected));
+    UV_EXIT_ON_ERROR(client.connect(server.address(), onClientConnected));
 
     // Loop until the echo response is received
 
