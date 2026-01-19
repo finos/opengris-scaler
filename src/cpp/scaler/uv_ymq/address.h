@@ -26,6 +26,14 @@ public:
     Address(Address&&) noexcept            = default;
     Address& operator=(Address&&) noexcept = default;
 
+    const std::variant<scaler::wrapper::uv::SocketAddress, std::string>& value() const noexcept;
+
+    Type type() const noexcept;
+
+    const scaler::wrapper::uv::SocketAddress& asTCP() const noexcept;
+
+    const std::string& asIPC() const noexcept;
+
     // Try to parse a string to an Address instance.
     //
     // Example of string values are:
@@ -35,10 +43,6 @@ public:
     //     tcp://2001:db8::1:1211
     //
     static std::expected<Address, scaler::ymq::Error> fromString(const std::string& address) noexcept;
-
-    const std::variant<scaler::wrapper::uv::SocketAddress, std::string>& value() const noexcept;
-
-    Type type() const noexcept;
 
 private:
     std::variant<scaler::wrapper::uv::SocketAddress, std::string> _value;

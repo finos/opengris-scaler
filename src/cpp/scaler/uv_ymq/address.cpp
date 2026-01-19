@@ -1,5 +1,6 @@
 #include "scaler/uv_ymq/address.h"
 
+#include <cassert>
 #include <utility>
 
 namespace scaler {
@@ -48,6 +49,34 @@ Address::Address(std::variant<scaler::wrapper::uv::SocketAddress, std::string> v
 {
 }
 
+const std::variant<scaler::wrapper::uv::SocketAddress, std::string>& Address::value() const noexcept
+{
+    return _value;
+}
+
+Address::Type Address::type() const noexcept
+{
+    if (std::holds_alternative<scaler::wrapper::uv::SocketAddress>(_value)) {
+        return Type::TCP;
+    } else if (std::holds_alternative<std::string>(_value)) {
+        return Type::IPC;
+    } else {
+        std::unreachable();
+    }
+}
+
+const scaler::wrapper::uv::SocketAddress& Address::asTCP() const noexcept
+{
+    assert(type() == Type::TCP);
+    return std::get<scaler::wrapper::uv::SocketAddress>(_value);
+}
+
+const std::string& Address::asIPC() const noexcept
+{
+    assert(type() == Type::TCP);
+    return std::get<std::string>(_value);
+}
+
 std::expected<Address, scaler::ymq::Error> Address::fromString(const std::string& address) noexcept
 {
     constexpr std::string_view TCP_PREFIX = "tcp://";
@@ -63,22 +92,6 @@ std::expected<Address, scaler::ymq::Error> Address::fromString(const std::string
 
     return std::unexpected {scaler::ymq::Error {
         scaler::ymq::Error::ErrorCode::InvalidAddressFormat, "Address must start with 'tcp://' or 'ipc://'"}};
-}
-
-const std::variant<scaler::wrapper::uv::SocketAddress, std::string>& Address::value() const noexcept
-{
-    return _value;
-}
-
-Address::Type Address::type() const noexcept
-{
-    if (std::holds_alternative<scaler::wrapper::uv::SocketAddress>(_value)) {
-        return Type::TCP;
-    } else if (std::holds_alternative<std::string>(_value)) {
-        return Type::IPC;
-    } else {
-        std::unreachable();
-    }
 }
 
 }  // namespace uv_ymq

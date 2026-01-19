@@ -40,7 +40,8 @@ private:
 
     std::jthread _thread;
 
-    // execute() add callbacks to a thread-safe queue, and then wake up the the UV loop using an uv::Async notification.
+    // executeThreadSafe() add callbacks to a thread-safe queue, and then wake up the the UV loop using an uv::Async
+    // notification.
 
     std::mutex _executeMutex;
     std::queue<Callback> _executeQueue;
