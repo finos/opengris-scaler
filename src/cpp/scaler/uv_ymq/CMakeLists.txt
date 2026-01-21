@@ -1,4 +1,7 @@
 add_library(uv_ymq_objs OBJECT
+    accepting_server.h
+    accepting_server.cpp
+
     address.h
     address.cpp
 
