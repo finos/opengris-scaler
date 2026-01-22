@@ -108,6 +108,8 @@ class CapabilityScalingController(ScalingController):
 
             # Get a representative capability dict for starting new workers
             # Use the first task's capabilities as the template
+            if not tasks:
+                logging.warning(f"No tasks found for capability set {capability_keys}")
             capability_dict = tasks[0] if tasks else {}
 
             await self._scale_for_capability(capability_keys, capability_dict, len(tasks), capable_workers)
@@ -179,6 +181,11 @@ class CapabilityScalingController(ScalingController):
 
     async def _start_worker_group(self, capability_keys: FrozenSet[str], capability_dict: Dict[str, int]):
         """Start a new worker group with the specified capabilities."""
+        # Ensure capability_dict is valid
+        if capability_dict is None:
+            logging.error(f"capability_dict is None for capability_keys={capability_keys}, using empty dict")
+            capability_dict = {}
+
         response, status = await self._make_request({"action": "get_worker_adapter_info"})
         if status != web.HTTPOk.status_code:
             logging.warning("Failed to get worker adapter info.")
@@ -191,6 +198,7 @@ class CapabilityScalingController(ScalingController):
 
         # Include capabilities in the request
         request_payload = {"action": "start_worker_group", "capabilities": capability_dict}
+        logging.info(f"Requesting worker group with capabilities: {capability_dict!r}")
 
         response, status = await self._make_request(request_payload)
         if status == web.HTTPTooManyRequests.status_code:
@@ -207,8 +215,7 @@ class CapabilityScalingController(ScalingController):
         self._worker_groups_by_capability[capability_keys][worker_group_id] = worker_ids
         self._worker_groups[worker_group_id] = worker_ids
 
-        capability_str = dict(capability_dict) if capability_dict else "none"
-        logging.info(f"Started worker group: {worker_group_id.decode()} with capabilities: {capability_str}")
+        logging.info(f"Started worker group: {worker_group_id.decode()} with capabilities: {capability_dict!r}")
 
     async def _shutdown_worker_group(self, capability_keys: FrozenSet[str], worker_group_id: WorkerGroupID):
         """Shut down a worker group."""
