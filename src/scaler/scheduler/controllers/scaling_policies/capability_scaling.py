@@ -115,7 +115,8 @@ class CapabilityScalingController(ScalingController):
             # Use the first task's capabilities as the template
             if not tasks:
                 logging.warning(f"No tasks found for capability set {capability_keys}")
-            capability_dict = tasks[0] if tasks else {}
+                continue
+            capability_dict = tasks[0]
 
             await self._scale_for_capability(capability_keys, capability_dict, len(tasks), capable_workers)
 
@@ -218,11 +219,15 @@ class CapabilityScalingController(ScalingController):
         worker_group_id = response["worker_group_id"].encode()
         worker_ids = [WorkerID(worker_id.encode()) for worker_id in response["worker_ids"]]
 
-        # Track the worker group by capability
-        self._worker_groups_by_capability[capability_keys][worker_group_id] = worker_ids
+        # Get actual capabilities from the worker adapter response
+        actual_capabilities = response.get("capabilities", capability_dict)
+        actual_capability_keys = frozenset(actual_capabilities.keys())
+
+        # Track the worker group by the actual capabilities provided by the worker adapter
+        self._worker_groups_by_capability[actual_capability_keys][worker_group_id] = worker_ids
         self._worker_groups[worker_group_id] = worker_ids
 
-        logging.info(f"Started worker group: {worker_group_id.decode()} with capabilities: {capability_dict!r}")
+        logging.info(f"Started worker group: {worker_group_id.decode()} with capabilities: {actual_capabilities!r}")
 
     async def _shutdown_worker_group(self, capability_keys: FrozenSet[str], worker_group_id: WorkerGroupID):
         """Shut down a worker group."""
