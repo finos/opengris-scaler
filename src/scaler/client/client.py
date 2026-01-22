@@ -3,6 +3,7 @@ import functools
 import logging
 import threading
 import uuid
+import warnings
 from collections import Counter
 from inspect import signature
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
@@ -253,17 +254,87 @@ class Client:
         self._connector_agent.send(task)
         return future
 
-    def map(
+    def map(self, fn: Callable, *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None) -> List[Any]:
+        """
+        Apply function to every item of iterables, collecting the results in a list.
+
+        This works like Python's built-in map(), where each iterable provides one argument to the function.
+
+        Example:
+            >>> def add(x, y):
+            ...     return x + y
+            >>> client.map(add, [1, 2, 3], [4, 5, 6])
+            [5, 7, 9]
+
+        For backwards compatibility, if a single iterable of tuples is provided (the old starmap-like behavior),
+        a deprecation warning will be shown and the arguments will be unpacked. Use `starmap()` instead for this case.
+
+        :param fn: function to be executed remotely
+        :type fn: Callable
+        :param iterables: one or more iterables, each providing one argument to the function
+        :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
+        :type capabilities: Optional[Dict[str, int]]
+        :return: list of results
+        :rtype: List[Any]
+        """
+        if len(iterables) == 0:
+            raise TypeError("map() requires at least one iterable")
+
+        if len(iterables) == 1:
+            # Check if this looks like old starmap-style usage (iterable of tuples/lists)
+            iterable_list = list(iterables[0])
+            if len(iterable_list) > 0 and all(isinstance(args, (tuple, list)) for args in iterable_list):
+                warnings.warn(
+                    "Passing an iterable of tuples to map() is deprecated. "
+                    "Use starmap() for unpacking argument tuples, or pass separate iterables to map(). "
+                    "For example, use client.map(fn, [1, 2, 3]) instead of client.map(fn, [(1,), (2,), (3,)]).",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                return self.starmap(fn, iterable_list, capabilities=capabilities)
+            # Single iterable with non-tuple elements - pack each as a single-element tuple
+            args_iterable = [(arg,) for arg in iterable_list]
+        else:
+            # Multiple iterables - zip them together
+            args_iterable = list(zip(*iterables))
+
+        return self.starmap(fn, args_iterable, capabilities=capabilities)
+
+    def starmap(
         self, fn: Callable, iterable: Iterable[Tuple[Any, ...]], capabilities: Optional[Dict[str, int]] = None
     ) -> List[Any]:
-        if not all(isinstance(args, (tuple, list)) for args in iterable):
-            raise TypeError("iterable should be list of arguments(list or tuple-like) of function")
+        """
+        Apply function to every item of iterable, where each item is a tuple of arguments to unpack.
+
+        This works like Python's itertools.starmap().
+
+        Example:
+            >>> def add(x, y):
+            ...     return x + y
+            >>> client.starmap(add, [(1, 4), (2, 5), (3, 6)])
+            [5, 7, 9]
+
+        :param fn: function to be executed remotely
+        :type fn: Callable
+        :param iterable: iterable of argument tuples to unpack and pass to the function
+        :type iterable: Iterable[Tuple[Any, ...]]
+        :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
+        :type capabilities: Optional[Dict[str, int]]
+        :return: list of results
+        :rtype: List[Any]
+        """
+        iterable_list = list(iterable)
+        if not all(isinstance(args, (tuple, list)) for args in iterable_list):
+            raise TypeError("starmap() requires an iterable of tuples/lists as argument")
 
         self.__assert_client_not_stopped()
 
         function_object_id = self._object_buffer.buffer_send_function(fn).object_id
         tasks, futures = zip(
-            *[self.__submit(function_object_id, args, delayed=False, capabilities=capabilities) for args in iterable]
+            *[
+                self.__submit(function_object_id, args, delayed=False, capabilities=capabilities)
+                for args in iterable_list
+            ]
         )
 
         self._object_buffer.commit_send_objects()
@@ -273,7 +344,7 @@ class Client:
         try:
             results = [fut.result() for fut in futures]
         except Exception as e:
-            logging.exception(f"error happened when do scaler client.map:\n{e}")
+            logging.exception(f"Error occured during scaler client.starmap:\n{e}")
             self.disconnect()
             raise e
 
