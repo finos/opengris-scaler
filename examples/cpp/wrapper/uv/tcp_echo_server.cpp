@@ -13,20 +13,19 @@
 #include "scaler/wrapper/uv/loop.h"
 #include "scaler/wrapper/uv/socket_address.h"
 #include "scaler/wrapper/uv/tcp.h"
-#include "utility.h"  // exitOnFailure
 
 const int DEFAULT_BACKLOG = 128;
 
 class TCPEchoServer {
 public:
     TCPEchoServer(scaler::wrapper::uv::Loop& loop, const scaler::wrapper::uv::SocketAddress& address)
-        : _loop(loop), _server(exitOnFailure(scaler::wrapper::uv::TCPServer::init(loop)))
+        : _loop(loop), _server(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPServer::init(loop)))
     {
-        exitOnFailure(_server.bind(address, uv_tcp_flags(0)));
-        exitOnFailure(_server.listen(DEFAULT_BACKLOG, std::bind_front(&TCPEchoServer::onNewConnection, this)));
+        UV_EXIT_ON_ERROR(_server.bind(address, uv_tcp_flags(0)));
+        UV_EXIT_ON_ERROR(_server.listen(DEFAULT_BACKLOG, std::bind_front(&TCPEchoServer::onNewConnection, this)));
     }
 
-    scaler::wrapper::uv::SocketAddress address() { return exitOnFailure(_server.getSockName()); }
+    scaler::wrapper::uv::SocketAddress address() { return UV_EXIT_ON_ERROR(_server.getSockName()); }
 
 private:
     scaler::wrapper::uv::Loop& _loop;
@@ -35,10 +34,10 @@ private:
     void onNewConnection(std::expected<void, scaler::wrapper::uv::Error> result)
     {
         auto client = std::make_shared<scaler::wrapper::uv::TCPSocket>(
-            exitOnFailure(scaler::wrapper::uv::TCPSocket::init(_loop)));
-        exitOnFailure(_server.accept(*client));
+            UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(_loop)));
+        UV_EXIT_ON_ERROR(_server.accept(*client));
 
-        exitOnFailure(client->readStart(std::bind_front(echoRead, client)));
+        UV_EXIT_ON_ERROR(client->readStart(std::bind_front(echoRead, client)));
     }
 
     static void echoRead(
@@ -56,8 +55,8 @@ private:
         // ensure the written bytes will not be freed until the write completes.
         auto buffer = std::make_shared<const std::vector<uint8_t>>(readBuffer.cbegin(), readBuffer.cend());
 
-        exitOnFailure(client->write(*buffer, [buffer](std::expected<void, scaler::wrapper::uv::Error> writeResult) {
-            exitOnFailure(std::move(writeResult));
+        UV_EXIT_ON_ERROR(client->write(*buffer, [buffer](std::expected<void, scaler::wrapper::uv::Error> writeResult) {
+            UV_EXIT_ON_ERROR(std::move(writeResult));
         }));
     }
 };
@@ -65,12 +64,12 @@ private:
 int main()
 {
     // Initialize the event loop
-    scaler::wrapper::uv::Loop loop = exitOnFailure(scaler::wrapper::uv::Loop::init());
+    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
 
     // Initialize the echo server
-    TCPEchoServer server(loop, exitOnFailure(scaler::wrapper::uv::SocketAddress::IPv4("0.0.0.0", 0)));
+    TCPEchoServer server(loop, UV_EXIT_ON_ERROR(scaler::wrapper::uv::SocketAddress::IPv4("0.0.0.0", 0)));
 
-    std::cout << "TCP echo server listening on " << exitOnFailure(server.address().toString()) << "\n";
+    std::cout << "TCP echo server listening on " << UV_EXIT_ON_ERROR(server.address().toString()) << "\n";
 
     // Run the event loop
     loop.run(UV_RUN_DEFAULT);
