@@ -364,3 +364,49 @@ class TestCapabilityScalingController(unittest.IsolatedAsyncioTestCase):
         from scaler.protocol.python.status import ScalingManagerStatus
 
         self.assertIsInstance(status, ScalingManagerStatus)
+
+    async def test_no_duplicate_worker_group_for_pending_group(self):
+        """Test that no new worker group is started if a capable group is already pending."""
+        # First snapshot: task with mqa:1, no workers -> starts a worker group
+        task1_id = TaskID.generate_task_id()
+        task1 = _create_mock_task(task1_id, {"mqa": 1})
+
+        snapshot1 = InformationSnapshot(tasks={task1_id: task1}, workers={})
+
+        with patch.object(self.controller, "_make_request", new_callable=AsyncMock) as mock_request:
+            mock_request.side_effect = [
+                ({"max_worker_groups": 10}, web.HTTPOk.status_code),
+                # Adapter returns mqa:-1 (can handle any amount)
+                (
+                    {"worker_group_id": "wg-mqa", "worker_ids": ["worker-1"], "capabilities": {"mqa": -1}},
+                    web.HTTPOk.status_code,
+                ),
+            ]
+
+            await self.controller.on_snapshot(snapshot1)
+
+            start_calls = [c for c in mock_request.call_args_list if c[0][0].get("action") == "start_worker_group"]
+            self.assertEqual(len(start_calls), 1)
+            self.assertEqual(start_calls[0][0][0]["capabilities"], {"mqa": 1})
+
+        # Second snapshot: task with mqa:-1, no workers connected yet
+        # Should NOT start another group since we have a pending group with mqa capability
+        task2_id = TaskID.generate_task_id()
+        task2 = _create_mock_task(task2_id, {"mqa": -1})
+
+        snapshot2 = InformationSnapshot(tasks={task2_id: task2}, workers={})
+
+        with patch.object(self.controller, "_make_request", new_callable=AsyncMock) as mock_request:
+            mock_request.side_effect = [
+                ({"max_worker_groups": 10}, web.HTTPOk.status_code),
+                (
+                    {"worker_group_id": "wg-mqa-2", "worker_ids": ["worker-2"], "capabilities": {"mqa": -1}},
+                    web.HTTPOk.status_code,
+                ),
+            ]
+
+            await self.controller.on_snapshot(snapshot2)
+
+            # Should NOT have called start_worker_group because we already have a pending mqa group
+            start_calls = [c for c in mock_request.call_args_list if c[0][0].get("action") == "start_worker_group"]
+            self.assertEqual(len(start_calls), 0, "Should not start new worker group when capable group is pending")

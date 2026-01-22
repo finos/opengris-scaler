@@ -133,15 +133,26 @@ class CapabilityScalingController(ScalingController):
         """Apply scaling logic for a specific capability set."""
         worker_count = len(capable_workers)
 
-        if worker_count == 0:
-            # No workers can handle these tasks - need to start a worker group
-            if task_count > 0:
+        if worker_count == 0 and task_count > 0:
+            # No capable workers yet - start a group if one isn't already pending
+            if not self._has_capable_worker_group(capability_keys):
                 await self._start_worker_group(capability_keys, capability_dict)
             return
 
+        # Scale up if task ratio exceeds threshold
         task_ratio = task_count / worker_count
         if task_ratio > self._upper_task_ratio:
             await self._start_worker_group(capability_keys, capability_dict)
+
+    def _has_capable_worker_group(self, required_capabilities: FrozenSet[str]) -> bool:
+        """
+        Check if we have already started a worker group that can handle tasks
+        with the given required capabilities.
+        """
+        for group_capability_keys, worker_groups in self._worker_groups_by_capability.items():
+            if worker_groups and required_capabilities <= group_capability_keys:
+                return True
+        return False
 
     async def _check_idle_worker_groups(
         self,
