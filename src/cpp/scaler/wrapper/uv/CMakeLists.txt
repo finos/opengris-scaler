@@ -19,8 +19,8 @@ add_library(scaler_wrapper_uv OBJECT
     loop.h
     loop.cpp
 
-    # pipe.h
-    # pipe.cpp
+    pipe.h
+    pipe.cpp
 
     signal.h
     signal.cpp
