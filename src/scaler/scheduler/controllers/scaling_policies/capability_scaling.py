@@ -101,6 +101,11 @@ class CapabilityScalingController(ScalingController):
         workers_by_capability: Dict[FrozenSet[str], List[Tuple[WorkerID, int]]],
     ):
         """Handle scaling decisions for each capability set."""
+
+        # Complexity: O(C_t * C_w * W) where C_t is the number of distinct task capability sets,
+        # C_w is the number of distinct worker capability sets, and W is the total number of workers.
+        # This arises from calling _find_capable_workers for each task capability set.
+
         # Process each capability set that has pending tasks
         for capability_keys, tasks in tasks_by_capability.items():
             # Find workers that can handle these tasks
@@ -144,6 +149,13 @@ class CapabilityScalingController(ScalingController):
         workers_by_capability: Dict[FrozenSet[str], List[Tuple[WorkerID, int]]],
     ):
         """Check for and shut down idle worker groups."""
+
+        # Complexity: O(C^2 * (T + W)) where C is the number of distinct capability sets,
+        # T is the total number of tasks, and W is the total number of workers.
+        # For each tracked capability set, we iterate over all task capability sets to count
+        # matching tasks, and call _find_capable_workers which iterates over worker capability sets.
+        # This could be optimized if it becomes a performance bottleneck.
+
         for capability_keys, worker_group_dict in list(self._worker_groups_by_capability.items()):
             if not worker_group_dict:
                 continue
@@ -181,11 +193,6 @@ class CapabilityScalingController(ScalingController):
 
     async def _start_worker_group(self, capability_keys: FrozenSet[str], capability_dict: Dict[str, int]):
         """Start a new worker group with the specified capabilities."""
-        # Ensure capability_dict is valid
-        if capability_dict is None:
-            logging.error(f"capability_dict is None for capability_keys={capability_keys}, using empty dict")
-            capability_dict = {}
-
         response, status = await self._make_request({"action": "get_worker_adapter_info"})
         if status != web.HTTPOk.status_code:
             logging.warning("Failed to get worker adapter info.")
