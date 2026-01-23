@@ -39,9 +39,16 @@ with Client(address="tcp://127.0.0.1:2345") as client:
     future = client.submit(math.sqrt, 16)
     print(future.result())  # 4
 
-    # Submit multiple tasks with `.map()`
-    results = client.map(math.sqrt, [(i,) for i in range(100)])
+    # Submit multiple tasks with `.map()` - works like Python's built-in map()
+    results = client.map(math.sqrt, range(100))
     print(sum(results))  # 661.46
+
+    # For functions with multiple arguments, use multiple iterables or `.starmap()`
+    def add(x, y):
+        return x + y
+
+    client.map(add, [1, 2, 3], [10, 20, 30])  # [11, 22, 33]
+    client.starmap(add, [(1, 10), (2, 20), (3, 30)])  # [11, 22, 33]
 ```
 
 OpenGRIS Scaler is a suitable Dask replacement, offering significantly better scheduling performance for jobs with a

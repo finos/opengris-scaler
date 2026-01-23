@@ -3,9 +3,10 @@ import functools
 import logging
 import threading
 import uuid
+import warnings
 from collections import Counter
 from inspect import signature
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union, overload
 
 import zmq
 
@@ -29,6 +30,9 @@ from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
 from scaler.worker.agent.processor.processor import Processor
+
+
+_T = TypeVar("_T")
 
 
 @dataclasses.dataclass
@@ -253,17 +257,103 @@ class Client:
         self._connector_agent.send(task)
         return future
 
+    @overload
     def map(
-        self, fn: Callable, iterable: Iterable[Tuple[Any, ...]], capabilities: Optional[Dict[str, int]] = None
-    ) -> List[Any]:
-        if not all(isinstance(args, (tuple, list)) for args in iterable):
-            raise TypeError("iterable should be list of arguments(list or tuple-like) of function")
+        self,
+        fn: Callable[..., _T],
+        iterable: Iterable[Tuple[Any, ...]],
+        /,
+        *,
+        capabilities: Optional[Dict[str, int]] = None,
+    ) -> List[_T]: ...  # Deprecated: starmap-style usage with single iterable of tuples
+
+    @overload
+    def map(
+        self, fn: Callable[..., _T], /, *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None
+    ) -> List[_T]: ...  # New: map-style usage with one or more iterables
+
+    def map(
+        self, fn: Callable[..., _T], *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None
+    ) -> List[_T]:
+        """
+        Apply function to every item of iterables, collecting the results in a list.
+
+        This works like Python's built-in map(), where each iterable provides one argument to the function.
+
+        Example:
+            >>> def add(x, y):
+            ...     return x + y
+            >>> client.map(add, [1, 2, 3], [4, 5, 6])
+            [5, 7, 9]
+
+        For backwards compatibility, if a single iterable of tuples is provided (the old starmap-like behavior),
+        a deprecation warning will be shown and the arguments will be unpacked. Use `starmap()` instead for this case.
+
+        :param fn: function to be executed remotely
+        :type fn: Callable[..., _T]
+        :param iterables: one or more iterables, each providing one argument to the function
+        :type iterables: Iterable[Any]
+        :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
+        :type capabilities: Optional[Dict[str, int]]
+        :return: list of results, where each result is the return value of fn
+        :rtype: List[_T]
+        """
+        if len(iterables) == 0:
+            raise TypeError("map() requires at least one iterable")
+
+        if len(iterables) == 1:
+            # Check if this looks like old starmap-style usage (iterable of tuples/lists)
+            iterable_list = list(iterables[0])
+            if len(iterable_list) > 0 and all(isinstance(args, (tuple, list)) for args in iterable_list):
+                warnings.warn(
+                    "Passing an iterable of tuples to map() is deprecated. "
+                    "Use starmap() for unpacking argument tuples, or pass separate iterables to map(). "
+                    "For example, use client.map(fn, [1, 2, 3]) instead of client.map(fn, [(1,), (2,), (3,)]).",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                return self.starmap(fn, iterable_list, capabilities=capabilities)
+            # Single iterable with non-tuple elements - pack each as a single-element tuple
+            args_iterable = [(arg,) for arg in iterable_list]
+        else:
+            # Multiple iterables - zip them together
+            args_iterable = list(zip(*iterables))
+
+        return self.starmap(fn, args_iterable, capabilities=capabilities)
+
+    def starmap(
+        self, fn: Callable[..., _T], iterable: Iterable[Iterable[Any]], capabilities: Optional[Dict[str, int]] = None
+    ) -> List[_T]:
+        """
+        Apply function to every item of iterable, where each item is an iterable of arguments to unpack.
+
+        This works like Python's itertools.starmap() and multiprocessing.Pool.starmap().
+
+        Example:
+            >>> def add(x, y):
+            ...     return x + y
+            >>> client.starmap(add, [(1, 4), (2, 5), (3, 6)])
+            [5, 7, 9]
+
+        :param fn: function to be executed remotely
+        :type fn: Callable[..., _T]
+        :param iterable: iterable of argument iterables to unpack and pass to the function
+        :type iterable: Iterable[Iterable[Any]]
+        :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
+        :type capabilities: Optional[Dict[str, int]]
+        :return: list of results, where each result is the return value of fn
+        :rtype: List[_T]
+        """
+        iterable_list = [tuple(args) for args in iterable]
 
         self.__assert_client_not_stopped()
 
         function_object_id = self._object_buffer.buffer_send_function(fn).object_id
         tasks, futures = zip(
-            *[self.__submit(function_object_id, args, delayed=False, capabilities=capabilities) for args in iterable]
+            *[
+                self.__submit(function_object_id, args, delayed=False, capabilities=capabilities)
+                for args in iterable_list
+            ]
         )
 
         self._object_buffer.commit_send_objects()
@@ -273,7 +363,7 @@ class Client:
         try:
             results = [fut.result() for fut in futures]
         except Exception as e:
-            logging.exception(f"error happened when do scaler client.map:\n{e}")
+            logging.exception(f"Error occured during scaler client.starmap:\n{e}")
             self.disconnect()
             raise e
 
