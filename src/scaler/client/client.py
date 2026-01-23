@@ -290,8 +290,9 @@ class Client:
         a deprecation warning will be shown and the arguments will be unpacked. Use `starmap()` instead for this case.
 
         :param fn: function to be executed remotely
-        :type fn: Callable
+        :type fn: Callable[..., _T]
         :param iterables: one or more iterables, each providing one argument to the function
+        :type iterables: Iterable[Any]
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
         :return: list of results, where each result is the return value of fn
@@ -321,12 +322,12 @@ class Client:
         return self.starmap(fn, args_iterable, capabilities=capabilities)
 
     def starmap(
-        self, fn: Callable[..., _T], iterable: Iterable[Tuple[Any, ...]], capabilities: Optional[Dict[str, int]] = None
+        self, fn: Callable[..., _T], iterable: Iterable[Iterable[Any]], capabilities: Optional[Dict[str, int]] = None
     ) -> List[_T]:
         """
-        Apply function to every item of iterable, where each item is a tuple of arguments to unpack.
+        Apply function to every item of iterable, where each item is an iterable of arguments to unpack.
 
-        This works like Python's itertools.starmap().
+        This works like Python's itertools.starmap() and multiprocessing.Pool.starmap().
 
         Example:
             >>> def add(x, y):
@@ -335,17 +336,15 @@ class Client:
             [5, 7, 9]
 
         :param fn: function to be executed remotely
-        :type fn: Callable
-        :param iterable: iterable of argument tuples to unpack and pass to the function
-        :type iterable: Iterable[Tuple[Any, ...]]
+        :type fn: Callable[..., _T]
+        :param iterable: iterable of argument iterables to unpack and pass to the function
+        :type iterable: Iterable[Iterable[Any]]
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
         :return: list of results, where each result is the return value of fn
         :rtype: List[_T]
         """
-        iterable_list = list(iterable)
-        if not all(isinstance(args, (tuple, list)) for args in iterable_list):
-            raise TypeError("starmap() requires an iterable of tuples/lists as argument")
+        iterable_list = [tuple(args) for args in iterable]
 
         self.__assert_client_not_stopped()
 
