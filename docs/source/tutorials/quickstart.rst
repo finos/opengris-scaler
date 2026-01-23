@@ -168,6 +168,6 @@ From here, connect the Python Client and begin submitting tasks:
 
 
     with Client(address="tcp://127.0.0.1:8516") as client:
-        results = client.map(square, [(i,) for i in range(0, 100)])
+        results = client.map(square, range(0, 100))
 
     print(results)
