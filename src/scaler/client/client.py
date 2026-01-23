@@ -6,7 +6,7 @@ import uuid
 import warnings
 from collections import Counter
 from inspect import signature
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union, overload
 
 import zmq
 
@@ -30,6 +30,9 @@ from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
 from scaler.worker.agent.processor.processor import Processor
+
+
+_T = TypeVar("_T")
 
 
 @dataclasses.dataclass
@@ -254,7 +257,24 @@ class Client:
         self._connector_agent.send(task)
         return future
 
-    def map(self, fn: Callable, *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None) -> List[Any]:
+    @overload
+    def map(
+        self,
+        fn: Callable[..., _T],
+        iterable: Iterable[Tuple[Any, ...]],
+        /,
+        *,
+        capabilities: Optional[Dict[str, int]] = None,
+    ) -> List[_T]: ...  # Deprecated: starmap-style usage with single iterable of tuples
+
+    @overload
+    def map(
+        self, fn: Callable[..., _T], /, *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None
+    ) -> List[_T]: ...  # New: map-style usage with one or more iterables
+
+    def map(
+        self, fn: Callable[..., _T], *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None
+    ) -> List[_T]:
         """
         Apply function to every item of iterables, collecting the results in a list.
 
@@ -274,8 +294,8 @@ class Client:
         :param iterables: one or more iterables, each providing one argument to the function
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
-        :return: list of results
-        :rtype: List[Any]
+        :return: list of results, where each result is the return value of fn
+        :rtype: List[_T]
         """
         if len(iterables) == 0:
             raise TypeError("map() requires at least one iterable")
@@ -301,8 +321,8 @@ class Client:
         return self.starmap(fn, args_iterable, capabilities=capabilities)
 
     def starmap(
-        self, fn: Callable, iterable: Iterable[Tuple[Any, ...]], capabilities: Optional[Dict[str, int]] = None
-    ) -> List[Any]:
+        self, fn: Callable[..., _T], iterable: Iterable[Tuple[Any, ...]], capabilities: Optional[Dict[str, int]] = None
+    ) -> List[_T]:
         """
         Apply function to every item of iterable, where each item is a tuple of arguments to unpack.
 
@@ -320,8 +340,8 @@ class Client:
         :type iterable: Iterable[Tuple[Any, ...]]
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
-        :return: list of results
-        :rtype: List[Any]
+        :return: list of results, where each result is the return value of fn
+        :rtype: List[_T]
         """
         iterable_list = list(iterable)
         if not all(isinstance(args, (tuple, list)) for args in iterable_list):
