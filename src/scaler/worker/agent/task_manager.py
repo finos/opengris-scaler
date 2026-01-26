@@ -9,9 +9,6 @@ from scaler.utility.mixins import Looper
 from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
 from scaler.worker.agent.mixins import ProcessorManager, TaskManager
 
-_SUSPENDED_TASKS_PRIORITY = 1
-_QUEUED_TASKS_PRIORITY = 2
-
 
 class VanillaTaskManager(Looper, TaskManager):
     def __init__(self, task_timeout_seconds: int):
@@ -132,10 +129,7 @@ class VanillaTaskManager(Looper, TaskManager):
 
         # Higher-priority tasks have a higher priority value. But as the queue is sorted by increasing order, we negate
         # the inserted value that it will be at the head of the queue.
-        if is_suspended:
-            queue_priority = (-task_priority, _SUSPENDED_TASKS_PRIORITY)
-        else:
-            queue_priority = (-task_priority, _QUEUED_TASKS_PRIORITY)
+        queue_priority = -(task_priority * 10 + int(is_suspended))
 
         self._queued_task_ids.put_nowait((queue_priority, task.task_id))
         self._queued_task_id_to_task[task.task_id] = task
