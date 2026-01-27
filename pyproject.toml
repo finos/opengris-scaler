@@ -23,7 +23,7 @@ dependencies = [
     "toml", # required by configargparse
     "cloudpickle",
     "psutil==7.1.3",
-    "pycapnp==2.2.1",
+    "pycapnp==2.2.2",
     "pyzmq",
     "sortedcontainers==2.4.0",
     "tblib",
