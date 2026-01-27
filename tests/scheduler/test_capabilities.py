@@ -5,8 +5,8 @@ from scaler import Client, Cluster, SchedulerClusterCombo
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.section.cluster import ClusterConfig
+from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.worker import WorkerCapabilities, WorkerNames
-from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
 
@@ -17,7 +17,9 @@ class TestCapabilities(unittest.TestCase):
         logging_test_name(self)
         self._workers = 3
         self.combo = SchedulerClusterCombo(
-            n_workers=self._workers, event_loop="builtin", allocate_policy=AllocatePolicy.capability
+            n_workers=self._workers,
+            event_loop="builtin",
+            scaler_policy=PolicyConfig(policy_content="allocate=capability; scaling=no"),
         )
         self.address = self.combo.get_address()
 

@@ -8,8 +8,8 @@ from aiohttp import web
 
 from scaler.protocol.python.message import InformationSnapshot
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.scaling_policies.mixins import ScalingController
-from scaler.scheduler.controllers.scaling_policies.types import WorkerGroupID
+from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingController
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupID
 from scaler.utility.identifiers import WorkerID
 
 
@@ -39,15 +39,15 @@ class CapabilityScalingController(ScalingController):
     def get_status(self):
         return ScalingManagerStatus.new_msg(worker_groups=self._worker_groups)
 
-    async def on_snapshot(self, information_snapshot: InformationSnapshot):
+    async def on_snapshot(self, snapshot: InformationSnapshot):
         # Group tasks by their required capabilities
-        tasks_by_capability = self._group_tasks_by_capability(information_snapshot)
+        tasks_by_capability = self._group_tasks_by_capability(snapshot)
 
         # Group workers by their provided capabilities
-        workers_by_capability = self._group_workers_by_capability(information_snapshot)
+        workers_by_capability = self._group_workers_by_capability(snapshot)
 
         # Handle scaling for each capability set
-        await self._handle_capability_scaling(information_snapshot, tasks_by_capability, workers_by_capability)
+        await self._handle_capability_scaling(snapshot, tasks_by_capability, workers_by_capability)
 
     def _group_tasks_by_capability(
         self, information_snapshot: InformationSnapshot

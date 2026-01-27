@@ -11,8 +11,8 @@ from scaler.cluster.combo import SchedulerClusterCombo
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.section.cluster import ClusterConfig
+from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.worker import WorkerCapabilities, WorkerNames
-from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
 
 
 def gpu_task(x: float) -> float:
@@ -31,7 +31,9 @@ def cpu_task(x: float) -> float:
 
 def main():
     # Start a scheduler with the capabilities allocation policy, and a pair of regular workers.
-    cluster = SchedulerClusterCombo(n_workers=2, allocate_policy=AllocatePolicy.capability)
+    cluster = SchedulerClusterCombo(
+        n_workers=2, scaler_policy=PolicyConfig(policy_content="allocate=capability; scaling=no")
+    )
 
     # Adds an additional worker with GPU support
     base_cluster = cluster._cluster

@@ -3,7 +3,7 @@ import math
 from typing import Dict, List, Optional, Set
 
 from scaler.protocol.python.message import Task
-from scaler.scheduler.allocate_policy.mixins import TaskAllocatePolicy
+from scaler.scheduler.controllers.policies.simple_policy.allocation.mixins import TaskAllocatePolicy
 from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
 from scaler.utility.queues.indexed_queue import IndexedQueue

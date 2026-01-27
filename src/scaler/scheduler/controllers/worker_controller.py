@@ -15,9 +15,9 @@ from scaler.protocol.python.message import (
     WorkerHeartbeatEcho,
 )
 from scaler.protocol.python.status import ProcessorStatus, Resource, WorkerManagerStatus, WorkerStatus
-from scaler.scheduler.allocate_policy.mixins import TaskAllocatePolicy
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import TaskController, WorkerController
+from scaler.scheduler.controllers.policies.mixins import ScalerPolicy
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.mixins import Looper, Reporter
 
@@ -25,7 +25,7 @@ UINT8_MAX = 2**8 - 1
 
 
 class VanillaWorkerController(WorkerController, Looper, Reporter):
-    def __init__(self, config_controller: VanillaConfigController, task_allocate_policy: TaskAllocatePolicy):
+    def __init__(self, config_controller: VanillaConfigController, scaler_policy: ScalerPolicy):
         self._config_controller = config_controller
 
         self._binder: Optional[AsyncBinder] = None
@@ -33,7 +33,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         self._task_controller: Optional[TaskController] = None
 
         self._worker_alive_since: Dict[WorkerID, Tuple[float, WorkerHeartbeat]] = dict()
-        self._allocator_policy = task_allocate_policy
+        self._scaler_policy = scaler_policy
 
     def register(self, binder: AsyncBinder, binder_monitor: AsyncConnector, task_controller: TaskController):
         self._binder = binder
@@ -41,10 +41,10 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         self._task_controller = task_controller
 
     def acquire_worker(self, task: Task) -> WorkerID:
-        return self._allocator_policy.assign_task(task)
+        return self._scaler_policy.assign_task(task)
 
     async def on_task_cancel(self, task_cancel: TaskCancel):
-        worker = self._allocator_policy.remove_task(task_cancel.task_id)
+        worker = self._scaler_policy.remove_task(task_cancel.task_id)
         if not worker.is_valid():
             logging.error(f"cannot find task_id={task_cancel.task_id.hex()} in task workers")
             return
@@ -52,14 +52,14 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         await self._binder.send(worker, task_cancel)
 
     async def on_task_done(self, task_id: TaskID) -> WorkerID:
-        worker = self._allocator_policy.remove_task(task_id)
+        worker = self._scaler_policy.remove_task(task_id)
         if not worker.is_valid():
             logging.error(f"Cannot find task in worker queue: task_id={task_id.hex()}")
 
         return worker
 
     async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat):
-        if self._allocator_policy.add_worker(worker_id, info.capabilities, info.queue_size):
+        if self._scaler_policy.add_worker(worker_id, info.capabilities, info.queue_size):
             logging.info(f"worker {worker_id!r} connected")
             await self._binder_monitor.send(StateWorker.new_msg(worker_id, WorkerState.Connected, info.capabilities))
             await self._task_controller.on_worker_connect(worker_id)
@@ -73,7 +73,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         )
 
     async def on_client_shutdown(self, client_id: ClientID):
-        for worker in self._allocator_policy.get_worker_ids():
+        for worker in self._scaler_policy.get_worker_ids():
             await self.__shutdown_worker(worker)
 
     async def on_disconnect(self, worker_id: WorkerID, request: DisconnectRequest):
@@ -84,7 +84,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         await self.__clean_workers()
 
     def get_status(self) -> WorkerManagerStatus:
-        worker_to_task_numbers = self._allocator_policy.statistics()
+        worker_to_task_numbers = self._scaler_policy.statistics()
         return WorkerManagerStatus.new_msg(
             [
                 self.__worker_status_from_heartbeat(worker, worker_to_task_numbers[worker], last, info)
@@ -129,13 +129,13 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         )
 
     def has_available_worker(self) -> bool:
-        return self._allocator_policy.has_available_worker()
+        return self._scaler_policy.has_available_worker()
 
     def get_worker_by_task_id(self, task_id: TaskID) -> WorkerID:
-        return self._allocator_policy.get_worker_by_task_id(task_id)
+        return self._scaler_policy.get_worker_by_task_id(task_id)
 
     def get_worker_ids(self) -> Set[WorkerID]:
-        return self._allocator_policy.get_worker_ids()
+        return self._scaler_policy.get_worker_ids()
 
     async def __clean_workers(self):
         now = time.time()
@@ -156,7 +156,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         await self._binder_monitor.send(StateWorker.new_msg(worker_id, WorkerState.Disconnected, {}))
         self._worker_alive_since.pop(worker_id)
 
-        task_ids = self._allocator_policy.remove_worker(worker_id)
+        task_ids = self._scaler_policy.remove_worker(worker_id)
         if not task_ids:
             return
 

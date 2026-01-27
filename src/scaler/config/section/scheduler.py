@@ -7,9 +7,29 @@ from scaler.config.common.logging import LoggingConfig
 from scaler.config.config_class import ConfigClass
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.zmq import ZMQConfig
-from scaler.scheduler.allocate_policy.allocate_policy import AllocatePolicy
-from scaler.scheduler.controllers.scaling_policies.types import ScalingControllerStrategy
 from scaler.utility.event_loop import EventLoopType
+
+
+@dataclasses.dataclass
+class PolicyConfig(ConfigClass):
+    policy_engine_type: str = dataclasses.field(
+        default="simple", metadata=dict(short="-et", help="Specify the policy config type, default to legacy")
+    )
+
+    policy_content: str = dataclasses.field(
+        default="allocate=even_load; scaling=no",
+        metadata=dict(short="-pc", help="Policy string: 'allocate=VAL; scaling=VAL'"),
+    )
+
+    adapter_webhook_urls: Tuple[str, ...] = dataclasses.field(
+        default=(),
+        metadata=dict(
+            short="-awu",
+            type=str,
+            nargs="*",
+            help="specify the adapter webhook urls for the scaling controller to send scaling events to",
+        ),
+    )
 
 
 @dataclasses.dataclass
@@ -36,36 +56,10 @@ class SchedulerConfig(ConfigClass):
             "tcp://localhost:2347",
         ),
     )
-    scaling_controller_strategy: ScalingControllerStrategy = dataclasses.field(
-        default=ScalingControllerStrategy.NULL,
-        metadata=dict(
-            short="-scs",
-            choices=[s for s in ScalingControllerStrategy if s is not ScalingControllerStrategy.NULL],
-            help="specify the scaling controller strategy, if not specified, no scaling controller will be used",
-        ),
-    )
-    adapter_webhook_urls: Tuple[str, ...] = dataclasses.field(
-        default=(),
-        metadata=dict(
-            short="-awu",
-            type=str,
-            nargs="*",
-            help="specify the adapter webhook urls for the scaling controller to send scaling events to",
-        ),
-    )
     protected: bool = dataclasses.field(
         default=False,
         metadata=dict(
             short="-p", action="store_true", help="protect scheduler and worker from being shutdown by client"
-        ),
-    )
-    allocate_policy: AllocatePolicy = dataclasses.field(
-        default=AllocatePolicy.even,
-        metadata=dict(
-            short="-ap",
-            choices=[p for p in AllocatePolicy],
-            help="specify allocate policy, this controls how scheduler will prioritize tasks, "
-            "including balancing tasks",
         ),
     )
     max_number_of_tasks_waiting: int = dataclasses.field(
@@ -106,6 +100,8 @@ class SchedulerConfig(ConfigClass):
     )
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
 
+    policy: PolicyConfig = dataclasses.field(default_factory=PolicyConfig)
+
     def __post_init__(self):
         if self.max_number_of_tasks_waiting < -1:
             raise ValueError("max_number_of_tasks_waiting must be -1 (for unlimited) or non-negative.")
@@ -118,7 +114,7 @@ class SchedulerConfig(ConfigClass):
             raise ValueError("All timeout/retention/balance second values must be positive.")
         if self.load_balance_trigger_times <= 0:
             raise ValueError("load_balance_trigger_times must be a positive integer.")
-        for adapter_webhook_url in self.adapter_webhook_urls:
+        for adapter_webhook_url in self.policy.adapter_webhook_urls:
             parsed_url = urlparse(adapter_webhook_url)
             if not all([parsed_url.scheme, parsed_url.netloc]):
                 raise ValueError(f"adapter_webhook_urls contains url '{adapter_webhook_url}' which is not a valid URL.")

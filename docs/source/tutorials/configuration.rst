@@ -210,9 +210,10 @@ Here is an example of a single ``example_config.toml`` file that configures mult
     [scheduler]
     object_storage_address = "tcp://127.0.0.1:6379"
     monitor_address = "tcp://127.0.0.1:6380"
-    allocate_policy = "even"
     logging_level = "INFO"
     logging_paths = ["/dev/stdout", "/var/log/scaler/scheduler.log"]
+    policy_engine_type = "simple"
+    policy_content = "allocate=even_load; scaling=no"
 
     [cluster]
     num_of_workers = 8
