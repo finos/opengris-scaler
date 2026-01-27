@@ -24,6 +24,7 @@ from scaler.protocol.python.message import (
     TaskCancelConfirm,
     TaskLog,
     TaskResult,
+    WorkerDisconnectNotification,
     WorkerHeartbeat,
 )
 from scaler.protocol.python.mixins import Message
@@ -203,6 +204,10 @@ class Scheduler:
         # scheduler receives worker disconnect request from downstream
         if isinstance(message, DisconnectRequest):
             await self._worker_controller.on_disconnect(WorkerID(source), message)
+            return
+
+        if isinstance(message, WorkerDisconnectNotification):
+            await self._worker_controller.on_disconnect_notification(WorkerID(source), message)
             return
 
         # =====================================================================================

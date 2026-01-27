@@ -105,6 +105,10 @@ struct DisconnectResponse {
     worker @0 :Data;
 }
 
+struct WorkerDisconnectNotification {
+    worker @0 :Data;
+}
+
 struct ClientDisconnect {
     disconnectType @0 :DisconnectType;
 
@@ -214,5 +218,6 @@ struct Message {
 
         informationRequest @23 :InformationRequest;
         informationResponse @24 :InformationResponse;
+        workerDisconnectNotification @25 :WorkerDisconnectNotification;
     }
 }
