@@ -190,3 +190,24 @@ class TestConfigClass(unittest.TestCase):
         config = MyConfig.parse(program_name="script", section="script")
 
         self.assertEqual(config.color, Color.RED)
+
+    @patch("sys.argv", ["script", "--config", "file"])
+    @patch(
+        "builtins.open",
+        mock_open(
+            read_data="""
+            [my_config]
+            my_int = 10
+            my-other-int = 20
+            """
+        ),
+    )
+    def test_underscore_toml_parsing(self) -> None:
+        @dataclasses.dataclass
+        class MyConfigClass(ConfigClass):
+            my_int: int
+            my_other_int: int
+
+        config = MyConfigClass.parse("test underscore", "my_config")
+        self.assertEqual(config.my_int, 10)
+        self.assertEqual(config.my_other_int, 20)

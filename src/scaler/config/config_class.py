@@ -1,7 +1,7 @@
 import dataclasses
 import enum
 import typing
-from typing import Any, Dict, Type, TypeVar
+from typing import Any, Dict, List, Optional, OrderedDict, Type, TypeVar
 
 from configargparse import ArgParser, ArgumentDefaultsHelpFormatter, ArgumentTypeError, TomlConfigParser
 
@@ -22,6 +22,27 @@ class ConfigClass:
 
     All options with a long name can be parsed from a TOML config file specified with `--config` or `-c`.
     The section name is determined by the subclass' implementation of `.section_name()`.
+
+    Keys in the config file correspond to the long name of the argument
+    and may use underscores or hyphens interchangeably.
+
+    For example, given the config class:
+    ```python
+    @dataclasses.dataclass
+    class MyConfig(ConfigClass):
+        my_field: int = 5
+    ```
+
+    Both of the following config files are valid:
+    ```
+    [my_section]
+    my_field = 10
+    ```
+
+    ```
+    [my_section]
+    my-field = 10
+    ```
 
     ## Environment Variables
 
@@ -218,7 +239,7 @@ class ConfigClass:
         parser = ArgParser(
             program_name,
             formatter_class=ArgumentDefaultsHelpFormatter,
-            config_file_parser_class=TomlConfigParser(sections=[section]),
+            config_file_parser_class=UnderscoreTomlConfigParser(sections=[section]),
         )
 
         parser.add_argument("--config", "-c", is_config_file=True, help="Path to the TOML configuration file.")
@@ -243,6 +264,22 @@ class ConfigClass:
                 kwargs[field.name] = field.type(**inner_kwargs)  # type: ignore[operator]
 
         return cls(**kwargs)
+
+
+class UnderscoreTomlConfigParser:
+    """A TOML config parser that converts underscores to hyphens in key names"""
+
+    def __init__(self, sections: Optional[List[str]] = None):
+        self._parser = TomlConfigParser(sections=sections)
+
+    def __call__(self):
+        return self
+
+    def parse(self, stream) -> OrderedDict[str, Any]:
+        return OrderedDict((k.replace("_", "-"), v) for k, v in self._parser.parse(stream).items())
+
+    def get_syntax_description(self) -> str:
+        return self._parser.get_syntax_description()
 
 
 def parse_bool(s: str) -> bool:

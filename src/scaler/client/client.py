@@ -31,7 +31,6 @@ from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
 from scaler.worker.agent.processor.processor import Processor
 
-
 _T = TypeVar("_T")
 
 
@@ -265,12 +264,14 @@ class Client:
         /,
         *,
         capabilities: Optional[Dict[str, int]] = None,
-    ) -> List[_T]: ...  # Deprecated: starmap-style usage with single iterable of tuples
+    ) -> List[_T]:
+        ...  # Deprecated: starmap-style usage with single iterable of tuples
 
     @overload
     def map(
         self, fn: Callable[..., _T], /, *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None
-    ) -> List[_T]: ...  # New: map-style usage with one or more iterables
+    ) -> List[_T]:
+        ...  # New: map-style usage with one or more iterables
 
     def map(
         self, fn: Callable[..., _T], *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None

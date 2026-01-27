@@ -35,7 +35,7 @@ class LoggingConfig(ConfigClass):
         metadata=dict(
             long="--logging-level",
             short="-ll",
-            choices=[member for member in LoggingLevel if member is not LoggingLevel.NOTSET],
+            choices=[member.name for member in LoggingLevel if member is not LoggingLevel.NOTSET],
             help="set the logging level",
         ),
     )

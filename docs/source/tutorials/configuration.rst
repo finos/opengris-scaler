@@ -208,7 +208,6 @@ Here is an example of a single ``example_config.toml`` file that configures mult
     # This is a unified configuration file for all Scaler components.
 
     [scheduler]
-    scheduler_address = "tcp://127.0.0.1:6378"
     object_storage_address = "tcp://127.0.0.1:6379"
     monitor_address = "tcp://127.0.0.1:6380"
     allocate_policy = "even"
@@ -216,16 +215,13 @@ Here is an example of a single ``example_config.toml`` file that configures mult
     logging_paths = ["/dev/stdout", "/var/log/scaler/scheduler.log"]
 
     [cluster]
-    scheduler_address = "tcp://127.0.0.1:6378"
     num_of_workers = 8
     per_worker_capabilities = "linux,cpu=8"
     task_timeout_seconds = 600
 
     [object_storage_server]
-    object_storage_address = "tcp://127.0.0.1:6379"
 
     [webui]
-    monitor_address = "tcp://127.0.0.1:6380"
     web_port = 8081
 
 
@@ -233,10 +229,10 @@ With this single file, starting your entire stack is simple and consistent:
 
 .. code-block:: bash
 
-    scaler_object_storage_server --config example_config.toml &
-    scaler_scheduler --config example_config.toml &
-    scaler_cluster --config example_config.toml &
-    scaler_ui --config example_config.toml &
+    scaler_object_storage_server tcp://127.0.0.1:6379 --config example_config.toml &
+    scaler_scheduler tcp://127.0.0.1:6378 --config example_config.toml &
+    scaler_cluster tcp://127.0.0.1:6378 --config example_config.toml &
+    scaler_ui tcp://127.0.0.1:6380 --config example_config.toml &
 
 
 **Scenario 2: Overriding a Section's Setting**
@@ -246,6 +242,6 @@ You can override any value from the TOML file by providing it as a command-line 
 .. code-block:: bash
 
     # The --num-of-workers flag will take precedence over the [cluster] section
-    scaler_cluster --config example_config.toml --num-of-workers 12
+    scaler_cluster tcp://127.0.0.1:6378 --config example_config.toml --num-of-workers 12
 
-The cluster will start with **12 workers**, but all other settings (like ``scheduler_address``) will still be loaded from the ``[cluster]`` section of ``example_config.toml``.
+The cluster will start with **12 workers**, but all other settings (like ``task_timeout_seconds``) will still be loaded from the ``[cluster]`` section of ``example_config.toml``.
