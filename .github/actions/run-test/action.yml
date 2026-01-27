@@ -18,6 +18,20 @@ runs:
       shell: pwsh
       run: uv pip install --system pydivert pywin32
 
+    - name: Install Redis Server
+      if: inputs.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y redis-server
+        sudo systemctl start redis-server || redis-server --daemonize yes
+        sleep 2
+        redis-cli ping || echo "Warning: Redis may not be running"
+
+    - name: Install Redis Python Package
+      shell: bash
+      run: uv pip install --system redis>=5.0.0
+
     - name: Run C++ Tests (Linux)
       if: inputs.os == 'Linux'
       shell: bash

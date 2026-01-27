@@ -15,11 +15,24 @@ def main():
         object_storage_address = ObjectStorageAddressConfig(
             host=scheduler_config.scheduler_address.host, port=scheduler_config.scheduler_address.port + 1
         )
+
+        # Build Redis config dict if using Redis backend
+        redis_config = None
+        if scheduler_config.object_storage_backend == "redis" and scheduler_config.object_storage_redis is not None:
+            redis_config = {
+                "url": scheduler_config.object_storage_redis.url,
+                "max_object_size_mb": scheduler_config.object_storage_redis.max_object_size_mb,
+                "key_prefix": scheduler_config.object_storage_redis.key_prefix,
+                "connection_pool_size": scheduler_config.object_storage_redis.connection_pool_size,
+            }
+
         object_storage = ObjectStorageServerProcess(
             object_storage_address=object_storage_address,
             logging_paths=scheduler_config.logging_config.paths,
             logging_config_file=scheduler_config.logging_config.config_file,
             logging_level=scheduler_config.logging_config.level,
+            backend=scheduler_config.object_storage_backend,
+            redis_config=redis_config,
         )
         object_storage.start()
         object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
