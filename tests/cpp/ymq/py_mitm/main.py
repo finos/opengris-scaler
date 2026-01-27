@@ -13,16 +13,14 @@ import argparse
 import os
 import platform
 import signal
-import subprocess
-from typing import List
 
 from scapy.all import IP, TCP  # type: ignore
 
 from tests.cpp.ymq.py_mitm import passthrough, randomly_drop_packets, send_rst_to_client
-from tests.cpp.ymq.py_mitm.mitm_types import AbstractMITM, AbstractMITMInterface, TCPConnection
+from tests.cpp.ymq.py_mitm.mitm_types import MITM, MITMInterface, TCPConnection
 
 
-def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: int, mitm: AbstractMITM) -> None:
+def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: int, mitm: MITM) -> None:
     """
     This function serves as a framework for man in the middle implementations
     A client connects to the MITM, then the MITM connects to a remote server
@@ -121,7 +119,7 @@ def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: in
             return
 
 
-def get_interface(mitm_ip: str, mitm_port: int, remote_ip: str, server_port: int) -> AbstractMITMInterface:
+def get_interface(mitm_ip: str, mitm_port: int, remote_ip: str, server_port: int) -> MITMInterface:
     """get the platform-specific mitm interface"""
 
     system = platform.system()
@@ -154,9 +152,9 @@ def signal_ready(pid: int) -> None:
 
 
 TESTCASES = {
-    "passthrough": passthrough,
-    "randomly_drop_packets": randomly_drop_packets,
-    "send_rst_to_client": send_rst_to_client,
+    "passthrough": passthrough.PassthroughMITM,
+    "randomly_drop_packets": randomly_drop_packets.RandomlyDropPacketsMITM,
+    "send_rst_to_client": send_rst_to_client.SendRSTToClientMITM,
 }
 
 if __name__ == "__main__":
@@ -168,8 +166,8 @@ if __name__ == "__main__":
     parser.add_argument("remote_ip", type=str, help="The desired remote ip for the TUNTAP interface")
     parser.add_argument("server_port", type=int, help="The port that the remote server is bound to")
 
-    args, unknown = parser.parse_known_args()
+    args, extra = parser.parse_known_args()
 
-    module = TESTCASES[args.testcase]
+    mitm = TESTCASES[args.testcase]
 
-    main(args.pid, args.mitm_ip, args.mitm_port, args.remote_ip, args.server_port, module.MITM(*unknown))
+    main(args.pid, args.mitm_ip, args.mitm_port, args.remote_ip, args.server_port, mitm(*extra))

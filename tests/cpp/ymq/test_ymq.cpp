@@ -35,6 +35,7 @@
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/simple_interface.h"
 #include "tests/cpp/ymq/common/testing.h"
+#include "tests/cpp/ymq/common/utils.h"
 #include "tests/cpp/ymq/net/socket_utils.h"
 
 using scaler::ymq::Bytes;
@@ -778,8 +779,6 @@ TEST_P(CcYmqTestSuiteParametrized, TestSlowNetwork)
     EXPECT_EQ(result, TestResult::Success);
 }
 
-// TODO: figure out why this test fails in ci sometimes, and re-enable
-//
 // in this test, a client connects to the YMQ server but only partially sends its identity and then disconnects
 // then a new client connection is established, and this one sends a complete identity and message
 // YMQ should be able to recover from a poorly-behaved client like this
@@ -793,9 +792,6 @@ TEST_P(CcYmqTestSuiteParametrized, TestClientSendIncompleteIdentity)
     EXPECT_EQ(result, TestResult::Success);
 }
 
-// TODO: this should pass
-// currently YMQ rejects the second connection, saying that the message is too large even when it isn't
-//
 // in this test, the client sends an unrealistically-large header
 // it is important that YMQ checks the header size before allocating memory
 // both for resilence against attacks and to guard against errors
