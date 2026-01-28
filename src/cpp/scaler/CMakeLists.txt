@@ -12,4 +12,6 @@ else()
   message(WARNING "Not building YMQ, as it's not supported on this system currently!")
 endif()
 
+add_subdirectory(uv_ymq)
+
 add_subdirectory(utility)
