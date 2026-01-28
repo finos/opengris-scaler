@@ -88,6 +88,8 @@ static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwa
                     OwnedPyObject obj = YMQException_createFromCoreError(state, &result.error());
                     OwnedPyObject _   = PyObject_CallFunctionObjArgs(*callback, *obj, nullptr);
                 }
+                if (PyErr_Occurred())
+                    PyErr_WriteUnraisable(*callback);
             });
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to send message");
@@ -119,6 +121,8 @@ static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args, PyObject* kwa
                 if (result.second._errorCode != Error::ErrorCode::Uninit) {
                     OwnedPyObject obj = YMQException_createFromCoreError(state, &result.second);
                     OwnedPyObject _   = PyObject_CallFunctionObjArgs(*callback, *obj, nullptr);
+                    if (PyErr_Occurred())
+                        PyErr_WriteUnraisable(*callback);
                     return;
                 }
 
@@ -147,6 +151,8 @@ static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args, PyObject* kwa
                 }
 
                 OwnedPyObject _result = PyObject_CallFunctionObjArgs(*callback, *pyMessage, nullptr);
+                if (PyErr_Occurred())
+                    PyErr_WriteUnraisable(*callback);
             });
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to receive message");
@@ -184,6 +190,8 @@ static PyObject* PyIOSocket_bind(PyIOSocket* self, PyObject* args, PyObject* kwa
                 } else {
                     OwnedPyObject _ = PyObject_CallFunctionObjArgs(*callback, Py_None, nullptr);
                 }
+                if (PyErr_Occurred())
+                    PyErr_WriteUnraisable(*callback);
             });
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to bind to address");
@@ -221,6 +229,8 @@ static PyObject* PyIOSocket_connect(PyIOSocket* self, PyObject* args, PyObject* 
                     OwnedPyObject exc = YMQException_createFromCoreError(state, &result.error());
                     OwnedPyObject _   = PyObject_CallFunctionObjArgs(*callback, *exc, nullptr);
                 }
+                if (PyErr_Occurred())
+                    PyErr_WriteUnraisable(*callback);
             });
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to connect to address");

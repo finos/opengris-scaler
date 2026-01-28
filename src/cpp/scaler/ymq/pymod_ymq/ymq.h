@@ -82,6 +82,8 @@ inline void completeCallbackWithRaisedException(PyObject* callback)
 {
     OwnedPyObject exception = YMQ_GetRaisedException();
     OwnedPyObject _         = PyObject_CallFunctionObjArgs(callback, *exception, nullptr);
+    if (PyErr_Occurred())
+        PyErr_WriteUnraisable(callback);
 }
 
 }  // namespace pymod

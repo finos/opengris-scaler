@@ -87,7 +87,10 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
 
     def run(self) -> None:
         self._loop = asyncio.new_event_loop()
-        self._loop.run_until_complete(self._run())
+        try:
+            self._loop.run_until_complete(self._run())
+        finally:
+            self._loop.close()
 
     async def _run(self) -> None:
         self.__initialize()

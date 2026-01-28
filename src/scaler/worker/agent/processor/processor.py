@@ -124,8 +124,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             self.__register_signal(SUSPEND_SIGNAL, self.__suspend)
 
     def __interrupt(self, *args):
-        self._connector_agent.destroy()  # interrupts any blocking socket.
-        self._connector_storage.destroy()
+        print("PROCESSOR: received termination signal, shutting down... !!!!")
+        raise SystemExit(0)
 
     def __suspend(self, *args):
         assert self._resume_event is not None
