@@ -591,10 +591,15 @@ These C++ components depend on the Boost and Cap'n Proto libraries. If these lib
 you can use the `library_tool.sh` script to download, compile, and install them (You might need `sudo`):
 
 ```bash
+./scripts/library_tool.sh boost download
 ./scripts/library_tool.sh boost compile
 ./scripts/library_tool.sh boost install
+./scripts/library_tool.sh capnp download
 ./scripts/library_tool.sh capnp compile
 ./scripts/library_tool.sh capnp install
+./scripts/library_tool.sh libuv download
+./scripts/library_tool.sh libuv compile
+./scripts/library_tool.sh libuv install
 ```
 
 After installing these dependencies, use the `build.sh` script to configure, build, and install Scaler's C++ components:
@@ -613,10 +618,15 @@ within the main source tree, as compiled Python modules. You can specify the com
 `library_tool.ps1` script to download, compile, and install them (You might need `Run as administrator`):
 
 ```bash
+./scripts/library_tool.ps1 boost download
 ./scripts/library_tool.ps1 boost compile
 ./scripts/library_tool.ps1 boost install
+./scripts/library_tool.ps1 capnp download
 ./scripts/library_tool.ps1 capnp compile
 ./scripts/library_tool.ps1 capnp install
+./scripts/library_tool.ps1 libuv download
+./scripts/library_tool.ps1 libuv compile
+./scripts/library_tool.ps1 libuv install
 ```
 
 After installing these dependencies, if you are using _Visual Studio_ for developing, you may open the project folder
