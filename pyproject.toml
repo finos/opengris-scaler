@@ -156,21 +156,30 @@ skip = "pp* cp39-*"
 archs = ["x86_64"]
 manylinux-x86_64-image = "manylinux_2_28"
 before-all = """
-yum install -y sudo; \
-sudo ./scripts/library_tool.sh capnp compile; \
-sudo ./scripts/library_tool.sh capnp install; \
-sudo ./scripts/library_tool.sh libuv compile; \
-sudo ./scripts/library_tool.sh libuv install;
+yum install -y cmake gcc-toolset-14-gcc gcc-toolset-14-gcc-c++; \
+source /opt/rh/gcc-toolset-14/enable; \
+./scripts/library_tool.sh capnp download; \
+./scripts/library_tool.sh capnp compile; \
+./scripts/library_tool.sh capnp install; \
+./scripts/library_tool.sh libuv download; \
+./scripts/library_tool.sh libuv compile; \
+./scripts/library_tool.sh libuv install; \
+echo "/usr/local/lib" > /etc/ld.so.conf.d/local.conf; \
+ldconfig;
 """
+environment = { PATH = "/opt/rh/gcc-toolset-14/root/usr/bin:$PATH", LD_LIBRARY_PATH = "/usr/local/lib:$LD_LIBRARY_PATH" }
 
 [[tool.cibuildwheel.overrides]]
 select = "*-musllinux*"
 before-all = """
-apk add sudo; \
-sudo ./scripts/library_tool.sh capnp compile; \
-sudo ./scripts/library_tool.sh capnp install; \
-sudo ./scripts/library_tool.sh libuv compile; \
-sudo ./scripts/library_tool.sh libuv install;
+apk add cmake g++ make; \
+./scripts/library_tool.sh capnp download; \
+./scripts/library_tool.sh capnp compile; \
+./scripts/library_tool.sh capnp install; \
+./scripts/library_tool.sh libuv download; \
+./scripts/library_tool.sh libuv compile; \
+./scripts/library_tool.sh libuv install; \
+ldconfig /usr/local/lib;
 """
 
 #[tool.cibuildwheel.macos]
