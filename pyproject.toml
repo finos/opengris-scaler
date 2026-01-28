@@ -158,7 +158,9 @@ manylinux-x86_64-image = "manylinux_2_28"
 before-all = """
 yum install -y sudo; \
 sudo ./scripts/library_tool.sh capnp compile; \
-sudo ./scripts/library_tool.sh capnp install;
+sudo ./scripts/library_tool.sh capnp install; \
+sudo ./scripts/library_tool.sh libuv compile; \
+sudo ./scripts/library_tool.sh libuv install;
 """
 
 [[tool.cibuildwheel.overrides]]
@@ -166,7 +168,9 @@ select = "*-musllinux*"
 before-all = """
 apk add sudo; \
 sudo ./scripts/library_tool.sh capnp compile; \
-sudo ./scripts/library_tool.sh capnp install;
+sudo ./scripts/library_tool.sh capnp install; \
+sudo ./scripts/library_tool.sh libuv compile; \
+sudo ./scripts/library_tool.sh libuv install;
 """
 
 #[tool.cibuildwheel.macos]
