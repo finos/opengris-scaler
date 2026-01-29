@@ -32,6 +32,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         self._logging_paths = config.logging_config.paths
         self._logging_config_file = config.logging_config.config_file
         self._logging_level = config.logging_config.level
+        self._no_random_worker_ids = config.no_random_worker_ids
 
         self._workers: List[Worker] = []
 
@@ -75,6 +76,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
                 hard_processor_suspend=self._hard_processor_suspend,
                 logging_paths=self._logging_paths,
                 logging_level=self._logging_level,
+                no_random_worker_ids=self._no_random_worker_ids,
             )
             for name in self._worker_names
         ]

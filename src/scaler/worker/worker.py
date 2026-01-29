@@ -64,6 +64,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         hard_processor_suspend: bool,
         logging_paths: Tuple[str, ...],
         logging_level: str,
+        no_random_worker_ids: bool = False,
     ):
         multiprocessing.Process.__init__(self, name="Agent")
 
@@ -76,7 +77,10 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._io_threads = io_threads
         self._task_queue_size = task_queue_size
 
-        self._ident = WorkerID.generate_worker_id(name)  # _identity is internal to multiprocessing.Process
+        if no_random_worker_ids:
+            self._ident = WorkerID(name.encode())
+        else:
+            self._ident = WorkerID.generate_worker_id(name)
 
         self._address_path_internal = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
         self._address_internal = ZMQConfig(ZMQType.ipc, host=self._address_path_internal)
