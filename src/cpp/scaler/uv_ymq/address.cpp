@@ -79,15 +79,15 @@ const std::string& Address::asIPC() const noexcept
 
 std::expected<Address, scaler::ymq::Error> Address::fromString(const std::string& address) noexcept
 {
-    constexpr std::string_view TCP_PREFIX = "tcp://";
-    constexpr std::string_view IPC_PREFIX = "ipc://";
+    static constexpr std::string_view tcpPrefix = "tcp://";
+    static constexpr std::string_view ipcPrefix = "ipc://";
 
-    if (address.starts_with(TCP_PREFIX)) {
-        return details::fromTCPString(address.substr(TCP_PREFIX.size()));
+    if (address.starts_with(tcpPrefix)) {
+        return details::fromTCPString(address.substr(tcpPrefix.size()));
     }
 
-    if (address.starts_with(IPC_PREFIX)) {
-        return Address(address.substr(IPC_PREFIX.size()));
+    if (address.starts_with(ipcPrefix)) {
+        return Address(address.substr(ipcPrefix.size()));
     }
 
     return std::unexpected {scaler::ymq::Error {

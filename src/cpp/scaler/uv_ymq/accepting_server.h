@@ -26,7 +26,7 @@ public:
         scaler::wrapper::uv::Loop& loop,
         Address address,
         ConnectionCallback onConnectionCallback,
-        int listenBacklog = DEFAULT_SERVER_LISTEN_BACKLOG) noexcept;
+        int listenBacklog = defaultServerListenBacklog) noexcept;
 
     ~AcceptingServer() noexcept;
 

@@ -54,14 +54,14 @@ TEST_F(UVYMQTest, Address)
 
 TEST_F(UVYMQTest, EventLoopThread)
 {
-    const size_t N_TASKS = 3;
+    const size_t nTasks = 3;
 
     std::atomic<int> nTimesCalled {0};
 
     {
         scaler::uv_ymq::EventLoopThread thread {};
 
-        for (size_t i = 0; i < N_TASKS; ++i) {
+        for (size_t i = 0; i < nTasks; ++i) {
             thread.executeThreadSafe([&]() { ++nTimesCalled; });
         }
 
@@ -69,22 +69,22 @@ TEST_F(UVYMQTest, EventLoopThread)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    ASSERT_EQ(nTimesCalled, N_TASKS);
+    ASSERT_EQ(nTimesCalled, nTasks);
 }
 
 TEST_F(UVYMQTest, IOContext)
 {
-    const size_t N_TASKS   = 10;
-    const size_t N_THREADS = 4;
+    const size_t nTasks   = 10;
+    const size_t nThreads = 4;
 
     std::set<std::thread::id> uniqueThreadIds {};
     std::mutex uniqueThreadIdsMutex {};
 
     {
-        scaler::uv_ymq::IOContext context {N_THREADS};
+        scaler::uv_ymq::IOContext context {nThreads};
 
         // Execute tasks on different threads in round-robin fashion
-        for (size_t i = 0; i < N_TASKS; ++i) {
+        for (size_t i = 0; i < nTasks; ++i) {
             context.nextThread().executeThreadSafe([&]() {
                 std::lock_guard<std::mutex> lock(uniqueThreadIdsMutex);
                 uniqueThreadIds.insert(std::this_thread::get_id());
@@ -95,5 +95,5 @@ TEST_F(UVYMQTest, IOContext)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    ASSERT_EQ(uniqueThreadIds.size(), N_THREADS);
+    ASSERT_EQ(uniqueThreadIds.size(), nThreads);
 }

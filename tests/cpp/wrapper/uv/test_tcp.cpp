@@ -35,7 +35,7 @@ TEST_F(UVTCPTest, SocketAddress)
     {
         auto ipv6 = UV_EXIT_ON_ERROR(scaler::wrapper::uv::SocketAddress::IPv6("2001:db8::1234", 22));
 
-        std::string addressStr = UV_EXIT_ON_ERROR(ipv6.toString());
+        const std::string addressStr = UV_EXIT_ON_ERROR(ipv6.toString());
         ASSERT_EQ(addressStr, "2001:db8::1234:22");
 
         const sockaddr* sockAddr = ipv6.toSockAddr();

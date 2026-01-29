@@ -28,8 +28,8 @@ public:
         scaler::wrapper::uv::Loop& loop,
         Address address,
         ConnectCallback onConnectCallback,
-        size_t maxRetryTimes                     = DEFAULT_CLIENT_MAX_RETRY_TIMES,
-        std::chrono::milliseconds initRetryDelay = DEFAULT_CLIENT_INIT_RETRY_DELAY) noexcept;
+        size_t maxRetryTimes                     = defaultClientMaxRetryTimes,
+        std::chrono::milliseconds initRetryDelay = defaultClientInitRetryDelay) noexcept;
 
     ~ConnectingClient() noexcept;
 

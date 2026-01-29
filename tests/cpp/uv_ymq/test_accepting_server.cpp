@@ -14,14 +14,14 @@ class UVYMQAcceptingServerTest: public ::testing::Test {};
 
 TEST_F(UVYMQAcceptingServerTest, AcceptingServer)
 {
-    const auto LISTEN_ADDRESS  = scaler::uv_ymq::Address::fromString("tcp://127.0.0.1:0").value();
-    const size_t N_CONNECTIONS = 10;
+    const auto listenAddress  = scaler::uv_ymq::Address::fromString("tcp://127.0.0.1:0").value();
+    const size_t nConnections = 10;
 
     scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
 
     size_t nConnectionCount = 0;
     scaler::uv_ymq::AcceptingServer server(
-        loop, LISTEN_ADDRESS, [&](scaler::uv_ymq::Client client) { ++nConnectionCount; });
+        loop, listenAddress, [&](scaler::uv_ymq::Client client) { ++nConnectionCount; });
 
     // Get the actual bound address (since we used port 0)
     scaler::wrapper::uv::SocketAddress boundAddress = server.address().asTCP();
@@ -30,7 +30,7 @@ TEST_F(UVYMQAcceptingServerTest, AcceptingServer)
     {
         std::vector<scaler::wrapper::uv::TCPSocket> clientSockets {};
 
-        for (size_t i = 0; i < N_CONNECTIONS; ++i) {
+        for (size_t i = 0; i < nConnections; ++i) {
             scaler::wrapper::uv::TCPSocket clientSocket = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(loop));
             UV_EXIT_ON_ERROR(clientSocket.connect(
                 boundAddress,
@@ -39,11 +39,11 @@ TEST_F(UVYMQAcceptingServerTest, AcceptingServer)
             clientSockets.push_back(std::move(clientSocket));
         }
 
-        while (nConnectionCount < N_CONNECTIONS) {
+        while (nConnectionCount < nConnections) {
             loop.run(UV_RUN_ONCE);
         }
 
-        ASSERT_EQ(nConnectionCount, N_CONNECTIONS);
+        ASSERT_EQ(nConnectionCount, nConnections);
     }
 
     // Should stop accepting connections after disconnect()
@@ -65,6 +65,6 @@ TEST_F(UVYMQAcceptingServerTest, AcceptingServer)
 
         loop.run(UV_RUN_ONCE);
 
-        ASSERT_EQ(nConnectionCount, N_CONNECTIONS);
+        ASSERT_EQ(nConnectionCount, nConnections);
     }
 }
