@@ -1,3 +1,5 @@
+from typing import Any
+
 STORAGE_SIZE_MODULUS = 1024.0
 TIME_MODULUS = 1000
 
@@ -42,3 +44,21 @@ def format_seconds(number: int):
         return "60+s"
 
     return f"{number}s"
+
+
+def to_camel_case(snake_str: str) -> str:
+    components = snake_str.split("_")
+    return components[0] + "".join(x.title() for x in components[1:])
+
+
+def camelcase_dict(d: Any) -> Any:
+    if isinstance(d, dict):
+        new_d = {}
+        for k, v in d.items():
+            new_key = to_camel_case(k) if isinstance(k, str) else k
+            new_d[new_key] = camelcase_dict(v)
+        return new_d
+    elif isinstance(d, list):
+        return [camelcase_dict(i) for i in d]
+    else:
+        return d

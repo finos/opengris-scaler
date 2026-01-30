@@ -54,10 +54,13 @@ class BaseIOSocket:
     def __repr__(self) -> str: ...
     def send(self, callback: Callable[[Optional[Exception]], None], message: Message) -> None:
         """Send a message to one of the socket's peers"""
+
     def recv(self, callback: Callable[[Union[Message, Exception]], None]) -> None:
         """Receive a message from one of the socket's peers"""
+
     def bind(self, callback: Callable[[Optional[Exception]], None], address: str) -> None:
         """Bind the socket to an address and listen for incoming connections"""
+
     def connect(self, callback: Callable[[Optional[Exception]], None], address: str) -> None:
         """Connect to a remote socket"""
 

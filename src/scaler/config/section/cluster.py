@@ -53,6 +53,9 @@ class ClusterConfig(ConfigClass):
     )
     worker_config: WorkerConfig = dataclasses.field(default_factory=WorkerConfig)
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
+    no_random_worker_ids: bool = dataclasses.field(
+        default=False, metadata=dict(short="-nrwi", help="disable random worker id generation")
+    )
 
     def __post_init__(self):
         if self.worker_names.names and len(self.worker_names.names) != self.num_of_workers:
