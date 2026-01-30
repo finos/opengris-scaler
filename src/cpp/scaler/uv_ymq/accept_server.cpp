@@ -1,4 +1,4 @@
-#include "scaler/uv_ymq/accepting_server.h"
+#include "scaler/uv_ymq/accept_server.h"
 
 #include <uv.h>
 
@@ -13,7 +13,7 @@
 namespace scaler {
 namespace uv_ymq {
 
-AcceptingServer::AcceptingServer(
+AcceptServer::AcceptServer(
     scaler::wrapper::uv::Loop& loop,
     Address address,
     ConnectionCallback onConnectionCallback,
@@ -42,26 +42,26 @@ AcceptingServer::AcceptingServer(
     _state = std::make_shared<State>(loop, std::move(onConnectionCallback), std::move(server.value()));
 
     if (auto* tcpServer = std::get_if<scaler::wrapper::uv::TCPServer>(&_state->_server.value())) {
-        UV_EXIT_ON_ERROR(tcpServer->listen(listenBacklog, std::bind_front(&AcceptingServer::onConnection, _state)));
+        UV_EXIT_ON_ERROR(tcpServer->listen(listenBacklog, std::bind_front(&AcceptServer::onConnection, _state)));
     } else if (auto* pipeServer = std::get_if<scaler::wrapper::uv::PipeServer>(&_state->_server.value())) {
-        UV_EXIT_ON_ERROR(pipeServer->listen(listenBacklog, std::bind_front(&AcceptingServer::onConnection, _state)));
+        UV_EXIT_ON_ERROR(pipeServer->listen(listenBacklog, std::bind_front(&AcceptServer::onConnection, _state)));
     } else {
         std::unreachable();
     }
 }
 
-AcceptingServer::State::State(
+AcceptServer::State::State(
     scaler::wrapper::uv::Loop& loop, ConnectionCallback onConnectionCallback, Server server) noexcept
     : _loop(loop), _onConnectionCallback(std::move(onConnectionCallback)), _server(std::move(server))
 {
 }
 
-AcceptingServer::~AcceptingServer() noexcept
+AcceptServer::~AcceptServer() noexcept
 {
     disconnect();
 }
 
-Address AcceptingServer::address() const noexcept
+Address AcceptServer::address() const noexcept
 {
     if (auto* tcpServer = std::get_if<scaler::wrapper::uv::TCPServer>(&_state->_server.value())) {
         return Address {UV_EXIT_ON_ERROR(tcpServer->getSockName())};
@@ -72,12 +72,12 @@ Address AcceptingServer::address() const noexcept
     }
 }
 
-void AcceptingServer::disconnect() noexcept
+void AcceptServer::disconnect() noexcept
 {
     _state->_server = std::nullopt;
 }
 
-void AcceptingServer::onConnection(
+void AcceptServer::onConnection(
     std::shared_ptr<State> state, std::expected<void, scaler::wrapper::uv::Error> result) noexcept
 {
     UV_EXIT_ON_ERROR(result);

@@ -20,24 +20,24 @@ namespace uv_ymq {
 // A not yet established client to a remote server.
 //
 // Tries to connect to the address up to maxRetryTimes, calling the callback on success or failure.
-class ConnectingClient {
+class ConnectClient {
 public:
     using ConnectCallback = scaler::utility::MoveOnlyFunction<void(std::expected<Client, scaler::ymq::Error>)>;
 
-    ConnectingClient(
+    ConnectClient(
         scaler::wrapper::uv::Loop& loop,
         Address address,
         ConnectCallback onConnectCallback,
         size_t maxRetryTimes                     = defaultClientMaxRetryTimes,
         std::chrono::milliseconds initRetryDelay = defaultClientInitRetryDelay) noexcept;
 
-    ~ConnectingClient() noexcept;
+    ~ConnectClient() noexcept;
 
-    ConnectingClient(const ConnectingClient&)            = delete;
-    ConnectingClient& operator=(const ConnectingClient&) = delete;
+    ConnectClient(const ConnectClient&)            = delete;
+    ConnectClient& operator=(const ConnectClient&) = delete;
 
-    ConnectingClient(ConnectingClient&&) noexcept            = default;
-    ConnectingClient& operator=(ConnectingClient&&) noexcept = default;
+    ConnectClient(ConnectClient&&) noexcept            = default;
+    ConnectClient& operator=(ConnectClient&&) noexcept = default;
 
     void disconnect() noexcept;
 

@@ -5,14 +5,14 @@
 
 #include "scaler/error/error.h"
 #include "scaler/uv_ymq/address.h"
-#include "scaler/uv_ymq/connecting_client.h"
+#include "scaler/uv_ymq/connect_client.h"
 #include "scaler/wrapper/uv/error.h"
 #include "scaler/wrapper/uv/loop.h"
 #include "scaler/wrapper/uv/tcp.h"
 
-class UVYMQConnectingClientTest: public ::testing::Test {};
+class UVYMQConnectClientTest: public ::testing::Test {};
 
-TEST_F(UVYMQConnectingClientTest, ConnectingClient)
+TEST_F(UVYMQConnectClientTest, ConnectClient)
 {
     // Successfully connect to a temporary TCP server
 
@@ -41,15 +41,14 @@ TEST_F(UVYMQConnectingClientTest, ConnectingClient)
     // Get the actual bound address (since we used port 0)
     scaler::uv_ymq::Address connectAddress {UV_EXIT_ON_ERROR(server.getSockName())};
 
-    scaler::uv_ymq::ConnectingClient connectingClient(
-        loop, connectAddress, onConnectCallback, maxRetryTimes, initRetryDelay);
+    scaler::uv_ymq::ConnectClient connectClient(loop, connectAddress, onConnectCallback, maxRetryTimes, initRetryDelay);
 
     while (!callbackCalled) {
         loop.run(UV_RUN_ONCE);
     }
 }
 
-TEST_F(UVYMQConnectingClientTest, ConnectingClientFailure)
+TEST_F(UVYMQConnectClientTest, ConnectClientFailure)
 {
     // Simulate a connection failure
 
@@ -69,14 +68,14 @@ TEST_F(UVYMQConnectingClientTest, ConnectingClientFailure)
         callbackCalled = true;
     };
 
-    scaler::uv_ymq::ConnectingClient connectingClient(loop, address, onConnectCallback, maxRetryTimes, initRetryDelay);
+    scaler::uv_ymq::ConnectClient connectClient(loop, address, onConnectCallback, maxRetryTimes, initRetryDelay);
 
     loop.run();
 
     ASSERT_TRUE(callbackCalled);
 }
 
-TEST_F(UVYMQConnectingClientTest, ConnectingClientDisconnect)
+TEST_F(UVYMQConnectClientTest, ConnectClientDisconnect)
 {
     // Cancel an ongoing connection
 
@@ -96,12 +95,12 @@ TEST_F(UVYMQConnectingClientTest, ConnectingClientDisconnect)
         callbackCalled = true;
     };
 
-    scaler::uv_ymq::ConnectingClient connectingClient(loop, address, onConnectCallback, maxRetryTimes, initRetryDelay);
+    scaler::uv_ymq::ConnectClient connectClient(loop, address, onConnectCallback, maxRetryTimes, initRetryDelay);
 
     // Set up a timer to disconnect after a short delay
     scaler::wrapper::uv::Timer disconnectTimer = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Timer::init(loop));
     UV_EXIT_ON_ERROR(
-        disconnectTimer.start(std::chrono::milliseconds {50}, std::nullopt, [&]() { connectingClient.disconnect(); }));
+        disconnectTimer.start(std::chrono::milliseconds {50}, std::nullopt, [&]() { connectClient.disconnect(); }));
 
     while (!callbackCalled) {
         loop.run(UV_RUN_ONCE);

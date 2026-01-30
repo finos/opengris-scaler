@@ -3,16 +3,16 @@
 #include <expected>
 #include <vector>
 
-#include "scaler/uv_ymq/accepting_server.h"
+#include "scaler/uv_ymq/accept_server.h"
 #include "scaler/uv_ymq/address.h"
 #include "scaler/wrapper/uv/error.h"
 #include "scaler/wrapper/uv/loop.h"
 #include "scaler/wrapper/uv/socket_address.h"
 #include "scaler/wrapper/uv/tcp.h"
 
-class UVYMQAcceptingServerTest: public ::testing::Test {};
+class UVYMQAcceptServerTest: public ::testing::Test {};
 
-TEST_F(UVYMQAcceptingServerTest, AcceptingServer)
+TEST_F(UVYMQAcceptServerTest, AcceptServer)
 {
     const auto listenAddress  = scaler::uv_ymq::Address::fromString("tcp://127.0.0.1:0").value();
     const size_t nConnections = 10;
@@ -20,7 +20,7 @@ TEST_F(UVYMQAcceptingServerTest, AcceptingServer)
     scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
 
     size_t nConnectionCount = 0;
-    scaler::uv_ymq::AcceptingServer server(
+    scaler::uv_ymq::AcceptServer server(
         loop, listenAddress, [&](scaler::uv_ymq::Client client) { ++nConnectionCount; });
 
     // Get the actual bound address (since we used port 0)

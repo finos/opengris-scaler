@@ -18,23 +18,23 @@ namespace uv_ymq {
 // A server that accepts incoming connections.
 //
 // Binds to the specified address and calls the callback when a new connection arrives.
-class AcceptingServer {
+class AcceptServer {
 public:
     using ConnectionCallback = scaler::utility::MoveOnlyFunction<void(Client)>;
 
-    AcceptingServer(
+    AcceptServer(
         scaler::wrapper::uv::Loop& loop,
         Address address,
         ConnectionCallback onConnectionCallback,
         int listenBacklog = defaultServerListenBacklog) noexcept;
 
-    ~AcceptingServer() noexcept;
+    ~AcceptServer() noexcept;
 
-    AcceptingServer(const AcceptingServer&)            = delete;
-    AcceptingServer& operator=(const AcceptingServer&) = delete;
+    AcceptServer(const AcceptServer&)            = delete;
+    AcceptServer& operator=(const AcceptServer&) = delete;
 
-    AcceptingServer(AcceptingServer&&) noexcept            = default;
-    AcceptingServer& operator=(AcceptingServer&&) noexcept = default;
+    AcceptServer(AcceptServer&&) noexcept            = default;
+    AcceptServer& operator=(AcceptServer&&) noexcept = default;
 
     Address address() const noexcept;
 

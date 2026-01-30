@@ -1,4 +1,4 @@
-#include "scaler/uv_ymq/connecting_client.h"
+#include "scaler/uv_ymq/connect_client.h"
 
 #include <chrono>
 #include <functional>
@@ -11,7 +11,7 @@
 namespace scaler {
 namespace uv_ymq {
 
-ConnectingClient::ConnectingClient(
+ConnectClient::ConnectClient(
     scaler::wrapper::uv::Loop& loop,
     Address address,
     ConnectCallback onConnectCallback,
@@ -24,7 +24,7 @@ ConnectingClient::ConnectingClient(
     tryConnect(_state);
 }
 
-ConnectingClient::State::State(
+ConnectClient::State::State(
     scaler::wrapper::uv::Loop& loop,
     Address addr,
     ConnectCallback callback,
@@ -38,12 +38,12 @@ ConnectingClient::State::State(
 {
 }
 
-ConnectingClient::~ConnectingClient() noexcept
+ConnectClient::~ConnectClient() noexcept
 {
     disconnect();
 }
 
-void ConnectingClient::disconnect() noexcept
+void ConnectClient::disconnect() noexcept
 {
     if (_state->_retryTimer.has_value()) {
         _state->_retryTimer->stop();
@@ -54,14 +54,14 @@ void ConnectingClient::disconnect() noexcept
     _state->_client.reset();
 }
 
-void ConnectingClient::tryConnect(std::shared_ptr<State> state) noexcept
+void ConnectClient::tryConnect(std::shared_ptr<State> state) noexcept
 {
     switch (state->_address.type()) {
         case Address::Type::TCP: {
             auto tcpClient = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(state->_loop));
 
             state->_connectRequest = UV_EXIT_ON_ERROR(
-                tcpClient.connect(state->_address.asTCP(), std::bind_front(&ConnectingClient::onConnect, state)));
+                tcpClient.connect(state->_address.asTCP(), std::bind_front(&ConnectClient::onConnect, state)));
 
             state->_client = std::move(tcpClient);
             break;
@@ -70,7 +70,7 @@ void ConnectingClient::tryConnect(std::shared_ptr<State> state) noexcept
             auto ipcClient = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Pipe::init(state->_loop, false));
 
             state->_connectRequest = UV_EXIT_ON_ERROR(
-                ipcClient.connect(state->_address.asIPC(), std::bind_front(&ConnectingClient::onConnect, state)));
+                ipcClient.connect(state->_address.asIPC(), std::bind_front(&ConnectClient::onConnect, state)));
 
             state->_client = std::move(ipcClient);
             break;
@@ -79,7 +79,7 @@ void ConnectingClient::tryConnect(std::shared_ptr<State> state) noexcept
     }
 }
 
-void ConnectingClient::onConnect(
+void ConnectClient::onConnect(
     std::shared_ptr<State> state, std::expected<void, scaler::wrapper::uv::Error> result) noexcept
 {
     if (!result.has_value()) {
@@ -97,7 +97,7 @@ void ConnectingClient::onConnect(
     state->_onConnectCallback = {};
 }
 
-void ConnectingClient::retry(std::shared_ptr<State> state) noexcept
+void ConnectClient::retry(std::shared_ptr<State> state) noexcept
 {
     ++state->_retryTimes;
 
@@ -122,7 +122,7 @@ void ConnectingClient::retry(std::shared_ptr<State> state) noexcept
     std::chrono::milliseconds delay {state->_initRetryDelay.count() << state->_retryTimes};
 
     state->_retryTimer = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Timer::init(state->_loop));
-    state->_retryTimer->start(delay, std::nullopt, std::bind_front(&ConnectingClient::tryConnect, std::move(state)));
+    state->_retryTimer->start(delay, std::nullopt, std::bind_front(&ConnectClient::tryConnect, std::move(state)));
 }
 
 }  // namespace uv_ymq

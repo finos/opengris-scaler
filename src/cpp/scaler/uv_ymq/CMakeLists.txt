@@ -1,12 +1,12 @@
 add_library(uv_ymq_objs OBJECT
-    accepting_server.h
-    accepting_server.cpp
+    accept_server.h
+    accept_server.cpp
 
     address.h
     address.cpp
 
-    connecting_client.h
-    connecting_client.cpp
+    connect_client.h
+    connect_client.cpp
 
     event_loop_thread.h
     event_loop_thread.cpp
