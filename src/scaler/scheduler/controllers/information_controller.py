@@ -3,7 +3,7 @@ from typing import Optional
 import psutil
 
 from scaler.io.mixins import AsyncBinder, AsyncConnector
-from scaler.protocol.python.message import InformationRequest, InformationSnapshot, StateScheduler
+from scaler.protocol.python.message import InformationRequest, StateScheduler
 from scaler.protocol.python.status import Resource
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import (
@@ -64,18 +64,5 @@ class VanillaInformationController(InformationController, Looper):
                 task_manager=self._task_controller.get_status(),
                 worker_manager=self._worker_controller.get_status(),
                 scaling_manager=self._scaler_policy.get_status(),
-            )
-        )
-
-        await self._scaler_policy.on_snapshot(
-            InformationSnapshot(
-                tasks=self._task_controller._task_id_to_task,  # type: ignore # noqa: Expose this later
-                workers={
-                    worker_id: worker_heartbeat
-                    for worker_id, (
-                        _,
-                        worker_heartbeat,
-                    ) in self._worker_controller._worker_alive_since.items()  # type: ignore # noqa: Expose this later
-                },
             )
         )
