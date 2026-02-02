@@ -26,6 +26,7 @@ Content
 
    tutorials/quickstart
    tutorials/features
+   tutorials/scaling
    tutorials/compatibility/ray
    tutorials/configuration
    tutorials/examples
