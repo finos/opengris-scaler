@@ -6,6 +6,7 @@
 #include <functional>
 #include <utility>
 
+#include "scaler/uv_ymq/configuration.h"
 #include "scaler/wrapper/uv/pipe.h"
 #include "scaler/wrapper/uv/socket_address.h"
 #include "scaler/wrapper/uv/tcp.h"
@@ -14,10 +15,7 @@ namespace scaler {
 namespace uv_ymq {
 
 AcceptServer::AcceptServer(
-    scaler::wrapper::uv::Loop& loop,
-    Address address,
-    ConnectionCallback onConnectionCallback,
-    int listenBacklog) noexcept
+    scaler::wrapper::uv::Loop& loop, Address address, ConnectionCallback onConnectionCallback) noexcept
 {
     std::optional<Server> server;
 
@@ -42,9 +40,9 @@ AcceptServer::AcceptServer(
     _state = std::make_shared<State>(loop, std::move(onConnectionCallback), std::move(server.value()));
 
     if (auto* tcpServer = std::get_if<scaler::wrapper::uv::TCPServer>(&_state->_server.value())) {
-        UV_EXIT_ON_ERROR(tcpServer->listen(listenBacklog, std::bind_front(&AcceptServer::onConnection, _state)));
+        UV_EXIT_ON_ERROR(tcpServer->listen(serverListenBacklog, std::bind_front(&AcceptServer::onConnection, _state)));
     } else if (auto* pipeServer = std::get_if<scaler::wrapper::uv::PipeServer>(&_state->_server.value())) {
-        UV_EXIT_ON_ERROR(pipeServer->listen(listenBacklog, std::bind_front(&AcceptServer::onConnection, _state)));
+        UV_EXIT_ON_ERROR(pipeServer->listen(serverListenBacklog, std::bind_front(&AcceptServer::onConnection, _state)));
     } else {
         std::unreachable();
     }

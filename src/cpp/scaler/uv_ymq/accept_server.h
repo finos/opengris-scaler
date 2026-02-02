@@ -6,7 +6,6 @@
 
 #include "scaler/logging/logging.h"
 #include "scaler/uv_ymq/address.h"
-#include "scaler/uv_ymq/configuration.h"
 #include "scaler/uv_ymq/typedefs.h"
 #include "scaler/wrapper/uv/loop.h"
 #include "scaler/wrapper/uv/pipe.h"
@@ -22,11 +21,7 @@ class AcceptServer {
 public:
     using ConnectionCallback = scaler::utility::MoveOnlyFunction<void(Client)>;
 
-    AcceptServer(
-        scaler::wrapper::uv::Loop& loop,
-        Address address,
-        ConnectionCallback onConnectionCallback,
-        int listenBacklog = defaultServerListenBacklog) noexcept;
+    AcceptServer(scaler::wrapper::uv::Loop& loop, Address address, ConnectionCallback onConnectionCallback) noexcept;
 
     ~AcceptServer() noexcept;
 
