@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 from scaler.config import defaults
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.config_class import ConfigClass
+from scaler.config.section.object_storage_server import RedisBackendConfig
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.zmq import ZMQConfig
 from scaler.utility.event_loop import EventLoopType
@@ -46,6 +47,17 @@ class SchedulerConfig(ConfigClass):
             "e.g.: if scheduler address is tcp://localhost:2345, "
             "then object storage address is tcp://localhost:2346",
         ),
+    )
+    object_storage_backend: str = dataclasses.field(
+        default="memory",
+        metadata=dict(
+            short="-osb",
+            help="object storage backend: 'memory' (default, high-performance C++) or 'redis' (distributed, Python)",
+        ),
+    )
+    object_storage_redis: Optional[RedisBackendConfig] = dataclasses.field(
+        default=None,
+        metadata=dict(help="Redis configuration for object storage (only used when object_storage_backend='redis')"),
     )
     monitor_address: Optional[ZMQConfig] = dataclasses.field(
         default=None,
@@ -120,3 +132,7 @@ class SchedulerConfig(ConfigClass):
                 raise ValueError(f"adapter_webhook_urls contains url '{adapter_webhook_url}' which is not a valid URL.")
         if self.worker_io_threads <= 0:
             raise ValueError("worker_io_threads must be a positive integer.")
+        if self.object_storage_backend not in ("memory", "redis"):
+            raise ValueError(f"object_storage_backend must be 'memory' or 'redis', got '{self.object_storage_backend}'")
+        if self.object_storage_backend == "redis" and self.object_storage_redis is None:
+            self.object_storage_redis = RedisBackendConfig()
