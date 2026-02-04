@@ -8,7 +8,7 @@ from typing import Dict, Iterable, List, Optional, Set
 from sortedcontainers import SortedList
 
 from scaler.protocol.python.message import Task
-from scaler.scheduler.allocate_policy.mixins import TaskAllocatePolicy
+from scaler.scheduler.controllers.policies.simple_policy.allocation.mixins import TaskAllocatePolicy
 from scaler.utility.identifiers import TaskID, WorkerID
 
 

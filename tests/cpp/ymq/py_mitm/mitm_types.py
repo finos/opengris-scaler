@@ -54,10 +54,12 @@ class TCPConnection:
 
 class AbstractMITMInterface(ABC):
     @abstractmethod
-    def recv(self) -> Packet: ...
+    def recv(self) -> Packet:
+        ...
 
     @abstractmethod
-    def send(self, pkt: Packet) -> None: ...
+    def send(self, pkt: Packet) -> None:
+        ...
 
 
 class AbstractMITM(ABC):
@@ -69,4 +71,5 @@ class AbstractMITM(ABC):
         sender: TCPConnection,
         client_conn: Optional[TCPConnection],
         server_conn: TCPConnection,
-    ) -> bool: ...
+    ) -> bool:
+        ...

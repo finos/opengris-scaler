@@ -39,9 +39,16 @@ with Client(address="tcp://127.0.0.1:2345") as client:
     future = client.submit(math.sqrt, 16)
     print(future.result())  # 4
 
-    # Submit multiple tasks with `.map()`
-    results = client.map(math.sqrt, [(i,) for i in range(100)])
+    # Submit multiple tasks with `.map()` - works like Python's built-in map()
+    results = client.map(math.sqrt, range(100))
     print(sum(results))  # 661.46
+
+    # For functions with multiple arguments, use multiple iterables or `.starmap()`
+    def add(x, y):
+        return x + y
+
+    client.map(add, [1, 2, 3], [10, 20, 30])  # [11, 22, 33]
+    client.starmap(add, [(1, 10), (2, 20), (3, 30)])  # [11, 22, 33]
 ```
 
 OpenGRIS Scaler is a suitable Dask replacement, offering significantly better scheduling performance for jobs with a
@@ -255,34 +262,31 @@ Here is an example of a single `example_config.toml` file that configures multip
 # This is a unified configuration file for all Scaler components.
 
 [scheduler]
-scheduler_address = "tcp://127.0.0.1:6378"
 object_storage_address = "tcp://127.0.0.1:6379"
 monitor_address = "tcp://127.0.0.1:6380"
-allocate_policy = "even"
 logging_level = "INFO"
 logging_paths = ["/dev/stdout", "/var/log/scaler/scheduler.log"]
+policy_engine_type = "simple"
+policy_content = "allocate=even_load; scaling=no"
 
 [cluster]
-scheduler_address = "tcp://127.0.0.1:6378"
 num_of_workers = 8
 per_worker_capabilities = "linux,cpu=8"
 task_timeout_seconds = 600
 
 [object_storage_server]
-object_storage_address = "tcp://127.0.0.1:6379"
 
 [webui]
-monitor_address = "tcp://127.0.0.1:6380"
 web_port = 8081
 ```
 
 With this single file, starting your entire stack is simple and consistent:
 
 ```bash
-scaler_object_storage_server --config example_config.toml &
-scaler_scheduler --config example_config.toml &
-scaler_cluster --config example_config.toml &
-scaler_ui --config example_config.toml &
+scaler_object_storage_server tcp://127.0.0.1:6379 --config example_config.toml &
+scaler_scheduler tcp://127.0.0.1:6378 --config example_config.toml &
+scaler_cluster tcp://127.0.0.1:6378 --config example_config.toml &
+scaler_ui tcp://127.0.0.1:6380 --config example_config.toml &
 ```
 
 #### Scenario 2: Overriding a Section's Setting
@@ -292,10 +296,10 @@ example_config.toml file but test the cluster with 12 workers instead of 8:
 
 ```bash
 # The --num-of-workers flag will take precedence over the [cluster] section
-scaler_cluster --config example_config.toml --num-of-workers 12
+scaler_cluster tcp://127.0.0.1:6378 --config example_config.toml --num-of-workers 12
 ```
 
-The cluster will start with 12 workers, but all other settings (like `scheduler_address`) will still be loaded from the
+The cluster will start with 12 workers, but all other settings (like `task_timeout_seconds`) will still be loaded from the
 `[cluster]` section of example_config.toml.
 
 ## Nested computations
@@ -587,10 +591,15 @@ These C++ components depend on the Boost and Cap'n Proto libraries. If these lib
 you can use the `library_tool.sh` script to download, compile, and install them (You might need `sudo`):
 
 ```bash
+./scripts/library_tool.sh boost download
 ./scripts/library_tool.sh boost compile
 ./scripts/library_tool.sh boost install
+./scripts/library_tool.sh capnp download
 ./scripts/library_tool.sh capnp compile
 ./scripts/library_tool.sh capnp install
+./scripts/library_tool.sh libuv download
+./scripts/library_tool.sh libuv compile
+./scripts/library_tool.sh libuv install
 ```
 
 After installing these dependencies, use the `build.sh` script to configure, build, and install Scaler's C++ components:
@@ -609,10 +618,15 @@ within the main source tree, as compiled Python modules. You can specify the com
 `library_tool.ps1` script to download, compile, and install them (You might need `Run as administrator`):
 
 ```bash
+./scripts/library_tool.ps1 boost download
 ./scripts/library_tool.ps1 boost compile
 ./scripts/library_tool.ps1 boost install
+./scripts/library_tool.ps1 capnp download
 ./scripts/library_tool.ps1 capnp compile
 ./scripts/library_tool.ps1 capnp install
+./scripts/library_tool.ps1 libuv download
+./scripts/library_tool.ps1 libuv compile
+./scripts/library_tool.ps1 libuv install
 ```
 
 After installing these dependencies, if you are using _Visual Studio_ for developing, you may open the project folder

@@ -22,8 +22,8 @@ dependencies = [
     "configargparse",
     "toml", # required by configargparse
     "cloudpickle",
-    "psutil==7.1.3",
-    "pycapnp==2.2.1",
+    "psutil==7.2.2",
+    "pycapnp==2.2.2",
     "pyzmq",
     "sortedcontainers==2.4.0",
     "tblib",
@@ -44,7 +44,7 @@ gui = [
 graphblas = [
     "python-graphblas==2023.7.0; python_version == '3.8'",
     "python-graphblas==2024.2.0; python_version == '3.9'",
-    "python-graphblas==2025.2.0; python_version >= '3.10'",
+    "python-graphblas==2024.2.0; python_version >= '3.10'",
     "numpy==1.24.4; python_version == '3.8'",
     "numpy==2.0.2; python_version == '3.9'",
     "numpy==2.2.6; python_version >= '3.10'",
@@ -57,7 +57,7 @@ all = [
     "nicegui[plotly]==3.6.1; python_version >= '3.9'",
     "python-graphblas==2023.7.0; python_version == '3.8'",
     "python-graphblas==2024.2.0; python_version == '3.9'",
-    "python-graphblas==2025.2.0; python_version >= '3.10'",
+    "python-graphblas==2024.2.0; python_version >= '3.10'",
     "numpy==1.24.4; python_version == '3.8'",
     "numpy==2.0.2; python_version == '3.9'",
     "numpy==2.2.6; python_version >= '3.10'",
@@ -101,7 +101,7 @@ scaler_worker_adapter_ecs = "scaler.entry_points.worker_adapter_ecs:main"
 [tool.scikit-build]
 cmake.source-dir = "."
 wheel.packages = ["src/scaler"]
-build.targets = ["py_ymq", "py_object_storage_server", "py_one_to_many_dict"]
+build.targets = ["py_ymq", "py_object_storage_server", "py_one_to_many_dict", "py_stable_priority_queue"]
 
 [tool.scikit-build.cmake.define]
 CMAKE_C_COMPILER = { env = "CMAKE_C_COMPILER", default = "gcc" }
@@ -156,17 +156,30 @@ skip = "pp* cp39-*"
 archs = ["x86_64"]
 manylinux-x86_64-image = "manylinux_2_28"
 before-all = """
-yum install -y sudo; \
-sudo ./scripts/library_tool.sh capnp compile; \
-sudo ./scripts/library_tool.sh capnp install;
+yum install -y cmake gcc-toolset-14-gcc gcc-toolset-14-gcc-c++; \
+source /opt/rh/gcc-toolset-14/enable; \
+./scripts/library_tool.sh capnp download; \
+./scripts/library_tool.sh capnp compile; \
+./scripts/library_tool.sh capnp install; \
+./scripts/library_tool.sh libuv download; \
+./scripts/library_tool.sh libuv compile; \
+./scripts/library_tool.sh libuv install; \
+echo "/usr/local/lib" > /etc/ld.so.conf.d/local.conf; \
+ldconfig;
 """
+environment = { PATH = "/opt/rh/gcc-toolset-14/root/usr/bin:$PATH", LD_LIBRARY_PATH = "/usr/local/lib:$LD_LIBRARY_PATH" }
 
 [[tool.cibuildwheel.overrides]]
 select = "*-musllinux*"
 before-all = """
-apk add sudo; \
-sudo ./scripts/library_tool.sh capnp compile; \
-sudo ./scripts/library_tool.sh capnp install;
+apk add cmake g++ make; \
+./scripts/library_tool.sh capnp download; \
+./scripts/library_tool.sh capnp compile; \
+./scripts/library_tool.sh capnp install; \
+./scripts/library_tool.sh libuv download; \
+./scripts/library_tool.sh libuv compile; \
+./scripts/library_tool.sh libuv install; \
+ldconfig /usr/local/lib;
 """
 
 #[tool.cibuildwheel.macos]

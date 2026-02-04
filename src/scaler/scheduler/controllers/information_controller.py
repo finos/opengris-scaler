@@ -13,7 +13,7 @@ from scaler.scheduler.controllers.mixins import (
     TaskController,
     WorkerController,
 )
-from scaler.scheduler.controllers.scaling_policies.mixins import ScalingController
+from scaler.scheduler.controllers.policies.mixins import ScalerPolicy
 from scaler.utility.mixins import Looper
 
 
@@ -29,7 +29,7 @@ class VanillaInformationController(InformationController, Looper):
         self._object_controller: Optional[ObjectController] = None
         self._task_controller: Optional[TaskController] = None
         self._worker_controller: Optional[WorkerController] = None
-        self._scaling_controller: Optional[ScalingController] = None
+        self._scaler_policy: Optional[ScalerPolicy] = None
 
     def register_managers(
         self,
@@ -39,7 +39,7 @@ class VanillaInformationController(InformationController, Looper):
         object_controller: ObjectController,
         task_controller: TaskController,
         worker_controller: WorkerController,
-        scaling_controller: ScalingController,
+        scaler_policy: ScalerPolicy,
     ):
         self._monitor_binder = monitor_binder
         self._binder = binder
@@ -47,7 +47,7 @@ class VanillaInformationController(InformationController, Looper):
         self._object_controller = object_controller
         self._task_controller = task_controller
         self._worker_controller = worker_controller
-        self._scaling_controller = scaling_controller
+        self._scaler_policy = scaler_policy
 
     async def on_request(self, request: InformationRequest):
         # TODO: implement commands
@@ -63,11 +63,11 @@ class VanillaInformationController(InformationController, Looper):
                 object_manager=self._object_controller.get_status(),
                 task_manager=self._task_controller.get_status(),
                 worker_manager=self._worker_controller.get_status(),
-                scaling_manager=self._scaling_controller.get_status(),
+                scaling_manager=self._scaler_policy.get_status(),
             )
         )
 
-        await self._scaling_controller.on_snapshot(
+        await self._scaler_policy.on_snapshot(
             InformationSnapshot(
                 tasks=self._task_controller._task_id_to_task,  # type: ignore # noqa: Expose this later
                 workers={

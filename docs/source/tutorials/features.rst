@@ -157,6 +157,19 @@ requirements for tasks and allocate them to workers supporting these.
 .. literalinclude:: ../../../examples/task_capabilities.py
    :language: python
 
+Scaling Control and Worker Adapter
+----------------------------------
+
+Scaler offers an *experimental* auto-scaling feature based on policies, enabling you to scale workers up or down
+as needed. This is especially useful in containerized environments where billing is based on utility rates or
+to reduce resource usage automatically on a multi-user system. The scaling decision is made `policy` located in
+`ScalingController`. You may specify `policy` by passing corresponding config to the `scheduler`. We have made
+several canonical `policy` for you. The actual scaling part is made by `WorkerAdapter`.
+Below is an example showing the `WorkerAdapter` for `ecs` compute resource.
+
+.. literalinclude:: ../../../src/scaler/worker_adapter/ecs.py
+   :language: python
+
 Client Disconnect and Shutdown
 ------------------------------
 

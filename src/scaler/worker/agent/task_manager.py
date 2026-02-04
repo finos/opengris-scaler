@@ -9,9 +9,6 @@ from scaler.utility.mixins import Looper
 from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
 from scaler.worker.agent.mixins import ProcessorManager, TaskManager
 
-_SUSPENDED_TASKS_PRIORITY = 1
-_QUEUED_TASKS_PRIORITY = 2
-
 
 class VanillaTaskManager(Looper, TaskManager):
     def __init__(self, task_timeout_seconds: int):
@@ -132,10 +129,18 @@ class VanillaTaskManager(Looper, TaskManager):
 
         # Higher-priority tasks have a higher priority value. But as the queue is sorted by increasing order, we negate
         # the inserted value that it will be at the head of the queue.
-        if is_suspended:
-            queue_priority = (-task_priority, _SUSPENDED_TASKS_PRIORITY)
-        else:
-            queue_priority = (-task_priority, _QUEUED_TASKS_PRIORITY)
+        # The order of insertion is preserved and unique because f(x) = 10*x is a bijection.
+        #   1. Task(priority=0) [suspended] = -(0 * 10 + 1) = -1
+        #   2. Task(priority=3) [suspended] = -(3 * 10 + 1) = -31
+        #   3. Task(priority=3)             = -(3 * 10 + 0) = -30
+        #   4. Task(priority=0)             = -(3 *  0 + 0) = -3
+        # We want to execute the tasks in this order: 2-3-1-4.
+        # As you can see -31 < -30 < -3 < -1 and the task will be executed in order 2-3-1-4.
+        # `queue_priority` used to be a tuple of the form (-task_priority, !is_suspended).
+        # Because it is difficult to implement the semantics in C++ implementation, the two
+        # items are combined together, extending the last digit of task_priority to determine
+        # whether a task is suspended.
+        queue_priority = -(task_priority * 10 + int(is_suspended))
 
         self._queued_task_ids.put_nowait((queue_priority, task.task_id))
         self._queued_task_id_to_task[task.task_id] = task
