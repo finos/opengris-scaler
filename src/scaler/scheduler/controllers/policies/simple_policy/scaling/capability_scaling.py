@@ -25,8 +25,8 @@ class CapabilityScalingController(ScalingController):
 
     def __init__(self, adapter_webhook_url: str):
         self._adapter_webhook_url = adapter_webhook_url
-        self._lower_task_ratio = 1
-        self._upper_task_ratio = 10
+        self._lower_task_ratio = 0.5
+        self._upper_task_ratio = 5
 
         # Track worker groups by their capability set
         # Key: frozenset of capability names (e.g., frozenset({"gpu"}))
@@ -187,8 +187,8 @@ class CapabilityScalingController(ScalingController):
 
             task_ratio = task_count / worker_count
             if task_ratio < self._lower_task_ratio:
-                # Find the worker group with the least tasks
-                worker_group_task_counts = {}
+                # Find the worker group with the least queued tasks
+                worker_group_task_counts: Dict[WorkerGroupID, int] = {}
                 for worker_group_id, worker_ids in worker_group_dict.items():
                     total_queued = sum(
                         information_snapshot.workers[worker_id].queued_tasks
@@ -200,8 +200,20 @@ class CapabilityScalingController(ScalingController):
                 if not worker_group_task_counts:
                     continue
 
-                worker_group_id = min(worker_group_task_counts, key=worker_group_task_counts.get)
-                await self._shutdown_worker_group(capability_keys, worker_group_id)
+                # Select the worker group with the fewest queued tasks to shut down
+                least_busy_group_id = min(worker_group_task_counts, key=lambda gid: worker_group_task_counts[gid])
+
+                # Don't scale down if there are pending tasks and this would leave no capable workers
+                workers_in_group = len(worker_group_dict.get(least_busy_group_id, []))
+                remaining_worker_count = worker_count - workers_in_group
+                if task_count > 0 and remaining_worker_count == 0:
+                    # This is the last worker group that can handle these tasks - don't shut it down
+                    continue
+                if remaining_worker_count > 0 and (task_count / remaining_worker_count) > self._upper_task_ratio:
+                    # Shutting down this group would cause task ratio to exceed upper threshold and scale-up again
+                    continue
+
+                await self._shutdown_worker_group(capability_keys, least_busy_group_id)
 
     async def _start_worker_group(self, capability_keys: FrozenSet[str], capability_dict: Dict[str, int]):
         """Start a new worker group with the specified capabilities."""
