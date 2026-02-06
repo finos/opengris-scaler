@@ -153,7 +153,7 @@ class TestGraph(unittest.TestCase):
             time.sleep(1)
             futures["b"].cancel()
 
-    def test_cancel_no_worker(self):
+    def test_cancel_unassigned(self):
         # Cancels a graph task that hasn't been assigned to a worker yet.
         combo = SchedulerClusterCombo(n_workers=0, event_loop="builtin")
 

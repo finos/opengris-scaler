@@ -117,6 +117,19 @@ class TestClient(unittest.TestCase):
 
         time.sleep(1)
 
+    def test_cancel_unassigned(self):
+        # Cancels a graph task that hasn't been assigned to a worker yet.
+        combo = SchedulerClusterCombo(n_workers=0, event_loop="builtin")
+
+        with Client(combo.get_address()) as client:
+            future = client.submit(round, 31.416)
+
+            time.sleep(0.15)
+
+            future.cancel()
+
+        combo.shutdown()
+
     def test_heavy_function(self):
         with Client(self.address) as client:
             size = 500_000_000
