@@ -107,11 +107,6 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
 
     async def on_graph_task_cancel(self, task_cancel: TaskCancel):
         graph_task_id = self._task_id_to_graph_task_id[task_cancel.task_id]
-        graph_info = self._graph_task_id_to_graph[graph_task_id]
-
-        if graph_info.status in {_GraphState.Canceling, _GraphState.Aborting}:
-            # if graph is already in canceling or aborting, we don't need to proceed whole graph canceling again
-            return
 
         # received any subtask canceling will lead the whole graph canceling
         await self.__cancel_whole_graph(graph_task_id)
@@ -225,6 +220,11 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
             return
 
         graph_info = self._graph_task_id_to_graph[graph_task_id]
+
+        if graph_info.status in {_GraphState.Canceling, _GraphState.Aborting}:
+            # if graph is already in canceling or aborting, we don't need to proceed whole graph canceling again
+            return
+
         graph_info.status = _GraphState.Canceling
 
         await asyncio.gather(
