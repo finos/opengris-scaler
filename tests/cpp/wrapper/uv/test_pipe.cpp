@@ -16,7 +16,7 @@
 
 // Platform-specific pipe name format
 // Defined in test_pipe_unix.cpp and test_pipe_windows.cpp
-extern const char* PIPE_NAME_PREFIX;
+extern const char* pipeNamePrefix;
 
 class UVPipeTest: public ::testing::Test {
 protected:
@@ -75,7 +75,7 @@ TEST_F(UVPipeTest, Pipe)
     const std::vector<uint8_t> message {'h', 'e', 'l', 'l', 'o'};
 
     const std::string pipeName =
-        std::string(PIPE_NAME_PREFIX) + "scaler_test_pipe_" + std::to_string(getpid()) + "_" + std::to_string(rand());
+        std::string(pipeNamePrefix) + "scaler_test_pipe_" + std::to_string(getpid()) + "_" + std::to_string(rand());
 
     scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
 

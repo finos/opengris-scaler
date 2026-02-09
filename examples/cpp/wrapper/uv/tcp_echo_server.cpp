@@ -14,7 +14,7 @@
 #include "scaler/wrapper/uv/socket_address.h"
 #include "scaler/wrapper/uv/tcp.h"
 
-const int DEFAULT_BACKLOG = 128;
+static const int defaultBacklog = 128;
 
 class TCPEchoServer {
 public:
@@ -22,7 +22,7 @@ public:
         : _loop(loop), _server(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPServer::init(loop)))
     {
         UV_EXIT_ON_ERROR(_server.bind(address, uv_tcp_flags(0)));
-        UV_EXIT_ON_ERROR(_server.listen(DEFAULT_BACKLOG, std::bind_front(&TCPEchoServer::onNewConnection, this)));
+        UV_EXIT_ON_ERROR(_server.listen(defaultBacklog, std::bind_front(&TCPEchoServer::onNewConnection, this)));
     }
 
     scaler::wrapper::uv::SocketAddress address() { return UV_EXIT_ON_ERROR(_server.getSockName()); }
