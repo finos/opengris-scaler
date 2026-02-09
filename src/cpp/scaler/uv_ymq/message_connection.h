@@ -4,19 +4,15 @@
 #include <expected>
 #include <optional>
 #include <queue>
-#include <set>
 #include <span>
 
-#include "scaler/error/error.h"
 #include "scaler/logging/logging.h"
 #include "scaler/utility/move_only_function.h"
 #include "scaler/uv_ymq/typedefs.h"
 #include "scaler/wrapper/uv/callback.h"
 #include "scaler/wrapper/uv/error.h"
 #include "scaler/wrapper/uv/loop.h"
-#include "scaler/wrapper/uv/request.h"
 #include "scaler/ymq/bytes.h"
-#include "scaler/ymq/message.h"
 
 namespace scaler {
 namespace uv_ymq {
@@ -50,7 +46,7 @@ public:
 
     using SendMessageCallback = scaler::utility::MoveOnlyFunction<void(std::expected<void, scaler::ymq::Error>)>;
 
-    using RecvMessageCallback = scaler::utility::MoveOnlyFunction<void(scaler::ymq::Message)>;
+    using RecvMessageCallback = scaler::utility::MoveOnlyFunction<void(scaler::ymq::Bytes)>;
 
     MessageConnection(
         scaler::wrapper::uv::Loop& loop,
@@ -95,24 +91,24 @@ public:
     // If the connection is not established yet, the message is queued and sent once the connection is established.
     //
     // If the connection disconnects, the message will be queued again until the connection is re-established.
-    void sendMessage(scaler::ymq::Message message, SendMessageCallback onMessageSent) noexcept;
+    void sendMessage(scaler::ymq::Bytes message, SendMessageCallback onMessageSent) noexcept;
 
 private:
     static constexpr size_t HEADER_SIZE = sizeof(uint64_t);
 
     struct SendOperation {
-        scaler::ymq::Bytes _payload;
+        scaler::ymq::Bytes _message;
         SendMessageCallback _onMessageSent;
 
-        // This is strictly equal to _payload.size(), but we need a dereferenceable and stable memory location for that
+        // This is strictly equal to _message.size(), but we need a dereferenceable and stable memory location for that
         // value while doing the write().
-        uint64_t _payloadSize;
+        uint64_t _messageSize;
     };
 
     struct RecvOperation {
         size_t _cursor {0};
         uint64_t _header {0};
-        scaler::ymq::Bytes _payload {};
+        scaler::ymq::Bytes _message {};
     };
 
     scaler::ymq::Logger _logger {};
@@ -143,9 +139,9 @@ private:
 
     void onRead(std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) noexcept;
 
-    void onMessage(scaler::ymq::Message message) noexcept;
+    void onMessage(scaler::ymq::Bytes message) noexcept;
 
-    void onRemoteIdentity(scaler::ymq::Message message) noexcept;
+    void onRemoteIdentity(scaler::ymq::Bytes message) noexcept;
 
     void onRemoteDisconnect(DisconnectReason reason) noexcept;
 
@@ -153,8 +149,7 @@ private:
 
     void processSendQueue() noexcept;
 
-    std::expected<scaler::wrapper::uv::WriteRequest, scaler::wrapper::uv::Error> write(
-        std::span<const std::span<const uint8_t>> buffers, scaler::wrapper::uv::WriteCallback callback) noexcept;
+    void write(std::span<const std::span<const uint8_t>> buffers, scaler::wrapper::uv::WriteCallback callback) noexcept;
 
     void readStart() noexcept;
 
@@ -162,9 +157,9 @@ private:
 
     size_t readHeader(std::span<const uint8_t> data) noexcept;
 
-    size_t readPayload(std::span<const uint8_t> data) noexcept;
+    size_t readMessage(std::span<const uint8_t> data) noexcept;
 
-    bool allocatePayload() noexcept;
+    bool allocateMessage() noexcept;
 };
 
 }  // namespace uv_ymq

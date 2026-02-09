@@ -1,13 +1,10 @@
 #include "scaler/uv_ymq/message_connection.h"
 
-#include <algorithm>
 #include <array>
 #include <cassert>
-#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <memory>
-#include <span>
 #include <utility>
 #include <variant>
 
@@ -107,12 +104,12 @@ const std::optional<Identity>& MessageConnection::remoteIdentity() const noexcep
     return _remoteIdentity;
 }
 
-void MessageConnection::sendMessage(scaler::ymq::Message message, SendMessageCallback onMessageSent) noexcept
+void MessageConnection::sendMessage(scaler::ymq::Bytes message, SendMessageCallback onMessageSent) noexcept
 {
     SendOperation operation;
-    operation._payload       = std::move(message.payload);
+    operation._message       = std::move(message);
     operation._onMessageSent = std::move(onMessageSent);
-    operation._payloadSize   = operation._payload.size();
+    operation._messageSize   = operation._message.size();
 
     _sendPending.push(std::move(operation));
 
@@ -136,7 +133,10 @@ void MessageConnection::onWriteDone(
     if (!result.has_value()) {
         switch (result.error().code()) {
             case UV_ECONNRESET:
+            case UV_ECONNABORTED:
+            case UV_ETIMEDOUT:
             case UV_EPIPE:
+            case UV_ENETDOWN:
                 // Connection closed/failed WHILE libuv issued the write to the OS.
                 // No need to handle this disconnect event, as this will be handled by onRead().
                 return;
@@ -189,9 +189,9 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
         if (_recvCurrent._cursor < HEADER_SIZE) {
             offset += readHeader(data.subspan(offset));
 
-            // Allocate payload buffer
+            // Allocate message buffer
             if (_recvCurrent._cursor == HEADER_SIZE) {
-                bool success = allocatePayload();
+                bool success = allocateMessage();
 
                 if (!success) {
                     _logger.log(
@@ -205,28 +205,21 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
             }
         }
 
-        // Read payload
+        // Read message's content
         if (_recvCurrent._cursor >= HEADER_SIZE) {
-            offset += readPayload(data.subspan(offset));
+            offset += readMessage(data.subspan(offset));
         }
 
-        // Read message if completed
+        // Dispatch message if completed
         if (_recvCurrent._cursor == HEADER_SIZE + _recvCurrent._header) {
-            scaler::ymq::Message message;
-
-            if (_remoteIdentity.has_value()) {
-                message.address = scaler::ymq::Bytes(*_remoteIdentity);
-            }
-            message.payload = std::move(_recvCurrent._payload);
-
-            onMessage(std::move(message));
+            onMessage(std::move(_recvCurrent._message));
 
             _recvCurrent = RecvOperation {};
         }
     }
 }
 
-void MessageConnection::onMessage(scaler::ymq::Message message) noexcept
+void MessageConnection::onMessage(scaler::ymq::Bytes message) noexcept
 {
     assert(connected());
 
@@ -239,12 +232,12 @@ void MessageConnection::onMessage(scaler::ymq::Message message) noexcept
     _onRecvMessageCallback(std::move(message));
 }
 
-void MessageConnection::onRemoteIdentity(scaler::ymq::Message message) noexcept
+void MessageConnection::onRemoteIdentity(scaler::ymq::Bytes message) noexcept
 {
     assert(connected());
     assert(!established());
 
-    Identity receivedIdentity {reinterpret_cast<const char*>(message.payload.data()), message.payload.size()};
+    Identity receivedIdentity {reinterpret_cast<const char*>(message.data()), message.size()};
 
     if (_remoteIdentity.has_value() && *_remoteIdentity != receivedIdentity) {
         _logger.log(
@@ -276,9 +269,7 @@ void MessageConnection::sendLocalIdentity() noexcept
 {
     assert(_sendPending.empty() && "Identity should be the first message");
 
-    scaler::ymq::Message message;
-    message.address = scaler::ymq::Bytes();
-    message.payload = scaler::ymq::Bytes(_localIdentity.data(), _localIdentity.size());
+    scaler::ymq::Bytes message = scaler::ymq::Bytes(_localIdentity.data(), _localIdentity.size());
 
     SendMessageCallback callback = [](std::expected<void, scaler::ymq::Error> result) {};
 
@@ -296,29 +287,29 @@ void MessageConnection::processSendQueue() noexcept
 
         std::array<std::span<const uint8_t>, 2> buffers = {{
             std::span<const uint8_t> {
-                reinterpret_cast<const uint8_t*>(&operation->_payloadSize), HEADER_SIZE},      // header
-            std::span<const uint8_t> {operation->_payload.data(), operation->_payload.size()}  // payload
+                reinterpret_cast<const uint8_t*>(&operation->_messageSize), HEADER_SIZE},      // header (message size)
+            std::span<const uint8_t> {operation->_message.data(), operation->_message.size()}  // message
         }};
 
-        // Capture the operation to keep it alive until callback completes
+        // Capture the operation object to keep it alive until callback completes
         auto callback = [operation =
                              std::move(operation)](std::expected<void, scaler::wrapper::uv::Error> result) mutable {
             MessageConnection::onWriteDone(std::move(operation->_onMessageSent), std::move(result));
         };
 
-        UV_EXIT_ON_ERROR(write(buffers, std::move(callback)));
+        write(buffers, std::move(callback));
     }
 }
 
-std::expected<scaler::wrapper::uv::WriteRequest, scaler::wrapper::uv::Error> MessageConnection::write(
+void MessageConnection::write(
     std::span<const std::span<const uint8_t>> buffers, scaler::wrapper::uv::WriteCallback callback) noexcept
 {
     assert(connected());
 
     if (auto* tcpSocket = std::get_if<scaler::wrapper::uv::TCPSocket>(&_client.value())) {
-        return tcpSocket->write(buffers, std::move(callback));
+        UV_EXIT_ON_ERROR(tcpSocket->write(buffers, std::move(callback)));
     } else if (auto* pipe = std::get_if<scaler::wrapper::uv::Pipe>(&_client.value())) {
-        return pipe->write(buffers, std::move(callback));
+        UV_EXIT_ON_ERROR(pipe->write(buffers, std::move(callback)));
     } else {
         std::unreachable();
     }
@@ -362,13 +353,13 @@ size_t MessageConnection::readHeader(std::span<const uint8_t> data) noexcept
     return readCount;
 }
 
-size_t MessageConnection::readPayload(std::span<const uint8_t> data) noexcept
+size_t MessageConnection::readMessage(std::span<const uint8_t> data) noexcept
 {
-    size_t payloadSize   = _recvCurrent._header;
-    size_t payloadOffset = _recvCurrent._cursor - HEADER_SIZE;
+    size_t messageSize   = _recvCurrent._header;
+    size_t messageOffset = _recvCurrent._cursor - HEADER_SIZE;
 
-    uint8_t* readDest = _recvCurrent._payload.data() + payloadOffset;
-    size_t readCount  = std::min(payloadSize - payloadOffset, data.size());
+    uint8_t* readDest = _recvCurrent._message.data() + messageOffset;
+    size_t readCount  = std::min(messageSize - messageOffset, data.size());
 
     std::memcpy(readDest, data.data(), readCount);
 
@@ -377,11 +368,11 @@ size_t MessageConnection::readPayload(std::span<const uint8_t> data) noexcept
     return readCount;
 }
 
-bool MessageConnection::allocatePayload() noexcept
+bool MessageConnection::allocateMessage() noexcept
 {
     if (_recvCurrent._header > 0) {
         try {
-            _recvCurrent._payload = scaler::ymq::Bytes::alloc(_recvCurrent._header);
+            _recvCurrent._message = scaler::ymq::Bytes::alloc(_recvCurrent._header);
         } catch (const std::bad_alloc& e) {
             return false;
         }
