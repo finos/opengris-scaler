@@ -96,7 +96,7 @@ private:
     }
 };
 
-TEST_F(UVTCPTest, TCP)
+TEST_F(UVTCPTest, EchoServer)
 {
     const std::vector<uint8_t> message {'h', 'e', 'l', 'l', 'o'};
 
@@ -140,4 +140,60 @@ TEST_F(UVTCPTest, TCP)
     }
 
     client.readStop();
+}
+
+TEST_F(UVTCPTest, CloseReset)
+{
+    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
+
+    // Create a server that track connection resets.
+
+    scaler::wrapper::uv::TCPServer server = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPServer::init(loop));
+    scaler::wrapper::uv::SocketAddress serverAddress =
+        UV_EXIT_ON_ERROR(scaler::wrapper::uv::SocketAddress::IPv4("127.0.0.1", 0));
+    UV_EXIT_ON_ERROR(server.bind(serverAddress, uv_tcp_flags(0)));
+
+    scaler::wrapper::uv::TCPSocket serverSocket = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(loop));
+    bool receivedConnReset                      = false;
+
+    auto onServerRead = [&](std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) {
+        if (!result.has_value()) {
+            if (result.error().code() == UV_ECONNRESET) {
+                receivedConnReset = true;
+            }
+        }
+    };
+
+    auto onClientConnected = [&](std::expected<void, scaler::wrapper::uv::Error> result) {
+        UV_EXIT_ON_ERROR(result);
+        UV_EXIT_ON_ERROR(server.accept(serverSocket));
+        UV_EXIT_ON_ERROR(serverSocket.readStart(onServerRead));
+    };
+
+    UV_EXIT_ON_ERROR(server.listen(16, onClientConnected));
+
+    // Create a client and connect to the server
+
+    scaler::wrapper::uv::TCPSocket client = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(loop));
+    bool connected                        = false;
+
+    auto onClientConnect = [&](std::expected<void, scaler::wrapper::uv::Error> result) { connected = true; };
+
+    UV_EXIT_ON_ERROR(client.connect(UV_EXIT_ON_ERROR(server.getSockName()), onClientConnect));
+
+    // Loop until connected
+    while (!connected) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    // Call closeReset() to immediately close the connection with a RST segment
+
+    UV_EXIT_ON_ERROR(client.closeReset());
+
+    // Loop until the server receives the ECONNRESET error
+    while (!receivedConnReset) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    ASSERT_TRUE(receivedConnReset);
 }

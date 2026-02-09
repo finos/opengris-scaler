@@ -78,8 +78,12 @@ public:
 
     void connect(Client client) noexcept;
 
-    // Will not trigger a DisconnectCallback event.
     void disconnect() noexcept;
+
+    // Same as disconnect(), but send a RST packet to the remote, triggering an Aborted event.
+    //
+    // Only TCP clients are supported.
+    void abort() noexcept;
 
     const Identity& localIdentity() const noexcept;
 
@@ -131,6 +135,8 @@ private:
 
     // The current partially received message being assembled.
     RecvOperation _recvCurrent {};
+
+    void reinitialize() noexcept;
 
     static void onWriteDone(
         SendMessageCallback callback, std::expected<void, scaler::wrapper::uv::Error> result) noexcept;

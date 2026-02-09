@@ -37,7 +37,7 @@ MessageConnection::MessageConnection(
 MessageConnection::~MessageConnection() noexcept
 {
     if (connected()) {
-        disconnect();
+        readStop();
     }
 
     // Fail all pending send operations
@@ -79,12 +79,22 @@ void MessageConnection::disconnect() noexcept
     assert(connected());
 
     readStop();
-    _recvCurrent = RecvOperation {};
 
-    _client = std::nullopt;
-    _state  = State::Disconnected;
+    reinitialize();
+}
 
-    sendLocalIdentity();  // enqueue the first identity message in case we reconnect.
+void MessageConnection::abort() noexcept
+{
+    assert(connected());
+
+    readStop();
+
+    scaler::wrapper::uv::TCPSocket* socket = std::get_if<scaler::wrapper::uv::TCPSocket>(&_client.value());
+    assert(socket && "abort() only supported for TCP sockets");
+
+    UV_EXIT_ON_ERROR(socket->closeReset());
+
+    reinitialize();
 }
 
 const Identity& MessageConnection::localIdentity() const noexcept
@@ -109,6 +119,15 @@ void MessageConnection::sendMessage(scaler::ymq::Message message, SendMessageCal
     if (connected()) {
         processSendQueue();
     }
+}
+
+void MessageConnection::reinitialize() noexcept
+{
+    _client      = std::nullopt;
+    _state       = State::Disconnected;
+    _recvCurrent = RecvOperation {};
+
+    sendLocalIdentity();  // enqueue the first identity message in case we reconnect.
 }
 
 void MessageConnection::onWriteDone(
