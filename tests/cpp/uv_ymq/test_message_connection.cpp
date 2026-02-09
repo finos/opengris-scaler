@@ -16,8 +16,8 @@ class UVYMQMessageConnectionTest: public ::testing::Test {};
 // Helper class to set up a server and client message connection pair
 class ConnectionPair {
 public:
-    static constexpr scaler::uv_ymq::Identity serverIdentity = "server-identity";
-    static constexpr scaler::uv_ymq::Identity clientIdentity = "client-identity";
+    static const scaler::uv_ymq::Identity serverIdentity;
+    static const scaler::uv_ymq::Identity clientIdentity;
 
     ConnectionPair(
         scaler::wrapper::uv::Loop& loop,
@@ -72,6 +72,9 @@ private:
     scaler::wrapper::uv::TCPSocket _clientSocket;
     scaler::uv_ymq::MessageConnection _clientConnection;
 };
+
+const scaler::uv_ymq::Identity ConnectionPair::serverIdentity = "server-identity";
+const scaler::uv_ymq::Identity ConnectionPair::clientIdentity = "client-identity";
 
 TEST_F(UVYMQMessageConnectionTest, IdentityExchange)
 {
