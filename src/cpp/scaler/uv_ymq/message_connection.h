@@ -40,7 +40,7 @@ public:
         Disconnected,
     };
 
-    using RemoteIdentityCallback = scaler::utility::MoveOnlyFunction<void(std::expected<Identity, scaler::ymq::Error>)>;
+    using RemoteIdentityCallback = scaler::utility::MoveOnlyFunction<void(Identity)>;
 
     using RemoteDisconnectCallback = scaler::utility::MoveOnlyFunction<void(DisconnectReason)>;
 
