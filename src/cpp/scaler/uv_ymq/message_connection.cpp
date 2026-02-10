@@ -253,7 +253,7 @@ void MessageConnection::onRemoteIdentity(scaler::ymq::Bytes message) noexcept
 
     _remoteIdentity = std::move(receivedIdentity);
     _state          = State::Established;
-    _onRemoteIdentityCallback({*_remoteIdentity});
+    _onRemoteIdentityCallback(*_remoteIdentity);
 }
 
 void MessageConnection::onRemoteDisconnect(MessageConnection::DisconnectReason reason) noexcept

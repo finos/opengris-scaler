@@ -83,14 +83,14 @@ TEST_F(UVYMQMessageConnectionTest, IdentityExchange)
         loop,
 
         // Server callbacks
-        [](auto result) { ASSERT_EQ(result.value(), ConnectionPair::clientIdentity); },  // onRemoteIdentity
-        [](auto) { FAIL() << "Unexpected disconnect on server"; },                       // onRemoteDisconnect
-        [](auto) { FAIL() << "Unexpected message on server"; },                          // onMessage
+        [](auto identity) { ASSERT_EQ(identity, ConnectionPair::clientIdentity); },  // onRemoteIdentity
+        [](auto) { FAIL() << "Unexpected disconnect on server"; },                   // onRemoteDisconnect
+        [](auto) { FAIL() << "Unexpected message on server"; },                      // onMessage
 
         // Client callbacks
-        [](auto result) { ASSERT_EQ(result.value(), ConnectionPair::serverIdentity); },  // onRemoteIdentity
-        [](auto) { FAIL() << "Unexpected disconnect on client"; },                       // onRemoteDisconnect
-        [](auto) { FAIL() << "Unexpected message on client"; }                           // onMessage
+        [](auto identity) { ASSERT_EQ(identity, ConnectionPair::serverIdentity); },  // onRemoteIdentity
+        [](auto) { FAIL() << "Unexpected disconnect on client"; },                   // onRemoteDisconnect
+        [](auto) { FAIL() << "Unexpected message on client"; }                       // onMessage
     );
 
     scaler::uv_ymq::MessageConnection& server = connections.server();
@@ -123,7 +123,7 @@ TEST_F(UVYMQMessageConnectionTest, MessageExchange)
         loop,
 
         // Server callbacks
-        [](auto result) {},                                         // onRemoteIdentity
+        [](auto identity) {},                                       // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on server"; },  // onRemoteDisconnect
         [&](scaler::ymq::Bytes message) {                           // onMessage
             auto payload = message.as_string();
@@ -133,7 +133,7 @@ TEST_F(UVYMQMessageConnectionTest, MessageExchange)
         },
 
         // Client callbacks
-        [](auto result) {},                                         // onRemoteIdentity
+        [](auto identity) {},                                       // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on client"; },  // onRemoteDisconnect
         [&](scaler::ymq::Bytes message) {                           // onMessage
             auto payload = message.as_string();
@@ -176,15 +176,15 @@ TEST_F(UVYMQMessageConnectionTest, Disconnect)
         loop,
 
         // Server callbacks
-        [](auto result) {},  // onRemoteIdentity
-        [&](auto reason) {   // onRemoteDisconnect
+        [](auto identity) {},  // onRemoteIdentity
+        [&](auto reason) {     // onRemoteDisconnect
             ASSERT_EQ(reason, scaler::uv_ymq::MessageConnection::DisconnectReason::Disconnected);
             serverDisconnected = true;
         },
         [](auto) { FAIL() << "Unexpected message on server"; },  // onMessage
 
         // Client callbacks
-        [](auto result) {},                                         // onRemoteIdentity
+        [](auto identity) {},                                       // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on client"; },  // onRemoteDisconnect
         [](auto) { FAIL() << "Unexpected message on client"; }      // onMessage
     );
@@ -218,14 +218,14 @@ TEST_F(UVYMQMessageConnectionTest, UnexpectedDisconnect)
         loop,
 
         // Server callbacks
-        [](auto result) {},  // onRemoteIdentity
-        [](auto reason) {    // onRemoteDisconnect
+        [](auto identity) {},  // onRemoteIdentity
+        [](auto reason) {      // onRemoteDisconnect
             ASSERT_EQ(reason, scaler::uv_ymq::MessageConnection::DisconnectReason::Aborted);
         },
         [](auto) { FAIL() << "Unexpected message on server"; },  // onMessage
 
         // Client callbacks
-        [](auto result) {},                                         // onRemoteIdentity
+        [](auto identity) {},                                       // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on client"; },  // onRemoteDisconnect
         [](auto) { FAIL() << "Unexpected message on client"; }      // onMessage
     );
