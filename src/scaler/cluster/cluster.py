@@ -1,6 +1,5 @@
 import logging
 import multiprocessing
-import os
 import signal
 from typing import List
 
@@ -45,7 +44,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         logging.info(f"{self.__get_prefix()} received signal, shutting down")
         for worker in self._workers:
             logging.info(f"{self.__get_prefix()} shutting down {worker.identity!r}")
-            os.kill(worker.pid, signal.SIGINT)
+            worker.terminate()
 
     def __register_signal(self):
         signal.signal(signal.SIGINT, self.__destroy)

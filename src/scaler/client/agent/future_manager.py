@@ -1,6 +1,6 @@
 import logging
 import threading
-from concurrent.futures import Future, InvalidStateError
+from concurrent.futures import Future, InvalidStateError, TimeoutError
 from typing import Dict, Optional
 
 from scaler.client.agent.mixins import FutureManager
@@ -35,7 +35,11 @@ class ClientFutureManager(FutureManager):
 
         logging.info(f"canceling {len(futures_to_cancel)} task(s)")
         for future in futures_to_cancel:
-            future.cancel()
+            try:
+                future.cancel(timeout=5.0)
+            except TimeoutError:
+                logging.warning(f"timeout when canceling task {future.task_id.hex()}, force canceling")
+                future.set_canceled()
 
     def set_all_futures_with_exception(self, exception: Exception):
         with self._lock:

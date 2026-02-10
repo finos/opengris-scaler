@@ -56,27 +56,43 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
 
     int res {};
     auto running = [&] -> bool {
-        scaler::utility::pymod::AcquireGIL gil;
-        (void)gil;
-        res = PyErr_CheckSignals();
+        PyGILState_STATE gstate = PyGILState_Ensure();
+        res                     = PyErr_CheckSignals();
+        PyGILState_Release(gstate);
         return res == 0;
     };
 
-    ((PyObjectStorageServer*)self)
-        ->server.run(
-            addr, std::to_string(port), identity, log_level, log_format, std::move(logging_paths), std::move(running));
+    std::string s_addr(addr);
+    std::string s_port = std::to_string(port);
+    std::string s_identity(identity);
+    std::string s_log_level(log_level);
+    std::string s_log_format(log_format);
 
-    if (!res) {
+    Py_BEGIN_ALLOW_THREADS((PyObjectStorageServer*)self)
+        ->server.run(
+            std::move(s_addr),
+            std::move(s_port),
+            std::move(s_identity),
+            std::move(s_log_level),
+            std::move(s_log_format),
+            std::move(logging_paths),
+            std::move(running));
+    Py_END_ALLOW_THREADS
+
+        if (!res)
+    {
         Py_RETURN_NONE;
-    } else {
+    }
+    else
+    {
         return nullptr;
     }
 }
 
 static PyObject* PyObjectStorageServerWaitUntilReady(PyObject* self, [[maybe_unused]] PyObject* args)
 {
-    ((PyObjectStorageServer*)self)->server.waitUntilReady();
-    Py_RETURN_NONE;
+    Py_BEGIN_ALLOW_THREADS((PyObjectStorageServer*)self)->server.waitUntilReady();
+    Py_END_ALLOW_THREADS Py_RETURN_NONE;
 }
 
 static PyMethodDef PyObjectStorageServerMethods[] = {
