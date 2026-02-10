@@ -13,4 +13,7 @@ add_library(uv_ymq_objs OBJECT
 
     io_context.h
     io_context.cpp
+
+    message_connection.h
+    message_connection.cpp
 )

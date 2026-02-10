@@ -18,13 +18,13 @@ class Handle {
 public:
     constexpr NativeHandleType& native() noexcept
     {
-        assert(_native != nullptr && "The handle has been moved");
+        assert(_native != nullptr && "The handle has been moved or released");
         return *_native;
     }
 
     constexpr const NativeHandleType& native() const noexcept
     {
-        assert(_native != nullptr && "The handle has been moved");
+        assert(_native != nullptr && "The handle has been moved or released");
         return *_native;
     }
 
@@ -50,6 +50,20 @@ public:
         }
     }
 
+    // Releases the ownership of the native handle.
+    //
+    // The caller is responsible for freeing the native handle by calling free().
+    NativeHandleType* release() noexcept { return _native.release(); }
+
+    // Callback for uv_close() that cleans up the handle data and deletes the native handle.
+    static void free(uv_handle_t* handle) noexcept
+    {
+        DataType* data = static_cast<DataType*>(uv_handle_get_data(handle));
+        delete data;
+
+        delete reinterpret_cast<NativeHandleType*>(handle);
+    }
+
 private:
     // We cannot hold the native handle object directly because uv_close() "delays" the deletion of the native handle.
     // It has to be freed while/after uv_close()'s callback is being called.
@@ -58,16 +72,15 @@ private:
 
     static void handleDeleter(NativeHandleType* handle) noexcept
     {
+        uv_handle_t* rawHandle = reinterpret_cast<uv_handle_t*>(handle);
+
+        // Skip if the handle is already closing (e.g. from TCPSocket::closeReset())
+        if (uv_is_closing(rawHandle)) {
+            return;
+        }
+
         // Delay the call to delete to uv_close()'s callback.
-        uv_close(reinterpret_cast<uv_handle_t*>(handle), [](uv_handle_t* handle) {
-            DataType* data = static_cast<DataType*>(uv_handle_get_data(handle));
-
-            if (data != nullptr) {
-                delete data;
-            }
-
-            delete reinterpret_cast<NativeHandleType*>(handle);
-        });
+        uv_close(rawHandle, &Handle::free);
     }
 
     std::unique_ptr<NativeHandleType, decltype(&handleDeleter)> _native {
