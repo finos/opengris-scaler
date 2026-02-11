@@ -188,10 +188,12 @@ The following table maps each Scaler command to its corresponding section name i
      - ``[top]``
    * - ``scaler_worker_adapter_native``
      - ``[native_worker_adapter]``
+   * - ``scaler_worker_adapter_fixed_native``
+     - ``[fixed_native_worker_adapter]``
    * - ``scaler_worker_adapter_symphony``
      - ``[symphony_worker_adapter]``
-   * - ``[ecs_worker_adapter]``
-     - ``scaler_worker_adapter_ecs``
+   * - ``scaler_worker_adapter_ecs``
+     - ``[ecs_worker_adapter]``
 
 
 Practical Scenarios & Examples

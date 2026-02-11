@@ -1,19 +1,17 @@
-import os
-import signal
 import uuid
 from typing import Dict
 
 from aiohttp import web
 from aiohttp.web_request import Request
 
-from scaler.config.section.native_worker_adapter import NativeWorkerAdapterConfig
+from scaler.config.section.fixed_native_worker_adapter import FixedNativeWorkerAdapterConfig
 from scaler.utility.identifiers import WorkerID
 from scaler.worker.worker import Worker
-from scaler.worker_adapter.common import CapacityExceededError, WorkerGroupID, WorkerGroupNotFoundError
+from scaler.worker_adapter.common import WorkerGroupNotFoundError
 
 
-class NativeWorkerAdapter:
-    def __init__(self, config: NativeWorkerAdapterConfig):
+class FixedNativeWorkerAdapter:
+    def __init__(self, config: FixedNativeWorkerAdapterConfig):
         self._address = config.worker_adapter_config.scheduler_address
         self._object_storage_address = config.worker_adapter_config.object_storage_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
@@ -34,19 +32,11 @@ class NativeWorkerAdapter:
         self._logging_config_file = config.logging_config.config_file
         self._preload = config.preload
 
-        """
-        Although a worker group can contain multiple workers, in this native adapter implementation,
-        each worker group will only contain one worker.
-        """
-        self._worker_groups: Dict[WorkerGroupID, Dict[WorkerID, Worker]] = {}
+        self._workers: Dict[WorkerID, Worker] = {}
 
-    async def start_worker_group(self) -> WorkerGroupID:
-        num_of_workers = sum(len(workers) for workers in self._worker_groups.values())
-        if num_of_workers >= self._max_workers != -1:
-            raise CapacityExceededError(f"Maximum number of workers ({self._max_workers}) reached.")
-
+    def _spawn_worker(self):
         worker = Worker(
-            name=f"NAT|{uuid.uuid4().hex}",
+            name=f"FIX|{uuid.uuid4().hex}",
             address=self._address,
             object_storage_address=self._object_storage_address,
             preload=self._preload,
@@ -63,21 +53,33 @@ class NativeWorkerAdapter:
             logging_paths=self._logging_paths,
             logging_level=self._logging_level,
         )
-
         worker.start()
-        worker_group_id = f"native-{uuid.uuid4().hex}".encode()
-        self._worker_groups[worker_group_id] = {worker.identity: worker}
-        return worker_group_id
+        self._workers[worker.identity] = worker
 
-    async def shutdown_worker_group(self, worker_group_id: WorkerGroupID):
-        if worker_group_id not in self._worker_groups:
-            raise WorkerGroupNotFoundError(f"Worker group with ID {worker_group_id.decode()} does not exist.")
+    def _shutdown_worker(self, worker_id: WorkerID):
+        if worker_id not in self._workers:
+            raise WorkerGroupNotFoundError(f"Worker with ID {worker_id!r} not found.")
 
-        for worker in self._worker_groups[worker_group_id].values():
-            os.kill(worker.pid, signal.SIGINT)
+        worker = self._workers[worker_id]
+        worker.terminate()
+        worker.join()
+        del self._workers[worker_id]
+
+    def start(self):
+        for _ in range(self._max_workers):
+            self._spawn_worker()
+
+    def shutdown(self):
+        for worker_id in list(self._workers.keys()):
+            self._shutdown_worker(worker_id)
+
+    def join(self):
+        """Wait for all workers to finish."""
+
+        # this specific adapter cannot dynamically spawn workers
+        # therefore we just wait for all existing workers to finish
+        for worker in self._workers.values():
             worker.join()
-
-        self._worker_groups.pop(worker_group_id)
 
     async def webhook_handler(self, request: Request):
         request_json = await request.json()
@@ -88,47 +90,25 @@ class NativeWorkerAdapter:
         action = request_json["action"]
 
         if action == "get_worker_adapter_info":
+            # Report 0 max workers to prevent scheduler from trying to scale
             return web.json_response(
-                {
-                    "max_worker_groups": self._max_workers,
-                    "workers_per_group": 1,
-                    "base_capabilities": self._capabilities,
-                },
+                {"max_worker_groups": 0, "workers_per_group": 1, "base_capabilities": self._capabilities},
                 status=web.HTTPOk.status_code,
             )
 
         elif action == "start_worker_group":
-            try:
-                worker_group_id = await self.start_worker_group()
-            except CapacityExceededError as e:
-                return web.json_response({"error": str(e)}, status=web.HTTPTooManyRequests.status_code)
-            except Exception as e:
-                return web.json_response({"error": str(e)}, status=web.HTTPInternalServerError.status_code)
-
+            # Ignore request
             return web.json_response(
-                {
-                    "status": "Worker group started",
-                    "worker_group_id": worker_group_id.decode(),
-                    "worker_ids": [worker_id.decode() for worker_id in self._worker_groups[worker_group_id].keys()],
-                },
-                status=web.HTTPOk.status_code,
+                {"error": "FixedNativeWorkerAdapter does not support dynamic scaling"},
+                status=web.HTTPMethodNotAllowed.status_code,
             )
 
         elif action == "shutdown_worker_group":
-            if "worker_group_id" not in request_json:
-                return web.json_response(
-                    {"error": "No worker_group_id specified"}, status=web.HTTPBadRequest.status_code
-                )
-
-            worker_group_id = request_json["worker_group_id"].encode()
-            try:
-                await self.shutdown_worker_group(worker_group_id)
-            except WorkerGroupNotFoundError as e:
-                return web.json_response({"error": str(e)}, status=web.HTTPNotFound.status_code)
-            except Exception as e:
-                return web.json_response({"error": str(e)}, status=web.HTTPInternalServerError.status_code)
-
-            return web.json_response({"status": "Worker group shutdown"}, status=web.HTTPOk.status_code)
+            # Ignore request
+            return web.json_response(
+                {"error": "FixedNativeWorkerAdapter does not support dynamic scaling"},
+                status=web.HTTPMethodNotAllowed.status_code,
+            )
 
         else:
             return web.json_response({"error": "Unknown action"}, status=web.HTTPBadRequest.status_code)
