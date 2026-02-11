@@ -11,6 +11,9 @@ add_library(uv_ymq_objs OBJECT
     connect_client.h
     connect_client.cpp
 
+    connector_socket.h
+    connector_socket.cpp
+
     event_loop_thread.h
     event_loop_thread.cpp
 
