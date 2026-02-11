@@ -54,27 +54,29 @@ void BinderSocket::bindTo(std::string address, BindCallback onBindCallback) noex
             state->_servers.emplace_back(
                 state->_thread.loop(), parsedAddress.value(), std::bind_front(&BinderSocket::onClientConnect, state));
 
-            callback({});
+            // Get the actual bound address (useful when binding to port 0)
+            Address boundAddress = state->_servers.back().address();
+            callback(boundAddress);
         });
 }
 
 void BinderSocket::sendMessage(
-    Identity remoteIdentity, scaler::ymq::Bytes message, SendMessageCallback onMessageSent) noexcept
+    Identity remoteIdentity, scaler::ymq::Bytes messagePayload, SendMessageCallback onMessageSent) noexcept
 {
     _state->_thread.executeThreadSafe([state          = _state,
                                        remoteIdentity = std::move(remoteIdentity),
-                                       message        = std::move(message),
+                                       messagePayload = std::move(messagePayload),
                                        callback       = std::move(onMessageSent)]() mutable {
         auto it = state->_identityToConnectionID.find(remoteIdentity);
         if (it == state->_identityToConnectionID.end()) {
             // We don't know this identity yet, queue the message until the peer eventually connects
             state->_pendingSendMessages[remoteIdentity].emplace_back(
-                PendingSendMessage {std::move(message), std::move(callback)});
+                PendingSendMessage {std::move(messagePayload), std::move(callback)});
             return;
         }
 
         MessageConnection& connection = state->_connections.at(it->second);
-        connection.sendMessage(std::move(message), std::move(callback));
+        connection.sendMessage(std::move(messagePayload), std::move(callback));
     });
 }
 
@@ -129,7 +131,7 @@ void BinderSocket::onRemoteIdentity(
     if (pendingIt != state->_pendingSendMessages.end()) {
         MessageConnection& connection = state->_connections.at(connectionId);
         for (auto& pending: pendingIt->second) {
-            connection.sendMessage(std::move(pending.message), std::move(pending.onMessageSent));
+            connection.sendMessage(std::move(pending.messagePayload), std::move(pending.onMessageSent));
         }
         state->_pendingSendMessages.erase(pendingIt);
     }

@@ -128,8 +128,8 @@ TEST_F(UVYMQMessageConnectionTest, MessageExchange)
         // Server callbacks
         [](auto identity) {},                                       // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on server"; },  // onRemoteDisconnect
-        [&](scaler::ymq::Bytes message) {                           // onMessage
-            auto payload = message.as_string();
+        [&](scaler::ymq::Bytes messagePayload) {                    // onMessage
+            auto payload = messagePayload.as_string();
             ASSERT_TRUE(payload.has_value());
             ASSERT_EQ(payload.value(), clientMessagePayload);
             serverMessageReceived = true;
@@ -138,8 +138,8 @@ TEST_F(UVYMQMessageConnectionTest, MessageExchange)
         // Client callbacks
         [](auto identity) {},                                       // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on client"; },  // onRemoteDisconnect
-        [&](scaler::ymq::Bytes message) {                           // onMessage
-            auto payload = message.as_string();
+        [&](scaler::ymq::Bytes messagePayload) {                    // onMessage
+            auto payload = messagePayload.as_string();
             ASSERT_TRUE(payload.has_value());
             ASSERT_EQ(payload.value(), serverMessagePayload);
             clientMessageReceived = true;
@@ -149,8 +149,8 @@ TEST_F(UVYMQMessageConnectionTest, MessageExchange)
     scaler::uv_ymq::MessageConnection& client = connections.client();
 
     // Send a message before the identity exchange
-    scaler::ymq::Bytes message = scaler::ymq::Bytes(serverMessagePayload);
-    connections.server().sendMessage(std::move(message), [](auto result) { ASSERT_TRUE(result.has_value()); });
+    scaler::ymq::Bytes messagePayload = scaler::ymq::Bytes(serverMessagePayload);
+    connections.server().sendMessage(std::move(messagePayload), [](auto result) { ASSERT_TRUE(result.has_value()); });
 
     // Wait for identity exchange
     while (!server.established() || !client.established()) {
@@ -158,8 +158,8 @@ TEST_F(UVYMQMessageConnectionTest, MessageExchange)
     }
 
     // Send a message after the identity exchange
-    message = scaler::ymq::Bytes(clientMessagePayload);
-    connections.client().sendMessage(std::move(message), [](auto result) { ASSERT_TRUE(result.has_value()); });
+    messagePayload = scaler::ymq::Bytes(clientMessagePayload);
+    connections.client().sendMessage(std::move(messagePayload), [](auto result) { ASSERT_TRUE(result.has_value()); });
 
     // Wait for the messages
     while (!serverMessageReceived || !clientMessageReceived) {

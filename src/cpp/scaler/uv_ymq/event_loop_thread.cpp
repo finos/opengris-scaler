@@ -21,6 +21,8 @@ EventLoopThread::~EventLoopThread() noexcept
     assert(_thread.joinable());
 
     executeThreadSafe([this]() { _loop.stop(); });  // _loop.stop() must be called from the loop's thread.
+
+    _thread.join();
 }
 scaler::wrapper::uv::Loop& EventLoopThread::loop() noexcept
 {

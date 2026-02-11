@@ -25,7 +25,7 @@ namespace uv_ymq {
 // Thread-safe: all operations are scheduled onto the socket's event loop thread.
 class BinderSocket {
 public:
-    using BindCallback = scaler::utility::MoveOnlyFunction<void(std::expected<void, scaler::ymq::Error>)>;
+    using BindCallback = scaler::utility::MoveOnlyFunction<void(std::expected<Address, scaler::ymq::Error>)>;
 
     using SendMessageCallback = scaler::utility::MoveOnlyFunction<void(std::expected<void, scaler::ymq::Error>)>;
 
@@ -50,7 +50,8 @@ public:
     void bindTo(std::string address, BindCallback onBindCallback) noexcept;
 
     // Send a message to a remote identity.
-    void sendMessage(Identity remoteIdentity, scaler::ymq::Bytes message, SendMessageCallback onMessageSent) noexcept;
+    void sendMessage(
+        Identity remoteIdentity, scaler::ymq::Bytes messagePayload, SendMessageCallback onMessageSent) noexcept;
 
     // Receive a message from any remote identity.
     void recvMessage(RecvMessageCallback onRecvMessage) noexcept;
@@ -67,7 +68,7 @@ private:
     using ConnectionID = uint64_t;
 
     struct PendingSendMessage {
-        scaler::ymq::Bytes message;
+        scaler::ymq::Bytes messagePayload;
         SendMessageCallback onMessageSent;
     };
 
