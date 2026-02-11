@@ -104,12 +104,12 @@ const std::optional<Identity>& MessageConnection::remoteIdentity() const noexcep
     return _remoteIdentity;
 }
 
-void MessageConnection::sendMessage(scaler::ymq::Bytes message, SendMessageCallback onMessageSent) noexcept
+void MessageConnection::sendMessage(scaler::ymq::Bytes messagePayload, SendMessageCallback onMessageSent) noexcept
 {
     SendOperation operation;
-    operation._message       = std::move(message);
-    operation._onMessageSent = std::move(onMessageSent);
-    operation._messageSize   = operation._message.size();
+    operation._messagePayload = std::move(messagePayload);
+    operation._onMessageSent  = std::move(onMessageSent);
+    operation._messageSize    = operation._messagePayload.size();
 
     _sendPending.push(std::move(operation));
 
@@ -212,32 +212,32 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
 
         // Dispatch message if completed
         if (_recvCurrent._cursor == HEADER_SIZE + _recvCurrent._header) {
-            onMessage(std::move(_recvCurrent._message));
+            onMessage(std::move(_recvCurrent._messagePayload));
 
             _recvCurrent = RecvOperation {};
         }
     }
 }
 
-void MessageConnection::onMessage(scaler::ymq::Bytes message) noexcept
+void MessageConnection::onMessage(scaler::ymq::Bytes messagePayload) noexcept
 {
     assert(connected());
 
     // First message received is the remote identity
     if (!established()) {
-        onRemoteIdentity(std::move(message));
+        onRemoteIdentity(std::move(messagePayload));
         return;
     }
 
-    _onRecvMessageCallback(std::move(message));
+    _onRecvMessageCallback(std::move(messagePayload));
 }
 
-void MessageConnection::onRemoteIdentity(scaler::ymq::Bytes message) noexcept
+void MessageConnection::onRemoteIdentity(scaler::ymq::Bytes messagePayload) noexcept
 {
     assert(connected());
     assert(!established());
 
-    Identity receivedIdentity {reinterpret_cast<const char*>(message.data()), message.size()};
+    Identity receivedIdentity {reinterpret_cast<const char*>(messagePayload.data()), messagePayload.size()};
 
     if (_remoteIdentity.has_value() && *_remoteIdentity != receivedIdentity) {
         _logger.log(
@@ -253,7 +253,7 @@ void MessageConnection::onRemoteIdentity(scaler::ymq::Bytes message) noexcept
 
     _remoteIdentity = std::move(receivedIdentity);
     _state          = State::Established;
-    _onRemoteIdentityCallback({*_remoteIdentity});
+    _onRemoteIdentityCallback(*_remoteIdentity);
 }
 
 void MessageConnection::onRemoteDisconnect(MessageConnection::DisconnectReason reason) noexcept
@@ -269,11 +269,11 @@ void MessageConnection::sendLocalIdentity() noexcept
 {
     assert(_sendPending.empty() && "Identity should be the first message");
 
-    scaler::ymq::Bytes message = scaler::ymq::Bytes(_localIdentity.data(), _localIdentity.size());
+    scaler::ymq::Bytes messagePayload = scaler::ymq::Bytes(_localIdentity.data(), _localIdentity.size());
 
     SendMessageCallback callback = [](std::expected<void, scaler::ymq::Error> result) {};
 
-    sendMessage(std::move(message), std::move(callback));
+    sendMessage(std::move(messagePayload), std::move(callback));
 }
 
 void MessageConnection::processSendQueue() noexcept
@@ -287,8 +287,8 @@ void MessageConnection::processSendQueue() noexcept
 
         std::array<std::span<const uint8_t>, 2> buffers = {{
             std::span<const uint8_t> {
-                reinterpret_cast<const uint8_t*>(&operation->_messageSize), HEADER_SIZE},      // header (message size)
-            std::span<const uint8_t> {operation->_message.data(), operation->_message.size()}  // message
+                reinterpret_cast<const uint8_t*>(&operation->_messageSize), HEADER_SIZE},  // header (message size)
+            std::span<const uint8_t> {operation->_messagePayload.data(), operation->_messagePayload.size()}  // message
         }};
 
         // Capture the operation object to keep it alive until callback completes
@@ -358,7 +358,7 @@ size_t MessageConnection::readMessage(std::span<const uint8_t> data) noexcept
     size_t messageSize   = _recvCurrent._header;
     size_t messageOffset = _recvCurrent._cursor - HEADER_SIZE;
 
-    uint8_t* readDest = _recvCurrent._message.data() + messageOffset;
+    uint8_t* readDest = _recvCurrent._messagePayload.data() + messageOffset;
     size_t readCount  = std::min(messageSize - messageOffset, data.size());
 
     std::memcpy(readDest, data.data(), readCount);
@@ -372,7 +372,7 @@ bool MessageConnection::allocateMessage() noexcept
 {
     if (_recvCurrent._header > 0) {
         try {
-            _recvCurrent._message = scaler::ymq::Bytes::alloc(_recvCurrent._header);
+            _recvCurrent._messagePayload = scaler::ymq::Bytes::alloc(_recvCurrent._header);
         } catch (const std::bad_alloc& e) {
             return false;
         }

@@ -40,7 +40,7 @@ public:
         Disconnected,
     };
 
-    using RemoteIdentityCallback = scaler::utility::MoveOnlyFunction<void(std::expected<Identity, scaler::ymq::Error>)>;
+    using RemoteIdentityCallback = scaler::utility::MoveOnlyFunction<void(Identity)>;
 
     using RemoteDisconnectCallback = scaler::utility::MoveOnlyFunction<void(DisconnectReason)>;
 
@@ -91,24 +91,24 @@ public:
     // If the connection is not established yet, the message is queued and sent once the connection is established.
     //
     // If the connection disconnects, the message will be queued again until the connection is re-established.
-    void sendMessage(scaler::ymq::Bytes message, SendMessageCallback onMessageSent) noexcept;
+    void sendMessage(scaler::ymq::Bytes messagePayload, SendMessageCallback onMessageSent) noexcept;
 
 private:
     static constexpr size_t HEADER_SIZE = sizeof(uint64_t);
 
     struct SendOperation {
-        scaler::ymq::Bytes _message;
+        scaler::ymq::Bytes _messagePayload;
         SendMessageCallback _onMessageSent;
 
-        // This is strictly equal to _message.size(), but we need a dereferenceable and stable memory location for that
-        // value while doing the write().
+        // This is strictly equal to _messagePayload.size(), but we need a dereferenceable and stable memory location
+        // for that value while doing the write().
         uint64_t _messageSize;
     };
 
     struct RecvOperation {
         size_t _cursor {0};
         uint64_t _header {0};
-        scaler::ymq::Bytes _message {};
+        scaler::ymq::Bytes _messagePayload {};
     };
 
     scaler::ymq::Logger _logger {};
@@ -139,9 +139,9 @@ private:
 
     void onRead(std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) noexcept;
 
-    void onMessage(scaler::ymq::Bytes message) noexcept;
+    void onMessage(scaler::ymq::Bytes messagePayload) noexcept;
 
-    void onRemoteIdentity(scaler::ymq::Bytes message) noexcept;
+    void onRemoteIdentity(scaler::ymq::Bytes messagePayload) noexcept;
 
     void onRemoteDisconnect(DisconnectReason reason) noexcept;
 

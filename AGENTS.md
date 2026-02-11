@@ -35,10 +35,12 @@ scaler/
 │   │   ├── entry_points/    # CLI entry points
 │   │   ├── protocol/        # Protocol definitions (Cap'n Proto)
 │   │   ├── utility/
-│   │   └── worker_adapter/
+│   │   ├── worker_adapter/
+│   │   └── .../
 │   └── cpp/scaler/          # C++ components
 │       ├── object_storage/
-│       └── ymq/             # Custom messaging queue protocol
+│       ├── ymq/             # Custom messaging queue protocol
+│       └── .../
 ├── tests/
 │   ├── client/
 │   ├── scheduler/
@@ -125,6 +127,7 @@ Both C++ and Python code share these standards:
    - Use C++20 features supported by Clang++, MSVSC++ and GCC
    - Use RAII
    - Prefer smart pointers
+   - Prefer the {}-initializer syntax, avoid () initialization
    - Prefer `std::optional` over null pointers
    - Prefer `std::expected` over exceptions
 
