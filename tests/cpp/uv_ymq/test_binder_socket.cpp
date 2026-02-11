@@ -236,12 +236,28 @@ TEST_F(UVYMQBinderSocketTest, CloseConnection)
 
     BinderClientPair connections(context, loop, std::move(onClientRecvMessage), std::move(onClientDisconnect));
 
-    // Wait for connection to be established
-    while (!connections.client().established()) {
-        loop.run(UV_RUN_ONCE);
+    // Make a single message exchange to ensure the connection is established
+
+    std::promise<scaler::ymq::Message> binderRecvCalled;
+    auto onBinderRecvMessage = [&](std::expected<scaler::ymq::Message, scaler::ymq::Error> result) {
+        binderRecvCalled.set_value(result.value());
+    };
+    connections.binder().recvMessage(onBinderRecvMessage);
+
+    // Send a message from the client to the binder
+    bool sendCalled    = false;
+    auto onMessageSent = [&](std::expected<void, scaler::ymq::Error> result) { sendCalled = true; };
+    connections.client().sendMessage(scaler::ymq::Bytes(messagePayload), onMessageSent);
+
+    while (!sendCalled) {
+        loop.run(UV_RUN_NOWAIT);
     }
 
+    // Wait for the binder to receive the message
+    binderRecvCalled.get_future().wait_for(std::chrono::seconds {1});
+
     // Call closeConnection() on the binder
+
     connections.binder().closeConnection(BinderClientPair::clientIdentity);
 
     // Validate that the client receives a disconnect event
