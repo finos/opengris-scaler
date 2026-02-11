@@ -34,7 +34,7 @@ from scaler.protocol.python.message import (
     WorkerHeartbeatEcho,
 )
 from scaler.protocol.python.mixins import Message
-from scaler.utility.event_loop import create_async_loop_routine, register_event_loop
+from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ProcessorID, WorkerID
 from scaler.utility.logging.utility import setup_logger
@@ -107,7 +107,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
     def run(self) -> None:
         self._loop = asyncio.new_event_loop()
-        self._loop.run_until_complete(self._run())
+        run_task_forever(self._loop, self._run())
 
     async def _run(self) -> None:
         self.__initialize()

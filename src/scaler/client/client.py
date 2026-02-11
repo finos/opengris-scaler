@@ -264,14 +264,12 @@ class Client:
         /,
         *,
         capabilities: Optional[Dict[str, int]] = None,
-    ) -> List[_T]:
-        ...  # Deprecated: starmap-style usage with single iterable of tuples
+    ) -> List[_T]: ...  # Deprecated: starmap-style usage with single iterable of tuples
 
     @overload
     def map(
         self, fn: Callable[..., _T], /, *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None
-    ) -> List[_T]:
-        ...  # New: map-style usage with one or more iterables
+    ) -> List[_T]: ...  # New: map-style usage with one or more iterables
 
     def map(
         self, fn: Callable[..., _T], *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None

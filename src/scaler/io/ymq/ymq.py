@@ -94,6 +94,9 @@ async def call_async(
     future = loop.create_future()
 
     def callback(result: Union[T, BaseException]):
+        if loop.is_closed():
+            return
+
         if isinstance(result, BaseException):
             loop.call_soon_threadsafe(_safe_set_exception, future, result)
         else:

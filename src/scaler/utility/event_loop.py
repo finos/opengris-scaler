@@ -56,3 +56,10 @@ def create_async_loop_routine(routine: Callable[[], Awaitable], seconds: int):
         logging.info(f"{routine.__self__.__class__.__name__}: exited")  # type: ignore[attr-defined]
 
     return loop()
+
+
+def run_task_forever(loop: asyncio.AbstractEventLoop, task: Awaitable[None]) -> None:
+    try:
+        loop.run_until_complete(task)
+    finally:
+        loop.close()
