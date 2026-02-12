@@ -39,7 +39,7 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
 
         self._worker_queue.remove(worker)
 
-        task_ids = list(self._workers_to_task_ids.pop(worker))
+        task_ids = self._workers_to_task_ids.pop(worker).to_list()
         for task_id in task_ids:
             self._task_id_to_worker.pop(task_id)
         return task_ids
@@ -62,7 +62,7 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
             if count == 0:
                 continue
 
-            tasks = list(self._workers_to_task_ids[worker])
+            tasks = self._workers_to_task_ids[worker].to_list()
             balance_result[worker] = tasks[-count:]  # balance out the most recently queued tasks
 
         return balance_result
