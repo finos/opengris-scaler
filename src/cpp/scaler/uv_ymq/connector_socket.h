@@ -22,6 +22,8 @@ namespace uv_ymq {
 
 // A socket that connects to a remote address and exchanges messages with a single remote peer.
 //
+// On unexpected disconnection, the socket will automatically try to reconnect to the remote address.
+//
 // Thread-safe: all operations are scheduled onto the socket's event loop thread.
 class ConnectorSocket {
 public:
@@ -41,7 +43,8 @@ public:
         Identity identity,
         std::string address,
         ConnectCallback onConnectCallback,
-        size_t maxRetryTimes = defaultClientMaxRetryTimes) noexcept;
+        size_t maxRetryTimes                     = defaultClientMaxRetryTimes,
+        std::chrono::milliseconds initRetryDelay = defaultClientInitRetryDelay) noexcept;
 
     ~ConnectorSocket() noexcept;
 
@@ -69,6 +72,7 @@ private:
 
         Address _remoteAddress;
         size_t _maxRetryTimes;
+        std::chrono::milliseconds _initRetryDelay;
 
         std::optional<ConnectClient> _connectClient {};
 
@@ -79,11 +83,17 @@ private:
 
         bool _disconnected {false};
 
-        State(EventLoopThread& thread, Identity identity, Address remoteAddress, size_t maxRetryTimes) noexcept
+        State(
+            EventLoopThread& thread,
+            Identity identity,
+            Address remoteAddress,
+            size_t maxRetryTimes,
+            std::chrono::milliseconds initRetryDelay) noexcept
             : _thread(thread)
             , _identity(std::move(identity))
             , _remoteAddress(std::move(remoteAddress))
             , _maxRetryTimes(maxRetryTimes)
+            , _initRetryDelay(initRetryDelay)
         {
         }
     };

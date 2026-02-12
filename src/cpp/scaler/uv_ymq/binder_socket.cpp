@@ -15,6 +15,10 @@ BinderSocket::BinderSocket(IOContext& context, Identity identity) noexcept
 
 BinderSocket::~BinderSocket() noexcept
 {
+    if (_state == nullptr) {
+        return;  // instance moved
+    }
+
     _state->_thread.executeThreadSafe([state = _state]() {
         // Disconnect all servers
         state->_servers.clear();

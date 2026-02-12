@@ -12,7 +12,8 @@ ConnectorSocket::ConnectorSocket(
     Identity identity,
     std::string address,
     ConnectCallback onConnectCallback,
-    size_t maxRetryTimes) noexcept
+    size_t maxRetryTimes,
+    std::chrono::milliseconds initRetryDelay) noexcept
 {
     EventLoopThread& thread = context.nextThread();
 
@@ -22,7 +23,7 @@ ConnectorSocket::ConnectorSocket(
         return;
     }
 
-    _state = std::make_shared<State>(thread, std::move(identity), parsedAddress.value(), maxRetryTimes);
+    _state = std::make_shared<State>(thread, std::move(identity), parsedAddress.value(), maxRetryTimes, initRetryDelay);
 
     _state->_thread.executeThreadSafe([state = _state, onConnectCallback = std::move(onConnectCallback)]() mutable {
         state->_connection.emplace(
@@ -40,6 +41,10 @@ ConnectorSocket::ConnectorSocket(
 
 ConnectorSocket::~ConnectorSocket() noexcept
 {
+    if (_state == nullptr) {
+        return;  // instance moved
+    }
+
     _state->_thread.executeThreadSafe([state = _state]() {
         // Disconnect the client
         state->_connectClient.reset();
@@ -48,7 +53,6 @@ ConnectorSocket::~ConnectorSocket() noexcept
         // Fail all pending receive callbacks
         fillPendingRecvCallbacksWithErr(state, scaler::ymq::Error::ErrorCode::IOSocketStopRequested);
 
-        // Clear all pending messages
         state->_pendingRecvMessages = {};
     });
 }
@@ -104,7 +108,8 @@ void ConnectorSocket::connect(std::shared_ptr<State> state, ConnectCallback onCo
             ConnectorSocket::onClientConnected(
                 std::move(state), std::move(onConnectCallback), std::move(remoteAddress), std::move(result));
         },
-        state->_maxRetryTimes};
+        state->_maxRetryTimes,
+        state->_initRetryDelay};
 }
 
 void ConnectorSocket::onClientConnected(
@@ -117,6 +122,7 @@ void ConnectorSocket::onClientConnected(
     state->_connectClient.reset();
 
     if (!result.has_value()) {
+        state->_disconnected = true;
         onConnectCallback(std::unexpected {result.error()});
         fillPendingRecvCallbacksWithErr(state, result.error());
         return;
