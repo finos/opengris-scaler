@@ -1,7 +1,7 @@
 import asyncio
 import enum
 import logging
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Optional
 
 
 class EventLoopType(enum.Enum):
@@ -58,8 +58,21 @@ def create_async_loop_routine(routine: Callable[[], Awaitable], seconds: int):
     return loop()
 
 
-def run_task_forever(loop: asyncio.AbstractEventLoop, task: Awaitable[None]) -> None:
+def run_task_forever(
+    loop: asyncio.AbstractEventLoop, task: Awaitable[None], cleanup_callback: Optional[Callable[[], None]] = None
+) -> None:
+    """
+    run task until completion and close the loop
+
+    - loop: the event loop to run the task
+    - task: the task to run until completion
+    - cleanup_callback: optional callback to call before closing the loop
+    """
+
     try:
         loop.run_until_complete(task)
     finally:
+        if cleanup_callback is not None:
+            cleanup_callback()
+
         loop.close()

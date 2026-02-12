@@ -107,7 +107,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
     def run(self) -> None:
         self._loop = asyncio.new_event_loop()
-        run_task_forever(self._loop, self._run())
+        run_task_forever(self._loop, self._run(), cleanup_callback=self._cleanup)
 
     async def _run(self) -> None:
         self.__initialize()
@@ -115,6 +115,12 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._task = self._loop.create_task(self.__get_loops())
         self.__register_signal()
         await self._task
+
+    def _cleanup(self):
+        # the storage connector has asyncio resources that need to be cleaned up
+        # before the event loop is closed
+        if self._connector_storage is not None:
+            self._connector_storage.destroy()
 
     def __initialize(self):
         setup_logger()
