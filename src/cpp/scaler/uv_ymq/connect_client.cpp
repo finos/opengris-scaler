@@ -40,6 +40,10 @@ ConnectClient::State::State(
 
 ConnectClient::~ConnectClient() noexcept
 {
+    if (_state == nullptr) {
+        return;  // instance moved
+    }
+
     disconnect();
 }
 

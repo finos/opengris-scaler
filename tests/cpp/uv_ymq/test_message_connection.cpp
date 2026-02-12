@@ -20,24 +20,24 @@ public:
     static const scaler::uv_ymq::Identity clientIdentity;
 
     ConnectionPair(
-        scaler::wrapper::uv::Loop& loop,
         scaler::uv_ymq::MessageConnection::RemoteIdentityCallback serverOnIdentity,
         scaler::uv_ymq::MessageConnection::RemoteDisconnectCallback serverOnDisconnect,
         scaler::uv_ymq::MessageConnection::RecvMessageCallback serverOnMessage,
         scaler::uv_ymq::MessageConnection::RemoteIdentityCallback clientOnIdentity,
         scaler::uv_ymq::MessageConnection::RemoteDisconnectCallback clientOnDisconnect,
         scaler::uv_ymq::MessageConnection::RecvMessageCallback clientOnMessage)
-        : _server(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPServer::init(loop)))
+        : _loop(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init()))
+        , _server(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPServer::init(_loop)))
         , _serverConnection(
-              loop,
+              _loop,
               serverIdentity,
               std::nullopt,
               std::move(serverOnIdentity),
               std::move(serverOnDisconnect),
               std::move(serverOnMessage))
-        , _clientSocket(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(loop)))
+        , _clientSocket(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(_loop)))
         , _clientConnection(
-              loop,
+              _loop,
               clientIdentity,
               std::nullopt,
               std::move(clientOnIdentity),
@@ -48,7 +48,7 @@ public:
         UV_EXIT_ON_ERROR(_server.bind(listenAddress.asTCP(), uv_tcp_flags(0)));
 
         UV_EXIT_ON_ERROR(_server.listen(16, [&](std::expected<void, scaler::wrapper::uv::Error>) {
-            scaler::wrapper::uv::TCPSocket serverSocket = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(loop));
+            scaler::wrapper::uv::TCPSocket serverSocket = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(_loop));
             UV_EXIT_ON_ERROR(_server.accept(serverSocket));
 
             _serverConnection.connect(std::move(serverSocket));
@@ -62,10 +62,12 @@ public:
 
     scaler::wrapper::uv::SocketAddress serverAddress() const { return UV_EXIT_ON_ERROR(_server.getSockName()); }
 
+    scaler::wrapper::uv::Loop& loop() { return _loop; }
     scaler::uv_ymq::MessageConnection& server() { return _serverConnection; }
     scaler::uv_ymq::MessageConnection& client() { return _clientConnection; }
 
 private:
+    scaler::wrapper::uv::Loop _loop;
     scaler::wrapper::uv::TCPServer _server;
     scaler::uv_ymq::MessageConnection _serverConnection;
 
@@ -80,11 +82,7 @@ TEST_F(UVYMQMessageConnectionTest, IdentityExchange)
 {
     // Test that two MessageConnections successfully exchange identities
 
-    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
-
     ConnectionPair connections(
-        loop,
-
         // Server callbacks
         [](auto identity) { ASSERT_EQ(identity, ConnectionPair::clientIdentity); },  // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on server"; },                   // onRemoteDisconnect
@@ -98,6 +96,7 @@ TEST_F(UVYMQMessageConnectionTest, IdentityExchange)
 
     scaler::uv_ymq::MessageConnection& server = connections.server();
     scaler::uv_ymq::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop           = connections.loop();
 
     ASSERT_FALSE(server.remoteIdentity().has_value());
     ASSERT_FALSE(client.remoteIdentity().has_value());
@@ -117,14 +116,10 @@ TEST_F(UVYMQMessageConnectionTest, MessageExchange)
     const std::string clientMessagePayload = "Hello from client";
     const std::string serverMessagePayload = "Hello from server";
 
-    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
-
     bool serverMessageReceived = false;
     bool clientMessageReceived = false;
 
     ConnectionPair connections(
-        loop,
-
         // Server callbacks
         [](auto identity) {},                                       // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on server"; },  // onRemoteDisconnect
@@ -147,10 +142,11 @@ TEST_F(UVYMQMessageConnectionTest, MessageExchange)
 
     scaler::uv_ymq::MessageConnection& server = connections.server();
     scaler::uv_ymq::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop           = connections.loop();
 
     // Send a message before the identity exchange
     scaler::ymq::Bytes messagePayload = scaler::ymq::Bytes(serverMessagePayload);
-    connections.server().sendMessage(std::move(messagePayload), [](auto result) { ASSERT_TRUE(result.has_value()); });
+    server.sendMessage(std::move(messagePayload), [](auto result) { ASSERT_TRUE(result.has_value()); });
 
     // Wait for identity exchange
     while (!server.established() || !client.established()) {
@@ -159,7 +155,7 @@ TEST_F(UVYMQMessageConnectionTest, MessageExchange)
 
     // Send a message after the identity exchange
     messagePayload = scaler::ymq::Bytes(clientMessagePayload);
-    connections.client().sendMessage(std::move(messagePayload), [](auto result) { ASSERT_TRUE(result.has_value()); });
+    client.sendMessage(std::move(messagePayload), [](auto result) { ASSERT_TRUE(result.has_value()); });
 
     // Wait for the messages
     while (!serverMessageReceived || !clientMessageReceived) {
@@ -171,13 +167,9 @@ TEST_F(UVYMQMessageConnectionTest, Disconnect)
 {
     // Test graceful disconnect (remote explicitly closes connection)
 
-    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
-
     bool serverDisconnected = false;
 
     ConnectionPair connections(
-        loop,
-
         // Server callbacks
         [](auto identity) {},  // onRemoteIdentity
         [&](auto reason) {     // onRemoteDisconnect
@@ -194,6 +186,7 @@ TEST_F(UVYMQMessageConnectionTest, Disconnect)
 
     scaler::uv_ymq::MessageConnection& server = connections.server();
     scaler::uv_ymq::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop           = connections.loop();
 
     // Wait for identity exchange
     while (!server.established() || !client.established()) {
@@ -201,25 +194,21 @@ TEST_F(UVYMQMessageConnectionTest, Disconnect)
     }
 
     // Disconnect client after identity exchange
-    connections.client().disconnect();
+    client.disconnect();
 
     // Wait for server to detect disconnect
     while (!serverDisconnected) {
         loop.run(UV_RUN_ONCE);
     }
 
-    ASSERT_FALSE(connections.server().connected());
+    ASSERT_FALSE(server.connected());
 }
 
 TEST_F(UVYMQMessageConnectionTest, UnexpectedDisconnect)
 {
     // Test unexpected disconnect/abort (RST packet) using closeReset()
 
-    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
-
     ConnectionPair connections(
-        loop,
-
         // Server callbacks
         [](auto identity) {},  // onRemoteIdentity
         [](auto reason) {      // onRemoteDisconnect
@@ -235,6 +224,7 @@ TEST_F(UVYMQMessageConnectionTest, UnexpectedDisconnect)
 
     scaler::uv_ymq::MessageConnection& server = connections.server();
     scaler::uv_ymq::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop           = connections.loop();
 
     // Wait for identity exchange
     while (!server.established() || !client.established()) {

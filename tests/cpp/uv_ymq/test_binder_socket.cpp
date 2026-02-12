@@ -27,20 +27,19 @@ public:
     static const scaler::uv_ymq::Identity clientIdentity;
 
     BinderClientPair(
-        scaler::uv_ymq::IOContext& context,
-        scaler::wrapper::uv::Loop& loop,
         scaler::uv_ymq::MessageConnection::RecvMessageCallback clientOnMessage,
         scaler::uv_ymq::MessageConnection::RemoteDisconnectCallback clientOnDisconnect)
-        : _binder(context, binderIdentity)
+        : _context()
+        , _loop(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init()))
+        , _binder(_context, binderIdentity)
         , _client(
-              loop,
+              _loop,
               clientIdentity,
               std::nullopt,
               [](scaler::uv_ymq::Identity identity) { ASSERT_EQ(identity, binderIdentity); },  // onRemoteIdentity
               std::move(clientOnDisconnect),
               std::move(clientOnMessage))
-        , _clientSocket(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(loop)))
-        , _loop(loop)
+        , _clientSocket(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(_loop)))
     {
         // Bind to an available port
         std::promise<scaler::uv_ymq::Address> bindPromise;
@@ -67,10 +66,11 @@ public:
     scaler::wrapper::uv::Loop& loop() { return _loop; }
 
 private:
+    scaler::uv_ymq::IOContext _context;
+    scaler::wrapper::uv::Loop _loop;
     scaler::uv_ymq::BinderSocket _binder;
     scaler::uv_ymq::MessageConnection _client;
     scaler::wrapper::uv::TCPSocket _clientSocket;
-    scaler::wrapper::uv::Loop& _loop;
 };
 
 const scaler::uv_ymq::Identity BinderClientPair::binderIdentity = "binder-identity";
@@ -102,9 +102,6 @@ TEST_F(UVYMQBinderSocketTest, SendMessage)
 {
     // Test that messages can be sent before and after a connection is established
 
-    scaler::uv_ymq::IOContext context {};
-    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
-
     bool clientMessageReceived = false;
 
     auto onClientRecvMessage = [&](scaler::ymq::Bytes receivedPayload) {
@@ -114,7 +111,10 @@ TEST_F(UVYMQBinderSocketTest, SendMessage)
 
     auto onClientDisconnect = [](auto) { FAIL() << "Unexpected disconnect on client"; };
 
-    BinderClientPair connections(context, loop, std::move(onClientRecvMessage), std::move(onClientDisconnect));
+    BinderClientPair connections(std::move(onClientRecvMessage), std::move(onClientDisconnect));
+
+    scaler::uv_ymq::BinderSocket& binder = connections.binder();
+    scaler::wrapper::uv::Loop& loop      = connections.loop();
 
     // Send a message to the client's identity BEFORE the client connects
 
@@ -125,8 +125,7 @@ TEST_F(UVYMQBinderSocketTest, SendMessage)
         sendCallbackCalled.set_value();
     };
 
-    connections.binder().sendMessage(
-        BinderClientPair::clientIdentity, scaler::ymq::Bytes(messagePayload), onBinderMessageSent);
+    binder.sendMessage(BinderClientPair::clientIdentity, scaler::ymq::Bytes(messagePayload), onBinderMessageSent);
 
     // Wait for the client to receive the first message (sent before connection)
 
@@ -141,8 +140,7 @@ TEST_F(UVYMQBinderSocketTest, SendMessage)
     clientMessageReceived = false;
     sendCallbackCalled    = {};
 
-    connections.binder().sendMessage(
-        BinderClientPair::clientIdentity, scaler::ymq::Bytes(messagePayload), onBinderMessageSent);
+    binder.sendMessage(BinderClientPair::clientIdentity, scaler::ymq::Bytes(messagePayload), onBinderMessageSent);
 
     // Wait for the client to receive the second message
 
@@ -157,14 +155,15 @@ TEST_F(UVYMQBinderSocketTest, RecvMessage)
 {
     // Test that the binder can receive messages
 
-    scaler::uv_ymq::IOContext context {};
-    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
-
     auto onClientRecvMessage = [](scaler::ymq::Bytes) { FAIL() << "Unexpected message on client"; };
 
     auto onClientDisconnect = [](auto) { FAIL() << "Unexpected disconnect on client"; };
 
-    BinderClientPair connections(context, loop, std::move(onClientRecvMessage), std::move(onClientDisconnect));
+    BinderClientPair connections(std::move(onClientRecvMessage), std::move(onClientDisconnect));
+
+    scaler::uv_ymq::BinderSocket& binder      = connections.binder();
+    scaler::uv_ymq::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop           = connections.loop();
 
     // Register a first receive callback BEFORE the client connects
 
@@ -175,7 +174,7 @@ TEST_F(UVYMQBinderSocketTest, RecvMessage)
         recvCalled.set_value(result.value());
     };
 
-    connections.binder().recvMessage(onBinderRecvMessage);
+    binder.recvMessage(onBinderRecvMessage);
 
     // Make the client send the first message
 
@@ -185,7 +184,7 @@ TEST_F(UVYMQBinderSocketTest, RecvMessage)
         sendCalled = true;
     };
 
-    connections.client().sendMessage(scaler::ymq::Bytes(messagePayload), onMessageSent);
+    client.sendMessage(scaler::ymq::Bytes(messagePayload), onMessageSent);
 
     while (!sendCalled) {
         loop.run(UV_RUN_NOWAIT);
@@ -200,12 +199,12 @@ TEST_F(UVYMQBinderSocketTest, RecvMessage)
     // Register a 2nd receive callback, AFTER the client connected
 
     recvCalled = {};
-    connections.binder().recvMessage(onBinderRecvMessage);
+    binder.recvMessage(onBinderRecvMessage);
 
     // Make the client send the second message
 
     sendCalled = false;
-    connections.client().sendMessage(scaler::ymq::Bytes(messagePayload), onMessageSent);
+    client.sendMessage(scaler::ymq::Bytes(messagePayload), onMessageSent);
 
     while (!sendCalled) {
         loop.run(UV_RUN_NOWAIT);
@@ -222,9 +221,6 @@ TEST_F(UVYMQBinderSocketTest, CloseConnection)
 {
     // Test that the client receives a disconnect event when the binder calls closeConnection()
 
-    scaler::uv_ymq::IOContext context {};
-    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
-
     bool clientDisconnected = false;
 
     auto onClientRecvMessage = [](scaler::ymq::Bytes) { FAIL() << "Unexpected message on client"; };
@@ -234,7 +230,11 @@ TEST_F(UVYMQBinderSocketTest, CloseConnection)
         clientDisconnected = true;
     };
 
-    BinderClientPair connections(context, loop, std::move(onClientRecvMessage), std::move(onClientDisconnect));
+    BinderClientPair connections(std::move(onClientRecvMessage), std::move(onClientDisconnect));
+
+    scaler::uv_ymq::BinderSocket& binder      = connections.binder();
+    scaler::uv_ymq::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop           = connections.loop();
 
     // Make a single message exchange to ensure the connection is established
 
@@ -242,12 +242,12 @@ TEST_F(UVYMQBinderSocketTest, CloseConnection)
     auto onBinderRecvMessage = [&](std::expected<scaler::ymq::Message, scaler::ymq::Error> result) {
         binderRecvCalled.set_value(result.value());
     };
-    connections.binder().recvMessage(onBinderRecvMessage);
+    binder.recvMessage(onBinderRecvMessage);
 
     // Send a message from the client to the binder
     bool sendCalled    = false;
     auto onMessageSent = [&](std::expected<void, scaler::ymq::Error> result) { sendCalled = true; };
-    connections.client().sendMessage(scaler::ymq::Bytes(messagePayload), onMessageSent);
+    client.sendMessage(scaler::ymq::Bytes(messagePayload), onMessageSent);
 
     while (!sendCalled) {
         loop.run(UV_RUN_NOWAIT);
@@ -258,12 +258,12 @@ TEST_F(UVYMQBinderSocketTest, CloseConnection)
 
     // Call closeConnection() on the binder
 
-    connections.binder().closeConnection(BinderClientPair::clientIdentity);
+    binder.closeConnection(BinderClientPair::clientIdentity);
 
     // Validate that the client receives a disconnect event
     while (!clientDisconnected) {
         loop.run(UV_RUN_ONCE);
     }
 
-    ASSERT_FALSE(connections.client().connected());
+    ASSERT_FALSE(client.connected());
 }

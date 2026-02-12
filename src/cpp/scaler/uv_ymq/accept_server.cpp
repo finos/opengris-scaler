@@ -56,6 +56,10 @@ AcceptServer::State::State(
 
 AcceptServer::~AcceptServer() noexcept
 {
+    if (_state == nullptr) {
+        return;  // instance moved
+    }
+
     disconnect();
 }
 
