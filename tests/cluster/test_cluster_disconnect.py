@@ -61,8 +61,7 @@ class TestClusterDisconnect(unittest.TestCase):
         client = Client(self.address)
         future_result = client.submit(noop_sleep, 5)
         time.sleep(2)
-        dying_cluster.terminate()
-        dying_cluster.join()
+        dying_cluster.shutdown()
 
         with self.assertRaises(CancelledError):
             client.clear()

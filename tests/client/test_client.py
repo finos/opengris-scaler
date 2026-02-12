@@ -404,8 +404,7 @@ class TestClientPreload(unittest.TestCase):
                 # Verify the preloaded value is accessible
                 self.assertEqual(result, "test_preload_value")
         finally:
-            preload_cluster.terminate()
-            preload_cluster.join()
+            preload_cluster.shutdown()
 
     def test_preload_failure(self):
         # For checking if the failure was logged, Processor will create log_path-{pid}
@@ -436,8 +435,7 @@ class TestClientPreload(unittest.TestCase):
 
                 # If we reach here without any other exceptions, the test is successful
             finally:
-                preload_cluster.terminate()
-                preload_cluster.join()
+                preload_cluster.shutdown()
         finally:
             # Clean up log files
             try:

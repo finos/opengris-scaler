@@ -112,3 +112,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
 
     def __get_prefix(self):
         return f"{self.__class__.__name__}:"
+
+    def shutdown(self):
+        self.terminate()
+        self.join()

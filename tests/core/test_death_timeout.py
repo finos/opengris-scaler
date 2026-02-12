@@ -58,7 +58,7 @@ class TestDeathTimeout(unittest.TestCase):
             )
         )
         cluster.start()
-        time.sleep(15)
+        cluster.join()
 
     def test_shutdown(self):
         logging.info("test with explicitly shutdown")

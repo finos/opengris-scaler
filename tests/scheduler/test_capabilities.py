@@ -69,7 +69,7 @@ class TestCapabilities(unittest.TestCase):
 
             self.assertEqual(future.result(), 3.0)
 
-            gpu_cluster.terminate()
+            gpu_cluster.shutdown()
 
     def test_graph_capabilities(self):
         base_cluster = self.combo._cluster
@@ -115,4 +115,4 @@ class TestCapabilities(unittest.TestCase):
 
             self.assertEqual(future.result(), 8)
 
-            gpu_cluster.terminate()
+            gpu_cluster.shutdown()
