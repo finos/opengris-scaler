@@ -5,12 +5,10 @@
 #include <expected>
 #include <mutex>
 #include <set>
-#include <string>
 #include <thread>
 
 #include "scaler/error/error.h"
 #include "scaler/uv_ymq/address.h"
-#include "scaler/uv_ymq/event_loop_thread.h"
 #include "scaler/uv_ymq/io_context.h"
 
 class UVYMQTest: public ::testing::Test {};
@@ -50,26 +48,6 @@ TEST_F(UVYMQTest, Address)
 
     address = scaler::uv_ymq::Address::fromString("");
     ASSERT_FALSE(address.has_value());
-}
-
-TEST_F(UVYMQTest, EventLoopThread)
-{
-    const size_t nTasks = 3;
-
-    std::atomic<int> nTimesCalled {0};
-
-    {
-        scaler::uv_ymq::EventLoopThread thread {};
-
-        for (size_t i = 0; i < nTasks; ++i) {
-            thread.executeThreadSafe([&]() { ++nTimesCalled; });
-        }
-
-        // Wait for the loop to process the callbacks
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-
-    ASSERT_EQ(nTimesCalled, nTasks);
 }
 
 TEST_F(UVYMQTest, IOContext)

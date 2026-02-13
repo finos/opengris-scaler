@@ -15,7 +15,7 @@ ConnectorSocket::ConnectorSocket(
     size_t maxRetryTimes,
     std::chrono::milliseconds initRetryDelay) noexcept
 {
-    EventLoopThread& thread = context.nextThread();
+    internal::EventLoopThread& thread = context.nextThread();
 
     auto parsedAddress = Address::fromString(address);
     if (!parsedAddress.has_value()) {
@@ -27,7 +27,7 @@ ConnectorSocket::ConnectorSocket(
 
     _state->_thread.executeThreadSafe([state = _state, onConnectCallback = std::move(onConnectCallback)]() mutable {
         state->_connection.emplace(
-            MessageConnection {
+            internal::MessageConnection {
                 state->_thread.loop(),
                 state->_identity,
                 std::nullopt,
@@ -100,7 +100,7 @@ void ConnectorSocket::connect(std::shared_ptr<State> state, ConnectCallback onCo
 {
     assert(!state->_connectClient.has_value() && "connect() called while already connecting");
 
-    state->_connectClient = ConnectClient {
+    state->_connectClient = internal::ConnectClient {
         state->_thread.loop(),
         state->_remoteAddress,
         [state, onConnectCallback = std::move(onConnectCallback), remoteAddress = state->_remoteAddress](
@@ -136,9 +136,9 @@ void ConnectorSocket::onClientConnected(
 }
 
 void ConnectorSocket::onRemoteDisconnect(
-    std::shared_ptr<State> state, MessageConnection::DisconnectReason reason) noexcept
+    std::shared_ptr<State> state, internal::MessageConnection::DisconnectReason reason) noexcept
 {
-    if (reason == MessageConnection::DisconnectReason::Disconnected) {
+    if (reason == internal::MessageConnection::DisconnectReason::Disconnected) {
         // Remote end disconnected gracefully - mark as permanently disconnected
         state->_disconnected = true;
         fillPendingRecvCallbacksWithErr(state, scaler::ymq::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);

@@ -13,6 +13,7 @@
 
 namespace scaler {
 namespace uv_ymq {
+namespace internal {
 
 // A thread running its own libuv event loop.
 class EventLoopThread {
@@ -52,5 +53,6 @@ private:
     void processExecuteCallbacks() noexcept;
 };
 
+}  // namespace internal
 }  // namespace uv_ymq
 }  // namespace scaler

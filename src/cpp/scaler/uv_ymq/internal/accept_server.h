@@ -13,6 +13,7 @@
 
 namespace scaler {
 namespace uv_ymq {
+namespace internal {
 
 // A server that accepts incoming connections.
 //
@@ -56,5 +57,6 @@ private:
         std::shared_ptr<State> state, std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
 };
 
+}  // namespace internal
 }  // namespace uv_ymq
 }  // namespace scaler

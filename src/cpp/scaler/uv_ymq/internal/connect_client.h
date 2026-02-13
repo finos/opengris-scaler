@@ -9,13 +9,14 @@
 #include "scaler/logging/logging.h"
 #include "scaler/uv_ymq/address.h"
 #include "scaler/uv_ymq/configuration.h"
-#include "scaler/uv_ymq/event_loop_thread.h"
+#include "scaler/uv_ymq/internal/event_loop_thread.h"
 #include "scaler/uv_ymq/typedefs.h"
 #include "scaler/wrapper/uv/loop.h"
 #include "scaler/wrapper/uv/timer.h"
 
 namespace scaler {
 namespace uv_ymq {
+namespace internal {
 
 // A not yet established client to a remote server.
 //
@@ -79,5 +80,6 @@ private:
     static void retry(std::shared_ptr<State> state) noexcept;
 };
 
+}  // namespace internal
 }  // namespace uv_ymq
 }  // namespace scaler

@@ -1,6 +1,7 @@
 #include "scaler/uv_ymq/address.h"
 
 #include <cassert>
+#include <utility>
 
 namespace scaler {
 namespace uv_ymq {
@@ -72,21 +73,35 @@ const scaler::wrapper::uv::SocketAddress& Address::asTCP() const noexcept
 
 const std::string& Address::asIPC() const noexcept
 {
-    assert(type() == Type::TCP);
+    assert(type() == Type::IPC);
     return std::get<std::string>(_value);
+}
+
+std::expected<std::string, scaler::ymq::Error> Address::toString() const noexcept
+{
+    switch (type()) {
+        case Type::TCP: {
+            auto tcpAddrStr = asTCP().toString();
+            if (!tcpAddrStr.has_value()) {
+                return std::unexpected {scaler::ymq::Error {
+                    scaler::ymq::Error::ErrorCode::InvalidAddressFormat, "Failed to convert TCP address to string"}};
+            }
+
+            return std::string(_tcpPrefix) + tcpAddrStr.value();
+        }
+        case Type::IPC: return std::string(_ipcPrefix) + asIPC();
+        default: std::unreachable();
+    };
 }
 
 std::expected<Address, scaler::ymq::Error> Address::fromString(const std::string& address) noexcept
 {
-    static constexpr std::string_view tcpPrefix = "tcp://";
-    static constexpr std::string_view ipcPrefix = "ipc://";
-
-    if (address.starts_with(tcpPrefix)) {
-        return details::fromTCPString(address.substr(tcpPrefix.size()));
+    if (address.starts_with(_tcpPrefix)) {
+        return details::fromTCPString(address.substr(_tcpPrefix.size()));
     }
 
-    if (address.starts_with(ipcPrefix)) {
-        return Address(address.substr(ipcPrefix.size()));
+    if (address.starts_with(_ipcPrefix)) {
+        return Address(address.substr(_ipcPrefix.size()));
     }
 
     return std::unexpected {scaler::ymq::Error {

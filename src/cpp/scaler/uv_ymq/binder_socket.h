@@ -1,19 +1,21 @@
 #pragma once
 
+#include <cstdint>
 #include <expected>
 #include <map>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <vector>
 
 #include "scaler/error/error.h"
 #include "scaler/utility/move_only_function.h"
-#include "scaler/uv_ymq/accept_server.h"
 #include "scaler/uv_ymq/address.h"
-#include "scaler/uv_ymq/event_loop_thread.h"
+#include "scaler/uv_ymq/internal/accept_server.h"
+#include "scaler/uv_ymq/internal/event_loop_thread.h"
+#include "scaler/uv_ymq/internal/message_connection.h"
 #include "scaler/uv_ymq/io_context.h"
-#include "scaler/uv_ymq/message_connection.h"
 #include "scaler/uv_ymq/typedefs.h"
 #include "scaler/ymq/message.h"
 
@@ -73,16 +75,16 @@ private:
     };
 
     struct State {
-        EventLoopThread& _thread;
+        internal::EventLoopThread& _thread;
 
         const Identity _identity;
 
         // Support binding to multiple addresses (TCP and/or IPC)
-        std::vector<AcceptServer> _servers {};
+        std::vector<internal::AcceptServer> _servers {};
 
         ConnectionID _connectionCounter {0};
 
-        std::map<ConnectionID, MessageConnection> _connections {};
+        std::map<ConnectionID, internal::MessageConnection> _connections {};
         std::map<Identity, ConnectionID> _identityToConnectionID {};
 
         std::map<Identity, std::vector<PendingSendMessage>> _pendingSendMessages {};
@@ -90,7 +92,10 @@ private:
         std::queue<RecvMessageCallback> _pendingRecvCallbacks {};
         std::queue<scaler::ymq::Message> _pendingRecvMessages {};
 
-        State(EventLoopThread& thread, Identity identity) noexcept: _thread(thread), _identity(std::move(identity)) {}
+        State(internal::EventLoopThread& thread, Identity identity) noexcept
+            : _thread(thread), _identity(std::move(identity))
+        {
+        }
     };
 
     std::shared_ptr<State> _state;
@@ -101,12 +106,14 @@ private:
         std::shared_ptr<State> state, ConnectionID connectionId, Identity remoteIdentity) noexcept;
 
     static void onRemoteDisconnect(
-        std::shared_ptr<State> state, ConnectionID connectionId, MessageConnection::DisconnectReason reason) noexcept;
+        std::shared_ptr<State> state,
+        ConnectionID connectionId,
+        internal::MessageConnection::DisconnectReason reason) noexcept;
 
     static void onMessage(
         std::shared_ptr<State> state, ConnectionID connectionId, scaler::ymq::Bytes messagePayload) noexcept;
 
-    static MessageConnection& createConnection(
+    static internal::MessageConnection& createConnection(
         std::shared_ptr<State> state, std::optional<Identity> remoteIdentity) noexcept;
 };
 

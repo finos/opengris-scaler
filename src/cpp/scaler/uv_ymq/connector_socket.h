@@ -1,19 +1,20 @@
 #pragma once
 
+#include <chrono>
 #include <expected>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
-#include <vector>
 
 #include "scaler/error/error.h"
 #include "scaler/utility/move_only_function.h"
 #include "scaler/uv_ymq/address.h"
 #include "scaler/uv_ymq/configuration.h"
-#include "scaler/uv_ymq/connect_client.h"
-#include "scaler/uv_ymq/event_loop_thread.h"
+#include "scaler/uv_ymq/internal/connect_client.h"
+#include "scaler/uv_ymq/internal/event_loop_thread.h"
+#include "scaler/uv_ymq/internal/message_connection.h"
 #include "scaler/uv_ymq/io_context.h"
-#include "scaler/uv_ymq/message_connection.h"
 #include "scaler/uv_ymq/typedefs.h"
 #include "scaler/ymq/message.h"
 
@@ -66,7 +67,7 @@ public:
 
 private:
     struct State {
-        EventLoopThread& _thread;
+        internal::EventLoopThread& _thread;
 
         const Identity _identity;
 
@@ -74,9 +75,9 @@ private:
         size_t _maxRetryTimes;
         std::chrono::milliseconds _initRetryDelay;
 
-        std::optional<ConnectClient> _connectClient {};
+        std::optional<internal::ConnectClient> _connectClient {};
 
-        std::optional<MessageConnection> _connection {};
+        std::optional<internal::MessageConnection> _connection {};
 
         std::queue<RecvMessageCallback> _pendingRecvCallbacks {};
         std::queue<scaler::ymq::Message> _pendingRecvMessages {};
@@ -84,7 +85,7 @@ private:
         bool _disconnected {false};
 
         State(
-            EventLoopThread& thread,
+            internal::EventLoopThread& thread,
             Identity identity,
             Address remoteAddress,
             size_t maxRetryTimes,
@@ -108,7 +109,8 @@ private:
         Address parsedAddress,
         std::expected<Client, scaler::ymq::Error> result) noexcept;
 
-    static void onRemoteDisconnect(std::shared_ptr<State> state, MessageConnection::DisconnectReason reason) noexcept;
+    static void onRemoteDisconnect(
+        std::shared_ptr<State> state, internal::MessageConnection::DisconnectReason reason) noexcept;
 
     static void onMessage(std::shared_ptr<State> state, scaler::ymq::Bytes messagePayload) noexcept;
 

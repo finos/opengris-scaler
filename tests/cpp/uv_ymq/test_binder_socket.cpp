@@ -6,8 +6,8 @@
 #include <string>
 
 #include "scaler/uv_ymq/binder_socket.h"
+#include "scaler/uv_ymq/internal/message_connection.h"
 #include "scaler/uv_ymq/io_context.h"
-#include "scaler/uv_ymq/message_connection.h"
 #include "scaler/wrapper/uv/callback.h"
 #include "scaler/wrapper/uv/error.h"
 #include "scaler/wrapper/uv/loop.h"
@@ -27,8 +27,8 @@ public:
     static const scaler::uv_ymq::Identity clientIdentity;
 
     BinderClientPair(
-        scaler::uv_ymq::MessageConnection::RecvMessageCallback clientOnMessage,
-        scaler::uv_ymq::MessageConnection::RemoteDisconnectCallback clientOnDisconnect)
+        scaler::uv_ymq::internal::MessageConnection::RecvMessageCallback clientOnMessage,
+        scaler::uv_ymq::internal::MessageConnection::RemoteDisconnectCallback clientOnDisconnect)
         : _context()
         , _loop(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init()))
         , _binder(_context, binderIdentity)
@@ -62,14 +62,14 @@ public:
     }
 
     scaler::uv_ymq::BinderSocket& binder() { return _binder; }
-    scaler::uv_ymq::MessageConnection& client() { return _client; }
+    scaler::uv_ymq::internal::MessageConnection& client() { return _client; }
     scaler::wrapper::uv::Loop& loop() { return _loop; }
 
 private:
     scaler::uv_ymq::IOContext _context;
     scaler::wrapper::uv::Loop _loop;
     scaler::uv_ymq::BinderSocket _binder;
-    scaler::uv_ymq::MessageConnection _client;
+    scaler::uv_ymq::internal::MessageConnection _client;
     scaler::wrapper::uv::TCPSocket _clientSocket;
 };
 
@@ -161,9 +161,9 @@ TEST_F(UVYMQBinderSocketTest, RecvMessage)
 
     BinderClientPair connections(std::move(onClientRecvMessage), std::move(onClientDisconnect));
 
-    scaler::uv_ymq::BinderSocket& binder      = connections.binder();
-    scaler::uv_ymq::MessageConnection& client = connections.client();
-    scaler::wrapper::uv::Loop& loop           = connections.loop();
+    scaler::uv_ymq::BinderSocket& binder                = connections.binder();
+    scaler::uv_ymq::internal::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop                     = connections.loop();
 
     // Register a first receive callback BEFORE the client connects
 
@@ -225,16 +225,16 @@ TEST_F(UVYMQBinderSocketTest, CloseConnection)
 
     auto onClientRecvMessage = [](scaler::ymq::Bytes) { FAIL() << "Unexpected message on client"; };
 
-    auto onClientDisconnect = [&](scaler::uv_ymq::MessageConnection::DisconnectReason reason) {
-        ASSERT_EQ(reason, scaler::uv_ymq::MessageConnection::DisconnectReason::Disconnected);
+    auto onClientDisconnect = [&](scaler::uv_ymq::internal::MessageConnection::DisconnectReason reason) {
+        ASSERT_EQ(reason, scaler::uv_ymq::internal::MessageConnection::DisconnectReason::Disconnected);
         clientDisconnected = true;
     };
 
     BinderClientPair connections(std::move(onClientRecvMessage), std::move(onClientDisconnect));
 
-    scaler::uv_ymq::BinderSocket& binder      = connections.binder();
-    scaler::uv_ymq::MessageConnection& client = connections.client();
-    scaler::wrapper::uv::Loop& loop           = connections.loop();
+    scaler::uv_ymq::BinderSocket& binder                = connections.binder();
+    scaler::uv_ymq::internal::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop                     = connections.loop();
 
     // Make a single message exchange to ensure the connection is established
 

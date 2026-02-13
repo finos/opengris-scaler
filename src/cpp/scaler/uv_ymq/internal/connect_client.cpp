@@ -1,4 +1,4 @@
-#include "scaler/uv_ymq/connect_client.h"
+#include "scaler/uv_ymq/internal/connect_client.h"
 
 #include <chrono>
 #include <functional>
@@ -10,6 +10,7 @@
 
 namespace scaler {
 namespace uv_ymq {
+namespace internal {
 
 ConnectClient::ConnectClient(
     scaler::wrapper::uv::Loop& loop,
@@ -129,5 +130,6 @@ void ConnectClient::retry(std::shared_ptr<State> state) noexcept
     state->_retryTimer->start(delay, std::nullopt, std::bind_front(&ConnectClient::tryConnect, std::move(state)));
 }
 
+}  // namespace internal
 }  // namespace uv_ymq
 }  // namespace scaler

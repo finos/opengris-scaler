@@ -16,6 +16,7 @@
 
 namespace scaler {
 namespace uv_ymq {
+namespace internal {
 
 // A bidirectional message connection with message buffering, automatic identity exchange and reconnect capability.
 //
@@ -162,5 +163,6 @@ private:
     bool allocateMessage() noexcept;
 };
 
+}  // namespace internal
 }  // namespace uv_ymq
 }  // namespace scaler

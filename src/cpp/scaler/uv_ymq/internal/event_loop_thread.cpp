@@ -1,4 +1,4 @@
-#include "scaler/uv_ymq/event_loop_thread.h"
+#include "scaler/uv_ymq/internal/event_loop_thread.h"
 
 #include <functional>
 #include <utility>
@@ -7,6 +7,7 @@
 
 namespace scaler {
 namespace uv_ymq {
+namespace internal {
 
 EventLoopThread::EventLoopThread() noexcept
     : _loop(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init()))
@@ -60,5 +61,6 @@ void EventLoopThread::processExecuteCallbacks() noexcept
     }
 }
 
+}  // namespace internal
 }  // namespace uv_ymq
 }  // namespace scaler
