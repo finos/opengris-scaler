@@ -34,6 +34,8 @@ public:
 
     const std::string& asIPC() const noexcept;
 
+    std::expected<std::string, scaler::ymq::Error> toString() const noexcept;
+
     // Try to parse a string to an Address instance.
     //
     // Example of string values are:
@@ -45,6 +47,9 @@ public:
     static std::expected<Address, scaler::ymq::Error> fromString(const std::string& address) noexcept;
 
 private:
+    static constexpr std::string_view _tcpPrefix = "tcp://";
+    static constexpr std::string_view _ipcPrefix = "ipc://";
+
     std::variant<scaler::wrapper::uv::SocketAddress, std::string> _value;
 };
 
