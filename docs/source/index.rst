@@ -27,6 +27,7 @@ Content
    tutorials/quickstart
    tutorials/features
    tutorials/scaling
+   tutorials/worker_adapters/index
    tutorials/compatibility/ray
    tutorials/configuration
    tutorials/examples

@@ -1,0 +1,399 @@
+{
+  "version": "2.0.0",
+  "scheduler": {
+    "type": "hostfactory",
+    "config_root": "$HF_PROVIDER_CONFDIR"
+  },
+  "provider": {
+    "providers": [
+      {
+        "name": "aws-default",
+        "type": "aws",
+        "enabled": true,
+        "config": {
+          "region": "us-east-1",
+          "profile": "default"
+        }
+      }
+    ],
+    "selection_policy": "FIRST_AVAILABLE",
+    "default_provider_type": "aws",
+    "health_check_interval": 60,
+    "circuit_breaker": {
+      "enabled": true,
+      "failure_threshold": 5,
+      "recovery_timeout": 60,
+      "half_open_max_calls": 3
+    },
+    "provider_defaults": {
+      "aws": {
+        "handlers": {
+          "EC2Fleet": {
+            "handler_class": "EC2FleetHandler",
+            "supported_fleet_types": [
+              "instant",
+              "request",
+              "maintain"
+            ],
+            "default_fleet_type": "instant",
+            "supports_spot": true,
+            "supports_ondemand": true
+          },
+          "SpotFleet": {
+            "handler_class": "SpotFleetHandler",
+            "supported_fleet_types": [
+              "request",
+              "maintain"
+            ],
+            "default_fleet_type": "request",
+            "supports_spot": true,
+            "supports_ondemand": false
+          },
+          "ASG": {
+            "handler_class": "ASGHandler",
+            "supports_spot": true,
+            "supports_ondemand": true,
+            "max_instances": 10000
+          },
+          "RunInstances": {
+            "handler_class": "RunInstancesHandler",
+            "supports_spot": false,
+            "supports_ondemand": true
+          }
+        },
+        "template_defaults": {
+          "image_id": "ami-12345678",
+          "instance_type": "t2.micro",
+          "security_group_ids": [
+            "sg-12345678"
+          ],
+          "subnet_ids": [
+            "subnet-12345678"
+          ],
+          "key_name": "",
+          "provider_api": "EC2Fleet",
+          "price_type": "ondemand",
+          "tags": {
+            "Environment": "development",
+            "Project": "hostfactory"
+          }
+        },
+        "launch_template": {
+          "create_per_request": true,
+          "naming_strategy": "request_based",
+          "version_strategy": "incremental",
+          "reuse_existing": true,
+          "cleanup_old_versions": false,
+          "max_versions_per_template": 10
+        },
+        "extensions": {
+          "ami_resolution": {
+            "enabled": true,
+            "fallback_on_failure": true,
+            "ssm_parameter_prefix": "/hostfactory/templates/"
+          },
+          "native_spec": {
+            "spec_file_base_path": "config/specs/aws"
+          },
+          "allocation_strategy": "capacityOptimized",
+          "allocation_strategy_on_demand": "lowestPrice",
+          "volume_type": "gp3",
+          "spot_fleet_request_expiry": 30,
+          "percent_on_demand": 0,
+          "root_device_volume_size": 20
+        }
+      }
+    }
+  },
+  "native_spec": {
+    "enabled": true,
+    "merge_mode": "merge"
+  },
+  "naming": {
+    "collections": {
+      "requests": "requests",
+      "machines": "machines",
+      "templates": "templates"
+    },
+    "tables": {
+      "requests": "requests",
+      "machines": "machines",
+      "event_logs": "event_logs",
+      "audit_logs": "audit_logs",
+      "metrics_logs": "metrics_logs"
+    },
+    "fleet_types": {
+      "instant": "instant",
+      "request": "request",
+      "maintain": "maintain"
+    },
+    "price_types": {
+      "ondemand": "ondemand",
+      "spot": "spot",
+      "heterogeneous": "heterogeneous"
+    },
+    "statuses": {
+      "request": {
+        "pending": "pending",
+        "running": "running",
+        "complete": "complete",
+        "complete_with_error": "complete_with_error",
+        "failed": "failed"
+      },
+      "machine": {
+        "pending": "pending",
+        "running": "running",
+        "stopping": "stopping",
+        "stopped": "stopped",
+        "shutting_down": "shutting-down",
+        "terminated": "terminated",
+        "unknown": "unknown"
+      },
+      "machine_result": {
+        "executing": "executing",
+        "succeed": "succeed",
+        "fail": "fail"
+      },
+      "circuit_breaker": {
+        "closed": "closed",
+        "open": "open",
+        "half_open": "half_open"
+      }
+    },
+    "patterns": {
+      "ec2_instance": "^i-[a-f0-9]+$",
+      "spot_fleet": "^sfr-[a-f0-9]+$",
+      "ec2_fleet": "^fleet-[a-f0-9]+$",
+      "asg": "^[a-zA-Z0-9_-]+$",
+      "ami_id": "^ami-[a-f0-9]{8,17}$",
+      "subnet": "^subnet-[a-f0-9]{8,17}$",
+      "security_group": "^sg-[a-f0-9]{8,17}$",
+      "instance_type": "^[a-z][0-9][a-z]?\\.[a-z0-9]+$",
+      "region": "^[a-z]{2}-[a-z]+-\\d$",
+      "account_id": "^\\d{12}$",
+      "launch_template": "^lt-[a-f0-9]{8,17}$",
+      "request_id": "^(req|ret)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "prefixes": {
+      "default": "",
+      "request": "req-",
+      "return_prefix": "ret-",
+      "launch_template": "",
+      "instance": "",
+      "fleet": "",
+      "asg": "",
+      "tag": ""
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "file_path": "logs/app.log",
+    "console_enabled": false,
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s [%(pathname)s:%(lineno)d (%(funcName)s)]",
+    "accept_propagated_setting": false
+  },
+  "template": {
+    "max_number": 10,
+    "templates_file_path": "config/templates.json",
+    "legacy_templates_file_path": "config/awsprov_templates.json",
+    "default_price_type": "ondemand",
+    "default_provider_api": "EC2Fleet"
+  },
+  "events": {
+    "store_type": "memory",
+    "publisher_type": "composite",
+    "enable_logging": true,
+    "default_events_path": "events",
+    "snapshot_store_type": "memory",
+    "default_snapshots_path": "snapshots",
+    "snapshot_threshold": 100,
+    "database_filenames": {
+      "events": "events.db",
+      "snapshots": "snapshots.db"
+    },
+    "registry_storage_type": "json",
+    "registry_file_path": "data/events/registry.json",
+    "registry_db_path": "data/events/registry.db",
+    "registry_max_age_seconds": 86400,
+    "registry_cleanup_interval_seconds": 3600
+  },
+  "request": {
+    "default_timeout": 300,
+    "default_grace_period": 300,
+    "max_machines_per_request": 100
+  },
+  "database": {
+    "database_filenames": {
+      "events": "events.db",
+      "snapshots": "snapshots.db"
+    }
+  },
+  "environment": "development",
+  "debug": false,
+  "performance": {
+    "lazy_loading": {
+      "enabled": true,
+      "cache_instances": true,
+      "discovery_mode": "lazy",
+      "connection_mode": "lazy",
+      "preload_critical": []
+    },
+    "enable_batching": true,
+    "batch_sizes": {
+      "terminate_instances": 25,
+      "create_tags": 20,
+      "describe_instances": 25,
+      "run_instances": 10,
+      "describe_spot_fleet_instances": 20,
+      "describe_auto_scaling_groups": 20,
+      "describe_launch_templates": 20,
+      "describe_spot_fleet_requests": 20,
+      "describe_ec2_fleet_instances": 20,
+      "describe_images": 15,
+      "describe_security_groups": 25,
+      "describe_subnets": 25
+    },
+    "enable_parallel": true,
+    "max_workers": 10,
+    "enable_caching": false,
+    "cache_ttl": 300,
+    "enable_adaptive_batch_sizing": true,
+    "adaptive_batch_sizing": {
+      "initial_batch_size": 10,
+      "min_batch_size": 5,
+      "max_batch_size": 50,
+      "increase_factor": 1.5,
+      "decrease_factor": 0.5,
+      "success_threshold": 3,
+      "failure_threshold": 1,
+      "history_size": 10
+    },
+    "caching": {
+      "ami_resolution": {
+        "enabled": false,
+        "ttl_seconds": 3600,
+        "file": "ami_cache.json"
+      },
+      "handler_discovery": {
+        "enabled": false,
+        "file": "handler_discovery.json"
+      },
+      "request_status": {
+        "enabled": false,
+        "ttl_seconds": 300
+      }
+    }
+  },
+  "metrics": {
+    "metrics_enabled": true,
+    "aws_metrics": {
+      "aws_metrics_enabled": true,
+      "sample_rate": 1.0,
+      "monitored_services": [],
+      "monitored_operations": [],
+      "track_payload_sizes": true
+    },
+    "metrics_dir": "./metrics",
+    "metrics_interval": 20,
+    "trace_enabled": true,
+    "trace_buffer_size": 1000,
+    "trace_file_max_size_mb": 10
+  },
+  "storage": {
+    "strategy": "json",
+    "default_storage_path": "data",
+    "json_strategy": {
+      "storage_type": "single_file",
+      "base_path": "data",
+      "filenames": {
+        "single_file": "request_database.json",
+        "split_files": {
+          "templates": "templates.json",
+          "requests": "requests.json",
+          "machines": "machines.json"
+        }
+      }
+    },
+    "sql_strategy": {
+      "type": "sqlite",
+      "host": "",
+      "port": 0,
+      "name": "database.db",
+      "pool_size": 5,
+      "max_overflow": 10,
+      "timeout": 30
+    },
+    "dynamodb_strategy": {
+      "region": "us-east-1",
+      "profile": "default",
+      "table_prefix": "hostfactory"
+    }
+  },
+  "server": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 8000,
+    "workers": 1,
+    "reload": false,
+    "docs_enabled": true,
+    "docs_url": "/docs",
+    "redoc_url": "/redoc",
+    "openapi_url": "/openapi.json",
+    "auth": {
+      "enabled": false,
+      "strategy": "none",
+      "bearer_token": {
+        "secret_key": "your-secret-key-change-in-production",
+        "algorithm": "HS256",
+        "token_expiry": 3600
+      },
+      "iam": {
+        "region": "us-east-1",
+        "profile": null,
+        "required_actions": [
+          "ec2:DescribeInstances",
+          "ec2:RunInstances",
+          "ec2:TerminateInstances"
+        ]
+      },
+      "cognito": {
+        "user_pool_id": "us-east-1_XXXXXXXXX",
+        "client_id": "your-cognito-client-id",
+        "region": "us-east-1"
+      }
+    },
+    "cors": {
+      "enabled": true,
+      "origins": [
+        "*"
+      ],
+      "methods": [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE",
+        "OPTIONS"
+      ],
+      "headers": [
+        "*"
+      ],
+      "credentials": false
+    },
+    "request_timeout": 30,
+    "max_request_size": 16777216,
+    "access_log": true,
+    "log_level": "info"
+  },
+  "circuit_breaker": {
+    "enabled": true,
+    "failure_threshold": 5,
+    "recovery_timeout": 60,
+    "half_open_max_calls": 3
+  },
+  "request_timeout": 300,
+  "max_machines_per_request": 100,
+  "resource": {
+    "max_instances": 1000,
+    "default_timeout": 300
+  }
+}
