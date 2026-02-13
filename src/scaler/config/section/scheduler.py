@@ -1,6 +1,5 @@
 import dataclasses
-from typing import Optional, Tuple
-from urllib.parse import urlparse
+from typing import Optional
 
 from scaler.config import defaults
 from scaler.config.common.logging import LoggingConfig
@@ -19,16 +18,6 @@ class PolicyConfig(ConfigClass):
     policy_content: str = dataclasses.field(
         default="allocate=even_load; scaling=no",
         metadata=dict(short="-pc", help="Policy string: 'allocate=VAL; scaling=VAL'"),
-    )
-
-    adapter_webhook_urls: Tuple[str, ...] = dataclasses.field(
-        default=(),
-        metadata=dict(
-            short="-awu",
-            type=str,
-            nargs="*",
-            help="specify the adapter webhook urls for the scaling controller to send scaling events to",
-        ),
     )
 
 
@@ -114,9 +103,5 @@ class SchedulerConfig(ConfigClass):
             raise ValueError("All timeout/retention/balance second values must be positive.")
         if self.load_balance_trigger_times <= 0:
             raise ValueError("load_balance_trigger_times must be a positive integer.")
-        for adapter_webhook_url in self.policy.adapter_webhook_urls:
-            parsed_url = urlparse(adapter_webhook_url)
-            if not all([parsed_url.scheme, parsed_url.netloc]):
-                raise ValueError(f"adapter_webhook_urls contains url '{adapter_webhook_url}' which is not a valid URL.")
         if self.worker_io_threads <= 0:
             raise ValueError("worker_io_threads must be a positive integer.")
