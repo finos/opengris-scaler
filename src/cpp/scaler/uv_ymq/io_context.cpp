@@ -1,6 +1,5 @@
 #include "scaler/uv_ymq/io_context.h"
 
-#include <algorithm>
 #include <cassert>
 
 namespace scaler {

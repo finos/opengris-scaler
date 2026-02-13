@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <expected>
 #include <map>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <vector>

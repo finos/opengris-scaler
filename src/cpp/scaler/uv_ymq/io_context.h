@@ -1,7 +1,6 @@
 #pragma once
 
 #include <atomic>
-#include <memory>
 #include <vector>
 
 #include "scaler/uv_ymq/internal/event_loop_thread.h"
