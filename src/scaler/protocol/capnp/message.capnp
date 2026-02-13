@@ -85,6 +85,42 @@ struct WorkerHeartbeatEcho {
     objectStorageAddress @0 :CommonType.ObjectStorageAddress;
 }
 
+struct WorkerAdapterHeartbeat {
+    maxWorkerGroups @0 :UInt32;
+    workersPerGroup @1 :UInt32;
+    capabilities @2 :List(CommonType.TaskCapability);
+}
+
+struct WorkerAdapterHeartbeatEcho {
+}
+
+enum WorkerAdapterCommandType {
+    startWorkerGroup @0;
+    shutdownWorkerGroup @1;
+}
+
+struct WorkerAdapterCommand {
+    workerGroupID @0: Data;
+    command @1: WorkerAdapterCommandType;
+    capabilities @2: List(CommonType.TaskCapability);
+}
+
+struct WorkerAdapterCommandResponse {
+    workerGroupID @0: Data;
+    workerIDs @1: List(Data);
+    command @2: WorkerAdapterCommandType;
+    status @3: Status;
+    capabilities @4: List(CommonType.TaskCapability);
+    enum Status {
+        workerGroupIDNotSpecified @0;
+        workerGroupIDNotFound @1;
+        workerGroupShutdown @2;
+        unknownAction @3;
+        workerGroupTooMuch @4;
+        success @5;
+    }
+}
+
 struct ObjectInstruction {
     instructionType @0 :ObjectInstructionType;
     objectUser @1 :Data;
@@ -214,5 +250,10 @@ struct Message {
 
         informationRequest @23 :InformationRequest;
         informationResponse @24 :InformationResponse;
+
+        workerAdapterHeartbeat @25 :WorkerAdapterHeartbeat;
+        workerAdapterHeartbeatEcho @26 :WorkerAdapterHeartbeatEcho;
+        workerAdapterCommand @27 :WorkerAdapterCommand;
+        workerAdapterCommandResponse @28 :WorkerAdapterCommandResponse;
     }
 }

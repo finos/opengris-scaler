@@ -1,7 +1,15 @@
 import abc
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
-from scaler.protocol.python.message import InformationSnapshot, Task
+from scaler.protocol.python.message import (
+    InformationSnapshot,
+    Task,
+    WorkerAdapterCommand,
+    WorkerAdapterCommandResponse,
+    WorkerAdapterHeartbeat,
+)
+from scaler.protocol.python.status import ScalingManagerStatus
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
 from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.mixins import Reporter
 
@@ -56,5 +64,27 @@ class ScalerPolicy(Reporter, metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_snapshot(self, snapshot: InformationSnapshot):
+    def get_scaling_commands(
+        self,
+        snapshot: InformationSnapshot,
+        adapter_heartbeat: WorkerAdapterHeartbeat,
+        worker_groups: WorkerGroupState,
+        worker_group_capabilities: WorkerGroupCapabilities,
+    ) -> List[WorkerAdapterCommand]:
+        """Pure function: state in, commands out. Commands are either all start or all shutdown, never mixed."""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def on_scaling_command_response(
+        self,
+        response: WorkerAdapterCommandResponse,
+        worker_groups: WorkerGroupState,
+        worker_group_capabilities: WorkerGroupCapabilities,
+    ) -> Tuple[WorkerGroupState, WorkerGroupCapabilities]:
+        """Pure function: takes current state + response, returns updated state."""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_scaling_status(self, worker_groups: WorkerGroupState) -> ScalingManagerStatus:
+        """Pure function: state in, status out."""
         raise NotImplementedError()

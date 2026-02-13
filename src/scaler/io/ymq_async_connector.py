@@ -28,7 +28,8 @@ class YMQAsyncConnector(AsyncConnector):
             identity = f"{os.getpid()}|{name}|{uuid.uuid4().bytes.hex()}".encode()
         self._identity = identity
 
-        self._socket = self._context.createIOSocket_sync(self.identity.decode(), socket_type)
+        # It is always connector
+        self._socket = self._context.createIOSocket_sync(self.identity.decode(), ymq.IOSocketType.Connector)
 
         if bind_or_connect == "bind":
             self._socket.bind_sync(self.address)
