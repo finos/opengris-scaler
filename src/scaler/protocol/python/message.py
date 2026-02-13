@@ -424,6 +424,19 @@ class DisconnectResponse(Message):
         return DisconnectResponse(_message.DisconnectResponse(worker=bytes(worker)))
 
 
+class WorkerDisconnectNotification(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def worker(self) -> WorkerID:
+        return WorkerID(self._msg.worker)
+
+    @staticmethod
+    def new_msg(worker: WorkerID) -> "WorkerDisconnectNotification":
+        return WorkerDisconnectNotification(_message.WorkerDisconnectNotification(worker=bytes(worker)))
+
+
 class ClientDisconnect(Message):
     class DisconnectType(enum.Enum):
         Disconnect = _message.ClientDisconnect.DisconnectType.disconnect
@@ -735,6 +748,7 @@ PROTOCOL: bidict.bidict[str, Type[Message]] = bidict.bidict(
         "workerHeartbeatEcho": WorkerHeartbeatEcho,
         "disconnectRequest": DisconnectRequest,
         "disconnectResponse": DisconnectResponse,
+        "workerDisconnectNotification": WorkerDisconnectNotification,
         "stateClient": StateClient,
         "stateObject": StateObject,
         "stateBalanceAdvice": StateBalanceAdvice,
