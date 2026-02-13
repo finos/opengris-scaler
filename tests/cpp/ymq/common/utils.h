@@ -13,4 +13,4 @@ void raise_socket_error(const char* msg);
 // this is important for finding the python mitm script
 void chdir_to_project_root();
 
-unsigned short random_port(unsigned short min_port = 1024, unsigned short max_port = 65535);
+unsigned short random_port(unsigned short minPort = 1024, unsigned short maxPort = 65535);
