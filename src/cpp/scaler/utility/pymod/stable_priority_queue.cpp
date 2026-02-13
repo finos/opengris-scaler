@@ -132,12 +132,18 @@ static Py_ssize_t PyStablePriorityQueueSize(PyObject* self)
     return ((PyStablePriorityQueue*)self)->queue.size();
 }
 
+static int PyStablePriorityQueueContains(PyObject* self, PyObject* item)
+{
+    return ((PyStablePriorityQueue*)self)->queue._locator.count(OwnedPyObject<>::fromBorrowed(item)) > 0;
+}
+
 static PyType_Slot PyStablePriorityQueueSlots[] = {
     {Py_tp_new, (void*)PyStablePriorityQueueNew},
     {Py_tp_init, (void*)PyStablePriorityQueueInit},
     {Py_tp_dealloc, (void*)PyStablePriorityQueueDealloc},
     {Py_tp_methods, (void*)PyStablePriorityQueueMethods},
     {Py_sq_length, (void*)PyStablePriorityQueueSize},
+    {Py_sq_contains, (void*)PyStablePriorityQueueContains},
     {Py_tp_doc, (void*)"StablePriorityQueue"},
     {0, nullptr},
 };
