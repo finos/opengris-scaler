@@ -11,7 +11,7 @@ IOContext::IOContext(size_t threadCount) noexcept: _threads(threadCount), _threa
     assert(threadCount > 0);
 }
 
-EventLoopThread& IOContext::nextThread() noexcept
+internal::EventLoopThread& IOContext::nextThread() noexcept
 {
     auto& thread = _threads[_threadsRoundRobin];
     ++_threadsRoundRobin;

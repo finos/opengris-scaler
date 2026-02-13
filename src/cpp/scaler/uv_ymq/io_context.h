@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 
-#include "scaler/uv_ymq/event_loop_thread.h"
+#include "scaler/uv_ymq/internal/event_loop_thread.h"
 
 namespace scaler {
 namespace uv_ymq {
@@ -23,12 +23,12 @@ public:
     IOContext& operator=(IOContext&&) = default;
 
     // Fetch the next thread in the round-robin pool.
-    EventLoopThread& nextThread() noexcept;
+    internal::EventLoopThread& nextThread() noexcept;
 
     constexpr size_t numThreads() const noexcept { return _threads.size(); }
 
 private:
-    std::vector<EventLoopThread> _threads;
+    std::vector<internal::EventLoopThread> _threads;
     std::atomic<size_t> _threadsRoundRobin;
 };
 

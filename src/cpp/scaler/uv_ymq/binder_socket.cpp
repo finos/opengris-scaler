@@ -9,8 +9,8 @@ namespace uv_ymq {
 
 BinderSocket::BinderSocket(IOContext& context, Identity identity) noexcept
 {
-    EventLoopThread& thread = context.nextThread();
-    _state                  = std::make_shared<State>(thread, std::move(identity));
+    internal::EventLoopThread& thread = context.nextThread();
+    _state                            = std::make_shared<State>(thread, std::move(identity));
 }
 
 BinderSocket::~BinderSocket() noexcept
@@ -79,7 +79,7 @@ void BinderSocket::sendMessage(
             return;
         }
 
-        MessageConnection& connection = state->_connections.at(it->second);
+        internal::MessageConnection& connection = state->_connections.at(it->second);
         connection.sendMessage(std::move(messagePayload), std::move(callback));
     });
 }
@@ -116,7 +116,7 @@ void BinderSocket::closeConnection(Identity remoteIdentity) noexcept
 
 void BinderSocket::onClientConnect(std::shared_ptr<State> state, Client client) noexcept
 {
-    MessageConnection& connection = createConnection(state, std::nullopt);
+    internal::MessageConnection& connection = createConnection(state, std::nullopt);
     connection.connect(std::move(client));
 }
 
@@ -133,7 +133,7 @@ void BinderSocket::onRemoteIdentity(
     // Send any pending messages previously queued for this identity
     auto pendingIt = state->_pendingSendMessages.find(remoteIdentity);
     if (pendingIt != state->_pendingSendMessages.end()) {
-        MessageConnection& connection = state->_connections.at(connectionId);
+        internal::MessageConnection& connection = state->_connections.at(connectionId);
         for (auto& pending: pendingIt->second) {
             connection.sendMessage(std::move(pending.messagePayload), std::move(pending.onMessageSent));
         }
@@ -142,12 +142,14 @@ void BinderSocket::onRemoteIdentity(
 }
 
 void BinderSocket::onRemoteDisconnect(
-    std::shared_ptr<State> state, ConnectionID connectionId, MessageConnection::DisconnectReason /*reason*/) noexcept
+    std::shared_ptr<State> state,
+    ConnectionID connectionId,
+    internal::MessageConnection::DisconnectReason /*reason*/) noexcept
 {
     auto node = state->_connections.extract(connectionId);
     assert(!node.empty());
 
-    MessageConnection& connection = node.mapped();
+    internal::MessageConnection& connection = node.mapped();
     if (connection.remoteIdentity()) {
         state->_identityToConnectionID.erase(connection.remoteIdentity().value());
     }
@@ -156,7 +158,7 @@ void BinderSocket::onRemoteDisconnect(
 void BinderSocket::onMessage(
     std::shared_ptr<State> state, ConnectionID connectionId, scaler::ymq::Bytes messagePayload) noexcept
 {
-    MessageConnection& connection = state->_connections.at(connectionId);
+    internal::MessageConnection& connection = state->_connections.at(connectionId);
     assert(connection.remoteIdentity().has_value());
 
     scaler::ymq::Message message;
@@ -174,12 +176,12 @@ void BinderSocket::onMessage(
     callback(std::move(message));
 }
 
-MessageConnection& BinderSocket::createConnection(
+internal::MessageConnection& BinderSocket::createConnection(
     std::shared_ptr<State> state, std::optional<Identity> remoteIdentity) noexcept
 {
     ConnectionID connectionId = state->_connectionCounter++;
 
-    MessageConnection connection(
+    internal::MessageConnection connection(
         state->_thread.loop(),
         state->_identity,
         remoteIdentity,

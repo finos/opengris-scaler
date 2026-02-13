@@ -4,7 +4,7 @@
 #include <string>
 
 #include "scaler/uv_ymq/address.h"
-#include "scaler/uv_ymq/message_connection.h"
+#include "scaler/uv_ymq/internal/message_connection.h"
 #include "scaler/wrapper/uv/callback.h"
 #include "scaler/wrapper/uv/error.h"
 #include "scaler/wrapper/uv/loop.h"
@@ -20,12 +20,12 @@ public:
     static const scaler::uv_ymq::Identity clientIdentity;
 
     ConnectionPair(
-        scaler::uv_ymq::MessageConnection::RemoteIdentityCallback serverOnIdentity,
-        scaler::uv_ymq::MessageConnection::RemoteDisconnectCallback serverOnDisconnect,
-        scaler::uv_ymq::MessageConnection::RecvMessageCallback serverOnMessage,
-        scaler::uv_ymq::MessageConnection::RemoteIdentityCallback clientOnIdentity,
-        scaler::uv_ymq::MessageConnection::RemoteDisconnectCallback clientOnDisconnect,
-        scaler::uv_ymq::MessageConnection::RecvMessageCallback clientOnMessage)
+        scaler::uv_ymq::internal::MessageConnection::RemoteIdentityCallback serverOnIdentity,
+        scaler::uv_ymq::internal::MessageConnection::RemoteDisconnectCallback serverOnDisconnect,
+        scaler::uv_ymq::internal::MessageConnection::RecvMessageCallback serverOnMessage,
+        scaler::uv_ymq::internal::MessageConnection::RemoteIdentityCallback clientOnIdentity,
+        scaler::uv_ymq::internal::MessageConnection::RemoteDisconnectCallback clientOnDisconnect,
+        scaler::uv_ymq::internal::MessageConnection::RecvMessageCallback clientOnMessage)
         : _loop(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init()))
         , _server(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPServer::init(_loop)))
         , _serverConnection(
@@ -63,16 +63,16 @@ public:
     scaler::wrapper::uv::SocketAddress serverAddress() const { return UV_EXIT_ON_ERROR(_server.getSockName()); }
 
     scaler::wrapper::uv::Loop& loop() { return _loop; }
-    scaler::uv_ymq::MessageConnection& server() { return _serverConnection; }
-    scaler::uv_ymq::MessageConnection& client() { return _clientConnection; }
+    scaler::uv_ymq::internal::MessageConnection& server() { return _serverConnection; }
+    scaler::uv_ymq::internal::MessageConnection& client() { return _clientConnection; }
 
 private:
     scaler::wrapper::uv::Loop _loop;
     scaler::wrapper::uv::TCPServer _server;
-    scaler::uv_ymq::MessageConnection _serverConnection;
+    scaler::uv_ymq::internal::MessageConnection _serverConnection;
 
     scaler::wrapper::uv::TCPSocket _clientSocket;
-    scaler::uv_ymq::MessageConnection _clientConnection;
+    scaler::uv_ymq::internal::MessageConnection _clientConnection;
 };
 
 const scaler::uv_ymq::Identity ConnectionPair::serverIdentity = "server-identity";
@@ -94,9 +94,9 @@ TEST_F(UVYMQMessageConnectionTest, IdentityExchange)
         [](auto) { FAIL() << "Unexpected message on client"; }                       // onMessage
     );
 
-    scaler::uv_ymq::MessageConnection& server = connections.server();
-    scaler::uv_ymq::MessageConnection& client = connections.client();
-    scaler::wrapper::uv::Loop& loop           = connections.loop();
+    scaler::uv_ymq::internal::MessageConnection& server = connections.server();
+    scaler::uv_ymq::internal::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop                     = connections.loop();
 
     ASSERT_FALSE(server.remoteIdentity().has_value());
     ASSERT_FALSE(client.remoteIdentity().has_value());
@@ -140,9 +140,9 @@ TEST_F(UVYMQMessageConnectionTest, MessageExchange)
             clientMessageReceived = true;
         });
 
-    scaler::uv_ymq::MessageConnection& server = connections.server();
-    scaler::uv_ymq::MessageConnection& client = connections.client();
-    scaler::wrapper::uv::Loop& loop           = connections.loop();
+    scaler::uv_ymq::internal::MessageConnection& server = connections.server();
+    scaler::uv_ymq::internal::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop                     = connections.loop();
 
     // Send a message before the identity exchange
     scaler::ymq::Bytes messagePayload = scaler::ymq::Bytes(serverMessagePayload);
@@ -173,7 +173,7 @@ TEST_F(UVYMQMessageConnectionTest, Disconnect)
         // Server callbacks
         [](auto identity) {},  // onRemoteIdentity
         [&](auto reason) {     // onRemoteDisconnect
-            ASSERT_EQ(reason, scaler::uv_ymq::MessageConnection::DisconnectReason::Disconnected);
+            ASSERT_EQ(reason, scaler::uv_ymq::internal::MessageConnection::DisconnectReason::Disconnected);
             serverDisconnected = true;
         },
         [](auto) { FAIL() << "Unexpected message on server"; },  // onMessage
@@ -184,9 +184,9 @@ TEST_F(UVYMQMessageConnectionTest, Disconnect)
         [](auto) { FAIL() << "Unexpected message on client"; }      // onMessage
     );
 
-    scaler::uv_ymq::MessageConnection& server = connections.server();
-    scaler::uv_ymq::MessageConnection& client = connections.client();
-    scaler::wrapper::uv::Loop& loop           = connections.loop();
+    scaler::uv_ymq::internal::MessageConnection& server = connections.server();
+    scaler::uv_ymq::internal::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop                     = connections.loop();
 
     // Wait for identity exchange
     while (!server.established() || !client.established()) {
@@ -212,7 +212,7 @@ TEST_F(UVYMQMessageConnectionTest, UnexpectedDisconnect)
         // Server callbacks
         [](auto identity) {},  // onRemoteIdentity
         [](auto reason) {      // onRemoteDisconnect
-            ASSERT_EQ(reason, scaler::uv_ymq::MessageConnection::DisconnectReason::Aborted);
+            ASSERT_EQ(reason, scaler::uv_ymq::internal::MessageConnection::DisconnectReason::Aborted);
         },
         [](auto) { FAIL() << "Unexpected message on server"; },  // onMessage
 
@@ -222,9 +222,9 @@ TEST_F(UVYMQMessageConnectionTest, UnexpectedDisconnect)
         [](auto) { FAIL() << "Unexpected message on client"; }      // onMessage
     );
 
-    scaler::uv_ymq::MessageConnection& server = connections.server();
-    scaler::uv_ymq::MessageConnection& client = connections.client();
-    scaler::wrapper::uv::Loop& loop           = connections.loop();
+    scaler::uv_ymq::internal::MessageConnection& server = connections.server();
+    scaler::uv_ymq::internal::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop                     = connections.loop();
 
     // Wait for identity exchange
     while (!server.established() || !client.established()) {

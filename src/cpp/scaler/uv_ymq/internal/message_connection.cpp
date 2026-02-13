@@ -1,4 +1,4 @@
-#include "scaler/uv_ymq/message_connection.h"
+#include "scaler/uv_ymq/internal/message_connection.h"
 
 #include <array>
 #include <cassert>
@@ -13,6 +13,7 @@
 
 namespace scaler {
 namespace uv_ymq {
+namespace internal {
 
 MessageConnection::MessageConnection(
     scaler::wrapper::uv::Loop& loop,
@@ -381,5 +382,6 @@ bool MessageConnection::allocateMessage() noexcept
     return true;
 }
 
+}  // namespace internal
 }  // namespace uv_ymq
 }  // namespace scaler

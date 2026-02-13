@@ -7,8 +7,8 @@
 
 #include "scaler/uv_ymq/address.h"
 #include "scaler/uv_ymq/connector_socket.h"
+#include "scaler/uv_ymq/internal/message_connection.h"
 #include "scaler/uv_ymq/io_context.h"
-#include "scaler/uv_ymq/message_connection.h"
 #include "scaler/wrapper/uv/error.h"
 #include "scaler/wrapper/uv/loop.h"
 #include "scaler/wrapper/uv/tcp.h"
@@ -27,9 +27,9 @@ public:
     static const scaler::uv_ymq::Identity connectorIdentity;
 
     ConnectorServerPair(
-        scaler::uv_ymq::MessageConnection::RemoteIdentityCallback serverOnIdentity,
-        scaler::uv_ymq::MessageConnection::RemoteDisconnectCallback serverOnDisconnect,
-        scaler::uv_ymq::MessageConnection::RecvMessageCallback serverOnMessage,
+        scaler::uv_ymq::internal::MessageConnection::RemoteIdentityCallback serverOnIdentity,
+        scaler::uv_ymq::internal::MessageConnection::RemoteDisconnectCallback serverOnDisconnect,
+        scaler::uv_ymq::internal::MessageConnection::RecvMessageCallback serverOnMessage,
         scaler::uv_ymq::ConnectorSocket::ConnectCallback connectorOnConnect)
         : _context()
         , _loop(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init()))
@@ -59,7 +59,7 @@ public:
             _context, connectorIdentity, address, std::move(connectorOnConnect));
     }
 
-    scaler::uv_ymq::MessageConnection& server() { return _serverConnection; }
+    scaler::uv_ymq::internal::MessageConnection& server() { return _serverConnection; }
     scaler::uv_ymq::ConnectorSocket& connector() { return *_connector; }
     scaler::wrapper::uv::Loop& loop() { return _loop; }
 
@@ -67,7 +67,7 @@ private:
     scaler::uv_ymq::IOContext _context;
     scaler::wrapper::uv::Loop _loop;
     scaler::wrapper::uv::TCPServer _server;
-    scaler::uv_ymq::MessageConnection _serverConnection;
+    scaler::uv_ymq::internal::MessageConnection _serverConnection;
     std::unique_ptr<scaler::uv_ymq::ConnectorSocket> _connector;
 };
 
@@ -149,9 +149,9 @@ TEST_F(UVYMQConnectorSocketTest, SendMessage)
             connectCalled.set_value();
         });
 
-    scaler::uv_ymq::MessageConnection& server  = connections.server();
-    scaler::uv_ymq::ConnectorSocket& connector = connections.connector();
-    scaler::wrapper::uv::Loop& loop            = connections.loop();
+    scaler::uv_ymq::internal::MessageConnection& server = connections.server();
+    scaler::uv_ymq::ConnectorSocket& connector          = connections.connector();
+    scaler::wrapper::uv::Loop& loop                     = connections.loop();
 
     std::promise<void> sendCallbackCalled {};
 
@@ -220,9 +220,9 @@ TEST_F(UVYMQConnectorSocketTest, RecvMessage)
             connectCalled.set_value();
         });
 
-    scaler::uv_ymq::MessageConnection& server  = connections.server();
-    scaler::uv_ymq::ConnectorSocket& connector = connections.connector();
-    scaler::wrapper::uv::Loop& loop            = connections.loop();
+    scaler::uv_ymq::internal::MessageConnection& server = connections.server();
+    scaler::uv_ymq::ConnectorSocket& connector          = connections.connector();
+    scaler::wrapper::uv::Loop& loop                     = connections.loop();
 
     std::promise<scaler::ymq::Message> recvCalled {};
 
@@ -296,9 +296,9 @@ TEST_F(UVYMQConnectorSocketTest, RemoteDisconnect)
             connectCalled.set_value();
         });
 
-    scaler::uv_ymq::MessageConnection& server  = connections.server();
-    scaler::uv_ymq::ConnectorSocket& connector = connections.connector();
-    scaler::wrapper::uv::Loop& loop            = connections.loop();
+    scaler::uv_ymq::internal::MessageConnection& server = connections.server();
+    scaler::uv_ymq::ConnectorSocket& connector          = connections.connector();
+    scaler::wrapper::uv::Loop& loop                     = connections.loop();
 
     // Wait for connection to complete
     connectCalled.get_future().get();
@@ -339,9 +339,9 @@ TEST_F(UVYMQConnectorSocketTest, Reconnect)
         // Connector callback
         [](auto result) {});
 
-    scaler::uv_ymq::MessageConnection& server  = connections.server();
-    scaler::uv_ymq::ConnectorSocket& connector = connections.connector();
-    scaler::wrapper::uv::Loop& loop            = connections.loop();
+    scaler::uv_ymq::internal::MessageConnection& server = connections.server();
+    scaler::uv_ymq::ConnectorSocket& connector          = connections.connector();
+    scaler::wrapper::uv::Loop& loop                     = connections.loop();
 
     // Send a message from the server to the client.
     // Required as Linux might not send a RST segment if both connections are not fully initialized.

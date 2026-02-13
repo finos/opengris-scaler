@@ -1,4 +1,4 @@
-#include "scaler/uv_ymq/accept_server.h"
+#include "scaler/uv_ymq/internal/accept_server.h"
 
 #include <uv.h>
 
@@ -13,6 +13,7 @@
 
 namespace scaler {
 namespace uv_ymq {
+namespace internal {
 
 AcceptServer::AcceptServer(
     scaler::wrapper::uv::Loop& loop, Address address, ConnectionCallback onConnectionCallback) noexcept
@@ -101,5 +102,6 @@ void AcceptServer::onConnection(
     }
 }
 
+}  // namespace internal
 }  // namespace uv_ymq
 }  // namespace scaler
