@@ -77,13 +77,8 @@ static PyObject* PyIndexedQueueRemove(PyIndexedQueue* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
-static int PyIndexedQueueContains(PyObject* self, PyObject* args)
+static int PyIndexedQueueContains(PyObject* self, PyObject* item)
 {
-    PyObject* item {};
-    if (!PyArg_Parse(args, "O", &item)) {
-        return -1;
-    }
-
     return ((PyIndexedQueue*)self)->queue.contains(OwnedPyObject<>::fromBorrowed(item));
 }
 

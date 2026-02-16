@@ -255,24 +255,13 @@ static PyObject* PyOneToManyDictItems(PyOneToManyDict* self, PyObject* args)
     return itemList.take();
 }
 
-// called when using the 'in' operator (__contains__)
-static PyObject* PyOneToManyDictContains(PyOneToManyDict* self, PyObject* args)
+static int PyOneToManyDictContains(PyObject* self, PyObject* key)
 {
-    PyObject* key {};
-    if (!PyArg_ParseTuple(args, "O", &key)) {
-        return nullptr;  // Invalid arguments
-    }
-
-    if (self->dict.hasKey(OwnedPyObject<>::fromBorrowed(key))) {
-        Py_RETURN_TRUE;
-    } else {
-        Py_RETURN_FALSE;
-    }
+    return ((PyOneToManyDict*)self)->dict.hasKey(OwnedPyObject<>::fromBorrowed(key));
 }
 
 // Define the methods for the OneToManyDict Python class
 static PyMethodDef PyOneToManyDictMethods[] = {
-    {"__contains__", (PyCFunction)PyOneToManyDictContains, METH_VARARGS, "__contains__ method"},
     {"keys", (PyCFunction)PyOneToManyDictKeys, METH_VARARGS, "Get Keys from the dictionary"},
     {"values", (PyCFunction)PyOneToManyDictValues, METH_VARARGS, "Get Values from the dictionary"},
     {"items", (PyCFunction)PyOneToManyDictItems, METH_VARARGS, "Get Items from the dictionary"},
@@ -310,6 +299,7 @@ static PyType_Slot PyOneToManyDictSlots[] = {
     {Py_tp_new, (void*)PyOneToManyDictNew},
     {Py_tp_methods, PyOneToManyDictMethods},
     {Py_tp_iter, (void*)PyOneToManyDictIteratorIter},
+    {Py_sq_contains, (void*)PyOneToManyDictContains},
     {0, nullptr},
 };
 
