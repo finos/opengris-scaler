@@ -9,6 +9,7 @@ from scaler.config.types.network_backend import NetworkBackend
 from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector, SyncObjectStorageConnector
 from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector
+from scaler.io.ymq import ymq
 from scaler.protocol.capnp._python import _message  # noqa
 from scaler.protocol.python.message import PROTOCOL
 from scaler.protocol.python.mixins import Message
@@ -24,6 +25,15 @@ def get_scaler_network_backend_from_env():
     if backend_str is None:
         return SCALER_NETWORK_BACKEND
     return NetworkBackend[backend_str]
+
+
+def create_async_simple_context():
+    type = get_scaler_network_backend_from_env()
+    if type == NetworkBackend.tcp_zmq:
+        return zmq.asyncio.Context()
+    elif type == NetworkBackend.ymq:
+        return ymq.IOContext()
+    raise ValueError("Unknown network backend")
 
 
 def create_async_binder(ctx: zmq.asyncio.Context, *args, **kwargs) -> AsyncBinder:

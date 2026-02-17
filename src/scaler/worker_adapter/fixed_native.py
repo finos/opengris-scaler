@@ -1,9 +1,6 @@
 import uuid
 from typing import Dict
 
-from aiohttp import web
-from aiohttp.web_request import Request
-
 from scaler.config.section.fixed_native_worker_adapter import FixedNativeWorkerAdapterConfig
 from scaler.utility.identifiers import WorkerID
 from scaler.worker.worker import Worker
@@ -25,8 +22,6 @@ class FixedNativeWorkerAdapter:
         self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
         self._hard_processor_suspend = config.worker_config.hard_processor_suspend
         self._event_loop = config.event_loop
-        self._adapter_web_host = config.web_config.adapter_web_host
-        self._adapter_web_port = config.web_config.adapter_web_port
         self._logging_paths = config.logging_config.paths
         self._logging_level = config.logging_config.level
         self._logging_config_file = config.logging_config.config_file
@@ -80,40 +75,3 @@ class FixedNativeWorkerAdapter:
         # therefore we just wait for all existing workers to finish
         for worker in self._workers.values():
             worker.join()
-
-    async def webhook_handler(self, request: Request):
-        request_json = await request.json()
-
-        if "action" not in request_json:
-            return web.json_response({"error": "No action specified"}, status=web.HTTPBadRequest.status_code)
-
-        action = request_json["action"]
-
-        if action == "get_worker_adapter_info":
-            # Report 0 max workers to prevent scheduler from trying to scale
-            return web.json_response(
-                {"max_worker_groups": 0, "workers_per_group": 1, "base_capabilities": self._capabilities},
-                status=web.HTTPOk.status_code,
-            )
-
-        elif action == "start_worker_group":
-            # Ignore request
-            return web.json_response(
-                {"error": "FixedNativeWorkerAdapter does not support dynamic scaling"},
-                status=web.HTTPMethodNotAllowed.status_code,
-            )
-
-        elif action == "shutdown_worker_group":
-            # Ignore request
-            return web.json_response(
-                {"error": "FixedNativeWorkerAdapter does not support dynamic scaling"},
-                status=web.HTTPMethodNotAllowed.status_code,
-            )
-
-        else:
-            return web.json_response({"error": "Unknown action"}, status=web.HTTPBadRequest.status_code)
-
-    def create_app(self):
-        app = web.Application()
-        app.router.add_post("/", self.webhook_handler)
-        return app

@@ -24,6 +24,8 @@ from scaler.protocol.python.message import (
     TaskCancelConfirm,
     TaskLog,
     TaskResult,
+    WorkerAdapterCommandResponse,
+    WorkerAdapterHeartbeat,
     WorkerHeartbeat,
 )
 from scaler.protocol.python.mixins import Message
@@ -36,6 +38,7 @@ from scaler.scheduler.controllers.object_controller import VanillaObjectControll
 from scaler.scheduler.controllers.policies.mixins import ScalerPolicy
 from scaler.scheduler.controllers.policies.utility import create_scaler_policy
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
+from scaler.scheduler.controllers.worker_adapter_controller import WorkerAdapterController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
@@ -93,7 +96,7 @@ class Scheduler:
         logging.info(f"{self.__class__.__name__}: listen to scheduler monitor address {monitor_address.to_address()}")
 
         self._scaler_policy: ScalerPolicy = create_scaler_policy(
-            config.policy.policy_engine_type, config.policy.policy_content, config.policy.adapter_webhook_urls
+            config.policy.policy_engine_type, config.policy.policy_content
         )
 
         self._client_manager = VanillaClientController(config_controller=self._config_controller)
@@ -107,6 +110,9 @@ class Scheduler:
             config_controller=self._config_controller, scaler_policy=self._scaler_policy
         )
         self._information_controller = VanillaInformationController(config_controller=self._config_controller)
+        self._worker_adapter_controller = WorkerAdapterController(
+            config_controller=self._config_controller, scaler_policy=self._scaler_policy
+        )
 
         # register
         self._binder.register(self.on_receive_message)
@@ -134,6 +140,7 @@ class Scheduler:
         )
         self._worker_controller.register(self._binder, self._binder_monitor, self._task_controller)
         self._balance_controller.register(self._binder, self._binder_monitor, self._task_controller)
+        self._worker_adapter_controller.register(self._binder, self._task_controller, self._worker_controller)
 
         self._information_controller.register_managers(
             self._binder_monitor,
@@ -216,6 +223,16 @@ class Scheduler:
         if isinstance(message, InformationRequest):
             await self._information_controller.on_request(message)
 
+        # =====================================================================================
+        # worker adapter controller
+        if isinstance(message, WorkerAdapterHeartbeat):
+            await self._worker_adapter_controller.on_heartbeat(source, message)
+            return
+
+        if isinstance(message, WorkerAdapterCommandResponse):
+            await self._worker_adapter_controller.on_command_response(source, message)
+            return
+
         logging.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")
 
     async def get_loops(self):
@@ -231,6 +248,7 @@ class Scheduler:
             create_async_loop_routine(self._client_manager.routine, CLEANUP_INTERVAL_SECONDS),
             create_async_loop_routine(self._object_controller.routine, CLEANUP_INTERVAL_SECONDS),
             create_async_loop_routine(self._worker_controller.routine, CLEANUP_INTERVAL_SECONDS),
+            create_async_loop_routine(self._worker_adapter_controller.routine, CLEANUP_INTERVAL_SECONDS),
             create_async_loop_routine(self._information_controller.routine, STATUS_REPORT_INTERVAL_SECONDS),
         ]
 

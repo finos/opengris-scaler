@@ -1,15 +1,30 @@
+import asyncio
+import logging
 import os
 import signal
 import uuid
-from typing import Dict
+from typing import Dict, Tuple
 
-from aiohttp import web
-from aiohttp.web_request import Request
+import zmq
 
 from scaler.config.section.native_worker_adapter import NativeWorkerAdapterConfig
+from scaler.io.utility import create_async_connector, create_async_simple_context
+from scaler.io.ymq import ymq
+from scaler.protocol.python.message import (
+    Message,
+    WorkerAdapterCommand,
+    WorkerAdapterCommandResponse,
+    WorkerAdapterCommandType,
+    WorkerAdapterHeartbeat,
+    WorkerAdapterHeartbeatEcho,
+)
+from scaler.utility.event_loop import create_async_loop_routine, register_event_loop
 from scaler.utility.identifiers import WorkerID
+from scaler.utility.logging.utility import setup_logger
 from scaler.worker.worker import Worker
-from scaler.worker_adapter.common import CapacityExceededError, WorkerGroupID, WorkerGroupNotFoundError
+from scaler.worker_adapter.common import WorkerGroupID
+
+Status = WorkerAdapterCommandResponse.Status
 
 
 class NativeWorkerAdapter:
@@ -27,12 +42,25 @@ class NativeWorkerAdapter:
         self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
         self._hard_processor_suspend = config.worker_config.hard_processor_suspend
         self._event_loop = config.event_loop
-        self._adapter_web_host = config.web_config.adapter_web_host
-        self._adapter_web_port = config.web_config.adapter_web_port
         self._logging_paths = config.logging_config.paths
         self._logging_level = config.logging_config.level
         self._logging_config_file = config.logging_config.config_file
         self._preload = config.preload
+        self._workers_per_group = 1
+
+        self._context = create_async_simple_context()
+        self._name = "worker_adapter_native"
+
+        self._ident = f"{self._name}|{uuid.uuid4().bytes.hex()}".encode()
+        self._connector_external = create_async_connector(
+            self._context,
+            name="worker_adapter_native",
+            socket_type=zmq.DEALER,
+            address=self._address,
+            bind_or_connect="connect",
+            callback=self.__on_receive_external,
+            identity=self._ident,
+        )
 
         """
         Although a worker group can contain multiple workers, in this native adapter implementation,
@@ -40,10 +68,42 @@ class NativeWorkerAdapter:
         """
         self._worker_groups: Dict[WorkerGroupID, Dict[WorkerID, Worker]] = {}
 
-    async def start_worker_group(self) -> WorkerGroupID:
+    async def __on_receive_external(self, message: Message):
+        if isinstance(message, WorkerAdapterCommand):
+            await self._handle_command(message)
+
+        elif isinstance(message, WorkerAdapterHeartbeatEcho):
+            pass
+
+        else:
+            print(f"Received unknown message type: {type(message)}")
+
+    async def _handle_command(self, command: WorkerAdapterCommand):
+        cmd_type = command.command
+        worker_group_id = command.worker_group_id
+        response_status = Status.Success
+
+        cmd_res = WorkerAdapterCommandType.StartWorkerGroup
+        if cmd_type == WorkerAdapterCommandType.StartWorkerGroup:
+            cmd_res = WorkerAdapterCommandType.StartWorkerGroup
+            worker_group_id, response_status = await self.start_worker_group()
+        elif cmd_type == WorkerAdapterCommandType.ShutdownWorkerGroup:
+            cmd_res = WorkerAdapterCommandType.ShutdownWorkerGroup
+            response_status = await self.shutdown_worker_group(worker_group_id)
+        else:
+            raise ValueError("Unknown WorkerAdapterCommand")
+
+        await self._connector_external.send(
+            WorkerAdapterCommandResponse.new_msg(
+                worker_group_id=worker_group_id, command=cmd_res, status=response_status
+            )
+        )
+        return
+
+    async def start_worker_group(self) -> Tuple[WorkerGroupID, Status]:
         num_of_workers = sum(len(workers) for workers in self._worker_groups.values())
         if num_of_workers >= self._max_workers != -1:
-            raise CapacityExceededError(f"Maximum number of workers ({self._max_workers}) reached.")
+            return b"", Status.WorkerGroupTooMuch
 
         worker = Worker(
             name=f"NAT|{uuid.uuid4().hex}",
@@ -67,73 +127,64 @@ class NativeWorkerAdapter:
         worker.start()
         worker_group_id = f"native-{uuid.uuid4().hex}".encode()
         self._worker_groups[worker_group_id] = {worker.identity: worker}
-        return worker_group_id
+        print(f"Start worker group, {self._ident!r}")
+        return worker_group_id, Status.Success
 
-    async def shutdown_worker_group(self, worker_group_id: WorkerGroupID):
+    async def shutdown_worker_group(self, worker_group_id: WorkerGroupID) -> Status:
+        if not worker_group_id:
+            return Status.WorkerGroupIDNotSpecified
+
         if worker_group_id not in self._worker_groups:
-            raise WorkerGroupNotFoundError(f"Worker group with ID {worker_group_id.decode()} does not exist.")
+            logging.warning(f"Worker group with ID {bytes(worker_group_id).decode()} does not exist.")
+            return Status.WorkerGroupIDNotFound
 
         for worker in self._worker_groups[worker_group_id].values():
             os.kill(worker.pid, signal.SIGINT)
             worker.join()
 
         self._worker_groups.pop(worker_group_id)
+        return Status.Success
 
-    async def webhook_handler(self, request: Request):
-        request_json = await request.json()
+    def run(self) -> None:
+        self.__register_signal()
+        self._loop = asyncio.new_event_loop()
+        self._loop.run_until_complete(self._run())
 
-        if "action" not in request_json:
-            return web.json_response({"error": "No action specified"}, status=web.HTTPBadRequest.status_code)
+    def __destroy(self, *args):
+        print(f"Worker adapter {self._ident!r} received signal, shutting down")
+        self._task.cancel()
 
-        action = request_json["action"]
+    def __register_signal(self):
+        signal.signal(signal.SIGINT, self.__destroy)
+        signal.signal(signal.SIGTERM, self.__destroy)
 
-        if action == "get_worker_adapter_info":
-            return web.json_response(
-                {
-                    "max_worker_groups": self._max_workers,
-                    "workers_per_group": 1,
-                    "base_capabilities": self._capabilities,
-                },
-                status=web.HTTPOk.status_code,
+    async def _run(self) -> None:
+        register_event_loop(self._event_loop)
+        setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
+        self._task = self._loop.create_task(self.__get_loops())
+        await self._task
+
+    async def __send_heartbeat(self):
+        await self._connector_external.send(
+            WorkerAdapterHeartbeat.new_msg(
+                max_worker_groups=self._max_workers,
+                workers_per_group=self._workers_per_group,
+                capabilities=self._capabilities,
             )
+        )
 
-        elif action == "start_worker_group":
-            try:
-                worker_group_id = await self.start_worker_group()
-            except CapacityExceededError as e:
-                return web.json_response({"error": str(e)}, status=web.HTTPTooManyRequests.status_code)
-            except Exception as e:
-                return web.json_response({"error": str(e)}, status=web.HTTPInternalServerError.status_code)
+    async def __get_loops(self):
+        loops = [
+            create_async_loop_routine(self._connector_external.routine, 0),
+            create_async_loop_routine(self.__send_heartbeat, self._heartbeat_interval_seconds),
+        ]
 
-            return web.json_response(
-                {
-                    "status": "Worker group started",
-                    "worker_group_id": worker_group_id.decode(),
-                    "worker_ids": [worker_id.decode() for worker_id in self._worker_groups[worker_group_id].keys()],
-                },
-                status=web.HTTPOk.status_code,
-            )
-
-        elif action == "shutdown_worker_group":
-            if "worker_group_id" not in request_json:
-                return web.json_response(
-                    {"error": "No worker_group_id specified"}, status=web.HTTPBadRequest.status_code
-                )
-
-            worker_group_id = request_json["worker_group_id"].encode()
-            try:
-                await self.shutdown_worker_group(worker_group_id)
-            except WorkerGroupNotFoundError as e:
-                return web.json_response({"error": str(e)}, status=web.HTTPNotFound.status_code)
-            except Exception as e:
-                return web.json_response({"error": str(e)}, status=web.HTTPInternalServerError.status_code)
-
-            return web.json_response({"status": "Worker group shutdown"}, status=web.HTTPOk.status_code)
-
-        else:
-            return web.json_response({"error": "Unknown action"}, status=web.HTTPBadRequest.status_code)
-
-    def create_app(self):
-        app = web.Application()
-        app.router.add_post("/", self.webhook_handler)
-        return app
+        try:
+            await asyncio.gather(*loops)
+        except asyncio.CancelledError:
+            pass
+        except ymq.YMQException as e:
+            if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
+                pass
+            else:
+                logging.exception(f"{self._ident!r}: failed with unhandled exception:\n{e}")

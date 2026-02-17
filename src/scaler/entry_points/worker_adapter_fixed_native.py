@@ -1,5 +1,3 @@
-from aiohttp import web
-
 from scaler.config.section.fixed_native_worker_adapter import FixedNativeWorkerAdapterConfig
 from scaler.utility.event_loop import register_event_loop
 from scaler.utility.logging.utility import setup_logger
@@ -21,12 +19,8 @@ def main():
 
     fixed_native_worker_adapter = FixedNativeWorkerAdapter(fixed_native_adapter_config)
 
-    app = fixed_native_worker_adapter.create_app()
-    web.run_app(
-        app,
-        host=fixed_native_adapter_config.web_config.adapter_web_host,
-        port=fixed_native_adapter_config.web_config.adapter_web_port,
-    )
+    fixed_native_worker_adapter.start()
+    fixed_native_worker_adapter.join()
 
 
 if __name__ == "__main__":

@@ -1,17 +1,15 @@
+import asyncio
 import os
 import signal
 import time
 import unittest
 from multiprocessing import Process
-from unittest.mock import AsyncMock, patch
-
-from aiohttp import web
+from typing import List
 
 from scaler import Client
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
 from scaler.config.common.logging import LoggingConfig
-from scaler.config.common.web import WebConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_adapter import WorkerAdapterConfig
 from scaler.config.defaults import (
@@ -34,7 +32,15 @@ from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.config.types.zmq import ZMQConfig
-from scaler.protocol.python.message import InformationSnapshot, Task, WorkerHeartbeat
+from scaler.protocol.python.message import (
+    InformationSnapshot,
+    Task,
+    WorkerAdapterCommand,
+    WorkerAdapterCommandResponse,
+    WorkerAdapterCommandType,
+    WorkerAdapterHeartbeat,
+    WorkerHeartbeat,
+)
 from scaler.protocol.python.status import Resource
 from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingController
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
@@ -44,13 +50,14 @@ from scaler.worker_adapter.native import NativeWorkerAdapter
 from tests.utility.utility import logging_test_name
 
 
-def _run_native_worker_adapter(scheduler_address: str, webhook_port: int) -> None:
-    """Construct a NativeWorkerAdapter and run its aiohttp app. Runs in a separate process."""
+def _run_native_worker_adapter(scheduler_address: str, max_workers: int = 4) -> None:
+    """Construct a NativeWorkerAdapter and run it. Runs in a separate process."""
     adapter = NativeWorkerAdapter(
         NativeWorkerAdapterConfig(
-            web_config=WebConfig(),
             worker_adapter_config=WorkerAdapterConfig(
-                scheduler_address=ZMQConfig.from_string(scheduler_address), object_storage_address=None, max_workers=4
+                scheduler_address=ZMQConfig.from_string(scheduler_address),
+                object_storage_address=None,
+                max_workers=max_workers,
             ),
             event_loop="builtin",
             worker_io_threads=DEFAULT_IO_THREADS,
@@ -68,8 +75,7 @@ def _run_native_worker_adapter(scheduler_address: str, webhook_port: int) -> Non
         )
     )
 
-    app = adapter.create_app()
-    web.run_app(app, host="127.0.0.1", port=webhook_port)
+    adapter.run()
 
 
 class TestScaling(unittest.TestCase):
@@ -79,7 +85,6 @@ class TestScaling(unittest.TestCase):
 
         self.scheduler_address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         self.object_storage_config = ObjectStorageAddressConfig("127.0.0.1", get_available_tcp_port())
-        self.webhook_port = get_available_tcp_port()
 
     def test_scaling_basic(self):
         object_storage = ObjectStorageServerProcess(
@@ -95,10 +100,7 @@ class TestScaling(unittest.TestCase):
             address=ZMQConfig.from_string(self.scheduler_address),
             object_storage_address=self.object_storage_config,
             monitor_address=None,
-            policy=PolicyConfig(
-                policy_content="allocate=even_load; scaling=vanilla",
-                adapter_webhook_urls=(f"http://127.0.0.1:{self.webhook_port}",),
-            ),
+            policy=PolicyConfig(policy_content="allocate=even_load; scaling=vanilla"),
             io_threads=DEFAULT_IO_THREADS,
             max_number_of_tasks_waiting=DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
             client_timeout_seconds=DEFAULT_CLIENT_TIMEOUT_SECONDS,
@@ -114,8 +116,8 @@ class TestScaling(unittest.TestCase):
         )
         scheduler.start()
 
-        webhook_server = Process(target=_run_native_worker_adapter, args=(self.scheduler_address, self.webhook_port))
-        webhook_server.start()
+        adapter_process = Process(target=_run_native_worker_adapter, args=(self.scheduler_address,))
+        adapter_process.start()
 
         with Client(self.scheduler_address) as client:
             client.map(time.sleep, [(0.1,) for _ in range(100)])
@@ -126,8 +128,8 @@ class TestScaling(unittest.TestCase):
         object_storage.kill()
         object_storage.join()
 
-        os.kill(webhook_server.pid, signal.SIGINT)
-        webhook_server.join()
+        adapter_process.terminate()
+        adapter_process.join()
 
     def test_capability_scaling_basic(self):
         """Test that capability scaling starts worker groups with the correct capabilities."""
@@ -152,10 +154,7 @@ class TestScaling(unittest.TestCase):
             load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
             load_balance_trigger_times=DEFAULT_LOAD_BALANCE_TRIGGER_TIMES,
             protected=False,
-            policy=PolicyConfig(
-                policy_content="allocate=even_load; scaling=capability",
-                adapter_webhook_urls=(f"http://127.0.0.1:{self.webhook_port}",),
-            ),
+            policy=PolicyConfig(policy_content="allocate=even_load; scaling=capability"),
             event_loop="builtin",
             logging_paths=("/dev/stdout",),
             logging_config_file=None,
@@ -163,8 +162,8 @@ class TestScaling(unittest.TestCase):
         )
         scheduler.start()
 
-        webhook_server = Process(target=_run_native_worker_adapter, args=(self.scheduler_address, self.webhook_port))
-        webhook_server.start()
+        adapter_process = Process(target=_run_native_worker_adapter, args=(self.scheduler_address,))
+        adapter_process.start()
 
         with Client(self.scheduler_address) as client:
             # Submit tasks without capabilities (should work like vanilla)
@@ -176,8 +175,8 @@ class TestScaling(unittest.TestCase):
         object_storage.kill()
         object_storage.join()
 
-        os.kill(webhook_server.pid, signal.SIGINT)
-        webhook_server.join()
+        adapter_process.terminate()
+        adapter_process.join()
 
 
 def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
@@ -207,40 +206,49 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> 
     )
 
 
-class TestCapabilityScalingController(unittest.IsolatedAsyncioTestCase):
-    """Unit tests for CapabilityScalingController."""
+def _create_adapter_heartbeat(max_worker_groups: int = 10) -> WorkerAdapterHeartbeat:
+    """Helper to create a mock WorkerAdapterHeartbeat."""
+    return WorkerAdapterHeartbeat.new_msg(max_worker_groups=max_worker_groups, workers_per_group=1, capabilities={})
+
+
+class MockCommandSender:
+    """Mock command sender that captures sent commands."""
+
+    def __init__(self):
+        self.commands: List[WorkerAdapterCommand] = []
+
+    async def send(self, command: WorkerAdapterCommand) -> None:
+        self.commands.append(command)
+
+
+class TestCapabilityScalingController(unittest.TestCase):
+    """Unit tests for CapabilityScalingController with stateful interface."""
 
     def setUp(self):
         setup_logger()
-        self.controller = CapabilityScalingController("http://localhost:8080/webhook")
+        self.controller = CapabilityScalingController()
+        self.mock_sender = MockCommandSender()
+        self.controller.register_command_sender(self.mock_sender.send)
 
-    async def test_starts_worker_group_when_no_capable_workers(self):
+    def _run_async(self, coro):
+        """Helper to run async code in tests."""
+        return asyncio.run(coro)
+
+    def test_starts_worker_group_when_no_capable_workers(self):
         """Test that a worker group is started when tasks require capabilities no worker provides."""
         task_id = TaskID.generate_task_id()
         task = _create_mock_task(task_id, {"gpu": 1})
 
-        snapshot = InformationSnapshot(tasks={task_id: task}, workers={})  # No workers
+        snapshot = InformationSnapshot(tasks={task_id: task}, workers={})
+        adapter_heartbeat = _create_adapter_heartbeat()
 
-        with patch.object(self.controller, "_make_request", new_callable=AsyncMock) as mock_request:
-            # First call: get_worker_adapter_info
-            # Second call: start_worker_group
-            mock_request.side_effect = [
-                ({"max_worker_groups": 10}, web.HTTPOk.status_code),
-                ({"worker_group_id": "wg-1", "worker_ids": ["worker-1"]}, web.HTTPOk.status_code),
-            ]
+        self._run_async(self.controller.on_snapshot(snapshot, adapter_heartbeat))
 
-            await self.controller.on_snapshot(snapshot)
+        self.assertEqual(len(self.mock_sender.commands), 1)
+        self.assertEqual(self.mock_sender.commands[0].command, WorkerAdapterCommandType.StartWorkerGroup)
+        self.assertEqual(self.mock_sender.commands[0].capabilities, {"gpu": 1})
 
-            # Verify start_worker_group was called with capabilities
-            calls = mock_request.call_args_list
-            self.assertEqual(len(calls), 2)
-
-            # Second call should be start_worker_group with capabilities
-            start_call_payload = calls[1][0][0]
-            self.assertEqual(start_call_payload["action"], "start_worker_group")
-            self.assertEqual(start_call_payload["capabilities"], {"gpu": 1})
-
-    async def test_no_scale_when_capable_workers_exist(self):
+    def test_no_scale_when_capable_workers_exist(self):
         """Test that no worker group is started when workers with matching capabilities exist."""
         task_id = TaskID.generate_task_id()
         task = _create_mock_task(task_id, {"gpu": 1})
@@ -248,21 +256,21 @@ class TestCapabilityScalingController(unittest.IsolatedAsyncioTestCase):
         worker_heartbeat = _create_mock_worker_heartbeat({"gpu": -1}, queued_tasks=0)
 
         snapshot = InformationSnapshot(tasks={task_id: task}, workers={worker_id: worker_heartbeat})
+        adapter_heartbeat = _create_adapter_heartbeat()
 
-        with patch.object(self.controller, "_make_request", new_callable=AsyncMock) as mock_request:
-            await self.controller.on_snapshot(snapshot)
+        self._run_async(self.controller.on_snapshot(snapshot, adapter_heartbeat))
 
-            # Should not start a new worker group since task ratio (1/1=1) is not > upper_task_ratio (10)
-            # and a capable worker already exists
-            for call in mock_request.call_args_list:
-                payload = call[0][0]
-                self.assertNotEqual(payload.get("action"), "start_worker_group")
+        # Should not return any start commands
+        start_commands = [
+            c for c in self.mock_sender.commands if c.command == WorkerAdapterCommandType.StartWorkerGroup
+        ]
+        self.assertEqual(len(start_commands), 0)
 
-    async def test_scales_when_task_ratio_exceeds_threshold(self):
+    def test_scales_when_task_ratio_exceeds_threshold(self):
         """Test that scaling occurs when task-to-worker ratio exceeds upper threshold."""
         # Create 15 tasks with gpu capability (ratio will be 15/1 = 15 > 10)
         tasks = {}
-        for i in range(15):
+        for _ in range(15):
             task_id = TaskID.generate_task_id()
             tasks[task_id] = _create_mock_task(task_id, {"gpu": 1})
 
@@ -270,22 +278,15 @@ class TestCapabilityScalingController(unittest.IsolatedAsyncioTestCase):
         worker_heartbeat = _create_mock_worker_heartbeat({"gpu": -1}, queued_tasks=5)
 
         snapshot = InformationSnapshot(tasks=tasks, workers={worker_id: worker_heartbeat})
+        adapter_heartbeat = _create_adapter_heartbeat()
 
-        with patch.object(self.controller, "_make_request", new_callable=AsyncMock) as mock_request:
-            mock_request.side_effect = [
-                ({"max_worker_groups": 10}, web.HTTPOk.status_code),
-                ({"worker_group_id": "wg-1", "worker_ids": ["worker-2"]}, web.HTTPOk.status_code),
-            ]
+        self._run_async(self.controller.on_snapshot(snapshot, adapter_heartbeat))
 
-            await self.controller.on_snapshot(snapshot)
+        self.assertEqual(len(self.mock_sender.commands), 1)
+        self.assertEqual(self.mock_sender.commands[0].command, WorkerAdapterCommandType.StartWorkerGroup)
+        self.assertEqual(self.mock_sender.commands[0].capabilities, {"gpu": 1})
 
-            # Verify start_worker_group was called
-            calls = mock_request.call_args_list
-            start_calls = [c for c in calls if c[0][0].get("action") == "start_worker_group"]
-            self.assertEqual(len(start_calls), 1)
-            self.assertEqual(start_calls[0][0][0]["capabilities"], {"gpu": 1})
-
-    async def test_different_capability_sets_handled_separately(self):
+    def test_different_capability_sets_handled_separately(self):
         """Test that tasks with different capabilities trigger separate scaling decisions."""
         gpu_task_id = TaskID.generate_task_id()
         gpu_task = _create_mock_task(gpu_task_id, {"gpu": 1})
@@ -294,27 +295,21 @@ class TestCapabilityScalingController(unittest.IsolatedAsyncioTestCase):
         tpu_task = _create_mock_task(tpu_task_id, {"tpu": 1})
 
         snapshot = InformationSnapshot(tasks={gpu_task_id: gpu_task, tpu_task_id: tpu_task}, workers={})
+        adapter_heartbeat = _create_adapter_heartbeat()
 
-        with patch.object(self.controller, "_make_request", new_callable=AsyncMock) as mock_request:
-            # Return success for multiple start_worker_group calls
-            mock_request.side_effect = [
-                ({"max_worker_groups": 10}, web.HTTPOk.status_code),
-                ({"worker_group_id": "wg-gpu", "worker_ids": ["worker-gpu"]}, web.HTTPOk.status_code),
-                ({"max_worker_groups": 10}, web.HTTPOk.status_code),
-                ({"worker_group_id": "wg-tpu", "worker_ids": ["worker-tpu"]}, web.HTTPOk.status_code),
-            ]
+        self._run_async(self.controller.on_snapshot(snapshot, adapter_heartbeat))
 
-            await self.controller.on_snapshot(snapshot)
+        # Should return 2 start commands (one for each capability set)
+        start_commands = [
+            c for c in self.mock_sender.commands if c.command == WorkerAdapterCommandType.StartWorkerGroup
+        ]
+        self.assertEqual(len(start_commands), 2)
 
-            # Check that both GPU and TPU worker groups were requested
-            start_calls = [c for c in mock_request.call_args_list if c[0][0].get("action") == "start_worker_group"]
-            self.assertEqual(len(start_calls), 2)
+        capabilities_requested = {frozenset(c.capabilities.keys()) for c in start_commands}
+        self.assertIn(frozenset({"gpu"}), capabilities_requested)
+        self.assertIn(frozenset({"tpu"}), capabilities_requested)
 
-            capabilities_requested = {frozenset(c[0][0]["capabilities"].keys()) for c in start_calls}
-            self.assertIn(frozenset({"gpu"}), capabilities_requested)
-            self.assertIn(frozenset({"tpu"}), capabilities_requested)
-
-    async def test_worker_with_superset_capabilities_matches_task(self):
+    def test_worker_with_superset_capabilities_matches_task(self):
         """Test that a worker with superset capabilities can handle tasks requiring a subset."""
         task_id = TaskID.generate_task_id()
         task = _create_mock_task(task_id, {"gpu": 1})  # Task requires only GPU
@@ -324,90 +319,198 @@ class TestCapabilityScalingController(unittest.IsolatedAsyncioTestCase):
         worker_heartbeat = _create_mock_worker_heartbeat({"gpu": -1, "cpu": -1}, queued_tasks=0)
 
         snapshot = InformationSnapshot(tasks={task_id: task}, workers={worker_id: worker_heartbeat})
+        adapter_heartbeat = _create_adapter_heartbeat()
 
-        with patch.object(self.controller, "_make_request", new_callable=AsyncMock) as mock_request:
-            await self.controller.on_snapshot(snapshot)
+        self._run_async(self.controller.on_snapshot(snapshot, adapter_heartbeat))
 
-            # Should not start a new worker group since the existing worker can handle the task
-            start_calls = [c for c in mock_request.call_args_list if c[0][0].get("action") == "start_worker_group"]
-            self.assertEqual(len(start_calls), 0)
+        # No StartWorkerGroup command should be returned
+        start_commands = [
+            c for c in self.mock_sender.commands if c.command == WorkerAdapterCommandType.StartWorkerGroup
+        ]
+        self.assertEqual(len(start_commands), 0)
 
-    async def test_tasks_without_capabilities_handled(self):
+    def test_tasks_without_capabilities_handled(self):
         """Test that tasks without capability requirements are handled correctly."""
         task_id = TaskID.generate_task_id()
         task = _create_mock_task(task_id, {})  # No capabilities required
 
-        snapshot = InformationSnapshot(tasks={task_id: task}, workers={})
+        snapshot = InformationSnapshot(tasks={task_id: task}, workers={})  # No workers
+        adapter_heartbeat = _create_adapter_heartbeat()
 
-        with patch.object(self.controller, "_make_request", new_callable=AsyncMock) as mock_request:
-            mock_request.side_effect = [
-                ({"max_worker_groups": 10}, web.HTTPOk.status_code),
-                ({"worker_group_id": "wg-1", "worker_ids": ["worker-1"]}, web.HTTPOk.status_code),
-            ]
+        self._run_async(self.controller.on_snapshot(snapshot, adapter_heartbeat))
 
-            await self.controller.on_snapshot(snapshot)
+        # Should start a worker group with empty capabilities
+        self.assertEqual(len(self.mock_sender.commands), 1)
+        self.assertEqual(self.mock_sender.commands[0].command, WorkerAdapterCommandType.StartWorkerGroup)
+        self.assertEqual(self.mock_sender.commands[0].capabilities, {})
 
-            # Should start a worker group with empty capabilities
-            start_calls = [c for c in mock_request.call_args_list if c[0][0].get("action") == "start_worker_group"]
-            self.assertEqual(len(start_calls), 1)
-            self.assertEqual(start_calls[0][0][0]["capabilities"], {})
-
-    async def test_get_status_returns_scaling_manager_status(self):
+    def test_get_status_returns_scaling_manager_status(self):
         """Test that get_status returns a ScalingManagerStatus object."""
-        # Manually add a worker group
-        worker_group_id = b"wg-test"
-        worker_ids = [WorkerID(b"worker-1"), WorkerID(b"worker-2")]
-        self.controller._worker_groups[worker_group_id] = worker_ids
+        # Simulate adding a worker group via response
+        response = WorkerAdapterCommandResponse.new_msg(
+            worker_group_id=b"wg-test",
+            command=WorkerAdapterCommandType.StartWorkerGroup,
+            status=WorkerAdapterCommandResponse.Status.Success,
+            capabilities={"gpu": -1},
+            worker_ids=[b"worker-1", b"worker-2"],
+        )
+        self.controller.on_command_response(response)
 
         status = self.controller.get_status()
-        # Verify it returns a ScalingManagerStatus (the actual property access
-        # has a bug with memoryview keys, but we can verify the object is created)
+
         from scaler.protocol.python.status import ScalingManagerStatus
 
         self.assertIsInstance(status, ScalingManagerStatus)
 
-    async def test_no_duplicate_worker_group_for_pending_group(self):
+    def test_on_command_response_start_success(self):
+        """Test that on_command_response correctly updates state on successful start."""
+        response = WorkerAdapterCommandResponse.new_msg(
+            worker_group_id=b"wg-new",
+            command=WorkerAdapterCommandType.StartWorkerGroup,
+            status=WorkerAdapterCommandResponse.Status.Success,
+            capabilities={"gpu": -1},
+            worker_ids=[],
+        )
+
+        self.controller.on_command_response(response)
+
+        # Check internal state
+        self.assertIn(b"wg-new", self.controller._worker_groups)
+        self.assertIn(b"wg-new", self.controller._worker_group_capabilities)
+        self.assertEqual(self.controller._worker_group_capabilities[b"wg-new"], {"gpu": -1})
+
+    def test_on_command_response_shutdown_success(self):
+        """Test that on_command_response correctly updates state on successful shutdown."""
+        # Pre-populate state via a start response
+        start_response = WorkerAdapterCommandResponse.new_msg(
+            worker_group_id=b"wg-old",
+            command=WorkerAdapterCommandType.StartWorkerGroup,
+            status=WorkerAdapterCommandResponse.Status.Success,
+            capabilities={"gpu": -1},
+            worker_ids=[b"worker-1"],
+        )
+        self.controller.on_command_response(start_response)
+
+        # Now shutdown
+        shutdown_response = WorkerAdapterCommandResponse.new_msg(
+            worker_group_id=b"wg-old",
+            command=WorkerAdapterCommandType.ShutdownWorkerGroup,
+            status=WorkerAdapterCommandResponse.Status.Success,
+            capabilities={},
+        )
+
+        self.controller.on_command_response(shutdown_response)
+
+        self.assertNotIn(b"wg-old", self.controller._worker_groups)
+        self.assertNotIn(b"wg-old", self.controller._worker_group_capabilities)
+
+    def test_no_duplicate_worker_group_for_pending_group(self):
         """Test that no new worker group is started if a capable group is already pending."""
-        # First snapshot: task with mqa:1, no workers -> starts a worker group
+        # First snapshot: task with mqa:1, no workers -> should start a worker group
         task1_id = TaskID.generate_task_id()
         task1 = _create_mock_task(task1_id, {"mqa": 1})
-
         snapshot1 = InformationSnapshot(tasks={task1_id: task1}, workers={})
+        adapter_heartbeat = _create_adapter_heartbeat()
 
-        with patch.object(self.controller, "_make_request", new_callable=AsyncMock) as mock_request:
-            mock_request.side_effect = [
-                ({"max_worker_groups": 10}, web.HTTPOk.status_code),
-                # Adapter returns mqa:-1 (can handle any amount)
-                (
-                    {"worker_group_id": "wg-mqa", "worker_ids": ["worker-1"], "capabilities": {"mqa": -1}},
-                    web.HTTPOk.status_code,
-                ),
-            ]
+        self._run_async(self.controller.on_snapshot(snapshot1, adapter_heartbeat))
 
-            await self.controller.on_snapshot(snapshot1)
+        self.assertEqual(len(self.mock_sender.commands), 1)
+        self.assertEqual(self.mock_sender.commands[0].command, WorkerAdapterCommandType.StartWorkerGroup)
+        self.assertEqual(self.mock_sender.commands[0].capabilities, {"mqa": 1})
 
-            start_calls = [c for c in mock_request.call_args_list if c[0][0].get("action") == "start_worker_group"]
-            self.assertEqual(len(start_calls), 1)
-            self.assertEqual(start_calls[0][0][0]["capabilities"], {"mqa": 1})
+        # Simulate adapter response - update state
+        wg_response = WorkerAdapterCommandResponse.new_msg(
+            worker_group_id=b"wg-mqa",
+            command=WorkerAdapterCommandType.StartWorkerGroup,
+            status=WorkerAdapterCommandResponse.Status.Success,
+            capabilities={"mqa": -1},
+            worker_ids=[],
+        )
+        self.controller.on_command_response(wg_response)
+
+        # Clear commands for next snapshot
+        self.mock_sender.commands.clear()
 
         # Second snapshot: task with mqa:-1, no workers connected yet
-        # Should NOT start another group since we have a pending group with mqa capability
+        # Should NOT start another group since capable group already exists
         task2_id = TaskID.generate_task_id()
         task2 = _create_mock_task(task2_id, {"mqa": -1})
-
         snapshot2 = InformationSnapshot(tasks={task2_id: task2}, workers={})
 
-        with patch.object(self.controller, "_make_request", new_callable=AsyncMock) as mock_request:
-            mock_request.side_effect = [
-                ({"max_worker_groups": 10}, web.HTTPOk.status_code),
-                (
-                    {"worker_group_id": "wg-mqa-2", "worker_ids": ["worker-2"], "capabilities": {"mqa": -1}},
-                    web.HTTPOk.status_code,
-                ),
-            ]
+        self._run_async(self.controller.on_snapshot(snapshot2, adapter_heartbeat))
 
-            await self.controller.on_snapshot(snapshot2)
+        # No StartWorkerGroup command should be returned
+        start_commands = [
+            c for c in self.mock_sender.commands if c.command == WorkerAdapterCommandType.StartWorkerGroup
+        ]
+        self.assertEqual(len(start_commands), 0, "Should not start new worker group when capable group is pending")
 
-            # Should NOT have called start_worker_group because we already have a pending mqa group
-            start_calls = [c for c in mock_request.call_args_list if c[0][0].get("action") == "start_worker_group"]
-            self.assertEqual(len(start_calls), 0, "Should not start new worker group when capable group is pending")
+
+class TestFixedElasticScaling(unittest.TestCase):
+    """Integration tests for FixedElasticScalingController with multiple worker adapters."""
+
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+
+        self.scheduler_address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
+        self.object_storage_config = ObjectStorageAddressConfig("127.0.0.1", get_available_tcp_port())
+
+    def test_fixed_elastic_with_multiple_adapters(self):
+        """Test that fixed_elastic scaling works with primary (1 worker) and secondary (4 workers) adapters."""
+        object_storage = ObjectStorageServerProcess(
+            object_storage_address=self.object_storage_config,
+            logging_paths=("/dev/stdout",),
+            logging_config_file=None,
+            logging_level="INFO",
+        )
+        object_storage.start()
+        object_storage.wait_until_ready()
+
+        scheduler = SchedulerProcess(
+            address=ZMQConfig.from_string(self.scheduler_address),
+            object_storage_address=self.object_storage_config,
+            monitor_address=None,
+            policy=PolicyConfig(policy_content="allocate=even_load; scaling=fixed_elastic"),
+            io_threads=DEFAULT_IO_THREADS,
+            max_number_of_tasks_waiting=DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
+            client_timeout_seconds=DEFAULT_CLIENT_TIMEOUT_SECONDS,
+            worker_timeout_seconds=DEFAULT_WORKER_TIMEOUT_SECONDS,
+            object_retention_seconds=DEFAULT_OBJECT_RETENTION_SECONDS,
+            load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
+            load_balance_trigger_times=DEFAULT_LOAD_BALANCE_TRIGGER_TIMES,
+            protected=False,
+            event_loop="builtin",
+            logging_paths=("/dev/stdout",),
+            logging_config_file=None,
+            logging_level="INFO",
+        )
+        scheduler.start()
+
+        # Start primary adapter with max_workers=1
+        primary_adapter_process = Process(
+            target=_run_native_worker_adapter, args=(self.scheduler_address,), kwargs={"max_workers": 1}
+        )
+        primary_adapter_process.start()
+
+        # Start secondary adapter with max_workers=4
+        secondary_adapter_process = Process(
+            target=_run_native_worker_adapter, args=(self.scheduler_address,), kwargs={"max_workers": 4}
+        )
+        secondary_adapter_process.start()
+
+        with Client(self.scheduler_address) as client:
+            # Submit tasks to trigger scaling
+            client.map(time.sleep, [(0.1,) for _ in range(100)])
+
+        os.kill(scheduler.pid, signal.SIGINT)
+        scheduler.join()
+
+        object_storage.kill()
+        object_storage.join()
+
+        primary_adapter_process.terminate()
+        primary_adapter_process.join()
+
+        secondary_adapter_process.terminate()
+        secondary_adapter_process.join()

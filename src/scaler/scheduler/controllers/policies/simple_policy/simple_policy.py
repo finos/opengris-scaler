@@ -1,24 +1,29 @@
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
-from scaler.protocol.python.message import InformationSnapshot, Task
+from scaler.protocol.python.message import (
+    InformationSnapshot,
+    Task,
+    WorkerAdapterCommandResponse,
+    WorkerAdapterHeartbeat,
+)
+from scaler.protocol.python.status import ScalingManagerStatus
 from scaler.scheduler.controllers.policies.mixins import ScalerPolicy
 from scaler.scheduler.controllers.policies.simple_policy.allocation.types import AllocatePolicyStrategy
 from scaler.scheduler.controllers.policies.simple_policy.allocation.utility import create_allocate_policy
+from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import CommandSender
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import ScalingControllerStrategy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.utility import create_scaling_controller
 from scaler.utility.identifiers import TaskID, WorkerID
 
 
 class SimplePolicy(ScalerPolicy):
-    def __init__(self, policy_kv: Dict[str, str], adapter_webhook_urls: Tuple[str, ...]):
+    def __init__(self, policy_kv: Dict[str, str]):
         allocate = "allocate"
         scaling = "scaling"
         if policy_kv.keys() != set([allocate, scaling]):
             raise ValueError(f"SimplePolicy only supports {allocate} and {scaling}, got {policy_kv.keys()}")
         self._allocation_policy = create_allocate_policy(AllocatePolicyStrategy(policy_kv[allocate]))
-        self._scaling_policy = create_scaling_controller(
-            ScalingControllerStrategy(policy_kv[scaling]), adapter_webhook_urls
-        )
+        self._scaling_controller = create_scaling_controller(ScalingControllerStrategy(policy_kv[scaling]))
 
     def add_worker(self, worker: WorkerID, capabilities: Dict[str, int], queue_size: int) -> bool:
         return self._allocation_policy.add_worker(worker, capabilities, queue_size)
@@ -47,8 +52,19 @@ class SimplePolicy(ScalerPolicy):
     def statistics(self) -> Dict:
         return self._allocation_policy.statistics()
 
-    async def on_snapshot(self, snapshot: InformationSnapshot):
-        await self._scaling_policy.on_snapshot(snapshot)
+    def register_command_sender(self, sender: CommandSender) -> None:
+        self._scaling_controller.register_command_sender(sender)
 
-    def get_status(self):
-        return self._scaling_policy.get_status()
+    async def on_snapshot(
+        self, information_snapshot: InformationSnapshot, adapter_heartbeat: WorkerAdapterHeartbeat
+    ) -> None:
+        await self._scaling_controller.on_snapshot(information_snapshot, adapter_heartbeat)
+
+    def on_command_response(self, response: WorkerAdapterCommandResponse) -> None:
+        self._scaling_controller.on_command_response(response)
+
+    def get_scaling_status(self) -> ScalingManagerStatus:
+        return self._scaling_controller.get_status()
+
+    def get_status(self) -> ScalingManagerStatus:
+        return self._scaling_controller.get_status()

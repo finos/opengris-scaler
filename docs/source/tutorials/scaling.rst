@@ -11,6 +11,8 @@ The scaling system consists of two main components:
 1. **Scaling Controller**: A policy that monitors task queues and worker availability to make scaling decisions.
 2. **Worker Adapter**: A component that handles the actual creation and destruction of worker groups (e.g., starting containers, launching processes).
 
+The Scaling Controller runs within the Scheduler and communicates with Worker Adapters via Cap'n Proto messages. Worker Adapters connect to the Scheduler and receive scaling commands directly.
+
 The scaling policy is configured via the ``policy_content`` setting in the scheduler configuration:
 
 .. code:: bash
@@ -72,8 +74,7 @@ This policy is straightforward and works well for homogeneous workloads where al
 .. code:: bash
 
     scaler_scheduler tcp://127.0.0.1:8516 \
-        --policy-content "allocate=even_load; scaling=vanilla" \
-        --adapter-webhook-url "http://localhost:8080/webhook"
+        --policy-content "allocate=even_load; scaling=vanilla"
 
 
 Capability Scaling (``capability``)
@@ -88,6 +89,7 @@ The capability scaling controller is designed for heterogeneous workloads where 
 * Scales worker groups per capability set independently
 * Ensures tasks are matched to workers that can handle them
 * Prevents scaling down the last worker group capable of handling pending tasks
+* Prevents thrashing by checking if scale-down would immediately trigger scale-up
 
 **How It Works:**
 
@@ -107,8 +109,7 @@ The capability scaling controller is designed for heterogeneous workloads where 
 .. code:: bash
 
     scaler_scheduler tcp://127.0.0.1:8516 \
-        --policy-content "allocate=capability; scaling=capability" \
-        --adapter-webhook-url "http://localhost:8080/webhook"
+        --policy-content "allocate=capability; scaling=capability"
 
 **Example Scenario:**
 
@@ -138,128 +139,69 @@ With the capability scaling policy:
 3. Idle GPU workers can be shut down without affecting CPU task processing.
 
 
-**Worker Adapter Integration:**
-
-The capability scaling controller communicates with the worker adapter via HTTP webhooks. When requesting a new worker group, it includes the required capabilities:
-
-.. code:: json
-
-    {
-        "action": "start_worker_group",
-        "capabilities": {"gpu": 1}
-    }
-
-The worker adapter should provision workers with the requested capabilities and return:
-
-.. code:: json
-
-    {
-        "worker_group_id": "group-abc123",
-        "worker_ids": ["worker-1", "worker-2"],
-        "capabilities": {"gpu": 1}
-    }
-
-
 Fixed Elastic Scaling (``fixed_elastic``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The fixed elastic scaling controller supports hybrid scaling with two worker adapters:
+The fixed elastic scaling controller supports hybrid scaling with multiple worker adapters:
 
-* **Primary Adapter**: Limited number of worker groups (e.g., on-premise resources)
-* **Secondary Adapter**: Overflow capacity (e.g., cloud burst)
+* **Primary Adapter**: A single worker group (identified by ``max_worker_groups == 1``) that starts once and never shuts down
+* **Secondary Adapter**: Elastic capacity (``max_worker_groups > 1``) that scales based on demand
 
-This is useful for scenarios where you have a fixed pool of dedicated resources but want to burst to cloud resources during peak demand.
+This is useful for scenarios where you have a fixed pool of dedicated resources but want to burst to additional resources during peak demand.
 
 .. code:: bash
 
     scaler_scheduler tcp://127.0.0.1:8516 \
-        --policy-content "allocate=even_load; scaling=fixed_elastic" \
-        --primary-adapter-webhook-url "http://localhost:8080/primary" \
-        --secondary-adapter-webhook-url "http://localhost:8081/secondary"
+        --policy-content "allocate=even_load; scaling=fixed_elastic"
 
 **Behavior:**
 
-* New worker groups are created from the primary adapter until its limit is reached
-* Once primary is at capacity, new groups are created from the secondary adapter
-* When scaling down, secondary adapter groups are shut down first
+* The primary adapter's worker group is started once and never shut down
+* Secondary adapter groups are created when demand exceeds primary capacity
+* When scaling down, only secondary adapter groups are shut down
 
 
 Worker Adapter Protocol
 -----------------------
 
-Scaling controllers communicate with worker adapters via HTTP POST requests to a webhook URL. The adapter must implement the following actions:
+Scaling controllers, running within the scheduler process, communicate with worker adapters using Cap'n Proto messages through the connection that worker adapters use to communicate with the scheduler. The protocol uses the following message types:
 
-**Get Adapter Info:**
+**WorkerAdapterHeartbeat (Adapter -> Scheduler):**
 
-Request:
+Worker adapters periodically send heartbeats to the scheduler containing their capacity information:
 
-.. code:: json
+* ``max_worker_groups``: Maximum number of worker groups this adapter can manage
+* ``workers_per_group``: Number of workers in each group
+* ``capabilities``: Default capabilities for workers from this adapter
 
-    {"action": "get_worker_adapter_info"}
+**WorkerAdapterCommand (Scheduler -> Adapter):**
 
-Response:
+The scheduler sends commands to worker adapters:
 
-.. code:: json
+* ``StartWorkerGroup``: Request to start a new worker group
 
-    {
-        "max_worker_groups": 10
-    }
+  * ``worker_group_id``: Empty for new groups (adapter assigns ID)
+  * ``capabilities``: Required capabilities for the worker group
 
-**Start Worker Group:**
+* ``ShutdownWorkerGroup``: Request to shut down an existing worker group
 
-Request:
+  * ``worker_group_id``: ID of the group to shut down
 
-.. code:: json
+**WorkerAdapterCommandResponse (Adapter -> Scheduler):**
 
-    {
-        "action": "start_worker_group",
-        "capabilities": {"gpu": 1}
-    }
+Worker adapters respond to commands with status and details:
 
-Response (success - HTTP 200):
-
-.. code:: json
-
-    {
-        "worker_group_id": "group-abc123",
-        "worker_ids": ["worker-1", "worker-2"],
-        "capabilities": {"gpu": 1}
-    }
-
-Response (capacity exceeded - HTTP 429):
-
-.. code:: json
-
-    {"error": "Capacity exceeded"}
-
-**Shutdown Worker Group:**
-
-Request:
-
-.. code:: json
-
-    {
-        "action": "shutdown_worker_group",
-        "worker_group_id": "group-abc123"
-    }
-
-Response (success - HTTP 200):
-
-.. code:: json
-
-    {"status": "shutdown"}
-
-Response (not found - HTTP 404):
-
-.. code:: json
-
-    {"error": "Worker group not found"}
+* ``worker_group_id``: ID of the affected worker group
+* ``command``: The command type this response is for
+* ``status``: Result status (``Success``, ``WorkerGroupTooMuch``, ``WorkerGroupIDNotFound``)
+* ``worker_ids``: List of worker IDs in the group (for start commands)
+* ``capabilities``: Actual capabilities of the started workers
 
 
 Example Worker Adapter
 ----------------------
 
-Here is an example of a simple worker adapter using the ECS (Amazon Elastic Container Service) integration:
+Here is an example of a worker adapter using the ECS (Amazon Elastic Container Service) integration:
 
 .. literalinclude:: ../../../src/scaler/worker_adapter/ecs.py
    :language: python
@@ -277,3 +219,4 @@ Tips
 
 3. **Monitor scaling events**: Use Scaler's monitoring tools (``scaler_top``) to observe scaling behavior and tune policies.
 
+4. **Worker Adapter Placement**: Run worker adapters on machines that can provision the required resources (e.g., run the ECS adapter where it has AWS credentials, run the native adapter on the target machine).

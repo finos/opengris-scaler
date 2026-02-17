@@ -1,7 +1,14 @@
 import abc
 from typing import Dict, List, Optional, Set
 
-from scaler.protocol.python.message import InformationSnapshot, Task
+from scaler.protocol.python.message import (
+    InformationSnapshot,
+    Task,
+    WorkerAdapterCommandResponse,
+    WorkerAdapterHeartbeat,
+)
+from scaler.protocol.python.status import ScalingManagerStatus
+from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import CommandSender
 from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.mixins import Reporter
 
@@ -56,5 +63,23 @@ class ScalerPolicy(Reporter, metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_snapshot(self, snapshot: InformationSnapshot):
+    def register_command_sender(self, sender: CommandSender) -> None:
+        """Register a callback function to send commands to the worker adapter."""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_snapshot(
+        self, information_snapshot: InformationSnapshot, adapter_heartbeat: WorkerAdapterHeartbeat
+    ) -> None:
+        """Process an information_snapshot and send scaling commands via the registered sender."""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def on_command_response(self, response: WorkerAdapterCommandResponse) -> None:
+        """Handle a response to a previously sent command. Updates internal state."""
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_scaling_status(self) -> ScalingManagerStatus:
+        """Return the current scaling status."""
         raise NotImplementedError()

@@ -3,14 +3,10 @@ import logging
 import multiprocessing
 import signal
 
-from aiohttp import web
-
-from scaler.config.common.web import WebConfig
 from scaler.config.common.worker_adapter import WorkerAdapterConfig
 from scaler.config.section.cluster import ClusterConfig
 from scaler.config.section.fixed_native_worker_adapter import FixedNativeWorkerAdapterConfig
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.network_util import get_available_tcp_port
 from scaler.worker_adapter.fixed_native import FixedNativeWorkerAdapter
 
 
@@ -40,7 +36,6 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
 
         self._worker_adapter = FixedNativeWorkerAdapter(
             FixedNativeWorkerAdapterConfig(
-                web_config=WebConfig(adapter_web_host=None, adapter_web_port=None),
                 preload=config.preload,
                 worker_adapter_config=WorkerAdapterConfig(
                     scheduler_address=config.scheduler_address,
@@ -81,17 +76,6 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         )
 
         self._worker_adapter.start()
-        app = self._worker_adapter.create_app()
-
-        # the fixed native worker adapter doesn't actually support spawning and shutting down workers dynamically,
-        # but we run the server here to keep the interface consistent
-        # it may become useful in the future
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, "127.0.0.1", get_available_tcp_port(), reuse_address=True, reuse_port=True)
-        await site.start()
-
-        logging.info(f"{self.__get_prefix()} started worker adapter web server on {site._host}:{site._port}")
 
         # run until stopped
         try:
@@ -103,8 +87,6 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
             # we're done when either all the workers have exited, or we received a stop signal
             await asyncio.wait([stop_task, join_task], return_when=asyncio.FIRST_COMPLETED)
         finally:
-            # stop the web server
-            await runner.cleanup()
             # shut down all workers
             self._worker_adapter.shutdown()
 
