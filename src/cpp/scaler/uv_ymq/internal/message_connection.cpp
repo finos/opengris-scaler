@@ -371,7 +371,7 @@ size_t MessageConnection::readMessage(std::span<const uint8_t> data) noexcept
 
 bool MessageConnection::allocateMessage() noexcept
 {
-    if (_recvCurrent._header > 0) {
+    if (_recvCurrent._header >= 0) {
         try {
             _recvCurrent._messagePayload = scaler::ymq::Bytes::alloc(_recvCurrent._header);
         } catch (const std::bad_alloc& e) {
