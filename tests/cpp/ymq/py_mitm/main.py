@@ -59,9 +59,7 @@ def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: in
     server_conn = TCPConnection(mitm_ip, mitm_port, remote_ip, server_port)
 
     # tracks the state of each connection
-    client_sent_fin_ack = False
     client_closed = False
-    server_sent_fin_ack = False
     server_closed = False
 
     while True:
@@ -104,17 +102,11 @@ def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: in
             if sender == server_conn:
                 print(f"[*] Connection to server established: {ip.src}:{tcp.sport} to {ip.dst}:{tcp.dport}")
 
-        if tcp.flags.F and tcp.flags.A:  # FIN-ACK
+        if tcp.flags.R or tcp.flags.F:  # RST or FIN
             if sender == client_conn:
-                client_sent_fin_ack = True
-            if sender == server_conn:
-                server_sent_fin_ack = True
-
-        if tcp.flags.A:  # ACK
-            if sender == client_conn and server_sent_fin_ack:
-                server_closed = True
-            if sender == server_conn and client_sent_fin_ack:
                 client_closed = True
+            if sender == server_conn:
+                server_closed = True
 
         if client_closed and server_closed:
             print("[*] Both connections closed")
