@@ -9,6 +9,13 @@ target_sources(test_uv_ymq PRIVATE
 
 add_subdirectory(internal)
 
+if(LINUX OR WIN32)
+	target_sources(test_uv_ymq PRIVATE
+		test_mitm.cpp)
+else()
+	message(WARNING "YMQ MITM tests are not supported on this platform")
+endif()
+
 target_sources(test_uv_ymq PRIVATE
 	../ymq/common/testing.h
 	../ymq/common/utils.h

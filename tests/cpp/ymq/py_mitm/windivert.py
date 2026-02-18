@@ -15,10 +15,12 @@ class WindivertMITMInterface(MITMInterface):
     __direction: pydivert.Direction
 
     def __init__(self, local_ip: str, local_port: int, remote_ip: str, server_port: int):
-        self._binder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._binder.bind((local_ip, local_port))
         self._windivert = pydivert.WinDivert(f"tcp.DstPort == {local_port} or tcp.SrcPort == {server_port}")
         self._windivert.open()
+
+        self._binder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._binder.bind((local_ip, local_port))
+        self._binder.listen(16)
 
     def recv(self) -> Packet:
         windivert_packet = self._windivert.recv()

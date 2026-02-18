@@ -77,9 +77,14 @@ TestResult basic_client_ymq(std::string address)
     auto socketResult = scaler::uv_ymq::sync::ConnectorSocket::init(context, "client", address);
     RETURN_FAILURE_IF_FALSE(socketResult.has_value());
 
-    auto socket = std::move(socketResult.value());
-    auto result = socket.sendMessage(Bytes {"yi er san si wu liu"});
-    RETURN_FAILURE_IF_FALSE(result.has_value());
+    auto socket     = std::move(socketResult.value());
+    auto sendResult = socket.sendMessage(Bytes {"yi er san si wu liu"});
+    RETURN_FAILURE_IF_FALSE(sendResult.has_value());
+
+    // Reading a message should fail as the server will immediately shutdown after receiving our message
+    auto readResult = socket.recvMessage();
+    RETURN_FAILURE_IF_FALSE(!readResult.has_value());
+    RETURN_FAILURE_IF_FALSE(readResult.error()._errorCode == Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
 
     return TestResult::Success;
 }
@@ -138,57 +143,6 @@ TestResult client_sends_big_message(std::string address_str)
     socket->writeMessage(msg);
 
     return TestResult::Success;
-}
-
-TestResult reconnect_server_main(std::string address)
-{
-    IOContext context {};
-
-    scaler::uv_ymq::sync::BinderSocket socket {context, "server"};
-    auto bindResult = socket.bindTo(address);
-    RETURN_FAILURE_IF_FALSE(bindResult.has_value());
-
-    auto result = socket.recvMessage();
-
-    RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "sync");
-
-    auto error = socket.sendMessage("client", Bytes {"acknowledge"});
-    RETURN_FAILURE_IF_FALSE(error.has_value());
-
-    return TestResult::Success;
-}
-
-TestResult reconnect_client_main(std::string address)
-{
-    IOContext context {};
-
-    auto socketResult = scaler::uv_ymq::sync::ConnectorSocket::init(context, "client", address);
-    RETURN_FAILURE_IF_FALSE(socketResult.has_value());
-
-    auto socket = std::move(socketResult.value());
-
-    // send "sync" and wait for "acknowledge" in a loop
-    // the mitm will send a RST after the first "sync"
-    // the "sync" message will be lost, but uv_ymq should automatically reconnect
-    // therefore the next "sync" message should succeed
-    for (size_t i = 0; i < 10; i++) {
-        auto error = socket.sendMessage(Bytes {"sync"});
-        RETURN_FAILURE_IF_FALSE(error.has_value());
-
-        // Try to receive with a timeout
-        // Note: sync API doesn't have built-in timeout, so we'll just try to receive
-        auto result = socket.recvMessage();
-        if (result.has_value()) {
-            RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "acknowledge");
-            return TestResult::Success;
-        }
-        // If receive failed, continue to next iteration
-        std::this_thread::sleep_for(std::chrono::seconds {1});
-    }
-
-    std::cerr << "failed to reconnect after 10 attempts\n";
-    return TestResult::Failure;
 }
 
 TestResult client_simulated_slow_network(std::string address)
@@ -299,21 +253,6 @@ TestResult client_sends_huge_header(std::string address)
         }
 
         return TestResult::Success;
-    }
-}
-
-void describeMessage(std::expected<scaler::ymq::Message, scaler::ymq::Error> value)
-{
-    if (value.has_value()) {
-        Bytes& payload = value->payload;
-        if (!payload.is_null()) {
-            std::cerr << "payload is '" << payload.as_string().value() << "' size is " << payload.size()
-                      << " payload == '' is " << (payload.as_string().value() == "") << "\n";
-        } else {
-            std::cerr << "payload is null\n";
-        }
-    } else {
-        std::cerr << "result is erroneous: " << value.error().what() << "\n";
     }
 }
 
@@ -456,20 +395,37 @@ TestResult close_nonexistent_connection()
 {
     IOContext context {};
 
-    scaler::uv_ymq::sync::BinderSocket socket {context, "client"};
+    scaler::uv_ymq::sync::BinderSocket socket {context, "server"};
 
     // note: we're not connected to anything; this connection does not exist
     // this should be a no-op
-    socket.closeConnection("server");
+    socket.closeConnection("client");
 
     return TestResult::Success;
 }
 
 TestResult test_request_stop()
 {
-    // Note: The sync API doesn't have a direct equivalent to requestIOSocketStop
-    // This test would need to be adapted for the async API or removed
-    // For now, we'll return success as a placeholder
+    IOContext context {};
+
+    std::future<std::expected<scaler::ymq::Message, Error>> future;
+
+    {
+        auto binder = scaler::uv_ymq::future::BinderSocket {context, "server"};
+
+        future = binder.recvMessage();
+
+        // Socket destructor will be called here, canceling pending operations
+    }
+
+    RETURN_FAILURE_IF_FALSE(
+        future.wait_for(std::chrono::milliseconds {100}) == std::future_status::ready, "future should have completed");
+
+    // The future created before stopping the socket should have been cancelled with an error
+    auto result = future.get();
+    RETURN_FAILURE_IF_FALSE(!result.has_value());
+    RETURN_FAILURE_IF_FALSE(result.error()._errorCode == Error::ErrorCode::IOSocketStopRequested);
+
     return TestResult::Success;
 }
 
@@ -620,12 +576,9 @@ TEST_P(UVYMQSocketTest, TestClientSendIncompleteIdentity)
     EXPECT_EQ(result, TestResult::Success);
 }
 
-// TODO: this should pass
-// currently uv_ymq rejects the second connection, saying that the message is too large even when it isn't
-//
 // in this test, the client sends an unrealistically-large header
 // it is important that uv_ymq checks the header size before allocating memory
-// both for resilence against attacks and to guard against errors
+// both for resilience against attacks and to guard against errors
 TEST_P(UVYMQSocketTest, TestClientSendHugeHeader)
 {
     const auto address = GetAddress(2897);
@@ -731,14 +684,14 @@ TEST_P(UVYMQSocketTest, TestClientSocketStopBeforeCloseConnection)
 }
 
 // in this test case, the we try to close a connection that does not exist
-TEST(UVYmqTestSuite, TestClientCloseNonexistentConnection)
+TEST(UVYMQSocketTest, TestClientCloseNonexistentConnection)
 {
     auto result = close_nonexistent_connection();
     EXPECT_EQ(result, TestResult::Success);
 }
 
 // this test case verifies that requesting a socket stop causes pending and subsequent operations to be cancelled
-TEST(UVYmqTestSuite, TestRequestSocketStop)
+TEST(UVYMQSocketTest, TestRequestSocketStop)
 {
     auto result = test_request_stop();
     EXPECT_EQ(result, TestResult::Success);
@@ -761,14 +714,3 @@ INSTANTIATE_TEST_SUITE_P(
         // use tcp/ipc as suffix for test names
         return info.param;
     });
-
-int main(int argc, char** argv)
-{
-    ensure_python_initialized();
-
-    testing::InitGoogleTest(&argc, argv);
-    auto result = RUN_ALL_TESTS();
-
-    maybe_finalize_python();
-    return result;
-}
