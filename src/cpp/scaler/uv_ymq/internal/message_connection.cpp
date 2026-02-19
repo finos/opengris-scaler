@@ -68,6 +68,7 @@ void MessageConnection::connect(Client client) noexcept
     _client = std::move(client);
     _state  = State::Connected;
 
+    setNoDelay();
     readStart();
     processSendQueue();
 }
@@ -313,6 +314,15 @@ void MessageConnection::write(
         UV_EXIT_ON_ERROR(pipe->write(buffers, std::move(callback)));
     } else {
         std::unreachable();
+    }
+}
+
+void MessageConnection::setNoDelay() noexcept
+{
+    assert(connected());
+
+    if (auto* tcpSocket = std::get_if<scaler::wrapper::uv::TCPSocket>(&_client.value())) {
+        UV_EXIT_ON_ERROR(tcpSocket->nodelay(true));
     }
 }
 

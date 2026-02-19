@@ -35,6 +35,9 @@ public:
     // See uv_tcp_getpeername
     std::expected<SocketAddress, Error> getPeerName() const noexcept;
 
+    // See uv_tcp_nodelay
+    std::expected<void, Error> nodelay(bool enable) noexcept;
+
 private:
     TCPSocket() noexcept = default;
 };
