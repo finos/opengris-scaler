@@ -1,7 +1,8 @@
 #pragma once
-#include <algorithm>  // std::upper_bound
+#include <expected>
 #include <string>
 
+#include "scaler/error/error.h"
 #include "scaler/ymq/internal/raw_stream_connection_handle.h"
 #include "scaler/ymq/internal/socket_address.h"
 struct sockaddr;
@@ -9,9 +10,9 @@ struct sockaddr;
 namespace scaler {
 namespace ymq {
 
-SocketAddress stringToSockaddr(const std::string& address);
-SocketAddress stringToSockaddrUn(const std::string& address);
-SocketAddress stringToSocketAddress(const std::string& address);
+std::expected<SocketAddress, Error> stringToSockaddr(const std::string& address);
+std::expected<SocketAddress, Error> stringToSockaddrUn(const std::string& address);
+std::expected<SocketAddress, Error> stringToSocketAddress(const std::string& address);
 
 int setNoDelay(int fd);
 SocketAddress getLocalAddr(int fd);

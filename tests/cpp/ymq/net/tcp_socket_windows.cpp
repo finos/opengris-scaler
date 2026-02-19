@@ -57,7 +57,7 @@ TCPSocket& TCPSocket::operator=(TCPSocket&& other) noexcept
 
 void TCPSocket::tryConnect(const std::string& address_str, int tries) const
 {
-    auto address = scaler::ymq::stringToSocketAddress(address_str);
+    auto address = scaler::ymq::stringToSocketAddress(address_str).value();
     if (address.nativeHandleType() != SocketAddress::Type::TCP) {
         throw std::runtime_error(std::format("Unsupported protocol for TCPSocket: {}", address.nativeHandleType()));
     }
@@ -82,7 +82,7 @@ void TCPSocket::tryConnect(const std::string& address_str, int tries) const
 
 void TCPSocket::bind(const std::string& address_str) const
 {
-    auto address = scaler::ymq::stringToSocketAddress(address_str);
+    auto address = scaler::ymq::stringToSocketAddress(address_str).value();
     if (address.nativeHandleType() != SocketAddress::Type::TCP) {
         throw std::runtime_error(std::format("Unsupported protocol for TCPSocket: {}", address.nativeHandleType()));
     }

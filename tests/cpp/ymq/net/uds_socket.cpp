@@ -46,7 +46,7 @@ UDSSocket& UDSSocket::operator=(UDSSocket&& other) noexcept
 
 void UDSSocket::tryConnect(const std::string& address_str, int tries) const
 {
-    auto address = scaler::ymq::stringToSocketAddress(address_str);
+    auto address = scaler::ymq::stringToSocketAddress(address_str).value();
     if (address.nativeHandleType() != SocketAddress::Type::IPC) {
         throw std::runtime_error(std::format("Unsupported protocol for UDSSocket: {}", address.nativeHandleType()));
     }
@@ -71,7 +71,7 @@ void UDSSocket::tryConnect(const std::string& address_str, int tries) const
 
 void UDSSocket::bind(const std::string& address_str) const
 {
-    auto address = scaler::ymq::stringToSocketAddress(address_str);
+    auto address = scaler::ymq::stringToSocketAddress(address_str).value();
     if (address.nativeHandleType() != SocketAddress::Type::IPC) {
         throw std::runtime_error(std::format("Unsupported protocol for UDSSocket: {}", address.nativeHandleType()));
     }
