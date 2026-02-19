@@ -1,19 +1,13 @@
 import abc
 from typing import Dict, List, Optional, Set
 
-from scaler.protocol.python.message import (
-    InformationSnapshot,
-    Task,
-    WorkerAdapterCommandResponse,
-    WorkerAdapterHeartbeat,
-)
+from scaler.protocol.python.message import InformationSnapshot, Task, WorkerAdapterCommand, WorkerAdapterHeartbeat
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import CommandSender
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
 from scaler.utility.identifiers import TaskID, WorkerID
-from scaler.utility.mixins import Reporter
 
 
-class ScalerPolicy(Reporter, metaclass=abc.ABCMeta):
+class ScalerPolicy(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def add_worker(self, worker: WorkerID, capabilities: Dict[str, int], queue_size: int) -> bool:
         """add worker to worker collection"""
@@ -63,23 +57,17 @@ class ScalerPolicy(Reporter, metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def register_command_sender(self, sender: CommandSender) -> None:
-        """Register a callback function to send commands to the worker adapter."""
+    def get_scaling_commands(
+        self,
+        information_snapshot: InformationSnapshot,
+        adapter_heartbeat: WorkerAdapterHeartbeat,
+        worker_groups: WorkerGroupState,
+        worker_group_capabilities: WorkerGroupCapabilities,
+    ) -> List[WorkerAdapterCommand]:
+        """Pure function: state in, commands out. Commands are either all start or all shutdown, never mixed."""
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_snapshot(
-        self, information_snapshot: InformationSnapshot, adapter_heartbeat: WorkerAdapterHeartbeat
-    ) -> None:
-        """Process an information_snapshot and send scaling commands via the registered sender."""
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def on_command_response(self, response: WorkerAdapterCommandResponse) -> None:
-        """Handle a response to a previously sent command. Updates internal state."""
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def get_scaling_status(self) -> ScalingManagerStatus:
-        """Return the current scaling status."""
+    def get_scaling_status(self, worker_groups: WorkerGroupState) -> ScalingManagerStatus:
+        """Pure function: state in, status out."""
         raise NotImplementedError()

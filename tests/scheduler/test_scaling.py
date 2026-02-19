@@ -1,10 +1,8 @@
-import asyncio
 import os
 import signal
 import time
 import unittest
 from multiprocessing import Process
-from typing import List
 
 from scaler import Client
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
@@ -35,14 +33,13 @@ from scaler.config.types.zmq import ZMQConfig
 from scaler.protocol.python.message import (
     InformationSnapshot,
     Task,
-    WorkerAdapterCommand,
-    WorkerAdapterCommandResponse,
     WorkerAdapterCommandType,
     WorkerAdapterHeartbeat,
     WorkerHeartbeat,
 )
 from scaler.protocol.python.status import Resource
 from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingController
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
@@ -211,42 +208,31 @@ def _create_adapter_heartbeat(max_worker_groups: int = 10) -> WorkerAdapterHeart
     return WorkerAdapterHeartbeat.new_msg(max_worker_groups=max_worker_groups, workers_per_group=1, capabilities={})
 
 
-class MockCommandSender:
-    """Mock command sender that captures sent commands."""
-
-    def __init__(self):
-        self.commands: List[WorkerAdapterCommand] = []
-
-    async def send(self, command: WorkerAdapterCommand) -> None:
-        self.commands.append(command)
-
-
 class TestCapabilityScalingController(unittest.TestCase):
-    """Unit tests for CapabilityScalingController with stateful interface."""
+    """Unit tests for CapabilityScalingController with stateless interface."""
 
     def setUp(self):
         setup_logger()
         self.controller = CapabilityScalingController()
-        self.mock_sender = MockCommandSender()
-        self.controller.register_command_sender(self.mock_sender.send)
-
-    def _run_async(self, coro):
-        """Helper to run async code in tests."""
-        return asyncio.run(coro)
+        # Empty initial state
+        self.worker_groups: WorkerGroupState = {}
+        self.worker_group_capabilities: WorkerGroupCapabilities = {}
 
     def test_starts_worker_group_when_no_capable_workers(self):
         """Test that a worker group is started when tasks require capabilities no worker provides."""
         task_id = TaskID.generate_task_id()
         task = _create_mock_task(task_id, {"gpu": 1})
 
-        snapshot = InformationSnapshot(tasks={task_id: task}, workers={})
+        information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={})
         adapter_heartbeat = _create_adapter_heartbeat()
 
-        self._run_async(self.controller.on_snapshot(snapshot, adapter_heartbeat))
+        commands = self.controller.get_scaling_commands(
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        )
 
-        self.assertEqual(len(self.mock_sender.commands), 1)
-        self.assertEqual(self.mock_sender.commands[0].command, WorkerAdapterCommandType.StartWorkerGroup)
-        self.assertEqual(self.mock_sender.commands[0].capabilities, {"gpu": 1})
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0].command, WorkerAdapterCommandType.StartWorkerGroup)
+        self.assertEqual(commands[0].capabilities, {"gpu": 1})
 
     def test_no_scale_when_capable_workers_exist(self):
         """Test that no worker group is started when workers with matching capabilities exist."""
@@ -255,15 +241,15 @@ class TestCapabilityScalingController(unittest.TestCase):
         worker_id = WorkerID(b"worker-1")
         worker_heartbeat = _create_mock_worker_heartbeat({"gpu": -1}, queued_tasks=0)
 
-        snapshot = InformationSnapshot(tasks={task_id: task}, workers={worker_id: worker_heartbeat})
+        information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={worker_id: worker_heartbeat})
         adapter_heartbeat = _create_adapter_heartbeat()
 
-        self._run_async(self.controller.on_snapshot(snapshot, adapter_heartbeat))
+        commands = self.controller.get_scaling_commands(
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        )
 
         # Should not return any start commands
-        start_commands = [
-            c for c in self.mock_sender.commands if c.command == WorkerAdapterCommandType.StartWorkerGroup
-        ]
+        start_commands = [c for c in commands if c.command == WorkerAdapterCommandType.StartWorkerGroup]
         self.assertEqual(len(start_commands), 0)
 
     def test_scales_when_task_ratio_exceeds_threshold(self):
@@ -277,14 +263,16 @@ class TestCapabilityScalingController(unittest.TestCase):
         worker_id = WorkerID(b"worker-1")
         worker_heartbeat = _create_mock_worker_heartbeat({"gpu": -1}, queued_tasks=5)
 
-        snapshot = InformationSnapshot(tasks=tasks, workers={worker_id: worker_heartbeat})
+        information_snapshot = InformationSnapshot(tasks=tasks, workers={worker_id: worker_heartbeat})
         adapter_heartbeat = _create_adapter_heartbeat()
 
-        self._run_async(self.controller.on_snapshot(snapshot, adapter_heartbeat))
+        commands = self.controller.get_scaling_commands(
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        )
 
-        self.assertEqual(len(self.mock_sender.commands), 1)
-        self.assertEqual(self.mock_sender.commands[0].command, WorkerAdapterCommandType.StartWorkerGroup)
-        self.assertEqual(self.mock_sender.commands[0].capabilities, {"gpu": 1})
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0].command, WorkerAdapterCommandType.StartWorkerGroup)
+        self.assertEqual(commands[0].capabilities, {"gpu": 1})
 
     def test_different_capability_sets_handled_separately(self):
         """Test that tasks with different capabilities trigger separate scaling decisions."""
@@ -294,15 +282,15 @@ class TestCapabilityScalingController(unittest.TestCase):
         tpu_task_id = TaskID.generate_task_id()
         tpu_task = _create_mock_task(tpu_task_id, {"tpu": 1})
 
-        snapshot = InformationSnapshot(tasks={gpu_task_id: gpu_task, tpu_task_id: tpu_task}, workers={})
+        information_snapshot = InformationSnapshot(tasks={gpu_task_id: gpu_task, tpu_task_id: tpu_task}, workers={})
         adapter_heartbeat = _create_adapter_heartbeat()
 
-        self._run_async(self.controller.on_snapshot(snapshot, adapter_heartbeat))
-
         # Should return 2 start commands (one for each capability set)
-        start_commands = [
-            c for c in self.mock_sender.commands if c.command == WorkerAdapterCommandType.StartWorkerGroup
-        ]
+        commands = self.controller.get_scaling_commands(
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        )
+
+        start_commands = [c for c in commands if c.command == WorkerAdapterCommandType.StartWorkerGroup]
         self.assertEqual(len(start_commands), 2)
 
         capabilities_requested = {frozenset(c.capabilities.keys()) for c in start_commands}
@@ -318,15 +306,15 @@ class TestCapabilityScalingController(unittest.TestCase):
         # Worker has both GPU and CPU capabilities
         worker_heartbeat = _create_mock_worker_heartbeat({"gpu": -1, "cpu": -1}, queued_tasks=0)
 
-        snapshot = InformationSnapshot(tasks={task_id: task}, workers={worker_id: worker_heartbeat})
+        information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={worker_id: worker_heartbeat})
         adapter_heartbeat = _create_adapter_heartbeat()
 
-        self._run_async(self.controller.on_snapshot(snapshot, adapter_heartbeat))
+        commands = self.controller.get_scaling_commands(
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        )
 
         # No StartWorkerGroup command should be returned
-        start_commands = [
-            c for c in self.mock_sender.commands if c.command == WorkerAdapterCommandType.StartWorkerGroup
-        ]
+        start_commands = [c for c in commands if c.command == WorkerAdapterCommandType.StartWorkerGroup]
         self.assertEqual(len(start_commands), 0)
 
     def test_tasks_without_capabilities_handled(self):
@@ -334,115 +322,60 @@ class TestCapabilityScalingController(unittest.TestCase):
         task_id = TaskID.generate_task_id()
         task = _create_mock_task(task_id, {})  # No capabilities required
 
-        snapshot = InformationSnapshot(tasks={task_id: task}, workers={})  # No workers
+        information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={})  # No workers
         adapter_heartbeat = _create_adapter_heartbeat()
 
-        self._run_async(self.controller.on_snapshot(snapshot, adapter_heartbeat))
+        commands = self.controller.get_scaling_commands(
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        )
 
         # Should start a worker group with empty capabilities
-        self.assertEqual(len(self.mock_sender.commands), 1)
-        self.assertEqual(self.mock_sender.commands[0].command, WorkerAdapterCommandType.StartWorkerGroup)
-        self.assertEqual(self.mock_sender.commands[0].capabilities, {})
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0].command, WorkerAdapterCommandType.StartWorkerGroup)
+        self.assertEqual(commands[0].capabilities, {})
 
     def test_get_status_returns_scaling_manager_status(self):
         """Test that get_status returns a ScalingManagerStatus object."""
-        # Simulate adding a worker group via response
-        response = WorkerAdapterCommandResponse.new_msg(
-            worker_group_id=b"wg-test",
-            command=WorkerAdapterCommandType.StartWorkerGroup,
-            status=WorkerAdapterCommandResponse.Status.Success,
-            capabilities={"gpu": -1},
-            worker_ids=[b"worker-1", b"worker-2"],
-        )
-        self.controller.on_command_response(response)
+        worker_groups: WorkerGroupState = {b"wg-test": [WorkerID(b"worker-1"), WorkerID(b"worker-2")]}
 
-        status = self.controller.get_status()
+        status = self.controller.get_status(worker_groups)
 
         from scaler.protocol.python.status import ScalingManagerStatus
 
         self.assertIsInstance(status, ScalingManagerStatus)
-
-    def test_on_command_response_start_success(self):
-        """Test that on_command_response correctly updates state on successful start."""
-        response = WorkerAdapterCommandResponse.new_msg(
-            worker_group_id=b"wg-new",
-            command=WorkerAdapterCommandType.StartWorkerGroup,
-            status=WorkerAdapterCommandResponse.Status.Success,
-            capabilities={"gpu": -1},
-            worker_ids=[],
-        )
-
-        self.controller.on_command_response(response)
-
-        # Check internal state
-        self.assertIn(b"wg-new", self.controller._worker_groups)
-        self.assertIn(b"wg-new", self.controller._worker_group_capabilities)
-        self.assertEqual(self.controller._worker_group_capabilities[b"wg-new"], {"gpu": -1})
-
-    def test_on_command_response_shutdown_success(self):
-        """Test that on_command_response correctly updates state on successful shutdown."""
-        # Pre-populate state via a start response
-        start_response = WorkerAdapterCommandResponse.new_msg(
-            worker_group_id=b"wg-old",
-            command=WorkerAdapterCommandType.StartWorkerGroup,
-            status=WorkerAdapterCommandResponse.Status.Success,
-            capabilities={"gpu": -1},
-            worker_ids=[b"worker-1"],
-        )
-        self.controller.on_command_response(start_response)
-
-        # Now shutdown
-        shutdown_response = WorkerAdapterCommandResponse.new_msg(
-            worker_group_id=b"wg-old",
-            command=WorkerAdapterCommandType.ShutdownWorkerGroup,
-            status=WorkerAdapterCommandResponse.Status.Success,
-            capabilities={},
-        )
-
-        self.controller.on_command_response(shutdown_response)
-
-        self.assertNotIn(b"wg-old", self.controller._worker_groups)
-        self.assertNotIn(b"wg-old", self.controller._worker_group_capabilities)
 
     def test_no_duplicate_worker_group_for_pending_group(self):
         """Test that no new worker group is started if a capable group is already pending."""
         # First snapshot: task with mqa:1, no workers -> should start a worker group
         task1_id = TaskID.generate_task_id()
         task1 = _create_mock_task(task1_id, {"mqa": 1})
-        snapshot1 = InformationSnapshot(tasks={task1_id: task1}, workers={})
+        information_snapshot1 = InformationSnapshot(tasks={task1_id: task1}, workers={})
         adapter_heartbeat = _create_adapter_heartbeat()
 
-        self._run_async(self.controller.on_snapshot(snapshot1, adapter_heartbeat))
-
-        self.assertEqual(len(self.mock_sender.commands), 1)
-        self.assertEqual(self.mock_sender.commands[0].command, WorkerAdapterCommandType.StartWorkerGroup)
-        self.assertEqual(self.mock_sender.commands[0].capabilities, {"mqa": 1})
-
-        # Simulate adapter response - update state
-        wg_response = WorkerAdapterCommandResponse.new_msg(
-            worker_group_id=b"wg-mqa",
-            command=WorkerAdapterCommandType.StartWorkerGroup,
-            status=WorkerAdapterCommandResponse.Status.Success,
-            capabilities={"mqa": -1},
-            worker_ids=[],
+        commands1 = self.controller.get_scaling_commands(
+            information_snapshot1, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
         )
-        self.controller.on_command_response(wg_response)
 
-        # Clear commands for next snapshot
-        self.mock_sender.commands.clear()
+        self.assertEqual(len(commands1), 1)
+        self.assertEqual(commands1[0].command, WorkerAdapterCommandType.StartWorkerGroup)
+        self.assertEqual(commands1[0].capabilities, {"mqa": 1})
+
+        # Simulate state update as if adapter responded successfully
+        updated_groups: WorkerGroupState = {b"wg-mqa": []}
+        updated_caps: WorkerGroupCapabilities = {b"wg-mqa": {"mqa": -1}}
 
         # Second snapshot: task with mqa:-1, no workers connected yet
         # Should NOT start another group since capable group already exists
         task2_id = TaskID.generate_task_id()
         task2 = _create_mock_task(task2_id, {"mqa": -1})
-        snapshot2 = InformationSnapshot(tasks={task2_id: task2}, workers={})
+        information_snapshot2 = InformationSnapshot(tasks={task2_id: task2}, workers={})
 
-        self._run_async(self.controller.on_snapshot(snapshot2, adapter_heartbeat))
+        commands2 = self.controller.get_scaling_commands(
+            information_snapshot2, adapter_heartbeat, updated_groups, updated_caps
+        )
 
         # No StartWorkerGroup command should be returned
-        start_commands = [
-            c for c in self.mock_sender.commands if c.command == WorkerAdapterCommandType.StartWorkerGroup
-        ]
+        start_commands = [c for c in commands2 if c.command == WorkerAdapterCommandType.StartWorkerGroup]
         self.assertEqual(len(start_commands), 0, "Should not start new worker group when capable group is pending")
 
 

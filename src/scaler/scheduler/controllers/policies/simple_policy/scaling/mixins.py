@@ -1,59 +1,35 @@
 import abc
-from typing import Callable, Coroutine
+from typing import List
 
-from scaler.protocol.python.message import (
-    InformationSnapshot,
-    WorkerAdapterCommand,
-    WorkerAdapterCommandResponse,
-    WorkerAdapterHeartbeat,
-)
+from scaler.protocol.python.message import InformationSnapshot, WorkerAdapterCommand, WorkerAdapterHeartbeat
 from scaler.protocol.python.status import ScalingManagerStatus
-
-# Type alias for the command sender callback
-CommandSender = Callable[[WorkerAdapterCommand], Coroutine[None, None, None]]
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
 
 
 class ScalingController:
     """
-    Stateful scaling controller interface.
+    Stateless scaling controller interface.
 
-    Each controller owns its own state (worker groups, capabilities).
-    Commands are sent via a registered callback to the WorkerAdapterController.
+    All state (worker groups, capabilities) is owned by WorkerAdapterController and passed in as parameters.
+    Controllers return commands rather than mutating internal state.
     """
 
     @abc.abstractmethod
-    def register_command_sender(self, sender: CommandSender) -> None:
+    def get_scaling_commands(
+        self,
+        information_snapshot: InformationSnapshot,
+        adapter_heartbeat: WorkerAdapterHeartbeat,
+        worker_groups: WorkerGroupState,
+        worker_group_capabilities: WorkerGroupCapabilities,
+    ) -> List[WorkerAdapterCommand]:
         """
-        Register a callback function to send commands to the worker adapter.
+        Pure function: state in, commands out.
 
-        Args:
-            sender: An async function that sends a WorkerAdapterCommand.
-        """
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    async def on_snapshot(
-        self, information_snapshot: InformationSnapshot, adapter_heartbeat: WorkerAdapterHeartbeat
-    ) -> None:
-        """
-        Process an information_snapshot and send commands via the registered sender.
-
-        This method evaluates the current state against the information_snapshot and
-        sends any necessary scaling commands.
+        Returns a list of WorkerAdapterCommands. Commands are either all start or all shutdown, never mixed.
         """
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_command_response(self, response: WorkerAdapterCommandResponse) -> None:
-        """
-        Handle a response to a previously sent command.
-
-        Updates internal state based on the response (e.g., adding or removing
-        worker groups from tracking).
-        """
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def get_status(self) -> ScalingManagerStatus:
-        """Return the current scaling status."""
+    def get_status(self, worker_groups: WorkerGroupState) -> ScalingManagerStatus:
+        """Pure function: state in, status out."""
         raise NotImplementedError()
