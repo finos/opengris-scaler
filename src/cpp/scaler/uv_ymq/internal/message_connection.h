@@ -152,6 +152,8 @@ private:
 
     void write(std::span<const std::span<const uint8_t>> buffers, scaler::wrapper::uv::WriteCallback callback) noexcept;
 
+    void setNoDelay() noexcept;
+
     void readStart() noexcept;
 
     void readStop() noexcept;

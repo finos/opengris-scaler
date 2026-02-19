@@ -67,6 +67,8 @@ TestResult basic_server_ymq(std::string address)
     RETURN_FAILURE_IF_FALSE(result.has_value());
     RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "yi er san si wu liu");
 
+    std::cerr << "Server finishes\n";
+
     return TestResult::Success;
 }
 
@@ -85,6 +87,8 @@ TestResult basic_client_ymq(std::string address)
     auto readResult = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(!readResult.has_value());
     RETURN_FAILURE_IF_FALSE(readResult.error()._errorCode == Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
+
+    std::cerr << "Client finishes\n";
 
     return TestResult::Success;
 }
