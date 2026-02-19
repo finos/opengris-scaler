@@ -10,7 +10,7 @@ using scaler::ymq::SocketAddress;
 
 std::unique_ptr<Socket> connect_socket(std::string& address_str)
 {
-    auto address = scaler::ymq::stringToSocketAddress(address_str);
+    auto address = scaler::ymq::stringToSocketAddress(address_str).value();
 
     if (address.nativeHandleType() == SocketAddress::Type::TCP) {
         auto socket = std::make_unique<TCPSocket>();
@@ -23,7 +23,7 @@ std::unique_ptr<Socket> connect_socket(std::string& address_str)
 
 std::unique_ptr<Socket> bind_socket(std::string& address_str)
 {
-    auto address = scaler::ymq::stringToSocketAddress(address_str);
+    auto address = scaler::ymq::stringToSocketAddress(address_str).value();
 
     if (address.nativeHandleType() == SocketAddress::Type::TCP) {
         auto socket = std::make_unique<TCPSocket>();

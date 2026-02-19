@@ -8,8 +8,10 @@
 
 // C++
 #include <expected>
+#include <new>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -35,6 +37,8 @@ struct YMQState {
     OwnedPyObject<> PyIOSocketType;      // Reference to the IOSocket type
     OwnedPyObject<> PyIOContextType;     // Reference to the IOContext type
     OwnedPyObject<> PyExceptionType;     // Reference to the Exception type
+
+    std::unordered_map<int, OwnedPyObject<>> PyExceptionSubtypes;  // Map of error code to exception subclass
 };
 
 inline YMQState* YMQStateFromSelf(PyObject* self)
@@ -105,19 +109,8 @@ namespace pymod {
 inline void YMQ_free(void* stateVoid)
 {
     YMQState* state = (YMQState*)stateVoid;
-    try {
-        state->enumModule.~OwnedPyObject();
-        state->asyncioModule.~OwnedPyObject();
-        state->PyIOSocketEnumType.~OwnedPyObject();
-        state->PyErrorCodeType.~OwnedPyObject();
-        state->PyBytesYMQType.~OwnedPyObject();
-        state->PyMessageType.~OwnedPyObject();
-        state->PyIOSocketType.~OwnedPyObject();
-        state->PyIOContextType.~OwnedPyObject();
-        state->PyExceptionType.~OwnedPyObject();
-    } catch (...) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to free YMQState");
-        PyErr_WriteUnraisable(nullptr);
+    if (state) {
+        state->~YMQState();
     }
 }
 
@@ -255,6 +248,62 @@ inline int YMQ_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
     return 0;
 }
 
+inline int YMQ_createExceptions(PyObject* pyModule, YMQState* state)
+{
+    std::vector<std::pair<Error::ErrorCode, std::string>> exceptions = {
+        {Error::ErrorCode::InvalidPortFormat, "InvalidPortFormatError"},
+        {Error::ErrorCode::InvalidAddressFormat, "InvalidAddressFormatError"},
+        {Error::ErrorCode::ConfigurationError, "ConfigurationError"},
+        {Error::ErrorCode::SignalNotSupported, "SignalNotSupportedError"},
+        {Error::ErrorCode::CoreBug, "CoreBugError"},
+        {Error::ErrorCode::RepetetiveIOSocketIdentity, "RepetetiveIOSocketIdentityError"},
+        {Error::ErrorCode::RedundantIOSocketRefCount, "RedundantIOSocketRefCountError"},
+        {Error::ErrorCode::MultipleConnectToNotSupported, "MultipleConnectToNotSupportedError"},
+        {Error::ErrorCode::MultipleBindToNotSupported, "MultipleBindToNotSupportedError"},
+        {Error::ErrorCode::InitialConnectFailedWithInProgress, "InitialConnectFailedWithInProgressError"},
+        {Error::ErrorCode::SendMessageRequestCouldNotComplete, "SendMessageRequestCouldNotCompleteError"},
+        {Error::ErrorCode::SetSockOptNonFatalFailure, "SetSockOptNonFatalFailureError"},
+        {Error::ErrorCode::IPv6NotSupported, "IPv6NotSupportedError"},
+        {Error::ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery,
+         "RemoteEndDisconnectedOnSocketWithoutGuaranteedDeliveryError"},
+        {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd, "ConnectorSocketClosedByRemoteEndError"},
+        {Error::ErrorCode::IOSocketStopRequested, "IOSocketStopRequestedError"},
+        {Error::ErrorCode::BinderSendMessageWithNoAddress, "BinderSendMessageWithNoAddressError"},
+        {Error::ErrorCode::IPCOnWinNotSupported, "IPCOnWinNotSupportedError"},
+        {Error::ErrorCode::UVError, "UVError"},
+    };
+
+    static PyType_Slot slots[] = {{0, nullptr}};
+
+    for (const auto& entry: exceptions) {
+        std::string fullName = "_ymq." + entry.second;
+
+        PyType_Spec spec = {
+            fullName.c_str(),
+            0,
+            0,
+            Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+            slots,
+        };
+
+        OwnedPyObject<> bases = PyTuple_Pack(1, *state->PyExceptionType);
+        if (!bases)
+            return -1;
+
+        PyObject* subtype = PyType_FromModuleAndSpec(pyModule, &spec, *bases);
+
+        if (!subtype)
+            return -1;
+
+        state->PyExceptionSubtypes[(int)entry.first] = subtype;
+
+        if (PyModule_AddObjectRef(pyModule, entry.second.c_str(), subtype) < 0)
+            return -1;
+    }
+
+    return 0;
+}
+
 // internal convenience function to create a type and add it to the module
 static int YMQ_createType(
     // the module object
@@ -303,6 +352,9 @@ static int YMQ_exec(PyObject* pyModule)
     auto state = (YMQState*)PyModule_GetState(pyModule);
     if (!state)
         return -1;
+
+    // Use placement new to initialize C++ objects in the pre-allocated (zero-initialized) memory
+    new (state) YMQState();
 
     state->enumModule = PyImport_ImportModule("enum");
     if (!state->enumModule)
@@ -353,6 +405,9 @@ static int YMQ_exec(PyObject* pyModule)
         return -1;
     }
     Py_DECREF(exceptionBases);
+
+    if (YMQ_createExceptions(pyModule, state) < 0)
+        return -1;
 
     return 0;
 }

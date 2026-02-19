@@ -38,9 +38,17 @@ class TestPymodYMQ(unittest.IsolatedAsyncioTestCase):
         await binder.bind(address)
         await connector.connect(address)
 
-        with self.assertRaises(ymq.YMQException) as exc:
+        with self.assertRaises(ymq.BinderSendMessageWithNoAddressError) as exc:
             await binder.send(ymq.Message(address=None, payload=b"payload"))
         self.assertEqual(exc.exception.code, ymq.ErrorCode.BinderSendMessageWithNoAddress)
+
+    async def test_invalid_address(self):
+        ctx = ymq.IOContext()
+        connector = await ctx.createIOSocket("connector", ymq.IOSocketType.Connector)
+
+        with self.assertRaises(ymq.InvalidAddressFormatError) as exc:
+            await connector.bind("invalid_address")
+        self.assertEqual(exc.exception.code, ymq.ErrorCode.InvalidAddressFormat)
 
     async def test_routing(self):
         ctx = ymq.IOContext()

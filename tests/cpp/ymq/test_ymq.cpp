@@ -963,6 +963,25 @@ TEST(CcYmqTestSuite, TestRequestSocketStop)
     EXPECT_EQ(result, TestResult::Success);
 }
 
+// this test case verifies that connecting to an invalid address correctly returns an error
+TEST(CcYmqTestSuite, TestInvalidAddress)
+{
+    IOContext context(1);
+    auto socket = syncCreateSocket(context, IOSocketType::Connector, "client");
+
+    auto connect_promise = std::promise<std::expected<void, Error>>();
+    auto connect_future  = connect_promise.get_future();
+
+    socket->connectTo(
+        "tcp://invalid", [&connect_promise](std::expected<void, Error> result) { connect_promise.set_value(result); });
+
+    auto result = connect_future.get();
+    EXPECT_FALSE(result.has_value());
+    EXPECT_EQ(result.error()._errorCode, Error::ErrorCode::InvalidAddressFormat);
+
+    context.removeIOSocket(socket);
+}
+
 std::vector<std::string> GetTransports()
 {
     std::vector<std::string> transports;
