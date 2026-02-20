@@ -1,7 +1,7 @@
 from scaler.config.section.fixed_native_worker_adapter import FixedNativeWorkerAdapterConfig
 from scaler.utility.event_loop import register_event_loop
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_adapter.fixed_native import FixedNativeWorkerAdapter
+from scaler.worker_adapter.drivers.fixed_native import FixedNativeWorkerAdapter
 
 
 def main():

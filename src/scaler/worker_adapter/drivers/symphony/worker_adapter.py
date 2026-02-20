@@ -21,8 +21,8 @@ from scaler.protocol.python.message import (
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_adapter.common import WorkerGroupID
-from scaler.worker_adapter.symphony.worker import SymphonyWorker
+from scaler.worker_adapter.drivers.common import WorkerGroupID
+from scaler.worker_adapter.drivers.symphony.worker import SymphonyWorker
 
 Status = WorkerAdapterCommandResponse.Status
 

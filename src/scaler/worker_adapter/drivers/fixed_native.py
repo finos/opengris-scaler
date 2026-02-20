@@ -4,7 +4,7 @@ from typing import Dict
 from scaler.config.section.fixed_native_worker_adapter import FixedNativeWorkerAdapterConfig
 from scaler.utility.identifiers import WorkerID
 from scaler.worker.worker import Worker
-from scaler.worker_adapter.common import WorkerGroupNotFoundError
+from scaler.worker_adapter.drivers.common import WorkerGroupNotFoundError
 
 
 class FixedNativeWorkerAdapter:

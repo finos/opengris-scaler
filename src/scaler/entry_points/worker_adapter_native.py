@@ -1,6 +1,6 @@
 from scaler.config.section.native_worker_adapter import NativeWorkerAdapterConfig
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_adapter.native import NativeWorkerAdapter
+from scaler.worker_adapter.drivers.native import NativeWorkerAdapter
 
 
 def main():

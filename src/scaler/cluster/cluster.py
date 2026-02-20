@@ -7,7 +7,7 @@ from scaler.config.common.worker_adapter import WorkerAdapterConfig
 from scaler.config.section.cluster import ClusterConfig
 from scaler.config.section.fixed_native_worker_adapter import FixedNativeWorkerAdapterConfig
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_adapter.fixed_native import FixedNativeWorkerAdapter
+from scaler.worker_adapter.drivers.fixed_native import FixedNativeWorkerAdapter
 
 
 class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
@@ -33,6 +33,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         self._logging_paths = config.logging_config.paths
         self._logging_config_file = config.logging_config.config_file
         self._logging_level = config.logging_config.level
+        self._deterministic_worker_ids = config.deterministic_worker_ids
 
         self._worker_adapter = FixedNativeWorkerAdapter(
             FixedNativeWorkerAdapterConfig(

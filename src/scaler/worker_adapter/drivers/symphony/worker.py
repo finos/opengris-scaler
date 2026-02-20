@@ -26,8 +26,8 @@ from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
-from scaler.worker_adapter.symphony.heartbeat_manager import SymphonyHeartbeatManager
-from scaler.worker_adapter.symphony.task_manager import SymphonyTaskManager
+from scaler.worker_adapter.drivers.symphony.heartbeat_manager import SymphonyHeartbeatManager
+from scaler.worker_adapter.drivers.symphony.task_manager import SymphonyTaskManager
 
 
 class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ignore

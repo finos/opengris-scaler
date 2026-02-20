@@ -22,7 +22,7 @@ from scaler.protocol.python.message import (
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_adapter.common import WorkerGroupID, format_capabilities
+from scaler.worker_adapter.drivers.common import WorkerGroupID, format_capabilities
 
 Status = WorkerAdapterCommandResponse.Status
 

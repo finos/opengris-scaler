@@ -9,7 +9,7 @@ from scaler.protocol.python.message import WorkerHeartbeat, WorkerHeartbeatEcho
 from scaler.protocol.python.status import Resource
 from scaler.utility.mixins import Looper
 from scaler.worker.agent.mixins import HeartbeatManager, TimeoutManager
-from scaler.worker_adapter.symphony.task_manager import SymphonyTaskManager
+from scaler.worker_adapter.drivers.symphony.task_manager import SymphonyTaskManager
 
 
 class SymphonyHeartbeatManager(Looper, HeartbeatManager):

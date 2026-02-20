@@ -1,6 +1,6 @@
 from scaler.config.section.symphony_worker_adapter import SymphonyWorkerConfig
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_adapter.symphony.worker_adapter import SymphonyWorkerAdapter
+from scaler.worker_adapter.drivers.symphony.worker_adapter import SymphonyWorkerAdapter
 
 
 def main():

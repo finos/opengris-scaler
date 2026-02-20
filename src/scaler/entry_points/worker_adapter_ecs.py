@@ -1,6 +1,6 @@
 from scaler.config.section.ecs_worker_adapter import ECSWorkerAdapterConfig
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_adapter.ecs import ECSWorkerAdapter
+from scaler.worker_adapter.drivers.ecs import ECSWorkerAdapter
 
 
 def main():
