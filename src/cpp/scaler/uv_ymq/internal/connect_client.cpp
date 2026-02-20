@@ -93,6 +93,7 @@ void ConnectClient::onConnect(
                 std::unexpected(scaler::ymq::Error(scaler::ymq::Error::ErrorCode::IOSocketStopRequested)));
             state->_onConnectCallback = {};  // immediately release the callback resources
         } else {
+            std::cerr << "Retry. Error code is " << result.error().name() << std::endl;
             retry(std::move(state));
         }
         return;

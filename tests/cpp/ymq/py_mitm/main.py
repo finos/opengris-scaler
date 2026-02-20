@@ -48,8 +48,6 @@ def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: in
     """
     interface = get_interface(mitm_ip, mitm_port, remote_ip, server_port)
 
-    signal_ready(pid)
-
     # these track information about our connections
     # we already know what to expect for the server connection, we are the connector
     client_conn = None
@@ -61,6 +59,10 @@ def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: in
     # tracks the state of each connection
     client_closed = False
     server_closed = False
+
+    import time
+    time.sleep(2)
+    signal_ready(pid)
 
     while True:
         pkt = interface.recv()
@@ -89,6 +91,8 @@ def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: in
             print(f"-> {pretty}")
         elif sender == server_conn:
             print(f"<- {pretty}")
+        else:
+            print(f"?? {pretty}")
 
         if tcp.flags == "S":  # SYN from client
             if sender != client_conn or client_conn is None:

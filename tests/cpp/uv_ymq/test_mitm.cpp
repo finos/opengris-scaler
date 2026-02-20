@@ -5,6 +5,18 @@
 // implementations are found in their respective files
 #include <gtest/gtest.h>
 
+#ifdef __linux__
+#include <fcntl.h>
+#include <netinet/ip.h>
+#include <semaphore.h>
+#include <sys/mman.h>
+
+#endif  // __linux__
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif  // _WIN32
+
 #include <format>
 #include <string>
 
@@ -23,9 +35,28 @@ class UVYMQMitmTest: public ::testing::Test {};
 // Ensures the MITM scripts are initialized (only once) before any MITM tests run.
 class MITMEnvironment: public ::testing::Environment {
 public:
-    void SetUp() override { ensure_python_initialized(); }
+    void SetUp() override
+    {
+        ensure_python_initialized();
 
-    void TearDown() override { maybe_finalize_python(); }
+#ifdef _WIN32
+        // initialize winsock
+        WSADATA wsaData = {};
+        int iResult     = WSAStartup(MAKEWORD(2, 2), &wsaData);
+        if (iResult != 0) {
+            std::cerr << "WSAStartup failed: " << iResult << "\n";
+        }
+#endif  // _WIN32
+    }
+
+    void TearDown() override
+    {
+#ifdef _WIN32
+        WSACleanup();
+#endif  // _WIN32
+
+        maybe_finalize_python();
+    }
 };
 
 static ::testing::Environment* const mitmEnvironment = ::testing::AddGlobalTestEnvironment(new MITMEnvironment);
