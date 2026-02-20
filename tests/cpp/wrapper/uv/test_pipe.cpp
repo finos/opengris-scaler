@@ -81,6 +81,7 @@ TEST_F(UVPipeTest, Pipe)
 
     // Create echo server
     PipeEchoServer server(loop, pipeName);
+    ASSERT_EQ(pipeName, server.pipeName());
 
     // Create client and connect to the server
     scaler::wrapper::uv::Pipe client = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Pipe::init(loop, false));
@@ -97,6 +98,8 @@ TEST_F(UVPipeTest, Pipe)
 
     auto onClientConnected = [&](std::expected<void, scaler::wrapper::uv::Error>&& result) {
         UV_EXIT_ON_ERROR(result);
+
+        ASSERT_EQ(pipeName, client.getPeerName());
 
         UV_EXIT_ON_ERROR(client.readStart(onClientRead));
 

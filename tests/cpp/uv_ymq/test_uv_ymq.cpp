@@ -10,6 +10,7 @@
 #include "scaler/error/error.h"
 #include "scaler/uv_ymq/address.h"
 #include "scaler/uv_ymq/io_context.h"
+#include "tests/cpp/ymq/common/testing.h"
 
 class UVYMQTest: public ::testing::Test {};
 

@@ -45,6 +45,7 @@ const LONGLONG ns_per_unit   = 100LL;  // 1 unit = 100 nanoseconds
 #endif  // _WIN32
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
@@ -169,8 +170,14 @@ inline void wait_for_python_ready_sigwait(void* hEvent, int timeout_secs)
     if (sigaddset(&set, SIGUSR1) < 0)
         raise_system_error("failed to add sigusr1 to the signal set");
 
-    if (sigtimedwait(&set, &sig, &ts) < 0)
+    int result {};
+    while ((result = sigtimedwait(&set, &sig, &ts)) < 0) {
+        if (errno == EINTR) {
+            // Interrupted by another signal, retry
+            continue;
+        }
         raise_system_error("failed to wait on sigusr1");
+    }
 
     sigprocmask(SIG_UNBLOCK, &set, nullptr);
 

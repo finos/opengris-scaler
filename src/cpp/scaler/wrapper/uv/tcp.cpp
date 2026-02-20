@@ -87,6 +87,16 @@ std::expected<SocketAddress, Error> TCPSocket::getPeerName() const noexcept
     return SocketAddress::fromSockAddr(reinterpret_cast<sockaddr*>(&storage));
 }
 
+std::expected<void, Error> TCPSocket::nodelay(bool enable) noexcept
+{
+    const int err = uv_tcp_nodelay(&handle().native(), enable);
+    if (err) {
+        return std::unexpected(Error {err});
+    }
+
+    return {};
+}
+
 std::expected<TCPServer, Error> TCPServer::init(Loop& loop) noexcept
 {
     TCPServer server {};
