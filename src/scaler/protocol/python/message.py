@@ -349,6 +349,135 @@ class WorkerHeartbeat(Message):
         )
 
 
+class WorkerAdapterHeartbeat(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def max_worker_groups(self) -> int:
+        return self._msg.maxWorkerGroups
+
+    @property
+    def workers_per_group(self) -> int:
+        return self._msg.workersPerGroup
+
+    @property
+    def capabilities(self) -> Dict[str, int]:
+        return {capability.name: capability.value for capability in self._msg.capabilities}
+
+    @staticmethod
+    def new_msg(
+        max_worker_groups: int, workers_per_group: int, capabilities: Dict[str, int]
+    ) -> "WorkerAdapterHeartbeat":
+        return WorkerAdapterHeartbeat(
+            _message.WorkerAdapterHeartbeat(
+                maxWorkerGroups=max_worker_groups,
+                workersPerGroup=workers_per_group,
+                capabilities=[
+                    TaskCapability.new_msg(name, value).get_message() for name, value in capabilities.items()
+                ],
+            )
+        )
+
+
+class WorkerAdapterHeartbeatEcho(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @staticmethod
+    def new_msg() -> "WorkerAdapterHeartbeatEcho":
+        return WorkerAdapterHeartbeatEcho(_message.WorkerAdapterHeartbeatEcho())
+
+
+class WorkerAdapterCommandType(enum.Enum):
+    StartWorkerGroup = _message.WorkerAdapterCommandType.startWorkerGroup
+    ShutdownWorkerGroup = _message.WorkerAdapterCommandType.shutdownWorkerGroup
+
+
+class WorkerAdapterCommand(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def worker_group_id(self) -> bytes:
+        return self._msg.workerGroupID
+
+    @property
+    def command(self) -> WorkerAdapterCommandType:
+        return WorkerAdapterCommandType(self._msg.command.raw)
+
+    @property
+    def capabilities(self) -> Dict[str, int]:
+        return {capability.name: capability.value for capability in self._msg.capabilities}
+
+    @staticmethod
+    def new_msg(
+        worker_group_id: bytes, command: WorkerAdapterCommandType, capabilities: Dict[str, int] = {}
+    ) -> "WorkerAdapterCommand":
+        return WorkerAdapterCommand(
+            _message.WorkerAdapterCommand(
+                workerGroupID=worker_group_id,
+                command=command.value,
+                capabilities=[
+                    TaskCapability.new_msg(name, value).get_message() for name, value in capabilities.items()
+                ],
+            )
+        )
+
+
+class WorkerAdapterCommandResponse(Message):
+    class Status(enum.Enum):
+        WorkerGroupIDNotSpecified = _message.WorkerAdapterCommandResponse.Status.workerGroupIDNotSpecified
+        WorkerGroupIDNotFound = _message.WorkerAdapterCommandResponse.Status.workerGroupIDNotFound
+        WorkerGroupShutdown = _message.WorkerAdapterCommandResponse.Status.workerGroupShutdown
+        UnknownAction = _message.WorkerAdapterCommandResponse.Status.unknownAction
+        WorkerGroupTooMuch = _message.WorkerAdapterCommandResponse.Status.workerGroupTooMuch
+        Success = _message.WorkerAdapterCommandResponse.Status.success
+
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def status(self) -> Status:
+        return self.Status(self._msg.status.raw)
+
+    @property
+    def command(self) -> WorkerAdapterCommandType:
+        return WorkerAdapterCommandType(self._msg.command.raw)
+
+    @property
+    def worker_group_id(self) -> bytes:
+        return self._msg.workerGroupID
+
+    @property
+    def worker_ids(self) -> List[bytes]:
+        return self._msg.workerIDs
+
+    @property
+    def capabilities(self) -> Dict[str, int]:
+        return {capability.name: capability.value for capability in self._msg.capabilities}
+
+    @staticmethod
+    def new_msg(
+        worker_group_id: bytes,
+        command: WorkerAdapterCommandType,
+        status: Status,
+        worker_ids: List[bytes] = [],
+        capabilities: Dict[str, int] = {},
+    ) -> "WorkerAdapterCommandResponse":
+        return WorkerAdapterCommandResponse(
+            _message.WorkerAdapterCommandResponse(
+                workerGroupID=worker_group_id,
+                command=command.value,
+                status=status.value,
+                workerIDs=worker_ids,
+                capabilities=[
+                    TaskCapability.new_msg(name, value).get_message() for name, value in capabilities.items()
+                ],
+            )
+        )
+
+
 class WorkerHeartbeatEcho(Message):
     def __init__(self, msg):
         super().__init__(msg)
@@ -733,6 +862,10 @@ PROTOCOL: bidict.bidict[str, Type[Message]] = bidict.bidict(
         "clientHeartbeatEcho": ClientHeartbeatEcho,
         "workerHeartbeat": WorkerHeartbeat,
         "workerHeartbeatEcho": WorkerHeartbeatEcho,
+        "workerAdapterHeartbeat": WorkerAdapterHeartbeat,
+        "workerAdapterHeartbeatEcho": WorkerAdapterHeartbeatEcho,
+        "workerAdapterCommand": WorkerAdapterCommand,
+        "workerAdapterCommandResponse": WorkerAdapterCommandResponse,
         "disconnectRequest": DisconnectRequest,
         "disconnectResponse": DisconnectResponse,
         "stateClient": StateClient,

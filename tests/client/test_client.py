@@ -117,6 +117,19 @@ class TestClient(unittest.TestCase):
 
         time.sleep(1)
 
+    def test_cancel_unassigned(self):
+        # Cancels a graph task that hasn't been assigned to a worker yet.
+        combo = SchedulerClusterCombo(n_workers=0, event_loop="builtin")
+
+        with Client(combo.get_address()) as client:
+            future = client.submit(round, 31.416)
+
+            time.sleep(0.15)
+
+            future.cancel()
+
+        combo.shutdown()
+
     def test_heavy_function(self):
         with Client(self.address) as client:
             size = 500_000_000
@@ -391,8 +404,7 @@ class TestClientPreload(unittest.TestCase):
                 # Verify the preloaded value is accessible
                 self.assertEqual(result, "test_preload_value")
         finally:
-            preload_cluster.terminate()
-            preload_cluster.join()
+            preload_cluster.shutdown()
 
     def test_preload_failure(self):
         # For checking if the failure was logged, Processor will create log_path-{pid}
@@ -423,8 +435,7 @@ class TestClientPreload(unittest.TestCase):
 
                 # If we reach here without any other exceptions, the test is successful
             finally:
-                preload_cluster.terminate()
-                preload_cluster.join()
+                preload_cluster.shutdown()
         finally:
             # Clean up log files
             try:

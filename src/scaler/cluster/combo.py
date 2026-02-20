@@ -63,6 +63,8 @@ class SchedulerClusterCombo:
         logging_level: str = DEFAULT_LOGGING_LEVEL,
         logging_config_file: Optional[str] = None,
     ):
+        self._shutdown_called = False
+
         if address is None:
             self._address = ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}")
         else:
@@ -134,9 +136,12 @@ class SchedulerClusterCombo:
         logging.info(f"{self.__get_prefix()} started")
 
     def __del__(self):
-        self.shutdown()
+        if not self._shutdown_called:
+            self.shutdown()
 
     def shutdown(self):
+        self._shutdown_called = True
+
         logging.info(f"{self.__get_prefix()} shutdown")
         self._cluster.terminate()
         self._scheduler.terminate()

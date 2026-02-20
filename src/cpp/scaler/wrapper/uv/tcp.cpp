@@ -56,6 +56,19 @@ std::expected<ConnectRequest, Error> TCPSocket::connect(const SocketAddress& add
     return request;
 }
 
+std::expected<void, Error> TCPSocket::closeReset() noexcept
+{
+    const int err = uv_tcp_close_reset(&handle().native(), &Handle<uv_tcp_t, ReadCallback>::free);
+    if (err) {
+        return std::unexpected(Error {err});
+    }
+
+    // Prevent the handle to be closed a second time through RAII.
+    handle().release();
+
+    return {};
+}
+
 std::expected<SocketAddress, Error> TCPSocket::getSockName() const noexcept
 {
     return details::getSockName(handle().native());

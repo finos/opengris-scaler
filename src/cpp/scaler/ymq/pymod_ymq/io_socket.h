@@ -83,10 +83,16 @@ static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwa
                 OwnedPyObject callback = std::move(callback_);
 
                 if (result) {
-                    OwnedPyObject result = PyObject_CallFunctionObjArgs(*callback, Py_None, nullptr);
+                    OwnedPyObject callbackResult = PyObject_CallFunctionObjArgs(*callback, Py_None, nullptr);
+                    if (!callbackResult) {
+                        PyErr_WriteUnraisable(*callback);
+                    }
                 } else {
-                    OwnedPyObject obj = YMQException_createFromCoreError(state, &result.error());
-                    OwnedPyObject _   = PyObject_CallFunctionObjArgs(*callback, *obj, nullptr);
+                    OwnedPyObject obj            = YMQException_createFromCoreError(state, &result.error());
+                    OwnedPyObject callbackResult = PyObject_CallFunctionObjArgs(*callback, *obj, nullptr);
+                    if (!callbackResult) {
+                        PyErr_WriteUnraisable(*callback);
+                    }
                 }
             });
     } catch (...) {
@@ -117,8 +123,11 @@ static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args, PyObject* kwa
                 OwnedPyObject callback = std::move(callback_);
 
                 if (result.second._errorCode != Error::ErrorCode::Uninit) {
-                    OwnedPyObject obj = YMQException_createFromCoreError(state, &result.second);
-                    OwnedPyObject _   = PyObject_CallFunctionObjArgs(*callback, *obj, nullptr);
+                    OwnedPyObject obj            = YMQException_createFromCoreError(state, &result.second);
+                    OwnedPyObject callbackResult = PyObject_CallFunctionObjArgs(*callback, *obj, nullptr);
+                    if (!callbackResult) {
+                        PyErr_WriteUnraisable(*callback);
+                    }
                     return;
                 }
 
@@ -146,7 +155,10 @@ static PyObject* PyIOSocket_recv(PyIOSocket* self, PyObject* args, PyObject* kwa
                     return;
                 }
 
-                OwnedPyObject _result = PyObject_CallFunctionObjArgs(*callback, *pyMessage, nullptr);
+                OwnedPyObject callbackResult = PyObject_CallFunctionObjArgs(*callback, *pyMessage, nullptr);
+                if (!callbackResult) {
+                    PyErr_WriteUnraisable(*callback);
+                }
             });
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to receive message");
@@ -179,10 +191,16 @@ static PyObject* PyIOSocket_bind(PyIOSocket* self, PyObject* args, PyObject* kwa
                 OwnedPyObject callback = std::move(callback_);
 
                 if (!result) {
-                    OwnedPyObject exc = YMQException_createFromCoreError(state, &result.error());
-                    OwnedPyObject _   = PyObject_CallFunctionObjArgs(*callback, *exc, nullptr);
+                    OwnedPyObject exc            = YMQException_createFromCoreError(state, &result.error());
+                    OwnedPyObject callbackResult = PyObject_CallFunctionObjArgs(*callback, *exc, nullptr);
+                    if (!callbackResult) {
+                        PyErr_WriteUnraisable(*callback);
+                    }
                 } else {
-                    OwnedPyObject _ = PyObject_CallFunctionObjArgs(*callback, Py_None, nullptr);
+                    OwnedPyObject callbackResult = PyObject_CallFunctionObjArgs(*callback, Py_None, nullptr);
+                    if (!callbackResult) {
+                        PyErr_WriteUnraisable(*callback);
+                    }
                 }
             });
     } catch (...) {
@@ -216,10 +234,16 @@ static PyObject* PyIOSocket_connect(PyIOSocket* self, PyObject* args, PyObject* 
                 OwnedPyObject callback = std::move(callback_);
 
                 if (result || result.error()._errorCode == Error::ErrorCode::InitialConnectFailedWithInProgress) {
-                    OwnedPyObject _ = PyObject_CallFunctionObjArgs(*callback, Py_None, nullptr);
+                    OwnedPyObject callbackResult = PyObject_CallFunctionObjArgs(*callback, Py_None, nullptr);
+                    if (!callbackResult) {
+                        PyErr_WriteUnraisable(*callback);
+                    }
                 } else {
-                    OwnedPyObject exc = YMQException_createFromCoreError(state, &result.error());
-                    OwnedPyObject _   = PyObject_CallFunctionObjArgs(*callback, *exc, nullptr);
+                    OwnedPyObject exc            = YMQException_createFromCoreError(state, &result.error());
+                    OwnedPyObject callbackResult = PyObject_CallFunctionObjArgs(*callback, *exc, nullptr);
+                    if (!callbackResult) {
+                        PyErr_WriteUnraisable(*callback);
+                    }
                 }
             });
     } catch (...) {

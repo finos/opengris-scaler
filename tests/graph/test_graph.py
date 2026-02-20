@@ -47,7 +47,15 @@ class TestGraph(unittest.TestCase):
         pass
 
     def test_graph(self):
-        graph = {"a": 2, "b": 2, "c": (inc, "a"), "d": (add, "a", "b"), "e": (minus, "d", "c")}
+        # fmt: off
+        graph = {
+            "a": 2,
+            "b": 2,
+            "c": (inc, "a"),
+            "d": (add, "a", "b"),
+            "e": (minus, "d", "c")
+        }
+        # fmt: on
 
         with Client(self.address) as client:
             with ScopedLogger("test normal graph"):
@@ -87,6 +95,7 @@ class TestGraph(unittest.TestCase):
                 futures["e"].result(timeout=15.0)
 
     def test_graph_return_order(self):
+        # fmt: off
         graph = {
             "a": 2,
             "b": 2,
@@ -94,6 +103,7 @@ class TestGraph(unittest.TestCase):
             "d": (add, "a", "b"),  # d = a + b = 2 + 2 = 4
             "e": (minus, "d", "c"),  # e = d - c = 4 - 3 = 1
         }
+        # fmt: on
 
         with Client(address=self.address) as client:
             with self.assertRaises(KeyError):
@@ -118,6 +128,7 @@ class TestGraph(unittest.TestCase):
         with Client(address=self.address) as client:
             obj_ref = client.send_object(5, name="foobar")
 
+            # fmt: off
             graph = {
                 "a": 2,
                 "b": obj_ref,
@@ -125,6 +136,7 @@ class TestGraph(unittest.TestCase):
                 "d": (add, "a", "b"),  # d = a + b = 2 + 5 = 7
                 "e": (minus, "d", "c"),  # e = d - c = 7 - 3 = 4
             }
+            # fmt: on
 
             with ScopedLogger("test reference data key"):
                 results = client.get(graph, keys=["e", "d", "c"])
@@ -135,7 +147,13 @@ class TestGraph(unittest.TestCase):
             return a
 
         with Client(address=self.address) as client:
-            graph = {"None": None, "a": 1, "b": (func, "a", "None")}
+            # fmt: off
+            graph = {
+                "None": None,
+                "a": 1,
+                "b": (func, "a", "None")
+            }
+            # fmt: on
 
             with ScopedLogger("test None value in graph"):
                 results = client.get(graph, keys=["b"])
@@ -147,11 +165,38 @@ class TestGraph(unittest.TestCase):
             return a
 
         with Client(address=self.address) as client:
-            graph = {"a": 1, "b": (func, "a")}
+            # fmt: off
+            graph = {
+                "a": 1,
+                "b": (func, "a")
+            }
+            # fmt: on
+
             futures = client.get(graph, keys=["b"], block=False)
 
             time.sleep(1)
             futures["b"].cancel()
+
+    def test_cancel_unassigned(self):
+        # Cancels a graph task that hasn't been assigned to a worker yet.
+        combo = SchedulerClusterCombo(n_workers=0, event_loop="builtin")
+
+        # fmt: off
+        graph = {
+            "a": 3.14,
+            "b": (round, "a"),
+            "c": (minus, "a", "b")
+        }
+        # fmt: on
+
+        with Client(address=combo.get_address()) as client:
+            future = client.get(graph, ["c"], block=False)["c"]
+
+            time.sleep(0.15)
+
+            future.cancel()
+
+        combo.shutdown()
 
     def test_client_quit(self):
         def func(a):
@@ -159,7 +204,13 @@ class TestGraph(unittest.TestCase):
             return a
 
         with Client(address=self.address) as client:
-            graph = {"a": 1, "b": (func, "a")}
+            # fmt: off
+            graph = {
+                "a": 1,
+                "b": (func, "a")
+            }
+            # fmt: on
+
             futures = client.get(graph, keys=["b"], block=False)
 
             time.sleep(4)
@@ -167,6 +218,7 @@ class TestGraph(unittest.TestCase):
         self.assertTrue(all(f.cancelled() for f in futures.values()))
 
     def test_cull_graph(self):
+        # fmt: off
         graph = {
             "a": (lambda *_: None,),
             "b": (lambda *_: None, "a"),
@@ -175,6 +227,7 @@ class TestGraph(unittest.TestCase):
             "e": (lambda *_: None, "b", "c"),
             "f": (lambda *_: None, "c"),
         }
+        # fmt: on
 
         def filter_keys(_graph, keys):
             return {key: value for key, value in _graph.items() if key in keys}
@@ -188,6 +241,7 @@ class TestGraph(unittest.TestCase):
         def raise_exception(*args):
             raise ValueError("some error")
 
+        # fmt: off
         graph = {
             "a": (lambda *_: None,),
             "b": (lambda *_: time.sleep(1), "a"),
@@ -197,6 +251,7 @@ class TestGraph(unittest.TestCase):
             "f": (lambda *_: time.sleep(2), "e", "d"),
             "g": (lambda *_: time.sleep(1), "f"),
         }
+        # fmt: on
 
         with Client(address=self.address) as client:
             futures = client.get(graph, keys=["e", "f", "g"], block=False)

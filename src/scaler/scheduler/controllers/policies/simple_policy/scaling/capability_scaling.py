@@ -1,21 +1,27 @@
 import logging
-import math
 from collections import defaultdict
-from typing import Dict, FrozenSet, List, Tuple
+from typing import Dict, FrozenSet, List, Optional, Tuple
 
-import aiohttp
-from aiohttp import web
-
-from scaler.protocol.python.message import InformationSnapshot
+from scaler.protocol.python.message import (
+    InformationSnapshot,
+    WorkerAdapterCommand,
+    WorkerAdapterCommandResponse,
+    WorkerAdapterCommandType,
+    WorkerAdapterHeartbeat,
+)
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingController
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupID
+from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import CommandSender, ScalingController
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
+    WorkerGroupCapabilities,
+    WorkerGroupID,
+    WorkerGroupState,
+)
 from scaler.utility.identifiers import WorkerID
 
 
 class CapabilityScalingController(ScalingController):
     """
-    A scaling controller that scales worker groups based on task-required capabilities.
+    A stateful scaling controller that scales worker groups based on task-required capabilities.
 
     When tasks require specific capabilities (e.g., {"gpu": 1}), this controller will
     request worker groups that provide those capabilities from the worker adapter.
@@ -23,31 +29,89 @@ class CapabilityScalingController(ScalingController):
     it per capability set.
     """
 
-    def __init__(self, adapter_webhook_url: str):
-        self._adapter_webhook_url = adapter_webhook_url
+    def __init__(self):
         self._lower_task_ratio = 0.5
         self._upper_task_ratio = 5
 
-        # Track worker groups by their capability set
-        # Key: frozenset of capability names (e.g., frozenset({"gpu"}))
-        # Value: Dict mapping WorkerGroupID to list of WorkerIDs
+        # State owned by this controller
+        self._worker_groups: WorkerGroupState = {}
+        self._worker_group_capabilities: WorkerGroupCapabilities = {}
         self._worker_groups_by_capability: Dict[FrozenSet[str], Dict[WorkerGroupID, List[WorkerID]]] = defaultdict(dict)
 
-        # Track all worker groups for status reporting
-        self._worker_groups: Dict[WorkerGroupID, List[WorkerID]] = {}
+        # Command sender callback
+        self._send_command: Optional[CommandSender] = None
 
-    def get_status(self):
-        return ScalingManagerStatus.new_msg(worker_groups=self._worker_groups)
+    def register_command_sender(self, sender: CommandSender) -> None:
+        self._send_command = sender
 
-    async def on_snapshot(self, snapshot: InformationSnapshot):
+    async def on_snapshot(
+        self, information_snapshot: InformationSnapshot, adapter_heartbeat: WorkerAdapterHeartbeat
+    ) -> None:
+        if self._send_command is None:
+            return
+
         # Group tasks by their required capabilities
-        tasks_by_capability = self._group_tasks_by_capability(snapshot)
+        tasks_by_capability = self._group_tasks_by_capability(information_snapshot)
 
         # Group workers by their provided capabilities
-        workers_by_capability = self._group_workers_by_capability(snapshot)
+        workers_by_capability = self._group_workers_by_capability(information_snapshot)
 
-        # Handle scaling for each capability set
-        await self._handle_capability_scaling(snapshot, tasks_by_capability, workers_by_capability)
+        # Try to get start commands first - if any, send them
+        start_commands = self._get_start_commands(tasks_by_capability, workers_by_capability, adapter_heartbeat)
+        if start_commands:
+            for command in start_commands:
+                await self._send_command(command)
+            return
+
+        # Otherwise check for shutdown commands
+        shutdown_commands = self._get_shutdown_commands(
+            information_snapshot, tasks_by_capability, workers_by_capability
+        )
+        for command in shutdown_commands:
+            await self._send_command(command)
+
+    def on_command_response(self, response: WorkerAdapterCommandResponse) -> None:
+        if response.command == WorkerAdapterCommandType.StartWorkerGroup:
+            if response.status == WorkerAdapterCommandResponse.Status.WorkerGroupTooMuch:
+                logging.warning("Capacity exceeded, cannot start new worker group.")
+                return
+            if response.status == WorkerAdapterCommandResponse.Status.Success:
+                worker_group_id = WorkerGroupID(response.worker_group_id)
+                worker_ids = [WorkerID(wid) for wid in response.worker_ids]
+                self._worker_groups[worker_group_id] = worker_ids
+                self._worker_group_capabilities[worker_group_id] = response.capabilities
+
+                # Update worker_groups_by_capability
+                capability_keys = frozenset(response.capabilities.keys())
+                self._worker_groups_by_capability[capability_keys][worker_group_id] = worker_ids
+
+                logging.info(f"Started worker group: {worker_group_id.decode()}")
+                return
+
+        if response.command == WorkerAdapterCommandType.ShutdownWorkerGroup:
+            if response.status == WorkerAdapterCommandResponse.Status.WorkerGroupIDNotFound:
+                logging.error(f"Worker group with ID {response.worker_group_id!r} not found in adapter.")
+                return
+            if response.status == WorkerAdapterCommandResponse.Status.Success:
+                worker_group_id = WorkerGroupID(response.worker_group_id)
+
+                # Find and remove from worker_groups_by_capability
+                caps = self._worker_group_capabilities.get(worker_group_id, {})
+                capability_keys = frozenset(caps.keys())
+                if capability_keys in self._worker_groups_by_capability:
+                    self._worker_groups_by_capability[capability_keys].pop(worker_group_id, None)
+                    if not self._worker_groups_by_capability[capability_keys]:
+                        del self._worker_groups_by_capability[capability_keys]
+
+                self._worker_groups.pop(worker_group_id, None)
+                self._worker_group_capabilities.pop(worker_group_id, None)
+                logging.info(f"Shutdown worker group: {worker_group_id.decode()}")
+                return
+
+        raise ValueError("Unknown Action")
+
+    def get_status(self) -> ScalingManagerStatus:
+        return ScalingManagerStatus.new_msg(worker_groups=self._worker_groups)
 
     def _group_tasks_by_capability(
         self, information_snapshot: InformationSnapshot
@@ -88,78 +152,49 @@ class CapabilityScalingController(ScalingController):
         capable_workers: List[Tuple[WorkerID, int]] = []
 
         for worker_capability_keys, workers in workers_by_capability.items():
-            # Worker can handle task if task capabilities are subset of worker capabilities
             if required_capabilities <= worker_capability_keys:
                 capable_workers.extend(workers)
 
         return capable_workers
 
-    async def _handle_capability_scaling(
+    def _get_start_commands(
         self,
-        information_snapshot: InformationSnapshot,
         tasks_by_capability: Dict[FrozenSet[str], List[Dict[str, int]]],
         workers_by_capability: Dict[FrozenSet[str], List[Tuple[WorkerID, int]]],
-    ):
-        """Handle scaling decisions for each capability set."""
+        adapter_heartbeat: WorkerAdapterHeartbeat,
+    ) -> List[WorkerAdapterCommand]:
+        """Collect all start commands for capability sets that need scaling up."""
+        commands: List[WorkerAdapterCommand] = []
 
-        # Complexity: O(C_t * C_w * W) where C_t is the number of distinct task capability sets,
-        # C_w is the number of distinct worker capability sets, and W is the total number of workers.
-        # This arises from calling _find_capable_workers for each task capability set.
-
-        # Process each capability set that has pending tasks
         for capability_keys, tasks in tasks_by_capability.items():
-            # Find workers that can handle these tasks
-            capable_workers = self._find_capable_workers(capability_keys, workers_by_capability)
-
-            # Get a representative capability dict for starting new workers
-            # Use the first task's capabilities as the template
             if not tasks:
-                logging.warning(f"No tasks found for capability set {capability_keys}")
                 continue
+
+            capable_workers = self._find_capable_workers(capability_keys, workers_by_capability)
             capability_dict = tasks[0]
+            worker_count = len(capable_workers)
+            task_count = len(tasks)
 
-            await self._scale_for_capability(capability_keys, capability_dict, len(tasks), capable_workers)
+            if worker_count == 0 and task_count > 0:
+                if not self._has_capable_worker_group(capability_keys):
+                    command = self._create_start_command(capability_dict, adapter_heartbeat)
+                    if command is not None:
+                        commands.append(command)
+            elif worker_count > 0:
+                task_ratio = task_count / worker_count
+                if task_ratio > self._upper_task_ratio:
+                    command = self._create_start_command(capability_dict, adapter_heartbeat)
+                    if command is not None:
+                        commands.append(command)
 
-        # Check for idle capability-specific worker groups that should be shut down
-        await self._check_idle_worker_groups(information_snapshot, tasks_by_capability, workers_by_capability)
+        return commands
 
-    async def _scale_for_capability(
-        self,
-        capability_keys: FrozenSet[str],
-        capability_dict: Dict[str, int],
-        task_count: int,
-        capable_workers: List[Tuple[WorkerID, int]],
-    ):
-        """Apply scaling logic for a specific capability set."""
-        worker_count = len(capable_workers)
-
-        if worker_count == 0 and task_count > 0:
-            # No capable workers yet - start a group if one isn't already pending
-            if not self._has_capable_worker_group(capability_keys):
-                await self._start_worker_group(capability_keys, capability_dict)
-            return
-
-        # Scale up if task ratio exceeds threshold
-        task_ratio = task_count / worker_count
-        if task_ratio > self._upper_task_ratio:
-            await self._start_worker_group(capability_keys, capability_dict)
-
-    def _has_capable_worker_group(self, required_capabilities: FrozenSet[str]) -> bool:
-        """
-        Check if we have already started a worker group that can handle tasks
-        with the given required capabilities.
-        """
-        for group_capability_keys, worker_groups in self._worker_groups_by_capability.items():
-            if worker_groups and required_capabilities <= group_capability_keys:
-                return True
-        return False
-
-    async def _check_idle_worker_groups(
+    def _get_shutdown_commands(
         self,
         information_snapshot: InformationSnapshot,
         tasks_by_capability: Dict[FrozenSet[str], List[Dict[str, int]]],
         workers_by_capability: Dict[FrozenSet[str], List[Tuple[WorkerID, int]]],
-    ):
+    ) -> List[WorkerAdapterCommand]:
         """Check for and shut down idle worker groups."""
 
         # Complexity: O(C^2 * (T + W)) where C is the number of distinct capability sets,
@@ -167,6 +202,7 @@ class CapabilityScalingController(ScalingController):
         # For each tracked capability set, we iterate over all task capability sets to count
         # matching tasks, and call _find_capable_workers which iterates over worker capability sets.
         # This could be optimized if it becomes a performance bottleneck.
+        commands: List[WorkerAdapterCommand] = []
 
         for capability_keys, worker_group_dict in list(self._worker_groups_by_capability.items()):
             if not worker_group_dict:
@@ -178,7 +214,6 @@ class CapabilityScalingController(ScalingController):
                 if task_capability_keys <= capability_keys:
                     task_count += len(tasks)
 
-            # Find capable workers for this capability set
             capable_workers = self._find_capable_workers(capability_keys, workers_by_capability)
             worker_count = len(capable_workers)
 
@@ -213,72 +248,33 @@ class CapabilityScalingController(ScalingController):
                     # Shutting down this group would cause task ratio to exceed upper threshold and scale-up again
                     continue
 
-                await self._shutdown_worker_group(capability_keys, least_busy_group_id)
+                commands.append(
+                    WorkerAdapterCommand.new_msg(
+                        worker_group_id=least_busy_group_id, command=WorkerAdapterCommandType.ShutdownWorkerGroup
+                    )
+                )
 
-    async def _start_worker_group(self, capability_keys: FrozenSet[str], capability_dict: Dict[str, int]):
-        """Start a new worker group with the specified capabilities."""
-        response, status = await self._make_request({"action": "get_worker_adapter_info"})
-        if status != web.HTTPOk.status_code:
-            logging.warning("Failed to get worker adapter info.")
-            return
+        return commands
 
-        # Count total worker groups across all capabilities
-        total_worker_groups = sum(len(groups) for groups in self._worker_groups_by_capability.values())
-        if total_worker_groups >= response.get("max_worker_groups", math.inf):
-            return
+    def _has_capable_worker_group(self, required_capabilities: FrozenSet[str]) -> bool:
+        """
+        Check if we have already started a worker group that can handle tasks
+        with the given required capabilities.
+        """
+        for group_capability_keys, worker_groups in self._worker_groups_by_capability.items():
+            if worker_groups and required_capabilities <= group_capability_keys:
+                return True
+        return False
 
-        # Include capabilities in the request
-        request_payload = {"action": "start_worker_group", "capabilities": capability_dict}
+    def _create_start_command(
+        self, capability_dict: Dict[str, int], adapter_heartbeat: WorkerAdapterHeartbeat
+    ) -> Optional[WorkerAdapterCommand]:
+        """Create a start worker group command if capacity allows."""
+        total_worker_groups = len(self._worker_groups)
+        if total_worker_groups >= adapter_heartbeat.max_worker_groups:
+            return None
+
         logging.info(f"Requesting worker group with capabilities: {capability_dict!r}")
-
-        response, status = await self._make_request(request_payload)
-        if status == web.HTTPTooManyRequests.status_code:
-            logging.warning("Capacity exceeded, cannot start new worker group.")
-            return
-        if status == web.HTTPInternalServerError.status_code:
-            logging.error(f"Failed to start worker group: {response.get('error', 'Unknown error')}")
-            return
-
-        worker_group_id = response["worker_group_id"].encode()
-        worker_ids = [WorkerID(worker_id.encode()) for worker_id in response["worker_ids"]]
-
-        # Get actual capabilities from the worker adapter response
-        actual_capabilities = response.get("capabilities", capability_dict)
-        actual_capability_keys = frozenset(actual_capabilities.keys())
-
-        # Track the worker group by the actual capabilities provided by the worker adapter
-        self._worker_groups_by_capability[actual_capability_keys][worker_group_id] = worker_ids
-        self._worker_groups[worker_group_id] = worker_ids
-
-        logging.info(f"Started worker group: {worker_group_id.decode()} with capabilities: {actual_capabilities!r}")
-
-    async def _shutdown_worker_group(self, capability_keys: FrozenSet[str], worker_group_id: WorkerGroupID):
-        """Shut down a worker group."""
-        if worker_group_id not in self._worker_groups:
-            logging.error(f"Worker group with ID {worker_group_id.decode()} does not exist.")
-            return
-
-        response, status = await self._make_request(
-            {"action": "shutdown_worker_group", "worker_group_id": worker_group_id.decode()}
+        return WorkerAdapterCommand.new_msg(
+            worker_group_id=b"", command=WorkerAdapterCommandType.StartWorkerGroup, capabilities=capability_dict
         )
-        if status == web.HTTPNotFound.status_code:
-            logging.error(f"Worker group with ID {worker_group_id.decode()} not found in adapter.")
-            return
-        if status == web.HTTPInternalServerError.status_code:
-            logging.error(f"Failed to shutdown worker group: {response.get('error', 'Unknown error')}")
-            return
-
-        # Remove from tracking
-        if capability_keys in self._worker_groups_by_capability:
-            self._worker_groups_by_capability[capability_keys].pop(worker_group_id, None)
-            if not self._worker_groups_by_capability[capability_keys]:
-                del self._worker_groups_by_capability[capability_keys]
-
-        self._worker_groups.pop(worker_group_id, None)
-        logging.info(f"Shutdown worker group: {worker_group_id.decode()}")
-
-    async def _make_request(self, payload):
-        """Make an HTTP request to the worker adapter."""
-        async with aiohttp.ClientSession() as session:
-            async with session.post(self._adapter_webhook_url, json=payload) as response:
-                return await response.json(), response.status

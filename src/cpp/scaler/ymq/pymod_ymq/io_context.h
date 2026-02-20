@@ -123,8 +123,11 @@ static PyObject* PyIOContext_createIOSocket(PyIOContext* self, PyObject* args, P
                 OwnedPyObject callback             = std::move(callback_);
                 OwnedPyObject<PyIOSocket> ioSocket = std::move(ioSocket_);
 
-                ioSocket->socket      = socket;
-                OwnedPyObject _result = PyObject_CallFunctionObjArgs(*callback, *ioSocket, nullptr);
+                ioSocket->socket             = socket;
+                OwnedPyObject callbackResult = PyObject_CallFunctionObjArgs(*callback, *ioSocket, nullptr);
+                if (!callbackResult) {
+                    PyErr_WriteUnraisable(*callback);
+                }
             });
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create IOSocket");

@@ -24,6 +24,11 @@ public:
     // uv_tcp_connect
     std::expected<ConnectRequest, Error> connect(const SocketAddress& address, ConnectCallback callback) noexcept;
 
+    // See uv_tcp_close_reset
+    //
+    // This immediately close the socket.
+    std::expected<void, Error> closeReset() noexcept;
+
     // See uv_tcp_getsockname
     std::expected<SocketAddress, Error> getSockName() const noexcept;
 

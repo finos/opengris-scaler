@@ -34,7 +34,7 @@ from scaler.protocol.python.message import (
     WorkerHeartbeatEcho,
 )
 from scaler.protocol.python.mixins import Message
-from scaler.utility.event_loop import create_async_loop_routine, register_event_loop
+from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ProcessorID, WorkerID
 from scaler.utility.logging.utility import setup_logger
@@ -107,7 +107,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
     def run(self) -> None:
         self._loop = asyncio.new_event_loop()
-        self._loop.run_until_complete(self._run())
+        run_task_forever(self._loop, self._run(), cleanup_callback=self._cleanup)
 
     async def _run(self) -> None:
         self.__initialize()
@@ -115,6 +115,12 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._task = self._loop.create_task(self.__get_loops())
         self.__register_signal()
         await self._task
+
+    def _cleanup(self):
+        # the storage connector has asyncio resources that need to be cleaned up
+        # before the event loop is closed
+        if self._connector_storage is not None:
+            self._connector_storage.destroy()
 
     def __initialize(self):
         setup_logger()

@@ -32,7 +32,7 @@ from scaler.protocol.python.message import (
     TaskResult,
 )
 from scaler.protocol.python.mixins import Message
-from scaler.utility.event_loop import create_async_loop_routine
+from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
 from scaler.utility.exceptions import ClientCancelledException, ClientQuitException, ClientShutdownException
 from scaler.utility.identifiers import ClientID
 
@@ -119,7 +119,7 @@ class ClientAgent(threading.Thread):
 
     def run(self):
         self._loop = asyncio.new_event_loop()
-        self._loop.run_until_complete(self._run())
+        run_task_forever(self._loop, self._run())
 
     async def _run(self):
         self.__initialize()

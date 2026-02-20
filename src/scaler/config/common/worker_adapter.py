@@ -20,9 +20,15 @@ class WorkerAdapterConfig(ConfigClass):
 
     max_workers: int = dataclasses.field(
         default=defaults.DEFAULT_NUMBER_OF_WORKER,
-        metadata=dict(short="-mw", help="maximum number of workers that can be started, -1 means no limit"),
+        metadata=dict(
+            short="-mw",
+            help=(
+                "maximum number of workers that can be started, -1 means no limit."
+                "for fixed native worker adapter, this is exactly the number of workers that will be spawned"
+            ),
+        ),
     )
 
     def __post_init__(self) -> None:
-        if self.max_workers != -1 and self.max_workers <= 0:
-            raise ValueError("max_workers must be -1 (no limit) or a positive integer.")
+        if self.max_workers != -1 and self.max_workers < 0:
+            raise ValueError("max_workers must be -1 (no limit) or a non-negative integer.")
