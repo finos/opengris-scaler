@@ -15,6 +15,14 @@ Shows how to send a basic task to scheduler
 .. literalinclude:: ../../../examples/simple_client.py
    :language: python
 
+Submit Tasks
+~~~~~~~~~~~~
+
+Shows various ways to submit tasks (submit, map, starmap)
+
+.. literalinclude:: ../../../examples/submit_tasks.py
+   :language: python
+
 Client Mapping Tasks
 ~~~~~~~~~~~~~~~~~~~~
 

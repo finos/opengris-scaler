@@ -6,7 +6,7 @@ Ray Compatibility Layer
 Scaler is a lightweight distributed computation engine similar to Ray. Scaler supports many of the same concepts as Ray including
 remote functions (known as tasks in Scaler), futures, cluster object storage, labels (known as capabilities in Scaler), and it comes with comparable monitoring tools.
 
-Unlike Ray, Scaler supports both local clusters and also easily integrates with multiple cloud providers out of the box, including AWS EC2 and IBM Symphony,
+Unlike Ray, Scaler supports both local clusters and also easily integrates with multiple cloud providers out of the box, including ORB (AWS EC2) and IBM Symphony,
 with more providers planned for the future. You can view our `roadmap on GitHub <https://github.com/finos/opengris-scaler/discussions/333>`_
 for details on upcoming cloud integrations.
 

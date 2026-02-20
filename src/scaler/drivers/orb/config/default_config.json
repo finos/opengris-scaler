@@ -1,0 +1,35 @@
+{
+  "version": "2.0.0",
+  "provider": {
+    "active_provider": "aws-default",
+    "selection_policy": "FIRST_AVAILABLE",
+    "providers": [
+      {
+        "name": "aws-default",
+        "type": "aws",
+        "enabled": true,
+        "priority": 1,
+        "config": {
+          "region": "us-east-1",
+          "profile": "default"
+        }
+      }
+    ]
+  },
+  "storage": {
+    "strategy": "json",
+    "json_strategy": {
+      "storage_type": "single_file",
+      "base_path": "data",
+      "filenames": {
+        "single_file": "request_database.json"
+      }
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "file_path": "logs/app.log",
+    "console_enabled": true
+  }
+}
+

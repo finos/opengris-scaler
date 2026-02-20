@@ -73,3 +73,5 @@ html_css_files = ["style.css"]
 
 
 # -- Extension configuration -------------------------------------------------
+
+autosectionlabel_prefix_document = True
