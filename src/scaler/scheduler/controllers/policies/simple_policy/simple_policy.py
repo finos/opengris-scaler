@@ -1,17 +1,15 @@
 from typing import Dict, List, Optional, Set
 
-from scaler.protocol.python.message import (
-    InformationSnapshot,
-    Task,
-    WorkerAdapterCommandResponse,
-    WorkerAdapterHeartbeat,
-)
+from scaler.protocol.python.message import InformationSnapshot, Task, WorkerAdapterCommand, WorkerAdapterHeartbeat
 from scaler.protocol.python.status import ScalingManagerStatus
 from scaler.scheduler.controllers.policies.mixins import ScalerPolicy
 from scaler.scheduler.controllers.policies.simple_policy.allocation.types import AllocatePolicyStrategy
 from scaler.scheduler.controllers.policies.simple_policy.allocation.utility import create_allocate_policy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import CommandSender
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import ScalingControllerStrategy
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
+    ScalingControllerStrategy,
+    WorkerGroupCapabilities,
+    WorkerGroupState,
+)
 from scaler.scheduler.controllers.policies.simple_policy.scaling.utility import create_scaling_controller
 from scaler.utility.identifiers import TaskID, WorkerID
 
@@ -52,19 +50,16 @@ class SimplePolicy(ScalerPolicy):
     def statistics(self) -> Dict:
         return self._allocation_policy.statistics()
 
-    def register_command_sender(self, sender: CommandSender) -> None:
-        self._scaling_controller.register_command_sender(sender)
+    def get_scaling_commands(
+        self,
+        information_snapshot: InformationSnapshot,
+        adapter_heartbeat: WorkerAdapterHeartbeat,
+        worker_groups: WorkerGroupState,
+        worker_group_capabilities: WorkerGroupCapabilities,
+    ) -> List[WorkerAdapterCommand]:
+        return self._scaling_controller.get_scaling_commands(
+            information_snapshot, adapter_heartbeat, worker_groups, worker_group_capabilities
+        )
 
-    async def on_snapshot(
-        self, information_snapshot: InformationSnapshot, adapter_heartbeat: WorkerAdapterHeartbeat
-    ) -> None:
-        await self._scaling_controller.on_snapshot(information_snapshot, adapter_heartbeat)
-
-    def on_command_response(self, response: WorkerAdapterCommandResponse) -> None:
-        self._scaling_controller.on_command_response(response)
-
-    def get_scaling_status(self) -> ScalingManagerStatus:
-        return self._scaling_controller.get_status()
-
-    def get_status(self) -> ScalingManagerStatus:
-        return self._scaling_controller.get_status()
+    def get_scaling_status(self, worker_groups: WorkerGroupState) -> ScalingManagerStatus:
+        return self._scaling_controller.get_status(worker_groups)

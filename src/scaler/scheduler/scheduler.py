@@ -50,10 +50,8 @@ class Scheduler:
         self._config_controller = VanillaConfigController(config)
 
         if config.scheduler_address.type != ZMQType.tcp:
-            raise TypeError(
-                f"{self.__class__.__name__}: scheduler address must be tcp type: \
-                    {config.scheduler_address.to_address()}"
-            )
+            raise TypeError(f"{self.__class__.__name__}: scheduler address must be tcp type: \
+                    {config.scheduler_address.to_address()}")
 
         if config.object_storage_address is None:
             object_storage_address = ObjectStorageAddress.new_msg(
@@ -149,7 +147,7 @@ class Scheduler:
             self._object_controller,
             self._task_controller,
             self._worker_controller,
-            self._scaler_policy,
+            self._worker_adapter_controller,
         )
 
     async def connect_to_storage(self):

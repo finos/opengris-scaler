@@ -185,8 +185,7 @@ class TaskStream:
             return ui.html(x, sanitize=False)  # type: ignore[call-arg]
 
         with self._card:
-            html_func(
-                """
+            html_func("""
                 <div style="margin-bottom:8px;">
                     <b>Legend:</b>
                     <span style="display:inline-block;width:18px;height:18px;border:2px solid black;
@@ -203,8 +202,7 @@ class TaskStream:
                     "></span>
                     Canceled
                 </div>
-                """
-            )
+                """)
             fig = {
                 "data": [],
                 "layout": {

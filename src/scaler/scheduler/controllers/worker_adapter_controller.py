@@ -8,6 +8,7 @@ from scaler.protocol.python.message import (
     InformationSnapshot,
     WorkerAdapterCommand,
     WorkerAdapterCommandResponse,
+    WorkerAdapterCommandType,
     WorkerAdapterHeartbeat,
     WorkerAdapterHeartbeatEcho,
 )
@@ -15,6 +16,12 @@ from scaler.protocol.python.status import ScalingManagerStatus
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import TaskController, WorkerController
 from scaler.scheduler.controllers.policies.mixins import ScalerPolicy
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
+    WorkerGroupID,
+    WorkerGroupInfo,
+    WorkerGroupState,
+)
+from scaler.utility.identifiers import WorkerID
 from scaler.utility.mixins import Looper, Reporter
 
 
@@ -33,27 +40,18 @@ class WorkerAdapterController(Looper, Reporter):
         # Track last command sent to each source
         self._pending_commands: Dict[bytes, WorkerAdapterCommand] = {}
 
-        # Track current source for routing responses
-        self._current_source: Optional[bytes] = None
+        # Track worker groups per adapter: source -> (worker_group_id -> info)
+        self._adapter_worker_groups: Dict[bytes, Dict[WorkerGroupID, WorkerGroupInfo]] = {}
 
     def register(self, binder: AsyncBinder, task_controller: TaskController, worker_controller: WorkerController):
         self._binder = binder
         self._task_controller = task_controller
         self._worker_controller = worker_controller
 
-        # Register the command sender with the scaling policy
-        self._scaler_policy.register_command_sender(self._send_command_to_current_source)
-
-    async def _send_command_to_current_source(self, command: WorkerAdapterCommand) -> None:
-        """Send a command to the current adapter source. Used as callback by ScalingController."""
-        if self._current_source is None:
-            logging.warning("No current source set, cannot send command")
-            return
-        await self._send_command(self._current_source, command)
-
     async def on_heartbeat(self, source: bytes, heartbeat: WorkerAdapterHeartbeat):
         if source not in self._adapter_alive_since:
             logging.info(f"WorkerAdapter {source!r} connected")
+            self._adapter_worker_groups[source] = {}
 
         self._adapter_alive_since[source] = (time.time(), heartbeat)
 
@@ -61,10 +59,17 @@ class WorkerAdapterController(Looper, Reporter):
 
         information_snapshot = self._build_snapshot()
 
-        # Set current source for the callback
-        self._current_source = source
-        await self._scaler_policy.on_snapshot(information_snapshot, heartbeat)
-        self._current_source = None
+        # Get worker groups for this adapter
+        adapter_groups = self._adapter_worker_groups[source]
+        worker_groups = {gid: info.worker_ids for gid, info in adapter_groups.items()}
+        worker_group_capabilities = {gid: info.capabilities for gid, info in adapter_groups.items()}
+
+        commands = self._scaler_policy.get_scaling_commands(
+            information_snapshot, heartbeat, worker_groups, worker_group_capabilities
+        )
+
+        for command in commands:
+            await self._send_command(source, command)
 
     async def on_command_response(self, source: bytes, response: WorkerAdapterCommandResponse):
         """Called by scheduler event loop when WorkerAdapterCommandResponse is received."""
@@ -72,14 +77,33 @@ class WorkerAdapterController(Looper, Reporter):
         if pending is None:
             logging.warning(f"Received response from {source!r} but no pending command found")
 
-        # Delegate to the policy to update its internal state
-        self._scaler_policy.on_command_response(response)
+        if response.command == WorkerAdapterCommandType.StartWorkerGroup:
+            if response.status == WorkerAdapterCommandResponse.Status.Success:
+                self._adapter_worker_groups[source][bytes(response.worker_group_id)] = WorkerGroupInfo(
+                    worker_ids=[WorkerID(wid) for wid in response.worker_ids], capabilities=dict(response.capabilities)
+                )
+            else:
+                logging.warning(f"StartWorkerGroup failed: {response.status.name}")
+
+        elif response.command == WorkerAdapterCommandType.ShutdownWorkerGroup:
+            if response.status == WorkerAdapterCommandResponse.Status.Success:
+                self._adapter_worker_groups[source].pop(bytes(response.worker_group_id), None)
+            else:
+                logging.warning(f"ShutdownWorkerGroup failed: {response.status.name}")
 
     async def routine(self):
         await self._clean_adapters()
 
     def get_status(self) -> ScalingManagerStatus:
-        return self._scaler_policy.get_scaling_status()
+        return self._scaler_policy.get_scaling_status(self.get_worker_groups())
+
+    def get_worker_groups(self) -> WorkerGroupState:
+        """Return aggregated worker groups from all adapters."""
+        result: WorkerGroupState = {}
+        for adapter_groups in self._adapter_worker_groups.values():
+            for gid, info in adapter_groups.items():
+                result[gid] = info.worker_ids
+        return result
 
     async def _send_command(self, source: bytes, command: WorkerAdapterCommand):
         self._pending_commands[source] = command
@@ -112,3 +136,4 @@ class WorkerAdapterController(Looper, Reporter):
         logging.info(f"WorkerAdapter {source!r} disconnected")
         self._adapter_alive_since.pop(source)
         self._pending_commands.pop(source, None)
+        self._adapter_worker_groups.pop(source, None)
