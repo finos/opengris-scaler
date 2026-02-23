@@ -165,8 +165,12 @@ void IOSocket::connectTo(SocketAddress addr, ConnectReturnCallback onConnectRetu
 void IOSocket::connectTo(
     std::string netOrDomainAddr, ConnectReturnCallback onConnectReturn, size_t maxRetryTimes) noexcept
 {
-    const auto socketAddress = stringToSocketAddress(netOrDomainAddr);
-    connectTo(std::move(socketAddress), std::move(onConnectReturn), maxRetryTimes);
+    auto socketAddressResult = stringToSocketAddress(netOrDomainAddr);
+    if (!socketAddressResult) {
+        onConnectReturn(std::unexpected {socketAddressResult.error()});
+        return;
+    }
+    connectTo(std::move(socketAddressResult.value()), std::move(onConnectReturn), maxRetryTimes);
 }
 
 void IOSocket::bindTo(std::string netOrDomainAddr, BindReturnCallback onBindReturn) noexcept
@@ -175,7 +179,12 @@ void IOSocket::bindTo(std::string netOrDomainAddr, BindReturnCallback onBindRetu
                                              netOrDomainAddr = std::move(netOrDomainAddr),
                                              callback        = std::move(onBindReturn)] mutable {
         assert(netOrDomainAddr.size());
-        const auto socketAddress = stringToSocketAddress(netOrDomainAddr);
+        auto socketAddressResult = stringToSocketAddress(netOrDomainAddr);
+        if (!socketAddressResult) {
+            callback(std::unexpected {socketAddressResult.error()});
+            return;
+        }
+        const auto& socketAddress = socketAddressResult.value();
 
         if (socketAddress.nativeHandleType() == SocketAddress::Type::TCP) {
             if (_tcpServer) {

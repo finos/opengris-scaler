@@ -25,61 +25,65 @@ void closeAndZeroSocket(void* fd)
     *tmp = 0;
 }
 
-SocketAddress stringToSockaddrUn(const std::string& address)
+std::expected<SocketAddress, Error> stringToSockaddrUn(const std::string& address)
 {
     static const std::string prefix = "ipc://";
     if (address.substr(0, prefix.size()) != prefix) {
-        unrecoverableError({
-            Error::ErrorCode::InvalidAddressFormat,
-            "Originated from",
-            __PRETTY_FUNCTION__,
-            "Your input is",
-            address,
-        });
+        return std::unexpected(
+            Error {
+                Error::ErrorCode::InvalidAddressFormat,
+                "Originated from",
+                __PRETTY_FUNCTION__,
+                "Your input is",
+                address,
+            });
     }
     const std::string addrPart = address.substr(prefix.size());
 
     sockaddr_un addr {};
     addr.sun_family = AF_UNIX;
     if (addrPart.size() > sizeof(addr.sun_path) - 1) {
-        unrecoverableError({
-            Error::ErrorCode::InvalidAddressFormat,
-            "Originated from",
-            __PRETTY_FUNCTION__,
-            "Your input is",
-            address,
-            "Failed due to name too long.",
-        });
+        return std::unexpected(
+            Error {
+                Error::ErrorCode::InvalidAddressFormat,
+                "Originated from",
+                __PRETTY_FUNCTION__,
+                "Your input is",
+                address,
+                "Failed due to name too long.",
+            });
     }
 
     strncpy(addr.sun_path, addrPart.c_str(), sizeof(addr.sun_path) - 1);
     return SocketAddress((const sockaddr*)&addr);
 }
 
-SocketAddress stringToSockaddr(const std::string& address)
+std::expected<SocketAddress, Error> stringToSockaddr(const std::string& address)
 {
     // Check and strip the "tcp://" prefix
     static const std::string prefix = "tcp://";
     if (address.substr(0, prefix.size()) != prefix) {
-        unrecoverableError({
-            Error::ErrorCode::InvalidAddressFormat,
-            "Originated from",
-            __PRETTY_FUNCTION__,
-            "Your input is",
-            address,
-        });
+        return std::unexpected(
+            Error {
+                Error::ErrorCode::InvalidAddressFormat,
+                "Originated from",
+                __PRETTY_FUNCTION__,
+                "Your input is",
+                address,
+            });
     }
 
     const std::string addrPart = address.substr(prefix.size());
     const size_t colonPos      = addrPart.find(':');
     if (colonPos == std::string::npos) {
-        unrecoverableError({
-            Error::ErrorCode::InvalidAddressFormat,
-            "Originated from",
-            __PRETTY_FUNCTION__,
-            "Your input is",
-            address,
-        });
+        return std::unexpected(
+            Error {
+                Error::ErrorCode::InvalidAddressFormat,
+                "Originated from",
+                __PRETTY_FUNCTION__,
+                "Your input is",
+                address,
+            });
     }
 
     const std::string ip      = addrPart.substr(0, colonPos);
@@ -89,13 +93,14 @@ SocketAddress stringToSockaddr(const std::string& address)
     try {
         port = std::stoi(portStr);
     } catch (...) {
-        unrecoverableError({
-            Error::ErrorCode::InvalidAddressFormat,
-            "Originated from",
-            __PRETTY_FUNCTION__,
-            "Your input is",
-            address,
-        });
+        return std::unexpected(
+            Error {
+                Error::ErrorCode::InvalidAddressFormat,
+                "Originated from",
+                __PRETTY_FUNCTION__,
+                "Your input is",
+                address,
+            });
     }
 
     sockaddr_in outAddr {};
@@ -104,47 +109,49 @@ SocketAddress stringToSockaddr(const std::string& address)
 
     int res = inet_pton(AF_INET, ip.c_str(), &outAddr.sin_addr);
     if (res == 0) {
-        unrecoverableError({
-            Error::ErrorCode::InvalidAddressFormat,
-            "Originated from",
-            __PRETTY_FUNCTION__,
-            "Your input is",
-            address,
-        });
-    }
-
-    if (res == -1) {
-        unrecoverableError({
-            Error::ErrorCode::ConfigurationError,
-            "Originated from",
-            __PRETTY_FUNCTION__,
-            "Errno is",
-            strerror(errno),
-            "out_addr.sin_family",
-            outAddr.sin_family,
-            "out_addr.sin_port",
-            outAddr.sin_port,
-        });
-    }
-
-    return SocketAddress((const sockaddr*)&outAddr);
-}
-
-SocketAddress stringToSocketAddress(const std::string& address)
-{
-    assert(address.size());
-    switch (address[0]) {
-        case 'i': return stringToSockaddrUn(address);  // IPC
-        case 't': return stringToSockaddr(address);    // TCP
-        default:
-            unrecoverableError({
+        return std::unexpected(
+            Error {
                 Error::ErrorCode::InvalidAddressFormat,
                 "Originated from",
                 __PRETTY_FUNCTION__,
                 "Your input is",
                 address,
             });
-            break;
+    }
+
+    if (res == -1) {
+        return std::unexpected(
+            Error {
+                Error::ErrorCode::ConfigurationError,
+                "Originated from",
+                __PRETTY_FUNCTION__,
+                "Errno is",
+                strerror(errno),
+                "out_addr.sin_family",
+                outAddr.sin_family,
+                "out_addr.sin_port",
+                outAddr.sin_port,
+            });
+    }
+
+    return SocketAddress((const sockaddr*)&outAddr);
+}
+
+std::expected<SocketAddress, Error> stringToSocketAddress(const std::string& address)
+{
+    assert(address.size());
+    switch (address[0]) {
+        case 'i': return stringToSockaddrUn(address);  // IPC
+        case 't': return stringToSockaddr(address);    // TCP
+        default:
+            return std::unexpected(
+                Error {
+                    Error::ErrorCode::InvalidAddressFormat,
+                    "Originated from",
+                    __PRETTY_FUNCTION__,
+                    "Your input is",
+                    address,
+                });
     }
 }
 
