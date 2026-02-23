@@ -19,7 +19,7 @@ from scaler.protocol.python.message import (
     WorkerAdapterHeartbeat,
     WorkerAdapterHeartbeatEcho,
 )
-from scaler.utility.event_loop import create_async_loop_routine, register_event_loop
+from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_adapter.common import WorkerGroupID, format_capabilities
@@ -177,22 +177,26 @@ class ECSWorkerAdapter:
         )
 
     def run(self) -> None:
-        self.__register_signal()
         self._loop = asyncio.new_event_loop()
-        self._loop.run_until_complete(self._run())
+        run_task_forever(self._loop, self._run(), cleanup_callback=self._cleanup)
 
-    def __destroy(self, *args):
+    def _cleanup(self):
+        if self._connector_external is not None:
+            self._connector_external.destroy()
+
+    def __destroy(self):
         print(f"Worker adapter {self._ident!r} received signal, shutting down")
         self._task.cancel()
 
     def __register_signal(self):
-        signal.signal(signal.SIGINT, self.__destroy)
-        signal.signal(signal.SIGTERM, self.__destroy)
+        self._loop.add_signal_handler(signal.SIGINT, self.__destroy)
+        self._loop.add_signal_handler(signal.SIGTERM, self.__destroy)
 
     async def _run(self) -> None:
         register_event_loop(self._event_loop)
         setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
         self._task = self._loop.create_task(self.__get_loops())
+        self.__register_signal()
         await self._task
 
     async def __get_loops(self):
