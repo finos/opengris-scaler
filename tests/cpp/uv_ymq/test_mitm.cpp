@@ -10,13 +10,14 @@
 #include <netinet/ip.h>
 #include <semaphore.h>
 #include <sys/mman.h>
-
 #endif  // __linux__
+
 #ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
 #endif  // _WIN32
 
+#include <chrono>
 #include <format>
 #include <string>
 
@@ -25,10 +26,11 @@
 #include "scaler/uv_ymq/sync/binder_socket.h"
 #include "scaler/ymq/bytes.h"
 #include "tests/cpp/ymq/common/testing.h"
+#include "tests/cpp/ymq/common/utils.h"
 
 // Helper client/server functions defined in test_sockets.cpp
-TestResult basic_client_ymq(std::string address);
-TestResult basic_server_ymq(std::string address);
+TestResult basicClientYmq(std::string address);
+TestResult basicServerYmq(std::string address);
 
 class UVYMQMitmTest: public ::testing::Test {};
 
@@ -37,7 +39,7 @@ class MITMEnvironment: public ::testing::Environment {
 public:
     void SetUp() override
     {
-        ensure_python_initialized();
+        ensurePythonInitialized();
 
 #ifdef _WIN32
         // initialize winsock
@@ -55,13 +57,13 @@ public:
         WSACleanup();
 #endif  // _WIN32
 
-        maybe_finalize_python();
+        maybeFinalizePython();
     }
 };
 
 static ::testing::Environment* const mitmEnvironment = ::testing::AddGlobalTestEnvironment(new MITMEnvironment);
 
-TestResult reconnect_server_main(std::string address)
+TestResult reconnectServerMain(std::string address)
 {
     scaler::uv_ymq::IOContext context {};
 
@@ -80,7 +82,7 @@ TestResult reconnect_server_main(std::string address)
     return TestResult::Success;
 }
 
-TestResult reconnect_client_main(std::string address)
+TestResult reconnectClientMain(std::string address)
 {
     constexpr int retryTimes = 10;
     constexpr std::chrono::seconds retryDelay {1};
@@ -141,7 +143,7 @@ TEST_F(UVYMQMitmTest, Passthrough)
     auto mitm_ip   = "127.0.0.1";
     auto remote_ip = "127.0.0.1";
 #endif
-    auto mitm_port   = random_port();
+    auto mitm_port   = randomPort();
     auto remote_port = 23571;
 
     // the Python program must be the first and only the first function passed to test()
@@ -149,9 +151,9 @@ TEST_F(UVYMQMitmTest, Passthrough)
     // before beginning the test
     auto result = test(
         20,
-        {[=] { return run_mitm("passthrough", mitm_ip, mitm_port, remote_ip, remote_port); },
-         [=] { return basic_client_ymq(std::format("tcp://{}:{}", mitm_ip, mitm_port)); },
-         [=] { return basic_server_ymq(std::format("tcp://{}:{}", remote_ip, remote_port)); }},
+        {[=] { return runMitm("passthrough", mitm_ip, mitm_port, remote_ip, remote_port); },
+         [=] { return basicServerYmq(std::format("tcp://{}:{}", remote_ip, remote_port)); },
+         [=] { return basicClientYmq(std::format("tcp://{}:{}", mitm_ip, mitm_port)); }},
         true);
 
     EXPECT_EQ(result, TestResult::Success);
@@ -167,7 +169,7 @@ TEST_F(UVYMQMitmTest, PassthroughRaw)
     auto mitm_ip   = "127.0.0.1";
     auto remote_ip = "127.0.0.1";
 #endif
-    auto mitm_port   = random_port();
+    auto mitm_port   = randomPort();
     auto remote_port = 23574;
 
     // the Python program must be the first and only the first function passed to test()
@@ -175,18 +177,19 @@ TEST_F(UVYMQMitmTest, PassthroughRaw)
     // before beginning the test
     auto result = test(
         20,
-        {[=] { return run_mitm("passthrough", mitm_ip, mitm_port, remote_ip, remote_port); },
-         [=] { return basic_client_ymq(std::format("tcp://{}:{}", mitm_ip, mitm_port)); },
-         [=] { return basic_server_ymq(std::format("tcp://{}:{}", remote_ip, remote_port)); }},
+        {[=] { return runMitm("passthrough", mitm_ip, mitm_port, remote_ip, remote_port); },
+         [=] { return basicServerYmq(std::format("tcp://{}:{}", remote_ip, remote_port)); },
+         [=] { return basicClientYmq(std::format("tcp://{}:{}", mitm_ip, mitm_port)); }},
         true);
     EXPECT_EQ(result, TestResult::Success);
 }
 
 // this test uses the mitm to test the reconnect logic of uv_ymq by sending RST packets
-#ifndef _WIN32
-TEST_F(UVYMQMitmTest, Reconnect)
-#else
+#ifdef _WIN32
+// See https://github.com/finos/opengris-scaler/issues/576
 TEST_F(UVYMQMitmTest, DISABLED_Reconnect)
+#else
+TEST_F(UVYMQMitmTest, Reconnect)
 #endif
 {
 #ifdef __linux__
@@ -196,14 +199,14 @@ TEST_F(UVYMQMitmTest, DISABLED_Reconnect)
     auto mitm_ip   = "127.0.0.1";
     auto remote_ip = "127.0.0.1";
 #endif
-    auto mitm_port   = random_port();
+    auto mitm_port   = randomPort();
     auto remote_port = 23572;
 
     auto result = test(
         30,
-        {[=] { return run_mitm("send_rst_to_client", mitm_ip, mitm_port, remote_ip, remote_port); },
-         [=] { return reconnect_client_main(std::format("tcp://{}:{}", mitm_ip, mitm_port)); },
-         [=] { return reconnect_server_main(std::format("tcp://{}:{}", remote_ip, remote_port)); }},
+        {[=] { return runMitm("send_rst_to_client", mitm_ip, mitm_port, remote_ip, remote_port); },
+         [=] { return reconnectServerMain(std::format("tcp://{}:{}", remote_ip, remote_port)); },
+         [=] { return reconnectClientMain(std::format("tcp://{}:{}", mitm_ip, mitm_port)); }},
         true);
 
     EXPECT_EQ(result, TestResult::Success);
@@ -219,14 +222,14 @@ TEST_F(UVYMQMitmTest, RandomlyDropPackets)
     auto mitm_ip   = "127.0.0.1";
     auto remote_ip = "127.0.0.1";
 #endif
-    auto mitm_port   = random_port();
+    auto mitm_port   = randomPort();
     auto remote_port = 23573;
 
     auto result = test(
         180,
-        {[=] { return run_mitm("randomly_drop_packets", mitm_ip, mitm_port, remote_ip, remote_port, {"0.3"}); },
-         [=] { return basic_client_ymq(std::format("tcp://{}:{}", mitm_ip, mitm_port)); },
-         [=] { return basic_server_ymq(std::format("tcp://{}:{}", remote_ip, remote_port)); }},
+        {[=] { return runMitm("randomly_drop_packets", mitm_ip, mitm_port, remote_ip, remote_port, {"0.3"}); },
+         [=] { return basicServerYmq(std::format("tcp://{}:{}", remote_ip, remote_port)); },
+         [=] { return basicClientYmq(std::format("tcp://{}:{}", mitm_ip, mitm_port)); }},
         true);
 
     EXPECT_EQ(result, TestResult::Success);

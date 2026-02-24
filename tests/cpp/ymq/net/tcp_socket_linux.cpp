@@ -90,7 +90,7 @@ void TCPSocket::bind(const std::string& address_str) const
 
     int optval = 1;
     if (::setsockopt(this->_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0)
-        raise_socket_error("failed to set SO_REUSEADDR");
+        raiseSocketError("failed to set SO_REUSEADDR");
 
     sockaddr_in addr = *(sockaddr_in*)address.nativeHandle();
 

@@ -70,10 +70,9 @@ void waitForPythonReadySigwait(void* hEvent, int timeoutSecs)
     int result {};
     while ((result = sigtimedwait(&set, &sig, &ts)) < 0) {
         if (errno == EINTR) {
-            // Interrupted by another signal, retry
-            continue;
+            continue;  // Interrupted, retry
         }
-        raise_system_error("failed to wait on sigusr1");
+        raiseSystemError("failed to wait on sigusr1");
     }
 
     sigprocmask(SIG_UNBLOCK, &set, nullptr);

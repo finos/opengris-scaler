@@ -1,12 +1,15 @@
 #include <gtest/gtest.h>
 
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <format>
 #include <future>
+#include <iostream>
 #include <limits>
 #include <string>
+#include <system_error>
 #include <thread>
 
 #include "scaler/error/error.h"
@@ -18,6 +21,7 @@
 #include "scaler/uv_ymq/sync/connector_socket.h"
 #include "scaler/ymq/bytes.h"
 #include "tests/cpp/ymq/common/testing.h"
+#include "tests/cpp/ymq/common/utils.h"
 #include "tests/cpp/ymq/net/socket_utils.h"
 
 using scaler::uv_ymq::Address;
@@ -54,7 +58,7 @@ protected:
 //  clients and servers
 // --------------------
 
-TestResult basic_server_ymq(std::string address)
+TestResult basicServerYmq(std::string address)
 {
     IOContext context {};
 
@@ -67,12 +71,10 @@ TestResult basic_server_ymq(std::string address)
     RETURN_FAILURE_IF_FALSE(result.has_value());
     RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "yi er san si wu liu");
 
-    std::cerr << "Server finishes\n";
-
     return TestResult::Success;
 }
 
-TestResult basic_client_ymq(std::string address)
+TestResult basicClientYmq(std::string address)
 {
     IOContext context {};
 
@@ -88,14 +90,12 @@ TestResult basic_client_ymq(std::string address)
     RETURN_FAILURE_IF_FALSE(!readResult.has_value());
     RETURN_FAILURE_IF_FALSE(readResult.error()._errorCode == Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
 
-    std::cerr << "Client finishes\n";
-
     return TestResult::Success;
 }
 
-TestResult basic_server_raw(std::string address_str)
+TestResult basicServerRaw(std::string address_str)
 {
-    auto socket = bind_socket(address_str);
+    auto socket = bindSocket(address_str);
 
     socket->listen(5);  // Default backlog
     auto client = socket->accept();
@@ -108,9 +108,9 @@ TestResult basic_server_raw(std::string address_str)
     return TestResult::Success;
 }
 
-TestResult basic_client_raw(std::string address_str)
+TestResult basicClientRaw(std::string address_str)
 {
-    auto socket = connect_socket(address_str);
+    auto socket = connectSocket(address_str);
 
     socket->writeMessage("client");
     auto server_identity = socket->readMessage();
@@ -120,7 +120,7 @@ TestResult basic_client_raw(std::string address_str)
     return TestResult::Success;
 }
 
-TestResult server_receives_big_message(std::string address)
+TestResult serverReceivesBigMessage(std::string address)
 {
     IOContext context {};
 
@@ -136,9 +136,9 @@ TestResult server_receives_big_message(std::string address)
     return TestResult::Success;
 }
 
-TestResult client_sends_big_message(std::string address_str)
+TestResult clientSendsBigMessage(std::string address_str)
 {
-    auto socket = connect_socket(address_str);
+    auto socket = connectSocket(address_str);
 
     socket->writeMessage("client");
     auto remote_identity = socket->readMessage();
@@ -149,9 +149,9 @@ TestResult client_sends_big_message(std::string address_str)
     return TestResult::Success;
 }
 
-TestResult client_simulated_slow_network(std::string address)
+TestResult clientSimulatedSlowNetwork(std::string address)
 {
-    auto socket = connect_socket(address);
+    auto socket = connectSocket(address);
 
     socket->writeMessage("client");
     auto remote_identity = socket->readMessage();
@@ -171,11 +171,11 @@ TestResult client_simulated_slow_network(std::string address)
     return TestResult::Success;
 }
 
-TestResult client_sends_incomplete_identity(std::string address)
+TestResult clientSendsIncompleteIdentity(std::string address)
 {
     // open a socket, write an incomplete identity and exit
     {
-        auto socket = connect_socket(address);
+        auto socket = connectSocket(address);
 
         auto server_identity = socket->readMessage();
         RETURN_FAILURE_IF_FALSE(server_identity == "server");
@@ -189,7 +189,7 @@ TestResult client_sends_incomplete_identity(std::string address)
 
     // connect again and try to send a message
     {
-        auto socket = connect_socket(address);
+        auto socket = connectSocket(address);
 
         auto server_identity = socket->readMessage();
         RETURN_FAILURE_IF_FALSE(server_identity == "server");
@@ -200,7 +200,7 @@ TestResult client_sends_incomplete_identity(std::string address)
     return TestResult::Success;
 }
 
-TestResult server_receives_huge_header(std::string address)
+TestResult serverReceivesHugeHeader(std::string address)
 {
     IOContext context {};
 
@@ -216,10 +216,10 @@ TestResult server_receives_huge_header(std::string address)
     return TestResult::Success;
 }
 
-TestResult client_sends_huge_header(std::string address)
+TestResult clientSendsHugeHeader(std::string address)
 {
     {
-        auto socket = connect_socket(address);
+        auto socket = connectSocket(address);
 
         socket->writeMessage("client");
         auto server_identity = socket->readMessage();
@@ -248,7 +248,7 @@ TestResult client_sends_huge_header(std::string address)
         }
 
         {
-            auto socket = connect_socket(address);
+            auto socket = connectSocket(address);
 
             socket->writeMessage("client");
             auto server_identity = socket->readMessage();
@@ -260,7 +260,7 @@ TestResult client_sends_huge_header(std::string address)
     }
 }
 
-TestResult server_receives_empty_messages(std::string address)
+TestResult serverReceivesEmptyMessages(std::string address)
 {
     IOContext context {};
 
@@ -272,14 +272,13 @@ TestResult server_receives_empty_messages(std::string address)
     RETURN_FAILURE_IF_FALSE(result.has_value());
     RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "");
 
-    auto result2 = socket.recvMessage();
-    RETURN_FAILURE_IF_FALSE(result2.has_value());
-    RETURN_FAILURE_IF_FALSE(result2->payload.as_string() == "");
+    auto error = socket.sendMessage("client", Bytes {""});
+    RETURN_FAILURE_IF_FALSE(error.has_value());
 
     return TestResult::Success;
 }
 
-TestResult client_sends_empty_messages(std::string address)
+TestResult clientSendsEmptyMessages(std::string address)
 {
     IOContext context {};
 
@@ -291,34 +290,30 @@ TestResult client_sends_empty_messages(std::string address)
     auto error = socket.sendMessage(Bytes {""});
     RETURN_FAILURE_IF_FALSE(error.has_value());
 
-    auto error2 = socket.sendMessage(Bytes {""});
-    RETURN_FAILURE_IF_FALSE(error2.has_value());
+    auto result = socket.recvMessage();
+    RETURN_FAILURE_IF_FALSE(result.has_value());
+    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "");
 
     return TestResult::Success;
 }
 
-// NOTE: Multicast/Unicast sockets are not yet implemented in uv_ymq
-// These tests are commented out until the feature is available
+// TODO: Multicast/Unicast sockets are not yet implemented in uv_ymq
 
 /*
-TestResult pubsub_subscriber(std::string address, std::string topic, int differentiator, void* sem)
+TestResult pubsubSubscriber(std::string address, std::string topic, int differentiator, void* sem)
 {
     IOContext context{};
 
-    // TODO: Implement Unicast socket type
     // auto socket = scaler::uv_ymq::sync::UnicastSocket{
     //     context, std::format("{}_subscriber_{}", topic, differentiator)};
 
     std::this_thread::sleep_for(std::chrono::milliseconds{500});
 
-    // TODO: Connect to address
+    // Connect to address
 
     std::this_thread::sleep_for(std::chrono::milliseconds{500});
 
-    // Signal readiness using cross-platform semaphore
-    // TODO: Implement semaphore signaling
-
-    // TODO: Receive message
+    // Receive message
     // auto msg = socket.recvMessage();
     // RETURN_FAILURE_IF_FALSE(msg.has_value());
     // RETURN_FAILURE_IF_FALSE(msg->payload.as_string() == "hello");
@@ -326,25 +321,25 @@ TestResult pubsub_subscriber(std::string address, std::string topic, int differe
     return TestResult::Success;
 }
 
-TestResult pubsub_publisher(std::string address, std::string topic, void* sem, int n)
+TestResult pubsubPublisher(std::string address, std::string topic, void* sem, int n)
 {
     IOContext context{};
 
-    // TODO: Implement Multicast socket type
+    // Implement Multicast socket type
     // auto socket = scaler::uv_ymq::sync::MulticastSocket{context, "publisher"};
     // auto bindResult = socket.bindTo(address);
     // RETURN_FAILURE_IF_FALSE(bindResult.has_value());
 
-    // TODO: Wait for subscribers to be ready using semaphore
+    // Wait for subscribers to be ready using semaphore
 
-    // TODO: Send messages to wrong topics
+    // Send messages to wrong topics
     // auto error = socket.sendMessage(std::format("x{}", topic), Bytes{"no one should get this"});
     // RETURN_FAILURE_IF_FALSE(error.has_value());
 
     // error = socket.sendMessage(std::format("{}x", topic), Bytes{"no one should get this either"});
     // RETURN_FAILURE_IF_FALSE(error.has_value());
 
-    // TODO: Send message to correct topic
+    // Send message to correct topic
     // error = socket.sendMessage(topic, Bytes{"hello"});
     // RETURN_FAILURE_IF_FALSE(error.has_value());
 
@@ -352,7 +347,7 @@ TestResult pubsub_publisher(std::string address, std::string topic, void* sem, i
 }
 */
 
-TestResult client_close_established_connection_client(std::string address)
+TestResult clientCloseEstablishedConnectionClient(std::string address)
 {
     IOContext context {};
 
@@ -375,7 +370,7 @@ TestResult client_close_established_connection_client(std::string address)
     return TestResult::Success;
 }
 
-TestResult client_close_established_connection_server(std::string address)
+TestResult clientCloseEstablishedConnectionServer(std::string address)
 {
     IOContext context {};
 
@@ -395,7 +390,7 @@ TestResult client_close_established_connection_server(std::string address)
     return TestResult::Success;
 }
 
-TestResult close_nonexistent_connection()
+TestResult closeNonexistentConnection()
 {
     IOContext context {};
 
@@ -408,7 +403,7 @@ TestResult close_nonexistent_connection()
     return TestResult::Success;
 }
 
-TestResult test_request_stop()
+TestResult testRequestStop()
 {
     IOContext context {};
 
@@ -433,7 +428,7 @@ TestResult test_request_stop()
     return TestResult::Success;
 }
 
-TestResult client_socket_stop_before_close_connection(std::string address)
+TestResult clientSocketStopBeforeCloseConnection(std::string address)
 {
     IOContext context {};
 
@@ -456,7 +451,7 @@ TestResult client_socket_stop_before_close_connection(std::string address)
     return TestResult::Success;
 }
 
-TestResult server_socket_stop_before_close_connection(std::string address)
+TestResult serverSocketStopBeforeCloseConnection(std::string address)
 {
     IOContext context {};
 
@@ -490,8 +485,9 @@ TEST_P(UVYMQSocketTest, TestBasicYMQClientYMQServer)
 {
     const auto address = GetAddress(2889);
 
-    // this is the test harness, it accepts a timeout, a list of functions to run
-    auto result = test(10, {[=] { return basic_client_ymq(address); }, [=] { return basic_server_ymq(address); }});
+    // this is the test harness, it accepts a timeout, a list of functions to run,
+    // and an optional third argument used to coordinate the execution of python (for mitm)
+    auto result = test(10, {[=] { return basicServerYmq(address); }, [=] { return basicClientYmq(address); }});
 
     // test() aggregates the results across all of the provided functions
     EXPECT_EQ(result, TestResult::Success);
@@ -502,8 +498,9 @@ TEST_P(UVYMQSocketTest, TestBasicRawClientYMQServer)
 {
     const auto address = GetAddress(2891);
 
-    // this is the test harness, it accepts a timeout, a list of functions to run
-    auto result = test(10, {[=] { return basic_client_raw(address); }, [=] { return basic_server_ymq(address); }});
+    // this is the test harness, it accepts a timeout, a list of functions to run,
+    // and an optional third argument used to coordinate the execution of python (for mitm)
+    auto result = test(10, {[=] { return basicServerYmq(address); }, [=] { return basicClientRaw(address); }});
 
     // test() aggregates the results across all of the provided functions
     EXPECT_EQ(result, TestResult::Success);
@@ -513,8 +510,9 @@ TEST_P(UVYMQSocketTest, TestBasicRawClientRawServer)
 {
     const auto address = GetAddress(2892);
 
-    // this is the test harness, it accepts a timeout, a list of functions to run
-    auto result = test(10, {[=] { return basic_client_raw(address); }, [=] { return basic_server_raw(address); }});
+    // this is the test harness, it accepts a timeout, a list of functions to run,
+    // and an optional third argument used to coordinate the execution of python (for mitm)
+    auto result = test(10, {[=] { return basicServerRaw(address); }, [=] { return basicClientRaw(address); }});
 
     // test() aggregates the results across all of the provided functions
     EXPECT_EQ(result, TestResult::Success);
@@ -525,7 +523,7 @@ TEST_P(UVYMQSocketTest, TestBasicRawClientRawServerNoDelay)
 {
     const auto address = GetAddress(2893);
 
-    auto result = test(10, {[=] { return basic_client_raw(address); }, [=] { return basic_server_ymq(address); }});
+    auto result = test(10, {[=] { return basicServerYmq(address); }, [=] { return basicClientRaw(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
@@ -534,8 +532,9 @@ TEST_P(UVYMQSocketTest, TestBasicDelayYMQClientRawServer)
 {
     const auto address = GetAddress(2894);
 
-    // this is the test harness, it accepts a timeout, a list of functions to run
-    auto result = test(10, {[=] { return basic_client_ymq(address); }, [=] { return basic_server_raw(address); }});
+    // this is the test harness, it accepts a timeout, a list of functions to run,
+    // and an optional third argument used to coordinate the execution of python (for mitm)
+    auto result = test(10, {[=] { return basicServerRaw(address); }, [=] { return basicClientYmq(address); }});
 
     // test() aggregates the results across all of the provided functions
     EXPECT_EQ(result, TestResult::Success);
@@ -547,8 +546,8 @@ TEST_P(UVYMQSocketTest, TestClientSendBigMessageToServer)
 {
     const auto address = GetAddress(2895);
 
-    auto result = test(
-        10, {[=] { return client_sends_big_message(address); }, [=] { return server_receives_big_message(address); }});
+    auto result =
+        test(10, {[=] { return serverReceivesBigMessage(address); }, [=] { return clientSendsBigMessage(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
@@ -560,35 +559,33 @@ TEST_P(UVYMQSocketTest, TestSlowNetwork)
     const auto address = GetAddress(2905);
 
     auto result =
-        test(20, {[=] { return client_simulated_slow_network(address); }, [=] { return basic_server_ymq(address); }});
+        test(20, {[=] { return basicServerYmq(address); }, [=] { return clientSimulatedSlowNetwork(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
 
-// TODO: figure out why this test fails in ci sometimes, and re-enable
-//
-// in this test, a client connects to the uv_ymq server but only partially sends its identity and then disconnects
+// in this test, a client connects to the YMQ server but only partially sends its identity and then disconnects
 // then a new client connection is established, and this one sends a complete identity and message
-// uv_ymq should be able to recover from a poorly-behaved client like this
+// YMQ should be able to recover from a poorly-behaved client like this
 TEST_P(UVYMQSocketTest, TestClientSendIncompleteIdentity)
 {
     const auto address = GetAddress(2896);
 
-    auto result = test(
-        20, {[=] { return client_sends_incomplete_identity(address); }, [=] { return basic_server_ymq(address); }});
+    auto result =
+        test(20, {[=] { return basicServerYmq(address); }, [=] { return clientSendsIncompleteIdentity(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
 
 // in this test, the client sends an unrealistically-large header
-// it is important that uv_ymq checks the header size before allocating memory
+// it is important that YMQ checks the header size before allocating memory
 // both for resilience against attacks and to guard against errors
 TEST_P(UVYMQSocketTest, TestClientSendHugeHeader)
 {
     const auto address = GetAddress(2897);
 
-    auto result = test(
-        20, {[=] { return client_sends_huge_header(address); }, [=] { return server_receives_huge_header(address); }});
+    auto result =
+        test(20, {[=] { return serverReceivesHugeHeader(address); }, [=] { return clientSendsHugeHeader(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
@@ -597,15 +594,13 @@ TEST_P(UVYMQSocketTest, TestClientSendHugeHeader)
 // there are in effect two kinds of empty messages: Bytes() and Bytes("")
 // in the former case, the bytes contains a nullptr
 // in the latter case, the bytes contains a zero-length allocation
-// it's important that the behaviour of uv_ymq is known for both of these cases
+// it's important that the behaviour of YMQ is known for both of these cases
 TEST_P(UVYMQSocketTest, TestClientSendEmptyMessage)
 {
     const auto address = GetAddress(2898);
 
     auto result = test(
-        20,
-        {[=] { return client_sends_empty_messages(address); },
-         [=] { return server_receives_empty_messages(address); }});
+        20, {[=] { return serverReceivesEmptyMessages(address); }, [=] { return clientSendsEmptyMessages(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
@@ -617,7 +612,7 @@ TEST_P(UVYMQSocketTest, TestClientSendEmptyMessage)
 // and then the publisher will send a message to the correct topic
 // both subscribers should receive this message
 //
-// NOTE: This test is commented out because Multicast/Unicast sockets are not yet implemented
+// NOTE: Multicast/Unicast sockets are not yet implemented
 /*
 TEST_P(UVYMQSocketTest, TestPubSub)
 {
@@ -628,9 +623,9 @@ TEST_P(UVYMQSocketTest, TestPubSub)
 
     auto result = test(
         20,
-        {[=] { return pubsub_publisher(address, topic, sem, 2); },
-         [=] { return pubsub_subscriber(address, topic, 0, sem); },
-         [=] { return pubsub_subscriber(address, topic, 1, sem); }});
+        {[=] { return pubsubPublisher(address, topic, sem, 2); },
+         [=] { return pubsubSubscriber(address, topic, 0, sem); },
+         [=] { return pubsubSubscriber(address, topic, 1, sem); }});
 
     // TODO: Cleanup semaphore
 
@@ -641,7 +636,7 @@ TEST_P(UVYMQSocketTest, TestPubSub)
 // this sets the publisher with an empty topic and the subscribers with two other topics
 // both subscribers should get all messages
 //
-// NOTE: This test is commented out because Multicast/Unicast sockets are not yet implemented
+// NOTE: Multicast/Unicast sockets are not yet implemented
 /*
 TEST_P(UVYMQSocketTest, TestPubSubEmptyTopic)
 {
@@ -651,9 +646,9 @@ TEST_P(UVYMQSocketTest, TestPubSubEmptyTopic)
 
     auto result = test(
         20,
-        {[=] { return pubsub_publisher(address, "", sem, 2); },
-         [=] { return pubsub_subscriber(address, "abc", 0, sem); },
-         [=] { return pubsub_subscriber(address, "def", 1, sem); }});
+        {[=] { return pubsubPublisher(address, "", sem, 2); },
+         [=] { return pubsubSubscriber(address, "abc", 0, sem); },
+         [=] { return pubsubSubscriber(address, "def", 1, sem); }});
 
     // TODO: Cleanup semaphore
 
@@ -668,8 +663,8 @@ TEST_P(UVYMQSocketTest, TestClientCloseEstablishedConnection)
 
     auto result = test(
         20,
-        {[=] { return client_close_established_connection_client(address); },
-         [=] { return client_close_established_connection_server(address); }});
+        {[=] { return clientCloseEstablishedConnectionServer(address); },
+         [=] { return clientCloseEstablishedConnectionClient(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
@@ -681,8 +676,8 @@ TEST_P(UVYMQSocketTest, TestClientSocketStopBeforeCloseConnection)
 
     auto result = test(
         20,
-        {[=] { return client_socket_stop_before_close_connection(address); },
-         [=] { return server_socket_stop_before_close_connection(address); }});
+        {[=] { return serverSocketStopBeforeCloseConnection(address); },
+         [=] { return clientSocketStopBeforeCloseConnection(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
@@ -690,22 +685,24 @@ TEST_P(UVYMQSocketTest, TestClientSocketStopBeforeCloseConnection)
 // in this test case, the we try to close a connection that does not exist
 TEST(UVYMQSocketTest, TestClientCloseNonexistentConnection)
 {
-    auto result = close_nonexistent_connection();
+    auto result = closeNonexistentConnection();
     EXPECT_EQ(result, TestResult::Success);
 }
 
 // this test case verifies that requesting a socket stop causes pending and subsequent operations to be cancelled
 TEST(UVYMQSocketTest, TestRequestSocketStop)
 {
-    auto result = test_request_stop();
+    auto result = testRequestStop();
     EXPECT_EQ(result, TestResult::Success);
 }
 
 std::vector<std::string> GetTransports()
 {
-    std::vector<std::string> transports {};
+    std::vector<std::string> transports;
     transports.push_back("tcp");
+#ifdef __linux__
     transports.push_back("ipc");
+#endif
     return transports;
 }
 

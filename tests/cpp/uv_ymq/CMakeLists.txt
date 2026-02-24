@@ -18,6 +18,7 @@ endif()
 
 target_sources(test_uv_ymq PRIVATE
 	../ymq/common/testing.h
+	../ymq/common/testing.cpp
 	../ymq/common/utils.h
 	../ymq/common/utils.cpp
 
@@ -31,22 +32,27 @@ target_sources(test_uv_ymq PRIVATE
 	../ymq/pipe/pipe_reader.h
 	../ymq/pipe/pipe_writer.h
 )
-
 if(LINUX OR APPLE)
 	target_sources(test_uv_ymq PRIVATE
-		../ymq/pipe/pipe_utils_linux.cpp
-		../ymq/pipe/pipe_reader_linux.cpp
-		../ymq/pipe/pipe_writer_linux.cpp
+		../ymq/common/utils_linux.cpp
+		../ymq/common/testing_linux.cpp
 
 		../ymq/net/socket_utils_linux.cpp
 		../ymq/net/tcp_socket_linux.cpp
-		../ymq/net/uds_socket.cpp)
+		../ymq/net/uds_socket.cpp
+
+		../ymq/pipe/pipe_utils_linux.cpp
+		../ymq/pipe/pipe_reader_linux.cpp
+		../ymq/pipe/pipe_writer_linux.cpp)
 elseif(WIN32)
 	target_sources(test_uv_ymq PRIVATE
-		../ymq/pipe/pipe_utils_windows.cpp
-		../ymq/pipe/pipe_reader_windows.cpp
-		../ymq/pipe/pipe_writer_windows.cpp
+		../ymq/common/testing_windows.cpp
+		../ymq/common/utils_windows.cpp
 
 		../ymq/net/socket_utils_windows.cpp
-		../ymq/net/tcp_socket_windows.cpp)
+		../ymq/net/tcp_socket_windows.cpp
+
+		../ymq/pipe/pipe_utils_windows.cpp
+		../ymq/pipe/pipe_reader_windows.cpp
+		../ymq/pipe/pipe_writer_windows.cpp)
 endif()
