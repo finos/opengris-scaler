@@ -19,7 +19,7 @@ UDSSocket::UDSSocket(): _fd(-1)
 {
     this->_fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
     if (this->_fd < 0)
-        raise_socket_error("failed to create socket");
+        raiseSocketError("failed to create socket");
 }
 
 UDSSocket::UDSSocket(long long fd): _fd(fd)
@@ -62,7 +62,7 @@ void UDSSocket::tryConnect(const std::string& address_str, int tries) const
                 continue;
             }
 
-            raise_socket_error("failed to connect");
+            raiseSocketError("failed to connect");
         }
 
         break;  // success
@@ -80,20 +80,20 @@ void UDSSocket::bind(const std::string& address_str) const
 
     ::unlink(addr.sun_path);
     if (::bind(this->_fd, (sockaddr*)&addr, sizeof(addr)) < 0)
-        raise_socket_error("failed to bind");
+        raiseSocketError("failed to bind");
 }
 
 void UDSSocket::listen(int backlog) const
 {
     if (::listen(this->_fd, backlog) < 0)
-        raise_socket_error("failed to listen");
+        raiseSocketError("failed to listen");
 }
 
 std::unique_ptr<Socket> UDSSocket::accept() const
 {
     long long fd = ::accept(this->_fd, nullptr, nullptr);
     if (fd < 0)
-        raise_socket_error("failed to accept");
+        raiseSocketError("failed to accept");
 
     return std::make_unique<UDSSocket>(fd);
 }
@@ -102,7 +102,7 @@ int UDSSocket::write(const void* buffer, size_t size) const
 {
     int n = ::write(this->_fd, buffer, size);
     if (n < 0)
-        raise_socket_error("failed to send");
+        raiseSocketError("failed to send");
     return n;
 }
 
@@ -129,7 +129,7 @@ int UDSSocket::read(void* buffer, size_t size) const
 {
     int n = ::read(this->_fd, buffer, size);
     if (n < 0)
-        raise_socket_error("failed to recv");
+        raiseSocketError("failed to recv");
     return n;
 }
 

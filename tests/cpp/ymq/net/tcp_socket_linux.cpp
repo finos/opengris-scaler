@@ -20,12 +20,12 @@ TCPSocket::TCPSocket(bool nodelay): _fd(-1), _nodelay(nodelay)
 {
     this->_fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (this->_fd < 0)
-        raise_socket_error("failed to create socket");
+        raiseSocketError("failed to create socket");
 
     char on = 1;
     if (this->_nodelay)
         if (::setsockopt(this->_fd, IPPROTO_TCP, TCP_NODELAY, (const char*)&on, sizeof(on)) < 0)
-            raise_socket_error("failed to set nodelay");
+            raiseSocketError("failed to set nodelay");
 }
 
 TCPSocket::TCPSocket(bool nodelay, long long fd): _fd(fd), _nodelay(nodelay)
@@ -33,7 +33,7 @@ TCPSocket::TCPSocket(bool nodelay, long long fd): _fd(fd), _nodelay(nodelay)
     char on = 1;
     if (this->_nodelay)
         if (::setsockopt(this->_fd, IPPROTO_TCP, TCP_NODELAY, (const char*)&on, sizeof(on)) < 0)
-            raise_socket_error("failed to set nodelay");
+            raiseSocketError("failed to set nodelay");
 }
 
 TCPSocket::~TCPSocket()
@@ -74,7 +74,7 @@ void TCPSocket::tryConnect(const std::string& address_str, int tries) const
                 continue;
             }
 
-            raise_socket_error("failed to connect");
+            raiseSocketError("failed to connect");
         }
 
         break;  // success
@@ -91,20 +91,20 @@ void TCPSocket::bind(const std::string& address_str) const
     sockaddr_in addr = *(sockaddr_in*)address.nativeHandle();
 
     if (::bind(this->_fd, (sockaddr*)&addr, sizeof(addr)) < 0)
-        raise_socket_error("failed to bind");
+        raiseSocketError("failed to bind");
 }
 
 void TCPSocket::listen(int backlog) const
 {
     if (::listen(this->_fd, backlog) < 0)
-        raise_socket_error("failed to listen");
+        raiseSocketError("failed to listen");
 }
 
 std::unique_ptr<Socket> TCPSocket::accept() const
 {
     long long fd = ::accept(this->_fd, nullptr, nullptr);
     if (fd < 0)
-        raise_socket_error("failed to accept");
+        raiseSocketError("failed to accept");
 
     return std::make_unique<TCPSocket>(this->_nodelay, fd);
 }
@@ -113,7 +113,7 @@ int TCPSocket::write(const void* buffer, size_t size) const
 {
     int n = ::write(this->_fd, buffer, size);
     if (n < 0)
-        raise_socket_error("failed to send");
+        raiseSocketError("failed to send");
     return n;
 }
 
@@ -140,7 +140,7 @@ int TCPSocket::read(void* buffer, size_t size) const
 {
     int n = ::read(this->_fd, buffer, size);
     if (n < 0)
-        raise_socket_error("failed to recv");
+        raiseSocketError("failed to recv");
     return n;
 }
 

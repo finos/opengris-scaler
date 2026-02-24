@@ -4,10 +4,10 @@ from typing import Any
 import pydivert
 from scapy.all import IP, Packet  # type: ignore[attr-defined]
 
-from tests.cpp.ymq.py_mitm.mitm_types import AbstractMITMInterface
+from tests.cpp.ymq.py_mitm.mitm_types import MITMInterface
 
 
-class WindivertMITMInterface(AbstractMITMInterface):
+class WindivertMITMInterface(MITMInterface):
     _windivert: pydivert.WinDivert
     _binder: socket.socket
 

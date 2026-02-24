@@ -36,7 +36,7 @@ int PipeReader::read(void* buffer, size_t size) const
 {
     ssize_t n = ::read(this->_fd, buffer, size);
     if (n < 0)
-        raise_system_error("read");
+        raiseSystemError("read");
     return n;
 }
 

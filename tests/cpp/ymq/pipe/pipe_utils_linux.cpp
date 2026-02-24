@@ -3,11 +3,11 @@
 #include "tests/cpp/ymq/common/utils.h"
 #include "tests/cpp/ymq/pipe/pipe.h"
 
-std::pair<long long, long long> create_pipe()
+std::pair<long long, long long> createPipe()
 {
     int fds[2];
     if (::pipe(fds) < 0)
-        raise_system_error("pipe");
+        raiseSystemError("pipe");
 
     return std::make_pair(fds[0], fds[1]);
 }

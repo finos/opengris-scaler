@@ -35,6 +35,7 @@
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/simple_interface.h"
 #include "tests/cpp/ymq/common/testing.h"
+#include "tests/cpp/ymq/common/utils.h"
 #include "tests/cpp/ymq/net/socket_utils.h"
 
 using scaler::ymq::Bytes;
@@ -77,7 +78,7 @@ protected:
 // --------------------
 //  clients and servers
 // --------------------
-TestResult basic_server_ymq(std::string address)
+TestResult basicServerYmq(std::string address)
 {
     IOContext context(1);
 
@@ -93,7 +94,7 @@ TestResult basic_server_ymq(std::string address)
     return TestResult::Success;
 }
 
-TestResult basic_client_ymq(std::string address)
+TestResult basicClientYmq(std::string address)
 {
     IOContext context(1);
 
@@ -106,9 +107,9 @@ TestResult basic_client_ymq(std::string address)
     return TestResult::Success;
 }
 
-TestResult basic_server_raw(std::string address_str)
+TestResult basicServerRaw(std::string address_str)
 {
-    auto socket = bind_socket(address_str);
+    auto socket = bindSocket(address_str);
 
     socket->listen(5);  // Default backlog
     auto client = socket->accept();
@@ -121,9 +122,9 @@ TestResult basic_server_raw(std::string address_str)
     return TestResult::Success;
 }
 
-TestResult basic_client_raw(std::string address_str)
+TestResult basicClientRaw(std::string address_str)
 {
-    auto socket = connect_socket(address_str);
+    auto socket = connectSocket(address_str);
 
     socket->writeMessage("client");
     auto server_identity = socket->readMessage();
@@ -133,7 +134,7 @@ TestResult basic_client_raw(std::string address_str)
     return TestResult::Success;
 }
 
-TestResult server_receives_big_message(std::string address)
+TestResult serverReceivesBigMessage(std::string address)
 {
     IOContext context(1);
 
@@ -149,9 +150,9 @@ TestResult server_receives_big_message(std::string address)
     return TestResult::Success;
 }
 
-TestResult client_sends_big_message(std::string address_str)
+TestResult clientSendsBigMessage(std::string address_str)
 {
-    auto socket = connect_socket(address_str);
+    auto socket = connectSocket(address_str);
 
     socket->writeMessage("client");
     auto remote_identity = socket->readMessage();
@@ -162,7 +163,7 @@ TestResult client_sends_big_message(std::string address_str)
     return TestResult::Success;
 }
 
-TestResult reconnect_server_main(std::string address)
+TestResult reconnectServerMain(std::string address)
 {
     IOContext context(1);
 
@@ -181,7 +182,7 @@ TestResult reconnect_server_main(std::string address)
     return TestResult::Success;
 }
 
-TestResult reconnect_client_main(std::string address)
+TestResult reconnectClientMain(std::string address)
 {
     IOContext context(1);
 
@@ -220,9 +221,9 @@ TestResult reconnect_client_main(std::string address)
     return TestResult::Failure;
 }
 
-TestResult client_simulated_slow_network(std::string address)
+TestResult clientSimulatedSlowNetwork(std::string address)
 {
-    auto socket = connect_socket(address);
+    auto socket = connectSocket(address);
 
     socket->writeMessage("client");
     auto remote_identity = socket->readMessage();
@@ -242,11 +243,11 @@ TestResult client_simulated_slow_network(std::string address)
     return TestResult::Success;
 }
 
-TestResult client_sends_incomplete_identity(std::string address)
+TestResult clientSendsIncompleteIdentity(std::string address)
 {
     // open a socket, write an incomplete identity and exit
     {
-        auto socket = connect_socket(address);
+        auto socket = connectSocket(address);
 
         auto server_identity = socket->readMessage();
         RETURN_FAILURE_IF_FALSE(server_identity == "server");
@@ -260,7 +261,7 @@ TestResult client_sends_incomplete_identity(std::string address)
 
     // connect again and try to send a message
     {
-        auto socket = connect_socket(address);
+        auto socket = connectSocket(address);
 
         auto server_identity = socket->readMessage();
         RETURN_FAILURE_IF_FALSE(server_identity == "server");
@@ -271,7 +272,7 @@ TestResult client_sends_incomplete_identity(std::string address)
     return TestResult::Success;
 }
 
-TestResult server_receives_huge_header(std::string address)
+TestResult serverReceivesHugeHeader(std::string address)
 {
     IOContext context(1);
 
@@ -287,7 +288,7 @@ TestResult server_receives_huge_header(std::string address)
     return TestResult::Success;
 }
 
-TestResult client_sends_huge_header(std::string address)
+TestResult clientSendsHugeHeader(std::string address)
 {
 #ifdef __linux__
     // ignore SIGPIPE so that write() returns EPIPE instead of crashing the program
@@ -300,7 +301,7 @@ TestResult client_sends_huge_header(std::string address)
 #endif  // _WIN32
 
     {
-        auto socket = connect_socket(address);
+        auto socket = connectSocket(address);
 
         socket->writeMessage("client");
         auto server_identity = socket->readMessage();
@@ -332,7 +333,7 @@ TestResult client_sends_huge_header(std::string address)
         }
 
         {
-            auto socket = connect_socket(address);
+            auto socket = connectSocket(address);
 
             socket->writeMessage("client");
             auto server_identity = socket->readMessage();
@@ -344,7 +345,7 @@ TestResult client_sends_huge_header(std::string address)
     }
 }
 
-TestResult server_receives_empty_messages(std::string address)
+TestResult serverReceivesEmptyMessages(std::string address)
 {
     IOContext context(1);
 
@@ -364,7 +365,7 @@ TestResult server_receives_empty_messages(std::string address)
     return TestResult::Success;
 }
 
-TestResult client_sends_empty_messages(std::string address)
+TestResult clientSendsEmptyMessages(std::string address)
 {
     IOContext context(1);
 
@@ -382,7 +383,7 @@ TestResult client_sends_empty_messages(std::string address)
     return TestResult::Success;
 }
 
-TestResult pubsub_subscriber(std::string address, std::string topic, int differentiator, void* sem)
+TestResult pubsubSubscriber(std::string address, std::string topic, int differentiator, void* sem)
 {
     IOContext context(1);
 
@@ -415,7 +416,7 @@ TestResult pubsub_subscriber(std::string address, std::string topic, int differe
 // topic: the identifier of the topic, must match what's passed to the subscribers
 // sem: a semaphore to synchronize the publisher and subscriber processes
 // n: the number of subscribers
-TestResult pubsub_publisher(std::string address, std::string topic, void* sem, int n)
+TestResult pubsubPublisher(std::string address, std::string topic, void* sem, int n)
 {
     IOContext context(1);
 
@@ -452,7 +453,7 @@ TestResult pubsub_publisher(std::string address, std::string topic, void* sem, i
     return TestResult::Success;
 }
 
-TestResult client_close_established_connection_client(std::string address)
+TestResult clientCloseEstablishedConnectionClient(std::string address)
 {
     IOContext context(1);
 
@@ -472,7 +473,7 @@ TestResult client_close_established_connection_client(std::string address)
     return TestResult::Success;
 }
 
-TestResult client_close_established_connection_server(std::string address)
+TestResult clientCloseEstablishedConnectionServer(std::string address)
 {
     IOContext context(1);
 
@@ -494,7 +495,7 @@ TestResult client_close_established_connection_server(std::string address)
     return TestResult::Success;
 }
 
-TestResult close_nonexistent_connection()
+TestResult closeNonexistentConnection()
 {
     IOContext context(1);
 
@@ -508,7 +509,7 @@ TestResult close_nonexistent_connection()
     return TestResult::Success;
 }
 
-TestResult test_request_stop()
+TestResult testRequestStop()
 {
     IOContext context(1);
 
@@ -534,7 +535,7 @@ TestResult test_request_stop()
     return TestResult::Success;
 }
 
-TestResult client_socket_stop_before_close_connection(std::string address)
+TestResult clientSocketStopBeforeCloseConnection(std::string address)
 {
     IOContext context(1);
 
@@ -554,7 +555,7 @@ TestResult client_socket_stop_before_close_connection(std::string address)
     return TestResult::Success;
 }
 
-TestResult server_socket_stop_before_close_connection(std::string address)
+TestResult serverSocketStopBeforeCloseConnection(std::string address)
 {
     IOContext context(1);
 
@@ -591,7 +592,7 @@ TEST_P(CcYmqTestSuiteParametrized, TestBasicYMQClientYMQServer)
 
     // this is the test harness, it accepts a timeout, a list of functions to run,
     // and an optional third argument used to coordinate the execution of python (for mitm)
-    auto result = test(10, {[=] { return basic_client_ymq(address); }, [=] { return basic_server_ymq(address); }});
+    auto result = test(10, {[=] { return basicClientYmq(address); }, [=] { return basicServerYmq(address); }});
 
     // test() aggregates the results across all of the provided functions
     EXPECT_EQ(result, TestResult::Success);
@@ -604,7 +605,7 @@ TEST_P(CcYmqTestSuiteParametrized, TestBasicRawClientYMQServer)
 
     // this is the test harness, it accepts a timeout, a list of functions to run,
     // and an optional third argument used to coordinate the execution of python (for mitm)
-    auto result = test(10, {[=] { return basic_client_raw(address); }, [=] { return basic_server_ymq(address); }});
+    auto result = test(10, {[=] { return basicClientRaw(address); }, [=] { return basicServerYmq(address); }});
 
     // test() aggregates the results across all of the provided functions
     EXPECT_EQ(result, TestResult::Success);
@@ -616,7 +617,7 @@ TEST_P(CcYmqTestSuiteParametrized, TestBasicRawClientRawServer)
 
     // this is the test harness, it accepts a timeout, a list of functions to run,
     // and an optional third argument used to coordinate the execution of python (for mitm)
-    auto result = test(10, {[=] { return basic_client_raw(address); }, [=] { return basic_server_raw(address); }});
+    auto result = test(10, {[=] { return basicClientRaw(address); }, [=] { return basicServerRaw(address); }});
 
     // test() aggregates the results across all of the provided functions
     EXPECT_EQ(result, TestResult::Success);
@@ -627,7 +628,7 @@ TEST_P(CcYmqTestSuiteParametrized, TestBasicRawClientRawServerNoDelay)
 {
     const auto address = GetAddress(2893);
 
-    auto result = test(10, {[=] { return basic_client_raw(address); }, [=] { return basic_server_ymq(address); }});
+    auto result = test(10, {[=] { return basicClientRaw(address); }, [=] { return basicServerYmq(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
@@ -638,7 +639,7 @@ TEST_P(CcYmqTestSuiteParametrized, TestBasicDelayYMQClientRawServer)
 
     // this is the test harness, it accepts a timeout, a list of functions to run,
     // and an optional third argument used to coordinate the execution of python (for mitm)
-    auto result = test(10, {[=] { return basic_client_ymq(address); }, [=] { return basic_server_raw(address); }});
+    auto result = test(10, {[=] { return basicClientYmq(address); }, [=] { return basicServerRaw(address); }});
 
     // test() aggregates the results across all of the provided functions
     EXPECT_EQ(result, TestResult::Success);
@@ -650,8 +651,8 @@ TEST_P(CcYmqTestSuiteParametrized, TestClientSendBigMessageToServer)
 {
     const auto address = GetAddress(2895);
 
-    auto result = test(
-        10, {[=] { return client_sends_big_message(address); }, [=] { return server_receives_big_message(address); }});
+    auto result =
+        test(10, {[=] { return clientSendsBigMessage(address); }, [=] { return serverReceivesBigMessage(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
@@ -676,7 +677,7 @@ TEST(CcYmqTestSuite, TestMitmPassthrough)
     auto mitm_ip   = "127.0.0.1";
     auto remote_ip = "127.0.0.1";
 #endif  // _WIN32
-    auto mitm_port   = random_port();
+    auto mitm_port   = randomPort();
     auto remote_port = 23571;
 
     // the Python program must be the first and only the first function passed to test()
@@ -684,9 +685,9 @@ TEST(CcYmqTestSuite, TestMitmPassthrough)
     // before beginning the test
     auto result = test(
         20,
-        {[=] { return run_mitm("passthrough", mitm_ip, mitm_port, remote_ip, remote_port); },
-         [=] { return basic_client_ymq(std::format("tcp://{}:{}", mitm_ip, mitm_port)); },
-         [=] { return basic_server_ymq(std::format("tcp://{}:{}", remote_ip, remote_port)); }},
+        {[=] { return runMitm("passthrough", mitm_ip, mitm_port, remote_ip, remote_port); },
+         [=] { return basicClientYmq(std::format("tcp://{}:{}", mitm_ip, mitm_port)); },
+         [=] { return basicServerYmq(std::format("tcp://{}:{}", remote_ip, remote_port)); }},
         true);
 
     EXPECT_EQ(result, TestResult::Success);
@@ -703,7 +704,7 @@ TEST(CcYmqTestSuite, TestMitmPassthroughRaw)
     auto mitm_ip   = "127.0.0.1";
     auto remote_ip = "127.0.0.1";
 #endif  // _WIN32
-    auto mitm_port   = random_port();
+    auto mitm_port   = randomPort();
     auto remote_port = 23574;
 
     // the Python program must be the first and only the first function passed to test()
@@ -711,9 +712,9 @@ TEST(CcYmqTestSuite, TestMitmPassthroughRaw)
     // before beginning the test
     auto result = test(
         20,
-        {[=] { return run_mitm("passthrough", mitm_ip, mitm_port, remote_ip, remote_port); },
-         [=] { return basic_client_ymq(std::format("tcp://{}:{}", mitm_ip, mitm_port)); },
-         [=] { return basic_server_ymq(std::format("tcp://{}:{}", remote_ip, remote_port)); }},
+        {[=] { return runMitm("passthrough", mitm_ip, mitm_port, remote_ip, remote_port); },
+         [=] { return basicClientYmq(std::format("tcp://{}:{}", mitm_ip, mitm_port)); },
+         [=] { return basicServerYmq(std::format("tcp://{}:{}", remote_ip, remote_port)); }},
         true);
     EXPECT_EQ(result, TestResult::Success);
 }
@@ -729,14 +730,14 @@ TEST(CcYmqTestSuite, TestMitmReconnect)
     auto mitm_ip   = "127.0.0.1";
     auto remote_ip = "127.0.0.1";
 #endif  // _WIN32
-    auto mitm_port   = random_port();
+    auto mitm_port   = randomPort();
     auto remote_port = 23572;
 
     auto result = test(
         30,
-        {[=] { return run_mitm("send_rst_to_client", mitm_ip, mitm_port, remote_ip, remote_port); },
-         [=] { return reconnect_client_main(std::format("tcp://{}:{}", mitm_ip, mitm_port)); },
-         [=] { return reconnect_server_main(std::format("tcp://{}:{}", remote_ip, remote_port)); }},
+        {[=] { return runMitm("send_rst_to_client", mitm_ip, mitm_port, remote_ip, remote_port); },
+         [=] { return reconnectClientMain(std::format("tcp://{}:{}", mitm_ip, mitm_port)); },
+         [=] { return reconnectServerMain(std::format("tcp://{}:{}", remote_ip, remote_port)); }},
         true);
 
     EXPECT_EQ(result, TestResult::Success);
@@ -753,14 +754,14 @@ TEST(CcYmqTestSuite, TestMitmRandomlyDropPackets)
     auto mitm_ip   = "127.0.0.1";
     auto remote_ip = "127.0.0.1";
 #endif  // _WIN32
-    auto mitm_port   = random_port();
+    auto mitm_port   = randomPort();
     auto remote_port = 23573;
 
     auto result = test(
         180,
-        {[=] { return run_mitm("randomly_drop_packets", mitm_ip, mitm_port, remote_ip, remote_port, {"0.3"}); },
-         [=] { return basic_client_ymq(std::format("tcp://{}:{}", mitm_ip, mitm_port)); },
-         [=] { return basic_server_ymq(std::format("tcp://{}:{}", remote_ip, remote_port)); }},
+        {[=] { return runMitm("randomly_drop_packets", mitm_ip, mitm_port, remote_ip, remote_port, {"0.3"}); },
+         [=] { return basicClientYmq(std::format("tcp://{}:{}", mitm_ip, mitm_port)); },
+         [=] { return basicServerYmq(std::format("tcp://{}:{}", remote_ip, remote_port)); }},
         true);
 
     EXPECT_EQ(result, TestResult::Success);
@@ -773,13 +774,11 @@ TEST_P(CcYmqTestSuiteParametrized, TestSlowNetwork)
     const auto address = GetAddress(2905);
 
     auto result =
-        test(20, {[=] { return client_simulated_slow_network(address); }, [=] { return basic_server_ymq(address); }});
+        test(20, {[=] { return clientSimulatedSlowNetwork(address); }, [=] { return basicServerYmq(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
 
-// TODO: figure out why this test fails in ci sometimes, and re-enable
-//
 // in this test, a client connects to the YMQ server but only partially sends its identity and then disconnects
 // then a new client connection is established, and this one sends a complete identity and message
 // YMQ should be able to recover from a poorly-behaved client like this
@@ -787,15 +786,12 @@ TEST_P(CcYmqTestSuiteParametrized, TestClientSendIncompleteIdentity)
 {
     const auto address = GetAddress(2896);
 
-    auto result = test(
-        20, {[=] { return client_sends_incomplete_identity(address); }, [=] { return basic_server_ymq(address); }});
+    auto result =
+        test(20, {[=] { return clientSendsIncompleteIdentity(address); }, [=] { return basicServerYmq(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
 
-// TODO: this should pass
-// currently YMQ rejects the second connection, saying that the message is too large even when it isn't
-//
 // in this test, the client sends an unrealistically-large header
 // it is important that YMQ checks the header size before allocating memory
 // both for resilence against attacks and to guard against errors
@@ -803,8 +799,8 @@ TEST_P(CcYmqTestSuiteParametrized, TestClientSendHugeHeader)
 {
     const auto address = GetAddress(2897);
 
-    auto result = test(
-        20, {[=] { return client_sends_huge_header(address); }, [=] { return server_receives_huge_header(address); }});
+    auto result =
+        test(20, {[=] { return clientSendsHugeHeader(address); }, [=] { return serverReceivesHugeHeader(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
@@ -819,9 +815,7 @@ TEST_P(CcYmqTestSuiteParametrized, TestClientSendEmptyMessage)
     const auto address = GetAddress(2898);
 
     auto result = test(
-        20,
-        {[=] { return client_sends_empty_messages(address); },
-         [=] { return server_receives_empty_messages(address); }});
+        20, {[=] { return clientSendsEmptyMessages(address); }, [=] { return serverReceivesEmptyMessages(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
@@ -861,9 +855,9 @@ TEST_P(CcYmqTestSuiteParametrized, TestPubSub)
 #endif  // _WIN32
     auto result = test(
         20,
-        {[=] { return pubsub_publisher(address, topic, sem, 2); },
-         [=] { return pubsub_subscriber(address, topic, 0, sem); },
-         [=] { return pubsub_subscriber(address, topic, 1, sem); }});
+        {[=] { return pubsubPublisher(address, topic, sem, 2); },
+         [=] { return pubsubSubscriber(address, topic, 0, sem); },
+         [=] { return pubsubSubscriber(address, topic, 1, sem); }});
 
 #ifdef __linux__
     sem_destroy(sem);
@@ -906,9 +900,9 @@ TEST_P(CcYmqTestSuiteParametrized, TestPubSubEmptyTopic)
 #endif  // _WIN32
     auto result = test(
         20,
-        {[=] { return pubsub_publisher(address, "", sem, 2); },
-         [=] { return pubsub_subscriber(address, "abc", 0, sem); },
-         [=] { return pubsub_subscriber(address, "def", 1, sem); }});
+        {[=] { return pubsubPublisher(address, "", sem, 2); },
+         [=] { return pubsubSubscriber(address, "abc", 0, sem); },
+         [=] { return pubsubSubscriber(address, "def", 1, sem); }});
 
 #ifdef __linux__
     sem_destroy(sem);
@@ -928,8 +922,8 @@ TEST_P(CcYmqTestSuiteParametrized, DISABLED_TestClientCloseEstablishedConnection
 
     auto result = test(
         20,
-        {[=] { return client_close_established_connection_client(address); },
-         [=] { return client_close_established_connection_server(address); }});
+        {[=] { return clientCloseEstablishedConnectionClient(address); },
+         [=] { return clientCloseEstablishedConnectionServer(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
@@ -942,8 +936,8 @@ TEST_P(CcYmqTestSuiteParametrized, TestClientSocketStopBeforeCloseConnection)
 
     auto result = test(
         20,
-        {[=] { return client_socket_stop_before_close_connection(address); },
-         [=] { return server_socket_stop_before_close_connection(address); }});
+        {[=] { return clientSocketStopBeforeCloseConnection(address); },
+         [=] { return serverSocketStopBeforeCloseConnection(address); }});
 
     EXPECT_EQ(result, TestResult::Success);
 }
@@ -952,14 +946,14 @@ TEST_P(CcYmqTestSuiteParametrized, TestClientSocketStopBeforeCloseConnection)
 TEST(CcYmqTestSuite, TestClientCloseNonexistentConnection)
 
 {
-    auto result = close_nonexistent_connection();
+    auto result = closeNonexistentConnection();
     EXPECT_EQ(result, TestResult::Success);
 }
 
 // this test case verifies that requesting a socket stop causes pending and subsequent operations to be cancelled
 TEST(CcYmqTestSuite, TestRequestSocketStop)
 {
-    auto result = test_request_stop();
+    auto result = testRequestStop();
     EXPECT_EQ(result, TestResult::Success);
 }
 
@@ -1005,7 +999,7 @@ INSTANTIATE_TEST_SUITE_P(
 // main
 int main(int argc, char** argv)
 {
-    ensure_python_initialized();
+    ensurePythonInitialized();
 
 #ifdef _WIN32
     // initialize winsock
@@ -1024,6 +1018,6 @@ int main(int argc, char** argv)
     WSACleanup();
 #endif  // _WIN32
 
-    maybe_finalize_python();
+    maybeFinalizePython();
     return result;
 }

@@ -8,7 +8,7 @@
 
 using scaler::ymq::SocketAddress;
 
-std::unique_ptr<Socket> connect_socket(std::string& address_str)
+std::unique_ptr<Socket> connectSocket(std::string& address_str)
 {
     auto address = scaler::ymq::stringToSocketAddress(address_str).value();
 
@@ -21,7 +21,7 @@ std::unique_ptr<Socket> connect_socket(std::string& address_str)
     throw std::runtime_error(std::format("Unsupported protocol for raw client: '{}'", address.nativeHandleType()));
 }
 
-std::unique_ptr<Socket> bind_socket(std::string& address_str)
+std::unique_ptr<Socket> bindSocket(std::string& address_str)
 {
     auto address = scaler::ymq::stringToSocketAddress(address_str).value();
 

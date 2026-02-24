@@ -36,7 +36,7 @@ int PipeReader::read(void* buffer, size_t size) const
 {
     DWORD bytes_read = 0;
     if (!ReadFile((HANDLE)this->_fd, buffer, (DWORD)size, &bytes_read, nullptr))
-        raise_system_error("failed to read");
+        raiseSystemError("failed to read");
     return bytes_read;
 }
 

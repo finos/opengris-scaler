@@ -1,41 +1,11 @@
 #include "tests/cpp/ymq/common/utils.h"
 
-#include <cstring>
 #include <filesystem>
 #include <random>
-#include <sstream>
-
-#ifdef __linux__
-#include <errno.h>
-#endif  // __linux__
-#ifdef _WIN32
-#include <Windows.h>
-#include <winsock2.h>
-#endif  // _WIN32
-
-void raise_system_error(const char* msg)
-{
-#ifdef __linux__
-    throw std::system_error(errno, std::generic_category(), msg);
-#endif  // __linux__
-#ifdef _WIN32
-    throw std::system_error(GetLastError(), std::generic_category(), msg);
-#endif  // _WIN32
-}
-
-void raise_socket_error(const char* msg)
-{
-#ifdef __linux__
-    throw std::system_error(errno, std::generic_category(), msg);
-#endif  // __linux__
-#ifdef _WIN32
-    throw std::system_error(WSAGetLastError(), std::generic_category(), msg);
-#endif  // _WIN32
-}
 
 // change the current working directory to the project root
 // this is important for finding the python mitm script
-void chdir_to_project_root()
+void chdirToProjectRoot()
 {
     auto cwd = std::filesystem::current_path();
 
@@ -49,9 +19,9 @@ void chdir_to_project_root()
     }
 }
 
-unsigned short random_port(unsigned short min_port, unsigned short max_port)
+unsigned short randomPort(unsigned short minPort, unsigned short maxPort)
 {
     static thread_local std::mt19937_64 rng(std::random_device {}());
-    std::uniform_int_distribution<unsigned int> dist(min_port, max_port);
+    std::uniform_int_distribution<unsigned int> dist(minPort, maxPort);
     return static_cast<unsigned short>(dist(rng));
 }

@@ -8,7 +8,7 @@ struct Pipe {
 public:
     Pipe(): reader(-1), writer(-1)
     {
-        std::pair<long long, long long> pair = create_pipe();
+        std::pair<long long, long long> pair = createPipe();
         this->reader                         = PipeReader(pair.first);
         this->writer                         = PipeWriter(pair.second);
     }
