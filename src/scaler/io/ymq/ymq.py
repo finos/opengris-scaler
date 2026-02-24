@@ -1,7 +1,34 @@
 # This file wraps the interface exported by the C implementation of the module
 # and provides a more ergonomic interface supporting both asynchronous and synchronous execution
 
-__all__ = ["IOSocket", "IOContext", "Message", "IOSocketType", "YMQException", "Bytes", "ErrorCode"]
+__all__ = [
+    "IOSocket",
+    "IOContext",
+    "Message",
+    "IOSocketType",
+    "YMQException",
+    "Bytes",
+    "ErrorCode",
+    "InvalidPortFormatError",
+    "InvalidAddressFormatError",
+    "ConfigurationError",
+    "SignalNotSupportedError",
+    "CoreBugError",
+    "RepetetiveIOSocketIdentityError",
+    "RedundantIOSocketRefCountError",
+    "MultipleConnectToNotSupportedError",
+    "MultipleBindToNotSupportedError",
+    "InitialConnectFailedWithInProgressError",
+    "SendMessageRequestCouldNotCompleteError",
+    "SetSockOptNonFatalFailureError",
+    "IPv6NotSupportedError",
+    "RemoteEndDisconnectedOnSocketWithoutGuaranteedDeliveryError",
+    "ConnectorSocketClosedByRemoteEndError",
+    "IOSocketStopRequestedError",
+    "BinderSendMessageWithNoAddressError",
+    "IPCOnWinNotSupportedError",
+    "UVError",
+]
 
 import asyncio
 import concurrent.futures
@@ -12,7 +39,34 @@ try:
 except ImportError:
     from typing_extensions import ParamSpec, Concatenate  # type: ignore[assignment]
 
-from scaler.io.ymq._ymq import BaseIOContext, BaseIOSocket, Bytes, ErrorCode, IOSocketType, Message, YMQException
+from scaler.io.ymq._ymq import (
+    BaseIOContext,
+    BaseIOSocket,
+    BinderSendMessageWithNoAddressError,
+    Bytes,
+    ConfigurationError,
+    ConnectorSocketClosedByRemoteEndError,
+    CoreBugError,
+    ErrorCode,
+    InitialConnectFailedWithInProgressError,
+    InvalidAddressFormatError,
+    InvalidPortFormatError,
+    IOSocketStopRequestedError,
+    IOSocketType,
+    IPCOnWinNotSupportedError,
+    IPv6NotSupportedError,
+    Message,
+    MultipleBindToNotSupportedError,
+    MultipleConnectToNotSupportedError,
+    RedundantIOSocketRefCountError,
+    RemoteEndDisconnectedOnSocketWithoutGuaranteedDeliveryError,
+    RepetetiveIOSocketIdentityError,
+    SendMessageRequestCouldNotCompleteError,
+    SetSockOptNonFatalFailureError,
+    SignalNotSupportedError,
+    UVError,
+    YMQException,
+)
 
 
 class IOSocket:

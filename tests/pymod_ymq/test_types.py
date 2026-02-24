@@ -9,11 +9,14 @@ class TestTypes(unittest.TestCase):
     def test_exception(self):
         # type checkers misidentify this as "unnecessary" due to the type hints file
         self.assertTrue(issubclass(ymq.YMQException, Exception))  # type: ignore
+        self.assertTrue(issubclass(ymq.CoreBugError, ymq.YMQException))
 
-        exc = ymq.YMQException(ymq.ErrorCode.CoreBug, "oh no")
+        exc = ymq.CoreBugError(ymq.ErrorCode.CoreBug, "oh no")
         self.assertEqual(exc.args, (ymq.ErrorCode.CoreBug, "oh no"))
         self.assertEqual(exc.code, ymq.ErrorCode.CoreBug)
         self.assertEqual(exc.message, "oh no")
+        self.assertIsInstance(exc, ymq.YMQException)
+        self.assertIsInstance(exc, ymq.CoreBugError)
 
     def test_error_code(self):
         self.assertTrue(issubclass(ymq.ErrorCode, IntEnum))  # type: ignore

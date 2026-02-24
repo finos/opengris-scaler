@@ -45,14 +45,14 @@ static int YMQException_init(YMQException* self, PyObject* args, PyObject* kwds)
     }
 
     // delegate to the base class init
-    return self->ob_base.ob_type->tp_base->tp_init((PyObject*)self, args, kwds);
+    return ((PyTypeObject*)PyExc_Exception)->tp_init((PyObject*)self, args, kwds);
 }
 
 static void YMQException_dealloc(YMQException* self)
 {
     // we still need to release the reference to the heap type
     auto* tp = Py_TYPE(self);
-    self->ob_base.ob_type->tp_base->tp_dealloc((PyObject*)self);
+    ((PyTypeObject*)PyExc_Exception)->tp_dealloc((PyObject*)self);
     Py_DECREF(tp);
 }
 
@@ -81,7 +81,7 @@ static PyType_Slot YMQException_slots[] = {
 };
 
 static PyType_Spec YMQException_spec = {
-    "_ymq.YMQException", sizeof(YMQException), 0, Py_TPFLAGS_DEFAULT, YMQException_slots};
+    "_ymq.YMQException", sizeof(YMQException), 0, Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE, YMQException_slots};
 
 inline OwnedPyObject<> YMQException_argtupleFromCoreError(YMQState* state, const Error* error)
 {
@@ -103,13 +103,22 @@ inline OwnedPyObject<> YMQException_argtupleFromCoreError(YMQState* state, const
     return PyTuple_Pack(2, *pyCode, *message);
 }
 
+inline PyObject* YMQException_getTypeForError(YMQState* state, const Error* error)
+{
+    auto it = state->PyExceptionSubtypes.find(static_cast<int>(error->_errorCode));
+    if (it != state->PyExceptionSubtypes.end()) {
+        return *it->second;
+    }
+    return *state->PyExceptionType;
+}
+
 inline void YMQException_setFromCoreError(YMQState* state, const Error* error)
 {
     auto tuple = YMQException_argtupleFromCoreError(state, error);
     if (!tuple)
         return;
 
-    PyErr_SetObject(*state->PyExceptionType, *tuple);
+    PyErr_SetObject(YMQException_getTypeForError(state, error), *tuple);
 }
 
 inline OwnedPyObject<> YMQException_createFromCoreError(YMQState* state, const Error* error)
@@ -118,7 +127,7 @@ inline OwnedPyObject<> YMQException_createFromCoreError(YMQState* state, const E
     if (!tuple)
         return nullptr;
 
-    return PyObject_CallObject(*state->PyExceptionType, *tuple);
+    return PyObject_CallObject(YMQException_getTypeForError(state, error), *tuple);
 }
 
 }  // namespace pymod
