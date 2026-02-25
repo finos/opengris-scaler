@@ -11,9 +11,11 @@ namespace details {
 
 std::expected<std::string, Error> getSockName(const uv_pipe_t& handle) noexcept
 {
-    // Get the required buffer size
-    size_t len = 0;
-    int err    = uv_pipe_getsockname(&handle, nullptr, &len);
+    // Get the required buffer size by calling uv_pipe_getsockname with a dummy 1-byte buffer.
+    // This should return a UV_ENOBUFS error and the required buffer length.
+    char dummy[1];  // Dummy buffer
+    size_t len = sizeof(dummy);
+    int err    = uv_pipe_getsockname(&handle, dummy, &len);
     if (err && err != UV_ENOBUFS) {
         return std::unexpected(Error {err});
     }
@@ -33,9 +35,11 @@ std::expected<std::string, Error> getSockName(const uv_pipe_t& handle) noexcept
 
 std::expected<std::string, Error> getPeerName(const uv_pipe_t& handle) noexcept
 {
-    // Get the required buffer size
-    size_t len = 0;
-    int err    = uv_pipe_getpeername(&handle, nullptr, &len);
+    // Get the required buffer size by calling uv_pipe_getpeername with a dummy 1-byte buffer.
+    // This should return a UV_ENOBUFS error and the required buffer length.
+    char dummy[1];  // Dummy buffer
+    size_t len = sizeof(dummy);
+    int err    = uv_pipe_getpeername(&handle, dummy, &len);
     if (err && err != UV_ENOBUFS) {
         return std::unexpected(Error {err});
     }

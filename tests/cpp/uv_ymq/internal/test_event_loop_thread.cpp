@@ -6,9 +6,9 @@
 
 #include "scaler/uv_ymq/internal/event_loop_thread.h"
 
-class UVYMQInternalTest: public ::testing::Test {};
+class UVYMQEventLoopThreadTest: public ::testing::Test {};
 
-TEST_F(UVYMQInternalTest, EventLoopThread)
+TEST_F(UVYMQEventLoopThreadTest, EventLoopThread)
 {
     const size_t nTasks = 3;
 

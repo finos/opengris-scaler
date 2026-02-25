@@ -67,8 +67,13 @@ void waitForPythonReadySigwait(void* hEvent, int timeoutSecs)
     if (sigaddset(&set, SIGUSR1) < 0)
         raiseSystemError("failed to add sigusr1 to the signal set");
 
-    if (sigtimedwait(&set, &sig, &ts) < 0)
+    int result {};
+    while ((result = sigtimedwait(&set, &sig, &ts)) < 0) {
+        if (errno == EINTR) {
+            continue;  // Interrupted, retry
+        }
         raiseSystemError("failed to wait on sigusr1");
+    }
 
     sigprocmask(SIG_UNBLOCK, &set, nullptr);
 

@@ -3,6 +3,7 @@
 #include <uv.h>
 
 #include <cassert>
+#include <filesystem>
 #include <functional>
 #include <utility>
 
@@ -77,7 +78,21 @@ Address AcceptServer::address() const noexcept
 
 void AcceptServer::disconnect() noexcept
 {
+    if (!_state->_server.has_value()) {
+        return;
+    }
+
+    std::optional<std::string> pipeName {};
+    if (auto* pipeServer = std::get_if<scaler::wrapper::uv::PipeServer>(&_state->_server.value())) {
+        *pipeName = UV_EXIT_ON_ERROR(pipeServer->getSockName());
+    }
+
     _state->_server = std::nullopt;
+
+    if (pipeName.has_value()) {
+        // libuv does not remove the pipe file. Make sure the pipe is actually destroyed.
+        std::filesystem::remove(pipeName.value());
+    }
 }
 
 void AcceptServer::onConnection(

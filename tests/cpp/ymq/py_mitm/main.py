@@ -57,21 +57,41 @@ def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: in
     server_conn = TCPConnection(mitm_ip, mitm_port, remote_ip, server_port)
 
     # tracks the state of each connection
-    client_sent_fin_ack = False
     client_closed = False
-    server_sent_fin_ack = False
     server_closed = False
 
     while True:
         pkt = interface.recv()
+
         if not pkt.haslayer(IP) or not pkt.haslayer(TCP):
             continue
+
+        if pkt.sport != mitm_port and pkt.dport != mitm_port:
+            continue
+
         ip = pkt[IP]
         tcp = pkt[TCP]
 
         # for a received packet, the destination ip and port are our local ip and port
         # and the source ip and port will be the remote ip and port
         sender = TCPConnection(pkt.dst, pkt.dport, pkt.src, pkt.sport)
+
+        if tcp.flags.S and not tcp.flags.A:  # SYN from client
+            if sender != client_conn or client_conn is None:
+                print(f"[*] Client {ip.src}:{tcp.sport} connecting to {ip.dst}:{tcp.dport}")
+                client_conn = sender
+
+                server_conn = TCPConnection(mitm_ip, mitm_port, remote_ip, server_port)
+
+        if tcp.flags.S and tcp.flags.A:  # SYN-ACK from server
+            if sender == server_conn:
+                print(f"[*] Server {ip.src}:{tcp.sport} accepted connection from {ip.dst}:{tcp.dport}")
+
+        if tcp.flags.R or tcp.flags.F:  # RST or FIN
+            if sender == client_conn:
+                client_closed = True
+            if sender == server_conn:
+                server_closed = True
 
         pretty = f"[{tcp.flags}]{(': ' + str(bytes(tcp.payload))) if tcp.payload else ''}"
 
@@ -89,30 +109,8 @@ def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: in
             print(f"-> {pretty}")
         elif sender == server_conn:
             print(f"<- {pretty}")
-
-        if tcp.flags == "S":  # SYN from client
-            if sender != client_conn or client_conn is None:
-                print("-> [S]")
-                print(f"[*] New connection from {ip.src}:{tcp.sport} to {ip.dst}:{tcp.dport}")
-                client_conn = sender
-
-                server_conn = TCPConnection(mitm_ip, mitm_port, remote_ip, server_port)
-
-        if tcp.flags == "SA":  # SYN-ACK from server
-            if sender == server_conn:
-                print(f"[*] Connection to server established: {ip.src}:{tcp.sport} to {ip.dst}:{tcp.dport}")
-
-        if tcp.flags.F and tcp.flags.A:  # FIN-ACK
-            if sender == client_conn:
-                client_sent_fin_ack = True
-            if sender == server_conn:
-                server_sent_fin_ack = True
-
-        if tcp.flags.A:  # ACK
-            if sender == client_conn and server_sent_fin_ack:
-                server_closed = True
-            if sender == server_conn and client_sent_fin_ack:
-                client_closed = True
+        else:
+            print(f"?? {pretty}")
 
         if client_closed and server_closed:
             print("[*] Both connections closed")

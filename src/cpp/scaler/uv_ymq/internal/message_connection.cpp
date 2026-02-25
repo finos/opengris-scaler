@@ -68,6 +68,7 @@ void MessageConnection::connect(Client client) noexcept
     _client = std::move(client);
     _state  = State::Connected;
 
+    setNoDelay();
     readStart();
     processSendQueue();
 }
@@ -316,6 +317,15 @@ void MessageConnection::write(
     }
 }
 
+void MessageConnection::setNoDelay() noexcept
+{
+    assert(connected());
+
+    if (auto* tcpSocket = std::get_if<scaler::wrapper::uv::TCPSocket>(&_client.value())) {
+        UV_EXIT_ON_ERROR(tcpSocket->nodelay(true));
+    }
+}
+
 void MessageConnection::readStart() noexcept
 {
     assert(connected());
@@ -371,7 +381,7 @@ size_t MessageConnection::readMessage(std::span<const uint8_t> data) noexcept
 
 bool MessageConnection::allocateMessage() noexcept
 {
-    if (_recvCurrent._header > 0) {
+    if (_recvCurrent._header >= 0) {
         try {
             _recvCurrent._messagePayload = scaler::ymq::Bytes::alloc(_recvCurrent._header);
         } catch (const std::bad_alloc& e) {

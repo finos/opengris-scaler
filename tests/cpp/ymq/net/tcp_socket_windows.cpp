@@ -87,6 +87,10 @@ void TCPSocket::bind(const std::string& address_str) const
         throw std::runtime_error(std::format("Unsupported protocol for TCPSocket: {}", address.nativeHandleType()));
     }
 
+    int optval = 1;
+    if (::setsockopt((SOCKET)this->_fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&optval, sizeof(optval)) == SOCKET_ERROR)
+        raiseSocketError("failed to set SO_REUSEADDR");
+
     sockaddr_in addr = *(sockaddr_in*)address.nativeHandle();
 
     if (::bind((SOCKET)this->_fd, (sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR)

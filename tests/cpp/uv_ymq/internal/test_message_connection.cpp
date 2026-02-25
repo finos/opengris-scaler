@@ -251,3 +251,43 @@ TEST_F(UVYMQMessageConnectionTest, UnexpectedDisconnect)
         loop.run(UV_RUN_ONCE);
     }
 }
+
+TEST_F(UVYMQMessageConnectionTest, EmptyMessage)
+{
+    // Test that two MessageConnections can exchange empty messages
+
+    bool serverMessageReceived = false;
+
+    ConnectionPair connections(
+        // Server callbacks
+        [](auto identity) {},                                       // onRemoteIdentity
+        [](auto) { FAIL() << "Unexpected disconnect on server"; },  // onRemoteDisconnect
+        [&](scaler::ymq::Bytes messagePayload) {                    // onMessage
+            ASSERT_EQ(messagePayload.as_string(), "");
+            serverMessageReceived = true;
+        },
+
+        // Client callbacks
+        [](auto identity) {},                                       // onRemoteIdentity
+        [](auto) { FAIL() << "Unexpected disconnect on client"; },  // onRemoteDisconnect
+        [](auto) { FAIL() << "Unexpected message on client"; }      // onMessage
+    );
+
+    scaler::uv_ymq::internal::MessageConnection& server = connections.server();
+    scaler::uv_ymq::internal::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop                     = connections.loop();
+
+    // Wait for identity exchange
+    while (!server.established() || !client.established()) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    // Send an empty message
+    scaler::ymq::Bytes messagePayload = scaler::ymq::Bytes("");
+    client.sendMessage(std::move(messagePayload), [](auto result) { ASSERT_TRUE(result.has_value()); });
+
+    // Wait for the message
+    while (!serverMessageReceived) {
+        loop.run(UV_RUN_ONCE);
+    }
+}
