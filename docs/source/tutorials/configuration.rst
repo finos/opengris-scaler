@@ -140,6 +140,13 @@ Or through the programmatic API:
         death_timeout_seconds=300,
     )
 
+Worker Adapter Settings
+-----------------------
+
+Worker adapters share many common configuration settings for networking, worker behavior, and logging.
+
+For a full list of these settings, see the :doc:`Worker Adapter Common Parameters <worker_adapters/common_parameters>` documentation.
+
 Configuring with TOML Files
 ---------------------------
 
@@ -192,6 +199,8 @@ The following table maps each Scaler command to its corresponding section name i
      - ``[fixed_native_worker_adapter]``
    * - ``scaler_worker_adapter_symphony``
      - ``[symphony_worker_adapter]``
+   * - ``scaler_worker_adapter_orb``
+     - ``[orb_worker_adapter]``
    * - ``scaler_worker_adapter_ecs``
      - ``[ecs_worker_adapter]``
 

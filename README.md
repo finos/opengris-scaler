@@ -250,6 +250,8 @@ The following table maps each Scaler command to its corresponding section name i
 | `scaler_worker_adapter_native`       | `[native_worker_adapter]`       |
 | `scaler_worker_adapter_fixed_native` | `[fixed_native_worker_adapter]` |
 | `scaler_worker_adapter_symphony`     | `[symphony_worker_adapter]`     |
+| `scaler_worker_adapter_orb`          | `[orb_worker_adapter]`          |
+| `scaler_worker_adapter_ecs`          | `[ecs_worker_adapter]`          |
 
 ### Practical Scenarios & Examples
 
@@ -381,7 +383,7 @@ might be added in the future.
 A Scaler scheduler can interface with IBM Spectrum Symphony to provide distributed computing across Symphony clusters.
 
 ```bash
-$ scaler_worker_adapter_symphony tcp://127.0.0.1:2345 --service-name ScalerService --base-concurrency 4 --host 127.0.0.1 --port 8080
+$ scaler_worker_adapter_symphony tcp://127.0.0.1:2345 --service-name ScalerService --base-concurrency 4
 ```
 
 This will start a Scaler worker that connects to the Scaler scheduler at `tcp://127.0.0.1:2345` and uses the Symphony
@@ -466,6 +468,26 @@ where `deepest_nesting_level` is the deepest nesting level a task has in your wo
 workload that has
 a base task that calls a nested task that calls another nested task, then the deepest nesting level is 2.
 
+## ORB (AWS EC2) integration
+
+A Scaler scheduler can interface with ORB (Open Resource Broker) to dynamically provision and manage workers on AWS EC2 instances.
+
+```bash
+$ scaler_worker_adapter_orb tcp://127.0.0.1:2345 --image-id ami-0528819f94f4f5fa5
+```
+
+This will start an ORB worker adapter that connects to the Scaler scheduler at `tcp://127.0.0.1:2345`. The scheduler can then request new workers from this adapter, which will be launched as EC2 instances.
+
+### Configuration
+
+The ORB adapter requires `orb-py` and `boto3` to be installed. You can install them with:
+
+```bash
+$ pip install "opengris-scaler[orb]"
+```
+
+For more details on configuring ORB, including AWS credentials and instance templates, please refer to the [ORB Worker Adapter documentation](https://finos.github.io/opengris-scaler/tutorials/worker_adapters/orb.html).
+
 ## Worker Adapter usage
 
 > **Note**: This feature is experimental and may change in future releases.
@@ -478,17 +500,11 @@ specification [here](https://github.com/finos/opengris).
 
 ### Starting the Native Worker Adapter
 
-Starting a Native Worker Adapter server at `http://127.0.0.1:8080`:
+Start a Native Worker Adapter and connect it to the scheduler:
 
 ```bash
-$ scaler_worker_adapter_native tcp://127.0.0.1:2345 --host 127.0.0.1 --port 8080
+$ scaler_worker_adapter_native tcp://127.0.0.1:2345
 ```
-
-Pass the `--adapter-webhook-url` argument to the Scaler scheduler to connect to the Worker Adapter:
-
-```bash
-$ scaler_scheduler tcp://127.0.0.1:2345 --adapter-webhook-url http://127.0.0.1:8080
-````
 
 To check that the Worker Adapter is working, you can bring up `scaler_top` to see workers spawning and terminating as
 there is task load changes.
@@ -567,7 +583,7 @@ W|Linux|15943|a7fe8b5e+    0.0%   30.7m  0.0% 28.3m 1000    0      0 |
 `scaler_ui` provides a web monitoring interface for Scaler.
 
 ```bash
-$ scaler_ui tcp://127.0.0.1:2347 --port 8081
+$ scaler_ui tcp://127.0.0.1:2347 --web-port 8081
 ```
 
 This will open a web server on port `8081`.

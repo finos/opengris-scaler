@@ -55,7 +55,13 @@ runs:
       run: |
         uv pip install --system -r examples/applications/requirements_applications.txt
         uv pip install --system -r examples/ray_compat/requirements.txt
+        readarray -t skip_examples < examples/skip_examples.txt
         for example in "./examples"/*.py; do
+          filename=$(basename "$example")
+          if [[ " ${skip_examples[*]} " =~ [[:space:]]${filename}[[:space:]] ]]; then
+            echo "Skipping $example"
+            continue
+          fi
           echo "Running $example"
           python $example
         done

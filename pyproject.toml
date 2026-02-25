@@ -52,6 +52,10 @@ graphblas = [
 aws = [
     "boto3",
 ]
+orb = [
+    "orb-py~=1.1; python_version >= '3.10'",
+    "boto3; python_version >= '3.10'",
+]
 all = [
     "nicegui[plotly]==2.24.2; python_version == '3.8'",
     "nicegui[plotly]==3.6.1; python_version >= '3.9'",
@@ -63,6 +67,7 @@ all = [
     "numpy==2.2.6; python_version >= '3.10'",
     "uvloop; platform_system != 'Windows'",
     "boto3",
+    "orb-py~=1.1; python_version >= '3.10'"
 ]
 
 [dependency-groups]
@@ -98,6 +103,7 @@ scaler_worker_adapter_native = "scaler.entry_points.worker_adapter_native:main"
 scaler_worker_adapter_fixed_native = "scaler.entry_points.worker_adapter_fixed_native:main"
 scaler_worker_adapter_symphony = "scaler.entry_points.worker_adapter_symphony:main"
 scaler_worker_adapter_ecs = "scaler.entry_points.worker_adapter_ecs:main"
+scaler_worker_adapter_orb = "scaler.entry_points.worker_adapter_orb:main"
 
 [tool.scikit-build]
 cmake.source-dir = "."
