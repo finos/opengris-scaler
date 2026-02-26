@@ -4,7 +4,11 @@ find_package(Python3 COMPONENTS Development.Module REQUIRED)
 
 add_library(py_uv_ymq SHARED
     address.h
+    binder_socket.h
+    bytes.h
+    exception.h
     io_context.h
+    message.h
     uv_ymq.h
     uv_ymq.cpp
     $<TARGET_OBJECTS:uv_ymq_objs>

@@ -3,9 +3,6 @@
 // Python
 #include "scaler/utility/pymod/compatibility.h"
 
-// C++
-#include <memory>
-
 // First-party
 #include "scaler/uv_ymq/address.h"
 #include "scaler/uv_ymq/pymod/uv_ymq.h"
@@ -21,8 +18,6 @@ struct PyAddress {
     scaler::uv_ymq::Address address;
 };
 
-extern "C" {
-
 int PyAddressType_createEnum(PyObject* pyModule, UVYMQState* state)
 {
     std::vector<std::pair<std::string, int>> addressTypes = {
@@ -31,6 +26,18 @@ int PyAddressType_createEnum(PyObject* pyModule, UVYMQState* state)
     };
 
     return UVYMQ_createIntEnum(pyModule, &state->PyAddressTypeEnumType, "AddressType", addressTypes);
+}
+
+static int PyAddress_assign(PyAddress* self, const scaler::uv_ymq::Address& address)
+{
+    try {
+        new (&self->address) scaler::uv_ymq::Address(address);
+    } catch (...) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create Address");
+        return -1;
+    }
+
+    return 0;
 }
 
 static int PyAddress_init(PyAddress* self, PyObject* args, PyObject* kwds)
@@ -47,14 +54,7 @@ static int PyAddress_init(PyAddress* self, PyObject* args, PyObject* kwds)
         return -1;
     }
 
-    try {
-        new (&self->address) scaler::uv_ymq::Address(std::move(result.value()));
-    } catch (...) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create Address");
-        return -1;
-    }
-
-    return 0;
+    return PyAddress_assign(self, result.value());
 }
 
 static void PyAddress_dealloc(PyAddress* self)
@@ -69,6 +69,23 @@ static void PyAddress_dealloc(PyAddress* self)
     auto* tp = Py_TYPE(self);
     tp->tp_free(self);
     Py_DECREF(tp);
+}
+
+static PyObject* PyAddress_fromAddress(UVYMQState* state, const scaler::uv_ymq::Address& address)
+{
+    if (!state)
+        return nullptr;
+
+    PyAddress* pyAddress = PyObject_New(PyAddress, reinterpret_cast<PyTypeObject*>(*state->PyAddressType));
+    if (!pyAddress)
+        return nullptr;
+
+    if (PyAddress_assign(pyAddress, address) != 0) {
+        Py_DECREF(pyAddress);
+        return nullptr;
+    }
+
+    return reinterpret_cast<PyObject*>(pyAddress);
 }
 
 static PyObject* PyAddress_repr(PyAddress* self)
@@ -96,8 +113,6 @@ static PyObject* PyAddress_type_getter(PyAddress* self, void* Py_UNUSED(closure)
 
     return PyObject_CallOneArg(*state->PyAddressTypeEnumType, *addressTypeIntObj);
 }
-
-}  // extern "C"
 
 static PyGetSetDef PyAddress_properties[] = {
     {"type", (getter)PyAddress_type_getter, nullptr, nullptr, nullptr},

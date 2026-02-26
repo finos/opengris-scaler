@@ -20,8 +20,6 @@ struct PyIOContext {
     std::shared_ptr<scaler::uv_ymq::IOContext> ioContext;
 };
 
-extern "C" {
-
 static int PyIOContext_init(PyIOContext* self, PyObject* args, PyObject* kwds)
 {
     // default to 1 thread if not specified
@@ -63,8 +61,6 @@ static PyObject* PyIOContext_numThreads_getter(PyIOContext* self, void* Py_UNUSE
 {
     return PyLong_FromSize_t(self->ioContext->numThreads());
 }
-
-}  // extern "C"
 
 static PyGetSetDef PyIOContext_properties[] = {
     {"num_threads", (getter)PyIOContext_numThreads_getter, nullptr, nullptr, nullptr},

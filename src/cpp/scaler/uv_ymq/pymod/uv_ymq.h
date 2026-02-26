@@ -12,10 +12,18 @@ using scaler::utility::pymod::OwnedPyObject;
 struct UVYMQState {
     OwnedPyObject<> enumModule;  // Reference to the enum module
 
+    OwnedPyObject<> PyIOContextType;  // Reference to the IOContext type
+
+    OwnedPyObject<> PyBinderSocketType;  // Reference to the BinderSocket type
+
     OwnedPyObject<> PyAddressTypeEnumType;  // Reference to the Address.Type enum
     OwnedPyObject<> PyAddressType;          // Reference to the Address type
+    OwnedPyObject<> PyErrorCodeType;        // Reference to the ErrorCode enum
+    OwnedPyObject<> PyBytesType;            // Reference to Bytes type
+    OwnedPyObject<> PyMessageType;          // Reference to Message type
+    OwnedPyObject<> PyExceptionType;        // Reference to UVYMQException type
 
-    OwnedPyObject<> PyIOContextType;  // Reference to the IOContext type
+    std::unordered_map<int, OwnedPyObject<>> PyExceptionSubtypes;  // Map of error code to exception subclass
 };
 
 UVYMQState* UVYMQStateFromSelf(PyObject* self);
