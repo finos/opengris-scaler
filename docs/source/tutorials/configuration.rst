@@ -140,6 +140,13 @@ Or through the programmatic API:
         death_timeout_seconds=300,
     )
 
+Worker Adapter Settings
+-----------------------
+
+Worker adapters share many common configuration settings for networking, worker behavior, and logging.
+
+For a full list of these settings, see the :doc:`Worker Adapter Common Parameters <worker_adapters/common_parameters>` documentation.
+
 Configuring with TOML Files
 ---------------------------
 
