@@ -3,7 +3,11 @@ from typing import Dict, List, Optional, Set
 
 from scaler.protocol.python.message import InformationSnapshot, Task, WorkerAdapterCommand, WorkerAdapterHeartbeat
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
+    WorkerAdapterSnapshot,
+    WorkerGroupCapabilities,
+    WorkerGroupState,
+)
 from scaler.utility.identifiers import TaskID, WorkerID
 
 
@@ -63,6 +67,7 @@ class ScalerPolicy(metaclass=abc.ABCMeta):
         adapter_heartbeat: WorkerAdapterHeartbeat,
         worker_groups: WorkerGroupState,
         worker_group_capabilities: WorkerGroupCapabilities,
+        worker_adapter_snapshots: Dict[bytes, WorkerAdapterSnapshot],
     ) -> List[WorkerAdapterCommand]:
         """Pure function: state in, commands out. Commands are either all start or all shutdown, never mixed."""
         raise NotImplementedError()

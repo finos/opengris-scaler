@@ -11,6 +11,7 @@ from scaler.protocol.python.message import (
 from scaler.protocol.python.status import ScalingManagerStatus
 from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingController
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
+    WorkerAdapterSnapshot,
     WorkerGroupCapabilities,
     WorkerGroupID,
     WorkerGroupState,
@@ -40,6 +41,7 @@ class CapabilityScalingController(ScalingController):
         adapter_heartbeat: WorkerAdapterHeartbeat,
         worker_groups: WorkerGroupState,
         worker_group_capabilities: WorkerGroupCapabilities,
+        worker_adapter_snapshots: Dict[bytes, WorkerAdapterSnapshot],
     ) -> List[WorkerAdapterCommand]:
         # Derive worker_groups_by_capability from worker_groups + worker_group_capabilities
         worker_groups_by_capability = self._derive_worker_groups_by_capability(worker_groups, worker_group_capabilities)

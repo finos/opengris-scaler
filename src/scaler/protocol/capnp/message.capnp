@@ -89,6 +89,7 @@ struct WorkerAdapterHeartbeat {
     maxWorkerGroups @0 :UInt32;
     workersPerGroup @1 :UInt32;
     capabilities @2 :List(CommonType.TaskCapability);
+    workerAdapterID @3 :Data;
 }
 
 struct WorkerAdapterHeartbeatEcho {
