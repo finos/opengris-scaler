@@ -15,3 +15,5 @@ add_library(uv_ymq_objs OBJECT
 add_subdirectory(internal)
 add_subdirectory(future)
 add_subdirectory(sync)
+
+add_subdirectory(pymod)
