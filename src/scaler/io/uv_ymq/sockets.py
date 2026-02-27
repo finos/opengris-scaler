@@ -53,26 +53,10 @@ class ConnectorSocket:
         max_retry_times: int = _uv_ymq.DEFAULT_MAX_RETRY_TIMES,
         init_retry_delay: int = _uv_ymq.DEFAULT_INIT_RETRY_DELAY,
     ) -> None:
-        # We need to create a synchronous wrapper for the connection callback
-        import concurrent.futures
+        def create(callback, *args, **kwargs):
+            self._base = _uv_ymq.ConnectorSocket(callback, *args, **kwargs)
 
-        future: concurrent.futures.Future = concurrent.futures.Future()
-
-        def callback(result: Optional[Exception]):
-            if future.done():
-                return
-
-            if isinstance(result, BaseException):
-                future.set_exception(result)
-            else:
-                future.set_result(None)
-
-        self._base = _uv_ymq.ConnectorSocket(
-            callback, context, identity, address, max_retry_times, init_retry_delay
-        )
-
-        # Wait for connection to complete
-        future.result()
+        call_sync(create, context, identity, address, max_retry_times, init_retry_delay)
 
     @property
     def identity(self) -> str:
