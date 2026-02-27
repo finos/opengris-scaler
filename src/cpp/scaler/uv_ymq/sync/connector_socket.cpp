@@ -6,19 +6,30 @@ namespace scaler {
 namespace uv_ymq {
 namespace sync {
 
-std::expected<ConnectorSocket, scaler::ymq::Error> ConnectorSocket::init(
+std::expected<ConnectorSocket, scaler::ymq::Error> ConnectorSocket::connect(
     IOContext& context,
     Identity identity,
     std::string address,
     size_t maxRetryTimes,
     std::chrono::milliseconds initRetryDelay)
 {
-    auto result =
-        future::ConnectorSocket::init(context, std::move(identity), std::move(address), maxRetryTimes, initRetryDelay);
+    auto result = future::ConnectorSocket::connect(
+        context, std::move(identity), std::move(address), maxRetryTimes, initRetryDelay);
     if (!result.has_value()) {
         return std::unexpected(result.error());
     }
     return ConnectorSocket(std::move(result.value()));
+}
+
+std::expected<std::pair<ConnectorSocket, Address>, scaler::ymq::Error> ConnectorSocket::bind(
+    IOContext& context, Identity identity, std::string address)
+{
+    auto result = future::ConnectorSocket::bind(context, std::move(identity), std::move(address));
+    if (!result.has_value()) {
+        return std::unexpected(result.error());
+    }
+    auto [socket, boundAddress] = std::move(result.value());
+    return std::make_pair(ConnectorSocket(std::move(socket)), std::move(boundAddress));
 }
 
 ConnectorSocket::ConnectorSocket(future::ConnectorSocket socket) noexcept: _socket(std::move(socket))

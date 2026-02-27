@@ -19,7 +19,7 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
 
         address = await binder.bind_to("tcp://127.0.0.1:0")
 
-        connector = ConnectorSocket(ctx, "connector", repr(address))
+        connector = ConnectorSocket.connect(ctx, "connector", repr(address))
         self.assertEqual(connector.identity, "connector")
 
         await connector.send_message(Bytes(b"payload"))
@@ -42,8 +42,8 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
 
         address = await binder.bind_to("tcp://127.0.0.1:0")
 
-        connector1 = ConnectorSocket(ctx, "connector1", repr(address))
-        connector2 = ConnectorSocket(ctx, "connector2", repr(address))
+        connector1 = ConnectorSocket.connect(ctx, "connector1", repr(address))
+        connector2 = ConnectorSocket.connect(ctx, "connector2", repr(address))
 
         await binder.send_message("connector2", Bytes(b"2"))
         await binder.send_message("connector1", Bytes(b"1"))
@@ -60,7 +60,7 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
 
         address = await binder.bind_to("tcp://127.0.0.1:0")
 
-        connector = ConnectorSocket(ctx, "connector", repr(address))
+        connector = ConnectorSocket.connect(ctx, "connector", repr(address))
 
         async def binder_routine(binder: BinderSocket, limit: int) -> bool:
             i = 0
@@ -112,7 +112,7 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
 
         address = await binder.bind_to("tcp://127.0.0.1:0")
 
-        connector = ConnectorSocket(ctx, "connector", repr(address))
+        connector = ConnectorSocket.connect(ctx, "connector", repr(address))
         self.assertEqual(connector.identity, "connector")
 
         for _ in range(10):

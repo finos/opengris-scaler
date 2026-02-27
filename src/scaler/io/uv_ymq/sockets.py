@@ -1,8 +1,8 @@
 from typing import Optional
+from concurrent.futures import Future
 
 from scaler.io.uv_ymq import _uv_ymq
 from scaler.io.ymq.ymq import call_async, call_sync
-
 
 class BinderSocket:
     __doc__ = _uv_ymq.BinderSocket.__doc__
@@ -45,18 +45,44 @@ class ConnectorSocket:
 
     _base: _uv_ymq.ConnectorSocket
 
-    def __init__(
-        self,
+    def __init__(self, base: _uv_ymq.ConnectorSocket) -> None:
+        self._base = base
+
+    @staticmethod
+    def connect(
         context: _uv_ymq.IOContext,
         identity: str,
         address: str,
         max_retry_times: int = _uv_ymq.DEFAULT_MAX_RETRY_TIMES,
         init_retry_delay: int = _uv_ymq.DEFAULT_INIT_RETRY_DELAY,
-    ) -> None:
+    ) -> "ConnectorSocket":
+        base_socket: Optional[_uv_ymq.ConnectorSocket] = None
+
         def create(callback, *args, **kwargs):
-            self._base = _uv_ymq.ConnectorSocket(callback, *args, **kwargs)
+            nonlocal base_socket
+            base_socket = _uv_ymq.ConnectorSocket.connect(callback, *args, **kwargs)
 
         call_sync(create, context, identity, address, max_retry_times, init_retry_delay)
+        assert base_socket is not None
+
+        return ConnectorSocket(base_socket)
+
+    @staticmethod
+    def bind(
+        context: _uv_ymq.IOContext,
+        identity: str,
+        address: str,
+    ) -> "ConnectorSocket":
+        base_socket: Optional[_uv_ymq.ConnectorSocket] = None
+
+        def create(callback, *args, **kwargs):
+            nonlocal base_socket
+            base_socket = _uv_ymq.ConnectorSocket.bind(callback, *args, **kwargs)
+
+        call_sync(create, context, identity, address)
+        assert base_socket is not None
+
+        return ConnectorSocket(base_socket)
 
     @property
     def identity(self) -> str:

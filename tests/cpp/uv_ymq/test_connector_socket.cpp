@@ -9,6 +9,7 @@
 #include "scaler/uv_ymq/connector_socket.h"
 #include "scaler/uv_ymq/internal/message_connection.h"
 #include "scaler/uv_ymq/io_context.h"
+#include "scaler/uv_ymq/sync/connector_socket.h"
 #include "scaler/wrapper/uv/error.h"
 #include "scaler/wrapper/uv/loop.h"
 #include "scaler/wrapper/uv/tcp.h"
@@ -55,8 +56,8 @@ public:
         scaler::wrapper::uv::SocketAddress serverAddr = UV_EXIT_ON_ERROR(_server.getSockName());
         std::string address                           = "tcp://127.0.0.1:" + std::to_string(serverAddr.port());
 
-        _connector = std::make_unique<scaler::uv_ymq::ConnectorSocket>(
-            _context, connectorIdentity, address, std::move(connectorOnConnect));
+        _connector = std::make_unique<scaler::uv_ymq::ConnectorSocket>(scaler::uv_ymq::ConnectorSocket::connect(
+            _context, connectorIdentity, address, std::move(connectorOnConnect)));
     }
 
     scaler::uv_ymq::internal::MessageConnection& server() { return _serverConnection; }
@@ -85,25 +86,13 @@ TEST_F(UVYMQConnectorSocketTest, ConnectionFailure)
 
     scaler::uv_ymq::IOContext context {};
 
-    std::promise<scaler::ymq::Error> connectCalled {};
-
-    auto onConnectCallback = [&](std::expected<void, scaler::ymq::Error> result) {
-        ASSERT_FALSE(result.has_value());
-        connectCalled.set_value(result.error());
-    };
-
     // Port 49151 is IANA reserved, hopefully never assigned
-    scaler::uv_ymq::ConnectorSocket connector {
-        context,
-        ConnectorServerPair::connectorIdentity,
-        "tcp://127.0.0.1:49151",
-        std::move(onConnectCallback),
-        maxRetryTimes,
-        initRetryDelay};
+    auto result = scaler::uv_ymq::sync::ConnectorSocket::connect(
+        context, ConnectorServerPair::connectorIdentity, "tcp://127.0.0.1:49151", maxRetryTimes, initRetryDelay);
 
-    // Wait for connection to fail after retries
-    scaler::ymq::Error error = connectCalled.get_future().get();
-    ASSERT_EQ(error._errorCode, scaler::ymq::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
+    // Connection should fail after retries
+    ASSERT_FALSE(result.has_value());
+    ASSERT_EQ(result.error()._errorCode, scaler::ymq::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
 }
 
 TEST_F(UVYMQConnectorSocketTest, InvalidAddress)
@@ -112,19 +101,12 @@ TEST_F(UVYMQConnectorSocketTest, InvalidAddress)
 
     scaler::uv_ymq::IOContext context {};
 
-    std::promise<scaler::ymq::Error> connectCalled {};
+    auto result = scaler::uv_ymq::sync::ConnectorSocket::connect(
+        context, ConnectorServerPair::connectorIdentity, "invalid-address");
 
-    auto onConnectCallback = [&](std::expected<void, scaler::ymq::Error> result) {
-        ASSERT_FALSE(result.has_value());
-        connectCalled.set_value(result.error());
-    };
-
-    scaler::uv_ymq::ConnectorSocket connector {
-        context, ConnectorServerPair::connectorIdentity, "invalid-address", std::move(onConnectCallback)};
-
-    // Wait for connection to fail immediately
-    scaler::ymq::Error error = connectCalled.get_future().get();
-    ASSERT_EQ(error._errorCode, scaler::ymq::Error::ErrorCode::InvalidAddressFormat);
+    // Connection should fail immediately
+    ASSERT_FALSE(result.has_value());
+    ASSERT_EQ(result.error()._errorCode, scaler::ymq::Error::ErrorCode::InvalidAddressFormat);
 }
 
 TEST_F(UVYMQConnectorSocketTest, SendMessage)
@@ -372,4 +354,45 @@ TEST_F(UVYMQConnectorSocketTest, Reconnect)
     }
 
     ASSERT_TRUE(server.established());
+}
+
+TEST_F(UVYMQConnectorSocketTest, Bind)
+{
+    // Test that a connecting ConnectorSocket can connect and exchange with a binding ConnectorSocket
+
+    scaler::uv_ymq::IOContext context {};
+
+    const scaler::uv_ymq::Identity binderIdentity    = "binder-identity";
+    const scaler::uv_ymq::Identity connectorIdentity = "connector-identity";
+
+    // Create a binding connector socket
+    auto binderResult = scaler::uv_ymq::sync::ConnectorSocket::bind(context, binderIdentity, "tcp://127.0.0.1:0");
+    ASSERT_TRUE(binderResult.has_value());
+    auto [binderSocket, boundAddress] = std::move(binderResult.value());
+
+    // Create a connecting connector socket
+    auto connectorResult =
+        scaler::uv_ymq::sync::ConnectorSocket::connect(context, connectorIdentity, boundAddress.toString().value());
+    ASSERT_TRUE(connectorResult.has_value());
+    auto connectorSocket = std::move(connectorResult.value());
+
+    // Send a message from the connecting connector
+    auto sendResult1 = connectorSocket.sendMessage(scaler::ymq::Bytes(messagePayload));
+    ASSERT_TRUE(sendResult1.has_value());
+
+    // Receive the message on binding connector
+    auto recvResult1 = binderSocket.recvMessage();
+    ASSERT_TRUE(recvResult1.has_value());
+    ASSERT_EQ(recvResult1.value().address.as_string(), connectorIdentity);
+    ASSERT_EQ(recvResult1.value().payload.as_string(), messagePayload);
+
+    // Send a message from the binding connector
+    auto sendResult2 = binderSocket.sendMessage(scaler::ymq::Bytes(messagePayload));
+    ASSERT_TRUE(sendResult2.has_value());
+
+    // Receive the message on the connecting connector
+    auto recvResult2 = connectorSocket.recvMessage();
+    ASSERT_TRUE(recvResult2.has_value());
+    ASSERT_EQ(recvResult2.value().address.as_string(), binderIdentity);
+    ASSERT_EQ(recvResult2.value().payload.as_string(), messagePayload);
 }
