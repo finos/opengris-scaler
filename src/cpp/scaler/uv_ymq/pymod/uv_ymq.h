@@ -1,5 +1,10 @@
 #pragma once
 
+// C++
+#include <initializer_list>
+#include <string>
+#include <utility>
+
 // Python
 #include "scaler/utility/pymod/compatibility.h"
 
@@ -52,7 +57,7 @@ int UVYMQ_createIntEnum(
     PyObject* pyModule,
     OwnedPyObject<>* storage,
     std::string enumName,
-    std::vector<std::pair<std::string, int>> entries);
+    std::initializer_list<std::pair<const char*, int>> entries);
 
 static int UVYMQ_exec(PyObject* pyModule);
 

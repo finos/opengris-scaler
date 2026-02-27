@@ -1,8 +1,9 @@
 #include "scaler/uv_ymq/pymod/uv_ymq.h"
 
+#include <initializer_list>
 #include <new>
 #include <string_view>
-#include <vector>
+#include <utility>
 
 #include "scaler/error/error.h"
 #include "scaler/uv_ymq/configuration.h"
@@ -43,7 +44,7 @@ int UVYMQ_createIntEnum(
     PyObject* pyModule,
     OwnedPyObject<>* storage,
     std::string enumName,
-    std::vector<std::pair<std::string, int>> entries)
+    std::initializer_list<std::pair<const char*, int>> entries)
 {
     // create a python dictionary to hold the entries
     OwnedPyObject enumDict = PyDict_New();
@@ -56,7 +57,7 @@ int UVYMQ_createIntEnum(
         if (!value)
             return -1;
 
-        auto status = PyDict_SetItemString(*enumDict, entry.first.c_str(), *value);
+        auto status = PyDict_SetItemString(*enumDict, entry.first, *value);
         if (status < 0)
             return -1;
     }
@@ -101,28 +102,29 @@ static PyObject* UVYMQErrorCode_explanation(PyObject* self, PyObject* Py_UNUSED(
 
 int UVYMQ_createErrorCodeEnum(PyObject* pyModule, UVYMQState* state)
 {
-    using Error                                              = scaler::ymq::Error;
-    std::vector<std::pair<std::string, int>> errorCodeValues = {
-        {"Uninit", (int)Error::ErrorCode::Uninit},
-        {"InvalidPortFormat", (int)Error::ErrorCode::InvalidPortFormat},
-        {"InvalidAddressFormat", (int)Error::ErrorCode::InvalidAddressFormat},
-        {"ConfigurationError", (int)Error::ErrorCode::ConfigurationError},
-        {"SignalNotSupported", (int)Error::ErrorCode::SignalNotSupported},
-        {"CoreBug", (int)Error::ErrorCode::CoreBug},
-        {"RepetetiveIOSocketIdentity", (int)Error::ErrorCode::RepetetiveIOSocketIdentity},
-        {"RedundantIOSocketRefCount", (int)Error::ErrorCode::RedundantIOSocketRefCount},
-        {"MultipleConnectToNotSupported", (int)Error::ErrorCode::MultipleConnectToNotSupported},
-        {"MultipleBindToNotSupported", (int)Error::ErrorCode::MultipleBindToNotSupported},
-        {"InitialConnectFailedWithInProgress", (int)Error::ErrorCode::InitialConnectFailedWithInProgress},
-        {"SendMessageRequestCouldNotComplete", (int)Error::ErrorCode::SendMessageRequestCouldNotComplete},
-        {"SetSockOptNonFatalFailure", (int)Error::ErrorCode::SetSockOptNonFatalFailure},
-        {"IPv6NotSupported", (int)Error::ErrorCode::IPv6NotSupported},
+    using ErrorCode = scaler::ymq::Error::ErrorCode;
+
+    const std::initializer_list<std::pair<const char*, int>> errorCodeValues = {
+        {"Uninit", (int)ErrorCode::Uninit},
+        {"InvalidPortFormat", (int)ErrorCode::InvalidPortFormat},
+        {"InvalidAddressFormat", (int)ErrorCode::InvalidAddressFormat},
+        {"ConfigurationError", (int)ErrorCode::ConfigurationError},
+        {"SignalNotSupported", (int)ErrorCode::SignalNotSupported},
+        {"CoreBug", (int)ErrorCode::CoreBug},
+        {"RepetetiveIOSocketIdentity", (int)ErrorCode::RepetetiveIOSocketIdentity},
+        {"RedundantIOSocketRefCount", (int)ErrorCode::RedundantIOSocketRefCount},
+        {"MultipleConnectToNotSupported", (int)ErrorCode::MultipleConnectToNotSupported},
+        {"MultipleBindToNotSupported", (int)ErrorCode::MultipleBindToNotSupported},
+        {"InitialConnectFailedWithInProgress", (int)ErrorCode::InitialConnectFailedWithInProgress},
+        {"SendMessageRequestCouldNotComplete", (int)ErrorCode::SendMessageRequestCouldNotComplete},
+        {"SetSockOptNonFatalFailure", (int)ErrorCode::SetSockOptNonFatalFailure},
+        {"IPv6NotSupported", (int)ErrorCode::IPv6NotSupported},
         {"RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery",
-         (int)Error::ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery},
-        {"ConnectorSocketClosedByRemoteEnd", (int)Error::ErrorCode::ConnectorSocketClosedByRemoteEnd},
-        {"IOSocketStopRequested", (int)Error::ErrorCode::IOSocketStopRequested},
-        {"BinderSendMessageWithNoAddress", (int)Error::ErrorCode::BinderSendMessageWithNoAddress},
-        {"IPCOnWinNotSupported", (int)Error::ErrorCode::IPCOnWinNotSupported},
+         (int)ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery},
+        {"ConnectorSocketClosedByRemoteEnd", (int)ErrorCode::ConnectorSocketClosedByRemoteEnd},
+        {"IOSocketStopRequested", (int)ErrorCode::IOSocketStopRequested},
+        {"BinderSendMessageWithNoAddress", (int)ErrorCode::BinderSendMessageWithNoAddress},
+        {"IPCOnWinNotSupported", (int)ErrorCode::IPCOnWinNotSupported},
     };
 
     if (UVYMQ_createIntEnum(pyModule, &state->PyErrorCodeType, "ErrorCode", errorCodeValues) < 0)
@@ -157,28 +159,29 @@ int UVYMQ_createErrorCodeEnum(PyObject* pyModule, UVYMQState* state)
 
 int UVYMQ_createExceptions(PyObject* pyModule, UVYMQState* state)
 {
-    using Error                                                      = scaler::ymq::Error;
-    std::vector<std::pair<Error::ErrorCode, std::string>> exceptions = {
-        {Error::ErrorCode::InvalidPortFormat, "InvalidPortFormatError"},
-        {Error::ErrorCode::InvalidAddressFormat, "InvalidAddressFormatError"},
-        {Error::ErrorCode::ConfigurationError, "ConfigurationError"},
-        {Error::ErrorCode::SignalNotSupported, "SignalNotSupportedError"},
-        {Error::ErrorCode::CoreBug, "CoreBugError"},
-        {Error::ErrorCode::RepetetiveIOSocketIdentity, "RepetetiveIOSocketIdentityError"},
-        {Error::ErrorCode::RedundantIOSocketRefCount, "RedundantIOSocketRefCountError"},
-        {Error::ErrorCode::MultipleConnectToNotSupported, "MultipleConnectToNotSupportedError"},
-        {Error::ErrorCode::MultipleBindToNotSupported, "MultipleBindToNotSupportedError"},
-        {Error::ErrorCode::InitialConnectFailedWithInProgress, "InitialConnectFailedWithInProgressError"},
-        {Error::ErrorCode::SendMessageRequestCouldNotComplete, "SendMessageRequestCouldNotCompleteError"},
-        {Error::ErrorCode::SetSockOptNonFatalFailure, "SetSockOptNonFatalFailureError"},
-        {Error::ErrorCode::IPv6NotSupported, "IPv6NotSupportedError"},
-        {Error::ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery,
+    using ErrorCode = scaler::ymq::Error::ErrorCode;
+
+    const std::initializer_list<std::pair<ErrorCode, std::string>> exceptions = {
+        {ErrorCode::InvalidPortFormat, "InvalidPortFormatError"},
+        {ErrorCode::InvalidAddressFormat, "InvalidAddressFormatError"},
+        {ErrorCode::ConfigurationError, "ConfigurationError"},
+        {ErrorCode::SignalNotSupported, "SignalNotSupportedError"},
+        {ErrorCode::CoreBug, "CoreBugError"},
+        {ErrorCode::RepetetiveIOSocketIdentity, "RepetetiveIOSocketIdentityError"},
+        {ErrorCode::RedundantIOSocketRefCount, "RedundantIOSocketRefCountError"},
+        {ErrorCode::MultipleConnectToNotSupported, "MultipleConnectToNotSupportedError"},
+        {ErrorCode::MultipleBindToNotSupported, "MultipleBindToNotSupportedError"},
+        {ErrorCode::InitialConnectFailedWithInProgress, "InitialConnectFailedWithInProgressError"},
+        {ErrorCode::SendMessageRequestCouldNotComplete, "SendMessageRequestCouldNotCompleteError"},
+        {ErrorCode::SetSockOptNonFatalFailure, "SetSockOptNonFatalFailureError"},
+        {ErrorCode::IPv6NotSupported, "IPv6NotSupportedError"},
+        {ErrorCode::RemoteEndDisconnectedOnSocketWithoutGuaranteedDelivery,
          "RemoteEndDisconnectedOnSocketWithoutGuaranteedDeliveryError"},
-        {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd, "ConnectorSocketClosedByRemoteEndError"},
-        {Error::ErrorCode::IOSocketStopRequested, "IOSocketStopRequestedError"},
-        {Error::ErrorCode::BinderSendMessageWithNoAddress, "BinderSendMessageWithNoAddressError"},
-        {Error::ErrorCode::IPCOnWinNotSupported, "IPCOnWinNotSupportedError"},
-        {Error::ErrorCode::UVError, "UVError"},
+        {ErrorCode::ConnectorSocketClosedByRemoteEnd, "ConnectorSocketClosedByRemoteEndError"},
+        {ErrorCode::IOSocketStopRequested, "IOSocketStopRequestedError"},
+        {ErrorCode::BinderSendMessageWithNoAddress, "BinderSendMessageWithNoAddressError"},
+        {ErrorCode::IPCOnWinNotSupported, "IPCOnWinNotSupportedError"},
+        {ErrorCode::UVError, "UVError"},
     };
 
     static PyType_Slot slots[] = {{0, nullptr}};

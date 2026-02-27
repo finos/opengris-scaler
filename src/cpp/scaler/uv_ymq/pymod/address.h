@@ -20,12 +20,14 @@ struct PyAddress {
 
 int PyAddressType_createEnum(PyObject* pyModule, UVYMQState* state)
 {
-    std::vector<std::pair<std::string, int>> addressTypes = {
-        {"IPC", (int)scaler::uv_ymq::Address::Type::IPC},
-        {"TCP", (int)scaler::uv_ymq::Address::Type::TCP},
-    };
-
-    return UVYMQ_createIntEnum(pyModule, &state->PyAddressTypeEnumType, "AddressType", addressTypes);
+    return UVYMQ_createIntEnum(
+        pyModule,
+        &state->PyAddressTypeEnumType,
+        "AddressType",
+        {
+            {"IPC", (int)scaler::uv_ymq::Address::Type::IPC},
+            {"TCP", (int)scaler::uv_ymq::Address::Type::TCP},
+        });
 }
 
 static int PyAddress_assign(PyAddress* self, const scaler::uv_ymq::Address& address)
