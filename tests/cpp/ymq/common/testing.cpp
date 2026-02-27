@@ -79,7 +79,25 @@ void ensurePythonInitialized()
         return;
 
     ensurePythonHome();
+
+    // Disable Python's stdout buffering so that print() output is flushed
+    // immediately when stdout is a pipe (e.g. under ctest in CI), rather than
+    // being lost when the forked child exits without calling Py_Finalize().
+#if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION >= 12
+    // Py_UnbufferedStdioFlag is deprecated in Python 3.12+; use PyConfig instead.
+    {
+        PyConfig config;
+        PyConfig_InitPythonConfig(&config);
+        config.buffered_stdio = 0;
+        PyStatus status       = Py_InitializeFromConfig(&config);
+        PyConfig_Clear(&config);
+        if (PyStatus_Exception(status))
+            throw std::runtime_error("failed to initialize Python interpreter");
+    }
+#else
+    Py_UnbufferedStdioFlag = 1;
     Py_Initialize();
+#endif
 
     // add the cwd to the path
     {
@@ -159,6 +177,15 @@ TestResult runPython(const char* path, std::vector<std::optional<std::string>> a
 exception:
     PyGILState_Release(gState);
     return TestResult::Failure;
+}
+
+MitmIPs getMitmIPs()
+{
+#ifdef __linux__
+    return {"192.0.2.4", "192.0.2.3"};
+#else
+    return {"127.0.0.1", "127.0.0.1"};
+#endif
 }
 
 TestResult runMitm(

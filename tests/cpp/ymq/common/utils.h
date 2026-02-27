@@ -12,5 +12,3 @@ void raiseSocketError(const char* msg);
 // change the current working directory to the project root
 // this is important for finding the python mitm script
 void chdirToProjectRoot();
-
-unsigned short randomPort(unsigned short minPort = 1024, unsigned short maxPort = 65535);

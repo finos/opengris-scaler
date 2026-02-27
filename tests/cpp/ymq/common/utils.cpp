@@ -1,7 +1,6 @@
 #include "tests/cpp/ymq/common/utils.h"
 
 #include <filesystem>
-#include <random>
 
 // change the current working directory to the project root
 // this is important for finding the python mitm script
@@ -17,11 +16,4 @@ void chdirToProjectRoot()
             return;
         }
     }
-}
-
-unsigned short randomPort(unsigned short minPort, unsigned short maxPort)
-{
-    static thread_local std::mt19937_64 rng(std::random_device {}());
-    std::uniform_int_distribution<unsigned int> dist(minPort, maxPort);
-    return static_cast<unsigned short>(dist(rng));
 }

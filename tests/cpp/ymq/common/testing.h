@@ -46,6 +46,14 @@ int getListenerPid();
 
 TestResult runPython(const char* path, std::vector<std::optional<std::string>> argv = {});
 
+struct MitmIPs {
+    const char* mitmIp;
+    const char* remoteIp;
+};
+
+// returns the platform-appropriate IP addresses for MITM tests
+MitmIPs getMitmIPs();
+
 TestResult runMitm(
     std::string testCase,
     std::string mitmIp,

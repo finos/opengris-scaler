@@ -136,15 +136,9 @@ TestResult reconnectClientMain(std::string address)
 // for more, see the python mitm files
 TEST_F(UVYMQMitmTest, Passthrough)
 {
-#ifdef __linux__
-    auto mitm_ip   = "192.0.2.4";
-    auto remote_ip = "192.0.2.3";
-#else
-    auto mitm_ip   = "127.0.0.1";
-    auto remote_ip = "127.0.0.1";
-#endif
-    auto mitm_port   = randomPort();
-    auto remote_port = 23571;
+    auto [mitm_ip, remote_ip] = getMitmIPs();
+    auto mitm_port            = 23579;
+    auto remote_port          = 23571;
 
     // the Python program must be the first and only the first function passed to test()
     // we must also pass `true` as the third argument to ensure that Python is fully started
@@ -162,15 +156,9 @@ TEST_F(UVYMQMitmTest, Passthrough)
 // this is the same as the above, but both the client and server use raw sockets
 TEST_F(UVYMQMitmTest, PassthroughRaw)
 {
-#ifdef __linux__
-    auto mitm_ip   = "192.0.2.4";
-    auto remote_ip = "192.0.2.3";
-#else
-    auto mitm_ip   = "127.0.0.1";
-    auto remote_ip = "127.0.0.1";
-#endif
-    auto mitm_port   = randomPort();
-    auto remote_port = 23574;
+    auto [mitm_ip, remote_ip] = getMitmIPs();
+    auto mitm_port            = 23580;
+    auto remote_port          = 23574;
 
     // the Python program must be the first and only the first function passed to test()
     // we must also pass `true` as the third argument to ensure that Python is fully started
@@ -185,22 +173,11 @@ TEST_F(UVYMQMitmTest, PassthroughRaw)
 }
 
 // this test uses the mitm to test the reconnect logic of uv_ymq by sending RST packets
-#ifdef _WIN32
-// See https://github.com/finos/opengris-scaler/issues/576
-TEST_F(UVYMQMitmTest, DISABLED_Reconnect)
-#else
 TEST_F(UVYMQMitmTest, Reconnect)
-#endif
 {
-#ifdef __linux__
-    auto mitm_ip   = "192.0.2.4";
-    auto remote_ip = "192.0.2.3";
-#else
-    auto mitm_ip   = "127.0.0.1";
-    auto remote_ip = "127.0.0.1";
-#endif
-    auto mitm_port   = randomPort();
-    auto remote_port = 23572;
+    auto [mitm_ip, remote_ip] = getMitmIPs();
+    auto mitm_port            = 23581;
+    auto remote_port          = 23572;
 
     auto result = test(
         30,
@@ -215,15 +192,9 @@ TEST_F(UVYMQMitmTest, Reconnect)
 // in this test, the mitm drops a random % of packets arriving from the client and server
 TEST_F(UVYMQMitmTest, RandomlyDropPackets)
 {
-#ifdef __linux__
-    auto mitm_ip   = "192.0.2.4";
-    auto remote_ip = "192.0.2.3";
-#else
-    auto mitm_ip   = "127.0.0.1";
-    auto remote_ip = "127.0.0.1";
-#endif
-    auto mitm_port   = randomPort();
-    auto remote_port = 23573;
+    auto [mitm_ip, remote_ip] = getMitmIPs();
+    auto mitm_port            = 23582;
+    auto remote_port          = 23573;
 
     auto result = test(
         180,

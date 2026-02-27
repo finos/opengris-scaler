@@ -669,16 +669,9 @@ TEST_P(CcYmqTestSuiteParametrized, TestClientSendBigMessageToServer)
 // for more, see the python mitm files
 TEST(CcYmqTestSuite, TestMitmPassthrough)
 {
-#ifdef __linux__
-    auto mitm_ip   = "192.0.2.4";
-    auto remote_ip = "192.0.2.3";
-#endif  // __linux__
-#ifdef _WIN32
-    auto mitm_ip   = "127.0.0.1";
-    auto remote_ip = "127.0.0.1";
-#endif  // _WIN32
-    auto mitm_port   = randomPort();
-    auto remote_port = 23571;
+    auto [mitm_ip, remote_ip] = getMitmIPs();
+    auto mitm_port            = 23575;
+    auto remote_port          = 23571;
 
     // the Python program must be the first and only the first function passed to test()
     // we must also pass `true` as the third argument to ensure that Python is fully started
@@ -696,16 +689,9 @@ TEST(CcYmqTestSuite, TestMitmPassthrough)
 // this is the same as the above, but both the client and server use raw sockets
 TEST(CcYmqTestSuite, TestMitmPassthroughRaw)
 {
-#ifdef __linux__
-    auto mitm_ip   = "192.0.2.4";
-    auto remote_ip = "192.0.2.3";
-#endif  // __linux__
-#ifdef _WIN32
-    auto mitm_ip   = "127.0.0.1";
-    auto remote_ip = "127.0.0.1";
-#endif  // _WIN32
-    auto mitm_port   = randomPort();
-    auto remote_port = 23574;
+    auto [mitm_ip, remote_ip] = getMitmIPs();
+    auto mitm_port            = 23576;
+    auto remote_port          = 23574;
 
     // the Python program must be the first and only the first function passed to test()
     // we must also pass `true` as the third argument to ensure that Python is fully started
@@ -722,16 +708,9 @@ TEST(CcYmqTestSuite, TestMitmPassthroughRaw)
 // this test uses the mitm to test the reconnect logic of YMQ by sending RST packets
 TEST(CcYmqTestSuite, TestMitmReconnect)
 {
-#ifdef __linux__
-    auto mitm_ip   = "192.0.2.4";
-    auto remote_ip = "192.0.2.3";
-#endif  // __linux__
-#ifdef _WIN32
-    auto mitm_ip   = "127.0.0.1";
-    auto remote_ip = "127.0.0.1";
-#endif  // _WIN32
-    auto mitm_port   = randomPort();
-    auto remote_port = 23572;
+    auto [mitm_ip, remote_ip] = getMitmIPs();
+    auto mitm_port            = 23577;
+    auto remote_port          = 23572;
 
     auto result = test(
         30,
@@ -746,16 +725,9 @@ TEST(CcYmqTestSuite, TestMitmReconnect)
 // in this test, the mitm drops a random % of packets arriving from the client and server
 TEST(CcYmqTestSuite, TestMitmRandomlyDropPackets)
 {
-#ifdef __linux__
-    auto mitm_ip   = "192.0.2.4";
-    auto remote_ip = "192.0.2.3";
-#endif  // __linux__
-#ifdef _WIN32
-    auto mitm_ip   = "127.0.0.1";
-    auto remote_ip = "127.0.0.1";
-#endif  // _WIN32
-    auto mitm_port   = randomPort();
-    auto remote_port = 23573;
+    auto [mitm_ip, remote_ip] = getMitmIPs();
+    auto mitm_port            = 23578;
+    auto remote_port          = 23573;
 
     auto result = test(
         180,
