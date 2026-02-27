@@ -2,7 +2,7 @@ import array
 import unittest
 from enum import IntEnum
 
-from scaler.io.uv_ymq import Address, AddressType, BinderSocket, Bytes, ErrorCode, IOContext, Message, UVYMQException
+from scaler.io.uv_ymq import Address, AddressType, BinderSocket, Bytes, ConnectorSocket, ErrorCode, IOContext, Message, UVYMQException
 from scaler.io.ymq.ymq import call_sync
 
 
@@ -99,9 +99,28 @@ class TestTypes(unittest.TestCase):
         self.assertTrue(repr(address).startswith("tcp://127.0.0.1:"))
 
         with self.assertRaises(TimeoutError):
-            call_sync(binder.recv_message, timeout=0.1)
+            call_sync(binder.recv_message, timeout=0.01)
 
         with self.assertRaises(TimeoutError):
-            call_sync(binder.send_message, "remote", Bytes(b"hello!"), timeout=0.1)
+            call_sync(binder.send_message, "remote", Bytes(b"hello!"), timeout=0.01)
 
         binder.close_connection("non-existing-client-ID")
+
+    def test_connector_socket(self):
+        ctx = IOContext()
+
+        binder = BinderSocket(ctx, "my-server-ID")
+        address = call_sync(binder.bind_to, "tcp://127.0.0.1:0")
+
+        connector = None
+        def create_connector(*args, **kwargs):
+            nonlocal connector
+            connector = ConnectorSocket(*args, **kwargs)
+        call_sync(create_connector, ctx, "my-client-ID", repr(address))
+
+        self.assertEqual(connector.identity, "my-client-ID")
+
+        call_sync(connector.send_message, Bytes(b"test message"), timeout=1.0)
+
+        with self.assertRaises(TimeoutError):
+            call_sync(connector.recv_message, timeout=0.01)

@@ -5,9 +5,11 @@
 #include <vector>
 
 #include "scaler/error/error.h"
+#include "scaler/uv_ymq/configuration.h"
 #include "scaler/uv_ymq/pymod/address.h"
 #include "scaler/uv_ymq/pymod/binder_socket.h"
 #include "scaler/uv_ymq/pymod/bytes.h"
+#include "scaler/uv_ymq/pymod/connector_socket.h"
 #include "scaler/uv_ymq/pymod/exception.h"
 #include "scaler/uv_ymq/pymod/io_context.h"
 #include "scaler/uv_ymq/pymod/message.h"
@@ -291,6 +293,16 @@ static int UVYMQ_exec(PyObject* pyModule)
         return -1;
 
     if (UVYMQ_createType(pyModule, &state->PyBinderSocketType, &PyBinderSocket_spec, "BinderSocket") < 0)
+        return -1;
+
+    if (UVYMQ_createType(pyModule, &state->PyConnectorSocketType, &PyConnectorSocket_spec, "ConnectorSocket") < 0)
+        return -1;
+
+    // Add configuration constants
+    if (PyModule_AddIntConstant(pyModule, "DEFAULT_MAX_RETRY_TIMES", defaultClientMaxRetryTimes) < 0)
+        return -1;
+
+    if (PyModule_AddIntConstant(pyModule, "DEFAULT_INIT_RETRY_DELAY", defaultClientInitRetryDelay.count()) < 0)
         return -1;
 
     PyObject* exceptionBases = PyTuple_Pack(1, PyExc_Exception);

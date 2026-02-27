@@ -15,17 +15,17 @@ BinderSocket::BinderSocket(IOContext& context, Identity identity) noexcept
 
 BinderSocket::~BinderSocket() noexcept
 {
-    close([]() {});
+    shutdown([]() {});
 }
 
-void BinderSocket::close(CloseCallback onCloseCallback) noexcept
+void BinderSocket::shutdown(ShutdownCallback onShutdownCallback) noexcept
 {
     if (_state == nullptr) {
-        onCloseCallback();
+        onShutdownCallback();
         return;  // instance moved
     }
 
-    _state->_thread.executeThreadSafe([state = _state, onCloseCallback = std::move(onCloseCallback)]() mutable {
+    _state->_thread.executeThreadSafe([state = _state, onShutdownCallback = std::move(onShutdownCallback)]() mutable {
         // Disconnect all servers
         state->_servers.clear();
 
@@ -44,7 +44,7 @@ void BinderSocket::close(CloseCallback onCloseCallback) noexcept
         state->_pendingSendMessages.clear();
         state->_pendingRecvMessages = {};
 
-        onCloseCallback();
+        onShutdownCallback();
     });
 
     _state = nullptr;

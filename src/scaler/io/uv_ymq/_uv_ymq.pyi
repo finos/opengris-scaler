@@ -9,6 +9,9 @@ try:
 except ImportError:
     from typing_extensions import Buffer
 
+DEFAULT_MAX_RETRY_TIMES: int
+DEFAULT_INIT_RETRY_DELAY: int
+
 class Bytes(Buffer):
     data: bytes | None
     """Data of the Bytes object"""
@@ -92,6 +95,31 @@ class BinderSocket:
 
     def close_connection(self, remote_identity: str) -> None:
         """Close the connection to a specific remote peer."""
+
+class ConnectorSocket:
+    """A connector socket that connects to a remote address and exchanges messages with a single remote peer."""
+
+    identity: str
+    """Get the identity of the socket"""
+
+    def __init__(
+        self,
+        callback: Callable[[Optional[Exception]], None],
+        context: IOContext,
+        identity: str,
+        address: str,
+        max_retry_times: int = DEFAULT_MAX_RETRY_TIMES,
+        init_retry_delay: int = DEFAULT_INIT_RETRY_DELAY,
+    ) -> None:
+        """Create a ConnectorSocket and initiate connection to the remote address."""
+
+    def __repr__(self) -> str: ...
+
+    def send_message(self, callback: Callable[[Optional[Exception]], None], message_payload: Bytes) -> None:
+        """Send a message to the connected remote peer."""
+
+    def recv_message(self, callback: Callable[[Union[Message, Exception]], None]) -> None:
+        """Receive a message from the connected remote peer."""
 
 class ErrorCode(IntEnum):
     Uninit = 0

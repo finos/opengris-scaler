@@ -41,11 +41,17 @@ ConnectorSocket::ConnectorSocket(
 
 ConnectorSocket::~ConnectorSocket() noexcept
 {
+    shutdown([]() {});
+}
+
+void ConnectorSocket::shutdown(ShutdownCallback onShutdownCallback) noexcept
+{
     if (_state == nullptr) {
+        onShutdownCallback();
         return;  // instance moved
     }
 
-    _state->_thread.executeThreadSafe([state = _state]() {
+    _state->_thread.executeThreadSafe([state = _state, onShutdownCallback = std::move(onShutdownCallback)]() mutable {
         // Disconnect the client
         state->_connectClient.reset();
         state->_connection.reset();
@@ -54,7 +60,11 @@ ConnectorSocket::~ConnectorSocket() noexcept
         fillPendingRecvCallbacksWithErr(state, scaler::ymq::Error::ErrorCode::IOSocketStopRequested);
 
         state->_pendingRecvMessages = {};
+
+        onShutdownCallback();
     });
+
+    _state = nullptr;
 }
 
 const Identity& ConnectorSocket::identity() const noexcept

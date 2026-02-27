@@ -14,7 +14,8 @@ struct UVYMQState {
 
     OwnedPyObject<> PyIOContextType;  // Reference to the IOContext type
 
-    OwnedPyObject<> PyBinderSocketType;  // Reference to the BinderSocket type
+    OwnedPyObject<> PyBinderSocketType;     // Reference to the BinderSocket type
+    OwnedPyObject<> PyConnectorSocketType;  // Reference to the ConnectorSocket type
 
     OwnedPyObject<> PyAddressTypeEnumType;  // Reference to the Address.Type enum
     OwnedPyObject<> PyAddressType;          // Reference to the Address type

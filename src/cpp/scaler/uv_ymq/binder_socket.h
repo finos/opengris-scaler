@@ -27,7 +27,7 @@ namespace uv_ymq {
 // Thread-safe: all operations are scheduled onto the socket's event loop thread.
 class BinderSocket {
 public:
-    using CloseCallback = scaler::utility::MoveOnlyFunction<void()>;
+    using ShutdownCallback = scaler::utility::MoveOnlyFunction<void()>;
 
     using BindCallback = scaler::utility::MoveOnlyFunction<void(std::expected<Address, scaler::ymq::Error>)>;
 
@@ -46,8 +46,8 @@ public:
     BinderSocket(BinderSocket&&) noexcept            = default;
     BinderSocket& operator=(BinderSocket&&) noexcept = default;
 
-    // Terminate the socket and all its connections.
-    void close(CloseCallback onCloseCallback) noexcept;
+    // Terminate this socket and all its connections.
+    void shutdown(ShutdownCallback onShutdownCallback) noexcept;
 
     const Identity& identity() const noexcept;
 
