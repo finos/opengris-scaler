@@ -7,8 +7,6 @@ from scaler.io.uv_ymq import (
     ConnectorSocket,
     ErrorCode,
     IOContext,
-    Message,
-    UVYMQException,
 )
 from scaler.io.uv_ymq import _uv_ymq
 
