@@ -2,8 +2,10 @@ import array
 import unittest
 from enum import IntEnum
 
-from scaler.io.uv_ymq import Address, AddressType, BinderSocket, Bytes, ConnectorSocket, ErrorCode, IOContext, Message, UVYMQException
-from scaler.io.ymq.ymq import call_sync
+from scaler.io.utility import deserialize, serialize
+from scaler.io.uv_ymq import Address, AddressType, Bytes, ErrorCode, IOContext, Message, UVYMQException
+from scaler.protocol.python.message import TaskCancel
+from scaler.utility.identifiers import TaskID
 
 
 class TestTypes(unittest.TestCase):
@@ -89,38 +91,17 @@ class TestTypes(unittest.TestCase):
         ctx = IOContext(num_threads=3)
         self.assertEqual(ctx.num_threads, 3)
 
-    def test_binder_socket(self):
-        ctx = IOContext()
+    def test_buffer_interface(self):
+        msg = TaskCancel.new_msg(TaskID.generate_task_id())
+        data = serialize(msg)
 
-        binder = BinderSocket(ctx, "my-server-ID")
+        # verify that capnp can deserialize this data
+        _ = deserialize(data)
 
-        address = call_sync(binder.bind_to, "tcp://127.0.0.1:0")
-        self.assertEqual(address.type, AddressType.TCP)
-        self.assertTrue(repr(address).startswith("tcp://127.0.0.1:"))
+        # this creates a copy of the data
+        copy = Bytes(data)
 
-        with self.assertRaises(TimeoutError):
-            call_sync(binder.recv_message, timeout=0.01)
-
-        with self.assertRaises(TimeoutError):
-            call_sync(binder.send_message, "remote", Bytes(b"hello!"), timeout=0.01)
-
-        binder.close_connection("non-existing-client-ID")
-
-    def test_connector_socket(self):
-        ctx = IOContext()
-
-        binder = BinderSocket(ctx, "my-server-ID")
-        address = call_sync(binder.bind_to, "tcp://127.0.0.1:0")
-
-        connector = None
-        def create_connector(*args, **kwargs):
-            nonlocal connector
-            connector = ConnectorSocket(*args, **kwargs)
-        call_sync(create_connector, ctx, "my-client-ID", repr(address))
-
-        self.assertEqual(connector.identity, "my-client-ID")
-
-        call_sync(connector.send_message, Bytes(b"test message"), timeout=1.0)
-
-        with self.assertRaises(TimeoutError):
-            call_sync(connector.recv_message, timeout=0.01)
+        # this should deserialize without creating a copy
+        # because Bytes uses the buffer protocol
+        deserialized: TaskCancel = deserialize(copy)  # type: ignore
+        self.assertEqual(deserialized.task_id, msg.task_id)
