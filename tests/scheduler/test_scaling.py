@@ -205,7 +205,9 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> 
 
 def _create_adapter_heartbeat(max_worker_groups: int = 10) -> WorkerAdapterHeartbeat:
     """Helper to create a mock WorkerAdapterHeartbeat."""
-    return WorkerAdapterHeartbeat.new_msg(max_worker_groups=max_worker_groups, workers_per_group=1, capabilities={})
+    return WorkerAdapterHeartbeat.new_msg(
+        max_worker_groups=max_worker_groups, workers_per_group=1, capabilities={}, worker_adapter_id=b"test"
+    )
 
 
 class TestCapabilityScalingController(unittest.TestCase):
@@ -227,7 +229,7 @@ class TestCapabilityScalingController(unittest.TestCase):
         adapter_heartbeat = _create_adapter_heartbeat()
 
         commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         self.assertEqual(len(commands), 1)
@@ -245,7 +247,7 @@ class TestCapabilityScalingController(unittest.TestCase):
         adapter_heartbeat = _create_adapter_heartbeat()
 
         commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         # Should not return any start commands
@@ -267,7 +269,7 @@ class TestCapabilityScalingController(unittest.TestCase):
         adapter_heartbeat = _create_adapter_heartbeat()
 
         commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         self.assertEqual(len(commands), 1)
@@ -287,7 +289,7 @@ class TestCapabilityScalingController(unittest.TestCase):
 
         # Should return 2 start commands (one for each capability set)
         commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         start_commands = [c for c in commands if c.command == WorkerAdapterCommandType.StartWorkerGroup]
@@ -310,7 +312,7 @@ class TestCapabilityScalingController(unittest.TestCase):
         adapter_heartbeat = _create_adapter_heartbeat()
 
         commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         # No StartWorkerGroup command should be returned
@@ -326,7 +328,7 @@ class TestCapabilityScalingController(unittest.TestCase):
         adapter_heartbeat = _create_adapter_heartbeat()
 
         commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         # Should start a worker group with empty capabilities
@@ -353,7 +355,7 @@ class TestCapabilityScalingController(unittest.TestCase):
         adapter_heartbeat = _create_adapter_heartbeat()
 
         commands1 = self.controller.get_scaling_commands(
-            information_snapshot1, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+            information_snapshot1, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         self.assertEqual(len(commands1), 1)
@@ -371,7 +373,7 @@ class TestCapabilityScalingController(unittest.TestCase):
         information_snapshot2 = InformationSnapshot(tasks={task2_id: task2}, workers={})
 
         commands2 = self.controller.get_scaling_commands(
-            information_snapshot2, adapter_heartbeat, updated_groups, updated_caps
+            information_snapshot2, adapter_heartbeat, updated_groups, updated_caps, {}
         )
 
         # No StartWorkerGroup command should be returned

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import signal
 import uuid
 from dataclasses import dataclass
@@ -38,6 +39,7 @@ class ECSWorkerAdapter:
         self._address = config.worker_adapter_config.scheduler_address
         self._object_storage_address = config.worker_adapter_config.object_storage_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
+        self._worker_adapter_id = f"ECS|{os.getpid()}".encode()
         self._io_threads = config.worker_io_threads
         self._per_worker_task_queue_size = config.worker_config.per_worker_task_queue_size
         self._max_instances = config.worker_adapter_config.max_workers
@@ -173,6 +175,7 @@ class ECSWorkerAdapter:
                 max_worker_groups=self._max_instances,
                 workers_per_group=self._ecs_task_cpu,
                 capabilities=self._capabilities,
+                worker_adapter_id=self._worker_adapter_id,
             )
         )
 

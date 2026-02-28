@@ -10,6 +10,7 @@ from scaler.protocol.python.message import (
 from scaler.protocol.python.status import ScalingManagerStatus
 from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingController
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
+    WorkerAdapterSnapshot,
     WorkerGroupCapabilities,
     WorkerGroupID,
     WorkerGroupState,
@@ -31,6 +32,7 @@ class VanillaScalingController(ScalingController):
         adapter_heartbeat: WorkerAdapterHeartbeat,
         worker_groups: WorkerGroupState,
         worker_group_capabilities: WorkerGroupCapabilities,
+        worker_adapter_snapshots: Dict[bytes, WorkerAdapterSnapshot],
     ) -> List[WorkerAdapterCommand]:
         if not information_snapshot.workers:
             if information_snapshot.tasks:

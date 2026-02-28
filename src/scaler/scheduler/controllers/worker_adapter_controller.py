@@ -17,6 +17,7 @@ from scaler.scheduler.controllers.config_controller import VanillaConfigControll
 from scaler.scheduler.controllers.mixins import TaskController, WorkerController
 from scaler.scheduler.controllers.policies.mixins import ScalerPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
+    WorkerAdapterSnapshot,
     WorkerGroupID,
     WorkerGroupInfo,
     WorkerGroupState,
@@ -64,8 +65,11 @@ class WorkerAdapterController(Looper, Reporter):
         worker_groups = {gid: info.worker_ids for gid, info in adapter_groups.items()}
         worker_group_capabilities = {gid: info.capabilities for gid, info in adapter_groups.items()}
 
+        # Build cross-adapter snapshots from all known adapters
+        worker_adapter_snapshots = self._build_adapter_snapshots()
+
         commands = self._scaler_policy.get_scaling_commands(
-            information_snapshot, heartbeat, worker_groups, worker_group_capabilities
+            information_snapshot, heartbeat, worker_groups, worker_group_capabilities, worker_adapter_snapshots
         )
 
         for command in commands:
@@ -108,6 +112,22 @@ class WorkerAdapterController(Looper, Reporter):
     async def _send_command(self, source: bytes, command: WorkerAdapterCommand):
         self._pending_commands[source] = command
         await self._binder.send(source, command)
+
+    def _build_adapter_snapshots(self) -> Dict[bytes, WorkerAdapterSnapshot]:
+        """Build cross-adapter snapshots from all known adapters, keyed by worker_adapter_id."""
+        snapshots: Dict[bytes, WorkerAdapterSnapshot] = {}
+        for source, (last_seen, heartbeat) in self._adapter_alive_since.items():
+            adapter_id = heartbeat.worker_adapter_id
+            if not adapter_id:
+                continue
+            adapter_groups = self._adapter_worker_groups.get(source, {})
+            snapshots[adapter_id] = WorkerAdapterSnapshot(
+                worker_adapter_id=adapter_id,
+                max_worker_groups=heartbeat.max_worker_groups,
+                worker_group_count=len(adapter_groups),
+                last_seen=last_seen,
+            )
+        return snapshots
 
     def _build_snapshot(self) -> InformationSnapshot:
         tasks = self._task_controller._task_id_to_task  # type: ignore # noqa

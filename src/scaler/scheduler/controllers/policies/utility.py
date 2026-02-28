@@ -8,4 +8,10 @@ def create_scaler_policy(policy_engine_type: str, policy_content: str) -> Scaler
         from scaler.scheduler.controllers.policies.simple_policy.simple_policy import SimplePolicy
 
         return SimplePolicy(parts)
-    raise ValueError("Unknown policy type")
+
+    if policy_engine_type == "advance":
+        from scaler.scheduler.controllers.policies.advance_policy.advance_policy import AdvancePolicy
+
+        return AdvancePolicy(parts, policy_content)
+
+    raise ValueError(f"Unknown policy type: {policy_engine_type}")
