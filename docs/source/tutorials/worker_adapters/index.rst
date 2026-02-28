@@ -41,6 +41,11 @@ Fixed Native
 
 The :doc:`Fixed Native <fixed_native>` worker adapter spawns a static number of worker subprocesses at startup and does not support dynamic scaling. It is the underlying component used by the high-level ``Cluster`` and ``SchedulerClusterCombo`` classes.
 
+AWS HPC
+~~~~~~~
+
+The :doc:`AWS HPC <aws_hpc/index>` worker adapter allows Scaler to offload task execution to cloud environments, currently supporting AWS Batch. It is ideal for bursting workloads to the cloud or utilizing specific hardware not available locally.
+
 Common Parameters
 ~~~~~~~~~~~~~~~~~
 
@@ -51,4 +56,5 @@ All worker adapters share a set of :doc:`common configuration parameters <common
 
     native
     fixed_native
+    aws_hpc/index
     common_parameters

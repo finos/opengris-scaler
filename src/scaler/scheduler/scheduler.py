@@ -50,8 +50,10 @@ class Scheduler:
         self._config_controller = VanillaConfigController(config)
 
         if config.scheduler_address.type != ZMQType.tcp:
-            raise TypeError(f"{self.__class__.__name__}: scheduler address must be tcp type: \
-                    {config.scheduler_address.to_address()}")
+            raise TypeError(
+                f"{self.__class__.__name__}: scheduler address must be tcp type: "
+                f"{config.scheduler_address.to_address()}"
+            )
 
         if config.object_storage_address is None:
             object_storage_address = ObjectStorageAddress.new_msg(

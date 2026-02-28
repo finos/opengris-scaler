@@ -35,7 +35,7 @@ scaler/
 │   │   ├── entry_points/    # CLI entry points
 │   │   ├── protocol/        # Protocol definitions (Cap'n Proto)
 │   │   ├── utility/
-│   │   ├── worker_adapter/
+│   │   ├── worker_manager_adapter/
 │   │   └── .../
 │   └── cpp/scaler/          # C++ components
 │       ├── object_storage/

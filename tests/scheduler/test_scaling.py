@@ -43,7 +43,7 @@ from scaler.scheduler.controllers.policies.simple_policy.scaling.types import Wo
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
-from scaler.worker_adapter.native import NativeWorkerAdapter
+from scaler.worker_manager_adapter.baremetal.native import NativeWorkerAdapter
 from tests.utility.utility import logging_test_name
 
 
