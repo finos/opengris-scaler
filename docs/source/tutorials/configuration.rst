@@ -201,6 +201,8 @@ The following table maps each Scaler command to its corresponding section name i
      - ``[symphony_worker_adapter]``
    * - ``scaler_worker_adapter_ecs``
      - ``[ecs_worker_adapter]``
+   * - ``python -m scaler.entry_points.worker_adapter_aws_hpc``
+     - ``[aws_hpc_worker_adapter]``
 
 
 Practical Scenarios & Examples

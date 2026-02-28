@@ -203,7 +203,7 @@ Example Worker Adapter
 
 Here is an example of a worker adapter using the ECS (Amazon Elastic Container Service) integration:
 
-.. literalinclude:: ../../../src/scaler/worker_adapter/ecs.py
+.. literalinclude:: ../../../src/scaler/worker_manager_adapter/aws_raw/ecs.py
    :language: python
 
 

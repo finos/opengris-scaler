@@ -8,7 +8,7 @@ from scaler.config.section.cluster import ClusterConfig
 from scaler.config.section.fixed_native_worker_adapter import FixedNativeWorkerAdapterConfig
 from scaler.utility.event_loop import run_task_forever
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_adapter.fixed_native import FixedNativeWorkerAdapter
+from scaler.worker_manager_adapter.baremetal.fixed_native import FixedNativeWorkerAdapter
 
 
 class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
