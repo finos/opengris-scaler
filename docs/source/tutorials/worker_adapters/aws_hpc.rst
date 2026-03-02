@@ -1,7 +1,9 @@
-AWS Batch Worker Adapter
-========================
+AWS HPC Worker Adapter
+======================
 
-The AWS Batch worker adapter offloads task execution to `AWS Batch <https://aws.amazon.com/batch/>`_, running each Scaler task as a containerized job on managed EC2 compute. Use this adapter when you need to burst workloads to the cloud, access specific hardware (GPUs, high memory), or run long-running jobs at scale.
+The AWS HPC worker adapter offloads task execution to `AWS Batch <https://aws.amazon.com/batch/>`_, running each Scaler task as a containerized job on managed EC2 compute. Use this adapter when you need to burst workloads to the cloud, access specific hardware (GPUs, high memory), or run long-running jobs at scale.
+
+The adapter is designed as an extensible HPC framework — AWS Batch is the currently supported backend.
 
 Prerequisites
 -------------
@@ -32,7 +34,7 @@ Copy the TOML config, fill in the four ``REPLACE_*`` values, and run the three c
    # Terminal 1 — Scheduler
    scaler_scheduler tcp://0.0.0.0:8516
 
-   # Terminal 2 — AWS Batch Adapter
+   # Terminal 2 — AWS HPC Adapter (Batch backend)
    scaler_worker_manager_aws_hpc_batch tcp://127.0.0.1:8516 --config config.toml
 
 .. code-block:: python
@@ -144,10 +146,10 @@ Step 3: Start the Scheduler
    scaler_scheduler tcp://0.0.0.0:8516
 
 .. note::
-   The scheduler address must be reachable from the machine running the AWS Batch adapter. Use ``0.0.0.0`` to bind to all interfaces, or your machine's public/private IP.
+   The scheduler address must be reachable from the machine running the AWS HPC adapter. Use ``0.0.0.0`` to bind to all interfaces, or your machine's public/private IP.
 
-Step 4: Start the AWS Batch Adapter
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 4: Start the AWS HPC Adapter
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 
@@ -214,8 +216,8 @@ A semaphore limits concurrent Batch jobs (``--max-concurrent-jobs``) to prevent 
 Configuration Reference
 ------------------------
 
-AWS Batch Parameters
-~~~~~~~~~~~~~~~~~~~~
+AWS HPC Parameters
+~~~~~~~~~~~~~~~~~~
 
 * ``scheduler_address`` (positional, required): Address of the Scaler scheduler.
 * ``--job-queue`` (``-q``, required): AWS Batch job queue name.

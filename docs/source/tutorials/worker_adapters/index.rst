@@ -39,7 +39,7 @@ Adapters Overview
      - Spawns workers as local subprocesses. The simplest adapter and the recommended starting point.
      - Dynamic or fixed
      - Local machine
-   * - :doc:`AWS Batch <aws_batch>`
+   * - :doc:`AWS HPC <aws_hpc>`
      - Runs each task as an AWS Batch job on managed EC2 compute.
      - Concurrency-limited
      - AWS Batch + S3
@@ -61,7 +61,7 @@ All worker adapters share a set of :doc:`common configuration parameters <common
     :hidden:
 
     native
-    aws_batch
+    aws_hpc
     aws_ecs
     symphony
     common_parameters

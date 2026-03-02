@@ -1,7 +1,7 @@
 AWS ECS Worker Adapter
 ======================
 
-The AWS ECS worker adapter provisions Scaler workers as `AWS Fargate <https://aws.amazon.com/fargate/>`_ tasks inside an `ECS <https://aws.amazon.com/ecs/>`_ cluster. Unlike the :doc:`AWS Batch adapter <aws_batch>`, which runs each Scaler *task* as a separate cloud job, the ECS adapter launches full Scaler *worker processes* in Fargate containers. This means workers connect back to the scheduler and process tasks the same way local workers do, with the scheduler handling load balancing and scaling.
+The AWS ECS worker adapter provisions Scaler workers as `AWS Fargate <https://aws.amazon.com/fargate/>`_ tasks inside an `ECS <https://aws.amazon.com/ecs/>`_ cluster. Unlike the :doc:`AWS HPC adapter <aws_hpc>`, which runs each Scaler *task* as a separate cloud job, the ECS adapter launches full Scaler *worker processes* in Fargate containers. This means workers connect back to the scheduler and process tasks the same way local workers do, with the scheduler handling load balancing and scaling.
 
 Prerequisites
 -------------
