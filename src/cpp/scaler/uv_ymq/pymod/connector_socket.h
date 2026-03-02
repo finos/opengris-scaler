@@ -57,6 +57,24 @@ static int PyConnectorSocket_init(PyConnectorSocket* self, PyObject* args, PyObj
     return -1;
 }
 
+static PyConnectorSocket* PyConnectorSocket_alloc(PyObject* cls, std::shared_ptr<IOContext> ioContext)
+{
+    // Allocate the object
+    PyObject* self = ((PyTypeObject*)cls)->tp_alloc((PyTypeObject*)cls, 0);
+    if (!self)
+        return nullptr;
+
+    auto* pySelf = reinterpret_cast<PyConnectorSocket*>(self);
+
+    // Placement-new the C++ members
+    new (&pySelf->socket) std::unique_ptr<ConnectorSocket>();
+    new (&pySelf->ioContext) std::shared_ptr<IOContext>();
+
+    pySelf->ioContext = std::move(ioContext);
+
+    return pySelf;
+}
+
 static PyObject* PyConnectorSocket_connect(PyObject* cls, PyObject* args, PyObject* kwds)
 {
     auto state = UVYMQStateFromType((PyObject*)cls);

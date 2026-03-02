@@ -1,5 +1,4 @@
 from typing import Optional
-from concurrent.futures import Future
 
 from scaler.io.uv_ymq import _uv_ymq
 from scaler.io.ymq.ymq import call_async, call_sync
