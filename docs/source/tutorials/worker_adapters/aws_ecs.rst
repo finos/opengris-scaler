@@ -3,16 +3,57 @@ AWS ECS Worker Adapter
 
 The AWS ECS worker adapter provisions Scaler workers as `AWS Fargate <https://aws.amazon.com/fargate/>`_ tasks inside an `ECS <https://aws.amazon.com/ecs/>`_ cluster. Unlike the :doc:`AWS Batch adapter <aws_batch>`, which runs each Scaler *task* as a separate cloud job, the ECS adapter launches full Scaler *worker processes* in Fargate containers. This means workers connect back to the scheduler and process tasks the same way local workers do, with the scheduler handling load balancing and scaling.
 
-Quick Start
------------
-
 Prerequisites
-~~~~~~~~~~~~~
+-------------
 
 * An AWS account
 * `AWS CLI <https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html>`_ installed and configured (``aws configure``)
 * Python packages: ``pip install opengris-scaler boto3``
-* A VPC with at least one **public subnet** (Fargate tasks need internet access to reach the scheduler)
+* A VPC with at least one subnet that has internet access (a public subnet with an Internet Gateway, or a private subnet with a NAT Gateway)
+
+Quick Start
+-----------
+
+Copy the TOML config, fill in the ``REPLACE_*`` values, and run the three commands below.
+
+.. code-block:: toml
+   :caption: config.toml
+
+   [ecs_worker_adapter]
+   ecs_subnets = "REPLACE_SUBNET_ID"
+   aws_region = "REPLACE_REGION"
+   max_workers = 4
+   ecs_task_cpu = 4
+   ecs_task_memory = 30
+   ecs_cluster = "scaler-cluster"
+   ecs_task_definition = "scaler-task-definition"
+   ecs_task_image = "public.ecr.aws/v4u8j8r6/scaler:latest"
+
+.. code-block:: bash
+
+   # Terminal 1 — Scheduler (use your public/private IP, not 127.0.0.1)
+   scaler_scheduler tcp://0.0.0.0:8516 \
+       --policy-content "allocate=even_load; scaling=vanilla"
+
+   # Terminal 2 — ECS Adapter
+   scaler_worker_manager_aws_raw_ecs tcp://<SCHEDULER_PUBLIC_IP>:8516 --config config.toml
+
+.. code-block:: python
+   :caption: my_client.py (Terminal 3)
+
+   from scaler import Client
+
+   def compute(x):
+       return x ** 2
+
+   with Client(address="tcp://<SCHEDULER_PUBLIC_IP>:8516") as client:
+       futures = client.map(compute, range(50))
+       print([f.result() for f in futures])
+
+If you need help finding your subnet IDs or setting up permissions, follow the detailed setup below.
+
+Detailed Setup
+--------------
 
 Step 1: Configure AWS Credentials
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -118,8 +159,6 @@ How It Works
 5. Workers connect back to the scheduler and process tasks like local workers.
 6. When the scheduler wants to scale down, it sends a ``ShutdownWorkerGroup`` command and the adapter stops the Fargate task.
 
-The adapter auto-creates the ECS cluster and task definition on first run if they don't exist.
-
 Configuration Reference
 ------------------------
 
@@ -144,6 +183,26 @@ Common Parameters
 ~~~~~~~~~~~~~~~~~
 
 For worker behavior, logging, and event loop options, see :doc:`common_parameters`.
+
+Architecture
+------------
+
+.. code-block:: text
+
+   ┌─────────┐     ┌───────────┐     ┌──────────────────┐     ┌─────────────────────┐
+   │  Client  │────>│ Scheduler │<───>│ ECS WorkerAdapter│────>│ AWS ECS (Fargate)   │
+   └─────────┘     └─────┬─────┘     └──────────────────┘     └──────────┬──────────┘
+                         │                                                │
+                         │            ┌──────────────────┐                │
+                         └───────────>│  Object Storage  │<───────────────┘
+                                      └──────────────────┘       (scaler_cluster
+                                                                  runs inside each
+                                                                  Fargate task)
+
+1. The scheduler sends scaling commands (``StartWorkerGroup`` / ``ShutdownWorkerGroup``) to the ECS adapter.
+2. The adapter calls ``ecs:RunTask`` to launch Fargate tasks running ``scaler_cluster``.
+3. Workers inside each Fargate task connect back to the scheduler and process tasks like local workers.
+4. The adapter auto-creates the ECS cluster and task definition on first run if they don't exist.
 
 Troubleshooting
 ---------------

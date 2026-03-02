@@ -3,16 +3,54 @@ AWS Batch Worker Adapter
 
 The AWS Batch worker adapter offloads task execution to `AWS Batch <https://aws.amazon.com/batch/>`_, running each Scaler task as a containerized job on managed EC2 compute. Use this adapter when you need to burst workloads to the cloud, access specific hardware (GPUs, high memory), or run long-running jobs at scale.
 
-Quick Start
------------
-
 Prerequisites
-~~~~~~~~~~~~~
+-------------
 
 * An AWS account
 * `AWS CLI <https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html>`_ installed and configured (``aws configure``)
 * `Docker <https://docs.docker.com/get-docker/>`_ installed (for building the worker container image)
 * Python packages: ``pip install opengris-scaler boto3``
+
+Quick Start
+-----------
+
+Copy the TOML config, fill in the four ``REPLACE_*`` values, and run the three commands below.
+
+.. code-block:: toml
+   :caption: config.toml
+
+   [aws_hpc_worker_adapter]
+   job_queue = "REPLACE_JOB_QUEUE"
+   job_definition = "REPLACE_JOB_DEFINITION"
+   s3_bucket = "REPLACE_S3_BUCKET"
+   aws_region = "REPLACE_REGION"
+   max_concurrent_jobs = 100
+   job_timeout_minutes = 60
+
+.. code-block:: bash
+
+   # Terminal 1 — Scheduler
+   scaler_scheduler tcp://0.0.0.0:8516
+
+   # Terminal 2 — AWS Batch Adapter
+   scaler_worker_manager_aws_hpc_batch tcp://127.0.0.1:8516 --config config.toml
+
+.. code-block:: python
+   :caption: my_client.py (Terminal 3)
+
+   from scaler import Client
+
+   def heavy_computation(x):
+       return x ** 2
+
+   with Client(address="tcp://127.0.0.1:8516") as client:
+       futures = client.map(heavy_computation, range(50))
+       print([f.result() for f in futures])
+
+If you don't have AWS Batch resources yet, follow the detailed setup below.
+
+Detailed Setup
+--------------
 
 Step 1: Configure AWS Credentials
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -44,6 +82,11 @@ Or attach the following AWS managed policies for quick setup:
 Step 2: Provision AWS Resources
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. warning::
+   The provisioner creates resources for quick testing and development only.
+   For production deployments, use your organization's infrastructure-as-code tools
+   (CloudFormation, CDK, Terraform) with proper security configurations.
+
 Scaler includes a provisioner script that creates all required AWS infrastructure (S3 bucket, IAM roles, EC2 compute environment, job queue, job definition, and ECR repository):
 
 .. code-block:: bash
@@ -58,16 +101,40 @@ Scaler includes a provisioner script that creates all required AWS infrastructur
 This will:
 
 1. Build and push a Docker worker image to ECR
-2. Create an S3 bucket for task payloads and results
+2. Create an S3 bucket for task payloads and results (with 1-day lifecycle policy)
 3. Create IAM roles with the minimum required permissions
 4. Create an EC2 compute environment and job queue
 5. Register a Batch job definition
 
-The provisioner saves the configuration to a JSON file and an env file. Source the env file:
+The provisioner saves its configuration to:
+
+* ``tests/worker_manager_adapter/aws_hpc/.scaler_aws_hpc.env`` — shell environment file
+* ``tests/worker_manager_adapter/aws_hpc/.scaler_aws_batch_config.json`` — full resource details (used for cleanup)
+
+Source the env file to set variables for subsequent commands:
 
 .. code-block:: bash
 
    source tests/worker_manager_adapter/aws_hpc/.scaler_aws_hpc.env
+
+**Memory configuration:** Memory is rounded to the nearest multiple of 2048 MB and 90% is allocated to the container. For example, ``--memory 4000`` → 4096 MB total → 3686 MB effective.
+
+Using Existing Infrastructure
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If you already have AWS Batch resources (created via CloudFormation, CDK, Terraform, etc.), skip the provisioner and create the env file manually:
+
+.. code-block:: bash
+
+   cat > .scaler_aws_hpc.env << 'EOF'
+   export SCALER_AWS_REGION="us-east-1"
+   export SCALER_S3_BUCKET="your-existing-bucket"
+   export SCALER_JOB_QUEUE="your-existing-queue"
+   export SCALER_JOB_DEFINITION="your-existing-job-def"
+   EOF
+   source .scaler_aws_hpc.env
+
+Then continue from Step 3.
 
 Step 3: Start the Scheduler
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -142,7 +209,7 @@ How It Works
 4. Inside the Batch container, a runner script (``batch_job_runner.py``) deserializes the task, executes the function, and writes the result to S3.
 5. The adapter polls for job completion, fetches the result from S3, and returns it to the scheduler.
 
-Payloads larger than 4 KB are automatically compressed with gzip. A semaphore limits concurrent Batch jobs to prevent exceeding AWS service quotas.
+A semaphore limits concurrent Batch jobs (``--max-concurrent-jobs``) to prevent exceeding AWS service quotas.
 
 Configuration Reference
 ------------------------
@@ -178,16 +245,93 @@ The provisioner supports these commands:
    show           Display saved configuration
    build-image    Build and push Docker image only
 
-Provisioner flags:
+.. list-table:: Provisioner Flags
+   :header-rows: 1
+   :widths: 25 15 60
 
-* ``--region``: AWS region (default: ``us-east-1``)
-* ``--prefix``: Resource name prefix (default: ``scaler-batch``)
-* ``--image``: Pre-built container image (skips Docker build if provided)
-* ``--vcpus``: vCPUs per job (default: ``1``)
-* ``--memory``: Memory per job in MB (default: ``2048``)
-* ``--max-vcpus``: Max vCPUs for compute environment (default: ``256``)
-* ``--instance-types``: Comma-separated EC2 instance types (default: ``default_x86_64``)
-* ``--job-timeout``: Job timeout in minutes (default: ``60``)
+   * - Flag
+     - Default
+     - Description
+   * - ``--region``
+     - ``us-east-1``
+     - AWS region
+   * - ``--prefix``
+     - ``scaler-batch``
+     - Resource name prefix
+   * - ``--image``
+     - (auto-build)
+     - Container image URI (if provided, skips Docker build and push to ECR)
+   * - ``--vcpus``
+     - ``1``
+     - vCPUs per job
+   * - ``--memory``
+     - ``2048``
+     - Memory per job in MB (uses 90% of nearest 2048 MB multiple)
+   * - ``--max-vcpus``
+     - ``256``
+     - Max vCPUs for compute environment
+   * - ``--instance-types``
+     - ``default_x86_64``
+     - EC2 instance types (comma-separated)
+   * - ``--job-timeout``
+     - ``60``
+     - Job timeout in minutes
+
+Architecture
+------------
+
+.. code-block:: text
+
+   ┌─────────┐     ┌───────────┐     ┌─────────────────┐     ┌───────────────────┐     ┌───────────┐
+   │  Client  │────>│ Scheduler │────>│  AWSBatchWorker │────>│ AWSHPCTaskManager │────>│ AWS Batch │
+   └─────────┘     └───────────┘     └─────────────────┘     └───────────────────┘     └───────────┘
+                                              │                        │                      │
+                                              v                        v                      v
+                                     ┌─────────────────┐         ┌───────────┐         ┌───────────┐
+                                     │HeartbeatManager │         │ S3 Bucket │<────────│ Batch Job │
+                                     └─────────────────┘         └───────────┘         └───────────┘
+
+.. list-table:: Components
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Component
+     - Description
+   * - **Client**
+     - Submits tasks to the scheduler using the Scaler API
+   * - **Scheduler**
+     - Distributes tasks to available workers via ZMQ streaming
+   * - **AWSBatchWorker**
+     - Process that connects to the scheduler and routes messages to the TaskManager
+   * - **AWSHPCTaskManager**
+     - Handles task queuing, priority, concurrency control, and AWS Batch job submission
+   * - **HeartbeatManager**
+     - Sends periodic heartbeats to the scheduler with worker status
+   * - **S3 Bucket**
+     - Stores task payloads (for large tasks) and job results
+   * - **AWS Batch**
+     - Executes tasks as containerized jobs on an EC2 compute environment
+
+Payload Handling
+~~~~~~~~~~~~~~~~
+
+Task payloads are serialized with ``cloudpickle`` and delivered to AWS Batch jobs.
+Payloads larger than 4 KB are gzip-compressed before transfer. The resulting payload
+(compressed or not) is passed inline via job parameters if it fits within 28 KiB;
+otherwise it is uploaded to S3.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 60
+
+   * - Condition
+     - Method
+   * - Raw payload ≤ 4 KB
+     - Inline (uncompressed)
+   * - Raw payload > 4 KB, compressed ≤ 28 KB
+     - Inline (gzip compressed)
+   * - Raw payload > 4 KB, compressed > 28 KB
+     - S3 upload
 
 Troubleshooting
 ---------------
@@ -200,3 +344,9 @@ Ensure the IAM role attached to the job definition has S3 read/write access to t
 
 **Credential expiration:**
 The adapter auto-refreshes expired AWS credentials. If using temporary credentials, ensure your session token is valid.
+
+**Container image issues:**
+Your job definition image must have the same Python version as the client (required for ``cloudpickle`` compatibility), plus ``cloudpickle`` and ``boto3`` installed.
+
+**Timeout waiting for result:**
+Check the AWS Batch console for job status. Increase ``--max-concurrent-jobs`` if jobs are queued, or check compute environment capacity.
