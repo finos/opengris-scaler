@@ -47,7 +47,7 @@ runs:
       if: inputs.os != 'Windows'
       shell: bash
       run: |
-        python -m unittest discover -v tests
+        python -m unittest discover -v tests -t .
 
     - name: Run Examples
       if: inputs.os != 'Windows'

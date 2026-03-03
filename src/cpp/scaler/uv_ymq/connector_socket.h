@@ -30,6 +30,8 @@ class ConnectorSocket {
 public:
     using ConnectCallback = scaler::utility::MoveOnlyFunction<void(std::expected<void, scaler::ymq::Error>)>;
 
+    using ShutdownCallback = scaler::utility::MoveOnlyFunction<void()>;
+
     using SendMessageCallback = scaler::utility::MoveOnlyFunction<void(std::expected<void, scaler::ymq::Error>)>;
 
     using RecvMessageCallback =
@@ -54,6 +56,9 @@ public:
 
     ConnectorSocket(ConnectorSocket&&) noexcept            = default;
     ConnectorSocket& operator=(ConnectorSocket&&) noexcept = default;
+
+    // Terminate this socket and its connection.
+    void shutdown(ShutdownCallback onShutdownCallback) noexcept;
 
     const Identity& identity() const noexcept;
 

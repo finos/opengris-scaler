@@ -2,6 +2,7 @@
 
 #include <expected>
 #include <string>
+#include <string_view>
 #include <variant>
 
 #include "scaler/error/error.h"
@@ -44,7 +45,7 @@ public:
     //     tcp://127.0.0.1:1827
     //     tcp://2001:db8::1:1211
     //
-    static std::expected<Address, scaler::ymq::Error> fromString(const std::string& address) noexcept;
+    static std::expected<Address, scaler::ymq::Error> fromString(std::string_view address) noexcept;
 
 private:
     static constexpr std::string_view _tcpPrefix = "tcp://";

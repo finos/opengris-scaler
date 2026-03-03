@@ -51,7 +51,7 @@ T _exitOnError(std::string_view functionName, std::expected<T, Error>&& result)
         unrecoverableError({
             ymq::Error::ErrorCode::UVError,
             "Originated from",
-            std::string(functionName),
+            std::string {functionName},
             "Error code",
             uvError.name(),
             uvError.message(),

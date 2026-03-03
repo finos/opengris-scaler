@@ -1,6 +1,7 @@
 #include "scaler/uv_ymq/address.h"
 
 #include <cassert>
+#include <charconv>
 #include <utility>
 
 namespace scaler {
@@ -8,16 +9,16 @@ namespace uv_ymq {
 
 namespace details {
 
-std::expected<Address, scaler::ymq::Error> fromTCPString(const std::string& addrPart) noexcept
+std::expected<Address, scaler::ymq::Error> fromTCPString(std::string_view addrPart) noexcept
 {
     const size_t colonPos = addrPart.rfind(':');
-    if (colonPos == std::string::npos) {
+    if (colonPos == std::string_view::npos) {
         return std::unexpected {
             scaler::ymq::Error {scaler::ymq::Error::ErrorCode::InvalidAddressFormat, "Missing port separator"}};
     }
 
-    const std::string ip      = addrPart.substr(0, colonPos);
-    const std::string portStr = addrPart.substr(colonPos + 1);
+    const std::string ip      = std::string {addrPart.substr(0, colonPos)};
+    const std::string portStr = std::string {addrPart.substr(colonPos + 1)};
 
     int port = 0;
     try {
@@ -89,19 +90,19 @@ std::expected<std::string, scaler::ymq::Error> Address::toString() const noexcep
 
             return std::string(_tcpPrefix) + tcpAddrStr.value();
         }
-        case Type::IPC: return std::string(_ipcPrefix) + asIPC();
+        case Type::IPC: return std::string {_ipcPrefix} + asIPC();
         default: std::unreachable();
     };
 }
 
-std::expected<Address, scaler::ymq::Error> Address::fromString(const std::string& address) noexcept
+std::expected<Address, scaler::ymq::Error> Address::fromString(std::string_view address) noexcept
 {
     if (address.starts_with(_tcpPrefix)) {
         return details::fromTCPString(address.substr(_tcpPrefix.size()));
     }
 
     if (address.starts_with(_ipcPrefix)) {
-        return Address(address.substr(_ipcPrefix.size()));
+        return Address(std::string {address.substr(_ipcPrefix.size())});
     }
 
     return std::unexpected {scaler::ymq::Error {
