@@ -29,6 +29,10 @@ Step 2: Start the Scheduler
    scaler_scheduler tcp://0.0.0.0:8516 \
        --policy-content "allocate=even_load; scaling=vanilla"
 
+.. note::
+   The default scaling policy is ``scaling=no`` (no auto-scaling). The ``scaling=vanilla`` policy is required for
+   the adapter to dynamically provision workers.
+
 Step 3: Start the Symphony Worker Adapter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

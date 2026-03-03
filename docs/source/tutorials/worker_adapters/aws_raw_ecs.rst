@@ -1,7 +1,7 @@
-AWS ECS Worker Adapter
-======================
+AWS Raw ECS Worker Adapter
+==========================
 
-The AWS ECS worker adapter provisions Scaler workers as `AWS Fargate <https://aws.amazon.com/fargate/>`_ tasks inside an `ECS <https://aws.amazon.com/ecs/>`_ cluster. Unlike the :doc:`AWS HPC adapter <aws_hpc>`, which runs each Scaler *task* as a separate cloud job, the ECS adapter launches full Scaler *worker processes* in Fargate containers. This means workers connect back to the scheduler and process tasks the same way local workers do, with the scheduler handling load balancing and scaling.
+The AWS Raw ECS worker adapter provisions Scaler workers as `AWS Fargate <https://aws.amazon.com/fargate/>`_ tasks inside an `ECS <https://aws.amazon.com/ecs/>`_ cluster. Unlike the :doc:`AWS HPC Batch adapter <aws_hpc_batch>`, which runs each Scaler *task* as a separate cloud job, the AWS Raw ECS adapter launches full Scaler *worker processes* in Fargate containers. This means workers connect back to the scheduler and process tasks the same way local workers do, with the scheduler handling load balancing and scaling.
 
 Prerequisites
 -------------
@@ -14,20 +14,26 @@ Prerequisites
 Quick Start
 -----------
 
-Copy the TOML config, fill in the ``REPLACE_*`` values, and run the three commands below.
+Get a subnet ID from your default VPC:
+
+.. code-block:: bash
+
+   aws ec2 describe-subnets \
+       --filters "Name=default-for-az,Values=true" \
+       --query "Subnets[0].SubnetId" \
+       --output text
+
+Paste the result into the TOML below and run the three commands:
 
 .. code-block:: toml
    :caption: config.toml
 
    [ecs_worker_adapter]
-   ecs_subnets = "REPLACE_SUBNET_ID"
-   aws_region = "REPLACE_REGION"
+   ecs_subnets = "subnet-0abc1234def56789a"  # paste your subnet ID here
+   aws_region = "us-east-1"
    max_workers = 4
    ecs_task_cpu = 4
    ecs_task_memory = 30
-   ecs_cluster = "scaler-cluster"
-   ecs_task_definition = "scaler-task-definition"
-   ecs_task_image = "public.ecr.aws/v4u8j8r6/scaler:latest"
 
 .. code-block:: bash
 
@@ -35,7 +41,13 @@ Copy the TOML config, fill in the ``REPLACE_*`` values, and run the three comman
    scaler_scheduler tcp://0.0.0.0:8516 \
        --policy-content "allocate=even_load; scaling=vanilla"
 
-   # Terminal 2 — ECS Adapter
+.. note::
+   The default scaling policy is ``scaling=no`` (no auto-scaling). The ``scaling=vanilla`` policy is required for
+   the adapter to dynamically provision and destroy Fargate tasks.
+
+.. code-block:: bash
+
+   # Terminal 2 — AWS Raw ECS Adapter
    scaler_worker_manager_aws_raw_ecs tcp://<SCHEDULER_PUBLIC_IP>:8516 --config config.toml
 
 .. code-block:: python
@@ -100,11 +112,15 @@ The scheduler must be reachable from the Fargate tasks. Use your machine's publi
    scaler_scheduler tcp://0.0.0.0:8516 \
        --policy-content "allocate=even_load; scaling=vanilla"
 
+.. note::
+   The default scaling policy is ``scaling=no`` (no auto-scaling). The ``scaling=vanilla`` policy is required for
+   the adapter to dynamically provision and destroy Fargate tasks.
+
 .. important::
    Fargate tasks must be able to reach the scheduler address over the network. Ensure your security group allows inbound TCP on port 8516 from the Fargate subnet CIDR, and that the scheduler binds to an accessible IP.
 
-Step 4: Start the ECS Worker Adapter
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 4: Start the AWS Raw ECS Worker Adapter
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 
@@ -152,7 +168,7 @@ Step 5: Submit Tasks
 How It Works
 ------------
 
-1. The ECS adapter connects to the Scaler scheduler and sends periodic heartbeats.
+1. The AWS Raw ECS adapter connects to the Scaler scheduler and sends periodic heartbeats.
 2. When the scheduler's scaling policy requests more workers, it sends a ``StartWorkerGroup`` command.
 3. The adapter calls ``ecs:RunTask`` to launch a Fargate task running the Scaler worker container.
 4. Each Fargate task runs ``scaler_cluster`` inside the container, spawning one or more worker processes (controlled by ``--ecs-task-cpu``).
@@ -162,8 +178,8 @@ How It Works
 Configuration Reference
 ------------------------
 
-ECS-Specific Parameters
-~~~~~~~~~~~~~~~~~~~~~~~~
+AWS Raw ECS Parameters
+~~~~~~~~~~~~~~~~~~~~~~~
 
 * ``scheduler_address`` (positional, required): Address of the Scaler scheduler. Must be reachable from Fargate tasks.
 * ``--ecs-subnets`` (required): Comma-separated list of VPC subnet IDs for Fargate tasks.

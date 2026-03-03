@@ -1,7 +1,7 @@
-Native Worker Adapter
-=====================
+Baremetal Native Worker Adapter
+===============================
 
-The Native worker adapter spawns worker subprocesses on the local machine. It is the simplest way to run Scaler across multiple CPU cores and is the recommended starting point for most users.
+The Baremetal Native worker adapter spawns worker subprocesses on the local machine. It is the simplest way to run Scaler across multiple CPU cores and is the recommended starting point for most users.
 
 It supports two modes:
 
@@ -9,7 +9,7 @@ It supports two modes:
 * **Fixed mode** (``scaler_worker_manager_baremetal_fixed_native``): A static pool of workers is spawned at startup. No dynamic scaling.
 
 .. note::
-   The Fixed Native mode will be merged into the Native adapter in a future release.
+   The Baremetal Fixed Native mode will be merged into the Baremetal Native adapter in a future release.
 
 Quick Start (Python API)
 ------------------------
@@ -79,7 +79,11 @@ For dynamic scaling, use ``scaler_worker_manager_baremetal_native`` instead of `
    scaler_scheduler tcp://127.0.0.1:8516 \
        --policy-content "allocate=even_load; scaling=vanilla"
 
-**Terminal 2 — Native Worker Adapter:**
+.. note::
+   The default scaling policy is ``scaling=no`` (no auto-scaling). The ``scaling=vanilla`` policy is required for
+   the adapter to dynamically provision workers.
+
+**Terminal 2 — Baremetal Native Worker Adapter:**
 
 .. code-block:: bash
 
@@ -113,8 +117,8 @@ Or use a TOML configuration file:
    logging_level = "INFO"
    task_timeout_seconds = 60
 
-Quick Start (CLI — Fixed Native Adapter)
------------------------------------------
+Quick Start (CLI — Baremetal Fixed Native Adapter)
+---------------------------------------------------
 
 This is similar to ``scaler_cluster`` but uses the ``scaler_worker_manager_baremetal_fixed_native`` adapter, which also spawns a static pool of workers at startup.
 
@@ -124,7 +128,7 @@ This is similar to ``scaler_cluster`` but uses the ``scaler_worker_manager_barem
 
    scaler_scheduler tcp://127.0.0.1:8516
 
-**Terminal 2 — Fixed Native Worker Adapter:**
+**Terminal 2 — Baremetal Fixed Native Worker Adapter:**
 
 .. code-block:: bash
 
@@ -157,8 +161,8 @@ Configuration Reference
 .. note::
    For a full list of shared parameters, see :doc:`common_parameters`.
 
-Native-Specific Parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Baremetal Native Parameters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 * ``scheduler_address`` (positional, required): Address of the scheduler (e.g., ``tcp://127.0.0.1:8516``).
 * ``--max-workers`` (``-mw``): Maximum number of worker subprocesses. In dynamic mode, set to ``-1`` for no limit (default: number of CPUs − 1). In fixed mode, this is the exact number of workers spawned.

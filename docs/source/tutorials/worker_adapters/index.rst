@@ -19,7 +19,7 @@ Configure the scheduler with a scaling policy, then start a worker adapter:
     # Terminal 1 — Scheduler
     scaler_scheduler tcp://127.0.0.1:8516 -pc "allocate=even_load; scaling=vanilla"
 
-    # Terminal 2 — Worker Adapter (e.g., Native)
+    # Terminal 2 — Worker Adapter (e.g., Baremetal Native)
     scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 --max-workers 8
 
 The vanilla policy automatically scales workers up and down based on the task-to-worker ratio. For available policies and their parameters, see :doc:`../scaling`.
@@ -35,15 +35,15 @@ Adapters Overview
      - Description
      - Scaling
      - Infrastructure
-   * - :doc:`Native <native>`
+   * - :doc:`Baremetal Native <baremetal_native>`
      - Spawns workers as local subprocesses. The simplest adapter and the recommended starting point.
      - Dynamic or fixed
      - Local machine
-   * - :doc:`AWS HPC <aws_hpc>`
+   * - :doc:`AWS HPC Batch <aws_hpc_batch>`
      - Runs each task as an AWS Batch job on managed EC2 compute.
      - Concurrency-limited
      - AWS Batch + S3
-   * - :doc:`AWS ECS <aws_ecs>`
+   * - :doc:`AWS Raw ECS <aws_raw_ecs>`
      - Provisions full Scaler worker processes as Fargate tasks.
      - Dynamic (scheduler-driven)
      - AWS ECS Fargate
@@ -60,8 +60,8 @@ All worker adapters share a set of :doc:`common configuration parameters <common
 .. toctree::
     :hidden:
 
-    native
-    aws_hpc
-    aws_ecs
+    baremetal_native
+    aws_hpc_batch
+    aws_raw_ecs
     symphony
     common_parameters

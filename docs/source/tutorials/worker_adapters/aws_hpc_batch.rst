@@ -1,5 +1,5 @@
-AWS HPC Worker Adapter
-======================
+AWS HPC Batch Worker Adapter
+============================
 
 The AWS HPC worker adapter offloads task execution to `AWS Batch <https://aws.amazon.com/batch/>`_, running each Scaler task as a containerized job on managed EC2 compute. Use this adapter when you need to burst workloads to the cloud, access specific hardware (GPUs, high memory), or run long-running jobs at scale.
 
@@ -16,16 +16,31 @@ Prerequisites
 Quick Start
 -----------
 
-Copy the TOML config, fill in the four ``REPLACE_*`` values, and run the three commands below.
+Provision the required AWS resources (S3 bucket, IAM roles, compute environment, job queue, and
+job definition):
+
+.. code-block:: bash
+
+   python -m scaler.worker_manager_adapter.aws_hpc.utility.provisioner provision \
+       --region us-east-1 \
+       --prefix scaler-batch \
+       --vcpus 1 \
+       --memory 2048 \
+       --max-vcpus 256
+   source tests/worker_manager_adapter/aws_hpc/.scaler_aws_hpc.env
+
+The provisioner creates resources named ``scaler-batch-*``. The TOML below uses those names
+directly — just update ``s3_bucket`` with the value printed by the provisioner (it includes
+your AWS account ID):
 
 .. code-block:: toml
    :caption: config.toml
 
    [aws_hpc_worker_adapter]
-   job_queue = "REPLACE_JOB_QUEUE"
-   job_definition = "REPLACE_JOB_DEFINITION"
-   s3_bucket = "REPLACE_S3_BUCKET"
-   aws_region = "REPLACE_REGION"
+   job_queue = "scaler-batch-queue"
+   job_definition = "scaler-batch-job"
+   s3_bucket = "scaler-batch-123456789012-us-east-1"  # replace 123456789012 with your account ID
+   aws_region = "us-east-1"
    max_concurrent_jobs = 100
    job_timeout_minutes = 60
 
