@@ -199,6 +199,8 @@ The following table maps each Scaler command to its corresponding section name i
      - ``[fixed_native_worker_adapter]``
    * - ``scaler_worker_adapter_symphony``
      - ``[symphony_worker_adapter]``
+   * - ``scaler_worker_manager_orb``
+     - ``[orb_worker_adapter]``
    * - ``scaler_worker_adapter_ecs``
      - ``[ecs_worker_adapter]``
    * - ``python -m scaler.entry_points.worker_adapter_aws_hpc``

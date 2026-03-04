@@ -64,6 +64,12 @@ class WorkerAdapterController(Looper, Reporter):
         worker_groups = {gid: info.worker_ids for gid, info in adapter_groups.items()}
         worker_group_capabilities = {gid: info.capabilities for gid, info in adapter_groups.items()}
 
+        # Wait for the previous command to complete before sending another.
+        # Adapters can take a long time to fulfill commands (e.g. ORB polls for instance IDs),
+        # so sending a new command before the response arrives causes duplicate work and errors.
+        if source in self._pending_commands:
+            return
+
         commands = self._scaler_policy.get_scaling_commands(
             information_snapshot, heartbeat, worker_groups, worker_group_capabilities
         )

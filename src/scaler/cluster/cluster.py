@@ -34,6 +34,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         self._logging_paths = config.logging_config.paths
         self._logging_config_file = config.logging_config.config_file
         self._logging_level = config.logging_config.level
+        self._deterministic_worker_ids = config.deterministic_worker_ids
 
         # we create the config here, but create the actual adapter in the run method
         # to ensure that it's created in the correct process
