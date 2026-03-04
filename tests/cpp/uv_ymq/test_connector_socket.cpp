@@ -166,6 +166,8 @@ TEST_F(UVYMQConnectorSocketTest, SendMessage)
     // Disconnect from the server side
     server.disconnect();
 
+    loop.run(UV_RUN_ONCE);
+
     // Give some time for the disconnect to propagate
     std::this_thread::sleep_for(std::chrono::milliseconds {100});
 
@@ -302,6 +304,7 @@ TEST_F(UVYMQConnectorSocketTest, RemoteDisconnect)
 
     // Gracefully disconnect from the server side
     server.disconnect();
+    loop.run(UV_RUN_ONCE);
 
     // Wait for the receive callback to be called with an error
     scaler::ymq::Error error = recvCalled.get_future().get();
