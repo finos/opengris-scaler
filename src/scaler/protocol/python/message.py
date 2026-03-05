@@ -365,9 +365,13 @@ class WorkerAdapterHeartbeat(Message):
     def capabilities(self) -> Dict[str, int]:
         return {capability.name: capability.value for capability in self._msg.capabilities}
 
+    @property
+    def worker_manager_adapter_id(self) -> bytes:
+        return self._msg.workerManagerAdapterID
+
     @staticmethod
     def new_msg(
-        max_worker_groups: int, workers_per_group: int, capabilities: Dict[str, int]
+        max_worker_groups: int, workers_per_group: int, capabilities: Dict[str, int], worker_manager_adapter_id: bytes
     ) -> "WorkerAdapterHeartbeat":
         return WorkerAdapterHeartbeat(
             _message.WorkerAdapterHeartbeat(
@@ -376,17 +380,18 @@ class WorkerAdapterHeartbeat(Message):
                 capabilities=[
                     TaskCapability.new_msg(name, value).get_message() for name, value in capabilities.items()
                 ],
+                workerManagerAdapterID=worker_manager_adapter_id,
             )
         )
 
 
-class WorkerAdapterHeartbeatEcho(Message):
+class WorkerManagerAdapterHeartbeatEcho(Message):
     def __init__(self, msg):
         super().__init__(msg)
 
     @staticmethod
-    def new_msg() -> "WorkerAdapterHeartbeatEcho":
-        return WorkerAdapterHeartbeatEcho(_message.WorkerAdapterHeartbeatEcho())
+    def new_msg() -> "WorkerManagerAdapterHeartbeatEcho":
+        return WorkerManagerAdapterHeartbeatEcho(_message.WorkerManagerAdapterHeartbeatEcho())
 
 
 class WorkerAdapterCommandType(enum.Enum):
@@ -863,7 +868,7 @@ PROTOCOL: bidict.bidict[str, Type[Message]] = bidict.bidict(
         "workerHeartbeat": WorkerHeartbeat,
         "workerHeartbeatEcho": WorkerHeartbeatEcho,
         "workerAdapterHeartbeat": WorkerAdapterHeartbeat,
-        "workerAdapterHeartbeatEcho": WorkerAdapterHeartbeatEcho,
+        "workerManagerAdapterHeartbeatEcho": WorkerManagerAdapterHeartbeatEcho,
         "workerAdapterCommand": WorkerAdapterCommand,
         "workerAdapterCommandResponse": WorkerAdapterCommandResponse,
         "disconnectRequest": DisconnectRequest,

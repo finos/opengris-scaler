@@ -10,13 +10,13 @@ from scaler.protocol.python.message import (
     WorkerAdapterCommandResponse,
     WorkerAdapterCommandType,
     WorkerAdapterHeartbeat,
-    WorkerAdapterHeartbeatEcho,
+    WorkerManagerAdapterHeartbeatEcho,
 )
 from scaler.protocol.python.status import ScalingManagerStatus
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
-from scaler.scheduler.controllers.mixins import TaskController, WorkerController
-from scaler.scheduler.controllers.policies.mixins import ScalerPolicy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
+from scaler.scheduler.controllers.mixins import PolicyController, TaskController, WorkerController
+from scaler.scheduler.controllers.policies.library.types import (
+    WorkerAdapterSnapshot,
     WorkerGroupID,
     WorkerGroupInfo,
     WorkerGroupState,
@@ -26,9 +26,9 @@ from scaler.utility.mixins import Looper, Reporter
 
 
 class WorkerAdapterController(Looper, Reporter):
-    def __init__(self, config_controller: VanillaConfigController, scaler_policy: ScalerPolicy):
+    def __init__(self, config_controller: VanillaConfigController, policy_controller: PolicyController):
         self._config_controller = config_controller
-        self._scaler_policy = scaler_policy
+        self._policy_controller = policy_controller
 
         self._binder: Optional[AsyncBinder] = None
         self._task_controller: Optional[TaskController] = None
@@ -55,7 +55,7 @@ class WorkerAdapterController(Looper, Reporter):
 
         self._adapter_alive_since[source] = (time.time(), heartbeat)
 
-        await self._binder.send(source, WorkerAdapterHeartbeatEcho.new_msg())
+        await self._binder.send(source, WorkerManagerAdapterHeartbeatEcho.new_msg())
 
         information_snapshot = self._build_snapshot()
 
@@ -64,8 +64,11 @@ class WorkerAdapterController(Looper, Reporter):
         worker_groups = {gid: info.worker_ids for gid, info in adapter_groups.items()}
         worker_group_capabilities = {gid: info.capabilities for gid, info in adapter_groups.items()}
 
-        commands = self._scaler_policy.get_scaling_commands(
-            information_snapshot, heartbeat, worker_groups, worker_group_capabilities
+        # Build cross-adapter snapshots from all known adapters
+        worker_adapter_snapshots = self._build_adapter_snapshots()
+
+        commands = self._policy_controller.get_scaling_commands(
+            information_snapshot, heartbeat, worker_groups, worker_group_capabilities, worker_adapter_snapshots
         )
 
         for command in commands:
@@ -95,7 +98,7 @@ class WorkerAdapterController(Looper, Reporter):
         await self._clean_adapters()
 
     def get_status(self) -> ScalingManagerStatus:
-        return self._scaler_policy.get_scaling_status(self.get_worker_groups())
+        return self._policy_controller.get_scaling_status(self.get_worker_groups())
 
     def get_worker_groups(self) -> WorkerGroupState:
         """Return aggregated worker groups from all adapters."""
@@ -108,6 +111,22 @@ class WorkerAdapterController(Looper, Reporter):
     async def _send_command(self, source: bytes, command: WorkerAdapterCommand):
         self._pending_commands[source] = command
         await self._binder.send(source, command)
+
+    def _build_adapter_snapshots(self) -> Dict[bytes, WorkerAdapterSnapshot]:
+        """Build cross-adapter snapshots from all known adapters, keyed by worker_manager_adapter_id."""
+        snapshots: Dict[bytes, WorkerAdapterSnapshot] = {}
+        for source, (last_seen, heartbeat) in self._adapter_alive_since.items():
+            adapter_id = heartbeat.worker_manager_adapter_id
+            if not adapter_id:
+                continue
+            adapter_groups = self._adapter_worker_groups.get(source, {})
+            snapshots[adapter_id] = WorkerAdapterSnapshot(
+                worker_manager_adapter_id=adapter_id,
+                max_worker_groups=heartbeat.max_worker_groups,
+                worker_group_count=len(adapter_groups),
+                last_seen_s=last_seen,
+            )
+        return snapshots
 
     def _build_snapshot(self) -> InformationSnapshot:
         tasks = self._task_controller._task_id_to_task  # type: ignore # noqa

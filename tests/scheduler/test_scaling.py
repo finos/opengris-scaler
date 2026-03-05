@@ -38,8 +38,8 @@ from scaler.protocol.python.message import (
     WorkerHeartbeat,
 )
 from scaler.protocol.python.status import Resource
-from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingController
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
+from scaler.scheduler.controllers.policies.library.types import WorkerGroupCapabilities, WorkerGroupState
+from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
@@ -205,15 +205,17 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> 
 
 def _create_adapter_heartbeat(max_worker_groups: int = 10) -> WorkerAdapterHeartbeat:
     """Helper to create a mock WorkerAdapterHeartbeat."""
-    return WorkerAdapterHeartbeat.new_msg(max_worker_groups=max_worker_groups, workers_per_group=1, capabilities={})
+    return WorkerAdapterHeartbeat.new_msg(
+        max_worker_groups=max_worker_groups, workers_per_group=1, capabilities={}, worker_manager_adapter_id=b"test"
+    )
 
 
-class TestCapabilityScalingController(unittest.TestCase):
-    """Unit tests for CapabilityScalingController with stateless interface."""
+class TestCapabilityScalingPolicy(unittest.TestCase):
+    """Unit tests for CapabilityScalingPolicy with stateless interface."""
 
     def setUp(self):
         setup_logger()
-        self.controller = CapabilityScalingController()
+        self.policy = CapabilityScalingPolicy()
         # Empty initial state
         self.worker_groups: WorkerGroupState = {}
         self.worker_group_capabilities: WorkerGroupCapabilities = {}
@@ -226,8 +228,8 @@ class TestCapabilityScalingController(unittest.TestCase):
         information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={})
         adapter_heartbeat = _create_adapter_heartbeat()
 
-        commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        commands = self.policy.get_scaling_commands(
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         self.assertEqual(len(commands), 1)
@@ -244,8 +246,8 @@ class TestCapabilityScalingController(unittest.TestCase):
         information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={worker_id: worker_heartbeat})
         adapter_heartbeat = _create_adapter_heartbeat()
 
-        commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        commands = self.policy.get_scaling_commands(
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         # Should not return any start commands
@@ -266,8 +268,8 @@ class TestCapabilityScalingController(unittest.TestCase):
         information_snapshot = InformationSnapshot(tasks=tasks, workers={worker_id: worker_heartbeat})
         adapter_heartbeat = _create_adapter_heartbeat()
 
-        commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        commands = self.policy.get_scaling_commands(
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         self.assertEqual(len(commands), 1)
@@ -286,8 +288,8 @@ class TestCapabilityScalingController(unittest.TestCase):
         adapter_heartbeat = _create_adapter_heartbeat()
 
         # Should return 2 start commands (one for each capability set)
-        commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        commands = self.policy.get_scaling_commands(
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         start_commands = [c for c in commands if c.command == WorkerAdapterCommandType.StartWorkerGroup]
@@ -309,8 +311,8 @@ class TestCapabilityScalingController(unittest.TestCase):
         information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={worker_id: worker_heartbeat})
         adapter_heartbeat = _create_adapter_heartbeat()
 
-        commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        commands = self.policy.get_scaling_commands(
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         # No StartWorkerGroup command should be returned
@@ -325,8 +327,8 @@ class TestCapabilityScalingController(unittest.TestCase):
         information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={})  # No workers
         adapter_heartbeat = _create_adapter_heartbeat()
 
-        commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        commands = self.policy.get_scaling_commands(
+            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         # Should start a worker group with empty capabilities
@@ -338,7 +340,7 @@ class TestCapabilityScalingController(unittest.TestCase):
         """Test that get_status returns a ScalingManagerStatus object."""
         worker_groups: WorkerGroupState = {b"wg-test": [WorkerID(b"worker-1"), WorkerID(b"worker-2")]}
 
-        status = self.controller.get_status(worker_groups)
+        status = self.policy.get_status(worker_groups)
 
         from scaler.protocol.python.status import ScalingManagerStatus
 
@@ -352,8 +354,8 @@ class TestCapabilityScalingController(unittest.TestCase):
         information_snapshot1 = InformationSnapshot(tasks={task1_id: task1}, workers={})
         adapter_heartbeat = _create_adapter_heartbeat()
 
-        commands1 = self.controller.get_scaling_commands(
-            information_snapshot1, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        commands1 = self.policy.get_scaling_commands(
+            information_snapshot1, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         self.assertEqual(len(commands1), 1)
@@ -370,8 +372,8 @@ class TestCapabilityScalingController(unittest.TestCase):
         task2 = _create_mock_task(task2_id, {"mqa": -1})
         information_snapshot2 = InformationSnapshot(tasks={task2_id: task2}, workers={})
 
-        commands2 = self.controller.get_scaling_commands(
-            information_snapshot2, adapter_heartbeat, updated_groups, updated_caps
+        commands2 = self.policy.get_scaling_commands(
+            information_snapshot2, adapter_heartbeat, updated_groups, updated_caps, {}
         )
 
         # No StartWorkerGroup command should be returned
@@ -380,7 +382,7 @@ class TestCapabilityScalingController(unittest.TestCase):
 
 
 class TestFixedElasticScaling(unittest.TestCase):
-    """Integration tests for FixedElasticScalingController with multiple worker adapters."""
+    """Integration tests for FixedElasticScalingPolicy with multiple worker adapters."""
 
     def setUp(self) -> None:
         setup_logger()

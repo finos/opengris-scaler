@@ -257,3 +257,39 @@ You can override any value from the TOML file by providing it as a command-line 
     scaler_cluster tcp://127.0.0.1:6378 --config example_config.toml --num-of-workers 12
 
 The cluster will start with **12 workers**, but all other settings (like ``task_timeout_seconds``) will still be loaded from the ``[cluster]`` section of ``example_config.toml``.
+
+
+**Scenario 3: Waterfall Scaling Configuration**
+
+To use the ``waterfall_v1`` policy engine for priority-based scaling across multiple worker adapters, set ``policy_engine_type = "waterfall_v1"`` and provide rules in ``policy_content`` (one rule per line, ``#`` comments supported):
+
+**waterfall_config.toml**
+
+.. code-block:: toml
+
+    [scheduler]
+    object_storage_address = "tcp://127.0.0.1:6379"
+    monitor_address = "tcp://127.0.0.1:6380"
+    logging_level = "INFO"
+    policy_engine_type = "waterfall_v1"
+    policy_content = """
+    # priority, adapter_id_prefix, max_workers
+    1, NAT, 8
+    2, ECS, 50
+    """
+
+    [native_worker_adapter]
+    max_workers = 8
+
+    [ecs_worker_adapter]
+    max_workers = 50
+
+Then start the scheduler and worker adapters:
+
+.. code-block:: bash
+
+    scaler_scheduler tcp://127.0.0.1:8516 --config waterfall_config.toml &
+    scaler_worker_adapter_native tcp://127.0.0.1:8516 --config waterfall_config.toml &
+    scaler_worker_adapter_ecs tcp://127.0.0.1:8516 --config waterfall_config.toml &
+
+Local ``NAT`` workers will scale up first. When they reach capacity, ``ECS`` workers will begin scaling. On scale-down, ECS workers drain before local workers.

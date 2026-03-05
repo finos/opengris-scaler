@@ -1,17 +1,21 @@
 import abc
-from typing import List
+from typing import Dict, List
 
 from scaler.protocol.python.message import InformationSnapshot, WorkerAdapterCommand, WorkerAdapterHeartbeat
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
+from scaler.scheduler.controllers.policies.library.types import (
+    WorkerAdapterSnapshot,
+    WorkerGroupCapabilities,
+    WorkerGroupState,
+)
 
 
-class ScalingController:
+class ScalingPolicy:
     """
-    Stateless scaling controller interface.
+    Stateless scaling policy interface.
 
     All state (worker groups, capabilities) is owned by WorkerAdapterController and passed in as parameters.
-    Controllers return commands rather than mutating internal state.
+    Policies return commands rather than mutating internal state.
     """
 
     @abc.abstractmethod
@@ -21,6 +25,7 @@ class ScalingController:
         adapter_heartbeat: WorkerAdapterHeartbeat,
         worker_groups: WorkerGroupState,
         worker_group_capabilities: WorkerGroupCapabilities,
+        worker_adapter_snapshots: Dict[bytes, WorkerAdapterSnapshot],
     ) -> List[WorkerAdapterCommand]:
         """
         Pure function: state in, commands out.

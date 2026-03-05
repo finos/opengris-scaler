@@ -89,9 +89,10 @@ struct WorkerAdapterHeartbeat {
     maxWorkerGroups @0 :UInt32;
     workersPerGroup @1 :UInt32;
     capabilities @2 :List(CommonType.TaskCapability);
+    workerManagerAdapterID @3 :Data;
 }
 
-struct WorkerAdapterHeartbeatEcho {
+struct WorkerManagerAdapterHeartbeatEcho {
 }
 
 enum WorkerAdapterCommandType {
@@ -252,7 +253,7 @@ struct Message {
         informationResponse @24 :InformationResponse;
 
         workerAdapterHeartbeat @25 :WorkerAdapterHeartbeat;
-        workerAdapterHeartbeatEcho @26 :WorkerAdapterHeartbeatEcho;
+        workerManagerAdapterHeartbeatEcho @26 :WorkerManagerAdapterHeartbeatEcho;
         workerAdapterCommand @27 :WorkerAdapterCommand;
         workerAdapterCommandResponse @28 :WorkerAdapterCommandResponse;
     }

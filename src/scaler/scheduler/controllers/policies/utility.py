@@ -1,11 +1,19 @@
-from scaler.scheduler.controllers.policies.mixins import ScalerPolicy
+from scaler.scheduler.controllers.mixins import PolicyController
+from scaler.scheduler.controllers.policies.types import PolicyEngineType
 
 
-def create_scaler_policy(policy_engine_type: str, policy_content: str) -> ScalerPolicy:
-    parts = {k.strip(): v.strip() for item in policy_content.split(";") if "=" in item for k, v in [item.split("=", 1)]}
+def create_policy_controller(policy_engine_type: str, policy_content: str) -> PolicyController:
+    engine_type = PolicyEngineType(policy_engine_type)
+    if engine_type == PolicyEngineType.SIMPLE:
+        from scaler.scheduler.controllers.vanilla_policy_controller import VanillaPolicyController
 
-    if policy_engine_type == "simple":
-        from scaler.scheduler.controllers.policies.simple_policy.simple_policy import SimplePolicy
+        return VanillaPolicyController(policy_content)
 
-        return SimplePolicy(parts)
-    raise ValueError("Unknown policy type")
+    if engine_type == PolicyEngineType.WATERFALL_V1:
+        from scaler.scheduler.controllers.policies.waterfall_v1.waterfall_v1_policy_controller import (
+            WaterfallV1PolicyController,
+        )
+
+        return WaterfallV1PolicyController(policy_content)
+
+    raise ValueError(f"Unknown policy type: {policy_engine_type}")

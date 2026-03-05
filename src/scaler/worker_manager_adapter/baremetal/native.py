@@ -16,7 +16,7 @@ from scaler.protocol.python.message import (
     WorkerAdapterCommandResponse,
     WorkerAdapterCommandType,
     WorkerAdapterHeartbeat,
-    WorkerAdapterHeartbeatEcho,
+    WorkerManagerAdapterHeartbeatEcho,
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.identifiers import WorkerID
@@ -32,6 +32,7 @@ class NativeWorkerAdapter:
         self._address = config.worker_adapter_config.scheduler_address
         self._object_storage_address = config.worker_adapter_config.object_storage_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
+        self._worker_manager_adapter_id = f"NAT|{os.getpid()}".encode()
         self._io_threads = config.worker_io_threads
         self._task_queue_size = config.worker_config.per_worker_task_queue_size
         self._max_workers = config.worker_adapter_config.max_workers
@@ -72,7 +73,7 @@ class NativeWorkerAdapter:
         if isinstance(message, WorkerAdapterCommand):
             await self._handle_command(message)
 
-        elif isinstance(message, WorkerAdapterHeartbeatEcho):
+        elif isinstance(message, WorkerManagerAdapterHeartbeatEcho):
             pass
 
         else:
@@ -175,6 +176,7 @@ class NativeWorkerAdapter:
                 max_worker_groups=self._max_workers,
                 workers_per_group=self._workers_per_group,
                 capabilities=self._capabilities,
+                worker_manager_adapter_id=self._worker_manager_adapter_id,
             )
         )
 

@@ -9,8 +9,9 @@ from scaler.protocol.python.message import (
     WorkerAdapterHeartbeat,
 )
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingController
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
+from scaler.scheduler.controllers.policies.library.mixins import ScalingPolicy
+from scaler.scheduler.controllers.policies.library.types import (
+    WorkerAdapterSnapshot,
     WorkerGroupCapabilities,
     WorkerGroupID,
     WorkerGroupState,
@@ -18,13 +19,13 @@ from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
 from scaler.utility.identifiers import WorkerID
 
 
-class CapabilityScalingController(ScalingController):
+class CapabilityScalingPolicy(ScalingPolicy):
     """
-    A stateless scaling controller that scales worker groups based on task-required capabilities.
+    A stateless scaling policy that scales worker groups based on task-required capabilities.
 
-    When tasks require specific capabilities (e.g., {"gpu": 1}), this controller will
+    When tasks require specific capabilities (e.g., {"gpu": 1}), this policy will
     request worker groups that provide those capabilities from the worker adapter.
-    It uses the same task-to-worker ratio logic as VanillaScalingController but applies
+    It uses the same task-to-worker ratio logic as VanillaScalingPolicy but applies
     it per capability set.
 
     All state (worker_groups, worker_group_capabilities) is passed in as parameters.
@@ -40,6 +41,7 @@ class CapabilityScalingController(ScalingController):
         adapter_heartbeat: WorkerAdapterHeartbeat,
         worker_groups: WorkerGroupState,
         worker_group_capabilities: WorkerGroupCapabilities,
+        worker_adapter_snapshots: Dict[bytes, WorkerAdapterSnapshot],
     ) -> List[WorkerAdapterCommand]:
         # Derive worker_groups_by_capability from worker_groups + worker_group_capabilities
         worker_groups_by_capability = self._derive_worker_groups_by_capability(worker_groups, worker_group_capabilities)
@@ -165,18 +167,12 @@ class CapabilityScalingController(ScalingController):
         worker_groups_by_capability: Dict[FrozenSet[str], Dict[WorkerGroupID, List[WorkerID]]],
     ) -> List[WorkerAdapterCommand]:
         """Collect all shutdown commands for idle worker groups."""
-        # Complexity: O(C^2 * (T + W)) where C is the number of distinct capability sets,
-        # T is the total number of tasks, and W is the total number of workers.
-        # For each tracked capability set, we iterate over all task capability sets to count
-        # matching tasks, and call _find_capable_workers which iterates over worker capability sets.
-        # This could be optimized if it becomes a performance bottleneck.
         commands: List[WorkerAdapterCommand] = []
 
         for capability_keys, worker_group_dict in list(worker_groups_by_capability.items()):
             if not worker_group_dict:
                 continue
 
-            # Find tasks that these workers can handle
             task_count = 0
             for task_capability_keys, tasks in tasks_by_capability.items():
                 if task_capability_keys <= capability_keys:
@@ -190,7 +186,6 @@ class CapabilityScalingController(ScalingController):
 
             task_ratio = task_count / worker_count
             if task_ratio < self._lower_task_ratio:
-                # Find the worker group with the least queued tasks
                 worker_group_task_counts: Dict[WorkerGroupID, int] = {}
                 for worker_group_id, worker_ids in worker_group_dict.items():
                     total_queued = sum(
@@ -203,17 +198,13 @@ class CapabilityScalingController(ScalingController):
                 if not worker_group_task_counts:
                     continue
 
-                # Select the worker group with the fewest queued tasks to shut down
                 least_busy_group_id = min(worker_group_task_counts, key=lambda gid: worker_group_task_counts[gid])
 
-                # Don't scale down if there are pending tasks and this would leave no capable workers
                 workers_in_group = len(worker_group_dict.get(least_busy_group_id, []))
                 remaining_worker_count = worker_count - workers_in_group
                 if task_count > 0 and remaining_worker_count == 0:
-                    # This is the last worker group that can handle these tasks - don't shut it down
                     continue
                 if remaining_worker_count > 0 and (task_count / remaining_worker_count) > self._upper_task_ratio:
-                    # Shutting down this group would cause task ratio to exceed upper threshold and scale-up again
                     continue
 
                 commands.append(
