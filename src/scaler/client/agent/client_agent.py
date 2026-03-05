@@ -18,6 +18,7 @@ from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.mixins import AsyncConnector
 from scaler.io.utility import create_async_connector
 from scaler.io.ymq.ymq import YMQException
+from scaler.io.uv_ymq import UVYMQException
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -195,10 +196,10 @@ class ClientAgent(threading.Thread):
         finally:
             self._stop_event.set()  # always set the stop event before setting futures' exceptions
 
-            if not isinstance(exception, YMQException):
+            if not isinstance(exception, (YMQException, UVYMQException)):
                 try:
                     await self._object_manager.clear_all_objects(clear_serializer=True)
-                except YMQException:  # Above call triggers YMQ, which may raise
+                except (YMQException, UVYMQException):  # Above call triggers YMQ, which may raise
                     pass
 
             self._connector_external.destroy()
@@ -216,7 +217,7 @@ class ClientAgent(threading.Thread):
         elif isinstance(exception, (ClientQuitException, ClientShutdownException)):
             logging.info("ClientAgent: client quitting")
             self._future_manager.set_all_futures_with_exception(exception)
-        elif isinstance(exception, (TimeoutError, YMQException)):
+        elif isinstance(exception, (TimeoutError, YMQException, UVYMQException)):
             logging.error(f"ClientAgent: client timeout when connecting to {self._scheduler_address.to_address()}")
             self._future_manager.set_all_futures_with_exception(TimeoutError())
         else:
