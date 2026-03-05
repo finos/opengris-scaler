@@ -28,8 +28,8 @@ To start the AWS HPC worker adapter from the command line:
 
 .. code-block:: bash
 
-    python -m scaler.entry_points.worker_adapter_aws_hpc \
-        --scheduler-address tcp://<SCHEDULER_IP>:8516 \
+    python -m scaler.entry_points.worker_manager_aws_hpc_batch \
+        tcp://<SCHEDULER_IP>:8516 \
         --job-queue my-scaler-queue \
         --job-definition my-scaler-job-def \
         --s3-bucket my-scaler-tasks-bucket \
@@ -39,7 +39,7 @@ Equivalent configuration using a TOML file:
 
 .. code-block:: bash
 
-    python -m scaler.entry_points.worker_adapter_aws_hpc --config config.toml
+    python -m scaler.entry_points.worker_manager_aws_hpc_batch --config config.toml
 
 .. code-block:: toml
 
@@ -55,7 +55,7 @@ Equivalent configuration using a TOML file:
 Key Arguments:
 ~~~~~~~~~~~~~~
 
-*   ``--scheduler-address``: The address of the Scaler scheduler.
+*   ``scheduler_address``: The address of the Scaler scheduler (positional argument).
 *   ``--job-queue`` (``-q``): The name of the AWS Batch job queue to submit tasks to.
 *   ``--job-definition`` (``-d``): The name of the AWS Batch job definition to use.
 *   ``--s3-bucket``: The S3 bucket used for task payload and result storage.

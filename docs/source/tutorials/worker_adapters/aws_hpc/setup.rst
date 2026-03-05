@@ -67,6 +67,55 @@ Prerequisites
     *   ECR (create repository, push images)
 *   AWS CLI configured with credentials on host (for provisioning only)
 
+Required IAM Permissions
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+The provisioner (Step 1) requires broad permissions to create resources.
+
+.. tip::
+    For quick testing, an IAM user/role with ``AdministratorAccess`` works. For production, create a scoped policy with only the permissions listed below.
+
+.. note:: Minimum IAM actions needed
+
+    **S3:**
+
+    *   ``s3:CreateBucket``, ``s3:PutBucketLifecycleConfiguration``
+    *   ``s3:PutObject``, ``s3:GetObject``, ``s3:DeleteObject`` (for task data at runtime)
+    *   ``s3:ListBucket``, ``s3:DeleteBucket`` (for cleanup)
+
+    **IAM:**
+
+    *   ``iam:CreateRole``, ``iam:AttachRolePolicy``, ``iam:PutRolePolicy``
+    *   ``iam:CreateInstanceProfile``, ``iam:AddRoleToInstanceProfile``
+    *   ``iam:PassRole`` (to assign roles to Batch jobs and EC2 instances)
+    *   ``iam:DeleteRole``, ``iam:DetachRolePolicy``, ``iam:DeleteRolePolicy``, ``iam:RemoveRoleFromInstanceProfile``, ``iam:DeleteInstanceProfile`` (for cleanup)
+
+    **ECR:**
+
+    *   ``ecr:CreateRepository``, ``ecr:GetAuthorizationToken``, ``ecr:PutLifecyclePolicy``
+    *   ``ecr:BatchCheckLayerAvailability``, ``ecr:PutImage``, ``ecr:InitiateLayerUpload``, ``ecr:UploadLayerPart``, ``ecr:CompleteLayerUpload``
+    *   ``ecr:DeleteRepository`` (for cleanup)
+
+    **AWS Batch:**
+
+    *   ``batch:CreateComputeEnvironment``, ``batch:DescribeComputeEnvironments``
+    *   ``batch:CreateJobQueue``, ``batch:DescribeJobQueues``
+    *   ``batch:RegisterJobDefinition``, ``batch:DescribeJobDefinitions``, ``batch:DeregisterJobDefinition``
+    *   ``batch:SubmitJob``, ``batch:DescribeJobs``, ``batch:TerminateJob`` (at runtime)
+    *   ``batch:UpdateComputeEnvironment``, ``batch:DeleteComputeEnvironment``, ``batch:UpdateJobQueue``, ``batch:DeleteJobQueue`` (for cleanup)
+
+    **EC2** (used by Batch compute environment):
+
+    *   ``ec2:DescribeSubnets``, ``ec2:DescribeSecurityGroups``
+
+    **CloudWatch Logs:**
+
+    *   ``logs:CreateLogGroup``, ``logs:PutRetentionPolicy`` (for job log retention)
+
+    **STS:**
+
+    *   ``sts:GetCallerIdentity`` (to determine account ID)
+
 Quick Overview
 --------------
 
@@ -118,7 +167,7 @@ This creates:
 *   EC2 compute environment
 *   Job queue and job definition
 *   ``tests/worker_manager_adapter/aws_hpc/.scaler_aws_hpc.env`` file with configuration
-*   ``.scaler_aws_batch_config.json`` file with full resource details (used for cleanup)
+*   ``tests/worker_manager_adapter/aws_hpc/.scaler_aws_batch_config.json`` file with full resource details (used for cleanup)
 
 **Memory Configuration:**
 
@@ -227,19 +276,20 @@ All commands in the **same terminal** inside the container:
     source tests/worker_manager_adapter/aws_hpc/.scaler_aws_hpc.env
 
     # Start AWS Batch worker in background (default job timeout: 60 minutes)
-    python -m scaler.entry_points.worker_adapter_aws_hpc \
-        --scheduler-address tcp://127.0.0.1:2345 \
+    python -m scaler.entry_points.worker_manager_aws_hpc_batch \
+        tcp://127.0.0.1:2345 \
         --job-queue $SCALER_JOB_QUEUE \
         --job-definition $SCALER_JOB_DEFINITION \
         --s3-bucket $SCALER_S3_BUCKET \
         --aws-region $SCALER_AWS_REGION \
         --max-concurrent-jobs 100 \
-        --log-level INFO &
+        --logging-level INFO &
 
     # To override job timeout (e.g., 10 minutes):
-    # python -m scaler.entry_points.worker_adapter_aws_hpc \
+    # python -m scaler.entry_points.worker_manager_aws_hpc_batch \
+    #     tcp://127.0.0.1:2345 \
     #     ... \
-    #     --job-timeout 10 &
+    #     --job-timeout-minutes 10 &
 
 You should see log output indicating both are running.
 
@@ -410,26 +460,44 @@ Provisioner Options
 | ``--job-timeout``    | 60             | Job timeout in minutes (default: 1 hour, overridden by worker at runtime)|
 +----------------------+----------------+--------------------------------------------------------------------------+
 
-Worker Options
-~~~~~~~~~~~~~~
+AWS HPC Batch Options (``worker_manager_aws_hpc_batch``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-+----------------------------+----------------+-------------------------------------------------------------------+
-| Option                     | Default        | Description                                                       |
-+============================+================+===================================================================+
-| ``--scheduler-address``    | required       | Scheduler address                                                 |
-+----------------------------+----------------+-------------------------------------------------------------------+
-| ``--job-queue``            | required       | AWS Batch job queue                                               |
-+----------------------------+----------------+-------------------------------------------------------------------+
-| ``--job-definition``       | required       | AWS Batch job definition                                          |
-+----------------------------+----------------+-------------------------------------------------------------------+
-| ``--s3-bucket``            | required       | S3 bucket for task data                                           |
-+----------------------------+----------------+-------------------------------------------------------------------+
-| ``--s3-prefix``            | scaler-tasks   | S3 prefix                                                         |
-+----------------------------+----------------+-------------------------------------------------------------------+
-| ``--max-concurrent-jobs``  | 100            | Max concurrent Batch jobs                                         |
-+----------------------------+----------------+-------------------------------------------------------------------+
-| ``--job-timeout``          | 60             | Job timeout in minutes (default: 1 hour, overrides job definition)|
-+----------------------------+----------------+-------------------------------------------------------------------+
-| ``--aws-region``           | us-east-1      | AWS region                                                        |
-+----------------------------+----------------+-------------------------------------------------------------------+
++------------------------------------+----------------+-------------------------------------------------------------------+
+| Option                             | Default        | Description                                                       |
++====================================+================+===================================================================+
+| ``scheduler_address``              | required       | Scheduler address (positional argument)                           |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--job-queue``                    | required       | AWS Batch job queue                                               |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--job-definition``               | required       | AWS Batch job definition                                          |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--s3-bucket``                    | required       | S3 bucket for task data                                           |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--backend``                      | batch          | AWS HPC backend                                                   |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--name``                         | None           | Worker name (auto: aws-batch-worker)                              |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--aws-region``                   | us-east-1      | AWS region                                                        |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--s3-prefix``                    | scaler-tasks   | S3 prefix                                                         |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--max-concurrent-jobs``          | 100            | Max concurrent Batch jobs                                         |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--job-timeout-minutes``          | 60             | Job timeout in minutes (overrides job definition)                 |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--heartbeat-interval-seconds``   | 2              | Heartbeat interval in seconds                                     |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--death-timeout-seconds``        | 300            | Seconds without scheduler contact before shutdown                 |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--task-queue-size``              | 1000           | Size of the internal task queue                                   |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--worker-io-threads``            | 1              | Number of IO threads for the worker                               |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--event-loop``                   | builtin        | Event loop type (builtin or uvloop)                               |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--logging-level``                | INFO           | Logging level (CRITICAL, ERROR, WARNING, INFO, DEBUG)             |
++------------------------------------+----------------+-------------------------------------------------------------------+
+| ``--logging-paths``                | /dev/stdout    | Log output paths                                                  |
++------------------------------------+----------------+-------------------------------------------------------------------+
 

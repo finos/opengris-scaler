@@ -66,7 +66,7 @@ def run_map_test(client: Client, timeout: int) -> bool:
     print("\n--- Test: map ---")
     print("  Submitting: client.map(simple_task, [0,1,2,3,4])")
     try:
-        results = client.map(simple_task, [(x,) for x in range(5)])
+        results = client.map(simple_task, list(range(5)))
         print(f"  Results: {results}")
         expected = [0, 2, 4, 6, 8]
         passed = results == expected
