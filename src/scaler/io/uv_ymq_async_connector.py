@@ -38,7 +38,6 @@ class UVYMQAsyncConnector(AsyncConnector):
         else:
             raise TypeError("bind_or_connect has to be 'bind' or 'connect'")
 
-
     def destroy(self):
         self._socket = None
         self._context = None

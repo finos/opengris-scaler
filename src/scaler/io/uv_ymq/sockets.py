@@ -3,6 +3,7 @@ from typing import Optional
 from scaler.io.uv_ymq import _uv_ymq
 from scaler.io.ymq.ymq import call_async, call_sync
 
+
 class BinderSocket:
     __doc__ = _uv_ymq.BinderSocket.__doc__
 
