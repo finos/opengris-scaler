@@ -17,6 +17,7 @@ eggs/
 .venv/
 venv*/
 .vscode/
+.kiro/
 
 dask-worker-space/*
 .pre-commit-config.yaml
@@ -34,3 +35,7 @@ CMakeFiles/
 .vs/
 src/scaler/protocol/capnp/*.c++
 src/scaler/protocol/capnp/*.h
+
+# AWS HPC test-generated files
+.scaler_aws_batch_config.json
+.scaler_aws_hpc.env
