@@ -7,7 +7,7 @@
 namespace scaler {
 namespace uv_ymq {
 
-ConnectorSocket::ConnectorSocket(
+ConnectorSocket ConnectorSocket::connect(
     IOContext& context,
     Identity identity,
     std::string address,
@@ -20,23 +20,50 @@ ConnectorSocket::ConnectorSocket(
     auto parsedAddress = Address::fromString(address);
     if (!parsedAddress.has_value()) {
         onConnectCallback(std::unexpected(parsedAddress.error()));
-        return;
+        return {};
     }
 
-    _state = std::make_shared<State>(thread, std::move(identity), parsedAddress.value(), maxRetryTimes, initRetryDelay);
+    ConnectorSocket socket;
+    socket._state                  = std::make_shared<State>(thread, std::move(identity), parsedAddress.value(), false);
+    socket._state->_maxRetryTimes  = maxRetryTimes;
+    socket._state->_initRetryDelay = initRetryDelay;
 
-    _state->_thread.executeThreadSafe([state = _state, onConnectCallback = std::move(onConnectCallback)]() mutable {
-        state->_connection.emplace(
-            internal::MessageConnection {
-                state->_thread.loop(),
-                state->_identity,
-                std::nullopt,
-                [](Identity) {},
-                std::bind_front(&ConnectorSocket::onRemoteDisconnect, state),
-                std::bind_front(&ConnectorSocket::onMessage, state)});
+    socket._state->_thread.executeThreadSafe(
+        [state = socket._state, onConnectCallback = std::move(onConnectCallback)]() mutable {
+            emplaceMessageConnection(state);
 
-        connect(state, std::move(onConnectCallback));
-    });
+            tryConnect(state, std::move(onConnectCallback));
+        });
+
+    return socket;
+}
+
+ConnectorSocket ConnectorSocket::bind(
+    IOContext& context, Identity identity, std::string address, BindCallback onBindCallback) noexcept
+{
+    internal::EventLoopThread& thread = context.nextThread();
+
+    auto parsedAddress = Address::fromString(address);
+    if (!parsedAddress.has_value()) {
+        onBindCallback(std::unexpected(parsedAddress.error()));
+        return {};
+    }
+
+    ConnectorSocket socket;
+    socket._state = std::make_shared<State>(thread, std::move(identity), parsedAddress.value(), true);
+
+    socket._state->_thread.executeThreadSafe(
+        [state = socket._state, onBindCallback = std::move(onBindCallback)]() mutable {
+            emplaceMessageConnection(state);
+
+            state->_acceptServer.emplace(
+                state->_thread.loop(), state->_address, std::bind_front(&ConnectorSocket::onClientAccepted, state));
+
+            Address boundAddress = state->_acceptServer->address();
+            onBindCallback(boundAddress);
+        });
+
+    return socket;
 }
 
 ConnectorSocket::~ConnectorSocket() noexcept
@@ -52,8 +79,9 @@ void ConnectorSocket::shutdown(ShutdownCallback onShutdownCallback) noexcept
     }
 
     _state->_thread.executeThreadSafe([state = _state, onShutdownCallback = std::move(onShutdownCallback)]() mutable {
-        // Disconnect the client
         state->_connectClient.reset();
+        state->_acceptServer.reset();
+
         state->_connection.reset();
 
         // Fail all pending receive callbacks
@@ -106,17 +134,18 @@ void ConnectorSocket::recvMessage(RecvMessageCallback onRecvMessage) noexcept
     });
 }
 
-void ConnectorSocket::connect(std::shared_ptr<State> state, ConnectCallback onConnectCallback) noexcept
+void ConnectorSocket::tryConnect(std::shared_ptr<State> state, ConnectCallback onConnectCallback) noexcept
 {
-    assert(!state->_connectClient.has_value() && "connect() called while already connecting");
+    assert(!state->_isBinding);
+    assert(!state->_connectClient.has_value() && "tryConnect() called while already connecting");
 
     state->_connectClient = internal::ConnectClient {
         state->_thread.loop(),
-        state->_remoteAddress,
-        [state, onConnectCallback = std::move(onConnectCallback), remoteAddress = state->_remoteAddress](
+        state->_address,
+        [state, onConnectCallback = std::move(onConnectCallback), address = state->_address](
             std::expected<Client, scaler::ymq::Error> result) mutable {
             ConnectorSocket::onClientConnected(
-                std::move(state), std::move(onConnectCallback), std::move(remoteAddress), std::move(result));
+                std::move(state), std::move(onConnectCallback), std::move(address), std::move(result));
         },
         state->_maxRetryTimes,
         state->_initRetryDelay};
@@ -128,6 +157,8 @@ void ConnectorSocket::onClientConnected(
     Address address,
     std::expected<Client, scaler::ymq::Error> result) noexcept
 {
+    assert(!state->_isBinding);
+
     // The ConnectClient is no longer needed
     state->_connectClient.reset();
 
@@ -145,6 +176,19 @@ void ConnectorSocket::onClientConnected(
     onConnectCallback({});
 }
 
+void ConnectorSocket::onClientAccepted(std::shared_ptr<State> state, Client client) noexcept
+{
+    assert(state->_isBinding);
+
+    if (state->_disconnected) {
+        // Socket was gracefully shut down, ignore new connections
+        return;
+    }
+
+    // Establish the connection with the new client. Possibly replacing any existing client
+    state->_connection->connect(std::move(client));
+}
+
 void ConnectorSocket::onRemoteDisconnect(
     std::shared_ptr<State> state, internal::MessageConnection::DisconnectReason reason) noexcept
 {
@@ -152,9 +196,9 @@ void ConnectorSocket::onRemoteDisconnect(
         // Remote end disconnected gracefully - mark as permanently disconnected
         state->_disconnected = true;
         fillPendingRecvCallbacksWithErr(state, scaler::ymq::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
-    } else {
-        // Connection aborted (e.g., network error) - retry connection
-        connect(state, [](std::expected<void, scaler::ymq::Error>) {});
+    } else if (!state->_isBinding) {
+        // Connection aborted (e.g. network error) while in connect mode - retry connection
+        tryConnect(state, [](std::expected<void, scaler::ymq::Error>) {});
     }
 }
 
@@ -175,6 +219,18 @@ void ConnectorSocket::onMessage(std::shared_ptr<State> state, scaler::ymq::Bytes
     RecvMessageCallback onRecvMessage = std::move(state->_pendingRecvCallbacks.front());
     state->_pendingRecvCallbacks.pop();
     onRecvMessage(std::move(message));
+}
+
+void ConnectorSocket::emplaceMessageConnection(std::shared_ptr<State> state) noexcept
+{
+    state->_connection.emplace(
+        internal::MessageConnection {
+            state->_thread.loop(),
+            state->_identity,
+            std::nullopt,
+            [](Identity) {},
+            std::bind_front(&ConnectorSocket::onRemoteDisconnect, state),
+            std::bind_front(&ConnectorSocket::onMessage, state)});
 }
 
 void ConnectorSocket::fillPendingRecvCallbacksWithErr(std::shared_ptr<State> state, scaler::ymq::Error err) noexcept

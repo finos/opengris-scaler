@@ -133,6 +133,8 @@ private:
     // The current partially received message being assembled.
     RecvOperation _recvCurrent {};
 
+    void shutdownClient() noexcept;
+
     void reinitialize() noexcept;
 
     static void onWriteDone(

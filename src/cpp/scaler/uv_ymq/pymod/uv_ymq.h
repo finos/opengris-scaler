@@ -34,6 +34,9 @@ struct UVYMQState {
 
 UVYMQState* UVYMQStateFromSelf(PyObject* self);
 
+// Like UVYMQStateFromSelf but for class methods where the first arg is the type (cls), not an instance.
+UVYMQState* UVYMQStateFromType(PyObject* type);
+
 void UVYMQ_free(void* stateVoid);
 
 // internal convenience function to create a type and add it to the module

@@ -11,6 +11,7 @@
 #include "scaler/utility/move_only_function.h"
 #include "scaler/uv_ymq/address.h"
 #include "scaler/uv_ymq/configuration.h"
+#include "scaler/uv_ymq/internal/accept_server.h"
 #include "scaler/uv_ymq/internal/connect_client.h"
 #include "scaler/uv_ymq/internal/event_loop_thread.h"
 #include "scaler/uv_ymq/internal/message_connection.h"
@@ -21,14 +22,17 @@
 namespace scaler {
 namespace uv_ymq {
 
-// A socket that connects to a remote address and exchanges messages with a single remote peer.
+// A socket that exchanges messages with a single remote peer.
 //
-// On unexpected disconnection, the socket will automatically try to reconnect to the remote address.
+// It can either actively connect to a remote binder socket or binding connector (connect()), or bind to a local address
+// and accept a single incoming connection (bind()).
 //
 // Thread-safe: all operations are scheduled onto the socket's event loop thread.
 class ConnectorSocket {
 public:
     using ConnectCallback = scaler::utility::MoveOnlyFunction<void(std::expected<void, scaler::ymq::Error>)>;
+
+    using BindCallback = scaler::utility::MoveOnlyFunction<void(std::expected<Address, scaler::ymq::Error>)>;
 
     using ShutdownCallback = scaler::utility::MoveOnlyFunction<void()>;
 
@@ -39,15 +43,24 @@ public:
 
     // Create a connector socket and initiate connection to the remote address.
     //
-    // The socket will automatically retry connection up to maxRetryTimes on failure.
+    // The socket will automatically retry connecting to the remote address up to maxRetryTimes on failure.
+    //
     // The onConnectCallback will be invoked once the connection succeeds or all retries are exhausted.
-    ConnectorSocket(
+    static ConnectorSocket connect(
         IOContext& context,
         Identity identity,
         std::string address,
         ConnectCallback onConnectCallback,
         size_t maxRetryTimes                     = defaultClientMaxRetryTimes,
         std::chrono::milliseconds initRetryDelay = defaultClientInitRetryDelay) noexcept;
+
+    // Create a connector socket that binds to a local address and waits for a single incoming connection.
+    //
+    // If the remote unexpectedly disconnect, the socket will wait for reconnection.
+    //
+    // The onBindCallback will be invoked once the server is listening, or with an error.
+    static ConnectorSocket bind(
+        IOContext& context, Identity identity, std::string address, BindCallback onBindCallback) noexcept;
 
     ~ConnectorSocket() noexcept;
 
@@ -75,38 +88,36 @@ private:
         internal::EventLoopThread& _thread;
 
         const Identity _identity;
+        Address _address;
 
-        Address _remoteAddress;
-        size_t _maxRetryTimes;
-        std::chrono::milliseconds _initRetryDelay;
-
-        std::optional<internal::ConnectClient> _connectClient {};
-
-        std::optional<internal::MessageConnection> _connection {};
-
-        std::queue<RecvMessageCallback> _pendingRecvCallbacks {};
-        std::queue<scaler::ymq::Message> _pendingRecvMessages {};
+        bool _isBinding;
 
         bool _disconnected {false};
 
-        State(
-            internal::EventLoopThread& thread,
-            Identity identity,
-            Address remoteAddress,
-            size_t maxRetryTimes,
-            std::chrono::milliseconds initRetryDelay) noexcept
-            : _thread(thread)
-            , _identity(std::move(identity))
-            , _remoteAddress(std::move(remoteAddress))
-            , _maxRetryTimes(maxRetryTimes)
-            , _initRetryDelay(initRetryDelay)
+        // Connect mode fields
+        size_t _maxRetryTimes {0};
+        std::chrono::milliseconds _initRetryDelay {0};
+        std::optional<internal::ConnectClient> _connectClient {};
+
+        // Bind mode fields
+        std::optional<internal::AcceptServer> _acceptServer {};
+
+        // Common fields
+        std::optional<internal::MessageConnection> _connection {};
+        std::queue<RecvMessageCallback> _pendingRecvCallbacks {};
+        std::queue<scaler::ymq::Message> _pendingRecvMessages {};
+
+        State(internal::EventLoopThread& thread, Identity identity, Address address, bool isBinding) noexcept
+            : _thread(thread), _identity(std::move(identity)), _address(std::move(address)), _isBinding(isBinding)
         {
         }
     };
 
+    ConnectorSocket() noexcept = default;
+
     std::shared_ptr<State> _state;
 
-    static void connect(std::shared_ptr<State> state, ConnectCallback onConnectCallback) noexcept;
+    static void tryConnect(std::shared_ptr<State> state, ConnectCallback onConnectCallback) noexcept;
 
     static void onClientConnected(
         std::shared_ptr<State> state,
@@ -114,10 +125,14 @@ private:
         Address parsedAddress,
         std::expected<Client, scaler::ymq::Error> result) noexcept;
 
+    static void onClientAccepted(std::shared_ptr<State> state, Client client) noexcept;
+
     static void onRemoteDisconnect(
         std::shared_ptr<State> state, internal::MessageConnection::DisconnectReason reason) noexcept;
 
     static void onMessage(std::shared_ptr<State> state, scaler::ymq::Bytes messagePayload) noexcept;
+
+    static void emplaceMessageConnection(std::shared_ptr<State> state) noexcept;
 
     static void fillPendingRecvCallbacksWithErr(std::shared_ptr<State> state, scaler::ymq::Error err) noexcept;
 };

@@ -97,21 +97,38 @@ class BinderSocket:
         """Close the connection to a specific remote peer."""
 
 class ConnectorSocket:
-    """A connector socket that connects to a remote address and exchanges messages with a single remote peer."""
+    """A connector socket that exchanges messages with a single remote peer.
+
+    Can either connect to a remote binder socket or binding connector, or bind to an address
+    and accept a connection from another connector socket.
+
+    Use ConnectorSocket.connect() or ConnectorSocket.bind() to create an instance.
+    """
 
     identity: str
     """Get the identity of the socket"""
 
-    def __init__(
-        self,
+    @classmethod
+    def connect(
+        cls,
         callback: Callable[[Optional[Exception]], None],
         context: IOContext,
         identity: str,
         address: str,
         max_retry_times: int = DEFAULT_MAX_RETRY_TIMES,
         init_retry_delay: int = DEFAULT_INIT_RETRY_DELAY,
-    ) -> None:
+    ) -> "ConnectorSocket":
         """Create a ConnectorSocket and initiate connection to the remote address."""
+
+    @classmethod
+    def bind(
+        cls,
+        callback: Callable[[Union[Address, Exception]], None],
+        context: IOContext,
+        identity: str,
+        address: str,
+    ) -> "ConnectorSocket":
+        """Create a ConnectorSocket that binds to an address and waits for incoming connections."""
 
     def __repr__(self) -> str: ...
 
