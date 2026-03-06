@@ -39,7 +39,7 @@ The :doc:`Native <native>` worker adapter allows Scaler to dynamically provision
 Fixed Native
 ~~~~~~~~~~~~
 
-The :doc:`Fixed Native <fixed_native>` worker adapter spawns a static number of worker subprocesses at startup and does not support dynamic scaling. It is the underlying component used by the high-level ``Cluster`` and ``SchedulerClusterCombo`` classes.
+The :doc:`Fixed Native <fixed_native>` worker adapter spawns a static number of worker subprocesses at startup and does not support dynamic scaling. It is the underlying component used by the high-level ``SchedulerClusterCombo`` class.
 
 AWS HPC
 ~~~~~~~

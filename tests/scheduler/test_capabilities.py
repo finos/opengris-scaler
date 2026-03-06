@@ -1,13 +1,15 @@
 import unittest
 from concurrent.futures import TimeoutError
 
-from scaler import Client, Cluster, SchedulerClusterCombo
+from scaler import Client, SchedulerClusterCombo
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
-from scaler.config.section.cluster import ClusterConfig
+from scaler.config.common.worker_adapter import WorkerAdapterConfig
+from scaler.config.section.fixed_native_worker_adapter import FixedNativeWorkerAdapterConfig
 from scaler.config.section.scheduler import PolicyConfig
-from scaler.config.types.worker import WorkerCapabilities, WorkerNames
+from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
+from scaler.worker_manager_adapter.baremetal.fixed_native import FixedNativeWorkerAdapter
 from tests.utility.utility import logging_test_name
 
 
@@ -27,7 +29,7 @@ class TestCapabilities(unittest.TestCase):
         self.combo.shutdown()
 
     def test_capabilities(self):
-        base_cluster = self.combo._cluster
+        base_adapter = self.combo._worker_adapter
 
         with Client(self.address) as client:
             client.submit(round, 3.14).result()  # Ensures the cluster is ready
@@ -39,40 +41,39 @@ class TestCapabilities(unittest.TestCase):
                 future.result(timeout=1)
 
             # Connects a worker that can handle the task
-            gpu_cluster = Cluster(
-                config=ClusterConfig(
-                    scheduler_address=base_cluster._address,
-                    object_storage_address=None,
+            gpu_adapter = FixedNativeWorkerAdapter(
+                FixedNativeWorkerAdapterConfig(
+                    worker_adapter_config=WorkerAdapterConfig(
+                        scheduler_address=base_adapter._address, object_storage_address=None, max_workers=1
+                    ),
                     preload=None,
-                    worker_names=WorkerNames(["gpu_worker"]),
-                    num_of_workers=1,
-                    event_loop=base_cluster._event_loop,
+                    event_loop=base_adapter._event_loop,
                     worker_io_threads=1,
                     worker_config=WorkerConfig(
                         per_worker_capabilities=WorkerCapabilities({"gpu": -1}),
-                        per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
-                        heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
-                        task_timeout_seconds=base_cluster._task_timeout_seconds,
-                        death_timeout_seconds=base_cluster._death_timeout_seconds,
-                        garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
-                        trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
-                        hard_processor_suspend=base_cluster._hard_processor_suspend,
+                        per_worker_task_queue_size=base_adapter._task_queue_size,
+                        heartbeat_interval_seconds=base_adapter._heartbeat_interval_seconds,
+                        task_timeout_seconds=base_adapter._task_timeout_seconds,
+                        death_timeout_seconds=base_adapter._death_timeout_seconds,
+                        garbage_collect_interval_seconds=base_adapter._garbage_collect_interval_seconds,
+                        trim_memory_threshold_bytes=base_adapter._trim_memory_threshold_bytes,
+                        hard_processor_suspend=base_adapter._hard_processor_suspend,
                     ),
                     logging_config=LoggingConfig(
-                        paths=base_cluster._logging_paths,
-                        level=base_cluster._logging_level,
-                        config_file=base_cluster._logging_config_file,
+                        paths=base_adapter._logging_paths,
+                        level=base_adapter._logging_level,
+                        config_file=base_adapter._logging_config_file,
                     ),
                 )
             )
-            gpu_cluster.start()
+            gpu_adapter.start()
 
             self.assertEqual(future.result(), 3.0)
 
-            gpu_cluster.shutdown()
+            gpu_adapter.shutdown()
 
     def test_graph_capabilities(self):
-        base_cluster = self.combo._cluster
+        base_adapter = self.combo._worker_adapter
 
         with Client(self.address) as client:
             client.submit(round, 3.14).result()  # Ensures the cluster is ready
@@ -85,34 +86,33 @@ class TestCapabilities(unittest.TestCase):
                 future.result(timeout=1)
 
             # Connect a worker that can handle the task
-            gpu_cluster = Cluster(
-                config=ClusterConfig(
-                    scheduler_address=base_cluster._address,
-                    object_storage_address=None,
+            gpu_adapter = FixedNativeWorkerAdapter(
+                FixedNativeWorkerAdapterConfig(
+                    worker_adapter_config=WorkerAdapterConfig(
+                        scheduler_address=base_adapter._address, object_storage_address=None, max_workers=1
+                    ),
                     preload=None,
-                    worker_names=WorkerNames(["gpu_worker"]),
-                    num_of_workers=1,
-                    event_loop=base_cluster._event_loop,
+                    event_loop=base_adapter._event_loop,
                     worker_io_threads=1,
                     worker_config=WorkerConfig(
                         per_worker_capabilities=WorkerCapabilities({"gpu": -1}),
-                        per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
-                        heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
-                        task_timeout_seconds=base_cluster._task_timeout_seconds,
-                        death_timeout_seconds=base_cluster._death_timeout_seconds,
-                        garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
-                        trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
-                        hard_processor_suspend=base_cluster._hard_processor_suspend,
+                        per_worker_task_queue_size=base_adapter._task_queue_size,
+                        heartbeat_interval_seconds=base_adapter._heartbeat_interval_seconds,
+                        task_timeout_seconds=base_adapter._task_timeout_seconds,
+                        death_timeout_seconds=base_adapter._death_timeout_seconds,
+                        garbage_collect_interval_seconds=base_adapter._garbage_collect_interval_seconds,
+                        trim_memory_threshold_bytes=base_adapter._trim_memory_threshold_bytes,
+                        hard_processor_suspend=base_adapter._hard_processor_suspend,
                     ),
                     logging_config=LoggingConfig(
-                        paths=base_cluster._logging_paths,
-                        level=base_cluster._logging_level,
-                        config_file=base_cluster._logging_config_file,
+                        paths=base_adapter._logging_paths,
+                        level=base_adapter._logging_level,
+                        config_file=base_adapter._logging_config_file,
                     ),
                 )
             )
-            gpu_cluster.start()
+            gpu_adapter.start()
 
             self.assertEqual(future.result(), 8)
 
-            gpu_cluster.shutdown()
+            gpu_adapter.shutdown()
