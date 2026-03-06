@@ -22,7 +22,7 @@ Once the scheduler is running with this policy, start a worker adapter (e.g., th
 
 .. code-block:: bash
 
-    scaler_worker_adapter_native tcp://127.0.0.1:8516 --max-workers 8
+    scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 --max-workers 8
 
 The vanilla policy will then automatically scale workers up and down based on the task-to-worker ratio. For a full description of available scaling policies and their parameters, see :doc:`../scaling`.
 
@@ -34,12 +34,9 @@ Scaler provides several worker adapters to support different execution environme
 Native
 ~~~~~~
 
-The :doc:`Native <native>` worker adapter allows Scaler to dynamically provision workers as local subprocesses on the same machine. It is the simplest way to scale workloads across multiple CPU cores locally and supports dynamic auto-scaling.
-
-Fixed Native
-~~~~~~~~~~~~
-
-The :doc:`Fixed Native <fixed_native>` worker adapter spawns a static number of worker subprocesses at startup and does not support dynamic scaling. It is the underlying component used by the high-level ``Cluster`` and ``SchedulerClusterCombo`` classes.
+The :doc:`Native <native>` worker adapter provisions workers as local subprocesses on the same machine.
+It supports both dynamic auto-scaling (default) and fixed-pool mode, where a set number of workers
+are pre-spawned at startup.
 
 AWS HPC
 ~~~~~~~
@@ -55,6 +52,5 @@ All worker adapters share a set of :doc:`common configuration parameters <common
     :hidden:
 
     native
-    fixed_native
     aws_hpc/index
     common_parameters

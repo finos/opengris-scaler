@@ -5,14 +5,17 @@ It shows how to route tasks to workers with specific capabilities (like GPU) usi
 """
 
 import math
+import multiprocessing
 
-from scaler import Client, Cluster
+from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
-from scaler.config.section.cluster import ClusterConfig
+from scaler.config.common.worker_adapter import WorkerAdapterConfig
+from scaler.config.section.native_worker_adapter import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.config.section.scheduler import PolicyConfig
-from scaler.config.types.worker import WorkerCapabilities, WorkerNames
+from scaler.config.types.worker import WorkerCapabilities
+from scaler.worker_manager_adapter.baremetal.native import NativeWorkerAdapter
 
 
 def gpu_task(x: float) -> float:
@@ -36,34 +39,36 @@ def main():
     )
 
     # Adds an additional worker with GPU support
-    base_cluster = cluster._cluster
-    regular_cluster = Cluster(
-        config=ClusterConfig(
-            scheduler_address=base_cluster._address,
-            object_storage_address=None,
-            preload=None,
-            worker_names=WorkerNames(["gpu_worker"]),
-            num_of_workers=1,
-            event_loop=base_cluster._event_loop,
-            worker_io_threads=1,
+    base_adapter = cluster._worker_adapter
+    gpu_adapter = NativeWorkerAdapter(
+        NativeWorkerManagerConfig(
+            worker_adapter_config=WorkerAdapterConfig(
+                scheduler_address=base_adapter._address,
+                object_storage_address=base_adapter._object_storage_address,
+                max_workers=1,
+            ),
+            mode=NativeWorkerManagerMode.FIXED,
+            event_loop=base_adapter._event_loop,
+            worker_io_threads=base_adapter._io_threads,
             worker_config=WorkerConfig(
                 per_worker_capabilities=WorkerCapabilities({"gpu": -1}),
-                per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
-                heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
-                task_timeout_seconds=base_cluster._task_timeout_seconds,
-                death_timeout_seconds=base_cluster._death_timeout_seconds,
-                garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
-                trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
-                hard_processor_suspend=base_cluster._hard_processor_suspend,
+                per_worker_task_queue_size=base_adapter._task_queue_size,
+                heartbeat_interval_seconds=base_adapter._heartbeat_interval_seconds,
+                task_timeout_seconds=base_adapter._task_timeout_seconds,
+                death_timeout_seconds=base_adapter._death_timeout_seconds,
+                garbage_collect_interval_seconds=base_adapter._garbage_collect_interval_seconds,
+                trim_memory_threshold_bytes=base_adapter._trim_memory_threshold_bytes,
+                hard_processor_suspend=base_adapter._hard_processor_suspend,
             ),
             logging_config=LoggingConfig(
-                paths=base_cluster._logging_paths,
-                level=base_cluster._logging_level,
-                config_file=base_cluster._logging_config_file,
+                paths=base_adapter._logging_paths,
+                level=base_adapter._logging_level,
+                config_file=base_adapter._logging_config_file,
             ),
         )
     )
-    regular_cluster.start()
+    gpu_adapter_process = multiprocessing.Process(target=gpu_adapter.run)
+    gpu_adapter_process.start()
 
     with Client(address=cluster.get_address()) as client:
         print("Submitting tasks...")
@@ -82,6 +87,9 @@ def main():
         gpu_future.result()
         cpu_future.result()
 
+    if gpu_adapter_process.is_alive():
+        gpu_adapter_process.terminate()
+    gpu_adapter_process.join()
     cluster.shutdown()
 
 

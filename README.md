@@ -247,8 +247,7 @@ The following table maps each Scaler command to its corresponding section name i
 | `scaler_object_storage_server`       | `[object_storage_server]`       |
 | `scaler_ui`                          | `[webui]`                       |
 | `scaler_top`                         | `[top]`                         |
-| `scaler_worker_adapter_native`       | `[native_worker_adapter]`       |
-| `scaler_worker_adapter_fixed_native` | `[fixed_native_worker_adapter]` |
+| `scaler_worker_manager_baremetal_native`       | `[native_worker_manager]`       |
 | `scaler_worker_adapter_symphony`     | `[symphony_worker_adapter]`     |
 
 ### Practical Scenarios & Examples
@@ -481,7 +480,7 @@ specification [here](https://github.com/finos/opengris).
 Start a Native Worker Adapter and connect it to the scheduler:
 
 ```bash
-$ scaler_worker_adapter_native tcp://127.0.0.1:2345
+$ scaler_worker_manager_baremetal_native tcp://127.0.0.1:2345
 ```
 
 To check that the Worker Adapter is working, you can bring up `scaler_top` to see workers spawning and terminating as

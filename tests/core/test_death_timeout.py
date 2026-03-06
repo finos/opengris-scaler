@@ -1,10 +1,12 @@
 import logging
+import multiprocessing
 import time
 import unittest
 
-from scaler import Client, Cluster, SchedulerClusterCombo
+from scaler import Client, SchedulerClusterCombo
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
+from scaler.config.common.worker_adapter import WorkerAdapterConfig
 from scaler.config.defaults import (
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
@@ -15,11 +17,12 @@ from scaler.config.defaults import (
     DEFAULT_TASK_TIMEOUT_SECONDS,
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
 )
-from scaler.config.section.cluster import ClusterConfig
-from scaler.config.types.worker import WorkerCapabilities, WorkerNames
+from scaler.config.section.native_worker_adapter import NativeWorkerManagerConfig, NativeWorkerManagerMode
+from scaler.config.types.worker import WorkerCapabilities
 from scaler.config.types.zmq import ZMQConfig
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
+from scaler.worker_manager_adapter.baremetal.native import NativeWorkerAdapter
 from tests.utility.utility import logging_test_name
 
 # This is a manual test because it can loop infinitely if it fails
@@ -33,15 +36,17 @@ class TestDeathTimeout(unittest.TestCase):
     def test_no_scheduler(self):
         logging.info("test with no scheduler")
         # Test 1: Spinning up a cluster with no scheduler. Death timeout should apply
-        cluster = Cluster(
-            config=ClusterConfig(
-                scheduler_address=ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
-                object_storage_address=None,
+        adapter = NativeWorkerAdapter(
+            NativeWorkerManagerConfig(
+                worker_adapter_config=WorkerAdapterConfig(
+                    scheduler_address=ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
+                    object_storage_address=None,
+                    max_workers=2,
+                ),
                 preload=None,
-                worker_names=WorkerNames(["a", "b"]),
-                num_of_workers=2,
                 event_loop="builtin",
                 worker_io_threads=DEFAULT_IO_THREADS,
+                mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities({}),
                     per_worker_task_queue_size=DEFAULT_PER_WORKER_QUEUE_SIZE,
@@ -57,8 +62,9 @@ class TestDeathTimeout(unittest.TestCase):
                 ),
             )
         )
-        cluster.start()
-        cluster.join()
+        process = multiprocessing.Process(target=adapter.run)
+        process.start()
+        process.join()
 
     def test_shutdown(self):
         logging.info("test with explicitly shutdown")

@@ -1,10 +1,10 @@
-from scaler.config.section.native_worker_adapter import NativeWorkerAdapterConfig
+from scaler.config.section.native_worker_adapter import NativeWorkerManagerConfig
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerAdapter
 
 
 def main():
-    native_adapter_config = NativeWorkerAdapterConfig.parse("Scaler Native Worker Adapter", "native_worker_adapter")
+    native_adapter_config = NativeWorkerManagerConfig.parse("Scaler Native Worker Adapter", "native_worker_manager")
 
     setup_logger(
         native_adapter_config.logging_config.paths,

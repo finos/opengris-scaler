@@ -25,7 +25,7 @@ from scaler.config.defaults import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
-from scaler.config.section.native_worker_adapter import NativeWorkerAdapterConfig
+from scaler.config.section.native_worker_adapter import NativeWorkerManagerConfig
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.worker import WorkerCapabilities
@@ -50,7 +50,7 @@ from tests.utility.utility import logging_test_name
 def _run_native_worker_adapter(scheduler_address: str, max_workers: int = 4) -> None:
     """Construct a NativeWorkerAdapter and run it. Runs in a separate process."""
     adapter = NativeWorkerAdapter(
-        NativeWorkerAdapterConfig(
+        NativeWorkerManagerConfig(
             worker_adapter_config=WorkerAdapterConfig(
                 scheduler_address=ZMQConfig.from_string(scheduler_address),
                 object_storage_address=None,

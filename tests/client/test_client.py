@@ -6,15 +6,17 @@ import time
 import unittest
 from concurrent.futures import CancelledError
 
-from scaler import Client, Cluster, SchedulerClusterCombo
+from scaler import Client, SchedulerClusterCombo
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
-from scaler.config.section.cluster import ClusterConfig
-from scaler.config.types.worker import WorkerCapabilities, WorkerNames
+from scaler.config.common.worker_adapter import WorkerAdapterConfig
+from scaler.config.section.native_worker_adapter import NativeWorkerManagerConfig, NativeWorkerManagerMode
+from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.exceptions import MissingObjects, ProcessorDiedError
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.preload import PreloadSpecError, _parse_preload_spec, execute_preload
+from scaler.worker_manager_adapter.baremetal.native import NativeWorkerAdapter
 from tests.utility.utility import logging_test_name
 
 
@@ -358,42 +360,46 @@ class TestClientPreload(unittest.TestCase):
         self.combo.shutdown()
 
     def _create_preload_cluster(self, preload: str, logging_paths: tuple = ("/dev/stdout",)):
-        base_cluster = self.combo._cluster
-        preload_cluster = Cluster(
-            config=ClusterConfig(
-                scheduler_address=self.combo._address,
-                object_storage_address=self.combo._object_storage_address,
+        import multiprocessing
+
+        base_adapter = self.combo._worker_adapter
+        preload_adapter = NativeWorkerAdapter(
+            NativeWorkerManagerConfig(
+                worker_adapter_config=WorkerAdapterConfig(
+                    scheduler_address=self.combo._address,
+                    object_storage_address=self.combo._object_storage_address,
+                    max_workers=1,
+                ),
                 preload=preload,
-                worker_names=WorkerNames(["preload_worker"]),
-                num_of_workers=1,
-                event_loop=base_cluster._event_loop,
-                worker_io_threads=base_cluster._worker_io_threads,
+                event_loop=base_adapter._event_loop,
+                worker_io_threads=base_adapter._io_threads,
+                mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities({}),
-                    per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
-                    heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
-                    task_timeout_seconds=base_cluster._task_timeout_seconds,
-                    death_timeout_seconds=base_cluster._death_timeout_seconds,
-                    garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
-                    trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
-                    hard_processor_suspend=base_cluster._hard_processor_suspend,
+                    per_worker_task_queue_size=base_adapter._task_queue_size,
+                    heartbeat_interval_seconds=base_adapter._heartbeat_interval_seconds,
+                    task_timeout_seconds=base_adapter._task_timeout_seconds,
+                    death_timeout_seconds=base_adapter._death_timeout_seconds,
+                    garbage_collect_interval_seconds=base_adapter._garbage_collect_interval_seconds,
+                    trim_memory_threshold_bytes=base_adapter._trim_memory_threshold_bytes,
+                    hard_processor_suspend=base_adapter._hard_processor_suspend,
                 ),
                 logging_config=LoggingConfig(
                     paths=logging_paths,
-                    level=base_cluster._logging_level,
-                    config_file=base_cluster._logging_config_file,
+                    level=base_adapter._logging_level,
+                    config_file=base_adapter._logging_config_file,
                 ),
             )
         )
-        return preload_cluster
+        return multiprocessing.Process(target=preload_adapter.run)
 
     def test_preload_success(self):
-        preload_cluster = self._create_preload_cluster(
+        preload_process = self._create_preload_cluster(
             preload="tests.utility.utility:setup_global_value('test_preload_value')"
         )
 
         try:
-            preload_cluster.start()
+            preload_process.start()
             time.sleep(2)
 
             with Client(self.combo.get_address()) as client:
@@ -404,7 +410,8 @@ class TestClientPreload(unittest.TestCase):
                 # Verify the preloaded value is accessible
                 self.assertEqual(result, "test_preload_value")
         finally:
-            preload_cluster.shutdown()
+            preload_process.terminate()
+            preload_process.join()
 
     def test_preload_failure(self):
         # For checking if the failure was logged, Processor will create log_path-{pid}
@@ -414,12 +421,12 @@ class TestClientPreload(unittest.TestCase):
         log_basename = os.path.basename(log_path)
 
         try:
-            preload_cluster = self._create_preload_cluster(
+            preload_process = self._create_preload_cluster(
                 preload="tests.utility.utility:failing_preload()", logging_paths=(log_path,)
             )
 
             try:
-                preload_cluster.start()
+                preload_process.start()
                 time.sleep(10)
 
                 # Find processor log files by looking for files with PID suffixes
@@ -435,7 +442,8 @@ class TestClientPreload(unittest.TestCase):
 
                 # If we reach here without any other exceptions, the test is successful
             finally:
-                preload_cluster.shutdown()
+                preload_process.terminate()
+                preload_process.join()
         finally:
             # Clean up log files
             try:
