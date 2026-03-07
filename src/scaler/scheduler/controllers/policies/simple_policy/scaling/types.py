@@ -18,7 +18,7 @@ WorkerGroupState = Dict[WorkerGroupID, List[WorkerID]]
 WorkerGroupCapabilities = Dict[WorkerGroupID, Dict[str, int]]
 
 
-class ScalingControllerStrategy(enum.Enum):
+class ScalingPolicyStrategy(enum.Enum):
     NO = "no"
     VANILLA = "vanilla"
     FIXED_ELASTIC = "fixed_elastic"

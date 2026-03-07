@@ -9,7 +9,7 @@ from scaler.protocol.python.message import (
     WorkerAdapterHeartbeat,
 )
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingController
+from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
     WorkerGroupCapabilities,
     WorkerGroupID,
@@ -18,13 +18,13 @@ from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
 from scaler.utility.identifiers import WorkerID
 
 
-class CapabilityScalingController(ScalingController):
+class CapabilityScalingPolicy(ScalingPolicy):
     """
-    A stateless scaling controller that scales worker groups based on task-required capabilities.
+    A stateless scaling policy that scales worker groups based on task-required capabilities.
 
-    When tasks require specific capabilities (e.g., {"gpu": 1}), this controller will
+    When tasks require specific capabilities (e.g., {"gpu": 1}), this policy will
     request worker groups that provide those capabilities from the worker adapter.
-    It uses the same task-to-worker ratio logic as VanillaScalingController but applies
+    It uses the same task-to-worker ratio logic as VanillaScalingPolicy but applies
     it per capability set.
 
     All state (worker_groups, worker_group_capabilities) is passed in as parameters.

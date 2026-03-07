@@ -34,10 +34,10 @@ from scaler.scheduler.controllers.client_controller import VanillaClientControll
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.graph_controller import VanillaGraphTaskController
 from scaler.scheduler.controllers.information_controller import VanillaInformationController
+from scaler.scheduler.controllers.mixins import PolicyController
 from scaler.scheduler.controllers.object_controller import VanillaObjectController
-from scaler.scheduler.controllers.policies.mixins import ScalerPolicy
-from scaler.scheduler.controllers.policies.utility import create_scaler_policy
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
+from scaler.scheduler.controllers.vanilla_policy_controller import VanillaPolicyController
 from scaler.scheduler.controllers.worker_adapter_controller import WorkerAdapterController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
 from scaler.utility.event_loop import create_async_loop_routine
@@ -95,7 +95,7 @@ class Scheduler:
         )
         logging.info(f"{self.__class__.__name__}: listen to scheduler monitor address {monitor_address.to_address()}")
 
-        self._scaler_policy: ScalerPolicy = create_scaler_policy(
+        self._policy_controller: PolicyController = VanillaPolicyController(
             config.policy.policy_engine_type, config.policy.policy_content
         )
 
@@ -104,14 +104,14 @@ class Scheduler:
         self._graph_controller = VanillaGraphTaskController(config_controller=self._config_controller)
         self._task_controller = VanillaTaskController(config_controller=self._config_controller)
         self._worker_controller = VanillaWorkerController(
-            config_controller=self._config_controller, scaler_policy=self._scaler_policy
+            config_controller=self._config_controller, policy_controller=self._policy_controller
         )
         self._balance_controller = VanillaBalanceController(
-            config_controller=self._config_controller, scaler_policy=self._scaler_policy
+            config_controller=self._config_controller, policy_controller=self._policy_controller
         )
         self._information_controller = VanillaInformationController(config_controller=self._config_controller)
         self._worker_adapter_controller = WorkerAdapterController(
-            config_controller=self._config_controller, scaler_policy=self._scaler_policy
+            config_controller=self._config_controller, policy_controller=self._policy_controller
         )
 
         # register

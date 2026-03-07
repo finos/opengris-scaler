@@ -171,7 +171,7 @@ Available scaling policies include:
 * **capability**: Capability-aware scaling for heterogeneous workloads (e.g., GPU tasks)
 * **fixed_elastic**: Hybrid scaling with primary and secondary worker adapters
 
-For detailed documentation on scaling policies, including the capability-aware scaling controller,
+For detailed documentation on scaling policies, including the capability-aware scaling policy,
 see the :doc:`scaling` guide.
 
 Client Disconnect and Shutdown

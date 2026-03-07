@@ -8,7 +8,7 @@ from scaler.protocol.python.message import (
     WorkerAdapterHeartbeat,
 )
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingController
+from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
     WorkerGroupCapabilities,
     WorkerGroupID,
@@ -16,9 +16,9 @@ from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
 )
 
 
-class VanillaScalingController(ScalingController):
+class VanillaScalingPolicy(ScalingPolicy):
     """
-    Stateless scaling controller that scales worker groups based on task-to-worker ratio.
+    Stateless scaling policy that scales worker groups based on task-to-worker ratio.
     """
 
     def __init__(self):

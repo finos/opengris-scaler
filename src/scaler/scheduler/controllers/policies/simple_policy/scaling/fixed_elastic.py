@@ -8,7 +8,7 @@ from scaler.protocol.python.message import (
     WorkerAdapterHeartbeat,
 )
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingController
+from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
     WorkerGroupCapabilities,
     WorkerGroupID,
@@ -16,13 +16,13 @@ from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
 )
 
 
-class FixedElasticScalingController(ScalingController):
+class FixedElasticScalingPolicy(ScalingPolicy):
     """
-    Scaling controller that identifies adapters by their max_worker_groups:
+    Scaling policy that identifies adapters by their max_worker_groups:
     - Primary adapter: max_worker_groups == 1, starts once and never shuts down
     - Secondary adapter: max_worker_groups > 1, elastic (starts/shuts down based on load)
 
-    Note: this controller is not fully stateless due to ``_primary_started``
+    Note: this policy is not fully stateless due to ``_primary_started``
     tracking whether the primary adapter has already been started.
     """
 

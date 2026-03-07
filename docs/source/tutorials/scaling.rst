@@ -8,10 +8,10 @@ Overview
 
 The scaling system consists of two main components:
 
-1. **Scaling Controller**: A policy that monitors task queues and worker availability to make scaling decisions.
+1. **Scaling Policy**: A policy that monitors task queues and worker availability to make scaling decisions.
 2. **Worker Adapter**: A component that handles the actual creation and destruction of worker groups (e.g., starting containers, launching processes).
 
-The Scaling Controller runs within the Scheduler and communicates with Worker Adapters via Cap'n Proto messages. Worker Adapters connect to the Scheduler and receive scaling commands directly.
+The Scaling Policy runs within the Scheduler and communicates with Worker Adapters via Cap'n Proto messages. Worker Adapters connect to the Scheduler and receive scaling commands directly.
 
 The scaling policy is configured via the ``policy_content`` setting in the scheduler configuration:
 
@@ -64,7 +64,7 @@ The simplest policy that performs no automatic scaling. Use this when:
 Vanilla Scaling (``vanilla``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The vanilla scaling controller uses a simple task-to-worker ratio to make scaling decisions:
+The vanilla scaling policy uses a simple task-to-worker ratio to make scaling decisions:
 
 * **Scale up**: When ``tasks / workers > upper_task_ratio`` (default: 10)
 * **Scale down**: When ``tasks / workers < lower_task_ratio`` (default: 1)
@@ -80,7 +80,7 @@ This policy is straightforward and works well for homogeneous workloads where al
 Capability Scaling (``capability``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The capability scaling controller is designed for heterogeneous workloads where tasks require specific capabilities (e.g., GPU, high memory, specialized hardware).
+The capability scaling policy is designed for heterogeneous workloads where tasks require specific capabilities (e.g., GPU, high memory, specialized hardware).
 
 **Key Features:**
 
@@ -97,12 +97,12 @@ The capability scaling controller is designed for heterogeneous workloads where 
 
 2. **Worker Matching**: Workers are grouped by their provided capabilities. A worker can handle a task if the task's required capabilities are a subset of the worker's capabilities.
 
-3. **Per-Capability Scaling**: The controller applies the task-to-worker ratio logic independently for each capability set:
+3. **Per-Capability Scaling**: The policy applies the task-to-worker ratio logic independently for each capability set:
 
    * **Scale up**: When ``tasks / capable_workers > upper_task_ratio`` (default: 5)
    * **Scale down**: When ``tasks / capable_workers < lower_task_ratio`` (default: 0.5)
 
-4. **Capability Request**: When scaling up, the controller requests worker groups with specific capabilities from the worker adapter.
+4. **Capability Request**: When scaling up, the policy requests worker groups with specific capabilities from the worker adapter.
 
 **Configuration:**
 
@@ -134,7 +134,7 @@ Consider a workload with both CPU-only and GPU tasks:
 
 With the capability scaling policy:
 
-1. If no GPU workers exist, the controller requests a worker group with ``{"gpu": 1}`` from the adapter.
+1. If no GPU workers exist, the policy requests a worker group with ``{"gpu": 1}`` from the adapter.
 2. CPU and GPU worker groups are scaled independently based on their respective task queues.
 3. Idle GPU workers can be shut down without affecting CPU task processing.
 
@@ -142,7 +142,7 @@ With the capability scaling policy:
 Fixed Elastic Scaling (``fixed_elastic``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The fixed elastic scaling controller supports hybrid scaling with multiple worker adapters:
+The fixed elastic scaling policy supports hybrid scaling with multiple worker adapters:
 
 * **Primary Adapter**: A single worker group (identified by ``max_worker_groups == 1``) that starts once and never shuts down
 * **Secondary Adapter**: Elastic capacity (``max_worker_groups > 1``) that scales based on demand
@@ -164,7 +164,7 @@ This is useful for scenarios where you have a fixed pool of dedicated resources 
 Worker Adapter Protocol
 -----------------------
 
-Scaling controllers, running within the scheduler process, communicate with worker adapters using Cap'n Proto messages through the connection that worker adapters use to communicate with the scheduler. The protocol uses the following message types:
+Scaling policies, running within the scheduler process, communicate with worker adapters using Cap'n Proto messages through the connection that worker adapters use to communicate with the scheduler. The protocol uses the following message types:
 
 **WorkerAdapterHeartbeat (Adapter -> Scheduler):**
 

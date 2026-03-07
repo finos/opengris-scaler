@@ -6,12 +6,12 @@ from scaler.protocol.python.status import ScalingManagerStatus
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
 
 
-class ScalingController:
+class ScalingPolicy:
     """
-    Stateless scaling controller interface.
+    Stateless scaling policy interface.
 
     All state (worker groups, capabilities) is owned by WorkerAdapterController and passed in as parameters.
-    Controllers return commands rather than mutating internal state.
+    Policies return commands rather than mutating internal state.
     """
 
     @abc.abstractmethod

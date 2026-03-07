@@ -2,11 +2,11 @@ from typing import List
 
 from scaler.protocol.python.message import InformationSnapshot, WorkerAdapterCommand, WorkerAdapterHeartbeat
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingController
+from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
 
 
-class NoScalingController(ScalingController):
+class NoScalingPolicy(ScalingPolicy):
     def __init__(self):
         pass
 

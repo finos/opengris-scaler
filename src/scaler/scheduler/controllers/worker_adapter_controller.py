@@ -14,8 +14,7 @@ from scaler.protocol.python.message import (
 )
 from scaler.protocol.python.status import ScalingManagerStatus
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
-from scaler.scheduler.controllers.mixins import TaskController, WorkerController
-from scaler.scheduler.controllers.policies.mixins import ScalerPolicy
+from scaler.scheduler.controllers.mixins import PolicyController, TaskController, WorkerController
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
     WorkerGroupID,
     WorkerGroupInfo,
@@ -26,9 +25,9 @@ from scaler.utility.mixins import Looper, Reporter
 
 
 class WorkerAdapterController(Looper, Reporter):
-    def __init__(self, config_controller: VanillaConfigController, scaler_policy: ScalerPolicy):
+    def __init__(self, config_controller: VanillaConfigController, policy_controller: PolicyController):
         self._config_controller = config_controller
-        self._scaler_policy = scaler_policy
+        self._policy_controller = policy_controller
 
         self._binder: Optional[AsyncBinder] = None
         self._task_controller: Optional[TaskController] = None
@@ -64,7 +63,7 @@ class WorkerAdapterController(Looper, Reporter):
         worker_groups = {gid: info.worker_ids for gid, info in adapter_groups.items()}
         worker_group_capabilities = {gid: info.capabilities for gid, info in adapter_groups.items()}
 
-        commands = self._scaler_policy.get_scaling_commands(
+        commands = self._policy_controller.get_scaling_commands(
             information_snapshot, heartbeat, worker_groups, worker_group_capabilities
         )
 
@@ -95,7 +94,7 @@ class WorkerAdapterController(Looper, Reporter):
         await self._clean_adapters()
 
     def get_status(self) -> ScalingManagerStatus:
-        return self._scaler_policy.get_scaling_status(self.get_worker_groups())
+        return self._policy_controller.get_scaling_status(self.get_worker_groups())
 
     def get_worker_groups(self) -> WorkerGroupState:
         """Return aggregated worker groups from all adapters."""
