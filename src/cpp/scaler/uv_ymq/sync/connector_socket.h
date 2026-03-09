@@ -19,12 +19,15 @@ namespace sync {
 // Synchronous wrapper for ConnectorSocket that blocks until operations complete.
 class ConnectorSocket {
 public:
-    static std::expected<ConnectorSocket, scaler::ymq::Error> init(
+    static std::expected<ConnectorSocket, scaler::ymq::Error> connect(
         IOContext& context,
         Identity identity,
         std::string address,
         size_t maxRetryTimes                     = defaultClientMaxRetryTimes,
         std::chrono::milliseconds initRetryDelay = defaultClientInitRetryDelay);
+
+    static std::expected<std::pair<ConnectorSocket, Address>, scaler::ymq::Error> bind(
+        IOContext& context, Identity identity, std::string address);
 
     ~ConnectorSocket() noexcept = default;
 

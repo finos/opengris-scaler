@@ -6,6 +6,7 @@ add_library(py_uv_ymq SHARED
     address.h
     binder_socket.h
     bytes.h
+    connector_socket.h
     exception.h
     io_context.h
     message.h

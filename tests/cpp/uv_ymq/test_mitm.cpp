@@ -89,7 +89,7 @@ TestResult reconnectClientMain(std::string address)
 
     scaler::uv_ymq::IOContext context {};
 
-    auto socketResult = scaler::uv_ymq::future::ConnectorSocket::init(context, "client", address);
+    auto socketResult = scaler::uv_ymq::future::ConnectorSocket::connect(context, "client", address);
     RETURN_FAILURE_IF_FALSE(socketResult.has_value());
 
     auto socket = std::move(socketResult.value());

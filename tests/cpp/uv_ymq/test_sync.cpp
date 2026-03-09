@@ -37,7 +37,7 @@ TEST_F(UVYMQSyncTest, BasicMessageExchange)
     // Create connector socket in a separate thread to avoid blocking
     std::jthread connectorThread([&]() {
         auto connectorResult =
-            scaler::uv_ymq::sync::ConnectorSocket::init(context, connectorIdentity, boundAddress.toString().value());
+            scaler::uv_ymq::sync::ConnectorSocket::connect(context, connectorIdentity, boundAddress.toString().value());
 
         ASSERT_TRUE(connectorResult.has_value());
 

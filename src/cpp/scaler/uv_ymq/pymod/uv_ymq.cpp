@@ -19,9 +19,9 @@ namespace scaler {
 namespace uv_ymq {
 namespace pymod {
 
-UVYMQState* UVYMQStateFromSelf(PyObject* self)
+UVYMQState* UVYMQStateFromType(PyObject* type)
 {
-    PyObject* pyModule = PyType_GetModule(Py_TYPE(self));
+    PyObject* pyModule = PyType_GetModule((PyTypeObject*)type);
     if (!pyModule)
         return nullptr;
 
@@ -30,6 +30,11 @@ UVYMQState* UVYMQStateFromSelf(PyObject* self)
 #endif
 
     return (UVYMQState*)PyModule_GetState(pyModule);
+}
+
+UVYMQState* UVYMQStateFromSelf(PyObject* self)
+{
+    return UVYMQStateFromType((PyObject*)Py_TYPE(self));
 }
 
 void UVYMQ_free(void* stateVoid)

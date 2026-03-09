@@ -20,12 +20,14 @@ import zmq.asyncio
 from scaler.config.types.network_backend import NetworkBackend
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.zmq import ZMQConfig
+from scaler.io import uv_ymq
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.io.utility import (
     create_async_connector,
     create_async_object_storage_connector,
     get_scaler_network_backend_from_env,
 )
+from scaler.io.ymq import ymq
 from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,
@@ -240,7 +242,7 @@ class AWSBatchWorker(_SpawnProcess):  # type: ignore[valid-type, misc]
             logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
         if get_scaler_network_backend_from_env() == NetworkBackend.tcp_zmq:
-            await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
+            await self.__graceful_shutdown()
 
         self._connector_external.destroy()
         logging.info(f"{self.identity!r}: quit")
@@ -250,12 +252,15 @@ class AWSBatchWorker(_SpawnProcess):  # type: ignore[valid-type, misc]
         if backend == NetworkBackend.tcp_zmq:
             self._loop.add_signal_handler(signal.SIGINT, self.__destroy)
             self._loop.add_signal_handler(signal.SIGTERM, self.__destroy)
-        elif backend == NetworkBackend.ymq:
+        elif backend in {NetworkBackend.ymq, NetworkBackend.uv_ymq}:
             self._loop.add_signal_handler(signal.SIGINT, lambda: asyncio.ensure_future(self.__graceful_shutdown()))
             self._loop.add_signal_handler(signal.SIGTERM, lambda: asyncio.ensure_future(self.__graceful_shutdown()))
 
     async def __graceful_shutdown(self) -> None:
-        await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
+        try:
+            await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
+        except (ymq.YMQException, uv_ymq.UVYMQException):
+            pass
 
     def __destroy(self) -> None:
         self._task.cancel()

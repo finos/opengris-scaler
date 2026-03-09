@@ -7,6 +7,7 @@
 #include <string>
 
 #include "scaler/error/error.h"
+#include "scaler/uv_ymq/address.h"
 #include "scaler/uv_ymq/configuration.h"
 #include "scaler/uv_ymq/connector_socket.h"
 #include "scaler/uv_ymq/io_context.h"
@@ -20,12 +21,15 @@ namespace future {
 // Future-based wrapper for ConnectorSocket that returns std::future objects.
 class ConnectorSocket {
 public:
-    static std::expected<ConnectorSocket, scaler::ymq::Error> init(
+    static std::expected<ConnectorSocket, scaler::ymq::Error> connect(
         IOContext& context,
         Identity identity,
         std::string address,
         size_t maxRetryTimes                     = defaultClientMaxRetryTimes,
         std::chrono::milliseconds initRetryDelay = defaultClientInitRetryDelay);
+
+    static std::expected<std::pair<ConnectorSocket, Address>, scaler::ymq::Error> bind(
+        IOContext& context, Identity identity, std::string address);
 
     ~ConnectorSocket() noexcept = default;
 

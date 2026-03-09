@@ -7,7 +7,7 @@ namespace scaler {
 namespace uv_ymq {
 namespace future {
 
-std::expected<ConnectorSocket, scaler::ymq::Error> ConnectorSocket::init(
+std::expected<ConnectorSocket, scaler::ymq::Error> ConnectorSocket::connect(
     IOContext& context,
     Identity identity,
     std::string address,
@@ -17,7 +17,7 @@ std::expected<ConnectorSocket, scaler::ymq::Error> ConnectorSocket::init(
     std::promise<std::expected<void, scaler::ymq::Error>> promise {};
     auto future = promise.get_future();
 
-    auto socket = scaler::uv_ymq::ConnectorSocket(
+    auto socket = scaler::uv_ymq::ConnectorSocket::connect(
         context,
         std::move(identity),
         std::move(address),
@@ -33,6 +33,28 @@ std::expected<ConnectorSocket, scaler::ymq::Error> ConnectorSocket::init(
     }
 
     return ConnectorSocket(std::move(socket));
+}
+
+std::expected<std::pair<ConnectorSocket, Address>, scaler::ymq::Error> ConnectorSocket::bind(
+    IOContext& context, Identity identity, std::string address)
+{
+    std::promise<std::expected<Address, scaler::ymq::Error>> promise {};
+    auto future = promise.get_future();
+
+    auto socket = scaler::uv_ymq::ConnectorSocket::bind(
+        context,
+        std::move(identity),
+        std::move(address),
+        [promise = std::move(promise)](std::expected<Address, scaler::ymq::Error> result) mutable {
+            promise.set_value(std::move(result));
+        });
+
+    auto bindResult = future.get();
+    if (!bindResult.has_value()) {
+        return std::unexpected(bindResult.error());
+    }
+
+    return std::make_pair(ConnectorSocket(std::move(socket)), std::move(bindResult.value()));
 }
 
 ConnectorSocket::ConnectorSocket(scaler::uv_ymq::ConnectorSocket socket) noexcept: _socket(std::move(socket))

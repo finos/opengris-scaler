@@ -78,7 +78,7 @@ TestResult basicClientYmq(std::string address)
 {
     IOContext context {};
 
-    auto socketResult = scaler::uv_ymq::sync::ConnectorSocket::init(context, "client", address);
+    auto socketResult = scaler::uv_ymq::sync::ConnectorSocket::connect(context, "client", address);
     RETURN_FAILURE_IF_FALSE(socketResult.has_value());
 
     auto socket     = std::move(socketResult.value());
@@ -282,7 +282,7 @@ TestResult clientSendsEmptyMessages(std::string address)
 {
     IOContext context {};
 
-    auto socketResult = scaler::uv_ymq::sync::ConnectorSocket::init(context, "client", address);
+    auto socketResult = scaler::uv_ymq::sync::ConnectorSocket::connect(context, "client", address);
     RETURN_FAILURE_IF_FALSE(socketResult.has_value());
 
     auto socket = std::move(socketResult.value());
@@ -351,7 +351,7 @@ TestResult clientCloseEstablishedConnectionClient(std::string address)
 {
     IOContext context {};
 
-    auto socketResult = scaler::uv_ymq::sync::ConnectorSocket::init(context, "client", address);
+    auto socketResult = scaler::uv_ymq::sync::ConnectorSocket::connect(context, "client", address);
     RETURN_FAILURE_IF_FALSE(socketResult.has_value());
 
     auto socket = std::move(socketResult.value());
@@ -432,7 +432,7 @@ TestResult clientSocketStopBeforeCloseConnection(std::string address)
 {
     IOContext context {};
 
-    auto socketResult = scaler::uv_ymq::sync::ConnectorSocket::init(context, "client", address);
+    auto socketResult = scaler::uv_ymq::sync::ConnectorSocket::connect(context, "client", address);
     RETURN_FAILURE_IF_FALSE(socketResult.has_value());
 
     auto socket = std::move(socketResult.value());

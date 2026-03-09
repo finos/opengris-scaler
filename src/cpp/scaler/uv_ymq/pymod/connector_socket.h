@@ -33,11 +33,35 @@ struct PyConnectorSocket {
     std::shared_ptr<IOContext> ioContext;
 };
 
+static OwnedPyObject<PyConnectorSocket> PyConnectorSocket_new(UVYMQState* state)
+{
+    if (!state)
+        return {};
+
+    OwnedPyObject<PyConnectorSocket> self {
+        PyObject_New(PyConnectorSocket, reinterpret_cast<PyTypeObject*>(*state->PyConnectorSocketType))};
+
+    if (!self)
+        return {};
+
+    // Placement-new the C++ members
+    new (&self->socket) std::unique_ptr<ConnectorSocket>();
+    new (&self->ioContext) std::shared_ptr<IOContext>();
+
+    return self;
+}
+
 static int PyConnectorSocket_init(PyConnectorSocket* self, PyObject* args, PyObject* kwds)
 {
-    auto state = UVYMQStateFromSelf((PyObject*)self);
+    PyErr_SetString(PyExc_TypeError, "Use ConnectorSocket.connect() or ConnectorSocket.bind() to create a socket");
+    return -1;
+}
+
+static PyObject* PyConnectorSocket_connect(PyObject* cls, PyObject* args, PyObject* kwds)
+{
+    auto state = UVYMQStateFromType((PyObject*)cls);
     if (!state)
-        return -1;
+        return nullptr;
 
     PyObject* onConnectCallback  = nullptr;
     PyIOContext* pyIOContext     = nullptr;
@@ -64,11 +88,17 @@ static int PyConnectorSocket_init(PyConnectorSocket* self, PyObject* args, PyObj
             &addressLen,
             &maxRetryTimes,
             &initRetryDelay))
-        return -1;
+        return nullptr;
+
+    OwnedPyObject<PyConnectorSocket> self = PyConnectorSocket_new(state);
+
+    if (!self)
+        return nullptr;
+
+    self->ioContext = pyIOContext->ioContext;
 
     try {
-        self->ioContext = pyIOContext->ioContext;
-        self->socket    = std::make_unique<ConnectorSocket>(
+        self->socket = std::make_unique<ConnectorSocket>(ConnectorSocket::connect(
             *self->ioContext,
             Identity {identity, static_cast<size_t>(identityLen)},
             std::string {address, static_cast<size_t>(addressLen)},
@@ -87,26 +117,97 @@ static int PyConnectorSocket_init(PyConnectorSocket* self, PyObject* args, PyObj
                 completeCallback(callback, OwnedPyObject<>::none());
             },
             maxRetryTimes,
-            std::chrono::milliseconds(initRetryDelay));
+            std::chrono::milliseconds(initRetryDelay)));
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create ConnectorSocket");
-        return -1;
+        return nullptr;
     }
 
-    return 0;
+    return reinterpret_cast<PyObject*>(self.take());
+}
+
+static PyObject* PyConnectorSocket_bind(PyObject* cls, PyObject* args, PyObject* kwds)
+{
+    auto state = UVYMQStateFromType((PyObject*)cls);
+    if (!state)
+        return nullptr;
+
+    PyObject* onBindCallback = nullptr;
+    PyIOContext* pyIOContext = nullptr;
+    const char* identity     = nullptr;
+    Py_ssize_t identityLen   = 0;
+    const char* address      = nullptr;
+    Py_ssize_t addressLen    = 0;
+    const char* kwlist[]     = {"callback", "context", "identity", "address", nullptr};
+
+    if (!PyArg_ParseTupleAndKeywords(
+            args,
+            kwds,
+            "OO!s#s#",
+            (char**)kwlist,
+            &onBindCallback,
+            (PyTypeObject*)*state->PyIOContextType,
+            &pyIOContext,
+            &identity,
+            &identityLen,
+            &address,
+            &addressLen))
+        return nullptr;
+
+    OwnedPyObject<PyConnectorSocket> self = PyConnectorSocket_new(state);
+
+    if (!self)
+        return nullptr;
+
+    self->ioContext = pyIOContext->ioContext;
+
+    try {
+        self->socket = std::make_unique<ConnectorSocket>(ConnectorSocket::bind(
+            *self->ioContext,
+            Identity {identity, static_cast<size_t>(identityLen)},
+            std::string {address, static_cast<size_t>(addressLen)},
+            [callback_ = OwnedPyObject<>::fromBorrowed(onBindCallback),
+             state](std::expected<Address, scaler::ymq::Error> result) {
+                AcquireGIL _;
+
+                // Redefine the callback to ensure it is destroyed before the GIL is released.
+                OwnedPyObject callback = std::move(callback_);
+
+                if (!result) {
+                    completeCallbackWithCoreError(state, callback, result.error());
+                    return;
+                }
+
+                OwnedPyObject pyAddress = PyAddress_fromAddress(state, *result);
+                if (!pyAddress) {
+                    completeCallbackWithRaisedException(callback);
+                    return;
+                }
+
+                completeCallback(callback, pyAddress);
+            }));
+    } catch (...) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create ConnectorSocket");
+        return nullptr;
+    }
+
+    return reinterpret_cast<PyObject*>(self.take());
 }
 
 static void PyConnectorSocket_dealloc(PyConnectorSocket* self)
 {
     try {
-        std::promise<void> onShutdown;
-        self->socket->shutdown([&onShutdown]() { onShutdown.set_value(); });
+        if (self->socket) {
+            std::promise<void> onShutdown;
+            self->socket->shutdown([&onShutdown]() { onShutdown.set_value(); });
 
-        // release the GIL until the socket is actually closed
-        Py_BEGIN_ALLOW_THREADS;
-        onShutdown.get_future().wait();
-        Py_END_ALLOW_THREADS;
+            // release the GIL until the socket is actually closed
+            Py_BEGIN_ALLOW_THREADS;
+            onShutdown.get_future().wait();
+            Py_END_ALLOW_THREADS;
+        }
 
+        // Explicitly call destructors for placement-new'd members
         self->socket.reset();
         self->ioContext.reset();
     } catch (...) {
@@ -234,6 +335,8 @@ static PyGetSetDef PyConnectorSocket_properties[] = {
 };
 
 static PyMethodDef PyConnectorSocket_methods[] = {
+    {"connect", (PyCFunction)PyConnectorSocket_connect, METH_CLASS | METH_VARARGS | METH_KEYWORDS, nullptr},
+    {"bind", (PyCFunction)PyConnectorSocket_bind, METH_CLASS | METH_VARARGS | METH_KEYWORDS, nullptr},
     {"send_message", (PyCFunction)PyConnectorSocket_send_message, METH_VARARGS | METH_KEYWORDS, nullptr},
     {"recv_message", (PyCFunction)PyConnectorSocket_recv_message, METH_VARARGS | METH_KEYWORDS, nullptr},
     {nullptr, nullptr, 0, nullptr},

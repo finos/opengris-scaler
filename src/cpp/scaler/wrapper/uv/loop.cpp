@@ -49,11 +49,11 @@ void Loop::loopDeleter(uv_loop_t* loop) noexcept
     if (uv_loop_alive(loop)) {
         // Run a non-blocking final iteration.
         // That's because some handles might still have pending calls to `uv_close()` that were triggered by RAII.
-        int nActiveHandles = uv_run(loop, UV_RUN_NOWAIT);
+        [[maybe_unused]] int nActiveHandles = uv_run(loop, UV_RUN_NOWAIT);
         assert(nActiveHandles == 0 && "Loop is still alive");
     }
 
-    const int err = uv_loop_close(loop);
+    [[maybe_unused]] const int err = uv_loop_close(loop);
     assert(!err && "uv_loop_close failed");
 
     delete loop;

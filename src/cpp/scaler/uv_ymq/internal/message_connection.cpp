@@ -35,7 +35,7 @@ MessageConnection::MessageConnection(
 MessageConnection::~MessageConnection() noexcept
 {
     if (connected()) {
-        readStop();
+        shutdownClient();
     }
 
     // Fail all pending send operations
@@ -77,7 +77,7 @@ void MessageConnection::disconnect() noexcept
 {
     assert(connected());
 
-    readStop();
+    shutdownClient();
 
     reinitialize();
 }
@@ -117,6 +117,35 @@ void MessageConnection::sendMessage(scaler::ymq::Bytes messagePayload, SendMessa
 
     if (connected()) {
         processSendQueue();
+    }
+}
+
+void MessageConnection::shutdownClient() noexcept
+{
+    assert(connected());
+
+    readStop();
+
+    // Call shutdown() on the client socket *before* closing it. This forces a FIN segment.
+    // We transfer ownership of the Client instance to the shutdown callback. As the Client destructor implicitly calls
+    // close(), the instance must remain alive until shutdown() completes, or else it might trigger a RST segment.
+    // By moving its ownership to the shutdown()'s callback, close() is guaranteed to be called only after the callback
+    // completes.
+
+    auto client       = std::make_unique<Client>(std::move(_client.value()));
+    Client* clientPtr = client.get();
+
+    auto shutdownCallback = [client =
+                                 std::move(client)](std::expected<void, scaler::wrapper::uv::Error> result) noexcept {
+        UV_EXIT_ON_ERROR(result);
+    };
+
+    if (auto* tcpSocket = std::get_if<scaler::wrapper::uv::TCPSocket>(clientPtr)) {
+        UV_EXIT_ON_ERROR(tcpSocket->shutdown(std::move(shutdownCallback)));
+    } else if (auto* pipe = std::get_if<scaler::wrapper::uv::Pipe>(clientPtr)) {
+        UV_EXIT_ON_ERROR(pipe->shutdown(std::move(shutdownCallback)));
+    } else {
+        std::unreachable();
     }
 }
 
@@ -262,7 +291,8 @@ void MessageConnection::onRemoteDisconnect(MessageConnection::DisconnectReason r
 {
     assert(connected());
 
-    disconnect();
+    readStop();
+    reinitialize();
 
     _onRemoteDisconnectCallback(reason);
 }
