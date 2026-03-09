@@ -7,8 +7,7 @@ from nicegui import ui
 
 from scaler.protocol.python.common import TaskState
 from scaler.protocol.python.message import StateTask, StateWorker
-from scaler.ui.common.utility import COMPLETED_TASK_STATUSES, display_capabilities
-from scaler.ui.util import NICEGUI_MAJOR_VERSION
+from scaler.ui.common.utility import COMPLETED_TASK_STATUSES, NICEGUI_MAJOR_VERSION, display_capabilities
 from scaler.utility.formatter import format_bytes
 from scaler.utility.metadata.profile_result import ProfileResult
 

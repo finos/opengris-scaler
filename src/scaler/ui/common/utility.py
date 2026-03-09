@@ -1,8 +1,15 @@
 import datetime
-from typing import List, Set, Tuple
+from importlib.metadata import PackageNotFoundError, version
+from typing import Final, List, Set, Tuple
 
 from scaler.protocol.python.common import TaskState
 from scaler.ui.common.setting_page import Settings
+
+try:
+    _nicegui_major_version = int(version("nicegui").split(".")[0])
+except PackageNotFoundError:
+    _nicegui_major_version = 0
+NICEGUI_MAJOR_VERSION: Final[int] = _nicegui_major_version
 
 COMPLETED_TASK_STATUSES = {
     TaskState.Success,

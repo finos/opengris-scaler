@@ -13,6 +13,7 @@ from scaler.protocol.python.message import StateTask, StateWorker
 from scaler.ui.common.setting_page import Settings
 from scaler.ui.common.utility import (
     COMPLETED_TASK_STATUSES,
+    NICEGUI_MAJOR_VERSION,
     display_capabilities,
     format_timediff,
     format_worker_name,
@@ -20,7 +21,6 @@ from scaler.ui.common.utility import (
     make_taskstream_ticks,
     make_tick_text,
 )
-from scaler.ui.util import NICEGUI_MAJOR_VERSION
 
 TASK_STREAM_BACKGROUND_COLOR = "white"
 TASK_STREAM_BACKGROUND_COLOR_RGB = "#000000"
