@@ -156,7 +156,7 @@ class WorkerController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_cancel(self, task_cancel: TaskCancel) -> bytes:
+    async def on_task_cancel(self, task_cancel: TaskCancel) -> WorkerID:
         raise NotImplementedError()
 
     @abc.abstractmethod
