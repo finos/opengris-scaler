@@ -68,11 +68,7 @@ class ConnectorSocket:
         return ConnectorSocket(base_socket)
 
     @staticmethod
-    def bind(
-        context: _uv_ymq.IOContext,
-        identity: str,
-        address: str,
-    ) -> "ConnectorSocket":
+    def bind(context: _uv_ymq.IOContext, identity: str, address: str) -> "ConnectorSocket":
         base_socket: Optional[_uv_ymq.ConnectorSocket] = None
 
         def create(callback, *args, **kwargs):

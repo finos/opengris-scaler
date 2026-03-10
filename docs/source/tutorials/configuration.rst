@@ -140,12 +140,12 @@ Or through the programmatic API:
         death_timeout_seconds=300,
     )
 
-Worker Adapter Settings
+Worker Manager Settings
 -----------------------
 
-Worker adapters share many common configuration settings for networking, worker behavior, and logging.
+Worker managers share many common configuration settings for networking, worker behavior, and logging.
 
-For a full list of these settings, see the :doc:`Worker Adapter Common Parameters <worker_adapters/common_parameters>` documentation.
+For a full list of these settings, see the :doc:`Worker Manager Common Parameters <worker_manager_adapter/common_parameters>` documentation.
 
 Configuring with TOML Files
 ---------------------------
@@ -193,16 +193,16 @@ The following table maps each Scaler command to its corresponding section name i
      - ``[webui]``
    * - ``scaler_top``
      - ``[top]``
-   * - ``scaler_worker_adapter_native``
-     - ``[native_worker_adapter]``
-   * - ``scaler_worker_adapter_fixed_native``
-     - ``[fixed_native_worker_adapter]``
-   * - ``scaler_worker_adapter_symphony``
-     - ``[symphony_worker_adapter]``
-   * - ``scaler_worker_adapter_ecs``
-     - ``[ecs_worker_adapter]``
+   * - ``scaler_worker_manager_baremetal_native``
+     - ``[native_worker_manager]``
+   * - ``scaler_worker_manager_baremetal_fixed_native``
+     - ``[fixed_native_worker_manager]``
+   * - ``scaler_worker_manager_symphony``
+     - ``[symphony_worker_manager]``
+   * - ``scaler_worker_manager_aws_raw_ecs``
+     - ``[ecs_worker_manager]``
    * - ``python -m scaler.entry_points.worker_manager_aws_hpc_batch``
-     - ``[aws_hpc_worker_adapter]``
+     - ``[aws_hpc_worker_manager]``
 
 
 Practical Scenarios & Examples

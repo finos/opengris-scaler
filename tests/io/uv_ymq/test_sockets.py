@@ -1,14 +1,7 @@
 import asyncio
 import unittest
 
-from scaler.io.uv_ymq import (
-    BinderSocket,
-    Bytes,
-    ConnectorSocket,
-    ErrorCode,
-    IOContext,
-)
-from scaler.io.uv_ymq import _uv_ymq
+from scaler.io.uv_ymq import BinderSocket, Bytes, ConnectorSocket, ErrorCode, IOContext, _uv_ymq
 
 
 class TestSockets(unittest.IsolatedAsyncioTestCase):

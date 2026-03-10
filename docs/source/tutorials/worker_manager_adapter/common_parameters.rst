@@ -1,12 +1,12 @@
-Common Worker Adapter Parameters
+Common Worker Manager Parameters
 ================================
 
-All worker adapters in Scaler share a set of common configuration parameters for connecting to the cluster, configuring the internal web server, and managing worker behavior.
+All worker managers in Scaler share a set of common configuration parameters for connecting to the cluster, configuring the internal web server, and managing worker behavior.
 
 .. note::
     For more details on how to configure Scaler, see the :doc:`../configuration` section.
 
-Worker Adapter Common Configuration
+Worker Manager Common Configuration
 -----------------------------------
 
 *   ``scheduler_address`` (Positional, Required): The address of the scheduler that workers should connect to (e.g., ``tcp://127.0.0.1:8516``).
@@ -16,7 +16,7 @@ Worker Adapter Common Configuration
 Worker Configuration (Passed to Workers)
 ----------------------------------------
 
-These parameters are passed to the individual worker processes started by the adapter.
+These parameters are passed to the individual worker processes started by the manager.
 
 *   ``--per-worker-task-queue-size`` (``-wtqs``): Set the task queue size per worker (default: 1000).
 *   ``--heartbeat-interval-seconds`` (``-his``): The interval at which workers send heartbeats to the scheduler (default: 2).

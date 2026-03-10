@@ -4,7 +4,7 @@ from typing import Optional
 
 from scaler.config import defaults
 from scaler.config.common.logging import LoggingConfig
-from scaler.config.common.worker_adapter import WorkerAdapterConfig
+from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.config_class import ConfigClass
 from scaler.utility.event_loop import EventLoopType
 
@@ -22,8 +22,8 @@ DEFAULT_S3_PREFIX = "scaler-tasks"
 
 
 @dataclasses.dataclass
-class AWSBatchWorkerAdapterConfig(ConfigClass):
-    worker_adapter_config: WorkerAdapterConfig
+class AWSBatchWorkerManagerConfig(ConfigClass):
+    worker_manager_config: WorkerManagerConfig
 
     job_queue: str = dataclasses.field(metadata=dict(short="-q", help="AWS Batch job queue name"))
     job_definition: str = dataclasses.field(metadata=dict(short="-d", help="AWS Batch job definition name"))

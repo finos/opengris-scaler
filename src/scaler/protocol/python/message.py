@@ -349,7 +349,7 @@ class WorkerHeartbeat(Message):
         )
 
 
-class WorkerAdapterHeartbeat(Message):
+class WorkerManagerHeartbeat(Message):
     def __init__(self, msg):
         super().__init__(msg)
 
@@ -368,9 +368,9 @@ class WorkerAdapterHeartbeat(Message):
     @staticmethod
     def new_msg(
         max_worker_groups: int, workers_per_group: int, capabilities: Dict[str, int]
-    ) -> "WorkerAdapterHeartbeat":
-        return WorkerAdapterHeartbeat(
-            _message.WorkerAdapterHeartbeat(
+    ) -> "WorkerManagerHeartbeat":
+        return WorkerManagerHeartbeat(
+            _message.WorkerManagerHeartbeat(
                 maxWorkerGroups=max_worker_groups,
                 workersPerGroup=workers_per_group,
                 capabilities=[
@@ -380,21 +380,21 @@ class WorkerAdapterHeartbeat(Message):
         )
 
 
-class WorkerAdapterHeartbeatEcho(Message):
+class WorkerManagerHeartbeatEcho(Message):
     def __init__(self, msg):
         super().__init__(msg)
 
     @staticmethod
-    def new_msg() -> "WorkerAdapterHeartbeatEcho":
-        return WorkerAdapterHeartbeatEcho(_message.WorkerAdapterHeartbeatEcho())
+    def new_msg() -> "WorkerManagerHeartbeatEcho":
+        return WorkerManagerHeartbeatEcho(_message.WorkerManagerHeartbeatEcho())
 
 
-class WorkerAdapterCommandType(enum.Enum):
-    StartWorkerGroup = _message.WorkerAdapterCommandType.startWorkerGroup
-    ShutdownWorkerGroup = _message.WorkerAdapterCommandType.shutdownWorkerGroup
+class WorkerManagerCommandType(enum.Enum):
+    StartWorkerGroup = _message.WorkerManagerCommandType.startWorkerGroup
+    ShutdownWorkerGroup = _message.WorkerManagerCommandType.shutdownWorkerGroup
 
 
-class WorkerAdapterCommand(Message):
+class WorkerManagerCommand(Message):
     def __init__(self, msg):
         super().__init__(msg)
 
@@ -403,8 +403,8 @@ class WorkerAdapterCommand(Message):
         return self._msg.workerGroupID
 
     @property
-    def command(self) -> WorkerAdapterCommandType:
-        return WorkerAdapterCommandType(self._msg.command.raw)
+    def command(self) -> WorkerManagerCommandType:
+        return WorkerManagerCommandType(self._msg.command.raw)
 
     @property
     def capabilities(self) -> Dict[str, int]:
@@ -412,10 +412,10 @@ class WorkerAdapterCommand(Message):
 
     @staticmethod
     def new_msg(
-        worker_group_id: bytes, command: WorkerAdapterCommandType, capabilities: Dict[str, int] = {}
-    ) -> "WorkerAdapterCommand":
-        return WorkerAdapterCommand(
-            _message.WorkerAdapterCommand(
+        worker_group_id: bytes, command: WorkerManagerCommandType, capabilities: Dict[str, int] = {}
+    ) -> "WorkerManagerCommand":
+        return WorkerManagerCommand(
+            _message.WorkerManagerCommand(
                 workerGroupID=worker_group_id,
                 command=command.value,
                 capabilities=[
@@ -425,14 +425,14 @@ class WorkerAdapterCommand(Message):
         )
 
 
-class WorkerAdapterCommandResponse(Message):
+class WorkerManagerCommandResponse(Message):
     class Status(enum.Enum):
-        WorkerGroupIDNotSpecified = _message.WorkerAdapterCommandResponse.Status.workerGroupIDNotSpecified
-        WorkerGroupIDNotFound = _message.WorkerAdapterCommandResponse.Status.workerGroupIDNotFound
-        WorkerGroupShutdown = _message.WorkerAdapterCommandResponse.Status.workerGroupShutdown
-        UnknownAction = _message.WorkerAdapterCommandResponse.Status.unknownAction
-        WorkerGroupTooMuch = _message.WorkerAdapterCommandResponse.Status.workerGroupTooMuch
-        Success = _message.WorkerAdapterCommandResponse.Status.success
+        WorkerGroupIDNotSpecified = _message.WorkerManagerCommandResponse.Status.workerGroupIDNotSpecified
+        WorkerGroupIDNotFound = _message.WorkerManagerCommandResponse.Status.workerGroupIDNotFound
+        WorkerGroupShutdown = _message.WorkerManagerCommandResponse.Status.workerGroupShutdown
+        UnknownAction = _message.WorkerManagerCommandResponse.Status.unknownAction
+        WorkerGroupTooMuch = _message.WorkerManagerCommandResponse.Status.workerGroupTooMuch
+        Success = _message.WorkerManagerCommandResponse.Status.success
 
     def __init__(self, msg):
         super().__init__(msg)
@@ -442,8 +442,8 @@ class WorkerAdapterCommandResponse(Message):
         return self.Status(self._msg.status.raw)
 
     @property
-    def command(self) -> WorkerAdapterCommandType:
-        return WorkerAdapterCommandType(self._msg.command.raw)
+    def command(self) -> WorkerManagerCommandType:
+        return WorkerManagerCommandType(self._msg.command.raw)
 
     @property
     def worker_group_id(self) -> bytes:
@@ -460,13 +460,13 @@ class WorkerAdapterCommandResponse(Message):
     @staticmethod
     def new_msg(
         worker_group_id: bytes,
-        command: WorkerAdapterCommandType,
+        command: WorkerManagerCommandType,
         status: Status,
         worker_ids: List[bytes] = [],
         capabilities: Dict[str, int] = {},
-    ) -> "WorkerAdapterCommandResponse":
-        return WorkerAdapterCommandResponse(
-            _message.WorkerAdapterCommandResponse(
+    ) -> "WorkerManagerCommandResponse":
+        return WorkerManagerCommandResponse(
+            _message.WorkerManagerCommandResponse(
                 workerGroupID=worker_group_id,
                 command=command.value,
                 status=status.value,
@@ -862,10 +862,10 @@ PROTOCOL: bidict.bidict[str, Type[Message]] = bidict.bidict(
         "clientHeartbeatEcho": ClientHeartbeatEcho,
         "workerHeartbeat": WorkerHeartbeat,
         "workerHeartbeatEcho": WorkerHeartbeatEcho,
-        "workerAdapterHeartbeat": WorkerAdapterHeartbeat,
-        "workerAdapterHeartbeatEcho": WorkerAdapterHeartbeatEcho,
-        "workerAdapterCommand": WorkerAdapterCommand,
-        "workerAdapterCommandResponse": WorkerAdapterCommandResponse,
+        "workerManagerHeartbeat": WorkerManagerHeartbeat,
+        "workerManagerHeartbeatEcho": WorkerManagerHeartbeatEcho,
+        "workerManagerCommand": WorkerManagerCommand,
+        "workerManagerCommandResponse": WorkerManagerCommandResponse,
         "disconnectRequest": DisconnectRequest,
         "disconnectResponse": DisconnectResponse,
         "stateClient": StateClient,

@@ -263,7 +263,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         except (ymq.YMQException, uv_ymq.UVYMQException) as e:
             if e.code in {
                 ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd,
-                uv_ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd
+                uv_ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd,
             }:
                 pass
             else:

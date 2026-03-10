@@ -8,7 +8,7 @@ from scaler.config.types.zmq import ZMQConfig
 
 
 @dataclasses.dataclass
-class WorkerAdapterConfig(ConfigClass):
+class WorkerManagerConfig(ConfigClass):
     scheduler_address: ZMQConfig = dataclasses.field(
         metadata=dict(positional=True, help="scheduler address to connect workers to")
     )
@@ -24,7 +24,7 @@ class WorkerAdapterConfig(ConfigClass):
             short="-mw",
             help=(
                 "maximum number of workers that can be started, -1 means no limit."
-                "for fixed native worker adapter, this is exactly the number of workers that will be spawned"
+                "for fixed native worker manager, this is exactly the number of workers that will be spawned"
             ),
         ),
     )

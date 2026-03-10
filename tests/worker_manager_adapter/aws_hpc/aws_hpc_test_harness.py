@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-AWS HPC Worker Adapter Test Harness.
+AWS HPC Worker Manager Test Harness.
 
-Validates the AWS Batch worker adapter by submitting tasks to a running scheduler.
+Validates the AWS Batch worker manager by submitting tasks to a running scheduler.
 
 Usage:
     python tests/aws_hpc_test_harness.py --scheduler tcp://127.0.0.1:2345 --test all
@@ -97,14 +97,14 @@ TESTS = {"sqrt": run_sqrt_test, "simple": run_simple_test, "map": run_map_test, 
 
 
 def main():
-    parser = argparse.ArgumentParser(description="AWS HPC Worker Adapter Test Harness")
+    parser = argparse.ArgumentParser(description="AWS HPC Worker Manager Test Harness")
     parser.add_argument("--scheduler", default="tcp://127.0.0.1:2345", help="Scheduler address")
     parser.add_argument("--test", default="all", choices=["all"] + list(TESTS.keys()), help="Test to run")
     parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT, help="Timeout per task (seconds)")
     args = parser.parse_args()
 
     print("=" * 50)
-    print("AWS HPC Worker Adapter Test Harness")
+    print("AWS HPC Worker Manager Test Harness")
     print("=" * 50)
     print(f"Scheduler: {args.scheduler}")
 

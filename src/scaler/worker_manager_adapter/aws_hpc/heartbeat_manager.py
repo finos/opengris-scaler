@@ -19,7 +19,7 @@ from scaler.worker.agent.mixins import HeartbeatManager, TimeoutManager
 
 class AWSBatchHeartbeatManager(Looper, HeartbeatManager):
     """
-    Heartbeat manager for AWS Batch worker adapter.
+    Heartbeat manager for AWS Batch worker manager.
     """
 
     def __init__(

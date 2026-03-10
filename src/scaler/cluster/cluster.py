@@ -3,12 +3,12 @@ import logging
 import multiprocessing
 import signal
 
-from scaler.config.common.worker_adapter import WorkerAdapterConfig
+from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.section.cluster import ClusterConfig
-from scaler.config.section.fixed_native_worker_adapter import FixedNativeWorkerAdapterConfig
+from scaler.config.section.fixed_native_worker_manager import FixedNativeWorkerManagerConfig
 from scaler.utility.event_loop import run_task_forever
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_manager_adapter.baremetal.fixed_native import FixedNativeWorkerAdapter
+from scaler.worker_manager_adapter.baremetal.fixed_native import FixedNativeWorkerManager
 
 
 class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
@@ -35,11 +35,11 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         self._logging_config_file = config.logging_config.config_file
         self._logging_level = config.logging_config.level
 
-        # we create the config here, but create the actual adapter in the run method
+        # we create the config here, but create the actual manager in the run method
         # to ensure that it's created in the correct process
-        self._worker_adapter_config = FixedNativeWorkerAdapterConfig(
+        self._worker_manager_config = FixedNativeWorkerManagerConfig(
             preload=config.preload,
-            worker_adapter_config=WorkerAdapterConfig(
+            worker_manager_config=WorkerManagerConfig(
                 scheduler_address=config.scheduler_address,
                 object_storage_address=config.object_storage_address,
                 max_workers=len(config.worker_names),
@@ -58,7 +58,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         run_task_forever(self._loop, self._run())
 
     def __initialize(self):
-        self._worker_adapter = FixedNativeWorkerAdapter(self._worker_adapter_config)
+        self._worker_manager = FixedNativeWorkerManager(self._worker_manager_config)
 
     async def _run(self):
         self._stopped = asyncio.Event()
@@ -80,14 +80,14 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
             f"{self._heartbeat_interval_seconds}, task_timeout_seconds={self._task_timeout_seconds}"
         )
 
-        self._worker_adapter.start()
+        self._worker_manager.start()
 
         # run until stopped
         try:
             stop_task = asyncio.create_task(self._stopped.wait())
 
             # this is a blocking call, so we must run it in the executor
-            join_task = self._loop.run_in_executor(None, self._worker_adapter.join)
+            join_task = self._loop.run_in_executor(None, self._worker_manager.join)
 
             # we're done when either all the workers have exited, or we received a stop signal
             done, pending = await asyncio.wait([stop_task, join_task], return_when=asyncio.FIRST_COMPLETED)
@@ -105,7 +105,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
                     logging.error(f"{self.__get_prefix()} error while waiting for tasks to complete: {e!r}")
         finally:
             # shut down all workers
-            self._worker_adapter.shutdown()
+            self._worker_manager.shutdown()
 
         logging.info(f"{self.__get_prefix()} shutdown")
 

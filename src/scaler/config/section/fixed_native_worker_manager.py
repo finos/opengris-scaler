@@ -4,14 +4,14 @@ from typing import Optional
 from scaler.config import defaults
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
-from scaler.config.common.worker_adapter import WorkerAdapterConfig
+from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.config_class import ConfigClass
 from scaler.utility.event_loop import EventLoopType
 
 
 @dataclasses.dataclass
-class NativeWorkerAdapterConfig(ConfigClass):
-    worker_adapter_config: WorkerAdapterConfig
+class FixedNativeWorkerManagerConfig(ConfigClass):
+    worker_manager_config: WorkerManagerConfig
     preload: Optional[str] = None
     worker_config: WorkerConfig = dataclasses.field(default_factory=WorkerConfig)
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
@@ -28,3 +28,5 @@ class NativeWorkerAdapterConfig(ConfigClass):
     def __post_init__(self) -> None:
         if self.worker_io_threads <= 0:
             raise ValueError("worker_io_threads must be a positive integer.")
+        if self.worker_manager_config.max_workers < 0:
+            raise ValueError("max_workers must be >=0 for fixed native worker manager")

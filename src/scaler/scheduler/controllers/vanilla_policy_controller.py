@@ -1,50 +1,44 @@
-import abc
 from typing import Dict, List, Optional, Set
 
 from scaler.protocol.python.message import InformationSnapshot, Task, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.protocol.python.status import ScalingManagerStatus
+from scaler.scheduler.controllers.mixins import PolicyController
+from scaler.scheduler.controllers.policies.library.utility import create_policy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
 from scaler.utility.identifiers import TaskID, WorkerID
 
 
-class ScalerPolicy(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
+class VanillaPolicyController(PolicyController):
+    def __init__(self, policy_engine_type: str, policy_content: str):
+        self._policy = create_policy(policy_engine_type, policy_content)
+
     def add_worker(self, worker: WorkerID, capabilities: Dict[str, int], queue_size: int) -> bool:
-        raise NotImplementedError()
+        return self._policy.add_worker(worker, capabilities, queue_size)
 
-    @abc.abstractmethod
     def remove_worker(self, worker: WorkerID) -> List[TaskID]:
-        raise NotImplementedError()
+        return self._policy.remove_worker(worker)
 
-    @abc.abstractmethod
     def get_worker_ids(self) -> Set[WorkerID]:
-        raise NotImplementedError()
+        return self._policy.get_worker_ids()
 
-    @abc.abstractmethod
     def get_worker_by_task_id(self, task_id: TaskID) -> WorkerID:
-        raise NotImplementedError()
+        return self._policy.get_worker_by_task_id(task_id)
 
-    @abc.abstractmethod
     def balance(self) -> Dict[WorkerID, List[TaskID]]:
-        raise NotImplementedError()
+        return self._policy.balance()
 
-    @abc.abstractmethod
     def assign_task(self, task: Task) -> WorkerID:
-        raise NotImplementedError()
+        return self._policy.assign_task(task)
 
-    @abc.abstractmethod
     def remove_task(self, task_id: TaskID) -> WorkerID:
-        raise NotImplementedError()
+        return self._policy.remove_task(task_id)
 
-    @abc.abstractmethod
     def has_available_worker(self, capabilities: Optional[Dict[str, int]] = None) -> bool:
-        raise NotImplementedError()
+        return self._policy.has_available_worker(capabilities)
 
-    @abc.abstractmethod
     def statistics(self) -> Dict:
-        raise NotImplementedError()
+        return self._policy.statistics()
 
-    @abc.abstractmethod
     def get_scaling_commands(
         self,
         information_snapshot: InformationSnapshot,
@@ -52,8 +46,9 @@ class ScalerPolicy(metaclass=abc.ABCMeta):
         worker_groups: WorkerGroupState,
         worker_group_capabilities: WorkerGroupCapabilities,
     ) -> List[WorkerManagerCommand]:
-        raise NotImplementedError()
+        return self._policy.get_scaling_commands(
+            information_snapshot, worker_manager_heartbeat, worker_groups, worker_group_capabilities
+        )
 
-    @abc.abstractmethod
     def get_scaling_status(self, worker_groups: WorkerGroupState) -> ScalingManagerStatus:
-        raise NotImplementedError()
+        return self._policy.get_scaling_status(worker_groups)

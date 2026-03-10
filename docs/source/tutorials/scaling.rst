@@ -1,17 +1,17 @@
 Scaling Policies
 ================
 
-Scaler provides an *experimental* auto-scaling feature that allows the system to dynamically adjust the number of workers based on workload. Scaling policies determine when to add or remove workers, while Worker Adapters handle the actual provisioning of resources.
+Scaler provides an *experimental* auto-scaling feature that allows the system to dynamically adjust the number of workers based on workload. Scaling policies determine when to add or remove workers, while Worker Managers handle the actual provisioning of resources.
 
 Overview
 --------
 
 The scaling system consists of two main components:
 
-1. **Scaling Controller**: A policy that monitors task queues and worker availability to make scaling decisions.
-2. **Worker Adapter**: A component that handles the actual creation and destruction of worker groups (e.g., starting containers, launching processes).
+1. **Scaling Policy**: A policy that monitors task queues and worker availability to make scaling suggestions.
+2. **Worker Manager**: A component that handles the actual creation and destruction of worker groups (e.g., starting containers, launching processes).
 
-The Scaling Controller runs within the Scheduler and communicates with Worker Adapters via Cap'n Proto messages. Worker Adapters connect to the Scheduler and receive scaling commands directly.
+The Scaling Policy runs within the Scheduler and communicates with Worker Managers via Cap'n Proto messages. Worker Managers connect to the Scheduler and receive scaling commands directly.
 
 The scaling policy is configured via the ``policy_content`` setting in the scheduler configuration:
 
@@ -44,7 +44,7 @@ Scaler provides several built-in scaling policies:
    * - ``capability``
      - Capability-aware scaling. Scales worker groups based on task-required capabilities (e.g., GPU, memory).
    * - ``fixed_elastic``
-     - Hybrid scaling using primary and secondary worker adapters with configurable limits.
+     - Hybrid scaling using primary and secondary worker managers with configurable limits.
 
 
 No Scaling (``no``)
@@ -64,7 +64,7 @@ The simplest policy that performs no automatic scaling. Use this when:
 Vanilla Scaling (``vanilla``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The vanilla scaling controller uses a simple task-to-worker ratio to make scaling decisions:
+The vanilla scaling policy uses a simple task-to-worker ratio to make scaling suggestions:
 
 * **Scale up**: When ``tasks / workers > upper_task_ratio`` (default: 10)
 * **Scale down**: When ``tasks / workers < lower_task_ratio`` (default: 1)
@@ -80,7 +80,7 @@ This policy is straightforward and works well for homogeneous workloads where al
 Capability Scaling (``capability``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The capability scaling controller is designed for heterogeneous workloads where tasks require specific capabilities (e.g., GPU, high memory, specialized hardware).
+The capability scaling policy is designed for heterogeneous workloads where tasks require specific capabilities (e.g., GPU, high memory, specialized hardware).
 
 **Key Features:**
 
@@ -97,12 +97,12 @@ The capability scaling controller is designed for heterogeneous workloads where 
 
 2. **Worker Matching**: Workers are grouped by their provided capabilities. A worker can handle a task if the task's required capabilities are a subset of the worker's capabilities.
 
-3. **Per-Capability Scaling**: The controller applies the task-to-worker ratio logic independently for each capability set:
+3. **Per-Capability Scaling**: The policy applies the task-to-worker ratio logic independently for each capability set:
 
    * **Scale up**: When ``tasks / capable_workers > upper_task_ratio`` (default: 5)
    * **Scale down**: When ``tasks / capable_workers < lower_task_ratio`` (default: 0.5)
 
-4. **Capability Request**: When scaling up, the controller requests worker groups with specific capabilities from the worker adapter.
+4. **Capability Request**: When scaling up, the policy requests worker groups with specific capabilities from the worker manager.
 
 **Configuration:**
 
@@ -134,7 +134,7 @@ Consider a workload with both CPU-only and GPU tasks:
 
 With the capability scaling policy:
 
-1. If no GPU workers exist, the controller requests a worker group with ``{"gpu": 1}`` from the adapter.
+1. If no GPU workers exist, the policy requests a worker group with ``{"gpu": 1}`` from the worker manager.
 2. CPU and GPU worker groups are scaled independently based on their respective task queues.
 3. Idle GPU workers can be shut down without affecting CPU task processing.
 
@@ -142,10 +142,10 @@ With the capability scaling policy:
 Fixed Elastic Scaling (``fixed_elastic``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The fixed elastic scaling controller supports hybrid scaling with multiple worker adapters:
+The fixed elastic scaling policy supports hybrid scaling with multiple worker managers:
 
-* **Primary Adapter**: A single worker group (identified by ``max_worker_groups == 1``) that starts once and never shuts down
-* **Secondary Adapter**: Elastic capacity (``max_worker_groups > 1``) that scales based on demand
+* **Primary Manager**: A single worker group (identified by ``max_worker_groups == 1``) that starts once and never shuts down
+* **Secondary Manager**: Elastic capacity (``max_worker_groups > 1``) that scales based on demand
 
 This is useful for scenarios where you have a fixed pool of dedicated resources but want to burst to additional resources during peak demand.
 
@@ -156,40 +156,40 @@ This is useful for scenarios where you have a fixed pool of dedicated resources 
 
 **Behavior:**
 
-* The primary adapter's worker group is started once and never shut down
-* Secondary adapter groups are created when demand exceeds primary capacity
-* When scaling down, only secondary adapter groups are shut down
+* The primary manager's worker group is started once and never shut down
+* Secondary manager groups are created when demand exceeds primary capacity
+* When scaling down, only secondary manager groups are shut down
 
 
-Worker Adapter Protocol
+Worker Manager Protocol
 -----------------------
 
-Scaling controllers, running within the scheduler process, communicate with worker adapters using Cap'n Proto messages through the connection that worker adapters use to communicate with the scheduler. The protocol uses the following message types:
+Scaling policies, running within the scheduler process, communicate with worker managers using Cap'n Proto messages through the connection that worker managers use to communicate with the scheduler. The protocol uses the following message types:
 
-**WorkerAdapterHeartbeat (Adapter -> Scheduler):**
+**WorkerManagerHeartbeat (Manager -> Scheduler):**
 
-Worker adapters periodically send heartbeats to the scheduler containing their capacity information:
+Worker managers periodically send heartbeats to the scheduler containing their capacity information:
 
-* ``max_worker_groups``: Maximum number of worker groups this adapter can manage
+* ``max_worker_groups``: Maximum number of worker groups this manager can manage
 * ``workers_per_group``: Number of workers in each group
-* ``capabilities``: Default capabilities for workers from this adapter
+* ``capabilities``: Default capabilities for workers from this manager
 
-**WorkerAdapterCommand (Scheduler -> Adapter):**
+**WorkerManagerCommand (Scheduler -> Manager):**
 
-The scheduler sends commands to worker adapters:
+The scheduler sends commands to worker managers:
 
 * ``StartWorkerGroup``: Request to start a new worker group
 
-  * ``worker_group_id``: Empty for new groups (adapter assigns ID)
+  * ``worker_group_id``: Empty for new groups (manager assigns ID)
   * ``capabilities``: Required capabilities for the worker group
 
 * ``ShutdownWorkerGroup``: Request to shut down an existing worker group
 
   * ``worker_group_id``: ID of the group to shut down
 
-**WorkerAdapterCommandResponse (Adapter -> Scheduler):**
+**WorkerManagerCommandResponse (Manager -> Scheduler):**
 
-Worker adapters respond to commands with status and details:
+Worker managers respond to commands with status and details:
 
 * ``worker_group_id``: ID of the affected worker group
 * ``command``: The command type this response is for
@@ -198,10 +198,10 @@ Worker adapters respond to commands with status and details:
 * ``capabilities``: Actual capabilities of the started workers
 
 
-Example Worker Adapter
+Example Worker Manager
 ----------------------
 
-Here is an example of a worker adapter using the ECS (Amazon Elastic Container Service) integration:
+Here is an example of a worker manager using the ECS (Amazon Elastic Container Service) integration:
 
 .. literalinclude:: ../../../src/scaler/worker_manager_adapter/aws_raw/ecs.py
    :language: python
@@ -219,4 +219,4 @@ Tips
 
 3. **Monitor scaling events**: Use Scaler's monitoring tools (``scaler_top``) to observe scaling behavior and tune policies.
 
-4. **Worker Adapter Placement**: Run worker adapters on machines that can provision the required resources (e.g., run the ECS adapter where it has AWS credentials, run the native adapter on the target machine).
+4. **Worker Manager Placement**: Run worker managers on machines that can provision the required resources (e.g., run the ECS worker manager where it has AWS credentials, run the native worker manager on the target machine).

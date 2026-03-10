@@ -1,7 +1,7 @@
-AWS Batch Worker Adapter Setup Guide
+AWS Batch Worker Manager Setup Guide
 ======================================
 
-This guide walks you through setting up and testing the AWS Batch worker adapter for Scaler.
+This guide walks you through setting up and testing the AWS Batch worker manager for Scaler.
 
 Architecture
 ------------
@@ -309,7 +309,7 @@ Expected output:
 .. code-block:: text
 
     ==================================================
-    AWS HPC Worker Adapter Test Harness
+    AWS HPC Worker Manager Test Harness
     ==================================================
     Scheduler: tcp://127.0.0.1:2345
     Connected to scheduler

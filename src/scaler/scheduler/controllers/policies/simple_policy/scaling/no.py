@@ -1,22 +1,22 @@
 from typing import List
 
-from scaler.protocol.python.message import InformationSnapshot, WorkerAdapterCommand, WorkerAdapterHeartbeat
+from scaler.protocol.python.message import InformationSnapshot, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingController
+from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
 
 
-class NoScalingController(ScalingController):
+class NoScalingPolicy(ScalingPolicy):
     def __init__(self):
         pass
 
     def get_scaling_commands(
         self,
         information_snapshot: InformationSnapshot,
-        adapter_heartbeat: WorkerAdapterHeartbeat,
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
         worker_groups: WorkerGroupState,
         worker_group_capabilities: WorkerGroupCapabilities,
-    ) -> List[WorkerAdapterCommand]:
+    ) -> List[WorkerManagerCommand]:
         return []
 
     def get_status(self, worker_groups: WorkerGroupState) -> ScalingManagerStatus:

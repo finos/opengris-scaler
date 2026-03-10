@@ -1,7 +1,7 @@
-AWS HPC Worker Adapter
+AWS HPC Worker Manager
 ======================
 
-The AWS HPC worker adapter offloads task execution to AWS Batch, running each task as a containerized job on managed EC2 compute. This adapter is particularly useful for bursting workloads to the cloud or running tasks that require specific hardware (e.g., GPUs, high memory) not available locally. It currently supports the AWS Batch backend.
+The AWS HPC worker manager offloads task execution to AWS Batch, running each task as a containerized job on managed EC2 compute. This manager is particularly useful for bursting workloads to the cloud or running tasks that require specific hardware (e.g., GPUs, high memory) not available locally. It currently supports the AWS Batch backend.
 
 .. seealso::
     For a comprehensive, step-by-step walkthrough of setting up AWS infrastructure, building Docker images, and troubleshooting, see the :doc:`AWS Batch Setup Guide <setup>`.
@@ -9,7 +9,7 @@ The AWS HPC worker adapter offloads task execution to AWS Batch, running each ta
 Prerequisites
 -------------
 
-To use the AWS HPC worker adapter, you need:
+To use the AWS HPC worker manager, you need:
 
 *   An **AWS Account** with appropriate permissions.
 *   The ``boto3`` Python library installed in your Scaler environment.
@@ -24,7 +24,7 @@ To use the AWS HPC worker adapter, you need:
 Getting Started
 ---------------
 
-To start the AWS HPC worker adapter from the command line:
+To start the AWS HPC worker manager from the command line:
 
 .. code-block:: bash
 
@@ -45,7 +45,7 @@ Equivalent configuration using a TOML file:
 
     # config.toml
 
-    [aws_hpc_worker_adapter]
+    [aws_hpc_worker_manager]
     job_queue = "my-scaler-queue"
     job_definition = "my-scaler-job-def"
     s3_bucket = "my-scaler-tasks-bucket"
@@ -79,7 +79,7 @@ How it Works
 
 *   **Payload Handling**: Task payloads are serialized using ``cloudpickle``. If the compressed payload is larger than 28KB, it is uploaded to S3. Smaller payloads are passed directly to the AWS Batch job as parameters.
 *   **Execution**: The Batch container runs a specialized runner script (``batch_job_runner.py``) that deserializes the task, executes it, and writes the result (and any errors) back to S3.
-*   **Concurrency**: The adapter manages a semaphore to limit the number of concurrent Batch jobs (``--max-concurrent-jobs``), preventing accidental resource exhaustion or exceeding AWS service quotas.
+*   **Concurrency**: The manager manages a semaphore to limit the number of concurrent Batch jobs (``--max-concurrent-jobs``), preventing accidental resource exhaustion or exceeding AWS service quotas.
 *   **Efficiency**: Payloads > 4KB are automatically compressed with gzip to minimize S3 usage and data transfer.
 
 Supported Parameters
@@ -88,7 +88,7 @@ Supported Parameters
 .. note::
     For more details on how to configure Scaler, see the :doc:`../../configuration` section.
 
-The AWS HPC worker adapter supports the following specific configuration parameters.
+The AWS HPC worker manager supports the following specific configuration parameters.
 
 AWS HPC Configuration
 ~~~~~~~~~~~~~~~~~~~~~
@@ -101,7 +101,7 @@ AWS HPC Configuration
 *   ``--max-concurrent-jobs`` (``-mcj``): Maximum number of concurrent Batch jobs (default: ``100``).
 *   ``--job-timeout-minutes``: Maximum time a Batch job is allowed to run before being terminated (default: ``60``).
 *   ``--backend`` (``-b``): AWS HPC backend to use (default: ``batch``).
-*   ``--name`` (``-n``): A custom name for the worker adapter instance.
+*   ``--name`` (``-n``): A custom name for the worker manager instance.
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~
@@ -112,7 +112,7 @@ Setup Guide
 -----------
 
 .. important::
-    Setting up AWS infrastructure and ensuring correct container configuration is critical for the AWS HPC adapter to function correctly. 
+    Setting up AWS infrastructure and ensuring correct container configuration is critical for the AWS HPC manager to function correctly.
 
 For a comprehensive walkthrough of setting up AWS infrastructure, building Docker images, and troubleshooting, please refer to our detailed :doc:`AWS Batch Setup Guide <setup>`.
 

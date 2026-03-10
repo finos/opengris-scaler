@@ -13,7 +13,7 @@ from scaler.scheduler.controllers.mixins import (
     TaskController,
     WorkerController,
 )
-from scaler.scheduler.controllers.worker_adapter_controller import WorkerAdapterController
+from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
 from scaler.utility.mixins import Looper
 
 
@@ -29,7 +29,7 @@ class VanillaInformationController(InformationController, Looper):
         self._object_controller: Optional[ObjectController] = None
         self._task_controller: Optional[TaskController] = None
         self._worker_controller: Optional[WorkerController] = None
-        self._worker_adapter_controller: Optional[WorkerAdapterController] = None
+        self._worker_manager_controller: Optional[WorkerManagerController] = None
 
     def register_managers(
         self,
@@ -39,7 +39,7 @@ class VanillaInformationController(InformationController, Looper):
         object_controller: ObjectController,
         task_controller: TaskController,
         worker_controller: WorkerController,
-        worker_adapter_controller: WorkerAdapterController,
+        worker_manager_controller: WorkerManagerController,
     ):
         self._monitor_binder = monitor_binder
         self._binder = binder
@@ -47,7 +47,7 @@ class VanillaInformationController(InformationController, Looper):
         self._object_controller = object_controller
         self._task_controller = task_controller
         self._worker_controller = worker_controller
-        self._worker_adapter_controller = worker_adapter_controller
+        self._worker_manager_controller = worker_manager_controller
 
     async def on_request(self, request: InformationRequest):
         # TODO: implement commands
@@ -63,6 +63,6 @@ class VanillaInformationController(InformationController, Looper):
                 object_manager=self._object_controller.get_status(),
                 task_manager=self._task_controller.get_status(),
                 worker_manager=self._worker_controller.get_status(),
-                scaling_manager=self._worker_adapter_controller.get_status(),
+                scaling_manager=self._worker_manager_controller.get_status(),
             )
         )

@@ -9,7 +9,7 @@ from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
-from scaler.config.common.worker_adapter import WorkerAdapterConfig
+from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.defaults import (
     DEFAULT_CLIENT_TIMEOUT_SECONDS,
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
@@ -25,7 +25,7 @@ from scaler.config.defaults import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
-from scaler.config.section.native_worker_adapter import NativeWorkerAdapterConfig
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.worker import WorkerCapabilities
@@ -33,25 +33,25 @@ from scaler.config.types.zmq import ZMQConfig
 from scaler.protocol.python.message import (
     InformationSnapshot,
     Task,
-    WorkerAdapterCommandType,
-    WorkerAdapterHeartbeat,
     WorkerHeartbeat,
+    WorkerManagerCommandType,
+    WorkerManagerHeartbeat,
 )
 from scaler.protocol.python.status import Resource
-from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingController
+from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
-from scaler.worker_manager_adapter.baremetal.native import NativeWorkerAdapter
+from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
 
-def _run_native_worker_adapter(scheduler_address: str, max_workers: int = 4) -> None:
-    """Construct a NativeWorkerAdapter and run it. Runs in a separate process."""
-    adapter = NativeWorkerAdapter(
-        NativeWorkerAdapterConfig(
-            worker_adapter_config=WorkerAdapterConfig(
+def _run_native_worker_manager(scheduler_address: str, max_workers: int = 4) -> None:
+    """Construct a NativeWorkerManager and run it. Runs in a separate process."""
+    manager = NativeWorkerManager(
+        NativeWorkerManagerConfig(
+            worker_manager_config=WorkerManagerConfig(
                 scheduler_address=ZMQConfig.from_string(scheduler_address),
                 object_storage_address=None,
                 max_workers=max_workers,
@@ -72,7 +72,7 @@ def _run_native_worker_adapter(scheduler_address: str, max_workers: int = 4) -> 
         )
     )
 
-    adapter.run()
+    manager.run()
 
 
 class TestScaling(unittest.TestCase):
@@ -113,7 +113,7 @@ class TestScaling(unittest.TestCase):
         )
         scheduler.start()
 
-        adapter_process = Process(target=_run_native_worker_adapter, args=(self.scheduler_address,))
+        adapter_process = Process(target=_run_native_worker_manager, args=(self.scheduler_address,))
         adapter_process.start()
 
         with Client(self.scheduler_address) as client:
@@ -159,7 +159,7 @@ class TestScaling(unittest.TestCase):
         )
         scheduler.start()
 
-        adapter_process = Process(target=_run_native_worker_adapter, args=(self.scheduler_address,))
+        adapter_process = Process(target=_run_native_worker_manager, args=(self.scheduler_address,))
         adapter_process.start()
 
         with Client(self.scheduler_address) as client:
@@ -203,17 +203,17 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> 
     )
 
 
-def _create_adapter_heartbeat(max_worker_groups: int = 10) -> WorkerAdapterHeartbeat:
-    """Helper to create a mock WorkerAdapterHeartbeat."""
-    return WorkerAdapterHeartbeat.new_msg(max_worker_groups=max_worker_groups, workers_per_group=1, capabilities={})
+def _create_worker_manager_heartbeat(max_worker_groups: int = 10) -> WorkerManagerHeartbeat:
+    """Helper to create a mock WorkerManagerHeartbeat."""
+    return WorkerManagerHeartbeat.new_msg(max_worker_groups=max_worker_groups, workers_per_group=1, capabilities={})
 
 
-class TestCapabilityScalingController(unittest.TestCase):
-    """Unit tests for CapabilityScalingController with stateless interface."""
+class TestCapabilityScalingPolicy(unittest.TestCase):
+    """Unit tests for CapabilityScalingPolicy with stateless interface."""
 
     def setUp(self):
         setup_logger()
-        self.controller = CapabilityScalingController()
+        self.policy = CapabilityScalingPolicy()
         # Empty initial state
         self.worker_groups: WorkerGroupState = {}
         self.worker_group_capabilities: WorkerGroupCapabilities = {}
@@ -224,14 +224,14 @@ class TestCapabilityScalingController(unittest.TestCase):
         task = _create_mock_task(task_id, {"gpu": 1})
 
         information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={})
-        adapter_heartbeat = _create_adapter_heartbeat()
+        worker_manager_heartbeat = _create_worker_manager_heartbeat()
 
-        commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        commands = self.policy.get_scaling_commands(
+            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities
         )
 
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerAdapterCommandType.StartWorkerGroup)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkerGroup)
         self.assertEqual(commands[0].capabilities, {"gpu": 1})
 
     def test_no_scale_when_capable_workers_exist(self):
@@ -242,14 +242,14 @@ class TestCapabilityScalingController(unittest.TestCase):
         worker_heartbeat = _create_mock_worker_heartbeat({"gpu": -1}, queued_tasks=0)
 
         information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={worker_id: worker_heartbeat})
-        adapter_heartbeat = _create_adapter_heartbeat()
+        worker_manager_heartbeat = _create_worker_manager_heartbeat()
 
-        commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        commands = self.policy.get_scaling_commands(
+            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities
         )
 
         # Should not return any start commands
-        start_commands = [c for c in commands if c.command == WorkerAdapterCommandType.StartWorkerGroup]
+        start_commands = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkerGroup]
         self.assertEqual(len(start_commands), 0)
 
     def test_scales_when_task_ratio_exceeds_threshold(self):
@@ -264,18 +264,18 @@ class TestCapabilityScalingController(unittest.TestCase):
         worker_heartbeat = _create_mock_worker_heartbeat({"gpu": -1}, queued_tasks=5)
 
         information_snapshot = InformationSnapshot(tasks=tasks, workers={worker_id: worker_heartbeat})
-        adapter_heartbeat = _create_adapter_heartbeat()
+        worker_manager_heartbeat = _create_worker_manager_heartbeat()
 
-        commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        commands = self.policy.get_scaling_commands(
+            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities
         )
 
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerAdapterCommandType.StartWorkerGroup)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkerGroup)
         self.assertEqual(commands[0].capabilities, {"gpu": 1})
 
     def test_different_capability_sets_handled_separately(self):
-        """Test that tasks with different capabilities trigger separate scaling decisions."""
+        """Test that tasks with different capabilities trigger separate scaling suggestions."""
         gpu_task_id = TaskID.generate_task_id()
         gpu_task = _create_mock_task(gpu_task_id, {"gpu": 1})
 
@@ -283,14 +283,14 @@ class TestCapabilityScalingController(unittest.TestCase):
         tpu_task = _create_mock_task(tpu_task_id, {"tpu": 1})
 
         information_snapshot = InformationSnapshot(tasks={gpu_task_id: gpu_task, tpu_task_id: tpu_task}, workers={})
-        adapter_heartbeat = _create_adapter_heartbeat()
+        worker_manager_heartbeat = _create_worker_manager_heartbeat()
 
         # Should return 2 start commands (one for each capability set)
-        commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        commands = self.policy.get_scaling_commands(
+            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities
         )
 
-        start_commands = [c for c in commands if c.command == WorkerAdapterCommandType.StartWorkerGroup]
+        start_commands = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkerGroup]
         self.assertEqual(len(start_commands), 2)
 
         capabilities_requested = {frozenset(c.capabilities.keys()) for c in start_commands}
@@ -307,14 +307,14 @@ class TestCapabilityScalingController(unittest.TestCase):
         worker_heartbeat = _create_mock_worker_heartbeat({"gpu": -1, "cpu": -1}, queued_tasks=0)
 
         information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={worker_id: worker_heartbeat})
-        adapter_heartbeat = _create_adapter_heartbeat()
+        worker_manager_heartbeat = _create_worker_manager_heartbeat()
 
-        commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        commands = self.policy.get_scaling_commands(
+            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities
         )
 
         # No StartWorkerGroup command should be returned
-        start_commands = [c for c in commands if c.command == WorkerAdapterCommandType.StartWorkerGroup]
+        start_commands = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkerGroup]
         self.assertEqual(len(start_commands), 0)
 
     def test_tasks_without_capabilities_handled(self):
@@ -323,22 +323,22 @@ class TestCapabilityScalingController(unittest.TestCase):
         task = _create_mock_task(task_id, {})  # No capabilities required
 
         information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={})  # No workers
-        adapter_heartbeat = _create_adapter_heartbeat()
+        worker_manager_heartbeat = _create_worker_manager_heartbeat()
 
-        commands = self.controller.get_scaling_commands(
-            information_snapshot, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        commands = self.policy.get_scaling_commands(
+            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities
         )
 
         # Should start a worker group with empty capabilities
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerAdapterCommandType.StartWorkerGroup)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkerGroup)
         self.assertEqual(commands[0].capabilities, {})
 
     def test_get_status_returns_scaling_manager_status(self):
         """Test that get_status returns a ScalingManagerStatus object."""
         worker_groups: WorkerGroupState = {b"wg-test": [WorkerID(b"worker-1"), WorkerID(b"worker-2")]}
 
-        status = self.controller.get_status(worker_groups)
+        status = self.policy.get_status(worker_groups)
 
         from scaler.protocol.python.status import ScalingManagerStatus
 
@@ -350,14 +350,14 @@ class TestCapabilityScalingController(unittest.TestCase):
         task1_id = TaskID.generate_task_id()
         task1 = _create_mock_task(task1_id, {"mqa": 1})
         information_snapshot1 = InformationSnapshot(tasks={task1_id: task1}, workers={})
-        adapter_heartbeat = _create_adapter_heartbeat()
+        worker_manager_heartbeat = _create_worker_manager_heartbeat()
 
-        commands1 = self.controller.get_scaling_commands(
-            information_snapshot1, adapter_heartbeat, self.worker_groups, self.worker_group_capabilities
+        commands1 = self.policy.get_scaling_commands(
+            information_snapshot1, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities
         )
 
         self.assertEqual(len(commands1), 1)
-        self.assertEqual(commands1[0].command, WorkerAdapterCommandType.StartWorkerGroup)
+        self.assertEqual(commands1[0].command, WorkerManagerCommandType.StartWorkerGroup)
         self.assertEqual(commands1[0].capabilities, {"mqa": 1})
 
         # Simulate state update as if adapter responded successfully
@@ -370,17 +370,17 @@ class TestCapabilityScalingController(unittest.TestCase):
         task2 = _create_mock_task(task2_id, {"mqa": -1})
         information_snapshot2 = InformationSnapshot(tasks={task2_id: task2}, workers={})
 
-        commands2 = self.controller.get_scaling_commands(
-            information_snapshot2, adapter_heartbeat, updated_groups, updated_caps
+        commands2 = self.policy.get_scaling_commands(
+            information_snapshot2, worker_manager_heartbeat, updated_groups, updated_caps
         )
 
         # No StartWorkerGroup command should be returned
-        start_commands = [c for c in commands2 if c.command == WorkerAdapterCommandType.StartWorkerGroup]
+        start_commands = [c for c in commands2 if c.command == WorkerManagerCommandType.StartWorkerGroup]
         self.assertEqual(len(start_commands), 0, "Should not start new worker group when capable group is pending")
 
 
 class TestFixedElasticScaling(unittest.TestCase):
-    """Integration tests for FixedElasticScalingController with multiple worker adapters."""
+    """Integration tests for FixedElasticScalingPolicy with multiple worker managers."""
 
     def setUp(self) -> None:
         setup_logger()
@@ -422,13 +422,13 @@ class TestFixedElasticScaling(unittest.TestCase):
 
         # Start primary adapter with max_workers=1
         primary_adapter_process = Process(
-            target=_run_native_worker_adapter, args=(self.scheduler_address,), kwargs={"max_workers": 1}
+            target=_run_native_worker_manager, args=(self.scheduler_address,), kwargs={"max_workers": 1}
         )
         primary_adapter_process.start()
 
         # Start secondary adapter with max_workers=4
         secondary_adapter_process = Process(
-            target=_run_native_worker_adapter, args=(self.scheduler_address,), kwargs={"max_workers": 4}
+            target=_run_native_worker_manager, args=(self.scheduler_address,), kwargs={"max_workers": 4}
         )
         secondary_adapter_process.start()
 

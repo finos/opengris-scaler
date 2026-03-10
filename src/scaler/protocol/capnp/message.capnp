@@ -85,30 +85,30 @@ struct WorkerHeartbeatEcho {
     objectStorageAddress @0 :CommonType.ObjectStorageAddress;
 }
 
-struct WorkerAdapterHeartbeat {
+struct WorkerManagerHeartbeat {
     maxWorkerGroups @0 :UInt32;
     workersPerGroup @1 :UInt32;
     capabilities @2 :List(CommonType.TaskCapability);
 }
 
-struct WorkerAdapterHeartbeatEcho {
+struct WorkerManagerHeartbeatEcho {
 }
 
-enum WorkerAdapterCommandType {
+enum WorkerManagerCommandType {
     startWorkerGroup @0;
     shutdownWorkerGroup @1;
 }
 
-struct WorkerAdapterCommand {
+struct WorkerManagerCommand {
     workerGroupID @0: Data;
-    command @1: WorkerAdapterCommandType;
+    command @1: WorkerManagerCommandType;
     capabilities @2: List(CommonType.TaskCapability);
 }
 
-struct WorkerAdapterCommandResponse {
+struct WorkerManagerCommandResponse {
     workerGroupID @0: Data;
     workerIDs @1: List(Data);
-    command @2: WorkerAdapterCommandType;
+    command @2: WorkerManagerCommandType;
     status @3: Status;
     capabilities @4: List(CommonType.TaskCapability);
     enum Status {
@@ -251,9 +251,9 @@ struct Message {
         informationRequest @23 :InformationRequest;
         informationResponse @24 :InformationResponse;
 
-        workerAdapterHeartbeat @25 :WorkerAdapterHeartbeat;
-        workerAdapterHeartbeatEcho @26 :WorkerAdapterHeartbeatEcho;
-        workerAdapterCommand @27 :WorkerAdapterCommand;
-        workerAdapterCommandResponse @28 :WorkerAdapterCommandResponse;
+        workerManagerHeartbeat @25 :WorkerManagerHeartbeat;
+        workerManagerHeartbeatEcho @26 :WorkerManagerHeartbeatEcho;
+        workerManagerCommand @27 :WorkerManagerCommand;
+        workerManagerCommandResponse @28 :WorkerManagerCommandResponse;
     }
 }

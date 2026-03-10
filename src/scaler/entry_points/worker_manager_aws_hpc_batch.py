@@ -1,5 +1,5 @@
 """
-Entry point for AWS HPC Worker Adapter.
+Entry point for AWS HPC Worker Manager.
 
 Supports multiple AWS HPC backends:
 - batch: AWS Batch (EC2 compute environment)
@@ -10,11 +10,11 @@ Supports multiple AWS HPC backends:
 import logging
 import multiprocessing
 
-from scaler.config.section.aws_hpc_worker_adapter import AWSBatchWorkerAdapterConfig, AWSHPCBackend
+from scaler.config.section.aws_hpc_worker_manager import AWSBatchWorkerManagerConfig, AWSHPCBackend
 from scaler.utility.logging.utility import setup_logger
 
 
-def _create_batch_worker(config: AWSBatchWorkerAdapterConfig) -> multiprocessing.Process:
+def _create_batch_worker(config: AWSBatchWorkerManagerConfig) -> multiprocessing.Process:
     from scaler.worker_manager_adapter.aws_hpc.worker import AWSBatchWorker
 
     logging.info(f"  Job Queue: {config.job_queue}")
@@ -25,8 +25,8 @@ def _create_batch_worker(config: AWSBatchWorkerAdapterConfig) -> multiprocessing
 
     return AWSBatchWorker(
         name=config.name or "aws-batch-worker",
-        address=config.worker_adapter_config.scheduler_address,
-        object_storage_address=config.worker_adapter_config.object_storage_address,
+        address=config.worker_manager_config.scheduler_address,
+        object_storage_address=config.worker_manager_config.object_storage_address,
         job_queue=config.job_queue,
         job_definition=config.job_definition,
         aws_region=config.aws_region,
@@ -43,12 +43,12 @@ def _create_batch_worker(config: AWSBatchWorkerAdapterConfig) -> multiprocessing
 
 
 def main():
-    config = AWSBatchWorkerAdapterConfig.parse("Scaler AWS HPC Worker Adapter", "aws_hpc_worker_adapter")
+    config = AWSBatchWorkerManagerConfig.parse("Scaler AWS HPC Worker Manager", "aws_hpc_worker_manager")
 
     setup_logger(config.logging_config.paths, config.logging_config.config_file, config.logging_config.level)
 
-    logging.info(f"Starting AWS HPC Worker Adapter (backend: {config.backend.name})")
-    logging.info(f"  Scheduler: {config.worker_adapter_config.scheduler_address}")
+    logging.info(f"Starting AWS HPC Worker Manager (backend: {config.backend.name})")
+    logging.info(f"  Scheduler: {config.worker_manager_config.scheduler_address}")
 
     if config.backend == AWSHPCBackend.batch:
         worker = _create_batch_worker(config)
