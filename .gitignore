@@ -39,3 +39,6 @@ src/scaler/protocol/capnp/*.h
 # AWS HPC test-generated files
 .scaler_aws_batch_config.json
 .scaler_aws_hpc.env
+
+# Per-user agent preferences (not committed)
+.agents-local.md

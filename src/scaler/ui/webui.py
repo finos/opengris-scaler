@@ -1,7 +1,7 @@
 import logging
 
 from scaler.config.section.webui import WebUIConfig
-from scaler.ui.util import NICEGUI_MAJOR_VERSION
+from scaler.ui.common.utility import NICEGUI_MAJOR_VERSION
 from scaler.utility.logging.utility import setup_logger
 
 
