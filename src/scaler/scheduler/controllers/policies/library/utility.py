@@ -10,4 +10,9 @@ def create_policy(policy_engine_type: str, policy_content: str) -> ScalerPolicy:
 
         return SimplePolicy(policy_content)
 
+    if engine_type == PolicyEngineType.WATERFALL_V1:
+        from scaler.scheduler.controllers.policies.waterfall_v1.waterfall_v1_policy import WaterfallV1Policy
+
+        return WaterfallV1Policy(policy_content)
+
     raise ValueError(f"Unknown policy_engine_type: {policy_engine_type}")

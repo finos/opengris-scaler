@@ -45,6 +45,8 @@ Scaler provides several built-in scaling policies:
      - Capability-aware scaling. Scales worker groups based on task-required capabilities (e.g., GPU, memory).
    * - ``fixed_elastic``
      - Hybrid scaling using primary and secondary worker managers with configurable limits.
+   * - ``waterfall_v1``
+     - Priority-based cascading across multiple worker managers. Higher-priority managers fill first; overflow goes to lower-priority.
 
 
 No Scaling (``no``)
@@ -159,6 +161,32 @@ This is useful for scenarios where you have a fixed pool of dedicated resources 
 * The primary manager's worker group is started once and never shut down
 * Secondary manager groups are created when demand exceeds primary capacity
 * When scaling down, only secondary manager groups are shut down
+
+
+Waterfall Scaling (``waterfall_v1``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The waterfall scaling policy cascades worker scaling across prioritized worker managers. Higher-priority managers fill first; when they reach capacity, overflow goes to the next priority tier. When scaling down, the lowest-priority managers drain first.
+
+This is useful for hybrid deployments where you want to prefer cheaper or lower-latency resources (e.g., local bare-metal) and only burst to more expensive resources (e.g., cloud) when needed.
+
+**Configuration:**
+
+The waterfall policy uses ``policy_engine_type = "waterfall_v1"`` and a newline-separated rule format for ``policy_content``. Each rule is a comma-separated line with three fields: ``priority``, ``manager_id_prefix``, ``max_workers``. Lines starting with ``#`` are comments.
+
+.. code:: toml
+
+    [scheduler]
+    policy_engine_type = "waterfall_v1"
+    policy_content = """
+    # priority, manager_id_prefix, max_workers
+    # Use local workers first (cheap, low latency)
+    1, NAT, 8
+    # Overflow to ECS when local capacity is exhausted
+    2, ECS, 50
+    """
+
+Rules reference worker manager ID prefixes. At runtime, each worker manager generates a full ID like ``NAT|<pid>``; the prefix ``NAT`` matches any manager whose ID starts with ``NAT``. Multiple managers can share the same prefix and are governed by the same rule.
 
 
 Worker Manager Protocol

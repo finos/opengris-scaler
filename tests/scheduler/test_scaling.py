@@ -47,34 +47,6 @@ from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
 
-def _run_native_worker_manager(scheduler_address: str, max_workers: int = 4) -> None:
-    """Construct a NativeWorkerManager and run it. Runs in a separate process."""
-    manager = NativeWorkerManager(
-        NativeWorkerManagerConfig(
-            worker_manager_config=WorkerManagerConfig(
-                scheduler_address=ZMQConfig.from_string(scheduler_address),
-                object_storage_address=None,
-                max_workers=max_workers,
-            ),
-            event_loop="builtin",
-            worker_io_threads=DEFAULT_IO_THREADS,
-            worker_config=WorkerConfig(
-                per_worker_capabilities=WorkerCapabilities({}),
-                per_worker_task_queue_size=10,
-                heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
-                task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
-                death_timeout_seconds=DEFAULT_WORKER_DEATH_TIMEOUT,
-                garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
-                trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
-                hard_processor_suspend=DEFAULT_HARD_PROCESSOR_SUSPEND,
-            ),
-            logging_config=LoggingConfig(paths=("/dev/stdout",), level="INFO", config_file=None),
-        )
-    )
-
-    manager.run()
-
-
 class TestScaling(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
@@ -176,38 +148,6 @@ class TestScaling(unittest.TestCase):
         adapter_process.join()
 
 
-def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
-    """Helper to create a mock Task with specified capabilities."""
-    client_id = ClientID.generate_client_id()
-    return Task.new_msg(
-        task_id=task_id,
-        source=client_id,
-        metadata=b"",
-        func_object_id=ObjectID.generate_object_id(client_id),
-        function_args=[],
-        capabilities=capabilities,
-    )
-
-
-def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> WorkerHeartbeat:
-    """Helper to create a mock WorkerHeartbeat with specified capabilities."""
-    return WorkerHeartbeat.new_msg(
-        agent=Resource.new_msg(cpu=1, rss=1000000),
-        rss_free=500000,
-        queue_size=10,
-        queued_tasks=queued_tasks,
-        latency_us=100,
-        task_lock=False,
-        processors=[],
-        capabilities=capabilities,
-    )
-
-
-def _create_worker_manager_heartbeat(max_worker_groups: int = 10) -> WorkerManagerHeartbeat:
-    """Helper to create a mock WorkerManagerHeartbeat."""
-    return WorkerManagerHeartbeat.new_msg(max_worker_groups=max_worker_groups, workers_per_group=1, capabilities={})
-
-
 class TestCapabilityScalingPolicy(unittest.TestCase):
     """Unit tests for CapabilityScalingPolicy with stateless interface."""
 
@@ -227,7 +167,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         worker_manager_heartbeat = _create_worker_manager_heartbeat()
 
         commands = self.policy.get_scaling_commands(
-            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities
+            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         self.assertEqual(len(commands), 1)
@@ -245,7 +185,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         worker_manager_heartbeat = _create_worker_manager_heartbeat()
 
         commands = self.policy.get_scaling_commands(
-            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities
+            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         # Should not return any start commands
@@ -267,7 +207,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         worker_manager_heartbeat = _create_worker_manager_heartbeat()
 
         commands = self.policy.get_scaling_commands(
-            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities
+            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         self.assertEqual(len(commands), 1)
@@ -287,7 +227,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
 
         # Should return 2 start commands (one for each capability set)
         commands = self.policy.get_scaling_commands(
-            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities
+            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         start_commands = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkerGroup]
@@ -310,7 +250,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         worker_manager_heartbeat = _create_worker_manager_heartbeat()
 
         commands = self.policy.get_scaling_commands(
-            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities
+            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         # No StartWorkerGroup command should be returned
@@ -326,7 +266,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         worker_manager_heartbeat = _create_worker_manager_heartbeat()
 
         commands = self.policy.get_scaling_commands(
-            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities
+            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         # Should start a worker group with empty capabilities
@@ -353,7 +293,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         worker_manager_heartbeat = _create_worker_manager_heartbeat()
 
         commands1 = self.policy.get_scaling_commands(
-            information_snapshot1, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities
+            information_snapshot1, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
         )
 
         self.assertEqual(len(commands1), 1)
@@ -371,7 +311,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         information_snapshot2 = InformationSnapshot(tasks={task2_id: task2}, workers={})
 
         commands2 = self.policy.get_scaling_commands(
-            information_snapshot2, worker_manager_heartbeat, updated_groups, updated_caps
+            information_snapshot2, worker_manager_heartbeat, updated_groups, updated_caps, {}
         )
 
         # No StartWorkerGroup command should be returned
@@ -447,3 +387,63 @@ class TestFixedElasticScaling(unittest.TestCase):
 
         secondary_adapter_process.terminate()
         secondary_adapter_process.join()
+
+
+def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
+    client_id = ClientID.generate_client_id()
+    return Task.new_msg(
+        task_id=task_id,
+        source=client_id,
+        metadata=b"",
+        func_object_id=ObjectID.generate_object_id(client_id),
+        function_args=[],
+        capabilities=capabilities,
+    )
+
+
+def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> WorkerHeartbeat:
+    return WorkerHeartbeat.new_msg(
+        agent=Resource.new_msg(cpu=1, rss=1000000),
+        rss_free=500000,
+        queue_size=10,
+        queued_tasks=queued_tasks,
+        latency_us=100,
+        task_lock=False,
+        processors=[],
+        capabilities=capabilities,
+    )
+
+
+def _create_worker_manager_heartbeat(
+    max_worker_groups: int = 10, worker_manager_id: bytes = b""
+) -> WorkerManagerHeartbeat:
+    return WorkerManagerHeartbeat.new_msg(
+        max_worker_groups=max_worker_groups, workers_per_group=1, capabilities={}, worker_manager_id=worker_manager_id
+    )
+
+
+def _run_native_worker_manager(scheduler_address: str, max_workers: int = 4) -> None:
+    manager = NativeWorkerManager(
+        NativeWorkerManagerConfig(
+            worker_manager_config=WorkerManagerConfig(
+                scheduler_address=ZMQConfig.from_string(scheduler_address),
+                object_storage_address=None,
+                max_workers=max_workers,
+            ),
+            event_loop="builtin",
+            worker_io_threads=DEFAULT_IO_THREADS,
+            worker_config=WorkerConfig(
+                per_worker_capabilities=WorkerCapabilities({}),
+                per_worker_task_queue_size=10,
+                heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+                task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
+                death_timeout_seconds=DEFAULT_WORKER_DEATH_TIMEOUT,
+                garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
+                trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
+                hard_processor_suspend=DEFAULT_HARD_PROCESSOR_SUSPEND,
+            ),
+            logging_config=LoggingConfig(paths=("/dev/stdout",), level="INFO", config_file=None),
+        )
+    )
+
+    manager.run()

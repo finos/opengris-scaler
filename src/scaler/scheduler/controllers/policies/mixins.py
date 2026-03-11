@@ -3,7 +3,11 @@ from typing import Dict, List, Optional, Set
 
 from scaler.protocol.python.message import InformationSnapshot, Task, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
+    WorkerGroupCapabilities,
+    WorkerGroupState,
+    WorkerManagerSnapshot,
+)
 from scaler.utility.identifiers import TaskID, WorkerID
 
 
@@ -51,6 +55,7 @@ class ScalerPolicy(metaclass=abc.ABCMeta):
         worker_manager_heartbeat: WorkerManagerHeartbeat,
         worker_groups: WorkerGroupState,
         worker_group_capabilities: WorkerGroupCapabilities,
+        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         raise NotImplementedError()
 

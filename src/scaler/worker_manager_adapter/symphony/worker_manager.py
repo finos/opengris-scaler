@@ -34,6 +34,7 @@ class SymphonyWorkerManager:
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._service_name = config.service_name
         self._max_workers = config.worker_manager_config.max_workers
+        self._worker_manager_id = f"SYM|{os.getpid()}".encode()
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
         self._io_threads = config.worker_io_threads
         self._task_queue_size = config.worker_config.per_worker_task_queue_size
@@ -165,6 +166,7 @@ class SymphonyWorkerManager:
                 max_worker_groups=self._max_workers,
                 workers_per_group=self._workers_per_group,
                 capabilities=self._capabilities,
+                worker_manager_id=self._worker_manager_id,
             )
         )
 

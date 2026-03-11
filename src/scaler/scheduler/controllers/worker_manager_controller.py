@@ -19,6 +19,7 @@ from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
     WorkerGroupID,
     WorkerGroupInfo,
     WorkerGroupState,
+    WorkerManagerSnapshot,
 )
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.mixins import Looper, Reporter
@@ -63,8 +64,11 @@ class WorkerManagerController(Looper, Reporter):
         worker_groups = {gid: info.worker_ids for gid, info in worker_manager_groups.items()}
         worker_group_capabilities = {gid: info.capabilities for gid, info in worker_manager_groups.items()}
 
+        # Build cross-manager snapshots from all known managers
+        worker_manager_snapshots = self._build_manager_snapshots()
+
         commands = self._policy_controller.get_scaling_commands(
-            information_snapshot, heartbeat, worker_groups, worker_group_capabilities
+            information_snapshot, heartbeat, worker_groups, worker_group_capabilities, worker_manager_snapshots
         )
 
         for command in commands:
@@ -107,6 +111,22 @@ class WorkerManagerController(Looper, Reporter):
     async def _send_command(self, source: bytes, command: WorkerManagerCommand):
         self._pending_commands[source] = command
         await self._binder.send(source, command)
+
+    def _build_manager_snapshots(self) -> Dict[bytes, WorkerManagerSnapshot]:
+        """Build cross-manager snapshots from all known managers, keyed by worker_manager_id."""
+        snapshots: Dict[bytes, WorkerManagerSnapshot] = {}
+        for source, (last_seen, heartbeat) in self._manager_alive_since.items():
+            manager_id = heartbeat.worker_manager_id
+            if not manager_id:
+                continue
+            manager_groups = self._manager_worker_groups.get(source, {})
+            snapshots[manager_id] = WorkerManagerSnapshot(
+                worker_manager_id=manager_id,
+                max_worker_groups=heartbeat.max_worker_groups,
+                worker_group_count=len(manager_groups),
+                last_seen_s=last_seen,
+            )
+        return snapshots
 
     def _build_snapshot(self) -> InformationSnapshot:
         tasks = self._task_controller._task_id_to_task  # type: ignore # noqa

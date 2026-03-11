@@ -365,9 +365,13 @@ class WorkerManagerHeartbeat(Message):
     def capabilities(self) -> Dict[str, int]:
         return {capability.name: capability.value for capability in self._msg.capabilities}
 
+    @property
+    def worker_manager_id(self) -> bytes:
+        return self._msg.workerManagerID
+
     @staticmethod
     def new_msg(
-        max_worker_groups: int, workers_per_group: int, capabilities: Dict[str, int]
+        max_worker_groups: int, workers_per_group: int, capabilities: Dict[str, int], worker_manager_id: bytes
     ) -> "WorkerManagerHeartbeat":
         return WorkerManagerHeartbeat(
             _message.WorkerManagerHeartbeat(
@@ -376,6 +380,7 @@ class WorkerManagerHeartbeat(Message):
                 capabilities=[
                     TaskCapability.new_msg(name, value).get_message() for name, value in capabilities.items()
                 ],
+                workerManagerID=worker_manager_id,
             )
         )
 

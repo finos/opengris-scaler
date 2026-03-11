@@ -1,9 +1,13 @@
 import abc
-from typing import List
+from typing import Dict, List
 
 from scaler.protocol.python.message import InformationSnapshot, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
+    WorkerGroupCapabilities,
+    WorkerGroupState,
+    WorkerManagerSnapshot,
+)
 
 
 class ScalingPolicy:
@@ -21,6 +25,7 @@ class ScalingPolicy:
         worker_manager_heartbeat: WorkerManagerHeartbeat,
         worker_groups: WorkerGroupState,
         worker_group_capabilities: WorkerGroupCapabilities,
+        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         """
         Pure function: state in, commands out.

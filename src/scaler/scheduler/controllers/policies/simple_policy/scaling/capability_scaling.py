@@ -14,6 +14,7 @@ from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
     WorkerGroupCapabilities,
     WorkerGroupID,
     WorkerGroupState,
+    WorkerManagerSnapshot,
 )
 from scaler.utility.identifiers import WorkerID
 
@@ -40,6 +41,7 @@ class CapabilityScalingPolicy(ScalingPolicy):
         worker_manager_heartbeat: WorkerManagerHeartbeat,
         worker_groups: WorkerGroupState,
         worker_group_capabilities: WorkerGroupCapabilities,
+        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         # Derive worker_groups_by_capability from worker_groups + worker_group_capabilities
         worker_groups_by_capability = self._derive_worker_groups_by_capability(worker_groups, worker_group_capabilities)
@@ -176,7 +178,6 @@ class CapabilityScalingPolicy(ScalingPolicy):
             if not worker_group_dict:
                 continue
 
-            # Find tasks that these workers can handle
             task_count = 0
             for task_capability_keys, tasks in tasks_by_capability.items():
                 if task_capability_keys <= capability_keys:
@@ -190,7 +191,6 @@ class CapabilityScalingPolicy(ScalingPolicy):
 
             task_ratio = task_count / worker_count
             if task_ratio < self._lower_task_ratio:
-                # Find the worker group with the least queued tasks
                 worker_group_task_counts: Dict[WorkerGroupID, int] = {}
                 for worker_group_id, worker_ids in worker_group_dict.items():
                     total_queued = sum(
@@ -203,17 +203,13 @@ class CapabilityScalingPolicy(ScalingPolicy):
                 if not worker_group_task_counts:
                     continue
 
-                # Select the worker group with the fewest queued tasks to shut down
                 least_busy_group_id = min(worker_group_task_counts, key=lambda gid: worker_group_task_counts[gid])
 
-                # Don't scale down if there are pending tasks and this would leave no capable workers
                 workers_in_group = len(worker_group_dict.get(least_busy_group_id, []))
                 remaining_worker_count = worker_count - workers_in_group
                 if task_count > 0 and remaining_worker_count == 0:
-                    # This is the last worker group that can handle these tasks - don't shut it down
                     continue
                 if remaining_worker_count > 0 and (task_count / remaining_worker_count) > self._upper_task_ratio:
-                    # Shutting down this group would cause task ratio to exceed upper threshold and scale-up again
                     continue
 
                 commands.append(

@@ -35,7 +35,6 @@ from scaler.scheduler.controllers.client_controller import VanillaClientControll
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.graph_controller import VanillaGraphTaskController
 from scaler.scheduler.controllers.information_controller import VanillaInformationController
-from scaler.scheduler.controllers.mixins import PolicyController
 from scaler.scheduler.controllers.object_controller import VanillaObjectController
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
 from scaler.scheduler.controllers.vanilla_policy_controller import VanillaPolicyController
@@ -96,7 +95,7 @@ class Scheduler:
         )
         logging.info(f"{self.__class__.__name__}: listen to scheduler monitor address {monitor_address.to_address()}")
 
-        self._policy_controller: PolicyController = VanillaPolicyController(
+        self._policy_controller = VanillaPolicyController(
             config.policy.policy_engine_type, config.policy.policy_content
         )
 

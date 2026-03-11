@@ -4,7 +4,11 @@ from scaler.protocol.python.message import InformationSnapshot, Task, WorkerMana
 from scaler.protocol.python.status import ScalingManagerStatus
 from scaler.scheduler.controllers.mixins import PolicyController
 from scaler.scheduler.controllers.policies.library.utility import create_policy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
+    WorkerGroupCapabilities,
+    WorkerGroupState,
+    WorkerManagerSnapshot,
+)
 from scaler.utility.identifiers import TaskID, WorkerID
 
 
@@ -45,9 +49,14 @@ class VanillaPolicyController(PolicyController):
         worker_manager_heartbeat: WorkerManagerHeartbeat,
         worker_groups: WorkerGroupState,
         worker_group_capabilities: WorkerGroupCapabilities,
+        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         return self._policy.get_scaling_commands(
-            information_snapshot, worker_manager_heartbeat, worker_groups, worker_group_capabilities
+            information_snapshot,
+            worker_manager_heartbeat,
+            worker_groups,
+            worker_group_capabilities,
+            worker_manager_snapshots,
         )
 
     def get_scaling_status(self, worker_groups: WorkerGroupState) -> ScalingManagerStatus:

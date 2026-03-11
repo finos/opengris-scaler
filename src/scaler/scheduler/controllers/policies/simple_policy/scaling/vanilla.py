@@ -13,6 +13,7 @@ from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
     WorkerGroupCapabilities,
     WorkerGroupID,
     WorkerGroupState,
+    WorkerManagerSnapshot,
 )
 
 
@@ -31,6 +32,7 @@ class VanillaScalingPolicy(ScalingPolicy):
         worker_manager_heartbeat: WorkerManagerHeartbeat,
         worker_groups: WorkerGroupState,
         worker_group_capabilities: WorkerGroupCapabilities,
+        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         if not information_snapshot.workers:
             if information_snapshot.tasks:
