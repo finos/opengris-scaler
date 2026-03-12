@@ -1,10 +1,8 @@
-from scaler.cluster.cluster import Cluster
-from scaler.config.section.cluster import ClusterConfig
-from scaler.utility.event_loop import register_event_loop
+from scaler.entry_points.worker_manager_baremetal_fixed_native import main as _main
 
 
 def main():
-    cluster_config = ClusterConfig.parse("Scaler Standalone Compute Cluster", "cluster")
-    register_event_loop(cluster_config.event_loop)
-    cluster = Cluster(cluster_config)
-    cluster.run()
+    _main(section="cluster")
+
+
+__all__ = ["main"]

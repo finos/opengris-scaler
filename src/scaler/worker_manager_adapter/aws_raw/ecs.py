@@ -4,7 +4,7 @@ import os
 import signal
 import uuid
 from dataclasses import dataclass
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Tuple
 
 import boto3
 import zmq
@@ -22,7 +22,6 @@ from scaler.protocol.python.message import (
     WorkerManagerHeartbeatEcho,
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
-from scaler.utility.identifiers import WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager_adapter.common import WorkerGroupID, format_capabilities
 
@@ -31,7 +30,6 @@ Status = WorkerManagerCommandResponse.Status
 
 @dataclass
 class WorkerGroupInfo:
-    worker_ids: Set[WorkerID]
     task_arn: str
 
 
@@ -152,7 +150,6 @@ class ECSWorkerManager:
             cmd_res = WorkerManagerCommandType.StartWorkerGroup
             worker_group_id, response_status = await self.start_worker_group()
             if response_status == Status.Success:
-                worker_ids = [bytes(wid) for wid in self._worker_groups[worker_group_id].worker_ids]
                 capabilities = self._capabilities
         elif cmd_type == WorkerManagerCommandType.ShutdownWorkerGroup:
             cmd_res = WorkerManagerCommandType.ShutdownWorkerGroup
@@ -226,11 +223,9 @@ class ECSWorkerManager:
         if len(self._worker_groups) >= self._max_instances != -1:
             return b"", Status.WorkerGroupTooMuch
 
-        worker_names = [f"ECS|{uuid.uuid4().hex}" for _ in range(self._ecs_task_cpu)]
         command = (
             f"scaler_cluster {self._address.to_address()} "
-            f"--num-of-workers {self._ecs_task_cpu} "
-            f"--worker-names \"{','.join(worker_names)}\" "
+            f"--max-workers {self._ecs_task_cpu} "
             f"--per-worker-task-queue-size {self._per_worker_task_queue_size} "
             f"--heartbeat-interval-seconds {self._heartbeat_interval_seconds} "
             f"--task-timeout-seconds {self._task_timeout_seconds} "
@@ -281,9 +276,7 @@ class ECSWorkerManager:
 
         task_arn = tasks[0]["taskArn"]
         worker_group_id = f"ecs-{uuid.uuid4().hex}".encode()
-        self._worker_groups[worker_group_id] = WorkerGroupInfo(
-            worker_ids={WorkerID.generate_worker_id(worker_name) for worker_name in worker_names}, task_arn=task_arn
-        )
+        self._worker_groups[worker_group_id] = WorkerGroupInfo(task_arn=task_arn)
         return worker_group_id, Status.Success
 
     async def shutdown_worker_group(self, worker_group_id: WorkerGroupID) -> Status:

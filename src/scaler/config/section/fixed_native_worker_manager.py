@@ -1,3 +1,4 @@
+import argparse
 import dataclasses
 from typing import Optional
 
@@ -24,6 +25,11 @@ class FixedNativeWorkerManagerConfig(ConfigClass):
         default=defaults.DEFAULT_IO_THREADS,
         metadata=dict(short="-wit", help="set the number of io threads for io backend per worker"),
     )
+
+    @classmethod
+    def configure_parser(cls, parser) -> None:
+        super().configure_parser(parser)
+        parser.add_argument("-n", "--num-of-workers", dest="max_workers", type=int, help=argparse.SUPPRESS)
 
     def __post_init__(self) -> None:
         if self.worker_io_threads <= 0:

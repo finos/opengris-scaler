@@ -169,7 +169,7 @@ Core Concepts
 
 * **Naming Convention**: The keys in the TOML file must match the long-form command-line arguments. The rule is to replace any hyphens (``-``) with underscores (``_``).
 
-    * For example, the flag ``--num-of-workers`` becomes the TOML key ``num_of_workers``.
+    * For example, the flag ``--max-workers`` becomes the TOML key ``max_workers``.
     * One can discover all available keys by running any command with the ``-h`` or ``--help`` flag.
 
 Supported Components and Section Names
@@ -227,7 +227,7 @@ Here is an example of a single ``example_config.toml`` file that configures mult
     policy_content = "allocate=even_load; scaling=no"
 
     [cluster]
-    num_of_workers = 8
+    max_workers = 8
     per_worker_capabilities = "linux,cpu=8"
     task_timeout_seconds = 600
 
@@ -253,8 +253,8 @@ You can override any value from the TOML file by providing it as a command-line 
 
 .. code-block:: bash
 
-    # The --num-of-workers flag will take precedence over the [cluster] section
-    scaler_cluster tcp://127.0.0.1:6378 --config example_config.toml --num-of-workers 12
+    # The --max-workers flag will take precedence over the [cluster] section
+    scaler_cluster tcp://127.0.0.1:6378 --config example_config.toml --max-workers 12
 
 The cluster will start with **12 workers**, but all other settings (like ``task_timeout_seconds``) will still be loaded from the ``[cluster]`` section of ``example_config.toml``.
 

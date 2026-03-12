@@ -140,22 +140,6 @@ Here we use localhost addresses for demonstration, however the scheduler and wor
     scaler_cluster -n 10 tcp://127.0.0.1:8516
 
 
-.. code:: console
-
-    [INFO]2023-03-19 12:19:19-0400: logging to ('/dev/stdout',)
-    [INFO]2023-03-19 12:19:19-0400: ClusterProcess: starting 10 workers, heartbeat_interval_seconds=2, object_retention_seconds=3600
-    [INFO]2023-03-19 12:19:19-0400: Worker[0] started
-    [INFO]2023-03-19 12:19:19-0400: Worker[1] started
-    [INFO]2023-03-19 12:19:19-0400: Worker[2] started
-    [INFO]2023-03-19 12:19:19-0400: Worker[3] started
-    [INFO]2023-03-19 12:19:19-0400: Worker[4] started
-    [INFO]2023-03-19 12:19:19-0400: Worker[5] started
-    [INFO]2023-03-19 12:19:19-0400: Worker[6] started
-    [INFO]2023-03-19 12:19:19-0400: Worker[7] started
-    [INFO]2023-03-19 12:19:19-0400: Worker[8] started
-    [INFO]2023-03-19 12:19:19-0400: Worker[9] started
-
-
 From here, connect the Python Client and begin submitting tasks:
 
 .. code:: python

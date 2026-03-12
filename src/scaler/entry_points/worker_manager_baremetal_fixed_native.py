@@ -1,13 +1,13 @@
+import signal
+
 from scaler.config.section.fixed_native_worker_manager import FixedNativeWorkerManagerConfig
 from scaler.utility.event_loop import register_event_loop
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager_adapter.baremetal.fixed_native import FixedNativeWorkerManager
 
 
-def main():
-    fixed_native_manager_config = FixedNativeWorkerManagerConfig.parse(
-        "Scaler Fixed Native Worker Manager", "fixed_native_worker_manager"
-    )
+def main(section: str = "fixed_native_worker_manager"):
+    fixed_native_manager_config = FixedNativeWorkerManagerConfig.parse("Scaler Fixed Native Worker Manager", section)
 
     register_event_loop(fixed_native_manager_config.event_loop)
 
@@ -18,6 +18,12 @@ def main():
     )
 
     fixed_native_worker_manager = FixedNativeWorkerManager(fixed_native_manager_config)
+
+    def handle_signal(signum, frame):
+        fixed_native_worker_manager.shutdown()
+
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
 
     fixed_native_worker_manager.start()
     fixed_native_worker_manager.join()

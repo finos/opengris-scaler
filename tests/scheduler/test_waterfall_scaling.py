@@ -30,22 +30,22 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
     def setUp(self):
         setup_logger()
         self.rules = [
-            WaterfallRule(priority=1, worker_type=b"adapter_a", max_task_concurrency=10),
-            WaterfallRule(priority=2, worker_type=b"adapter_b", max_task_concurrency=20),
+            WaterfallRule(priority=1, worker_type=b"manager_a", max_task_concurrency=10),
+            WaterfallRule(priority=2, worker_type=b"manager_b", max_task_concurrency=20),
         ]
         self.policy = WaterfallScalingPolicy(self.rules)
 
     def test_single_priority_scale_up(self):
-        """Single adapter with tasks and no workers should scale up."""
-        rules = [WaterfallRule(priority=1, worker_type=b"adapter_a", max_task_concurrency=10)]
+        """Single manager with tasks and no workers should scale up."""
+        rules = [WaterfallRule(priority=1, worker_type=b"manager_a", max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
 
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"adapter_a", max_worker_groups=10)
+        heartbeat = _create_worker_manager_heartbeat(b"manager_a", max_worker_groups=10)
         worker_groups: WorkerGroupState = {}
         worker_group_caps: WorkerGroupCapabilities = {}
-        manager_snapshots = {b"adapter_a": _create_manager_snapshot(b"adapter_a", max_groups=10, group_count=0)}
+        manager_snapshots = {b"manager_a": _create_manager_snapshot(b"manager_a", max_groups=10, group_count=0)}
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, worker_groups, worker_group_caps, manager_snapshots)
 
@@ -53,47 +53,47 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkerGroup)
 
     def test_priority_cascade_higher_priority_fills_first(self):
-        """Lower-priority adapter should not scale up while higher-priority has capacity."""
+        """Lower-priority manager should not scale up while higher-priority has capacity."""
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         worker_groups: WorkerGroupState = {}
         worker_group_caps: WorkerGroupCapabilities = {}
 
-        # Adapter A (priority 1) has capacity remaining
+        # Manager A (priority 1) has capacity remaining
         manager_snapshots = {
-            b"adapter_a": _create_manager_snapshot(b"adapter_a", max_groups=10, group_count=3),
-            b"adapter_b": _create_manager_snapshot(b"adapter_b", max_groups=20, group_count=0),
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_groups=10, group_count=3),
+            b"manager_b": _create_manager_snapshot(b"manager_b", max_groups=20, group_count=0),
         }
 
-        # Heartbeat from adapter_a: should scale up
-        heartbeat_a = _create_worker_manager_heartbeat(b"adapter_a", max_worker_groups=10)
+        # Heartbeat from manager_a: should scale up
+        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_worker_groups=10)
         commands_a = self.policy.get_scaling_commands(
             snapshot, heartbeat_a, worker_groups, worker_group_caps, manager_snapshots
         )
         self.assertEqual(len(commands_a), 1)
         self.assertEqual(commands_a[0].command, WorkerManagerCommandType.StartWorkerGroup)
 
-        # Heartbeat from adapter_b: should NOT scale up (adapter_a still has room)
-        heartbeat_b = _create_worker_manager_heartbeat(b"adapter_b", max_worker_groups=20)
+        # Heartbeat from manager_b: should NOT scale up (manager_a still has room)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_worker_groups=20)
         commands_b = self.policy.get_scaling_commands(
             snapshot, heartbeat_b, worker_groups, worker_group_caps, manager_snapshots
         )
         self.assertEqual(len(commands_b), 0)
 
     def test_overflow_to_lower_priority(self):
-        """Lower-priority adapter should scale up when higher-priority is at capacity."""
+        """Lower-priority manager should scale up when higher-priority is at capacity."""
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         worker_groups: WorkerGroupState = {}
         worker_group_caps: WorkerGroupCapabilities = {}
 
-        # Adapter A at full capacity
+        # Manager A at full capacity
         manager_snapshots = {
-            b"adapter_a": _create_manager_snapshot(b"adapter_a", max_groups=10, group_count=10),
-            b"adapter_b": _create_manager_snapshot(b"adapter_b", max_groups=20, group_count=0),
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_groups=10, group_count=10),
+            b"manager_b": _create_manager_snapshot(b"manager_b", max_groups=20, group_count=0),
         }
 
-        heartbeat_b = _create_worker_manager_heartbeat(b"adapter_b", max_worker_groups=20)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_worker_groups=20)
         commands = self.policy.get_scaling_commands(
             snapshot, heartbeat_b, worker_groups, worker_group_caps, manager_snapshots
         )
@@ -101,17 +101,17 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(len(commands), 1)
         self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkerGroup)
 
-    def test_offline_adapter_fallback(self):
-        """Lower-priority adapter should scale up when higher-priority is offline (absent from snapshots)."""
+    def test_offline_manager_fallback(self):
+        """Lower-priority manager should scale up when higher-priority is offline (absent from snapshots)."""
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         worker_groups: WorkerGroupState = {}
         worker_group_caps: WorkerGroupCapabilities = {}
 
-        # Adapter A is offline (cleaned up by WorkerManagerController, not in snapshots)
-        manager_snapshots = {b"adapter_b": _create_manager_snapshot(b"adapter_b", max_groups=20, group_count=0)}
+        # Manager A is offline (cleaned up by WorkerManagerController, not in snapshots)
+        manager_snapshots = {b"manager_b": _create_manager_snapshot(b"manager_b", max_groups=20, group_count=0)}
 
-        heartbeat_b = _create_worker_manager_heartbeat(b"adapter_b", max_worker_groups=20)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_worker_groups=20)
         commands = self.policy.get_scaling_commands(
             snapshot, heartbeat_b, worker_groups, worker_group_caps, manager_snapshots
         )
@@ -120,39 +120,39 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkerGroup)
 
     def test_reverse_shutdown_order(self):
-        """Higher-priority adapter should not shut down while lower-priority still has workers."""
+        """Higher-priority manager should not shut down while lower-priority still has workers."""
         workers = _create_workers(5, queued_tasks=0)
         snapshot = InformationSnapshot(tasks={}, workers=workers)
         worker_group_caps: WorkerGroupCapabilities = {}
 
-        # Both adapters have workers
+        # Both managers have workers
         manager_snapshots = {
-            b"adapter_a": _create_manager_snapshot(b"adapter_a", max_groups=10, group_count=3),
-            b"adapter_b": _create_manager_snapshot(b"adapter_b", max_groups=20, group_count=2),
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_groups=10, group_count=3),
+            b"manager_b": _create_manager_snapshot(b"manager_b", max_groups=20, group_count=2),
         }
 
-        # Heartbeat from adapter_b (lower priority): should shut down
+        # Heartbeat from manager_b (lower priority): should shut down
         worker_groups_b: WorkerGroupState = {b"wg-b-1": [WorkerID(b"worker-3")], b"wg-b-2": [WorkerID(b"worker-4")]}
-        heartbeat_b = _create_worker_manager_heartbeat(b"adapter_b", max_worker_groups=20)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_worker_groups=20)
         commands_b = self.policy.get_scaling_commands(
             snapshot, heartbeat_b, worker_groups_b, worker_group_caps, manager_snapshots
         )
         self.assertEqual(len(commands_b), 1)
         self.assertEqual(commands_b[0].command, WorkerManagerCommandType.ShutdownWorkerGroup)
 
-        # Heartbeat from adapter_a (higher priority): should NOT shut down (B still has workers)
+        # Heartbeat from manager_a (higher priority): should NOT shut down (B still has workers)
         worker_groups_a: WorkerGroupState = {
             b"wg-a-1": [WorkerID(b"worker-0")],
             b"wg-a-2": [WorkerID(b"worker-1")],
             b"wg-a-3": [WorkerID(b"worker-2")],
         }
-        heartbeat_a = _create_worker_manager_heartbeat(b"adapter_a", max_worker_groups=10)
+        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_worker_groups=10)
         commands_a = self.policy.get_scaling_commands(
             snapshot, heartbeat_a, worker_groups_a, worker_group_caps, manager_snapshots
         )
         self.assertEqual(len(commands_a), 0)
 
-    def test_adapter_not_in_config(self):
+    def test_manager_not_in_config(self):
         """Manager with unknown worker_type should receive no commands."""
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
@@ -170,7 +170,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
     def test_effective_capacity_min_config_and_heartbeat(self):
         """Effective capacity should be min(config max_task_concurrency, heartbeat max_worker_groups)."""
         # Rule says max_task_concurrency=5, heartbeat says max_worker_groups=3
-        rules = [WaterfallRule(priority=1, worker_type=b"adapter_a", max_task_concurrency=5)]
+        rules = [WaterfallRule(priority=1, worker_type=b"manager_a", max_task_concurrency=5)]
         policy = WaterfallScalingPolicy(rules)
 
         tasks = _create_tasks(5)
@@ -183,9 +183,9 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
             b"wg-3": [WorkerID(b"w3")],
         }
         worker_group_caps: WorkerGroupCapabilities = {}
-        manager_snapshots = {b"adapter_a": _create_manager_snapshot(b"adapter_a", max_groups=3, group_count=3)}
+        manager_snapshots = {b"manager_a": _create_manager_snapshot(b"manager_a", max_groups=3, group_count=3)}
 
-        heartbeat = _create_worker_manager_heartbeat(b"adapter_a", max_worker_groups=3)
+        heartbeat = _create_worker_manager_heartbeat(b"manager_a", max_worker_groups=3)
         commands = policy.get_scaling_commands(snapshot, heartbeat, worker_groups, worker_group_caps, manager_snapshots)
 
         # Should NOT scale up: at effective capacity (min(5, 3) = 3)
@@ -196,9 +196,9 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         snapshot = InformationSnapshot(tasks={}, workers={})
         worker_groups: WorkerGroupState = {}
         worker_group_caps: WorkerGroupCapabilities = {}
-        manager_snapshots = {b"adapter_a": _create_manager_snapshot(b"adapter_a")}
+        manager_snapshots = {b"manager_a": _create_manager_snapshot(b"manager_a")}
 
-        heartbeat = _create_worker_manager_heartbeat(b"adapter_a")
+        heartbeat = _create_worker_manager_heartbeat(b"manager_a")
         commands = self.policy.get_scaling_commands(
             snapshot, heartbeat, worker_groups, worker_group_caps, manager_snapshots
         )
@@ -206,10 +206,10 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(len(commands), 0)
 
     def test_same_priority_concurrent_scaling(self):
-        """Two adapters at same priority should both be able to scale up concurrently."""
+        """Two managers at same priority should both be able to scale up concurrently."""
         rules = [
-            WaterfallRule(priority=1, worker_type=b"adapter_a", max_task_concurrency=10),
-            WaterfallRule(priority=1, worker_type=b"adapter_b", max_task_concurrency=10),
+            WaterfallRule(priority=1, worker_type=b"manager_a", max_task_concurrency=10),
+            WaterfallRule(priority=1, worker_type=b"manager_b", max_task_concurrency=10),
         ]
         policy = WaterfallScalingPolicy(rules)
 
@@ -218,19 +218,19 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         worker_groups: WorkerGroupState = {}
         worker_group_caps: WorkerGroupCapabilities = {}
         manager_snapshots = {
-            b"adapter_a": _create_manager_snapshot(b"adapter_a", max_groups=10, group_count=0),
-            b"adapter_b": _create_manager_snapshot(b"adapter_b", max_groups=10, group_count=0),
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_groups=10, group_count=0),
+            b"manager_b": _create_manager_snapshot(b"manager_b", max_groups=10, group_count=0),
         }
 
         # Both should scale up
-        heartbeat_a = _create_worker_manager_heartbeat(b"adapter_a", max_worker_groups=10)
+        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_worker_groups=10)
         commands_a = policy.get_scaling_commands(
             snapshot, heartbeat_a, worker_groups, worker_group_caps, manager_snapshots
         )
         self.assertEqual(len(commands_a), 1)
         self.assertEqual(commands_a[0].command, WorkerManagerCommandType.StartWorkerGroup)
 
-        heartbeat_b = _create_worker_manager_heartbeat(b"adapter_b", max_worker_groups=10)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_worker_groups=10)
         commands_b = policy.get_scaling_commands(
             snapshot, heartbeat_b, worker_groups, worker_group_caps, manager_snapshots
         )
@@ -251,30 +251,30 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         }
         worker_group_caps: WorkerGroupCapabilities = {}
 
-        # No lower-priority adapters with workers
-        manager_snapshots = {b"adapter_a": _create_manager_snapshot(b"adapter_a", max_groups=10, group_count=2)}
+        # No lower-priority managers with workers
+        manager_snapshots = {b"manager_a": _create_manager_snapshot(b"manager_a", max_groups=10, group_count=2)}
 
-        rules = [WaterfallRule(priority=1, worker_type=b"adapter_a", max_task_concurrency=10)]
+        rules = [WaterfallRule(priority=1, worker_type=b"manager_a", max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
 
-        heartbeat = _create_worker_manager_heartbeat(b"adapter_a", max_worker_groups=10)
+        heartbeat = _create_worker_manager_heartbeat(b"manager_a", max_worker_groups=10)
         commands = policy.get_scaling_commands(snapshot, heartbeat, worker_groups, worker_group_caps, manager_snapshots)
 
         self.assertEqual(len(commands), 1)
         self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkerGroup)
         self.assertEqual(commands[0].worker_group_id, b"wg-idle")
 
-    def test_higher_priority_adapter_never_seen(self):
-        """If higher-priority adapter was never seen, lower-priority should scale up."""
+    def test_higher_priority_manager_never_seen(self):
+        """If higher-priority manager was never seen, lower-priority should scale up."""
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         worker_groups: WorkerGroupState = {}
         worker_group_caps: WorkerGroupCapabilities = {}
 
-        # Only adapter_b in snapshots, adapter_a never seen
-        manager_snapshots = {b"adapter_b": _create_manager_snapshot(b"adapter_b", max_groups=20, group_count=0)}
+        # Only manager_b in snapshots, manager_a never seen
+        manager_snapshots = {b"manager_b": _create_manager_snapshot(b"manager_b", max_groups=20, group_count=0)}
 
-        heartbeat_b = _create_worker_manager_heartbeat(b"adapter_b", max_worker_groups=20)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_worker_groups=20)
         commands = self.policy.get_scaling_commands(
             snapshot, heartbeat_b, worker_groups, worker_group_caps, manager_snapshots
         )
@@ -283,7 +283,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkerGroup)
 
     def test_shutdown_allowed_when_lower_priority_offline(self):
-        """Higher-priority adapter can shut down if lower-priority adapter is offline (absent from snapshots)."""
+        """Higher-priority manager can shut down if lower-priority manager is offline (absent from snapshots)."""
         workers = _create_workers(3, queued_tasks=0)
         snapshot = InformationSnapshot(tasks={}, workers=workers)
 
@@ -294,10 +294,10 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         }
         worker_group_caps: WorkerGroupCapabilities = {}
 
-        # Adapter B is offline (cleaned up by WorkerManagerController, not in snapshots)
-        manager_snapshots = {b"adapter_a": _create_manager_snapshot(b"adapter_a", max_groups=10, group_count=3)}
+        # Manager B is offline (cleaned up by WorkerManagerController, not in snapshots)
+        manager_snapshots = {b"manager_a": _create_manager_snapshot(b"manager_a", max_groups=10, group_count=3)}
 
-        heartbeat_a = _create_worker_manager_heartbeat(b"adapter_a", max_worker_groups=10)
+        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_worker_groups=10)
         commands = self.policy.get_scaling_commands(
             snapshot, heartbeat_a, worker_groups_a, worker_group_caps, manager_snapshots
         )
@@ -323,7 +323,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
             b"ECS|67890": _create_manager_snapshot(b"ECS|67890", max_groups=20, group_count=0),
         }
 
-        # Heartbeat from NAT adapter: should scale up (still has capacity)
+        # Heartbeat from NAT manager: should scale up (still has capacity)
         heartbeat_nat = _create_worker_manager_heartbeat(b"NAT|12345", max_worker_groups=10)
         commands_nat = policy.get_scaling_commands(
             snapshot, heartbeat_nat, worker_groups, worker_group_caps, manager_snapshots
@@ -331,14 +331,14 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(len(commands_nat), 1)
         self.assertEqual(commands_nat[0].command, WorkerManagerCommandType.StartWorkerGroup)
 
-        # Heartbeat from ECS adapter: should NOT scale up (NAT still has room)
+        # Heartbeat from ECS manager: should NOT scale up (NAT still has room)
         heartbeat_ecs = _create_worker_manager_heartbeat(b"ECS|67890", max_worker_groups=20)
         commands_ecs = policy.get_scaling_commands(
             snapshot, heartbeat_ecs, worker_groups, worker_group_caps, manager_snapshots
         )
         self.assertEqual(len(commands_ecs), 0)
 
-    def test_prefix_matching_multiple_adapters_same_prefix(self):
+    def test_prefix_matching_multiple_managers_same_prefix(self):
         """Multiple worker managers sharing a worker_type should all match the same rule."""
         rules = [
             WaterfallRule(priority=1, worker_type=b"NAT", max_task_concurrency=10),
@@ -351,14 +351,14 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         worker_groups: WorkerGroupState = {}
         worker_group_caps: WorkerGroupCapabilities = {}
 
-        # Two NAT adapters, both at capacity
+        # Two NAT managers, both at capacity
         manager_snapshots = {
             b"NAT|111": _create_manager_snapshot(b"NAT|111", max_groups=10, group_count=10),
             b"NAT|222": _create_manager_snapshot(b"NAT|222", max_groups=10, group_count=10),
             b"ECS|333": _create_manager_snapshot(b"ECS|333", max_groups=20, group_count=0),
         }
 
-        # ECS adapter should scale up since all NAT adapters are at capacity
+        # ECS manager should scale up since all NAT managers are at capacity
         heartbeat_ecs = _create_worker_manager_heartbeat(b"ECS|333", max_worker_groups=20)
         commands = policy.get_scaling_commands(
             snapshot, heartbeat_ecs, worker_groups, worker_group_caps, manager_snapshots
@@ -379,7 +379,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         worker_groups: WorkerGroupState = {}
         worker_group_caps: WorkerGroupCapabilities = {}
 
-        # One NAT adapter full, another still has room
+        # One NAT manager full, another still has room
         manager_snapshots = {
             b"NAT|111": _create_manager_snapshot(b"NAT|111", max_groups=10, group_count=10),
             b"NAT|222": _create_manager_snapshot(b"NAT|222", max_groups=10, group_count=5),
@@ -408,13 +408,13 @@ class TestWaterfallV1Policy(unittest.TestCase):
 
     def test_config_parsing_via_factory(self):
         """Verify the factory parses waterfall_v1 policy config correctly."""
-        policy = create_policy("waterfall_v1", "1,adapter_a,10\n2,adapter_b,20")
+        policy = create_policy("waterfall_v1", "1,manager_a,10\n2,manager_b,20")
         self.assertIsInstance(policy, WaterfallV1Policy)
 
     def test_config_parsing_with_comments(self):
         """Comments and blank lines should be ignored."""
         policy_content = "\n".join(
-            ["#priority,worker_type,max_task_concurrency", "1,adapter_a,10", "", "2,adapter_b,20  # overflow tier"]
+            ["#priority,worker_type,max_task_concurrency", "1,manager_a,10", "", "2,manager_b,20  # overflow tier"]
         )
         policy = WaterfallV1Policy(policy_content)
         self.assertIsInstance(policy, WaterfallV1Policy)
@@ -432,17 +432,17 @@ class TestWaterfallV1Policy(unittest.TestCase):
     def test_invalid_config_wrong_field_count(self):
         """Lines with wrong number of fields should raise ValueError."""
         with self.assertRaises(ValueError):
-            WaterfallV1Policy("1,adapter_a")
+            WaterfallV1Policy("1,manager_a")
 
     def test_invalid_config_non_integer_priority(self):
         """Non-integer priority should raise ValueError."""
         with self.assertRaises(ValueError):
-            WaterfallV1Policy("high,adapter_a,10")
+            WaterfallV1Policy("high,manager_a,10")
 
     def test_invalid_config_non_integer_max_task_concurrency(self):
         """Non-integer max_task_concurrency should raise ValueError."""
         with self.assertRaises(ValueError):
-            WaterfallV1Policy("1,adapter_a,many")
+            WaterfallV1Policy("1,manager_a,many")
 
     def test_invalid_config_empty_worker_type(self):
         """Empty worker_type should raise ValueError."""
@@ -451,27 +451,27 @@ class TestWaterfallV1Policy(unittest.TestCase):
 
     def test_policy_delegates_to_scaling_policy(self):
         """Policy controller should delegate scaling commands to its scaling policy."""
-        policy = WaterfallV1Policy("1,adapter_a,10\n2,adapter_b,20")
+        policy = WaterfallV1Policy("1,manager_a,10\n2,manager_b,20")
 
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         worker_groups: WorkerGroupState = {}
         worker_group_caps: WorkerGroupCapabilities = {}
 
-        # Adapter A heartbeat with manager snapshots showing A has capacity
-        heartbeat_a = _create_worker_manager_heartbeat(b"adapter_a", max_worker_groups=10)
-        manager_snapshots = {b"adapter_a": _create_manager_snapshot(b"adapter_a", max_groups=10, group_count=0)}
+        # Manager A heartbeat with manager snapshots showing A has capacity
+        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_worker_groups=10)
+        manager_snapshots = {b"manager_a": _create_manager_snapshot(b"manager_a", max_groups=10, group_count=0)}
         commands_a = policy.get_scaling_commands(
             snapshot, heartbeat_a, worker_groups, worker_group_caps, manager_snapshots
         )
         self.assertEqual(len(commands_a), 1)
         self.assertEqual(commands_a[0].command, WorkerManagerCommandType.StartWorkerGroup)
 
-        # Adapter B heartbeat: adapter A still has room, so B should NOT scale up
-        heartbeat_b = _create_worker_manager_heartbeat(b"adapter_b", max_worker_groups=20)
+        # Manager B heartbeat: manager A still has room, so B should NOT scale up
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_worker_groups=20)
         manager_snapshots_with_both = {
-            b"adapter_a": _create_manager_snapshot(b"adapter_a", max_groups=10, group_count=0),
-            b"adapter_b": _create_manager_snapshot(b"adapter_b", max_groups=20, group_count=0),
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_groups=10, group_count=0),
+            b"manager_b": _create_manager_snapshot(b"manager_b", max_groups=20, group_count=0),
         }
         commands_b = policy.get_scaling_commands(
             snapshot, heartbeat_b, worker_groups, worker_group_caps, manager_snapshots_with_both
@@ -480,7 +480,7 @@ class TestWaterfallV1Policy(unittest.TestCase):
 
     def test_scaling_status(self):
         """get_scaling_status should return a ScalingManagerStatus."""
-        policy = WaterfallV1Policy("1,adapter_a,10")
+        policy = WaterfallV1Policy("1,manager_a,10")
 
         from scaler.protocol.python.status import ScalingManagerStatus
 

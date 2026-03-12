@@ -85,8 +85,8 @@ class TestScaling(unittest.TestCase):
         )
         scheduler.start()
 
-        adapter_process = Process(target=_run_native_worker_manager, args=(self.scheduler_address,))
-        adapter_process.start()
+        manager_process = Process(target=_run_native_worker_manager, args=(self.scheduler_address,))
+        manager_process.start()
 
         with Client(self.scheduler_address) as client:
             client.map(time.sleep, [(0.1,) for _ in range(100)])
@@ -97,8 +97,8 @@ class TestScaling(unittest.TestCase):
         object_storage.kill()
         object_storage.join()
 
-        adapter_process.terminate()
-        adapter_process.join()
+        manager_process.terminate()
+        manager_process.join()
 
     def test_capability_scaling_basic(self):
         """Test that capability scaling starts worker groups with the correct capabilities."""
@@ -131,8 +131,8 @@ class TestScaling(unittest.TestCase):
         )
         scheduler.start()
 
-        adapter_process = Process(target=_run_native_worker_manager, args=(self.scheduler_address,))
-        adapter_process.start()
+        manager_process = Process(target=_run_native_worker_manager, args=(self.scheduler_address,))
+        manager_process.start()
 
         with Client(self.scheduler_address) as client:
             # Submit tasks without capabilities (should work like vanilla)
@@ -144,8 +144,8 @@ class TestScaling(unittest.TestCase):
         object_storage.kill()
         object_storage.join()
 
-        adapter_process.terminate()
-        adapter_process.join()
+        manager_process.terminate()
+        manager_process.join()
 
 
 class TestCapabilityScalingPolicy(unittest.TestCase):
@@ -300,7 +300,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         self.assertEqual(commands1[0].command, WorkerManagerCommandType.StartWorkerGroup)
         self.assertEqual(commands1[0].capabilities, {"mqa": 1})
 
-        # Simulate state update as if adapter responded successfully
+        # Simulate state update as if manager responded successfully
         updated_groups: WorkerGroupState = {b"wg-mqa": []}
         updated_caps: WorkerGroupCapabilities = {b"wg-mqa": {"mqa": -1}}
 
@@ -329,8 +329,8 @@ class TestFixedElasticScaling(unittest.TestCase):
         self.scheduler_address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         self.object_storage_config = ObjectStorageAddressConfig("127.0.0.1", get_available_tcp_port())
 
-    def test_fixed_elastic_with_multiple_adapters(self):
-        """Test that fixed_elastic scaling works with primary (1 worker) and secondary (4 workers) adapters."""
+    def test_fixed_elastic_with_multiple_managers(self):
+        """Test that fixed_elastic scaling works with primary (1 worker) and secondary (4 workers) managers."""
         object_storage = ObjectStorageServerProcess(
             object_storage_address=self.object_storage_config,
             logging_paths=("/dev/stdout",),
@@ -360,17 +360,17 @@ class TestFixedElasticScaling(unittest.TestCase):
         )
         scheduler.start()
 
-        # Start primary adapter with max_workers=1
-        primary_adapter_process = Process(
+        # Start primary manager with max_workers=1
+        primary_manager_process = Process(
             target=_run_native_worker_manager, args=(self.scheduler_address,), kwargs={"max_workers": 1}
         )
-        primary_adapter_process.start()
+        primary_manager_process.start()
 
-        # Start secondary adapter with max_workers=4
-        secondary_adapter_process = Process(
+        # Start secondary manager with max_workers=4
+        secondary_manager_process = Process(
             target=_run_native_worker_manager, args=(self.scheduler_address,), kwargs={"max_workers": 4}
         )
-        secondary_adapter_process.start()
+        secondary_manager_process.start()
 
         with Client(self.scheduler_address) as client:
             # Submit tasks to trigger scaling
@@ -382,11 +382,11 @@ class TestFixedElasticScaling(unittest.TestCase):
         object_storage.kill()
         object_storage.join()
 
-        primary_adapter_process.terminate()
-        primary_adapter_process.join()
+        primary_manager_process.terminate()
+        primary_manager_process.join()
 
-        secondary_adapter_process.terminate()
-        secondary_adapter_process.join()
+        secondary_manager_process.terminate()
+        secondary_manager_process.join()
 
 
 def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:

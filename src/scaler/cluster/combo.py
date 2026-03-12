@@ -1,12 +1,11 @@
 import logging
-import socket
 from typing import Dict, Optional, Tuple
 
-from scaler.cluster.cluster import Cluster
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
+from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.defaults import (
     DEFAULT_CLIENT_TIMEOUT_SECONDS,
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
@@ -25,12 +24,13 @@ from scaler.config.defaults import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
-from scaler.config.section.cluster import ClusterConfig
+from scaler.config.section.fixed_native_worker_manager import FixedNativeWorkerManagerConfig
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
-from scaler.config.types.worker import WorkerCapabilities, WorkerNames
+from scaler.config.types.worker import WorkerCapabilities
 from scaler.config.types.zmq import ZMQConfig
 from scaler.utility.network_util import get_available_tcp_port
+from scaler.worker_manager_adapter.baremetal.fixed_native import FixedNativeWorkerManager
 
 
 class SchedulerClusterCombo:
@@ -89,13 +89,14 @@ class SchedulerClusterCombo:
         self._object_storage.start()
         self._object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
 
-        self._cluster = Cluster(
-            config=ClusterConfig(
-                scheduler_address=self._address,
-                object_storage_address=self._object_storage_address,
+        self._worker_manager = FixedNativeWorkerManager(
+            FixedNativeWorkerManagerConfig(
+                worker_manager_config=WorkerManagerConfig(
+                    scheduler_address=self._address,
+                    object_storage_address=self._object_storage_address,
+                    max_workers=n_workers,
+                ),
                 preload=None,
-                worker_names=WorkerNames([f"{socket.gethostname().split('.')[0]}" for _ in range(n_workers)]),
-                num_of_workers=n_workers,
                 event_loop=event_loop,
                 worker_io_threads=worker_io_threads,
                 worker_config=WorkerConfig(
@@ -131,7 +132,7 @@ class SchedulerClusterCombo:
             policy=scaler_policy,
         )
 
-        self._cluster.start()
+        self._worker_manager.start()
         self._scheduler.start()
         logging.info(f"{self.__get_prefix()} started")
 
@@ -143,9 +144,8 @@ class SchedulerClusterCombo:
         self._shutdown_called = True
 
         logging.info(f"{self.__get_prefix()} shutdown")
-        self._cluster.terminate()
+        self._worker_manager.shutdown()
         self._scheduler.terminate()
-        self._cluster.join()
         self._scheduler.join()
 
         # object storage should terminate after the cluster and scheduler.

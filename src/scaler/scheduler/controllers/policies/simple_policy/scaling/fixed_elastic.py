@@ -19,22 +19,22 @@ from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
 
 class FixedElasticScalingPolicy(ScalingPolicy):
     """
-    Scaling policy that identifies adapters by their max_worker_groups:
-    - Primary adapter: max_worker_groups == 1, starts once and never shuts down
-    - Secondary adapter: max_worker_groups > 1, elastic (starts/shuts down based on load)
+    Scaling policy that identifies managers by their max_worker_groups:
+    - Primary manager: max_worker_groups == 1, starts once and never shuts down
+    - Secondary manager: max_worker_groups > 1, elastic (starts/shuts down based on load)
 
     Note: this policy is not fully stateless due to ``_primary_started``
-    tracking whether the primary adapter has already been started.
+    tracking whether the primary manager has already been started.
     """
 
     def __init__(self):
         self._lower_task_ratio = 1
         self._upper_task_ratio = 10
 
-        # Track if primary adapter has been scaled
+        # Track if primary manager has been scaled
         self._primary_started: bool = False
 
-    def _is_primary_adapter(self, worker_manager_heartbeat: WorkerManagerHeartbeat) -> bool:
+    def _is_primary_manager(self, worker_manager_heartbeat: WorkerManagerHeartbeat) -> bool:
         return worker_manager_heartbeat.max_worker_groups == 1
 
     def get_scaling_commands(
@@ -64,15 +64,15 @@ class FixedElasticScalingPolicy(ScalingPolicy):
     def _create_start_commands(
         self, worker_groups: WorkerGroupState, worker_manager_heartbeat: WorkerManagerHeartbeat
     ) -> List[WorkerManagerCommand]:
-        if self._is_primary_adapter(worker_manager_heartbeat):
-            # Primary adapter: start once, never again
+        if self._is_primary_manager(worker_manager_heartbeat):
+            # Primary manager: start once, never again
             if self._primary_started:
                 return []
             self._primary_started = True
         else:
-            # Secondary adapter: use adapter's max_worker_groups
+            # Secondary manager: use manager's max_worker_groups
             if len(worker_groups) >= worker_manager_heartbeat.max_worker_groups:
-                logging.warning("Secondary adapter capacity reached, cannot start new worker group.")
+                logging.warning("Secondary manager capacity reached, cannot start new worker group.")
                 return []
 
         return [WorkerManagerCommand.new_msg(worker_group_id=b"", command=WorkerManagerCommandType.StartWorkerGroup)]
@@ -83,8 +83,8 @@ class FixedElasticScalingPolicy(ScalingPolicy):
         worker_groups: WorkerGroupState,
         worker_manager_heartbeat: WorkerManagerHeartbeat,
     ) -> List[WorkerManagerCommand]:
-        # Primary adapter never shuts down
-        if self._is_primary_adapter(worker_manager_heartbeat):
+        # Primary manager never shuts down
+        if self._is_primary_manager(worker_manager_heartbeat):
             return []
 
         worker_group_task_counts: Dict[WorkerGroupID, int] = {}
