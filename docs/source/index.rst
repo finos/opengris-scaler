@@ -29,7 +29,6 @@ Content
    tutorials/scaling
    tutorials/worker_manager_adapter/index
    tutorials/worker_manager_adapter/native
-   tutorials/worker_manager_adapter/fixed_native
    tutorials/worker_manager_adapter/aws_hpc/index
    tutorials/worker_manager_adapter/common_parameters
    tutorials/compatibility/ray

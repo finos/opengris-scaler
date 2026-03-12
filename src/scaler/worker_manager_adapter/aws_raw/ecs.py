@@ -30,7 +30,7 @@ Status = WorkerManagerCommandResponse.Status
 
 @dataclass
 class WorkerGroupInfo:
-    task_arn: str
+    task_arn: str  # sufficient to identify the group for stop_task(); no worker ID tracking needed
 
 
 class ECSWorkerManager:
@@ -225,6 +225,7 @@ class ECSWorkerManager:
 
         command = (
             f"scaler_cluster {self._address.to_address()} "
+            f"--worker-type ECS "
             f"--max-workers {self._ecs_task_cpu} "
             f"--per-worker-task-queue-size {self._per_worker_task_queue_size} "
             f"--heartbeat-interval-seconds {self._heartbeat_interval_seconds} "

@@ -1,4 +1,5 @@
 import logging
+import multiprocessing
 import time
 import unittest
 
@@ -16,12 +17,12 @@ from scaler.config.defaults import (
     DEFAULT_TASK_TIMEOUT_SECONDS,
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
 )
-from scaler.config.section.fixed_native_worker_manager import FixedNativeWorkerManagerConfig
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.config.types.zmq import ZMQConfig
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
-from scaler.worker_manager_adapter.baremetal.fixed_native import FixedNativeWorkerManager
+from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
 # This is a manual test because it can loop infinitely if it fails
@@ -35,8 +36,8 @@ class TestDeathTimeout(unittest.TestCase):
     def test_no_scheduler(self):
         logging.info("test with no scheduler")
         # Test 1: Spinning up a cluster with no scheduler. Death timeout should apply
-        manager = FixedNativeWorkerManager(
-            FixedNativeWorkerManagerConfig(
+        manager = NativeWorkerManager(
+            NativeWorkerManagerConfig(
                 worker_manager_config=WorkerManagerConfig(
                     scheduler_address=ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
                     object_storage_address=None,
@@ -45,6 +46,7 @@ class TestDeathTimeout(unittest.TestCase):
                 preload=None,
                 event_loop="builtin",
                 worker_io_threads=DEFAULT_IO_THREADS,
+                mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities({}),
                     per_worker_task_queue_size=DEFAULT_PER_WORKER_QUEUE_SIZE,
@@ -60,8 +62,9 @@ class TestDeathTimeout(unittest.TestCase):
                 ),
             )
         )
-        manager.start()
-        manager.join()
+        process = multiprocessing.Process(target=manager.run)
+        process.start()
+        process.join()
 
     def test_shutdown(self):
         logging.info("test with explicitly shutdown")

@@ -1,3 +1,4 @@
+import multiprocessing
 import os
 import time
 import unittest
@@ -7,11 +8,11 @@ from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.defaults import DEFAULT_LOAD_BALANCE_SECONDS
-from scaler.config.section.fixed_native_worker_manager import FixedNativeWorkerManagerConfig
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
-from scaler.worker_manager_adapter.baremetal.fixed_native import FixedNativeWorkerManager
+from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
 
@@ -49,14 +50,15 @@ class TestBalance(unittest.TestCase):
         time.sleep(3)
 
         base_manager = combo._worker_manager
-        new_manager = FixedNativeWorkerManager(
-            FixedNativeWorkerManagerConfig(
+        new_manager = NativeWorkerManager(
+            NativeWorkerManagerConfig(
                 worker_manager_config=WorkerManagerConfig(
                     scheduler_address=base_manager._address, object_storage_address=None, max_workers=N_WORKERS - 1
                 ),
                 preload=None,
                 event_loop=base_manager._event_loop,
                 worker_io_threads=1,
+                mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities({}),
                     per_worker_task_queue_size=base_manager._task_queue_size,
@@ -74,7 +76,8 @@ class TestBalance(unittest.TestCase):
                 ),
             )
         )
-        new_manager.start()
+        process = multiprocessing.Process(target=new_manager.run)
+        process.start()
 
         pids = {f.result() for f in futures}
 
@@ -82,5 +85,6 @@ class TestBalance(unittest.TestCase):
 
         client.disconnect()
 
-        new_manager.shutdown()
+        process.terminate()
+        process.join()
         combo.shutdown()

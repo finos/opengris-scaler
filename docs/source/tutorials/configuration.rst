@@ -195,8 +195,6 @@ The following table maps each Scaler command to its corresponding section name i
      - ``[top]``
    * - ``scaler_worker_manager_baremetal_native``
      - ``[native_worker_manager]``
-   * - ``scaler_worker_manager_baremetal_fixed_native``
-     - ``[fixed_native_worker_manager]``
    * - ``scaler_worker_manager_symphony``
      - ``[symphony_worker_manager]``
    * - ``scaler_worker_manager_aws_raw_ecs``

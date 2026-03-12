@@ -3,12 +3,13 @@ import logging
 import os
 import signal
 import uuid
-from typing import Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import zmq
 
-from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.io import uv_ymq
+from scaler.io.mixins import AsyncConnector
 from scaler.io.utility import create_async_connector, create_async_simple_context
 from scaler.io.ymq import ymq
 from scaler.protocol.python.message import (
@@ -49,11 +50,34 @@ class NativeWorkerManager:
         self._logging_config_file = config.logging_config.config_file
         self._preload = config.preload
         self._workers_per_group = 1
+        self._mode = config.mode
 
-        self._context = create_async_simple_context()
+        if config.worker_type is not None:
+            self._worker_prefix = config.worker_type
+        elif self._mode == NativeWorkerManagerMode.FIXED:
+            self._worker_prefix = "FIX"
+        elif self._mode == NativeWorkerManagerMode.DYNAMIC:
+            self._worker_prefix = "NAT"
+        else:
+            raise ValueError(f"worker_type is not set and mode is unrecognised: {self._mode!r}")
+
+        """
+        Although a worker group can contain multiple workers, in this native adapter implementation,
+        each worker group will only contain one worker.
+        """
+        self._worker_groups: Dict[WorkerGroupID, Dict[WorkerID, Worker]] = {}
+
+        # ZMQ setup is deferred to _setup_zmq(), called at the start of run().
+        # This keeps the object picklable so callers can do Process(target=adapter.run).start().
+        self._context: Optional[Any] = None
+        self._connector_external: Optional[AsyncConnector] = None
+        self._ident: Optional[bytes] = None
+
+    def _setup_zmq(self) -> None:
         self._name = "worker_manager_native"
 
         self._ident = f"{self._name}|{uuid.uuid4().bytes.hex()}".encode()
+        self._context = create_async_simple_context()
         self._connector_external = create_async_connector(
             self._context,
             name="worker_manager_native",
@@ -64,11 +88,32 @@ class NativeWorkerManager:
             identity=self._ident,
         )
 
-        """
-        Although a worker group can contain multiple workers, in this native adapter implementation,
-        each worker group will only contain one worker.
-        """
-        self._worker_groups: Dict[WorkerGroupID, Dict[WorkerID, Worker]] = {}
+    def _create_worker(self) -> Worker:
+        return Worker(
+            name=f"{self._worker_prefix}|{uuid.uuid4().hex}",
+            address=self._address,
+            object_storage_address=self._object_storage_address,
+            preload=self._preload,
+            capabilities=self._capabilities,
+            io_threads=self._io_threads,
+            task_queue_size=self._task_queue_size,
+            heartbeat_interval_seconds=self._heartbeat_interval_seconds,
+            task_timeout_seconds=self._task_timeout_seconds,
+            death_timeout_seconds=self._death_timeout_seconds,
+            garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
+            trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
+            hard_processor_suspend=self._hard_processor_suspend,
+            event_loop=self._event_loop,
+            logging_paths=self._logging_paths,
+            logging_level=self._logging_level,
+        )
+
+    def _spawn_initial_workers(self) -> None:
+        for _ in range(self._max_workers):
+            worker = self._create_worker()
+            worker.start()
+            group_id = f"fixed-{uuid.uuid4().hex}".encode()
+            self._worker_groups[group_id] = {worker.identity: worker}
 
     async def __on_receive_external(self, message: Message):
         if isinstance(message, WorkerManagerCommand):
@@ -107,25 +152,7 @@ class NativeWorkerManager:
         if num_of_workers >= self._max_workers != -1:
             return b"", Status.WorkerGroupTooMuch
 
-        worker = Worker(
-            name=f"NAT|{uuid.uuid4().hex}",
-            address=self._address,
-            object_storage_address=self._object_storage_address,
-            preload=self._preload,
-            capabilities=self._capabilities,
-            io_threads=self._io_threads,
-            task_queue_size=self._task_queue_size,
-            heartbeat_interval_seconds=self._heartbeat_interval_seconds,
-            task_timeout_seconds=self._task_timeout_seconds,
-            death_timeout_seconds=self._death_timeout_seconds,
-            garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
-            trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
-            hard_processor_suspend=self._hard_processor_suspend,
-            event_loop=self._event_loop,
-            logging_paths=self._logging_paths,
-            logging_level=self._logging_level,
-        )
-
+        worker = self._create_worker()
         worker.start()
         worker_group_id = f"native-{uuid.uuid4().hex}".encode()
         self._worker_groups[worker_group_id] = {worker.identity: worker}
@@ -148,10 +175,35 @@ class NativeWorkerManager:
         return Status.Success
 
     def run(self) -> None:
+        if self._mode == NativeWorkerManagerMode.FIXED:
+            self._run_fixed()
+            return
+
+        # DYNAMIC mode
+        self._setup_zmq()
         self._loop = asyncio.new_event_loop()
         run_task_forever(self._loop, self._run(), cleanup_callback=self._cleanup)
 
-    def _cleanup(self):
+    def _run_fixed(self) -> None:
+        setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
+        register_event_loop(self._event_loop)
+        self._spawn_initial_workers()
+
+        def _on_signal(sig: int, frame: object) -> None:
+            logging.info("NativeWorkerManager (FIXED): received signal %d, terminating workers", sig)
+            for group in self._worker_groups.values():
+                for worker in group.values():
+                    if worker.is_alive():
+                        worker.terminate()
+
+        signal.signal(signal.SIGTERM, _on_signal)
+        signal.signal(signal.SIGINT, _on_signal)
+
+        for group in self._worker_groups.values():
+            for worker in group.values():
+                worker.join()
+
+    def _cleanup(self) -> None:
         if self._connector_external is not None:
             self._connector_external.destroy()
 
@@ -171,7 +223,7 @@ class NativeWorkerManager:
         self.__register_signal()
         await self._task
 
-    async def __send_heartbeat(self):
+    async def __send_heartbeat(self) -> None:
         await self._connector_external.send(
             WorkerManagerHeartbeat.new_msg(
                 max_worker_groups=self._max_workers,
@@ -181,7 +233,7 @@ class NativeWorkerManager:
             )
         )
 
-    async def __get_loops(self):
+    async def __get_loops(self) -> None:
         loops = [
             create_async_loop_routine(self._connector_external.routine, 0),
             create_async_loop_routine(self.__send_heartbeat, self._heartbeat_interval_seconds),

@@ -5,16 +5,17 @@ It shows how to route tasks to workers with specific capabilities (like GPU) usi
 """
 
 import math
+import multiprocessing
 
 from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
-from scaler.config.section.fixed_native_worker_manager import FixedNativeWorkerManagerConfig
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.worker import WorkerCapabilities
-from scaler.worker_manager_adapter.baremetal.fixed_native import FixedNativeWorkerManager
+from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 
 
 def gpu_task(x: float) -> float:
@@ -39,14 +40,16 @@ def main():
 
     # Adds an additional worker with GPU support
     base_manager = cluster._worker_manager
-    gpu_manager = FixedNativeWorkerManager(
-        FixedNativeWorkerManagerConfig(
+    gpu_manager = NativeWorkerManager(
+        NativeWorkerManagerConfig(
             worker_manager_config=WorkerManagerConfig(
-                scheduler_address=base_manager._address, object_storage_address=None, max_workers=1
+                scheduler_address=base_manager._address,
+                object_storage_address=base_manager._object_storage_address,
+                max_workers=1,
             ),
-            preload=None,
+            mode=NativeWorkerManagerMode.FIXED,
             event_loop=base_manager._event_loop,
-            worker_io_threads=1,
+            worker_io_threads=base_manager._io_threads,
             worker_config=WorkerConfig(
                 per_worker_capabilities=WorkerCapabilities({"gpu": -1}),
                 per_worker_task_queue_size=base_manager._task_queue_size,
@@ -64,7 +67,8 @@ def main():
             ),
         )
     )
-    gpu_manager.start()
+    gpu_manager_process = multiprocessing.Process(target=gpu_manager.run)
+    gpu_manager_process.start()
 
     with Client(address=cluster.get_address()) as client:
         print("Submitting tasks...")
@@ -83,7 +87,9 @@ def main():
         gpu_future.result()
         cpu_future.result()
 
-    gpu_manager.shutdown()
+    if gpu_manager_process.is_alive():
+        gpu_manager_process.terminate()
+    gpu_manager_process.join()
     cluster.shutdown()
 
 

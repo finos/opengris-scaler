@@ -1,3 +1,4 @@
+import multiprocessing
 import unittest
 from concurrent.futures import TimeoutError
 
@@ -5,11 +6,11 @@ from scaler import Client, SchedulerClusterCombo
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
-from scaler.config.section.fixed_native_worker_manager import FixedNativeWorkerManagerConfig
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_manager_adapter.baremetal.fixed_native import FixedNativeWorkerManager
+from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
 
@@ -41,14 +42,15 @@ class TestCapabilities(unittest.TestCase):
                 future.result(timeout=1)
 
             # Connects a worker that can handle the task
-            gpu_manager = FixedNativeWorkerManager(
-                FixedNativeWorkerManagerConfig(
+            gpu_manager = NativeWorkerManager(
+                NativeWorkerManagerConfig(
                     worker_manager_config=WorkerManagerConfig(
                         scheduler_address=base_manager._address, object_storage_address=None, max_workers=1
                     ),
                     preload=None,
                     event_loop=base_manager._event_loop,
                     worker_io_threads=1,
+                    mode=NativeWorkerManagerMode.FIXED,
                     worker_config=WorkerConfig(
                         per_worker_capabilities=WorkerCapabilities({"gpu": -1}),
                         per_worker_task_queue_size=base_manager._task_queue_size,
@@ -66,11 +68,13 @@ class TestCapabilities(unittest.TestCase):
                     ),
                 )
             )
-            gpu_manager.start()
+            gpu_process = multiprocessing.Process(target=gpu_manager.run)
+            gpu_process.start()
 
             self.assertEqual(future.result(), 3.0)
 
-            gpu_manager.shutdown()
+            gpu_process.terminate()
+            gpu_process.join()
 
     def test_graph_capabilities(self):
         base_manager = self.combo._worker_manager
@@ -86,14 +90,15 @@ class TestCapabilities(unittest.TestCase):
                 future.result(timeout=1)
 
             # Connect a worker that can handle the task
-            gpu_manager = FixedNativeWorkerManager(
-                FixedNativeWorkerManagerConfig(
+            gpu_manager = NativeWorkerManager(
+                NativeWorkerManagerConfig(
                     worker_manager_config=WorkerManagerConfig(
                         scheduler_address=base_manager._address, object_storage_address=None, max_workers=1
                     ),
                     preload=None,
                     event_loop=base_manager._event_loop,
                     worker_io_threads=1,
+                    mode=NativeWorkerManagerMode.FIXED,
                     worker_config=WorkerConfig(
                         per_worker_capabilities=WorkerCapabilities({"gpu": -1}),
                         per_worker_task_queue_size=base_manager._task_queue_size,
@@ -111,8 +116,10 @@ class TestCapabilities(unittest.TestCase):
                     ),
                 )
             )
-            gpu_manager.start()
+            gpu_process = multiprocessing.Process(target=gpu_manager.run)
+            gpu_process.start()
 
             self.assertEqual(future.result(), 8)
 
-            gpu_manager.shutdown()
+            gpu_process.terminate()
+            gpu_process.join()

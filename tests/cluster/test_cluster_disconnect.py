@@ -1,3 +1,4 @@
+import multiprocessing
 import time
 import unittest
 from concurrent.futures import CancelledError
@@ -7,10 +8,10 @@ from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.defaults import DEFAULT_LOGGING_PATHS
-from scaler.config.section.fixed_native_worker_manager import FixedNativeWorkerManagerConfig
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_manager_adapter.baremetal.fixed_native import FixedNativeWorkerManager
+from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
 
@@ -32,8 +33,8 @@ class TestClusterDisconnect(unittest.TestCase):
 
     def test_cluster_disconnect(self):
         base_manager = self.combo._worker_manager
-        dying_manager = FixedNativeWorkerManager(
-            FixedNativeWorkerManagerConfig(
+        dying_manager = NativeWorkerManager(
+            NativeWorkerManagerConfig(
                 worker_manager_config=WorkerManagerConfig(
                     scheduler_address=self.combo._address,
                     object_storage_address=self.combo._object_storage_address,
@@ -42,6 +43,7 @@ class TestClusterDisconnect(unittest.TestCase):
                 preload=None,
                 event_loop=base_manager._event_loop,
                 worker_io_threads=base_manager._io_threads,
+                mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities({}),
                     per_worker_task_queue_size=base_manager._task_queue_size,
@@ -59,12 +61,14 @@ class TestClusterDisconnect(unittest.TestCase):
                 ),
             )
         )
-        dying_manager.start()
+        dying_process = multiprocessing.Process(target=dying_manager.run)
+        dying_process.start()
 
         client = Client(self.address)
         future_result = client.submit(noop_sleep, 5)
         time.sleep(2)
-        dying_manager.shutdown()
+        dying_process.terminate()
+        dying_process.join()
 
         with self.assertRaises(CancelledError):
             client.clear()

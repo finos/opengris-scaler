@@ -34,12 +34,9 @@ Scaler provides several worker managers to support different execution environme
 Native
 ~~~~~~
 
-The :doc:`Native <native>` worker manager allows Scaler to dynamically provision workers as local subprocesses on the same machine. It is the simplest way to scale workloads across multiple CPU cores locally and supports dynamic auto-scaling.
-
-Fixed Native
-~~~~~~~~~~~~
-
-The :doc:`Fixed Native <fixed_native>` worker manager spawns a static number of worker subprocesses at startup and does not support dynamic scaling. It is the underlying component used by the high-level ``SchedulerClusterCombo`` class.
+The :doc:`Native <native>` worker manager provisions workers as local subprocesses on the same machine.
+It supports both dynamic auto-scaling (default) and fixed-pool mode, where a set number of workers
+are pre-spawned at startup.
 
 AWS HPC
 ~~~~~~~
@@ -55,6 +52,5 @@ All worker managers share a set of :doc:`common configuration parameters <common
     :hidden:
 
     native
-    fixed_native
     aws_hpc/index
     common_parameters
