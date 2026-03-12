@@ -3,10 +3,9 @@ import functools
 import logging
 import threading
 import uuid
-import warnings
 from collections import Counter
 from inspect import signature
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union, overload
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 import zmq
 
@@ -256,21 +255,6 @@ class Client:
         self._connector_agent.send(task)
         return future
 
-    @overload
-    def map(
-        self,
-        fn: Callable[..., _T],
-        iterable: Iterable[Tuple[Any, ...]],
-        /,
-        *,
-        capabilities: Optional[Dict[str, int]] = None,
-    ) -> List[_T]: ...  # Deprecated: starmap-style usage with single iterable of tuples
-
-    @overload
-    def map(
-        self, fn: Callable[..., _T], /, *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None
-    ) -> List[_T]: ...  # New: map-style usage with one or more iterables
-
     def map(
         self, fn: Callable[..., _T], *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None
     ) -> List[_T]:
@@ -285,9 +269,6 @@ class Client:
             >>> client.map(add, [1, 2, 3], [4, 5, 6])
             [5, 7, 9]
 
-        For backwards compatibility, if a single iterable of tuples is provided (the old starmap-like behavior),
-        a deprecation warning will be shown and the arguments will be unpacked. Use `starmap()` instead for this case.
-
         :param fn: function to be executed remotely
         :type fn: Callable[..., _T]
         :param iterables: one or more iterables, each providing one argument to the function
@@ -300,25 +281,7 @@ class Client:
         if len(iterables) == 0:
             raise TypeError("map() requires at least one iterable")
 
-        if len(iterables) == 1:
-            # Check if this looks like old starmap-style usage (iterable of tuples/lists)
-            iterable_list = list(iterables[0])
-            if len(iterable_list) > 0 and all(isinstance(args, (tuple, list)) for args in iterable_list):
-                warnings.warn(
-                    "Passing an iterable of tuples to map() is deprecated. "
-                    "Use starmap() for unpacking argument tuples, or pass separate iterables to map(). "
-                    "For example, use client.map(fn, [1, 2, 3]) instead of client.map(fn, [(1,), (2,), (3,)]).",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-                return self.starmap(fn, iterable_list, capabilities=capabilities)
-            # Single iterable with non-tuple elements - pack each as a single-element tuple
-            args_iterable = [(arg,) for arg in iterable_list]
-        else:
-            # Multiple iterables - zip them together
-            args_iterable = list(zip(*iterables))
-
-        return self.starmap(fn, args_iterable, capabilities=capabilities)
+        return self.starmap(fn, zip(*iterables), capabilities=capabilities)
 
     def starmap(
         self, fn: Callable[..., _T], iterable: Iterable[Iterable[Any]], capabilities: Optional[Dict[str, int]] = None
