@@ -30,7 +30,7 @@ import json
 import logging
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 DEFAULT_PREFIX = "scaler-oci"
 DEFAULT_CONFIG_FILE = ".scaler_oci_config.json"
@@ -165,9 +165,7 @@ class OCIProvisioner:
             self._object_storage.create_bucket(
                 namespace_name=self._namespace,
                 create_bucket_details=oci.object_storage.models.CreateBucketDetails(
-                    name=bucket_name,
-                    compartment_id=self._compartment_id,
-                    public_access_type="NoPublicAccess",
+                    name=bucket_name, compartment_id=self._compartment_id, public_access_type="NoPublicAccess"
                 ),
             )
             logging.info(f"Created Object Storage bucket: {bucket_name}")
@@ -191,7 +189,7 @@ class OCIProvisioner:
                             time_unit="DAYS",
                             is_enabled=True,
                             object_name_filter=oci.object_storage.models.ObjectNameFilter(
-                                inclusion_prefixes=[f"{OCI_TASK_PREFIX}/"],
+                                inclusion_prefixes=[f"{OCI_TASK_PREFIX}/"]
                             ),
                         )
                     ]
@@ -218,8 +216,7 @@ class OCIProvisioner:
 
         dg_name = f"{self._prefix}-dg"
         matching_rule = (
-            f"ALL {{resource.type='computecontainerinstance', "
-            f"resource.compartment.id='{self._compartment_id}'}}"
+            f"ALL {{resource.type='computecontainerinstance', " f"resource.compartment.id='{self._compartment_id}'}}"
         )
 
         try:
@@ -260,7 +257,7 @@ class OCIProvisioner:
             (
                 f"Allow dynamic-group {dg_name} to manage objects in compartment id {self._compartment_id} "
                 f"where target.bucket.name='{bucket_name}'"
-            ),
+            )
         ]
 
         try:
@@ -308,10 +305,7 @@ class OCIProvisioner:
         try:
             artifacts_client.create_repository(
                 create_repository_details=oci.artifacts.models.CreateContainerRepositoryDetails(
-                    compartment_id=self._compartment_id,
-                    display_name=repo_name,
-                    is_public=False,
-                    readme=None,
+                    compartment_id=self._compartment_id, display_name=repo_name, is_public=False, readme=None
                 )
             )
             logging.info(f"Created OCIR repository: {repo_name}")
@@ -438,22 +432,24 @@ class OCIProvisioner:
 
         # Empty and delete Object Storage bucket
         try:
-            # List and delete all objects first
-            list_response = self._object_storage.list_objects(
-                namespace_name=self._namespace,
-                bucket_name=bucket_name,
-            )
-            for obj in list_response.data.objects:
-                self._object_storage.delete_object(
-                    namespace_name=self._namespace,
-                    bucket_name=bucket_name,
-                    object_name=obj.name,
-                )
+            # Paginate through all objects and delete them
+            next_start = None
+            while True:
+                kwargs = {"namespace_name": self._namespace, "bucket_name": bucket_name}
+                if next_start is not None:
+                    kwargs["start"] = next_start
 
-            self._object_storage.delete_bucket(
-                namespace_name=self._namespace,
-                bucket_name=bucket_name,
-            )
+                list_response = self._object_storage.list_objects(**kwargs)
+                for obj in list_response.data.objects:
+                    self._object_storage.delete_object(
+                        namespace_name=self._namespace, bucket_name=bucket_name, object_name=obj.name
+                    )
+
+                next_start = list_response.data.next_start_with
+                if not next_start:
+                    break
+
+            self._object_storage.delete_bucket(namespace_name=self._namespace, bucket_name=bucket_name)
             logging.info(f"Deleted Object Storage bucket: {bucket_name}")
         except oci.exceptions.ServiceError as exc:
             if exc.status == 404:
@@ -495,15 +491,14 @@ class OCIProvisioner:
 # CLI entry point
 # ------------------------------------------------------------------
 
+
 def main() -> None:
     """CLI for provisioning OCI resources."""
     import argparse
 
     parser = argparse.ArgumentParser(description="Provision OCI resources for Scaler OCI HPC adapter")
     parser.add_argument(
-        "action",
-        choices=["provision", "cleanup", "show", "build-image", "list-ads"],
-        help="Action to perform",
+        "action", choices=["provision", "cleanup", "show", "build-image", "list-ads"], help="Action to perform"
     )
     parser.add_argument("--compartment-id", required=True, help="OCI Compartment OCID")
     parser.add_argument("--region", default="us-ashburn-1", help="OCI region (default: us-ashburn-1)")
@@ -517,14 +512,10 @@ def main() -> None:
     parser.add_argument("--instance-memory-gb", type=float, default=6.0, help="Memory (GB) per container instance")
     parser.add_argument("--job-timeout", type=int, default=60, help="Job timeout in minutes (default: 60)")
     parser.add_argument(
-        "--config",
-        default=f"tests/worker_manager_adapter/oci_hpc/{DEFAULT_CONFIG_FILE}",
-        help="Config file path",
+        "--config", default=f"tests/worker_manager_adapter/oci_hpc/{DEFAULT_CONFIG_FILE}", help="Config file path"
     )
     parser.add_argument(
-        "--env-file",
-        default=f"tests/worker_manager_adapter/oci_hpc/{DEFAULT_ENV_FILE}",
-        help="Env file path",
+        "--env-file", default=f"tests/worker_manager_adapter/oci_hpc/{DEFAULT_ENV_FILE}", help="Env file path"
     )
 
     args = parser.parse_args()
@@ -532,10 +523,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     provisioner = OCIProvisioner(
-        compartment_id=args.compartment_id,
-        oci_region=args.region,
-        prefix=args.prefix,
-        oci_config_profile=args.profile,
+        compartment_id=args.compartment_id, oci_region=args.region, prefix=args.prefix, oci_config_profile=args.profile
     )
 
     if args.action == "list-ads":

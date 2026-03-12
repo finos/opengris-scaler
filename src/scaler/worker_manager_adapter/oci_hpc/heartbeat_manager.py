@@ -91,7 +91,7 @@ class OCIContainerInstanceHeartbeatManager(Looper, HeartbeatManager):
 
         # Get task counts from the task manager
         queued_tasks = self._task_manager.get_queued_size() if self._task_manager else 0
-        processing_tasks = len(self._task_manager._processing_task_ids) if self._task_manager else 0
+        processing_tasks = self._task_manager.get_processing_size() if self._task_manager else 0
         has_task = processing_tasks > 0
         task_lock = not self._task_manager.can_accept_task() if self._task_manager else False
 

@@ -1,4 +1,16 @@
+"""
+OCI Raw Worker Adapter — Container Instance backend.
+
+Manages Scaler worker processes as OCI Container Instances. Each worker group
+maps to a single Container Instance. Supports both config-file and
+instance-principal authentication for running on local machines or OCI VMs.
+
+All blocking OCI SDK calls are offloaded to a thread executor so the asyncio
+event loop is never blocked.
+"""
+
 import asyncio
+import functools
 import logging
 import signal
 import uuid
@@ -66,6 +78,7 @@ class OCIContainerInstanceWorkerAdapter:
         self._logging_level = config.logging_config.level
         self._logging_config_file = config.logging_config.config_file
 
+        self._oci_auth_type = config.oci_auth_type
         self._oci_config_profile = config.oci_config_profile
         self._oci_region = config.oci_region
         self._compartment_id = config.compartment_id
@@ -80,8 +93,12 @@ class OCIContainerInstanceWorkerAdapter:
 
         import oci
 
-        oci_config = oci.config.from_file(profile_name=self._oci_config_profile)
-        self._container_instances_client = oci.container_instances.ContainerInstancesClient(oci_config)
+        if self._oci_auth_type == "instance_principal":
+            signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+            self._container_instances_client = oci.container_instances.ContainerInstanceClient(config={}, signer=signer)
+        else:
+            oci_config = oci.config.from_file(profile_name=self._oci_config_profile)
+            self._container_instances_client = oci.container_instances.ContainerInstanceClient(oci_config)
 
         self._worker_groups: Dict[WorkerGroupID, WorkerGroupInfo] = {}
 
@@ -220,34 +237,40 @@ class OCIContainerInstanceWorkerAdapter:
         import oci
 
         display_name = f"scaler-worker-{uuid.uuid4().hex[:8]}"
-        response = self._container_instances_client.create_container_instance(
-            create_container_instance_details=oci.container_instances.models.CreateContainerInstanceDetails(
-                compartment_id=self._compartment_id,
-                availability_domain=self._availability_domain,
-                shape=self._instance_shape,
-                shape_config=oci.container_instances.models.CreateContainerInstanceShapeConfigDetails(
-                    ocpus=self._instance_ocpus,
-                    memory_in_gbs=self._instance_memory_gb,
-                ),
-                containers=[
-                    oci.container_instances.models.CreateContainerDetails(
-                        image_url=self._container_image,
-                        display_name="scaler-container",
-                        environment_variables={
-                            "COMMAND": command,
-                            "PYTHON_REQUIREMENTS": self._oci_python_requirements,
-                            "PYTHON_VERSION": self._oci_python_version,
-                        },
-                    )
-                ],
-                vnics=[
-                    oci.container_instances.models.CreateContainerVnicDetails(
-                        subnet_id=self._subnet_id,
-                    )
-                ],
-                display_name=display_name,
-            )
+        create_details = oci.container_instances.models.CreateContainerInstanceDetails(
+            compartment_id=self._compartment_id,
+            availability_domain=self._availability_domain,
+            shape=self._instance_shape,
+            shape_config=oci.container_instances.models.CreateContainerInstanceShapeConfigDetails(
+                ocpus=self._instance_ocpus, memory_in_gbs=self._instance_memory_gb
+            ),
+            containers=[
+                oci.container_instances.models.CreateContainerDetails(
+                    image_url=self._container_image,
+                    display_name="scaler-container",
+                    environment_variables={
+                        "COMMAND": command,
+                        "PYTHON_REQUIREMENTS": self._oci_python_requirements,
+                        "PYTHON_VERSION": self._oci_python_version,
+                    },
+                )
+            ],
+            vnics=[oci.container_instances.models.CreateContainerVnicDetails(subnet_id=self._subnet_id)],
+            display_name=display_name,
         )
+
+        try:
+            loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(
+                None,
+                functools.partial(
+                    self._container_instances_client.create_container_instance,
+                    create_container_instance_details=create_details,
+                ),
+            )
+        except oci.exceptions.ServiceError as exc:
+            logging.error(f"OCI create_container_instance failed: {exc}")
+            return b"", Status.UnknownAction
 
         instance_id = response.data.id
         worker_group_id = f"oci-raw-{uuid.uuid4().hex}".encode()
@@ -268,8 +291,13 @@ class OCIContainerInstanceWorkerAdapter:
         import oci
 
         try:
-            self._container_instances_client.delete_container_instance(
-                container_instance_id=self._worker_groups[worker_group_id].instance_id,
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                functools.partial(
+                    self._container_instances_client.delete_container_instance,
+                    container_instance_id=self._worker_groups[worker_group_id].instance_id,
+                ),
             )
         except oci.exceptions.ServiceError as exc:
             if exc.status == 404:

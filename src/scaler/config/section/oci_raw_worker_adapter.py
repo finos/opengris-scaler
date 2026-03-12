@@ -25,18 +25,25 @@ class OCIRawWorkerAdapterConfig(ConfigClass):
     )
 
     # OCI authentication
+    oci_auth_type: str = dataclasses.field(
+        default="config_file",
+        metadata=dict(
+            env_var="OCI_AUTH_TYPE",
+            choices=["config_file", "instance_principal"],
+            help="OCI authentication type: 'config_file' (uses ~/.oci/config) or 'instance_principal' (VM identity)",
+        ),
+    )
     oci_config_profile: str = dataclasses.field(
         default="DEFAULT",
         metadata=dict(
             env_var="OCI_CONFIG_PROFILE",
-            help="OCI config file profile name (reads credentials from ~/.oci/config)",
+            help="OCI config file profile name (only used when oci-auth-type is 'config_file')",
         ),
     )
 
     # OCI resource identifiers
     oci_region: str = dataclasses.field(
-        default="us-ashburn-1",
-        metadata=dict(env_var="OCI_REGION", help="OCI region identifier (e.g. us-ashburn-1)"),
+        default="us-ashburn-1", metadata=dict(env_var="OCI_REGION", help="OCI region identifier (e.g. us-ashburn-1)")
     )
     compartment_id: Optional[str] = dataclasses.field(
         default=None,
@@ -57,9 +64,7 @@ class OCIRawWorkerAdapterConfig(ConfigClass):
     subnet_id: Optional[str] = dataclasses.field(
         default=None,
         metadata=dict(
-            env_var="OCI_SUBNET_ID",
-            required=True,
-            help="OCI Subnet OCID for container instance network interfaces",
+            env_var="OCI_SUBNET_ID", required=True, help="OCI Subnet OCID for container instance network interfaces"
         ),
     )
 
@@ -77,22 +82,18 @@ class OCIRawWorkerAdapterConfig(ConfigClass):
         metadata=dict(help="Python requirements string passed to the container instance"),
     )
     oci_python_version: str = dataclasses.field(
-        default="3.12.11",
-        metadata=dict(help="Python version for the container instance"),
+        default="3.12.11", metadata=dict(help="Python version for the container instance")
     )
 
     # Container instance sizing
     instance_shape: str = dataclasses.field(
-        default="CI.Standard.E4.Flex",
-        metadata=dict(help="OCI Container Instance shape"),
+        default="CI.Standard.E4.Flex", metadata=dict(help="OCI Container Instance shape")
     )
     instance_ocpus: float = dataclasses.field(
-        default=4.0,
-        metadata=dict(help="Number of OCPUs per container instance (also determines worker count)"),
+        default=4.0, metadata=dict(help="Number of OCPUs per container instance (also determines worker count)")
     )
     instance_memory_gb: float = dataclasses.field(
-        default=30.0,
-        metadata=dict(help="Memory in GB per container instance"),
+        default=30.0, metadata=dict(help="Memory in GB per container instance")
     )
 
     def __post_init__(self):
