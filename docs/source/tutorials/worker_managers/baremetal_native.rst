@@ -1,7 +1,7 @@
-Baremetal Native Worker Adapter
+Baremetal Native Worker Manager
 ===============================
 
-The Baremetal Native worker adapter spawns worker subprocesses on the local machine. It is the simplest way to run Scaler across multiple CPU cores and is the recommended starting point for most users.
+The Baremetal Native worker manager spawns worker subprocesses on the local machine. It is the simplest way to run Scaler across multiple CPU cores and is the recommended starting point for most users.
 
 It supports two modes:
 
@@ -9,7 +9,7 @@ It supports two modes:
 * **Fixed mode** (``scaler_worker_manager_baremetal_fixed_native``): A static pool of workers is spawned at startup. No dynamic scaling.
 
 .. note::
-   The Baremetal Fixed Native mode will be merged into the Baremetal Native adapter in a future release.
+   The Baremetal Fixed Native mode will be merged into the Baremetal Native worker manager in a future release.
 
 Quick Start (Python API)
 ------------------------
@@ -81,9 +81,9 @@ For dynamic scaling, use ``scaler_worker_manager_baremetal_native`` instead of `
 
 .. note::
    The default scaling policy is ``scaling=no`` (no auto-scaling). The ``scaling=vanilla`` policy is required for
-   the adapter to dynamically provision workers.
+   the worker manager to dynamically provision workers.
 
-**Terminal 2 — Baremetal Native Worker Adapter:**
+**Terminal 2 — Baremetal Native Worker Manager:**
 
 .. code-block:: bash
 
@@ -117,10 +117,10 @@ Or use a TOML configuration file:
    logging_level = "INFO"
    task_timeout_seconds = 60
 
-Quick Start (CLI — Baremetal Fixed Native Adapter)
+Quick Start (CLI — Baremetal Fixed Native Worker Manager)
 ---------------------------------------------------
 
-This is similar to ``scaler_cluster`` but uses the ``scaler_worker_manager_baremetal_fixed_native`` adapter, which also spawns a static pool of workers at startup.
+This is similar to ``scaler_cluster`` but uses the ``scaler_worker_manager_baremetal_fixed_native`` worker manager, which also spawns a static pool of workers at startup.
 
 **Terminal 1 — Scheduler:**
 
@@ -128,7 +128,7 @@ This is similar to ``scaler_cluster`` but uses the ``scaler_worker_manager_barem
 
    scaler_scheduler tcp://127.0.0.1:8516
 
-**Terminal 2 — Baremetal Fixed Native Worker Adapter:**
+**Terminal 2 — Baremetal Fixed Native Worker Manager:**
 
 .. code-block:: bash
 
@@ -151,7 +151,7 @@ Or use a TOML configuration file:
 How It Works
 ------------
 
-**Dynamic mode:** The adapter connects to the scheduler and waits for scaling commands. When the scheduler's scaling policy determines that more workers are needed, it sends a ``StartWorkerGroup`` command. The adapter spawns a new worker subprocess. When the scheduler wants to scale down, it sends a ``ShutdownWorkerGroup`` command and the adapter terminates the worker. Each worker group contains exactly one worker process.
+**Dynamic mode:** The worker manager connects to the scheduler and waits for scaling commands. When the scheduler's scaling policy determines that more workers are needed, it sends a ``StartWorkerGroup`` command. The worker manager spawns a new worker subprocess. When the scheduler wants to scale down, it sends a ``ShutdownWorkerGroup`` command and the worker manager terminates the worker. Each worker group contains exactly one worker process.
 
 **Fixed mode** (``scaler_cluster`` **or** ``scaler_worker_manager_baremetal_fixed_native``): A fixed number of worker subprocesses are spawned immediately at startup and connect to the scheduler. Workers are not dynamically scaled. If a worker terminates, it is **not** automatically restarted.
 

@@ -1,7 +1,7 @@
-AWS Raw ECS Worker Adapter
+AWS Raw ECS Worker Manager
 ==========================
 
-The AWS Raw ECS worker adapter provisions Scaler workers as `AWS Fargate <https://aws.amazon.com/fargate/>`_ tasks inside an `ECS <https://aws.amazon.com/ecs/>`_ cluster. Unlike the :doc:`AWS HPC Batch adapter <aws_hpc_batch>`, which runs each Scaler *task* as a separate cloud job, the AWS Raw ECS adapter launches full Scaler *worker processes* in Fargate containers. This means workers connect back to the scheduler and process tasks the same way local workers do, with the scheduler handling load balancing and scaling.
+The AWS Raw ECS worker manager provisions Scaler workers as `AWS Fargate <https://aws.amazon.com/fargate/>`_ tasks inside an `ECS <https://aws.amazon.com/ecs/>`_ cluster. Unlike the :doc:`AWS HPC Batch worker manager <aws_hpc_batch>`, which runs each Scaler *task* as a separate cloud job, the AWS Raw ECS worker manager launches full Scaler *worker processes* in Fargate containers. This means workers connect back to the scheduler and process tasks the same way local workers do, with the scheduler handling load balancing and scaling.
 
 Prerequisites
 -------------
@@ -43,11 +43,11 @@ Paste the result into the TOML below and run the three commands:
 
 .. note::
    The default scaling policy is ``scaling=no`` (no auto-scaling). The ``scaling=vanilla`` policy is required for
-   the adapter to dynamically provision and destroy Fargate tasks.
+   the worker manager to dynamically provision and destroy Fargate tasks.
 
 .. code-block:: bash
 
-   # Terminal 2 — AWS Raw ECS Adapter
+   # Terminal 2 — AWS Raw ECS Worker Manager
    scaler_worker_manager_aws_raw_ecs tcp://<SCHEDULER_PUBLIC_IP>:8516 --config config.toml
 
 .. code-block:: python
@@ -91,7 +91,7 @@ Or attach the following AWS managed policies for quick setup:
 Step 2: Find Your Subnet IDs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ECS adapter needs at least one subnet ID to launch Fargate tasks. Find your default VPC subnets:
+The ECS worker manager needs at least one subnet ID to launch Fargate tasks. Find your default VPC subnets:
 
 .. code-block:: bash
 
@@ -114,12 +114,12 @@ The scheduler must be reachable from the Fargate tasks. Use your machine's publi
 
 .. note::
    The default scaling policy is ``scaling=no`` (no auto-scaling). The ``scaling=vanilla`` policy is required for
-   the adapter to dynamically provision and destroy Fargate tasks.
+   the worker manager to dynamically provision and destroy Fargate tasks.
 
 .. important::
    Fargate tasks must be able to reach the scheduler address over the network. Ensure your security group allows inbound TCP on port 8516 from the Fargate subnet CIDR, and that the scheduler binds to an accessible IP.
 
-Step 4: Start the AWS Raw ECS Worker Adapter
+Step 4: Start the AWS Raw ECS Worker Manager
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
@@ -168,12 +168,12 @@ Step 5: Submit Tasks
 How It Works
 ------------
 
-1. The AWS Raw ECS adapter connects to the Scaler scheduler and sends periodic heartbeats.
+1. The AWS Raw ECS worker manager connects to the Scaler scheduler and sends periodic heartbeats.
 2. When the scheduler's scaling policy requests more workers, it sends a ``StartWorkerGroup`` command.
-3. The adapter calls ``ecs:RunTask`` to launch a Fargate task running the Scaler worker container.
+3. The worker manager calls ``ecs:RunTask`` to launch a Fargate task running the Scaler worker container.
 4. Each Fargate task runs ``scaler_cluster`` inside the container, spawning one or more worker processes (controlled by ``--ecs-task-cpu``).
 5. Workers connect back to the scheduler and process tasks like local workers.
-6. When the scheduler wants to scale down, it sends a ``ShutdownWorkerGroup`` command and the adapter stops the Fargate task.
+6. When the scheduler wants to scale down, it sends a ``ShutdownWorkerGroup`` command and the worker manager stops the Fargate task.
 
 Configuration Reference
 ------------------------
@@ -215,10 +215,10 @@ Architecture
                                                                   runs inside each
                                                                   Fargate task)
 
-1. The scheduler sends scaling commands (``StartWorkerGroup`` / ``ShutdownWorkerGroup``) to the ECS adapter.
-2. The adapter calls ``ecs:RunTask`` to launch Fargate tasks running ``scaler_cluster``.
+1. The scheduler sends scaling commands (``StartWorkerGroup`` / ``ShutdownWorkerGroup``) to the ECS worker manager.
+2. The worker manager calls ``ecs:RunTask`` to launch Fargate tasks running ``scaler_cluster``.
 3. Workers inside each Fargate task connect back to the scheduler and process tasks like local workers.
-4. The adapter auto-creates the ECS cluster and task definition on first run if they don't exist.
+4. The worker manager auto-creates the ECS cluster and task definition on first run if they don't exist.
 
 Troubleshooting
 ---------------
@@ -230,4 +230,4 @@ Check that your subnets have a route to the internet (either a public subnet wit
 Ensure the scheduler address is a public/private IP reachable from the Fargate subnet. Update security group inbound rules to allow TCP traffic on port 8516.
 
 **Permission errors on RunTask:**
-Ensure the ``ecsTaskExecutionRole`` IAM role exists and has the ``AmazonECSTaskExecutionRolePolicy`` attached. The adapter creates this automatically on first run.
+Ensure the ``ecsTaskExecutionRole`` IAM role exists and has the ``AmazonECSTaskExecutionRolePolicy`` attached. The worker manager creates this automatically on first run.

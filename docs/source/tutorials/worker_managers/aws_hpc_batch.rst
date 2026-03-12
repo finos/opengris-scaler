@@ -1,9 +1,9 @@
-AWS HPC Batch Worker Adapter
+AWS HPC Batch Worker Manager
 ============================
 
-The AWS HPC worker adapter offloads task execution to `AWS Batch <https://aws.amazon.com/batch/>`_, running each Scaler task as a containerized job on managed EC2 compute. Use this adapter when you need to burst workloads to the cloud, access specific hardware (GPUs, high memory), or run long-running jobs at scale.
+The AWS HPC worker manager offloads task execution to `AWS Batch <https://aws.amazon.com/batch/>`_, running each Scaler task as a containerized job on managed EC2 compute. Use this worker manager when you need to burst workloads to the cloud, access specific hardware (GPUs, high memory), or run long-running jobs at scale.
 
-The adapter is designed as an extensible HPC framework — AWS Batch is the currently supported backend.
+The worker manager is designed as an extensible HPC framework — AWS Batch is the currently supported backend.
 
 Prerequisites
 -------------
@@ -49,7 +49,7 @@ your AWS account ID):
    # Terminal 1 — Scheduler
    scaler_scheduler tcp://0.0.0.0:8516
 
-   # Terminal 2 — AWS HPC Adapter (Batch backend)
+   # Terminal 2 — AWS HPC Worker Manager (Batch backend)
    scaler_worker_manager_aws_hpc_batch tcp://127.0.0.1:8516 --config config.toml
 
 .. code-block:: python
@@ -161,9 +161,9 @@ Step 3: Start the Scheduler
    scaler_scheduler tcp://0.0.0.0:8516
 
 .. note::
-   The scheduler address must be reachable from the machine running the AWS HPC adapter. Use ``0.0.0.0`` to bind to all interfaces, or your machine's public/private IP.
+   The scheduler address must be reachable from the machine running the AWS HPC worker manager. Use ``0.0.0.0`` to bind to all interfaces, or your machine's public/private IP.
 
-Step 4: Start the AWS HPC Adapter
+Step 4: Start the AWS HPC Worker Manager
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
@@ -220,11 +220,11 @@ To tear down all provisioned AWS resources:
 How It Works
 ------------
 
-1. The adapter connects to the Scaler scheduler as a worker and receives tasks.
+1. The worker manager connects to the Scaler scheduler as a worker and receives tasks.
 2. Each task is serialized with ``cloudpickle`` and either passed inline (≤ 28 KB) or uploaded to S3.
-3. The adapter submits an AWS Batch job for each task.
+3. The worker manager submits an AWS Batch job for each task.
 4. Inside the Batch container, a runner script (``batch_job_runner.py``) deserializes the task, executes the function, and writes the result to S3.
-5. The adapter polls for job completion, fetches the result from S3, and returns it to the scheduler.
+5. The worker manager polls for job completion, fetches the result from S3, and returns it to the scheduler.
 
 A semaphore limits concurrent Batch jobs (``--max-concurrent-jobs``) to prevent exceeding AWS service quotas.
 
@@ -243,7 +243,7 @@ AWS HPC Parameters
 * ``--max-concurrent-jobs`` (``-mcj``): Max concurrent Batch jobs (default: ``100``).
 * ``--job-timeout-minutes``: Max job runtime in minutes (default: ``60``).
 * ``--backend`` (``-b``): HPC backend (default: ``batch``).
-* ``--name`` (``-n``): Custom name for the adapter instance.
+* ``--name`` (``-n``): Custom name for the worker manager instance.
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~
@@ -360,7 +360,7 @@ Check that your compute environment has sufficient capacity (``--max-vcpus``) an
 Ensure the IAM role attached to the job definition has S3 read/write access to the task bucket. The provisioner creates this automatically.
 
 **Credential expiration:**
-The adapter auto-refreshes expired AWS credentials. If using temporary credentials, ensure your session token is valid.
+The worker manager auto-refreshes expired AWS credentials. If using temporary credentials, ensure your session token is valid.
 
 **Container image issues:**
 Your job definition image must have the same Python version as the client (required for ``cloudpickle`` compatibility), plus ``cloudpickle`` and ``boto3`` installed.

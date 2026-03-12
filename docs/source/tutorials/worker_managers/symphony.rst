@@ -1,7 +1,7 @@
-IBM Spectrum Symphony Worker Adapter
+IBM Spectrum Symphony Worker Manager
 =====================================
 
-The Symphony worker adapter integrates Scaler with `IBM Spectrum Symphony <https://www.ibm.com/products/analytics-workload-management>`_, allowing Scaler to offload task execution to a Symphony cluster via the SOAM (Service-Oriented Architecture Middleware) API.
+The Symphony worker manager integrates Scaler with `IBM Spectrum Symphony <https://www.ibm.com/products/analytics-workload-management>`_, allowing Scaler to offload task execution to a Symphony cluster via the SOAM (Service-Oriented Architecture Middleware) API.
 
 Quick Start
 -----------
@@ -12,7 +12,7 @@ Prerequisites
 * An IBM Spectrum Symphony cluster with a configured service
 * The ``soamapi`` Python package installed (``pip install soamapi``)
 * Python packages: ``pip install opengris-scaler``
-* Network connectivity between the machine running the adapter and both the Scaler scheduler and the Symphony cluster
+* Network connectivity between the machine running the worker manager and both the Scaler scheduler and the Symphony cluster
 
 Step 1: Install Dependencies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -31,9 +31,9 @@ Step 2: Start the Scheduler
 
 .. note::
    The default scaling policy is ``scaling=no`` (no auto-scaling). The ``scaling=vanilla`` policy is required for
-   the adapter to dynamically provision workers.
+   the worker manager to dynamically provision workers.
 
-Step 3: Start the Symphony Worker Adapter
+Step 3: Start the Symphony Worker Manager
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
@@ -74,13 +74,13 @@ Step 4: Submit Tasks
 How It Works
 ------------
 
-1. The Symphony adapter connects to the Scaler scheduler as a worker.
+1. The Symphony worker manager connects to the Scaler scheduler as a worker.
 2. It establishes a SOAM connection and session to the configured Symphony service.
-3. When the adapter receives a task from the scheduler, it serializes the function and arguments with ``cloudpickle`` and submits them as a Symphony task via the SOAM API.
-4. Symphony schedules the task on its compute hosts. On completion, the SOAM callback delivers the result back to the adapter.
-5. The adapter deserializes the result and returns it to the Scaler scheduler.
+3. When the worker manager receives a task from the scheduler, it serializes the function and arguments with ``cloudpickle`` and submits them as a Symphony task via the SOAM API.
+4. Symphony schedules the task on its compute hosts. On completion, the SOAM callback delivers the result back to the worker manager.
+5. The worker manager deserializes the result and returns it to the Scaler scheduler.
 
-The adapter uses a concurrency semaphore to limit the number of tasks in flight.
+The worker manager uses a concurrency semaphore to limit the number of tasks in flight.
 
 Configuration Reference
 ------------------------

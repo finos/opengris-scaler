@@ -1,7 +1,7 @@
-Common Worker Adapter Parameters
+Common Worker Manager Parameters
 ================================
 
-All worker adapters in Scaler share a set of common configuration parameters. Not every adapter supports every parameter — adapter-specific docs note any differences.
+All worker managers in Scaler share a set of common configuration parameters. Not every worker manager supports every parameter — specific docs note any differences.
 
 .. note::
     For more details on Scaler configuration, see the :doc:`../configuration` section.
@@ -17,7 +17,7 @@ Networking
 Worker Behavior
 ---------------
 
-These parameters control individual worker processes started by the adapter.
+These parameters control individual worker processes started by the worker manager.
 
 * ``--per-worker-task-queue-size`` (``-wtqs``): Task queue size per worker (default: ``1000``).
 * ``--heartbeat-interval-seconds`` (``-his``): Interval at which workers send heartbeats to the scheduler in seconds (default: ``2``).
