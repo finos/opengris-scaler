@@ -43,10 +43,7 @@ def signal_handler(signum, frame):
 
 def setup_logging() -> None:
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        stream=sys.stdout,
-        force=True,
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", stream=sys.stdout, force=True
     )
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
@@ -83,12 +80,7 @@ def build_oci_object_storage_client():
 
 
 def get_payload(
-    object_storage_client,
-    namespace: str,
-    bucket: str,
-    object_key: str,
-    payload_b64: str,
-    compressed: bool,
+    object_storage_client, namespace: str, bucket: str, object_key: str, payload_b64: str, compressed: bool
 ) -> bytes:
     """
     Fetch the task payload.
@@ -106,11 +98,7 @@ def get_payload(
         raise ValueError("No payload available: set PAYLOAD_B64 or provide OCI_NAMESPACE/OCI_BUCKET/OCI_OBJECT_KEY")
 
     logging.info(f"Fetching payload from Object Storage: {bucket}/{object_key}")
-    response = object_storage_client.get_object(
-        namespace_name=namespace,
-        bucket_name=bucket,
-        object_name=object_key,
-    )
+    response = object_storage_client.get_object(namespace_name=namespace, bucket_name=bucket, object_name=object_key)
     payload = response.data.content
 
     if compressed or object_key.endswith(".gz"):
@@ -118,11 +106,7 @@ def get_payload(
 
     # Clean up input object from Object Storage
     try:
-        object_storage_client.delete_object(
-            namespace_name=namespace,
-            bucket_name=bucket,
-            object_name=object_key,
-        )
+        object_storage_client.delete_object(namespace_name=namespace, bucket_name=bucket, object_name=object_key)
     except Exception as cleanup_exc:
         logging.warning(f"Failed to clean up input object {object_key}: {cleanup_exc}")
 
@@ -130,35 +114,22 @@ def get_payload(
 
 
 def store_result(
-    object_storage_client,
-    result_bytes: bytes,
-    namespace: str,
-    bucket: str,
-    prefix: str,
-    instance_id: str,
+    object_storage_client, result_bytes: bytes, namespace: str, bucket: str, prefix: str, task_id: str
 ) -> str:
     """
     Compress (if beneficial) and store the result in OCI Object Storage.
 
-    The result key is derived from the Container Instance OCID so that the
-    adapter can look it up after the container exits.
+    The result key is derived from the task ID so that the adapter can
+    deterministically look it up after the container exits.
     """
-    compressed = False
     if len(result_bytes) > COMPRESSION_THRESHOLD_BYTES:
         result_bytes = gzip.compress(result_bytes)
-        compressed = True
 
-    # The adapter uses the last segment of the OCID as the result key
-    instance_suffix = instance_id.split(".")[-1] if instance_id else "unknown"
-    result_key = f"{prefix}/results/{instance_suffix}.pkl"
-    if compressed:
-        result_key += ".gz"
+    # Use task_id as the result key — both the adapter and runner know it upfront
+    result_key = f"{prefix}/results/{task_id}.pkl"
 
     object_storage_client.put_object(
-        namespace_name=namespace,
-        bucket_name=bucket,
-        object_name=result_key,
-        put_object_body=result_bytes,
+        namespace_name=namespace, bucket_name=bucket, object_name=result_key, put_object_body=result_bytes
     )
 
     logging.info(f"Result stored: {bucket}/{result_key}")
@@ -175,12 +146,6 @@ def main() -> None:
     object_key = get_env("OCI_OBJECT_KEY")
     payload_b64 = get_env("PAYLOAD_B64")
     compressed = get_env("COMPRESSED", "0") == "1"
-
-    # OCI_RESOURCE_PRINCIPAL_RPST is set by OCI when running with Resource Principal auth
-    instance_id = os.environ.get("OCI_RESOURCE_PRINCIPAL_RPST", "")
-    if not instance_id:
-        # Fallback: derive from hostname (set by OCI Container Instances)
-        instance_id = os.environ.get("OCI_INSTANCE_ID", os.uname().nodename)
 
     logging.info(f"Starting task {task_id[:8]}...")
     logging.info(f"namespace={namespace}, bucket={bucket}, prefix={prefix}")
@@ -224,7 +189,7 @@ def main() -> None:
             namespace=namespace,
             bucket=bucket,
             prefix=prefix,
-            instance_id=instance_id,
+            task_id=task_id,
         )
 
         logging.info(f"Task {task_id[:8]} completed successfully")
@@ -245,7 +210,7 @@ def main() -> None:
                 namespace=namespace,
                 bucket=bucket,
                 prefix=prefix,
-                instance_id=instance_id,
+                task_id=task_id,
             )
         except Exception as store_exc:
             logging.error(f"Failed to store error result: {store_exc}")

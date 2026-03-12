@@ -7,7 +7,7 @@ Follows the same pattern as AWSHPCTaskManager for consistency.
 OCI Service Mapping:
     - AWS Batch job       → OCI Container Instance (on-demand, per-task container)
     - Amazon S3           → OCI Object Storage (task payload and result storage)
-    - AWS Batch job ID    → OCI Container Instance OCID
+    - Result key          → task ID hex (known by both adapter and job runner)
 
 Container Instance Lifecycle:
     CREATING → ACTIVE → INACTIVE (finished) or FAILED
@@ -17,6 +17,7 @@ Container Instance Lifecycle:
 """
 
 import asyncio
+import functools
 import logging
 from concurrent.futures import Future
 from typing import Any, Dict, List, Optional, Set, cast
@@ -122,6 +123,9 @@ class OCIHPCTaskManager(Looper, TaskManager):
         self._connector_external: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
         self._heartbeat_manager: Optional[HeartbeatManager] = None
+
+        # Monitor tasks for clean shutdown
+        self._monitor_tasks: Set[asyncio.Task] = set()
 
         # OCI clients (initialized lazily in register())
         self._container_instances_client: Any = None
@@ -253,6 +257,10 @@ class OCIHPCTaskManager(Looper, TaskManager):
         """Get number of queued tasks."""
         return self._queued_task_id_queue.qsize()
 
+    def get_processing_size(self) -> int:
+        """Get number of tasks currently being processed."""
+        return len(self._processing_task_ids)
+
     def can_accept_task(self) -> bool:
         """Check if more tasks can be accepted."""
         return not self._executor_semaphore.locked()
@@ -360,7 +368,9 @@ class OCIHPCTaskManager(Looper, TaskManager):
             self._task_id_to_instance_id[task.task_id] = instance_id
             logging.info(f"Task {task.task_id.hex()[:8]} submitted as Container Instance {instance_id[-20:]}")
 
-            asyncio.create_task(self._monitor_container_instance(instance_id, future, task.task_id))
+            monitor_task = asyncio.create_task(self._monitor_container_instance(instance_id, future, task.task_id))
+            self._monitor_tasks.add(monitor_task)
+            monitor_task.add_done_callback(self._monitor_tasks.discard)
         except Exception as exc:
             logging.exception(f"Failed to submit task {task.task_id.hex()[:8]}: {exc}")
             future.set_exception(exc)
@@ -386,12 +396,7 @@ class OCIHPCTaskManager(Looper, TaskManager):
         task_id_hex = task.task_id.hex()
         func_name = getattr(function, "__name__", "unknown")
 
-        task_data = {
-            "task_id": task_id_hex,
-            "source": task.source.hex(),
-            "function": function,
-            "arguments": arguments,
-        }
+        task_data = {"task_id": task_id_hex, "source": task.source.hex(), "function": function, "arguments": arguments}
         payload = cloudpickle.dumps(task_data)
         payload_size = len(payload)
 
@@ -413,11 +418,16 @@ class OCIHPCTaskManager(Looper, TaskManager):
         else:
             suffix = ".pkl.gz" if compressed else ".pkl"
             object_key = f"{self._object_storage_prefix}/{_KEY_INPUTS}/{task_id_hex}{suffix}"
-            self._object_storage_client.put_object(
-                namespace_name=self._object_storage_namespace,
-                bucket_name=self._object_storage_bucket,
-                object_name=object_key,
-                put_object_body=payload,
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                functools.partial(
+                    self._object_storage_client.put_object,
+                    namespace_name=self._object_storage_namespace,
+                    bucket_name=self._object_storage_bucket,
+                    object_name=object_key,
+                    put_object_body=payload,
+                ),
             )
             encoded_payload = ""
 
@@ -433,8 +443,7 @@ class OCIHPCTaskManager(Looper, TaskManager):
         }
 
         env_var_models = [
-            oci.container_instances.models.EnvironmentVariable(name=key, value=value)
-            for key, value in env_vars.items()
+            oci.container_instances.models.EnvironmentVariable(name=key, value=value) for key, value in env_vars.items()
         ]
 
         create_details = oci.container_instances.models.CreateContainerInstanceDetails(
@@ -442,26 +451,25 @@ class OCIHPCTaskManager(Looper, TaskManager):
             availability_domain=self._availability_domain,
             shape=self._instance_shape,
             shape_config=oci.container_instances.models.CreateContainerInstanceShapeConfigDetails(
-                ocpus=self._instance_ocpus,
-                memory_in_gbs=self._instance_memory_gb,
+                ocpus=self._instance_ocpus, memory_in_gbs=self._instance_memory_gb
             ),
             containers=[
                 oci.container_instances.models.CreateContainerDetails(
-                    image_url=self._container_image,
-                    display_name=display_name,
-                    environment_variables=env_var_models,
+                    image_url=self._container_image, display_name=display_name, environment_variables=env_var_models
                 )
             ],
-            vnics=[
-                oci.container_instances.models.CreateContainerVnicDetails(
-                    subnet_id=self._subnet_id,
-                )
-            ],
+            vnics=[oci.container_instances.models.CreateContainerVnicDetails(subnet_id=self._subnet_id)],
             display_name=display_name,
+            container_restart_policy="NEVER",
         )
 
-        response = self._container_instances_client.create_container_instance(
-            create_container_instance_details=create_details
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None,
+            functools.partial(
+                self._container_instances_client.create_container_instance,
+                create_container_instance_details=create_details,
+            ),
         )
         return response.data.id
 
@@ -474,23 +482,47 @@ class OCIHPCTaskManager(Looper, TaskManager):
         """
         import gzip
 
+        import oci
+
+        loop = asyncio.get_running_loop()
+        start_time = asyncio.get_event_loop().time()
+
         while True:
             await asyncio.sleep(_POLL_INTERVAL_SECONDS)
 
+            # Enforce job timeout
+            elapsed = asyncio.get_event_loop().time() - start_time
+            if elapsed > self._job_timeout_seconds:
+                future.set_exception(
+                    TimeoutError(f"Container Instance {instance_id[-20:]} timed out after {self._job_timeout_seconds}s")
+                )
+                await self._delete_container_instance(instance_id)
+                return
+
             try:
-                response = self._container_instances_client.get_container_instance(
-                    container_instance_id=instance_id
+                response = await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        self._container_instances_client.get_container_instance, container_instance_id=instance_id
+                    ),
                 )
                 state = response.data.lifecycle_state
 
                 if state == _INSTANCE_STATE_DONE:
-                    # Container exited — fetch result from Object Storage
-                    result_key = f"{self._object_storage_prefix}/{_KEY_RESULTS}/{instance_id.split('.')[-1]}.pkl"
+                    # Container exited — fetch result from Object Storage.
+                    # Use task_id as the result key since both sides know it upfront.
+                    task_id_hex = task_id.hex()
+                    result_key = f"{self._object_storage_prefix}/{_KEY_RESULTS}/{task_id_hex}.pkl"
+
                     try:
-                        obj_response = self._object_storage_client.get_object(
-                            namespace_name=self._object_storage_namespace,
-                            bucket_name=self._object_storage_bucket,
-                            object_name=result_key,
+                        obj_response = await loop.run_in_executor(
+                            None,
+                            functools.partial(
+                                self._object_storage_client.get_object,
+                                namespace_name=self._object_storage_namespace,
+                                bucket_name=self._object_storage_bucket,
+                                object_name=result_key,
+                            ),
                         )
                         result_bytes = obj_response.data.content
 
@@ -503,10 +535,14 @@ class OCIHPCTaskManager(Looper, TaskManager):
 
                         # Clean up result object from Object Storage
                         try:
-                            self._object_storage_client.delete_object(
-                                namespace_name=self._object_storage_namespace,
-                                bucket_name=self._object_storage_bucket,
-                                object_name=result_key,
+                            await loop.run_in_executor(
+                                None,
+                                functools.partial(
+                                    self._object_storage_client.delete_object,
+                                    namespace_name=self._object_storage_namespace,
+                                    bucket_name=self._object_storage_bucket,
+                                    object_name=result_key,
+                                ),
                             )
                         except Exception as cleanup_exc:
                             logging.warning(f"Failed to clean up result object {result_key}: {cleanup_exc}")
@@ -534,13 +570,27 @@ class OCIHPCTaskManager(Looper, TaskManager):
                 else:
                     logging.warning(f"Unexpected Container Instance state: {state} for {instance_id[-20:]}")
 
+            except oci.exceptions.ServiceError as svc_exc:
+                if svc_exc.status == 404:
+                    future.set_exception(
+                        RuntimeError(f"Container Instance {instance_id[-20:]} not found (deleted externally?)")
+                    )
+                    return
+                logging.exception(f"OCI service error polling Container Instance {instance_id[-20:]}: {svc_exc}")
+
             except Exception as poll_exc:
                 logging.exception(f"Error polling Container Instance {instance_id[-20:]}: {poll_exc}")
 
     async def _delete_container_instance(self, instance_id: str) -> None:
         """Delete an OCI Container Instance (used for cancellation and post-completion cleanup)."""
         try:
-            self._container_instances_client.delete_container_instance(container_instance_id=instance_id)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                functools.partial(
+                    self._container_instances_client.delete_container_instance, container_instance_id=instance_id
+                ),
+            )
             logging.info(f"Deleted Container Instance {instance_id[-20:]}")
         except Exception as exc:
             logging.warning(f"Failed to delete Container Instance {instance_id[-20:]}: {exc}")
@@ -570,7 +620,10 @@ class OCIHPCTaskManager(Looper, TaskManager):
                 is_return_field_info=False,
             )
 
-            response = log_search_client.search_logs(search_logs_details=search_details)
+            loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(
+                None, functools.partial(log_search_client.search_logs, search_logs_details=search_details)
+            )
             results = response.data.results or []
 
             if not results:
