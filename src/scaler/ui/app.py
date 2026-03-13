@@ -18,6 +18,7 @@ from scaler.protocol.python.common import TaskState, WorkerState
 from scaler.protocol.python.message import StateBalanceAdvice, StateScheduler, StateTask, StateWorker
 from scaler.protocol.python.mixins import Message
 from scaler.utility.formatter import format_bytes, format_microseconds, format_percentage, format_seconds
+from scaler.utility.identifiers import WorkerID
 from scaler.utility.metadata.profile_result import ProfileResult
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -588,7 +589,9 @@ class WebUIApp:
         for w in dead:
             self._workers_data.pop(w, None)
             self._worker_processors.pop(w, None)
-            self._task_stream.handle_worker_state(StateWorker.new_msg(w.encode(), WorkerState.Disconnected, {}))
+            self._task_stream.handle_worker_state(
+                StateWorker.new_msg(WorkerID(w.encode()), WorkerState.Disconnected, {})
+            )
 
     def _process_worker_state(self, state_worker: StateWorker) -> Optional[Dict[str, Any]]:
         worker_id = state_worker.worker_id.decode()
@@ -687,10 +690,10 @@ class WebUIApp:
                 self._settings["stream_window"] = val
                 self._task_stream.set_stream_window(val)
         if "memory_scale" in settings:
-            val = settings["memory_scale"]
-            if val in ("log", "linear"):
-                self._settings["memory_scale"] = val
-                self._memory_chart.set_memory_scale(val)
+            scale = str(settings["memory_scale"])
+            if scale in ("log", "linear"):
+                self._settings["memory_scale"] = scale
+                self._memory_chart.set_memory_scale(scale)
 
     def get_full_state(self) -> Dict[str, Any]:
         """Get complete current state for a newly connected client."""
