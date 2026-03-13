@@ -544,6 +544,7 @@ class WebUIApp:
             self._workers_data[worker_name] = {
                 "id": worker_name,
                 "name": _format_worker_name(worker_name),
+                "full_name": worker_name,
                 "agt_cpu": round(worker_data.agent.cpu / 10, 1),
                 "agt_rss": int(worker_data.agent.rss / 1e6),
                 "proc_cpu": round(total_proc_cpu / 10, 1),
@@ -563,6 +564,7 @@ class WebUIApp:
             # update processor details
             self._worker_processors[worker_name] = {
                 "name": _format_worker_name(worker_name),
+                "full_name": worker_name,
                 "rss_free": rss_free,
                 "processors": [],
             }
@@ -623,8 +625,10 @@ class WebUIApp:
             func_name = self._task_id_to_function.get(task_id_hex, "")
 
         worker_str = ""
+        full_worker = ""
         if state_task.worker:
-            worker_str = _format_worker_name(state_task.worker.decode())
+            full_worker = state_task.worker.decode()
+            worker_str = _format_worker_name(full_worker)
 
         caps_str = _display_capabilities(set(state_task.capabilities.keys()))
         now = datetime.datetime.now()
@@ -634,6 +638,7 @@ class WebUIApp:
             prev_entry = self._active_tasks.pop(task_id_hex, None)
             if not worker_str and prev_entry:
                 worker_str = prev_entry.get("worker", "")
+                full_worker = prev_entry.get("full_worker", "")
             submitted_time = prev_entry["time"] if prev_entry and "time" in prev_entry else now.timestamp()
             self._task_id_to_function.pop(task_id_hex, None)
 
@@ -651,6 +656,7 @@ class WebUIApp:
                 "task_id": task_id_hex,
                 "function": func_name,
                 "worker": worker_str,
+                "full_worker": full_worker,
                 "time": submitted_time,
                 "duration": duration_str,
                 "peak_mem": peak_mem_str,
@@ -665,12 +671,14 @@ class WebUIApp:
             submitted_time = prev_entry["time"] if prev_entry and "time" in prev_entry else now.timestamp()
             if not worker_str and prev_entry:
                 worker_str = prev_entry.get("worker", "")
+                full_worker = prev_entry.get("full_worker", "")
             # remove stale completed entry if task was re-submitted
             self._task_log = deque((e for e in self._task_log if e["task_id"] != task_id_hex), maxlen=TASK_LOG_MAX_SIZE)
             entry = {
                 "task_id": task_id_hex,
                 "function": func_name,
                 "worker": worker_str,
+                "full_worker": full_worker,
                 "time": submitted_time,
                 "duration": "",
                 "peak_mem": "",

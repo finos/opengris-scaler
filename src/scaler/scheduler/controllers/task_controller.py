@@ -181,6 +181,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         if not worker_id.is_valid():
             # put task on hold until there is worker is added or task is finished/canceled (means have capacity)
             self._unassigned.append(task_id)
+            await self.__send_monitor(task.task_id, self._object_controller.get_object_name(task.func_object_id))
             return
 
         await self.__routing(task_id, TaskTransition.HasCapacity, worker_id=worker_id)

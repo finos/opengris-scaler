@@ -241,6 +241,7 @@ function makeGaugeHTML(value, max, unit) {
 function updateWorkerRow(tr, w) {
     var cells = tr.children;
     cells[0].textContent = w.name;
+    cells[0].title = w.full_name || w.name;
     cells[1].innerHTML = makeGaugeHTML(w.agt_cpu, 100, "%");
     cells[2].innerHTML = makeGaugeHTML(w.agt_rss, w.total_rss, "");
     cells[3].innerHTML = makeGaugeHTML(w.proc_cpu, 100, "%");
@@ -289,6 +290,7 @@ function handleTaskUpdates(entries) {
             // update cells in-place: worker(2), time(3), duration(4), peak_mem(5), status(6)
             var cells = existing.children;
             cells[2].textContent = e.worker || "";
+            cells[2].title = e.full_worker || e.worker || "";
             cells[3].textContent = formatTime(e.time);
             cells[4].textContent = e.duration;
             cells[5].textContent = e.peak_mem;
@@ -331,6 +333,7 @@ function addTaskLogEntries(entries, append) {
         // Worker
         var tdWorker = document.createElement("td");
         tdWorker.textContent = e.worker || "";
+        tdWorker.title = e.full_worker || e.worker || "";
         tr.appendChild(tdWorker);
 
         // Time
@@ -751,6 +754,7 @@ function updateProcessors(processors) {
 
         var summary = document.createElement("summary");
         summary.textContent = "Worker " + wp.name;
+        summary.title = wp.full_name || wp.name;
         details.appendChild(summary);
 
         // track toggle state
