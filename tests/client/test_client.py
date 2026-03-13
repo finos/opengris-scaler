@@ -69,7 +69,7 @@ class TestClient(unittest.TestCase):
     def test_one_map(self):
         with Client(self.address) as client:
             with ScopedLogger("mapping 1 task"):
-                result = client.map(noop, [(1,), (2,)])
+                result = client.map(noop, [1, 2])
 
             self.assertEqual(result, [1, 2])
 
@@ -77,7 +77,7 @@ class TestClient(unittest.TestCase):
         with Client(self.address) as client:
             tasks = [random.randint(0, 100) for _ in range(100)]
             with ScopedLogger(f"submitting {len(tasks)} tasks using map"):
-                map_results = client.map(noop, [(arg,) for arg in tasks])
+                map_results = client.map(noop, tasks)
 
             self.assertEqual(map_results, tasks)
 
@@ -102,7 +102,7 @@ class TestClient(unittest.TestCase):
         with Client(self.address) as client:
             tasks = [random.randint(0, 100) for _ in range(10000)]
             with ScopedLogger(f"submit {len(tasks)} noop tasks"):
-                results = client.map(noop, [(i,) for i in tasks])
+                results = client.map(noop, tasks)
 
             self.assertEqual(results, tasks)
 
@@ -141,7 +141,7 @@ class TestClient(unittest.TestCase):
             function = functools.partial(heavy_function, payload=b"1" * size)
 
             with ScopedLogger(f"submit {len(tasks)} heavy function (500mb) for {number_of_tasks} tasks"):
-                results = client.map(function, [(i,) for i in tasks])
+                results = client.map(function, tasks)
 
             expected = [task * size for task in tasks]
             self.assertEqual(results, expected)
@@ -218,7 +218,7 @@ class TestClient(unittest.TestCase):
             return x * y
 
         with Client(self.address) as client:
-            result = client.map(func, [(1, 2), (3, 4), (5, 6), (7, 8)])
+            result = client.starmap(func, [(1, 2), (3, 4), (5, 6), (7, 8)])
             self.assertEqual(result, [2, 12, 30, 56])
 
     def test_more_tasks(self):
@@ -227,7 +227,7 @@ class TestClient(unittest.TestCase):
             return a * 2
 
         with Client(self.address) as client:
-            client.map(func, [(i,) for i in range(self._workers * 2)])
+            client.map(func, range(self._workers * 2))
 
     def test_context_manager(self):
         with Client(self.address) as client:
@@ -269,7 +269,7 @@ class TestClient(unittest.TestCase):
             self.assertEqual(client.submit(func, ref1).result(), 6)
 
             ref2 = client.send_object("123456789")
-            self.assertEqual(client.map(func, [(ref1,), (ref2,)]), [6, 9])
+            self.assertEqual(client.map(func, [ref1, ref2]), [6, 9])
 
     def test_send_object2(self):
         def add(a, b):
