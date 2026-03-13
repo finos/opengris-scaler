@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import hashlib
+import heapq
 import json
 import struct
 import threading
@@ -80,8 +81,13 @@ class TaskStreamState:
         self._task_id_to_function: Dict[bytes, str] = {}
         self._worker_to_task_ids: Dict[str, Set[bytes]] = {}
 
+        # slot tracking: assign each concurrent task a sub-lane within the worker row
+        self._task_id_to_slot: Dict[bytes, int] = {}
+        self._worker_free_slots: Dict[str, List[int]] = {}  # min-heap of freed slots
+        self._worker_slot_count: Dict[str, int] = {}  # next slot index to allocate
+
         # completed bar history: worker -> list of bar dicts
-        # each bar has absolute "start" and "end" timestamps
+        # each bar has absolute "start" and "end" timestamps plus slot info
         self._bar_history: Dict[str, List[Dict[str, Any]]] = {}
 
         self._dead_workers: Deque[Tuple[datetime.datetime, str]] = deque()
@@ -155,6 +161,14 @@ class TaskStreamState:
         task_map = self._current_tasks.setdefault(worker, {})
         if task_id not in task_map:
             task_map[task_id] = now
+            # assign a sub-lane slot within this worker's row
+            free = self._worker_free_slots.setdefault(worker, [])
+            if free:
+                slot = heapq.heappop(free)
+            else:
+                slot = self._worker_slot_count.get(worker, 0)
+                self._worker_slot_count[worker] = slot + 1
+            self._task_id_to_slot[task_id] = slot
 
     def _handle_task_result(self, state: StateTask, now: datetime.datetime) -> None:
         task_id = state.task_id
@@ -170,6 +184,11 @@ class TaskStreamState:
             return
 
         self._add_bar(worker, task_id, start, now, state.state)
+
+        # free the slot back for reuse
+        slot = self._task_id_to_slot.pop(task_id, None)
+        if slot is not None:
+            heapq.heappush(self._worker_free_slots.setdefault(worker, []), slot)
 
         task_map.pop(task_id, None)
         if not task_map:
@@ -198,9 +217,12 @@ class TaskStreamState:
         elif task_state in (TaskState.Canceled, TaskState.CanceledNotFound):
             pattern = "/"
 
+        slot = self._task_id_to_slot.get(task_id, 0)
+
         bar = {
             "start": start_time.timestamp(),
             "end": end_time.timestamp(),
+            "slot": slot,
             "color": color,
             "pattern": pattern,
             "outline_color": outline_color,
@@ -244,9 +266,23 @@ class TaskStreamState:
                 row_labels.append(_format_worker_name(worker))
                 worker_order.append(worker)
 
+            # compute number of sub-lanes per worker (max slot across visible bars + running tasks)
+            worker_num_slots: Dict[str, int] = {}
+            for worker in worker_order:
+                max_slot = 0
+                for bar in self._bar_history.get(worker, []):
+                    if bar["end"] >= window_start_ts:
+                        max_slot = max(max_slot, bar.get("slot", 0))
+                task_map = self._current_tasks.get(worker)
+                if task_map:
+                    for task_id in task_map:
+                        max_slot = max(max_slot, self._task_id_to_slot.get(task_id, 0))
+                worker_num_slots[worker] = max_slot + 1
+
             # build bars list with absolute time -> relative coordinates
             bars: List[Dict[str, Any]] = []
             for row_idx, worker in enumerate(worker_order):
+                ns = worker_num_slots.get(worker, 1)
                 for bar in self._bar_history.get(worker, []):
                     if bar["end"] < window_start_ts:
                         continue  # outside visible window
@@ -263,6 +299,8 @@ class TaskStreamState:
                             "r": row_idx,
                             "x": x_start,
                             "w": w,
+                            "s": bar.get("slot", 0),
+                            "ns": ns,
                             "c": bar["color"],
                             "p": bar["pattern"],
                             "oc": bar["outline_color"],
@@ -273,6 +311,7 @@ class TaskStreamState:
 
             # running tasks (shown as live-growing bars)
             for row_idx, worker in enumerate(worker_order):
+                ns = worker_num_slots.get(worker, 1)
                 task_map = self._current_tasks.get(worker)
                 if not task_map:
                     continue
@@ -287,17 +326,19 @@ class TaskStreamState:
                     caps = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
                     color = _capabilities_color(caps, self._capabilities_color_map)
                     func = self._task_id_to_function.get(task_id, "")
-                    duration = actual_duration
+                    slot = self._task_id_to_slot.get(task_id, 0)
                     bars.append(
                         {
                             "r": row_idx,
                             "x": x_start,
                             "w": w,
+                            "s": slot,
+                            "ns": ns,
                             "c": color,
                             "p": "",
                             "oc": "#eab308",  # yellow for running
                             "ow": 2,
-                            "h": f"{func} ({duration:.1f}s) - Running",
+                            "h": f"{func} ({actual_duration:.1f}s) - Running",
                         }
                     )
 
