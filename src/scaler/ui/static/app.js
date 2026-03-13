@@ -6,6 +6,7 @@ var ws = null;
 var reconnectDelay = 500;
 var workerRows = {};       // worker_id -> <tr> element
 var taskLogCount = 0;
+var taskRowMap = {};  // task_id -> tr element for in-place updates
 var streamBars = [];       // current bar data from server
 var streamRows = [];       // row labels
 var memoryPoints = [];     // memory chart points
@@ -138,8 +139,8 @@ function handleMessage(data) {
     if (data.worker_events) {
         handleWorkerEvents(data.worker_events);
     }
-    if (data.task_log) {
-        addTaskLogEntries(data.task_log);
+    if (data.task_updates) {
+        handleTaskUpdates(data.task_updates);
     }
     if (data.task_stream) {
         updateTaskStream(data.task_stream);
@@ -158,7 +159,8 @@ function handleFullState(data) {
     if (data.task_log) {
         tasklogBody.innerHTML = "";
         taskLogCount = 0;
-        addTaskLogEntries(data.task_log);
+        taskRowMap = {};
+        addTaskLogEntries(data.task_log, true);
     }
     if (data.task_stream) updateTaskStream(data.task_stream);
     if (data.memory_chart) updateMemoryChart(data.memory_chart);
@@ -263,7 +265,42 @@ function handleWorkerEvents(events) {
 }
 
 // ── Task Log ──
-function addTaskLogEntries(entries) {
+function formatTime(epoch) {
+    if (!epoch) return "";
+    var d = new Date(epoch * 1000);
+    var h = String(d.getHours()).padStart(2, "0");
+    var m = String(d.getMinutes()).padStart(2, "0");
+    var s = String(d.getSeconds()).padStart(2, "0");
+    return h + ":" + m + ":" + s;
+}
+
+function statusClass(status) {
+    if (status === "Success") return "status-success";
+    if (status === "Running" || status === "Inactive" || status === "Canceling" || status === "BalanceCanceling") return "status-running";
+    return "status-fail";
+}
+
+function handleTaskUpdates(entries) {
+    for (var i = 0; i < entries.length; i++) {
+        var e = entries[i];
+        var existing = taskRowMap[e.task_id];
+        if (existing) {
+            // update cells in-place: worker(2), time(3), duration(4), peak_mem(5), status(6)
+            var cells = existing.children;
+            cells[2].textContent = e.worker || "";
+            cells[3].textContent = formatTime(e.time);
+            cells[4].textContent = e.duration;
+            cells[5].textContent = e.peak_mem;
+            cells[6].textContent = e.status;
+            cells[6].className = statusClass(e.status);
+        } else {
+            // new task - insert at top
+            addTaskLogEntries([e]);
+        }
+    }
+}
+
+function addTaskLogEntries(entries, append) {
     for (var i = 0; i < entries.length; i++) {
         var e = entries[i];
         var tr = document.createElement("tr");
@@ -289,6 +326,16 @@ function addTaskLogEntries(entries) {
         tdFunc.textContent = e.function;
         tr.appendChild(tdFunc);
 
+        // Worker
+        var tdWorker = document.createElement("td");
+        tdWorker.textContent = e.worker || "";
+        tr.appendChild(tdWorker);
+
+        // Time
+        var tdTime = document.createElement("td");
+        tdTime.textContent = formatTime(e.time);
+        tr.appendChild(tdTime);
+
         // Duration
         var tdDur = document.createElement("td");
         tdDur.textContent = e.duration;
@@ -302,7 +349,7 @@ function addTaskLogEntries(entries) {
         // Status
         var tdStatus = document.createElement("td");
         tdStatus.textContent = e.status;
-        tdStatus.className = e.status === "Success" ? "status-success" : "status-fail";
+        tdStatus.className = statusClass(e.status);
         tr.appendChild(tdStatus);
 
         // Capabilities
@@ -310,12 +357,15 @@ function addTaskLogEntries(entries) {
         tdCaps.textContent = e.capabilities;
         tr.appendChild(tdCaps);
 
-        // Prepend (newest first)
-        if (tasklogBody.firstChild) {
+        // Insert row
+        if (append) {
+            tasklogBody.appendChild(tr);
+        } else if (tasklogBody.firstChild) {
             tasklogBody.insertBefore(tr, tasklogBody.firstChild);
         } else {
             tasklogBody.appendChild(tr);
         }
+        taskRowMap[e.task_id] = tr;
         taskLogCount++;
     }
 
@@ -678,6 +728,8 @@ memoryCanvas.addEventListener("mouseleave", function() {
 });
 
 // ── Worker Processors ──
+var processorsCollapsed = {};  // track collapsed state by worker name
+
 function updateProcessors(processors) {
     processorsContainer.innerHTML = "";
     if (!processors || processors.length === 0) {
@@ -689,11 +741,18 @@ function updateProcessors(processors) {
         var wp = processors[i];
         var details = document.createElement("details");
         details.className = "card processor-group";
-        details.open = true;
+        details.open = !processorsCollapsed[wp.name];
 
         var summary = document.createElement("summary");
         summary.textContent = "Worker " + wp.name;
         details.appendChild(summary);
+
+        // track toggle state
+        (function(name, el) {
+            el.addEventListener("toggle", function() {
+                processorsCollapsed[name] = !el.open;
+            });
+        })(wp.name, details);
 
         var table = document.createElement("table");
         table.className = "data-table";

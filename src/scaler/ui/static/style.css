@@ -236,14 +236,17 @@ body {
     font-weight: 600;
 }
 
-/* Task ID (clickable, truncated) */
+.status-running {
+    color: #eab308;
+    font-weight: 600;
+}
+
+/* Task ID (clickable) */
 .task-id {
-    max-width: 12rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     cursor: pointer;
     display: inline-block;
+    font-family: monospace;
+    font-size: 0.85em;
 }
 
 .task-id:hover {

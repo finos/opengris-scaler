@@ -425,6 +425,7 @@ class WebUIApp:
         self._workers_data: Dict[str, Dict[str, Any]] = {}
         self._worker_capabilities: Dict[str, Dict[str, int]] = {}
         self._task_log: Deque[Dict[str, Any]] = deque(maxlen=100)
+        self._active_tasks: Dict[str, Dict[str, Any]] = {}  # task_id_hex -> entry (running tasks)
         self._task_id_to_function: Dict[str, str] = {}
         self._task_stream = TaskStreamState()
         self._memory_chart = MemoryChartState()
@@ -507,7 +508,7 @@ class WebUIApp:
                 payload["worker_events"] = worker_events
 
             if new_task_logs:
-                payload["task_log"] = new_task_logs
+                payload["task_updates"] = new_task_logs
 
             # Always send chart data (auto-scrolling)
             stream_data = self._task_stream.get_render_data()
@@ -617,33 +618,64 @@ class WebUIApp:
         self._task_stream.handle_task_state(state_task)
         self._memory_chart.handle_task_state(state_task)
 
-        # only add completed tasks to log
-        if state_task.state not in COMPLETED_TASK_STATUSES:
-            return None
-
         if not func_name:
-            func_name = self._task_id_to_function.pop(task_id_hex, "")
+            func_name = self._task_id_to_function.get(task_id_hex, "")
 
-        duration_str = "N/A"
-        peak_mem_str = "N/A"
-        if state_task.metadata != b"":
-            try:
-                profile = ProfileResult.deserialize(state_task.metadata)
-                duration_str = f"{profile.duration_s:.2f}s"
-                peak_mem_str = format_bytes(profile.memory_peak) if profile.memory_peak != 0 else "0"
-            except struct.error:
-                pass
+        worker_str = ""
+        if state_task.worker:
+            worker_str = _format_worker_name(state_task.worker.decode())
 
-        entry = {
-            "task_id": task_id_hex,
-            "function": func_name,
-            "duration": duration_str,
-            "peak_mem": peak_mem_str,
-            "status": state_task.state.name,
-            "capabilities": _display_capabilities(set(state_task.capabilities.keys())),
-        }
-        self._task_log.appendleft(entry)
-        return entry
+        caps_str = _display_capabilities(set(state_task.capabilities.keys()))
+        now = datetime.datetime.now()
+
+        if state_task.state in COMPLETED_TASK_STATUSES:
+            # preserve worker/time from active entry if completion message lacks them
+            prev_entry = self._active_tasks.pop(task_id_hex, None)
+            if not worker_str and prev_entry:
+                worker_str = prev_entry.get("worker", "")
+            submitted_time = prev_entry["time"] if prev_entry and "time" in prev_entry else now.timestamp()
+            self._task_id_to_function.pop(task_id_hex, None)
+
+            duration_str = "N/A"
+            peak_mem_str = "N/A"
+            if state_task.metadata != b"":
+                try:
+                    profile = ProfileResult.deserialize(state_task.metadata)
+                    duration_str = f"{profile.duration_s:.2f}s"
+                    peak_mem_str = format_bytes(profile.memory_peak) if profile.memory_peak != 0 else "0"
+                except struct.error:
+                    pass
+
+            entry = {
+                "task_id": task_id_hex,
+                "function": func_name,
+                "worker": worker_str,
+                "time": submitted_time,
+                "duration": duration_str,
+                "peak_mem": peak_mem_str,
+                "status": state_task.state.name,
+                "capabilities": caps_str,
+            }
+            self._task_log.appendleft(entry)
+            return entry
+        else:
+            # running/inactive/canceling — track as active task
+            prev_entry = self._active_tasks.get(task_id_hex)
+            submitted_time = prev_entry["time"] if prev_entry and "time" in prev_entry else now.timestamp()
+            if not worker_str and prev_entry:
+                worker_str = prev_entry.get("worker", "")
+            entry = {
+                "task_id": task_id_hex,
+                "function": func_name,
+                "worker": worker_str,
+                "time": submitted_time,
+                "duration": "",
+                "peak_mem": "",
+                "status": state_task.state.name,
+                "capabilities": caps_str,
+            }
+            self._active_tasks[task_id_hex] = entry
+            return entry
 
     def _build_processors_data(self) -> List[Dict[str, Any]]:
         return list(self._worker_processors.values())
@@ -664,10 +696,13 @@ class WebUIApp:
         """Get complete current state for a newly connected client."""
         stream_data = self._task_stream.get_render_data()
         memory_data = self._memory_chart.get_render_data(stream_data["window"])
+        # combine active + completed for initial task log, sorted by time (newest first)
+        initial_task_log = list(self._active_tasks.values()) + list(self._task_log)
+        initial_task_log.sort(key=lambda e: e.get("time", 0), reverse=True)
         return {
             "scheduler": self._scheduler_data,
             "workers": list(self._workers_data.values()),
-            "task_log": list(self._task_log),
+            "task_log": initial_task_log,
             "task_stream": stream_data,
             "memory_chart": memory_data,
             "processors": self._build_processors_data(),
