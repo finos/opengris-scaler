@@ -1,7 +1,7 @@
 Common Worker Manager Parameters
 ================================
 
-All worker managers in Scaler share a set of common configuration parameters for connecting to the cluster, configuring the internal web server, and managing worker behavior.
+All worker managers in Scaler share a set of common configuration parameters for connecting to the cluster and managing worker behavior.
 
 .. note::
     For more details on how to configure Scaler, see the :doc:`../configuration` section.

@@ -67,6 +67,12 @@ class WorkerManagerController(Looper, Reporter):
         # Build cross-manager snapshots from all known managers
         worker_manager_snapshots = self._build_manager_snapshots()
 
+        # Wait for the previous command to complete before sending another.
+        # Worker managers can take a long time to fulfill commands (e.g. ORB polls for instance IDs),
+        # so sending a new command before the response arrives causes duplicate work and errors.
+        if source in self._pending_commands:
+            return
+
         commands = self._policy_controller.get_scaling_commands(
             information_snapshot, heartbeat, worker_groups, worker_group_capabilities, worker_manager_snapshots
         )

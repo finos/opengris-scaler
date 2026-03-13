@@ -43,6 +43,11 @@ AWS HPC
 
 The :doc:`AWS HPC <aws_hpc/index>` worker manager allows Scaler to offload task execution to cloud environments, currently supporting AWS Batch. It is ideal for bursting workloads to the cloud or utilizing specific hardware not available locally.
 
+ORB (AWS EC2)
+~~~~~~~~~~~~~
+
+The :doc:`ORB <orb>` worker adapter allows Scaler to dynamically provision workers on AWS EC2 instances. This is ideal for scaling workloads that require significant cloud compute resources or specialized hardware like GPUs.
+
 Common Parameters
 ~~~~~~~~~~~~~~~~~
 
@@ -52,5 +57,6 @@ All worker managers share a set of :doc:`common configuration parameters <common
     :hidden:
 
     native
+    orb
     aws_hpc/index
     common_parameters

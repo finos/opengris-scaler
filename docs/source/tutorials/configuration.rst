@@ -199,6 +199,8 @@ The following table maps each Scaler command to its corresponding section name i
      - ``[symphony_worker_manager]``
    * - ``scaler_worker_manager_aws_raw_ecs``
      - ``[ecs_worker_manager]``
+   * - ``scaler_worker_manager_orb``
+     - ``[orb_worker_adapter]``
    * - ``python -m scaler.entry_points.worker_manager_aws_hpc_batch``
      - ``[aws_hpc_worker_manager]``
 
