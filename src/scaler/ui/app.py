@@ -1,0 +1,780 @@
+import asyncio
+import datetime
+import hashlib
+import json
+import struct
+import threading
+from collections import deque
+from pathlib import Path
+from typing import Any, Deque, Dict, List, Optional, Set, Tuple
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+from scaler.config.section.webui import WebUIConfig
+from scaler.io.sync_subscriber import ZMQSyncSubscriber
+from scaler.protocol.python.common import TaskState, WorkerState
+from scaler.protocol.python.message import StateBalanceAdvice, StateScheduler, StateTask, StateWorker
+from scaler.protocol.python.mixins import Message
+from scaler.utility.formatter import format_bytes, format_microseconds, format_percentage, format_seconds
+from scaler.utility.metadata.profile_result import ProfileResult
+
+STATIC_DIR = Path(__file__).parent / "static"
+
+BATCH_INTERVAL_SECONDS = 0.1
+
+COMPLETED_TASK_STATUSES = {
+    TaskState.Success,
+    TaskState.Canceled,
+    TaskState.CanceledNotFound,
+    TaskState.Failed,
+    TaskState.FailedWorkerDied,
+}
+
+SLIDING_WINDOW_OPTIONS = {
+    5: datetime.timedelta(minutes=5),
+    10: datetime.timedelta(minutes=10),
+    30: datetime.timedelta(minutes=30),
+}
+
+
+def _format_worker_name(worker_name: str, cutoff: int = 15) -> str:
+    if len(worker_name) <= cutoff:
+        return worker_name
+    return worker_name[:cutoff] + "+"
+
+
+def _capabilities_color(capabilities_str: str, color_map: Dict[str, str]) -> str:
+    if capabilities_str not in color_map:
+        h = hashlib.md5(capabilities_str.encode()).hexdigest()
+        color = f"#{h[:6]}"
+        if color == "#ffffff":
+            color = "#0000ff"
+        color_map[capabilities_str] = color
+    return color_map[capabilities_str]
+
+
+def _display_capabilities(capabilities: Set[str]) -> str:
+    if not capabilities:
+        return "<no capabilities>"
+    return " ".join(sorted(capabilities))
+
+
+class TaskStreamState:
+    """Server-side state for the task stream chart, ported from task_graph.py."""
+
+    def __init__(self) -> None:
+        self._start_time = datetime.datetime.now()
+        self._stream_window = datetime.timedelta(minutes=5)
+        self._memory_store_time = datetime.timedelta(minutes=30)
+
+        # worker tracking
+        self._seen_workers: Set[str] = set()
+        self._worker_capabilities: Dict[str, Set[str]] = {}
+        self._capabilities_color_map: Dict[str, str] = {"<no capabilities>": "#22c55e"}
+
+        # per-worker rows
+        self._worker_rows: Dict[str, List[str]] = {}
+        self._row_to_worker: Dict[str, str] = {}
+
+        # task tracking
+        self._current_tasks: Dict[str, Dict[bytes, datetime.datetime]] = {}
+        self._task_id_to_worker: Dict[bytes, str] = {}
+        self._task_id_to_capabilities: Dict[bytes, str] = {}
+        self._task_id_to_function: Dict[bytes, str] = {}
+        self._task_row_assignment: Dict[bytes, str] = {}
+        self._worker_to_task_ids: Dict[str, Set[bytes]] = {}
+        self._row_last_used: Dict[str, datetime.datetime] = {}
+
+        # completed bar history: row_label -> list of bar dicts
+        self._bar_history: Dict[str, List[Dict[str, Any]]] = {}
+
+        self._dead_workers: Deque[Tuple[datetime.datetime, str]] = deque()
+
+        self._lock = threading.Lock()
+
+    def set_stream_window(self, minutes: int) -> None:
+        self._stream_window = SLIDING_WINDOW_OPTIONS.get(minutes, datetime.timedelta(minutes=5))
+
+    def _make_initial_row(self, worker: str) -> None:
+        base = _format_worker_name(worker)
+        row = f"{base} [1]"
+        self._worker_rows[worker] = [row]
+        self._row_to_worker[row] = worker
+
+    def _allocate_row(self, worker: str, task_id: bytes) -> str:
+        if task_id in self._task_row_assignment:
+            return self._task_row_assignment[task_id]
+
+        if worker not in self._worker_rows:
+            self._make_initial_row(worker)
+
+        used = set(self._task_row_assignment.values())
+        for row in self._worker_rows[worker]:
+            if row not in used:
+                self._task_row_assignment[task_id] = row
+                if row not in self._bar_history:
+                    self._bar_history[row] = []
+                return row
+
+        base = _format_worker_name(worker)
+        new_row = f"{base} [{len(self._worker_rows[worker]) + 1}]"
+        self._worker_rows[worker].append(new_row)
+        self._row_to_worker[new_row] = worker
+        self._task_row_assignment[task_id] = new_row
+        if new_row not in self._bar_history:
+            self._bar_history[new_row] = []
+        return new_row
+
+    def _free_row(self, task_id: bytes) -> None:
+        self._task_row_assignment.pop(task_id, None)
+
+    def handle_worker_state(self, state_worker: StateWorker) -> None:
+        worker_id = state_worker.worker_id.decode()
+        worker_state = state_worker.state
+        now = datetime.datetime.now()
+
+        with self._lock:
+            if worker_state == WorkerState.Connected:
+                if worker_id not in self._seen_workers:
+                    self._seen_workers.add(worker_id)
+                    self._make_initial_row(worker_id)
+                    row = self._worker_rows[worker_id][0]
+                    self._bar_history[row] = []
+                    self._row_last_used[row] = now
+                self._worker_capabilities[worker_id] = set(state_worker.capabilities.keys())
+            elif worker_state == WorkerState.Disconnected:
+                self._current_tasks.pop(worker_id, None)
+                self._dead_workers.append((now, worker_id))
+
+    def handle_task_state(self, state_task: StateTask) -> None:
+        task_state = state_task.state
+        now = datetime.datetime.now()
+
+        with self._lock:
+            if task_state in COMPLETED_TASK_STATUSES:
+                self._handle_task_result(state_task, now)
+                return
+
+            worker = state_task.worker
+            if not worker:
+                return
+
+            worker_str = worker.decode()
+            if worker_str not in self._seen_workers:
+                self._seen_workers.add(worker_str)
+                self._make_initial_row(worker_str)
+                row = self._worker_rows[worker_str][0]
+                self._bar_history[row] = []
+                self._row_last_used[row] = now
+                self._worker_capabilities[worker_str] = set()
+
+            if task_state == TaskState.Running:
+                self._handle_running_task(state_task, worker_str, now)
+
+    def _handle_running_task(self, state_task: StateTask, worker: str, now: datetime.datetime) -> None:
+        task_id = state_task.task_id
+        caps = _display_capabilities(set(state_task.capabilities.keys()))
+        self._task_id_to_capabilities[task_id] = caps
+        func_name = state_task.function_name.decode()
+        if func_name:
+            self._task_id_to_function[task_id] = func_name
+
+        # if reassigned from another worker, cancel old assignment
+        prev_worker = self._task_id_to_worker.get(task_id)
+        if prev_worker and prev_worker != worker:
+            task_map = self._current_tasks.get(prev_worker, {})
+            start_time = task_map.get(task_id)
+            if start_time:
+                duration = (now - start_time).total_seconds()
+                row = self._task_row_assignment.get(task_id)
+                if row:
+                    self._add_bar(row, worker, task_id, duration, TaskState.Canceled, now)
+            self._current_tasks.get(prev_worker, {}).pop(task_id, None)
+            self._free_row(task_id)
+            self._worker_to_task_ids.get(prev_worker, set()).discard(task_id)
+
+        self._task_id_to_worker[task_id] = worker
+        self._worker_to_task_ids.setdefault(worker, set()).add(task_id)
+
+        task_map = self._current_tasks.get(worker)
+        if task_map is not None:
+            task_map[task_id] = now
+        else:
+            self._current_tasks[worker] = {task_id: now}
+
+        row = self._allocate_row(worker, task_id)
+        self._row_last_used[row] = now
+
+    def _handle_task_result(self, state: StateTask, now: datetime.datetime) -> None:
+        task_id = state.task_id
+        worker = self._task_id_to_worker.get(task_id, "")
+        if not worker:
+            return
+
+        task_map = self._current_tasks.get(worker)
+        if not task_map:
+            return
+        start = task_map.get(task_id)
+        if start is None:
+            return
+
+        duration = (now - start).total_seconds()
+        row = self._task_row_assignment.get(task_id)
+        if row:
+            self._add_bar(row, worker, task_id, duration, state.state, now)
+            self._row_last_used[row] = now
+
+        task_map.pop(task_id, None)
+        if not task_map:
+            self._current_tasks.pop(worker, None)
+        self._free_row(task_id)
+        self._worker_to_task_ids.get(worker, set()).discard(task_id)
+
+    def _add_bar(
+        self, row: str, worker: str, task_id: bytes, duration: float, task_state: TaskState, end_time: datetime.datetime
+    ) -> None:
+        caps = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
+        color = _capabilities_color(caps, self._capabilities_color_map)
+        func = self._task_id_to_function.get(task_id, "")
+
+        pattern = ""
+        outline_color = "black"
+        outline_width = 1
+        if task_state in (TaskState.Failed, TaskState.FailedWorkerDied):
+            pattern = "x"
+            outline_color = "red"
+        elif task_state in (TaskState.Canceled, TaskState.CanceledNotFound):
+            pattern = "/"
+
+        bar = {
+            "end": end_time.timestamp(),
+            "duration": duration,
+            "color": color,
+            "pattern": pattern,
+            "outline_color": outline_color,
+            "outline_width": outline_width,
+            "hover": f"{func} ({duration:.2f}s) - {task_state.name}",
+            "capabilities": caps,
+        }
+
+        if row not in self._bar_history:
+            self._bar_history[row] = []
+
+        # merge consecutive identical bars
+        history = self._bar_history[row]
+        if history:
+            last = history[-1]
+            if last["color"] == color and last["pattern"] == pattern and last["outline_color"] == outline_color:
+                last["duration"] += duration
+                last["end"] = end_time.timestamp()
+                count = last.get("count", 1) + 1
+                last["count"] = count
+                last["hover"] = f"{func} ({last['duration']:.2f}s) - {task_state.name} x{count}"
+                return
+
+        history.append(bar)
+
+    def _prune_old_data(self, now: datetime.datetime) -> None:
+        cutoff = now - self._memory_store_time
+        cutoff_ts = cutoff.timestamp()
+
+        # remove old bars
+        for row in list(self._bar_history.keys()):
+            bars = self._bar_history[row]
+            while bars and bars[0]["end"] < cutoff_ts:
+                bars.pop(0)
+
+        # remove dead workers past retention
+        while self._dead_workers and self._dead_workers[0][0] < cutoff:
+            _, worker = self._dead_workers.popleft()
+            rows = self._worker_rows.pop(worker, [])
+            for row in rows:
+                self._row_to_worker.pop(row, None)
+                self._row_last_used.pop(row, None)
+                self._bar_history.pop(row, None)
+            self._worker_to_task_ids.pop(worker, None)
+            self._worker_capabilities.pop(worker, None)
+            self._seen_workers.discard(worker)
+
+    def get_render_data(self) -> Dict[str, Any]:
+        now = datetime.datetime.now()
+        now_ts = now.timestamp()
+
+        with self._lock:
+            self._prune_old_data(now)
+            window_seconds = self._stream_window.total_seconds()
+
+            # collect all row labels in order
+            row_labels: List[str] = []
+            for worker in sorted(self._seen_workers):
+                for row in self._worker_rows.get(worker, []):
+                    row_labels.append(row)
+
+            # build bars list (pre-computed coordinates)
+            bars: List[Dict[str, Any]] = []
+            for row_idx, row_label in enumerate(row_labels):
+                for bar in self._bar_history.get(row_label, []):
+                    x_end = bar["end"] - now_ts  # negative seconds ago
+                    x_start = x_end - bar["duration"]
+                    if x_end < -window_seconds:
+                        continue  # outside visible window
+                    bars.append(
+                        {
+                            "r": row_idx,
+                            "x": max(x_start, -window_seconds),
+                            "w": bar["duration"] - max(-window_seconds - x_start, 0),
+                            "c": bar["color"],
+                            "p": bar["pattern"],
+                            "oc": bar["outline_color"],
+                            "ow": bar["outline_width"],
+                            "h": bar["hover"],
+                        }
+                    )
+
+            # running tasks
+            for worker, task_map in self._current_tasks.items():
+                for task_id, start_time in task_map.items():
+                    row = self._task_row_assignment.get(task_id)
+                    if row is None:
+                        continue
+                    row_idx = row_labels.index(row) if row in row_labels else -1
+                    if row_idx < 0:
+                        continue
+                    x_start = (start_time - now).total_seconds()
+                    duration = (now - start_time).total_seconds()
+                    caps = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
+                    color = _capabilities_color(caps, self._capabilities_color_map)
+                    func = self._task_id_to_function.get(task_id, "")
+                    bars.append(
+                        {
+                            "r": row_idx,
+                            "x": max(x_start, -window_seconds),
+                            "w": duration - max(-window_seconds - x_start, 0),
+                            "c": color,
+                            "p": "",
+                            "oc": "#eab308",  # yellow for running
+                            "ow": 2,
+                            "h": f"{func} ({duration:.1f}s) - Running",
+                        }
+                    )
+
+            # capability legend
+            legend: List[Dict[str, str]] = []
+            seen_caps: Set[str] = set()
+            for worker in sorted(self._seen_workers):
+                for cap in sorted(self._worker_capabilities.get(worker, set())):
+                    if cap not in seen_caps:
+                        seen_caps.add(cap)
+                        legend.append({"name": cap, "color": _capabilities_color(cap, self._capabilities_color_map)})
+
+            # time axis ticks
+            ticks: List[Dict[str, Any]] = []
+            num_ticks = 7
+            for i in range(num_ticks):
+                val = -window_seconds + i * (window_seconds / (num_ticks - 1))
+                ticks.append({"val": round(val, 1), "label": f"{int(val)}s"})
+
+        return {"rows": row_labels, "bars": bars, "legend": legend, "ticks": ticks, "window": window_seconds}
+
+
+class MemoryChartState:
+    """Server-side state for the memory usage chart."""
+
+    def __init__(self) -> None:
+        self._start_time = datetime.datetime.now()
+        self._points: List[Tuple[float, int]] = []  # (timestamp, memory_bytes)
+        self._memory_store_time = datetime.timedelta(minutes=30)
+        self._memory_scale = "linear"
+        self._lock = threading.Lock()
+
+    def set_memory_scale(self, scale: str) -> None:
+        if scale in ("log", "linear"):
+            self._memory_scale = scale
+
+    def handle_task_state(self, state_task: StateTask) -> None:
+        if state_task.metadata == b"":
+            return
+
+        try:
+            profile = ProfileResult.deserialize(state_task.metadata)
+        except struct.error:
+            return
+
+        if profile.memory_peak == 0:
+            return
+
+        now = datetime.datetime.now()
+        with self._lock:
+            start_ts = now.timestamp() - profile.duration_s
+            self._points.append((start_ts, profile.memory_peak))
+            self._points.append((now.timestamp(), -profile.memory_peak))
+
+    def get_render_data(self, window_seconds: float) -> Dict[str, Any]:
+        now = datetime.datetime.now()
+        now_ts = now.timestamp()
+        cutoff_ts = now_ts - self._memory_store_time.total_seconds()
+        view_start = now_ts - window_seconds
+
+        with self._lock:
+            # prune old points
+            self._points = [(t, m) for t, m in self._points if t >= cutoff_ts]
+
+            # build memory timeline within visible window
+            events = sorted(self._points, key=lambda p: p[0])
+
+        # accumulate memory usage
+        running_mem = 0
+        chart_points: List[Dict[str, Any]] = []
+        for ts, delta in events:
+            running_mem += delta
+            if running_mem < 0:
+                running_mem = 0
+            x = ts - now_ts  # relative seconds
+            if x < -window_seconds:
+                continue
+            chart_points.append({"x": round(x, 2), "y": max(running_mem, 0)})
+
+        # always include current point
+        if not chart_points or chart_points[-1]["x"] < -0.1:
+            chart_points.append({"x": 0, "y": max(running_mem, 0)})
+
+        # compute y-axis ticks
+        max_mem = max((p["y"] for p in chart_points), default=0)
+        max_mem = max(max_mem, 1024 * 1024 * 1024)  # minimum 1GB
+        y_ticks = []
+        for i in range(5):
+            val = int(max_mem * i / 4)
+            y_ticks.append({"val": val, "label": format_bytes(val)})
+
+        return {"points": chart_points, "y_ticks": y_ticks, "scale": self._memory_scale, "window": window_seconds}
+
+
+class WebUIApp:
+    """Main application holding all server-side state and managing connections."""
+
+    def __init__(self, config: WebUIConfig) -> None:
+        self._config = config
+        self._message_queue: asyncio.Queue[Message] = asyncio.Queue()
+        self._clients: List[WebSocket] = []
+        self._clients_lock = asyncio.Lock()
+
+        # server-side state
+        self._scheduler_data: Dict[str, Any] = {}
+        self._workers_data: Dict[str, Dict[str, Any]] = {}
+        self._worker_capabilities: Dict[str, Dict[str, int]] = {}
+        self._task_log: Deque[Dict[str, Any]] = deque(maxlen=100)
+        self._task_id_to_function: Dict[str, str] = {}
+        self._task_stream = TaskStreamState()
+        self._memory_chart = MemoryChartState()
+        self._worker_processors: Dict[str, Dict[str, Any]] = {}
+
+        self._settings = {"stream_window": 5, "memory_scale": "linear"}
+
+        self._subscriber: Optional[ZMQSyncSubscriber] = None
+        self._batch_task: Optional[asyncio.Task] = None
+
+    def _on_zmq_message(self, message: Message) -> None:
+        """Called from ZMQ subscriber thread. Just enqueue, don't process."""
+        try:
+            self._message_queue.put_nowait(message)
+        except asyncio.QueueFull:
+            pass
+
+    def start_subscriber(self) -> None:
+        self._subscriber = ZMQSyncSubscriber(
+            address=self._config.monitor_address, callback=self._on_zmq_message, topic=b"", timeout_seconds=-1
+        )
+        self._subscriber.daemon = True
+        self._subscriber.start()
+
+    async def start_batcher(self) -> None:
+        self._batch_task = asyncio.create_task(self._batch_loop())
+
+    async def stop_batcher(self) -> None:
+        if self._batch_task:
+            self._batch_task.cancel()
+            try:
+                await self._batch_task
+            except asyncio.CancelledError:
+                pass
+
+    async def _batch_loop(self) -> None:
+        """Drain message queue every BATCH_INTERVAL_SECONDS and broadcast."""
+        while True:
+            await asyncio.sleep(BATCH_INTERVAL_SECONDS)
+            messages: List[Message] = []
+            while not self._message_queue.empty():
+                try:
+                    messages.append(self._message_queue.get_nowait())
+                except asyncio.QueueEmpty:
+                    break
+
+            if not messages:
+                continue
+
+            # Process messages
+            has_scheduler_update = False
+            has_worker_update = False
+            new_task_logs: List[Dict[str, Any]] = []
+            worker_events: List[Dict[str, Any]] = []
+
+            for msg in messages:
+                if isinstance(msg, StateScheduler):
+                    self._process_scheduler(msg)
+                    has_scheduler_update = True
+                elif isinstance(msg, StateWorker):
+                    event = self._process_worker_state(msg)
+                    if event:
+                        worker_events.append(event)
+                    has_worker_update = True
+                elif isinstance(msg, StateTask):
+                    log_entry = self._process_task_state(msg)
+                    if log_entry:
+                        new_task_logs.append(log_entry)
+                elif isinstance(msg, StateBalanceAdvice):
+                    pass  # unused
+
+            # Build broadcast payload
+            payload: Dict[str, Any] = {}
+
+            if has_scheduler_update:
+                payload["scheduler"] = self._scheduler_data
+                payload["workers"] = list(self._workers_data.values())
+
+            if worker_events:
+                payload["worker_events"] = worker_events
+
+            if new_task_logs:
+                payload["task_log"] = new_task_logs
+
+            # Always send chart data (auto-scrolling)
+            stream_data = self._task_stream.get_render_data()
+            payload["task_stream"] = stream_data
+
+            memory_data = self._memory_chart.get_render_data(stream_data["window"])
+            payload["memory_chart"] = memory_data
+
+            # Worker processors
+            if has_scheduler_update:
+                payload["processors"] = self._build_processors_data()
+
+            await self._broadcast(payload)
+
+    def _process_scheduler(self, data: StateScheduler) -> None:
+        self._scheduler_data = {
+            "cpu": format_percentage(data.scheduler.cpu),
+            "rss": format_bytes(data.scheduler.rss),
+            "rss_free": format_bytes(data.rss_free),
+        }
+
+        current_workers = set()
+        for worker_data in data.worker_manager.workers:
+            worker_name = worker_data.worker_id.decode()
+            current_workers.add(worker_name)
+            total_proc_cpu = sum(p.resource.cpu for p in worker_data.processor_statuses)
+            total_proc_rss = sum(p.resource.rss for p in worker_data.processor_statuses)
+            total_rss = int(total_proc_rss / 1e6)
+            rss_free = int(worker_data.rss_free / 1e6)
+
+            self._workers_data[worker_name] = {
+                "id": worker_name,
+                "name": _format_worker_name(worker_name),
+                "agt_cpu": round(worker_data.agent.cpu / 10, 1),
+                "agt_rss": int(worker_data.agent.rss / 1e6),
+                "proc_cpu": round(total_proc_cpu / 10, 1),
+                "proc_rss": total_rss,
+                "rss_free": rss_free,
+                "total_rss": total_rss + rss_free,
+                "free": worker_data.free,
+                "sent": worker_data.sent,
+                "queued": worker_data.queued,
+                "suspended": worker_data.suspended,
+                "lag": format_microseconds(worker_data.lag_us),
+                "itl": worker_data.itl,
+                "last_seen": format_seconds(worker_data.last_s),
+                "capabilities": _display_capabilities(set(self._worker_capabilities.get(worker_name, {}).keys())),
+            }
+
+            # update processor details
+            self._worker_processors[worker_name] = {
+                "name": _format_worker_name(worker_name),
+                "rss_free": rss_free,
+                "processors": [],
+            }
+            max_rss = 0
+            for ps in sorted(worker_data.processor_statuses, key=lambda x: x.pid):
+                rss_val = int(ps.resource.rss / 1e6)
+                if ps.resource.rss > max_rss:
+                    max_rss = ps.resource.rss
+                self._worker_processors[worker_name]["processors"].append(
+                    {
+                        "pid": ps.pid,
+                        "cpu": round(ps.resource.cpu / 10, 1),
+                        "rss": rss_val,
+                        "max_rss": int(max_rss / 1e6),
+                        "rss_max_gauge": rss_val + rss_free,
+                        "initialized": bool(ps.initialized),
+                        "has_task": bool(ps.has_task),
+                        "suspended": bool(ps.suspended),
+                    }
+                )
+
+        # remove dead workers
+        dead = set(self._workers_data.keys()) - current_workers
+        for w in dead:
+            self._workers_data.pop(w, None)
+            self._worker_processors.pop(w, None)
+            self._task_stream.handle_worker_state(StateWorker.new_msg(w.encode(), WorkerState.Disconnected, {}))
+
+    def _process_worker_state(self, state_worker: StateWorker) -> Optional[Dict[str, Any]]:
+        worker_id = state_worker.worker_id.decode()
+        state = state_worker.state
+
+        if state == WorkerState.Connected:
+            self._worker_capabilities[worker_id] = state_worker.capabilities
+        elif state == WorkerState.Disconnected:
+            self._workers_data.pop(worker_id, None)
+            self._worker_capabilities.pop(worker_id, None)
+            self._worker_processors.pop(worker_id, None)
+
+        self._task_stream.handle_worker_state(state_worker)
+
+        return {"worker_id": worker_id, "state": state.name, "capabilities": list(state_worker.capabilities.keys())}
+
+    def _process_task_state(self, state_task: StateTask) -> Optional[Dict[str, Any]]:
+        task_id_hex = state_task.task_id.hex()
+        func_name = state_task.function_name.decode()
+
+        if func_name and task_id_hex not in self._task_id_to_function:
+            self._task_id_to_function[task_id_hex] = func_name
+
+        # forward to chart states
+        self._task_stream.handle_task_state(state_task)
+        self._memory_chart.handle_task_state(state_task)
+
+        # only add completed tasks to log
+        if state_task.state not in COMPLETED_TASK_STATUSES:
+            return None
+
+        if not func_name:
+            func_name = self._task_id_to_function.pop(task_id_hex, "")
+
+        duration_str = "N/A"
+        peak_mem_str = "N/A"
+        if state_task.metadata != b"":
+            try:
+                profile = ProfileResult.deserialize(state_task.metadata)
+                duration_str = f"{profile.duration_s:.2f}s"
+                peak_mem_str = format_bytes(profile.memory_peak) if profile.memory_peak != 0 else "0"
+            except struct.error:
+                pass
+
+        entry = {
+            "task_id": task_id_hex,
+            "function": func_name,
+            "duration": duration_str,
+            "peak_mem": peak_mem_str,
+            "status": state_task.state.name,
+            "capabilities": _display_capabilities(set(state_task.capabilities.keys())),
+        }
+        self._task_log.appendleft(entry)
+        return entry
+
+    def _build_processors_data(self) -> List[Dict[str, Any]]:
+        return list(self._worker_processors.values())
+
+    def update_settings(self, settings: Dict[str, Any]) -> None:
+        if "stream_window" in settings:
+            val = int(settings["stream_window"])
+            if val in SLIDING_WINDOW_OPTIONS:
+                self._settings["stream_window"] = val
+                self._task_stream.set_stream_window(val)
+        if "memory_scale" in settings:
+            val = settings["memory_scale"]
+            if val in ("log", "linear"):
+                self._settings["memory_scale"] = val
+                self._memory_chart.set_memory_scale(val)
+
+    def get_full_state(self) -> Dict[str, Any]:
+        """Get complete current state for a newly connected client."""
+        stream_data = self._task_stream.get_render_data()
+        memory_data = self._memory_chart.get_render_data(stream_data["window"])
+        return {
+            "scheduler": self._scheduler_data,
+            "workers": list(self._workers_data.values()),
+            "task_log": list(self._task_log),
+            "task_stream": stream_data,
+            "memory_chart": memory_data,
+            "processors": self._build_processors_data(),
+            "settings": self._settings,
+        }
+
+    async def add_client(self, ws: WebSocket) -> None:
+        async with self._clients_lock:
+            self._clients.append(ws)
+
+    async def remove_client(self, ws: WebSocket) -> None:
+        async with self._clients_lock:
+            self._clients.remove(ws)
+
+    async def _broadcast(self, payload: Dict[str, Any]) -> None:
+        data = json.dumps(payload)
+        async with self._clients_lock:
+            dead: List[WebSocket] = []
+            for ws in self._clients:
+                try:
+                    await ws.send_text(data)
+                except Exception:
+                    dead.append(ws)
+            for ws in dead:
+                self._clients.remove(ws)
+
+
+def create_app(config: WebUIConfig) -> FastAPI:
+    app_state = WebUIApp(config)
+    app = FastAPI(title="Scaler Web UI")
+
+    @app.on_event("startup")
+    async def startup() -> None:
+        app_state.start_subscriber()
+        await app_state.start_batcher()
+
+    @app.on_event("shutdown")
+    async def shutdown() -> None:
+        await app_state.stop_batcher()
+        if app_state._subscriber:
+            app_state._subscriber.destroy()
+
+    @app.get("/")
+    async def index() -> FileResponse:
+        return FileResponse(STATIC_DIR / "index.html")
+
+    @app.websocket("/ws")
+    async def websocket_endpoint(ws: WebSocket) -> None:
+        await ws.accept()
+        await app_state.add_client(ws)
+        try:
+            # send full state on connect
+            full_state = app_state.get_full_state()
+            full_state["type"] = "full_state"
+            await ws.send_text(json.dumps(full_state))
+
+            # listen for client messages (settings changes)
+            while True:
+                data = await ws.receive_text()
+                try:
+                    msg = json.loads(data)
+                    if msg.get("type") == "settings":
+                        app_state.update_settings(msg.get("settings", {}))
+                except (json.JSONDecodeError, KeyError):
+                    pass
+        except WebSocketDisconnect:
+            pass
+        finally:
+            await app_state.remove_client(ws)
+
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    return app
