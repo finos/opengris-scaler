@@ -79,6 +79,7 @@ struct WorkerHeartbeat {
     taskLock @5 :Bool;
     processors @6 :List(Status.ProcessorStatus);
     capabilities @7 :List(CommonType.TaskCapability);
+    workerManagerID @8 :Data;
 }
 
 struct WorkerHeartbeatEcho {
@@ -86,39 +87,35 @@ struct WorkerHeartbeatEcho {
 }
 
 struct WorkerManagerHeartbeat {
-    maxWorkerGroups @0 :UInt32;
-    workersPerGroup @1 :UInt32;
-    capabilities @2 :List(CommonType.TaskCapability);
-    workerManagerID @3 :Data;
+    maxWorkers @0 :UInt32;
+    capabilities @1 :List(CommonType.TaskCapability);
+    workerManagerID @2 :Data;
 }
 
 struct WorkerManagerHeartbeatEcho {
 }
 
 enum WorkerManagerCommandType {
-    startWorkerGroup @0;
-    shutdownWorkerGroup @1;
+    startWorkers @0;
+    shutdownWorkers @1;
 }
 
 struct WorkerManagerCommand {
-    workerGroupID @0: Data;
-    command @1: WorkerManagerCommandType;
-    capabilities @2: List(CommonType.TaskCapability);
+    workerIDs @0 :List(Data);
+    command @1 :WorkerManagerCommandType;
+    capabilities @2 :List(CommonType.TaskCapability);
 }
 
 struct WorkerManagerCommandResponse {
-    workerGroupID @0: Data;
-    workerIDs @1: List(Data);
-    command @2: WorkerManagerCommandType;
-    status @3: Status;
-    capabilities @4: List(CommonType.TaskCapability);
+    workerIDs @0 :List(Data);
+    command @1 :WorkerManagerCommandType;
+    status @2 :Status;
+    capabilities @3 :List(CommonType.TaskCapability);
     enum Status {
-        workerGroupIDNotSpecified @0;
-        workerGroupIDNotFound @1;
-        workerGroupShutdown @2;
-        unknownAction @3;
-        workerGroupTooMuch @4;
-        success @5;
+        tooManyWorkers @0;
+        unknownAction @1;
+        workerNotFound @2;
+        success @3;
     }
 }
 

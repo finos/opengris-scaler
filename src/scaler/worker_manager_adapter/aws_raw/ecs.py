@@ -23,14 +23,17 @@ from scaler.protocol.python.message import (
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_manager_adapter.common import WorkerGroupID, format_capabilities
+from scaler.worker_manager_adapter.common import format_capabilities
 
 Status = WorkerManagerCommandResponse.Status
 
+# Internal-only type for ECS task grouping (invisible to scheduler)
+_WorkerGroupID = bytes
+
 
 @dataclass
-class WorkerGroupInfo:
-    task_arn: str  # sufficient to identify the group for stop_task(); no worker ID tracking needed
+class _WorkerGroupInfo:
+    task_arn: str
 
 
 class ECSWorkerManager:
@@ -79,7 +82,8 @@ class ECSWorkerManager:
             logging.info(f"ECS cluster '{self._ecs_cluster}' missing, creating it.")
             self._ecs_client.create_cluster(clusterName=self._ecs_cluster)
 
-        self._worker_groups: Dict[WorkerGroupID, WorkerGroupInfo] = {}
+        # Internal worker group tracking (invisible to scheduler)
+        self._worker_groups: Dict[_WorkerGroupID, _WorkerGroupInfo] = {}
 
         try:
             resp = self._ecs_client.describe_task_definition(taskDefinition=self._ecs_task_definition)
@@ -140,38 +144,32 @@ class ECSWorkerManager:
 
     async def _handle_command(self, command: WorkerManagerCommand):
         cmd_type = command.command
-        worker_group_id = command.worker_group_id
         response_status = Status.Success
         worker_ids: List[bytes] = []
         capabilities: Dict[str, int] = {}
 
-        cmd_res = WorkerManagerCommandType.StartWorkerGroup
-        if cmd_type == WorkerManagerCommandType.StartWorkerGroup:
-            cmd_res = WorkerManagerCommandType.StartWorkerGroup
-            worker_group_id, response_status = await self.start_worker_group()
+        if cmd_type == WorkerManagerCommandType.StartWorkers:
+            new_worker_ids, response_status = await self._start_ecs_task()
             if response_status == Status.Success:
+                worker_ids = new_worker_ids
                 capabilities = self._capabilities
-        elif cmd_type == WorkerManagerCommandType.ShutdownWorkerGroup:
-            cmd_res = WorkerManagerCommandType.ShutdownWorkerGroup
-            response_status = await self.shutdown_worker_group(worker_group_id)
+        elif cmd_type == WorkerManagerCommandType.ShutdownWorkers:
+            affected_worker_ids, response_status = await self._shutdown_by_worker_ids(command.worker_ids)
+            if response_status == Status.Success:
+                worker_ids = affected_worker_ids
         else:
             raise ValueError("Unknown Command")
 
         await self._connector_external.send(
             WorkerManagerCommandResponse.new_msg(
-                worker_group_id=worker_group_id,
-                command=cmd_res,
-                status=response_status,
-                worker_ids=worker_ids,
-                capabilities=capabilities,
+                command=cmd_type, status=response_status, worker_ids=worker_ids, capabilities=capabilities
             )
         )
 
     async def __send_heartbeat(self):
         await self._connector_external.send(
             WorkerManagerHeartbeat.new_msg(
-                max_worker_groups=self._max_instances,
-                workers_per_group=self._ecs_task_cpu,
+                max_workers=self._max_instances * self._ecs_task_cpu,
                 capabilities=self._capabilities,
                 worker_manager_id=self._worker_manager_id,
             )
@@ -219,9 +217,9 @@ class ECSWorkerManager:
             else:
                 logging.exception(f"{self._ident!r}: failed with unhandled exception:\n{e}")
 
-    async def start_worker_group(self) -> Tuple[WorkerGroupID, Status]:
+    async def _start_ecs_task(self) -> Tuple[List[bytes], Status]:
         if len(self._worker_groups) >= self._max_instances != -1:
-            return b"", Status.WorkerGroupTooMuch
+            return [], Status.TooManyWorkers
 
         command = (
             f"scaler_cluster {self._address.to_address()} "
@@ -245,6 +243,8 @@ class ECSWorkerManager:
 
         if format_capabilities(self._capabilities).strip():
             command += f" --per-worker-capabilities {format_capabilities(self._capabilities)}"
+
+        command += f" --worker-manager-id {self._worker_manager_id.decode()}"
 
         resp = self._ecs_client.run_task(
             cluster=self._ecs_cluster,
@@ -277,26 +277,26 @@ class ECSWorkerManager:
 
         task_arn = tasks[0]["taskArn"]
         worker_group_id = f"ecs-{uuid.uuid4().hex}".encode()
-        self._worker_groups[worker_group_id] = WorkerGroupInfo(task_arn=task_arn)
-        return worker_group_id, Status.Success
+        self._worker_groups[worker_group_id] = _WorkerGroupInfo(task_arn=task_arn)
 
-    async def shutdown_worker_group(self, worker_group_id: WorkerGroupID) -> Status:
-        if not worker_group_id:
-            return Status.WorkerGroupIDNotSpecified
+        # Workers self-assign UUIDs at startup; IDs are not known until they heartbeat.
+        # The scheduler tracks worker-to-manager mapping via worker_manager_id in heartbeats.
+        return [], Status.Success
 
-        if worker_group_id not in self._worker_groups:
-            logging.warning(f"Worker group with ID {bytes(worker_group_id).decode()} does not exist.")
-            return Status.WorkerGroupIDNotFound
+    async def _shutdown_by_worker_ids(self, worker_ids: List[bytes]) -> Tuple[List[bytes], Status]:
+        """Stop one ECS task. Worker-to-task mapping is unavailable; stops the first tracked task."""
+        if not self._worker_groups:
+            return [], Status.WorkerNotFound
+
+        group_id, group_info = next(iter(self._worker_groups.items()))
 
         resp = self._ecs_client.stop_task(
-            cluster=self._ecs_cluster,
-            task=self._worker_groups[worker_group_id].task_arn,
-            reason="Shutdown requested by ecs adapter",
+            cluster=self._ecs_cluster, task=group_info.task_arn, reason="Shutdown requested by ecs adapter"
         )
         failures = resp.get("failures") or []
         if failures:
             logging.error(f"ECS stop task failed: {failures}")
-            return Status.UnknownAction
+            return [], Status.UnknownAction
 
-        self._worker_groups.pop(worker_group_id)
-        return Status.Success
+        self._worker_groups.pop(group_id)
+        return [], Status.Success

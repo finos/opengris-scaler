@@ -65,6 +65,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         hard_processor_suspend: bool,
         logging_paths: Tuple[str, ...],
         logging_level: str,
+        worker_manager_id: bytes,
     ):
         multiprocessing.Process.__init__(self, name="Agent")
 
@@ -92,6 +93,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self._logging_paths = logging_paths
         self._logging_level = logging_level
+        self._worker_manager_id = worker_manager_id
 
         self._context: Optional[zmq.asyncio.Context] = None
         self._connector_external: Optional[AsyncConnector] = None
@@ -150,6 +152,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             object_storage_address=self._object_storage_address,
             capabilities=self._capabilities,
             task_queue_size=self._task_queue_size,
+            worker_manager_id=self._worker_manager_id,
         )
 
         self._profiling_manager = VanillaProfilingManager()

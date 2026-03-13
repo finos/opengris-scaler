@@ -39,7 +39,6 @@ from scaler.protocol.python.message import (
 )
 from scaler.protocol.python.status import Resource
 from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
@@ -101,7 +100,7 @@ class TestScaling(unittest.TestCase):
         manager_process.join()
 
     def test_capability_scaling_basic(self):
-        """Test that capability scaling starts worker groups with the correct capabilities."""
+        """Test that capability scaling starts workers with the correct capabilities."""
         object_storage = ObjectStorageServerProcess(
             object_storage_address=self.object_storage_config,
             logging_paths=("/dev/stdout",),
@@ -155,41 +154,49 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         setup_logger()
         self.policy = CapabilityScalingPolicy()
         # Empty initial state
-        self.worker_groups: WorkerGroupState = {}
-        self.worker_group_capabilities: WorkerGroupCapabilities = {}
+        self.managed_worker_ids = []
+        self.managed_worker_capabilities = {}
 
-    def test_starts_worker_group_when_no_capable_workers(self):
-        """Test that a worker group is started when tasks require capabilities no worker provides."""
+    def test_starts_worker_when_no_capable_workers(self):
+        """Test that a worker is started when tasks require capabilities no worker provides."""
         task_id = TaskID.generate_task_id()
         task = _create_mock_task(task_id, {"gpu": 1})
 
         information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={})
-        worker_manager_heartbeat = _create_worker_manager_heartbeat()
+        worker_manager_heartbeat = _create_worker_manager_heartbeat(b"test")
 
         commands = self.policy.get_scaling_commands(
-            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
+            information_snapshot,
+            worker_manager_heartbeat,
+            self.managed_worker_ids,
+            self.managed_worker_capabilities,
+            {},
         )
 
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkerGroup)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
         self.assertEqual(commands[0].capabilities, {"gpu": 1})
 
     def test_no_scale_when_capable_workers_exist(self):
-        """Test that no worker group is started when workers with matching capabilities exist."""
+        """Test that no worker is started when workers with matching capabilities exist."""
         task_id = TaskID.generate_task_id()
         task = _create_mock_task(task_id, {"gpu": 1})
         worker_id = WorkerID(b"worker-1")
         worker_heartbeat = _create_mock_worker_heartbeat({"gpu": -1}, queued_tasks=0)
 
         information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={worker_id: worker_heartbeat})
-        worker_manager_heartbeat = _create_worker_manager_heartbeat()
+        worker_manager_heartbeat = _create_worker_manager_heartbeat(b"test")
 
         commands = self.policy.get_scaling_commands(
-            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
+            information_snapshot,
+            worker_manager_heartbeat,
+            self.managed_worker_ids,
+            self.managed_worker_capabilities,
+            {},
         )
 
         # Should not return any start commands
-        start_commands = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkerGroup]
+        start_commands = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
         self.assertEqual(len(start_commands), 0)
 
     def test_scales_when_task_ratio_exceeds_threshold(self):
@@ -204,14 +211,18 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         worker_heartbeat = _create_mock_worker_heartbeat({"gpu": -1}, queued_tasks=5)
 
         information_snapshot = InformationSnapshot(tasks=tasks, workers={worker_id: worker_heartbeat})
-        worker_manager_heartbeat = _create_worker_manager_heartbeat()
+        worker_manager_heartbeat = _create_worker_manager_heartbeat(b"test")
 
         commands = self.policy.get_scaling_commands(
-            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
+            information_snapshot,
+            worker_manager_heartbeat,
+            self.managed_worker_ids,
+            self.managed_worker_capabilities,
+            {},
         )
 
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkerGroup)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
         self.assertEqual(commands[0].capabilities, {"gpu": 1})
 
     def test_different_capability_sets_handled_separately(self):
@@ -223,14 +234,18 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         tpu_task = _create_mock_task(tpu_task_id, {"tpu": 1})
 
         information_snapshot = InformationSnapshot(tasks={gpu_task_id: gpu_task, tpu_task_id: tpu_task}, workers={})
-        worker_manager_heartbeat = _create_worker_manager_heartbeat()
+        worker_manager_heartbeat = _create_worker_manager_heartbeat(b"test")
 
         # Should return 2 start commands (one for each capability set)
         commands = self.policy.get_scaling_commands(
-            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
+            information_snapshot,
+            worker_manager_heartbeat,
+            self.managed_worker_ids,
+            self.managed_worker_capabilities,
+            {},
         )
 
-        start_commands = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkerGroup]
+        start_commands = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
         self.assertEqual(len(start_commands), 2)
 
         capabilities_requested = {frozenset(c.capabilities.keys()) for c in start_commands}
@@ -247,14 +262,18 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         worker_heartbeat = _create_mock_worker_heartbeat({"gpu": -1, "cpu": -1}, queued_tasks=0)
 
         information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={worker_id: worker_heartbeat})
-        worker_manager_heartbeat = _create_worker_manager_heartbeat()
+        worker_manager_heartbeat = _create_worker_manager_heartbeat(b"test")
 
         commands = self.policy.get_scaling_commands(
-            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
+            information_snapshot,
+            worker_manager_heartbeat,
+            self.managed_worker_ids,
+            self.managed_worker_capabilities,
+            {},
         )
 
-        # No StartWorkerGroup command should be returned
-        start_commands = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkerGroup]
+        # No StartWorkers command should be returned
+        start_commands = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
         self.assertEqual(len(start_commands), 0)
 
     def test_tasks_without_capabilities_handled(self):
@@ -263,60 +282,68 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         task = _create_mock_task(task_id, {})  # No capabilities required
 
         information_snapshot = InformationSnapshot(tasks={task_id: task}, workers={})  # No workers
-        worker_manager_heartbeat = _create_worker_manager_heartbeat()
+        worker_manager_heartbeat = _create_worker_manager_heartbeat(b"test")
 
         commands = self.policy.get_scaling_commands(
-            information_snapshot, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
+            information_snapshot,
+            worker_manager_heartbeat,
+            self.managed_worker_ids,
+            self.managed_worker_capabilities,
+            {},
         )
 
-        # Should start a worker group with empty capabilities
+        # Should start a worker with empty capabilities
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkerGroup)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
         self.assertEqual(commands[0].capabilities, {})
 
     def test_get_status_returns_scaling_manager_status(self):
         """Test that get_status returns a ScalingManagerStatus object."""
-        worker_groups: WorkerGroupState = {b"wg-test": [WorkerID(b"worker-1"), WorkerID(b"worker-2")]}
+        managed_workers = {b"mgr-1": [WorkerID(b"worker-1"), WorkerID(b"worker-2")]}
 
-        status = self.policy.get_status(worker_groups)
+        status = self.policy.get_status(managed_workers)
 
         from scaler.protocol.python.status import ScalingManagerStatus
 
         self.assertIsInstance(status, ScalingManagerStatus)
 
-    def test_no_duplicate_worker_group_for_pending_group(self):
-        """Test that no new worker group is started if a capable group is already pending."""
-        # First snapshot: task with mqa:1, no workers -> should start a worker group
+    def test_no_duplicate_worker_for_pending_workers(self):
+        """Test that no new worker is started if capable workers are already pending."""
+        # First snapshot: task with mqa:1, no workers -> should start a worker
         task1_id = TaskID.generate_task_id()
         task1 = _create_mock_task(task1_id, {"mqa": 1})
         information_snapshot1 = InformationSnapshot(tasks={task1_id: task1}, workers={})
-        worker_manager_heartbeat = _create_worker_manager_heartbeat()
+        worker_manager_heartbeat = _create_worker_manager_heartbeat(b"test")
 
         commands1 = self.policy.get_scaling_commands(
-            information_snapshot1, worker_manager_heartbeat, self.worker_groups, self.worker_group_capabilities, {}
+            information_snapshot1,
+            worker_manager_heartbeat,
+            self.managed_worker_ids,
+            self.managed_worker_capabilities,
+            {},
         )
 
         self.assertEqual(len(commands1), 1)
-        self.assertEqual(commands1[0].command, WorkerManagerCommandType.StartWorkerGroup)
+        self.assertEqual(commands1[0].command, WorkerManagerCommandType.StartWorkers)
         self.assertEqual(commands1[0].capabilities, {"mqa": 1})
 
         # Simulate state update as if manager responded successfully
-        updated_groups: WorkerGroupState = {b"wg-mqa": []}
-        updated_caps: WorkerGroupCapabilities = {b"wg-mqa": {"mqa": -1}}
+        updated_worker_ids = [WorkerID(b"w-mqa")]
+        updated_capabilities = {"mqa": -1}
 
         # Second snapshot: task with mqa:-1, no workers connected yet
-        # Should NOT start another group since capable group already exists
+        # Should NOT start another worker since capable worker already pending
         task2_id = TaskID.generate_task_id()
         task2 = _create_mock_task(task2_id, {"mqa": -1})
         information_snapshot2 = InformationSnapshot(tasks={task2_id: task2}, workers={})
 
         commands2 = self.policy.get_scaling_commands(
-            information_snapshot2, worker_manager_heartbeat, updated_groups, updated_caps, {}
+            information_snapshot2, worker_manager_heartbeat, updated_worker_ids, updated_capabilities, {}
         )
 
-        # No StartWorkerGroup command should be returned
-        start_commands = [c for c in commands2 if c.command == WorkerManagerCommandType.StartWorkerGroup]
-        self.assertEqual(len(start_commands), 0, "Should not start new worker group when capable group is pending")
+        # No StartWorkers command should be returned
+        start_commands = [c for c in commands2 if c.command == WorkerManagerCommandType.StartWorkers]
+        self.assertEqual(len(start_commands), 0, "Should not start new worker when capable worker is pending")
 
 
 class TestFixedElasticScaling(unittest.TestCase):
@@ -411,15 +438,12 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> 
         task_lock=False,
         processors=[],
         capabilities=capabilities,
+        worker_manager_id=b"test",
     )
 
 
-def _create_worker_manager_heartbeat(
-    max_worker_groups: int = 10, worker_manager_id: bytes = b""
-) -> WorkerManagerHeartbeat:
-    return WorkerManagerHeartbeat.new_msg(
-        max_worker_groups=max_worker_groups, workers_per_group=1, capabilities={}, worker_manager_id=worker_manager_id
-    )
+def _create_worker_manager_heartbeat(worker_manager_id: bytes, max_workers: int = 10) -> WorkerManagerHeartbeat:
+    return WorkerManagerHeartbeat.new_msg(max_workers=max_workers, capabilities={}, worker_manager_id=worker_manager_id)
 
 
 def _run_native_worker_manager(scheduler_address: str, max_workers: int = 4) -> None:

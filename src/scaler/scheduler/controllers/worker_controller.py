@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Dict, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from scaler.io.mixins import AsyncBinder, AsyncConnector
 from scaler.protocol.python.common import WorkerState
@@ -32,6 +32,8 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         self._task_controller: Optional[TaskController] = None
 
         self._worker_alive_since: Dict[WorkerID, Tuple[float, WorkerHeartbeat]] = dict()
+        self._worker_to_manager: Dict[WorkerID, bytes] = dict()
+        self._manager_to_workers: Dict[bytes, Set[WorkerID]] = dict()
         self._policy_controller = policy_controller
 
     def register(self, binder: AsyncBinder, binder_monitor: AsyncConnector, task_controller: TaskController):
@@ -62,6 +64,10 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             logging.info(f"worker {worker_id!r} connected")
             await self._binder_monitor.send(StateWorker.new_msg(worker_id, WorkerState.Connected, info.capabilities))
             await self._task_controller.on_worker_connect(worker_id)
+
+        if worker_id not in self._worker_to_manager:
+            self._worker_to_manager[worker_id] = info.worker_manager_id
+            self._manager_to_workers.setdefault(info.worker_manager_id, set()).add(worker_id)
 
         self._worker_alive_since[worker_id] = (time.time(), info)
         await self._binder.send(
@@ -136,6 +142,9 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
     def get_worker_ids(self) -> Set[WorkerID]:
         return self._policy_controller.get_worker_ids()
 
+    def get_workers_by_manager_id(self, manager_id: bytes) -> List[WorkerID]:
+        return list(self._manager_to_workers.get(manager_id, set()))
+
     async def __clean_workers(self):
         now = time.time()
         dead_workers = [
@@ -154,6 +163,11 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         logging.info(f"{worker_id!r} disconnected")
         await self._binder_monitor.send(StateWorker.new_msg(worker_id, WorkerState.Disconnected, {}))
         self._worker_alive_since.pop(worker_id)
+        manager_id = self._worker_to_manager.pop(worker_id)
+        workers_set = self._manager_to_workers[manager_id]
+        workers_set.discard(worker_id)
+        if not workers_set:
+            del self._manager_to_workers[manager_id]
 
         task_ids = self._policy_controller.remove_worker(worker_id)
         if not task_ids:

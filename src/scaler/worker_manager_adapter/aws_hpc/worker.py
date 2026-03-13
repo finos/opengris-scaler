@@ -11,6 +11,7 @@ Follows the same pattern as SymphonyWorker for consistency.
 import asyncio
 import logging
 import multiprocessing
+import os
 import signal
 from collections import deque
 from typing import Dict, Optional
@@ -110,6 +111,8 @@ class AWSBatchWorker(_SpawnProcess):  # type: ignore[valid-type, misc]
         self._heartbeat_received: bool = False
         self._backoff_message_queue: deque = deque()
 
+        self._worker_manager_id = f"AWS_HPC|{os.getpid()}".encode()
+
     @property
     def identity(self) -> WorkerID:
         return self._ident
@@ -151,6 +154,7 @@ class AWSBatchWorker(_SpawnProcess):  # type: ignore[valid-type, misc]
             object_storage_address=self._object_storage_address,
             capabilities=self._capabilities,
             task_queue_size=self._task_queue_size,
+            worker_manager_id=self._worker_manager_id,
         )
 
         # Create task manager (handles task queuing, priority, and AWS Batch submission)

@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from scaler.config.defaults import DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
 from scaler.io.mixins import AsyncBinder
@@ -15,12 +15,7 @@ from scaler.protocol.python.message import (
 from scaler.protocol.python.status import ScalingManagerStatus
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import PolicyController, TaskController, WorkerController
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
-    WorkerGroupID,
-    WorkerGroupInfo,
-    WorkerGroupState,
-    WorkerManagerSnapshot,
-)
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.mixins import Looper, Reporter
 
@@ -40,8 +35,11 @@ class WorkerManagerController(Looper, Reporter):
         # Track last command sent to each source
         self._pending_commands: Dict[bytes, WorkerManagerCommand] = {}
 
-        # Track worker groups per worker manager: source -> (worker_group_id -> info)
-        self._manager_worker_groups: Dict[bytes, Dict[WorkerGroupID, WorkerGroupInfo]] = {}
+        # Track capabilities per manager: source -> capabilities dict
+        self._manager_capabilities: Dict[bytes, Dict[str, int]] = {}
+
+        # Reverse map: worker_manager_id -> source (for duplicate detection)
+        self._manager_id_to_source: Dict[bytes, bytes] = {}
 
     def register(self, binder: AsyncBinder, task_controller: TaskController, worker_controller: WorkerController):
         self._binder = binder
@@ -50,8 +48,19 @@ class WorkerManagerController(Looper, Reporter):
 
     async def on_heartbeat(self, source: bytes, heartbeat: WorkerManagerHeartbeat):
         if source not in self._manager_alive_since:
+            manager_id = heartbeat.worker_manager_id
+            if manager_id:
+                existing_source = self._manager_id_to_source.get(manager_id)
+                if existing_source is not None and existing_source != source:
+                    logging.warning(
+                        f"Duplicate worker_manager_id {manager_id!r}: source {source!r} rejected, "
+                        f"already registered by source {existing_source!r}"
+                    )
+                    return
+                self._manager_id_to_source[manager_id] = source
+
             logging.info(f"WorkerManager {source!r} connected")
-            self._manager_worker_groups[source] = {}
+            self._manager_capabilities[source] = {}
 
         self._manager_alive_since[source] = (time.time(), heartbeat)
 
@@ -59,16 +68,15 @@ class WorkerManagerController(Looper, Reporter):
 
         information_snapshot = self._build_snapshot()
 
-        # Get worker groups for this worker manager
-        worker_manager_groups = self._manager_worker_groups[source]
-        worker_groups = {gid: info.worker_ids for gid, info in worker_manager_groups.items()}
-        worker_group_capabilities = {gid: info.capabilities for gid, info in worker_manager_groups.items()}
+        # Get managed worker IDs from worker controller (heartbeat-based live truth)
+        managed_worker_ids = self._worker_controller.get_workers_by_manager_id(heartbeat.worker_manager_id)
+        managed_worker_capabilities = self._manager_capabilities.get(source, {})
 
         # Build cross-manager snapshots from all known managers
         worker_manager_snapshots = self._build_manager_snapshots()
 
         commands = self._policy_controller.get_scaling_commands(
-            information_snapshot, heartbeat, worker_groups, worker_group_capabilities, worker_manager_snapshots
+            information_snapshot, heartbeat, managed_worker_ids, managed_worker_capabilities, worker_manager_snapshots
         )
 
         for command in commands:
@@ -80,32 +88,31 @@ class WorkerManagerController(Looper, Reporter):
         if pending is None:
             logging.warning(f"Received response from {source!r} but no pending command found")
 
-        if response.command == WorkerManagerCommandType.StartWorkerGroup:
+        if response.command == WorkerManagerCommandType.StartWorkers:
             if response.status == WorkerManagerCommandResponse.Status.Success:
-                self._manager_worker_groups[source][bytes(response.worker_group_id)] = WorkerGroupInfo(
-                    worker_ids=[WorkerID(wid) for wid in response.worker_ids], capabilities=dict(response.capabilities)
-                )
+                if response.capabilities:
+                    self._manager_capabilities[source] = dict(response.capabilities)
             else:
-                logging.warning(f"StartWorkerGroup failed: {response.status.name}")
+                logging.warning(f"StartWorkers failed: {response.status.name}")
 
-        elif response.command == WorkerManagerCommandType.ShutdownWorkerGroup:
-            if response.status == WorkerManagerCommandResponse.Status.Success:
-                self._manager_worker_groups[source].pop(bytes(response.worker_group_id), None)
-            else:
-                logging.warning(f"ShutdownWorkerGroup failed: {response.status.name}")
+        elif response.command == WorkerManagerCommandType.ShutdownWorkers:
+            if response.status != WorkerManagerCommandResponse.Status.Success:
+                logging.warning(f"ShutdownWorkers failed: {response.status.name}")
 
     async def routine(self):
         await self._clean_managers()
 
     def get_status(self) -> ScalingManagerStatus:
-        return self._policy_controller.get_scaling_status(self.get_worker_groups())
+        return self._policy_controller.get_scaling_status(self.get_managed_workers())
 
-    def get_worker_groups(self) -> WorkerGroupState:
-        """Return aggregated worker groups from all worker managers."""
-        result: WorkerGroupState = {}
-        for worker_manager_groups in self._manager_worker_groups.values():
-            for gid, info in worker_manager_groups.items():
-                result[gid] = info.worker_ids
+    def get_managed_workers(self) -> Dict[bytes, List[WorkerID]]:
+        """Return managed workers keyed by worker_manager_id (from heartbeat)."""
+        result: Dict[bytes, List[WorkerID]] = {}
+        for source, (_, heartbeat) in self._manager_alive_since.items():
+            manager_id = heartbeat.worker_manager_id
+            if not manager_id:
+                continue
+            result[manager_id] = self._worker_controller.get_workers_by_manager_id(manager_id)
         return result
 
     async def _send_command(self, source: bytes, command: WorkerManagerCommand):
@@ -119,11 +126,11 @@ class WorkerManagerController(Looper, Reporter):
             manager_id = heartbeat.worker_manager_id
             if not manager_id:
                 continue
-            manager_groups = self._manager_worker_groups.get(source, {})
+            worker_count = len(self._worker_controller.get_workers_by_manager_id(manager_id))
             snapshots[manager_id] = WorkerManagerSnapshot(
                 worker_manager_id=manager_id,
-                max_worker_groups=heartbeat.max_worker_groups,
-                worker_group_count=len(manager_groups),
+                max_workers=heartbeat.max_workers,
+                worker_count=worker_count,
                 last_seen_s=last_seen,
             )
         return snapshots
@@ -152,7 +159,12 @@ class WorkerManagerController(Looper, Reporter):
         if source not in self._manager_alive_since:
             return
 
+        _, heartbeat = self._manager_alive_since[source]
+        manager_id = heartbeat.worker_manager_id
+        if manager_id:
+            self._manager_id_to_source.pop(manager_id, None)
+
         logging.info(f"WorkerManager {source!r} disconnected")
         self._manager_alive_since.pop(source)
         self._pending_commands.pop(source, None)
-        self._manager_worker_groups.pop(source, None)
+        self._manager_capabilities.pop(source, None)

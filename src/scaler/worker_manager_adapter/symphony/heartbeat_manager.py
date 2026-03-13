@@ -18,9 +18,11 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
         object_storage_address: Optional[ObjectStorageAddressConfig],
         capabilities: Dict[str, int],
         task_queue_size: int,
+        worker_manager_id: bytes,
     ):
         self._capabilities = capabilities
         self._task_queue_size = task_queue_size
+        self._worker_manager_id = worker_manager_id
 
         self._agent_process = psutil.Process()
 
@@ -77,6 +79,7 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
                 self._worker_task_manager.can_accept_task(),
                 [],
                 self._capabilities,
+                self._worker_manager_id,
             )
         )
         self._start_timestamp_ns = time.time_ns()

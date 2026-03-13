@@ -9,13 +9,9 @@ from scaler.protocol.python.message import (
 )
 from scaler.protocol.python.status import ScalingManagerStatus
 from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
-    WorkerGroupCapabilities,
-    WorkerGroupID,
-    WorkerGroupState,
-    WorkerManagerSnapshot,
-)
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.controllers.policies.waterfall_v1.scaling.types import WaterfallRule
+from scaler.utility.identifiers import WorkerID
 
 
 class WaterfallScalingPolicy(ScalingPolicy):
@@ -45,8 +41,8 @@ class WaterfallScalingPolicy(ScalingPolicy):
         self,
         information_snapshot: InformationSnapshot,
         worker_manager_heartbeat: WorkerManagerHeartbeat,
-        worker_groups: WorkerGroupState,
-        worker_group_capabilities: WorkerGroupCapabilities,
+        managed_worker_ids: List[WorkerID],
+        managed_worker_capabilities: Dict[str, int],
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         manager_id = worker_manager_heartbeat.worker_manager_id
@@ -59,27 +55,31 @@ class WaterfallScalingPolicy(ScalingPolicy):
         if not information_snapshot.workers:
             if information_snapshot.tasks:
                 return self._create_start_commands(
-                    rule, worker_manager_heartbeat, worker_groups, worker_manager_snapshots
+                    rule, worker_manager_heartbeat, managed_worker_ids, worker_manager_snapshots
                 )
             return []
 
         task_ratio = len(information_snapshot.tasks) / len(information_snapshot.workers)
 
         if task_ratio > self._upper_task_ratio:
-            return self._create_start_commands(rule, worker_manager_heartbeat, worker_groups, worker_manager_snapshots)
+            return self._create_start_commands(
+                rule, worker_manager_heartbeat, managed_worker_ids, worker_manager_snapshots
+            )
         elif task_ratio < self._lower_task_ratio:
-            return self._create_shutdown_commands(rule, information_snapshot, worker_groups, worker_manager_snapshots)
+            return self._create_shutdown_commands(
+                rule, information_snapshot, managed_worker_ids, worker_manager_snapshots
+            )
 
         return []
 
-    def get_status(self, worker_groups: WorkerGroupState) -> ScalingManagerStatus:
-        return ScalingManagerStatus.new_msg(worker_groups=worker_groups)
+    def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
+        return ScalingManagerStatus.new_msg(managed_workers=managed_workers)
 
     def _create_start_commands(
         self,
         current_rule: WaterfallRule,
         worker_manager_heartbeat: WorkerManagerHeartbeat,
-        worker_groups: WorkerGroupState,
+        managed_worker_ids: List[WorkerID],
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         # Check if higher-priority managers (lower priority number) still have capacity
@@ -93,26 +93,26 @@ class WaterfallScalingPolicy(ScalingPolicy):
                 continue
 
             for snapshot in matching_snapshots:
-                effective_capacity = min(rule.max_task_concurrency, snapshot.max_worker_groups)
-                if snapshot.worker_group_count < effective_capacity:
+                effective_capacity = min(rule.max_task_concurrency, snapshot.max_workers)
+                if snapshot.worker_count < effective_capacity:
                     # Higher-priority manager still has room, let it fill first
                     return []
 
         # Check this manager's effective capacity
-        effective_capacity = min(current_rule.max_task_concurrency, worker_manager_heartbeat.max_worker_groups)
-        if len(worker_groups) >= effective_capacity:
+        effective_capacity = min(current_rule.max_task_concurrency, worker_manager_heartbeat.max_workers)
+        if len(managed_worker_ids) >= effective_capacity:
             return []
 
-        return [WorkerManagerCommand.new_msg(worker_group_id=b"", command=WorkerManagerCommandType.StartWorkerGroup)]
+        return [WorkerManagerCommand.new_msg(worker_ids=[], command=WorkerManagerCommandType.StartWorkers)]
 
     def _create_shutdown_commands(
         self,
         current_rule: WaterfallRule,
         information_snapshot: InformationSnapshot,
-        worker_groups: WorkerGroupState,
+        managed_worker_ids: List[WorkerID],
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
-        if not worker_groups:
+        if not managed_worker_ids:
             return []
 
         # Check if lower-priority managers (higher priority number) still have workers to drain first
@@ -121,28 +121,25 @@ class WaterfallScalingPolicy(ScalingPolicy):
                 continue
 
             for snapshot in self._find_matching_snapshots(rule, worker_manager_snapshots):
-                if snapshot.worker_group_count > 0:
+                if snapshot.worker_count > 0:
                     # Lower-priority manager still has workers, let it drain first
                     return []
 
-        # Find the worker group with fewest queued tasks
-        min_worker_group_id: Optional[WorkerGroupID] = None
+        # Find the worker with fewest queued tasks
+        least_busy_wid: Optional[WorkerID] = None
         min_queued = float("inf")
-        for worker_group_id, worker_ids in worker_groups.items():
-            total_queued = sum(
-                information_snapshot.workers[worker_id].queued_tasks
-                for worker_id in worker_ids
-                if worker_id in information_snapshot.workers
-            )
-            if total_queued < min_queued:
-                min_queued = total_queued
-                min_worker_group_id = worker_group_id
+        for wid in managed_worker_ids:
+            if wid in information_snapshot.workers:
+                queued = information_snapshot.workers[wid].queued_tasks
+                if queued < min_queued:
+                    min_queued = queued
+                    least_busy_wid = wid
 
-        if min_worker_group_id is None:
+        if least_busy_wid is None:
             return []
         return [
             WorkerManagerCommand.new_msg(
-                worker_group_id=min_worker_group_id, command=WorkerManagerCommandType.ShutdownWorkerGroup
+                worker_ids=[bytes(least_busy_wid)], command=WorkerManagerCommandType.ShutdownWorkers
             )
         ]
 

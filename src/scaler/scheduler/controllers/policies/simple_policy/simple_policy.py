@@ -9,8 +9,6 @@ from scaler.scheduler.controllers.policies.simple_policy.allocation.utility impo
 from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
     ScalingPolicyStrategy,
-    WorkerGroupCapabilities,
-    WorkerGroupState,
     WorkerManagerSnapshot,
 )
 from scaler.scheduler.controllers.policies.simple_policy.scaling.utility import create_scaling_policy
@@ -63,17 +61,17 @@ class SimplePolicy(ScalerPolicy):
         self,
         information_snapshot: InformationSnapshot,
         worker_manager_heartbeat: WorkerManagerHeartbeat,
-        worker_groups: WorkerGroupState,
-        worker_group_capabilities: WorkerGroupCapabilities,
+        managed_worker_ids: List[WorkerID],
+        managed_worker_capabilities: Dict[str, int],
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         return self._scaling_policy.get_scaling_commands(
             information_snapshot,
             worker_manager_heartbeat,
-            worker_groups,
-            worker_group_capabilities,
+            managed_worker_ids,
+            managed_worker_capabilities,
             worker_manager_snapshots,
         )
 
-    def get_scaling_status(self, worker_groups: WorkerGroupState) -> ScalingManagerStatus:
-        return self._scaling_policy.get_status(worker_groups)
+    def get_scaling_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
+        return self._scaling_policy.get_status(managed_workers)

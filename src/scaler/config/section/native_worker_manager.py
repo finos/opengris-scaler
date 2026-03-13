@@ -45,6 +45,11 @@ class NativeWorkerManagerConfig(ConfigClass):
         metadata=dict(help="worker type prefix used in worker IDs; defaults to 'FIX' or 'NAT' based on mode"),
     )
 
+    worker_manager_id: str = dataclasses.field(
+        default="",
+        metadata=dict(short="-wmi", help="worker manager ID to identify which manager spawned these workers"),
+    )
+
     @classmethod
     def configure_parser(cls, parser: argparse.ArgumentParser) -> None:
         super().configure_parser(parser)

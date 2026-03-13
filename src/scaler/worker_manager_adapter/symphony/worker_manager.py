@@ -3,7 +3,7 @@ import logging
 import os
 import signal
 import uuid
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 
 import zmq
 
@@ -22,7 +22,6 @@ from scaler.protocol.python.message import (
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_manager_adapter.common import WorkerGroupID
 from scaler.worker_manager_adapter.symphony.worker import SymphonyWorker
 
 Status = WorkerManagerCommandResponse.Status
@@ -44,7 +43,6 @@ class SymphonyWorkerManager:
         self._logging_paths = config.logging_config.paths
         self._logging_level = config.logging_config.level
         self._logging_config_file = config.logging_config.config_file
-        self._workers_per_group = 1
 
         self._context = create_async_simple_context()
         self._name = "worker_manager_symphony"
@@ -60,11 +58,7 @@ class SymphonyWorkerManager:
             identity=self._ident,
         )
 
-        """
-        Although a worker group can contain multiple workers, in this Symphony adapter implementation,
-        there will be only one worker group which contains one Symphony worker.
-        """
-        self._worker_groups: Dict[WorkerGroupID, Dict[WorkerID, SymphonyWorker]] = {}
+        self._workers: Dict[WorkerID, SymphonyWorker] = {}
 
     async def __on_receive_external(self, message: Message):
         if isinstance(message, WorkerManagerCommand):
@@ -78,30 +72,29 @@ class SymphonyWorkerManager:
 
     async def _handle_command(self, command: WorkerManagerCommand):
         cmd_type = command.command
-        worker_group_id = command.worker_group_id
         response_status = Status.Success
+        worker_ids: List[bytes] = []
 
-        cmd_res = WorkerManagerCommandType.StartWorkerGroup
-        if cmd_type == WorkerManagerCommandType.StartWorkerGroup:
-            cmd_res = WorkerManagerCommandType.StartWorkerGroup
-            worker_group_id, response_status = await self.start_worker_group()
-        elif cmd_type == WorkerManagerCommandType.ShutdownWorkerGroup:
-            cmd_res = WorkerManagerCommandType.ShutdownWorkerGroup
-            response_status = await self.shutdown_worker_group(worker_group_id)
+        if cmd_type == WorkerManagerCommandType.StartWorkers:
+            new_wid, response_status = await self.start_worker()
+            if response_status == Status.Success:
+                worker_ids = [bytes(new_wid)]
+        elif cmd_type == WorkerManagerCommandType.ShutdownWorkers:
+            response_status = await self.shutdown_workers(command.worker_ids)
+            if response_status == Status.Success:
+                worker_ids = command.worker_ids
         else:
             raise ValueError("Unknown WorkerManagerCommand")
 
         await self._connector_external.send(
             WorkerManagerCommandResponse.new_msg(
-                worker_group_id=worker_group_id, command=cmd_res, status=response_status
+                command=cmd_type, status=response_status, worker_ids=worker_ids, capabilities=self._capabilities
             )
         )
-        return
 
-    async def start_worker_group(self) -> Tuple[WorkerGroupID, Status]:
-        num_of_workers = sum(len(workers) for workers in self._worker_groups.values())
-        if num_of_workers >= self._max_workers != -1:
-            return b"", Status.WorkerGroupTooMuch
+    async def start_worker(self) -> Tuple[WorkerID, Status]:
+        if len(self._workers) >= self._max_workers != -1:
+            return WorkerID(b""), Status.TooManyWorkers
 
         worker = SymphonyWorker(
             name=f"SYM|{uuid.uuid4().hex}",
@@ -115,26 +108,29 @@ class SymphonyWorkerManager:
             heartbeat_interval_seconds=self._heartbeat_interval_seconds,
             death_timeout_seconds=self._death_timeout_seconds,
             event_loop=self._event_loop,
+            worker_manager_id=self._worker_manager_id,
         )
 
         worker.start()
-        worker_group_id = f"symphony-{uuid.uuid4().hex}".encode()
-        self._worker_groups[worker_group_id] = {worker.identity: worker}
-        return worker_group_id, Status.Success
+        self._workers[worker.identity] = worker
+        return worker.identity, Status.Success
 
-    async def shutdown_worker_group(self, worker_group_id: WorkerGroupID) -> Status:
-        if not worker_group_id:
-            return Status.WorkerGroupIDNotSpecified
+    async def shutdown_workers(self, worker_ids: List[bytes]) -> Status:
+        if not worker_ids:
+            return Status.WorkerNotFound
 
-        if worker_group_id not in self._worker_groups:
-            logging.warning(f"Worker group with ID {bytes(worker_group_id).decode()} does not exist.")
-            return Status.WorkerGroupIDNotFound
+        for wid_bytes in worker_ids:
+            wid = WorkerID(wid_bytes)
+            if wid not in self._workers:
+                logging.warning(f"Worker with ID {wid!r} does not exist.")
+                return Status.WorkerNotFound
 
-        for worker in self._worker_groups[worker_group_id].values():
+        for wid_bytes in worker_ids:
+            wid = WorkerID(wid_bytes)
+            worker = self._workers.pop(wid)
             os.kill(worker.pid, signal.SIGINT)
             worker.join()
 
-        self._worker_groups.pop(worker_group_id)
         return Status.Success
 
     def run(self) -> None:
@@ -163,8 +159,7 @@ class SymphonyWorkerManager:
     async def __send_heartbeat(self):
         await self._connector_external.send(
             WorkerManagerHeartbeat.new_msg(
-                max_worker_groups=self._max_workers,
-                workers_per_group=self._workers_per_group,
+                max_workers=self._max_workers,
                 capabilities=self._capabilities,
                 worker_manager_id=self._worker_manager_id,
             )

@@ -322,6 +322,10 @@ class WorkerHeartbeat(Message):
     def capabilities(self) -> Dict[str, int]:
         return {capability.name: capability.value for capability in self._msg.capabilities}
 
+    @property
+    def worker_manager_id(self) -> bytes:
+        return self._msg.workerManagerID
+
     @staticmethod
     def new_msg(
         agent: Resource,
@@ -332,6 +336,7 @@ class WorkerHeartbeat(Message):
         task_lock: bool,
         processors: List[ProcessorStatus],
         capabilities: Dict[str, int],
+        worker_manager_id: bytes,
     ) -> "WorkerHeartbeat":
         return WorkerHeartbeat(
             _message.WorkerHeartbeat(
@@ -345,6 +350,7 @@ class WorkerHeartbeat(Message):
                 capabilities=[
                     TaskCapability.new_msg(name, value).get_message() for name, value in capabilities.items()
                 ],
+                workerManagerID=worker_manager_id,
             )
         )
 
@@ -354,12 +360,8 @@ class WorkerManagerHeartbeat(Message):
         super().__init__(msg)
 
     @property
-    def max_worker_groups(self) -> int:
-        return self._msg.maxWorkerGroups
-
-    @property
-    def workers_per_group(self) -> int:
-        return self._msg.workersPerGroup
+    def max_workers(self) -> int:
+        return self._msg.maxWorkers
 
     @property
     def capabilities(self) -> Dict[str, int]:
@@ -370,13 +372,10 @@ class WorkerManagerHeartbeat(Message):
         return self._msg.workerManagerID
 
     @staticmethod
-    def new_msg(
-        max_worker_groups: int, workers_per_group: int, capabilities: Dict[str, int], worker_manager_id: bytes
-    ) -> "WorkerManagerHeartbeat":
+    def new_msg(max_workers: int, capabilities: Dict[str, int], worker_manager_id: bytes) -> "WorkerManagerHeartbeat":
         return WorkerManagerHeartbeat(
             _message.WorkerManagerHeartbeat(
-                maxWorkerGroups=max_worker_groups,
-                workersPerGroup=workers_per_group,
+                maxWorkers=max_workers,
                 capabilities=[
                     TaskCapability.new_msg(name, value).get_message() for name, value in capabilities.items()
                 ],
@@ -395,8 +394,8 @@ class WorkerManagerHeartbeatEcho(Message):
 
 
 class WorkerManagerCommandType(enum.Enum):
-    StartWorkerGroup = _message.WorkerManagerCommandType.startWorkerGroup
-    ShutdownWorkerGroup = _message.WorkerManagerCommandType.shutdownWorkerGroup
+    StartWorkers = _message.WorkerManagerCommandType.startWorkers
+    ShutdownWorkers = _message.WorkerManagerCommandType.shutdownWorkers
 
 
 class WorkerManagerCommand(Message):
@@ -404,8 +403,8 @@ class WorkerManagerCommand(Message):
         super().__init__(msg)
 
     @property
-    def worker_group_id(self) -> bytes:
-        return self._msg.workerGroupID
+    def worker_ids(self) -> List[bytes]:
+        return list(self._msg.workerIDs)
 
     @property
     def command(self) -> WorkerManagerCommandType:
@@ -417,11 +416,13 @@ class WorkerManagerCommand(Message):
 
     @staticmethod
     def new_msg(
-        worker_group_id: bytes, command: WorkerManagerCommandType, capabilities: Dict[str, int] = {}
+        worker_ids: List[bytes] = [],
+        command: WorkerManagerCommandType = WorkerManagerCommandType.StartWorkers,
+        capabilities: Dict[str, int] = {},
     ) -> "WorkerManagerCommand":
         return WorkerManagerCommand(
             _message.WorkerManagerCommand(
-                workerGroupID=worker_group_id,
+                workerIDs=worker_ids,
                 command=command.value,
                 capabilities=[
                     TaskCapability.new_msg(name, value).get_message() for name, value in capabilities.items()
@@ -432,11 +433,9 @@ class WorkerManagerCommand(Message):
 
 class WorkerManagerCommandResponse(Message):
     class Status(enum.Enum):
-        WorkerGroupIDNotSpecified = _message.WorkerManagerCommandResponse.Status.workerGroupIDNotSpecified
-        WorkerGroupIDNotFound = _message.WorkerManagerCommandResponse.Status.workerGroupIDNotFound
-        WorkerGroupShutdown = _message.WorkerManagerCommandResponse.Status.workerGroupShutdown
+        TooManyWorkers = _message.WorkerManagerCommandResponse.Status.tooManyWorkers
         UnknownAction = _message.WorkerManagerCommandResponse.Status.unknownAction
-        WorkerGroupTooMuch = _message.WorkerManagerCommandResponse.Status.workerGroupTooMuch
+        WorkerNotFound = _message.WorkerManagerCommandResponse.Status.workerNotFound
         Success = _message.WorkerManagerCommandResponse.Status.success
 
     def __init__(self, msg):
@@ -451,12 +450,8 @@ class WorkerManagerCommandResponse(Message):
         return WorkerManagerCommandType(self._msg.command.raw)
 
     @property
-    def worker_group_id(self) -> bytes:
-        return self._msg.workerGroupID
-
-    @property
     def worker_ids(self) -> List[bytes]:
-        return self._msg.workerIDs
+        return list(self._msg.workerIDs)
 
     @property
     def capabilities(self) -> Dict[str, int]:
@@ -464,7 +459,6 @@ class WorkerManagerCommandResponse(Message):
 
     @staticmethod
     def new_msg(
-        worker_group_id: bytes,
         command: WorkerManagerCommandType,
         status: Status,
         worker_ids: List[bytes] = [],
@@ -472,7 +466,6 @@ class WorkerManagerCommandResponse(Message):
     ) -> "WorkerManagerCommandResponse":
         return WorkerManagerCommandResponse(
             _message.WorkerManagerCommandResponse(
-                workerGroupID=worker_group_id,
                 command=command.value,
                 status=status.value,
                 workerIDs=worker_ids,
