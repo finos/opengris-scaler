@@ -410,17 +410,11 @@ function drawTaskStream() {
     }
 
     // Draw bars: two passes so outlines are always visible between adjacent bars
-    // Each bar has s (slot index) and ns (total slots for that worker row)
     // Pass 1: fills and patterns
     for (var j = 0; j < streamBars.length; j++) {
         var bar = streamBars[j];
-        var ns = bar.ns || 1;
-        var s = bar.s || 0;
-        var fullRowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2;
-        var fullBarHeight = STREAM_ROW_HEIGHT - 4;
-        var slotHeight = fullBarHeight / ns;
-        var rowY = fullRowY + s * slotHeight;
-        var barHeight = slotHeight;
+        var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2;
+        var barHeight = STREAM_ROW_HEIGHT - 4;
         var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
         var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
         var barWidth = Math.max(x2 - x1, 1);
@@ -439,13 +433,8 @@ function drawTaskStream() {
     for (var j = 0; j < streamBars.length; j++) {
         var bar = streamBars[j];
         if (bar.ow > 0) {
-            var ns = bar.ns || 1;
-            var s = bar.s || 0;
-            var fullRowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2;
-            var fullBarHeight = STREAM_ROW_HEIGHT - 4;
-            var slotHeight = fullBarHeight / ns;
-            var rowY = fullRowY + s * slotHeight;
-            var barHeight = slotHeight;
+            var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2;
+            var barHeight = STREAM_ROW_HEIGHT - 4;
             var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
             var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
             var barWidth = Math.max(x2 - x1, 1);
@@ -507,13 +496,8 @@ streamCanvas.addEventListener("mousemove", function(evt) {
 
     for (var i = streamBars.length - 1; i >= 0; i--) {
         var bar = streamBars[i];
-        var ns = bar.ns || 1;
-        var s = bar.s || 0;
-        var fullRowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2;
-        var fullBarHeight = STREAM_ROW_HEIGHT - 4;
-        var slotHeight = fullBarHeight / ns;
-        var rowY = fullRowY + s * slotHeight;
-        var barHeight = slotHeight;
+        var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2;
+        var barHeight = STREAM_ROW_HEIGHT - 4;
         var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
         var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
 
