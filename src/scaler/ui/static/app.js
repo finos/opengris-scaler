@@ -6,6 +6,7 @@ var ws = null;
 var reconnectDelay = 500;
 var workerRows = {};       // worker_id -> <tr> element
 var taskLogCount = 0;
+var TASK_LOG_MAX_SIZE = 100;
 var taskRowMap = {};  // task_id -> tr element for in-place updates
 var streamBars = [];       // current bar data from server
 var streamRows = [];       // row labels
@@ -304,6 +305,7 @@ function addTaskLogEntries(entries, append) {
     for (var i = 0; i < entries.length; i++) {
         var e = entries[i];
         var tr = document.createElement("tr");
+        tr.dataset.taskId = e.task_id;
 
         // Task ID (clickable to copy)
         var tdId = document.createElement("td");
@@ -369,12 +371,16 @@ function addTaskLogEntries(entries, append) {
         taskLogCount++;
     }
 
-    // Trim to 100
-    while (tasklogBody.children.length > 100) {
-        tasklogBody.removeChild(tasklogBody.lastChild);
+    // Trim to configured size
+    while (tasklogBody.children.length > TASK_LOG_MAX_SIZE) {
+        var removed = tasklogBody.lastChild;
+        if (removed && removed.dataset && removed.dataset.taskId) {
+            delete taskRowMap[removed.dataset.taskId];
+        }
+        tasklogBody.removeChild(removed);
         taskLogCount--;
     }
-    tasklogCount.textContent = Math.min(taskLogCount, 100);
+    tasklogCount.textContent = Math.min(taskLogCount, TASK_LOG_MAX_SIZE);
 }
 
 // ── Task Stream (Canvas) ──

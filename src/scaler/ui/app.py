@@ -23,6 +23,7 @@ from scaler.utility.metadata.profile_result import ProfileResult
 STATIC_DIR = Path(__file__).parent / "static"
 
 BATCH_INTERVAL_SECONDS = 0.1
+TASK_LOG_MAX_SIZE = 100
 
 COMPLETED_TASK_STATUSES = {
     TaskState.Success,
@@ -375,7 +376,6 @@ class MemoryChartState:
         now = datetime.datetime.now()
         now_ts = now.timestamp()
         cutoff_ts = now_ts - self._memory_store_time.total_seconds()
-        view_start = now_ts - window_seconds
 
         with self._lock:
             # prune old points
@@ -424,7 +424,7 @@ class WebUIApp:
         self._scheduler_data: Dict[str, Any] = {}
         self._workers_data: Dict[str, Dict[str, Any]] = {}
         self._worker_capabilities: Dict[str, Dict[str, int]] = {}
-        self._task_log: Deque[Dict[str, Any]] = deque(maxlen=100)
+        self._task_log: Deque[Dict[str, Any]] = deque(maxlen=TASK_LOG_MAX_SIZE)
         self._active_tasks: Dict[str, Dict[str, Any]] = {}  # task_id_hex -> entry (running tasks)
         self._task_id_to_function: Dict[str, str] = {}
         self._task_stream = TaskStreamState()
@@ -477,7 +477,6 @@ class WebUIApp:
 
             # Process messages
             has_scheduler_update = False
-            has_worker_update = False
             new_task_logs: List[Dict[str, Any]] = []
             worker_events: List[Dict[str, Any]] = []
 
@@ -489,7 +488,6 @@ class WebUIApp:
                     event = self._process_worker_state(msg)
                     if event:
                         worker_events.append(event)
-                    has_worker_update = True
                 elif isinstance(msg, StateTask):
                     log_entry = self._process_task_state(msg)
                     if log_entry:
@@ -664,6 +662,8 @@ class WebUIApp:
             submitted_time = prev_entry["time"] if prev_entry and "time" in prev_entry else now.timestamp()
             if not worker_str and prev_entry:
                 worker_str = prev_entry.get("worker", "")
+            # remove stale completed entry if task was re-submitted
+            self._task_log = deque((e for e in self._task_log if e["task_id"] != task_id_hex), maxlen=TASK_LOG_MAX_SIZE)
             entry = {
                 "task_id": task_id_hex,
                 "function": func_name,
