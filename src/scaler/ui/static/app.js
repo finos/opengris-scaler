@@ -409,13 +409,12 @@ function drawTaskStream() {
         streamCtx.fillText(streamRows[i], 4, y + STREAM_ROW_HEIGHT / 2);
     }
 
-    // Draw bars
+    // Draw bars: two passes so outlines are always visible between adjacent bars
+    // Pass 1: fills and patterns
     for (var j = 0; j < streamBars.length; j++) {
         var bar = streamBars[j];
         var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2;
         var barHeight = STREAM_ROW_HEIGHT - 4;
-        // x is in seconds (negative = past), map to pixels
-        // -window -> STREAM_LABEL_WIDTH, 0 -> containerWidth
         var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
         var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
         var barWidth = Math.max(x2 - x1, 1);
@@ -423,15 +422,22 @@ function drawTaskStream() {
         streamCtx.fillStyle = bar.c;
         streamCtx.fillRect(x1, rowY, barWidth, barHeight);
 
-        // Pattern overlay
         if (bar.p === "x") {
             drawCrossHatch(streamCtx, x1, rowY, barWidth, barHeight);
         } else if (bar.p === "/") {
             drawSlashHatch(streamCtx, x1, rowY, barWidth, barHeight);
         }
+    }
 
-        // Outline
+    // Pass 2: outlines on top
+    for (var j = 0; j < streamBars.length; j++) {
+        var bar = streamBars[j];
         if (bar.ow > 0) {
+            var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2;
+            var barHeight = STREAM_ROW_HEIGHT - 4;
+            var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
+            var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
+            var barWidth = Math.max(x2 - x1, 1);
             streamCtx.strokeStyle = bar.oc;
             streamCtx.lineWidth = bar.ow;
             streamCtx.strokeRect(x1, rowY, barWidth, barHeight);

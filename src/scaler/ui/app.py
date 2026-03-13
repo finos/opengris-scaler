@@ -62,10 +62,9 @@ def _display_capabilities(capabilities: Set[str]) -> str:
 
 
 class TaskStreamState:
-    """Server-side state for the task stream chart, ported from task_graph.py."""
+    """Server-side state for the task stream chart."""
 
     def __init__(self) -> None:
-        self._start_time = datetime.datetime.now()
         self._stream_window = datetime.timedelta(minutes=5)
         self._memory_store_time = datetime.timedelta(minutes=30)
 
@@ -74,20 +73,15 @@ class TaskStreamState:
         self._worker_capabilities: Dict[str, Set[str]] = {}
         self._capabilities_color_map: Dict[str, str] = {"<no capabilities>": "#22c55e"}
 
-        # per-worker rows
-        self._worker_rows: Dict[str, List[str]] = {}
-        self._row_to_worker: Dict[str, str] = {}
-
-        # task tracking
+        # task tracking  (worker -> {task_id -> start_time})
         self._current_tasks: Dict[str, Dict[bytes, datetime.datetime]] = {}
         self._task_id_to_worker: Dict[bytes, str] = {}
         self._task_id_to_capabilities: Dict[bytes, str] = {}
         self._task_id_to_function: Dict[bytes, str] = {}
-        self._task_row_assignment: Dict[bytes, str] = {}
         self._worker_to_task_ids: Dict[str, Set[bytes]] = {}
-        self._row_last_used: Dict[str, datetime.datetime] = {}
 
-        # completed bar history: row_label -> list of bar dicts
+        # completed bar history: worker -> list of bar dicts
+        # each bar has absolute "start" and "end" timestamps
         self._bar_history: Dict[str, List[Dict[str, Any]]] = {}
 
         self._dead_workers: Deque[Tuple[datetime.datetime, str]] = deque()
@@ -97,38 +91,10 @@ class TaskStreamState:
     def set_stream_window(self, minutes: int) -> None:
         self._stream_window = SLIDING_WINDOW_OPTIONS.get(minutes, datetime.timedelta(minutes=5))
 
-    def _make_initial_row(self, worker: str) -> None:
-        base = _format_worker_name(worker)
-        row = f"{base} [1]"
-        self._worker_rows[worker] = [row]
-        self._row_to_worker[row] = worker
-
-    def _allocate_row(self, worker: str, task_id: bytes) -> str:
-        if task_id in self._task_row_assignment:
-            return self._task_row_assignment[task_id]
-
-        if worker not in self._worker_rows:
-            self._make_initial_row(worker)
-
-        used = set(self._task_row_assignment.values())
-        for row in self._worker_rows[worker]:
-            if row not in used:
-                self._task_row_assignment[task_id] = row
-                if row not in self._bar_history:
-                    self._bar_history[row] = []
-                return row
-
-        base = _format_worker_name(worker)
-        new_row = f"{base} [{len(self._worker_rows[worker]) + 1}]"
-        self._worker_rows[worker].append(new_row)
-        self._row_to_worker[new_row] = worker
-        self._task_row_assignment[task_id] = new_row
-        if new_row not in self._bar_history:
-            self._bar_history[new_row] = []
-        return new_row
-
-    def _free_row(self, task_id: bytes) -> None:
-        self._task_row_assignment.pop(task_id, None)
+    def _ensure_worker(self, worker: str, now: datetime.datetime) -> None:
+        if worker not in self._seen_workers:
+            self._seen_workers.add(worker)
+            self._bar_history.setdefault(worker, [])
 
     def handle_worker_state(self, state_worker: StateWorker) -> None:
         worker_id = state_worker.worker_id.decode()
@@ -137,12 +103,7 @@ class TaskStreamState:
 
         with self._lock:
             if worker_state == WorkerState.Connected:
-                if worker_id not in self._seen_workers:
-                    self._seen_workers.add(worker_id)
-                    self._make_initial_row(worker_id)
-                    row = self._worker_rows[worker_id][0]
-                    self._bar_history[row] = []
-                    self._row_last_used[row] = now
+                self._ensure_worker(worker_id, now)
                 self._worker_capabilities[worker_id] = set(state_worker.capabilities.keys())
             elif worker_state == WorkerState.Disconnected:
                 self._current_tasks.pop(worker_id, None)
@@ -162,12 +123,8 @@ class TaskStreamState:
                 return
 
             worker_str = worker.decode()
-            if worker_str not in self._seen_workers:
-                self._seen_workers.add(worker_str)
-                self._make_initial_row(worker_str)
-                row = self._worker_rows[worker_str][0]
-                self._bar_history[row] = []
-                self._row_last_used[row] = now
+            self._ensure_worker(worker_str, now)
+            if worker_str not in self._worker_capabilities:
                 self._worker_capabilities[worker_str] = set()
 
             if task_state == TaskState.Running:
@@ -187,25 +144,17 @@ class TaskStreamState:
             task_map = self._current_tasks.get(prev_worker, {})
             start_time = task_map.get(task_id)
             if start_time:
-                duration = (now - start_time).total_seconds()
-                row = self._task_row_assignment.get(task_id)
-                if row:
-                    self._add_bar(row, worker, task_id, duration, TaskState.Canceled, now)
-            self._current_tasks.get(prev_worker, {}).pop(task_id, None)
-            self._free_row(task_id)
+                self._add_bar(prev_worker, task_id, start_time, now, TaskState.Canceled)
+            task_map.pop(task_id, None)
             self._worker_to_task_ids.get(prev_worker, set()).discard(task_id)
 
         self._task_id_to_worker[task_id] = worker
         self._worker_to_task_ids.setdefault(worker, set()).add(task_id)
 
-        task_map = self._current_tasks.get(worker)
-        if task_map is not None:
+        # only set start time if this is a new task (don't overwrite on repeated Running messages)
+        task_map = self._current_tasks.setdefault(worker, {})
+        if task_id not in task_map:
             task_map[task_id] = now
-        else:
-            self._current_tasks[worker] = {task_id: now}
-
-        row = self._allocate_row(worker, task_id)
-        self._row_last_used[row] = now
 
     def _handle_task_result(self, state: StateTask, now: datetime.datetime) -> None:
         task_id = state.task_id
@@ -220,24 +169,25 @@ class TaskStreamState:
         if start is None:
             return
 
-        duration = (now - start).total_seconds()
-        row = self._task_row_assignment.get(task_id)
-        if row:
-            self._add_bar(row, worker, task_id, duration, state.state, now)
-            self._row_last_used[row] = now
+        self._add_bar(worker, task_id, start, now, state.state)
 
         task_map.pop(task_id, None)
         if not task_map:
             self._current_tasks.pop(worker, None)
-        self._free_row(task_id)
         self._worker_to_task_ids.get(worker, set()).discard(task_id)
 
     def _add_bar(
-        self, row: str, worker: str, task_id: bytes, duration: float, task_state: TaskState, end_time: datetime.datetime
+        self,
+        worker: str,
+        task_id: bytes,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        task_state: TaskState,
     ) -> None:
         caps = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
         color = _capabilities_color(caps, self._capabilities_color_map)
         func = self._task_id_to_function.get(task_id, "")
+        duration = (end_time - start_time).total_seconds()
 
         pattern = ""
         outline_color = "black"
@@ -249,51 +199,31 @@ class TaskStreamState:
             pattern = "/"
 
         bar = {
+            "start": start_time.timestamp(),
             "end": end_time.timestamp(),
-            "duration": duration,
             "color": color,
             "pattern": pattern,
             "outline_color": outline_color,
             "outline_width": outline_width,
             "hover": f"{func} ({duration:.2f}s) - {task_state.name}",
-            "capabilities": caps,
         }
 
-        if row not in self._bar_history:
-            self._bar_history[row] = []
-
-        # merge consecutive identical bars
-        history = self._bar_history[row]
-        if history:
-            last = history[-1]
-            if last["color"] == color and last["pattern"] == pattern and last["outline_color"] == outline_color:
-                last["duration"] += duration
-                last["end"] = end_time.timestamp()
-                count = last.get("count", 1) + 1
-                last["count"] = count
-                last["hover"] = f"{func} ({last['duration']:.2f}s) - {task_state.name} x{count}"
-                return
-
-        history.append(bar)
+        self._bar_history.setdefault(worker, []).append(bar)
 
     def _prune_old_data(self, now: datetime.datetime) -> None:
         cutoff = now - self._memory_store_time
         cutoff_ts = cutoff.timestamp()
 
         # remove old bars
-        for row in list(self._bar_history.keys()):
-            bars = self._bar_history[row]
+        for worker in list(self._bar_history.keys()):
+            bars = self._bar_history[worker]
             while bars and bars[0]["end"] < cutoff_ts:
                 bars.pop(0)
 
         # remove dead workers past retention
         while self._dead_workers and self._dead_workers[0][0] < cutoff:
             _, worker = self._dead_workers.popleft()
-            rows = self._worker_rows.pop(worker, [])
-            for row in rows:
-                self._row_to_worker.pop(row, None)
-                self._row_last_used.pop(row, None)
-                self._bar_history.pop(row, None)
+            self._bar_history.pop(worker, None)
             self._worker_to_task_ids.pop(worker, None)
             self._worker_capabilities.pop(worker, None)
             self._seen_workers.discard(worker)
@@ -305,26 +235,34 @@ class TaskStreamState:
         with self._lock:
             self._prune_old_data(now)
             window_seconds = self._stream_window.total_seconds()
+            window_start_ts = now_ts - window_seconds
 
-            # collect all row labels in order
+            # one row per worker, sorted by name
             row_labels: List[str] = []
+            worker_order: List[str] = []
             for worker in sorted(self._seen_workers):
-                for row in self._worker_rows.get(worker, []):
-                    row_labels.append(row)
+                row_labels.append(_format_worker_name(worker))
+                worker_order.append(worker)
 
-            # build bars list (pre-computed coordinates)
+            # build bars list with absolute time -> relative coordinates
             bars: List[Dict[str, Any]] = []
-            for row_idx, row_label in enumerate(row_labels):
-                for bar in self._bar_history.get(row_label, []):
-                    x_end = bar["end"] - now_ts  # negative seconds ago
-                    x_start = x_end - bar["duration"]
-                    if x_end < -window_seconds:
+            for row_idx, worker in enumerate(worker_order):
+                for bar in self._bar_history.get(worker, []):
+                    if bar["end"] < window_start_ts:
                         continue  # outside visible window
+                    # convert absolute timestamps to relative seconds from now
+                    x_start = bar["start"] - now_ts  # negative
+                    x_end = bar["end"] - now_ts  # negative or near-zero
+                    # clip to window
+                    x_start = max(x_start, -window_seconds)
+                    w = x_end - x_start
+                    if w <= 0:
+                        continue
                     bars.append(
                         {
                             "r": row_idx,
-                            "x": max(x_start, -window_seconds),
-                            "w": bar["duration"] - max(-window_seconds - x_start, 0),
+                            "x": x_start,
+                            "w": w,
                             "c": bar["color"],
                             "p": bar["pattern"],
                             "oc": bar["outline_color"],
@@ -333,25 +271,28 @@ class TaskStreamState:
                         }
                     )
 
-            # running tasks
-            for worker, task_map in self._current_tasks.items():
+            # running tasks (shown as live-growing bars)
+            for row_idx, worker in enumerate(worker_order):
+                task_map = self._current_tasks.get(worker)
+                if not task_map:
+                    continue
                 for task_id, start_time in task_map.items():
-                    row = self._task_row_assignment.get(task_id)
-                    if row is None:
-                        continue
-                    row_idx = row_labels.index(row) if row in row_labels else -1
-                    if row_idx < 0:
-                        continue
+                    actual_duration = (now - start_time).total_seconds()
                     x_start = (start_time - now).total_seconds()
-                    duration = (now - start_time).total_seconds()
+                    x_end = 0.0  # now
+                    x_start = max(x_start, -window_seconds)
+                    w = x_end - x_start
+                    if w <= 0:
+                        continue
                     caps = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
                     color = _capabilities_color(caps, self._capabilities_color_map)
                     func = self._task_id_to_function.get(task_id, "")
+                    duration = actual_duration
                     bars.append(
                         {
                             "r": row_idx,
-                            "x": max(x_start, -window_seconds),
-                            "w": duration - max(-window_seconds - x_start, 0),
+                            "x": x_start,
+                            "w": w,
                             "c": color,
                             "p": "",
                             "oc": "#eab308",  # yellow for running
@@ -570,9 +511,12 @@ class WebUIApp:
         }
 
         current_workers = set()
+        now = datetime.datetime.now()
         for worker_data in data.worker_manager.workers:
             worker_name = worker_data.worker_id.decode()
             current_workers.add(worker_name)
+            # ensure task stream knows about this worker (handles late UI connect)
+            self._task_stream._ensure_worker(worker_name, now)
             total_proc_cpu = sum(p.resource.cpu for p in worker_data.processor_statuses)
             total_proc_rss = sum(p.resource.rss for p in worker_data.processor_statuses)
             total_rss = int(total_proc_rss / 1e6)
