@@ -13,6 +13,10 @@ class SymphonyWorkerManagerConfig(ConfigClass):
     service_name: str = dataclasses.field(metadata=dict(short="-sn", help="symphony service name"))
 
     worker_manager_config: WorkerManagerConfig
+    worker_manager_id: str = dataclasses.field(
+        metadata=dict(short="-wmi", help="worker manager ID to identify this manager")
+    )
+
     worker_config: WorkerConfig = dataclasses.field(default_factory=WorkerConfig)
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
     event_loop: str = dataclasses.field(
@@ -27,6 +31,8 @@ class SymphonyWorkerManagerConfig(ConfigClass):
 
     def __post_init__(self):
         """Validates configuration values after initialization."""
+        if not self.worker_manager_id:
+            raise ValueError("worker_manager_id cannot be an empty string.")
         if not self.service_name:
             raise ValueError("service_name cannot be an empty string.")
         if self.worker_io_threads <= 0:

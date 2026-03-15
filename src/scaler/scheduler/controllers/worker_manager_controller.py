@@ -1,5 +1,6 @@
 import logging
 import time
+from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
 from scaler.config.defaults import DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
@@ -36,7 +37,7 @@ class WorkerManagerController(Looper, Reporter):
         self._pending_commands: Dict[bytes, WorkerManagerCommand] = {}
 
         # Track capabilities per manager: source -> capabilities dict
-        self._manager_capabilities: Dict[bytes, Dict[str, int]] = {}
+        self._manager_capabilities: Dict[bytes, Dict[str, int]] = defaultdict(dict)
 
         # Reverse map: worker_manager_id -> source (for duplicate detection)
         self._manager_id_to_source: Dict[bytes, bytes] = {}
@@ -49,18 +50,16 @@ class WorkerManagerController(Looper, Reporter):
     async def on_heartbeat(self, source: bytes, heartbeat: WorkerManagerHeartbeat):
         if source not in self._manager_alive_since:
             manager_id = heartbeat.worker_manager_id
-            if manager_id:
-                existing_source = self._manager_id_to_source.get(manager_id)
-                if existing_source is not None and existing_source != source:
-                    logging.warning(
-                        f"Duplicate worker_manager_id {manager_id!r}: source {source!r} rejected, "
-                        f"already registered by source {existing_source!r}"
-                    )
-                    return
-                self._manager_id_to_source[manager_id] = source
+            existing_source = self._manager_id_to_source.get(manager_id)
+            if existing_source is not None and existing_source != source:
+                logging.warning(
+                    f"Duplicate worker_manager_id {manager_id!r}: source {source!r} rejected, "
+                    f"already registered by source {existing_source!r}"
+                )
+                return
+            self._manager_id_to_source[manager_id] = source
 
             logging.info(f"WorkerManager {source!r} connected")
-            self._manager_capabilities[source] = {}
 
         self._manager_alive_since[source] = (time.time(), heartbeat)
 
@@ -70,7 +69,7 @@ class WorkerManagerController(Looper, Reporter):
 
         # Get managed worker IDs from worker controller (heartbeat-based live truth)
         managed_worker_ids = self._worker_controller.get_workers_by_manager_id(heartbeat.worker_manager_id)
-        managed_worker_capabilities = self._manager_capabilities.get(source, {})
+        managed_worker_capabilities = self._manager_capabilities[source]
 
         # Build cross-manager snapshots from all known managers
         worker_manager_snapshots = self._build_manager_snapshots()
@@ -110,8 +109,6 @@ class WorkerManagerController(Looper, Reporter):
         result: Dict[bytes, List[WorkerID]] = {}
         for source, (_, heartbeat) in self._manager_alive_since.items():
             manager_id = heartbeat.worker_manager_id
-            if not manager_id:
-                continue
             result[manager_id] = self._worker_controller.get_workers_by_manager_id(manager_id)
         return result
 
@@ -124,8 +121,6 @@ class WorkerManagerController(Looper, Reporter):
         snapshots: Dict[bytes, WorkerManagerSnapshot] = {}
         for source, (last_seen, heartbeat) in self._manager_alive_since.items():
             manager_id = heartbeat.worker_manager_id
-            if not manager_id:
-                continue
             worker_count = len(self._worker_controller.get_workers_by_manager_id(manager_id))
             snapshots[manager_id] = WorkerManagerSnapshot(
                 worker_manager_id=manager_id,
@@ -161,8 +156,7 @@ class WorkerManagerController(Looper, Reporter):
 
         _, heartbeat = self._manager_alive_since[source]
         manager_id = heartbeat.worker_manager_id
-        if manager_id:
-            self._manager_id_to_source.pop(manager_id, None)
+        self._manager_id_to_source.pop(manager_id, None)
 
         logging.info(f"WorkerManager {source!r} disconnected")
         self._manager_alive_since.pop(source)

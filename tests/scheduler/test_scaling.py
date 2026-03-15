@@ -389,13 +389,17 @@ class TestFixedElasticScaling(unittest.TestCase):
 
         # Start primary manager with max_workers=1
         primary_manager_process = Process(
-            target=_run_native_worker_manager, args=(self.scheduler_address,), kwargs={"max_workers": 1}
+            target=_run_native_worker_manager,
+            args=(self.scheduler_address,),
+            kwargs={"max_workers": 1, "worker_manager_id": "primary"},
         )
         primary_manager_process.start()
 
         # Start secondary manager with max_workers=4
         secondary_manager_process = Process(
-            target=_run_native_worker_manager, args=(self.scheduler_address,), kwargs={"max_workers": 4}
+            target=_run_native_worker_manager,
+            args=(self.scheduler_address,),
+            kwargs={"max_workers": 4, "worker_manager_id": "secondary"},
         )
         secondary_manager_process.start()
 
@@ -446,7 +450,9 @@ def _create_worker_manager_heartbeat(worker_manager_id: bytes, max_workers: int 
     return WorkerManagerHeartbeat.new_msg(max_workers=max_workers, capabilities={}, worker_manager_id=worker_manager_id)
 
 
-def _run_native_worker_manager(scheduler_address: str, max_workers: int = 4) -> None:
+def _run_native_worker_manager(
+    scheduler_address: str, max_workers: int = 4, worker_manager_id: str = "test_manager"
+) -> None:
     manager = NativeWorkerManager(
         NativeWorkerManagerConfig(
             worker_manager_config=WorkerManagerConfig(
@@ -454,6 +460,7 @@ def _run_native_worker_manager(scheduler_address: str, max_workers: int = 4) -> 
                 object_storage_address=None,
                 max_workers=max_workers,
             ),
+            worker_manager_id=worker_manager_id,
             event_loop="builtin",
             worker_io_threads=DEFAULT_IO_THREADS,
             worker_config=WorkerConfig(
