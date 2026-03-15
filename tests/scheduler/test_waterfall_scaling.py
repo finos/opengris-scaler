@@ -26,14 +26,14 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
     def setUp(self):
         setup_logger()
         self.rules = [
-            WaterfallRule(priority=1, worker_type=b"manager_a", max_task_concurrency=10),
-            WaterfallRule(priority=2, worker_type=b"manager_b", max_task_concurrency=20),
+            WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10),
+            WaterfallRule(priority=2, worker_manager_id=b"manager_b", max_task_concurrency=20),
         ]
         self.policy = WaterfallScalingPolicy(self.rules)
 
     def test_single_priority_scale_up(self):
         """Single manager with tasks and no workers should scale up."""
-        rules = [WaterfallRule(priority=1, worker_type=b"manager_a", max_task_concurrency=10)]
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
 
         tasks = _create_tasks(5)
@@ -147,7 +147,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(len(commands_a), 0)
 
     def test_manager_not_in_config(self):
-        """Manager with unknown worker_type should receive no commands."""
+        """Manager with unknown worker_manager_id should receive no commands."""
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         managed_worker_ids: List[WorkerID] = []
@@ -164,7 +164,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
     def test_effective_capacity_min_config_and_heartbeat(self):
         """Effective capacity should be min(config max_task_concurrency, heartbeat max_workers)."""
         # Rule says max_task_concurrency=5, heartbeat says max_workers=3
-        rules = [WaterfallRule(priority=1, worker_type=b"manager_a", max_task_concurrency=5)]
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=5)]
         policy = WaterfallScalingPolicy(rules)
 
         tasks = _create_tasks(5)
@@ -200,8 +200,8 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
     def test_same_priority_concurrent_scaling(self):
         """Two managers at same priority should both be able to scale up concurrently."""
         rules = [
-            WaterfallRule(priority=1, worker_type=b"manager_a", max_task_concurrency=10),
-            WaterfallRule(priority=1, worker_type=b"manager_b", max_task_concurrency=10),
+            WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10),
+            WaterfallRule(priority=1, worker_manager_id=b"manager_b", max_task_concurrency=10),
         ]
         policy = WaterfallScalingPolicy(rules)
 
@@ -243,7 +243,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         # No lower-priority managers with workers
         manager_snapshots = {b"manager_a": _create_manager_snapshot(b"manager_a", max_workers=10, worker_count=2)}
 
-        rules = [WaterfallRule(priority=1, worker_type=b"manager_a", max_task_concurrency=10)]
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
 
         heartbeat = _create_worker_manager_heartbeat(b"manager_a", max_workers=10)
@@ -292,11 +292,11 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(len(commands), 1)
         self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
 
-    def test_prefix_matching_with_runtime_ids(self):
-        """Worker manager IDs like NAT|<uuid> should match rules with worker_type NAT."""
+    def test_exact_matching_with_runtime_ids(self):
+        """Worker manager IDs like NAT|12345 should match rules with exact worker_manager_id."""
         rules = [
-            WaterfallRule(priority=1, worker_type=b"NAT", max_task_concurrency=10),
-            WaterfallRule(priority=2, worker_type=b"ECS", max_task_concurrency=20),
+            WaterfallRule(priority=1, worker_manager_id=b"NAT|12345", max_task_concurrency=10),
+            WaterfallRule(priority=2, worker_manager_id=b"ECS|67890", max_task_concurrency=20),
         ]
         policy = WaterfallScalingPolicy(rules)
 
@@ -325,11 +325,12 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         )
         self.assertEqual(len(commands_ecs), 0)
 
-    def test_prefix_matching_multiple_managers_same_prefix(self):
-        """Multiple worker managers sharing a worker_type should all match the same rule."""
+    def test_multiple_managers_same_priority(self):
+        """Multiple worker managers at the same priority should all need to be at capacity before overflow."""
         rules = [
-            WaterfallRule(priority=1, worker_type=b"NAT", max_task_concurrency=10),
-            WaterfallRule(priority=2, worker_type=b"ECS", max_task_concurrency=20),
+            WaterfallRule(priority=1, worker_manager_id=b"NAT|111", max_task_concurrency=10),
+            WaterfallRule(priority=1, worker_manager_id=b"NAT|222", max_task_concurrency=10),
+            WaterfallRule(priority=2, worker_manager_id=b"ECS|333", max_task_concurrency=20),
         ]
         policy = WaterfallScalingPolicy(rules)
 
@@ -353,11 +354,12 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(len(commands), 1)
         self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
 
-    def test_prefix_matching_blocked_when_any_higher_priority_has_room(self):
-        """Lower priority should not scale up if any manager matching a higher-priority worker_type has room."""
+    def test_blocked_when_any_higher_priority_has_room(self):
+        """Lower priority should not scale up if any manager at a higher priority still has room."""
         rules = [
-            WaterfallRule(priority=1, worker_type=b"NAT", max_task_concurrency=10),
-            WaterfallRule(priority=2, worker_type=b"ECS", max_task_concurrency=20),
+            WaterfallRule(priority=1, worker_manager_id=b"NAT|111", max_task_concurrency=10),
+            WaterfallRule(priority=1, worker_manager_id=b"NAT|222", max_task_concurrency=10),
+            WaterfallRule(priority=2, worker_manager_id=b"ECS|333", max_task_concurrency=20),
         ]
         policy = WaterfallScalingPolicy(rules)
 
@@ -401,7 +403,12 @@ class TestWaterfallV1Policy(unittest.TestCase):
     def test_config_parsing_with_comments(self):
         """Comments and blank lines should be ignored."""
         policy_content = "\n".join(
-            ["#priority,worker_type,max_task_concurrency", "1,manager_a,10", "", "2,manager_b,20  # overflow tier"]
+            [
+                "#priority,worker_manager_id,max_task_concurrency",
+                "1,manager_a,10",
+                "",
+                "2,manager_b,20  # overflow tier",
+            ]
         )
         policy = WaterfallV1Policy(policy_content)
         self.assertIsInstance(policy, WaterfallV1Policy)
@@ -431,10 +438,15 @@ class TestWaterfallV1Policy(unittest.TestCase):
         with self.assertRaises(ValueError):
             WaterfallV1Policy("1,manager_a,many")
 
-    def test_invalid_config_empty_worker_type(self):
-        """Empty worker_type should raise ValueError."""
+    def test_invalid_config_empty_worker_manager_id(self):
+        """Empty worker_manager_id should raise ValueError."""
         with self.assertRaises(ValueError):
             WaterfallV1Policy("1,,10")
+
+    def test_invalid_config_duplicate_worker_manager_id(self):
+        """Duplicate worker_manager_id should raise ValueError."""
+        with self.assertRaises(ValueError):
+            WaterfallV1Policy("1,mgr_a,10\n2,mgr_a,20")
 
     def test_policy_delegates_to_scaling_policy(self):
         """Policy controller should delegate scaling commands to its scaling policy."""

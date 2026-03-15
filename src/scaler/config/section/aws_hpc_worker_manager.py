@@ -24,6 +24,9 @@ DEFAULT_S3_PREFIX = "scaler-tasks"
 @dataclasses.dataclass
 class AWSBatchWorkerManagerConfig(ConfigClass):
     worker_manager_config: WorkerManagerConfig
+    worker_manager_id: str = dataclasses.field(
+        metadata=dict(short="-wmi", help="worker manager ID to identify this manager")
+    )
 
     job_queue: str = dataclasses.field(metadata=dict(short="-q", help="AWS Batch job queue name"))
     job_definition: str = dataclasses.field(metadata=dict(short="-d", help="AWS Batch job definition name"))
@@ -64,6 +67,8 @@ class AWSBatchWorkerManagerConfig(ConfigClass):
     )
 
     def __post_init__(self) -> None:
+        if not self.worker_manager_id:
+            raise ValueError("worker_manager_id cannot be an empty string.")
         if not self.job_queue:
             raise ValueError("job_queue cannot be an empty string.")
         if not self.job_definition:

@@ -172,21 +172,33 @@ This is useful for hybrid deployments where you want to prefer cheaper or lower-
 
 **Configuration:**
 
-The waterfall policy uses ``policy_engine_type = "waterfall_v1"`` and a newline-separated rule format for ``policy_content``. Each rule is a comma-separated line with three fields: ``priority``, ``manager_id_prefix``, ``max_workers``. Lines starting with ``#`` are comments.
+The waterfall policy uses ``policy_engine_type = "waterfall_v1"`` and a newline-separated rule format for ``policy_content``. Each rule is a comma-separated line with three fields: ``priority``, ``worker_manager_id``, ``max_workers``. Lines starting with ``#`` are comments.
 
 .. code:: toml
 
     [scheduler]
     policy_engine_type = "waterfall_v1"
     policy_content = """
-    # priority, manager_id_prefix, max_workers
+    # priority, worker_manager_id, max_workers
     # Use local workers first (cheap, low latency)
-    1, NAT, 8
+    1, NAT|local1, 8
     # Overflow to ECS when local capacity is exhausted
-    2, ECS, 50
+    2, ECS|prod1, 50
     """
 
-Rules reference worker manager ID prefixes. At runtime, each worker manager generates a full ID like ``NAT|<pid>``; the prefix ``NAT`` matches any manager whose ID starts with ``NAT``. Multiple managers can share the same prefix and are governed by the same rule.
+Rules reference exact worker manager IDs. Each rule maps to one specific worker manager.
+
+
+Worker Manager Identity
+-----------------------
+
+Every worker manager must be configured with a ``worker_manager_id`` (``--worker-manager-id`` / ``-wmi``). This ID is used by the scheduler to track which workers belong to which manager and to make scaling decisions.
+
+**Requirements:**
+
+* The ``worker_manager_id`` must be a **non-empty string**, even when only a single worker manager is deployed.
+* The ``worker_manager_id`` must be **globally unique** across all worker managers connected to the same scheduler. If a second manager attempts to connect with a ``worker_manager_id`` that is already in use, the scheduler rejects it.
+* There is no auto-generated default. The ID must always be provided explicitly via the command line or configuration file.
 
 
 Worker Manager Protocol
@@ -200,6 +212,7 @@ Worker managers periodically send heartbeats to the scheduler containing their c
 
 * ``max_workers``: Maximum number of workers this manager can manage
 * ``capabilities``: Default capabilities for workers from this manager
+* ``worker_manager_id``: The unique identity of this manager (must be non-empty and globally unique)
 
 **WorkerManagerCommand (Scheduler -> Manager):**
 

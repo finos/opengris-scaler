@@ -369,6 +369,7 @@ class TestClientPreload(unittest.TestCase):
                     object_storage_address=self.combo._object_storage_address,
                     max_workers=1,
                 ),
+                worker_manager_id="test_manager",
                 preload=preload,
                 event_loop=base_manager._event_loop,
                 worker_io_threads=base_manager._io_threads,

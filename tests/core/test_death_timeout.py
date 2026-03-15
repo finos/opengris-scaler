@@ -43,6 +43,7 @@ class TestDeathTimeout(unittest.TestCase):
                     object_storage_address=None,
                     max_workers=2,
                 ),
+                worker_manager_id="test_manager",
                 preload=None,
                 event_loop="builtin",
                 worker_io_threads=DEFAULT_IO_THREADS,

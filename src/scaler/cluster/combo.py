@@ -63,6 +63,7 @@ class SchedulerClusterCombo:
         logging_paths: Tuple[str, ...] = DEFAULT_LOGGING_PATHS,
         logging_level: str = DEFAULT_LOGGING_LEVEL,
         logging_config_file: Optional[str] = None,
+        worker_manager_id: str = "combo",
     ):
         self._shutdown_called = False
 
@@ -97,6 +98,7 @@ class SchedulerClusterCombo:
                     object_storage_address=self._object_storage_address,
                     max_workers=n_workers,
                 ),
+                worker_manager_id=worker_manager_id,
                 preload=None,
                 event_loop=event_loop,
                 worker_io_threads=worker_io_threads,
