@@ -48,8 +48,7 @@ class TestNestedTask(unittest.TestCase):
 
 
 def parent_task_arg_client(client: Client) -> int:
-    iterable = [(v,) for v in range(0, N_TASKS)]
-    return sum(client.map(nested_task, iterable))
+    return sum(client.map(nested_task, range(0, N_TASKS)))
 
 
 def nested_task(value: int) -> int:

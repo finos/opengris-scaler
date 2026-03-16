@@ -42,7 +42,7 @@ def main():
 
     with Client(address=cluster.get_address()) as client:
         with tempfile.TemporaryDirectory() as dest_dir:
-            client.map(
+            client.starmap(
                 process_image,
                 [
                     (os.path.join(source_dir, filename), os.path.join(dest_dir, filename))
