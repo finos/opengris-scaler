@@ -61,6 +61,18 @@ for (var i = 0; i < tabs.length; i++) {
     })(tabs[i]));
 }
 
+// ── Fit Page Toggle ──
+var fitPageBtn = $("fit-page-btn");
+var fitPageActive = false;
+
+fitPageBtn.addEventListener("click", function() {
+    fitPageActive = !fitPageActive;
+    document.body.classList.toggle("fit-page", fitPageActive);
+    fitPageBtn.classList.toggle("active", fitPageActive);
+    streamNeedsRedraw = true;
+    memoryNeedsRedraw = true;
+});
+
 // ── Settings ──
 function setupToggle(groupId, callback) {
     var group = $(groupId);
@@ -704,13 +716,6 @@ function drawMemoryChart() {
     memoryCtx.strokeStyle = "#3b82f6";
     memoryCtx.lineWidth = 2;
     memoryCtx.stroke();
-
-    // Title
-    memoryCtx.fillStyle = "#334155";
-    memoryCtx.font = "12px " + getComputedStyle(document.body).fontFamily;
-    memoryCtx.textAlign = "left";
-    memoryCtx.textBaseline = "top";
-    memoryCtx.fillText("Memory Usage", plotLeft, 4);
 
     memoryCtx.lineWidth = 1;
 }

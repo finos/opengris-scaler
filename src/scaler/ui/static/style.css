@@ -427,6 +427,91 @@ body {
     box-shadow: var(--shadow);
 }
 
+/* Card header row (for inline buttons) */
+.card-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.card-header-row h3 {
+    margin-bottom: 0;
+}
+
+.fit-page-btn {
+    padding: 4px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: var(--font);
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.fit-page-btn:hover {
+    background: var(--row-hover);
+    color: var(--text);
+}
+
+.fit-page-btn.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+/* Fit-page layout: everything fits in viewport, stream scrolls internally */
+body.fit-page {
+    height: 100vh;
+    overflow: hidden;
+}
+
+body.fit-page .tab-panel.active#panel-stream {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 85px); /* viewport minus header + tabs */
+    overflow: hidden;
+}
+
+body.fit-page #stream-card {
+    flex: 7;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 8px;
+}
+
+body.fit-page #stream-card .legend {
+    flex-shrink: 0;
+}
+
+body.fit-page #stream-card .stream-container {
+    flex: 1;
+    max-height: none;
+    min-height: 0;
+}
+
+body.fit-page #stream-card .stream-axis {
+    flex-shrink: 0;
+}
+
+body.fit-page #memory-card {
+    flex: 3;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0;
+}
+
+body.fit-page #memory-card .memory-container {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+}
+
 /* Tooltip */
 .tooltip {
     display: none;
