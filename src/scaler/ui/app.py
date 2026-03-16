@@ -8,7 +8,7 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional, Set, Tuple
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -161,14 +161,23 @@ class TaskStreamState:
     def _handle_task_result(self, state: StateTask, now: datetime.datetime) -> None:
         task_id = state.task_id
         worker = self._task_id_to_worker.get(task_id, "")
+
+        # fallback: use worker from the completion message itself (late-connect case)
+        if not worker and state.worker:
+            worker = state.worker.decode()
+            self._ensure_worker(worker, now)
+
         if not worker:
             return
 
-        task_map = self._current_tasks.get(worker)
-        if not task_map:
-            return
-        if task_id not in task_map:
-            return
+        # store capabilities/function from completion message if not already known
+        if task_id not in self._task_id_to_capabilities and state.capabilities:
+            self._task_id_to_capabilities[task_id] = _display_capabilities(set(state.capabilities.keys()))
+        func_name = state.function_name.decode() if state.function_name else ""
+        if func_name and task_id not in self._task_id_to_function:
+            self._task_id_to_function[task_id] = func_name
+
+        task_map = self._current_tasks.get(worker, {})
 
         # use ProfileResult duration for accurate start time when available
         start = now
@@ -182,7 +191,7 @@ class TaskStreamState:
             pass
 
         # fallback to Running message timestamp if no profile data
-        if start == end:
+        if start == end and task_id in task_map:
             start = task_map[task_id]
 
         self._add_bar(worker, task_id, start, now, state.state)
@@ -253,12 +262,24 @@ class TaskStreamState:
             window_seconds = self._stream_window.total_seconds()
             window_start_ts = now_ts - window_seconds
 
-            # one row per worker, sorted by name
+            # one row per worker, sorted by name — only include workers with visible activity
             row_labels: List[str] = []
+            full_row_labels: List[str] = []
             worker_order: List[str] = []
             for worker in sorted(self._seen_workers):
-                row_labels.append(_format_worker_name(worker))
-                worker_order.append(worker)
+                # check if worker has any running tasks
+                has_running = bool(self._current_tasks.get(worker))
+                # check if worker has any completed bars in the visible window
+                has_visible_bars = False
+                if not has_running:
+                    for bar in self._bar_history.get(worker, []):
+                        if bar["end"] >= window_start_ts:
+                            has_visible_bars = True
+                            break
+                if has_running or has_visible_bars:
+                    row_labels.append(_format_worker_name(worker))
+                    full_row_labels.append(worker)
+                    worker_order.append(worker)
 
             # Build bars list ordered so that:
             # - Running tasks are drawn first (behind everything)
@@ -338,7 +359,14 @@ class TaskStreamState:
                 val = -window_seconds + i * (window_seconds / (num_ticks - 1))
                 ticks.append({"val": round(val, 1), "label": f"{int(val)}s"})
 
-        return {"rows": row_labels, "bars": bars, "legend": legend, "ticks": ticks, "window": window_seconds}
+        return {
+            "rows": row_labels,
+            "full_rows": full_row_labels,
+            "bars": bars,
+            "legend": legend,
+            "ticks": ticks,
+            "window": window_seconds,
+        }
 
 
 class MemoryChartState:
@@ -744,6 +772,13 @@ class WebUIApp:
 def create_app(config: WebUIConfig) -> FastAPI:
     app_state = WebUIApp(config)
     app = FastAPI(title="Scaler Web UI")
+
+    @app.middleware("http")
+    async def no_cache_headers(request: Request, call_next):  # type: ignore[no-untyped-def]
+        response = await call_next(request)
+        if request.url.path.startswith("/static"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        return response
 
     @app.on_event("startup")
     async def startup() -> None:

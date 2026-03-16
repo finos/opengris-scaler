@@ -9,7 +9,8 @@ var taskLogCount = 0;
 var TASK_LOG_MAX_SIZE = 100;
 var taskRowMap = {};  // task_id -> tr element for in-place updates
 var streamBars = [];       // current bar data from server
-var streamRows = [];       // row labels
+var streamRows = [];       // row labels (truncated)
+var streamFullRows = [];   // row labels (full worker names)
 var memoryPoints = [];     // memory chart points
 var memoryScale = "linear";
 var memoryYTicks = [];
@@ -394,6 +395,7 @@ var STREAM_PADDING_TOP = 4;
 function updateTaskStream(data) {
     streamBars = data.bars || [];
     streamRows = data.rows || [];
+    streamFullRows = data.full_rows || streamRows;
     streamTicks = data.ticks || [];
     streamWindow = data.window || 300;
     streamNeedsRedraw = true;
@@ -568,6 +570,20 @@ streamCanvas.addEventListener("mousemove", function(evt) {
             return;
         }
     }
+
+    // If not over a bar, check if hovering over a row label
+    if (mx < STREAM_LABEL_WIDTH) {
+        for (var r = 0; r < streamFullRows.length; r++) {
+            var ry = STREAM_PADDING_TOP + r * STREAM_ROW_HEIGHT;
+            if (my >= ry && my < ry + STREAM_ROW_HEIGHT) {
+                streamCanvas.title = streamFullRows[r];
+                tooltip.classList.remove("visible");
+                return;
+            }
+        }
+    }
+
+    streamCanvas.title = "";
     tooltip.classList.remove("visible");
 });
 
