@@ -677,6 +677,9 @@ class WebUIApp:
                     profile = ProfileResult.deserialize(state_task.metadata)
                     duration_str = f"{profile.duration_s:.2f}s"
                     peak_mem_str = format_bytes(profile.memory_peak) if profile.memory_peak != 0 else "0"
+                    # back-compute submitted time when no prior entry exists (late-connect)
+                    if not prev_entry:
+                        submitted_time = now.timestamp() - profile.duration_s
                 except struct.error:
                     pass
 
