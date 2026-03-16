@@ -777,6 +777,7 @@ memoryCanvas.addEventListener("mouseleave", function() {
 
 // ── Worker Processors ──
 var processorsCollapsed = {};  // track collapsed state by worker name
+var managerCollapsed = {};    // track collapsed state by manager id
 
 function updateProcessors(processors) {
     processorsContainer.innerHTML = "";
@@ -788,22 +789,30 @@ function updateProcessors(processors) {
     for (var g = 0; g < processors.length; g++) {
         var group = processors[g];
 
-        // Manager group header with summary stats
-        var managerSection = document.createElement("div");
-        managerSection.className = "manager-group";
+        // Manager group as collapsible details/summary
+        var managerSection = document.createElement("details");
+        managerSection.className = "manager-group card";
+        managerSection.open = !managerCollapsed[group.manager_id];
 
-        var managerHeader = document.createElement("div");
-        managerHeader.className = "manager-header card";
-        managerHeader.innerHTML =
-            '<h3 class="manager-title">Manager: ' + escapeHTML(group.manager_id) + '</h3>' +
-            '<div class="manager-stats">' +
+        var managerSummary = document.createElement("summary");
+        managerSummary.className = "manager-header";
+        managerSummary.innerHTML =
+            '<span class="manager-title">Manager: ' + escapeHTML(group.manager_id) + '</span>' +
+            '<span class="manager-stats">' +
                 '<span class="manager-stat"><b>Workers:</b> ' + group.worker_count + '</span>' +
                 '<span class="manager-stat"><b>Processors:</b> ' + group.active_processors + '/' + group.total_processors + ' active</span>' +
                 '<span class="manager-stat"><b>Total RSS:</b> ' + group.total_rss + ' MB</span>' +
                 '<span class="manager-stat"><b>RSS Free:</b> ' + group.total_rss_free + ' MB</span>' +
                 '<span class="manager-stat"><b>Total CPU:</b> ' + group.total_cpu + '%</span>' +
-            '</div>';
-        managerSection.appendChild(managerHeader);
+            '</span>';
+        managerSection.appendChild(managerSummary);
+
+        // track manager toggle state
+        (function(mid, el) {
+            el.addEventListener("toggle", function() {
+                managerCollapsed[mid] = !el.open;
+            });
+        })(group.manager_id, managerSection);
 
         // Worker details within this manager group
         var workers = group.workers;

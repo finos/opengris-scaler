@@ -463,6 +463,7 @@ class WebUIApp:
         self._task_stream = TaskStreamState()
         self._memory_chart = MemoryChartState()
         self._worker_processors: Dict[str, Dict[str, Any]] = {}
+        self._worker_manager_map: Dict[str, str] = {}  # worker_name -> manager_id (persistent)
 
         self._settings = {"stream_window": 5, "memory_scale": "linear"}
 
@@ -564,12 +565,11 @@ class WebUIApp:
             "rss_free": format_bytes(data.rss_free),
         }
 
-        # Build reverse mapping: worker_id (str) -> manager_id (str)
-        worker_to_manager: Dict[str, str] = {}
+        # Update persistent worker-to-manager mapping with latest data
         for manager_id_bytes, worker_ids in data.scaling_manager.managed_workers.items():
             manager_name = manager_id_bytes.decode() if manager_id_bytes else "unknown"
             for wid in worker_ids:
-                worker_to_manager[bytes(wid).decode()] = manager_name
+                self._worker_manager_map[bytes(wid).decode()] = manager_name
 
         current_workers = set()
         now = datetime.datetime.now()
@@ -587,7 +587,7 @@ class WebUIApp:
                 "id": worker_name,
                 "name": _format_worker_name(worker_name),
                 "full_name": worker_name,
-                "manager_id": worker_to_manager.get(worker_name, "—"),
+                "manager_id": self._worker_manager_map.get(worker_name, "\u2014"),
                 "agt_cpu": round(worker_data.agent.cpu / 10, 1),
                 "agt_rss": int(worker_data.agent.rss / 1e6),
                 "proc_cpu": round(total_proc_cpu / 10, 1),
@@ -608,7 +608,7 @@ class WebUIApp:
             self._worker_processors[worker_name] = {
                 "name": _format_worker_name(worker_name),
                 "full_name": worker_name,
-                "manager_id": worker_to_manager.get(worker_name, "—"),
+                "manager_id": self._worker_manager_map.get(worker_name, "\u2014"),
                 "rss_free": rss_free,
                 "processors": [],
             }
@@ -635,6 +635,7 @@ class WebUIApp:
         for w in dead:
             self._workers_data.pop(w, None)
             self._worker_processors.pop(w, None)
+            self._worker_manager_map.pop(w, None)
             self._task_stream.handle_worker_state(
                 StateWorker.new_msg(WorkerID(w.encode()), WorkerState.Disconnected, {})
             )

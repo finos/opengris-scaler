@@ -350,18 +350,29 @@ body {
     margin-bottom: 24px;
 }
 
-.manager-header {
-    margin-bottom: 8px;
+.manager-group > summary.manager-header {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 8px 0;
+}
+
+.manager-group > summary.manager-header:hover .manager-title {
+    color: var(--accent-hover, #60a5fa);
 }
 
 .manager-title {
-    margin: 0 0 8px 0;
+    font-weight: 700;
     font-size: 16px;
     color: var(--accent);
+    margin: 0;
 }
 
 .manager-stats {
-    display: flex;
+    display: inline-flex;
     flex-wrap: wrap;
     gap: 16px;
 }
