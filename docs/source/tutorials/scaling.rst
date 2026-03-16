@@ -146,8 +146,8 @@ Fixed Elastic Scaling (``fixed_elastic``)
 
 The fixed elastic scaling policy supports hybrid scaling with multiple worker managers:
 
-* **Primary Manager**: A single worker (identified by ``max_workers == 1``) that starts once and never shuts down
-* **Secondary Manager**: Elastic capacity (``max_workers > 1``) that scales based on demand
+* **Primary Manager**: A single worker (identified by ``max_task_concurrency == 1``) that starts once and never shuts down
+* **Secondary Manager**: Elastic capacity (``max_task_concurrency > 1``) that scales based on demand
 
 This is useful for scenarios where you have a fixed pool of dedicated resources but want to burst to additional resources during peak demand.
 
@@ -172,14 +172,14 @@ This is useful for hybrid deployments where you want to prefer cheaper or lower-
 
 **Configuration:**
 
-The waterfall policy uses ``policy_engine_type = "waterfall_v1"`` and a newline-separated rule format for ``policy_content``. Each rule is a comma-separated line with three fields: ``priority``, ``worker_manager_id``, ``max_workers``. Lines starting with ``#`` are comments.
+The waterfall policy uses ``policy_engine_type = "waterfall_v1"`` and a newline-separated rule format for ``policy_content``. Each rule is a comma-separated line with three fields: ``priority``, ``worker_manager_id``, ``max_task_concurrency``. Lines starting with ``#`` are comments.
 
 .. code:: toml
 
     [scheduler]
     policy_engine_type = "waterfall_v1"
     policy_content = """
-    # priority, worker_manager_id, max_workers
+    # priority, worker_manager_id, max_task_concurrency
     # Use local workers first (cheap, low latency)
     1, NAT|local1, 8
     # Overflow to ECS when local capacity is exhausted
@@ -210,7 +210,7 @@ Scaling policies, running within the scheduler process, communicate with worker 
 
 Worker managers periodically send heartbeats to the scheduler containing their capacity information:
 
-* ``max_workers``: Maximum number of workers this manager can manage
+* ``max_task_concurrency``: Maximum number of workers this manager can manage
 * ``capabilities``: Default capabilities for workers from this manager
 * ``worker_manager_id``: The unique identity of this manager (must be non-empty and globally unique)
 

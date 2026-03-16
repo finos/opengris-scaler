@@ -89,13 +89,13 @@ class WaterfallScalingPolicy(ScalingPolicy):
             if snapshot is None:
                 continue  # manager offline or never seen
 
-            effective_capacity = min(rule.max_task_concurrency, snapshot.max_workers)
+            effective_capacity = min(rule.max_task_concurrency, snapshot.max_task_concurrency)
             if snapshot.worker_count < effective_capacity:
                 # Higher-priority manager still has room, let it fill first
                 return []
 
         # Check this manager's effective capacity
-        effective_capacity = min(current_rule.max_task_concurrency, worker_manager_heartbeat.max_workers)
+        effective_capacity = min(current_rule.max_task_concurrency, worker_manager_heartbeat.max_task_concurrency)
         if len(managed_worker_ids) >= effective_capacity:
             return []
 

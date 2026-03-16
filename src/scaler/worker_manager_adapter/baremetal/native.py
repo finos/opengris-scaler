@@ -36,7 +36,7 @@ class NativeWorkerManager:
         self._worker_manager_id = config.worker_manager_id.encode()
         self._io_threads = config.worker_io_threads
         self._task_queue_size = config.worker_config.per_worker_task_queue_size
-        self._max_workers = config.worker_manager_config.max_workers
+        self._max_task_concurrency = config.worker_manager_config.max_task_concurrency
         self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
         self._task_timeout_seconds = config.worker_config.task_timeout_seconds
         self._death_timeout_seconds = config.worker_config.death_timeout_seconds
@@ -104,7 +104,7 @@ class NativeWorkerManager:
         )
 
     def _spawn_initial_workers(self) -> None:
-        for _ in range(self._max_workers):
+        for _ in range(self._max_task_concurrency):
             worker = self._create_worker()
             worker.start()
             self._workers[worker.identity] = worker
@@ -142,7 +142,7 @@ class NativeWorkerManager:
         )
 
     async def start_worker(self) -> Tuple[WorkerID, Status]:
-        if len(self._workers) >= self._max_workers != -1:
+        if len(self._workers) >= self._max_task_concurrency != -1:
             return WorkerID(b""), Status.TooManyWorkers
 
         worker = self._create_worker()
@@ -219,7 +219,7 @@ class NativeWorkerManager:
     async def __send_heartbeat(self) -> None:
         await self._connector_external.send(
             WorkerManagerHeartbeat.new_msg(
-                max_workers=self._max_workers,
+                max_task_concurrency=self._max_task_concurrency,
                 capabilities=self._capabilities,
                 worker_manager_id=self._worker_manager_id,
             )

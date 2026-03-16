@@ -55,7 +55,7 @@ DEFAULT_PER_WORKER_QUEUE_SIZE = 1000
 # WORKER SPECIFIC OPTIONS
 
 # number of workers, echo worker use 1 process
-DEFAULT_NUMBER_OF_WORKER = os.cpu_count() - 1
+DEFAULT_MAX_TASK_CONCURRENCY = os.cpu_count() - 1
 
 # number of seconds that worker agent send heartbeat to scheduler
 DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 2

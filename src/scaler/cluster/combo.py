@@ -96,7 +96,7 @@ class SchedulerClusterCombo:
                 worker_manager_config=WorkerManagerConfig(
                     scheduler_address=self._address,
                     object_storage_address=self._object_storage_address,
-                    max_workers=n_workers,
+                    max_task_concurrency=n_workers,
                 ),
                 worker_manager_id=worker_manager_id,
                 preload=None,

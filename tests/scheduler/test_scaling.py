@@ -387,19 +387,19 @@ class TestFixedElasticScaling(unittest.TestCase):
         )
         scheduler.start()
 
-        # Start primary manager with max_workers=1
+        # Start primary manager with max_task_concurrency=1
         primary_manager_process = Process(
             target=_run_native_worker_manager,
             args=(self.scheduler_address,),
-            kwargs={"max_workers": 1, "worker_manager_id": "primary"},
+            kwargs={"max_task_concurrency": 1, "worker_manager_id": "primary"},
         )
         primary_manager_process.start()
 
-        # Start secondary manager with max_workers=4
+        # Start secondary manager with max_task_concurrency=4
         secondary_manager_process = Process(
             target=_run_native_worker_manager,
             args=(self.scheduler_address,),
-            kwargs={"max_workers": 4, "worker_manager_id": "secondary"},
+            kwargs={"max_task_concurrency": 4, "worker_manager_id": "secondary"},
         )
         secondary_manager_process.start()
 
@@ -446,19 +446,23 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> 
     )
 
 
-def _create_worker_manager_heartbeat(worker_manager_id: bytes, max_workers: int = 10) -> WorkerManagerHeartbeat:
-    return WorkerManagerHeartbeat.new_msg(max_workers=max_workers, capabilities={}, worker_manager_id=worker_manager_id)
+def _create_worker_manager_heartbeat(
+    worker_manager_id: bytes, max_task_concurrency: int = 10
+) -> WorkerManagerHeartbeat:
+    return WorkerManagerHeartbeat.new_msg(
+        max_task_concurrency=max_task_concurrency, capabilities={}, worker_manager_id=worker_manager_id
+    )
 
 
 def _run_native_worker_manager(
-    scheduler_address: str, max_workers: int = 4, worker_manager_id: str = "test_manager"
+    scheduler_address: str, max_task_concurrency: int = 4, worker_manager_id: str = "test_manager"
 ) -> None:
     manager = NativeWorkerManager(
         NativeWorkerManagerConfig(
             worker_manager_config=WorkerManagerConfig(
                 scheduler_address=ZMQConfig.from_string(scheduler_address),
                 object_storage_address=None,
-                max_workers=max_workers,
+                max_task_concurrency=max_task_concurrency,
             ),
             worker_manager_id=worker_manager_id,
             event_loop="builtin",

@@ -360,8 +360,8 @@ class WorkerManagerHeartbeat(Message):
         super().__init__(msg)
 
     @property
-    def max_workers(self) -> int:
-        return self._msg.maxWorkers
+    def max_task_concurrency(self) -> int:
+        return self._msg.maxTaskConcurrency
 
     @property
     def capabilities(self) -> Dict[str, int]:
@@ -372,10 +372,12 @@ class WorkerManagerHeartbeat(Message):
         return self._msg.workerManagerID
 
     @staticmethod
-    def new_msg(max_workers: int, capabilities: Dict[str, int], worker_manager_id: bytes) -> "WorkerManagerHeartbeat":
+    def new_msg(
+        max_task_concurrency: int, capabilities: Dict[str, int], worker_manager_id: bytes
+    ) -> "WorkerManagerHeartbeat":
         return WorkerManagerHeartbeat(
             _message.WorkerManagerHeartbeat(
-                maxWorkers=max_workers,
+                maxTaskConcurrency=max_task_concurrency,
                 capabilities=[
                     TaskCapability.new_msg(name, value).get_message() for name, value in capabilities.items()
                 ],

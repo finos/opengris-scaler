@@ -124,7 +124,7 @@ class WorkerManagerController(Looper, Reporter):
             worker_count = len(self._worker_controller.get_workers_by_manager_id(manager_id))
             snapshots[manager_id] = WorkerManagerSnapshot(
                 worker_manager_id=manager_id,
-                max_workers=heartbeat.max_workers,
+                max_task_concurrency=heartbeat.max_task_concurrency,
                 worker_count=worker_count,
                 last_seen_s=last_seen,
             )

@@ -15,9 +15,9 @@ from scaler.utility.identifiers import WorkerID
 
 class FixedElasticScalingPolicy(ScalingPolicy):
     """
-    Scaling policy that identifies managers by their max_workers:
-    - Primary manager: max_workers == 1, starts once and never shuts down
-    - Secondary manager: max_workers > 1, elastic (starts/shuts down based on load)
+    Scaling policy that identifies managers by their max_task_concurrency:
+    - Primary manager: max_task_concurrency == 1, starts once and never shuts down
+    - Secondary manager: max_task_concurrency > 1, elastic (starts/shuts down based on load)
 
     Note: this policy is not fully stateless due to ``_primary_started``
     tracking whether the primary manager has already been started.
@@ -31,7 +31,7 @@ class FixedElasticScalingPolicy(ScalingPolicy):
         self._primary_started: bool = False
 
     def _is_primary_manager(self, worker_manager_heartbeat: WorkerManagerHeartbeat) -> bool:
-        return worker_manager_heartbeat.max_workers == 1
+        return worker_manager_heartbeat.max_task_concurrency == 1
 
     def get_scaling_commands(
         self,
@@ -66,8 +66,8 @@ class FixedElasticScalingPolicy(ScalingPolicy):
                 return []
             self._primary_started = True
         else:
-            # Secondary manager: use manager's max_workers
-            if len(managed_worker_ids) >= worker_manager_heartbeat.max_workers:
+            # Secondary manager: use manager's max_task_concurrency
+            if len(managed_worker_ids) >= worker_manager_heartbeat.max_task_concurrency:
                 logging.warning("Secondary manager capacity reached, cannot start new worker.")
                 return []
 

@@ -7,7 +7,7 @@ class WorkerManagerSnapshot:
     """Immutable snapshot of a worker manager's state, passed to stateless scaling policies."""
 
     worker_manager_id: bytes
-    max_workers: int
+    max_task_concurrency: int
     worker_count: int
     last_seen_s: float  # time.time() epoch seconds of last heartbeat
 

@@ -43,7 +43,7 @@ class ECSWorkerManager:
         self._worker_manager_id = config.worker_manager_id.encode()
         self._io_threads = config.worker_io_threads
         self._per_worker_task_queue_size = config.worker_config.per_worker_task_queue_size
-        self._max_instances = config.worker_manager_config.max_workers
+        self._max_instances = config.worker_manager_config.max_task_concurrency
         self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
         self._task_timeout_seconds = config.worker_config.task_timeout_seconds
         self._death_timeout_seconds = config.worker_config.death_timeout_seconds
@@ -168,7 +168,7 @@ class ECSWorkerManager:
     async def __send_heartbeat(self):
         await self._connector_external.send(
             WorkerManagerHeartbeat.new_msg(
-                max_workers=self._max_instances * self._ecs_task_cpu,
+                max_task_concurrency=self._max_instances * self._ecs_task_cpu,
                 capabilities=self._capabilities,
                 worker_manager_id=self._worker_manager_id,
             )
@@ -223,7 +223,7 @@ class ECSWorkerManager:
         command = (
             f"scaler_cluster {self._address.to_address()} "
             f"--worker-type ECS "
-            f"--max-workers {self._ecs_task_cpu} "
+            f"--max-task-concurrency {self._ecs_task_cpu} "
             f"--per-worker-task-queue-size {self._per_worker_task_queue_size} "
             f"--heartbeat-interval-seconds {self._heartbeat_interval_seconds} "
             f"--task-timeout-seconds {self._task_timeout_seconds} "
