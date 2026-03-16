@@ -5,6 +5,9 @@
 var ws = null;
 var reconnectDelay = 500;
 var workerRows = {};       // worker_id -> <tr> element
+var workerSortField = null;  // current sort column field name
+var workerSortAsc = true;    // sort direction
+var lastWorkersData = [];    // latest workers array for re-sorting
 var taskLogCount = 0;
 var TASK_LOG_MAX_SIZE = 100;
 var taskRowMap = {};  // task_id -> tr element for in-place updates
@@ -213,7 +216,13 @@ function updateScheduler(sched) {
 }
 
 // ── Live Tab: Workers ──
+var WORKER_FIELDS = ["name", "manager_id", "agt_cpu", "agt_rss", "proc_cpu", "proc_rss",
+                     "free", "sent", "queued", "suspended", "lag", "itl", "last_seen", "capabilities"];
+var WORKER_NUMERIC_FIELDS = {"agt_cpu":1, "agt_rss":1, "proc_cpu":1, "proc_rss":1,
+                             "free":1, "sent":1, "queued":1, "suspended":1, "itl":1};
+
 function updateWorkers(workers) {
+    lastWorkersData = workers;
     var seen = {};
     for (var i = 0; i < workers.length; i++) {
         var w = workers[i];
@@ -234,7 +243,72 @@ function updateWorkers(workers) {
             delete workerRows[ids[j]];
         }
     }
+    // apply current sort order
+    if (workerSortField) {
+        applySortOrder();
+    }
 }
+
+function applySortOrder() {
+    var rows = Array.prototype.slice.call(workersBody.children);
+    var field = workerSortField;
+    var asc = workerSortAsc;
+    var isNumeric = WORKER_NUMERIC_FIELDS[field];
+
+    // build a lookup from the latest data
+    var dataById = {};
+    for (var i = 0; i < lastWorkersData.length; i++) {
+        dataById[lastWorkersData[i].id] = lastWorkersData[i];
+    }
+
+    rows.sort(function(a, b) {
+        var wa = dataById[a.getAttribute("data-worker")];
+        var wb = dataById[b.getAttribute("data-worker")];
+        if (!wa || !wb) return 0;
+        var va = wa[field], vb = wb[field];
+        if (va == null) va = "";
+        if (vb == null) vb = "";
+        var cmp;
+        if (isNumeric) {
+            cmp = (Number(va) || 0) - (Number(vb) || 0);
+        } else {
+            cmp = String(va).localeCompare(String(vb));
+        }
+        return asc ? cmp : -cmp;
+    });
+
+    for (var j = 0; j < rows.length; j++) {
+        workersBody.appendChild(rows[j]);
+    }
+}
+
+function setupWorkerSort() {
+    var thead = workersBody.parentElement.querySelector("thead tr");
+    if (!thead) return;
+    var ths = thead.children;
+    for (var i = 0; i < ths.length; i++) {
+        ths[i].classList.add("sortable");
+        ths[i].setAttribute("data-sort-field", WORKER_FIELDS[i]);
+        (function(th, field) {
+            th.addEventListener("click", function() {
+                if (workerSortField === field) {
+                    workerSortAsc = !workerSortAsc;
+                } else {
+                    workerSortField = field;
+                    workerSortAsc = true;
+                }
+                // update header indicators
+                var allTh = th.parentElement.children;
+                for (var k = 0; k < allTh.length; k++) {
+                    allTh[k].classList.remove("sort-asc", "sort-desc");
+                }
+                th.classList.add(workerSortAsc ? "sort-asc" : "sort-desc");
+                applySortOrder();
+            });
+        })(ths[i], WORKER_FIELDS[i]);
+    }
+}
+setupWorkerSort();
 
 function createWorkerRow(w) {
     var tr = document.createElement("tr");

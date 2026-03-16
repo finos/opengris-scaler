@@ -172,6 +172,34 @@ body {
     z-index: 1;
 }
 
+th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+th.sortable:hover {
+    color: var(--text);
+}
+
+th.sortable::after {
+    content: "";
+    display: inline-block;
+    margin-left: 4px;
+    width: 0;
+}
+
+th.sort-asc::after {
+    content: " ▲";
+    font-size: 10px;
+    color: var(--accent);
+}
+
+th.sort-desc::after {
+    content: " ▼";
+    font-size: 10px;
+    color: var(--accent);
+}
+
 .data-table tbody td {
     padding: 6px 10px;
     border-bottom: 1px solid var(--border);
