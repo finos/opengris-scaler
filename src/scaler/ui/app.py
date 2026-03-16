@@ -564,6 +564,13 @@ class WebUIApp:
             "rss_free": format_bytes(data.rss_free),
         }
 
+        # Build reverse mapping: worker_id (str) -> manager_id (str)
+        worker_to_manager: Dict[str, str] = {}
+        for manager_id_bytes, worker_ids in data.scaling_manager.managed_workers.items():
+            manager_name = manager_id_bytes.decode() if manager_id_bytes else "unknown"
+            for wid in worker_ids:
+                worker_to_manager[bytes(wid).decode()] = manager_name
+
         current_workers = set()
         now = datetime.datetime.now()
         for worker_data in data.worker_manager.workers:
@@ -580,6 +587,7 @@ class WebUIApp:
                 "id": worker_name,
                 "name": _format_worker_name(worker_name),
                 "full_name": worker_name,
+                "manager_id": worker_to_manager.get(worker_name, "—"),
                 "agt_cpu": round(worker_data.agent.cpu / 10, 1),
                 "agt_rss": int(worker_data.agent.rss / 1e6),
                 "proc_cpu": round(total_proc_cpu / 10, 1),
@@ -600,6 +608,7 @@ class WebUIApp:
             self._worker_processors[worker_name] = {
                 "name": _format_worker_name(worker_name),
                 "full_name": worker_name,
+                "manager_id": worker_to_manager.get(worker_name, "—"),
                 "rss_free": rss_free,
                 "processors": [],
             }
@@ -727,7 +736,40 @@ class WebUIApp:
             return entry
 
     def _build_processors_data(self) -> List[Dict[str, Any]]:
-        return list(self._worker_processors.values())
+        # Group workers by manager_id and include per-manager summary stats
+        managers: Dict[str, List[Dict[str, Any]]] = {}
+        for wp in self._worker_processors.values():
+            mid = wp.get("manager_id", "—")
+            managers.setdefault(mid, []).append(wp)
+
+        result = []
+        for manager_id, workers in sorted(managers.items()):
+            total_rss = 0
+            total_rss_free = 0
+            total_cpu = 0.0
+            total_processors = 0
+            active_processors = 0
+            for wp in workers:
+                total_rss_free += wp["rss_free"]
+                for proc in wp["processors"]:
+                    total_rss += proc["rss"]
+                    total_cpu += proc["cpu"]
+                    total_processors += 1
+                    if proc["has_task"]:
+                        active_processors += 1
+            result.append(
+                {
+                    "manager_id": manager_id,
+                    "worker_count": len(workers),
+                    "total_rss": total_rss,
+                    "total_rss_free": total_rss_free,
+                    "total_cpu": round(total_cpu, 1),
+                    "total_processors": total_processors,
+                    "active_processors": active_processors,
+                    "workers": workers,
+                }
+            )
+        return result
 
     def update_settings(self, settings: Dict[str, Any]) -> None:
         if "stream_window" in settings:

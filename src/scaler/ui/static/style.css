@@ -346,6 +346,39 @@ body {
 }
 
 /* Worker Processors */
+.manager-group {
+    margin-bottom: 24px;
+}
+
+.manager-header {
+    margin-bottom: 8px;
+}
+
+.manager-title {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+    color: var(--accent);
+}
+
+.manager-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.manager-stat {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.manager-stat b {
+    color: var(--text);
+}
+
+.manager-group .processor-group {
+    margin-left: 16px;
+}
+
 .processor-group {
     margin-bottom: 16px;
 }

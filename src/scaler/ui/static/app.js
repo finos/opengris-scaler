@@ -239,8 +239,8 @@ function updateWorkers(workers) {
 function createWorkerRow(w) {
     var tr = document.createElement("tr");
     tr.setAttribute("data-worker", w.id);
-    // 13 cells
-    var fields = ["name", "agt_cpu", "agt_rss", "proc_cpu", "proc_rss",
+    // 14 cells
+    var fields = ["name", "manager_id", "agt_cpu", "agt_rss", "proc_cpu", "proc_rss",
                   "free", "sent", "queued", "suspended", "lag", "itl", "last_seen", "capabilities"];
     for (var i = 0; i < fields.length; i++) {
         var td = document.createElement("td");
@@ -263,18 +263,19 @@ function updateWorkerRow(tr, w) {
     var cells = tr.children;
     cells[0].textContent = w.name;
     cells[0].title = w.full_name || w.name;
-    cells[1].innerHTML = makeGaugeHTML(w.agt_cpu, 100, "%");
-    cells[2].innerHTML = makeGaugeHTML(w.agt_rss, w.total_rss, "");
-    cells[3].innerHTML = makeGaugeHTML(w.proc_cpu, 100, "%");
-    cells[4].innerHTML = makeGaugeHTML(w.proc_rss, w.total_rss, "");
-    cells[5].textContent = w.free;
-    cells[6].textContent = w.sent;
-    cells[7].textContent = w.queued;
-    cells[8].textContent = w.suspended;
-    cells[9].textContent = w.lag;
-    cells[10].textContent = w.itl;
-    cells[11].textContent = w.last_seen;
-    cells[12].textContent = w.capabilities;
+    cells[1].textContent = w.manager_id || "—";
+    cells[2].innerHTML = makeGaugeHTML(w.agt_cpu, 100, "%");
+    cells[3].innerHTML = makeGaugeHTML(w.agt_rss, w.total_rss, "");
+    cells[4].innerHTML = makeGaugeHTML(w.proc_cpu, 100, "%");
+    cells[5].innerHTML = makeGaugeHTML(w.proc_rss, w.total_rss, "");
+    cells[6].textContent = w.free;
+    cells[7].textContent = w.sent;
+    cells[8].textContent = w.queued;
+    cells[9].textContent = w.suspended;
+    cells[10].textContent = w.lag;
+    cells[11].textContent = w.itl;
+    cells[12].textContent = w.last_seen;
+    cells[13].textContent = w.capabilities;
 }
 
 function handleWorkerEvents(events) {
@@ -784,78 +785,102 @@ function updateProcessors(processors) {
         return;
     }
 
-    for (var i = 0; i < processors.length; i++) {
-        var wp = processors[i];
-        var details = document.createElement("details");
-        details.className = "card processor-group";
-        details.open = !processorsCollapsed[wp.name];
+    for (var g = 0; g < processors.length; g++) {
+        var group = processors[g];
 
-        var summary = document.createElement("summary");
-        summary.textContent = "Worker " + wp.name;
-        summary.title = wp.full_name || wp.name;
-        details.appendChild(summary);
+        // Manager group header with summary stats
+        var managerSection = document.createElement("div");
+        managerSection.className = "manager-group";
 
-        // track toggle state
-        (function(name, el) {
-            el.addEventListener("toggle", function() {
-                processorsCollapsed[name] = !el.open;
-            });
-        })(wp.name, details);
+        var managerHeader = document.createElement("div");
+        managerHeader.className = "manager-header card";
+        managerHeader.innerHTML =
+            '<h3 class="manager-title">Manager: ' + escapeHTML(group.manager_id) + '</h3>' +
+            '<div class="manager-stats">' +
+                '<span class="manager-stat"><b>Workers:</b> ' + group.worker_count + '</span>' +
+                '<span class="manager-stat"><b>Processors:</b> ' + group.active_processors + '/' + group.total_processors + ' active</span>' +
+                '<span class="manager-stat"><b>Total RSS:</b> ' + group.total_rss + ' MB</span>' +
+                '<span class="manager-stat"><b>RSS Free:</b> ' + group.total_rss_free + ' MB</span>' +
+                '<span class="manager-stat"><b>Total CPU:</b> ' + group.total_cpu + '%</span>' +
+            '</div>';
+        managerSection.appendChild(managerHeader);
 
-        var table = document.createElement("table");
-        table.className = "data-table";
+        // Worker details within this manager group
+        var workers = group.workers;
+        for (var i = 0; i < workers.length; i++) {
+            var wp = workers[i];
+            var details = document.createElement("details");
+            details.className = "card processor-group";
+            details.open = !processorsCollapsed[wp.name];
 
-        // Header
-        var thead = document.createElement("thead");
-        var headerRow = document.createElement("tr");
-        var headers = ["PID", "CPU %", "RSS (MB)", "Max RSS (MB)", "Initialized", "Has Task", "Suspended"];
-        for (var h = 0; h < headers.length; h++) {
-            var th = document.createElement("th");
-            th.textContent = headers[h];
-            headerRow.appendChild(th);
+            var summary = document.createElement("summary");
+            summary.textContent = "Worker " + wp.name;
+            summary.title = wp.full_name || wp.name;
+            details.appendChild(summary);
+
+            // track toggle state
+            (function(name, el) {
+                el.addEventListener("toggle", function() {
+                    processorsCollapsed[name] = !el.open;
+                });
+            })(wp.name, details);
+
+            var table = document.createElement("table");
+            table.className = "data-table";
+
+            // Header
+            var thead = document.createElement("thead");
+            var headerRow = document.createElement("tr");
+            var headers = ["PID", "CPU %", "RSS (MB)", "Max RSS (MB)", "Initialized", "Has Task", "Suspended"];
+            for (var h = 0; h < headers.length; h++) {
+                var th = document.createElement("th");
+                th.textContent = headers[h];
+                headerRow.appendChild(th);
+            }
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+
+            // Body
+            var tbody = document.createElement("tbody");
+            for (var p = 0; p < wp.processors.length; p++) {
+                var proc = wp.processors[p];
+                var tr = document.createElement("tr");
+
+                var tdPid = document.createElement("td");
+                tdPid.textContent = proc.pid;
+                tr.appendChild(tdPid);
+
+                var tdCpu = document.createElement("td");
+                tdCpu.innerHTML = makeGaugeHTML(proc.cpu, 100, "%");
+                tr.appendChild(tdCpu);
+
+                var tdRss = document.createElement("td");
+                tdRss.innerHTML = makeGaugeHTML(proc.rss, proc.rss_max_gauge, "");
+                tr.appendChild(tdRss);
+
+                var tdMaxRss = document.createElement("td");
+                tdMaxRss.innerHTML = makeGaugeHTML(proc.max_rss, proc.rss_max_gauge, "");
+                tr.appendChild(tdMaxRss);
+
+                var tdInit = document.createElement("td");
+                tdInit.innerHTML = boolIndicator(proc.initialized);
+                tr.appendChild(tdInit);
+
+                var tdTask = document.createElement("td");
+                tdTask.innerHTML = boolIndicator(proc.has_task);
+                tr.appendChild(tdTask);
+
+                var tdSusp = document.createElement("td");
+                tdSusp.innerHTML = boolIndicator(proc.suspended);
+                tr.appendChild(tdSusp);
+
+                tbody.appendChild(tr);
+            }
+            table.appendChild(tbody);
+            details.appendChild(table);
+            managerSection.appendChild(details);
         }
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
-
-        // Body
-        var tbody = document.createElement("tbody");
-        for (var p = 0; p < wp.processors.length; p++) {
-            var proc = wp.processors[p];
-            var tr = document.createElement("tr");
-
-            var tdPid = document.createElement("td");
-            tdPid.textContent = proc.pid;
-            tr.appendChild(tdPid);
-
-            var tdCpu = document.createElement("td");
-            tdCpu.innerHTML = makeGaugeHTML(proc.cpu, 100, "%");
-            tr.appendChild(tdCpu);
-
-            var tdRss = document.createElement("td");
-            tdRss.innerHTML = makeGaugeHTML(proc.rss, proc.rss_max_gauge, "");
-            tr.appendChild(tdRss);
-
-            var tdMaxRss = document.createElement("td");
-            tdMaxRss.innerHTML = makeGaugeHTML(proc.max_rss, proc.rss_max_gauge, "");
-            tr.appendChild(tdMaxRss);
-
-            var tdInit = document.createElement("td");
-            tdInit.innerHTML = boolIndicator(proc.initialized);
-            tr.appendChild(tdInit);
-
-            var tdTask = document.createElement("td");
-            tdTask.innerHTML = boolIndicator(proc.has_task);
-            tr.appendChild(tdTask);
-
-            var tdSusp = document.createElement("td");
-            tdSusp.innerHTML = boolIndicator(proc.suspended);
-            tr.appendChild(tdSusp);
-
-            tbody.appendChild(tr);
-        }
-        table.appendChild(tbody);
-        details.appendChild(table);
-        processorsContainer.appendChild(details);
+        processorsContainer.appendChild(managerSection);
     }
 }
 
