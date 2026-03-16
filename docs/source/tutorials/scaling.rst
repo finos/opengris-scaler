@@ -136,8 +136,8 @@ Consider a workload with both CPU-only and GPU tasks:
 
 With the capability scaling policy:
 
-1. If no GPU workers exist, the policy requests a worker group with ``{"gpu": 1}`` from the worker manager.
-2. CPU and GPU worker groups are scaled independently based on their respective task queues.
+1. If no GPU workers exist, the policy requests workers with ``{"gpu": 1}`` capability from the worker manager.
+2. CPU and GPU workers are scaled independently based on their respective task queues.
 3. Idle GPU workers can be shut down without affecting CPU task processing.
 
 
@@ -146,8 +146,8 @@ Fixed Elastic Scaling (``fixed_elastic``)
 
 The fixed elastic scaling policy supports hybrid scaling with multiple worker managers:
 
-* **Primary Manager**: A single worker group (identified by ``max_worker_groups == 1``) that starts once and never shuts down
-* **Secondary Manager**: Elastic capacity (``max_worker_groups > 1``) that scales based on demand
+* **Primary Manager**: A single worker (identified by ``max_task_concurrency == 1``) that starts once and never shuts down
+* **Secondary Manager**: Elastic capacity (``max_task_concurrency > 1``) that scales based on demand
 
 This is useful for scenarios where you have a fixed pool of dedicated resources but want to burst to additional resources during peak demand.
 
@@ -158,9 +158,9 @@ This is useful for scenarios where you have a fixed pool of dedicated resources 
 
 **Behavior:**
 
-* The primary manager's worker group is started once and never shut down
-* Secondary manager groups are created when demand exceeds primary capacity
-* When scaling down, only secondary manager groups are shut down
+* The primary manager's worker is started once and never shut down
+* Secondary manager workers are created when demand exceeds primary capacity
+* When scaling down, only secondary manager workers are shut down
 
 
 Waterfall Scaling (``waterfall_v1``)
@@ -172,21 +172,33 @@ This is useful for hybrid deployments where you want to prefer cheaper or lower-
 
 **Configuration:**
 
-The waterfall policy uses ``policy_engine_type = "waterfall_v1"`` and a newline-separated rule format for ``policy_content``. Each rule is a comma-separated line with three fields: ``priority``, ``manager_id_prefix``, ``max_workers``. Lines starting with ``#`` are comments.
+The waterfall policy uses ``policy_engine_type = "waterfall_v1"`` and a newline-separated rule format for ``policy_content``. Each rule is a comma-separated line with three fields: ``priority``, ``worker_manager_id``, ``max_task_concurrency``. Lines starting with ``#`` are comments.
 
 .. code:: toml
 
     [scheduler]
     policy_engine_type = "waterfall_v1"
     policy_content = """
-    # priority, manager_id_prefix, max_workers
+    # priority, worker_manager_id, max_task_concurrency
     # Use local workers first (cheap, low latency)
-    1, NAT, 8
+    1, NAT|local1, 8
     # Overflow to ECS when local capacity is exhausted
-    2, ECS, 50
+    2, ECS|prod1, 50
     """
 
-Rules reference worker manager ID prefixes. At runtime, each worker manager generates a full ID like ``NAT|<pid>``; the prefix ``NAT`` matches any manager whose ID starts with ``NAT``. Multiple managers can share the same prefix and are governed by the same rule.
+Rules reference exact worker manager IDs. Each rule maps to one specific worker manager.
+
+
+Worker Manager Identity
+-----------------------
+
+Every worker manager must be configured with a ``worker_manager_id`` (``--worker-manager-id`` / ``-wmi``). This ID is used by the scheduler to track which workers belong to which manager and to make scaling decisions.
+
+**Requirements:**
+
+* The ``worker_manager_id`` must be a **non-empty string**, even when only a single worker manager is deployed.
+* The ``worker_manager_id`` must be **globally unique** across all worker managers connected to the same scheduler. If a second manager attempts to connect with a ``worker_manager_id`` that is already in use, the scheduler rejects it.
+* There is no auto-generated default. The ID must always be provided explicitly via the command line or configuration file.
 
 
 Worker Manager Protocol
@@ -198,31 +210,29 @@ Scaling policies, running within the scheduler process, communicate with worker 
 
 Worker managers periodically send heartbeats to the scheduler containing their capacity information:
 
-* ``max_worker_groups``: Maximum number of worker groups this manager can manage
-* ``workers_per_group``: Number of workers in each group
+* ``max_task_concurrency``: Maximum number of workers this manager can manage
 * ``capabilities``: Default capabilities for workers from this manager
+* ``worker_manager_id``: The unique identity of this manager (must be non-empty and globally unique)
 
 **WorkerManagerCommand (Scheduler -> Manager):**
 
 The scheduler sends commands to worker managers:
 
-* ``StartWorkerGroup``: Request to start a new worker group
+* ``StartWorkers``: Request to start new workers
 
-  * ``worker_group_id``: Empty for new groups (manager assigns ID)
-  * ``capabilities``: Required capabilities for the worker group
+  * ``capabilities``: Required capabilities for the workers
 
-* ``ShutdownWorkerGroup``: Request to shut down an existing worker group
+* ``ShutdownWorkers``: Request to shut down existing workers
 
-  * ``worker_group_id``: ID of the group to shut down
+  * ``worker_ids``: IDs of the workers to shut down
 
 **WorkerManagerCommandResponse (Manager -> Scheduler):**
 
 Worker managers respond to commands with status and details:
 
-* ``worker_group_id``: ID of the affected worker group
+* ``worker_ids``: IDs of the affected workers
 * ``command``: The command type this response is for
-* ``status``: Result status (``Success``, ``WorkerGroupTooMuch``, ``WorkerGroupIDNotFound``)
-* ``worker_ids``: List of worker IDs in the group (for start commands)
+* ``status``: Result status (``Success``, ``TooManyWorkers``, ``WorkerNotFound``)
 * ``capabilities``: Actual capabilities of the started workers
 
 

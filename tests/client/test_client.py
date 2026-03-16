@@ -367,8 +367,9 @@ class TestClientPreload(unittest.TestCase):
                 worker_manager_config=WorkerManagerConfig(
                     scheduler_address=self.combo._address,
                     object_storage_address=self.combo._object_storage_address,
-                    max_workers=1,
+                    max_task_concurrency=1,
                 ),
+                worker_manager_id="test_manager",
                 preload=preload,
                 event_loop=base_manager._event_loop,
                 worker_io_threads=base_manager._io_threads,

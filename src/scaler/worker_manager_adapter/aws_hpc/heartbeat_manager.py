@@ -27,9 +27,11 @@ class AWSBatchHeartbeatManager(Looper, HeartbeatManager):
         object_storage_address: Optional[ObjectStorageAddressConfig],
         capabilities: Dict[str, int],
         task_queue_size: int,
+        worker_manager_id: bytes,
     ) -> None:
         self._capabilities = capabilities
         self._task_queue_size = task_queue_size
+        self._worker_manager_id = worker_manager_id
         self._agent_process = psutil.Process()
 
         self._connector_external: Optional[AsyncConnector] = None
@@ -109,6 +111,7 @@ class AWSBatchHeartbeatManager(Looper, HeartbeatManager):
             task_lock=task_lock,
             processors=[processor_status],
             capabilities=self._capabilities,
+            worker_manager_id=self._worker_manager_id,
         )
 
         await self._connector_external.send(heartbeat)

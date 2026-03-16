@@ -39,6 +39,7 @@ def _create_batch_worker(config: AWSBatchWorkerManagerConfig) -> multiprocessing
         io_threads=config.worker_io_threads,
         event_loop=config.event_loop,
         job_timeout_seconds=config.job_timeout_minutes * 60,
+        worker_manager_id=config.worker_manager_id.encode(),
     )
 
 

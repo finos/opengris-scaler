@@ -19,6 +19,10 @@ class NativeWorkerManagerMode(enum.Enum):
 @dataclasses.dataclass
 class NativeWorkerManagerConfig(ConfigClass):
     worker_manager_config: WorkerManagerConfig
+    worker_manager_id: str = dataclasses.field(
+        metadata=dict(short="-wmi", help="worker manager ID to identify which manager spawned these workers")
+    )
+
     preload: Optional[str] = None
     worker_config: WorkerConfig = dataclasses.field(default_factory=WorkerConfig)
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
@@ -48,10 +52,12 @@ class NativeWorkerManagerConfig(ConfigClass):
     @classmethod
     def configure_parser(cls, parser: argparse.ArgumentParser) -> None:
         super().configure_parser(parser)
-        parser.add_argument("-n", "--num-of-workers", dest="max_workers", type=int, help=argparse.SUPPRESS)
+        parser.add_argument("-n", "--num-of-workers", dest="max_task_concurrency", type=int, help=argparse.SUPPRESS)
 
     def __post_init__(self) -> None:
+        if not self.worker_manager_id:
+            raise ValueError("worker_manager_id cannot be an empty string.")
         if self.worker_io_threads <= 0:
             raise ValueError("worker_io_threads must be a positive integer.")
-        if self.mode == NativeWorkerManagerMode.FIXED and self.worker_manager_config.max_workers < 0:
-            raise ValueError("max_workers must be >= 0 for fixed mode")
+        if self.mode == NativeWorkerManagerMode.FIXED and self.worker_manager_config.max_task_concurrency < 0:
+            raise ValueError("max_task_concurrency must be >= 0 for fixed mode")

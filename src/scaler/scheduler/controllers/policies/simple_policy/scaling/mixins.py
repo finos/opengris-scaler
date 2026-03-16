@@ -3,18 +3,15 @@ from typing import Dict, List
 
 from scaler.protocol.python.message import InformationSnapshot, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
-    WorkerGroupCapabilities,
-    WorkerGroupState,
-    WorkerManagerSnapshot,
-)
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
+from scaler.utility.identifiers import WorkerID
 
 
 class ScalingPolicy:
     """
     Stateless scaling policy interface.
 
-    All state (worker groups, capabilities) is owned by WorkerManagerController and passed in as parameters.
+    All state (managed workers, capabilities) is owned by WorkerManagerController and passed in as parameters.
     Policies return commands rather than mutating internal state.
     """
 
@@ -23,8 +20,8 @@ class ScalingPolicy:
         self,
         information_snapshot: InformationSnapshot,
         worker_manager_heartbeat: WorkerManagerHeartbeat,
-        worker_groups: WorkerGroupState,
-        worker_group_capabilities: WorkerGroupCapabilities,
+        managed_worker_ids: List[WorkerID],
+        managed_worker_capabilities: Dict[str, int],
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         """
@@ -35,6 +32,6 @@ class ScalingPolicy:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_status(self, worker_groups: WorkerGroupState) -> ScalingManagerStatus:
+    def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
         """Pure function: state in, status out."""
         raise NotImplementedError()
