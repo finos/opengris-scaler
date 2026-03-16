@@ -2,6 +2,8 @@ import asyncio
 import datetime
 import hashlib
 import json
+import logging
+import queue
 import struct
 import threading
 from collections import deque
@@ -20,6 +22,8 @@ from scaler.protocol.python.mixins import Message
 from scaler.utility.formatter import format_bytes, format_microseconds, format_percentage, format_seconds
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.metadata.profile_result import ProfileResult
+
+_logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -445,7 +449,7 @@ class WebUIApp:
 
     def __init__(self, config: WebUIConfig) -> None:
         self._config = config
-        self._message_queue: asyncio.Queue[Message] = asyncio.Queue()
+        self._message_queue: queue.Queue[Message] = queue.Queue()
         self._clients: List[WebSocket] = []
         self._clients_lock = asyncio.Lock()
 
@@ -469,7 +473,7 @@ class WebUIApp:
         """Called from ZMQ subscriber thread. Just enqueue, don't process."""
         try:
             self._message_queue.put_nowait(message)
-        except asyncio.QueueFull:
+        except queue.Full:
             pass
 
     def start_subscriber(self) -> None:
@@ -495,10 +499,10 @@ class WebUIApp:
         while True:
             await asyncio.sleep(BATCH_INTERVAL_SECONDS)
             messages: List[Message] = []
-            while not self._message_queue.empty():
+            while True:
                 try:
                     messages.append(self._message_queue.get_nowait())
-                except asyncio.QueueEmpty:
+                except queue.Empty:
                     break
 
             if not messages:
@@ -510,19 +514,22 @@ class WebUIApp:
             worker_events: List[Dict[str, Any]] = []
 
             for msg in messages:
-                if isinstance(msg, StateScheduler):
-                    self._process_scheduler(msg)
-                    has_scheduler_update = True
-                elif isinstance(msg, StateWorker):
-                    event = self._process_worker_state(msg)
-                    if event:
-                        worker_events.append(event)
-                elif isinstance(msg, StateTask):
-                    log_entry = self._process_task_state(msg)
-                    if log_entry:
-                        new_task_logs.append(log_entry)
-                elif isinstance(msg, StateBalanceAdvice):
-                    pass  # unused
+                try:
+                    if isinstance(msg, StateScheduler):
+                        self._process_scheduler(msg)
+                        has_scheduler_update = True
+                    elif isinstance(msg, StateWorker):
+                        event = self._process_worker_state(msg)
+                        if event:
+                            worker_events.append(event)
+                    elif isinstance(msg, StateTask):
+                        log_entry = self._process_task_state(msg)
+                        if log_entry:
+                            new_task_logs.append(log_entry)
+                    elif isinstance(msg, StateBalanceAdvice):
+                        pass  # unused
+                except Exception:
+                    _logger.exception("error processing scheduler message")
 
             # Build broadcast payload
             payload: Dict[str, Any] = {}
@@ -734,8 +741,32 @@ class WebUIApp:
                 self._settings["memory_scale"] = scale
                 self._memory_chart.set_memory_scale(scale)
 
+    def _drain_pending_messages(self) -> None:
+        """Process any pending messages from the queue immediately.
+
+        Called before building a full-state snapshot so a freshly connected
+        browser always sees the latest data."""
+        while True:
+            try:
+                msg = self._message_queue.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                if isinstance(msg, StateScheduler):
+                    self._process_scheduler(msg)
+                elif isinstance(msg, StateWorker):
+                    self._process_worker_state(msg)
+                elif isinstance(msg, StateTask):
+                    self._process_task_state(msg)
+            except Exception:
+                _logger.exception("error processing scheduler message during drain")
+
     def get_full_state(self) -> Dict[str, Any]:
         """Get complete current state for a newly connected client."""
+        # Flush any messages that arrived since the last batch-loop iteration so
+        # the snapshot is as fresh as possible.
+        self._drain_pending_messages()
+
         stream_data = self._task_stream.get_render_data()
         memory_data = self._memory_chart.get_render_data(stream_data["window"])
         # combine active + completed for initial task log, sorted by time (newest first)
@@ -774,6 +805,12 @@ class WebUIApp:
 
 def create_app(config: WebUIConfig) -> FastAPI:
     app_state = WebUIApp(config)
+
+    # Start ZMQ subscriber immediately so messages are collected even while uvicorn
+    # is still initialising.  The subscriber thread puts into a thread-safe queue;
+    # the asyncio batch_loop (started in the startup event) drains it later.
+    app_state.start_subscriber()
+
     app = FastAPI(title="Scaler Web UI")
 
     @app.middleware("http")
@@ -785,7 +822,6 @@ def create_app(config: WebUIConfig) -> FastAPI:
 
     @app.on_event("startup")
     async def startup() -> None:
-        app_state.start_subscriber()
         await app_state.start_batcher()
 
     @app.on_event("shutdown")
