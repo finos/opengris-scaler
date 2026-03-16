@@ -221,7 +221,7 @@ class CapabilityScalingPolicy(ScalingPolicy):
         worker_manager_heartbeat: WorkerManagerHeartbeat,
     ) -> Optional[WorkerManagerCommand]:
         """Create a start workers command if capacity allows."""
-        if len(managed_worker_ids) >= worker_manager_heartbeat.max_workers:
+        if len(managed_worker_ids) >= worker_manager_heartbeat.max_task_concurrency:
             return None
 
         logging.info(f"Requesting worker with capabilities: {capability_dict!r}")

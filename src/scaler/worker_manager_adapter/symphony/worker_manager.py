@@ -32,7 +32,7 @@ class SymphonyWorkerManager:
         self._address = config.worker_manager_config.scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._service_name = config.service_name
-        self._max_workers = config.worker_manager_config.max_workers
+        self._max_task_concurrency = config.worker_manager_config.max_task_concurrency
         self._worker_manager_id = config.worker_manager_id.encode()
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
         self._io_threads = config.worker_io_threads
@@ -93,7 +93,7 @@ class SymphonyWorkerManager:
         )
 
     async def start_worker(self) -> Tuple[WorkerID, Status]:
-        if len(self._workers) >= self._max_workers != -1:
+        if len(self._workers) >= self._max_task_concurrency != -1:
             return WorkerID(b""), Status.TooManyWorkers
 
         worker = SymphonyWorker(
@@ -101,7 +101,7 @@ class SymphonyWorkerManager:
             address=self._address,
             object_storage_address=self._object_storage_address,
             service_name=self._service_name,
-            base_concurrency=self._max_workers,
+            base_concurrency=self._max_task_concurrency,
             capabilities=self._capabilities,
             io_threads=self._io_threads,
             task_queue_size=self._task_queue_size,
@@ -159,7 +159,7 @@ class SymphonyWorkerManager:
     async def __send_heartbeat(self):
         await self._connector_external.send(
             WorkerManagerHeartbeat.new_msg(
-                max_workers=self._max_workers,
+                max_task_concurrency=self._max_task_concurrency,
                 capabilities=self._capabilities,
                 worker_manager_id=self._worker_manager_id,
             )

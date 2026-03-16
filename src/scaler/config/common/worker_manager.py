@@ -18,10 +18,10 @@ class WorkerManagerConfig(ConfigClass):
         metadata=dict(short="-osa", help="specify the object storage server address, e.g.: tcp://localhost:2346"),
     )
 
-    max_workers: int = dataclasses.field(
-        default=defaults.DEFAULT_NUMBER_OF_WORKER,
+    max_task_concurrency: int = dataclasses.field(
+        default=defaults.DEFAULT_MAX_TASK_CONCURRENCY,
         metadata=dict(
-            short="-mw",
+            short="-mtc",
             help=(
                 "maximum number of workers that can be started, -1 means no limit."
                 "for fixed native worker manager, this is exactly the number of workers that will be spawned"
@@ -30,5 +30,5 @@ class WorkerManagerConfig(ConfigClass):
     )
 
     def __post_init__(self) -> None:
-        if self.max_workers != -1 and self.max_workers < 0:
-            raise ValueError("max_workers must be -1 (no limit) or a non-negative integer.")
+        if self.max_task_concurrency != -1 and self.max_task_concurrency < 0:
+            raise ValueError("max_task_concurrency must be -1 (no limit) or a non-negative integer.")

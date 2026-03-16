@@ -45,7 +45,7 @@ def main():
             worker_manager_config=WorkerManagerConfig(
                 scheduler_address=base_manager._address,
                 object_storage_address=base_manager._object_storage_address,
-                max_workers=1,
+                max_task_concurrency=1,
             ),
             worker_manager_id="test_manager",
             mode=NativeWorkerManagerMode.FIXED,

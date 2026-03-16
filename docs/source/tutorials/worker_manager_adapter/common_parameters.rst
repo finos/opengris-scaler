@@ -10,7 +10,7 @@ Worker Manager Common Configuration
 -----------------------------------
 
 *   ``scheduler_address`` (Positional, Required): The address of the scheduler that workers should connect to (e.g., ``tcp://127.0.0.1:8516``).
-*   ``--max-workers`` (``-mw``): Maximum number of workers that can be started (default: ``CPU_COUNT - 1``). Set to ``-1`` for no limit.
+*   ``--max-task-concurrency`` (``-mtc``): Maximum number of workers that can be started (default: ``CPU_COUNT - 1``). Set to ``-1`` for no limit.
 *   ``--object-storage-address`` (``-osa``): Address of the object storage server (e.g., ``tcp://127.0.0.1:8517``).
 
 Worker Configuration (Passed to Workers)

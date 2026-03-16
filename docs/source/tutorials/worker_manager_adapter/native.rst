@@ -13,7 +13,7 @@ Example command:
 .. code-block:: bash
 
     scaler_worker_manager_baremetal_native tcp://<SCHEDULER_IP>:8516 \
-        --max-workers 4 \
+        --max-task-concurrency 4 \
         --logging-level INFO \
         --task-timeout-seconds 60
 
@@ -28,7 +28,7 @@ Equivalent configuration using a TOML file:
     # config.toml
 
     [native_worker_manager]
-    max_workers = 4
+    max_task_concurrency = 4
     logging_level = "INFO"
     task_timeout_seconds = 60
 
@@ -43,7 +43,7 @@ To use fixed-pool mode, set ``--mode fixed`` and specify the exact number of wor
 
     [native_worker_manager]
     mode = "fixed"
-    max_workers = 8
+    max_task_concurrency = 8
 
 How it Works
 ------------
@@ -67,13 +67,13 @@ Native Configuration
     this worker manager to the scheduler. The scheduler uses this ID for scaling decisions, worker
     tracking, and duplicate detection. Must be unique across all managers connected to the same scheduler.
 *   ``--mode``: Operating mode. ``dynamic`` (default) enables auto-scaling driven by the scheduler.
-    ``fixed`` pre-spawns ``--max-workers`` workers at startup and does not support dynamic scaling.
-    In fixed mode ``--max-workers`` must be a positive integer.
+    ``fixed`` pre-spawns ``--max-task-concurrency`` workers at startup and does not support dynamic scaling.
+    In fixed mode ``--max-task-concurrency`` must be a positive integer.
 *   ``--worker-type``: Optional string prefix used in worker IDs. Overrides the default prefix (``NAT``
     for dynamic mode, ``FIX`` for fixed mode). Useful when multiple adapters of the same mode are
     running concurrently and their workers need to be distinguishable by type in logs and monitoring.
     Note: this controls the worker *process name* prefix, not the manager identity.
-*   ``--max-workers`` (``-mw``): In dynamic mode, the maximum number of worker subprocesses that can be started (``-1`` = unlimited, default: ``-1``). In fixed mode, the exact number of workers spawned at startup (must be ≥ 1).
+*   ``--max-task-concurrency`` (``-mtc``): In dynamic mode, the maximum number of worker subprocesses that can be started (``-1`` = unlimited, default: ``-1``). In fixed mode, the exact number of workers spawned at startup (must be ≥ 1).
 *   ``--preload``: Python module or script to preload in each worker process before it starts accepting tasks.
 *   ``--worker-io-threads`` (``-wit``): Number of IO threads for the IO backend per worker (default: ``1``).
 

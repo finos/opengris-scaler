@@ -22,7 +22,7 @@ Once the scheduler is running with this policy, start a worker manager (e.g., th
 
 .. code-block:: bash
 
-    scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 --max-workers 8
+    scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 --max-task-concurrency 8
 
 The vanilla policy will then automatically scale workers up and down based on the task-to-worker ratio. For a full description of available scaling policies and their parameters, see :doc:`../scaling`.
 

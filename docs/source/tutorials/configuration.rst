@@ -169,7 +169,7 @@ Core Concepts
 
 * **Naming Convention**: The keys in the TOML file must match the long-form command-line arguments. The rule is to replace any hyphens (``-``) with underscores (``_``).
 
-    * For example, the flag ``--max-workers`` becomes the TOML key ``max_workers``.
+    * For example, the flag ``--max-task-concurrency`` becomes the TOML key ``max_task_concurrency``.
     * One can discover all available keys by running any command with the ``-h`` or ``--help`` flag.
 
 Supported Components and Section Names
@@ -225,7 +225,7 @@ Here is an example of a single ``example_config.toml`` file that configures mult
     policy_content = "allocate=even_load; scaling=no"
 
     [cluster]
-    max_workers = 8
+    max_task_concurrency = 8
     per_worker_capabilities = "linux,cpu=8"
     task_timeout_seconds = 600
 
@@ -251,8 +251,8 @@ You can override any value from the TOML file by providing it as a command-line 
 
 .. code-block:: bash
 
-    # The --max-workers flag will take precedence over the [cluster] section
-    scaler_cluster tcp://127.0.0.1:6378 --config example_config.toml --max-workers 12
+    # The --max-task-concurrency flag will take precedence over the [cluster] section
+    scaler_cluster tcp://127.0.0.1:6378 --config example_config.toml --max-task-concurrency 12
 
 The cluster will start with **12 workers**, but all other settings (like ``task_timeout_seconds``) will still be loaded from the ``[cluster]`` section of ``example_config.toml``.
 
@@ -271,16 +271,16 @@ To use the ``waterfall_v1`` policy engine for priority-based scaling across mult
     logging_level = "INFO"
     policy_engine_type = "waterfall_v1"
     policy_content = """
-    # priority, adapter_id_prefix, max_workers
+    # priority, adapter_id_prefix, max_task_concurrency
     1, NAT, 8
     2, ECS, 50
     """
 
     [native_worker_adapter]
-    max_workers = 8
+    max_task_concurrency = 8
 
     [ecs_worker_adapter]
-    max_workers = 50
+    max_task_concurrency = 50
 
 Then start the scheduler and worker adapters:
 

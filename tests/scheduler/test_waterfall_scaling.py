@@ -38,10 +38,12 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
         tasks = _create_tasks(5)
         snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"manager_a", max_workers=10)
+        heartbeat = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
         managed_worker_ids: List[WorkerID] = []
         managed_worker_capabilities: Dict[str, int] = {}
-        manager_snapshots = {b"manager_a": _create_manager_snapshot(b"manager_a", max_workers=10, worker_count=0)}
+        manager_snapshots = {
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=0)
+        }
 
         commands = policy.get_scaling_commands(
             snapshot, heartbeat, managed_worker_ids, managed_worker_capabilities, manager_snapshots
@@ -59,12 +61,12 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
         # Manager A (priority 1) has capacity remaining
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", max_workers=10, worker_count=3),
-            b"manager_b": _create_manager_snapshot(b"manager_b", max_workers=20, worker_count=0),
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=3),
+            b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=20, worker_count=0),
         }
 
         # Heartbeat from manager_a: should scale up
-        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_workers=10)
+        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
         commands_a = self.policy.get_scaling_commands(
             snapshot, heartbeat_a, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
@@ -72,7 +74,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(commands_a[0].command, WorkerManagerCommandType.StartWorkers)
 
         # Heartbeat from manager_b: should NOT scale up (manager_a still has room)
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_workers=20)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
         commands_b = self.policy.get_scaling_commands(
             snapshot, heartbeat_b, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
@@ -87,11 +89,11 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
         # Manager A at full capacity
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", max_workers=10, worker_count=10),
-            b"manager_b": _create_manager_snapshot(b"manager_b", max_workers=20, worker_count=0),
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=10),
+            b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=20, worker_count=0),
         }
 
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_workers=20)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
         commands = self.policy.get_scaling_commands(
             snapshot, heartbeat_b, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
@@ -107,9 +109,11 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         managed_worker_capabilities: Dict[str, int] = {}
 
         # Manager A is offline (cleaned up by WorkerManagerController, not in snapshots)
-        manager_snapshots = {b"manager_b": _create_manager_snapshot(b"manager_b", max_workers=20, worker_count=0)}
+        manager_snapshots = {
+            b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=20, worker_count=0)
+        }
 
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_workers=20)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
         commands = self.policy.get_scaling_commands(
             snapshot, heartbeat_b, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
@@ -125,13 +129,13 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
         # Both managers have workers
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", max_workers=10, worker_count=3),
-            b"manager_b": _create_manager_snapshot(b"manager_b", max_workers=20, worker_count=2),
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=3),
+            b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=20, worker_count=2),
         }
 
         # Heartbeat from manager_b (lower priority): should shut down
         managed_worker_ids_b = [WorkerID(b"worker-3"), WorkerID(b"worker-4")]
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_workers=20)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
         commands_b = self.policy.get_scaling_commands(
             snapshot, heartbeat_b, managed_worker_ids_b, managed_worker_capabilities, manager_snapshots
         )
@@ -140,7 +144,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
         # Heartbeat from manager_a (higher priority): should NOT shut down (B still has workers)
         managed_worker_ids_a = [WorkerID(b"worker-0"), WorkerID(b"worker-1"), WorkerID(b"worker-2")]
-        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_workers=10)
+        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
         commands_a = self.policy.get_scaling_commands(
             snapshot, heartbeat_a, managed_worker_ids_a, managed_worker_capabilities, manager_snapshots
         )
@@ -152,9 +156,9 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         managed_worker_ids: List[WorkerID] = []
         managed_worker_capabilities: Dict[str, int] = {}
-        manager_snapshots = {b"unknown": _create_manager_snapshot(b"unknown", max_workers=10, worker_count=0)}
+        manager_snapshots = {b"unknown": _create_manager_snapshot(b"unknown", max_task_concurrency=10, worker_count=0)}
 
-        heartbeat = _create_worker_manager_heartbeat(b"unknown", max_workers=10)
+        heartbeat = _create_worker_manager_heartbeat(b"unknown", max_task_concurrency=10)
         commands = self.policy.get_scaling_commands(
             snapshot, heartbeat, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
@@ -162,8 +166,8 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(len(commands), 0)
 
     def test_effective_capacity_min_config_and_heartbeat(self):
-        """Effective capacity should be min(config max_task_concurrency, heartbeat max_workers)."""
-        # Rule says max_task_concurrency=5, heartbeat says max_workers=3
+        """Effective capacity should be min(config max_task_concurrency, heartbeat max_task_concurrency)."""
+        # Rule says max_task_concurrency=5, heartbeat says max_task_concurrency=3
         rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=5)]
         policy = WaterfallScalingPolicy(rules)
 
@@ -173,9 +177,11 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         # Already at 3 workers (heartbeat limit)
         managed_worker_ids = [WorkerID(b"w1"), WorkerID(b"w2"), WorkerID(b"w3")]
         managed_worker_capabilities: Dict[str, int] = {}
-        manager_snapshots = {b"manager_a": _create_manager_snapshot(b"manager_a", max_workers=3, worker_count=3)}
+        manager_snapshots = {
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=3, worker_count=3)
+        }
 
-        heartbeat = _create_worker_manager_heartbeat(b"manager_a", max_workers=3)
+        heartbeat = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=3)
         commands = policy.get_scaling_commands(
             snapshot, heartbeat, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
@@ -210,19 +216,19 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         managed_worker_ids: List[WorkerID] = []
         managed_worker_capabilities: Dict[str, int] = {}
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", max_workers=10, worker_count=0),
-            b"manager_b": _create_manager_snapshot(b"manager_b", max_workers=10, worker_count=0),
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=0),
+            b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=10, worker_count=0),
         }
 
         # Both should scale up
-        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_workers=10)
+        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
         commands_a = policy.get_scaling_commands(
             snapshot, heartbeat_a, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
         self.assertEqual(len(commands_a), 1)
         self.assertEqual(commands_a[0].command, WorkerManagerCommandType.StartWorkers)
 
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_workers=10)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=10)
         commands_b = policy.get_scaling_commands(
             snapshot, heartbeat_b, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
@@ -241,12 +247,14 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         managed_worker_capabilities: Dict[str, int] = {}
 
         # No lower-priority managers with workers
-        manager_snapshots = {b"manager_a": _create_manager_snapshot(b"manager_a", max_workers=10, worker_count=2)}
+        manager_snapshots = {
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=2)
+        }
 
         rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
 
-        heartbeat = _create_worker_manager_heartbeat(b"manager_a", max_workers=10)
+        heartbeat = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
         commands = policy.get_scaling_commands(
             snapshot, heartbeat, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
@@ -263,9 +271,11 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         managed_worker_capabilities: Dict[str, int] = {}
 
         # Only manager_b in snapshots, manager_a never seen
-        manager_snapshots = {b"manager_b": _create_manager_snapshot(b"manager_b", max_workers=20, worker_count=0)}
+        manager_snapshots = {
+            b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=20, worker_count=0)
+        }
 
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_workers=20)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
         commands = self.policy.get_scaling_commands(
             snapshot, heartbeat_b, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
@@ -282,9 +292,11 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         managed_worker_capabilities: Dict[str, int] = {}
 
         # Manager B is offline (cleaned up by WorkerManagerController, not in snapshots)
-        manager_snapshots = {b"manager_a": _create_manager_snapshot(b"manager_a", max_workers=10, worker_count=3)}
+        manager_snapshots = {
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=3)
+        }
 
-        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_workers=10)
+        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
         commands = self.policy.get_scaling_commands(
             snapshot, heartbeat_a, managed_worker_ids_a, managed_worker_capabilities, manager_snapshots
         )
@@ -306,12 +318,12 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         managed_worker_capabilities: Dict[str, int] = {}
 
         manager_snapshots = {
-            b"NAT|12345": _create_manager_snapshot(b"NAT|12345", max_workers=10, worker_count=3),
-            b"ECS|67890": _create_manager_snapshot(b"ECS|67890", max_workers=20, worker_count=0),
+            b"NAT|12345": _create_manager_snapshot(b"NAT|12345", max_task_concurrency=10, worker_count=3),
+            b"ECS|67890": _create_manager_snapshot(b"ECS|67890", max_task_concurrency=20, worker_count=0),
         }
 
         # Heartbeat from NAT manager: should scale up (still has capacity)
-        heartbeat_nat = _create_worker_manager_heartbeat(b"NAT|12345", max_workers=10)
+        heartbeat_nat = _create_worker_manager_heartbeat(b"NAT|12345", max_task_concurrency=10)
         commands_nat = policy.get_scaling_commands(
             snapshot, heartbeat_nat, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
@@ -319,7 +331,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(commands_nat[0].command, WorkerManagerCommandType.StartWorkers)
 
         # Heartbeat from ECS manager: should NOT scale up (NAT still has room)
-        heartbeat_ecs = _create_worker_manager_heartbeat(b"ECS|67890", max_workers=20)
+        heartbeat_ecs = _create_worker_manager_heartbeat(b"ECS|67890", max_task_concurrency=20)
         commands_ecs = policy.get_scaling_commands(
             snapshot, heartbeat_ecs, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
@@ -341,13 +353,13 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
         # Two NAT managers, both at capacity
         manager_snapshots = {
-            b"NAT|111": _create_manager_snapshot(b"NAT|111", max_workers=10, worker_count=10),
-            b"NAT|222": _create_manager_snapshot(b"NAT|222", max_workers=10, worker_count=10),
-            b"ECS|333": _create_manager_snapshot(b"ECS|333", max_workers=20, worker_count=0),
+            b"NAT|111": _create_manager_snapshot(b"NAT|111", max_task_concurrency=10, worker_count=10),
+            b"NAT|222": _create_manager_snapshot(b"NAT|222", max_task_concurrency=10, worker_count=10),
+            b"ECS|333": _create_manager_snapshot(b"ECS|333", max_task_concurrency=20, worker_count=0),
         }
 
         # ECS manager should scale up since all NAT managers are at capacity
-        heartbeat_ecs = _create_worker_manager_heartbeat(b"ECS|333", max_workers=20)
+        heartbeat_ecs = _create_worker_manager_heartbeat(b"ECS|333", max_task_concurrency=20)
         commands = policy.get_scaling_commands(
             snapshot, heartbeat_ecs, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
@@ -370,13 +382,13 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
         # One NAT manager full, another still has room
         manager_snapshots = {
-            b"NAT|111": _create_manager_snapshot(b"NAT|111", max_workers=10, worker_count=10),
-            b"NAT|222": _create_manager_snapshot(b"NAT|222", max_workers=10, worker_count=5),
-            b"ECS|333": _create_manager_snapshot(b"ECS|333", max_workers=20, worker_count=0),
+            b"NAT|111": _create_manager_snapshot(b"NAT|111", max_task_concurrency=10, worker_count=10),
+            b"NAT|222": _create_manager_snapshot(b"NAT|222", max_task_concurrency=10, worker_count=5),
+            b"ECS|333": _create_manager_snapshot(b"ECS|333", max_task_concurrency=20, worker_count=0),
         }
 
         # ECS should NOT scale up — NAT|222 still has room
-        heartbeat_ecs = _create_worker_manager_heartbeat(b"ECS|333", max_workers=20)
+        heartbeat_ecs = _create_worker_manager_heartbeat(b"ECS|333", max_task_concurrency=20)
         commands = policy.get_scaling_commands(
             snapshot, heartbeat_ecs, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
@@ -445,7 +457,7 @@ class TestWaterfallV1Policy(unittest.TestCase):
 
     def test_invalid_config_duplicate_worker_manager_id(self):
         """Duplicate worker_manager_id should raise ValueError."""
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "duplicate worker_manager_id"):
             WaterfallV1Policy("1,mgr_a,10\n2,mgr_a,20")
 
     def test_policy_delegates_to_scaling_policy(self):
@@ -458,8 +470,10 @@ class TestWaterfallV1Policy(unittest.TestCase):
         managed_worker_capabilities: Dict[str, int] = {}
 
         # Manager A heartbeat with manager snapshots showing A has capacity
-        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_workers=10)
-        manager_snapshots = {b"manager_a": _create_manager_snapshot(b"manager_a", max_workers=10, worker_count=0)}
+        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
+        manager_snapshots = {
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=0)
+        }
         commands_a = policy.get_scaling_commands(
             snapshot, heartbeat_a, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
@@ -467,10 +481,10 @@ class TestWaterfallV1Policy(unittest.TestCase):
         self.assertEqual(commands_a[0].command, WorkerManagerCommandType.StartWorkers)
 
         # Manager B heartbeat: manager A still has room, so B should NOT scale up
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_workers=20)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
         manager_snapshots_with_both = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", max_workers=10, worker_count=0),
-            b"manager_b": _create_manager_snapshot(b"manager_b", max_workers=20, worker_count=0),
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=0),
+            b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=20, worker_count=0),
         }
         commands_b = policy.get_scaling_commands(
             snapshot, heartbeat_b, managed_worker_ids, managed_worker_capabilities, manager_snapshots_with_both
@@ -514,16 +528,20 @@ def _create_mock_worker_heartbeat(queued_tasks: int = 0) -> WorkerHeartbeat:
     )
 
 
-def _create_worker_manager_heartbeat(worker_manager_id: bytes, max_workers: int = 10) -> WorkerManagerHeartbeat:
-    return WorkerManagerHeartbeat.new_msg(max_workers=max_workers, capabilities={}, worker_manager_id=worker_manager_id)
+def _create_worker_manager_heartbeat(
+    worker_manager_id: bytes, max_task_concurrency: int = 10
+) -> WorkerManagerHeartbeat:
+    return WorkerManagerHeartbeat.new_msg(
+        max_task_concurrency=max_task_concurrency, capabilities={}, worker_manager_id=worker_manager_id
+    )
 
 
 def _create_manager_snapshot(
-    worker_manager_id: bytes, max_workers: int = 10, worker_count: int = 0, last_seen: Optional[float] = None
+    worker_manager_id: bytes, max_task_concurrency: int = 10, worker_count: int = 0, last_seen: Optional[float] = None
 ) -> WorkerManagerSnapshot:
     return WorkerManagerSnapshot(
         worker_manager_id=worker_manager_id,
-        max_workers=max_workers,
+        max_task_concurrency=max_task_concurrency,
         worker_count=worker_count,
         last_seen_s=last_seen if last_seen is not None else time.time(),
     )
