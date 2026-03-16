@@ -464,7 +464,7 @@ body {
 }
 
 /* Fit-page layout: everything fits in viewport, stream scrolls internally */
-body.fit-page {
+body.fit-page.fit-page-stream {
     height: 100vh;
     overflow: hidden;
 }

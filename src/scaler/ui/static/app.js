@@ -52,6 +52,7 @@ for (var i = 0; i < tabs.length; i++) {
             tab.classList.add("active");
             var panel = $("panel-" + tab.getAttribute("data-tab"));
             if (panel) panel.classList.add("active");
+            updateFitPageStream();
             // trigger redraws for canvas tabs
             if (tab.getAttribute("data-tab") === "stream") {
                 streamNeedsRedraw = true;
@@ -65,10 +66,17 @@ for (var i = 0; i < tabs.length; i++) {
 var fitPageBtn = $("fit-page-btn");
 var fitPageActive = false;
 
+function updateFitPageStream() {
+    var streamActive = document.querySelector('.tab.active');
+    var isStream = streamActive && streamActive.getAttribute('data-tab') === 'stream';
+    document.body.classList.toggle('fit-page-stream', fitPageActive && isStream);
+}
+
 fitPageBtn.addEventListener("click", function() {
     fitPageActive = !fitPageActive;
     document.body.classList.toggle("fit-page", fitPageActive);
     fitPageBtn.classList.toggle("active", fitPageActive);
+    updateFitPageStream();
     streamNeedsRedraw = true;
     memoryNeedsRedraw = true;
 });
@@ -486,8 +494,9 @@ function drawTaskStream() {
     // Pass 1: fills and patterns
     for (var j = 0; j < streamBars.length; j++) {
         var bar = streamBars[j];
-        var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2;
-        var barHeight = STREAM_ROW_HEIGHT - 4;
+        var fullBarHeight = STREAM_ROW_HEIGHT - 4;
+        var barHeight = bar.p === "/" ? Math.floor(fullBarHeight / 2) : fullBarHeight;
+        var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + (fullBarHeight - barHeight);
         var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
         var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
         var barWidth = Math.max(x2 - x1, 1);
@@ -506,8 +515,9 @@ function drawTaskStream() {
     for (var j = 0; j < streamBars.length; j++) {
         var bar = streamBars[j];
         if (bar.ow > 0) {
-            var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2;
-            var barHeight = STREAM_ROW_HEIGHT - 4;
+            var fullBarHeight = STREAM_ROW_HEIGHT - 4;
+            var barHeight = bar.p === "/" ? Math.floor(fullBarHeight / 2) : fullBarHeight;
+            var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + (fullBarHeight - barHeight);
             var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
             var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
             var barWidth = Math.max(x2 - x1, 1);
@@ -569,8 +579,9 @@ streamCanvas.addEventListener("mousemove", function(evt) {
 
     for (var i = streamBars.length - 1; i >= 0; i--) {
         var bar = streamBars[i];
-        var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2;
-        var barHeight = STREAM_ROW_HEIGHT - 4;
+        var fullBarHeight = STREAM_ROW_HEIGHT - 4;
+        var barHeight = bar.p === "/" ? Math.floor(fullBarHeight / 2) : fullBarHeight;
+        var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + (fullBarHeight - barHeight);
         var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
         var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
 
