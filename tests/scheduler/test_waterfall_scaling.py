@@ -445,7 +445,7 @@ class TestWaterfallV1Policy(unittest.TestCase):
 
     def test_invalid_config_duplicate_worker_manager_id(self):
         """Duplicate worker_manager_id should raise ValueError."""
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "duplicate worker_manager_id"):
             WaterfallV1Policy("1,mgr_a,10\n2,mgr_a,20")
 
     def test_policy_delegates_to_scaling_policy(self):
