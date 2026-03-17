@@ -5,14 +5,14 @@ import uuid
 from typing import Dict, Optional, Tuple
 
 from scaler.io.mixins import AsyncObjectStorageConnector
-from scaler.io.ymq.ymq import IOContext, IOSocketType, Message, YMQException
+from scaler.io.ymq import Bytes, ConnectorSocket, IOContext, YMQException
 from scaler.protocol.capnp._python import _object_storage  # noqa
 from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader, to_capnp_object_id
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ObjectID
 
 
-class PyYMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
+class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
     """An asyncio connector that uses YMQ to connect to a Scaler's object storage instance."""
 
     def __init__(self):
@@ -27,12 +27,12 @@ class PyYMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         self._lock = asyncio.Lock()
         self._identity: str = f"{self.__class__.__name__}|{socket.gethostname().split('.')[0]}|{uuid.uuid4()}"
         self._io_context: IOContext = IOContext()
-        self._io_socket = self._io_context.createIOSocket_sync(self._identity, IOSocketType.Connector)
+        self._socket: Optional[ConnectorSocket] = None
 
     def __del__(self):
         if not self.is_connected():
             return
-        self._io_socket = None
+        self._socket = None
         self._io_context = None
 
     async def connect(self, host: str, port: int):
@@ -41,7 +41,8 @@ class PyYMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
 
         if self.is_connected():
             raise ObjectStorageException("connector is already connected.")
-        await self._io_socket.connect(self.address)
+
+        self._socket = ConnectorSocket.connect(self._io_context, self._identity, self.address)
         self._connected_event.set()
 
     async def wait_until_connected(self):
@@ -53,7 +54,7 @@ class PyYMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
     def destroy(self):
         if not self.is_connected():
             return
-        self._io_socket = None
+        self._socket = None
         self._io_context = None
 
     @property
@@ -110,7 +111,7 @@ class PyYMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         )
 
     def __ensure_is_connected(self):
-        if self._io_socket is None:
+        if self._socket is None:
             raise ObjectStorageException("connector is not connected.")
 
     async def __send_request(
@@ -136,48 +137,50 @@ class PyYMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
                     await self.__write_request_payload(payload)
 
         except YMQException:
-            self._io_socket = None
+            self._socket = None
             self.__raise_connection_failure()
 
     async def __write_request_header(self, header: ObjectRequestHeader):
-        assert self._io_socket is not None
-        await self._io_socket.send(Message(address=None, payload=header.get_message().to_bytes()))
+        assert self._socket is not None
+        await self._socket.send_message(Bytes(header.get_message().to_bytes()))
 
     async def __write_request_payload(self, payload: bytes):
-        assert self._io_socket is not None
-        await self._io_socket.send(Message(address=None, payload=payload))
+        assert self._socket is not None
+        await self._socket.send_message(Bytes(payload))
 
     async def __receive_response(self) -> Optional[Tuple[ObjectResponseHeader, bytes]]:
-        if self._io_socket is None:
+        if self._socket is None:
             return None
 
         try:
             header = await self.__read_response_header()
             payload = await self.__read_response_payload(header)
         except YMQException:
-            self._io_socket = None
+            self._socket = None
             self.__raise_connection_failure()
 
         return header, payload
 
     async def __read_response_header(self) -> ObjectResponseHeader:
-        assert self._io_socket is not None
+        assert self._socket is not None
 
-        msg = await self._io_socket.recv()
+        msg = await self._socket.recv_message()
         header_data = msg.payload.data
+        assert header_data is not None
         assert len(header_data) == ObjectResponseHeader.MESSAGE_LENGTH
 
         with _object_storage.ObjectResponseHeader.from_bytes(header_data) as header_message:
             return ObjectResponseHeader(header_message)
 
     async def __read_response_payload(self, header: ObjectResponseHeader) -> bytes:
-        assert self._io_socket is not None
-        # assert self._reader is not None
+        assert self._socket is not None
 
         if header.payload_length > 0:
-            res = await self._io_socket.recv()
-            assert len(res.payload) == header.payload_length
-            return res.payload.data
+            res = await self._socket.recv_message()
+            payload_data = res.payload.data
+            assert payload_data is not None
+            assert len(payload_data) == header.payload_length
+            return payload_data
         else:
             return b""
 

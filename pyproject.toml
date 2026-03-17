@@ -99,7 +99,6 @@ cmake.source-dir = "."
 wheel.packages = ["src/scaler"]
 build.targets = [
     "py_ymq",
-    "py_uv_ymq",
     "py_object_storage_server",
     "py_one_to_many_dict",
     "py_stable_priority_queue",

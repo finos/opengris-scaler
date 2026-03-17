@@ -9,19 +9,7 @@
 // clang-format off
 #define NOMINMAX
 #include <windows.h>
-#include <winsock2.h>
-#include <mswsock.h>
-#include <ws2tcpip.h> // inet_pton
 // clang-format on
-#endif  // _WIN32
-
-// Windows being evil
-#ifdef _WIN32
-#undef SendMessageCallback
-#define __PRETTY_FUNCTION__ __FUNCSIG__
-#define EPOLLIN             (0)
-#define EPOLLOUT            (0)
-#define EPOLLET             (0)
 #endif  // _WIN32
 
 namespace scaler {

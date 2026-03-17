@@ -12,7 +12,7 @@ else()
     endif()
 endif()
 
-add_library(scaler_wrapper_uv OBJECT
+add_library(scaler_wrapper_uv STATIC
     async.h
     async.cpp
 

@@ -6,7 +6,7 @@ from typing import Awaitable, Callable, Literal, Optional
 from scaler.config.types.zmq import ZMQConfig
 from scaler.io.mixins import AsyncConnector
 from scaler.io.utility import deserialize, serialize
-from scaler.io.ymq import ymq
+from scaler.io.ymq import Bytes, ConnectorSocket, IOContext
 from scaler.protocol.python.mixins import Message
 
 
@@ -14,7 +14,7 @@ class YMQAsyncConnector(AsyncConnector):
     def __init__(
         self,
         name: str,
-        socket_type: ymq.IOSocketType,
+        socket_type: int,
         address: ZMQConfig,
         bind_or_connect: Literal["bind", "connect"],
         callback: Optional[Callable[[Message], Awaitable[None]]],
@@ -22,23 +22,21 @@ class YMQAsyncConnector(AsyncConnector):
     ):
         self._address = address
 
-        self._context = ymq.IOContext()
+        self._context = IOContext()
 
         if identity is None:
             identity = f"{os.getpid()}|{name}|{uuid.uuid4().bytes.hex()}".encode()
         self._identity = identity
 
-        # It is always connector
-        self._socket = self._context.createIOSocket_sync(self.identity.decode(), ymq.IOSocketType.Connector)
+        self._callback: Optional[Callable[[Message], Awaitable[None]]] = callback
 
+        # Create connector socket
         if bind_or_connect == "bind":
-            self._socket.bind_sync(self.address)
+            self._socket = ConnectorSocket.bind(self._context, self._identity.decode(), self.address)
         elif bind_or_connect == "connect":
-            self._socket.connect_sync(self.address)
+            self._socket = ConnectorSocket.connect(self._context, self._identity.decode(), self.address)
         else:
             raise TypeError("bind_or_connect has to be 'bind' or 'connect'")
-
-        self._callback: Optional[Callable[[Message], Awaitable[None]]] = callback
 
     def destroy(self):
         self._socket = None
@@ -49,7 +47,7 @@ class YMQAsyncConnector(AsyncConnector):
         return self._identity
 
     @property
-    def socket(self) -> ymq.IOSocket:
+    def socket(self) -> ConnectorSocket:
         return self._socket
 
     @property
@@ -73,7 +71,7 @@ class YMQAsyncConnector(AsyncConnector):
         if self._socket is None:
             return None
 
-        msg = await self._socket.recv()
+        msg = await self._socket.recv_message()
         result: Optional[Message] = deserialize(msg.payload.data)
         if result is None:
             logging.error(f"received unknown message: {msg.payload.data!r}")
@@ -82,4 +80,4 @@ class YMQAsyncConnector(AsyncConnector):
         return result
 
     async def send(self, message: Message):
-        await self._socket.send(ymq.Message(address=b"", payload=serialize(message)))
+        await self._socket.send_message(Bytes(serialize(message)))

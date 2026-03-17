@@ -1,23 +1,13 @@
 #include <chrono>
-#include <future>
 #include <iostream>
-#include <memory>
 #include <string>
-#include <thread>
 
-#include "scaler/error/error.h"
 #include "scaler/ymq/io_context.h"
-#include "scaler/ymq/io_socket.h"
-#include "scaler/ymq/simple_interface.h"
-#include "scaler/ymq/typedefs.h"
+#include "scaler/ymq/sync/connector_socket.h"
 
 using scaler::ymq::Bytes;
-using scaler::ymq::Error;
 using scaler::ymq::IOContext;
-using scaler::ymq::IOSocketType;
-using scaler::ymq::Message;
-using scaler::ymq::syncConnectSocket;
-using scaler::ymq::syncCreateSocket;
+using scaler::ymq::sync::ConnectorSocket;
 
 int main(int argc, char* argv[])
 {
@@ -32,31 +22,28 @@ int main(int argc, char* argv[])
 
     IOContext context;
 
-    auto clientSocket = syncCreateSocket(context, IOSocketType::Connector, identity);
-    std::cout << "Successfully created socket.\n";
+    auto result = ConnectorSocket::connect(context, identity, address);
+    if (!result.has_value()) {
+        std::cerr << "Failed to connect: " << result.error().what() << std::endl;
+        return 1;
+    }
 
-    syncConnectSocket(clientSocket, address);
+    auto socket = std::move(result.value());
     std::cout << "Connected to server.\n";
-
-    const std::string_view line = longStr;
 
     std::chrono::time_point<std::chrono::system_clock> start = std::chrono::system_clock::now();
     for (size_t cnt = 0; cnt < msgCnt; ++cnt) {
-        Message message {};
-        message.payload = Bytes {const_cast<char*>(line.data()), line.size()};
+        auto sendResult = socket.sendMessage(Bytes {longStr});
+        if (!sendResult.has_value()) {
+            std::cerr << "Failed to send message: " << sendResult.error().what() << std::endl;
+            return 1;
+        }
 
-        std::promise<std::expected<void, Error>> sendPromise;
-        auto sendFuture = sendPromise.get_future();
-
-        clientSocket->sendMessage(
-            std::move(message), [&sendPromise](std::expected<void, Error>) { sendPromise.set_value({}); });
-        sendFuture.get().value();
-
-        std::promise<std::pair<Message, Error>> recvPromise;
-        auto recvFuture = recvPromise.get_future();
-        clientSocket->recvMessage(
-            [&recvPromise](std::pair<Message, Error> msg) { recvPromise.set_value(std::move(msg)); });
-        recvFuture.wait();
+        auto recvResult = socket.recvMessage();
+        if (!recvResult.has_value()) {
+            std::cerr << "Failed to receive message: " << recvResult.error().what() << std::endl;
+            return 1;
+        }
     }
 
     std::chrono::time_point<std::chrono::system_clock> end = std::chrono::system_clock::now();
@@ -65,8 +52,6 @@ int main(int argc, char* argv[])
     auto milli = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Spend " << milli.count() << "ms.\n";
     std::cout << "Throughput " << msgCnt * (longStr.size()) * 1.0 / milli.count() << " Bpms.\n";
-
-    context.removeIOSocket(clientSocket);
 
     return 0;
 }

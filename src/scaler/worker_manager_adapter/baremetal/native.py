@@ -8,10 +8,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import zmq
 
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
-from scaler.io import uv_ymq
+from scaler.io import ymq
 from scaler.io.mixins import AsyncConnector
 from scaler.io.utility import create_async_connector, create_async_simple_context
-from scaler.io.ymq import ymq
 from scaler.protocol.python.message import (
     Message,
     WorkerManagerCommand,
@@ -235,11 +234,8 @@ class NativeWorkerManager:
             await asyncio.gather(*loops)
         except asyncio.CancelledError:
             pass
-        except (ymq.YMQException, uv_ymq.UVYMQException) as e:
-            if e.code in {
-                ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd,
-                uv_ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd,
-            }:
+        except ymq.YMQException as e:
+            if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
                 pass
             else:
                 logging.exception(f"{self._ident!r}: failed with unhandled exception:\n{e}")

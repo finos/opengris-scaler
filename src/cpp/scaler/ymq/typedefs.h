@@ -1,20 +1,17 @@
 #pragma once
 
-#include <cstdint>
+#include <string>
+#include <variant>
+
+#include "scaler/wrapper/uv/pipe.h"
+#include "scaler/wrapper/uv/tcp.h"
 
 namespace scaler {
 namespace ymq {
 
-// THIS FILE MUST NOT CONTAIN USER DEFINED TYPES
-enum IOSocketType : uint8_t {
-    Uninit,  // Not allowed from user code
-    Binder,
-    Connector,
-    Unicast,
-    Multicast,
-};
+using Identity = std::string;
 
-enum Ownership { Owned, Borrowed };
+using Client = std::variant<scaler::wrapper::uv::TCPSocket, scaler::wrapper::uv::Pipe>;
 
 }  // namespace ymq
 }  // namespace scaler
