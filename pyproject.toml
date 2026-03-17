@@ -27,7 +27,6 @@ dependencies = [
     "pyzmq",
     "sortedcontainers==2.4.0",
     "tblib",
-    "aiohttp",
     "graphlib-backport; python_version < '3.9'",
     "typing-extensions>=4.0; python_version < '3.10'",
     "tomli; python_version < '3.11'",
