@@ -3,9 +3,10 @@ import functools
 import logging
 import threading
 import uuid
+import warnings
 from collections import Counter
 from inspect import signature
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union, overload
 
 import zmq
 
@@ -255,6 +256,21 @@ class Client:
         self._connector_agent.send(task)
         return future
 
+    @overload
+    def map(
+        self,
+        fn: Callable[..., _T],
+        iterable: Iterable[Tuple[Any, ...]],
+        /,
+        *,
+        capabilities: Optional[Dict[str, int]] = None,
+    ) -> List[_T]: ...  # Deprecated: starmap-style usage with single iterable of tuples
+
+    @overload
+    def map(
+        self, fn: Callable[..., _T], /, *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None
+    ) -> List[_T]: ...  # New: map-style usage with one or more iterables
+
     def map(
         self, fn: Callable[..., _T], *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None
     ) -> List[_T]:
@@ -269,6 +285,9 @@ class Client:
             >>> client.map(add, [1, 2, 3], [4, 5, 6])
             [5, 7, 9]
 
+        For backwards compatibility, if a single iterable of tuples is provided (the old starmap-like behavior),
+        a deprecation warning will be shown and the arguments will be unpacked. Use `starmap()` instead for this case.
+
         :param fn: function to be executed remotely
         :type fn: Callable[..., _T]
         :param iterables: one or more iterables, each providing one argument to the function
@@ -281,7 +300,25 @@ class Client:
         if len(iterables) == 0:
             raise TypeError("map() requires at least one iterable")
 
-        return self.starmap(fn, zip(*iterables), capabilities=capabilities)
+        if len(iterables) == 1:
+            # Check if this looks like old starmap-style usage (iterable of tuples/lists)
+            iterable_list = list(iterables[0])
+            if len(iterable_list) > 0 and all(isinstance(args, (tuple, list)) for args in iterable_list):
+                warnings.warn(
+                    "Passing an iterable of tuples to map() is deprecated. "
+                    "Use starmap() for unpacking argument tuples, or pass separate iterables to map(). "
+                    "For example, use client.map(fn, [1, 2, 3]) instead of client.map(fn, [(1,), (2,), (3,)]).",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                return self.starmap(fn, iterable_list, capabilities=capabilities)
+            # Single iterable with non-tuple elements - pack each as a single-element tuple
+            args_iterable = [(arg,) for arg in iterable_list]
+        else:
+            # Multiple iterables - zip them together
+            args_iterable = list(zip(*iterables))
+
+        return self.starmap(fn, args_iterable, capabilities=capabilities)
 
     def starmap(
         self, fn: Callable[..., _T], iterable: Iterable[Iterable[Any]], capabilities: Optional[Dict[str, int]] = None
@@ -470,255 +507,4 @@ class Client:
             message = self._connector_agent.receive()
 
         if not message.accepted:
-            raise ValueError("Scheduler is in protected mode. Can't shutdown")
-
-    def shutdown(self):
-        """
-        shutdown all workers that connected to the scheduler this client connects to, it will cancel all other
-        clients' ongoing tasks, please be aware shutdown might not success if scheduler is configured as protected mode,
-        then it cannot shut down scheduler and the workers
-        """
-
-        if not self._agent.is_alive():
-            self.__destroy()
-            return
-
-        logging.info(f"ScalerClient: request shutdown for {self._scheduler_address.to_address()}")
-
-        self._future_manager.cancel_all_futures()
-
-        self._connector_agent.send(ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Shutdown))
-        try:
-            self.__receive_shutdown_response()
-        finally:
-            self.__destroy()
-
-    def __submit(
-        self,
-        function_object_id: ObjectID,
-        args: Tuple[Any, ...],
-        delayed: bool,
-        capabilities: Optional[Dict[str, int]] = None,
-    ) -> Tuple[Task, ScalerFuture]:
-        task_id = TaskID.generate_task_id()
-
-        capabilities = capabilities or {}
-
-        function_args: List[Union[ObjectID, TaskID]] = []
-        for arg in args:
-            if isinstance(arg, ObjectReference):
-                if not self._object_buffer.is_valid_object_id(arg.object_id):
-                    raise MissingObjects(f"unknown object: {arg.object_id!r}.")
-
-                function_args.append(arg.object_id)
-            else:
-                function_args.append(self._object_buffer.buffer_send_object(arg).object_id)
-
-        task_flags_bytes = self.__get_task_flags().serialize()
-
-        task = Task.new_msg(
-            task_id=task_id,
-            source=self._identity,
-            metadata=task_flags_bytes,
-            func_object_id=function_object_id,
-            function_args=function_args,
-            capabilities=capabilities,
-        )
-
-        future = self._future_factory(task=task, is_delayed=delayed, group_task_id=None)
-        self._future_manager.add_future(future)
-        return task, future
-
-    @staticmethod
-    def __convert_kwargs_to_args(fn: Callable, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Tuple[Any, ...]:
-        all_params = [p for p in signature(fn).parameters.values()]
-
-        params = [p for p in all_params if p.kind in {p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD}]
-
-        if len(args) >= len(params):
-            return args
-
-        number_of_required = len([p for p in params if p.default is p.empty])
-
-        args_list = list(args)
-        kwargs = kwargs.copy()
-        kwargs.update({p.name: p.default for p in all_params if p.kind == p.KEYWORD_ONLY if p.default != p.empty})
-
-        for p in params[len(args_list) : number_of_required]:
-            try:
-                args_list.append(kwargs.pop(p.name))
-            except KeyError:
-                missing = tuple(p.name for p in params[len(args_list) : number_of_required])
-                raise TypeError(f"{fn} missing {len(missing)} arguments: {missing}")
-
-        for p in params[len(args_list) :]:
-            args_list.append(kwargs.pop(p.name, p.default))
-
-        return tuple(args_list)
-
-    def __split_data_and_graph(
-        self, graph: Dict[str, Union[Any, Tuple[Union[Callable, str], ...]]]
-    ) -> Tuple[Dict[str, Tuple[ObjectID, Any]], Dict[str, _CallNode]]:
-        call_graph = {}
-        node_name_to_argument: Dict[str, Tuple[ObjectID, Union[Any, Tuple[Union[Callable, Any], ...]]]] = dict()
-
-        for node_name, node in graph.items():
-            if isinstance(node, tuple) and len(node) > 0 and callable(node[0]):
-                call_graph[node_name] = _CallNode(func=node[0], args=node[1:])  # type: ignore[arg-type]
-                continue
-
-            if isinstance(node, ObjectReference):
-                object_id = node.object_id
-            else:
-                object_id = self._object_buffer.buffer_send_object(node, name=node_name).object_id
-
-            node_name_to_argument[node_name] = (object_id, node)
-
-        return node_name_to_argument, call_graph
-
-    @staticmethod
-    def __check_graph(
-        node_to_argument: Dict[str, Tuple[ObjectID, Any]], call_graph: Dict[str, _CallNode], keys: List[str]
-    ):
-        duplicate_keys = [key for key, count in dict(Counter(keys)).items() if count > 1]
-        if duplicate_keys:
-            raise KeyError(f"duplicate key detected in argument keys: {duplicate_keys}")
-
-        # sanity check graph
-        for key in keys:
-            if key not in call_graph and key not in node_to_argument:
-                raise KeyError(f"key {key} has to be in graph")
-
-        sorter: TopologicalSorter[str] = TopologicalSorter()
-        for node_name, node in call_graph.items():
-            for arg in node.args:
-                if arg not in node_to_argument and arg not in call_graph:
-                    raise KeyError(f"argument {arg} in node '{node_name}': {node} is not defined in graph")
-
-            sorter.add(node_name, *node.args)
-
-        # check cyclic dependencies
-        sorter.prepare()
-
-    def __construct_graph(
-        self,
-        node_name_to_arguments: Dict[str, Tuple[ObjectID, Any]],
-        call_graph: Dict[str, _CallNode],
-        keys: List[str],
-        block: bool,
-        capabilities: Dict[str, int],
-    ) -> Tuple[GraphTask, Dict[str, ScalerFuture], Dict[str, ScalerFuture]]:
-        graph_task_id = TaskID.generate_task_id()
-
-        node_name_to_task_id = {node_name: TaskID.generate_task_id() for node_name in call_graph.keys()}
-
-        task_flags_bytes = self.__get_task_flags().serialize()
-
-        task_id_to_tasks = dict()
-
-        for node_name, node in call_graph.items():
-            task_id = node_name_to_task_id[node_name]
-            function_cache = self._object_buffer.buffer_send_function(node.func)
-
-            arguments: List[Union[TaskID, ObjectID]] = []
-            for arg in node.args:
-                assert arg in call_graph or arg in node_name_to_arguments
-
-                if arg in call_graph:
-                    arguments.append(TaskID(node_name_to_task_id[arg]))
-                elif arg in node_name_to_arguments:
-                    argument, _ = node_name_to_arguments[arg]
-                    arguments.append(argument)
-                else:
-                    raise ValueError("Not possible")
-
-            task_id_to_tasks[task_id] = Task.new_msg(
-                task_id=task_id,
-                source=self._identity,
-                metadata=task_flags_bytes,
-                func_object_id=function_cache.object_id,
-                function_args=arguments,
-                capabilities=capabilities,
-            )
-
-        result_task_ids = [node_name_to_task_id[key] for key in keys if key in call_graph]
-        graph_task = GraphTask.new_msg(graph_task_id, self._identity, result_task_ids, list(task_id_to_tasks.values()))
-
-        compute_futures = {}
-        ready_futures = {}
-        for key in keys:
-            if key in call_graph:
-                compute_futures[key] = self._future_factory(
-                    task=task_id_to_tasks[node_name_to_task_id[key]], is_delayed=not block, group_task_id=graph_task_id
-                )
-
-            elif key in node_name_to_arguments:
-                argument, data = node_name_to_arguments[key]
-                future: ScalerFuture = self._future_factory(
-                    task=Task.new_msg(
-                        task_id=TaskID.generate_task_id(),
-                        source=self._identity,
-                        metadata=b"",
-                        func_object_id=None,
-                        function_args=[],
-                        capabilities={},
-                    ),
-                    is_delayed=False,
-                    group_task_id=graph_task_id,
-                )
-                future.set_result(data, ProfileResult())
-                ready_futures[key] = future
-
-            else:
-                raise ValueError(f"cannot find {key=} in graph")
-
-        return graph_task, compute_futures, ready_futures
-
-    def __get_task_flags(self) -> TaskFlags:
-        parent_task_priority = self.__get_parent_task_priority()
-
-        if parent_task_priority is not None:
-            task_priority = parent_task_priority + 1
-        else:
-            task_priority = 0
-
-        return TaskFlags(profiling=self._profiling, priority=task_priority, stream_output=self._stream_output)
-
-    def __assert_client_not_stopped(self):
-        if self._stop_event.is_set():
-            raise ClientQuitException("client is already stopped.")
-
-    def __destroy(self):
-        self._agent.join()
-        self._context.destroy(linger=1)
-
-    @staticmethod
-    def __get_parent_task_priority() -> Optional[int]:
-        """If the client is running inside a Scaler processor, returns the priority of the associated task."""
-
-        current_processor = Processor.get_current_processor()
-
-        if current_processor is None:
-            return None
-
-        current_task = current_processor.current_task()
-        assert current_task is not None
-
-        return retrieve_task_flags_from_task(current_task).priority
-
-    def _resolve_scheduler_address(self, address: Optional[str]) -> str:
-        """Resolve the scheduler address based on the provided address and worker context."""
-        # Provided address always takes precedence
-        if address is not None:
-            return address
-
-        # No address provided, check if we're running inside a worker context
-        current_processor = Processor.get_current_processor()
-        if current_processor is None:
-            raise ValueError(
-                "No scheduler address provided and not running inside a worker context. "
-                "Please provide a scheduler address when creating the Client outside of a worker."
-            )
-
-        # Return the scheduler address from the current processor
-        return current_processor.scheduler_address().to_address()
+            raise ValueError("Scheduler is in protected mode. Can't 
