@@ -88,7 +88,7 @@ class TestScaling(unittest.TestCase):
         manager_process.start()
 
         with Client(self.scheduler_address) as client:
-            client.map(time.sleep, [(0.1,) for _ in range(100)])
+            client.map(time.sleep, [0.1] * 100)
 
         os.kill(scheduler.pid, signal.SIGINT)
         scheduler.join()
@@ -135,7 +135,7 @@ class TestScaling(unittest.TestCase):
 
         with Client(self.scheduler_address) as client:
             # Submit tasks without capabilities (should work like vanilla)
-            client.map(time.sleep, [(0.1,) for _ in range(50)])
+            client.map(time.sleep, [0.1] * 50)
 
         os.kill(scheduler.pid, signal.SIGINT)
         scheduler.join()
@@ -405,7 +405,7 @@ class TestFixedElasticScaling(unittest.TestCase):
 
         with Client(self.scheduler_address) as client:
             # Submit tasks to trigger scaling
-            client.map(time.sleep, [(0.1,) for _ in range(100)])
+            client.map(time.sleep, [0.1] * 100)
 
         os.kill(scheduler.pid, signal.SIGINT)
         scheduler.join()
