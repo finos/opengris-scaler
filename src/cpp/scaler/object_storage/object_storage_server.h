@@ -12,18 +12,18 @@
 #include "scaler/object_storage/io_helper.h"
 #include "scaler/object_storage/message.h"
 #include "scaler/object_storage/object_manager.h"
-#include "scaler/uv_ymq/future/binder_socket.h"
-#include "scaler/uv_ymq/io_context.h"
-#include "scaler/uv_ymq/typedefs.h"
+#include "scaler/ymq/future/binder_socket.h"
+#include "scaler/ymq/io_context.h"
+#include "scaler/ymq/typedefs.h"
 
 namespace scaler {
 namespace object_storage {
 
 class ObjectStorageServer {
 public:
-    using Identity          = uv_ymq::Identity;
+    using Identity          = scaler::ymq::Identity;
     using SendMessageFuture = std::future<std::expected<void, ymq::Error>>;
-    using Bytes             = ymq::Bytes;
+    using Bytes             = scaler::ymq::Bytes;
 
     ObjectStorageServer();
 
@@ -55,8 +55,8 @@ private:
     using ObjectRequestType  = scaler::protocol::ObjectRequestHeader::ObjectRequestType;
     using ObjectResponseType = scaler::protocol::ObjectResponseHeader::ObjectResponseType;
 
-    uv_ymq::IOContext _ioContext;
-    std::unique_ptr<uv_ymq::future::BinderSocket> _socket;
+    scaler::ymq::IOContext _ioContext;
+    std::unique_ptr<scaler::ymq::future::BinderSocket> _socket;
 
     int onServerReadyReader;
     int onServerReadyWriter;

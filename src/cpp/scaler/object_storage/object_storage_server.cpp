@@ -57,10 +57,10 @@ void ObjectStorageServer::run(
     _logger = scaler::ymq::Logger(log_format, std::move(log_paths), scaler::ymq::Logger::stringToLogLevel(log_level));
 
     try {
-        _socket = std::make_unique<uv_ymq::future::BinderSocket>(_ioContext, std::move(identity));
+        _socket = std::make_unique<scaler::ymq::future::BinderSocket>(_ioContext, std::move(identity));
         const std::string networkAddress {"tcp://" + name + ':' + port};
 
-        std::expected<uv_ymq::Address, scaler::ymq::Error> bindResult = _socket->bindTo(networkAddress).get();
+        std::expected<scaler::ymq::Address, scaler::ymq::Error> bindResult = _socket->bindTo(networkAddress).get();
         if (!bindResult) {
             throw bindResult.error();
         }
@@ -175,7 +175,7 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
 
             if (!maybeMessage) {
                 auto error = maybeMessage.error();
-                if (error._errorCode == ymq::Error::ErrorCode::IOSocketStopRequested) {
+                if (error._errorCode == ymq::Error::ErrorCode::SocketStopRequested) {
                     auto n = std::ranges::count_if(_pendingSendMessageFuts, [](auto& x) {
                         return x.valid() && x.wait_for(std::chrono::seconds(0)) == std::future_status::timeout;
                     });

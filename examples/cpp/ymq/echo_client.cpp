@@ -1,32 +1,25 @@
-
-#include <future>
 #include <iostream>
-#include <memory>
 #include <string>
-#include <thread>
 
-#include "scaler/error/error.h"
 #include "scaler/ymq/io_context.h"
-#include "scaler/ymq/io_socket.h"
-#include "scaler/ymq/simple_interface.h"
-#include "scaler/ymq/typedefs.h"
+#include "scaler/ymq/sync/connector_socket.h"
 
 using scaler::ymq::Bytes;
-using scaler::ymq::Error;
 using scaler::ymq::IOContext;
-using scaler::ymq::IOSocketType;
 using scaler::ymq::Message;
-using scaler::ymq::syncConnectSocket;
-using scaler::ymq::syncCreateSocket;
+using scaler::ymq::sync::ConnectorSocket;
 
 int main()
 {
     IOContext context;
 
-    auto clientSocket = syncCreateSocket(context, IOSocketType::Connector, "ClientSocket");
-    std::cout << "Successfully created socket.\n";
+    auto result = ConnectorSocket::connect(context, "ClientSocket", "tcp://127.0.0.1:8080");
+    if (!result.has_value()) {
+        std::cerr << "Failed to connect: " << result.error().what() << std::endl;
+        return 1;
+    }
 
-    syncConnectSocket(clientSocket, "tcp://127.0.0.1:8080");
+    auto socket = std::move(result.value());
     std::cout << "Connected to server.\n";
 
     for (int cnt = 0; cnt < 10; ++cnt) {
@@ -38,36 +31,24 @@ int main()
         }
         std::cout << "YOU ENTERED THIS MESSAGE: " << line << std::endl;
 
-        Message message;
-        std::string destAddress = "ServerSocket";
+        auto sendResult = socket.sendMessage(Bytes {line});
+        if (!sendResult.has_value()) {
+            std::cerr << "Failed to send message: " << sendResult.error().what() << std::endl;
+            continue;
+        }
 
-        message.address = Bytes {const_cast<char*>(destAddress.data()), destAddress.size()};
-        message.payload = Bytes {const_cast<char*>(line.c_str()), line.size()};
-
-        auto send_promise = std::promise<std::expected<void, Error>>();
-        auto send_future  = send_promise.get_future();
-
-        clientSocket->sendMessage(
-            std::move(message), [&send_promise](std::expected<void, Error>) { send_promise.set_value({}); });
-
-        send_future.wait();
         std::cout << "Message sent, waiting for response...\n";
 
-        auto recv_promise = std::promise<std::pair<Message, Error>>();
-        auto recv_future  = recv_promise.get_future();
+        auto recvResult = socket.recvMessage();
+        if (!recvResult.has_value()) {
+            std::cerr << "Failed to receive message: " << recvResult.error().what() << std::endl;
+            continue;
+        }
 
-        clientSocket->recvMessage(
-            [&recv_promise](std::pair<Message, Error> msg) { recv_promise.set_value(std::move(msg)); });
-
-        Message reply = recv_future.get().first;
-        std::string reply_str(reply.payload.data(), reply.payload.data() + reply.payload.len());
-        std::cout << "Received echo: '" << reply_str << "'.\n";
+        Message reply        = std::move(recvResult.value());
+        std::string replyStr = reply.payload.as_string().value_or("");
+        std::cout << "Received echo: '" << replyStr << "'.\n";
     }
-
-    // TODO: remove IOSocket also needs a future
-    context.removeIOSocket(clientSocket);
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     return 0;
 }

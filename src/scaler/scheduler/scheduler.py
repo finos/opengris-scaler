@@ -10,8 +10,7 @@ from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
 from scaler.io.utility import create_async_binder, create_async_object_storage_connector
-from scaler.io.uv_ymq import UVYMQException
-from scaler.io.ymq.ymq import YMQException
+from scaler.io.ymq import YMQException
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -259,7 +258,7 @@ class Scheduler:
         except ClientShutdownException as e:
             logging.info(f"{self.__class__.__name__}: {e}")
             pass
-        except (YMQException, UVYMQException):
+        except YMQException:
             pass
         except ObjectStorageException:
             pass

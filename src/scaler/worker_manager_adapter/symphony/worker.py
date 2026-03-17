@@ -10,14 +10,13 @@ import zmq.asyncio
 from scaler.config.types.network_backend import NetworkBackend
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.zmq import ZMQConfig
-from scaler.io import uv_ymq
+from scaler.io import ymq
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.io.utility import (
     create_async_connector,
     create_async_object_storage_connector,
     get_scaler_network_backend_from_env,
 )
-from scaler.io.ymq import ymq
 from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,
@@ -229,7 +228,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
     async def __graceful_shutdown(self):
         try:
             await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
-        except (ymq.YMQException, uv_ymq.UVYMQException):
+        except ymq.YMQException:
             pass
 
     def __destroy(self):

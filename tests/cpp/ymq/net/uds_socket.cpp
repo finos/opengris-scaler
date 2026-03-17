@@ -5,15 +5,26 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <cstring>
 #include <stdexcept>
 #include <thread>
 #include <vector>
 
-#include "scaler/ymq/internal/network_utils.h"
-#include "scaler/ymq/internal/socket_address.h"
+#include "scaler/ymq/address.h"
 #include "tests/cpp/ymq/common/utils.h"
 
-using scaler::ymq::SocketAddress;
+static sockaddr_un createUnixAddress(const scaler::ymq::Address& address)
+{
+    if (address.type() != scaler::ymq::Address::Type::IPC) {
+        throw std::runtime_error("Unsupported protocol for UDSSocket: expected IPC");
+    }
+
+    const std::string& path = address.asIPC();
+    sockaddr_un addr {};
+    addr.sun_family = AF_UNIX;
+    std::strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
+    return addr;
+}
 
 UDSSocket::UDSSocket(): _fd(-1)
 {
@@ -44,14 +55,9 @@ UDSSocket& UDSSocket::operator=(UDSSocket&& other) noexcept
     return *this;
 }
 
-void UDSSocket::tryConnect(const std::string& address_str, int tries) const
+void UDSSocket::tryConnect(const scaler::ymq::Address& address, int tries) const
 {
-    auto address = scaler::ymq::stringToSocketAddress(address_str).value();
-    if (address.nativeHandleType() != SocketAddress::Type::IPC) {
-        throw std::runtime_error(std::format("Unsupported protocol for UDSSocket: {}", address.nativeHandleType()));
-    }
-
-    sockaddr_un addr = *(sockaddr_un*)address.nativeHandle();
+    sockaddr_un addr = createUnixAddress(address);
 
     for (int i = 0; i < tries; i++) {
         auto code = ::connect(this->_fd, (sockaddr*)&addr, sizeof(addr));
@@ -69,14 +75,9 @@ void UDSSocket::tryConnect(const std::string& address_str, int tries) const
     }
 }
 
-void UDSSocket::bind(const std::string& address_str) const
+void UDSSocket::bind(const scaler::ymq::Address& address) const
 {
-    auto address = scaler::ymq::stringToSocketAddress(address_str).value();
-    if (address.nativeHandleType() != SocketAddress::Type::IPC) {
-        throw std::runtime_error(std::format("Unsupported protocol for UDSSocket: {}", address.nativeHandleType()));
-    }
-
-    sockaddr_un addr = *(sockaddr_un*)address.nativeHandle();
+    sockaddr_un addr = createUnixAddress(address);
 
     ::unlink(addr.sun_path);
     if (::bind(this->_fd, (sockaddr*)&addr, sizeof(addr)) < 0)

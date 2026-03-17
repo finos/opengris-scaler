@@ -1,7 +1,7 @@
 import asyncio
 import unittest
 
-from scaler.io.uv_ymq import BinderSocket, Bytes, ConnectorSocket, ErrorCode, IOContext, _uv_ymq
+from scaler.io.ymq import BinderSocket, Bytes, ConnectorSocket, ErrorCode, IOContext, InvalidAddressFormatError
 
 
 class TestSockets(unittest.IsolatedAsyncioTestCase):
@@ -25,7 +25,7 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_address(self):
         ctx = IOContext()
 
-        with self.assertRaises(_uv_ymq.InvalidAddressFormatError) as exc:
+        with self.assertRaises(InvalidAddressFormatError) as exc:
             await BinderSocket(ctx, "binder").bind_to("invalid_address")
         self.assertEqual(exc.exception.code, ErrorCode.InvalidAddressFormat)
 

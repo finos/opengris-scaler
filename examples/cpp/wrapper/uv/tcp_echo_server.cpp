@@ -1,4 +1,4 @@
-// TCP echo server using scaler::uv
+// TCP echo server using scaler::wrapper::uv
 //
 // This is the C++ equivalent of libuv's tcp-echo-server example:
 // https://github.com/libuv/libuv/blob/v1.x/docs/code/tcp-echo-server/main.c

@@ -22,9 +22,8 @@ function(add_test_executable test_name source_file)
 
     target_link_libraries(${test_name} PRIVATE
         $<$<NOT:$<PLATFORM_ID:Windows>>:object_storage_server_objs>
-        scaler_wrapper_uv
-        uv_ymq_objs
         ymq_objs
+        scaler_wrapper_uv
         CapnProto::capnp
         CapnProto::kj
         GTest::gtest_main
