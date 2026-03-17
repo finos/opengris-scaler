@@ -53,10 +53,15 @@ graphblas = [
 aws = [
     "boto3",
 ]
+orb = [
+    "orb-py~=1.3; python_version >= '3.10'",
+    "boto3; python_version >= '3.10'",
+]
 all = [
     "opengris-scaler[aws]",
     "opengris-scaler[graphblas]",
     "opengris-scaler[gui]",
+    "opengris-scaler[orb]",
     "opengris-scaler[uvloop]",
 ]
 
@@ -93,6 +98,7 @@ scaler_worker_manager_baremetal_native = "scaler.entry_points.worker_manager_bar
 scaler_worker_manager_symphony = "scaler.entry_points.worker_manager_symphony:main"
 scaler_worker_manager_aws_raw_ecs = "scaler.entry_points.worker_manager_aws_raw_ecs:main"
 scaler_worker_manager_aws_hpc_batch = "scaler.entry_points.worker_manager_aws_hpc_batch:main"
+scaler_worker_manager_orb = "scaler.entry_points.worker_manager_orb:main"
 
 [tool.scikit-build]
 cmake.source-dir = "."

@@ -247,8 +247,10 @@ The following table maps each Scaler command to its corresponding section name i
 | `scaler_object_storage_server`       | `[object_storage_server]`       |
 | `scaler_ui`                          | `[webui]`                       |
 | `scaler_top`                         | `[top]`                         |
-| `scaler_worker_manager_baremetal_native`       | `[native_worker_manager]`       |
-| `scaler_worker_manager_symphony`     | `[symphony_worker_manager]`     |
+| `scaler_worker_manager_baremetal_native` | `[native_worker_manager]`   |
+| `scaler_worker_manager_symphony`         | `[symphony_worker_manager]` |
+| `scaler_worker_manager_aws_raw_ecs`      | `[ecs_worker_manager]`      |
+| `scaler_worker_manager_orb`              | `[orb_worker_adapter]`      |
 
 ### Practical Scenarios & Examples
 
@@ -464,6 +466,26 @@ base_concurrency = number_of_cores - deepest_nesting_level
 where `deepest_nesting_level` is the deepest nesting level a task has in your workload. For instance, if you have a
 workload that has
 a base task that calls a nested task that calls another nested task, then the deepest nesting level is 2.
+
+## ORB (AWS EC2) integration
+
+A Scaler scheduler can interface with ORB (Open Resource Broker) to dynamically provision and manage workers on AWS EC2 instances.
+
+```bash
+$ scaler_worker_manager_orb tcp://127.0.0.1:2345 --image-id ami-0528819f94f4f5fa5
+```
+
+This will start an ORB worker adapter that connects to the Scaler scheduler at `tcp://127.0.0.1:2345`. The scheduler can then request new workers from this adapter, which will be launched as EC2 instances.
+
+### Configuration
+
+The ORB adapter requires `orb-py` and `boto3` to be installed. You can install them with:
+
+```bash
+$ pip install "opengris-scaler[orb]"
+```
+
+For more details on configuring ORB, including AWS credentials and instance templates, please refer to the [ORB Worker Adapter documentation](https://finos.github.io/opengris-scaler/tutorials/worker_manager_adapter/orb.html).
 
 ## Worker Manager usage
 
