@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scaler Web UI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="header">
+        <h1 class="header-title">Scaler Monitor</h1>
+        <span class="connection-status" id="conn-status">Disconnected</span>
+    </header>
+
+    <nav class="tab-bar" id="tab-bar">
+        <button class="tab active" data-tab="live">Live</button>
+        <button class="tab" data-tab="tasklog">Task Log</button>
+        <button class="tab" data-tab="stream">Worker Task Stream</button>
+        <button class="tab" data-tab="processors">Worker Processors</button>
+        <button class="tab" data-tab="settings">Settings</button>
+    </nav>
+
+    <!-- Tab: Live -->
+    <div class="tab-panel active" id="panel-live">
+        <div class="card scheduler-card">
+            <h3>Scheduler</h3>
+            <div class="scheduler-metrics">
+                <div class="metric">
+                    <span class="metric-label">CPU:</span>
+                    <span class="metric-value" id="sched-cpu">—</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">RSS:</span>
+                    <span class="metric-value" id="sched-rss">—</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">RSS Free:</span>
+                    <span class="metric-value" id="sched-rss-free">—</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Workers</h3>
+            <div class="table-wrap">
+                <table class="data-table" id="workers-table">
+                    <thead>
+                        <tr>
+                            <th>Worker</th>
+                            <th>Manager</th>
+                            <th>Agt CPU %</th>
+                            <th>Agt RSS (MB)</th>
+                            <th>Proc CPU %</th>
+                            <th>Proc RSS (MB)</th>
+                            <th>Free</th>
+                            <th>Sent</th>
+                            <th>Queued</th>
+                            <th>Suspended</th>
+                            <th>Lag</th>
+                            <th>ITL</th>
+                            <th>Last Seen</th>
+                            <th>Capabilities</th>
+                        </tr>
+                    </thead>
+                    <tbody id="workers-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab: Task Log -->
+    <div class="tab-panel" id="panel-tasklog">
+        <div class="card">
+            <h3>Task Log <span class="badge" id="tasklog-count">0</span></h3>
+            <div class="table-wrap">
+                <table class="data-table" id="tasklog-table">
+                    <thead>
+                        <tr>
+                            <th>Task ID</th>
+                            <th>Function</th>
+                            <th>Worker</th>
+                            <th>Time</th>
+                            <th>Duration</th>
+                            <th>Peak Mem</th>
+                            <th>Status</th>
+                            <th>Capabilities</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tasklog-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab: Worker Task Stream -->
+    <div class="tab-panel" id="panel-stream">
+        <div class="card" id="stream-card">
+            <div class="card-header-row">
+                <h3>Worker Task Stream</h3>
+                <button class="fit-page-btn" id="fit-page-btn" title="Toggle fit-to-page layout">Fit Page</button>
+            </div>
+            <div class="legend" id="stream-legend"></div>
+            <div class="stream-container" id="stream-container">
+                <canvas id="stream-canvas"></canvas>
+            </div>
+            <div class="stream-axis" id="stream-axis"></div>
+        </div>
+        <div class="card" id="memory-card">
+            <h3>Memory Usage</h3>
+            <div class="memory-container">
+                <canvas id="memory-canvas"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab: Worker Processors -->
+    <div class="tab-panel" id="panel-processors">
+        <div id="processors-container"></div>
+    </div>
+
+    <!-- Tab: Settings -->
+    <div class="tab-panel" id="panel-settings">
+        <div class="card settings-card">
+            <h3>Sliding Window Length</h3>
+            <div class="toggle-group" id="window-toggle">
+                <button class="toggle-btn active" data-value="5">5 min</button>
+                <button class="toggle-btn" data-value="10">10 min</button>
+                <button class="toggle-btn" data-value="30">30 min</button>
+            </div>
+        </div>
+        <div class="card settings-card">
+            <h3>Memory Usage Scale</h3>
+            <div class="toggle-group" id="scale-toggle">
+                <button class="toggle-btn active" data-value="linear">Linear</button>
+                <button class="toggle-btn" data-value="log">Log</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tooltip -->
+    <div class="tooltip" id="tooltip"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
