@@ -38,8 +38,9 @@ uvloop = [
     "uvloop; platform_system != 'Windows'",
 ]
 gui = [
-    "nicegui[plotly]==2.24.2; python_version == '3.8'",
-    "nicegui[plotly]==3.6.1; python_version >= '3.9'",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "websockets>=11.0",
 ]
 graphblas = [
     "python-graphblas==2023.7.0; python_version == '3.8'",
