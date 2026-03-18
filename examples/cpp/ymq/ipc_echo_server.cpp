@@ -1,43 +1,41 @@
-
-
-#include <future>
 #include <iostream>
-#include <memory>
+#include <string>
 
-#include "scaler/error/error.h"
 #include "scaler/ymq/io_context.h"
-#include "scaler/ymq/io_socket.h"
-#include "scaler/ymq/simple_interface.h"
+#include "scaler/ymq/sync/binder_socket.h"
 
-using scaler::ymq::Error;
+using scaler::ymq::Bytes;
 using scaler::ymq::IOContext;
-using scaler::ymq::IOSocketType;
 using scaler::ymq::Message;
-using scaler::ymq::syncBindSocket;
-using scaler::ymq::syncCreateSocket;
+using scaler::ymq::sync::BinderSocket;
 
 int main()
 {
     IOContext context;
 
-    auto socket = syncCreateSocket(context, IOSocketType::Binder, "ServerSocket");
-    std::cout << "Successfully created socket." << std::endl;
+    BinderSocket socket {context, "ServerSocket"};
 
-    syncBindSocket(socket, "ipc:///tmp/uds_echo2.sock");
-    std::cout << "Successfully bound socket." << std::endl;
+    auto bindResult = socket.bindTo("ipc:///tmp/uds_echo2.sock");
+    if (!bindResult.has_value()) {
+        std::cerr << "Failed to bind socket: " << bindResult.error().what() << std::endl;
+        return 1;
+    }
+
+    std::cout << "Successfully bound socket to " << bindResult->toString().value() << std::endl;
 
     while (true) {
-        auto recv_promise = std::promise<std::pair<Message, Error>>();
-        auto recv_future  = recv_promise.get_future();
+        auto recvResult = socket.recvMessage();
+        if (!recvResult.has_value()) {
+            std::cerr << "Failed to receive message: " << recvResult.error().what() << std::endl;
+            continue;
+        }
 
-        socket->recvMessage([&recv_promise](std::pair<Message, Error> msg) { recv_promise.set_value(std::move(msg)); });
+        Message receivedMsg = std::move(recvResult.value());
 
-        Message received_msg = recv_future.get().first;
-        auto send_promise    = std::promise<std::expected<void, Error>>();
-        auto send_future     = send_promise.get_future();
-        socket->sendMessage(
-            std::move(received_msg), [&send_promise](std::expected<void, Error>) { send_promise.set_value({}); });
-        send_future.wait();
+        auto sendResult = socket.sendMessage(receivedMsg.address.as_string().value(), std::move(receivedMsg.payload));
+        if (!sendResult.has_value()) {
+            std::cerr << "Failed to send message: " << sendResult.error().what() << std::endl;
+        }
     }
 
     return 0;

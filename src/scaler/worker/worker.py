@@ -13,6 +13,7 @@ from scaler.config.defaults import PROFILING_INTERVAL_SECONDS
 from scaler.config.types.network_backend import NetworkBackend
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.zmq import ZMQConfig, ZMQType
+from scaler.io import ymq
 from scaler.io.async_binder import ZMQAsyncBinder
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
 from scaler.io.utility import (
@@ -20,7 +21,6 @@ from scaler.io.utility import (
     create_async_object_storage_connector,
     get_scaler_network_backend_from_env,
 )
-from scaler.io.ymq import ymq
 from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,
@@ -64,6 +64,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         hard_processor_suspend: bool,
         logging_paths: Tuple[str, ...],
         logging_level: str,
+        worker_manager_id: bytes,
     ):
         multiprocessing.Process.__init__(self, name="Agent")
 
@@ -91,6 +92,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self._logging_paths = logging_paths
         self._logging_level = logging_level
+        self._worker_manager_id = worker_manager_id
 
         self._context: Optional[zmq.asyncio.Context] = None
         self._connector_external: Optional[AsyncConnector] = None
@@ -149,6 +151,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             object_storage_address=self._object_storage_address,
             capabilities=self._capabilities,
             task_queue_size=self._task_queue_size,
+            worker_manager_id=self._worker_manager_id,
         )
 
         self._profiling_manager = VanillaProfilingManager()
@@ -270,7 +273,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
         if get_scaler_network_backend_from_env() == NetworkBackend.tcp_zmq:
-            await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
+            await self.__graceful_shutdown()
 
         self._connector_external.destroy()
         self._processor_manager.destroy("quit")
@@ -290,7 +293,10 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             self._loop.add_signal_handler(signal.SIGTERM, lambda: asyncio.ensure_future(self.__graceful_shutdown()))
 
     async def __graceful_shutdown(self):
-        await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
+        try:
+            await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
+        except ymq.YMQException:
+            pass
 
     def __destroy(self):
         self._task.cancel()

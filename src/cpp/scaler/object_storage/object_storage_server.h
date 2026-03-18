@@ -1,9 +1,9 @@
 #pragma once
 
 #include <expected>
+#include <future>
 #include <iostream>
 #include <memory>
-#include <optional>
 #include <span>
 
 #include "scaler/logging/logging.h"
@@ -12,19 +12,18 @@
 #include "scaler/object_storage/io_helper.h"
 #include "scaler/object_storage/message.h"
 #include "scaler/object_storage/object_manager.h"
-#include "scaler/ymq/configuration.h"
+#include "scaler/ymq/future/binder_socket.h"
 #include "scaler/ymq/io_context.h"
-#include "scaler/ymq/io_socket.h"
-#include "scaler/ymq/simple_interface.h"
+#include "scaler/ymq/typedefs.h"
 
 namespace scaler {
 namespace object_storage {
 
 class ObjectStorageServer {
 public:
-    using Identity          = ymq::Configuration::IOSocketIdentity;
-    using SendMessageFuture = std::future<std::optional<ymq::Error>>;
-    using Bytes             = ymq::Bytes;
+    using Identity          = scaler::ymq::Identity;
+    using SendMessageFuture = std::future<std::expected<void, ymq::Error>>;
+    using Bytes             = scaler::ymq::Bytes;
 
     ObjectStorageServer();
 
@@ -45,7 +44,6 @@ public:
 
 private:
     struct Client {
-        std::shared_ptr<ymq::IOSocket> _ioSocket;
         Identity _identity;
     };
 
@@ -57,8 +55,8 @@ private:
     using ObjectRequestType  = scaler::protocol::ObjectRequestHeader::ObjectRequestType;
     using ObjectResponseType = scaler::protocol::ObjectResponseHeader::ObjectResponseType;
 
-    ymq::IOContext _ioContext;
-    std::shared_ptr<ymq::IOSocket> _ioSocket;
+    scaler::ymq::IOContext _ioContext;
+    std::unique_ptr<scaler::ymq::future::BinderSocket> _socket;
 
     int onServerReadyReader;
     int onServerReadyWriter;
@@ -94,21 +92,17 @@ private:
     void writeMessage(std::shared_ptr<Client> client, T& message, std::span<const unsigned char> payload)
     {
         // Send OSS header
-        auto messageBuffer = message.toBuffer();
-        ymq::Message ymqHeader {};
-        ymqHeader.address     = Bytes(client->_identity);
-        ymqHeader.payload     = Bytes((char*)messageBuffer.asBytes().begin(), messageBuffer.asBytes().size());
-        auto sendHeaderFuture = ymq::futureSendMessage(client->_ioSocket, std::move(ymqHeader));
+        auto messageBuffer    = message.toBuffer();
+        Bytes headerPayload   = Bytes((char*)messageBuffer.asBytes().begin(), messageBuffer.asBytes().size());
+        auto sendHeaderFuture = _socket->sendMessage(client->_identity, std::move(headerPayload));
 
         if (!payload.data()) {
             _pendingSendMessageFuts.emplace_back(std::move(sendHeaderFuture));
             return;
         }
 
-        ymq::Message ymqPayload {};
-        ymqPayload.address     = Bytes(client->_identity);
-        ymqPayload.payload     = Bytes((char*)payload.data(), payload.size());
-        auto sendPayloadFuture = ymq::futureSendMessage(client->_ioSocket, std::move(ymqPayload));
+        Bytes payloadBytes     = Bytes((char*)payload.data(), payload.size());
+        auto sendPayloadFuture = _socket->sendMessage(client->_identity, std::move(payloadBytes));
 
         _pendingSendMessageFuts.emplace_back(std::move(sendHeaderFuture));
         _pendingSendMessageFuts.emplace_back(std::move(sendPayloadFuture));

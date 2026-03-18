@@ -1,13 +1,11 @@
 from typing import Dict
 
-WorkerGroupID = bytes
-
 
 class CapacityExceededError(Exception):
     pass
 
 
-class WorkerGroupNotFoundError(Exception):
+class WorkerNotFoundError(Exception):
     pass
 
 

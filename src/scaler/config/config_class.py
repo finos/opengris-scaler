@@ -3,7 +3,13 @@ import enum
 import typing
 from typing import Any, Dict, List, Optional, OrderedDict, Type, TypeVar
 
-from configargparse import ArgParser, ArgumentDefaultsHelpFormatter, ArgumentTypeError, TomlConfigParser
+from configargparse import (
+    ArgParser,
+    ArgumentDefaultsHelpFormatter,
+    ArgumentTypeError,
+    ConfigFileParser,
+    TomlConfigParser,
+)
 
 from scaler.config.mixins import ConfigType
 
@@ -239,7 +245,7 @@ class ConfigClass:
         parser = ArgParser(
             program_name,
             formatter_class=ArgumentDefaultsHelpFormatter,
-            config_file_parser_class=UnderscoreTomlConfigParser(sections=[section]),
+            config_file_parser_class=UnderscoreTomlConfigParser.with_sections([section]),
         )
 
         parser.add_argument("--config", "-c", is_config_file=True, help="Path to the TOML configuration file.")
@@ -266,14 +272,18 @@ class ConfigClass:
         return cls(**kwargs)
 
 
-class UnderscoreTomlConfigParser:
-    """A TOML config parser that converts underscores to hyphens in key names"""
+class UnderscoreTomlConfigParser(ConfigFileParser):
+    """A TOML config parser that converts underscores to hyphens in key names."""
 
-    def __init__(self, sections: Optional[List[str]] = None):
-        self._parser = TomlConfigParser(sections=sections)
+    _sections: Optional[List[str]] = None
 
-    def __call__(self):
-        return self
+    def __init__(self):
+        self._parser = TomlConfigParser(sections=self._sections)
+
+    @classmethod
+    def with_sections(cls, sections: List[str]) -> type:
+        """Return a subclass with the given sections baked in."""
+        return type(cls.__name__, (cls,), {"_sections": sections})
 
     def parse(self, stream) -> OrderedDict[str, Any]:
         return OrderedDict((k.replace("_", "-"), v) for k, v in self._parser.parse(stream).items())

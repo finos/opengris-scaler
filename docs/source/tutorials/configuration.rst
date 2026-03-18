@@ -140,9 +140,10 @@ Or through the programmatic API:
         death_timeout_seconds=300,
     )
 
-Worker Adapter Settings
+Worker Manager Settings
 -----------------------
 
+Worker managers share many common configuration settings for networking, worker behavior, and logging.
 Worker managers share many common configuration settings for networking, worker behavior, and logging.
 
 For a full list of these settings, see the :doc:`Worker Manager Common Parameters <worker_managers/common_parameters>` documentation.
@@ -169,7 +170,7 @@ Core Concepts
 
 * **Naming Convention**: The keys in the TOML file must match the long-form command-line arguments. The rule is to replace any hyphens (``-``) with underscores (``_``).
 
-    * For example, the flag ``--num-of-workers`` becomes the TOML key ``num_of_workers``.
+    * For example, the flag ``--max-task-concurrency`` becomes the TOML key ``max_task_concurrency``.
     * One can discover all available keys by running any command with the ``-h`` or ``--help`` flag.
 
 Supported Components and Section Names
@@ -193,16 +194,14 @@ The following table maps each Scaler command to its corresponding section name i
      - ``[webui]``
    * - ``scaler_top``
      - ``[top]``
-   * - ``scaler_worker_adapter_native``
-     - ``[native_worker_adapter]``
-   * - ``scaler_worker_adapter_fixed_native``
-     - ``[fixed_native_worker_adapter]``
-   * - ``scaler_worker_adapter_symphony``
-     - ``[symphony_worker_adapter]``
-   * - ``scaler_worker_adapter_ecs``
-     - ``[ecs_worker_adapter]``
-   * - ``python -m scaler.entry_points.worker_adapter_aws_hpc``
-     - ``[aws_hpc_worker_adapter]``
+   * - ``scaler_worker_manager_baremetal_native``
+     - ``[native_worker_manager]``
+   * - ``scaler_worker_manager_symphony``
+     - ``[symphony_worker_manager]``
+   * - ``scaler_worker_manager_aws_raw_ecs``
+     - ``[ecs_worker_manager]``
+   * - ``python -m scaler.entry_points.worker_manager_aws_hpc_batch``
+     - ``[aws_hpc_worker_manager]``
 
 
 Practical Scenarios & Examples
@@ -227,7 +226,7 @@ Here is an example of a single ``example_config.toml`` file that configures mult
     policy_content = "allocate=even_load; scaling=no"
 
     [cluster]
-    num_of_workers = 8
+    max_task_concurrency = 8
     per_worker_capabilities = "linux,cpu=8"
     task_timeout_seconds = 600
 
@@ -253,7 +252,43 @@ You can override any value from the TOML file by providing it as a command-line 
 
 .. code-block:: bash
 
-    # The --num-of-workers flag will take precedence over the [cluster] section
-    scaler_cluster tcp://127.0.0.1:6378 --config example_config.toml --num-of-workers 12
+    # The --max-task-concurrency flag will take precedence over the [cluster] section
+    scaler_cluster tcp://127.0.0.1:6378 --config example_config.toml --max-task-concurrency 12
 
 The cluster will start with **12 workers**, but all other settings (like ``task_timeout_seconds``) will still be loaded from the ``[cluster]`` section of ``example_config.toml``.
+
+
+**Scenario 3: Waterfall Scaling Configuration**
+
+To use the ``waterfall_v1`` policy engine for priority-based scaling across multiple worker adapters, set ``policy_engine_type = "waterfall_v1"`` and provide rules in ``policy_content`` (one rule per line, ``#`` comments supported):
+
+**waterfall_config.toml**
+
+.. code-block:: toml
+
+    [scheduler]
+    object_storage_address = "tcp://127.0.0.1:6379"
+    monitor_address = "tcp://127.0.0.1:6380"
+    logging_level = "INFO"
+    policy_engine_type = "waterfall_v1"
+    policy_content = """
+    # priority, adapter_id_prefix, max_task_concurrency
+    1, NAT, 8
+    2, ECS, 50
+    """
+
+    [native_worker_adapter]
+    max_task_concurrency = 8
+
+    [ecs_worker_adapter]
+    max_task_concurrency = 50
+
+Then start the scheduler and worker adapters:
+
+.. code-block:: bash
+
+    scaler_scheduler tcp://127.0.0.1:8516 --config waterfall_config.toml &
+    scaler_worker_adapter_native tcp://127.0.0.1:8516 --config waterfall_config.toml &
+    scaler_worker_adapter_ecs tcp://127.0.0.1:8516 --config waterfall_config.toml &
+
+Local ``NAT`` workers will scale up first. When they reach capacity, ``ECS`` workers will begin scaling. On scale-down, ECS workers drain before local workers.

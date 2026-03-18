@@ -4,30 +4,26 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 
 from scaler.protocol.python.message import (
     InformationSnapshot,
-    WorkerAdapterCommand,
-    WorkerAdapterCommandType,
-    WorkerAdapterHeartbeat,
+    WorkerManagerCommand,
+    WorkerManagerCommandType,
+    WorkerManagerHeartbeat,
 )
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingController
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
-    WorkerGroupCapabilities,
-    WorkerGroupID,
-    WorkerGroupState,
-)
+from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.utility.identifiers import WorkerID
 
 
-class CapabilityScalingController(ScalingController):
+class CapabilityScalingPolicy(ScalingPolicy):
     """
-    A stateless scaling controller that scales worker groups based on task-required capabilities.
+    A stateless scaling policy that scales workers based on task-required capabilities.
 
-    When tasks require specific capabilities (e.g., {"gpu": 1}), this controller will
-    request worker groups that provide those capabilities from the worker adapter.
-    It uses the same task-to-worker ratio logic as VanillaScalingController but applies
+    When tasks require specific capabilities (e.g., {"gpu": 1}), this policy will
+    request workers that provide those capabilities from the worker manager.
+    It uses the same task-to-worker ratio logic as VanillaScalingPolicy but applies
     it per capability set.
 
-    All state (worker_groups, worker_group_capabilities) is passed in as parameters.
+    All state (managed_worker_ids, managed_worker_capabilities) is passed in as parameters.
     """
 
     def __init__(self):
@@ -37,13 +33,11 @@ class CapabilityScalingController(ScalingController):
     def get_scaling_commands(
         self,
         information_snapshot: InformationSnapshot,
-        adapter_heartbeat: WorkerAdapterHeartbeat,
-        worker_groups: WorkerGroupState,
-        worker_group_capabilities: WorkerGroupCapabilities,
-    ) -> List[WorkerAdapterCommand]:
-        # Derive worker_groups_by_capability from worker_groups + worker_group_capabilities
-        worker_groups_by_capability = self._derive_worker_groups_by_capability(worker_groups, worker_group_capabilities)
-
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
+        managed_worker_ids: List[WorkerID],
+        managed_worker_capabilities: Dict[str, int],
+        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
+    ) -> List[WorkerManagerCommand]:
         # Group tasks by their required capabilities
         tasks_by_capability = self._group_tasks_by_capability(information_snapshot)
 
@@ -52,29 +46,22 @@ class CapabilityScalingController(ScalingController):
 
         # Try to get start commands first - if any, return early
         start_commands = self._get_start_commands(
-            tasks_by_capability, workers_by_capability, worker_groups_by_capability, adapter_heartbeat
+            tasks_by_capability,
+            workers_by_capability,
+            managed_worker_ids,
+            managed_worker_capabilities,
+            worker_manager_heartbeat,
         )
         if start_commands:
             return start_commands
 
         # Otherwise check for shutdown commands
         return self._get_shutdown_commands(
-            information_snapshot, tasks_by_capability, workers_by_capability, worker_groups_by_capability
+            information_snapshot, tasks_by_capability, workers_by_capability, managed_worker_ids
         )
 
-    def get_status(self, worker_groups: WorkerGroupState) -> ScalingManagerStatus:
-        return ScalingManagerStatus.new_msg(worker_groups=worker_groups)
-
-    def _derive_worker_groups_by_capability(
-        self, worker_groups: WorkerGroupState, worker_group_capabilities: WorkerGroupCapabilities
-    ) -> Dict[FrozenSet[str], Dict[WorkerGroupID, List[WorkerID]]]:
-        """Derive worker_groups_by_capability from worker_groups and worker_group_capabilities."""
-        result: Dict[FrozenSet[str], Dict[WorkerGroupID, List[WorkerID]]] = defaultdict(dict)
-        for worker_group_id, worker_ids in worker_groups.items():
-            caps = worker_group_capabilities.get(worker_group_id, {})
-            capability_keys = frozenset(caps.keys())
-            result[capability_keys][worker_group_id] = worker_ids
-        return result
+    def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
+        return ScalingManagerStatus.new_msg(managed_workers=managed_workers)
 
     def _group_tasks_by_capability(
         self, information_snapshot: InformationSnapshot
@@ -124,11 +111,12 @@ class CapabilityScalingController(ScalingController):
         self,
         tasks_by_capability: Dict[FrozenSet[str], List[Dict[str, int]]],
         workers_by_capability: Dict[FrozenSet[str], List[Tuple[WorkerID, int]]],
-        worker_groups_by_capability: Dict[FrozenSet[str], Dict[WorkerGroupID, List[WorkerID]]],
-        adapter_heartbeat: WorkerAdapterHeartbeat,
-    ) -> List[WorkerAdapterCommand]:
+        managed_worker_ids: List[WorkerID],
+        managed_worker_capabilities: Dict[str, int],
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
+    ) -> List[WorkerManagerCommand]:
         """Collect all start commands for capability sets that need scaling up."""
-        commands: List[WorkerAdapterCommand] = []
+        commands: List[WorkerManagerCommand] = []
 
         for capability_keys, tasks in tasks_by_capability.items():
             if not tasks:
@@ -140,18 +128,16 @@ class CapabilityScalingController(ScalingController):
             task_count = len(tasks)
 
             if worker_count == 0 and task_count > 0:
-                if not self._has_capable_worker_group(capability_keys, worker_groups_by_capability):
-                    command = self._create_start_command(
-                        capability_dict, worker_groups_by_capability, adapter_heartbeat
-                    )
+                if not self._has_capable_managed_workers(
+                    capability_keys, managed_worker_ids, managed_worker_capabilities
+                ):
+                    command = self._create_start_command(capability_dict, managed_worker_ids, worker_manager_heartbeat)
                     if command is not None:
                         commands.append(command)
             elif worker_count > 0:
                 task_ratio = task_count / worker_count
                 if task_ratio > self._upper_task_ratio:
-                    command = self._create_start_command(
-                        capability_dict, worker_groups_by_capability, adapter_heartbeat
-                    )
+                    command = self._create_start_command(capability_dict, managed_worker_ids, worker_manager_heartbeat)
                     if command is not None:
                         commands.append(command)
 
@@ -162,94 +148,83 @@ class CapabilityScalingController(ScalingController):
         information_snapshot: InformationSnapshot,
         tasks_by_capability: Dict[FrozenSet[str], List[Dict[str, int]]],
         workers_by_capability: Dict[FrozenSet[str], List[Tuple[WorkerID, int]]],
-        worker_groups_by_capability: Dict[FrozenSet[str], Dict[WorkerGroupID, List[WorkerID]]],
-    ) -> List[WorkerAdapterCommand]:
-        """Collect all shutdown commands for idle worker groups."""
+        managed_worker_ids: List[WorkerID],
+    ) -> List[WorkerManagerCommand]:
+        """Collect all shutdown commands for idle workers."""
         # Complexity: O(C^2 * (T + W)) where C is the number of distinct capability sets,
         # T is the total number of tasks, and W is the total number of workers.
         # For each tracked capability set, we iterate over all task capability sets to count
         # matching tasks, and call _find_capable_workers which iterates over worker capability sets.
         # This could be optimized if it becomes a performance bottleneck.
-        commands: List[WorkerAdapterCommand] = []
 
-        for capability_keys, worker_group_dict in list(worker_groups_by_capability.items()):
-            if not worker_group_dict:
+        commands: List[WorkerManagerCommand] = []
+        managed_set = set(managed_worker_ids)
+
+        for capability_keys in list(workers_by_capability.keys()):
+            capable_workers = self._find_capable_workers(capability_keys, workers_by_capability)
+            worker_count = len(capable_workers)
+            if worker_count == 0:
                 continue
 
-            # Find tasks that these workers can handle
             task_count = 0
             for task_capability_keys, tasks in tasks_by_capability.items():
                 if task_capability_keys <= capability_keys:
                     task_count += len(tasks)
 
-            capable_workers = self._find_capable_workers(capability_keys, workers_by_capability)
-            worker_count = len(capable_workers)
-
-            if worker_count == 0:
-                continue
-
             task_ratio = task_count / worker_count
             if task_ratio < self._lower_task_ratio:
-                # Find the worker group with the least queued tasks
-                worker_group_task_counts: Dict[WorkerGroupID, int] = {}
-                for worker_group_id, worker_ids in worker_group_dict.items():
-                    total_queued = sum(
-                        information_snapshot.workers[worker_id].queued_tasks
-                        for worker_id in worker_ids
-                        if worker_id in information_snapshot.workers
-                    )
-                    worker_group_task_counts[worker_group_id] = total_queued
+                # Find least-busy managed worker with this capability
+                least_busy_wid = None
+                min_queued = float("inf")
+                for wid, queued in capable_workers:
+                    if wid in managed_set and queued < min_queued:
+                        min_queued = queued
+                        least_busy_wid = wid
 
-                if not worker_group_task_counts:
+                if least_busy_wid is None:
                     continue
 
-                # Select the worker group with the fewest queued tasks to shut down
-                least_busy_group_id = min(worker_group_task_counts, key=lambda gid: worker_group_task_counts[gid])
-
-                # Don't scale down if there are pending tasks and this would leave no capable workers
-                workers_in_group = len(worker_group_dict.get(least_busy_group_id, []))
-                remaining_worker_count = worker_count - workers_in_group
+                # Check we won't over-shrink
+                remaining_worker_count = worker_count - 1
                 if task_count > 0 and remaining_worker_count == 0:
-                    # This is the last worker group that can handle these tasks - don't shut it down
                     continue
                 if remaining_worker_count > 0 and (task_count / remaining_worker_count) > self._upper_task_ratio:
-                    # Shutting down this group would cause task ratio to exceed upper threshold and scale-up again
                     continue
 
                 commands.append(
-                    WorkerAdapterCommand.new_msg(
-                        worker_group_id=least_busy_group_id, command=WorkerAdapterCommandType.ShutdownWorkerGroup
+                    WorkerManagerCommand.new_msg(
+                        worker_ids=[bytes(least_busy_wid)], command=WorkerManagerCommandType.ShutdownWorkers
                     )
                 )
 
         return commands
 
-    def _has_capable_worker_group(
+    def _has_capable_managed_workers(
         self,
         required_capabilities: FrozenSet[str],
-        worker_groups_by_capability: Dict[FrozenSet[str], Dict[WorkerGroupID, List[WorkerID]]],
+        managed_worker_ids: List[WorkerID],
+        managed_worker_capabilities: Dict[str, int],
     ) -> bool:
         """
-        Check if we have already started a worker group that can handle tasks
+        Check if we already have managed workers that can handle tasks
         with the given required capabilities.
         """
-        for group_capability_keys, worker_groups in worker_groups_by_capability.items():
-            if worker_groups and required_capabilities <= group_capability_keys:
-                return True
-        return False
+        if not managed_worker_ids:
+            return False
+        manager_capability_keys = frozenset(managed_worker_capabilities.keys())
+        return required_capabilities <= manager_capability_keys
 
     def _create_start_command(
         self,
         capability_dict: Dict[str, int],
-        worker_groups_by_capability: Dict[FrozenSet[str], Dict[WorkerGroupID, List[WorkerID]]],
-        adapter_heartbeat: WorkerAdapterHeartbeat,
-    ) -> Optional[WorkerAdapterCommand]:
-        """Create a start worker group command if capacity allows."""
-        total_worker_groups = sum(len(groups) for groups in worker_groups_by_capability.values())
-        if total_worker_groups >= adapter_heartbeat.max_worker_groups:
+        managed_worker_ids: List[WorkerID],
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
+    ) -> Optional[WorkerManagerCommand]:
+        """Create a start workers command if capacity allows."""
+        if len(managed_worker_ids) >= worker_manager_heartbeat.max_task_concurrency:
             return None
 
-        logging.info(f"Requesting worker group with capabilities: {capability_dict!r}")
-        return WorkerAdapterCommand.new_msg(
-            worker_group_id=b"", command=WorkerAdapterCommandType.StartWorkerGroup, capabilities=capability_dict
+        logging.info(f"Requesting worker with capabilities: {capability_dict!r}")
+        return WorkerManagerCommand.new_msg(
+            worker_ids=[], command=WorkerManagerCommandType.StartWorkers, capabilities=capability_dict
         )

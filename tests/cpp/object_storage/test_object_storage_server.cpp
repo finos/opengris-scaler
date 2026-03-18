@@ -8,8 +8,7 @@
 
 #include "scaler/object_storage/object_storage_server.h"
 #include "scaler/ymq/io_context.h"
-#include "scaler/ymq/io_socket.h"
-#include "scaler/ymq/simple_interface.h"
+#include "scaler/ymq/sync/connector_socket.h"
 
 using scaler::object_storage::CAPNP_HEADER_SIZE;
 using scaler::object_storage::CAPNP_WORD_SIZE;
@@ -23,13 +22,7 @@ using scaler::object_storage::ObjectStorageServer;
 using scaler::ymq::Bytes;
 using scaler::ymq::Error;
 using scaler::ymq::IOContext;
-using scaler::ymq::IOSocket;
-using scaler::ymq::IOSocketType;
 using scaler::ymq::Message;
-using scaler::ymq::syncConnectSocket;
-using scaler::ymq::syncCreateSocket;
-using scaler::ymq::syncRecvMessage;
-using scaler::ymq::syncSendMessage;
 
 using ObjectRequestType  = scaler::protocol::ObjectRequestHeader::ObjectRequestType;
 using ObjectResponseType = scaler::protocol::ObjectResponseHeader::ObjectResponseType;
@@ -39,27 +32,22 @@ class ObjectStorageClient {
 public:
     ObjectStorageClient(
         std::shared_ptr<IOContext> ioContext, const std::string& serverHost, const std::string serverPort)
-        : ioContext(ioContext)
+        : ioContext(ioContext), socket(createSocket(ioContext, serverHost, serverPort))
     {
-        static int id = 0;
-        ioSocket =
-            syncCreateSocket(*ioContext.get(), IOSocketType::Connector, "ObjectStorageClient" + std::to_string(id++));
-        const std::string address = "tcp://" + serverHost + ':' + serverPort;
-        syncConnectSocket(ioSocket, address);
     }
 
-    ~ObjectStorageClient() { ioContext->removeIOSocket(ioSocket); }
+    ~ObjectStorageClient() = default;
 
     ObjectStorageClient(const ObjectStorageClient&)            = delete;
     ObjectStorageClient& operator=(const ObjectStorageClient&) = delete;
 
     void writeYMQMessage(Message message)
     {
-        auto error = syncSendMessage(ioSocket, std::move(message));
-        ASSERT_TRUE(!error);
+        auto result = socket.sendMessage(std::move(message.payload));
+        ASSERT_TRUE(result.has_value());
     }
 
-    auto readYMQMessage() { return syncRecvMessage(ioSocket); }
+    auto readYMQMessage() { return socket.recvMessage(); }
 
     void writeRequest(const ObjectRequestHeader& header, const std::optional<ObjectPayload>& payload)
     {
@@ -79,7 +67,7 @@ public:
     void readResponse(ObjectResponseHeader& header, std::optional<ObjectPayload>& payload)
     {
         std::array<uint64_t, CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE> buf {};
-        auto result = syncRecvMessage(ioSocket);
+        auto result = socket.recvMessage();
         ASSERT_TRUE(result.has_value());
 
         memcpy(buf.begin(), result->payload.data(), CAPNP_HEADER_SIZE);
@@ -87,7 +75,7 @@ public:
         header = ObjectResponseHeader::fromBuffer(buf);
 
         if (header.payloadLength > 0) {
-            auto result2 = syncRecvMessage(ioSocket);
+            auto result2 = socket.recvMessage();
             ASSERT_TRUE(result2.has_value());
             payload.emplace(result2->payload);
         } else {
@@ -96,8 +84,24 @@ public:
     }
 
 private:
+    static scaler::ymq::sync::ConnectorSocket createSocket(
+        std::shared_ptr<IOContext> ioContext, const std::string& serverHost, const std::string& serverPort)
+    {
+        static int id             = 0;
+        const std::string address = "tcp://" + serverHost + ':' + serverPort;
+
+        auto result = scaler::ymq::sync::ConnectorSocket::connect(
+            *ioContext, "ObjectStorageClient" + std::to_string(id++), address);
+
+        if (!result.has_value()) {
+            throw std::runtime_error("Failed to connect to server");
+        }
+
+        return std::move(result.value());
+    }
+
     std::shared_ptr<IOContext> ioContext;
-    std::shared_ptr<IOSocket> ioSocket;
+    scaler::ymq::sync::ConnectorSocket socket;
 };
 
 // This test fixture is for functional testing of the server's core features.

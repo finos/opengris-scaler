@@ -10,3 +10,5 @@ endif()
 
 target_sources(test_wrapper_uv PRIVATE test_tcp.cpp)
 target_sources(test_wrapper_uv PRIVATE test_pipe.cpp)
+
+target_link_libraries(test_wrapper_uv PRIVATE scaler_wrapper_uv)

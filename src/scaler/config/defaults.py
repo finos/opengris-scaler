@@ -38,8 +38,8 @@ DEFAULT_WORKER_TIMEOUT_SECONDS = 60
 # tasks for this client
 DEFAULT_CLIENT_TIMEOUT_SECONDS = 60
 
-# if didn't receive heartbeat for following seconds, then scheduler will treat worker adapter as dead and disconnect it
-DEFAULT_WORKER_ADAPTER_TIMEOUT_SECONDS = 10
+# if didn't receive heartbeat for following seconds, then scheduler will treat worker manager as dead and disconnect it
+DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS = 10
 
 # number of seconds for load balance, if value is -1 means disable load balance
 DEFAULT_LOAD_BALANCE_SECONDS = 1
@@ -55,7 +55,7 @@ DEFAULT_PER_WORKER_QUEUE_SIZE = 1000
 # WORKER SPECIFIC OPTIONS
 
 # number of workers, echo worker use 1 process
-DEFAULT_NUMBER_OF_WORKER = os.cpu_count() - 1
+DEFAULT_MAX_TASK_CONCURRENCY = os.cpu_count() - 1
 
 # number of seconds that worker agent send heartbeat to scheduler
 DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 2

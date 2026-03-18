@@ -157,7 +157,7 @@ requirements for tasks and allocate them to workers supporting these.
 .. literalinclude:: ../../../examples/task_capabilities.py
    :language: python
 
-Scaling Control and Worker Adapter
+Scaling Control and Worker Manager
 ----------------------------------
 
 Scaler offers an *experimental* auto-scaling feature based on policies, enabling you to scale workers up or down
@@ -169,9 +169,9 @@ Available scaling policies include:
 * **no**: No automatic scaling (static workers)
 * **vanilla**: Basic task-to-worker ratio scaling
 * **capability**: Capability-aware scaling for heterogeneous workloads (e.g., GPU tasks)
-* **fixed_elastic**: Hybrid scaling with primary and secondary worker adapters
+* **fixed_elastic**: Hybrid scaling with primary and secondary worker managers
 
-For detailed documentation on scaling policies, including the capability-aware scaling controller,
+For detailed documentation on scaling policies, including the capability-aware scaling policy,
 see the :doc:`scaling` guide.
 
 Client Disconnect and Shutdown

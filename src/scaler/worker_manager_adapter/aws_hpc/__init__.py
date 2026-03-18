@@ -1,5 +1,5 @@
 """
-AWS HPC Worker Adapter for OpenGRIS Scaler.
+AWS HPC Worker Manager for OpenGRIS Scaler.
 
 Supports multiple AWS HPC backends:
 - AWS Batch: Receives tasks from scheduler and submits as Batch jobs

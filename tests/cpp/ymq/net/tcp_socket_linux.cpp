@@ -9,12 +9,9 @@
 #include <thread>
 #include <vector>
 
-#include "scaler/ymq/internal/network_utils.h"
-#include "scaler/ymq/internal/socket_address.h"
+#include "scaler/ymq/address.h"
 #include "tests/cpp/ymq/common/utils.h"
 #include "tests/cpp/ymq/net/tcp_socket.h"
-
-using scaler::ymq::SocketAddress;
 
 TCPSocket::TCPSocket(bool nodelay): _fd(-1), _nodelay(nodelay)
 {
@@ -56,17 +53,16 @@ TCPSocket& TCPSocket::operator=(TCPSocket&& other) noexcept
     return *this;
 }
 
-void TCPSocket::tryConnect(const std::string& address_str, int tries) const
+void TCPSocket::tryConnect(const scaler::ymq::Address& address, int tries) const
 {
-    auto address = scaler::ymq::stringToSocketAddress(address_str).value();
-    if (address.nativeHandleType() != SocketAddress::Type::TCP) {
-        throw std::runtime_error(std::format("Unsupported protocol for TCPSocket: {}", address.nativeHandleType()));
+    if (address.type() != scaler::ymq::Address::Type::TCP) {
+        throw std::runtime_error("Unsupported protocol for TCPSocket: expected TCP");
     }
 
-    sockaddr_in addr = *(sockaddr_in*)address.nativeHandle();
+    const sockaddr* addr = address.asTCP().toSockAddr();
 
     for (int i = 0; i < tries; i++) {
-        auto code = ::connect(this->_fd, (sockaddr*)&addr, sizeof(addr));
+        auto code = ::connect(this->_fd, addr, sizeof(sockaddr_in));
 
         if (code < 0) {
             if (errno == ECONNREFUSED) {
@@ -81,20 +77,19 @@ void TCPSocket::tryConnect(const std::string& address_str, int tries) const
     }
 }
 
-void TCPSocket::bind(const std::string& address_str) const
+void TCPSocket::bind(const scaler::ymq::Address& address) const
 {
-    auto address = scaler::ymq::stringToSocketAddress(address_str).value();
-    if (address.nativeHandleType() != SocketAddress::Type::TCP) {
-        throw std::runtime_error(std::format("Unsupported protocol for TCPSocket: {}", address.nativeHandleType()));
+    if (address.type() != scaler::ymq::Address::Type::TCP) {
+        throw std::runtime_error("Unsupported protocol for TCPSocket: expected TCP");
     }
 
     int optval = 1;
     if (::setsockopt(this->_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0)
         raiseSocketError("failed to set SO_REUSEADDR");
 
-    sockaddr_in addr = *(sockaddr_in*)address.nativeHandle();
+    const sockaddr* addr = address.asTCP().toSockAddr();
 
-    if (::bind(this->_fd, (sockaddr*)&addr, sizeof(addr)) < 0)
+    if (::bind(this->_fd, addr, sizeof(sockaddr_in)) < 0)
         raiseSocketError("failed to bind");
 }
 

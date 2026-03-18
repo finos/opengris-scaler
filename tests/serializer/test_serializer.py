@@ -80,7 +80,7 @@ class TestSerializer(unittest.TestCase):
             tasks = [random.randint(0, 100) for _ in range(5)]
             function = functools.partial(heavy_function, payload=b"1" * size)
             with ScopedLogger(f"submit {len(tasks)} heavy function (500mb) tasks"):
-                results = client.map(function, [(i,) for i in tasks])
+                results = client.map(function, tasks)
 
             expected = [task * size for task in tasks]
             self.assertEqual(results, expected)

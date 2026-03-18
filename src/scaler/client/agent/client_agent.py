@@ -17,7 +17,7 @@ from scaler.config.types.zmq import ZMQConfig
 from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.mixins import AsyncConnector
 from scaler.io.utility import create_async_connector
-from scaler.io.ymq.ymq import YMQException
+from scaler.io.ymq import YMQException
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
     ClientDisconnect,

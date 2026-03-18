@@ -167,15 +167,16 @@ class AWSHPCTaskManager(Looper, TaskManager):
 
         # Handle processing task cancellation
         if task_processing:
-            future = self._task_id_to_future[task_cancel.task_id]
-            future.cancel()
+            future = self._task_id_to_future.get(task_cancel.task_id)
+            if future is not None:
+                future.cancel()
 
             # Cancel AWS Batch job if it exists
             if task_cancel.task_id in self._task_id_to_batch_job_id:
                 batch_job_id = self._task_id_to_batch_job_id[task_cancel.task_id]
                 await self._cancel_batch_job(batch_job_id)
 
-            self._processing_task_ids.remove(task_cancel.task_id)
+            self._processing_task_ids.discard(task_cancel.task_id)
             self._canceled_task_ids.add(task_cancel.task_id)
 
         result = TaskCancelConfirm.new_msg(

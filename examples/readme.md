@@ -17,6 +17,8 @@ Ensure that the scheduler and cluster are set up before running clients.
     Shows how to send a nested task to scheduler
 - `simple_client.py`
     Shows how to send a basic task to scheduler
+- `submit_tasks.py`
+    Shows various ways to submit tasks (submit, map, starmap)
 - `task_capabilities.py`
     Shows how to use capabilities to route task to various workers
 - `ray_compat/`

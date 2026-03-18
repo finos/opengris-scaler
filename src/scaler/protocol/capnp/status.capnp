@@ -54,10 +54,10 @@ struct WorkerManagerStatus {
 }
 
 struct ScalingManagerStatus {
-    workerGroups @0 :List(Pair);
+    managedWorkers @0 :List(Pair);
 
     struct Pair {
-        workerGroupID @0 :Data;
+        workerManagerID @0 :Data;
         workerIDs @1 :List(Data);
     }
 }

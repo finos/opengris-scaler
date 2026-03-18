@@ -1,17 +1,17 @@
 Scaling Policies
 ================
 
-Scaler provides an *experimental* auto-scaling feature that allows the system to dynamically adjust the number of workers based on workload. Scaling policies determine when to add or remove workers, while Worker Adapters handle the actual provisioning of resources.
+Scaler provides an *experimental* auto-scaling feature that allows the system to dynamically adjust the number of workers based on workload. Scaling policies determine when to add or remove workers, while Worker Managers handle the actual provisioning of resources.
 
 Overview
 --------
 
 The scaling system consists of two main components:
 
-1. **Scaling Controller**: A policy that monitors task queues and worker availability to make scaling decisions.
-2. **Worker Adapter**: A component that handles the actual creation and destruction of worker groups (e.g., starting containers, launching processes).
+1. **Scaling Policy**: A policy that monitors task queues and worker availability to make scaling suggestions.
+2. **Worker Manager**: A component that handles the actual creation and destruction of worker groups (e.g., starting containers, launching processes).
 
-The Scaling Controller runs within the Scheduler and communicates with Worker Adapters via Cap'n Proto messages. Worker Adapters connect to the Scheduler and receive scaling commands directly.
+The Scaling Policy runs within the Scheduler and communicates with Worker Managers via Cap'n Proto messages. Worker Managers connect to the Scheduler and receive scaling commands directly.
 
 The scaling policy is configured via the ``policy_content`` setting in the scheduler configuration:
 
@@ -44,7 +44,9 @@ Scaler provides several built-in scaling policies:
    * - ``capability``
      - Capability-aware scaling. Scales worker groups based on task-required capabilities (e.g., GPU, memory).
    * - ``fixed_elastic``
-     - Hybrid scaling using primary and secondary worker adapters with configurable limits.
+     - Hybrid scaling using primary and secondary worker managers with configurable limits.
+   * - ``waterfall_v1``
+     - Priority-based cascading across multiple worker managers. Higher-priority managers fill first; overflow goes to lower-priority.
 
 
 No Scaling (``no``)
@@ -64,7 +66,7 @@ The simplest policy that performs no automatic scaling. Use this when:
 Vanilla Scaling (``vanilla``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The vanilla scaling controller uses a simple task-to-worker ratio to make scaling decisions:
+The vanilla scaling policy uses a simple task-to-worker ratio to make scaling suggestions:
 
 * **Scale up**: When ``tasks / workers > upper_task_ratio`` (default: 10)
 * **Scale down**: When ``tasks / workers < lower_task_ratio`` (default: 1)
@@ -80,7 +82,7 @@ This policy is straightforward and works well for homogeneous workloads where al
 Capability Scaling (``capability``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The capability scaling controller is designed for heterogeneous workloads where tasks require specific capabilities (e.g., GPU, high memory, specialized hardware).
+The capability scaling policy is designed for heterogeneous workloads where tasks require specific capabilities (e.g., GPU, high memory, specialized hardware).
 
 **Key Features:**
 
@@ -97,12 +99,12 @@ The capability scaling controller is designed for heterogeneous workloads where 
 
 2. **Worker Matching**: Workers are grouped by their provided capabilities. A worker can handle a task if the task's required capabilities are a subset of the worker's capabilities.
 
-3. **Per-Capability Scaling**: The controller applies the task-to-worker ratio logic independently for each capability set:
+3. **Per-Capability Scaling**: The policy applies the task-to-worker ratio logic independently for each capability set:
 
    * **Scale up**: When ``tasks / capable_workers > upper_task_ratio`` (default: 5)
    * **Scale down**: When ``tasks / capable_workers < lower_task_ratio`` (default: 0.5)
 
-4. **Capability Request**: When scaling up, the controller requests worker groups with specific capabilities from the worker adapter.
+4. **Capability Request**: When scaling up, the policy requests worker groups with specific capabilities from the worker manager.
 
 **Configuration:**
 
@@ -134,18 +136,18 @@ Consider a workload with both CPU-only and GPU tasks:
 
 With the capability scaling policy:
 
-1. If no GPU workers exist, the controller requests a worker group with ``{"gpu": 1}`` from the adapter.
-2. CPU and GPU worker groups are scaled independently based on their respective task queues.
+1. If no GPU workers exist, the policy requests workers with ``{"gpu": 1}`` capability from the worker manager.
+2. CPU and GPU workers are scaled independently based on their respective task queues.
 3. Idle GPU workers can be shut down without affecting CPU task processing.
 
 
 Fixed Elastic Scaling (``fixed_elastic``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The fixed elastic scaling controller supports hybrid scaling with multiple worker adapters:
+The fixed elastic scaling policy supports hybrid scaling with multiple worker managers:
 
-* **Primary Adapter**: A single worker group (identified by ``max_worker_groups == 1``) that starts once and never shuts down
-* **Secondary Adapter**: Elastic capacity (``max_worker_groups > 1``) that scales based on demand
+* **Primary Manager**: A single worker (identified by ``max_task_concurrency == 1``) that starts once and never shuts down
+* **Secondary Manager**: Elastic capacity (``max_task_concurrency > 1``) that scales based on demand
 
 This is useful for scenarios where you have a fixed pool of dedicated resources but want to burst to additional resources during peak demand.
 
@@ -156,52 +158,88 @@ This is useful for scenarios where you have a fixed pool of dedicated resources 
 
 **Behavior:**
 
-* The primary adapter's worker group is started once and never shut down
-* Secondary adapter groups are created when demand exceeds primary capacity
-* When scaling down, only secondary adapter groups are shut down
+* The primary manager's worker is started once and never shut down
+* Secondary manager workers are created when demand exceeds primary capacity
+* When scaling down, only secondary manager workers are shut down
 
 
-Worker Adapter Protocol
+Waterfall Scaling (``waterfall_v1``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The waterfall scaling policy cascades worker scaling across prioritized worker managers. Higher-priority managers fill first; when they reach capacity, overflow goes to the next priority tier. When scaling down, the lowest-priority managers drain first.
+
+This is useful for hybrid deployments where you want to prefer cheaper or lower-latency resources (e.g., local bare-metal) and only burst to more expensive resources (e.g., cloud) when needed.
+
+**Configuration:**
+
+The waterfall policy uses ``policy_engine_type = "waterfall_v1"`` and a newline-separated rule format for ``policy_content``. Each rule is a comma-separated line with three fields: ``priority``, ``worker_manager_id``, ``max_task_concurrency``. Lines starting with ``#`` are comments.
+
+.. code:: toml
+
+    [scheduler]
+    policy_engine_type = "waterfall_v1"
+    policy_content = """
+    # priority, worker_manager_id, max_task_concurrency
+    # Use local workers first (cheap, low latency)
+    1, NAT|local1, 8
+    # Overflow to ECS when local capacity is exhausted
+    2, ECS|prod1, 50
+    """
+
+Rules reference exact worker manager IDs. Each rule maps to one specific worker manager.
+
+
+Worker Manager Identity
 -----------------------
 
-Scaling controllers, running within the scheduler process, communicate with worker adapters using Cap'n Proto messages through the connection that worker adapters use to communicate with the scheduler. The protocol uses the following message types:
+Every worker manager must be configured with a ``worker_manager_id`` (``--worker-manager-id`` / ``-wmi``). This ID is used by the scheduler to track which workers belong to which manager and to make scaling decisions.
 
-**WorkerAdapterHeartbeat (Adapter -> Scheduler):**
+**Requirements:**
 
-Worker adapters periodically send heartbeats to the scheduler containing their capacity information:
+* The ``worker_manager_id`` must be a **non-empty string**, even when only a single worker manager is deployed.
+* The ``worker_manager_id`` must be **globally unique** across all worker managers connected to the same scheduler. If a second manager attempts to connect with a ``worker_manager_id`` that is already in use, the scheduler rejects it.
+* There is no auto-generated default. The ID must always be provided explicitly via the command line or configuration file.
 
-* ``max_worker_groups``: Maximum number of worker groups this adapter can manage
-* ``workers_per_group``: Number of workers in each group
-* ``capabilities``: Default capabilities for workers from this adapter
 
-**WorkerAdapterCommand (Scheduler -> Adapter):**
+Worker Manager Protocol
+-----------------------
 
-The scheduler sends commands to worker adapters:
+Scaling policies, running within the scheduler process, communicate with worker managers using Cap'n Proto messages through the connection that worker managers use to communicate with the scheduler. The protocol uses the following message types:
 
-* ``StartWorkerGroup``: Request to start a new worker group
+**WorkerManagerHeartbeat (Manager -> Scheduler):**
 
-  * ``worker_group_id``: Empty for new groups (adapter assigns ID)
-  * ``capabilities``: Required capabilities for the worker group
+Worker managers periodically send heartbeats to the scheduler containing their capacity information:
 
-* ``ShutdownWorkerGroup``: Request to shut down an existing worker group
+* ``max_task_concurrency``: Maximum number of workers this manager can manage
+* ``capabilities``: Default capabilities for workers from this manager
+* ``worker_manager_id``: The unique identity of this manager (must be non-empty and globally unique)
 
-  * ``worker_group_id``: ID of the group to shut down
+**WorkerManagerCommand (Scheduler -> Manager):**
 
-**WorkerAdapterCommandResponse (Adapter -> Scheduler):**
+The scheduler sends commands to worker managers:
 
-Worker adapters respond to commands with status and details:
+* ``StartWorkers``: Request to start new workers
 
-* ``worker_group_id``: ID of the affected worker group
+  * ``capabilities``: Required capabilities for the workers
+
+* ``ShutdownWorkers``: Request to shut down existing workers
+
+  * ``worker_ids``: IDs of the workers to shut down
+
+**WorkerManagerCommandResponse (Manager -> Scheduler):**
+
+Worker managers respond to commands with status and details:
+
+* ``worker_ids``: IDs of the affected workers
 * ``command``: The command type this response is for
-* ``status``: Result status (``Success``, ``WorkerGroupTooMuch``, ``WorkerGroupIDNotFound``)
-* ``worker_ids``: List of worker IDs in the group (for start commands)
+* ``status``: Result status (``Success``, ``TooManyWorkers``, ``WorkerNotFound``)
 * ``capabilities``: Actual capabilities of the started workers
 
 
-Example Worker Adapter
+Example Worker Manager
 ----------------------
 
-Here is an example of a worker adapter using the ECS (Amazon Elastic Container Service) integration:
+Here is an example of a worker manager using the ECS (Amazon Elastic Container Service) integration:
 
 .. literalinclude:: ../../../src/scaler/worker_manager_adapter/aws_raw/ecs.py
    :language: python
@@ -219,4 +257,4 @@ Tips
 
 3. **Monitor scaling events**: Use Scaler's monitoring tools (``scaler_top``) to observe scaling behavior and tune policies.
 
-4. **Worker Adapter Placement**: Run worker adapters on machines that can provision the required resources (e.g., run the ECS adapter where it has AWS credentials, run the native adapter on the target machine).
+4. **Worker Manager Placement**: Run worker managers on machines that can provision the required resources (e.g., run the ECS worker manager where it has AWS credentials, run the native worker manager on the target machine).

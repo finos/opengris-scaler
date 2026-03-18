@@ -1,15 +1,18 @@
+import multiprocessing
 import os
 import time
 import unittest
 
-from scaler import Client, Cluster, SchedulerClusterCombo
+from scaler import Client, SchedulerClusterCombo
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
+from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.defaults import DEFAULT_LOAD_BALANCE_SECONDS
-from scaler.config.section.cluster import ClusterConfig
-from scaler.config.types.worker import WorkerCapabilities, WorkerNames
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
+from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
+from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
 
@@ -46,33 +49,38 @@ class TestBalance(unittest.TestCase):
 
         time.sleep(3)
 
-        new_cluster = Cluster(
-            config=ClusterConfig(
-                scheduler_address=combo._cluster._address,
-                object_storage_address=None,
+        base_manager = combo._worker_manager
+        new_manager = NativeWorkerManager(
+            NativeWorkerManagerConfig(
+                worker_manager_config=WorkerManagerConfig(
+                    scheduler_address=base_manager._address,
+                    object_storage_address=None,
+                    max_task_concurrency=N_WORKERS - 1,
+                ),
+                worker_manager_id="test_manager",
                 preload=None,
-                worker_names=WorkerNames([str(i) for i in range(0, N_WORKERS - 1)]),
-                num_of_workers=N_WORKERS - 1,
-                event_loop=combo._cluster._event_loop,
+                event_loop=base_manager._event_loop,
                 worker_io_threads=1,
+                mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities({}),
-                    per_worker_task_queue_size=combo._cluster._per_worker_task_queue_size,
-                    heartbeat_interval_seconds=combo._cluster._heartbeat_interval_seconds,
-                    task_timeout_seconds=combo._cluster._task_timeout_seconds,
-                    death_timeout_seconds=combo._cluster._death_timeout_seconds,
-                    garbage_collect_interval_seconds=combo._cluster._garbage_collect_interval_seconds,
-                    trim_memory_threshold_bytes=combo._cluster._trim_memory_threshold_bytes,
-                    hard_processor_suspend=combo._cluster._hard_processor_suspend,
+                    per_worker_task_queue_size=base_manager._task_queue_size,
+                    heartbeat_interval_seconds=base_manager._heartbeat_interval_seconds,
+                    task_timeout_seconds=base_manager._task_timeout_seconds,
+                    death_timeout_seconds=base_manager._death_timeout_seconds,
+                    garbage_collect_interval_seconds=base_manager._garbage_collect_interval_seconds,
+                    trim_memory_threshold_bytes=base_manager._trim_memory_threshold_bytes,
+                    hard_processor_suspend=base_manager._hard_processor_suspend,
                 ),
                 logging_config=LoggingConfig(
-                    paths=combo._cluster._logging_paths,
-                    level=combo._cluster._logging_level,
-                    config_file=combo._cluster._logging_config_file,
+                    paths=base_manager._logging_paths,
+                    level=base_manager._logging_level,
+                    config_file=base_manager._logging_config_file,
                 ),
             )
         )
-        new_cluster.start()
+        process = multiprocessing.Process(target=new_manager.run)
+        process.start()
 
         pids = {f.result() for f in futures}
 
@@ -80,5 +88,6 @@ class TestBalance(unittest.TestCase):
 
         client.disconnect()
 
-        new_cluster.shutdown()
+        process.terminate()
+        process.join()
         combo.shutdown()

@@ -1,10 +1,13 @@
-from scaler.cluster.cluster import Cluster
-from scaler.config.section.cluster import ClusterConfig
-from scaler.utility.event_loop import register_event_loop
+import dataclasses
+
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
+from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 
 
-def main():
-    cluster_config = ClusterConfig.parse("Scaler Standalone Compute Cluster", "cluster")
-    register_event_loop(cluster_config.event_loop)
-    cluster = Cluster(cluster_config)
-    cluster.run()
+def main() -> None:
+    config = NativeWorkerManagerConfig.parse("Scaler Cluster", "cluster")
+    config = dataclasses.replace(config, mode=NativeWorkerManagerMode.FIXED)
+    NativeWorkerManager(config).run()
+
+
+__all__ = ["main"]

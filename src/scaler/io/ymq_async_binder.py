@@ -7,7 +7,7 @@ from typing import Awaitable, Callable, Dict, Optional
 from scaler.config.types.zmq import ZMQConfig
 from scaler.io.mixins import AsyncBinder
 from scaler.io.utility import deserialize, serialize
-from scaler.io.ymq import ymq
+from scaler.io.ymq import BinderSocket, Bytes, IOContext
 from scaler.protocol.python.mixins import Message
 from scaler.protocol.python.status import BinderStatus
 
@@ -20,9 +20,10 @@ class YMQAsyncBinder(AsyncBinder):
             identity = f"{os.getpid()}|{name}|{uuid.uuid4()}".encode()
         self._identity = identity
 
-        self._context = ymq.IOContext()
-        self._socket = self._context.createIOSocket_sync(self.identity.decode(), ymq.IOSocketType.Binder)
-        self._socket.bind_sync(self._address.to_address())
+        self._context = IOContext()
+
+        self._socket = BinderSocket(self._context, self._identity.decode())
+        self._socket.bind_to_sync(self._address.to_address())
 
         self._callback: Optional[Callable[[bytes, Message], Awaitable[None]]] = None
 
@@ -41,19 +42,19 @@ class YMQAsyncBinder(AsyncBinder):
         self._callback = callback
 
     async def routine(self):
-        ymqmsg = await self._socket.recv()
+        ymq_msg = await self._socket.recv_message()
 
-        message: Optional[Message] = deserialize(ymqmsg.payload.data)
+        message: Optional[Message] = deserialize(ymq_msg.payload.data)
         if message is None:
-            logging.error(f"received unknown message from {ymqmsg.address.data!r}: {ymqmsg.address.data!r}")
+            logging.error(f"received unknown message from {ymq_msg.address.data!r}: {ymq_msg.payload.data!r}")
             return
 
         self.__count_received(message.__class__.__name__)
-        await self._callback(ymqmsg.address.data, message)
+        await self._callback(ymq_msg.address.data, message)
 
     async def send(self, to: bytes, message: Message):
         self.__count_sent(message.__class__.__name__)
-        await self._socket.send(ymq.Message(address=to, payload=serialize(message)))
+        await self._socket.send_message(to.decode(), Bytes(serialize(message)))
 
     def get_status(self) -> BinderStatus:
         return BinderStatus.new_msg(received=self._received, sent=self._sent)

@@ -19,7 +19,7 @@ classifiers = [
 dynamic = ["version"]
 dependencies = [
     "bidict",
-    "configargparse",
+    "configargparse==1.7.5",
     "toml", # required by configargparse
     "cloudpickle",
     "psutil==7.2.2",
@@ -27,7 +27,6 @@ dependencies = [
     "pyzmq",
     "sortedcontainers==2.4.0",
     "tblib",
-    "aiohttp",
     "graphlib-backport; python_version < '3.9'",
     "typing-extensions>=4.0; python_version < '3.10'",
     "tomli; python_version < '3.11'",
@@ -38,13 +37,14 @@ uvloop = [
     "uvloop; platform_system != 'Windows'",
 ]
 gui = [
-    "nicegui[plotly]==2.24.2; python_version == '3.8'",
-    "nicegui[plotly]==3.6.1; python_version >= '3.9'",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "websockets>=11.0",
 ]
 graphblas = [
     "python-graphblas==2023.7.0; python_version == '3.8'",
-    "python-graphblas==2024.2.0; python_version == '3.9'",
-    "python-graphblas==2024.2.0; python_version >= '3.10'",
+    "python-graphblas==2024.2.0; python_version >= '3.9' and python_version < '3.11'",
+    "python-graphblas==2025.2.0; python_version >= '3.11'",
     "numpy==1.24.4; python_version == '3.8'",
     "numpy==2.0.2; python_version == '3.9'",
     "numpy==2.2.6; python_version >= '3.10'",
@@ -53,16 +53,10 @@ aws = [
     "boto3",
 ]
 all = [
-    "nicegui[plotly]==2.24.2; python_version == '3.8'",
-    "nicegui[plotly]==3.6.1; python_version >= '3.9'",
-    "python-graphblas==2023.7.0; python_version == '3.8'",
-    "python-graphblas==2024.2.0; python_version == '3.9'",
-    "python-graphblas==2024.2.0; python_version >= '3.10'",
-    "numpy==1.24.4; python_version == '3.8'",
-    "numpy==2.0.2; python_version == '3.9'",
-    "numpy==2.2.6; python_version >= '3.10'",
-    "uvloop; platform_system != 'Windows'",
-    "boto3",
+    "opengris-scaler[aws]",
+    "opengris-scaler[graphblas]",
+    "opengris-scaler[gui]",
+    "opengris-scaler[uvloop]",
 ]
 
 [dependency-groups]
@@ -95,7 +89,6 @@ scaler_top = "scaler.entry_points.top:main"
 scaler_ui = "scaler.entry_points.webui:main"
 scaler_object_storage_server = "scaler.entry_points.object_storage_server:main"
 scaler_worker_manager_baremetal_native = "scaler.entry_points.worker_manager_baremetal_native:main"
-scaler_worker_manager_baremetal_fixed_native = "scaler.entry_points.worker_manager_baremetal_fixed_native:main"
 scaler_worker_manager_symphony = "scaler.entry_points.worker_manager_symphony:main"
 scaler_worker_manager_aws_raw_ecs = "scaler.entry_points.worker_manager_aws_raw_ecs:main"
 scaler_worker_manager_aws_hpc_batch = "scaler.entry_points.worker_manager_aws_hpc_batch:main"
@@ -103,7 +96,14 @@ scaler_worker_manager_aws_hpc_batch = "scaler.entry_points.worker_manager_aws_hp
 [tool.scikit-build]
 cmake.source-dir = "."
 wheel.packages = ["src/scaler"]
-build.targets = ["py_ymq", "py_object_storage_server", "py_one_to_many_dict", "py_stable_priority_queue", "py_many_to_many_dict", "py_indexed_queue"]
+build.targets = [
+    "py_ymq",
+    "py_object_storage_server",
+    "py_one_to_many_dict",
+    "py_stable_priority_queue",
+    "py_many_to_many_dict",
+    "py_indexed_queue",
+]
 
 [tool.scikit-build.cmake.define]
 CMAKE_C_COMPILER = { env = "CMAKE_C_COMPILER", default = "gcc" }

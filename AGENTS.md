@@ -143,16 +143,27 @@ Both C++ and Python code share these standards:
 
 ### Setting Up Development Environment
 
+The devcontainer (`.devcontainer/`) comes with all C++ dependencies pre-installed (CMake, GCC, Cap'n Proto, Boost,
+libuv) as well as `uv`. You can detect the devcontainer via the `REMOTE_CONTAINERS=true` environment variable.
+When running in the devcontainer, skip the C++ dependency setup steps below.
+
+The C++ components are built automatically by `uv pip install -e .` via `scikit-build-core`, so a separate
+`./scripts/build.sh` step is only needed for standalone C++ development or testing.
+
 ```bash
-# Setup C++ dependencies
+# Create and activate a virtual environment
+uv venv .venv
+source .venv/bin/activate
+
+# Install Python package in development mode (also builds C++ components)
+uv pip install -e .
+
+# Setup C++ dependencies (skip in devcontainer — already installed)
 ./scripts/library_tool.sh capnp download
 ./scripts/library_tool.sh capnp compile
 ./scripts/library_tool.sh capnp install
 
-# Install Python package in development mode
-pip install -e .
-
-# Building C++ components
+# Building C++ components standalone (only if needed outside of pip install)
 ./scripts/build.sh
 ```
 
@@ -164,3 +175,11 @@ python -m unittest discover  # Python
 ```
 
 When writing tests, try to match the directory and module/namespace structure of the code under test.
+
+### Per-User Configuration
+
+Developer-specific preferences (e.g. build parallelism limits, preferred tools) should go in a `.agents-local.md`
+file in the project root. This file is gitignored and will not be committed.
+
+**IMPORTANT:** Agents **MUST** read `.agents-local.md` before performing any build, install, or terminal command.
+Its contents are mandatory overrides to this file and must always be followed.

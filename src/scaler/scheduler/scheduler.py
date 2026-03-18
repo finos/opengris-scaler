@@ -10,7 +10,7 @@ from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
 from scaler.io.utility import create_async_binder, create_async_object_storage_connector
-from scaler.io.ymq.ymq import YMQException
+from scaler.io.ymq import YMQException
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
     ClientDisconnect,
@@ -24,9 +24,9 @@ from scaler.protocol.python.message import (
     TaskCancelConfirm,
     TaskLog,
     TaskResult,
-    WorkerAdapterCommandResponse,
-    WorkerAdapterHeartbeat,
     WorkerHeartbeat,
+    WorkerManagerCommandResponse,
+    WorkerManagerHeartbeat,
 )
 from scaler.protocol.python.mixins import Message
 from scaler.scheduler.controllers.balance_controller import VanillaBalanceController
@@ -35,11 +35,10 @@ from scaler.scheduler.controllers.config_controller import VanillaConfigControll
 from scaler.scheduler.controllers.graph_controller import VanillaGraphTaskController
 from scaler.scheduler.controllers.information_controller import VanillaInformationController
 from scaler.scheduler.controllers.object_controller import VanillaObjectController
-from scaler.scheduler.controllers.policies.mixins import ScalerPolicy
-from scaler.scheduler.controllers.policies.utility import create_scaler_policy
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
-from scaler.scheduler.controllers.worker_adapter_controller import WorkerAdapterController
+from scaler.scheduler.controllers.vanilla_policy_controller import VanillaPolicyController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
+from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ClientID, WorkerID
@@ -95,7 +94,7 @@ class Scheduler:
         )
         logging.info(f"{self.__class__.__name__}: listen to scheduler monitor address {monitor_address.to_address()}")
 
-        self._scaler_policy: ScalerPolicy = create_scaler_policy(
+        self._policy_controller = VanillaPolicyController(
             config.policy.policy_engine_type, config.policy.policy_content
         )
 
@@ -104,14 +103,14 @@ class Scheduler:
         self._graph_controller = VanillaGraphTaskController(config_controller=self._config_controller)
         self._task_controller = VanillaTaskController(config_controller=self._config_controller)
         self._worker_controller = VanillaWorkerController(
-            config_controller=self._config_controller, scaler_policy=self._scaler_policy
+            config_controller=self._config_controller, policy_controller=self._policy_controller
         )
         self._balance_controller = VanillaBalanceController(
-            config_controller=self._config_controller, scaler_policy=self._scaler_policy
+            config_controller=self._config_controller, policy_controller=self._policy_controller
         )
         self._information_controller = VanillaInformationController(config_controller=self._config_controller)
-        self._worker_adapter_controller = WorkerAdapterController(
-            config_controller=self._config_controller, scaler_policy=self._scaler_policy
+        self._worker_manager_controller = WorkerManagerController(
+            config_controller=self._config_controller, policy_controller=self._policy_controller
         )
 
         # register
@@ -140,7 +139,7 @@ class Scheduler:
         )
         self._worker_controller.register(self._binder, self._binder_monitor, self._task_controller)
         self._balance_controller.register(self._binder, self._binder_monitor, self._task_controller)
-        self._worker_adapter_controller.register(self._binder, self._task_controller, self._worker_controller)
+        self._worker_manager_controller.register(self._binder, self._task_controller, self._worker_controller)
 
         self._information_controller.register_managers(
             self._binder_monitor,
@@ -149,7 +148,7 @@ class Scheduler:
             self._object_controller,
             self._task_controller,
             self._worker_controller,
-            self._worker_adapter_controller,
+            self._worker_manager_controller,
         )
 
     async def connect_to_storage(self):
@@ -224,13 +223,13 @@ class Scheduler:
             await self._information_controller.on_request(message)
 
         # =====================================================================================
-        # worker adapter controller
-        if isinstance(message, WorkerAdapterHeartbeat):
-            await self._worker_adapter_controller.on_heartbeat(source, message)
+        # worker manager controller
+        if isinstance(message, WorkerManagerHeartbeat):
+            await self._worker_manager_controller.on_heartbeat(source, message)
             return
 
-        if isinstance(message, WorkerAdapterCommandResponse):
-            await self._worker_adapter_controller.on_command_response(source, message)
+        if isinstance(message, WorkerManagerCommandResponse):
+            await self._worker_manager_controller.on_command_response(source, message)
             return
 
         logging.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")
@@ -248,7 +247,7 @@ class Scheduler:
             create_async_loop_routine(self._client_manager.routine, CLEANUP_INTERVAL_SECONDS),
             create_async_loop_routine(self._object_controller.routine, CLEANUP_INTERVAL_SECONDS),
             create_async_loop_routine(self._worker_controller.routine, CLEANUP_INTERVAL_SECONDS),
-            create_async_loop_routine(self._worker_adapter_controller.routine, CLEANUP_INTERVAL_SECONDS),
+            create_async_loop_routine(self._worker_manager_controller.routine, CLEANUP_INTERVAL_SECONDS),
             create_async_loop_routine(self._information_controller.routine, STATUS_REPORT_INTERVAL_SECONDS),
         ]
 

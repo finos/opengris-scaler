@@ -58,7 +58,7 @@ std::expected<std::string, Error> SocketAddress::name() const noexcept
         return std::unexpected {Error {err}};
     }
 
-    return std::string(buffer);
+    return std::string {buffer};
 }
 
 int SocketAddress::port() const noexcept

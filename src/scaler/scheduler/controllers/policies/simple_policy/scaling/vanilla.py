@@ -3,22 +3,19 @@ from typing import Dict, List
 
 from scaler.protocol.python.message import (
     InformationSnapshot,
-    WorkerAdapterCommand,
-    WorkerAdapterCommandType,
-    WorkerAdapterHeartbeat,
+    WorkerManagerCommand,
+    WorkerManagerCommandType,
+    WorkerManagerHeartbeat,
 )
 from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingController
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
-    WorkerGroupCapabilities,
-    WorkerGroupID,
-    WorkerGroupState,
-)
+from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
+from scaler.utility.identifiers import WorkerID
 
 
-class VanillaScalingController(ScalingController):
+class VanillaScalingPolicy(ScalingPolicy):
     """
-    Stateless scaling controller that scales worker groups based on task-to-worker ratio.
+    Stateless scaling policy that scales workers based on task-to-worker ratio.
     """
 
     def __init__(self):
@@ -28,52 +25,56 @@ class VanillaScalingController(ScalingController):
     def get_scaling_commands(
         self,
         information_snapshot: InformationSnapshot,
-        adapter_heartbeat: WorkerAdapterHeartbeat,
-        worker_groups: WorkerGroupState,
-        worker_group_capabilities: WorkerGroupCapabilities,
-    ) -> List[WorkerAdapterCommand]:
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
+        managed_worker_ids: List[WorkerID],
+        managed_worker_capabilities: Dict[str, int],
+        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
+    ) -> List[WorkerManagerCommand]:
         if not information_snapshot.workers:
             if information_snapshot.tasks:
-                return self._create_start_commands(worker_groups, adapter_heartbeat)
+                return self._create_start_commands(managed_worker_ids, worker_manager_heartbeat)
             return []
 
         task_ratio = len(information_snapshot.tasks) / len(information_snapshot.workers)
         if task_ratio > self._upper_task_ratio:
-            return self._create_start_commands(worker_groups, adapter_heartbeat)
+            return self._create_start_commands(managed_worker_ids, worker_manager_heartbeat)
         elif task_ratio < self._lower_task_ratio:
-            return self._create_shutdown_commands(information_snapshot, worker_groups)
+            return self._create_shutdown_commands(information_snapshot, managed_worker_ids)
 
         return []
 
-    def get_status(self, worker_groups: WorkerGroupState) -> ScalingManagerStatus:
-        return ScalingManagerStatus.new_msg(worker_groups=worker_groups)
+    def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
+        return ScalingManagerStatus.new_msg(managed_workers=managed_workers)
 
     def _create_start_commands(
-        self, worker_groups: WorkerGroupState, adapter_heartbeat: WorkerAdapterHeartbeat
-    ) -> List[WorkerAdapterCommand]:
-        if len(worker_groups) >= adapter_heartbeat.max_worker_groups:
+        self, managed_worker_ids: List[WorkerID], worker_manager_heartbeat: WorkerManagerHeartbeat
+    ) -> List[WorkerManagerCommand]:
+        if len(managed_worker_ids) >= worker_manager_heartbeat.max_task_concurrency:
             return []
-        return [WorkerAdapterCommand.new_msg(worker_group_id=b"", command=WorkerAdapterCommandType.StartWorkerGroup)]
+        return [WorkerManagerCommand.new_msg(worker_ids=[], command=WorkerManagerCommandType.StartWorkers)]
 
     def _create_shutdown_commands(
-        self, information_snapshot: InformationSnapshot, worker_groups: WorkerGroupState
-    ) -> List[WorkerAdapterCommand]:
-        worker_group_task_counts: Dict[WorkerGroupID, int] = {}
-        for worker_group_id, worker_ids in worker_groups.items():
-            total_queued = sum(
-                information_snapshot.workers[worker_id].queued_tasks
-                for worker_id in worker_ids
-                if worker_id in information_snapshot.workers
-            )
-            worker_group_task_counts[worker_group_id] = total_queued
-
-        if not worker_group_task_counts:
-            logging.warning("No worker groups available to shut down. There might be statically provisioned workers.")
+        self, information_snapshot: InformationSnapshot, managed_worker_ids: List[WorkerID]
+    ) -> List[WorkerManagerCommand]:
+        if not managed_worker_ids:
+            logging.warning("No workers available to shut down. There might be statically provisioned workers.")
             return []
 
-        worker_group_id = min(worker_group_task_counts, key=worker_group_task_counts.get)
+        # Find the individual worker with fewest queued tasks
+        least_busy_wid = None
+        min_queued = float("inf")
+        for wid in managed_worker_ids:
+            if wid in information_snapshot.workers:
+                queued = information_snapshot.workers[wid].queued_tasks
+                if queued < min_queued:
+                    min_queued = queued
+                    least_busy_wid = wid
+
+        if least_busy_wid is None:
+            return []
+
         return [
-            WorkerAdapterCommand.new_msg(
-                worker_group_id=worker_group_id, command=WorkerAdapterCommandType.ShutdownWorkerGroup
+            WorkerManagerCommand.new_msg(
+                worker_ids=[bytes(least_busy_wid)], command=WorkerManagerCommandType.ShutdownWorkers
             )
         ]
