@@ -36,7 +36,7 @@ your AWS account ID):
 .. code-block:: toml
    :caption: config.toml
 
-   [aws_hpc_worker_adapter]
+   [aws_hpc_worker_manager]
    job_queue = "scaler-batch-queue"
    job_definition = "scaler-batch-job"
    s3_bucket = "scaler-batch-123456789012-us-east-1"  # replace 123456789012 with your account ID
@@ -183,7 +183,7 @@ Or use a TOML configuration file:
 .. code-block:: toml
    :caption: config.toml
 
-   [aws_hpc_worker_adapter]
+   [aws_hpc_worker_manager]
    job_queue = "scaler-batch-queue"
    job_definition = "scaler-batch-job"
    s3_bucket = "scaler-batch-123456789012-us-east-1"

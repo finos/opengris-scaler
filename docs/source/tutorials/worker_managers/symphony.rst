@@ -40,7 +40,7 @@ Step 3: Start the Symphony Worker Manager
 
    scaler_worker_manager_symphony tcp://<SCHEDULER_IP>:8516 \
        --service-name MyScalerService \
-       --max-workers 8
+       --max-task-concurrency 8
 
 Or use a TOML configuration file:
 
@@ -51,9 +51,9 @@ Or use a TOML configuration file:
 .. code-block:: toml
    :caption: config.toml
 
-   [symphony_worker_adapter]
+   [symphony_worker_manager]
    service_name = "MyScalerService"
-   max_workers = 8
+   max_task_concurrency = 8
    logging_level = "INFO"
 
 Step 4: Submit Tasks
@@ -90,7 +90,7 @@ Symphony-Specific Parameters
 
 * ``scheduler_address`` (positional, required): Address of the Scaler scheduler.
 * ``--service-name`` (``-sn``, required): The name of the Symphony service to connect to.
-* ``--max-workers`` (``-mw``): Maximum number of concurrent Symphony workers (default: number of CPUs − 1).
+* ``--max-task-concurrency`` (``-mtc``): Maximum number of concurrent Symphony workers (default: number of CPUs − 1).
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~

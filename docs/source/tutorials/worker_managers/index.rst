@@ -20,7 +20,7 @@ Configure the scheduler with a scaling policy, then start a worker manager:
     scaler_scheduler tcp://127.0.0.1:8516 -pc "allocate=even_load; scaling=vanilla"
 
     # Terminal 2 — Worker Manager (e.g., Baremetal Native)
-    scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 --max-workers 8
+    scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 --max-task-concurrency 8
 
 The vanilla policy automatically scales workers up and down based on the task-to-worker ratio. For available policies and their parameters, see :doc:`../scaling`.
 

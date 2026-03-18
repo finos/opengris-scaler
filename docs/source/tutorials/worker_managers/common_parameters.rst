@@ -10,7 +10,7 @@ Networking
 ----------
 
 * ``scheduler_address`` (positional, required): The address of the scheduler (e.g., ``tcp://127.0.0.1:8516``).
-* ``--max-workers`` (``-mw``): Maximum number of workers that can be started (default: number of CPUs − 1). Set to ``-1`` for no limit.
+* ``--max-task-concurrency`` (``-mtc``): Maximum number of workers that can be started (default: number of CPUs − 1). Set to ``-1`` for no limit.
 * ``--object-storage-address`` (``-osa``): Address of the object storage server (e.g., ``tcp://127.0.0.1:8517``). If not set, defaults to the scheduler address with port + 1.
 * ``--config`` (``-c``): Path to a TOML configuration file.
 

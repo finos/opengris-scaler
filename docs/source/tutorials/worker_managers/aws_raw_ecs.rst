@@ -28,10 +28,10 @@ Paste the result into the TOML below and run the three commands:
 .. code-block:: toml
    :caption: config.toml
 
-   [ecs_worker_adapter]
+   [ecs_worker_manager]
    ecs_subnets = "subnet-0abc1234def56789a"  # paste your subnet ID here
    aws_region = "us-east-1"
-   max_workers = 4
+   max_task_concurrency = 4
    ecs_task_cpu = 4
    ecs_task_memory = 30
 
@@ -127,7 +127,7 @@ Step 4: Start the AWS Raw ECS Worker Manager
    scaler_worker_manager_aws_raw_ecs tcp://<SCHEDULER_PUBLIC_IP>:8516 \
        --ecs-subnets subnet-0abc1234def56789a \
        --aws-region us-east-1 \
-       --max-workers 4 \
+       --max-task-concurrency 4 \
        --ecs-task-cpu 4 \
        --ecs-task-memory 30
 
@@ -140,10 +140,10 @@ Or use a TOML configuration file:
 .. code-block:: toml
    :caption: config.toml
 
-   [ecs_worker_adapter]
+   [ecs_worker_manager]
    ecs_subnets = "subnet-0abc1234def56789a"
    aws_region = "us-east-1"
-   max_workers = 4
+   max_task_concurrency = 4
    ecs_task_cpu = 4
    ecs_task_memory = 30
    ecs_cluster = "scaler-cluster"
@@ -193,7 +193,7 @@ AWS Raw ECS Parameters
 * ``--ecs-task-memory``: Memory per Fargate task in GB (default: ``30``).
 * ``--ecs-python-requirements``: Python packages to install in the container at startup (default: ``tomli;pargraph;parfun;pandas``).
 * ``--ecs-python-version``: Python version for the container (default: ``3.12.11``).
-* ``--max-workers`` (``-mw``): Maximum number of Fargate tasks (default: number of CPUs − 1).
+* ``--max-task-concurrency`` (``-mtc``): Maximum number of Fargate tasks (default: number of CPUs − 1).
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~
