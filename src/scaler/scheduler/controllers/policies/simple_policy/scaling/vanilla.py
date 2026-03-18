@@ -1,4 +1,3 @@
-import logging
 from typing import Dict, List
 
 from scaler.protocol.python.message import (
@@ -57,7 +56,7 @@ class VanillaScalingPolicy(ScalingPolicy):
         self, information_snapshot: InformationSnapshot, managed_worker_ids: List[WorkerID]
     ) -> List[WorkerManagerCommand]:
         if not managed_worker_ids:
-            logging.warning("No workers available to shut down. There might be statically provisioned workers.")
+            # No workers available to shut down. There might be statically provisioned workers.
             return []
 
         # Find the individual worker with fewest queued tasks
