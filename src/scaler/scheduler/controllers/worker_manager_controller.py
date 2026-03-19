@@ -59,7 +59,7 @@ class WorkerManagerController(Looper, Reporter):
                 return
             self._manager_id_to_source[manager_id] = source
 
-            logging.info(f"WorkerManager {source!r} connected")
+            logging.info(f"WorkerManager {manager_id!r} connected")
 
         self._manager_alive_since[source] = (time.time(), heartbeat)
 
