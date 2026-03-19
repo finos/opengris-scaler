@@ -136,6 +136,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         graph_task_id = self._task_id_to_graph_task_id[task_cancel_confirm.task_id]
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         self.__mark_node_canceled(graph_info, task_cancel_confirm)
+
         await self.__cancel_whole_graph(graph_task_id)
 
     def is_graph_subtask(self, task_id: TaskID):
@@ -217,6 +218,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
 
     async def __cancel_whole_graph(self, graph_task_id: TaskID):
         if self.__is_graph_finished(graph_task_id):
+            await self.__cancel_graph_umbrella_task(graph_task_id)
             return
 
         graph_info = self._graph_task_id_to_graph[graph_task_id]
