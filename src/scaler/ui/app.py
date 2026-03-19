@@ -707,29 +707,29 @@ class WebUIApp:
 
         # Aggregate summary stats from workers into each worker manager entry
         for manager_id, mgr_data in self._worker_managers_data.items():
-            total_proc_cpu = 0.0
-            total_proc_rss = 0
-            total_free = 0
-            total_sent = 0
-            total_queued = 0
-            total_suspended = 0
+            mgr_proc_cpu = 0.0
+            mgr_proc_rss = 0
+            mgr_free = 0
+            mgr_sent = 0
+            mgr_queued = 0
+            mgr_suspended = 0
             worker_count = 0
             for w_data in self._workers_data.values():
                 if w_data.get("manager_id") == manager_id:
                     worker_count += 1
-                    total_proc_cpu += w_data.get("proc_cpu", 0)
-                    total_proc_rss += w_data.get("proc_rss", 0)
-                    total_free += w_data.get("free", 0)
-                    total_sent += w_data.get("sent", 0)
-                    total_queued += w_data.get("queued", 0)
-                    total_suspended += w_data.get("suspended", 0)
+                    mgr_proc_cpu += w_data.get("proc_cpu", 0)
+                    mgr_proc_rss += w_data.get("proc_rss", 0)
+                    mgr_free += w_data.get("free", 0)
+                    mgr_sent += w_data.get("sent", 0)
+                    mgr_queued += w_data.get("queued", 0)
+                    mgr_suspended += w_data.get("suspended", 0)
             mgr_data["worker_count"] = worker_count
-            mgr_data["total_proc_cpu"] = round(total_proc_cpu, 1)
-            mgr_data["total_proc_rss"] = total_proc_rss
-            mgr_data["total_free"] = total_free
-            mgr_data["total_sent"] = total_sent
-            mgr_data["total_queued"] = total_queued
-            mgr_data["total_suspended"] = total_suspended
+            mgr_data["total_proc_cpu"] = round(mgr_proc_cpu, 1)
+            mgr_data["total_proc_rss"] = mgr_proc_rss
+            mgr_data["total_free"] = mgr_free
+            mgr_data["total_sent"] = mgr_sent
+            mgr_data["total_queued"] = mgr_queued
+            mgr_data["total_suspended"] = mgr_suspended
 
     def _process_worker_state(self, state_worker: StateWorker) -> Optional[Dict[str, Any]]:
         worker_id = state_worker.worker_id.decode()
