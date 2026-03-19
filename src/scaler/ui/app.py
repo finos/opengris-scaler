@@ -244,6 +244,7 @@ class TaskStreamState:
             "start": start_time.timestamp(),
             "end": end_time.timestamp(),
             "color": colors,
+            "caps": caps,
             "pattern": pattern,
             "outline_color": outline_color,
             "outline_width": outline_width,
@@ -360,16 +361,26 @@ class TaskStreamState:
                         }
                     )
 
-            # no-capability legend entry
-            legend: List[Dict[str, str]] = [{"name": "<no capabilities>", "color": "#60a5fa"}]
+            # capability legend: derived from tasks visible in the stream
+            active_caps: Set[str] = set()
+            # from running tasks
+            for worker in worker_order:
+                for task_id in self._current_tasks.get(worker, {}):
+                    caps_str = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
+                    if caps_str != "<no capabilities>":
+                        active_caps.update(caps_str.split())
+            # from completed bars in the visible window
+            for worker in worker_order:
+                for bar in self._bar_history.get(worker, []):
+                    if bar["end"] >= window_start_ts:
+                        task_caps = bar.get("caps", "")
+                        if task_caps and task_caps != "<no capabilities>":
+                            active_caps.update(task_caps.split())
 
-            # capability legend (sorted by name)
-            all_caps: Set[str] = set()
-            for worker in self._seen_workers:
-                all_caps.update(self._worker_capabilities.get(worker, set()))
+            legend: List[Dict[str, str]] = [{"name": "<no capabilities>", "color": "#60a5fa"}]
             legend.extend(
                 {"name": cap, "color": _capabilities_color(cap, self._capabilities_color_map)}
-                for cap in sorted(all_caps)
+                for cap in sorted(active_caps)
             )
 
             # time axis ticks
