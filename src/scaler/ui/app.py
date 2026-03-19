@@ -464,6 +464,9 @@ class WebUIApp:
         self._memory_chart = MemoryChartState()
         self._worker_processors: Dict[str, Dict[str, Any]] = {}
         self._worker_manager_map: Dict[str, str] = {}  # worker_name -> manager_id (persistent)
+        self._worker_managers_data: Dict[str, Dict[str, Any]] = {}  # manager_id -> manager info
+        self._dead_managers: Dict[str, float] = {}  # manager_id -> disconnect timestamp
+        self._monitor_address: str = str(config.monitor_address)
 
         self._settings = {"stream_window": 5, "memory_scale": "linear"}
 
@@ -555,6 +558,7 @@ class WebUIApp:
             # Worker processors
             if has_scheduler_update:
                 payload["processors"] = self._build_processors_data()
+                payload["worker_managers"] = list(self._worker_managers_data.values())
 
             await self._broadcast(payload)
 
@@ -563,6 +567,7 @@ class WebUIApp:
             "cpu": format_percentage(data.scheduler.cpu),
             "rss": format_bytes(data.scheduler.rss),
             "rss_free": format_bytes(data.rss_free),
+            "monitor_address": self._monitor_address,
         }
 
         # Update persistent worker-to-manager mapping with latest data
@@ -570,6 +575,37 @@ class WebUIApp:
             manager_name = manager_id_bytes.decode() if manager_id_bytes else "unknown"
             for wid in worker_ids:
                 self._worker_manager_map[bytes(wid).decode()] = manager_name
+
+        # Update worker manager details from scaling_manager
+        current_managers: Set[str] = set()
+        for detail in data.scaling_manager.worker_manager_details:
+            manager_id = detail["worker_manager_id"].decode() if detail["worker_manager_id"] else "unknown"
+            current_managers.add(manager_id)
+            worker_ids_for_manager = data.scaling_manager.managed_workers.get(detail["worker_manager_id"], [])
+            self._worker_managers_data[manager_id] = {
+                "manager_id": manager_id,
+                "identity": detail["identity"],
+                "last_seen": format_seconds(detail["last_seen_s"]),
+                "max_task_concurrency": detail["max_task_concurrency"],
+                "worker_count": len(worker_ids_for_manager),
+                "capabilities": detail["capabilities"],
+            }
+        # Mark newly-disappeared managers with a disconnect timestamp instead of
+        # removing immediately, so the UI keeps showing them for a grace period.
+        now_ts = datetime.datetime.now().timestamp()
+        newly_dead = set(self._worker_managers_data.keys()) - current_managers
+        for mid in newly_dead:
+            if mid not in self._dead_managers:
+                self._dead_managers[mid] = now_ts
+        # Re-alive managers that came back
+        for mid in current_managers:
+            self._dead_managers.pop(mid, None)
+        # Evict managers that have been gone for more than 2 minutes
+        manager_retention_seconds = 120
+        evict = [mid for mid, ts in self._dead_managers.items() if now_ts - ts > manager_retention_seconds]
+        for mid in evict:
+            self._dead_managers.pop(mid)
+            self._worker_managers_data.pop(mid, None)
 
         current_workers = set()
         now = datetime.datetime.now()
@@ -639,6 +675,32 @@ class WebUIApp:
             self._task_stream.handle_worker_state(
                 StateWorker.new_msg(WorkerID(w.encode()), WorkerState.Disconnected, {})
             )
+
+        # Aggregate summary stats from workers into each worker manager entry
+        for manager_id, mgr_data in self._worker_managers_data.items():
+            total_proc_cpu = 0.0
+            total_proc_rss = 0
+            total_free = 0
+            total_sent = 0
+            total_queued = 0
+            total_suspended = 0
+            worker_count = 0
+            for w_data in self._workers_data.values():
+                if w_data.get("manager_id") == manager_id:
+                    worker_count += 1
+                    total_proc_cpu += w_data.get("proc_cpu", 0)
+                    total_proc_rss += w_data.get("proc_rss", 0)
+                    total_free += w_data.get("free", 0)
+                    total_sent += w_data.get("sent", 0)
+                    total_queued += w_data.get("queued", 0)
+                    total_suspended += w_data.get("suspended", 0)
+            mgr_data["worker_count"] = worker_count
+            mgr_data["total_proc_cpu"] = round(total_proc_cpu, 1)
+            mgr_data["total_proc_rss"] = total_proc_rss
+            mgr_data["total_free"] = total_free
+            mgr_data["total_sent"] = total_sent
+            mgr_data["total_queued"] = total_queued
+            mgr_data["total_suspended"] = total_suspended
 
     def _process_worker_state(self, state_worker: StateWorker) -> Optional[Dict[str, Any]]:
         worker_id = state_worker.worker_id.decode()
@@ -743,6 +805,10 @@ class WebUIApp:
             mid = wp.get("manager_id", "—")
             managers.setdefault(mid, []).append(wp)
 
+        # Ensure all known worker managers appear even if they have no workers
+        for mid in self._worker_managers_data:
+            managers.setdefault(mid, [])
+
         result = []
         for manager_id, workers in sorted(managers.items()):
             total_rss = 0
@@ -822,6 +888,7 @@ class WebUIApp:
             "task_stream": stream_data,
             "memory_chart": memory_data,
             "processors": self._build_processors_data(),
+            "worker_managers": list(self._worker_managers_data.values()),
             "settings": self._settings,
         }
 

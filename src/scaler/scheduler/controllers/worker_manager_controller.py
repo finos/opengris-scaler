@@ -102,7 +102,25 @@ class WorkerManagerController(Looper, Reporter):
         await self._clean_managers()
 
     def get_status(self) -> ScalingManagerStatus:
-        return self._policy_controller.get_scaling_status(self.get_managed_workers())
+        managed_workers = self.get_managed_workers()
+        base_status = self._policy_controller.get_scaling_status(managed_workers)
+
+        now = time.time()
+        details = []
+        for source, (last_seen, heartbeat) in self._manager_alive_since.items():
+            caps = heartbeat.capabilities
+            caps_str = " ".join(sorted(caps.keys())) if caps else ""
+            details.append(
+                {
+                    "worker_manager_id": heartbeat.worker_manager_id,
+                    "identity": source.decode(errors="replace"),
+                    "last_seen_s": min(int(now - last_seen), 255),
+                    "max_task_concurrency": heartbeat.max_task_concurrency,
+                    "capabilities": caps_str,
+                }
+            )
+
+        return ScalingManagerStatus.new_msg(managed_workers=base_status.managed_workers, worker_manager_details=details)
 
     def get_managed_workers(self) -> Dict[bytes, List[WorkerID]]:
         """Return managed workers keyed by worker_manager_id (from heartbeat)."""

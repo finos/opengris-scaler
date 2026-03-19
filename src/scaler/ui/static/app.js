@@ -25,9 +25,11 @@ var memoryNeedsRedraw = false;
 // ── DOM refs ──
 var $ = function(id) { return document.getElementById(id); };
 var connStatus = $("conn-status");
+var schedAddress = $("sched-address");
 var schedCpu = $("sched-cpu");
 var schedRss = $("sched-rss");
 var schedRssFree = $("sched-rss-free");
+var managersBody = $("managers-body");
 var workersBody = $("workers-body");
 var tasklogBody = $("tasklog-body");
 var tasklogCount = $("tasklog-count");
@@ -161,6 +163,9 @@ function handleMessage(data) {
     if (data.workers) {
         updateWorkers(data.workers);
     }
+    if (data.worker_managers) {
+        updateWorkerManagers(data.worker_managers);
+    }
     if (data.worker_events) {
         handleWorkerEvents(data.worker_events);
     }
@@ -181,6 +186,7 @@ function handleMessage(data) {
 function handleFullState(data) {
     if (data.scheduler) updateScheduler(data.scheduler);
     if (data.workers) updateWorkers(data.workers);
+    if (data.worker_managers) updateWorkerManagers(data.worker_managers);
     if (data.task_log) {
         tasklogBody.innerHTML = "";
         taskLogCount = 0;
@@ -210,9 +216,80 @@ function applySettings(settings) {
 
 // ── Live Tab: Scheduler ──
 function updateScheduler(sched) {
+    schedAddress.textContent = sched.monitor_address || "—";
     schedCpu.textContent = sched.cpu || "—";
     schedRss.textContent = sched.rss || "—";
     schedRssFree.textContent = sched.rss_free || "—";
+}
+
+// ── Live Tab: Worker Managers ──
+function updateWorkerManagers(managers) {
+    managersBody.innerHTML = "";
+    if (!managers || managers.length === 0) {
+        var tr = document.createElement("tr");
+        var td = document.createElement("td");
+        td.colSpan = 12;
+        td.style.color = "#64748b";
+        td.textContent = "No worker managers connected";
+        tr.appendChild(td);
+        managersBody.appendChild(tr);
+        return;
+    }
+    for (var i = 0; i < managers.length; i++) {
+        var m = managers[i];
+        var tr = document.createElement("tr");
+
+        var tdId = document.createElement("td");
+        tdId.textContent = m.manager_id || "—";
+        tr.appendChild(tdId);
+
+        var tdAddr = document.createElement("td");
+        tdAddr.textContent = m.identity || "—";
+        tdAddr.title = m.identity || "";
+        tr.appendChild(tdAddr);
+
+        var tdSeen = document.createElement("td");
+        tdSeen.textContent = m.last_seen || "—";
+        tr.appendChild(tdSeen);
+
+        var tdConc = document.createElement("td");
+        tdConc.textContent = m.max_task_concurrency != null ? m.max_task_concurrency : "—";
+        tr.appendChild(tdConc);
+
+        var tdWC = document.createElement("td");
+        tdWC.textContent = m.worker_count != null ? m.worker_count : "0";
+        tr.appendChild(tdWC);
+
+        var tdCpu = document.createElement("td");
+        tdCpu.textContent = m.total_proc_cpu != null ? m.total_proc_cpu + "%" : "—";
+        tr.appendChild(tdCpu);
+
+        var tdRss = document.createElement("td");
+        tdRss.textContent = m.total_proc_rss != null ? m.total_proc_rss : "—";
+        tr.appendChild(tdRss);
+
+        var tdFree = document.createElement("td");
+        tdFree.textContent = m.total_free != null ? m.total_free : "—";
+        tr.appendChild(tdFree);
+
+        var tdSent = document.createElement("td");
+        tdSent.textContent = m.total_sent != null ? m.total_sent : "—";
+        tr.appendChild(tdSent);
+
+        var tdQueued = document.createElement("td");
+        tdQueued.textContent = m.total_queued != null ? m.total_queued : "—";
+        tr.appendChild(tdQueued);
+
+        var tdSusp = document.createElement("td");
+        tdSusp.textContent = m.total_suspended != null ? m.total_suspended : "—";
+        tr.appendChild(tdSusp);
+
+        var tdCaps = document.createElement("td");
+        tdCaps.textContent = m.capabilities || "—";
+        tr.appendChild(tdCaps);
+
+        managersBody.appendChild(tr);
+    }
 }
 
 // ── Live Tab: Workers ──
@@ -874,7 +951,7 @@ function updateProcessors(processors) {
             '<span class="manager-title">Manager: ' + escapeHTML(group.manager_id) + '</span>' +
             '<span class="manager-stats">' +
                 '<span class="manager-stat"><b>Workers:</b> ' + group.worker_count + '</span>' +
-                '<span class="manager-stat"><b>Processors:</b> ' + group.active_processors + '/' + group.total_processors + ' active</span>' +
+                '<span class="manager-stat"><b>Processors:</b> ' + group.active_processors + ' active</span>' +
                 '<span class="manager-stat"><b>Total RSS:</b> ' + group.total_rss + ' MB</span>' +
                 '<span class="manager-stat"><b>RSS Free:</b> ' + group.total_rss_free + ' MB</span>' +
                 '<span class="manager-stat"><b>Total CPU:</b> ' + group.total_cpu + '%</span>' +
@@ -890,6 +967,13 @@ function updateProcessors(processors) {
 
         // Worker details within this manager group
         var workers = group.workers;
+        if (workers.length === 0) {
+            var emptyMsg = document.createElement("p");
+            emptyMsg.style.color = "#64748b";
+            emptyMsg.style.padding = "8px 16px";
+            emptyMsg.textContent = "No workers currently running for this manager";
+            managerSection.appendChild(emptyMsg);
+        }
         for (var i = 0; i < workers.length; i++) {
             var wp = workers[i];
             var details = document.createElement("details");
