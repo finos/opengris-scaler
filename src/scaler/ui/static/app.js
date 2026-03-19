@@ -14,6 +14,8 @@ var taskRowMap = {};  // task_id -> tr element for in-place updates
 var streamBars = [];       // current bar data from server
 var streamRows = [];       // row labels (truncated)
 var streamFullRows = [];   // row labels (full worker names)
+var streamRowManagers = []; // manager color per row
+var streamManagerColors = {}; // manager_id -> color
 var memoryPoints = [];     // memory chart points
 var memoryScale = "linear";
 var memoryYTicks = [];
@@ -568,12 +570,19 @@ function updateTaskStream(data) {
     streamBars = data.bars || [];
     streamRows = data.rows || [];
     streamFullRows = data.full_rows || streamRows;
+    streamRowManagers = data.row_managers || [];
+    streamManagerColors = {};
+    var managerLegend = data.manager_legend || [];
+    for (var ml = 0; ml < managerLegend.length; ml++) {
+        streamManagerColors[managerLegend[ml].name] = managerLegend[ml].color;
+    }
     streamTicks = data.ticks || [];
     streamWindow = data.window || 300;
     streamNeedsRedraw = true;
 
     // Update legend
     var legend = data.legend || [];
+    var managerLegend = data.manager_legend || [];
     streamLegend.innerHTML = "";
     // Add status patterns to legend
     var failed = document.createElement("span");
@@ -592,6 +601,22 @@ function updateTaskStream(data) {
         item.innerHTML = '<span class="legend-swatch" style="background:' + legend[i].color + '"></span> ' +
             escapeHTML(legend[i].name);
         streamLegend.appendChild(item);
+    }
+
+    // Manager legend (separated by a pipe)
+    if (managerLegend.length > 0) {
+        var sep = document.createElement("span");
+        sep.className = "legend-item";
+        sep.style.color = "#94a3b8";
+        sep.textContent = "|";
+        streamLegend.appendChild(sep);
+        for (var k = 0; k < managerLegend.length; k++) {
+            var mItem = document.createElement("span");
+            mItem.className = "legend-item";
+            mItem.innerHTML = '<span class="legend-swatch" style="background:' +
+                managerLegend[k].color + '"></span> ' + escapeHTML(managerLegend[k].name);
+            streamLegend.appendChild(mItem);
+        }
     }
 
     // Update axis
@@ -640,6 +665,12 @@ function drawTaskStream() {
         // label
         streamCtx.fillStyle = "#334155";
         streamCtx.fillText(streamRows[i], 4, y + STREAM_ROW_HEIGHT / 2);
+        // manager color stripe
+        var mgr = streamRowManagers[i];
+        if (mgr && streamManagerColors[mgr]) {
+            streamCtx.fillStyle = streamManagerColors[mgr];
+            streamCtx.fillRect(0, y, 4, STREAM_ROW_HEIGHT);
+        }
     }
 
     // Draw bars: two passes so outlines are always visible between adjacent bars

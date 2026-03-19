@@ -466,6 +466,7 @@ class WebUIApp:
         self._worker_manager_map: Dict[str, str] = {}  # worker_name -> manager_id (persistent)
         self._worker_managers_data: Dict[str, Dict[str, Any]] = {}  # manager_id -> manager info
         self._dead_managers: Dict[str, float] = {}  # manager_id -> disconnect timestamp
+        self._manager_color_map: Dict[str, str] = {}  # manager_id -> color hex
         self._monitor_address: str = str(config.monitor_address)
 
         self._settings = {"stream_window": 5, "memory_scale": "linear"}
@@ -550,6 +551,7 @@ class WebUIApp:
 
             # Always send chart data (auto-scrolling)
             stream_data = self._task_stream.get_render_data()
+            self._enrich_stream_with_managers(stream_data)
             payload["task_stream"] = stream_data
 
             memory_data = self._memory_chart.get_render_data(stream_data["window"])
@@ -798,6 +800,21 @@ class WebUIApp:
             self._active_tasks[task_id_hex] = entry
             return entry
 
+    def _enrich_stream_with_managers(self, stream_data: Dict[str, Any]) -> None:
+        """Add per-row manager IDs and a manager color legend to task stream data."""
+        full_rows = stream_data.get("full_rows", [])
+        row_managers = [self._worker_manager_map.get(w, "") for w in full_rows]
+        stream_data["row_managers"] = row_managers
+
+        seen: Set[str] = set()
+        manager_legend: List[Dict[str, str]] = []
+        for mid in row_managers:
+            if mid and mid not in seen:
+                seen.add(mid)
+                color = _capabilities_color(mid, self._manager_color_map)
+                manager_legend.append({"name": mid, "color": color})
+        stream_data["manager_legend"] = manager_legend
+
     def _build_processors_data(self) -> List[Dict[str, Any]]:
         # Group workers by manager_id and include per-manager summary stats
         managers: Dict[str, List[Dict[str, Any]]] = {}
@@ -877,6 +894,7 @@ class WebUIApp:
         self._drain_pending_messages()
 
         stream_data = self._task_stream.get_render_data()
+        self._enrich_stream_with_managers(stream_data)
         memory_data = self._memory_chart.get_render_data(stream_data["window"])
         # combine active + completed for initial task log, sorted by time (newest first)
         initial_task_log = list(self._active_tasks.values()) + list(self._task_log)
