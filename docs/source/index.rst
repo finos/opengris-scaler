@@ -8,15 +8,7 @@ Welcome to Scaler's documentation!
 
 Scaler is a lightweight distributed computing Python framework that lets you easily distribute tasks across multiple machines or parallelize on a single machine.
 
-Scaler is designed to be a drop-in replacement for Dask requiring minimal code changes. Scaler's design focuses on performance, simplicity, reduced overhead, debuggable errors.
-
-Key features include:
-
-    * Python's ``multiprocessing`` module like API - e.g. ``client.map()`` and ``client.submit()``
-    * Graph Tasks - submit DAG tasks with complex interdependence
-    * Monitoring Dashboard - monitor utilization of workers and task completion in real time
-    * Task Profiling - profile and trace execution of tasks
-
+Scaler is designed to be super easy to deploy and start using compute resources from local machines or different cloud environments. Its design focuses on performance, simplicity, small overhead, and industry-grade robustness.
 
 Content
 =======
@@ -25,15 +17,11 @@ Content
    :maxdepth: 2
 
    tutorials/quickstart
-   tutorials/features
+   tutorials/introduction
+   tutorials/compatibility_layer
    tutorials/scaling
    tutorials/worker_managers/index
-   tutorials/worker_managers/native
-   tutorials/worker_managers/fixed_native
-   tutorials/worker_managers/aws_hpc/index
-   tutorials/worker_managers/common_parameters
-   tutorials/compatibility/ray
-   tutorials/configuration
-   tutorials/examples
-   tutorials/development/devcontainer
-   tutorials/development/guidelines
+   tutorials/features
+   tutorials/advanced_usage
+   tutorials/application_examples
+   tutorials/how_to_contribute

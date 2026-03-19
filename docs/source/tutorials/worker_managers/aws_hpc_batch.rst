@@ -164,7 +164,7 @@ Step 3: Start the Scheduler
    The scheduler address must be reachable from the machine running the AWS HPC worker manager. Use ``0.0.0.0`` to bind to all interfaces, or your machine's public/private IP.
 
 Step 4: Start the AWS HPC Worker Manager
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 

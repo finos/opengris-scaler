@@ -1,7 +1,7 @@
 .. _ray_compatibility:
 
-Ray Compatibility Layer
-=======================
+Ray
+===
 
 Scaler is a lightweight distributed computation engine similar to Ray. Scaler supports many of the same concepts as Ray including
 remote functions (known as tasks in Scaler), futures, cluster object storage, labels (known as capabilities in Scaler), and it comes with comparable monitoring tools.

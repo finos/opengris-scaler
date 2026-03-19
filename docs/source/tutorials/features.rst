@@ -1,7 +1,12 @@
-Additional Features
-===================
+Features Reference
+==================
 
-Scaler comes with a number of additional features that can be used to monitor and profile tasks, and customize behavior.
+Scaler comes with a number of features that can be used to monitor and profile tasks, and customize behavior.
+
+.. toctree::
+   :maxdepth: 1
+
+   configuration
 
 Scaler Top (Monitoring)
 -----------------------
@@ -147,32 +152,6 @@ When the execution graph is undetermined until runtime, one may build graph dyna
 
 .. literalinclude:: ../../../examples/graphtask_nested_client.py
    :language: python
-
-Capability Allocation
----------------------
-
-Scaler provides an *experimental* task routing and capability management, allowing you to specify capability
-requirements for tasks and allocate them to workers supporting these.
-
-.. literalinclude:: ../../../examples/task_capabilities.py
-   :language: python
-
-Scaling Control and Worker Manager
-----------------------------------
-
-Scaler offers an *experimental* auto-scaling feature based on policies, enabling you to scale workers up or down
-as needed. This is especially useful in containerized environments where billing is based on utility rates or
-to reduce resource usage automatically on a multi-user system.
-
-Available scaling policies include:
-
-* **no**: No automatic scaling (static workers)
-* **vanilla**: Basic task-to-worker ratio scaling
-* **capability**: Capability-aware scaling for heterogeneous workloads (e.g., GPU tasks)
-* **fixed_elastic**: Hybrid scaling with primary and secondary worker managers
-
-For detailed documentation on scaling policies, including the capability-aware scaling policy,
-see the :doc:`scaling` guide.
 
 Client Disconnect and Shutdown
 ------------------------------
