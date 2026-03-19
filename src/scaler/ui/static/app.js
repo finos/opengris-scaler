@@ -595,21 +595,13 @@ function updateTaskStream(data) {
     canceled.innerHTML = '<span class="legend-swatch pattern-slash"></span> Canceled';
     streamLegend.appendChild(canceled);
 
-    for (var i = 0; i < legend.length; i++) {
-        var item = document.createElement("span");
-        item.className = "legend-item";
-        item.innerHTML = '<span class="legend-swatch" style="background:' + legend[i].color + '"></span> ' +
-            escapeHTML(legend[i].name);
-        streamLegend.appendChild(item);
-    }
-
-    // Manager legend (separated by a pipe)
+    // Manager legend first (with separator)
     if (managerLegend.length > 0) {
-        var sep = document.createElement("span");
-        sep.className = "legend-item";
-        sep.style.color = "#94a3b8";
-        sep.textContent = "|";
-        streamLegend.appendChild(sep);
+        var sep1 = document.createElement("span");
+        sep1.className = "legend-item";
+        sep1.style.color = "#94a3b8";
+        sep1.textContent = "|";
+        streamLegend.appendChild(sep1);
         for (var k = 0; k < managerLegend.length; k++) {
             var mItem = document.createElement("span");
             mItem.className = "legend-item";
@@ -617,6 +609,22 @@ function updateTaskStream(data) {
                 managerLegend[k].color + '"></span> ' + escapeHTML(managerLegend[k].name);
             streamLegend.appendChild(mItem);
         }
+    }
+
+    // Capability legend (with separator)
+    if (legend.length > 0) {
+        var sep2 = document.createElement("span");
+        sep2.className = "legend-item";
+        sep2.style.color = "#94a3b8";
+        sep2.textContent = "|";
+        streamLegend.appendChild(sep2);
+    }
+    for (var i = 0; i < legend.length; i++) {
+        var item = document.createElement("span");
+        item.className = "legend-item";
+        item.innerHTML = '<span class="legend-swatch" style="background:' + legend[i].color + '"></span> ' +
+            escapeHTML(legend[i].name);
+        streamLegend.appendChild(item);
     }
 
     // Update axis
@@ -684,8 +692,23 @@ function drawTaskStream() {
         var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
         var barWidth = Math.max(x2 - x1, 1);
 
-        streamCtx.fillStyle = bar.c;
-        streamCtx.fillRect(x1, rowY, barWidth, barHeight);
+        var colors = bar.cs;
+        if (colors.length === 1) {
+            streamCtx.fillStyle = colors[0];
+            streamCtx.fillRect(x1, rowY, barWidth, barHeight);
+        } else {
+            // cyclic vertical stripes, 6px each, not squished
+            var stripeW = 6;
+            var cx = 0;
+            var ci = 0;
+            while (cx < barWidth) {
+                var sw = Math.min(stripeW, barWidth - cx);
+                streamCtx.fillStyle = colors[ci % colors.length];
+                streamCtx.fillRect(x1 + cx, rowY, sw, barHeight);
+                cx += sw;
+                ci++;
+            }
+        }
 
         if (bar.p === "x") {
             drawCrossHatch(streamCtx, x1, rowY, barWidth, barHeight);

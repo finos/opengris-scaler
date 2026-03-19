@@ -54,10 +54,10 @@ def _format_worker_name(worker_name: str, cutoff: int = 15) -> str:
 def _capabilities_color(capabilities_str: str, color_map: Dict[str, str]) -> str:
     if capabilities_str not in color_map:
         h = hashlib.md5(capabilities_str.encode()).hexdigest()
-        color = f"#{h[:6]}"
-        if color == "#ffffff":
-            color = "#0000ff"
-        color_map[capabilities_str] = color
+        hue = int(h[:4], 16) % 360
+        sat = 55 + (int(h[4:6], 16) % 20)  # 55-75%
+        lit = 45 + (int(h[6:8], 16) % 15)  # 45-60%
+        color_map[capabilities_str] = f"hsl({hue},{sat}%,{lit}%)"
     return color_map[capabilities_str]
 
 
@@ -77,7 +77,7 @@ class TaskStreamState:
         # worker tracking
         self._seen_workers: Set[str] = set()
         self._worker_capabilities: Dict[str, Set[str]] = {}
-        self._capabilities_color_map: Dict[str, str] = {"<no capabilities>": "#22c55e"}
+        self._capabilities_color_map: Dict[str, str] = {"<no capabilities>": "#60a5fa"}
 
         # task tracking  (worker -> {task_id -> start_time})
         self._current_tasks: Dict[str, Dict[bytes, datetime.datetime]] = {}
@@ -96,6 +96,19 @@ class TaskStreamState:
 
     def set_stream_window(self, minutes: int) -> None:
         self._stream_window = SLIDING_WINDOW_OPTIONS.get(minutes, datetime.timedelta(minutes=5))
+
+    def _caps_to_colors(self, caps_str: str) -> List[str]:
+        """Return a list of colors for the capabilities string.
+
+        Single-capability and no-capability tasks return one color.
+        Multi-capability tasks return one color per individual capability (sorted).
+        """
+        if caps_str == "<no capabilities>":
+            return ["#60a5fa"]
+        parts = caps_str.split()
+        if len(parts) <= 1:
+            return [_capabilities_color(caps_str, self._capabilities_color_map)]
+        return [_capabilities_color(p, self._capabilities_color_map) for p in parts]
 
     def _ensure_worker(self, worker: str, now: datetime.datetime) -> None:
         if worker not in self._seen_workers:
@@ -214,7 +227,7 @@ class TaskStreamState:
         task_state: TaskState,
     ) -> None:
         caps = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
-        color = _capabilities_color(caps, self._capabilities_color_map)
+        colors = self._caps_to_colors(caps)
         func = self._task_id_to_function.get(task_id, "")
         duration = (end_time - start_time).total_seconds()
 
@@ -230,7 +243,7 @@ class TaskStreamState:
         bar = {
             "start": start_time.timestamp(),
             "end": end_time.timestamp(),
-            "color": color,
+            "color": colors,
             "pattern": pattern,
             "outline_color": outline_color,
             "outline_width": outline_width,
@@ -305,14 +318,14 @@ class TaskStreamState:
                     if w <= 0:
                         continue
                     caps = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
-                    color = _capabilities_color(caps, self._capabilities_color_map)
+                    colors = self._caps_to_colors(caps)
                     func = self._task_id_to_function.get(task_id, "")
                     bars.append(
                         {
                             "r": row_idx,
                             "x": x_start,
                             "w": w,
-                            "c": color,
+                            "cs": colors,
                             "p": "",
                             "oc": "#eab308",  # yellow for running
                             "ow": 2,
@@ -339,7 +352,7 @@ class TaskStreamState:
                             "r": row_idx,
                             "x": x_start,
                             "w": w,
-                            "c": bar["color"],
+                            "cs": bar["color"],
                             "p": bar["pattern"],
                             "oc": bar["outline_color"],
                             "ow": bar["outline_width"],
@@ -347,14 +360,17 @@ class TaskStreamState:
                         }
                     )
 
-            # capability legend
-            legend: List[Dict[str, str]] = []
-            seen_caps: Set[str] = set()
-            for worker in sorted(self._seen_workers):
-                for cap in sorted(self._worker_capabilities.get(worker, set())):
-                    if cap not in seen_caps:
-                        seen_caps.add(cap)
-                        legend.append({"name": cap, "color": _capabilities_color(cap, self._capabilities_color_map)})
+            # no-capability legend entry
+            legend: List[Dict[str, str]] = [{"name": "<no capabilities>", "color": "#60a5fa"}]
+
+            # capability legend (sorted by name)
+            all_caps: Set[str] = set()
+            for worker in self._seen_workers:
+                all_caps.update(self._worker_capabilities.get(worker, set()))
+            legend.extend(
+                {"name": cap, "color": _capabilities_color(cap, self._capabilities_color_map)}
+                for cap in sorted(all_caps)
+            )
 
             # time axis ticks
             ticks: List[Dict[str, Any]] = []
@@ -807,12 +823,12 @@ class WebUIApp:
         stream_data["row_managers"] = row_managers
 
         seen: Set[str] = set()
-        manager_legend: List[Dict[str, str]] = []
         for mid in row_managers:
-            if mid and mid not in seen:
+            if mid:
                 seen.add(mid)
-                color = _capabilities_color(mid, self._manager_color_map)
-                manager_legend.append({"name": mid, "color": color})
+        manager_legend: List[Dict[str, str]] = [
+            {"name": mid, "color": _capabilities_color(mid, self._manager_color_map)} for mid in sorted(seen)
+        ]
         stream_data["manager_legend"] = manager_legend
 
     def _build_processors_data(self) -> List[Dict[str, Any]]:
