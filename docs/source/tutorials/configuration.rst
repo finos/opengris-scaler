@@ -144,8 +144,9 @@ Worker Manager Settings
 -----------------------
 
 Worker managers share many common configuration settings for networking, worker behavior, and logging.
+Worker managers share many common configuration settings for networking, worker behavior, and logging.
 
-For a full list of these settings, see the :doc:`Worker Manager Common Parameters <worker_manager_adapter/common_parameters>` documentation.
+For a full list of these settings, see the :doc:`Worker Manager Common Parameters <worker_managers/common_parameters>` documentation.
 
 Configuring with TOML Files
 ---------------------------

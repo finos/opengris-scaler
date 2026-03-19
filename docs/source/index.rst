@@ -27,10 +27,11 @@ Content
    tutorials/quickstart
    tutorials/features
    tutorials/scaling
-   tutorials/worker_manager_adapter/index
-   tutorials/worker_manager_adapter/native
-   tutorials/worker_manager_adapter/aws_hpc/index
-   tutorials/worker_manager_adapter/common_parameters
+   tutorials/worker_managers/index
+   tutorials/worker_managers/native
+   tutorials/worker_managers/fixed_native
+   tutorials/worker_managers/aws_hpc/index
+   tutorials/worker_managers/common_parameters
    tutorials/compatibility/ray
    tutorials/configuration
    tutorials/examples
