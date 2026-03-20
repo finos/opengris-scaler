@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import signal
+import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -143,6 +144,11 @@ class NativeWorkerManager:
     async def start_worker(self) -> Tuple[WorkerID, Status]:
         if len(self._workers) >= self._max_task_concurrency != -1:
             return WorkerID(b""), Status.TooManyWorkers
+
+        delay = float(os.environ.get("SCALER_WORKER_START_DELAY_SECONDS", "0"))
+        if delay > 0:
+            logging.info("Delaying worker start by %.1f seconds (SCALER_WORKER_START_DELAY_SECONDS)", delay)
+            time.sleep(delay)
 
         worker = self._create_worker()
         worker.start()

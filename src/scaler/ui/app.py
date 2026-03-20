@@ -54,10 +54,10 @@ def _format_worker_name(worker_name: str, cutoff: int = 15) -> str:
 def _capabilities_color(capabilities_str: str, color_map: Dict[str, str]) -> str:
     if capabilities_str not in color_map:
         h = hashlib.md5(capabilities_str.encode()).hexdigest()
-        color = f"#{h[:6]}"
-        if color == "#ffffff":
-            color = "#0000ff"
-        color_map[capabilities_str] = color
+        hue = int(h[:4], 16) % 360
+        sat = 55 + (int(h[4:6], 16) % 20)  # 55-75%
+        lit = 45 + (int(h[6:8], 16) % 15)  # 45-60%
+        color_map[capabilities_str] = f"hsl({hue},{sat}%,{lit}%)"
     return color_map[capabilities_str]
 
 
@@ -77,7 +77,7 @@ class TaskStreamState:
         # worker tracking
         self._seen_workers: Set[str] = set()
         self._worker_capabilities: Dict[str, Set[str]] = {}
-        self._capabilities_color_map: Dict[str, str] = {"<no capabilities>": "#22c55e"}
+        self._capabilities_color_map: Dict[str, str] = {"<no capabilities>": "#60a5fa"}
 
         # task tracking  (worker -> {task_id -> start_time})
         self._current_tasks: Dict[str, Dict[bytes, datetime.datetime]] = {}
@@ -96,6 +96,19 @@ class TaskStreamState:
 
     def set_stream_window(self, minutes: int) -> None:
         self._stream_window = SLIDING_WINDOW_OPTIONS.get(minutes, datetime.timedelta(minutes=5))
+
+    def _caps_to_colors(self, caps_str: str) -> List[str]:
+        """Return a list of colors for the capabilities string.
+
+        Single-capability and no-capability tasks return one color.
+        Multi-capability tasks return one color per individual capability (sorted).
+        """
+        if caps_str == "<no capabilities>":
+            return ["#60a5fa"]
+        parts = caps_str.split()
+        if len(parts) <= 1:
+            return [_capabilities_color(caps_str, self._capabilities_color_map)]
+        return [_capabilities_color(p, self._capabilities_color_map) for p in parts]
 
     def _ensure_worker(self, worker: str, now: datetime.datetime) -> None:
         if worker not in self._seen_workers:
@@ -214,7 +227,7 @@ class TaskStreamState:
         task_state: TaskState,
     ) -> None:
         caps = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
-        color = _capabilities_color(caps, self._capabilities_color_map)
+        colors = self._caps_to_colors(caps)
         func = self._task_id_to_function.get(task_id, "")
         duration = (end_time - start_time).total_seconds()
 
@@ -230,7 +243,8 @@ class TaskStreamState:
         bar = {
             "start": start_time.timestamp(),
             "end": end_time.timestamp(),
-            "color": color,
+            "color": colors,
+            "caps": caps,
             "pattern": pattern,
             "outline_color": outline_color,
             "outline_width": outline_width,
@@ -305,14 +319,14 @@ class TaskStreamState:
                     if w <= 0:
                         continue
                     caps = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
-                    color = _capabilities_color(caps, self._capabilities_color_map)
+                    colors = self._caps_to_colors(caps)
                     func = self._task_id_to_function.get(task_id, "")
                     bars.append(
                         {
                             "r": row_idx,
                             "x": x_start,
                             "w": w,
-                            "c": color,
+                            "cs": colors,
                             "p": "",
                             "oc": "#eab308",  # yellow for running
                             "ow": 2,
@@ -339,7 +353,7 @@ class TaskStreamState:
                             "r": row_idx,
                             "x": x_start,
                             "w": w,
-                            "c": bar["color"],
+                            "cs": bar["color"],
                             "p": bar["pattern"],
                             "oc": bar["outline_color"],
                             "ow": bar["outline_width"],
@@ -347,14 +361,27 @@ class TaskStreamState:
                         }
                     )
 
-            # capability legend
-            legend: List[Dict[str, str]] = []
-            seen_caps: Set[str] = set()
-            for worker in sorted(self._seen_workers):
-                for cap in sorted(self._worker_capabilities.get(worker, set())):
-                    if cap not in seen_caps:
-                        seen_caps.add(cap)
-                        legend.append({"name": cap, "color": _capabilities_color(cap, self._capabilities_color_map)})
+            # capability legend: derived from tasks visible in the stream
+            active_caps: Set[str] = set()
+            # from running tasks
+            for worker in worker_order:
+                for task_id in self._current_tasks.get(worker, {}):
+                    caps_str = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
+                    if caps_str != "<no capabilities>":
+                        active_caps.update(caps_str.split())
+            # from completed bars in the visible window
+            for worker in worker_order:
+                for bar in self._bar_history.get(worker, []):
+                    if bar["end"] >= window_start_ts:
+                        task_caps = bar.get("caps", "")
+                        if task_caps and task_caps != "<no capabilities>":
+                            active_caps.update(task_caps.split())
+
+            legend: List[Dict[str, str]] = [{"name": "<no capabilities>", "color": "#60a5fa"}]
+            legend.extend(
+                {"name": cap, "color": _capabilities_color(cap, self._capabilities_color_map)}
+                for cap in sorted(active_caps)
+            )
 
             # time axis ticks
             ticks: List[Dict[str, Any]] = []
@@ -464,6 +491,10 @@ class WebUIApp:
         self._memory_chart = MemoryChartState()
         self._worker_processors: Dict[str, Dict[str, Any]] = {}
         self._worker_manager_map: Dict[str, str] = {}  # worker_name -> manager_id (persistent)
+        self._worker_managers_data: Dict[str, Dict[str, Any]] = {}  # manager_id -> manager info
+        self._dead_managers: Dict[str, float] = {}  # manager_id -> disconnect timestamp
+        self._manager_color_map: Dict[str, str] = {}  # manager_id -> color hex
+        self._monitor_address: str = str(config.monitor_address)
 
         self._settings = {"stream_window": 5, "memory_scale": "linear"}
 
@@ -547,6 +578,7 @@ class WebUIApp:
 
             # Always send chart data (auto-scrolling)
             stream_data = self._task_stream.get_render_data()
+            self._enrich_stream_with_managers(stream_data)
             payload["task_stream"] = stream_data
 
             memory_data = self._memory_chart.get_render_data(stream_data["window"])
@@ -555,6 +587,7 @@ class WebUIApp:
             # Worker processors
             if has_scheduler_update:
                 payload["processors"] = self._build_processors_data()
+                payload["worker_managers"] = list(self._worker_managers_data.values())
 
             await self._broadcast(payload)
 
@@ -563,6 +596,7 @@ class WebUIApp:
             "cpu": format_percentage(data.scheduler.cpu),
             "rss": format_bytes(data.scheduler.rss),
             "rss_free": format_bytes(data.rss_free),
+            "monitor_address": self._monitor_address,
         }
 
         # Update persistent worker-to-manager mapping with latest data
@@ -570,6 +604,37 @@ class WebUIApp:
             manager_name = manager_id_bytes.decode() if manager_id_bytes else "unknown"
             for wid in worker_ids:
                 self._worker_manager_map[bytes(wid).decode()] = manager_name
+
+        # Update worker manager details from scaling_manager
+        current_managers: Set[str] = set()
+        for detail in data.scaling_manager.worker_manager_details:
+            manager_id = detail["worker_manager_id"].decode() if detail["worker_manager_id"] else "unknown"
+            current_managers.add(manager_id)
+            worker_ids_for_manager = data.scaling_manager.managed_workers.get(detail["worker_manager_id"], [])
+            self._worker_managers_data[manager_id] = {
+                "manager_id": manager_id,
+                "identity": detail["identity"],
+                "last_seen": format_seconds(detail["last_seen_s"]),
+                "max_task_concurrency": detail["max_task_concurrency"],
+                "worker_count": len(worker_ids_for_manager),
+                "capabilities": detail["capabilities"],
+            }
+        # Mark newly-disappeared managers with a disconnect timestamp instead of
+        # removing immediately, so the UI keeps showing them for a grace period.
+        now_ts = datetime.datetime.now().timestamp()
+        newly_dead = set(self._worker_managers_data.keys()) - current_managers
+        for mid in newly_dead:
+            if mid not in self._dead_managers:
+                self._dead_managers[mid] = now_ts
+        # Re-alive managers that came back
+        for mid in current_managers:
+            self._dead_managers.pop(mid, None)
+        # Evict managers that have been gone for more than 2 minutes
+        manager_retention_seconds = 120
+        evict = [mid for mid, ts in self._dead_managers.items() if now_ts - ts > manager_retention_seconds]
+        for mid in evict:
+            self._dead_managers.pop(mid)
+            self._worker_managers_data.pop(mid, None)
 
         current_workers = set()
         now = datetime.datetime.now()
@@ -639,6 +704,32 @@ class WebUIApp:
             self._task_stream.handle_worker_state(
                 StateWorker.new_msg(WorkerID(w.encode()), WorkerState.Disconnected, {})
             )
+
+        # Aggregate summary stats from workers into each worker manager entry
+        for manager_id, mgr_data in self._worker_managers_data.items():
+            mgr_proc_cpu = 0.0
+            mgr_proc_rss = 0
+            mgr_free = 0
+            mgr_sent = 0
+            mgr_queued = 0
+            mgr_suspended = 0
+            worker_count = 0
+            for w_data in self._workers_data.values():
+                if w_data.get("manager_id") == manager_id:
+                    worker_count += 1
+                    mgr_proc_cpu += w_data.get("proc_cpu", 0)
+                    mgr_proc_rss += w_data.get("proc_rss", 0)
+                    mgr_free += w_data.get("free", 0)
+                    mgr_sent += w_data.get("sent", 0)
+                    mgr_queued += w_data.get("queued", 0)
+                    mgr_suspended += w_data.get("suspended", 0)
+            mgr_data["worker_count"] = worker_count
+            mgr_data["total_proc_cpu"] = round(mgr_proc_cpu, 1)
+            mgr_data["total_proc_rss"] = mgr_proc_rss
+            mgr_data["total_free"] = mgr_free
+            mgr_data["total_sent"] = mgr_sent
+            mgr_data["total_queued"] = mgr_queued
+            mgr_data["total_suspended"] = mgr_suspended
 
     def _process_worker_state(self, state_worker: StateWorker) -> Optional[Dict[str, Any]]:
         worker_id = state_worker.worker_id.decode()
@@ -736,12 +827,31 @@ class WebUIApp:
             self._active_tasks[task_id_hex] = entry
             return entry
 
+    def _enrich_stream_with_managers(self, stream_data: Dict[str, Any]) -> None:
+        """Add per-row manager IDs and a manager color legend to task stream data."""
+        full_rows = stream_data.get("full_rows", [])
+        row_managers = [self._worker_manager_map.get(w, "") for w in full_rows]
+        stream_data["row_managers"] = row_managers
+
+        seen: Set[str] = set()
+        for mid in row_managers:
+            if mid:
+                seen.add(mid)
+        manager_legend: List[Dict[str, str]] = [
+            {"name": mid, "color": _capabilities_color(mid, self._manager_color_map)} for mid in sorted(seen)
+        ]
+        stream_data["manager_legend"] = manager_legend
+
     def _build_processors_data(self) -> List[Dict[str, Any]]:
         # Group workers by manager_id and include per-manager summary stats
         managers: Dict[str, List[Dict[str, Any]]] = {}
         for wp in self._worker_processors.values():
             mid = wp.get("manager_id", "—")
             managers.setdefault(mid, []).append(wp)
+
+        # Ensure all known worker managers appear even if they have no workers
+        for mid in self._worker_managers_data:
+            managers.setdefault(mid, [])
 
         result = []
         for manager_id, workers in sorted(managers.items()):
@@ -811,6 +921,7 @@ class WebUIApp:
         self._drain_pending_messages()
 
         stream_data = self._task_stream.get_render_data()
+        self._enrich_stream_with_managers(stream_data)
         memory_data = self._memory_chart.get_render_data(stream_data["window"])
         # combine active + completed for initial task log, sorted by time (newest first)
         initial_task_log = list(self._active_tasks.values()) + list(self._task_log)
@@ -822,6 +933,7 @@ class WebUIApp:
             "task_stream": stream_data,
             "memory_chart": memory_data,
             "processors": self._build_processors_data(),
+            "worker_managers": list(self._worker_managers_data.values()),
             "settings": self._settings,
         }
 

@@ -26,6 +26,10 @@
             <h3>Scheduler</h3>
             <div class="scheduler-metrics">
                 <div class="metric">
+                    <span class="metric-label">Monitor Address:</span>
+                    <span class="metric-value" id="sched-address">—</span>
+                </div>
+                <div class="metric">
                     <span class="metric-label">CPU:</span>
                     <span class="metric-value" id="sched-cpu">—</span>
                 </div>
@@ -37,6 +41,31 @@
                     <span class="metric-label">RSS Free:</span>
                     <span class="metric-value" id="sched-rss-free">—</span>
                 </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Worker Managers</h3>
+            <div class="table-wrap">
+                <table class="data-table" id="managers-table">
+                    <thead>
+                        <tr>
+                            <th>Manager ID</th>
+                            <th>Identity</th>
+                            <th>Last Seen</th>
+                            <th>Max Concurrency</th>
+                            <th>Workers</th>
+                            <th>Σ CPU %</th>
+                            <th>Σ RSS (MB)</th>
+                            <th>Σ Free</th>
+                            <th>Σ Sent</th>
+                            <th>Σ Queued</th>
+                            <th>Σ Suspended</th>
+                            <th>Capabilities</th>
+                        </tr>
+                    </thead>
+                    <tbody id="managers-body"></tbody>
+                </table>
             </div>
         </div>
 

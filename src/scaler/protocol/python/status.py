@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 from scaler.protocol.capnp._python import _status  # noqa
 from scaler.protocol.python.common import TaskState
@@ -236,8 +236,24 @@ class ScalingManagerStatus(Message):
     def managed_workers(self) -> Dict[bytes, List[WorkerID]]:
         return {pair.workerManagerID: [WorkerID(wid) for wid in pair.workerIDs] for pair in self._msg.managedWorkers}
 
+    @property
+    def worker_manager_details(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "worker_manager_id": d.workerManagerID,
+                "identity": d.identity,
+                "last_seen_s": d.lastSeenS,
+                "max_task_concurrency": d.maxTaskConcurrency,
+                "capabilities": d.capabilities,
+            }
+            for d in self._msg.workerManagerDetails
+        ]
+
     @staticmethod
-    def new_msg(managed_workers: Dict[bytes, List[WorkerID]]) -> "ScalingManagerStatus":  # type: ignore[override]
+    def new_msg(
+        managed_workers: Dict[bytes, List[WorkerID]], worker_manager_details: Optional[List[Dict[str, Any]]] = None
+    ) -> "ScalingManagerStatus":  # type: ignore[override]
+        details = worker_manager_details or []
         return ScalingManagerStatus(
             _status.ScalingManagerStatus(
                 managedWorkers=[
@@ -245,7 +261,17 @@ class ScalingManagerStatus(Message):
                         workerManagerID=worker_manager_id, workerIDs=[bytes(worker_id) for worker_id in worker_ids]
                     )
                     for worker_manager_id, worker_ids in managed_workers.items()
-                ]
+                ],
+                workerManagerDetails=[
+                    _status.ScalingManagerStatus.WorkerManagerDetail(
+                        workerManagerID=d["worker_manager_id"],
+                        identity=d["identity"],
+                        lastSeenS=d["last_seen_s"],
+                        maxTaskConcurrency=d["max_task_concurrency"],
+                        capabilities=d.get("capabilities", ""),
+                    )
+                    for d in details
+                ],
             )
         )
 

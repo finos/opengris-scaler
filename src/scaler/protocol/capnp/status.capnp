@@ -55,10 +55,19 @@ struct WorkerManagerStatus {
 
 struct ScalingManagerStatus {
     managedWorkers @0 :List(Pair);
+    workerManagerDetails @1 :List(WorkerManagerDetail);
 
     struct Pair {
         workerManagerID @0 :Data;
         workerIDs @1 :List(Data);
+    }
+
+    struct WorkerManagerDetail {
+        workerManagerID @0 :Data;
+        identity @1 :Text;
+        lastSeenS @2 :UInt8;
+        maxTaskConcurrency @3 :UInt32;
+        capabilities @4 :Text;
     }
 }
 
