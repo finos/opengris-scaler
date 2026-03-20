@@ -98,8 +98,12 @@ class WaterfallScalingPolicy(ScalingPolicy):
 
         for required_keys, capability_dict in unmet.items():
             command = self._resolve_capability_start(
-                current_rule, required_keys, capability_dict, managed_worker_ids,
-                worker_manager_heartbeat, worker_manager_snapshots,
+                current_rule,
+                required_keys,
+                capability_dict,
+                managed_worker_ids,
+                worker_manager_heartbeat,
+                worker_manager_snapshots,
             )
             if command is not None:
                 commands.append(command)
@@ -115,8 +119,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         each unmet capability key-set to a representative capability dict from one such task.
         """
         worker_capability_sets: List[FrozenSet[str]] = [
-            frozenset(worker_hb.capabilities.keys())
-            for worker_hb in information_snapshot.workers.values()
+            frozenset(worker_hb.capabilities.keys()) for worker_hb in information_snapshot.workers.values()
         ]
 
         unmet: Dict[FrozenSet[str], Dict[str, int]] = {}
@@ -155,9 +158,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
 
             # This is the highest-priority capable manager with capacity
             if rule.worker_manager_id == current_rule.worker_manager_id:
-                local_capacity = min(
-                    current_rule.max_task_concurrency, worker_manager_heartbeat.max_task_concurrency
-                )
+                local_capacity = min(current_rule.max_task_concurrency, worker_manager_heartbeat.max_task_concurrency)
                 if len(managed_worker_ids) >= local_capacity:
                     return None
                 return WorkerManagerCommand.new_msg(

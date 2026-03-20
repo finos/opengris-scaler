@@ -403,9 +403,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
 
     def test_unmet_capability_scales_up_capable_manager(self):
         """Manager that can provide the required capability should start workers with that capability."""
-        rules = [
-            WaterfallRule(priority=1, worker_manager_id=b"manager_gpu", max_task_concurrency=10),
-        ]
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_gpu", max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
 
         tasks = _create_tasks(1, capabilities={"gpu": 1})
@@ -416,7 +414,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
         managed_worker_ids: List[WorkerID] = []
         managed_worker_capabilities: Dict[str, int] = {}
         manager_snapshots = {
-            b"manager_gpu": _create_manager_snapshot(b"manager_gpu", worker_count=0, capabilities={"gpu": 4}),
+            b"manager_gpu": _create_manager_snapshot(b"manager_gpu", worker_count=0, capabilities={"gpu": 4})
         }
 
         commands = policy.get_scaling_commands(
@@ -528,9 +526,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
 
     def test_capability_check_precedes_ratio(self):
         """Unmet capabilities should trigger start even when overall ratio is within bounds."""
-        rules = [
-            WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10),
-        ]
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
 
         # 3 generic tasks + 1 GPU task, 3 workers → ratio = 4/3 ≈ 1.3 (within [1, 10])
@@ -544,7 +540,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
         managed_worker_ids: List[WorkerID] = []
         managed_worker_capabilities: Dict[str, int] = {}
         manager_snapshots = {
-            b"manager_a": _create_manager_snapshot(b"manager_a", worker_count=0, capabilities={"gpu": 4}),
+            b"manager_a": _create_manager_snapshot(b"manager_a", worker_count=0, capabilities={"gpu": 4})
         }
 
         commands = policy.get_scaling_commands(
@@ -788,9 +784,7 @@ def _create_worker_manager_heartbeat(
     worker_manager_id: bytes, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
 ) -> WorkerManagerHeartbeat:
     return WorkerManagerHeartbeat.new_msg(
-        max_task_concurrency=max_task_concurrency,
-        capabilities=capabilities or {},
-        worker_manager_id=worker_manager_id,
+        max_task_concurrency=max_task_concurrency, capabilities=capabilities or {}, worker_manager_id=worker_manager_id
     )
 
 
