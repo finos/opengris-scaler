@@ -1,5 +1,4 @@
 import logging
-from collections import defaultdict
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
 from scaler.protocol.python.message import (
