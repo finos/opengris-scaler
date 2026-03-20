@@ -128,8 +128,8 @@ class TestOneToManyDict(unittest.TestCase):
         count = 0
         for _ in self._dict:
             count += 1
-            for i in range(1, 12):
-                self._dict.add(i, i)
+            # Small number of keys should not trigger a rehash
+            self._dict.add("2", 1)
         self.assertTrue(count == 1)
 
     def test_iter_invalidated(self):

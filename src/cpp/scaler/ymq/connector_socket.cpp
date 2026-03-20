@@ -154,7 +154,7 @@ void ConnectorSocket::tryConnect(std::shared_ptr<State> state, ConnectCallback o
 void ConnectorSocket::onClientConnected(
     std::shared_ptr<State> state,
     ConnectCallback onConnectCallback,
-    Address address,
+    [[maybe_unused]] Address address,
     std::expected<Client, Error> result) noexcept
 {
     assert(!state->_isBinding);
@@ -225,7 +225,6 @@ void ConnectorSocket::emplaceMessageConnection(std::shared_ptr<State> state) noe
 {
     state->_connection.emplace(
         internal::MessageConnection {
-            state->_thread.loop(),
             state->_identity,
             std::nullopt,
             [](Identity) {},

@@ -15,14 +15,14 @@ struct PyIndexedQueue {
     scaler::utility::IndexedQueue<OwnedPyObject<PyObject>> queue;
 };
 
-static PyObject* PyIndexedQueueNew(PyTypeObject* type, PyObject* args, PyObject* kwds)
+static PyObject* PyIndexedQueueNew(PyTypeObject* type, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwds)
 {
     PyIndexedQueue* self {};
     self = (PyIndexedQueue*)type->tp_alloc(type, 0);
     return (PyObject*)self;
 }
 
-static int PyIndexedQueueInit(PyIndexedQueue* self, PyObject* args, PyObject* kwds)
+static int PyIndexedQueueInit(PyIndexedQueue* self, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwds)
 {
     new (&((PyIndexedQueue*)self)->queue) scaler::utility::IndexedQueue<OwnedPyObject<PyObject>>();
     return 0;
@@ -108,12 +108,12 @@ static PyObject* PyIndexedQueueToList(PyIndexedQueue* self, PyObject* args)
 
 // Define the methods for the IndexedQueue Python class
 static PyMethodDef PyIndexedQueueMethods[] = {
-    {"__len__", (PyCFunction)PyIndexedQueueSize, METH_NOARGS, "__len__ method"},
+    {"__len__", (PyCFunction)(void*)PyIndexedQueueSize, METH_NOARGS, "__len__ method"},
     {"put", (PyCFunction)PyIndexedQueuePut, METH_VARARGS, "Put an item to IndexedQueue"},
     {"get", (PyCFunction)PyIndexedQueueGet, METH_VARARGS, "Pop and Return an item from IndexedQueue"},
     {"remove", (PyCFunction)PyIndexedQueueRemove, METH_VARARGS, "Remove an item from IndexedQueue"},
     {"to_list", (PyCFunction)PyIndexedQueueToList, METH_NOARGS, "Return the queue contents as a Python list"},
-    {nullptr},
+    {nullptr, nullptr, 0, nullptr},
 };
 
 static PyType_Slot PyIndexedQueueSlots[] = {
@@ -136,12 +136,15 @@ static PyType_Spec PyIndexedQueueSpec = {
 };
 
 static PyModuleDef indexed_queue_module = {
-    .m_base  = PyModuleDef_HEAD_INIT,
-    .m_name  = "indexed_queue",
-    .m_doc   = PyDoc_STR("A module that wraps a C++ IndexedQueue class"),
-    .m_size  = 0,
-    .m_slots = nullptr,
-    .m_free  = nullptr,
+    .m_base     = PyModuleDef_HEAD_INIT,
+    .m_name     = "indexed_queue",
+    .m_doc      = PyDoc_STR("A module that wraps a C++ IndexedQueue class"),
+    .m_size     = 0,
+    .m_methods  = nullptr,
+    .m_slots    = nullptr,
+    .m_traverse = nullptr,
+    .m_clear    = nullptr,
+    .m_free     = nullptr,
 };
 }
 }  // namespace pymod

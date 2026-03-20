@@ -72,14 +72,7 @@
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Darwin"
-      },
-      "targets": [
-        "object_storage_server",
-        "cc_object_storage_server",
-        "test_object_manager",
-        "test_object_storage_server",
-        "test_logging"
-      ]
+      }
     },
     {
       "name": "windows-x64",
@@ -115,6 +108,18 @@
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
+      }
+    },
+    {
+      "name": "darwin-arm64",
+      "configurePreset": "darwin-arm64",
+      "output": {
+        "outputOnFailure": true
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
       }
     },
     {

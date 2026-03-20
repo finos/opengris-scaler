@@ -191,7 +191,6 @@ internal::MessageConnection& BinderSocket::createConnection(
     ConnectionID connectionId = state->_connectionCounter++;
 
     internal::MessageConnection connection(
-        state->_thread.loop(),
         state->_identity,
         remoteIdentity,
         std::bind_front(&BinderSocket::onRemoteIdentity, state, connectionId),

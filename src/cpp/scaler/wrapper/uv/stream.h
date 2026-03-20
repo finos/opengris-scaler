@@ -118,7 +118,8 @@ public:
 private:
     Handle<NativeHandleType, ReadCallback> _handle;
 
-    static void onAllocateCallback(uv_handle_t* handle, size_t suggestedSize, uv_buf_t* nativeBuffer) noexcept
+    static void onAllocateCallback(
+        [[maybe_unused]] uv_handle_t* handle, size_t suggestedSize, uv_buf_t* nativeBuffer) noexcept
     {
         *nativeBuffer = uv_buf_init(new char[suggestedSize], suggestedSize);
     }

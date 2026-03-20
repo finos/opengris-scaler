@@ -17,7 +17,8 @@ struct PyBytes {
 
 static int PyBytes_init(PyBytes* self, PyObject* args, PyObject* kwds)
 {
-    Py_buffer view {.buf = nullptr};
+    Py_buffer view {};
+    view.buf               = nullptr;
     const char* keywords[] = {"bytes", nullptr};
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|y*", (char**)keywords, &view))
         return -1;  // Error parsing arguments
@@ -59,7 +60,7 @@ static PyObject* PyBytes_repr(PyBytes* self)
     }
 }
 
-static PyObject* PyBytes_data_getter(PyBytes* self)
+static PyObject* PyBytes_data_getter(PyBytes* self, [[maybe_unused]] void* closure)
 {
     if (self->bytes.is_null())
         Py_RETURN_NONE;
@@ -72,7 +73,7 @@ static Py_ssize_t PyBytes_len(PyBytes* self)
     return self->bytes.len();
 }
 
-static PyObject* PyBytes_len_getter(PyBytes* self)
+static PyObject* PyBytes_len_getter(PyBytes* self, [[maybe_unused]] void* closure)
 {
     return PyLong_FromSize_t(self->bytes.len());
 }
@@ -82,7 +83,7 @@ static int PyBytes_getbuffer(PyBytes* self, Py_buffer* view, int flags)
     return PyBuffer_FillInfo(view, (PyObject*)self, (void*)self->bytes.data(), self->bytes.len(), true, flags);
 }
 
-static void PyBytes_releasebuffer(PyBytes* self, Py_buffer* view)
+static void PyBytes_releasebuffer([[maybe_unused]] PyBytes* self, [[maybe_unused]] Py_buffer* view)
 {
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
 #include <vector>
 
 #include "scaler/ymq/internal/event_loop_thread.h"
@@ -18,8 +19,8 @@ public:
     IOContext(const IOContext&)            = delete;
     IOContext& operator=(const IOContext&) = delete;
 
-    IOContext(IOContext&&)            = default;
-    IOContext& operator=(IOContext&&) = default;
+    IOContext(IOContext&&) noexcept            = default;
+    IOContext& operator=(IOContext&&) noexcept = default;
 
     // Fetch the next thread in the round-robin pool.
     internal::EventLoopThread& nextThread() noexcept;
@@ -28,7 +29,7 @@ public:
 
 private:
     std::vector<internal::EventLoopThread> _threads;
-    std::atomic<size_t> _threadsRoundRobin;
+    std::unique_ptr<std::atomic<size_t>> _threadsRoundRobin;
 };
 
 }  // namespace ymq

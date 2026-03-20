@@ -36,7 +36,6 @@ public:
         , _loop(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init()))
         , _server(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPServer::init(_loop)))
         , _serverConnection(
-              _loop,
               serverIdentity,
               std::nullopt,
               std::move(serverOnIdentity),
@@ -119,9 +118,9 @@ TEST_F(YMQConnectorSocketTest, SendMessage)
 
     ConnectorServerPair connections(
         // Server callbacks
-        [](auto identity) {},                                       // onRemoteIdentity
+        []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on server"; },  // onRemoteDisconnect
-        [&](scaler::ymq::Bytes receivedPayload) {                   // onMessage
+        [&]([[maybe_unused]] scaler::ymq::Bytes receivedPayload) {  // onMessage
             serverMessagesReceived++;
         },
 
@@ -194,7 +193,7 @@ TEST_F(YMQConnectorSocketTest, RecvMessage)
 
     ConnectorServerPair connections(
         // Server callbacks
-        [](auto identity) {},                                       // onRemoteIdentity
+        []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on server"; },  // onRemoteDisconnect
         [](auto) { FAIL() << "Unexpected message on server"; },     // onMessage
 
@@ -270,7 +269,7 @@ TEST_F(YMQConnectorSocketTest, RemoteDisconnect)
 
     ConnectorServerPair connections(
         // Server callbacks
-        [](auto identity) {},                                       // onRemoteIdentity
+        []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on server"; },  // onRemoteDisconnect
         [](auto) { FAIL() << "Unexpected message on server"; },     // onMessage
 
@@ -317,12 +316,12 @@ TEST_F(YMQConnectorSocketTest, Reconnect)
 
     ConnectorServerPair connections(
         // Server callbacks
-        [](auto identity) {},                                    // onRemoteIdentity
-        [](auto reason) {},                                      // onRemoteDisconnect
+        []([[maybe_unused]] auto identity) {},                   // onRemoteIdentity
+        []([[maybe_unused]] auto reason) {},                     // onRemoteDisconnect
         [](auto) { FAIL() << "Unexpected message on server"; },  // onMessage
 
         // Connector callback
-        [](auto result) {});
+        []([[maybe_unused]] auto result) {});
 
     scaler::ymq::internal::MessageConnection& server = connections.server();
     scaler::ymq::ConnectorSocket& connector          = connections.connector();

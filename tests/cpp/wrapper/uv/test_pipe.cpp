@@ -43,7 +43,7 @@ private:
         UV_EXIT_ON_ERROR(result);
 
         auto client = std::make_shared<scaler::wrapper::uv::Pipe>(
-            std::move(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Pipe::init(_loop, false))));
+            UV_EXIT_ON_ERROR(scaler::wrapper::uv::Pipe::init(_loop, false)));
         UV_EXIT_ON_ERROR(_server.accept(*client));
 
         UV_EXIT_ON_ERROR(client->readStart(std::bind_front(onClientRead, client)));
@@ -62,7 +62,7 @@ private:
         std::span<const uint8_t> readBuffer = UV_EXIT_ON_ERROR(readResult);
 
         // Echo the received data back to the client
-        auto buffer = std::make_shared<const std::vector<uint8_t>>(readBuffer.cbegin(), readBuffer.cend());
+        auto buffer = std::make_shared<const std::vector<uint8_t>>(readBuffer.begin(), readBuffer.end());
         UV_EXIT_ON_ERROR(client->write(
             std::span<const uint8_t>(*buffer), [buffer](std::expected<void, scaler::wrapper::uv::Error>&& result) {
                 UV_EXIT_ON_ERROR(std::move(result));

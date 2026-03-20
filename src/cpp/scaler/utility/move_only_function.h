@@ -50,7 +50,7 @@ private:
     template <typename F>
         requires std::invocable<F, Args...> && std::convertible_to<std::invoke_result_t<F, Args...>, R>
     struct CallableContainer: CallableBase {
-        mutable F f;
+        mutable std::remove_reference_t<F> f;
         explicit CallableContainer(F&& f_): f(std::forward<F>(f_)) {}
         R operator()(Args... args) const override { return std::invoke(f, std::forward<Args>(args)...); }
     };

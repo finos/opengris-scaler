@@ -153,7 +153,7 @@ class NativeWorkerManager:
         worker = self._create_worker()
         worker.start()
         self._workers[worker.identity] = worker
-        print(f"Start worker, {self._ident!r}")
+        logging.info(f"Start worker, {self._ident!r}")
         return worker.identity, Status.Success
 
     async def shutdown_workers(self, worker_ids: List[bytes]) -> Status:

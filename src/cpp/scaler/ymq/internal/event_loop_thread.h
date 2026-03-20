@@ -44,7 +44,7 @@ private:
     // executeThreadSafe() add callbacks to a thread-safe queue, and then wake up the the UV loop using an uv::Async
     // notification.
 
-    std::mutex _executeMutex;
+    std::unique_ptr<std::mutex> _executeMutex;
     std::queue<Callback> _executeQueue;
     scaler::wrapper::uv::Async _executeAsync;
 

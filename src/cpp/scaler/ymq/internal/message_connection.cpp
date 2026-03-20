@@ -16,14 +16,12 @@ namespace ymq {
 namespace internal {
 
 MessageConnection::MessageConnection(
-    scaler::wrapper::uv::Loop& loop,
     Identity localIdentity,
     std::optional<Identity> remoteIdentity,
     RemoteIdentityCallback onRemoteIdentityCallback,
     RemoteDisconnectCallback onRemoteDisconnectCallback,
     RecvMessageCallback onRecvMessageCallback) noexcept
-    : _loop(loop)
-    , _localIdentity(std::move(localIdentity))
+    : _localIdentity(std::move(localIdentity))
     , _remoteIdentity(std::move(remoteIdentity))
     , _onRemoteIdentityCallback(std::move(onRemoteIdentityCallback))
     , _onRemoteDisconnectCallback(std::move(onRemoteDisconnectCallback))
@@ -303,7 +301,7 @@ void MessageConnection::sendLocalIdentity() noexcept
 
     scaler::ymq::Bytes messagePayload = scaler::ymq::Bytes(_localIdentity.data(), _localIdentity.size());
 
-    SendMessageCallback callback = [](std::expected<void, scaler::ymq::Error> result) {};
+    SendMessageCallback callback = []([[maybe_unused]] std::expected<void, scaler::ymq::Error> result) {};
 
     sendMessage(std::move(messagePayload), std::move(callback));
 }

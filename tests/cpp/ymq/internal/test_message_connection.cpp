@@ -29,7 +29,6 @@ public:
         : _loop(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init()))
         , _server(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPServer::init(_loop)))
         , _serverConnection(
-              _loop,
               serverIdentity,
               std::nullopt,
               std::move(serverOnIdentity),
@@ -37,7 +36,6 @@ public:
               std::move(serverOnMessage))
         , _clientSocket(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(_loop)))
         , _clientConnection(
-              _loop,
               clientIdentity,
               std::nullopt,
               std::move(clientOnIdentity),
@@ -121,7 +119,7 @@ TEST_F(YMQMessageConnectionTest, MessageExchange)
 
     ConnectionPair connections(
         // Server callbacks
-        [](auto identity) {},                                       // onRemoteIdentity
+        []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on server"; },  // onRemoteDisconnect
         [&](scaler::ymq::Bytes messagePayload) {                    // onMessage
             auto payload = messagePayload.as_string();
@@ -131,7 +129,7 @@ TEST_F(YMQMessageConnectionTest, MessageExchange)
         },
 
         // Client callbacks
-        [](auto identity) {},                                       // onRemoteIdentity
+        []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on client"; },  // onRemoteDisconnect
         [&](scaler::ymq::Bytes messagePayload) {                    // onMessage
             auto payload = messagePayload.as_string();
@@ -171,15 +169,15 @@ TEST_F(YMQMessageConnectionTest, Disconnect)
 
     ConnectionPair connections(
         // Server callbacks
-        [](auto identity) {},  // onRemoteIdentity
-        [&](auto reason) {     // onRemoteDisconnect
+        []([[maybe_unused]] auto identity) {},  // onRemoteIdentity
+        [&](auto reason) {                      // onRemoteDisconnect
             ASSERT_EQ(reason, scaler::ymq::internal::MessageConnection::DisconnectReason::Disconnected);
             serverDisconnected = true;
         },
         [](auto) { FAIL() << "Unexpected message on server"; },  // onMessage
 
         // Client callbacks
-        [](auto identity) {},                                       // onRemoteIdentity
+        []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on client"; },  // onRemoteDisconnect
         [](auto) { FAIL() << "Unexpected message on client"; }      // onMessage
     );
@@ -210,14 +208,14 @@ TEST_F(YMQMessageConnectionTest, UnexpectedDisconnect)
 
     ConnectionPair connections(
         // Server callbacks
-        [](auto identity) {},  // onRemoteIdentity
-        [](auto reason) {      // onRemoteDisconnect
+        []([[maybe_unused]] auto identity) {},  // onRemoteIdentity
+        [](auto reason) {                       // onRemoteDisconnect
             ASSERT_EQ(reason, scaler::ymq::internal::MessageConnection::DisconnectReason::Aborted);
         },
         [](auto) { FAIL() << "Unexpected message on server"; },  // onMessage
 
         // Client callbacks
-        [](auto identity) {},                                       // onRemoteIdentity
+        []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on client"; },  // onRemoteDisconnect
         [](auto) { FAIL() << "Unexpected message on client"; }      // onMessage
     );
@@ -260,7 +258,7 @@ TEST_F(YMQMessageConnectionTest, EmptyMessage)
 
     ConnectionPair connections(
         // Server callbacks
-        [](auto identity) {},                                       // onRemoteIdentity
+        []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on server"; },  // onRemoteDisconnect
         [&](scaler::ymq::Bytes messagePayload) {                    // onMessage
             ASSERT_EQ(messagePayload.as_string(), "");
@@ -268,7 +266,7 @@ TEST_F(YMQMessageConnectionTest, EmptyMessage)
         },
 
         // Client callbacks
-        [](auto identity) {},                                       // onRemoteIdentity
+        []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on client"; },  // onRemoteDisconnect
         [](auto) { FAIL() << "Unexpected message on client"; }      // onMessage
     );

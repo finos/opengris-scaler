@@ -70,12 +70,15 @@ static PyModuleDef_Slot YMQ_slots[] = {
 };
 
 static PyModuleDef YMQ_module = {
-    .m_base  = PyModuleDef_HEAD_INIT,
-    .m_name  = "_ymq",
-    .m_doc   = PyDoc_STR("YMQ Python bindings"),
-    .m_size  = sizeof(YMQState),
-    .m_slots = YMQ_slots,
-    .m_free  = (freefunc)YMQ_free,
+    .m_base     = PyModuleDef_HEAD_INIT,
+    .m_name     = "_ymq",
+    .m_doc      = PyDoc_STR("YMQ Python bindings"),
+    .m_size     = sizeof(YMQState),
+    .m_methods  = nullptr,
+    .m_slots    = YMQ_slots,
+    .m_traverse = nullptr,
+    .m_clear    = nullptr,
+    .m_free     = (freefunc)YMQ_free,
 };
 
 // this is a polyfill for PyErr_GetRaisedException() added in Python 3.12+

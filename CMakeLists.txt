@@ -52,31 +52,28 @@ endif()
 if(WIN32)
     # Windows
     message(STATUS "Windows")
-    
+
     set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS on)
-    add_compile_definitions(WIN32_LEAN_AND_MEAN)
+    add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX)
     add_compile_options("/EHsc")
-   
+
 elseif(APPLE)
     if(CMAKE_OSX_ARCHITECTURES MATCHES "arm64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
         # Mac Arm
         message(STATUS "macOS on ARM64")
-
-        add_compile_options(-Wall -Wextra)
-        add_link_options(-Wl,-rpath,@loader_path)
     else()
         # Mac Intel
         message(STATUS "macOS on x86_64")
-
-        add_compile_options(-Wall -Wextra)
-        add_link_options(-Wl,-rpath,@loader_path)
     endif()
+
+    add_compile_options(-Wall -Wextra)
+    add_link_options(-Wl,-rpath,@loader_path)
 
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         # Linux GCC
         message(STATUS "Linux GCC ${CMAKE_CXX_COMPILER_VERSION}")
-    
+
         add_compile_options(-Wall -Wsubobject-linkage)
         add_link_options(-Wl,-rpath,$ORIGIN)
 
@@ -98,22 +95,12 @@ else()
     message(WARNING "Unknown platform: ${CMAKE_SYSTEM_NAME}")
 endif()
 
+# Include Python-related utilities
+include(cmake/ScalerPythonModule.cmake)
 
 find_package(CapnProto CONFIG REQUIRED)
 get_target_property(CAPNP_INCLUDE_DIRS CapnProto::capnp INTERFACE_INCLUDE_DIRECTORIES)
 message(STATUS "Found Capnp includes in ${CAPNP_INCLUDE_DIRS}")
-
-execute_process(
-  COMMAND python3-config --prefix
-  OUTPUT_VARIABLE PYTHON_PREFIX
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-set(Python3_ROOT_DIR "${PYTHON_PREFIX}")
-
-find_package(Python3 REQUIRED COMPONENTS Development.Module)
-message(STATUS "Python version: ${Python3_VERSION}")
-message(STATUS "Python include dirs: ${Python3_INCLUDE_DIRS}")
-message(STATUS "Python ABI: ${Python3_SOABI}")
 
 # Make LSP happy
 include_directories(${CAPNP_INCLUDE_DIRS})

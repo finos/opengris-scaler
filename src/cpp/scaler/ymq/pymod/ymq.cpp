@@ -202,8 +202,8 @@ static int YMQ_createType(
     const char* name,
     bool add,
     PyObject* bases,
-    getbufferproc getbuffer,
-    releasebufferproc releasebuffer)
+    [[maybe_unused]] getbufferproc getbuffer,
+    [[maybe_unused]] releasebufferproc releasebuffer)
 {
     assert(storage != nullptr);
 

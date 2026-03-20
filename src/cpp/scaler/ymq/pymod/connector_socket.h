@@ -51,7 +51,8 @@ static OwnedPyObject<PyConnectorSocket> PyConnectorSocket_new(YMQState* state)
     return self;
 }
 
-static int PyConnectorSocket_init(PyConnectorSocket* self, PyObject* args, PyObject* kwds)
+static int PyConnectorSocket_init(
+    [[maybe_unused]] PyConnectorSocket* self, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwds)
 {
     PyErr_SetString(PyExc_TypeError, "Use ConnectorSocket.connect() or ConnectorSocket.bind() to create a socket");
     return -1;
@@ -335,10 +336,10 @@ static PyGetSetDef PyConnectorSocket_properties[] = {
 };
 
 static PyMethodDef PyConnectorSocket_methods[] = {
-    {"connect", (PyCFunction)PyConnectorSocket_connect, METH_CLASS | METH_VARARGS | METH_KEYWORDS, nullptr},
-    {"bind", (PyCFunction)PyConnectorSocket_bind, METH_CLASS | METH_VARARGS | METH_KEYWORDS, nullptr},
-    {"send_message", (PyCFunction)PyConnectorSocket_send_message, METH_VARARGS | METH_KEYWORDS, nullptr},
-    {"recv_message", (PyCFunction)PyConnectorSocket_recv_message, METH_VARARGS | METH_KEYWORDS, nullptr},
+    {"connect", (PyCFunction)(void*)PyConnectorSocket_connect, METH_CLASS | METH_VARARGS | METH_KEYWORDS, nullptr},
+    {"bind", (PyCFunction)(void*)PyConnectorSocket_bind, METH_CLASS | METH_VARARGS | METH_KEYWORDS, nullptr},
+    {"send_message", (PyCFunction)(void*)PyConnectorSocket_send_message, METH_VARARGS | METH_KEYWORDS, nullptr},
+    {"recv_message", (PyCFunction)(void*)PyConnectorSocket_recv_message, METH_VARARGS | METH_KEYWORDS, nullptr},
     {nullptr, nullptr, 0, nullptr},
 };
 

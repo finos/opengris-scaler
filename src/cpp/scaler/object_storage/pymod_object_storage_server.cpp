@@ -103,35 +103,54 @@ static PyMethodDef PyObjectStorageServerMethods[] = {
     {nullptr, nullptr, 0, nullptr},
 };
 
-static PyTypeObject PyObjectStorageServerType = {
-    .tp_name      = "object_storage_server.ObjectStorageServer",
-    .tp_basicsize = sizeof(PyObjectStorageServer),
-    .tp_dealloc   = (destructor)PyObjectStorageServerDealloc,
-    .tp_flags     = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-    .tp_doc       = "ObjectStorageServer",
-    .tp_methods   = PyObjectStorageServerMethods,
-    .tp_init      = (initproc)PyObjectStorageServerInit,
-    .tp_new       = PyObjectStorageServerNew,
+static PyType_Slot PyObjectStorageServerSlots[] = {
+    {Py_tp_new, (void*)PyObjectStorageServerNew},
+    {Py_tp_init, (void*)PyObjectStorageServerInit},
+    {Py_tp_dealloc, (void*)PyObjectStorageServerDealloc},
+    {Py_tp_methods, (void*)PyObjectStorageServerMethods},
+    {Py_tp_doc, (void*)"ObjectStorageServer"},
+    {0, nullptr},
+};
+
+static PyType_Spec PyObjectStorageServerSpec = {
+    .name      = "object_storage_server.ObjectStorageServer",
+    .basicsize = sizeof(PyObjectStorageServer),
+    .itemsize  = 0,
+    .flags     = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .slots     = PyObjectStorageServerSlots,
 };
 
 static PyModuleDef PyObjectStorageServerModule = {
-    .m_base = PyModuleDef_HEAD_INIT,
-    .m_name = "object_storage_server",
-    .m_size = -1,
+    .m_base     = PyModuleDef_HEAD_INIT,
+    .m_name     = "object_storage_server",
+    .m_doc      = nullptr,
+    .m_size     = -1,
+    .m_methods  = nullptr,
+    .m_slots    = nullptr,
+    .m_traverse = nullptr,
+    .m_clear    = nullptr,
+    .m_free     = nullptr,
 };
 
 PyMODINIT_FUNC PyInit_object_storage_server(void)
 {
-    PyObject* m;
-    if (PyType_Ready(&PyObjectStorageServerType) < 0)
+    PyObject* m = PyModule_Create(&PyObjectStorageServerModule);
+    if (!m) {
         return nullptr;
+    }
 
-    m = PyModule_Create(&PyObjectStorageServerModule);
-    if (m == nullptr)
+    PyObject* type = PyType_FromSpec(&PyObjectStorageServerSpec);
+    if (!type) {
+        Py_DECREF(m);
         return nullptr;
+    }
 
-    Py_INCREF(&PyObjectStorageServerType);
-    PyModule_AddObject(m, "ObjectStorageServer", (PyObject*)&PyObjectStorageServerType);
+    if (PyModule_AddObject(m, "ObjectStorageServer", type) < 0) {
+        Py_DECREF(type);
+        Py_DECREF(m);
+        return nullptr;
+    }
+
     return m;
 }
 }
