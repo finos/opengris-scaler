@@ -23,7 +23,8 @@ class YMQAsyncBinder(AsyncBinder):
         self._context = IOContext()
 
         self._socket = BinderSocket(self._context, self._identity.decode())
-        self._socket.bind_to_sync(self._address.to_address())
+        bound = self._socket.bind_to_sync(self._address.to_address())
+        self._bound_address: str = repr(bound)
 
         self._callback: Optional[Callable[[bytes, Message], Awaitable[None]]] = None
 
@@ -33,6 +34,10 @@ class YMQAsyncBinder(AsyncBinder):
     @property
     def identity(self):
         return self._identity
+
+    @property
+    def bound_address(self) -> str:
+        return self._bound_address
 
     def destroy(self):
         self._socket = None

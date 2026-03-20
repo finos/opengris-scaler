@@ -4,6 +4,7 @@ import uuid
 from collections import defaultdict
 from typing import Awaitable, Callable, Dict, List, Optional
 
+import zmq
 import zmq.asyncio
 from zmq import Frame
 
@@ -26,6 +27,9 @@ class ZMQAsyncBinder(AsyncBinder):
         self._socket = self._context.socket(zmq.ROUTER)
         self.__set_socket_options()
         self._socket.bind(self._address.to_address())
+        endpoint = self._socket.getsockopt(zmq.LAST_ENDPOINT)
+        assert isinstance(endpoint, bytes)
+        self._bound_address: str = endpoint.decode()
 
         self._callback: Optional[Callable[[bytes, Message], Awaitable[None]]] = None
 
@@ -35,6 +39,10 @@ class ZMQAsyncBinder(AsyncBinder):
     @property
     def identity(self):
         return self._identity
+
+    @property
+    def bound_address(self) -> str:
+        return self._bound_address
 
     def destroy(self):
         self._context.destroy(linger=0)

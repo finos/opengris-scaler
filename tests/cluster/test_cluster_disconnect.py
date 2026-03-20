@@ -42,25 +42,25 @@ class TestClusterDisconnect(unittest.TestCase):
                 ),
                 worker_manager_id="test_manager",
                 preload=None,
-                event_loop=base_manager._event_loop,
-                worker_io_threads=base_manager._io_threads,
                 mode=NativeWorkerManagerMode.FIXED,
-                worker_config=WorkerConfig(
-                    per_worker_capabilities=WorkerCapabilities({}),
-                    per_worker_task_queue_size=base_manager._task_queue_size,
-                    heartbeat_interval_seconds=base_manager._heartbeat_interval_seconds,
-                    task_timeout_seconds=base_manager._task_timeout_seconds,
-                    death_timeout_seconds=base_manager._death_timeout_seconds,
-                    garbage_collect_interval_seconds=base_manager._garbage_collect_interval_seconds,
-                    trim_memory_threshold_bytes=base_manager._trim_memory_threshold_bytes,
-                    hard_processor_suspend=base_manager._hard_processor_suspend,
-                ),
-                logging_config=LoggingConfig(
-                    paths=DEFAULT_LOGGING_PATHS,
-                    level=base_manager._logging_level,
-                    config_file=base_manager._logging_config_file,
-                ),
-            )
+            ),
+            WorkerConfig(
+                per_worker_capabilities=WorkerCapabilities({}),
+                per_worker_task_queue_size=base_manager._task_queue_size,
+                heartbeat_interval_seconds=base_manager._heartbeat_interval_seconds,
+                task_timeout_seconds=base_manager._task_timeout_seconds,
+                death_timeout_seconds=base_manager._death_timeout_seconds,
+                garbage_collect_interval_seconds=base_manager._garbage_collect_interval_seconds,
+                trim_memory_threshold_bytes=base_manager._trim_memory_threshold_bytes,
+                hard_processor_suspend=base_manager._hard_processor_suspend,
+                io_threads=base_manager._io_threads,
+                event_loop=base_manager._event_loop,
+            ),
+            LoggingConfig(
+                paths=DEFAULT_LOGGING_PATHS,
+                level=base_manager._logging_level,
+                config_file=base_manager._logging_config_file,
+            ),
         )
         dying_process = multiprocessing.Process(target=dying_manager.run)
         dying_process.start()

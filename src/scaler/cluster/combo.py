@@ -100,21 +100,21 @@ class SchedulerClusterCombo:
                 ),
                 worker_manager_id=worker_manager_id,
                 preload=None,
-                event_loop=event_loop,
-                worker_io_threads=worker_io_threads,
                 mode=NativeWorkerManagerMode.FIXED,
-                worker_config=WorkerConfig(
-                    per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),
-                    per_worker_task_queue_size=per_worker_task_queue_size,
-                    heartbeat_interval_seconds=heartbeat_interval_seconds,
-                    task_timeout_seconds=task_timeout_seconds,
-                    death_timeout_seconds=death_timeout_seconds,
-                    garbage_collect_interval_seconds=garbage_collect_interval_seconds,
-                    trim_memory_threshold_bytes=trim_memory_threshold_bytes,
-                    hard_processor_suspend=hard_processor_suspend,
-                ),
-                logging_config=LoggingConfig(paths=logging_paths, config_file=logging_config_file, level=logging_level),
-            )
+            ),
+            WorkerConfig(
+                per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),
+                per_worker_task_queue_size=per_worker_task_queue_size,
+                heartbeat_interval_seconds=heartbeat_interval_seconds,
+                task_timeout_seconds=task_timeout_seconds,
+                death_timeout_seconds=death_timeout_seconds,
+                garbage_collect_interval_seconds=garbage_collect_interval_seconds,
+                trim_memory_threshold_bytes=trim_memory_threshold_bytes,
+                hard_processor_suspend=hard_processor_suspend,
+                io_threads=worker_io_threads,
+                event_loop=event_loop,
+            ),
+            LoggingConfig(paths=logging_paths, config_file=logging_config_file, level=logging_level),
         )
 
         self._worker_manager_process = multiprocessing.Process(target=self._worker_manager.run)

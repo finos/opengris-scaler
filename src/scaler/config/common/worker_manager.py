@@ -9,8 +9,8 @@ from scaler.config.types.zmq import ZMQConfig
 
 @dataclasses.dataclass
 class WorkerManagerConfig(ConfigClass):
-    scheduler_address: ZMQConfig = dataclasses.field(
-        metadata=dict(positional=True, help="scheduler address to connect workers to")
+    scheduler_address: Optional[ZMQConfig] = dataclasses.field(
+        default=None, metadata=dict(positional=True, help="scheduler address to connect workers to")
     )
 
     object_storage_address: Optional[ObjectStorageAddressConfig] = dataclasses.field(

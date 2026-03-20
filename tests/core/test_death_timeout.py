@@ -45,23 +45,21 @@ class TestDeathTimeout(unittest.TestCase):
                 ),
                 worker_manager_id="test_manager",
                 preload=None,
-                event_loop="builtin",
-                worker_io_threads=DEFAULT_IO_THREADS,
                 mode=NativeWorkerManagerMode.FIXED,
-                worker_config=WorkerConfig(
-                    per_worker_capabilities=WorkerCapabilities({}),
-                    per_worker_task_queue_size=DEFAULT_PER_WORKER_QUEUE_SIZE,
-                    heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
-                    garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
-                    trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
-                    task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
-                    death_timeout_seconds=10,
-                    hard_processor_suspend=False,
-                ),
-                logging_config=LoggingConfig(
-                    paths=DEFAULT_LOGGING_PATHS, level=DEFAULT_LOGGING_LEVEL, config_file=None
-                ),
-            )
+            ),
+            WorkerConfig(
+                per_worker_capabilities=WorkerCapabilities({}),
+                per_worker_task_queue_size=DEFAULT_PER_WORKER_QUEUE_SIZE,
+                heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+                garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
+                trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
+                task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
+                death_timeout_seconds=10,
+                hard_processor_suspend=False,
+                io_threads=DEFAULT_IO_THREADS,
+                event_loop="builtin",
+            ),
+            LoggingConfig(paths=DEFAULT_LOGGING_PATHS, level=DEFAULT_LOGGING_LEVEL, config_file=None),
         )
         process = multiprocessing.Process(target=manager.run)
         process.start()

@@ -13,6 +13,11 @@ class AsyncBinder(Looper, Reporter, metaclass=abc.ABCMeta):
     def identity(self):
         raise NotImplementedError()
 
+    @property
+    @abc.abstractmethod
+    def bound_address(self) -> str:
+        raise NotImplementedError()
+
     @abc.abstractmethod
     def destroy(self):
         raise NotImplementedError()

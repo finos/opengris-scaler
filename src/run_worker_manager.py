@@ -1,4 +1,4 @@
-from scaler.entry_points.worker_manager_baremetal_native import main
+from scaler.entry_points.worker_manager import main
 from scaler.utility.debug import pdb_wrapped
 
 if __name__ == "__main__":

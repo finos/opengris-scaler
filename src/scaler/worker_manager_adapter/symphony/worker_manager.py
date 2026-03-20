@@ -7,6 +7,7 @@ from typing import Dict, List, Tuple
 
 import zmq
 
+from scaler.config.common.worker import WorkerConfig
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
 from scaler.io import ymq
 from scaler.io.utility import create_async_connector, create_async_simple_context
@@ -18,30 +19,26 @@ from scaler.protocol.python.message import (
     WorkerManagerHeartbeat,
     WorkerManagerHeartbeatEcho,
 )
-from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
+from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
 from scaler.utility.identifiers import WorkerID
-from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager_adapter.symphony.worker import SymphonyWorker
 
 Status = WorkerManagerCommandResponse.Status
 
 
 class SymphonyWorkerManager:
-    def __init__(self, config: SymphonyWorkerManagerConfig):
+    def __init__(self, config: SymphonyWorkerManagerConfig, worker_config: WorkerConfig):
         self._address = config.worker_manager_config.scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._service_name = config.service_name
         self._max_task_concurrency = config.worker_manager_config.max_task_concurrency
         self._worker_manager_id = config.worker_manager_id.encode()
-        self._capabilities = config.worker_config.per_worker_capabilities.capabilities
-        self._io_threads = config.worker_io_threads
-        self._task_queue_size = config.worker_config.per_worker_task_queue_size
-        self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
-        self._death_timeout_seconds = config.worker_config.death_timeout_seconds
-        self._event_loop = config.event_loop
-        self._logging_paths = config.logging_config.paths
-        self._logging_level = config.logging_config.level
-        self._logging_config_file = config.logging_config.config_file
+        self._capabilities = worker_config.per_worker_capabilities.capabilities
+        self._io_threads = worker_config.io_threads
+        self._task_queue_size = worker_config.per_worker_task_queue_size
+        self._heartbeat_interval_seconds = worker_config.heartbeat_interval_seconds
+        self._death_timeout_seconds = worker_config.death_timeout_seconds
+        self._event_loop = worker_config.event_loop
 
         self._context = create_async_simple_context()
         self._name = "worker_manager_symphony"
@@ -149,8 +146,6 @@ class SymphonyWorkerManager:
         self._loop.add_signal_handler(signal.SIGTERM, self.__destroy)
 
     async def _run(self) -> None:
-        register_event_loop(self._event_loop)
-        setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
         self._task = self._loop.create_task(self.__get_loops())
         self.__register_signal()
         await self._task

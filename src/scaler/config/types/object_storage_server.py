@@ -6,8 +6,8 @@ from scaler.config.mixins import ConfigType
 
 @dataclasses.dataclass
 class ObjectStorageAddressConfig(ConfigType):
-    host: str
-    port: int
+    host: str = "0.0.0.0"
+    port: int = 0
     identity: str = "ObjectStorageServer"
 
     def __post_init__(self):

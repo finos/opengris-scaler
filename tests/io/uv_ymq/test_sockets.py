@@ -1,7 +1,7 @@
 import asyncio
 import unittest
 
-from scaler.io.ymq import BinderSocket, Bytes, ConnectorSocket, ErrorCode, IOContext, InvalidAddressFormatError
+from scaler.io.ymq import BinderSocket, Bytes, ConnectorSocket, ErrorCode, InvalidAddressFormatError, IOContext
 
 
 class TestSockets(unittest.IsolatedAsyncioTestCase):

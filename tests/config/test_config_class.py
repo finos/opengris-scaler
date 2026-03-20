@@ -4,8 +4,9 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 from unittest.mock import mock_open, patch
 
-from scaler.config.config_class import ConfigClass, parse_bool
+from scaler.config.config_class import ConfigClass
 from scaler.config.mixins import ConfigType
+from scaler.config.type_utils import parse_bool
 
 try:
     from typing import override  # type: ignore[attr-defined]
@@ -78,7 +79,7 @@ class TestConfigClass(unittest.TestCase):
             renamed: int = dataclasses.field(default=0, metadata=dict(long="--new-name"))
 
         parser = MockArgParser()
-        MyConfig.configure_parser(parser)
+        MyConfig.configure_parser(parser)  # type: ignore[arg-type]
         args = parser.args
 
         # Q: What is the "dest" kwarg?
@@ -136,13 +137,15 @@ class TestConfigClass(unittest.TestCase):
     @patch.dict("os.environ", {"ENV_VAR_ONE": "99", "ENV_VAR_TWO": "98"})
     @patch(
         "builtins.open",
-        mock_open(read_data="""
+        mock_open(
+            read_data=b"""
             [my_config]
             config-file = 99
 
             [unused_section]
             another-one = 97
-            """),
+            """
+        ),
     )
     def test_precedence(self) -> None:
         @dataclasses.dataclass
@@ -192,11 +195,13 @@ class TestConfigClass(unittest.TestCase):
     @patch("sys.argv", ["script", "--config", "file"])
     @patch(
         "builtins.open",
-        mock_open(read_data="""
+        mock_open(
+            read_data=b"""
             [my_config]
             my_int = 10
             my-other-int = 20
-            """),
+            """
+        ),
     )
     def test_underscore_toml_parsing(self) -> None:
         @dataclasses.dataclass

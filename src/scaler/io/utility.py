@@ -32,6 +32,7 @@ def create_async_simple_context():
         return zmq.asyncio.Context()
     elif type == NetworkBackend.ymq:
         from scaler.io.ymq import IOContext
+
         return IOContext()
     raise ValueError("Unknown network backend")
 

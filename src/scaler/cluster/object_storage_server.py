@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.object_storage.object_storage_server import ObjectStorageServer
 from scaler.utility.logging.utility import get_logger_info, setup_logger
+from scaler.utility.network_util import get_available_tcp_port
 
 
 class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
@@ -16,24 +17,26 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
         logging_paths: Tuple[str, ...],
         logging_level: str,
         logging_config_file: Optional[str],
+        address_queue: Optional[multiprocessing.Queue] = None,
     ):
         super().__init__(name="ObjectStorageServer")
 
         self._logging_paths = logging_paths
         self._logging_level = logging_level
         self._logging_config_file = logging_config_file
+        self._address_queue = address_queue
 
         self._object_storage_address = object_storage_address
 
-    def wait_until_ready(self) -> None:
-        """Blocks until the object storage server is available to server requests."""
-        host = self._object_storage_address.host
-        port = self._object_storage_address.port
+    def wait_until_ready(self, address: Optional[ObjectStorageAddressConfig] = None) -> None:
+        """Blocks until the object storage server is available to serve requests."""
+        addr = address if address is not None else self._object_storage_address
+        host = addr.host
+        port = addr.port
 
         start_time = time.time()
         while time.time() - start_time < 30:
             try:
-                # Try to connect to the port
                 with socket.create_connection((host, port), timeout=1):
                     return
             except (ConnectionRefusedError, socket.timeout, OSError):
@@ -43,6 +46,16 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
 
     def run(self) -> None:
         setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
+
+        if self._object_storage_address.port == 0:
+            port = get_available_tcp_port(self._object_storage_address.host)
+            self._object_storage_address = ObjectStorageAddressConfig(
+                host=self._object_storage_address.host, port=port, identity=self._object_storage_address.identity
+            )
+
+        if self._address_queue is not None:
+            self._address_queue.put(self._object_storage_address)
+
         logging.info(f"ObjectStorageServer: start and listen to {self._object_storage_address.to_string()}")
 
         log_format_str, log_level_str, logging_paths = get_logger_info(logging.getLogger())

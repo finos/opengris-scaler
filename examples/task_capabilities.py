@@ -49,24 +49,24 @@ def main():
             ),
             worker_manager_id="test_manager",
             mode=NativeWorkerManagerMode.FIXED,
+        ),
+        WorkerConfig(
+            per_worker_capabilities=WorkerCapabilities({"gpu": -1}),
+            per_worker_task_queue_size=base_manager._task_queue_size,
+            heartbeat_interval_seconds=base_manager._heartbeat_interval_seconds,
+            task_timeout_seconds=base_manager._task_timeout_seconds,
+            death_timeout_seconds=base_manager._death_timeout_seconds,
+            garbage_collect_interval_seconds=base_manager._garbage_collect_interval_seconds,
+            trim_memory_threshold_bytes=base_manager._trim_memory_threshold_bytes,
+            hard_processor_suspend=base_manager._hard_processor_suspend,
+            io_threads=base_manager._io_threads,
             event_loop=base_manager._event_loop,
-            worker_io_threads=base_manager._io_threads,
-            worker_config=WorkerConfig(
-                per_worker_capabilities=WorkerCapabilities({"gpu": -1}),
-                per_worker_task_queue_size=base_manager._task_queue_size,
-                heartbeat_interval_seconds=base_manager._heartbeat_interval_seconds,
-                task_timeout_seconds=base_manager._task_timeout_seconds,
-                death_timeout_seconds=base_manager._death_timeout_seconds,
-                garbage_collect_interval_seconds=base_manager._garbage_collect_interval_seconds,
-                trim_memory_threshold_bytes=base_manager._trim_memory_threshold_bytes,
-                hard_processor_suspend=base_manager._hard_processor_suspend,
-            ),
-            logging_config=LoggingConfig(
-                paths=base_manager._logging_paths,
-                level=base_manager._logging_level,
-                config_file=base_manager._logging_config_file,
-            ),
-        )
+        ),
+        LoggingConfig(
+            paths=base_manager._logging_paths,
+            level=base_manager._logging_level,
+            config_file=base_manager._logging_config_file,
+        ),
     )
     gpu_manager_process = multiprocessing.Process(target=gpu_manager.run)
     gpu_manager_process.start()
