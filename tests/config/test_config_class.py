@@ -216,7 +216,7 @@ class TestPreloadCLIArgument(unittest.TestCase):
 
     def test_native_worker_manager_config_has_preload_argument(self) -> None:
         parser = MockArgParser()
-        NativeWorkerManagerConfig.configure_parser(parser)
+        NativeWorkerManagerConfig.configure_parser(parser)  # type: ignore[arg-type]
 
         preload_args = [a for a in parser.args if "--preload" in a[0]]
         self.assertEqual(len(preload_args), 1)
@@ -230,7 +230,7 @@ class TestPreloadCLIArgument(unittest.TestCase):
 
     def test_ecs_worker_manager_config_has_preload_argument(self) -> None:
         parser = MockArgParser()
-        ECSWorkerManagerConfig.configure_parser(parser)
+        ECSWorkerManagerConfig.configure_parser(parser)  # type: ignore[arg-type]
 
         preload_args = [a for a in parser.args if "--preload" in a[0]]
         self.assertEqual(len(preload_args), 1)
