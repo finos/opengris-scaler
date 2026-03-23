@@ -1,5 +1,6 @@
 import dataclasses
 import enum
+from typing import Dict
 
 
 @dataclasses.dataclass(frozen=True)
@@ -10,6 +11,7 @@ class WorkerManagerSnapshot:
     max_task_concurrency: int
     worker_count: int
     last_seen_s: float  # time.time() epoch seconds of last heartbeat
+    capabilities: Dict[str, int] = dataclasses.field(default_factory=dict)
 
 
 class ScalingPolicyStrategy(enum.Enum):

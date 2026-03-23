@@ -1,6 +1,6 @@
 import logging
 from math import ceil
-from typing import Dict, List, Optional
+from typing import Dict, FrozenSet, List, Optional, Tuple
 
 from scaler.protocol.python.message import (
     InformationSnapshot,
@@ -51,6 +51,13 @@ class WaterfallScalingPolicy(ScalingPolicy):
             logging.warning("Worker manager %r not found in waterfall rules, skipping scaling", manager_id)
             return []
 
+        # Check for tasks with capabilities that no existing worker can handle
+        capability_commands = self._create_capability_start_commands(
+            rule, information_snapshot, worker_manager_heartbeat, managed_worker_ids, worker_manager_snapshots
+        )
+        if capability_commands:
+            return capability_commands
+
         if not information_snapshot.workers:
             if information_snapshot.tasks:
                 return self._create_start_commands(
@@ -73,6 +80,95 @@ class WaterfallScalingPolicy(ScalingPolicy):
 
     def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
         return ScalingManagerStatus.new_msg(managed_workers=managed_workers)
+
+    def _create_capability_start_commands(
+        self,
+        current_rule: WaterfallRule,
+        information_snapshot: InformationSnapshot,
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
+        managed_worker_ids: List[WorkerID],
+        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
+    ) -> List[WorkerManagerCommand]:
+        """Create start commands for tasks whose capabilities are not met by any existing worker."""
+        unmet = self._find_unmet_capabilities(information_snapshot)
+        if not unmet:
+            return []
+
+        commands: List[WorkerManagerCommand] = []
+
+        for required_keys, capability_dict in unmet.items():
+            command = self._resolve_capability_start(
+                current_rule,
+                required_keys,
+                capability_dict,
+                managed_worker_ids,
+                worker_manager_heartbeat,
+                worker_manager_snapshots,
+            )
+            if command is not None:
+                commands.append(command)
+
+        return commands
+
+    def _find_unmet_capabilities(
+        self, information_snapshot: InformationSnapshot
+    ) -> Dict[FrozenSet[str], Dict[str, int]]:
+        """Return capability sets required by tasks that no existing worker can handle.
+
+        Only considers tasks with non-empty capability requirements. Returns a dict mapping
+        each unmet capability key-set to a representative capability dict from one such task.
+        """
+        worker_capability_sets: List[FrozenSet[str]] = [
+            frozenset(worker_hb.capabilities.keys()) for worker_hb in information_snapshot.workers.values()
+        ]
+
+        unmet: Dict[FrozenSet[str], Dict[str, int]] = {}
+        for task in information_snapshot.tasks.values():
+            if not task.capabilities:
+                continue
+            required_keys = frozenset(task.capabilities.keys())
+            if required_keys in unmet:
+                continue
+            if not any(required_keys <= wc for wc in worker_capability_sets):
+                unmet[required_keys] = dict(task.capabilities)
+
+        return unmet
+
+    def _resolve_capability_start(
+        self,
+        current_rule: WaterfallRule,
+        required_keys: FrozenSet[str],
+        capability_dict: Dict[str, int],
+        managed_worker_ids: List[WorkerID],
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
+        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
+    ) -> Optional[WorkerManagerCommand]:
+        """Walk the waterfall priority chain and return a start command if this manager should handle it."""
+        for rule in self._rules:
+            snapshot = self._find_matching_snapshot(rule, worker_manager_snapshots)
+            if snapshot is None:
+                continue
+
+            if not required_keys <= frozenset(snapshot.capabilities.keys()):
+                continue
+
+            effective_capacity = min(rule.max_task_concurrency, snapshot.max_task_concurrency)
+            if snapshot.worker_count >= effective_capacity:
+                continue
+
+            # This is the highest-priority capable manager with capacity
+            if rule.worker_manager_id == current_rule.worker_manager_id:
+                local_capacity = min(current_rule.max_task_concurrency, worker_manager_heartbeat.max_task_concurrency)
+                if len(managed_worker_ids) >= local_capacity:
+                    return None
+                return WorkerManagerCommand.new_msg(
+                    worker_ids=[], command=WorkerManagerCommandType.StartWorkers, capabilities=capability_dict
+                )
+            else:
+                # A higher-priority capable manager should handle it
+                return None
+
+        return None
 
     def _create_start_commands(
         self,
@@ -122,11 +218,20 @@ class WaterfallScalingPolicy(ScalingPolicy):
                 # Lower-priority manager still has workers, let it drain first
                 return []
 
-        workers_with_load = []
+        # Partition managed workers: prefer shutting down workers without capabilities first
+        no_cap_candidates: List[Tuple[WorkerID, int]] = []
+        has_cap_candidates: List[Tuple[WorkerID, int]] = []
         for wid in managed_worker_ids:
             if wid in information_snapshot.workers:
-                workers_with_load.append((wid, information_snapshot.workers[wid].queued_tasks))
-        workers_with_load.sort(key=lambda x: x[1])
+                worker_hb = information_snapshot.workers[wid]
+                if worker_hb.capabilities:
+                    has_cap_candidates.append((wid, worker_hb.queued_tasks))
+                else:
+                    no_cap_candidates.append((wid, worker_hb.queued_tasks))
+
+        no_cap_candidates.sort(key=lambda x: x[1])
+        has_cap_candidates.sort(key=lambda x: x[1])
+        workers_with_load = no_cap_candidates + has_cap_candidates
 
         if not workers_with_load:
             return []

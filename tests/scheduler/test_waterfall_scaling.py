@@ -429,6 +429,262 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(len(commands[0].worker_ids), 9)
 
 
+class TestWaterfallCapabilities(unittest.TestCase):
+    """Tests for capability-aware scaling in WaterfallScalingPolicy."""
+
+    def setUp(self):
+        setup_logger()
+
+    def test_unmet_capability_scales_up_capable_manager(self):
+        """Manager that can provide the required capability should start workers with that capability."""
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_gpu", max_task_concurrency=10)]
+        policy = WaterfallScalingPolicy(rules)
+
+        tasks = _create_tasks(1, capabilities={"gpu": 1})
+        workers = _create_workers(2)  # existing workers have no capabilities
+        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
+
+        heartbeat = _create_worker_manager_heartbeat(b"manager_gpu", capabilities={"gpu": 4})
+        managed_worker_ids: List[WorkerID] = []
+        managed_worker_capabilities: Dict[str, int] = {}
+        manager_snapshots = {
+            b"manager_gpu": _create_manager_snapshot(b"manager_gpu", worker_count=0, capabilities={"gpu": 4})
+        }
+
+        commands = policy.get_scaling_commands(
+            snapshot, heartbeat, managed_worker_ids, managed_worker_capabilities, manager_snapshots
+        )
+
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertIn("gpu", commands[0].capabilities)
+
+    def test_unmet_capability_skips_incapable_higher_priority(self):
+        """Higher-priority manager that cannot provide the capability should be skipped."""
+        rules = [
+            WaterfallRule(priority=1, worker_manager_id=b"manager_cpu", max_task_concurrency=10),
+            WaterfallRule(priority=2, worker_manager_id=b"manager_gpu", max_task_concurrency=10),
+        ]
+        policy = WaterfallScalingPolicy(rules)
+
+        tasks = _create_tasks(1, capabilities={"gpu": 1})
+        snapshot = InformationSnapshot(tasks=tasks, workers={})
+
+        managed_worker_ids: List[WorkerID] = []
+        managed_worker_capabilities: Dict[str, int] = {}
+        manager_snapshots = {
+            b"manager_cpu": _create_manager_snapshot(b"manager_cpu", worker_count=0, capabilities={}),
+            b"manager_gpu": _create_manager_snapshot(b"manager_gpu", worker_count=0, capabilities={"gpu": 4}),
+        }
+
+        # manager_cpu heartbeat: cannot provide gpu, should not issue start for gpu
+        heartbeat_cpu = _create_worker_manager_heartbeat(b"manager_cpu", capabilities={})
+        commands_cpu = policy.get_scaling_commands(
+            snapshot, heartbeat_cpu, managed_worker_ids, managed_worker_capabilities, manager_snapshots
+        )
+        # Falls through to generic start (tasks exist, no workers) — but capability check returns empty
+        # because manager_cpu can't provide gpu. Generic start still fires.
+        gpu_commands = [c for c in commands_cpu if c.capabilities.get("gpu")]
+        self.assertEqual(len(gpu_commands), 0)
+
+        # manager_gpu heartbeat: can provide gpu, should issue start with gpu
+        heartbeat_gpu = _create_worker_manager_heartbeat(b"manager_gpu", capabilities={"gpu": 4})
+        commands_gpu = policy.get_scaling_commands(
+            snapshot, heartbeat_gpu, managed_worker_ids, managed_worker_capabilities, manager_snapshots
+        )
+        self.assertEqual(len(commands_gpu), 1)
+        self.assertEqual(commands_gpu[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertIn("gpu", commands_gpu[0].capabilities)
+
+    def test_unmet_capability_respects_waterfall_priority(self):
+        """When multiple managers can provide the capability, higher priority should start first."""
+        rules = [
+            WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10),
+            WaterfallRule(priority=2, worker_manager_id=b"manager_b", max_task_concurrency=10),
+        ]
+        policy = WaterfallScalingPolicy(rules)
+
+        tasks = _create_tasks(1, capabilities={"gpu": 1})
+        snapshot = InformationSnapshot(tasks=tasks, workers={})
+
+        managed_worker_ids: List[WorkerID] = []
+        managed_worker_capabilities: Dict[str, int] = {}
+        manager_snapshots = {
+            b"manager_a": _create_manager_snapshot(b"manager_a", worker_count=0, capabilities={"gpu": 4}),
+            b"manager_b": _create_manager_snapshot(b"manager_b", worker_count=0, capabilities={"gpu": 4}),
+        }
+
+        # manager_a (higher priority) should start
+        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", capabilities={"gpu": 4})
+        commands_a = policy.get_scaling_commands(
+            snapshot, heartbeat_a, managed_worker_ids, managed_worker_capabilities, manager_snapshots
+        )
+        self.assertEqual(len(commands_a), 1)
+        self.assertIn("gpu", commands_a[0].capabilities)
+
+        # manager_b should NOT start (higher-priority manager_a has capacity)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", capabilities={"gpu": 4})
+        commands_b = policy.get_scaling_commands(
+            snapshot, heartbeat_b, managed_worker_ids, managed_worker_capabilities, manager_snapshots
+        )
+        self.assertEqual(len(commands_b), 0)
+
+    def test_unmet_capability_overflows_to_lower_priority(self):
+        """Lower-priority manager should start when higher-priority capable manager is at capacity."""
+        rules = [
+            WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=5),
+            WaterfallRule(priority=2, worker_manager_id=b"manager_b", max_task_concurrency=10),
+        ]
+        policy = WaterfallScalingPolicy(rules)
+
+        tasks = _create_tasks(1, capabilities={"gpu": 1})
+        snapshot = InformationSnapshot(tasks=tasks, workers={})
+
+        managed_worker_ids: List[WorkerID] = []
+        managed_worker_capabilities: Dict[str, int] = {}
+        manager_snapshots = {
+            b"manager_a": _create_manager_snapshot(
+                b"manager_a", max_task_concurrency=5, worker_count=5, capabilities={"gpu": 4}
+            ),
+            b"manager_b": _create_manager_snapshot(
+                b"manager_b", max_task_concurrency=10, worker_count=0, capabilities={"gpu": 4}
+            ),
+        }
+
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", capabilities={"gpu": 4})
+        commands = policy.get_scaling_commands(
+            snapshot, heartbeat_b, managed_worker_ids, managed_worker_capabilities, manager_snapshots
+        )
+        self.assertEqual(len(commands), 1)
+        self.assertIn("gpu", commands[0].capabilities)
+
+    def test_capability_check_precedes_ratio(self):
+        """Unmet capabilities should trigger start even when overall ratio is within bounds."""
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10)]
+        policy = WaterfallScalingPolicy(rules)
+
+        # 3 generic tasks + 1 GPU task, 3 workers → ratio = 4/3 ≈ 1.3 (within [1, 10])
+        generic_tasks = _create_tasks(3)
+        gpu_tasks = _create_tasks(1, capabilities={"gpu": 1})
+        all_tasks = {**generic_tasks, **gpu_tasks}
+        workers = _create_workers(3)
+        snapshot = InformationSnapshot(tasks=all_tasks, workers=workers)
+
+        heartbeat = _create_worker_manager_heartbeat(b"manager_a", capabilities={"gpu": 4})
+        managed_worker_ids: List[WorkerID] = []
+        managed_worker_capabilities: Dict[str, int] = {}
+        manager_snapshots = {
+            b"manager_a": _create_manager_snapshot(b"manager_a", worker_count=0, capabilities={"gpu": 4})
+        }
+
+        commands = policy.get_scaling_commands(
+            snapshot, heartbeat, managed_worker_ids, managed_worker_capabilities, manager_snapshots
+        )
+        self.assertEqual(len(commands), 1)
+        self.assertIn("gpu", commands[0].capabilities)
+
+    def test_start_command_includes_capabilities(self):
+        """StartWorkers command for unmet capability should carry the exact capability dict."""
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"mgr", max_task_concurrency=10)]
+        policy = WaterfallScalingPolicy(rules)
+
+        tasks = _create_tasks(1, capabilities={"gpu": 2, "nvlink": 1})
+        snapshot = InformationSnapshot(tasks=tasks, workers={})
+
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", capabilities={"gpu": 8, "nvlink": 4})
+        manager_snapshots = {
+            b"mgr": _create_manager_snapshot(b"mgr", worker_count=0, capabilities={"gpu": 8, "nvlink": 4})
+        }
+
+        commands = policy.get_scaling_commands(snapshot, heartbeat, [], {}, manager_snapshots)
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0].capabilities, {"gpu": 2, "nvlink": 1})
+
+    def test_shutdown_prefers_no_capability_workers(self):
+        """When shutting down, workers without capabilities should be shut down first."""
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"mgr", max_task_concurrency=10)]
+        policy = WaterfallScalingPolicy(rules)
+
+        workers = {
+            WorkerID(b"worker-gpu"): _create_mock_worker_heartbeat(queued_tasks=0, capabilities={"gpu": 4}),
+            WorkerID(b"worker-bare"): _create_mock_worker_heartbeat(queued_tasks=0, capabilities={}),
+        }
+        snapshot = InformationSnapshot(tasks={}, workers=workers)
+
+        managed_worker_ids = [WorkerID(b"worker-gpu"), WorkerID(b"worker-bare")]
+        manager_snapshots = {b"mgr": _create_manager_snapshot(b"mgr", worker_count=2)}
+
+        heartbeat = _create_worker_manager_heartbeat(b"mgr")
+        commands = policy.get_scaling_commands(snapshot, heartbeat, managed_worker_ids, {}, manager_snapshots)
+
+        # With 0 tasks, both workers are shut down greedily; no-cap worker comes first
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
+        self.assertEqual(len(commands[0].worker_ids), 2)
+        self.assertEqual(commands[0].worker_ids[0], bytes(WorkerID(b"worker-bare")))
+        self.assertEqual(commands[0].worker_ids[1], bytes(WorkerID(b"worker-gpu")))
+
+    def test_shutdown_fallback_to_capable_workers(self):
+        """When all workers have capabilities, shutdown should still pick the least busy first."""
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"mgr", max_task_concurrency=10)]
+        policy = WaterfallScalingPolicy(rules)
+
+        workers = {
+            WorkerID(b"worker-busy"): _create_mock_worker_heartbeat(queued_tasks=5, capabilities={"gpu": 4}),
+            WorkerID(b"worker-idle"): _create_mock_worker_heartbeat(queued_tasks=0, capabilities={"gpu": 4}),
+        }
+        snapshot = InformationSnapshot(tasks={}, workers=workers)
+
+        managed_worker_ids = [WorkerID(b"worker-busy"), WorkerID(b"worker-idle")]
+        manager_snapshots = {b"mgr": _create_manager_snapshot(b"mgr", worker_count=2)}
+
+        heartbeat = _create_worker_manager_heartbeat(b"mgr")
+        commands = policy.get_scaling_commands(snapshot, heartbeat, managed_worker_ids, {}, manager_snapshots)
+
+        # With 0 tasks, both shut down greedily; least busy first
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
+        self.assertEqual(len(commands[0].worker_ids), 2)
+        self.assertEqual(commands[0].worker_ids[0], bytes(WorkerID(b"worker-idle")))
+        self.assertEqual(commands[0].worker_ids[1], bytes(WorkerID(b"worker-busy")))
+
+    def test_generic_tasks_unchanged(self):
+        """Tasks with no capabilities should use existing ratio-based logic (no regression)."""
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"mgr", max_task_concurrency=10)]
+        policy = WaterfallScalingPolicy(rules)
+
+        tasks = _create_tasks(5)  # no capabilities
+        snapshot = InformationSnapshot(tasks=tasks, workers={})
+
+        heartbeat = _create_worker_manager_heartbeat(b"mgr")
+        manager_snapshots = {b"mgr": _create_manager_snapshot(b"mgr", worker_count=0)}
+
+        commands = policy.get_scaling_commands(snapshot, heartbeat, [], {}, manager_snapshots)
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands[0].capabilities, {})
+
+    def test_value_agnostic_matching(self):
+        """Capability matching should be key-only; values are ignored."""
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"mgr", max_task_concurrency=10)]
+        policy = WaterfallScalingPolicy(rules)
+
+        # Task requires {a: 3}, workers provide {a: 5} — should be considered capable
+        tasks = _create_tasks(1, capabilities={"a": 3})
+        workers = _create_workers(2, capabilities={"a": 5})
+        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
+
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", capabilities={"a": 5})
+        manager_snapshots = {b"mgr": _create_manager_snapshot(b"mgr", worker_count=2, capabilities={"a": 5})}
+
+        # Should NOT issue capability start — workers already handle {a}
+        commands = policy.get_scaling_commands(snapshot, heartbeat, [], {}, manager_snapshots)
+        capability_starts = [
+            c for c in commands if c.command == WorkerManagerCommandType.StartWorkers and c.capabilities
+        ]
+        self.assertEqual(len(capability_starts), 0)
+
+
 class TestWaterfallV1Policy(unittest.TestCase):
     """Unit tests for WaterfallV1Policy config parsing and scaling delegation."""
 
@@ -548,7 +804,9 @@ def _create_mock_task(task_id: TaskID, capabilities: Optional[Dict[str, int]] = 
     )
 
 
-def _create_mock_worker_heartbeat(queued_tasks: int = 0) -> WorkerHeartbeat:
+def _create_mock_worker_heartbeat(
+    queued_tasks: int = 0, capabilities: Optional[Dict[str, int]] = None
+) -> WorkerHeartbeat:
     return WorkerHeartbeat.new_msg(
         agent=Resource.new_msg(cpu=1, rss=1000000),
         rss_free=500000,
@@ -557,41 +815,48 @@ def _create_mock_worker_heartbeat(queued_tasks: int = 0) -> WorkerHeartbeat:
         latency_us=100,
         task_lock=False,
         processors=[],
-        capabilities={},
+        capabilities=capabilities or {},
         worker_manager_id=b"test",
     )
 
 
 def _create_worker_manager_heartbeat(
-    worker_manager_id: bytes, max_task_concurrency: int = 10
+    worker_manager_id: bytes, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
 ) -> WorkerManagerHeartbeat:
     return WorkerManagerHeartbeat.new_msg(
-        max_task_concurrency=max_task_concurrency, capabilities={}, worker_manager_id=worker_manager_id
+        max_task_concurrency=max_task_concurrency, capabilities=capabilities or {}, worker_manager_id=worker_manager_id
     )
 
 
 def _create_manager_snapshot(
-    worker_manager_id: bytes, max_task_concurrency: int = 10, worker_count: int = 0, last_seen: Optional[float] = None
+    worker_manager_id: bytes,
+    max_task_concurrency: int = 10,
+    worker_count: int = 0,
+    last_seen: Optional[float] = None,
+    capabilities: Optional[Dict[str, int]] = None,
 ) -> WorkerManagerSnapshot:
     return WorkerManagerSnapshot(
         worker_manager_id=worker_manager_id,
         max_task_concurrency=max_task_concurrency,
         worker_count=worker_count,
         last_seen_s=last_seen if last_seen is not None else time.time(),
+        capabilities=capabilities or {},
     )
 
 
-def _create_tasks(count: int) -> Dict[TaskID, Task]:
+def _create_tasks(count: int, capabilities: Optional[Dict[str, int]] = None) -> Dict[TaskID, Task]:
     tasks = {}
     for _ in range(count):
         task_id = TaskID.generate_task_id()
-        tasks[task_id] = _create_mock_task(task_id)
+        tasks[task_id] = _create_mock_task(task_id, capabilities=capabilities)
     return tasks
 
 
-def _create_workers(count: int, queued_tasks: int = 0) -> Dict[WorkerID, WorkerHeartbeat]:
+def _create_workers(
+    count: int, queued_tasks: int = 0, capabilities: Optional[Dict[str, int]] = None
+) -> Dict[WorkerID, WorkerHeartbeat]:
     workers = {}
     for i in range(count):
         worker_id = WorkerID(f"worker-{i}".encode())
-        workers[worker_id] = _create_mock_worker_heartbeat(queued_tasks)
+        workers[worker_id] = _create_mock_worker_heartbeat(queued_tasks, capabilities=capabilities)
     return workers
