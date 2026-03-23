@@ -26,7 +26,7 @@ class TestTypes(unittest.TestCase):
         self.assertTrue(issubclass(ErrorCode, IntEnum))  # type: ignore
         self.assertEqual(
             ErrorCode.InvalidAddressFormat.explanation(),
-            "Invalid address format, example input \"tcp://127.0.0.1:2345\" or \"ipc:///tmp/domain_socket_name.sock\"",
+            'Invalid address format, example input "tcp://127.0.0.1:2345" or "ipc:///tmp/domain_socket_name.sock"',
         )
 
     def test_bytes(self):
