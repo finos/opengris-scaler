@@ -6,6 +6,8 @@ from unittest.mock import mock_open, patch
 
 from scaler.config.config_class import ConfigClass, parse_bool
 from scaler.config.mixins import ConfigType
+from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 
 try:
     from typing import override  # type: ignore[attr-defined]
@@ -207,3 +209,54 @@ class TestConfigClass(unittest.TestCase):
         config = MyConfigClass.parse("test underscore", "my_config")
         self.assertEqual(config.my_int, 10)
         self.assertEqual(config.my_other_int, 20)
+
+
+class TestPreloadCLIArgument(unittest.TestCase):
+    """Tests that --preload is properly exposed as a CLI argument on worker manager configs."""
+
+    def test_native_worker_manager_config_has_preload_argument(self) -> None:
+        parser = MockArgParser()
+        NativeWorkerManagerConfig.configure_parser(parser)  # type: ignore[arg-type]
+
+        preload_args = [a for a in parser.args if "--preload" in a[0]]
+        self.assertEqual(len(preload_args), 1)
+
+        args, kwargs = preload_args[0]
+        self.assertIn("--preload", args)
+        self.assertEqual(kwargs["dest"], "preload")
+        self.assertEqual(kwargs["required"], False)
+        self.assertEqual(kwargs["default"], None)
+        self.assertIn("help", kwargs)
+
+    def test_ecs_worker_manager_config_has_preload_argument(self) -> None:
+        parser = MockArgParser()
+        ECSWorkerManagerConfig.configure_parser(parser)  # type: ignore[arg-type]
+
+        preload_args = [a for a in parser.args if "--preload" in a[0]]
+        self.assertEqual(len(preload_args), 1)
+
+        args, kwargs = preload_args[0]
+        self.assertIn("--preload", args)
+        self.assertEqual(kwargs["dest"], "preload")
+        self.assertEqual(kwargs["required"], False)
+        self.assertEqual(kwargs["default"], None)
+        self.assertIn("help", kwargs)
+
+    @patch("sys.argv", [
+        "script",
+        "tcp://127.0.0.1:8516",
+        "--worker-manager-id", "test_wm",
+        "--preload", "mypackage.init:setup('production')",
+    ])
+    def test_native_worker_manager_config_parses_preload(self) -> None:
+        config = NativeWorkerManagerConfig.parse("test", "native_worker_manager")
+        self.assertEqual(config.preload, "mypackage.init:setup('production')")
+
+    @patch("sys.argv", [
+        "script",
+        "tcp://127.0.0.1:8516",
+        "--worker-manager-id", "test_wm",
+    ])
+    def test_native_worker_manager_config_preload_defaults_to_none(self) -> None:
+        config = NativeWorkerManagerConfig.parse("test", "native_worker_manager")
+        self.assertIsNone(config.preload)
