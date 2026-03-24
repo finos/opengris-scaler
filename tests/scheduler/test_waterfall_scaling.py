@@ -133,7 +133,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
             b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=20, worker_count=2),
         }
 
-        # Heartbeat from manager_b (lower priority): should shut down
+        # Heartbeat from manager_b (lower priority): should shut down all its workers greedily
         managed_worker_ids_b = [WorkerID(b"worker-3"), WorkerID(b"worker-4")]
         heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
         commands_b = self.policy.get_scaling_commands(
@@ -141,6 +141,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         )
         self.assertEqual(len(commands_b), 1)
         self.assertEqual(commands_b[0].command, WorkerManagerCommandType.ShutdownWorkers)
+        self.assertEqual(len(commands_b[0].worker_ids), 2)
 
         # Heartbeat from manager_a (higher priority): should NOT shut down (B still has workers)
         managed_worker_ids_a = [WorkerID(b"worker-0"), WorkerID(b"worker-1"), WorkerID(b"worker-2")]
@@ -236,7 +237,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(commands_b[0].command, WorkerManagerCommandType.StartWorkers)
 
     def test_scale_down_least_busy_worker(self):
-        """When shutting down, should select the worker with fewest queued tasks."""
+        """When shutting down greedily, should shut down all workers sorted by busyness (least busy first)."""
         workers = {
             WorkerID(b"worker-busy"): _create_mock_worker_heartbeat(queued_tasks=5),
             WorkerID(b"worker-idle"): _create_mock_worker_heartbeat(queued_tasks=0),
@@ -259,9 +260,13 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
             snapshot, heartbeat, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
 
+        # With 0 tasks, all workers should be shut down greedily
         self.assertEqual(len(commands), 1)
         self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
-        self.assertEqual(commands[0].worker_ids, [bytes(WorkerID(b"worker-idle"))])
+        self.assertEqual(len(commands[0].worker_ids), 2)
+        # Least busy first
+        self.assertEqual(commands[0].worker_ids[0], bytes(WorkerID(b"worker-idle")))
+        self.assertEqual(commands[0].worker_ids[1], bytes(WorkerID(b"worker-busy")))
 
     def test_higher_priority_manager_never_seen(self):
         """If higher-priority manager was never seen, lower-priority should scale up."""
@@ -301,8 +306,10 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
             snapshot, heartbeat_a, managed_worker_ids_a, managed_worker_capabilities, manager_snapshots
         )
 
+        # With 0 tasks, all 3 workers should be shut down greedily
         self.assertEqual(len(commands), 1)
         self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
+        self.assertEqual(len(commands[0].worker_ids), 3)
 
     def test_exact_matching_with_runtime_ids(self):
         """Worker manager IDs like NAT|12345 should match rules with exact worker_manager_id."""
@@ -393,6 +400,33 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
             snapshot, heartbeat_ecs, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
         self.assertEqual(len(commands), 0)
+
+    def test_greedy_shutdown_partial_with_tasks(self):
+        """With tasks present, keeps ceil(T/upper) workers, shuts down rest."""
+        # 5 tasks, 10 workers -> ratio=0.5 < 1. min_keep = max(1, ceil(5/10))=1. Shutdown 9.
+        tasks = _create_tasks(5)
+        workers = _create_workers(10, queued_tasks=0)
+        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
+
+        managed_worker_ids = list(workers.keys())
+        managed_worker_capabilities: Dict[str, int] = {}
+
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=20)]
+        policy = WaterfallScalingPolicy(rules)
+
+        manager_snapshots = {
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=20, worker_count=10)
+        }
+
+        heartbeat = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=20)
+        commands = policy.get_scaling_commands(
+            snapshot, heartbeat, managed_worker_ids, managed_worker_capabilities, manager_snapshots
+        )
+
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
+        # 10 workers - 1 kept = 9 shut down
+        self.assertEqual(len(commands[0].worker_ids), 9)
 
 
 class TestWaterfallV1Policy(unittest.TestCase):

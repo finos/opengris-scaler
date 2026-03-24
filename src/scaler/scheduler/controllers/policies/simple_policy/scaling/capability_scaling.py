@@ -1,5 +1,6 @@
 import logging
 from collections import defaultdict
+from math import ceil
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
 from scaler.protocol.python.message import (
@@ -150,15 +151,15 @@ class CapabilityScalingPolicy(ScalingPolicy):
         workers_by_capability: Dict[FrozenSet[str], List[Tuple[WorkerID, int]]],
         managed_worker_ids: List[WorkerID],
     ) -> List[WorkerManagerCommand]:
-        """Collect all shutdown commands for idle workers."""
+        """Collect all shutdown commands for idle workers greedily."""
         # Complexity: O(C^2 * (T + W)) where C is the number of distinct capability sets,
         # T is the total number of tasks, and W is the total number of workers.
         # For each tracked capability set, we iterate over all task capability sets to count
         # matching tasks, and call _find_capable_workers which iterates over worker capability sets.
         # This could be optimized if it becomes a performance bottleneck.
 
-        commands: List[WorkerManagerCommand] = []
         managed_set = set(managed_worker_ids)
+        shutdown_ids: List[bytes] = []
 
         for capability_keys in list(workers_by_capability.keys()):
             capable_workers = self._find_capable_workers(capability_keys, workers_by_capability)
@@ -171,33 +172,27 @@ class CapabilityScalingPolicy(ScalingPolicy):
                 if task_capability_keys <= capability_keys:
                     task_count += len(tasks)
 
-            task_ratio = task_count / worker_count
-            if task_ratio < self._lower_task_ratio:
-                # Find least-busy managed worker with this capability
-                least_busy_wid = None
-                min_queued = float("inf")
-                for wid, queued in capable_workers:
-                    if wid in managed_set and queued < min_queued:
-                        min_queued = queued
-                        least_busy_wid = wid
+            if task_count / worker_count < self._lower_task_ratio:
+                managed_capable = [(wid, queued) for wid, queued in capable_workers if wid in managed_set]
+                managed_capable.sort(key=lambda x: x[1])
 
-                if least_busy_wid is None:
-                    continue
+                if task_count == 0:
+                    min_keep = 0
+                else:
+                    min_keep = max(1, ceil(task_count / self._upper_task_ratio))
 
-                # Check we won't over-shrink
-                remaining_worker_count = worker_count - 1
-                if task_count > 0 and remaining_worker_count == 0:
-                    continue
-                if remaining_worker_count > 0 and (task_count / remaining_worker_count) > self._upper_task_ratio:
-                    continue
+                # Only shut down managed workers; non-managed workers count toward min_keep
+                non_managed_count = worker_count - len(managed_capable)
+                managed_to_keep = max(0, min_keep - non_managed_count)
+                to_shutdown = len(managed_capable) - managed_to_keep
 
-                commands.append(
-                    WorkerManagerCommand.new_msg(
-                        worker_ids=[bytes(least_busy_wid)], command=WorkerManagerCommandType.ShutdownWorkers
-                    )
-                )
+                for wid, _ in managed_capable[:to_shutdown]:
+                    shutdown_ids.append(bytes(wid))
 
-        return commands
+        if not shutdown_ids:
+            return []
+
+        return [WorkerManagerCommand.new_msg(worker_ids=shutdown_ids, command=WorkerManagerCommandType.ShutdownWorkers)]
 
     def _has_capable_managed_workers(
         self,
