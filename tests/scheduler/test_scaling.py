@@ -39,6 +39,8 @@ from scaler.protocol.python.message import (
 )
 from scaler.protocol.python.status import Resource
 from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
+from scaler.scheduler.controllers.policies.simple_policy.scaling.fixed_elastic import FixedElasticScalingPolicy
+from scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla import VanillaScalingPolicy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
@@ -345,6 +347,49 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         start_commands = [c for c in commands2 if c.command == WorkerManagerCommandType.StartWorkers]
         self.assertEqual(len(start_commands), 0, "Should not start new worker when capable worker is pending")
 
+    def test_greedy_shutdown_multiple_same_capability(self):
+        """0 tasks, 3 workers with same capability -> all shut down in one command."""
+        workers = {}
+        managed = []
+        for i in range(3):
+            wid = WorkerID(f"gpu-w{i}".encode())
+            workers[wid] = _create_mock_worker_heartbeat({"gpu": -1}, queued_tasks=i)
+            managed.append(wid)
+
+        snapshot = InformationSnapshot(tasks={}, workers=workers)
+        heartbeat = _create_worker_manager_heartbeat(b"test")
+
+        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
+
+        shutdown_commands = [c for c in commands if c.command == WorkerManagerCommandType.ShutdownWorkers]
+        self.assertEqual(len(shutdown_commands), 1)
+        self.assertEqual(len(shutdown_commands[0].worker_ids), 3)
+
+    def test_shutdown_allows_duplicate_worker_ids(self):
+        """Worker appearing in multiple capability groups may appear multiple times in shutdown."""
+        # Worker w0 has {gpu, cpu}, w1 has {gpu}. Both capability groups trigger shutdown.
+        # w0 may appear in shutdown for both {gpu} and {gpu, cpu} groups — duplicates are allowed.
+        w0 = WorkerID(b"w0-gpu-cpu")
+        w1 = WorkerID(b"w1-gpu")
+        workers = {
+            w0: _create_mock_worker_heartbeat({"gpu": -1, "cpu": -1}, queued_tasks=0),
+            w1: _create_mock_worker_heartbeat({"gpu": -1}, queued_tasks=1),
+        }
+        managed = [w0, w1]
+
+        snapshot = InformationSnapshot(tasks={}, workers=workers)
+        heartbeat = _create_worker_manager_heartbeat(b"test")
+
+        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
+
+        shutdown_commands = [c for c in commands if c.command == WorkerManagerCommandType.ShutdownWorkers]
+        self.assertEqual(len(shutdown_commands), 1)
+        shutdown_ids = shutdown_commands[0].worker_ids
+        # Both workers should be present; duplicates are acceptable
+        self.assertTrue(len(shutdown_ids) >= 2)
+        self.assertIn(bytes(w0), shutdown_ids)
+        self.assertIn(bytes(w1), shutdown_ids)
+
 
 class TestFixedElasticScaling(unittest.TestCase):
     """Integration tests for FixedElasticScalingPolicy with multiple worker managers."""
@@ -418,6 +463,141 @@ class TestFixedElasticScaling(unittest.TestCase):
 
         secondary_manager_process.terminate()
         secondary_manager_process.join()
+
+
+class TestVanillaScalingPolicy(unittest.TestCase):
+    """Unit tests for VanillaScalingPolicy greedy shutdown."""
+
+    def setUp(self):
+        setup_logger()
+        self.policy = VanillaScalingPolicy()
+
+    def test_greedy_shutdown_all_idle(self):
+        """0 tasks, 4 workers with varying busyness -> all 4 shut down in one command."""
+        workers = {
+            WorkerID(b"w0"): _create_mock_worker_heartbeat({}, queued_tasks=0),
+            WorkerID(b"w1"): _create_mock_worker_heartbeat({}, queued_tasks=1),
+            WorkerID(b"w2"): _create_mock_worker_heartbeat({}, queued_tasks=2),
+            WorkerID(b"w3"): _create_mock_worker_heartbeat({}, queued_tasks=5),
+        }
+        snapshot = InformationSnapshot(tasks={}, workers=workers)
+        heartbeat = _create_worker_manager_heartbeat(b"test")
+        managed = list(workers.keys())
+
+        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
+
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
+        self.assertEqual(len(commands[0].worker_ids), 4)
+
+    def test_greedy_shutdown_partial(self):
+        """5 tasks, 10 workers -> shutdown 9, keep 1 (ceil(5/10)=1)."""
+        tasks = {}
+        for _ in range(5):
+            tid = TaskID.generate_task_id()
+            tasks[tid] = _create_mock_task(tid, {})
+
+        workers = {}
+        managed = []
+        for i in range(10):
+            wid = WorkerID(f"w{i}".encode())
+            workers[wid] = _create_mock_worker_heartbeat({}, queued_tasks=i)
+            managed.append(wid)
+
+        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
+        heartbeat = _create_worker_manager_heartbeat(b"test")
+
+        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
+
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
+        self.assertEqual(len(commands[0].worker_ids), 9)
+        # The busiest worker (w9) should NOT be in the shutdown list
+        shutdown_set = set(commands[0].worker_ids)
+        self.assertNotIn(bytes(WorkerID(b"w9")), shutdown_set)
+
+    def test_greedy_shutdown_no_action_when_ratio_ok(self):
+        """15 tasks, 5 workers (ratio=3 > lower=1) -> no shutdown."""
+        tasks = {}
+        for _ in range(15):
+            tid = TaskID.generate_task_id()
+            tasks[tid] = _create_mock_task(tid, {})
+
+        workers = {}
+        managed = []
+        for i in range(5):
+            wid = WorkerID(f"w{i}".encode())
+            workers[wid] = _create_mock_worker_heartbeat({}, queued_tasks=i)
+            managed.append(wid)
+
+        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
+        heartbeat = _create_worker_manager_heartbeat(b"test")
+
+        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
+        self.assertEqual(len(commands), 0)
+
+    def test_greedy_shutdown_worker_ordering(self):
+        """Verify least-busy workers are selected first for shutdown."""
+        tasks = {}
+        for _ in range(8):
+            tid = TaskID.generate_task_id()
+            tasks[tid] = _create_mock_task(tid, {})
+
+        # 10 workers, 8 tasks -> ratio=0.8 < 1 -> shutdown. min_keep = max(1, ceil(8/10))=1. shutdown 9.
+        workers = {}
+        managed = []
+        for i in range(10):
+            wid = WorkerID(f"w{i}".encode())
+            workers[wid] = _create_mock_worker_heartbeat({}, queued_tasks=i)
+            managed.append(wid)
+
+        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
+        heartbeat = _create_worker_manager_heartbeat(b"test")
+
+        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
+
+        self.assertEqual(len(commands), 1)
+        # w0..w8 should be shut down (9 least busy), w9 kept
+        shutdown_ids = commands[0].worker_ids
+        self.assertEqual(len(shutdown_ids), 9)
+        self.assertNotIn(bytes(WorkerID(b"w9")), set(shutdown_ids))
+        # First in list should be least busy
+        self.assertEqual(shutdown_ids[0], bytes(WorkerID(b"w0")))
+
+
+class TestFixedElasticScalingPolicyUnit(unittest.TestCase):
+    """Unit tests for FixedElasticScalingPolicy greedy shutdown."""
+
+    def setUp(self):
+        setup_logger()
+        self.policy = FixedElasticScalingPolicy()
+
+    def test_primary_never_shuts_down(self):
+        """Primary manager (max_task_concurrency==1) never shuts down even with greedy."""
+        workers = {WorkerID(b"w0"): _create_mock_worker_heartbeat({}, queued_tasks=0)}
+        snapshot = InformationSnapshot(tasks={}, workers=workers)
+        heartbeat = _create_worker_manager_heartbeat(b"primary", max_task_concurrency=1)
+        managed = [WorkerID(b"w0")]
+
+        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
+        self.assertEqual(len(commands), 0)
+
+    def test_secondary_greedy_shutdown(self):
+        """Secondary manager shuts down multiple workers greedily."""
+        workers = {
+            WorkerID(b"w0"): _create_mock_worker_heartbeat({}, queued_tasks=0),
+            WorkerID(b"w1"): _create_mock_worker_heartbeat({}, queued_tasks=1),
+            WorkerID(b"w2"): _create_mock_worker_heartbeat({}, queued_tasks=3),
+        }
+        snapshot = InformationSnapshot(tasks={}, workers=workers)
+        heartbeat = _create_worker_manager_heartbeat(b"secondary", max_task_concurrency=4)
+        managed = list(workers.keys())
+
+        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
+
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
+        self.assertEqual(len(commands[0].worker_ids), 3)
 
 
 def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:

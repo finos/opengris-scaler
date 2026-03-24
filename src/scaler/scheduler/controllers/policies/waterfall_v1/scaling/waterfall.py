@@ -1,4 +1,5 @@
 import logging
+from math import ceil
 from typing import Dict, List, Optional
 
 from scaler.protocol.python.message import (
@@ -121,23 +122,27 @@ class WaterfallScalingPolicy(ScalingPolicy):
                 # Lower-priority manager still has workers, let it drain first
                 return []
 
-        # Find the worker with fewest queued tasks
-        least_busy_wid: Optional[WorkerID] = None
-        min_queued = float("inf")
+        workers_with_load = []
         for wid in managed_worker_ids:
             if wid in information_snapshot.workers:
-                queued = information_snapshot.workers[wid].queued_tasks
-                if queued < min_queued:
-                    min_queued = queued
-                    least_busy_wid = wid
+                workers_with_load.append((wid, information_snapshot.workers[wid].queued_tasks))
+        workers_with_load.sort(key=lambda x: x[1])
 
-        if least_busy_wid is None:
+        if not workers_with_load:
             return []
-        return [
-            WorkerManagerCommand.new_msg(
-                worker_ids=[bytes(least_busy_wid)], command=WorkerManagerCommandType.ShutdownWorkers
-            )
-        ]
+
+        task_count = len(information_snapshot.tasks)
+        if task_count == 0:
+            min_keep = 0
+        else:
+            min_keep = max(1, ceil(task_count / self._upper_task_ratio))
+
+        to_shutdown = len(workers_with_load) - min_keep
+        if to_shutdown <= 0:
+            return []
+
+        shutdown_ids = [bytes(wid) for wid, _ in workers_with_load[:to_shutdown]]
+        return [WorkerManagerCommand.new_msg(worker_ids=shutdown_ids, command=WorkerManagerCommandType.ShutdownWorkers)]
 
     def _find_rule(self, manager_id: bytes) -> Optional[WaterfallRule]:
         """Find the rule whose worker manager ID matches *manager_id*."""
