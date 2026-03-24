@@ -5,15 +5,15 @@ Handles task queuing, priority, semaphore, and execution via OCI Container Insta
 Follows the same pattern as AWSHPCTaskManager for consistency.
 
 OCI Service Mapping:
-    - AWS Batch job       → OCI Container Instance (on-demand, per-task container)
-    - Amazon S3           → OCI Object Storage (task payload and result storage)
-    - Result key          → task ID hex (known by both adapter and job runner)
+ - AWS Batch job → OCI Container Instance (on-demand, per-task container)
+ - Amazon S3 → OCI Object Storage (task payload and result storage)
+ - Result key → task ID hex (known by both adapter and job runner)
 
 Container Instance Lifecycle:
-    CREATING → ACTIVE → INACTIVE (finished) or FAILED
-    - ACTIVE:   container is running
-    - INACTIVE: container exited (check result file in Object Storage for success/failure)
-    - FAILED:   instance failed to provision
+ CREATING → ACTIVE → INACTIVE (finished) or FAILED
+ - ACTIVE: container is running
+ - INACTIVE: container exited (check result file in Object Storage for success/failure)
+ - FAILED: instance failed to provision
 """
 
 import asyncio
@@ -64,6 +64,11 @@ class OCIHPCTaskManager(Looper, TaskManager):
     then fetched and returned to the scheduler by this manager.
 
     Follows the same pattern as AWSHPCTaskManager for consistency.
+
+    Authentication is controlled by ``oci_auth_type``:
+    - ``"config_file"`` (default): reads ``~/.oci/config`` — for local development.
+    - ``"instance_principal"``: uses OCI Instance Principal credentials — for VMs and
+      Container Instances running inside OCI with an appropriate Dynamic Group policy.
     """
 
     def __init__(
@@ -82,9 +87,15 @@ class OCIHPCTaskManager(Looper, TaskManager):
         instance_memory_gb: float = 6.0,
         job_timeout_seconds: int = 3600,
         oci_config_profile: str = "DEFAULT",
+        oci_auth_type: str = "config_file",
     ) -> None:
         if isinstance(base_concurrency, int) and base_concurrency <= 0:
             raise ValueError(f"base_concurrency must be a positive integer, got {base_concurrency}")
+
+        if oci_auth_type not in ("config_file", "instance_principal"):
+            raise ValueError(
+                f"oci_auth_type must be 'config_file' or 'instance_principal', got {oci_auth_type!r}"
+            )
 
         self._base_concurrency = base_concurrency
         self._compartment_id = compartment_id
@@ -100,6 +111,7 @@ class OCIHPCTaskManager(Looper, TaskManager):
         self._instance_memory_gb = instance_memory_gb
         self._job_timeout_seconds = job_timeout_seconds
         self._oci_config_profile = oci_config_profile
+        self._oci_auth_type = oci_auth_type
 
         # Task execution control
         self._executor_semaphore = asyncio.Semaphore(value=self._base_concurrency)
@@ -108,6 +120,9 @@ class OCIHPCTaskManager(Looper, TaskManager):
         self._task_id_to_task: Dict[TaskID, Task] = {}
         self._task_id_to_future: bidict[TaskID, asyncio.Future] = bidict()
         self._task_id_to_instance_id: Dict[TaskID, str] = {}  # TaskID → Container Instance OCID
+
+        # Input object keys for queued large-payload tasks (for cancellation cleanup)
+        self._task_id_to_input_key: Dict[TaskID, str] = {}
 
         # Serializer cache
         self._serializers: Dict[bytes, Serializer] = {}
@@ -130,17 +145,51 @@ class OCIHPCTaskManager(Looper, TaskManager):
         # OCI clients (initialized lazily in register())
         self._container_instances_client: Any = None
         self._object_storage_client: Any = None
+        self._log_search_client: Any = None  # reused across _fetch_instance_logs calls
 
-    def _initialize_oci_clients(self) -> None:
-        """Initialize OCI Container Instances and Object Storage clients."""
+    def _build_oci_signer(self):
+        """
+        Build the appropriate OCI signer based on ``oci_auth_type``.
+
+        - ``"instance_principal"``: uses OCI Instance Principal credentials; suitable
+          for VMs and Container Instances with a Dynamic Group policy attached.
+        - ``"config_file"``: reads ``~/.oci/config``; suitable for local development.
+
+        Returns:
+            Tuple of (config_dict, signer_or_None).  Pass both to OCI clients so that
+            config-file auth works without an explicit signer while instance_principal
+            auth works without a config file on disk.
+        """
         import oci
 
+        if self._oci_auth_type == "instance_principal":
+            signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+            # When using a signer, the config dict must be empty (no key/fingerprint).
+            config = {"region": self._oci_region}
+            return config, signer
+
+        # config_file auth — read profile, then override region so the client
+        # always targets the region supplied at construction time.
         config = oci.config.from_file(profile_name=self._oci_config_profile)
-        self._container_instances_client = oci.container_instances.ContainerInstanceClient(config)
-        self._object_storage_client = oci.object_storage.ObjectStorageClient(config)
+        config["region"] = self._oci_region
+        return config, None
+
+    def _initialize_oci_clients(self) -> None:
+        """Initialize OCI Container Instances, Object Storage, and Log Search clients."""
+        import oci
+
+        config, signer = self._build_oci_signer()
+        kwargs = {"config": config}
+        if signer is not None:
+            kwargs["signer"] = signer
+
+        self._container_instances_client = oci.container_instances.ContainerInstanceClient(**kwargs)
+        self._object_storage_client = oci.object_storage.ObjectStorageClient(**kwargs)
+        self._log_search_client = oci.loggingsearch.LogSearchClient(**kwargs)
 
         logging.info(
-            f"OCI HPC task manager initialized: region={self._oci_region}, "
+            f"OCI HPC task manager initialized: auth={self._oci_auth_type}, "
+            f"region={self._oci_region}, "
             f"compartment={self._compartment_id[:20]}..., "
             f"bucket={self._object_storage_bucket}"
         )
@@ -158,7 +207,7 @@ class OCIHPCTaskManager(Looper, TaskManager):
         self._initialize_oci_clients()
 
     async def routine(self) -> None:
-        """Task manager routine — two main loops (process_task and resolve_tasks) handle work."""
+        """Task manager routine — process_task and resolve_tasks loops handle work."""
         pass
 
     async def on_object_instruction(self, instruction: ObjectInstruction) -> None:
@@ -222,6 +271,11 @@ class OCIHPCTaskManager(Looper, TaskManager):
             self._queued_task_id_queue.remove(task_cancel.task_id)
             self._task_id_to_task.pop(task_cancel.task_id)
 
+            # Clean up any Object Storage input object that was pre-uploaded
+            input_key = self._task_id_to_input_key.pop(task_cancel.task_id, None)
+            if input_key:
+                await self._delete_object_storage_object(input_key)
+
         # Handle processing task cancellation
         if task_processing:
             future = self._task_id_to_future.get(task_cancel.task_id)
@@ -233,8 +287,8 @@ class OCIHPCTaskManager(Looper, TaskManager):
                 instance_id = self._task_id_to_instance_id[task_cancel.task_id]
                 await self._delete_container_instance(instance_id)
 
-            self._processing_task_ids.discard(task_cancel.task_id)
-            self._canceled_task_ids.add(task_cancel.task_id)
+        self._processing_task_ids.discard(task_cancel.task_id)
+        self._canceled_task_ids.add(task_cancel.task_id)
 
         result = TaskCancelConfirm.new_msg(
             task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.Canceled
@@ -250,6 +304,7 @@ class OCIHPCTaskManager(Looper, TaskManager):
         self._processing_task_ids.remove(result.task_id)
         self._task_id_to_task.pop(result.task_id)
         self._task_id_to_instance_id.pop(result.task_id, None)
+        self._task_id_to_input_key.pop(result.task_id, None)
 
         await self._connector_external.send(result)
 
@@ -279,14 +334,14 @@ class OCIHPCTaskManager(Looper, TaskManager):
             if task_id in self._processing_task_ids:
                 self._processing_task_ids.remove(task_id)
 
-                if future.exception() is None:
-                    serializer_id = ObjectID.generate_serializer_object_id(task.source)
-                    serializer = self._serializers[serializer_id]
-                    result_bytes = serializer.serialize(future.result())
-                    result_type = TaskResultType.Success
-                else:
-                    result_bytes = serialize_failure(cast(Exception, future.exception()))
-                    result_type = TaskResultType.Failed
+            if task_id in self._canceled_task_ids:
+                # Task was cancelled while running — just discard.
+                self._canceled_task_ids.remove(task_id)
+            elif future.exception() is None:
+                serializer_id = ObjectID.generate_serializer_object_id(task.source)
+                serializer = self._serializers[serializer_id]
+                result_bytes = serializer.serialize(future.result())
+                result_type = TaskResultType.Success
 
                 # Store result in Scaler object storage
                 result_object_id = ObjectID.generate_object_id(task.source)
@@ -308,11 +363,28 @@ class OCIHPCTaskManager(Looper, TaskManager):
                 await self._connector_external.send(
                     TaskResult.new_msg(task_id, result_type, metadata=b"", results=[bytes(result_object_id)])
                 )
-
-            elif task_id in self._canceled_task_ids:
-                self._canceled_task_ids.remove(task_id)
             else:
-                raise ValueError(f"task_id {task_id.hex()} not found in processing or canceled tasks")
+                result_bytes = serialize_failure(cast(Exception, future.exception()))
+                result_type = TaskResultType.Failed
+
+                result_object_id = ObjectID.generate_object_id(task.source)
+                await self._connector_storage.set_object(result_object_id, result_bytes)
+
+                await self._connector_external.send(
+                    ObjectInstruction.new_msg(
+                        ObjectInstruction.ObjectInstructionType.Create,
+                        task.source,
+                        ObjectMetadata.new_msg(
+                            object_ids=(result_object_id,),
+                            object_types=(ObjectMetadata.ObjectContentType.Object,),
+                            object_names=(f"<res {result_object_id.hex()[:6]}>".encode(),),
+                        ),
+                    )
+                )
+
+                await self._connector_external.send(
+                    TaskResult.new_msg(task_id, result_type, metadata=b"", results=[bytes(result_object_id)])
+                )
 
             # Release semaphore slot
             if task_id in self._acquiring_task_ids:
@@ -322,13 +394,18 @@ class OCIHPCTaskManager(Looper, TaskManager):
             # Clean up
             self._task_id_to_task.pop(task_id, None)
             self._task_id_to_instance_id.pop(task_id, None)
+            self._task_id_to_input_key.pop(task_id, None)
 
     async def process_task(self) -> None:
-        """Process next queued task."""
-        await self._executor_semaphore.acquire()
+        """Process next queued task.
 
+        NOTE: The queue get happens *before* the semaphore acquire so that
+        we never hold a semaphore slot while waiting for a task to appear.
+        """
         _, task_id = await self._queued_task_id_queue.get()
         task = self._task_id_to_task[task_id]
+
+        await self._executor_semaphore.acquire()
 
         self._acquiring_task_ids.add(task_id)
         self._processing_task_ids.add(task_id)
@@ -342,7 +419,6 @@ class OCIHPCTaskManager(Looper, TaskManager):
         submits a Container Instance, and starts a monitoring coroutine.
         """
         serializer_id = ObjectID.generate_serializer_object_id(task.source)
-
         if serializer_id not in self._serializers:
             serializer_bytes = await self._connector_storage.get_object(serializer_id)
             serializer = cloudpickle.loads(serializer_bytes)
@@ -364,8 +440,10 @@ class OCIHPCTaskManager(Looper, TaskManager):
         future.set_running_or_notify_cancel()
 
         try:
-            instance_id = await self._create_container_instance(task, function, arg_objects)
+            instance_id, input_key = await self._create_container_instance(task, function, arg_objects)
             self._task_id_to_instance_id[task.task_id] = instance_id
+            if input_key:
+                self._task_id_to_input_key[task.task_id] = input_key
             logging.info(f"Task {task.task_id.hex()[:8]} submitted as Container Instance {instance_id[-20:]}")
 
             monitor_task = asyncio.create_task(self._monitor_container_instance(instance_id, future, task.task_id))
@@ -377,7 +455,7 @@ class OCIHPCTaskManager(Looper, TaskManager):
 
         return asyncio.wrap_future(future)
 
-    async def _create_container_instance(self, task: Task, function: Any, arguments: List[Any]) -> str:
+    async def _create_container_instance(self, task: Task, function: Any, arguments: List[Any]):
         """
         Create an OCI Container Instance to execute the task.
 
@@ -385,7 +463,7 @@ class OCIHPCTaskManager(Looper, TaskManager):
         Larger payloads are stored in OCI Object Storage and referenced by object key.
 
         Returns:
-            The OCID of the created Container Instance.
+            Tuple of (instance_ocid, input_object_key_or_None).
         """
         import base64
         import gzip
@@ -412,12 +490,14 @@ class OCIHPCTaskManager(Looper, TaskManager):
         display_name = f"scaler-{safe_func_name}-{task_id_hex[:12]}"
 
         # Choose inline or Object Storage delivery
+        input_key: Optional[str] = None
         if len(payload) <= _MAX_INLINE_PAYLOAD_BYTES:
             encoded_payload = base64.b64encode(payload).decode("ascii")
             object_key = "none"
         else:
             suffix = ".pkl.gz" if compressed else ".pkl"
             object_key = f"{self._object_storage_prefix}/{_KEY_INPUTS}/{task_id_hex}{suffix}"
+            input_key = object_key
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None,
@@ -431,7 +511,8 @@ class OCIHPCTaskManager(Looper, TaskManager):
             )
             encoded_payload = ""
 
-        # Environment variables passed to the container job runner
+        # Environment variables passed to the container job runner.
+        # Must be List[EnvironmentVariable] — NOT a plain dict.
         env_vars = {
             "TASK_ID": task_id_hex,
             "OCI_NAMESPACE": self._object_storage_namespace,
@@ -443,7 +524,8 @@ class OCIHPCTaskManager(Looper, TaskManager):
         }
 
         env_var_models = [
-            oci.container_instances.models.EnvironmentVariable(name=key, value=value) for key, value in env_vars.items()
+            oci.container_instances.models.EnvironmentVariable(name=key, value=value)
+            for key, value in env_vars.items()
         ]
 
         create_details = oci.container_instances.models.CreateContainerInstanceDetails(
@@ -455,7 +537,9 @@ class OCIHPCTaskManager(Looper, TaskManager):
             ),
             containers=[
                 oci.container_instances.models.CreateContainerDetails(
-                    image_url=self._container_image, display_name=display_name, environment_variables=env_var_models
+                    image_url=self._container_image,
+                    display_name=display_name,
+                    environment_variables=env_var_models,  # list of EnvironmentVariable models
                 )
             ],
             vnics=[oci.container_instances.models.CreateContainerVnicDetails(subnet_id=self._subnet_id)],
@@ -471,7 +555,7 @@ class OCIHPCTaskManager(Looper, TaskManager):
                 create_container_instance_details=create_details,
             ),
         )
-        return response.data.id
+        return response.data.id, input_key
 
     async def _monitor_container_instance(self, instance_id: str, future: Future, task_id: TaskID) -> None:
         """
@@ -485,13 +569,13 @@ class OCIHPCTaskManager(Looper, TaskManager):
         import oci
 
         loop = asyncio.get_running_loop()
-        start_time = asyncio.get_event_loop().time()
+        start_time = loop.time()
 
         while True:
             await asyncio.sleep(_POLL_INTERVAL_SECONDS)
 
             # Enforce job timeout
-            elapsed = asyncio.get_event_loop().time() - start_time
+            elapsed = loop.time() - start_time
             if elapsed > self._job_timeout_seconds:
                 future.set_exception(
                     TimeoutError(f"Container Instance {instance_id[-20:]} timed out after {self._job_timeout_seconds}s")
@@ -510,7 +594,6 @@ class OCIHPCTaskManager(Looper, TaskManager):
 
                 if state == _INSTANCE_STATE_DONE:
                     # Container exited — fetch result from Object Storage.
-                    # Use task_id as the result key since both sides know it upfront.
                     task_id_hex = task_id.hex()
                     result_key = f"{self._object_storage_prefix}/{_KEY_RESULTS}/{task_id_hex}.pkl"
 
@@ -550,7 +633,6 @@ class OCIHPCTaskManager(Looper, TaskManager):
                     except Exception as fetch_exc:
                         future.set_exception(RuntimeError(f"Failed to fetch result from Object Storage: {fetch_exc}"))
 
-                    # Delete the container instance now that it has finished
                     await self._delete_container_instance(instance_id)
                     return
 
@@ -595,22 +677,35 @@ class OCIHPCTaskManager(Looper, TaskManager):
         except Exception as exc:
             logging.warning(f"Failed to delete Container Instance {instance_id[-20:]}: {exc}")
 
+    async def _delete_object_storage_object(self, object_key: str) -> None:
+        """Delete an object from OCI Object Storage (used for cancelled task cleanup)."""
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                functools.partial(
+                    self._object_storage_client.delete_object,
+                    namespace_name=self._object_storage_namespace,
+                    bucket_name=self._object_storage_bucket,
+                    object_name=object_key,
+                ),
+            )
+            logging.info(f"Deleted input object {object_key}")
+        except Exception as exc:
+            logging.warning(f"Failed to delete input object {object_key}: {exc}")
+
     async def _fetch_instance_logs(self, instance_id: str) -> str:
         """
         Fetch OCI Logging output for a failed container instance.
 
-        Uses the OCI Logging Search service to retrieve recent log records
-        for the container instance.
+        Reuses the shared ``self._log_search_client`` initialized in
+        ``_initialize_oci_clients`` to avoid creating a new client per failure.
         """
         try:
             import oci
 
-            config = oci.config.from_file(profile_name=self._oci_config_profile)
-            log_search_client = oci.loggingsearch.LogSearchClient(config)
-
-            # Search for logs associated with this container instance
             search_details = oci.loggingsearch.models.SearchLogsDetails(
-                time_start=None,  # last N minutes handled by API default
+                time_start=None,
                 time_end=None,
                 search_query=(
                     f'search "{self._compartment_id}" | '
@@ -622,7 +717,7 @@ class OCIHPCTaskManager(Looper, TaskManager):
 
             loop = asyncio.get_running_loop()
             response = await loop.run_in_executor(
-                None, functools.partial(log_search_client.search_logs, search_logs_details=search_details)
+                None, functools.partial(self._log_search_client.search_logs, search_logs_details=search_details)
             )
             results = response.data.results or []
 
@@ -640,7 +735,6 @@ class OCIHPCTaskManager(Looper, TaskManager):
     def __get_task_priority(task: Task) -> int:
         """Get task priority from task metadata."""
         priority = retrieve_task_flags_from_task(task).priority
-
         if priority < 0:
             raise ValueError(f"invalid task priority, must be positive or zero, got {priority}")
 
