@@ -1,223 +1,215 @@
-# OCI Integration for OpenGRIS Scaler
+# OpenGRIS Scaler — OCI Integration Guide
 
-OpenGRIS Scaler supports running distributed tasks on Oracle Cloud Infrastructure (OCI)
-using Container Instances. Two adapter modes are available depending on the workload
-pattern.
+OpenGRIS Scaler enables distributed task execution on Oracle Cloud Infrastructure through two adapter modes optimized for different workload patterns.
 
-## Adapter Modes
+---
 
-### OCI Raw — Persistent Worker Clusters
+## Two Adapter Modes
 
-Launches long-running Container Instances that each host a `scaler_cluster` process
-with multiple workers. Best for sustained, steady-state workloads where cold-start
-latency is unacceptable.
+**OCI Raw (Persistent Workers):**
+Launches long-running Container Instances that each host a `scaler_cluster` process with multiple workers. Best for steady-state workloads where startup latency should be amortized across many tasks.
 
-- Scheduler sends `StartWorkerGroup` / `ShutdownWorkerGroup` commands
-- Each Container Instance spawns `instance_ocpus` workers connected back to the scheduler
-- Workers execute tasks directly via the Scaler protocol (no Object Storage intermediary)
-- Entry point: `scaler_worker_manager_oci_raw_container_instance`
+**OCI HPC (Ephemeral Containers):**
+Creates a new Container Instance for every task submission. Task data transfers via Object Storage; a job runner executes the task and returns the result. Best for bursty, isolated, or long-running workloads where per-task isolation matters.
 
-### OCI HPC — Ephemeral Per-Task Containers
-
-Creates a new Container Instance for every task submission. Best for bursty,
-compute-heavy workloads where per-task isolation or large fan-out is needed.
-
-- Task payloads are delivered inline (env var) for small inputs or via Object Storage
-  for larger ones
-- A lightweight job runner script executes the task inside the container and writes
-  the result to Object Storage
-- The adapter polls the Container Instance lifecycle and fetches results on completion
-- Instantiated programmatically via `OCIContainerInstanceWorker`
-
-| Aspect | Raw | HPC |
-|---|---|---|
-| Worker model | Persistent cluster per instance | One-shot container per task |
-| Latency | Low (workers pre-started) | Higher (1-3 min OCI cold start) |
-| Scaling | Fixed workers per instance | Dynamic via concurrency semaphore |
-| Storage use | None | Object Storage for payloads and results |
-| Best for | Steady throughput | Bursty, isolated tasks |
+---
 
 ## Prerequisites
 
 - Python 3.8+
-- OCI Python SDK: `pip install oci`
-- An OCI tenancy with:
-  - A Compartment
-  - A VCN with at least one Subnet
-  - An Availability Domain
+- OCI Python SDK: `pip install opengris-scaler[oci]`
+- An OCI tenancy with: Compartment, VCN with Subnet, Availability Domain, Object Storage namespace
+
+> **Starting from scratch?** Use the companion Terraform repo to provision all required infrastructure automatically before following the steps below:
+> [https://github.com/oci-fsi-pursuits/scaler-oci-terraform](https://github.com/oci-fsi-pursuits/scaler-oci-terraform)
+>
+> If you use Terraform, export its outputs as your config file and jump straight to Step 2:
+> ```bash
+> cd scaler-oci-terraform
+> terraform output -json scaler_config > .scaler_oci_config.json
+> # Then come back here and start at Step 2
+> ```
+>
+> If you already have OCI infrastructure set up, proceed with manual prerequisites below.
+
+### Manual Prerequisites
+
+Gather the following values — you'll need them in every step below:
+
+| Value | Where to find it |
+|-------|-----------------|
+| `compartment_id` | OCI Console → Identity → Compartments |
+| `subnet_id` | OCI Console → Networking → Virtual Cloud Networks → your VCN → Subnets |
+| `availability_domain` | OCI Console → top-right region picker, e.g. `AD-1` |
+| `region` | Your OCI region identifier, e.g. `us-ashburn-1` |
+| `object_storage_namespace` | OCI Console → Object Storage → Namespace (top of bucket list page) |
+
+---
 
 ## Authentication
 
-Both adapters support two authentication modes, selected by `--oci-auth-type`:
+Two modes are available, selectable via `--oci-auth-type`:
 
-| Mode | Flag value | When to use |
-|---|---|---|
-| Config file | `config_file` (default) | Local development; reads `~/.oci/config` |
-| Instance principal | `instance_principal` | Running on an OCI VM or Container Instance |
+- **`config_file`** (default): Reads `~/.oci/config`. Use for local development.
+- **`instance_principal`**: Uses OCI Instance Principal credentials. Use when running on an OCI VM or Container Instance that belongs to a Dynamic Group with the appropriate IAM policies. **This is the correct mode when running on a scheduler VM provisioned by the Terraform repo.**
 
-The HPC job runner running *inside* a Container Instance authenticates via OCI
-Resource Principals, which are automatically available when the instance belongs
-to a Dynamic Group with the required IAM policies.
+Container job runners (OCI HPC mode) authenticate automatically via OCI Resource Principals — no configuration needed inside the container.
 
-## Quick Start — OCI HPC
+---
 
-### 1. Provision infrastructure
+## OCI HPC Quick Start
 
-The provisioner creates an Object Storage bucket, Dynamic Group, IAM policy, and
-OCIR repository:
+### Step 1 — Provision Infrastructure
+
+Skip this step if you used the Terraform repo (your `.scaler_oci_config.json` is already generated).
+
+Run the provisioner to create the Object Storage bucket, Dynamic Group, IAM policies, and OCIR repository:
+
+```bash
+python -m scaler.worker_manager_adapter.oci_hpc.utility.provisioner provision \
+  --compartment-id <OCID> \
+  --region us-ashburn-1 \
+  --availability-domain AD-1 \
+  --subnet-id <OCID>
+```
+
+This writes a `.scaler_oci_config.json` file in the current directory. Keep it — all subsequent steps read from it.
+
+### Step 2 — Build and Push the Container Image
 
 ```bash
 python -m scaler.worker_manager_adapter.oci_hpc.utility.provisioner \
-    provision \
-    --compartment-id ocid1.compartment.oc1..aaa... \
-    --region us-ashburn-1 \
-    --availability-domain AD-1 \
-    --subnet-id ocid1.subnet.oc1.iad.aaa...
+  build-and-push --config .scaler_oci_config.json
 ```
 
-This writes a config file (`.scaler_oci_config.json`) used by subsequent commands.
+This builds the job runner image and pushes it to your OCIR repository. The image only needs `cloudpickle` and `oci` — it does not require the full scaler package.
 
-### 2. Build and push the container image
+### Step 3 — Run the Test Harness
 
-```bash
-python -m scaler.worker_manager_adapter.oci_hpc.utility.provisioner \
-    build-and-push \
-    --config .scaler_oci_config.json
-```
-
-The image is built from `Dockerfile.container_instance` and pushed to OCIR.
-
-### 3. Run the test harness
-
-Validate connectivity, Object Storage, and Container Instance lifecycle:
+Validate all four phases before running real workloads:
 
 ```bash
 python tests/worker_manager_adapter/oci_hpc/oci_hpc_test_harness.py \
-    --config .scaler_oci_config.json
+  --config .scaler_oci_config.json
 ```
 
-To include end-to-end scheduler task tests, add `--scheduler tcp://<host>:<port>`.
+The harness checks OCI connectivity, Object Storage operations, Container Instance lifecycle, and (optionally) scheduler task integration in sequence. All four phases must pass before proceeding.
 
-### 4. Clean up
+### Step 4 — Start the Worker Manager
+
+```bash
+scaler_worker_manager_oci_hpc \
+  --config .scaler_oci_config.json \
+  --scheduler-address tcp://<scheduler-host>:2345 \
+  --oci-auth-type config_file
+```
+
+Use `--oci-auth-type instance_principal` instead if running on an OCI VM.
+
+### Step 5 — Clean Up (when done)
 
 ```bash
 python -m scaler.worker_manager_adapter.oci_hpc.utility.provisioner \
-    cleanup \
-    --config .scaler_oci_config.json
+  cleanup --config .scaler_oci_config.json
 ```
 
-## Quick Start — OCI Raw
+---
 
-### 1. Build and push the container image
+## OCI Raw Quick Start
 
-Build the raw adapter image from
-`src/scaler/worker_manager_adapter/oci_raw/utility/Dockerfile.container_instance`
-and push it to OCIR (or any container registry accessible from your subnet).
+### Step 1 — Build and Push the Worker Image
 
-### 2. Start the worker adapter
+Build from `Dockerfile.container_instance` and push to your OCIR repository:
+
+```bash
+# Authenticate with OCIR first
+docker login <region>.ocir.io -u <tenancy-namespace>/<username>
+
+# Build and push
+docker build -f Dockerfile.container_instance \
+  -t <region>.ocir.io/<namespace>/<repo>:latest .
+docker push <region>.ocir.io/<namespace>/<repo>:latest
+```
+
+If you used the Terraform repo, `make login && make build ADAPTER=raw` handles this.
+
+### Step 2 — Start the Worker Manager
 
 ```bash
 scaler_worker_manager_oci_raw_container_instance \
-    --oci-auth-type config_file \
-    --oci-region us-ashburn-1 \
-    --compartment-id ocid1.compartment.oc1..aaa... \
-    --availability-domain AD-1 \
-    --subnet-id ocid1.subnet.oc1.iad.aaa... \
-    --container-image <region>.ocir.io/<namespace>/<repo>:latest \
-    --scheduler-address tcp://<scheduler_host>:2345
+  --oci-auth-type config_file \
+  --oci-region us-ashburn-1 \
+  --compartment-id <OCID> \
+  --availability-domain AD-1 \
+  --subnet-id <OCID> \
+  --container-image <region>.ocir.io/<namespace>/<repo>:latest \
+  --scheduler-address tcp://<scheduler-host>:2345
 ```
 
-The adapter connects to the scheduler and responds to `StartWorkerGroup` /
-`ShutdownWorkerGroup` commands by launching or deleting Container Instances.
+> **Important:** The scheduler address must be reachable from inside OCI Container Instances on your subnet. If your scheduler is running locally, it will not be reachable. Use a scheduler running on an OCI VM (see the Terraform repo's optional scheduler instance), or configure port forwarding through a bastion host.
 
-## Configuration Reference
+---
 
-### OCI Raw (`OCIRawWorkerAdapterConfig`)
+## Key Configuration Parameters
 
-| Parameter | Env var | Default | Description |
-|---|---|---|---|
-| `--oci-auth-type` | `OCI_AUTH_TYPE` | `config_file` | `config_file` or `instance_principal` |
-| `--oci-config-profile` | `OCI_CONFIG_PROFILE` | `DEFAULT` | OCI config file profile (config_file mode only) |
-| `--oci-region` | `OCI_REGION` | `us-ashburn-1` | OCI region |
-| `--compartment-id` | `OCI_COMPARTMENT_ID` | *required* | Compartment OCID |
-| `--availability-domain` | `OCI_AVAILABILITY_DOMAIN` | *required* | Availability Domain |
-| `--subnet-id` | `OCI_SUBNET_ID` | *required* | Subnet OCID |
-| `--container-image` | `OCI_CONTAINER_IMAGE` | *required* | OCIR image URI |
-| `--instance-shape` | `OCI_INSTANCE_SHAPE` | `CI.Standard.E4.Flex` | Container Instance shape |
-| `--instance-ocpus` | `OCI_INSTANCE_OCPUS` | `4.0` | OCPUs per instance |
-| `--instance-memory-gb` | `OCI_INSTANCE_MEMORY_GB` | `30.0` | Memory in GB per instance |
+### OCI Raw
 
-### OCI HPC (`OCIContainerInstanceWorker`)
+| Parameter | Default | Notes |
+|-----------|---------|-------|
+| `--instance-shape` | `CI.Standard.E4.Flex` | |
+| `--instance-ocpus` | `4.0` | |
+| `--instance-memory-gb` | `30.0` | |
+| `--oci-auth-type` | `config_file` | Use `instance_principal` on OCI VMs |
 
-Instantiated programmatically. Key parameters:
+### OCI HPC (via `.scaler_oci_config.json`)
 
-| Parameter | Default | Description |
-|---|---|---|
-| `compartment_id` | *required* | Compartment OCID |
-| `availability_domain` | *required* | Availability Domain |
-| `subnet_id` | *required* | Subnet OCID |
-| `container_image` | *required* | OCIR image URI |
-| `oci_region` | *required* | OCI region |
-| `object_storage_namespace` | *required* | OCI Object Storage tenancy namespace |
-| `object_storage_bucket` | *required* | Object Storage bucket name |
-| `object_storage_prefix` | `scaler-tasks` | Key prefix for inputs/results |
-| `instance_shape` | `CI.Standard.E4.Flex` | Container Instance shape |
-| `instance_ocpus` | `1.0` | OCPUs per container |
-| `instance_memory_gb` | `6.0` | Memory in GB per container |
+| Parameter | Default | Notes |
+|-----------|---------|-------|
 | `base_concurrency` | `100` | Max concurrent Container Instances |
-| `job_timeout_seconds` | `3600` | Per-task timeout |
-| `oci_config_profile` | `DEFAULT` | OCI config file profile |
+| `job_timeout_seconds` | `3600` | Per-task limit (1 hour) |
+| `instance_ocpus` | `1.0` | |
+| `instance_memory_gb` | `6.0` | |
 
-## Project Structure
+> **Object Storage lifecycle note:** The Terraform repo sets a 7-day object expiry on the task bucket by default. If you provision manually, ensure your bucket lifecycle is at least as long as your longest expected `job_timeout_seconds` to avoid silent result-fetch failures.
 
-```
-src/scaler/
-├── config/section/
-│   └── oci_raw_worker_adapter.py       # Raw adapter config dataclass
-├── entry_points/
-│   └── worker_manager_oci_raw_container_instance.py
-├── worker_manager_adapter/
-│   ├── oci_raw/
-│   │   ├── container_instance.py       # Raw adapter (persistent workers)
-│   │   └── utility/
-│   │       ├── Dockerfile.container_instance
-│   │       └── entrypoint.sh
-│   └── oci_hpc/
-│       ├── worker.py                   # HPC worker process (scheduler bridge)
-│       ├── task_manager.py             # Task queue, submission, polling
-│       ├── heartbeat_manager.py        # Scheduler heartbeats
-│       ├── callback.py                 # Task-to-instance mapping
-│       └── utility/
-│           ├── provisioner.py          # Infrastructure provisioner CLI
-│           ├── container_instance_job_runner.py  # Runs inside containers
-│           └── Dockerfile.container_instance
-tests/
-└── worker_manager_adapter/
-    └── oci_hpc/
-        └── oci_hpc_test_harness.py     # 4-phase validation harness
-```
+---
 
-## OCI Service Mapping
-
-For users familiar with the AWS adapter, here is how OCI services map:
+## OCI vs AWS Service Mapping
 
 | AWS | OCI |
-|---|---|
-| AWS Batch / ECS Fargate | OCI Container Instances |
-| Amazon S3 | OCI Object Storage |
-| Amazon ECR | OCI Container Registry (OCIR) |
-| IAM Role (Batch jobs) | Dynamic Group + IAM Policy |
-| CloudWatch Logs | OCI Logging |
-| Compute Environment | N/A (Container Instances are fully on-demand) |
-| Job Queue | N/A (managed by adapter semaphore) |
+|-----|-----|
+| AWS Batch / ECS Fargate | Container Instances |
+| Amazon S3 | Object Storage |
+| Amazon ECR | OCIR |
+| IAM Role | Dynamic Group + Policy |
 
-## Test Harness
+---
 
-The test harness (`oci_hpc_test_harness.py`) runs four phases:
+## Test Harness Phases
 
-1. **OCI Connectivity** — Verifies authentication, compartment, subnet, and availability domain
-2. **Object Storage** — Creates a temporary bucket, writes/reads/deletes a test object
-3. **Container Instance Lifecycle** — Launches a minimal container, polls to completion, deletes
-4. **Scheduler Tasks** — Submits real Scaler tasks through a running scheduler (requires `--scheduler`)
+The validation harness runs four sequential checks:
 
-Run individual phases with `--phase connectivity|storage|lifecycle|scheduler`.
+1. **OCI Connectivity** — verifies SDK auth and compartment access
+2. **Object Storage** — put/get/delete a test object in the bucket
+3. **Container Instance lifecycle** — launches a test container, waits for INACTIVE, verifies exit
+4. **Scheduler integration** *(optional)* — submits a real task through a running scheduler
+
+All four phases should pass before using the adapters in production.
+
+---
+
+## Troubleshooting
+
+**Worker manager fails to authenticate on first startup**
+- If running locally: ensure `~/.oci/config` exists and the profile has correct tenancy/user OCIDs, fingerprint, and key path. Use `oci iam user list` to verify.
+- If running on an OCI VM: use `--oci-auth-type instance_principal` and ensure the VM's OCID is in the Dynamic Group policy.
+
+**Container Instances created but result never returns**
+- Check the Object Storage bucket lifecycle — if set to 1 day, results from long-running tasks may expire before the adapter fetches them. The recommended minimum is 7 days.
+- Check the container logs in OCI Console → Container Instances → your instance → Logs.
+
+**`scaler_cluster` not found in container (OCI Raw)**
+- Ensure `SCALER_PACKAGE` is set in the container environment, e.g. `SCALER_PACKAGE=opengris-scaler[oci]`. The entrypoint installs it at startup.
+
+**Scheduler not reachable from containers**
+- Container Instances run inside OCI's network. A scheduler on your laptop is not reachable. Deploy the scheduler to an OCI VM (the Terraform repo provides an optional scheduler instance with systemd services pre-configured).
