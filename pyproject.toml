@@ -61,8 +61,8 @@ all = [
 
 [dependency-groups]
 dev = [
-    "black>=24.8.0",
-    "isort==7.0.0",
+    "black>=24.8.0; python_version >= '3.10'",
+    "isort==7.0.0; python_version >= '3.10'",
     "flake8>=5.0.4",
     "flake8-pyproject>=1.2.3",
     "mypy>=1.14.1",
