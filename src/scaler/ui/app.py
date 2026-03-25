@@ -77,7 +77,7 @@ class TaskStreamState:
         # worker tracking
         self._seen_workers: Set[str] = set()
         self._worker_capabilities: Dict[str, Set[str]] = {}
-        self._capabilities_color_map: Dict[str, str] = {"<no capabilities>": "#60a5fa"}
+        self._capabilities_color_map: Dict[str, str] = {"<no capabilities>": "#ffffff"}
 
         # task tracking  (worker -> {task_id -> start_time})
         self._current_tasks: Dict[str, Dict[bytes, datetime.datetime]] = {}
@@ -104,7 +104,7 @@ class TaskStreamState:
         Multi-capability tasks return one color per individual capability (sorted).
         """
         if caps_str == "<no capabilities>":
-            return ["#60a5fa"]
+            return ["#ffffff"]
         parts = caps_str.split()
         if len(parts) <= 1:
             return [_capabilities_color(caps_str, self._capabilities_color_map)]
@@ -331,10 +331,14 @@ class TaskStreamState:
                             "oc": "#eab308",  # yellow for running
                             "ow": 2,
                             "h": f"{func} ({actual_duration:.1f}s) - Running",
+                            "sl": 0,
+                            "sn": 1,
                         }
                     )
 
             # 2) Completed bars in reverse order (newest first, oldest last = oldest drawn on top)
+            #    Collect per-row first so we can compute sublane assignments.
+            completed_per_row: Dict[int, List[Dict[str, Any]]] = {}
             for row_idx, worker in enumerate(worker_order):
                 worker_bars = self._bar_history.get(worker, [])
                 for bar in reversed(worker_bars):
@@ -348,18 +352,81 @@ class TaskStreamState:
                     w = x_end - x_start
                     if w <= 0:
                         continue
-                    bars.append(
-                        {
-                            "r": row_idx,
-                            "x": x_start,
-                            "w": w,
-                            "cs": bar["color"],
-                            "p": bar["pattern"],
-                            "oc": bar["outline_color"],
-                            "ow": bar["outline_width"],
-                            "h": bar["hover"],
-                        }
-                    )
+                    bar_dict = {
+                        "r": row_idx,
+                        "x": x_start,
+                        "w": w,
+                        "cs": bar["color"],
+                        "p": bar["pattern"],
+                        "oc": bar["outline_color"],
+                        "ow": bar["outline_width"],
+                        "h": bar["hover"],
+                    }
+                    completed_per_row.setdefault(row_idx, []).append(bar_dict)
+
+            # Compute sublane assignments per row.
+            # Only non-cancelled completed bars participate; cancelled bars keep sl=0/sn=1.
+            # Overlaps of <= 2 seconds are ignored (likely timing rounding).
+            # Bars are grouped into connected overlap components so non-overlapping
+            # bars remain full height.
+            OVERLAP_THRESHOLD = 2.0  # seconds
+            for row_idx, row_bars in completed_per_row.items():
+                # Separate cancelled bars (they don't participate in sublane logic)
+                normal_bars = [b for b in row_bars if b["p"] != "/"]
+                for b in row_bars:
+                    if b["p"] == "/":
+                        b["sl"] = 0
+                        b["sn"] = 1
+
+                if not normal_bars:
+                    continue
+
+                sorted_bars = sorted(normal_bars, key=lambda b: b["x"])
+
+                # Build connected overlap groups (merge-intervals with threshold)
+                groups: List[List[int]] = []  # each group is list of indices into sorted_bars
+                group_end = -float("inf")
+                for idx, b in enumerate(sorted_bars):
+                    b_end = b["x"] + b["w"]
+                    if b["x"] < group_end - OVERLAP_THRESHOLD:
+                        # overlaps current group by more than threshold
+                        groups[-1].append(idx)
+                        if b_end > group_end:
+                            group_end = b_end
+                    else:
+                        # start new group
+                        groups.append([idx])
+                        group_end = b_end
+
+                # Assign lanes within each group
+                for group in groups:
+                    if len(group) == 1:
+                        sorted_bars[group[0]]["sl"] = 0
+                        sorted_bars[group[0]]["sn"] = 1
+                        continue
+                    # greedy interval coloring within the group
+                    lane_ends: List[float] = []
+                    bar_lanes: List[int] = []
+                    for idx in group:
+                        b = sorted_bars[idx]
+                        placed = False
+                        for lane_idx, end in enumerate(lane_ends):
+                            if end <= b["x"] + OVERLAP_THRESHOLD:
+                                lane_ends[lane_idx] = b["x"] + b["w"]
+                                bar_lanes.append(lane_idx)
+                                placed = True
+                                break
+                        if not placed:
+                            bar_lanes.append(len(lane_ends))
+                            lane_ends.append(b["x"] + b["w"])
+                    total_lanes = len(lane_ends)
+                    for i, idx in enumerate(group):
+                        sorted_bars[idx]["sl"] = bar_lanes[i]
+                        sorted_bars[idx]["sn"] = total_lanes
+
+            # Add completed bars to the bars list (preserving original reverse order)
+            for row_idx in sorted(completed_per_row.keys()):
+                bars.extend(completed_per_row[row_idx])
 
             # capability legend: derived from tasks visible in the stream
             active_caps: Set[str] = set()
@@ -377,7 +444,7 @@ class TaskStreamState:
                         if task_caps and task_caps != "<no capabilities>":
                             active_caps.update(task_caps.split())
 
-            legend: List[Dict[str, str]] = [{"name": "<no capabilities>", "color": "#60a5fa"}]
+            legend: List[Dict[str, str]] = [{"name": "<no capabilities>", "color": "#ffffff"}]
             legend.extend(
                 {"name": cap, "color": _capabilities_color(cap, self._capabilities_color_map)}
                 for cap in sorted(active_caps)
@@ -495,6 +562,7 @@ class WebUIApp:
         self._dead_managers: Dict[str, float] = {}  # manager_id -> disconnect timestamp
         self._manager_color_map: Dict[str, str] = {}  # manager_id -> color hex
         self._monitor_address: str = str(config.monitor_address)
+        self._last_message_time: Optional[datetime.datetime] = None
 
         self._settings = {"stream_window": 5, "memory_scale": "linear"}
 
@@ -539,6 +607,8 @@ class WebUIApp:
 
             if not messages:
                 continue
+
+            self._last_message_time = datetime.datetime.now()
 
             # Process messages
             has_scheduler_update = False
@@ -592,11 +662,16 @@ class WebUIApp:
             await self._broadcast(payload)
 
     def _process_scheduler(self, data: StateScheduler) -> None:
+        last_seen_str = "—"
+        if self._last_message_time is not None:
+            elapsed = (datetime.datetime.now() - self._last_message_time).total_seconds()
+            last_seen_str = f"{elapsed:.1f}s"
         self._scheduler_data = {
             "cpu": format_percentage(data.scheduler.cpu),
             "rss": format_bytes(data.scheduler.rss),
             "rss_free": format_bytes(data.rss_free),
             "monitor_address": self._monitor_address,
+            "last_seen": last_seen_str,
         }
 
         # Update persistent worker-to-manager mapping with latest data
@@ -943,7 +1018,8 @@ class WebUIApp:
 
     async def remove_client(self, ws: WebSocket) -> None:
         async with self._clients_lock:
-            self._clients.remove(ws)
+            if ws in self._clients:
+                self._clients.remove(ws)
 
     async def _broadcast(self, payload: Dict[str, Any]) -> None:
         data = json.dumps(payload)

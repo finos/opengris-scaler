@@ -31,6 +31,7 @@ var schedAddress = $("sched-address");
 var schedCpu = $("sched-cpu");
 var schedRss = $("sched-rss");
 var schedRssFree = $("sched-rss-free");
+var schedLastSeen = $("sched-last-seen");
 var managersBody = $("managers-body");
 var workersBody = $("workers-body");
 var tasklogBody = $("tasklog-body");
@@ -222,6 +223,7 @@ function updateScheduler(sched) {
     schedCpu.textContent = sched.cpu || "—";
     schedRss.textContent = sched.rss || "—";
     schedRssFree.textContent = sched.rss_free || "—";
+    schedLastSeen.textContent = sched.last_seen || "—";
 }
 
 // ── Live Tab: Worker Managers ──
@@ -686,8 +688,12 @@ function drawTaskStream() {
     for (var j = 0; j < streamBars.length; j++) {
         var bar = streamBars[j];
         var fullBarHeight = STREAM_ROW_HEIGHT - 4;
-        var barHeight = bar.p === "/" ? Math.floor(fullBarHeight / 2) : fullBarHeight;
-        var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + (fullBarHeight - barHeight);
+        var sn = bar.sn || 1;
+        var sl = bar.sl || 0;
+        var laneHeight = fullBarHeight / sn;
+        var barHeight = bar.p === "/" ? Math.floor(laneHeight / 2) : laneHeight;
+        var laneY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + sl * laneHeight;
+        var rowY = laneY + (laneHeight - barHeight);
         var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
         var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
         var barWidth = Math.max(x2 - x1, 1);
@@ -728,8 +734,12 @@ function drawTaskStream() {
         var bar = streamBars[j];
         if (bar.ow > 0 && bar.p !== "/") {
             var fullBarHeight = STREAM_ROW_HEIGHT - 4;
-            var barHeight = fullBarHeight;
-            var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2;
+            var sn = bar.sn || 1;
+            var sl = bar.sl || 0;
+            var laneHeight = fullBarHeight / sn;
+            var barHeight = laneHeight;
+            var laneY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + sl * laneHeight;
+            var rowY = laneY;
             var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
             var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
             var barWidth = Math.max(x2 - x1, 1);
@@ -792,8 +802,12 @@ streamCanvas.addEventListener("mousemove", function(evt) {
     for (var i = streamBars.length - 1; i >= 0; i--) {
         var bar = streamBars[i];
         var fullBarHeight = STREAM_ROW_HEIGHT - 4;
-        var barHeight = bar.p === "/" ? Math.floor(fullBarHeight / 2) : fullBarHeight;
-        var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + (fullBarHeight - barHeight);
+        var sn = bar.sn || 1;
+        var sl = bar.sl || 0;
+        var laneHeight = fullBarHeight / sn;
+        var barHeight = bar.p === "/" ? Math.floor(laneHeight / 2) : laneHeight;
+        var laneY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + sl * laneHeight;
+        var rowY = laneY + (laneHeight - barHeight);
         var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
         var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
 

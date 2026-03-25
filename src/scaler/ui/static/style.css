@@ -21,7 +21,7 @@
     --row-hover: #eff6ff;
     --radius: 6px;
     --shadow: 0 1px 3px rgba(0,0,0,0.08);
-    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font: "Consolas", "Monaco", "Courier New", monospace;
 }
 
 *, *::before, *::after {
@@ -273,7 +273,6 @@ th.sort-desc::after {
 .task-id {
     cursor: pointer;
     display: inline-block;
-    font-family: monospace;
     font-size: 0.85em;
 }
 
