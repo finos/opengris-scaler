@@ -4,10 +4,11 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 from unittest.mock import mock_open, patch
 
-from scaler.config.config_class import ConfigClass, parse_bool
+from scaler.config.config_class import ConfigClass
 from scaler.config.mixins import ConfigType
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
+from scaler.config.type_utils import parse_bool
 
 try:
     from typing import override  # type: ignore[attr-defined]
@@ -80,7 +81,7 @@ class TestConfigClass(unittest.TestCase):
             renamed: int = dataclasses.field(default=0, metadata=dict(long="--new-name"))
 
         parser = MockArgParser()
-        MyConfig.configure_parser(parser)
+        MyConfig.configure_parser(parser)  # type: ignore[arg-type]
         args = parser.args
 
         # Q: What is the "dest" kwarg?
@@ -138,7 +139,7 @@ class TestConfigClass(unittest.TestCase):
     @patch.dict("os.environ", {"ENV_VAR_ONE": "99", "ENV_VAR_TWO": "98"})
     @patch(
         "builtins.open",
-        mock_open(read_data="""
+        mock_open(read_data=b"""
             [my_config]
             config-file = 99
 
@@ -194,7 +195,7 @@ class TestConfigClass(unittest.TestCase):
     @patch("sys.argv", ["script", "--config", "file"])
     @patch(
         "builtins.open",
-        mock_open(read_data="""
+        mock_open(read_data=b"""
             [my_config]
             my_int = 10
             my-other-int = 20
@@ -209,6 +210,63 @@ class TestConfigClass(unittest.TestCase):
         config = MyConfigClass.parse("test underscore", "my_config")
         self.assertEqual(config.my_int, 10)
         self.assertEqual(config.my_other_int, 20)
+
+    @patch("sys.argv", ["script", "--config", "file"])
+    @patch(
+        "builtins.open",
+        mock_open(read_data=b"""
+            [my_config]
+            color = "RED"
+            """),
+    )
+    def test_enum_from_toml(self) -> None:
+        """Enum fields loaded from TOML should be converted to the enum type, not left as strings."""
+
+        class Color(Enum):
+            RED = "red"
+            GREEN = "green"
+            BLUE = "blue"
+
+        @dataclasses.dataclass
+        class MyConfigClass(ConfigClass):
+            color: Color
+
+        config = MyConfigClass.parse("test enum toml", "my_config")
+        self.assertEqual(config.color, Color.RED)
+        self.assertIsInstance(config.color, Color)
+
+    @patch("sys.argv", ["script", "--config", "file"])
+    @patch(
+        "builtins.open",
+        mock_open(read_data=b"""
+            [my_config]
+            my_value = "hello"
+            """),
+    )
+    def test_config_type_from_toml(self) -> None:
+        """ConfigType fields loaded from TOML should be converted via from_string(), not left as strings."""
+
+        class MyConfigType(ConfigType):
+            def __init__(self, value: str) -> None:
+                self.value = value
+
+            @classmethod
+            def from_string(cls, value: str) -> "MyConfigType":
+                return cls(value.upper())
+
+            def __eq__(self, other: object) -> bool:
+                return isinstance(other, MyConfigType) and self.value == other.value
+
+            def __str__(self) -> str:
+                return self.value
+
+        @dataclasses.dataclass
+        class MyConfigClass(ConfigClass):
+            my_value: MyConfigType
+
+        config = MyConfigClass.parse("test config_type toml", "my_config")
+        self.assertIsInstance(config.my_value, MyConfigType)
+        self.assertEqual(config.my_value, MyConfigType("HELLO"))
 
 
 class TestPreloadCLIArgument(unittest.TestCase):
@@ -255,9 +313,9 @@ class TestPreloadCLIArgument(unittest.TestCase):
     )
     def test_native_worker_manager_config_parses_preload(self) -> None:
         config = NativeWorkerManagerConfig.parse("test", "native_worker_manager")
-        self.assertEqual(config.preload, "mypackage.init:setup('production')")
+        self.assertEqual(config.worker_config.preload, "mypackage.init:setup('production')")
 
     @patch("sys.argv", ["script", "tcp://127.0.0.1:8516", "--worker-manager-id", "test_wm"])
     def test_native_worker_manager_config_preload_defaults_to_none(self) -> None:
         config = NativeWorkerManagerConfig.parse("test", "native_worker_manager")
-        self.assertIsNone(config.preload)
+        self.assertIsNone(config.worker_config.preload)

@@ -370,9 +370,6 @@ class TestClientPreload(unittest.TestCase):
                     max_task_concurrency=1,
                 ),
                 worker_manager_id="test_manager",
-                preload=preload,
-                event_loop=base_manager._event_loop,
-                worker_io_threads=base_manager._io_threads,
                 mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities({}),
@@ -383,6 +380,9 @@ class TestClientPreload(unittest.TestCase):
                     garbage_collect_interval_seconds=base_manager._garbage_collect_interval_seconds,
                     trim_memory_threshold_bytes=base_manager._trim_memory_threshold_bytes,
                     hard_processor_suspend=base_manager._hard_processor_suspend,
+                    io_threads=base_manager._io_threads,
+                    event_loop=base_manager._event_loop,
+                    preload=preload,
                 ),
                 logging_config=LoggingConfig(
                     paths=logging_paths,

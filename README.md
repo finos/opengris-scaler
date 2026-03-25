@@ -118,7 +118,7 @@ This will start a scheduler with 4 workers on port `2345`.
 ### Setting up a computing cluster from the CLI
 
 The object storage server, scheduler and workers can also be started from the command line with
-`scaler_scheduler` and `scaler_cluster`.
+`scaler_scheduler` and `scaler_worker_manager`.
 
 First, start the scheduler, and make it connect to the object storage server:
 
@@ -132,29 +132,54 @@ $ scaler_scheduler "tcp://127.0.0.1:2345"
 ...
 ```
 
-Finally, start a set of workers (a.k.a. a Scaler *cluster*) that connects to the previously started scheduler:
+Finally, start a set of workers that connects to the previously started scheduler:
 
 ```bash
-$ scaler_cluster -n 4 tcp://127.0.0.1:2345
-[INFO]2023-03-19 12:19:19-0400: logging to ('/dev/stdout',)
-[INFO]2023-03-19 12:19:19-0400: ClusterProcess: starting 4 workers, heartbeat_interval_seconds=2, object_retention_seconds=3600
-[INFO]2023-03-19 12:19:19-0400: Worker[0] started
-[INFO]2023-03-19 12:19:19-0400: Worker[1] started
-[INFO]2023-03-19 12:19:19-0400: Worker[2] started
-[INFO]2023-03-19 12:19:19-0400: Worker[3] started
+$ scaler_worker_manager baremetal_native --worker-manager-id my-manager --mode fixed --max-task-concurrency 4 tcp://127.0.0.1:2345
 ...
 ```
 
-Multiple Scaler clusters can be connected to the same scheduler, providing distributed computation over multiple
+Multiple worker managers can be connected to the same scheduler, providing distributed computation over multiple
 servers.
 
-`-h` lists the available options for the object storage server, scheduler and the cluster executables:
+`-h` lists the available options for the object storage server, scheduler and the worker manager executables:
 
 ```bash
 $ scaler_object_storage_server -h
 $ scaler_scheduler -h
-$ scaler_cluster -h
+$ scaler_worker_manager baremetal_native --help
 ```
+
+### All-in-one `scaler` entrypoint
+
+The `scaler` command starts the full stack — scheduler and one or more worker managers — from a single TOML file,
+with each component running in its own process. This is the simplest way to bring up a cluster from the CLI.
+
+Create a `stack.toml`:
+
+```toml
+[scheduler]
+scheduler_address = "tcp://127.0.0.1:2345"
+
+[[worker_manager]]
+type = "baremetal_native"
+worker_manager_id = "wm-1"
+scheduler_address = "tcp://127.0.0.1:2345"
+mode = "fixed"
+max_task_concurrency = 4
+```
+
+Then start the entire stack with a single command:
+
+```bash
+$ scaler stack.toml
+```
+
+The object storage server is managed automatically by the scheduler; by default it starts on
+`scheduler_address.port + 1` (port `2346` in this example).
+
+Multiple worker managers can be defined using the `[[worker_manager]]` array-of-tables syntax, each with its own
+`type`, concurrency settings, and logging configuration.
 
 ### Submitting Python tasks using the Scaler client
 
@@ -233,7 +258,7 @@ automatically loads its configuration from its corresponding section.
 
 * **Naming Convention**: The keys in the TOML file must match the long-form command-line arguments. The rule is to
   replace any hyphens (`-`) with underscores (`_`).
-    * For example, the flag `--num-of-workers` becomes the TOML key `num_of_workers`.
+    * For example, the flag `--max-task-concurrency` becomes the TOML key `max_task_concurrency`.
     * One can discover all available keys by running any command with the `-h` or `--help` flag.
 
 ### Supported Components and Section Names
@@ -243,12 +268,13 @@ The following table maps each Scaler command to its corresponding section name i
 | Command                              | TOML Section Name               |
 |--------------------------------------|---------------------------------|
 | `scaler_scheduler`                   | `[scheduler]`                   |
-| `scaler_cluster`                     | `[cluster]`                     |
 | `scaler_object_storage_server`       | `[object_storage_server]`       |
-| `scaler_ui`                          | `[webui]`                       |
+| `scaler_ui`                          | `[ui]`                          |
 | `scaler_top`                         | `[top]`                         |
-| `scaler_worker_manager_baremetal_native`       | `[native_worker_manager]`       |
-| `scaler_worker_manager_symphony`     | `[symphony_worker_manager]`     |
+| `scaler_worker_manager baremetal_native` | `[worker_manager_baremetal_native]` |
+| `scaler_worker_manager symphony`     | `[worker_manager_symphony]`         |
+| `scaler_worker_manager aws_raw_ecs`  | `[worker_manager_aws_raw_ecs]`      |
+| `scaler_worker_manager aws_hpc`      | `[worker_manager_aws_hpc]`          |
 
 ### Practical Scenarios & Examples
 
@@ -269,14 +295,23 @@ logging_paths = ["/dev/stdout", "/var/log/scaler/scheduler.log"]
 policy_engine_type = "simple"
 policy_content = "allocate=even_load; scaling=no"
 
-[cluster]
-num_of_workers = 8
+[worker_manager_baremetal_native]
+mode = "fixed"
+max_task_concurrency = 8
+worker_manager_id = "my-manager"
+# Each worker manager has its own worker_config,
+# so different managers (on different machines) can advertise
+# different capabilities to the scheduler.
 per_worker_capabilities = "linux,cpu=8"
 task_timeout_seconds = 600
+# Each worker manager has its own logging config,
+# so different managers can write to different log files.
+logging_level = "INFO"
+logging_paths = ["/dev/stdout", "/var/log/scaler/worker.log"]
 
 [object_storage_server]
 
-[webui]
+[ui]
 web_port = 8081
 ```
 
@@ -285,7 +320,7 @@ With this single file, starting your entire stack is simple and consistent:
 ```bash
 scaler_object_storage_server tcp://127.0.0.1:6379 --config example_config.toml &
 scaler_scheduler tcp://127.0.0.1:6378 --config example_config.toml &
-scaler_cluster tcp://127.0.0.1:6378 --config example_config.toml &
+scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --config example_config.toml &
 scaler_ui tcp://127.0.0.1:6380 --config example_config.toml &
 ```
 
@@ -295,12 +330,12 @@ You can override any value from the TOML file by providing it as a command-line 
 example_config.toml file but test the cluster with 12 workers instead of 8:
 
 ```bash
-# The --num-of-workers flag will take precedence over the [cluster] section
-scaler_cluster tcp://127.0.0.1:6378 --config example_config.toml --num-of-workers 12
+# The --max-task-concurrency flag will take precedence over the [worker_manager_baremetal_native] section
+scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --config example_config.toml --max-task-concurrency 12
 ```
 
 The cluster will start with 12 workers, but all other settings (like `task_timeout_seconds`) will still be loaded from the
-`[cluster]` section of example_config.toml.
+`[worker_manager_baremetal_native]` section of example_config.toml.
 
 ## Nested computations
 
@@ -351,7 +386,7 @@ When starting a cluster of workers, you can define the capabilities available on
 capabilities these provide.
 
 ```bash
-$ scaler_cluster -n 4 --per-worker-capabilities "gpu,linux" tcp://127.0.0.1:2345
+$ scaler_worker_manager baremetal_native --worker-manager-id my-manager --mode fixed --max-task-concurrency 4 --per-worker-capabilities "gpu,linux" tcp://127.0.0.1:2345
 ```
 
 ### Specifying Capability Requirements for Tasks
@@ -380,7 +415,7 @@ might be added in the future.
 A Scaler scheduler can interface with IBM Spectrum Symphony to provide distributed computing across Symphony clusters.
 
 ```bash
-$ scaler_worker_manager_symphony tcp://127.0.0.1:2345 --service-name ScalerService --base-concurrency 4
+$ scaler_worker_manager symphony --worker-manager-id my-manager tcp://127.0.0.1:2345 --service-name ScalerService --base-concurrency 4
 ```
 
 This will start a Scaler worker that connects to the Scaler scheduler at `tcp://127.0.0.1:2345` and uses the Symphony
@@ -480,7 +515,7 @@ specification [here](https://github.com/finos/opengris).
 Start a Native Worker Manager and connect it to the scheduler:
 
 ```bash
-$ scaler_worker_manager_baremetal_native tcp://127.0.0.1:2345
+$ scaler_worker_manager baremetal_native --worker-manager-id my-manager tcp://127.0.0.1:2345
 ```
 
 To check that the Worker Manager is working, you can bring up `scaler_top` to see workers spawning and terminating as

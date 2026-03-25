@@ -99,9 +99,6 @@ class SchedulerClusterCombo:
                     max_task_concurrency=n_workers,
                 ),
                 worker_manager_id=worker_manager_id,
-                preload=None,
-                event_loop=event_loop,
-                worker_io_threads=worker_io_threads,
                 mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),
@@ -112,6 +109,8 @@ class SchedulerClusterCombo:
                     garbage_collect_interval_seconds=garbage_collect_interval_seconds,
                     trim_memory_threshold_bytes=trim_memory_threshold_bytes,
                     hard_processor_suspend=hard_processor_suspend,
+                    io_threads=worker_io_threads,
+                    event_loop=event_loop,
                 ),
                 logging_config=LoggingConfig(paths=logging_paths, config_file=logging_config_file, level=logging_level),
             )

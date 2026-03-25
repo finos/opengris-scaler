@@ -1,11 +1,14 @@
+from typing import Optional
+
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 
 
-def main():
-    scheduler_config = SchedulerConfig.parse("Scaler Scheduler", "scheduler")
+def main(scheduler_config: Optional[SchedulerConfig] = None) -> None:
+    if scheduler_config is None:
+        scheduler_config = SchedulerConfig.parse("Scaler Scheduler", "scheduler")
 
     object_storage_address = scheduler_config.object_storage_address
     object_storage = None
@@ -28,7 +31,7 @@ def main():
         address=scheduler_config.scheduler_address,
         object_storage_address=object_storage_address,
         monitor_address=scheduler_config.monitor_address,
-        io_threads=scheduler_config.worker_io_threads,
+        io_threads=scheduler_config.io_threads,
         max_number_of_tasks_waiting=scheduler_config.max_number_of_tasks_waiting,
         client_timeout_seconds=scheduler_config.client_timeout_seconds,
         worker_timeout_seconds=scheduler_config.worker_timeout_seconds,

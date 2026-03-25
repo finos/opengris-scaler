@@ -645,8 +645,6 @@ def _run_native_worker_manager(
                 max_task_concurrency=max_task_concurrency,
             ),
             worker_manager_id=worker_manager_id,
-            event_loop="builtin",
-            worker_io_threads=DEFAULT_IO_THREADS,
             worker_config=WorkerConfig(
                 per_worker_capabilities=WorkerCapabilities({}),
                 per_worker_task_queue_size=10,
@@ -656,6 +654,8 @@ def _run_native_worker_manager(
                 garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
                 trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
                 hard_processor_suspend=DEFAULT_HARD_PROCESSOR_SUSPEND,
+                io_threads=DEFAULT_IO_THREADS,
+                event_loop="builtin",
             ),
             logging_config=LoggingConfig(paths=("/dev/stdout",), level="INFO", config_file=None),
         )
