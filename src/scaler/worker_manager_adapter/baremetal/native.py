@@ -19,9 +19,8 @@ from scaler.protocol.python.message import (
     WorkerManagerHeartbeat,
     WorkerManagerHeartbeatEcho,
 )
-from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
+from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
 from scaler.utility.identifiers import WorkerID
-from scaler.utility.logging.utility import setup_logger
 from scaler.worker.worker import Worker
 
 Status = WorkerManagerCommandResponse.Status
@@ -33,7 +32,7 @@ class NativeWorkerManager:
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
         self._worker_manager_id = config.worker_manager_id.encode()
-        self._io_threads = config.worker_io_threads
+        self._io_threads = config.worker_config.io_threads
         self._task_queue_size = config.worker_config.per_worker_task_queue_size
         self._max_task_concurrency = config.worker_manager_config.max_task_concurrency
         self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
@@ -42,11 +41,11 @@ class NativeWorkerManager:
         self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
         self._hard_processor_suspend = config.worker_config.hard_processor_suspend
-        self._event_loop = config.event_loop
+        self._event_loop = config.worker_config.event_loop
+        self._preload = config.worker_config.preload
         self._logging_paths = config.logging_config.paths
         self._logging_level = config.logging_config.level
         self._logging_config_file = config.logging_config.config_file
-        self._preload = config.preload
         self._mode = config.mode
 
         if config.worker_type is not None:
@@ -179,8 +178,6 @@ class NativeWorkerManager:
         run_task_forever(self._loop, self._run(), cleanup_callback=self._cleanup)
 
     def _run_fixed(self) -> None:
-        setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
-        register_event_loop(self._event_loop)
         self._spawn_initial_workers()
 
         def _on_signal(sig: int, frame: object) -> None:
@@ -208,9 +205,6 @@ class NativeWorkerManager:
         self._loop.add_signal_handler(signal.SIGTERM, self.__destroy)
 
     async def _run(self) -> None:
-        register_event_loop(self._event_loop)
-        setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
-
         self._task = self._loop.create_task(self.__get_loops())
         self.__register_signal()
         await self._task

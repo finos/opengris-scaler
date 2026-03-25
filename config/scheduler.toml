@@ -1,0 +1,64 @@
+# Scaler Scheduler configuration
+# Pass to the scheduler with: scaler_scheduler --config config/scheduler.toml
+
+[scheduler]
+# Required: address the scheduler binds to (tcp://<host>:<port>, ipc://<path>, or inproc://<name>)
+scheduler_address = "tcp://0.0.0.0:6378"
+
+# Optional: object storage server address.
+# If omitted, defaults to scheduler_address host with port+1 (e.g. tcp://0.0.0.0:6379).
+# An embedded object storage server is started automatically in that case.
+# object_storage_address = "tcp://0.0.0.0:6379"
+
+# Optional: monitoring address.
+# If omitted, defaults to scheduler_address host with port+2 (e.g. tcp://0.0.0.0:6380).
+# monitor_address = "tcp://0.0.0.0:6380"
+
+# Protect the scheduler and workers from being shut down by clients.
+protected = false
+
+# Maximum number of tasks that can queue in the scheduler while all workers are busy.
+# -1 means unlimited.
+max_number_of_tasks_waiting = -1
+
+# Seconds before an unresponsive client is discarded and its tasks cancelled.
+client_timeout_seconds = 60
+
+# Seconds before an unresponsive worker is discarded and its tasks rescheduled.
+worker_timeout_seconds = 60
+
+# Seconds before a cached object (function/data) is evicted from worker memory.
+object_retention_seconds = 60
+
+# Interval in seconds between load-balance checks.
+load_balance_seconds = 1
+
+# Number of consecutive identical load-balance advisories required to trigger a rebalance.
+load_balance_trigger_times = 2
+
+# Event loop implementation: "builtin" (asyncio) or "uvloop".
+event_loop = "builtin"
+
+# Number of I/O threads for the ZMQ backend.
+io_threads = 1
+
+# ── Logging ────────────────────────────────────────────────────────────────────
+# One or more output destinations. "/dev/stdout" logs to stdout.
+# For file output use an absolute path; each worker appends its PID.
+logging_paths = ["/dev/stdout"]
+
+# Optional path to a Python logging .conf file.
+# Supersedes all other logging settings and disables per-worker log files.
+# logging_config_file = "/etc/scaler/logging.conf"
+
+# Log level: DEBUG, INFO, WARNING, ERROR, or CRITICAL.
+logging_level = "INFO"
+
+# ── Policy ─────────────────────────────────────────────────────────────────────
+# Policy engine type (currently only "simple" is supported).
+policy_engine_type = "simple"
+
+# Scheduling policy string.
+#   allocate: how tasks are assigned to workers — "even_load"
+#   scaling:  automatic worker scaling         — "no" (disabled)
+policy_content = "allocate=even_load; scaling=no"

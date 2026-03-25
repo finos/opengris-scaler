@@ -23,6 +23,7 @@ CAPNP_MESSAGE_SIZE_LIMIT = 2**64 - 1
 # ==========================
 # SCHEDULER SPECIFIC OPTIONS
 
+
 # number of threads for zmq socket to handle
 DEFAULT_IO_THREADS = 1
 

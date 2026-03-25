@@ -44,9 +44,6 @@ class TestDeathTimeout(unittest.TestCase):
                     max_task_concurrency=2,
                 ),
                 worker_manager_id="test_manager",
-                preload=None,
-                event_loop="builtin",
-                worker_io_threads=DEFAULT_IO_THREADS,
                 mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities({}),
@@ -57,6 +54,8 @@ class TestDeathTimeout(unittest.TestCase):
                     task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
                     death_timeout_seconds=10,
                     hard_processor_suspend=False,
+                    io_threads=DEFAULT_IO_THREADS,
+                    event_loop="builtin",
                 ),
                 logging_config=LoggingConfig(
                     paths=DEFAULT_LOGGING_PATHS, level=DEFAULT_LOGGING_LEVEL, config_file=None

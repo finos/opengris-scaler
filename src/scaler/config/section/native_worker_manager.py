@@ -1,14 +1,12 @@
 import argparse
 import dataclasses
 import enum
-from typing import Optional
+from typing import ClassVar, Optional
 
-from scaler.config import defaults
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.config_class import ConfigClass
-from scaler.utility.event_loop import EventLoopType
 
 
 class NativeWorkerManagerMode(enum.Enum):
@@ -18,28 +16,16 @@ class NativeWorkerManagerMode(enum.Enum):
 
 @dataclasses.dataclass
 class NativeWorkerManagerConfig(ConfigClass):
+    _tag: ClassVar[str] = "baremetal_native"
+
     worker_manager_config: WorkerManagerConfig
+
     worker_manager_id: str = dataclasses.field(
-        metadata=dict(
-            short="-wmi", required=True, help="worker manager ID to identify which manager spawned these workers"
-        )
+        metadata=dict(short="-wmi", required=True, help="worker manager ID to identify this manager")
     )
 
-    preload: Optional[str] = dataclasses.field(
-        default=None,
-        metadata=dict(help="preload function spec executed on worker init, e.g. 'pkg.mod:func(arg1, kw=val)'"),
-    )
     worker_config: WorkerConfig = dataclasses.field(default_factory=WorkerConfig)
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
-    event_loop: str = dataclasses.field(
-        default="builtin",
-        metadata=dict(short="-el", choices=EventLoopType.allowed_types(), help="select the event loop type"),
-    )
-
-    worker_io_threads: int = dataclasses.field(
-        default=defaults.DEFAULT_IO_THREADS,
-        metadata=dict(short="-wit", help="set the number of io threads for io backend per worker"),
-    )
 
     mode: NativeWorkerManagerMode = dataclasses.field(
         default=NativeWorkerManagerMode.DYNAMIC,
@@ -60,7 +46,7 @@ class NativeWorkerManagerConfig(ConfigClass):
         parser.add_argument("-n", "--num-of-workers", dest="max_task_concurrency", type=int, help=argparse.SUPPRESS)
 
     def __post_init__(self) -> None:
-        if self.worker_io_threads <= 0:
-            raise ValueError("worker_io_threads must be a positive integer.")
+        if not self.worker_manager_id:
+            raise ValueError("worker_manager_id cannot be an empty string.")
         if self.mode == NativeWorkerManagerMode.FIXED and self.worker_manager_config.max_task_concurrency < 0:
             raise ValueError("max_task_concurrency must be >= 0 for fixed mode")

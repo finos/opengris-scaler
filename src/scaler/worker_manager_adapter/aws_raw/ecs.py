@@ -20,8 +20,7 @@ from scaler.protocol.python.message import (
     WorkerManagerHeartbeat,
     WorkerManagerHeartbeatEcho,
 )
-from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
 from scaler.worker_manager_adapter.common import format_capabilities
 
 Status = WorkerManagerCommandResponse.Status
@@ -41,7 +40,7 @@ class ECSWorkerManager:
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
         self._worker_manager_id = config.worker_manager_id.encode()
-        self._io_threads = config.worker_io_threads
+        self._io_threads = config.worker_config.io_threads
         self._per_worker_task_queue_size = config.worker_config.per_worker_task_queue_size
         self._max_instances = config.worker_manager_config.max_task_concurrency
         self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
@@ -50,11 +49,8 @@ class ECSWorkerManager:
         self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
         self._hard_processor_suspend = config.worker_config.hard_processor_suspend
-        self._preload = config.preload
-        self._event_loop = config.event_loop
-        self._logging_paths = config.logging_config.paths
-        self._logging_level = config.logging_config.level
-        self._logging_config_file = config.logging_config.config_file
+        self._preload = config.worker_config.preload
+        self._event_loop = config.worker_config.event_loop
 
         self._aws_access_key_id = config.aws_access_key_id
         self._aws_secret_access_key = config.aws_secret_access_key
@@ -192,8 +188,6 @@ class ECSWorkerManager:
         self._loop.add_signal_handler(signal.SIGTERM, self.__destroy)
 
     async def _run(self) -> None:
-        register_event_loop(self._event_loop)
-        setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
         self._task = self._loop.create_task(self.__get_loops())
         self.__register_signal()
         await self._task
@@ -219,7 +213,8 @@ class ECSWorkerManager:
             return [], Status.TooManyWorkers
 
         command = (
-            f"scaler_cluster {self._address.to_address()} "
+            f"scaler_worker_manager native {self._address.to_address()} "
+            f"--mode fixed "
             f"--worker-type ECS "
             f"--max-task-concurrency {self._ecs_task_cpu} "
             f"--per-worker-task-queue-size {self._per_worker_task_queue_size} "

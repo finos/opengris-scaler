@@ -5,8 +5,8 @@ The Baremetal Native worker manager spawns worker subprocesses on the local mach
 
 It supports two modes:
 
-* **Dynamic mode** (``scaler_worker_manager_baremetal_native``): Workers are provisioned and destroyed on demand by the scheduler's scaling policy.
-* **Fixed mode** (``scaler_worker_manager_baremetal_native --mode fixed``): A static pool of workers is spawned at startup. No dynamic scaling.
+* **Dynamic mode** (``scaler_worker_manager baremetal_native``): Workers are provisioned and destroyed on demand by the scheduler's scaling policy.
+* **Fixed mode** (``scaler_worker_manager baremetal_native --mode fixed``): A static pool of workers is spawned at startup. No dynamic scaling.
 
 Quick Start (Python API)
 ------------------------
@@ -49,7 +49,7 @@ Start the scheduler first, then start a fixed pool of workers, then submit work 
 
 .. code-block:: bash
 
-   scaler_cluster tcp://127.0.0.1:8516 --max-task-concurrency 4
+   scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 --mode fixed --max-task-concurrency 4
 
 **Terminal 3 — Client (save as** ``my_client.py`` **and run** ``python my_client.py`` **):**
 
@@ -67,7 +67,7 @@ Start the scheduler first, then start a fixed pool of workers, then submit work 
 Quick Start (CLI — Dynamic Scaling)
 ------------------------------------
 
-For dynamic scaling, use ``scaler_worker_manager_baremetal_native`` instead of ``scaler_cluster``. The scheduler's scaling policy will automatically start and stop workers as needed.
+For dynamic scaling, use ``scaler_worker_manager baremetal_native`` (without ``--mode fixed``). The scheduler's scaling policy will automatically start and stop workers as needed.
 
 **Terminal 1 — Scheduler:**
 
@@ -84,7 +84,7 @@ For dynamic scaling, use ``scaler_worker_manager_baremetal_native`` instead of `
 
 .. code-block:: bash
 
-   scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 \
+   scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 \
        --max-task-concurrency 4
 
 **Terminal 3 — Client (save as** ``my_client.py`` **and run** ``python my_client.py`` **):**
@@ -104,12 +104,12 @@ Or use a TOML configuration file:
 
 .. code-block:: bash
 
-   scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 --config config.toml
+   scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 --config config.toml
 
 .. code-block:: toml
    :caption: config.toml
 
-   [native_worker_manager]
+   [baremetal_native]
    max_task_concurrency = 4
    logging_level = "INFO"
    task_timeout_seconds = 60
@@ -117,7 +117,7 @@ Or use a TOML configuration file:
 Quick Start (CLI — Fixed Mode)
 -------------------------------
 
-You can also use ``scaler_worker_manager_baremetal_native`` in fixed mode, which spawns a static pool of workers at startup.
+You can also use ``scaler_worker_manager baremetal_native`` in fixed mode, which spawns a static pool of workers at startup.
 
 **Terminal 1 — Scheduler:**
 
@@ -129,7 +129,7 @@ You can also use ``scaler_worker_manager_baremetal_native`` in fixed mode, which
 
 .. code-block:: bash
 
-   scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 \
+   scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 \
        --mode fixed \
        --max-task-concurrency 8
 
@@ -137,12 +137,12 @@ Or use a TOML configuration file:
 
 .. code-block:: bash
 
-   scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 --config config.toml
+   scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 --config config.toml
 
 .. code-block:: toml
    :caption: config.toml
 
-   [native_worker_manager]
+   [baremetal_native]
    mode = "fixed"
    max_task_concurrency = 8
    logging_level = "INFO"
@@ -152,7 +152,7 @@ How It Works
 
 **Dynamic mode:** The worker manager connects to the scheduler and waits for scaling commands. When the scheduler's scaling policy determines that more workers are needed, it sends a ``StartWorkerGroup`` command. The worker manager spawns a new worker subprocess. When the scheduler wants to scale down, it sends a ``ShutdownWorkerGroup`` command and the worker manager terminates the worker. Each worker group contains exactly one worker process.
 
-**Fixed mode** (``scaler_cluster`` **or** ``scaler_worker_manager_baremetal_native --mode fixed``): A fixed number of worker subprocesses are spawned immediately at startup and connect to the scheduler. Workers are not dynamically scaled. If a worker terminates, it is **not** automatically restarted.
+**Fixed mode** (``scaler_worker_manager baremetal_native --mode fixed``): A fixed number of worker subprocesses are spawned immediately at startup and connect to the scheduler. Workers are not dynamically scaled. If a worker terminates, it is **not** automatically restarted.
 
 Configuration Reference
 ------------------------
@@ -166,7 +166,7 @@ Baremetal Native Parameters
 * ``scheduler_address`` (positional, required): Address of the scheduler (e.g., ``tcp://127.0.0.1:8516``).
 * ``--max-task-concurrency`` (``-mtc``): Maximum number of worker subprocesses. In dynamic mode, set to ``-1`` for no limit (default: number of CPUs − 1). In fixed mode, this is the exact number of workers spawned.
 * ``--mode``: Operating mode: ``dynamic`` (default) for auto-scaling driven by scheduler, or ``fixed`` for pre-spawned workers.
-* ``--num-of-workers`` (``-n``, ``scaler_cluster`` only): Alias for ``--max-task-concurrency``.
+* ``--num-of-workers`` (``-n``): Alias for ``--max-task-concurrency``.
 * ``--preload``: Python module path to preload in each worker before it accepts tasks (e.g., ``my_package.preload``).
 
 Common Parameters

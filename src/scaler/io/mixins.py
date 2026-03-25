@@ -1,6 +1,7 @@
 import abc
 from typing import Awaitable, Callable, Optional
 
+from scaler.config.types.zmq import ZMQConfig
 from scaler.protocol.python.mixins import Message
 from scaler.protocol.python.status import BinderStatus
 from scaler.utility.identifiers import ObjectID
@@ -11,6 +12,11 @@ class AsyncBinder(Looper, Reporter, metaclass=abc.ABCMeta):
     @property
     @abc.abstractmethod
     def identity(self):
+        raise NotImplementedError()
+
+    @property
+    @abc.abstractmethod
+    def address(self) -> ZMQConfig:
         raise NotImplementedError()
 
     @abc.abstractmethod

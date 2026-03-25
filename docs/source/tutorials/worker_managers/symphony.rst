@@ -38,7 +38,7 @@ Step 3: Start the Symphony Worker Manager
 
 .. code-block:: bash
 
-   scaler_worker_manager_symphony tcp://<SCHEDULER_IP>:8516 \
+   scaler_worker_manager symphony tcp://<SCHEDULER_IP>:8516 \
        --service-name MyScalerService \
        --max-task-concurrency 8
 
@@ -46,12 +46,12 @@ Or use a TOML configuration file:
 
 .. code-block:: bash
 
-   scaler_worker_manager_symphony tcp://<SCHEDULER_IP>:8516 --config config.toml
+   scaler_worker_manager symphony tcp://<SCHEDULER_IP>:8516 --config config.toml
 
 .. code-block:: toml
    :caption: config.toml
 
-   [symphony_worker_manager]
+   [symphony]
    service_name = "MyScalerService"
    max_task_concurrency = 8
    logging_level = "INFO"

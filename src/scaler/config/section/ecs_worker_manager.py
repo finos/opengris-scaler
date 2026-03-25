@@ -1,37 +1,24 @@
 import dataclasses
-from typing import List, Optional
+from typing import ClassVar, List, Optional
 
-from scaler.config import defaults
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.config_class import ConfigClass
-from scaler.utility.event_loop import EventLoopType
 
 
 @dataclasses.dataclass
 class ECSWorkerManagerConfig(ConfigClass):
-    worker_manager_config: WorkerManagerConfig
-    worker_manager_id: str = dataclasses.field(
-        metadata=dict(short="-wmi", help="worker manager ID to identify this manager")
-    )
+    _tag: ClassVar[str] = "aws_raw_ecs"
 
-    preload: Optional[str] = dataclasses.field(
-        default=None,
-        metadata=dict(help="preload function spec executed on worker init, e.g. 'pkg.mod:func(arg1, kw=val)'"),
+    worker_manager_config: WorkerManagerConfig
+
+    worker_manager_id: str = dataclasses.field(
+        metadata=dict(short="-wmi", required=True, help="worker manager ID to identify this manager")
     )
 
     worker_config: WorkerConfig = dataclasses.field(default_factory=WorkerConfig)
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
-    event_loop: str = dataclasses.field(
-        default="builtin",
-        metadata=dict(short="-el", choices=EventLoopType.allowed_types(), help="select the event loop type"),
-    )
-
-    worker_io_threads: int = dataclasses.field(
-        default=defaults.DEFAULT_IO_THREADS,
-        metadata=dict(short="-wit", help="set the number of io threads for io backend per worker"),
-    )
 
     # AWS / ECS specific configuration
     aws_access_key_id: Optional[str] = dataclasses.field(
@@ -68,20 +55,15 @@ class ECSWorkerManagerConfig(ConfigClass):
     def __post_init__(self):
         if not self.worker_manager_id:
             raise ValueError("worker_manager_id cannot be an empty string.")
-        # Validate numeric and collection values
         if self.ecs_task_cpu <= 0:
             raise ValueError("ecs_task_cpu must be a positive integer.")
         if self.ecs_task_memory <= 0:
             raise ValueError("ecs_task_memory must be a positive integer.")
         if not isinstance(self.ecs_subnets, list) or len(self.ecs_subnets) == 0:
             raise ValueError("ecs_subnets must be a non-empty list of subnet ids.")
-
-        # Validate required strings
         if not self.ecs_cluster:
             raise ValueError("ecs_cluster cannot be an empty string.")
         if not self.ecs_task_definition:
             raise ValueError("ecs_task_definition cannot be an empty string.")
         if not self.ecs_task_image:
             raise ValueError("ecs_task_image cannot be an empty string.")
-        if self.worker_io_threads <= 0:
-            raise ValueError("worker_io_threads must be a positive integer.")
