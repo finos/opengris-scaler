@@ -22,7 +22,6 @@ var memoryYTicks = [];
 var streamTicks = [];
 var streamWindow = 300;    // seconds
 var streamNeedsRedraw = false;
-var streamDataTime = 0;    // performance.now() when last stream data arrived
 var memoryNeedsRedraw = false;
 
 // ── DOM refs ──
@@ -581,7 +580,6 @@ function updateTaskStream(data) {
     }
     streamTicks = data.ticks || [];
     streamWindow = data.window || 300;
-    streamDataTime = performance.now();
     streamNeedsRedraw = true;
 
     // Update legend
@@ -686,9 +684,6 @@ function drawTaskStream() {
     }
 
     // Helper: compute bar geometry from sublane fields
-    // Smooth sliding: offset bar.x by time elapsed since last server update
-    var drift = (performance.now() - streamDataTime) / 1000;
-
     function barGeom(bar) {
         var fullBarHeight = STREAM_ROW_HEIGHT - 4;
         var sn = bar.sn || 1;
@@ -697,9 +692,8 @@ function drawTaskStream() {
         var bh = bar.p === "/" ? Math.floor(laneHeight / 2) : laneHeight;
         var laneY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + sl * laneHeight;
         var ry = laneY + (laneHeight - bh);
-        var bx = bar.x - drift;
-        var x1 = STREAM_LABEL_WIDTH + ((bx + streamWindow) / streamWindow) * chartWidth;
-        var x2 = STREAM_LABEL_WIDTH + ((bx + bar.w + streamWindow) / streamWindow) * chartWidth;
+        var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
+        var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
         return { x: x1, y: ry, w: Math.max(x2 - x1, 1), h: bh, lh: laneHeight, ly: laneY };
     }
 
@@ -829,10 +823,8 @@ streamCanvas.addEventListener("mousemove", function(evt) {
         var barHeight = bar.p === "/" ? Math.floor(laneHeight / 2) : laneHeight;
         var laneY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + sl * laneHeight;
         var rowY = laneY + (laneHeight - barHeight);
-        var hoverDrift = (performance.now() - streamDataTime) / 1000;
-        var bx = bar.x - hoverDrift;
-        var x1 = STREAM_LABEL_WIDTH + ((bx + streamWindow) / streamWindow) * chartWidth;
-        var x2 = STREAM_LABEL_WIDTH + ((bx + bar.w + streamWindow) / streamWindow) * chartWidth;
+        var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
+        var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
 
         if (mx >= x1 && mx <= x2 && my >= rowY && my <= rowY + barHeight) {
             tooltip.textContent = bar.h;
@@ -1169,12 +1161,9 @@ function formatBytes(bytes) {
 
 // ── Animation Loop ──
 function renderLoop() {
-    // Always redraw stream for smooth sliding when visible
-    var streamTab = document.querySelector('.tab.active');
-    var streamVisible = streamTab && streamTab.getAttribute("data-tab") === "stream";
-    if (streamNeedsRedraw || (streamVisible && streamBars.length > 0)) {
+    if (streamNeedsRedraw) {
         streamNeedsRedraw = false;
-        if (streamVisible) drawTaskStream();
+        drawTaskStream();
     }
     if (memoryNeedsRedraw) {
         memoryNeedsRedraw = false;
