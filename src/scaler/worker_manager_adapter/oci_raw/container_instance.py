@@ -248,11 +248,12 @@ class OCIContainerInstanceWorkerAdapter:
                 oci.container_instances.models.CreateContainerDetails(
                     image_url=self._container_image,
                     display_name="scaler-container",
-                    environment_variables={
-                        "COMMAND": command,
-                        "PYTHON_REQUIREMENTS": self._oci_python_requirements,
-                        "PYTHON_VERSION": self._oci_python_version,
-                    },
+                  environment_variables={
+                    "COMMAND": command,
+                    "PYTHON_REQUIREMENTS": self._oci_python_requirements,
+                    "PYTHON_VERSION": self._oci_python_version,
+                    "SCALER_PACKAGE": "opengris-scaler==1.15.0",
+},
                 )
             ],
             vnics=[oci.container_instances.models.CreateContainerVnicDetails(subnet_id=self._subnet_id)],
