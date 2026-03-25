@@ -3,11 +3,6 @@ Features Reference
 
 Scaler comes with a number of features that can be used to monitor and profile tasks, and customize behavior.
 
-.. toctree::
-   :maxdepth: 1
-
-   configuration
-
 Scaler Top (Monitoring)
 -----------------------
 

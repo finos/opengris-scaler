@@ -4,7 +4,7 @@ Common Worker Manager Parameters
 All worker managers in Scaler share a set of common configuration parameters. Not every worker manager supports every parameter — specific docs note any differences.
 
 .. note::
-    For more details on Scaler configuration, see the :doc:`../configuration` section.
+    For more details on Scaler configuration, see :doc:`../commands`.
 
 Networking
 ----------

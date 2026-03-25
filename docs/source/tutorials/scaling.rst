@@ -13,14 +13,14 @@ Available policy engines:
    * - Policy Engine
      - Description
      - Best For
-   * - :doc:`simple <scaling_simple_engine>`
+   * - :doc:`simple <scaling/simple>`
      - General-purpose engine for most deployments.
      -
        * One manager or a small manager set
        * Homogeneous workloads: ``even_load + vanilla``
        * Capability-aware workloads: ``capability + capability``
        * Baseline + burst: ``fixed_elastic``
-   * - :doc:`waterfall_v1 <scaling_waterfall_engine>`
+   * - :doc:`waterfall_v1 <scaling/waterfall_v1>`
      - Priority-based multi-manager scaling.
      -
        * Strict tier preference across managers
@@ -32,5 +32,5 @@ Available policy engines:
    :maxdepth: 1
    :hidden:
 
-   scaling_simple_engine
-   scaling_waterfall_engine
+   scaling/simple
+   scaling/waterfall_v1

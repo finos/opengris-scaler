@@ -19,11 +19,10 @@ Content
    tutorials/quickstart
    tutorials/introduction
    tutorials/commands
-   tutorials/compatibility_layer
+   tutorials/compatibility
    tutorials/scaling
    tutorials/worker_managers/index
    tutorials/features
-   tutorials/configuration
    tutorials/advanced_usage
    tutorials/application_examples
-   tutorials/how_to_contribute
+   tutorials/development
