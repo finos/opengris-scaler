@@ -716,10 +716,11 @@ function drawTaskStream() {
         }
     }
 
-    // Draw bars in 3 passes for correct layering:
+    // Draw bars in 2 passes for correct layering:
     //   Pass 1: Running bars — fill + outline (bottom layer)
-    //   Pass 2: Completed/cancelled bars — fill + pattern + cancelled outlines
-    //   Pass 3: Completed (non-cancelled) bars — outlines on top
+    //   Pass 2: Completed/cancelled bars — sorted newest-first so older bars
+    //           paint on top, each bar draws fill+outline together to avoid
+    //           outlines bleeding across overlapping fills.
 
     // Pass 1: Running bars (fill + outline, bottom layer)
     for (var j = 0; j < streamBars.length; j++) {
@@ -734,33 +735,32 @@ function drawTaskStream() {
         }
     }
 
-    // Pass 2: Completed/cancelled bars — fill + pattern + cancelled outlines
+    // Pass 2: Completed/cancelled bars — newest first (behind), oldest last (on top)
+    // Collect non-running bars and sort by x descending (newest/rightmost drawn first)
+    var completedBars = [];
     for (var j = 0; j < streamBars.length; j++) {
-        var bar = streamBars[j];
-        if (bar.rn) continue;
+        if (!streamBars[j].rn) completedBars.push(streamBars[j]);
+    }
+    completedBars.sort(function(a, b) { return b.x - a.x; });
+
+    for (var j = 0; j < completedBars.length; j++) {
+        var bar = completedBars[j];
         var g = barGeom(bar);
         drawBarFill(bar, g);
         if (bar.p === "x") {
             drawCrossHatch(streamCtx, g.x, g.y, g.w, g.h);
         } else if (bar.p === "/") {
             drawSlashHatch(streamCtx, g.x, g.y, g.w, g.h);
-            if (bar.ow > 0) {
-                streamCtx.strokeStyle = bar.oc;
-                streamCtx.lineWidth = bar.ow;
-                streamCtx.strokeRect(g.x, g.y, g.w, g.h);
-            }
         }
-    }
-
-    // Pass 3: Completed (non-cancelled, non-running) outlines on top
-    for (var j = 0; j < streamBars.length; j++) {
-        var bar = streamBars[j];
-        if (bar.rn || bar.p === "/") continue;
+        // Outline: draw per-bar so it stays with its own fill
         if (bar.ow > 0) {
-            var g = barGeom(bar);
             streamCtx.strokeStyle = bar.oc;
             streamCtx.lineWidth = bar.ow;
-            streamCtx.strokeRect(g.x, g.ly, g.w, g.lh);
+            if (bar.p === "/") {
+                streamCtx.strokeRect(g.x, g.y, g.w, g.h);
+            } else {
+                streamCtx.strokeRect(g.x, g.ly, g.w, g.lh);
+            }
         }
     }
 
