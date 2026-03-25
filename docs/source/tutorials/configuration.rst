@@ -216,7 +216,10 @@ Here is an example of a single ``example_config.toml`` file that configures mult
     # This is a unified configuration file for all Scaler components.
 
     [scheduler]
-    object_storage_address = "tcp://127.0.0.1:6379"
+    # for following object_storage_address
+    # - if omitted, object storage is auto-started at scheduler port + 1
+    # - if specified, scheduler will connect to specified address without start one
+    # object_storage_address = "tcp://127.0.0.1:6379"
     monitor_address = "tcp://127.0.0.1:6380"
     logging_level = "INFO"
     logging_paths = ["/dev/stdout", "/var/log/scaler/scheduler.log"]
@@ -267,7 +270,10 @@ To use the ``waterfall_v1`` policy engine for priority-based scaling across mult
 .. code-block:: toml
 
     [scheduler]
-    object_storage_address = "tcp://127.0.0.1:6379"
+    # for following object_storage_address
+    # - if omitted, object storage is auto-started at scheduler port + 1
+    # - if specified, scheduler will connect to specified address without start one
+    # object_storage_address = "tcp://127.0.0.1:6379"
     monitor_address = "tcp://127.0.0.1:6380"
     logging_level = "INFO"
     policy_engine_type = "waterfall_v1"

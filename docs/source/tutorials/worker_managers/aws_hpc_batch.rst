@@ -36,7 +36,11 @@ your AWS account ID):
 .. code-block:: toml
    :caption: config.toml
 
-   [aws_hpc]
+   [[worker_manager]]
+   type = "aws_hpc"
+   scheduler_address = "tcp://127.0.0.1:8516"
+   object_storage_address = "tcp://127.0.0.1:8517"
+   worker_manager_id = "wm-batch"
    job_queue = "scaler-batch-queue"
    job_definition = "scaler-batch-job"
    s3_bucket = "scaler-batch-123456789012-us-east-1"  # replace 123456789012 with your account ID
@@ -50,7 +54,7 @@ your AWS account ID):
    scaler_scheduler tcp://0.0.0.0:8516
 
    # Terminal 2 — AWS HPC Worker Manager (Batch backend)
-   scaler_worker_manager aws_hpc tcp://127.0.0.1:8516 --config config.toml
+   $ scaler config.toml
 
 .. code-block:: python
    :caption: my_client.py (Terminal 3)
@@ -178,12 +182,16 @@ Or use a TOML configuration file:
 
 .. code-block:: bash
 
-   scaler_worker_manager aws_hpc tcp://<SCHEDULER_IP>:8516 --config config.toml
+   $ scaler config.toml
 
 .. code-block:: toml
    :caption: config.toml
 
-   [aws_hpc]
+   [[worker_manager]]
+   type = "aws_hpc"
+   scheduler_address = "tcp://<SCHEDULER_IP>:8516"
+   object_storage_address = "tcp://<SCHEDULER_IP>:8517"
+   worker_manager_id = "wm-batch"
    job_queue = "scaler-batch-queue"
    job_definition = "scaler-batch-job"
    s3_bucket = "scaler-batch-123456789012-us-east-1"

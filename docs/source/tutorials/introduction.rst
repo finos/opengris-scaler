@@ -8,24 +8,24 @@ Worker Managers, and Workers.
 
 .. code-block:: text
 
-                                       +-------------------+                      +------------------+      +----------+
-                                       |                   |                      |                  | ---> | Worker 1 |
-    +----------+                       |                   |                      |                  |      +----------+
-    | Client A | --------------------> |                   | <------------------- | Worker Manager 1 | 
-    +----------+                       |                   |                      |                  |      +----------+
-                                       |                   |                      |                  | ---> | Worker 2 |
-    +----------+                       |                   |                      +------------------+      +----------+
-    | Client B | --------------------> |     Scheduler     |
-    +----------+                       |                   |                      +------------------+      +----------+
-                                       |                   |                      |                  | ---> | Worker 3 |
-    +----------+                       |                   |                      |                  |      +----------+
-    | Client N | --------------------> |                   | <------------------- | Worker Manager 2 | 
-    +----------+                       |                   |                      |                  |      +----------+
-                                       |                   |                      |                  | ---> | Worker 4 |
-                                       +-------------------+                      +------------------+      +----------+
-                                         ^    ^    ^    ^    
-                                         |    |    |    |
-                                         +----|----|----|---------- all workers connect directly to scheduler
+                         +-----------------+   +------------------+      +----------+
+                         |                 |   |                  | <--> | Worker 1 |
+    +----------+         | +-------------+ |   |                  |      +----------+
+    | Client A | <-----> | |   Scaling   | |<->| Worker Manager 1 |
+    +----------+         | |   Policies  | |   |                  |      +----------+
+                         | +-------------+ |   |                  | <--> | Worker 2 |
+    +----------+         |                 |   +------------------+      +----------+
+    | Client B | <-----> |                 |
+    +----------+         |                 |   +------------------+      +----------+
+                         |                 |   |                  | <--> | Worker 3 |
+    +----------+         |                 |   |                  |      +----------+
+    | Client N | <-----> |                 |<->| Worker Manager 2 |
+    +----------+         |    Scheduler    |   |                  |      +----------+
+                         |                 |   |                  | <--> | Worker 4 |
+                         +-----------------+   +------------------+      +----------+
+                              ^  ^  ^  ^
+                              |  |  |  |
+                              +--|--|--|- all workers connect directly to scheduler
 
 
 * Multiple clients can submit tasks to the same scheduler concurrently.
@@ -33,12 +33,6 @@ Worker Managers, and Workers.
 * Multiple worker managers can connect to the same scheduler and provision capacity in parallel.
 * Worker managers spawn workers, and workers connect directly to the scheduler.
 * The scheduler dispatches tasks to connected workers, and workers execute tasks and return results.
-
-.. note::
-    Although the architecture is similar to Dask, Scaler has a better decoupling of these systems and separation of concerns. For example, the Client only knows about the Scheduler and doesn't directly see the number of workers.
-
-.. note::
-    Scaler's Client is cross platform, supporting Windows and GNU/Linux, while other components can only be run on GNU/Linux.
 
 .. _introduction_installation:
 
@@ -74,9 +68,11 @@ If you need all optional dependencies:
 Key Features
 ------------
 
-* Python ``multiprocessing``-style API, for example ``client.map()`` and ``client.submit()``.
-* Graph tasks for DAG-based execution with explicit dependencies.
-* Monitoring dashboard for real-time worker and task visibility.
+* Cross cloud computing support with unified and single client api
+* Easy spawn clusters on either local machine or clouds
+* Python ``multiprocessing``-style client API, for example ``client.map()`` ``client.starmap()`` and ``client.submit()``.
+* Graph tasks for DAG-based execution with explicit dependencies use ``client.get()``.
+* Both CLI and WebUI Monitoring dashboard for real-time worker and task visibility.
 * Task profiling for runtime and resource diagnostics.
 
 

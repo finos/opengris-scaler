@@ -15,16 +15,15 @@ This example uses two native worker managers to simulate two tiers.
 
         .. code-block:: bash
 
-            scaler_object_storage_server tcp://127.0.0.1:8517 &
-            scaler_scheduler tcp://127.0.0.1:8516 \
+            $ scaler_scheduler tcp://127.0.0.1:8516 \
                 --object-storage-address tcp://127.0.0.1:8517 \
                 --policy-engine-type waterfall_v1 \
                 --policy-content $'1,NAT|local1,8\n2,NAT|burst1,50' &
-            scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 \
+            $ scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 \
                 --object-storage-address tcp://127.0.0.1:8517 \
                 --worker-manager-id NAT|local1 \
                 --max-task-concurrency 8 &
-            scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 \
+            $ scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 \
                 --object-storage-address tcp://127.0.0.1:8517 \
                 --worker-manager-id NAT|burst1 \
                 --max-task-concurrency 50
@@ -33,10 +32,12 @@ This example uses two native worker managers to simulate two tiers.
 
         .. code-block:: toml
 
-            # scaling_waterfall.toml
             [scheduler]
             scheduler_address = "tcp://127.0.0.1:8516"
-            object_storage_address = "tcp://127.0.0.1:8517"
+            # for following object_storage_address
+            # - if omitted, object storage is auto-started at scheduler port + 1
+            # - if specified, scheduler will connect to specified address without start one
+            # object_storage_address = "tcp://127.0.0.1:8517"
             policy_engine_type = "waterfall_v1"
             policy_content = """
             #  priority, worker_manager_id, max_task_concurrency
@@ -44,25 +45,25 @@ This example uses two native worker managers to simulate two tiers.
                      2,        NAT|burst1,                  50
             """
 
-            [native_worker_manager]
+            [[worker_manager]]
+            type = "baremetal_native"
             scheduler_address = "tcp://127.0.0.1:8516"
             object_storage_address = "tcp://127.0.0.1:8517"
             worker_manager_id = "NAT|local1"
             max_task_concurrency = 8
 
-            # scaling_waterfall_burst.toml
-            [native_worker_manager]
+            [[worker_manager]]
+            type = "baremetal_native"
             scheduler_address = "tcp://127.0.0.1:8516"
             object_storage_address = "tcp://127.0.0.1:8517"
             worker_manager_id = "NAT|burst1"
             max_task_concurrency = 50
 
+        Run command:
+
         .. code-block:: bash
 
-            scaler_object_storage_server tcp://127.0.0.1:8517 &
-            scaler_scheduler tcp://127.0.0.1:8516 --config scaling_waterfall.toml &
-            scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 --config scaling_waterfall.toml &
-            scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 --config scaling_waterfall_burst.toml
+            $ scaler config.toml
 
 Policy Content (CSV-like)
 -------------------------
