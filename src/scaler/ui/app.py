@@ -306,6 +306,8 @@ class TaskStreamState:
             bars: List[Dict[str, Any]] = []
 
             # 1) Running tasks (drawn first / behind completed bars)
+            #    Compute sublanes per row: if N tasks running on same worker, each gets sl=0..N-1, sn=N
+            running_per_row: Dict[int, List[Dict[str, Any]]] = {}
             for row_idx, worker in enumerate(worker_order):
                 task_map = self._current_tasks.get(worker)
                 if not task_map:
@@ -321,20 +323,24 @@ class TaskStreamState:
                     caps = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
                     colors = self._caps_to_colors(caps)
                     func = self._task_id_to_function.get(task_id, "")
-                    bars.append(
-                        {
-                            "r": row_idx,
-                            "x": x_start,
-                            "w": w,
-                            "cs": colors,
-                            "p": "",
-                            "oc": "#eab308",  # yellow for running
-                            "ow": 2,
-                            "h": f"{func} ({actual_duration:.1f}s) - Running",
-                            "sl": 0,
-                            "sn": 1,
-                        }
-                    )
+                    bar_dict = {
+                        "r": row_idx,
+                        "x": x_start,
+                        "w": w,
+                        "cs": colors,
+                        "p": "",
+                        "oc": "#eab308",  # yellow for running
+                        "ow": 2,
+                        "h": f"{func} ({actual_duration:.1f}s) - Running",
+                    }
+                    running_per_row.setdefault(row_idx, []).append(bar_dict)
+
+            for row_idx, row_bars in running_per_row.items():
+                count = len(row_bars)
+                for i, b in enumerate(row_bars):
+                    b["sl"] = i
+                    b["sn"] = count
+                bars.extend(row_bars)
 
             # 2) Completed bars in reverse order (newest first, oldest last = oldest drawn on top)
             #    Collect per-row first so we can compute sublane assignments.
