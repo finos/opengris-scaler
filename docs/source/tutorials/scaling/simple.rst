@@ -104,7 +104,7 @@ The ``allocate`` option controls how tasks are assigned to available workers.
 
 Capability routing example:
 
-.. literalinclude:: ../../../examples/task_capabilities.py
+.. literalinclude:: ../../../../examples/task_capabilities.py
    :language: python
 
 Scaling

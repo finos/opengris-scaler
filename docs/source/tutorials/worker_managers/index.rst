@@ -6,7 +6,7 @@ Worker managers handle the provisioning and destruction of worker resources. The
 instances, or container orchestrators.
 
 .. note::
-    For more details on Scaler configuration, see the :doc:`../configuration` section.
+    For more details on Scaler configuration, see :doc:`../commands`.
 
 .. note::
     By default, the scheduler starts with the ``no`` scaling policy, meaning no workers are provisioned automatically. To enable auto-scaling, pass ``--policy-content`` (``-pc``) to the scheduler.
