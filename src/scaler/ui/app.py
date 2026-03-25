@@ -612,10 +612,8 @@ class WebUIApp:
                 except queue.Empty:
                     break
 
-            if not messages:
-                continue
-
-            self._last_message_time = datetime.datetime.now()
+            if messages:
+                self._last_message_time = datetime.datetime.now()
 
             # Process messages
             has_scheduler_update = False
@@ -643,8 +641,17 @@ class WebUIApp:
             # Build broadcast payload
             payload: Dict[str, Any] = {}
 
+            # Always include scheduler data with fresh last_seen
+            if self._scheduler_data:
+                sched = dict(self._scheduler_data)
+                if self._last_message_time is not None:
+                    elapsed = (datetime.datetime.now() - self._last_message_time).total_seconds()
+                    sched["last_seen"] = f"{elapsed:.1f}s"
+                else:
+                    sched["last_seen"] = "\u2014"
+                payload["scheduler"] = sched
+
             if has_scheduler_update:
-                payload["scheduler"] = self._scheduler_data
                 payload["workers"] = list(self._workers_data.values())
 
             if worker_events:
@@ -669,16 +676,11 @@ class WebUIApp:
             await self._broadcast(payload)
 
     def _process_scheduler(self, data: StateScheduler) -> None:
-        last_seen_str = "—"
-        if self._last_message_time is not None:
-            elapsed = (datetime.datetime.now() - self._last_message_time).total_seconds()
-            last_seen_str = f"{elapsed:.1f}s"
         self._scheduler_data = {
             "cpu": format_percentage(data.scheduler.cpu),
             "rss": format_bytes(data.scheduler.rss),
             "rss_free": format_bytes(data.rss_free),
             "monitor_address": self._monitor_address,
-            "last_seen": last_seen_str,
         }
 
         # Update persistent worker-to-manager mapping with latest data
@@ -1008,8 +1010,16 @@ class WebUIApp:
         # combine active + completed for initial task log, sorted by time (newest first)
         initial_task_log = list(self._active_tasks.values()) + list(self._task_log)
         initial_task_log.sort(key=lambda e: e.get("time", 0), reverse=True)
+        # Build scheduler data with fresh last_seen
+        sched = dict(self._scheduler_data) if self._scheduler_data else {}
+        if self._last_message_time is not None:
+            elapsed = (datetime.datetime.now() - self._last_message_time).total_seconds()
+            sched["last_seen"] = f"{elapsed:.1f}s"
+        else:
+            sched["last_seen"] = "—"
+
         return {
-            "scheduler": self._scheduler_data,
+            "scheduler": sched,
             "workers": list(self._workers_data.values()),
             "task_log": initial_task_log,
             "task_stream": stream_data,
