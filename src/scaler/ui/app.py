@@ -197,15 +197,17 @@ class TaskStreamState:
         task_map = self._current_tasks.get(worker, {})
 
         # use ProfileResult duration for accurate start time when available
+        # (skip for cancelled tasks — profile data may be from a prior attempt)
         start = now
         end = now
-        try:
-            if state.metadata and state.metadata != b"":
-                profile = ProfileResult.deserialize(state.metadata)
-                if profile.duration_s > 0:
-                    start = now - datetime.timedelta(seconds=profile.duration_s)
-        except struct.error:
-            pass
+        if state.state not in (TaskState.Canceled, TaskState.CanceledNotFound):
+            try:
+                if state.metadata and state.metadata != b"":
+                    profile = ProfileResult.deserialize(state.metadata)
+                    if profile.duration_s > 0:
+                        start = now - datetime.timedelta(seconds=profile.duration_s)
+            except struct.error:
+                pass
 
         # fallback to Running message timestamp if no profile data
         if start == end and task_id in task_map:
@@ -229,6 +231,18 @@ class TaskStreamState:
         caps = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
         colors = self._caps_to_colors(caps)
         func = self._task_id_to_function.get(task_id, "")
+
+        # For cancelled tasks, clip start to the end of the last completed bar on this worker
+        # so the cancelled bar only extends back to where the previous task ended.
+        if task_state in (TaskState.Canceled, TaskState.CanceledNotFound):
+            worker_bars = self._bar_history.get(worker, [])
+            for prev_bar in reversed(worker_bars):
+                if prev_bar["pattern"] != "/":
+                    last_end = datetime.datetime.fromtimestamp(prev_bar["end"])
+                    if last_end > start_time:
+                        start_time = last_end
+                    break
+
         duration = (end_time - start_time).total_seconds()
 
         pattern = ""

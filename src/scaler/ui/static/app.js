@@ -716,11 +716,10 @@ function drawTaskStream() {
         }
     }
 
-    // Draw bars in 2 passes for correct layering:
-    //   Pass 1: Running bars — fill + outline (bottom layer)
-    //   Pass 2: Completed/cancelled bars — sorted newest-first so older bars
-    //           paint on top, each bar draws fill+outline together to avoid
-    //           outlines bleeding across overlapping fills.
+    // Draw bars in 3 passes for correct layering:
+    //   Pass 1: Running bars (bottom layer)
+    //   Pass 2: Completed bars — newest first, oldest on top
+    //   Pass 3: Cancelled bars on top so they're always visible
 
     // Pass 1: Running bars (fill + outline, bottom layer)
     for (var j = 0; j < streamBars.length; j++) {
@@ -735,21 +734,7 @@ function drawTaskStream() {
         }
     }
 
-    // Pass 2: Cancelled bars first (behind everything else)
-    for (var j = 0; j < streamBars.length; j++) {
-        var bar = streamBars[j];
-        if (bar.rn || bar.p !== "/") continue;
-        var g = barGeom(bar);
-        drawBarFill(bar, g);
-        drawSlashHatch(streamCtx, g.x, g.y, g.w, g.h);
-        if (bar.ow > 0) {
-            streamCtx.strokeStyle = bar.oc;
-            streamCtx.lineWidth = bar.ow;
-            streamCtx.strokeRect(g.x, g.y, g.w, g.h);
-        }
-    }
-
-    // Pass 3: Non-cancelled completed bars — newest first (behind), oldest last (on top)
+    // Pass 2: Non-cancelled completed bars — newest first (behind), oldest last (on top)
     var completedBars = [];
     for (var j = 0; j < streamBars.length; j++) {
         var bar = streamBars[j];
@@ -768,6 +753,20 @@ function drawTaskStream() {
             streamCtx.strokeStyle = bar.oc;
             streamCtx.lineWidth = bar.ow;
             streamCtx.strokeRect(g.x, g.ly, g.w, g.lh);
+        }
+    }
+
+    // Pass 3: Cancelled bars on top so they're visible over completed bars
+    for (var j = 0; j < streamBars.length; j++) {
+        var bar = streamBars[j];
+        if (bar.rn || bar.p !== "/") continue;
+        var g = barGeom(bar);
+        drawBarFill(bar, g);
+        drawSlashHatch(streamCtx, g.x, g.y, g.w, g.h);
+        if (bar.ow > 0) {
+            streamCtx.strokeStyle = bar.oc;
+            streamCtx.lineWidth = bar.ow;
+            streamCtx.strokeRect(g.x, g.y, g.w, g.h);
         }
     }
 
