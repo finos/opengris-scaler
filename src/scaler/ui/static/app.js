@@ -1,4 +1,4 @@
-/* Scaler Web UI - Client-side application */
+/* Scaler Web GUI - Client-side application */
 "use strict";
 
 // ── State ──

@@ -19,8 +19,8 @@ After installing ``opengris-scaler``, the following CLI commands are available f
      - Start only the object storage server.
    * - :ref:`scaler_top <cmd-scaler-top>`
      - Start the terminal monitoring dashboard for a scheduler monitor endpoint.
-   * - :ref:`scaler_ui <cmd-scaler-ui>`
-     - Start the web monitoring UI for a scheduler monitor endpoint.
+   * - :ref:`scaler_gui <cmd-scaler-gui>`
+     - Start the web monitoring GUI for a scheduler monitor endpoint.
 
 
 TOML Conventions
@@ -30,7 +30,7 @@ All commands support ``--config``/``-c``. In practice, most deployments use TOML
 
 - Precedence: ``Command-line flags > TOML settings > built-in defaults``.
 - Key naming: long CLI flags converted to snake case (for example, ``--max-task-concurrency`` -> ``max_task_concurrency``).
-- Unified launcher: ``scaler`` reads ``[scheduler]``, ``[[worker_manager]]``, ``[object_storage_server]``, ``[top]``, and ``[ui]`` sections.
+- Unified launcher: ``scaler`` reads ``[scheduler]``, ``[[worker_manager]]``, ``[object_storage_server]``, ``[top]``, and ``[gui]`` sections.
 
 .. list-table:: Command to TOML mapping
    :header-rows: 1
@@ -43,8 +43,8 @@ All commands support ``--config``/``-c``. In practice, most deployments use TOML
      - ``[object_storage_server]``
    * - ``scaler_top``
      - ``[top]``
-   * - ``scaler_ui``
-     - ``[ui]``
+   * - ``scaler_gui``
+     - ``[gui]``
    * - ``scaler_worker_manager baremetal_native``
      - ``[[worker_manager]]`` + ``type = "baremetal_native"``
    * - ``scaler_worker_manager symphony``
@@ -98,6 +98,12 @@ Scaler examples
             policy_content = "allocate=even_load; scaling=no"
             logging_level = "INFO"
 
+            [gui]
+            monitor_address = "tcp://127.0.0.1:6380"
+            web_host = "127.0.0.1"
+            web_port = 50001
+            logging_level = "INFO"
+
             [[worker_manager]]
             type = "baremetal_native"
             scheduler_address = "tcp://127.0.0.1:6378"
@@ -127,12 +133,6 @@ Scaler examples
             job_definition = "scaler-job-definition"
             s3_bucket = "my-scaler-bucket"
             aws_region = "us-east-1"
-
-            [ui]
-            monitor_address = "tcp://127.0.0.1:6380"
-            web_host = "127.0.0.1"
-            web_port = 50001
-            logging_level = "INFO"
 
         Run command:
 
@@ -863,16 +863,16 @@ Top arguments
      - TOML config file path (uses ``[top]`` section).
 
 
-.. _cmd-scaler-ui:
+.. _cmd-scaler-gui:
 
-scaler_ui
----------
+scaler_gui
+----------
 
-``scaler_ui`` starts the web monitoring UI and connects it to a scheduler monitor endpoint.
+``scaler_gui`` starts the web monitoring GUI and connects it to a scheduler monitor endpoint.
 
 .. code-block:: bash
 
-    $ scaler_ui [options] <monitor_address>
+    $ scaler_gui [options] <monitor_address>
 
 UI examples
 ~~~~~~~~~~~
@@ -883,13 +883,13 @@ UI examples
 
         .. code-block:: bash
 
-            $ scaler_ui tcp://127.0.0.1:6380 --web-host 127.0.0.1 --web-port 50001
+            $ scaler_gui tcp://127.0.0.1:6380 --web-host 127.0.0.1 --web-port 50001
 
     .. group-tab:: config.toml
 
         .. code-block:: toml
 
-            [ui]
+            [gui]
             monitor_address = "tcp://127.0.0.1:6380"
             web_host = "127.0.0.1"
             web_port = 50001
@@ -899,7 +899,7 @@ UI examples
 
         .. code-block:: bash
 
-            $ scaler_ui --config ui.toml tcp://127.0.0.1:6380
+            $ scaler_gui --config gui.toml tcp://127.0.0.1:6380
 
 UI arguments
 ~~~~~~~~~~~~
@@ -938,4 +938,4 @@ UI arguments
    * - ``-c``, ``--config``
      - No
      - ``None``
-     - TOML config file path (uses ``[ui]`` section).
+     - TOML config file path (uses ``[gui]`` section).
