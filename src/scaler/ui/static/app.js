@@ -31,6 +31,7 @@ var schedAddress = $("sched-address");
 var schedCpu = $("sched-cpu");
 var schedRss = $("sched-rss");
 var schedRssFree = $("sched-rss-free");
+var schedLastSeen = $("sched-last-seen");
 var managersBody = $("managers-body");
 var workersBody = $("workers-body");
 var tasklogBody = $("tasklog-body");
@@ -222,6 +223,7 @@ function updateScheduler(sched) {
     schedCpu.textContent = sched.cpu || "—";
     schedRss.textContent = sched.rss || "—";
     schedRssFree.textContent = sched.rss_free || "—";
+    schedLastSeen.textContent = sched.last_seen || "—";
 }
 
 // ── Live Tab: Worker Managers ──
@@ -681,61 +683,90 @@ function drawTaskStream() {
         }
     }
 
-    // Draw bars: two passes so outlines are always visible between adjacent bars
-    // Pass 1: fills, patterns, and outlines for cancelled bars (so they stay beneath completed bars)
-    for (var j = 0; j < streamBars.length; j++) {
-        var bar = streamBars[j];
+    // Helper: compute bar geometry from sublane fields
+    function barGeom(bar) {
         var fullBarHeight = STREAM_ROW_HEIGHT - 4;
-        var barHeight = bar.p === "/" ? Math.floor(fullBarHeight / 2) : fullBarHeight;
-        var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + (fullBarHeight - barHeight);
+        var sn = bar.sn || 1;
+        var sl = bar.sl || 0;
+        var laneHeight = fullBarHeight / sn;
+        var bh = bar.p === "/" ? Math.floor(laneHeight / 2) : laneHeight;
+        var laneY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + sl * laneHeight;
+        var ry = laneY + (laneHeight - bh);
         var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
         var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
-        var barWidth = Math.max(x2 - x1, 1);
+        return { x: x1, y: ry, w: Math.max(x2 - x1, 1), h: bh, lh: laneHeight, ly: laneY };
+    }
 
+    function drawBarFill(bar, g) {
         var colors = bar.cs;
         if (colors.length === 1) {
             streamCtx.fillStyle = colors[0];
-            streamCtx.fillRect(x1, rowY, barWidth, barHeight);
+            streamCtx.fillRect(g.x, g.y, g.w, g.h);
         } else {
-            // cyclic vertical stripes, 6px each, not squished
             var stripeW = 6;
             var cx = 0;
             var ci = 0;
-            while (cx < barWidth) {
-                var sw = Math.min(stripeW, barWidth - cx);
+            while (cx < g.w) {
+                var sw = Math.min(stripeW, g.w - cx);
                 streamCtx.fillStyle = colors[ci % colors.length];
-                streamCtx.fillRect(x1 + cx, rowY, sw, barHeight);
+                streamCtx.fillRect(g.x + cx, g.y, sw, g.h);
                 cx += sw;
                 ci++;
             }
         }
+    }
 
-        if (bar.p === "x") {
-            drawCrossHatch(streamCtx, x1, rowY, barWidth, barHeight);
-        } else if (bar.p === "/") {
-            drawSlashHatch(streamCtx, x1, rowY, barWidth, barHeight);
-            // draw outline in same layer so completed bars paint over it
-            if (bar.ow > 0) {
-                streamCtx.strokeStyle = bar.oc;
-                streamCtx.lineWidth = bar.ow;
-                streamCtx.strokeRect(x1, rowY, barWidth, barHeight);
-            }
+    // Draw bars in 3 passes for correct layering:
+    //   Pass 1: Running bars (bottom layer)
+    //   Pass 2: Completed bars — newest first, oldest on top
+    //   Pass 3: Cancelled bars on top so they're always visible
+
+    // Pass 1: Running bars (fill + outline, bottom layer)
+    for (var j = 0; j < streamBars.length; j++) {
+        var bar = streamBars[j];
+        if (!bar.rn) continue;
+        var g = barGeom(bar);
+        drawBarFill(bar, g);
+        if (bar.ow > 0) {
+            streamCtx.strokeStyle = bar.oc;
+            streamCtx.lineWidth = bar.ow;
+            streamCtx.strokeRect(g.x, g.ly, g.w, g.lh);
         }
     }
 
-    // Pass 2: outlines on top (skip cancelled bars — already drawn in pass 1)
+    // Pass 2: Non-cancelled completed bars — newest first (behind), oldest last (on top)
+    var completedBars = [];
     for (var j = 0; j < streamBars.length; j++) {
         var bar = streamBars[j];
-        if (bar.ow > 0 && bar.p !== "/") {
-            var fullBarHeight = STREAM_ROW_HEIGHT - 4;
-            var barHeight = fullBarHeight;
-            var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2;
-            var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
-            var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
-            var barWidth = Math.max(x2 - x1, 1);
+        if (!bar.rn && bar.p !== "/") completedBars.push(bar);
+    }
+    completedBars.sort(function(a, b) { return b.x - a.x; });
+
+    for (var j = 0; j < completedBars.length; j++) {
+        var bar = completedBars[j];
+        var g = barGeom(bar);
+        drawBarFill(bar, g);
+        if (bar.p === "x") {
+            drawCrossHatch(streamCtx, g.x, g.y, g.w, g.h);
+        }
+        if (bar.ow > 0) {
             streamCtx.strokeStyle = bar.oc;
             streamCtx.lineWidth = bar.ow;
-            streamCtx.strokeRect(x1, rowY, barWidth, barHeight);
+            streamCtx.strokeRect(g.x, g.ly, g.w, g.lh);
+        }
+    }
+
+    // Pass 3: Cancelled bars on top so they're visible over completed bars
+    for (var j = 0; j < streamBars.length; j++) {
+        var bar = streamBars[j];
+        if (bar.rn || bar.p !== "/") continue;
+        var g = barGeom(bar);
+        drawBarFill(bar, g);
+        drawSlashHatch(streamCtx, g.x, g.y, g.w, g.h);
+        if (bar.ow > 0) {
+            streamCtx.strokeStyle = bar.oc;
+            streamCtx.lineWidth = bar.ow;
+            streamCtx.strokeRect(g.x, g.y, g.w, g.h);
         }
     }
 
@@ -792,8 +823,12 @@ streamCanvas.addEventListener("mousemove", function(evt) {
     for (var i = streamBars.length - 1; i >= 0; i--) {
         var bar = streamBars[i];
         var fullBarHeight = STREAM_ROW_HEIGHT - 4;
-        var barHeight = bar.p === "/" ? Math.floor(fullBarHeight / 2) : fullBarHeight;
-        var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + (fullBarHeight - barHeight);
+        var sn = bar.sn || 1;
+        var sl = bar.sl || 0;
+        var laneHeight = fullBarHeight / sn;
+        var barHeight = bar.p === "/" ? Math.floor(laneHeight / 2) : laneHeight;
+        var laneY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + sl * laneHeight;
+        var rowY = laneY + (laneHeight - barHeight);
         var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
         var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
 
