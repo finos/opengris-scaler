@@ -6,7 +6,7 @@ from scaler.config.types.zmq import ZMQConfig
 
 
 @dataclasses.dataclass
-class WebUIConfig(ConfigClass):
+class WebGUIConfig(ConfigClass):
     monitor_address: ZMQConfig = dataclasses.field(
         metadata=dict(positional=True, help="scheduler monitor address to connect to")
     )

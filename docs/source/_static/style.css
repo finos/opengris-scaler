@@ -1,3 +1,20 @@
+/* Shibuya: allow middle documentation content to use available width */
+.sy-content {
+    max-width: none;
+    width: 100%;
+}
+
+.sy-container {
+    max-width: none;
+}
+
+@media (min-width: 768px) {
+    .sy-main {
+        max-width: none;
+    }
+}
+
+/* Legacy RTD selector (kept as harmless fallback) */
 .wy-nav-content {
     max-width: none;
 }
