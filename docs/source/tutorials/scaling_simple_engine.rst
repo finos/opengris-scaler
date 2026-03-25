@@ -9,7 +9,7 @@ Simple Engine
 Quick Start (copy/paste)
 ------------------------
 
-The example below starts object storage, scheduler, and one native worker manager using ``vanilla`` scaling.
+The example below starts a scheduler and one native worker manager using ``vanilla`` scaling.
 
 .. tabs::
 
@@ -17,12 +17,11 @@ The example below starts object storage, scheduler, and one native worker manage
 
         .. code-block:: bash
 
-            scaler_object_storage_server tcp://127.0.0.1:8517 &
-            scaler_scheduler tcp://127.0.0.1:8516 \
+            $ scaler_scheduler tcp://127.0.0.1:8516 \
                 --object-storage-address tcp://127.0.0.1:8517 \
                 --policy-engine-type simple \
                 --policy-content "allocate=even_load; scaling=vanilla" &
-            scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 \
+            $ scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 \
                 --object-storage-address tcp://127.0.0.1:8517 \
                 --worker-manager-id NAT|default \
                 --max-task-concurrency 8
@@ -33,21 +32,25 @@ The example below starts object storage, scheduler, and one native worker manage
 
             [scheduler]
             scheduler_address = "tcp://127.0.0.1:8516"
-            object_storage_address = "tcp://127.0.0.1:8517"
+            # for following object_storage_address
+            # - if omitted, object storage is auto-started at scheduler port + 1
+            # - if specified, scheduler will connect to specified address without start one
+            # object_storage_address = "tcp://127.0.0.1:8517"
             policy_engine_type = "simple"
             policy_content = "allocate=even_load; scaling=vanilla"
 
-            [native_worker_manager]
+            [[worker_manager]]
+            type = "baremetal_native"
             scheduler_address = "tcp://127.0.0.1:8516"
             object_storage_address = "tcp://127.0.0.1:8517"
             worker_manager_id = "NAT|default"
             max_task_concurrency = 8
 
+        Run command:
+
         .. code-block:: bash
 
-            scaler_object_storage_server tcp://127.0.0.1:8517 &
-            scaler_scheduler tcp://127.0.0.1:8516 --config scaling_simple.toml &
-            scaler_worker_manager_baremetal_native tcp://127.0.0.1:8516 --config scaling_simple.toml
+            $ scaler config.toml
 
 Other quick policy strings for ``simple``:
 

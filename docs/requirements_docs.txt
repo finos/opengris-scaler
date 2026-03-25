@@ -1,4 +1,5 @@
 sphinx
-sphinx_rtd_theme
+shibuya
 sphinx-substitution-extensions
 sphinx-tabs
+sphinx-copybutton
