@@ -9,6 +9,7 @@ from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
+from scaler.config.section.webgui import WebGUIConfig
 from scaler.utility.event_loop import register_event_loop
 from scaler.utility.logging.utility import setup_logger
 
@@ -25,6 +26,7 @@ class ScalerAllConfig(ConfigClass):
     worker_managers: List[WorkerManagerUnion] = dataclasses.field(
         default_factory=list, metadata=dict(section="worker_manager", discriminator="type")
     )
+    gui: Optional[WebGUIConfig] = dataclasses.field(default=None, metadata=dict(section="gui"))
 
 
 # Module-level functions required for multiprocessing spawn compatibility.
@@ -57,11 +59,17 @@ def _run_worker_manager(config: WorkerManagerUnion) -> None:
         AWSHPCWorkerManager(config).run()
 
 
+def _run_gui(config: WebGUIConfig) -> None:
+    from scaler.entry_points.webgui import main as _main
+
+    _main(config)
+
+
 def main() -> None:
     config = ScalerAllConfig.parse("scaler", "all", disable_config_flag=True)
 
-    if config.scheduler is None and not config.worker_managers:
-        print("scaler: no recognized sections found in config file", file=sys.stderr)
+    if config.scheduler is None and not config.worker_managers and config.gui is None:
+        print("scaler: no any recognized section found in config file", file=sys.stderr)
         sys.exit(1)
 
     processes: List[multiprocessing.Process] = []
@@ -75,6 +83,11 @@ def main() -> None:
         wm_process = multiprocessing.Process(target=_run_worker_manager, args=(wm_config,), name=wm_config._tag)
         wm_process.start()
         processes.append(wm_process)
+
+    if config.gui is not None:
+        gui_process = multiprocessing.Process(target=_run_gui, args=(config.gui,), name="gui")
+        gui_process.start()
+        processes.append(gui_process)
 
     for process in processes:
         process.join()

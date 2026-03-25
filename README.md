@@ -77,7 +77,7 @@ Scaler is available on PyPI and can be installed using any compatible package ma
 ```bash
 $ pip install opengris-scaler
 
-# or with graphblas and uvloop and webui support
+# or with graphblas and uvloop and web GUI support
 $ pip install opengris-scaler[graphblas,uvloop,gui]
 
 # or simply
@@ -269,7 +269,7 @@ The following table maps each Scaler command to its corresponding section name i
 |--------------------------------------|---------------------------------|
 | `scaler_scheduler`                   | `[scheduler]`                   |
 | `scaler_object_storage_server`       | `[object_storage_server]`       |
-| `scaler_ui`                          | `[ui]`                          |
+| `scaler_gui`                         | `[gui]`                         |
 | `scaler_top`                         | `[top]`                         |
 | `scaler_worker_manager baremetal_native` | `[worker_manager_baremetal_native]` |
 | `scaler_worker_manager symphony`     | `[worker_manager_symphony]`         |
@@ -311,7 +311,7 @@ logging_paths = ["/dev/stdout", "/var/log/scaler/worker.log"]
 
 [object_storage_server]
 
-[ui]
+[gui]
 web_port = 8081
 ```
 
@@ -321,7 +321,7 @@ With this single file, starting your entire stack is simple and consistent:
 scaler_object_storage_server tcp://127.0.0.1:6379 --config example_config.toml &
 scaler_scheduler tcp://127.0.0.1:6378 --config example_config.toml &
 scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --config example_config.toml &
-scaler_ui tcp://127.0.0.1:6380 --config example_config.toml &
+scaler_gui tcp://127.0.0.1:6380 --config example_config.toml &
 ```
 
 #### Scenario 2: Overriding a Section's Setting
@@ -590,12 +590,12 @@ W|Linux|15943|a7fe8b5e+    0.0%   30.7m  0.0% 28.3m 1000    0      0 |
     - `sent` means how many tasks scheduler sent to the worker
     - `queued` means how many tasks worker received and queued
 
-### From the web UI
+### From the web GUI
 
-`scaler_ui` provides a web monitoring interface for Scaler.
+`scaler_gui` provides a web monitoring interface for Scaler.
 
 ```bash
-$ scaler_ui tcp://127.0.0.1:2347 --web-port 8081
+$ scaler_gui tcp://127.0.0.1:2347 --web-port 8081
 ```
 
 This will open a web server on port `8081`.

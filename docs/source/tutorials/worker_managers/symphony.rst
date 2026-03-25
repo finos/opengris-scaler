@@ -46,12 +46,15 @@ Or use a TOML configuration file:
 
 .. code-block:: bash
 
-   scaler_worker_manager symphony tcp://<SCHEDULER_IP>:8516 --config config.toml
+   $ scaler config.toml
 
 .. code-block:: toml
    :caption: config.toml
 
-   [symphony]
+   [[worker_manager]]
+   type = "symphony"
+   scheduler_address = "tcp://<SCHEDULER_IP>:8516"
+   worker_manager_id = "wm-symphony"
    service_name = "MyScalerService"
    max_task_concurrency = 8
    logging_level = "INFO"

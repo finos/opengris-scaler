@@ -104,12 +104,15 @@ Or use a TOML configuration file:
 
 .. code-block:: bash
 
-   scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 --config config.toml
+   $ scaler config.toml
 
 .. code-block:: toml
    :caption: config.toml
 
-   [baremetal_native]
+   [[worker_manager]]
+   type = "baremetal_native"
+   scheduler_address = "tcp://127.0.0.1:8516"
+   worker_manager_id = "NAT|default"
    max_task_concurrency = 4
    logging_level = "INFO"
    task_timeout_seconds = 60
@@ -137,12 +140,15 @@ Or use a TOML configuration file:
 
 .. code-block:: bash
 
-   scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 --config config.toml
+   $ scaler config.toml
 
 .. code-block:: toml
    :caption: config.toml
 
-   [baremetal_native]
+   [[worker_manager]]
+   type = "baremetal_native"
+   scheduler_address = "tcp://127.0.0.1:8516"
+   worker_manager_id = "NAT|fixed"
    mode = "fixed"
    max_task_concurrency = 8
    logging_level = "INFO"

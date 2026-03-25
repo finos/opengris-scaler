@@ -6,7 +6,7 @@ Worker managers handle the provisioning and destruction of worker resources. The
 instances, or container orchestrators.
 
 .. note::
-    For more details on Scaler configuration, see the :doc:`../configuration` section.
+    For more details on Scaler configuration, see :doc:`../commands`.
 
 .. note::
     By default, the scheduler starts with the ``no`` scaling policy, meaning no workers are provisioned automatically. To enable auto-scaling, pass ``--policy-content`` (``-pc``) to the scheduler.
@@ -61,8 +61,8 @@ See :doc:`Common Worker Manager Parameters <common_parameters>` for these shared
 Unified Entry Points
 ~~~~~~~~~~~~~~~~~~~~
 
-The :doc:`scaler_worker_manager <../entry_points/worker_manager>` command provides a single entry point for all worker managers.
-The :doc:`scaler <../entry_points/all>` command boots the full stack from a single TOML config file.
+The :ref:`scaler_worker_manager <cmd-scaler-worker-manager>` command provides a single entry point for all worker managers.
+The :ref:`scaler <cmd-scaler>` command boots the full stack from a single TOML config file.
 
 .. toctree::
     :maxdepth: 1

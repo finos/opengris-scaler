@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from scaler.config.section.webui import WebUIConfig
+from scaler.config.section.webgui import WebGUIConfig
 from scaler.io.sync_subscriber import ZMQSyncSubscriber
 from scaler.protocol.python.common import TaskState, WorkerState
 from scaler.protocol.python.message import StateBalanceAdvice, StateScheduler, StateTask, StateWorker
@@ -562,7 +562,7 @@ class MemoryChartState:
 class WebUIApp:
     """Main application holding all server-side state and managing connections."""
 
-    def __init__(self, config: WebUIConfig) -> None:
+    def __init__(self, config: WebGUIConfig) -> None:
         self._config = config
         self._message_queue: queue.Queue[Message] = queue.Queue()
         self._clients: List[WebSocket] = []
@@ -1065,7 +1065,7 @@ class WebUIApp:
                 self._clients.remove(ws)
 
 
-def create_app(config: WebUIConfig) -> FastAPI:
+def create_app(config: WebGUIConfig) -> FastAPI:
     app_state = WebUIApp(config)
 
     # Start ZMQ subscriber immediately so messages are collected even while uvicorn
@@ -1073,7 +1073,7 @@ def create_app(config: WebUIConfig) -> FastAPI:
     # the asyncio batch_loop (started in the startup event) drains it later.
     app_state.start_subscriber()
 
-    app = FastAPI(title="Scaler Web UI")
+    app = FastAPI(title="Scaler Web GUI")
 
     @app.middleware("http")
     async def no_cache_headers(request: Request, call_next):  # type: ignore[no-untyped-def]

@@ -18,15 +18,11 @@ Content
 
    tutorials/quickstart
    tutorials/introduction
-   tutorials/compatibility_layer
+   tutorials/commands
+   tutorials/compatibility
    tutorials/scaling
-   tutorials/entry_points/index
    tutorials/worker_managers/index
    tutorials/features
-   tutorials/compatibility/ray
-   tutorials/configuration
    tutorials/advanced_usage
    tutorials/application_examples
-   tutorials/how_to_contribute
-   tutorials/development/devcontainer
-   tutorials/development/guidelines
+   tutorials/development

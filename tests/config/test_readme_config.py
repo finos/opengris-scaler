@@ -11,7 +11,7 @@ from unittest.mock import mock_open, patch
 
 from scaler.config.section.native_worker_manager import NativeWorkerManagerMode
 from scaler.config.section.scheduler import SchedulerConfig
-from scaler.config.section.webui import WebUIConfig
+from scaler.config.section.webgui import WebGUIConfig
 
 README_TOML = b"""
 [scheduler]
@@ -33,7 +33,7 @@ logging_paths = ["/dev/stdout", "/var/log/scaler/worker.log"]
 
 [object_storage_server]
 
-[ui]
+[gui]
 web_port = 8081
 """
 
@@ -71,9 +71,9 @@ class TestReadmeConfig(unittest.TestCase):
         self.assertIn("/dev/stdout", wm.logging_config.paths)
         self.assertIn("/var/log/scaler/worker.log", wm.logging_config.paths)
 
-    @patch("sys.argv", ["scaler_ui", "tcp://127.0.0.1:6380", "--config", "config.toml"])
+    @patch("sys.argv", ["scaler_gui", "tcp://127.0.0.1:6380", "--config", "config.toml"])
     @patch("builtins.open", mock_open(read_data=README_TOML))
-    def test_webui_section(self) -> None:
-        config = WebUIConfig.parse("scaler_ui", "ui")
+    def test_webgui_section(self) -> None:
+        config = WebGUIConfig.parse("scaler_gui", "gui")
 
         self.assertEqual(config.web_port, 8081)
