@@ -683,69 +683,84 @@ function drawTaskStream() {
         }
     }
 
-    // Draw bars: two passes so outlines are always visible between adjacent bars
-    // Pass 1: fills, patterns, and outlines for cancelled bars (so they stay beneath completed bars)
-    for (var j = 0; j < streamBars.length; j++) {
-        var bar = streamBars[j];
+    // Helper: compute bar geometry from sublane fields
+    function barGeom(bar) {
         var fullBarHeight = STREAM_ROW_HEIGHT - 4;
         var sn = bar.sn || 1;
         var sl = bar.sl || 0;
         var laneHeight = fullBarHeight / sn;
-        var barHeight = bar.p === "/" ? Math.floor(laneHeight / 2) : laneHeight;
+        var bh = bar.p === "/" ? Math.floor(laneHeight / 2) : laneHeight;
         var laneY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + sl * laneHeight;
-        var rowY = laneY + (laneHeight - barHeight);
+        var ry = laneY + (laneHeight - bh);
         var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
         var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
-        var barWidth = Math.max(x2 - x1, 1);
+        return { x: x1, y: ry, w: Math.max(x2 - x1, 1), h: bh, lh: laneHeight, ly: laneY };
+    }
 
+    function drawBarFill(bar, g) {
         var colors = bar.cs;
         if (colors.length === 1) {
             streamCtx.fillStyle = colors[0];
-            streamCtx.fillRect(x1, rowY, barWidth, barHeight);
+            streamCtx.fillRect(g.x, g.y, g.w, g.h);
         } else {
-            // cyclic vertical stripes, 6px each, not squished
             var stripeW = 6;
             var cx = 0;
             var ci = 0;
-            while (cx < barWidth) {
-                var sw = Math.min(stripeW, barWidth - cx);
+            while (cx < g.w) {
+                var sw = Math.min(stripeW, g.w - cx);
                 streamCtx.fillStyle = colors[ci % colors.length];
-                streamCtx.fillRect(x1 + cx, rowY, sw, barHeight);
+                streamCtx.fillRect(g.x + cx, g.y, sw, g.h);
                 cx += sw;
                 ci++;
             }
         }
+    }
 
+    // Draw bars in 3 passes for correct layering:
+    //   Pass 1: Running bars — fill + outline (bottom layer)
+    //   Pass 2: Completed/cancelled bars — fill + pattern + cancelled outlines
+    //   Pass 3: Completed (non-cancelled) bars — outlines on top
+
+    // Pass 1: Running bars (fill + outline, bottom layer)
+    for (var j = 0; j < streamBars.length; j++) {
+        var bar = streamBars[j];
+        if (!bar.rn) continue;
+        var g = barGeom(bar);
+        drawBarFill(bar, g);
+        if (bar.ow > 0) {
+            streamCtx.strokeStyle = bar.oc;
+            streamCtx.lineWidth = bar.ow;
+            streamCtx.strokeRect(g.x, g.ly, g.w, g.lh);
+        }
+    }
+
+    // Pass 2: Completed/cancelled bars — fill + pattern + cancelled outlines
+    for (var j = 0; j < streamBars.length; j++) {
+        var bar = streamBars[j];
+        if (bar.rn) continue;
+        var g = barGeom(bar);
+        drawBarFill(bar, g);
         if (bar.p === "x") {
-            drawCrossHatch(streamCtx, x1, rowY, barWidth, barHeight);
+            drawCrossHatch(streamCtx, g.x, g.y, g.w, g.h);
         } else if (bar.p === "/") {
-            drawSlashHatch(streamCtx, x1, rowY, barWidth, barHeight);
-            // draw outline in same layer so completed bars paint over it
+            drawSlashHatch(streamCtx, g.x, g.y, g.w, g.h);
             if (bar.ow > 0) {
                 streamCtx.strokeStyle = bar.oc;
                 streamCtx.lineWidth = bar.ow;
-                streamCtx.strokeRect(x1, rowY, barWidth, barHeight);
+                streamCtx.strokeRect(g.x, g.y, g.w, g.h);
             }
         }
     }
 
-    // Pass 2: outlines on top (skip cancelled bars — already drawn in pass 1)
+    // Pass 3: Completed (non-cancelled, non-running) outlines on top
     for (var j = 0; j < streamBars.length; j++) {
         var bar = streamBars[j];
-        if (bar.ow > 0 && bar.p !== "/") {
-            var fullBarHeight = STREAM_ROW_HEIGHT - 4;
-            var sn = bar.sn || 1;
-            var sl = bar.sl || 0;
-            var laneHeight = fullBarHeight / sn;
-            var barHeight = laneHeight;
-            var laneY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + sl * laneHeight;
-            var rowY = laneY;
-            var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
-            var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
-            var barWidth = Math.max(x2 - x1, 1);
+        if (bar.rn || bar.p === "/") continue;
+        if (bar.ow > 0) {
+            var g = barGeom(bar);
             streamCtx.strokeStyle = bar.oc;
             streamCtx.lineWidth = bar.ow;
-            streamCtx.strokeRect(x1, rowY, barWidth, barHeight);
+            streamCtx.strokeRect(g.x, g.ly, g.w, g.lh);
         }
     }
 

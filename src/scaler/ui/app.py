@@ -332,6 +332,7 @@ class TaskStreamState:
                         "oc": "#eab308",  # yellow for running
                         "ow": 2,
                         "h": f"{func} ({actual_duration:.1f}s) - Running",
+                        "rn": 1,
                     }
                     running_per_row.setdefault(row_idx, []).append(bar_dict)
 
