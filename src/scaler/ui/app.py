@@ -645,8 +645,8 @@ class WebUIApp:
             if self._scheduler_data:
                 sched = dict(self._scheduler_data)
                 if self._last_message_time is not None:
-                    elapsed = (datetime.datetime.now() - self._last_message_time).total_seconds()
-                    sched["last_seen"] = f"{elapsed:.1f}s"
+                    elapsed = int((datetime.datetime.now() - self._last_message_time).total_seconds())
+                    sched["last_seen"] = f"{elapsed}s"
                 else:
                     sched["last_seen"] = "\u2014"
                 payload["scheduler"] = sched
@@ -1013,8 +1013,8 @@ class WebUIApp:
         # Build scheduler data with fresh last_seen
         sched = dict(self._scheduler_data) if self._scheduler_data else {}
         if self._last_message_time is not None:
-            elapsed = (datetime.datetime.now() - self._last_message_time).total_seconds()
-            sched["last_seen"] = f"{elapsed:.1f}s"
+            elapsed = int((datetime.datetime.now() - self._last_message_time).total_seconds())
+            sched["last_seen"] = f"{elapsed}s"
         else:
             sched["last_seen"] = "—"
 
