@@ -735,11 +735,25 @@ function drawTaskStream() {
         }
     }
 
-    // Pass 2: Completed/cancelled bars — newest first (behind), oldest last (on top)
-    // Collect non-running bars and sort by x descending (newest/rightmost drawn first)
+    // Pass 2: Cancelled bars first (behind everything else)
+    for (var j = 0; j < streamBars.length; j++) {
+        var bar = streamBars[j];
+        if (bar.rn || bar.p !== "/") continue;
+        var g = barGeom(bar);
+        drawBarFill(bar, g);
+        drawSlashHatch(streamCtx, g.x, g.y, g.w, g.h);
+        if (bar.ow > 0) {
+            streamCtx.strokeStyle = bar.oc;
+            streamCtx.lineWidth = bar.ow;
+            streamCtx.strokeRect(g.x, g.y, g.w, g.h);
+        }
+    }
+
+    // Pass 3: Non-cancelled completed bars — newest first (behind), oldest last (on top)
     var completedBars = [];
     for (var j = 0; j < streamBars.length; j++) {
-        if (!streamBars[j].rn) completedBars.push(streamBars[j]);
+        var bar = streamBars[j];
+        if (!bar.rn && bar.p !== "/") completedBars.push(bar);
     }
     completedBars.sort(function(a, b) { return b.x - a.x; });
 
@@ -749,18 +763,11 @@ function drawTaskStream() {
         drawBarFill(bar, g);
         if (bar.p === "x") {
             drawCrossHatch(streamCtx, g.x, g.y, g.w, g.h);
-        } else if (bar.p === "/") {
-            drawSlashHatch(streamCtx, g.x, g.y, g.w, g.h);
         }
-        // Outline: draw per-bar so it stays with its own fill
         if (bar.ow > 0) {
             streamCtx.strokeStyle = bar.oc;
             streamCtx.lineWidth = bar.ow;
-            if (bar.p === "/") {
-                streamCtx.strokeRect(g.x, g.y, g.w, g.h);
-            } else {
-                streamCtx.strokeRect(g.x, g.ly, g.w, g.lh);
-            }
+            streamCtx.strokeRect(g.x, g.ly, g.w, g.lh);
         }
     }
 
