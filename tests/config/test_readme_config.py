@@ -22,7 +22,8 @@ logging_paths = ["/dev/stdout", "/var/log/scaler/scheduler.log"]
 policy_engine_type = "simple"
 policy_content = "allocate=even_load; scaling=no"
 
-[worker_manager_baremetal_native]
+[[worker_manager]]
+type = "baremetal_native"
 mode = "fixed"
 max_task_concurrency = 8
 worker_manager_id = "my-manager"
@@ -34,7 +35,7 @@ logging_paths = ["/dev/stdout", "/var/log/scaler/worker.log"]
 [object_storage_server]
 
 [gui]
-web_port = 8081
+gui_address = "127.0.0.1:8081"
 """
 
 
@@ -52,28 +53,36 @@ class TestReadmeConfig(unittest.TestCase):
         self.assertEqual(config.policy.policy_engine_type, "simple")
         self.assertEqual(config.policy.policy_content, "allocate=even_load; scaling=no")
 
-    @patch("sys.argv", ["scaler_worker_manager", "baremetal_native", "tcp://127.0.0.1:6378", "--config", "config.toml"])
-    @patch("builtins.open", mock_open(read_data=README_TOML))
     def test_baremetal_native_section(self) -> None:
-        from scaler.entry_points.worker_manager import WorkerManagerConfig
+        from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 
-        config = WorkerManagerConfig.parse("scaler_worker_manager", "")
-        wm = config.baremetal_native
-        self.assertIsNotNone(wm)
+        try:
+            import tomllib
+        except ImportError:
+            import tomli as tomllib  # type: ignore[no-redef]
 
-        self.assertIsInstance(wm.mode, NativeWorkerManagerMode)
-        self.assertEqual(wm.mode, NativeWorkerManagerMode.FIXED)
-        self.assertEqual(wm.worker_manager_config.max_task_concurrency, 8)
-        self.assertEqual(wm.worker_manager_id, "my-manager")
-        self.assertEqual(wm.worker_config.task_timeout_seconds, 600)
-        self.assertIn("linux", wm.worker_config.per_worker_capabilities.capabilities)
-        self.assertEqual(wm.logging_config.level, "INFO")
-        self.assertIn("/dev/stdout", wm.logging_config.paths)
-        self.assertIn("/var/log/scaler/worker.log", wm.logging_config.paths)
+        toml_data = tomllib.loads(README_TOML.decode())
+        entries = toml_data.get("worker_manager", [])
+        (section_data,) = [e for e in entries if e.get("type") == "baremetal_native"]
+
+        config = NativeWorkerManagerConfig.parse_with_section(
+            "scaler_worker_manager", section_data, argv=["tcp://127.0.0.1:6378"]
+        )
+
+        self.assertIsInstance(config.mode, NativeWorkerManagerMode)
+        self.assertEqual(config.mode, NativeWorkerManagerMode.FIXED)
+        self.assertEqual(config.worker_manager_config.max_task_concurrency, 8)
+        self.assertEqual(config.worker_manager_id, "my-manager")
+        self.assertEqual(config.worker_config.task_timeout_seconds, 600)
+        self.assertIn("linux", config.worker_config.per_worker_capabilities.capabilities)
+        self.assertEqual(config.logging_config.level, "INFO")
+        self.assertIn("/dev/stdout", config.logging_config.paths)
+        self.assertIn("/var/log/scaler/worker.log", config.logging_config.paths)
 
     @patch("sys.argv", ["scaler_gui", "tcp://127.0.0.1:6380", "--config", "config.toml"])
     @patch("builtins.open", mock_open(read_data=README_TOML))
     def test_webgui_section(self) -> None:
         config = WebGUIConfig.parse("scaler_gui", "gui")
 
-        self.assertEqual(config.web_port, 8081)
+        self.assertEqual(config.gui_address.host, "127.0.0.1")
+        self.assertEqual(config.gui_address.port, 8081)

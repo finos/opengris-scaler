@@ -158,8 +158,12 @@ with each component running in its own process. This is the simplest way to brin
 Create a `stack.toml`:
 
 ```toml
+[object_storage_server]
+object_storage_address = "tcp://127.0.0.1:2346"
+
 [scheduler]
 scheduler_address = "tcp://127.0.0.1:2345"
+object_storage_address = "tcp://127.0.0.1:2346"
 
 [[worker_manager]]
 type = "baremetal_native"
@@ -175,8 +179,8 @@ Then start the entire stack with a single command:
 $ scaler stack.toml
 ```
 
-The object storage server is managed automatically by the scheduler; by default it starts on
-`scheduler_address.port + 1` (port `2346` in this example).
+The `[object_storage_server]` section is required; `object_storage_address` must be set in
+both `[object_storage_server]` and `[scheduler]` and the two addresses should match.
 
 Multiple worker managers can be defined using the `[[worker_manager]]` array-of-tables syntax, each with its own
 `type`, concurrency settings, and logging configuration.
@@ -265,16 +269,16 @@ automatically loads its configuration from its corresponding section.
 
 The following table maps each Scaler command to its corresponding section name in the TOML file.
 
-| Command                              | TOML Section Name               |
-|--------------------------------------|---------------------------------|
-| `scaler_scheduler`                   | `[scheduler]`                   |
-| `scaler_object_storage_server`       | `[object_storage_server]`       |
-| `scaler_gui`                         | `[gui]`                         |
-| `scaler_top`                         | `[top]`                         |
-| `scaler_worker_manager baremetal_native` | `[worker_manager_baremetal_native]` |
-| `scaler_worker_manager symphony`     | `[worker_manager_symphony]`         |
-| `scaler_worker_manager aws_raw_ecs`  | `[worker_manager_aws_raw_ecs]`      |
-| `scaler_worker_manager aws_hpc`      | `[worker_manager_aws_hpc]`          |
+| Command                                        | TOML Section                                        |
+|------------------------------------------------|-----------------------------------------------------|
+| `scaler_scheduler`                             | `[scheduler]`                                       |
+| `scaler_object_storage_server`                 | `[object_storage_server]`                           |
+| `scaler_gui`                                   | `[gui]`                                             |
+| `scaler_top`                                   | `[top]`                                             |
+| `scaler_worker_manager baremetal_native` | `[[worker_manager]]` + `type = "baremetal_native"` |
+| `scaler_worker_manager symphony`        | `[[worker_manager]]` + `type = "symphony"`          |
+| `scaler_worker_manager aws_raw_ecs`     | `[[worker_manager]]` + `type = "aws_raw_ecs"`       |
+| `scaler_worker_manager aws_hpc`         | `[[worker_manager]]` + `type = "aws_hpc"`           |
 
 ### Practical Scenarios & Examples
 
@@ -295,10 +299,12 @@ logging_paths = ["/dev/stdout", "/var/log/scaler/scheduler.log"]
 policy_engine_type = "simple"
 policy_content = "allocate=even_load; scaling=no"
 
-[worker_manager_baremetal_native]
+[[worker_manager]]
+type = "baremetal_native"
 mode = "fixed"
 max_task_concurrency = 8
 worker_manager_id = "my-manager"
+scheduler_address = "tcp://127.0.0.1:6378"
 # Each worker manager has its own worker_config,
 # so different managers (on different machines) can advertise
 # different capabilities to the scheduler.
@@ -310,9 +316,10 @@ logging_level = "INFO"
 logging_paths = ["/dev/stdout", "/var/log/scaler/worker.log"]
 
 [object_storage_server]
+object_storage_address = "tcp://127.0.0.1:6379"
 
 [gui]
-web_port = 8081
+gui_address = "0.0.0.0:8081"
 ```
 
 With this single file, starting your entire stack is simple and consistent:
@@ -320,7 +327,7 @@ With this single file, starting your entire stack is simple and consistent:
 ```bash
 scaler_object_storage_server tcp://127.0.0.1:6379 --config example_config.toml &
 scaler_scheduler tcp://127.0.0.1:6378 --config example_config.toml &
-scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --config example_config.toml &
+scaler_worker_manager baremetal_native --config example_config.toml &
 scaler_gui tcp://127.0.0.1:6380 --config example_config.toml &
 ```
 
@@ -330,12 +337,12 @@ You can override any value from the TOML file by providing it as a command-line 
 example_config.toml file but test the cluster with 12 workers instead of 8:
 
 ```bash
-# The --max-task-concurrency flag will take precedence over the [worker_manager_baremetal_native] section
-scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --config example_config.toml --max-task-concurrency 12
+# The --max-task-concurrency flag will take precedence over the [[worker_manager]] section
+scaler_worker_manager baremetal_native --config example_config.toml --max-task-concurrency 12
 ```
 
 The cluster will start with 12 workers, but all other settings (like `task_timeout_seconds`) will still be loaded from the
-`[worker_manager_baremetal_native]` section of example_config.toml.
+`[[worker_manager]]` section of example_config.toml.
 
 ## Nested computations
 

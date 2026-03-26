@@ -1,27 +1,29 @@
 import dataclasses
 import multiprocessing
 import sys
-from typing import List, Optional, Union
+from typing import List, Optional
 
+from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.config.config_class import ConfigClass
 from scaler.config.section.aws_hpc_worker_manager import AWSBatchWorkerManagerConfig
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
+from scaler.config.section.object_storage_server import ObjectStorageServerConfig
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
 from scaler.config.section.webgui import WebGUIConfig
+from scaler.config.section.worker_manager_union import WorkerManagerUnion
 from scaler.utility.event_loop import register_event_loop
 from scaler.utility.logging.utility import setup_logger
-
-WorkerManagerUnion = Union[
-    NativeWorkerManagerConfig, SymphonyWorkerManagerConfig, ECSWorkerManagerConfig, AWSBatchWorkerManagerConfig
-]
 
 
 @dataclasses.dataclass
 class ScalerAllConfig(ConfigClass):
     config: str = dataclasses.field(metadata=dict(positional=True, help="Path to the TOML configuration file."))
-    # Declaration order = startup order (scheduler before workers).
+    # Declaration order = startup order (object storage before scheduler, scheduler before workers).
+    object_storage: Optional[ObjectStorageServerConfig] = dataclasses.field(
+        default=None, metadata=dict(section="object_storage_server")
+    )
     scheduler: Optional[SchedulerConfig] = dataclasses.field(default=None, metadata=dict(section="scheduler"))
     worker_managers: List[WorkerManagerUnion] = dataclasses.field(
         default_factory=list, metadata=dict(section="worker_manager", discriminator="type")
@@ -68,11 +70,35 @@ def _run_gui(config: WebGUIConfig) -> None:
 def main() -> None:
     config = ScalerAllConfig.parse("scaler", "all", disable_config_flag=True)
 
-    if config.scheduler is None and not config.worker_managers and config.gui is None:
+    if config.object_storage is None and config.scheduler is None and not config.worker_managers and config.gui is None:
         print("scaler: no any recognized section found in config file", file=sys.stderr)
         sys.exit(1)
 
+    if (
+        config.object_storage is not None
+        and config.scheduler is not None
+        and config.scheduler.object_storage_address is None
+    ):
+        print(
+            "scaler: object_storage_address is required in section [scheduler]"
+            " when section [object_storage_server] is present",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     processes: List[multiprocessing.Process] = []
+
+    if config.object_storage is not None:
+        oss_logging = config.object_storage.logging_config
+        oss_process = ObjectStorageServerProcess(
+            object_storage_address=config.object_storage.object_storage_address,
+            logging_paths=oss_logging.paths,
+            logging_config_file=oss_logging.config_file,
+            logging_level=oss_logging.level,
+        )
+        oss_process.start()
+        oss_process.wait_until_ready()
+        processes.append(oss_process)
 
     if config.scheduler is not None:
         sched_process = multiprocessing.Process(target=_run_scheduler, args=(config.scheduler,), name="scheduler")
@@ -89,8 +115,14 @@ def main() -> None:
         gui_process.start()
         processes.append(gui_process)
 
-    for process in processes:
-        process.join()
+    try:
+        for process in processes:
+            process.join()
+    except KeyboardInterrupt:
+        for process in processes:
+            process.terminate()
+        for process in processes:
+            process.join()
 
 
 if __name__ == "__main__":

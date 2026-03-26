@@ -100,8 +100,7 @@ Scaler examples
 
             [gui]
             monitor_address = "tcp://127.0.0.1:6380"
-            web_host = "127.0.0.1"
-            web_port = 50001
+            gui_address = "127.0.0.1:50001"
             logging_level = "INFO"
 
             [[worker_manager]]
@@ -354,6 +353,11 @@ Available subcommands:
 - ``aws_raw_ecs``
 - ``aws_hpc``
 
+When ``--config``/``-c`` is supplied, ``scaler_worker_manager`` reads the ``[[worker_manager]]``
+array from the TOML file and picks the entry whose ``type`` field matches the subcommand.
+It is an error if no entry matches or if more than one entry matches.
+Command-line flags always override TOML values.
+
 Arguments (shared by all subcommands)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -439,7 +443,7 @@ Arguments (shared by all subcommands)
    * - ``-c``, ``--config``
      - No
      - ``None``
-     - TOML config file path.
+     - TOML config file path. Config is read from the ``[[worker_manager]]`` entry matching the subcommand.
 
 Worker runtime notes
 ~~~~~~~~~~~~~~~~~~~~
@@ -891,8 +895,7 @@ UI examples
 
             [gui]
             monitor_address = "tcp://127.0.0.1:6380"
-            web_host = "127.0.0.1"
-            web_port = 50001
+            gui_address = "127.0.0.1:50001"
             logging_level = "INFO"
 
         Run command:

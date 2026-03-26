@@ -327,6 +327,41 @@ class ConfigClass:
 
         return _from_args(cls, kwargs, full_toml)
 
+    @classmethod
+    def parse_with_section(
+        cls: Type[T], program_name: str, section_data: Dict[str, Any], argv: Optional[List[str]] = None
+    ) -> T:
+        """Parse CLI args using section_data as pre-loaded TOML defaults.
+
+        Unlike parse(), this method does not load any config file — the caller
+        is responsible for pre-loading the relevant TOML section and passing it
+        as section_data.  argv defaults to sys.argv[1:] when None.
+
+        This is used by entry points that do their own TOML lookup (for example
+        scaler_worker_manager, which scans [[worker_manager]] entries by type)
+        before delegating field parsing to the appropriate config class.
+        """
+        parser = argparse.ArgumentParser(prog=program_name, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        cls.configure_parser(parser)
+
+        toml_defs = _toml_section_defaults(section_data, cls)
+        injected_dests: Dict[str, Any] = {}
+        if toml_defs:
+            parser.set_defaults(**toml_defs)
+            injected_dests.update(toml_defs)
+
+        env_defs = _env_defaults(cls)
+        if env_defs:
+            parser.set_defaults(**env_defs)
+            injected_dests.update(env_defs)
+
+        for action in parser._actions:
+            if action.required and action.dest in injected_dests:
+                action.required = False
+
+        kwargs = vars(parser.parse_args(argv))
+        return _from_args(cls, kwargs)
+
 
 def _build_subparser_tree(
     cls: type,

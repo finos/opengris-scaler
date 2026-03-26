@@ -11,5 +11,5 @@ def start_webgui(config: WebGUIConfig) -> None:
     setup_logger(config.logging_config.paths, config.logging_config.config_file, config.logging_config.level)
 
     app = create_app(config)
-    logging.info("Web GUI is now listening on: http://%s:%s", config.web_host, config.web_port)
-    uvicorn.run(app, host=config.web_host, port=config.web_port)
+    logging.info(f"Web GUI is now listening on: http://{config.gui_address}")
+    uvicorn.run(app, host=config.gui_address.host, port=config.gui_address.port)
