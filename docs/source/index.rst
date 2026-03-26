@@ -6,9 +6,10 @@
 Welcome to Scaler's documentation!
 ==================================
 
-Scaler is a lightweight distributed computing Python framework that lets you easily distribute tasks across multiple machines or parallelize on a single machine.
+Scaler is a lightweight distributed computing Python framework that lets you easily distribute tasks across single/multiple local machines, multiple different clouds.
 
-Scaler is designed to be super easy to deploy and start using compute resources from local machines or different cloud environments. Its design focuses on performance, simplicity, small overhead, and industry-grade robustness.
+.. image:: tutorials/images/client_usage_framework.svg
+   :alt: Scaler architecture
 
 Content
 =======
@@ -19,10 +20,10 @@ Content
    tutorials/quickstart
    tutorials/introduction
    tutorials/commands
+   tutorials/scaler_client
    tutorials/compatibility
    tutorials/scaling
    tutorials/worker_managers/index
-   tutorials/features
-   tutorials/advanced_usage
+   tutorials/additional_features
    tutorials/application_examples
    tutorials/development

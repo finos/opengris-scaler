@@ -6,26 +6,8 @@ Architecture
 Below is a diagram of the relationship between multiple Clients, the Scheduler,
 Worker Managers, and Workers.
 
-.. code-block:: text
-
-                         +-----------------+   +------------------+      +----------+
-                         |                 |   |                  | <--> | Worker 1 |
-    +----------+         | +-------------+ |   |                  |      +----------+
-    | Client A | <-----> | |   Scaling   | |<->| Worker Manager 1 |
-    +----------+         | |   Policies  | |   |                  |      +----------+
-                         | +-------------+ |   |                  | <--> | Worker 2 |
-    +----------+         |                 |   +------------------+      +----------+
-    | Client B | <-----> |                 |
-    +----------+         |                 |   +------------------+      +----------+
-                         |                 |   |                  | <--> | Worker 3 |
-    +----------+         |                 |   |                  |      +----------+
-    | Client N | <-----> |                 |<->| Worker Manager 2 |
-    +----------+         |    Scheduler    |   |                  |      +----------+
-                         |                 |   |                  | <--> | Worker 4 |
-                         +-----------------+   +------------------+      +----------+
-                              ^  ^  ^  ^
-                              |  |  |  |
-                              +--|--|--|- all workers connect directly to scheduler
+.. image:: images/architecture.svg
+   :alt: Scaler architecture diagram
 
 
 * Multiple clients can submit tasks to the same scheduler concurrently.
@@ -76,70 +58,7 @@ Key Features
 * Task profiling for runtime and resource diagnostics.
 
 
-First Look (Code API)
----------------------
-
-Client.map
-----------
-
-:py:func:`~Client.map()` allows us to submit a batch of tasks to execute in parallel by pairing a function with a list of inputs.
-
-In the example below, we spin up a scheduler and some workers on the local machine using ``SchedulerClusterCombo``. We create the scheduler with a localhost address, and then pass that address to the client so that it can connect. We then use :py:func:`~Client.map()` to submit tasks.
-
-.. literalinclude:: ../../../examples/map_client.py
-   :language: python
-
-
-Client.submit
--------------
-
-There is another way of to submit task to the scheduler: :py:func:`~Client.submit()`, which is used to submit a single function and arguments. The results will be lazily retrieved on the first call to ``result()``.
-
-.. literalinclude:: ../../../examples/simple_client.py
-   :language: python
-
-
-Things to Avoid
----------------
-
-please note that the :py:func:`~Client.submit()` method is used to submit a single task. If you wish to submit multiple tasks using the same function but with many sets of arguments, use :py:func:`~Client.map()` instead to avoid unnecessary serialization overhead. The following is an example `what not to do`.
-
-.. testcode:: python
-
-    import functools
-    import random
-
-    from scaler import Client, SchedulerClusterCombo
-
-    def lookup(heavy_map: bytes, index: int):
-        return index * 1
-
-
-    def main():
-        address = "tcp://127.0.0.1:2345"
-
-        cluster = SchedulerClusterCombo(address=address, n_workers=3)
-
-        # a heavy function that is expensive to serialize
-        big_func = functools.partial(lookup, b"1" * 5_000_000_000)
-
-        arguments = [random.randint(0, 100) for _ in range(100)]
-
-        with Client(address=address) as client:
-            # we incur serialization overhead for every call to client.submit -- use client.map instead
-            futures = [client.submit(big_func, i) for i in arguments]
-            print([fut.result() for fut in futures])
-
-        cluster.shutdown()
-
-
-    if __name__ == "__main__":
-        main()
-
-
-This will be extremely slow, because it will serialize the argument function ``big_func()`` each time :py:func:`~Client.submit()` is called.
-
-Functions may also be 'heavy' if they accept large objects as arguments. In this case, consider using :py:func:`~Client.send_object()` to send the object to the scheduler, and then later use :py:func:`~Client.submit()` to submit the function.
+For code API examples and client patterns, see :doc:`scaler_client`.
 
 Spinning up Scheduler and Cluster Separately
 --------------------------------------------

@@ -1,8 +1,7 @@
 Commands
 ========
 
-After installing ``opengris-scaler``, the following CLI commands are available from
-``[project.scripts]`` in ``pyproject.toml``.
+After installing ``opengris-scaler``, the following CLI commands are available:
 
 .. list-table:: Installed commands
    :header-rows: 1
@@ -23,10 +22,10 @@ After installing ``opengris-scaler``, the following CLI commands are available f
      - Start the web monitoring GUI for a scheduler monitor endpoint.
 
 
-TOML Conventions
-----------------
+Command Arguments/Config Conventions
+------------------------------------
 
-All commands support ``--config``/``-c``. In practice, most deployments use TOML files.
+All commands support either command line or ``--config <toml config>``/``-c <toml config>``. In practice, most deployments use TOML files.
 
 - Precedence: ``Command-line flags > TOML settings > built-in defaults``.
 - Key naming: long CLI flags converted to snake case (for example, ``--max-task-concurrency`` -> ``max_task_concurrency``).
@@ -78,12 +77,6 @@ Scaler examples
 ~~~~~~~~~~~~~~~
 
 .. tabs::
-
-    .. group-tab:: command line
-
-        .. code-block:: bash
-
-            $ scaler config.toml
 
     .. group-tab:: config.toml
 
@@ -141,6 +134,12 @@ Scaler examples
 
             $ scaler config.toml
 
+    .. group-tab:: command line
+
+        .. code-block:: bash
+
+            $ scaler config.toml
+
 Scaler arguments
 ~~~~~~~~~~~~~~~~
 
@@ -174,17 +173,6 @@ Scheduler examples
 
 .. tabs::
 
-    .. group-tab:: command line
-
-        .. code-block:: bash
-
-            $ scaler_scheduler tcp://127.0.0.1:6378 \
-                --object-storage-address tcp://127.0.0.1:6379 \
-                --monitor-address tcp://127.0.0.1:6380 \
-                --policy-engine-type simple \
-                --policy-content "allocate=even_load; scaling=no" \
-                --logging-level INFO
-
     .. group-tab:: config.toml
 
         .. code-block:: toml
@@ -205,6 +193,17 @@ Scheduler examples
         .. code-block:: bash
 
             $ scaler_scheduler --config scheduler.toml tcp://127.0.0.1:6378
+
+    .. group-tab:: command line
+
+        .. code-block:: bash
+
+            $ scaler_scheduler tcp://127.0.0.1:6378 \
+                --object-storage-address tcp://127.0.0.1:6379 \
+                --monitor-address tcp://127.0.0.1:6380 \
+                --policy-engine-type simple \
+                --policy-content "allocate=even_load; scaling=no" \
+                --logging-level INFO
 
 Scheduler arguments
 ~~~~~~~~~~~~~~~~~~~
@@ -481,15 +480,6 @@ Local-process worker manager (dynamic auto-scaling or fixed pre-spawned workers)
 
 .. tabs::
 
-    .. group-tab:: command line
-
-        .. code-block:: bash
-
-            $ scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 \
-                --worker-manager-id wm-native \
-                --mode dynamic \
-                --max-task-concurrency 8
-
     .. group-tab:: config.toml
 
         .. code-block:: toml
@@ -506,6 +496,15 @@ Local-process worker manager (dynamic auto-scaling or fixed pre-spawned workers)
         .. code-block:: bash
 
             $ scaler config.toml
+
+    .. group-tab:: command line
+
+        .. code-block:: bash
+
+            $ scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 \
+                --worker-manager-id wm-native \
+                --mode dynamic \
+                --max-task-concurrency 8
 
 .. list-table::
    :header-rows: 1
@@ -538,14 +537,6 @@ IBM Spectrum Symphony worker manager.
 
 .. tabs::
 
-    .. group-tab:: command line
-
-        .. code-block:: bash
-
-            $ scaler_worker_manager symphony tcp://127.0.0.1:6378 \
-                --worker-manager-id wm-symphony \
-                --service-name ScalerService
-
     .. group-tab:: config.toml
 
         .. code-block:: toml
@@ -561,6 +552,14 @@ IBM Spectrum Symphony worker manager.
         .. code-block:: bash
 
             $ scaler config.toml
+
+    .. group-tab:: command line
+
+        .. code-block:: bash
+
+            $ scaler_worker_manager symphony tcp://127.0.0.1:6378 \
+                --worker-manager-id wm-symphony \
+                --service-name ScalerService
 
 .. list-table::
    :header-rows: 1
@@ -585,18 +584,6 @@ AWS ECS (Fargate) worker manager.
 
 .. tabs::
 
-    .. group-tab:: command line
-
-        .. code-block:: bash
-
-            $ scaler_worker_manager aws_raw_ecs tcp://127.0.0.1:6378 \
-                --object-storage-address tcp://127.0.0.1:6379 \
-                --worker-manager-id wm-ecs \
-                --ecs-subnets subnet-0abc123,subnet-0def456 \
-                --ecs-cluster scaler-cluster \
-                --ecs-task-definition scaler-task-definition \
-                --aws-region us-east-1
-
     .. group-tab:: config.toml
 
         .. code-block:: toml
@@ -616,6 +603,18 @@ AWS ECS (Fargate) worker manager.
         .. code-block:: bash
 
             $ scaler config.toml
+
+    .. group-tab:: command line
+
+        .. code-block:: bash
+
+            $ scaler_worker_manager aws_raw_ecs tcp://127.0.0.1:6378 \
+                --object-storage-address tcp://127.0.0.1:6379 \
+                --worker-manager-id wm-ecs \
+                --ecs-subnets subnet-0abc123,subnet-0def456 \
+                --ecs-cluster scaler-cluster \
+                --ecs-task-definition scaler-task-definition \
+                --aws-region us-east-1
 
 .. list-table::
    :header-rows: 1
@@ -680,18 +679,6 @@ AWS Batch worker manager.
 
 .. tabs::
 
-    .. group-tab:: command line
-
-        .. code-block:: bash
-
-            $ scaler_worker_manager aws_hpc tcp://127.0.0.1:6378 \
-                --object-storage-address tcp://127.0.0.1:6379 \
-                --worker-manager-id wm-batch \
-                --job-queue scaler-job-queue \
-                --job-definition scaler-job-definition \
-                --s3-bucket my-scaler-bucket \
-                --aws-region us-east-1
-
     .. group-tab:: config.toml
 
         .. code-block:: toml
@@ -711,6 +698,18 @@ AWS Batch worker manager.
         .. code-block:: bash
 
             $ scaler config.toml
+
+    .. group-tab:: command line
+
+        .. code-block:: bash
+
+            $ scaler_worker_manager aws_hpc tcp://127.0.0.1:6378 \
+                --object-storage-address tcp://127.0.0.1:6379 \
+                --worker-manager-id wm-batch \
+                --job-queue scaler-job-queue \
+                --job-definition scaler-job-definition \
+                --s3-bucket my-scaler-bucket \
+                --aws-region us-east-1
 
 .. list-table::
    :header-rows: 1
@@ -767,16 +766,6 @@ ORB (Open Resource Broker) worker manager — dynamically provisions workers on 
 
 .. tabs::
 
-    .. group-tab:: command line
-
-        .. code-block:: bash
-
-            $ scaler_worker_manager orb_aws_ec2 tcp://127.0.0.1:6378 \
-                --object-storage-address tcp://127.0.0.1:6379 \
-                --image-id ami-0528819f94f4f5fa5 \
-                --instance-type t3.medium \
-                --aws-region us-east-1
-
     .. group-tab:: config.toml
 
         .. code-block:: toml
@@ -794,6 +783,16 @@ ORB (Open Resource Broker) worker manager — dynamically provisions workers on 
         .. code-block:: bash
 
             $ scaler config.toml
+
+    .. group-tab:: command line
+
+        .. code-block:: bash
+
+            $ scaler_worker_manager orb_aws_ec2 tcp://127.0.0.1:6378 \
+                --object-storage-address tcp://127.0.0.1:6379 \
+                --image-id ami-0528819f94f4f5fa5 \
+                --instance-type t3.medium \
+                --aws-region us-east-1
 
 .. list-table::
    :header-rows: 1
@@ -846,12 +845,6 @@ Object storage examples
 
 .. tabs::
 
-    .. group-tab:: command line
-
-        .. code-block:: bash
-
-            $ scaler_object_storage_server tcp://127.0.0.1:6379
-
     .. group-tab:: config.toml
 
         .. code-block:: toml
@@ -864,6 +857,12 @@ Object storage examples
         .. code-block:: bash
 
             $ scaler_object_storage_server --config object_storage.toml tcp://127.0.0.1:6379
+
+    .. group-tab:: command line
+
+        .. code-block:: bash
+
+            $ scaler_object_storage_server tcp://127.0.0.1:6379
 
 Object storage arguments
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -899,12 +898,6 @@ Top examples
 
 .. tabs::
 
-    .. group-tab:: command line
-
-        .. code-block:: bash
-
-            $ scaler_top tcp://127.0.0.1:6380 --timeout 5
-
     .. group-tab:: config.toml
 
         .. code-block:: toml
@@ -918,6 +911,12 @@ Top examples
         .. code-block:: bash
 
             $ scaler_top --config top.toml tcp://127.0.0.1:6380
+
+    .. group-tab:: command line
+
+        .. code-block:: bash
+
+            $ scaler_top tcp://127.0.0.1:6380 --timeout 5
 
 Top arguments
 ~~~~~~~~~~~~~
@@ -959,12 +958,6 @@ UI examples
 
 .. tabs::
 
-    .. group-tab:: command line
-
-        .. code-block:: bash
-
-            $ scaler_gui tcp://127.0.0.1:6380 --web-host 127.0.0.1 --web-port 50001
-
     .. group-tab:: config.toml
 
         .. code-block:: toml
@@ -980,6 +973,12 @@ UI examples
 
             $ scaler_gui --config gui.toml tcp://127.0.0.1:6380
 
+    .. group-tab:: command line
+
+        .. code-block:: bash
+
+            $ scaler_gui tcp://127.0.0.1:6380 --gui-address 127.0.0.1:50001
+
 UI arguments
 ~~~~~~~~~~~~
 
@@ -994,14 +993,10 @@ UI arguments
      - Yes
      - -
      - Scheduler monitor address to subscribe to.
-   * - ``--web-host``
+   * - ``--gui-address``
      - No
-     - ``0.0.0.0``
-     - Host interface for the web server.
-   * - ``--web-port``
-     - No
-     - ``50001``
-     - Listening port for the web server.
+     - ``0.0.0.0:50001``
+     - Host and port for the web server.
    * - ``-ll``, ``--logging-level``
      - No
      - ``INFO``

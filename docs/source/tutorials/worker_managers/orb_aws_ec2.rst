@@ -106,12 +106,12 @@ Supported Parameters
 --------------------
 
 .. note::
-    For more details on how to configure Scaler, see the :doc:`../configuration` section.
+    For more details on how to configure Scaler, see the :doc:`../commands` section.
 
 The ORB AWS EC2 worker adapter supports ORB-specific configuration parameters as well as common worker adapter parameters.
 
 ORB AWS EC2 Template Configuration
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 *   ``--image-id`` (Required): AMI ID for the worker instances.
 *   ``--instance-type``: EC2 instance type (default: ``t2.micro``).
