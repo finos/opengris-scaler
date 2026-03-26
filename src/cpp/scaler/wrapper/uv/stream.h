@@ -2,8 +2,10 @@
 
 #include <uv.h>
 
+#include <cassert>
 #include <cstdint>
 #include <expected>
+#include <limits>
 #include <memory>
 #include <span>
 #include <vector>
@@ -57,6 +59,8 @@ public:
         nativeBuffers.reserve(buffers.size());
 
         for (auto const& buffer: buffers) {
+            assert(buffer.size() <= std::numeric_limits<unsigned int>::max());
+
             const uv_buf_t nativeBuffer = uv_buf_init(
                 const_cast<char*>(reinterpret_cast<const char*>(buffer.data())),
                 static_cast<unsigned int>(buffer.size()));

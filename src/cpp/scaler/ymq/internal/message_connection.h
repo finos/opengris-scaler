@@ -148,6 +148,8 @@ private:
 
     void processSendQueue() noexcept;
 
+    void processSendOperation(SendOperation operation) noexcept;
+
     void write(std::span<const std::span<const uint8_t>> buffers, scaler::wrapper::uv::WriteCallback callback) noexcept;
 
     void setNoDelay() noexcept;
