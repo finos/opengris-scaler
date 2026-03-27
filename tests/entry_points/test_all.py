@@ -231,6 +231,54 @@ class TestScalerAllConfigShape(unittest.TestCase):
         config = self._parse(self._native_base(mode="fixed"))
         self.assertEqual(config.worker_managers[0].mode, NativeWorkerManagerMode.FIXED)
 
+    def test_orb_aws_ec2_worker_manager_parsed_from_toml(self) -> None:
+        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+
+        toml = {
+            "worker_manager": {
+                "type": "orb_aws_ec2",
+                "scheduler_address": "tcp://127.0.0.1:6378",
+                "image_id": "ami-0528819f94f4f5fa5",
+            }
+        }
+        config = self._parse(toml)
+        self.assertEqual(len(config.worker_managers), 1)
+        self.assertIsInstance(config.worker_managers[0], ORBAWSEC2WorkerAdapterConfig)
+
+    def test_orb_aws_ec2_fields_from_toml(self) -> None:
+        toml = {
+            "worker_manager": {
+                "type": "orb_aws_ec2",
+                "scheduler_address": "tcp://127.0.0.1:6378",
+                "image_id": "ami-0528819f94f4f5fa5",
+                "instance_type": "t3.medium",
+                "aws_region": "eu-west-1",
+            }
+        }
+        config = self._parse(toml)
+        self.assertEqual(config.worker_managers[0].image_id, "ami-0528819f94f4f5fa5")
+        self.assertEqual(config.worker_managers[0].instance_type, "t3.medium")
+        self.assertEqual(config.worker_managers[0].aws_region, "eu-west-1")
+
+    def test_mixed_native_and_orb_aws_ec2_worker_managers(self) -> None:
+        from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
+        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+
+        toml = {
+            "worker_manager": [
+                {"type": "baremetal_native", "scheduler_address": "tcp://127.0.0.1:6378", "worker_manager_id": "wm-1"},
+                {
+                    "type": "orb_aws_ec2",
+                    "scheduler_address": "tcp://127.0.0.1:6378",
+                    "image_id": "ami-0528819f94f4f5fa5",
+                },
+            ]
+        }
+        config = self._parse(toml)
+        self.assertEqual(len(config.worker_managers), 2)
+        self.assertIsInstance(config.worker_managers[0], NativeWorkerManagerConfig)
+        self.assertIsInstance(config.worker_managers[1], ORBAWSEC2WorkerAdapterConfig)
+
 
 class TestRunWorkerManager(unittest.TestCase):
     """Tests that _run_worker_manager calls register_event_loop and setup_logger from the per-manager config."""
@@ -275,3 +323,45 @@ class TestRunWorkerManager(unittest.TestCase):
             _run_worker_manager(config)
 
         mock_log.assert_called_once_with(config.logging_config.paths, config.logging_config.config_file, "WARNING")
+
+    def _make_orb_aws_ec2_config(self, event_loop="builtin", logging_level="INFO"):
+        from scaler.config.common.logging import LoggingConfig
+        from scaler.config.common.worker import WorkerConfig
+        from scaler.config.common.worker_manager import WorkerManagerConfig
+        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.types.zmq import ZMQConfig
+
+        wmc = WorkerManagerConfig(scheduler_address=ZMQConfig.from_string("tcp://localhost:6378"))
+        return ORBAWSEC2WorkerAdapterConfig(
+            worker_manager_config=wmc,
+            image_id="ami-0528819f94f4f5fa5",
+            worker_config=WorkerConfig(event_loop=event_loop),
+            logging_config=LoggingConfig(level=logging_level),
+        )
+
+    def test_orb_aws_ec2_run_worker_manager_dispatches_correctly(self) -> None:
+        from scaler.entry_points.scaler import _run_worker_manager
+
+        config = self._make_orb_aws_ec2_config()
+
+        with patch("scaler.entry_points.scaler.setup_logger"), patch(
+            "scaler.entry_points.scaler.register_event_loop"
+        ), patch("scaler.worker_manager_adapter.orb_aws_ec2.worker_manager.ORBAWSEC2WorkerAdapter") as mock_orb:
+            mock_orb.return_value.run.return_value = None
+            _run_worker_manager(config)
+
+        mock_orb.assert_called_once_with(config)
+        mock_orb.return_value.run.assert_called_once()
+
+    def test_orb_aws_ec2_register_event_loop_called(self) -> None:
+        from scaler.entry_points.scaler import _run_worker_manager
+
+        config = self._make_orb_aws_ec2_config(event_loop="builtin")
+
+        with patch("scaler.entry_points.scaler.register_event_loop") as mock_reg, patch(
+            "scaler.entry_points.scaler.setup_logger"
+        ), patch("scaler.worker_manager_adapter.orb_aws_ec2.worker_manager.ORBAWSEC2WorkerAdapter") as mock_orb:
+            mock_orb.return_value.run.return_value = None
+            _run_worker_manager(config)
+
+        mock_reg.assert_called_once_with("builtin")

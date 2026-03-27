@@ -251,6 +251,50 @@ class TestWorkerManagerConfigFields(unittest.TestCase):
         self.assertEqual(config.worker_config.event_loop, WorkerConfig().event_loop)
 
 
+_ORB_AWS_EC2_BASE_ARGV = ["tcp://127.0.0.1:6378", "--image-id", "ami-0528819f94f4f5fa5"]
+
+
+class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
+    """Tests that ORBAWSEC2WorkerAdapterConfig is correctly parsed via parse_with_section."""
+
+    def test_orb_aws_ec2_image_id_parsed(self) -> None:
+        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+
+        config = ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+            "scaler_worker_manager", {}, argv=_ORB_AWS_EC2_BASE_ARGV
+        )
+        self.assertIsInstance(config, ORBAWSEC2WorkerAdapterConfig)
+        self.assertEqual(config.image_id, "ami-0528819f94f4f5fa5")
+
+    def test_orb_aws_ec2_defaults(self) -> None:
+        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+
+        config = ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+            "scaler_worker_manager", {}, argv=_ORB_AWS_EC2_BASE_ARGV
+        )
+        self.assertEqual(config.instance_type, "t2.micro")
+        self.assertEqual(config.aws_region, "us-east-1")
+
+    def test_orb_aws_ec2_instance_type_and_region_from_cli(self) -> None:
+        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+
+        config = ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+            "scaler_worker_manager",
+            {},
+            argv=[*_ORB_AWS_EC2_BASE_ARGV, "--instance-type", "t3.medium", "--aws-region", "eu-west-1"],
+        )
+        self.assertEqual(config.instance_type, "t3.medium")
+        self.assertEqual(config.aws_region, "eu-west-1")
+
+    def test_orb_aws_ec2_logging_level_from_cli(self) -> None:
+        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+
+        config = ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+            "scaler_worker_manager", {}, argv=[*_ORB_AWS_EC2_BASE_ARGV, "--logging-level", "DEBUG"]
+        )
+        self.assertEqual(config.logging_config.level, "DEBUG")
+
+
 class TestWorkerManagerMain(unittest.TestCase):
     """Tests for the main() entry point dispatch and error handling."""
 

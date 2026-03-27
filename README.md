@@ -279,6 +279,7 @@ The following table maps each Scaler command to its corresponding section name i
 | `scaler_worker_manager symphony`        | `[[worker_manager]]` + `type = "symphony"`          |
 | `scaler_worker_manager aws_raw_ecs`     | `[[worker_manager]]` + `type = "aws_raw_ecs"`       |
 | `scaler_worker_manager aws_hpc`         | `[[worker_manager]]` + `type = "aws_hpc"`           |
+| `scaler_worker_manager orb_aws_ec2`     | `[[worker_manager]]` + `type = "orb_aws_ec2"`       |
 
 ### Practical Scenarios & Examples
 
@@ -506,6 +507,40 @@ base_concurrency = number_of_cores - deepest_nesting_level
 where `deepest_nesting_level` is the deepest nesting level a task has in your workload. For instance, if you have a
 workload that has
 a base task that calls a nested task that calls another nested task, then the deepest nesting level is 2.
+
+## ORB AWS EC2 integration
+
+A Scaler scheduler can interface with ORB (Open Resource Broker) to dynamically provision and manage workers on AWS EC2 instances.
+
+```bash
+$ scaler_worker_manager orb_aws_ec2 tcp://127.0.0.1:2345 --image-id ami-0528819f94f4f5fa5
+```
+
+This will start an ORB AWS EC2 worker adapter that connects to the Scaler scheduler at `tcp://127.0.0.1:2345`. The scheduler can then request new workers from this adapter, which will be launched as EC2 instances.
+
+The ORB AWS EC2 worker manager can also be included in a `scaler` all-in-one TOML config:
+
+```toml
+[scheduler]
+scheduler_address = "tcp://127.0.0.1:2345"
+
+[[worker_manager]]
+type = "orb_aws_ec2"
+scheduler_address = "tcp://127.0.0.1:2345"
+image_id = "ami-0528819f94f4f5fa5"
+instance_type = "t3.medium"
+aws_region = "us-east-1"
+```
+
+### Configuration
+
+The ORB AWS EC2 adapter requires `orb-py` and `boto3` to be installed. You can install them with:
+
+```bash
+$ pip install "opengris-scaler[orb_aws_ec2]"
+```
+
+For more details on configuring ORB AWS EC2, including AWS credentials and instance templates, please refer to the [ORB AWS EC2 Worker Adapter documentation](https://finos.github.io/opengris-scaler/tutorials/worker_manager_adapter/orb_aws_ec2.html).
 
 ## Worker Manager usage
 

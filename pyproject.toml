@@ -50,10 +50,15 @@ graphblas = [
 aws = [
     "boto3",
 ]
+orb_aws_ec2 = [
+    "orb-py~=1.5.1; python_version >= '3.10'",
+    "boto3; python_version >= '3.10'",
+]
 all = [
     "opengris-scaler[aws]",
     "opengris-scaler[graphblas]",
     "opengris-scaler[gui]",
+    "opengris-scaler[orb_aws_ec2]",
     "opengris-scaler[uvloop]",
 ]
 

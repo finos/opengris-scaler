@@ -42,6 +42,12 @@ class WorkerManagerController(Looper, Reporter):
         # Reverse map: worker_manager_id -> source (for duplicate detection)
         self._manager_id_to_source: Dict[bytes, bytes] = {}
 
+        # Sources that have reported TooManyWorkers: maps source -> worker count at the time
+        # TooManyWorkers was received. Suppress new StartWorkers until the scheduler's view of
+        # managed workers grows beyond that baseline, meaning at least one booting instance has
+        # sent its first heartbeat and the ORB adapter slot is no longer occupied by a pending boot.
+        self._at_capacity_baseline: Dict[bytes, int] = {}
+
     def register(self, binder: AsyncBinder, task_controller: TaskController, worker_controller: WorkerController):
         self._binder = binder
         self._task_controller = task_controller
@@ -74,6 +80,22 @@ class WorkerManagerController(Looper, Reporter):
         # Build cross-manager snapshots from all known managers
         worker_manager_snapshots = self._build_manager_snapshots()
 
+        # Wait for the previous command to complete before sending another.
+        # Worker managers can take a long time to fulfill commands (e.g. ORB polls for instance IDs),
+        # so sending a new command before the response arrives causes duplicate work and errors.
+        if source in self._pending_commands:
+            return
+
+        # If this manager previously reported TooManyWorkers, suppress new StartWorkers requests
+        # until the scheduler's worker count grows beyond the baseline recorded at that time.
+        # This handles the visibility gap where the ORB adapter has created instances that have
+        # not yet sent their first heartbeat to the scheduler.
+        if source in self._at_capacity_baseline:
+            if len(managed_worker_ids) > self._at_capacity_baseline[source]:
+                del self._at_capacity_baseline[source]
+            else:
+                return
+
         commands = self._policy_controller.get_scaling_commands(
             information_snapshot, heartbeat, managed_worker_ids, managed_worker_capabilities, worker_manager_snapshots
         )
@@ -93,6 +115,12 @@ class WorkerManagerController(Looper, Reporter):
                     self._manager_capabilities[source] = dict(response.capabilities)
             else:
                 logging.warning(f"StartWorkers failed: {response.status.name}")
+                if response.status == WorkerManagerCommandResponse.Status.TooManyWorkers:
+                    manager_entry = self._manager_alive_since.get(source)
+                    if manager_entry is not None:
+                        _, hb = manager_entry
+                        baseline = len(self._worker_controller.get_workers_by_manager_id(hb.worker_manager_id))
+                        self._at_capacity_baseline[source] = baseline
 
         elif response.command == WorkerManagerCommandType.ShutdownWorkers:
             if response.status != WorkerManagerCommandResponse.Status.Success:
@@ -181,3 +209,4 @@ class WorkerManagerController(Looper, Reporter):
         self._manager_alive_since.pop(source)
         self._pending_commands.pop(source, None)
         self._manager_capabilities.pop(source, None)
+        self._at_capacity_baseline.pop(source, None)

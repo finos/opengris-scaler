@@ -49,7 +49,8 @@ class VanillaScalingPolicy(ScalingPolicy):
     def _create_start_commands(
         self, managed_worker_ids: List[WorkerID], worker_manager_heartbeat: WorkerManagerHeartbeat
     ) -> List[WorkerManagerCommand]:
-        if len(managed_worker_ids) >= worker_manager_heartbeat.max_task_concurrency:
+        max_concurrency = worker_manager_heartbeat.max_task_concurrency
+        if max_concurrency != -1 and len(managed_worker_ids) >= max_concurrency:
             return []
         return [WorkerManagerCommand.new_msg(worker_ids=[], command=WorkerManagerCommandType.StartWorkers)]
 
