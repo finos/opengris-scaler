@@ -60,5 +60,5 @@ policy_engine_type = "simple"
 
 # Scheduling policy string.
 #   allocate: how tasks are assigned to workers — "even_load"
-#   scaling:  automatic worker scaling         — "no" (disabled)
-policy_content = "allocate=even_load; scaling=no"
+#   scaling:  automatic worker scaling         — "vanilla" (demand-driven)
+policy_content = "allocate=even_load; scaling=vanilla"

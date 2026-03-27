@@ -20,7 +20,7 @@ monitor_address = "tcp://127.0.0.1:6380"
 logging_level = "INFO"
 logging_paths = ["/dev/stdout", "/var/log/scaler/scheduler.log"]
 policy_engine_type = "simple"
-policy_content = "allocate=even_load; scaling=no"
+policy_content = "allocate=even_load; scaling=vanilla"
 
 [[worker_manager]]
 type = "baremetal_native"
@@ -51,7 +51,7 @@ class TestReadmeConfig(unittest.TestCase):
         self.assertIn("/dev/stdout", config.logging_config.paths)
         self.assertIn("/var/log/scaler/scheduler.log", config.logging_config.paths)
         self.assertEqual(config.policy.policy_engine_type, "simple")
-        self.assertEqual(config.policy.policy_content, "allocate=even_load; scaling=no")
+        self.assertEqual(config.policy.policy_content, "allocate=even_load; scaling=vanilla")
 
     def test_baremetal_native_section(self) -> None:
         from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig

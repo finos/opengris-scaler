@@ -45,9 +45,6 @@ Paste the result into the TOML below and run the three commands:
    scaler_scheduler tcp://0.0.0.0:8516 \
        --policy-content "allocate=even_load; scaling=vanilla"
 
-.. note::
-   The default scaling policy is ``scaling=no`` (no auto-scaling). The ``scaling=vanilla`` policy is required for
-   the worker manager to dynamically provision and destroy Fargate tasks.
 
 .. code-block:: bash
 
@@ -116,9 +113,6 @@ The scheduler must be reachable from the Fargate tasks. Use your machine's publi
    scaler_scheduler tcp://0.0.0.0:8516 \
        --policy-content "allocate=even_load; scaling=vanilla"
 
-.. note::
-   The default scaling policy is ``scaling=no`` (no auto-scaling). The ``scaling=vanilla`` policy is required for
-   the worker manager to dynamically provision and destroy Fargate tasks.
 
 .. important::
    Fargate tasks must be able to reach the scheduler address over the network. Ensure your security group allows inbound TCP on port 8516 from the Fargate subnet CIDR, and that the scheduler binds to an accessible IP.

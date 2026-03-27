@@ -76,9 +76,6 @@ For dynamic scaling, use ``scaler_worker_manager baremetal_native`` (without ``-
    scaler_scheduler tcp://127.0.0.1:8516 \
        --policy-content "allocate=even_load; scaling=vanilla"
 
-.. note::
-   The default scaling policy is ``scaling=no`` (no auto-scaling). The ``scaling=vanilla`` policy is required for
-   the worker manager to dynamically provision workers.
 
 **Terminal 2 — Baremetal Native Worker Manager:**
 

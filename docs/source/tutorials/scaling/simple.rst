@@ -4,7 +4,7 @@ Simple Engine
 ``simple`` requires a semicolon-delimited ``policy_content`` string with exactly two keys:
 
 * ``allocate``: ``even_load`` or ``capability``
-* ``scaling``: ``no``, ``vanilla``, ``capability``, or ``fixed_elastic``
+* ``scaling``: ``no``, ``vanilla``, or ``capability``
 
 Quick Start (copy/paste)
 ------------------------
@@ -66,9 +66,6 @@ Other quick policy strings for ``simple``:
             # Capability-aware autoscaling (recommended pair)
             --policy-engine-type simple --policy-content "allocate=capability; scaling=capability"
 
-            # Fixed baseline + elastic overflow
-            --policy-engine-type simple --policy-content "allocate=even_load; scaling=fixed_elastic"
-
     .. group-tab:: config.toml
 
         .. code-block:: toml
@@ -81,10 +78,6 @@ Other quick policy strings for ``simple``:
             policy_engine_type = "simple"
             policy_content = "allocate=capability; scaling=capability"
 
-            # Fixed baseline + elastic overflow
-            policy_engine_type = "simple"
-            policy_content = "allocate=even_load; scaling=fixed_elastic"
-
 Allocation
 ----------
 
@@ -94,7 +87,7 @@ The ``allocate`` option controls how tasks are assigned to available workers.
 
   * Spreads tasks across workers evenly.
   * Best for homogeneous workers where any worker can run any task.
-  * Commonly paired with ``scaling=vanilla`` or ``scaling=fixed_elastic``.
+  * Commonly paired with ``scaling=vanilla``.
 
 * ``allocate=capability``
 
@@ -129,13 +122,6 @@ The ``scaling`` option controls how worker capacity grows or shrinks.
   * Groups demand by capability and scales per capability group.
   * Scale up when ``tasks / capable_workers > 5``.
   * Scale down when ``tasks / capable_workers < 0.5``.
-
-* ``scaling=fixed_elastic``
-
-  * Hybrid mode with baseline + elastic overflow.
-  * Primary manager is identified by ``max_task_concurrency == 1`` and started once.
-  * Secondary managers scale elastically with vanilla thresholds (10 up / 1 down).
-  * Primary manager is not scaled down.
 
 Notes:
 

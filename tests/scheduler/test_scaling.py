@@ -39,7 +39,6 @@ from scaler.protocol.python.message import (
 )
 from scaler.protocol.python.status import Resource
 from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.fixed_elastic import FixedElasticScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla import VanillaScalingPolicy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
@@ -391,80 +390,6 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         self.assertIn(bytes(w1), shutdown_ids)
 
 
-class TestFixedElasticScaling(unittest.TestCase):
-    """Integration tests for FixedElasticScalingPolicy with multiple worker managers."""
-
-    def setUp(self) -> None:
-        setup_logger()
-        logging_test_name(self)
-
-        self.scheduler_address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        self.object_storage_config = ObjectStorageAddressConfig("127.0.0.1", get_available_tcp_port())
-
-    def test_fixed_elastic_with_multiple_managers(self):
-        """Test that fixed_elastic scaling works with primary (1 worker) and secondary (4 workers) managers."""
-        object_storage = ObjectStorageServerProcess(
-            object_storage_address=self.object_storage_config,
-            logging_paths=("/dev/stdout",),
-            logging_config_file=None,
-            logging_level="INFO",
-        )
-        object_storage.start()
-        object_storage.wait_until_ready()
-
-        scheduler = SchedulerProcess(
-            address=ZMQConfig.from_string(self.scheduler_address),
-            object_storage_address=self.object_storage_config,
-            monitor_address=None,
-            policy=PolicyConfig(policy_content="allocate=even_load; scaling=fixed_elastic"),
-            io_threads=DEFAULT_IO_THREADS,
-            max_number_of_tasks_waiting=DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
-            client_timeout_seconds=DEFAULT_CLIENT_TIMEOUT_SECONDS,
-            worker_timeout_seconds=DEFAULT_WORKER_TIMEOUT_SECONDS,
-            object_retention_seconds=DEFAULT_OBJECT_RETENTION_SECONDS,
-            load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
-            load_balance_trigger_times=DEFAULT_LOAD_BALANCE_TRIGGER_TIMES,
-            protected=False,
-            event_loop="builtin",
-            logging_paths=("/dev/stdout",),
-            logging_config_file=None,
-            logging_level="INFO",
-        )
-        scheduler.start()
-
-        # Start primary manager with max_task_concurrency=1
-        primary_manager_process = Process(
-            target=_run_native_worker_manager,
-            args=(self.scheduler_address,),
-            kwargs={"max_task_concurrency": 1, "worker_manager_id": "primary"},
-        )
-        primary_manager_process.start()
-
-        # Start secondary manager with max_task_concurrency=4
-        secondary_manager_process = Process(
-            target=_run_native_worker_manager,
-            args=(self.scheduler_address,),
-            kwargs={"max_task_concurrency": 4, "worker_manager_id": "secondary"},
-        )
-        secondary_manager_process.start()
-
-        with Client(self.scheduler_address) as client:
-            # Submit tasks to trigger scaling
-            client.map(time.sleep, [0.1] * 100)
-
-        os.kill(scheduler.pid, signal.SIGINT)
-        scheduler.join()
-
-        object_storage.kill()
-        object_storage.join()
-
-        primary_manager_process.terminate()
-        primary_manager_process.join()
-
-        secondary_manager_process.terminate()
-        secondary_manager_process.join()
-
-
 class TestVanillaScalingPolicy(unittest.TestCase):
     """Unit tests for VanillaScalingPolicy greedy shutdown."""
 
@@ -563,41 +488,6 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         self.assertNotIn(bytes(WorkerID(b"w9")), set(shutdown_ids))
         # First in list should be least busy
         self.assertEqual(shutdown_ids[0], bytes(WorkerID(b"w0")))
-
-
-class TestFixedElasticScalingPolicyUnit(unittest.TestCase):
-    """Unit tests for FixedElasticScalingPolicy greedy shutdown."""
-
-    def setUp(self):
-        setup_logger()
-        self.policy = FixedElasticScalingPolicy()
-
-    def test_primary_never_shuts_down(self):
-        """Primary manager (max_task_concurrency==1) never shuts down even with greedy."""
-        workers = {WorkerID(b"w0"): _create_mock_worker_heartbeat({}, queued_tasks=0)}
-        snapshot = InformationSnapshot(tasks={}, workers=workers)
-        heartbeat = _create_worker_manager_heartbeat(b"primary", max_task_concurrency=1)
-        managed = [WorkerID(b"w0")]
-
-        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
-        self.assertEqual(len(commands), 0)
-
-    def test_secondary_greedy_shutdown(self):
-        """Secondary manager shuts down multiple workers greedily."""
-        workers = {
-            WorkerID(b"w0"): _create_mock_worker_heartbeat({}, queued_tasks=0),
-            WorkerID(b"w1"): _create_mock_worker_heartbeat({}, queued_tasks=1),
-            WorkerID(b"w2"): _create_mock_worker_heartbeat({}, queued_tasks=3),
-        }
-        snapshot = InformationSnapshot(tasks={}, workers=workers)
-        heartbeat = _create_worker_manager_heartbeat(b"secondary", max_task_concurrency=4)
-        managed = list(workers.keys())
-
-        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
-
-        self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
-        self.assertEqual(len(commands[0].worker_ids), 3)
 
 
 def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:

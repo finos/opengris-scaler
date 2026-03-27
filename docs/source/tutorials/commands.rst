@@ -276,7 +276,7 @@ Scheduler arguments
      - Policy engine type selector.
    * - ``-pc``, ``--policy-content``
      - No
-     - ``allocate=even_load; scaling=no``
+     - ``allocate=even_load; scaling=vanilla``
      - Policy definition string.
 
 .. list-table:: Logging options

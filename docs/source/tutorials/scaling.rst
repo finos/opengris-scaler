@@ -19,7 +19,6 @@ Available policy engines:
        * One manager or a small manager set
        * Homogeneous workloads: ``even_load + vanilla``
        * Capability-aware workloads: ``capability + capability``
-       * Baseline + burst: ``fixed_elastic``
    * - :doc:`waterfall_v1 <scaling/waterfall_v1>`
      - Priority-based multi-manager scaling.
      -

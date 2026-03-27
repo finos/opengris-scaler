@@ -16,7 +16,7 @@ class PolicyConfig(ConfigClass):
     )
 
     policy_content: str = dataclasses.field(
-        default="allocate=even_load; scaling=no",
+        default="allocate=even_load; scaling=vanilla",
         metadata=dict(short="-pc", help="Policy string: 'allocate=VAL; scaling=VAL'"),
     )
 
