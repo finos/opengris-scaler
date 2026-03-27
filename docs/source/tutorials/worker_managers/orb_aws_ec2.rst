@@ -10,11 +10,11 @@ Requirements
 
 Before using the ORB AWS EC2 worker adapter, ensure the following requirements are met on the machine that will run the adapter:
 
-1.  **orb-py and boto3**: The ``orb-py`` and ``boto3`` packages must be installed. These can be installed using the ``orb_aws_ec2`` optional dependency of Scaler:
+1.  **orb-py and boto3**: The ``orb-py`` and ``boto3`` packages must be installed. These can be installed using the ``orb`` optional dependency of Scaler:
 
     .. code-block:: bash
 
-        pip install "opengris-scaler[orb_aws_ec2]"
+        pip install "opengris-scaler[orb]"
 
 2.  **AWS CLI**: The AWS Command Line Interface must be installed and configured with a default profile that has permissions to launch, describe, and terminate EC2 instances.
 

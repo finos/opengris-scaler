@@ -537,7 +537,7 @@ aws_region = "us-east-1"
 The ORB AWS EC2 adapter requires `orb-py` and `boto3` to be installed. You can install them with:
 
 ```bash
-$ pip install "opengris-scaler[orb_aws_ec2]"
+$ pip install "opengris-scaler[orb]"
 ```
 
 For more details on configuring ORB AWS EC2, including AWS credentials and instance templates, please refer to the [ORB AWS EC2 Worker Adapter documentation](https://finos.github.io/opengris-scaler/tutorials/worker_manager_adapter/orb_aws_ec2.html).
