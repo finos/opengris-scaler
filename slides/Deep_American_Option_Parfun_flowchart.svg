@@ -1,0 +1,52 @@
+<svg width="100%" viewBox="0 0 682 328" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+
+<!-- Top container: native python -->
+<rect x="20" y="14" width="642" height="98" rx="8" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:0.5px;stroke-dasharray:6px, 3px;"/>
+<text x="32" y="32" dominant-baseline="central" style="fill:rgb(156, 154, 146);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">native python</text>
+
+<!-- Start node -->
+<g><rect x="52" y="54" width="50" height="28" rx="6" style="fill:rgb(68, 68, 65);stroke:rgb(180, 178, 169);stroke-width:0.5px;"/><text x="77" y="68" text-anchor="middle" dominant-baseline="central" style="fill:rgb(180, 178, 169);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">start</text></g>
+
+<!-- Arrow: → box 1 -->
+<line x1="102" y1="68" x2="118" y2="68" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="118" y="54" width="116" height="44" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="176" y="68" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Option 1</text><text x="176" y="86" text-anchor="middle" dominant-baseline="central" style="fill:rgb(93, 202, 165);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">20 vol scenarios</text></g>
+<!-- Arrow: → box 2 -->
+<line x1="234" y1="68" x2="250" y2="68" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="250" y="54" width="116" height="44" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="308" y="68" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Option 2</text><text x="308" y="86" text-anchor="middle" dominant-baseline="central" style="fill:rgb(93, 202, 165);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">20 vol scenarios</text></g>
+<!-- Arrow: → box 3 -->
+<line x1="366" y1="68" x2="382" y2="68" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="382" y="54" width="116" height="44" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="440" y="68" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Option 3</text><text x="440" y="86" text-anchor="middle" dominant-baseline="central" style="fill:rgb(93, 202, 165);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">20 vol scenarios</text></g>
+<!-- Arrow: → box 4 -->
+<line x1="498" y1="68" x2="514" y2="68" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="514" y="54" width="116" height="44" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="572" y="68" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Option 4</text><text x="572" y="86" text-anchor="middle" dominant-baseline="central" style="fill:rgb(93, 202, 165);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">20 vol scenarios</text></g>
+
+<!-- Bottom container: parfun decorated -->
+<rect x="20" y="128" width="642" height="186" rx="8" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:0.5px;stroke-dasharray:6px, 3px;"/>
+<text x="32" y="146" dominant-baseline="central" style="fill:rgb(156, 154, 146);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">parfun decorated</text>
+
+<!-- Start node (parfun) -->
+<g><rect x="316" y="168" width="50" height="28" rx="6" style="fill:rgb(68, 68, 65);stroke:rgb(180, 178, 169);stroke-width:0.5px;"/><text x="341" y="182" text-anchor="middle" dominant-baseline="central" style="fill:rgb(180, 178, 169);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">start</text></g>
+
+<!-- Fan-out arrows: start → each box -->
+<line x1="341" y1="196" x2="149" y2="212" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<line x1="341" y1="196" x2="277" y2="212" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<line x1="341" y1="196" x2="405" y2="212" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<line x1="341" y1="196" x2="533" y2="212" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+
+<!-- Parallel boxes -->
+<g><rect x="91" y="212" width="116" height="44" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="149" y="226" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Option 1</text><text x="149" y="244" text-anchor="middle" dominant-baseline="central" style="fill:rgb(93, 202, 165);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">20 vol scenarios</text></g>
+<g><rect x="219" y="212" width="116" height="44" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="277" y="226" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Option 2</text><text x="277" y="244" text-anchor="middle" dominant-baseline="central" style="fill:rgb(93, 202, 165);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">20 vol scenarios</text></g>
+<g><rect x="347" y="212" width="116" height="44" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="405" y="226" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Option 3</text><text x="405" y="244" text-anchor="middle" dominant-baseline="central" style="fill:rgb(93, 202, 165);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">20 vol scenarios</text></g>
+<g><rect x="475" y="212" width="116" height="44" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="533" y="226" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Option 4</text><text x="533" y="244" text-anchor="middle" dominant-baseline="central" style="fill:rgb(93, 202, 165);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">20 vol scenarios</text></g>
+
+<!-- Converge arrows: each box → concat -->
+<line x1="149" y1="256" x2="341" y2="272" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<line x1="277" y1="256" x2="341" y2="272" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<line x1="405" y1="256" x2="341" y2="272" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<line x1="533" y1="256" x2="341" y2="272" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+
+<!-- Concat results (pill shape) -->
+<g><rect x="285" y="272" width="113" height="28" rx="14" style="fill:rgb(113, 43, 19);stroke:rgb(240, 153, 123);stroke-width:0.5px;"/><text x="341" y="286" text-anchor="middle" dominant-baseline="central" style="fill:rgb(240, 153, 123);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">concat results</text></g>
+
+</svg>

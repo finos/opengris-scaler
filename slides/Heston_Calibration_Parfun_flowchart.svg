@@ -1,0 +1,55 @@
+<svg width="100%" viewBox="0 0 851 304" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+
+<!-- Top container: native python -->
+<rect x="20" y="14" width="811" height="86" rx="8" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:0.5px;stroke-dasharray:6px, 3px;"/>
+<text x="32" y="32" dominant-baseline="central" style="fill:rgb(156, 154, 146);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">native python</text>
+
+<!-- Start node -->
+<g><rect x="52" y="54" width="50" height="28" rx="6" style="fill:rgb(68, 68, 65);stroke:rgb(180, 178, 169);stroke-width:0.5px;"/><text x="77" y="68" text-anchor="middle" dominant-baseline="central" style="fill:rgb(180, 178, 169);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">start</text></g>
+
+<!-- Arrow: → box 1 -->
+<line x1="102" y1="68" x2="118" y2="68" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="118" y="54" width="143" height="32" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="189" y="70" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Guess 1 calibrate</text></g>
+<!-- Arrow: → box 2 -->
+<line x1="261" y1="68" x2="277" y2="68" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="277" y="54" width="143" height="32" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="348" y="70" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Guess 2 calibrate</text></g>
+<!-- Arrow: → box 3 -->
+<line x1="420" y1="68" x2="436" y2="68" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="436" y="54" width="143" height="32" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="507" y="70" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Guess 3 calibrate</text></g>
+<!-- Arrow: → box 4 -->
+<line x1="579" y1="68" x2="595" y2="68" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="595" y="54" width="45" height="32" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="617" y="70" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">...</text></g>
+<!-- Arrow: → box 5 -->
+<line x1="640" y1="68" x2="656" y2="68" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="656" y="54" width="143" height="32" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="727" y="70" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Guess 8 calibrate</text></g>
+
+<!-- Bottom container: parfun decorated -->
+<rect x="20" y="116" width="811" height="174" rx="8" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:0.5px;stroke-dasharray:6px, 3px;"/>
+<text x="32" y="134" dominant-baseline="central" style="fill:rgb(156, 154, 146);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">parfun decorated</text>
+
+<!-- Start node (parfun) -->
+<g><rect x="400" y="156" width="50" height="28" rx="6" style="fill:rgb(68, 68, 65);stroke:rgb(180, 178, 169);stroke-width:0.5px;"/><text x="425" y="170" text-anchor="middle" dominant-baseline="central" style="fill:rgb(180, 178, 169);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">start</text></g>
+
+<!-- Fan-out arrows: start → each box -->
+<line x1="425" y1="184" x2="171" y2="200" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<line x1="425" y1="184" x2="340" y2="200" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<line x1="425" y1="184" x2="509" y2="200" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<line x1="425" y1="184" x2="678" y2="200" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+
+<!-- Parallel boxes -->
+<g><rect x="93" y="200" width="157" height="32" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="171" y="216" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Guess 1-2 calibrate</text></g>
+<g><rect x="262" y="200" width="157" height="32" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="340" y="216" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Guess 3-4 calibrate</text></g>
+<g><rect x="431" y="200" width="157" height="32" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="509" y="216" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Guess 5-6 calibrate</text></g>
+<g><rect x="600" y="200" width="157" height="32" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="678" y="216" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">Guess 7-8 calibrate</text></g>
+
+<!-- Converge arrows: each box → concat -->
+<line x1="171" y1="232" x2="425" y2="248" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<line x1="340" y1="232" x2="425" y2="248" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<line x1="509" y1="232" x2="425" y2="248" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<line x1="678" y1="232" x2="425" y2="248" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+
+<!-- Concat results (pill shape) -->
+<g><rect x="363" y="248" width="124" height="28" rx="14" style="fill:rgb(113, 43, 19);stroke:rgb(240, 153, 123);stroke-width:0.5px;"/><text x="425" y="262" text-anchor="middle" dominant-baseline="central" style="fill:rgb(240, 153, 123);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">concat pick best</text></g>
+
+</svg>
