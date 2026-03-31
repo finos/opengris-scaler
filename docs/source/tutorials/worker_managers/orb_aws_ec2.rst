@@ -1,14 +1,14 @@
-ORB AWS EC2 Worker Adapter
+ORB AWS EC2 Worker Manager
 ==========================
 
-The ORB AWS EC2 worker adapter allows Scaler to dynamically provision workers on AWS EC2 instances using the ORB (Open Resource Broker) system. This is particularly useful for scaling workloads that require significant compute resources or specialized hardware available in the cloud.
+The ORB AWS EC2 worker manager allows Scaler to dynamically provision workers on AWS EC2 instances using the ORB (Open Resource Broker) system. This is particularly useful for scaling workloads that require significant compute resources or specialized hardware available in the cloud.
 
-This tutorial describes the steps required to get up and running with the ORB AWS EC2 adapter.
+This tutorial describes the steps required to get up and running with the ORB AWS EC2 manager.
 
 Requirements
 ------------
 
-Before using the ORB AWS EC2 worker adapter, ensure the following requirements are met on the machine that will run the adapter:
+Before using the ORB AWS EC2 worker manager, ensure the following requirements are met on the machine that will run the manager:
 
 1.  **orb-py and boto3**: The ``orb-py`` and ``boto3`` packages must be installed. These can be installed using the ``orb`` optional dependency of Scaler:
 
@@ -18,12 +18,90 @@ Before using the ORB AWS EC2 worker adapter, ensure the following requirements a
 
 2.  **AWS CLI**: The AWS Command Line Interface must be installed and configured with a default profile that has permissions to launch, describe, and terminate EC2 instances.
 
-3.  **Network Connectivity**: The adapter must be able to communicate with AWS APIs and the Scaler scheduler.
+3.  **Network Connectivity**: The manager must be able to communicate with AWS APIs and the Scaler scheduler.
+
+AWS Permissions
+---------------
+
+The AWS credentials used by the manager must have the following IAM permissions:
+
+.. code-block:: json
+
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "ec2:CancelSpotFleetRequests",
+                    "ec2:CreateFleet",
+                    "ec2:CreateKeyPair",
+                    "ec2:CreateLaunchTemplate",
+                    "ec2:CreateSecurityGroup",
+                    "ec2:CreateTags",
+                    "ec2:DeleteFleet",
+                    "ec2:DeleteKeyPair",
+                    "ec2:DeleteLaunchTemplate",
+                    "ec2:DeleteNetworkInterface",
+                    "ec2:DeleteSecurityGroup",
+                    "ec2:DeleteVolume",
+                    "ec2:DescribeFleets",
+                    "ec2:DescribeImages",
+                    "ec2:DescribeInstanceStatus",
+                    "ec2:DescribeInstances",
+                    "ec2:DescribeInstanceTypes",
+                    "ec2:DescribeLaunchTemplates",
+                    "ec2:DescribeNetworkInterfaces",
+                    "ec2:DescribeSecurityGroups",
+                    "ec2:DescribeSpotFleetInstances",
+                    "ec2:DescribeSpotFleetRequests",
+                    "ec2:DescribeSubnets",
+                    "ec2:DescribeVolumes",
+                    "ec2:DescribeVpcs",
+                    "ec2:RequestSpotFleet",
+                    "ec2:RunInstances",
+                    "ec2:TerminateInstances",
+                    "autoscaling:CreateAutoScalingGroup",
+                    "autoscaling:CreateLaunchConfiguration",
+                    "autoscaling:CreateOrUpdateTags",
+                    "autoscaling:DeleteAutoScalingGroup",
+                    "autoscaling:DeleteLaunchConfiguration",
+                    "autoscaling:DescribeAutoScalingGroups",
+                    "autoscaling:DescribeAutoScalingInstances",
+                    "autoscaling:UpdateAutoScalingGroup",
+                    "iam:GetRole",
+                    "iam:PassRole",
+                    "ssm:GetParameter",
+                    "sts:GetCallerIdentity"
+                ],
+                "Resource": "*"
+            }
+        ]
+    }
+
+The EC2 and Auto Scaling permissions are used for provisioning and managing worker instances. ``iam:PassRole``
+is required to associate an IAM role with launched instances. ``ssm:GetParameter`` is used to resolve AMI IDs
+from the SSM Parameter Store. ``sts:GetCallerIdentity`` is used to validate credentials on startup.
+
+.. note::
+    If you do not intend to use Spot Fleet or Auto Scaling, you may omit the ``ec2:*SpotFleet*``,
+    ``ec2:*Fleet*``, and ``autoscaling:*`` actions. The core permissions needed for basic on-demand
+    instance provisioning are the ``ec2:Describe*``, ``ec2:RunInstances``, ``ec2:TerminateInstances``,
+    ``ec2:CreateTags``, ``ec2:CreateLaunchTemplate``, ``ec2:DeleteLaunchTemplate``,
+    ``ec2:CreateKeyPair``, ``ec2:DeleteKeyPair``, ``ec2:CreateSecurityGroup``,
+    ``ec2:DeleteSecurityGroup``, ``iam:PassRole``, and ``sts:GetCallerIdentity`` permissions.
+
+If you plan to use Spot Fleet, the ``AWSServiceRoleForEC2SpotFleet`` service-linked role must exist in your
+account. If it does not, create it with:
+
+.. code-block:: bash
+
+    aws iam create-service-linked-role --aws-service-name spotfleet.amazonaws.com
 
 Getting Started
 ---------------
 
-To start the ORB AWS EC2 worker adapter, use the ``scaler_worker_manager orb_aws_ec2`` subcommand:
+To start the ORB AWS EC2 worker manager, use the ``scaler_worker_manager orb_aws_ec2`` subcommand:
 
 .. code-block:: bash
 
@@ -65,7 +143,7 @@ Equivalent configuration using a TOML file with ``scaler``:
 Networking Configuration
 ------------------------
 
-Workers launched by the ORB AWS EC2 adapter are EC2 instances and require an externally-reachable IP address for the scheduler.
+Workers launched by the ORB AWS EC2 manager are EC2 instances and require an externally-reachable IP address for the scheduler.
 
 *   **Internal Communication**: If the machine running the scheduler is another EC2 instance in the same VPC, you can use EC2 private IP addresses.
 *   **Public Internet**: If communicating over the public internet, it is highly recommended to set up robust security rules and/or a VPN to protect the cluster.
@@ -108,10 +186,10 @@ Supported Parameters
 .. note::
     For more details on how to configure Scaler, see the :doc:`../commands` section.
 
-The ORB AWS EC2 worker adapter supports ORB-specific configuration parameters as well as common worker adapter parameters.
+The ORB AWS EC2 worker manager supports ORB-specific configuration parameters as well as common worker manager parameters.
 
 ORB AWS EC2 Template Configuration
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 *   ``--image-id`` (Required): AMI ID for the worker instances.
 *   ``--instance-type``: EC2 instance type (default: ``t2.micro``).
@@ -119,7 +197,7 @@ ORB AWS EC2 Template Configuration
 *   ``--key-name``: AWS key pair name for the instances. If not provided, a temporary key pair will be created and deleted on cleanup.
 *   ``--subnet-id``: AWS subnet ID where the instances will be launched. If not provided, it attempts to discover the default subnet in the default VPC.
 *   ``--security-group-ids``: Comma-separated list of AWS security group IDs.
-*   ``--allowed-ip``: IP address to allow in the security group (if created automatically). Defaults to the adapter's external IP.
+*   ``--allowed-ip``: IP address to allow in the security group (if created automatically). Defaults to the manager's external IP.
 *   ``--orb-config-path``: Path to the ORB root directory (default: ``src/scaler/drivers/orb``).
 
 Common Parameters
@@ -130,16 +208,16 @@ For a full list of common parameters including networking, worker configuration,
 Cleanup
 -------
 
-The ORB AWS EC2 worker adapter is designed to be self-cleaning, but it is important to be aware of the resources it manages:
+The ORB AWS EC2 worker manager is designed to be self-cleaning, but it is important to be aware of the resources it manages:
 
-*   **Key Pairs**: If a ``--key-name`` is not provided, the adapter creates a temporary AWS key pair.
-*   **Security Groups**: If ``--security-group-ids`` are not provided, the adapter creates a temporary security group to allow communication.
+*   **Key Pairs**: If a ``--key-name`` is not provided, the manager creates a temporary AWS key pair.
+*   **Security Groups**: If ``--security-group-ids`` are not provided, the manager creates a temporary security group to allow communication.
 *   **Launch Templates**: ORB may additionally create EC2 Launch Templates as part of the machine provisioning process.
 
-The adapter attempts to delete these temporary resources and terminate all launched EC2 instances when it shuts down gracefully. However, in the event of an ungraceful crash or network failure, some resources may persist in your AWS account.
+The manager attempts to delete these temporary resources and terminate all launched EC2 instances when it shuts down gracefully. However, in the event of an ungraceful crash or network failure, some resources may persist in your AWS account.
 
 .. tip::
     It is recommended to periodically check your AWS console for any orphaned resources (instances, security groups, key pairs, or launch templates) and clean them up manually if necessary to avoid unexpected costs.
 
 .. warning::
-    **Subnet and Security Groups**: Currently, specifying ``--subnet-id`` or ``--security-group-ids`` via configuration might not have the intended effect as the adapter is designed to auto-discover or create these resources. Specifically, the adapter may still attempt to use default subnets or create its own temporary security groups regardless of these parameters.
+    **Subnet and Security Groups**: Currently, specifying ``--subnet-id`` or ``--security-group-ids`` via configuration might not have the intended effect as the manager is designed to auto-discover or create these resources. Specifically, the manager may still attempt to use default subnets or create its own temporary security groups regardless of these parameters.
