@@ -29,6 +29,7 @@ Status = WorkerManagerCommandResponse.Status
 class NativeWorkerManager:
     def __init__(self, config: NativeWorkerManagerConfig):
         self._address = config.worker_manager_config.scheduler_address
+        self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
         self._worker_manager_id = config.worker_manager_id.encode()
@@ -83,7 +84,7 @@ class NativeWorkerManager:
     def _create_worker(self) -> Worker:
         return Worker(
             name=f"{self._worker_prefix}|{uuid.uuid4().hex}",
-            address=self._address,
+            address=self._worker_scheduler_address,
             object_storage_address=self._object_storage_address,
             preload=self._preload,
             capabilities=self._capabilities,

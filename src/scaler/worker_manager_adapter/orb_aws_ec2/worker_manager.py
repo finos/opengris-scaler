@@ -57,6 +57,7 @@ class ORBAWSEC2WorkerAdapter:
     def __init__(self, config: ORBAWSEC2WorkerAdapterConfig):
         self._config = config
         self._address = config.worker_manager_config.scheduler_address
+        self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
         self._max_task_concurrency = config.worker_manager_config.max_task_concurrency
@@ -265,7 +266,7 @@ class ORBAWSEC2WorkerAdapter:
         # where cpu_count is determined by the machine type configured by the user.
         script = f"""#!/bin/bash
 INSTANCE_ID=$(ec2-metadata --instance-id --quiet)
-nohup /usr/local/bin/scaler_worker_manager baremetal_native {adapter_config.scheduler_address.to_address()} \
+nohup /usr/local/bin/scaler_worker_manager baremetal_native {self._worker_scheduler_address.to_address()} \
     --mode fixed \
     --worker-type ORB \
     --worker-manager-id "${{INSTANCE_ID}}" \

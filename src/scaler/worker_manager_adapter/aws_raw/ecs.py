@@ -37,6 +37,7 @@ class _WorkerGroupInfo:
 class ECSWorkerManager:
     def __init__(self, config: ECSWorkerManagerConfig):
         self._address = config.worker_manager_config.scheduler_address
+        self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
         self._worker_manager_id = config.worker_manager_id.encode()
@@ -213,7 +214,7 @@ class ECSWorkerManager:
             return [], Status.TooManyWorkers
 
         command = (
-            f"scaler_worker_manager native {self._address.to_address()} "
+            f"scaler_worker_manager native {self._worker_scheduler_address.to_address()} "
             f"--mode fixed "
             f"--worker-type ECS "
             f"--max-task-concurrency {self._ecs_task_cpu} "
