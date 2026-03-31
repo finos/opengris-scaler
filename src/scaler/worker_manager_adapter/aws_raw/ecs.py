@@ -214,7 +214,7 @@ class ECSWorkerManager:
             return [], Status.TooManyWorkers
 
         command = (
-            f"scaler_worker_manager native {self._worker_scheduler_address.to_address()} "
+            f"scaler_worker_manager baremetal_native {self._worker_scheduler_address.to_address()} "
             f"--mode fixed "
             f"--worker-type ECS "
             f"--max-task-concurrency {self._ecs_task_cpu} "
