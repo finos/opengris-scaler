@@ -1,3 +1,4 @@
+# PYTHON_ARGCOMPLETE_OK
 import curses
 import functools
 from typing import Dict, List, Literal, Union

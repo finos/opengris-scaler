@@ -1,6 +1,9 @@
+# PYTHON_ARGCOMPLETE_OK
 import argparse
 import sys
 from typing import Any, Dict, Type, Union, cast
+
+import argcomplete
 
 from scaler.config.config_class import ConfigClass
 from scaler.config.loading import _load_toml
@@ -30,10 +33,22 @@ _TYPE_MAP: Dict[str, Type[ConfigClass]] = {
 
 
 def main() -> None:
+    # Build a full parser tree upfront so argcomplete can traverse subcommand-specific
+    # options.  This parser is only used for tab completion; actual parsing is done by
+    # the two-pass logic below.  argcomplete.autocomplete() exits immediately in
+    # completion mode and is a no-op otherwise.
+    _completion_parser = argparse.ArgumentParser(prog="scaler_worker_manager", add_help=False)
+    _completion_parser.add_argument("--config", "-c")
+    _subparsers = _completion_parser.add_subparsers(dest="subcommand")
+    for _tag, _config_cls in _TYPE_MAP.items():
+        _sub = _subparsers.add_parser(_tag, add_help=False)
+        _config_cls.configure_parser(_sub)
+    argcomplete.autocomplete(_completion_parser)
+
     # Pass 1: extract subcommand and --config before building the type-specific parser.
     pre_parser = argparse.ArgumentParser(add_help=False)
     pre_parser.add_argument("--config", "-c")
-    pre_parser.add_argument("subcommand")
+    pre_parser.add_argument("subcommand", metavar="{" + ",".join(_TYPE_MAP.keys()) + "}")
     pre_args, remaining_argv = pre_parser.parse_known_args()
 
     wm_type = pre_args.subcommand

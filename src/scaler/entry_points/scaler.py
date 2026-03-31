@@ -1,3 +1,4 @@
+# PYTHON_ARGCOMPLETE_OK
 import dataclasses
 import multiprocessing
 import sys

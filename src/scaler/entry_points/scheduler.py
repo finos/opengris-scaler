@@ -1,3 +1,4 @@
+# PYTHON_ARGCOMPLETE_OK
 from typing import Optional
 
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
