@@ -3,6 +3,8 @@ import dataclasses
 import sys
 from typing import Any, Dict, List, Optional, Type, TypeVar
 
+import argcomplete
+
 from scaler.config.loading import _env_defaults, _find_config_arg, _load_toml, _toml_section_defaults
 from scaler.config.reconstruction import _from_args, _from_args_with_subcommands
 
@@ -278,6 +280,7 @@ class ConfigClass:
             toml_data = _load_toml(config_path) if config_path else {}
 
             _build_subparser_tree(cls, parser, parent_cls=cls, sections=[section], dest="_sub", toml_data=toml_data)
+            argcomplete.autocomplete(parser)
 
             kwargs = vars(parser.parse_args())
             kwargs.pop("config", None)
@@ -289,6 +292,7 @@ class ConfigClass:
         if not disable_config_flag:
             parser.add_argument("--config", "-c", metavar="FILE", help="Path to the TOML configuration file.")
         cls.configure_parser(parser)
+        argcomplete.autocomplete(parser)
 
         # Pass 1: locate --config without failing on unrecognised args.
         config_path_str: Optional[str] = vars(parser.parse_known_args()[0]).get("config")
@@ -343,6 +347,7 @@ class ConfigClass:
         """
         parser = argparse.ArgumentParser(prog=program_name, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         cls.configure_parser(parser)
+        argcomplete.autocomplete(parser)
 
         toml_defs = _toml_section_defaults(section_data, cls)
         injected_dests: Dict[str, Any] = {}

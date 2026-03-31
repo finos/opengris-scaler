@@ -1,3 +1,4 @@
+# PYTHON_ARGCOMPLETE_OK
 from typing import Optional
 
 from scaler.config.section.webgui import WebGUIConfig
