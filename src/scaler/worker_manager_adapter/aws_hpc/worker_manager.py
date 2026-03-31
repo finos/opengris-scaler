@@ -16,7 +16,7 @@ class AWSHPCWorkerManager:
 
         worker = AWSBatchWorker(
             name=config.name or "aws-batch-worker",
-            address=config.worker_manager_config.scheduler_address,
+            address=config.worker_manager_config.effective_worker_scheduler_address,
             object_storage_address=config.worker_manager_config.object_storage_address,
             job_queue=config.job_queue,
             job_definition=config.job_definition,

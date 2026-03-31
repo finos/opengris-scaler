@@ -10,7 +10,19 @@ from scaler.config.types.zmq import ZMQConfig
 @dataclasses.dataclass
 class WorkerManagerConfig(ConfigClass):
     scheduler_address: ZMQConfig = dataclasses.field(
-        metadata=dict(positional=True, required=True, help="scheduler address to connect workers to")
+        metadata=dict(positional=True, required=True, help="scheduler address the worker manager itself connects to")
+    )
+
+    public_scheduler_address: Optional[ZMQConfig] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            short="-psa",
+            help=(
+                "scheduler address forwarded to spawned workers; defaults to scheduler_address if not set. "
+                "Use this when the manager and workers are on different networks (e.g. NAT/EC2 setups) "
+                "and the manager's local address is not reachable from remote workers."
+            ),
+        ),
     )
 
     object_storage_address: Optional[ObjectStorageAddressConfig] = dataclasses.field(
@@ -28,6 +40,10 @@ class WorkerManagerConfig(ConfigClass):
             ),
         ),
     )
+
+    @property
+    def effective_worker_scheduler_address(self) -> ZMQConfig:
+        return self.public_scheduler_address if self.public_scheduler_address is not None else self.scheduler_address
 
     def __post_init__(self) -> None:
         if self.max_task_concurrency != -1 and self.max_task_concurrency < 0:

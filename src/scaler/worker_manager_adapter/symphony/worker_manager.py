@@ -28,6 +28,7 @@ Status = WorkerManagerCommandResponse.Status
 class SymphonyWorkerManager:
     def __init__(self, config: SymphonyWorkerManagerConfig):
         self._address = config.worker_manager_config.scheduler_address
+        self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._service_name = config.service_name
         self._max_task_concurrency = config.worker_manager_config.max_task_concurrency
@@ -93,7 +94,7 @@ class SymphonyWorkerManager:
 
         worker = SymphonyWorker(
             name=f"SYM|{uuid.uuid4().hex}",
-            address=self._address,
+            address=self._worker_scheduler_address,
             object_storage_address=self._object_storage_address,
             service_name=self._service_name,
             base_concurrency=self._max_task_concurrency,
