@@ -13,19 +13,6 @@ The example below starts a scheduler and one native worker manager using ``vanil
 
 .. tabs::
 
-    .. group-tab:: command line
-
-        .. code-block:: bash
-
-            $ scaler_scheduler tcp://127.0.0.1:8516 \
-                --object-storage-address tcp://127.0.0.1:8517 \
-                --policy-engine-type simple \
-                --policy-content "allocate=even_load; scaling=vanilla" &
-            $ scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 \
-                --object-storage-address tcp://127.0.0.1:8517 \
-                --worker-manager-id NAT|default \
-                --max-task-concurrency 8
-
     .. group-tab:: config.toml
 
         .. code-block:: toml
@@ -52,19 +39,22 @@ The example below starts a scheduler and one native worker manager using ``vanil
 
             $ scaler config.toml
 
+    .. group-tab:: command line
+
+        .. code-block:: bash
+
+            $ scaler_scheduler tcp://127.0.0.1:8516 \
+                --object-storage-address tcp://127.0.0.1:8517 \
+                --policy-engine-type simple \
+                --policy-content "allocate=even_load; scaling=vanilla" &
+            $ scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 \
+                --object-storage-address tcp://127.0.0.1:8517 \
+                --worker-manager-id NAT|default \
+                --max-task-concurrency 8
+
 Other quick policy strings for ``simple``:
 
 .. tabs::
-
-    .. group-tab:: command line
-
-        .. code-block:: text
-
-            # No autoscaling
-            --policy-engine-type simple --policy-content "allocate=even_load; scaling=no"
-
-            # Capability-aware autoscaling (recommended pair)
-            --policy-engine-type simple --policy-content "allocate=capability; scaling=capability"
 
     .. group-tab:: config.toml
 
@@ -77,6 +67,16 @@ Other quick policy strings for ``simple``:
             # Capability-aware autoscaling (recommended pair)
             policy_engine_type = "simple"
             policy_content = "allocate=capability; scaling=capability"
+
+    .. group-tab:: command line
+
+        .. code-block:: text
+
+            # No autoscaling
+            --policy-engine-type simple --policy-content "allocate=even_load; scaling=no"
+
+            # Capability-aware autoscaling (recommended pair)
+            --policy-engine-type simple --policy-content "allocate=capability; scaling=capability"
 
 Allocation
 ----------

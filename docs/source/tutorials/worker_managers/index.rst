@@ -38,26 +38,26 @@ Worker Managers Overview
      - Description
      - Scaling
      - Infrastructure
-   * - :doc:`Baremetal Native <baremetal_native>`
-     - Spawns workers as local subprocesses. The simplest worker manager and the recommended starting point.
-     - Dynamic or fixed
-     - Local machine
    * - :doc:`AWS HPC Batch <aws_hpc_batch>`
      - Runs each task as an AWS Batch job on managed EC2 compute.
      - Concurrency-limited
      - AWS Batch + S3
-   * - :doc:`AWS Raw ECS <aws_raw_ecs>`
-     - Provisions full Scaler worker processes as Fargate tasks.
-     - Dynamic (scheduler-driven)
-     - AWS ECS Fargate
-   * - :doc:`Symphony <symphony>`
-     - Offloads tasks to IBM Spectrum Symphony via the SOAM API.
-     - Concurrency-limited
-     - IBM Symphony
    * - :doc:`ORB AWS EC2 <orb_aws_ec2>`
      - Dynamically provisions workers on AWS EC2 instances using the ORB system.
      - Dynamic (scheduler-driven)
      - AWS EC2
+   * - :doc:`Symphony <symphony>`
+     - Offloads tasks to IBM Spectrum Symphony via the SOAM API.
+     - Concurrency-limited
+     - IBM Symphony
+   * - :doc:`AWS Raw ECS <aws_raw_ecs>`
+     - Provisions full Scaler worker processes as Fargate tasks.
+     - Dynamic (scheduler-driven)
+     - AWS ECS Fargate
+   * - :doc:`Baremetal Native <baremetal_native>`
+     - Spawns workers as local subprocesses. The simplest worker manager and the recommended starting point.
+     - Dynamic or fixed
+     - Local machine
 
 Although worker managers target different infrastructures, many configuration options are shared.
 See :doc:`Common Worker Manager Parameters <common_parameters>` for these shared settings.
@@ -72,9 +72,9 @@ The :ref:`scaler <cmd-scaler>` command boots the full stack from a single TOML c
     :maxdepth: 1
     :hidden:
 
-    baremetal_native
     aws_hpc_batch
-    aws_raw_ecs
-    symphony
     orb_aws_ec2
+    symphony
+    aws_raw_ecs
+    baremetal_native
     common_parameters

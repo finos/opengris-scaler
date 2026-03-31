@@ -11,23 +11,6 @@ This example uses two native worker managers to simulate two tiers.
 
 .. tabs::
 
-    .. group-tab:: command line
-
-        .. code-block:: bash
-
-            $ scaler_scheduler tcp://127.0.0.1:8516 \
-                --object-storage-address tcp://127.0.0.1:8517 \
-                --policy-engine-type waterfall_v1 \
-                --policy-content $'1,NAT|local1,8\n2,NAT|burst1,50' &
-            $ scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 \
-                --object-storage-address tcp://127.0.0.1:8517 \
-                --worker-manager-id NAT|local1 \
-                --max-task-concurrency 8 &
-            $ scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 \
-                --object-storage-address tcp://127.0.0.1:8517 \
-                --worker-manager-id NAT|burst1 \
-                --max-task-concurrency 50
-
     .. group-tab:: config.toml
 
         .. code-block:: toml
@@ -64,6 +47,23 @@ This example uses two native worker managers to simulate two tiers.
         .. code-block:: bash
 
             $ scaler config.toml
+
+    .. group-tab:: command line
+
+        .. code-block:: bash
+
+            $ scaler_scheduler tcp://127.0.0.1:8516 \
+                --object-storage-address tcp://127.0.0.1:8517 \
+                --policy-engine-type waterfall_v1 \
+                --policy-content $'1,NAT|local1,8\n2,NAT|burst1,50' &
+            $ scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 \
+                --object-storage-address tcp://127.0.0.1:8517 \
+                --worker-manager-id NAT|local1 \
+                --max-task-concurrency 8 &
+            $ scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 \
+                --object-storage-address tcp://127.0.0.1:8517 \
+                --worker-manager-id NAT|burst1 \
+                --max-task-concurrency 50
 
 Policy Content (CSV-like)
 -------------------------
