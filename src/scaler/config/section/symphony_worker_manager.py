@@ -15,15 +15,9 @@ class SymphonyWorkerManagerConfig(ConfigClass):
 
     worker_manager_config: WorkerManagerConfig
 
-    worker_manager_id: str = dataclasses.field(
-        metadata=dict(short="-wmi", required=True, help="worker manager ID to identify this manager")
-    )
-
     worker_config: WorkerConfig = dataclasses.field(default_factory=WorkerConfig)
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
 
     def __post_init__(self):
-        if not self.worker_manager_id:
-            raise ValueError("worker_manager_id cannot be an empty string.")
         if not self.service_name:
             raise ValueError("service_name cannot be an empty string.")

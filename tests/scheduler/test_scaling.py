@@ -531,10 +531,10 @@ def _run_native_worker_manager(
         NativeWorkerManagerConfig(
             worker_manager_config=WorkerManagerConfig(
                 scheduler_address=ZMQConfig.from_string(scheduler_address),
+                worker_manager_id=worker_manager_id,
                 object_storage_address=None,
                 max_task_concurrency=max_task_concurrency,
             ),
-            worker_manager_id=worker_manager_id,
             worker_config=WorkerConfig(
                 per_worker_capabilities=WorkerCapabilities({}),
                 per_worker_task_queue_size=10,

@@ -106,6 +106,7 @@ To start the ORB AWS EC2 worker manager, use the ``scaler_worker_manager orb_aws
 .. code-block:: bash
 
     scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
+        --worker-manager-id wm-orb \
         --public-scheduler-address tcp://<SCHEDULER_EXTERNAL_IP>:8516 \
         --object-storage-address tcp://<OSS_EXTERNAL_IP>:8517 \
         --instance-type t3.medium \
@@ -126,6 +127,7 @@ Equivalent configuration using a TOML file with ``scaler``:
     [[worker_manager]]
     type = "orb_aws_ec2"
     scheduler_address = "tcp://<SCHEDULER_IP>:8516"
+    worker_manager_id = "wm-orb"
     public_scheduler_address = "tcp://<SCHEDULER_EXTERNAL_IP>:8516"
     object_storage_address = "tcp://<OSS_EXTERNAL_IP>:8517"
     # Option A: auto-install (both required) — requirements_txt can be a file path or an inline string
@@ -166,6 +168,7 @@ installed on the worker; ``opengris-scaler`` must be included.
 
     # Requirements as a file path
     scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
+        --worker-manager-id wm-orb \
         --public-scheduler-address tcp://<SCHEDULER_EXTERNAL_IP>:8516 \
         --object-storage-address tcp://<OSS_EXTERNAL_IP>:8517 \
         --instance-type t3.medium \
@@ -174,6 +177,7 @@ installed on the worker; ``opengris-scaler`` must be included.
 
     # Requirements as a string literal
     scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
+        --worker-manager-id wm-orb \
         --public-scheduler-address tcp://<SCHEDULER_EXTERNAL_IP>:8516 \
         --object-storage-address tcp://<OSS_EXTERNAL_IP>:8517 \
         --instance-type t3.medium \
@@ -187,6 +191,7 @@ Or equivalently in a TOML file:
     [[worker_manager]]
     type = "orb_aws_ec2"
     scheduler_address = "tcp://<SCHEDULER_IP>:8516"
+    worker_manager_id = "wm-orb"
     public_scheduler_address = "tcp://<SCHEDULER_EXTERNAL_IP>:8516"
     object_storage_address = "tcp://<OSS_EXTERNAL_IP>:8517"
     instance_type = "t3.medium"
@@ -208,6 +213,7 @@ environment must be tightly controlled.
 .. code-block:: bash
 
     scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
+        --worker-manager-id wm-orb \
         --public-scheduler-address tcp://<SCHEDULER_EXTERNAL_IP>:8516 \
         --object-storage-address tcp://<OSS_EXTERNAL_IP>:8517 \
         --instance-type t3.medium \
@@ -249,7 +255,7 @@ ORB AWS EC2 Template Configuration
 Common Parameters
 ~~~~~~~~~~~~~~~~~
 
-For a full list of common parameters including networking, worker configuration, and logging, see :doc:`common_parameters`.
+For a full list of common parameters including networking (``--worker-manager-id``, ``--max-task-concurrency``, ``--object-storage-address``, etc.), worker configuration, and logging, see :doc:`common_parameters`.
 
 Cleanup
 -------

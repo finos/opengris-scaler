@@ -95,10 +95,10 @@ class SchedulerClusterCombo:
             NativeWorkerManagerConfig(
                 worker_manager_config=WorkerManagerConfig(
                     scheduler_address=self._address,
+                    worker_manager_id=worker_manager_id,
                     object_storage_address=self._object_storage_address,
                     max_task_concurrency=n_workers,
                 ),
-                worker_manager_id=worker_manager_id,
                 mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),

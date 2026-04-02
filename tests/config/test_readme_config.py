@@ -72,7 +72,7 @@ class TestReadmeConfig(unittest.TestCase):
         self.assertIsInstance(config.mode, NativeWorkerManagerMode)
         self.assertEqual(config.mode, NativeWorkerManagerMode.FIXED)
         self.assertEqual(config.worker_manager_config.max_task_concurrency, 8)
-        self.assertEqual(config.worker_manager_id, "my-manager")
+        self.assertEqual(config.worker_manager_config.worker_manager_id, "my-manager")
         self.assertEqual(config.worker_config.task_timeout_seconds, 600)
         self.assertIn("linux", config.worker_config.per_worker_capabilities.capabilities)
         self.assertEqual(config.logging_config.level, "INFO")

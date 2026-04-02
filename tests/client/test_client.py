@@ -366,10 +366,10 @@ class TestClientPreload(unittest.TestCase):
             NativeWorkerManagerConfig(
                 worker_manager_config=WorkerManagerConfig(
                     scheduler_address=self.combo._address,
+                    worker_manager_id="test_manager",
                     object_storage_address=self.combo._object_storage_address,
                     max_task_concurrency=1,
                 ),
-                worker_manager_id="test_manager",
                 mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities({}),

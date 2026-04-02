@@ -773,6 +773,7 @@ ORB (Open Resource Broker) worker manager — dynamically provisions workers on 
             [[worker_manager]]
             type = "orb_aws_ec2"
             scheduler_address = "tcp://127.0.0.1:6378"
+            worker_manager_id = "wm-orb"
             object_storage_address = "tcp://127.0.0.1:6379"
             image_id = "ami-0528819f94f4f5fa5"
             instance_type = "t3.medium"
@@ -789,6 +790,7 @@ ORB (Open Resource Broker) worker manager — dynamically provisions workers on 
         .. code-block:: bash
 
             $ scaler_worker_manager orb_aws_ec2 tcp://127.0.0.1:6378 \
+                --worker-manager-id wm-orb \
                 --object-storage-address tcp://127.0.0.1:6379 \
                 --image-id ami-0528819f94f4f5fa5 \
                 --instance-type t3.medium \

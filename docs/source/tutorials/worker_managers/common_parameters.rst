@@ -10,6 +10,7 @@ Networking
 ----------
 
 * ``scheduler_address`` (positional, required): The address of the scheduler (e.g., ``tcp://127.0.0.1:8516``).
+* ``--worker-manager-id`` (``-wmi``, required): A stable identifier for this worker manager instance. Must be unique across all managers connected to the same scheduler. The scheduler uses this ID to associate workers with their manager and to detect duplicate connections.
 * ``--max-task-concurrency`` (``-mtc``): Maximum number of workers that can be started (default: number of CPUs − 1). Set to ``-1`` for no limit.
 * ``--object-storage-address`` (``-osa``): Address of the object storage server (e.g., ``tcp://127.0.0.1:8517``). If not set, defaults to the scheduler address with port + 1.
 * ``--config`` (``-c``): Path to a TOML configuration file.

@@ -32,7 +32,7 @@ class NativeWorkerManager:
         self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
-        self._worker_manager_id = config.worker_manager_id.encode()
+        self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
         self._io_threads = config.worker_config.io_threads
         self._task_queue_size = config.worker_config.per_worker_task_queue_size
         self._max_task_concurrency = config.worker_manager_config.max_task_concurrency

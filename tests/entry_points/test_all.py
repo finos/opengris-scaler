@@ -238,6 +238,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
             "worker_manager": {
                 "type": "orb_aws_ec2",
                 "scheduler_address": "tcp://127.0.0.1:6378",
+                "worker_manager_id": "wm-orb",
                 "image_id": "ami-0528819f94f4f5fa5",
             }
         }
@@ -250,6 +251,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
             "worker_manager": {
                 "type": "orb_aws_ec2",
                 "scheduler_address": "tcp://127.0.0.1:6378",
+                "worker_manager_id": "wm-orb",
                 "image_id": "ami-0528819f94f4f5fa5",
                 "instance_type": "t3.medium",
                 "aws_region": "eu-west-1",
@@ -270,6 +272,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
                 {
                     "type": "orb_aws_ec2",
                     "scheduler_address": "tcp://127.0.0.1:6378",
+                    "worker_manager_id": "wm-orb",
                     "image_id": "ami-0528819f94f4f5fa5",
                 },
             ]
@@ -290,10 +293,11 @@ class TestRunWorkerManager(unittest.TestCase):
         from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
         from scaler.config.types.zmq import ZMQConfig
 
-        wmc = WorkerManagerConfig(scheduler_address=ZMQConfig.from_string("tcp://localhost:6378"))
+        wmc = WorkerManagerConfig(
+            scheduler_address=ZMQConfig.from_string("tcp://localhost:6378"), worker_manager_id="wm-test"
+        )
         return NativeWorkerManagerConfig(
             worker_manager_config=wmc,
-            worker_manager_id="wm-test",
             worker_config=WorkerConfig(event_loop=event_loop),
             logging_config=LoggingConfig(level=logging_level),
         )
@@ -331,7 +335,9 @@ class TestRunWorkerManager(unittest.TestCase):
         from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
         from scaler.config.types.zmq import ZMQConfig
 
-        wmc = WorkerManagerConfig(scheduler_address=ZMQConfig.from_string("tcp://localhost:6378"))
+        wmc = WorkerManagerConfig(
+            scheduler_address=ZMQConfig.from_string("tcp://localhost:6378"), worker_manager_id="wm-test"
+        )
         return ORBAWSEC2WorkerAdapterConfig(
             worker_manager_config=wmc,
             image_id="ami-0528819f94f4f5fa5",

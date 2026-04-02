@@ -68,6 +68,8 @@ class ORBAWSEC2WorkerAdapter:
         self._logging_level = config.logging_config.level
         self._logging_config_file = config.logging_config.config_file
 
+        self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
+
         self._sdk: Optional[Any] = None
         self._ec2: Optional[Any] = None
         self._context = None
@@ -216,7 +218,7 @@ class ORBAWSEC2WorkerAdapter:
             WorkerManagerHeartbeat.new_msg(
                 max_task_concurrency=self._max_task_concurrency,
                 capabilities=self._capabilities,
-                worker_manager_id=self._ident,
+                worker_manager_id=self._worker_manager_id,
             )
         )
 

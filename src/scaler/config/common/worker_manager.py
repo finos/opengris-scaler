@@ -13,6 +13,10 @@ class WorkerManagerConfig(ConfigClass):
         metadata=dict(positional=True, required=True, help="scheduler address the worker manager itself connects to")
     )
 
+    worker_manager_id: str = dataclasses.field(
+        metadata=dict(short="-wmi", required=True, help="worker manager ID to identify this manager")
+    )
+
     public_scheduler_address: Optional[ZMQConfig] = dataclasses.field(
         default=None,
         metadata=dict(
@@ -46,5 +50,7 @@ class WorkerManagerConfig(ConfigClass):
         return self.public_scheduler_address if self.public_scheduler_address is not None else self.scheduler_address
 
     def __post_init__(self) -> None:
+        if not self.worker_manager_id:
+            raise ValueError("worker_manager_id cannot be an empty string.")
         if self.max_task_concurrency != -1 and self.max_task_concurrency < 0:
             raise ValueError("max_task_concurrency must be -1 (no limit) or a non-negative integer.")
