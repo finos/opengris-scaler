@@ -6,11 +6,16 @@ including remote function execution, object referencing, and waiting for task co
 
 import concurrent.futures
 import inspect
+import sys
 from typing import Any, Callable, Dict, Generic, Iterator, List, Optional, Tuple, TypeVar, Union, cast
 from unittest.mock import Mock, patch
 
 import psutil
-from typing_extensions import ParamSpec
+
+if sys.version_info >= (3, 10):
+    from typing import ParamSpec
+else:
+    from typing_extensions import ParamSpec
 
 from scaler.client.client import Client
 from scaler.client.future import ScalerFuture
