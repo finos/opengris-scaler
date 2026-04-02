@@ -79,7 +79,7 @@ This writes a `.scaler_oci_config.json` file in the current directory. Keep it â
 
 ```bash
 python -m scaler.worker_manager_adapter.oci_hpc.utility.provisioner \
-  build-and-push --config .scaler_oci_config.json
+  build-image --config .scaler_oci_config.json
 ```
 
 This builds the job runner image and pushes it to your OCIR repository. The image only needs `cloudpickle` and `oci` â€” it does not require the full scaler package.
