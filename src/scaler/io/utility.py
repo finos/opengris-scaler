@@ -12,6 +12,7 @@ from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector
 from scaler.protocol.capnp._python import _message  # noqa
 from scaler.protocol.python.message import PROTOCOL
 from scaler.protocol.python.mixins import Message
+from scaler.utility.exceptions import ObjectStorageException
 
 try:
     from collections.abc import Buffer  # type: ignore[attr-defined]
@@ -88,9 +89,19 @@ def create_sync_object_storage_connector(*args, **kwargs) -> SyncObjectStorageCo
     if connector_type == NetworkBackend.ymq:
         from scaler.io.ymq_sync_object_storage_connector import YMQSyncObjectStorageConnector
 
-        return YMQSyncObjectStorageConnector(*args, **kwargs)
+        try:
+            return YMQSyncObjectStorageConnector(*args, **kwargs)
+        except ConnectionRefusedError as error:
+            host = kwargs.get("host", args[0] if len(args) > 0 else "<unknown-host>")
+            port = kwargs.get("port", args[1] if len(args) > 1 else "<unknown-port>")
+            raise ObjectStorageException(f"cannot connect to object storage address tcp://{host}:{port}") from error
     elif connector_type == NetworkBackend.tcp_zmq:
-        return PySyncObjectStorageConnector(*args, **kwargs)
+        try:
+            return PySyncObjectStorageConnector(*args, **kwargs)
+        except ConnectionRefusedError as error:
+            host = kwargs.get("host", args[0] if len(args) > 0 else "<unknown-host>")
+            port = kwargs.get("port", args[1] if len(args) > 1 else "<unknown-port>")
+            raise ObjectStorageException(f"cannot connect to object storage address tcp://{host}:{port}") from error
     else:
         raise ValueError(
             f"Invalid SCALER_NETWORK_BACKEND value." f"Expected one of: {[e.name for e in NetworkBackend]}"

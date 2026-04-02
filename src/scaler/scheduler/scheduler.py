@@ -68,7 +68,16 @@ class Scheduler:
             )
         else:
             object_storage_address = ObjectStorageAddress.new_msg(host=self._address.host, port=self._address.port + 1)
+
+        if config.advertised_object_storage_address is not None:
+            advertised_object_storage_address = ObjectStorageAddress.new_msg(
+                host=config.advertised_object_storage_address.host, port=config.advertised_object_storage_address.port
+            )
+        else:
+            advertised_object_storage_address = object_storage_address
+
         self._config_controller.update_config("object_storage_address", object_storage_address)
+        self._config_controller.update_config("advertised_object_storage_address", advertised_object_storage_address)
 
         monitor_address = config.monitor_address or ZMQConfig(
             type=ZMQType.tcp, host=self._address.host, port=self._address.port + 2
@@ -76,6 +85,9 @@ class Scheduler:
 
         self._connector_storage: AsyncObjectStorageConnector = create_async_object_storage_connector()
         logging.info(f"{self.__class__.__name__}: connect to object storage server {object_storage_address!r}")
+        logging.info(
+            f"{self.__class__.__name__}: advertise object storage address {advertised_object_storage_address!r}"
+        )
 
         self._binder_monitor: AsyncConnector = ZMQAsyncConnector(
             context=self._context,

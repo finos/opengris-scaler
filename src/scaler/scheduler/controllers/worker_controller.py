@@ -72,7 +72,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         await self._binder.send(
             worker_id,
             WorkerHeartbeatEcho.new_msg(
-                object_storage_address=self._config_controller.get_config("object_storage_address")
+                object_storage_address=self._config_controller.get_config("advertised_object_storage_address")
             ),
         )
 

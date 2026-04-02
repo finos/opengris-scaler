@@ -68,6 +68,8 @@ sections as separate processes.
 - ``[[worker_manager]]`` starts one worker manager per table entry.
 - If ``object_storage_address`` is omitted in ``[scheduler]``, the scheduler auto-starts
   object storage at ``scheduler_address.port + 1``.
+- ``advertised_object_storage_address`` is optional and lets scheduler advertise a
+  different public object storage endpoint to clients/workers.
 
 .. code-block:: bash
 
@@ -88,6 +90,8 @@ Scaler examples
             # - if omitted, object storage is auto-started at scheduler port + 1
             # - if specified, scheduler will connect to specified address without start one
             # object_storage_address = "tcp://127.0.0.1:6379"
+            # optional public endpoint advertised to clients/workers
+            # advertised_object_storage_address = "tcp://203.0.113.10:6379"
             monitor_address = "tcp://127.0.0.1:6380"
             policy_engine_type = "simple"
             policy_content = "allocate=even_load; scaling=no"
@@ -163,6 +167,8 @@ scaler_scheduler
 
 ``scaler_scheduler`` starts only the scheduler process. If ``--object-storage-address`` is
 not supplied, object storage is created automatically on ``scheduler port + 1``.
+Use ``--advertised-object-storage-address`` when clients/workers should connect through a
+different public endpoint.
 
 .. code-block:: bash
 
@@ -183,6 +189,8 @@ Scheduler examples
             # - if omitted, object storage is auto-started at scheduler port + 1
             # - if specified, scheduler will connect to specified address without start one
             # object_storage_address = "tcp://127.0.0.1:6379"
+            # optional public endpoint advertised to clients/workers
+            # advertised_object_storage_address = "tcp://203.0.113.10:6379"
             monitor_address = "tcp://127.0.0.1:6380"
             policy_engine_type = "simple"
             policy_content = "allocate=even_load; scaling=no"
@@ -200,6 +208,7 @@ Scheduler examples
 
             scaler_scheduler tcp://127.0.0.1:6378 \
                 --object-storage-address tcp://127.0.0.1:6379 \
+                --advertised-object-storage-address tcp://203.0.113.10:6379 \
                 --monitor-address tcp://127.0.0.1:6380 \
                 --policy-engine-type simple \
                 --policy-content "allocate=even_load; scaling=no" \
@@ -223,6 +232,10 @@ Scheduler arguments
      - No
      - Auto from scheduler address
      - Object storage address (must be ``tcp://<ip>:<port>``).
+   * - ``-aosa``, ``--advertised-object-storage-address``
+     - No
+     - Same as ``object_storage_address``
+     - Public object storage address advertised to clients/workers.
    * - ``-ma``, ``--monitor-address``
      - No
      - Auto from scheduler address
