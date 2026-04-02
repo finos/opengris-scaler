@@ -105,9 +105,9 @@ To start the ORB AWS EC2 worker manager, use the ``scaler_worker_manager orb_aws
 
 .. code-block:: bash
 
-    scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_EXTERNAL_IP>:8516 \
+    scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
+        --public-scheduler-address tcp://<SCHEDULER_EXTERNAL_IP>:8516 \
         --object-storage-address tcp://<OSS_EXTERNAL_IP>:8517 \
-        --image-id ami-0528819f94f4f5fa5 \
         --instance-type t3.medium \
         --aws-region us-east-1 \
         --logging-level INFO \
@@ -120,13 +120,24 @@ Equivalent configuration using a TOML file with ``scaler``:
     # stack.toml
 
     [scheduler]
-    scheduler_address = "tcp://<SCHEDULER_EXTERNAL_IP>:8516"
+    # 0.0.0.0 is a special address for binding which means "listen on all interfaces"
+    scheduler_address = "tcp://0.0.0.0:8516"
 
     [[worker_manager]]
     type = "orb_aws_ec2"
-    scheduler_address = "tcp://<SCHEDULER_EXTERNAL_IP>:8516"
+    scheduler_address = "tcp://<SCHEDULER_IP>:8516"
+    public_scheduler_address = "tcp://<SCHEDULER_EXTERNAL_IP>:8516"
     object_storage_address = "tcp://<OSS_EXTERNAL_IP>:8517"
-    image_id = "ami-0528819f94f4f5fa5"
+    # Option A: auto-install (both required) — requirements_txt can be a file path or an inline string
+    # python_version = "3.13"
+    # requirements_txt = "/path/to/requirements.txt"
+    # requirements_txt = """
+    # opengris-scaler>=1.26.6
+    # numpy
+    # pandas
+    # """
+    # Option B: pre-built AMI (skips Python/package install entirely)
+    # image_id = "ami-..."
     instance_type = "t3.medium"
     aws_region = "us-east-1"
     logging_level = "INFO"
@@ -138,7 +149,69 @@ Equivalent configuration using a TOML file with ``scaler``:
 
 *   ``tcp://<SCHEDULER_EXTERNAL_IP>:8516`` is the address workers will use to connect to the scheduler.
 *   ``tcp://<OSS_EXTERNAL_IP>:8517`` is the address workers will use to connect to the object storage server.
-*   New workers will be launched using the specified AMI and instance type.
+
+Worker Environment Modes
+------------------------
+
+The adapter supports two mutually exclusive modes for preparing the worker environment on each EC2
+instance. Exactly one mode must be selected.
+
+**Mode 1 — Auto-install**
+
+Provide both ``--python-version`` and ``--requirements-txt`` (neither may be omitted). Workers run on
+the latest Amazon Linux 2023 (AL2023) AMI. The packages listed in ``--requirements-txt`` will be
+installed on the worker; ``opengris-scaler`` must be included.
+
+.. code-block:: bash
+
+    # Requirements as a file path
+    scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
+        --public-scheduler-address tcp://<SCHEDULER_EXTERNAL_IP>:8516 \
+        --object-storage-address tcp://<OSS_EXTERNAL_IP>:8517 \
+        --instance-type t3.medium \
+        --python-version 3.13 \
+        --requirements-txt /path/to/requirements.txt
+
+    # Requirements as a string literal
+    scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
+        --public-scheduler-address tcp://<SCHEDULER_EXTERNAL_IP>:8516 \
+        --object-storage-address tcp://<OSS_EXTERNAL_IP>:8517 \
+        --instance-type t3.medium \
+        --python-version 3.13 \
+        --requirements-txt "opengris-scaler>=1.26.6"
+
+Or equivalently in a TOML file:
+
+.. code-block:: toml
+
+    [[worker_manager]]
+    type = "orb_aws_ec2"
+    scheduler_address = "tcp://<SCHEDULER_IP>:8516"
+    public_scheduler_address = "tcp://<SCHEDULER_EXTERNAL_IP>:8516"
+    object_storage_address = "tcp://<OSS_EXTERNAL_IP>:8517"
+    instance_type = "t3.medium"
+    python_version = "3.13"
+    requirements_txt = """
+    opengris-scaler>=1.26.6
+    numpy
+    pandas
+    """
+
+**Mode 2 — Pre-built AMI**
+
+Provide ``--image-id``. The specified AMI is used as-is and must already have ``opengris-scaler``
+installed with ``scaler_worker_manager`` available on the ``PATH``.
+
+This mode is recommended for production deployments where startup latency matters or where the worker
+environment must be tightly controlled.
+
+.. code-block:: bash
+
+    scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
+        --public-scheduler-address tcp://<SCHEDULER_EXTERNAL_IP>:8516 \
+        --object-storage-address tcp://<OSS_EXTERNAL_IP>:8517 \
+        --instance-type t3.medium \
+        --image-id ami-0123456789abcdef0
 
 Networking Configuration
 ------------------------
@@ -147,38 +220,6 @@ Workers launched by the ORB AWS EC2 manager are EC2 instances and require an ext
 
 *   **Internal Communication**: If the machine running the scheduler is another EC2 instance in the same VPC, you can use EC2 private IP addresses.
 *   **Public Internet**: If communicating over the public internet, it is highly recommended to set up robust security rules and/or a VPN to protect the cluster.
-
-Publicly Available AMIs
------------------------
-
-We regularly publish publicly available Amazon Machine Images (AMIs) with Python and ``opengris-scaler`` pre-installed.
-
-.. list-table:: Available Public AMIs
-   :widths: 15 15 20 20 30
-   :header-rows: 1
-
-   * - Scaler Version
-     - Python Version
-     - Amazon Linux 2023 Version
-     - Date (MM/DD/YYYY)
-     - AMI ID (us-east-1)
-   * - 1.14.2
-     - 3.13
-     - 2023.10.20260120
-     - 01/30/2026
-     - ``ami-0528819f94f4f5fa5``
-   * - 1.15.0
-     - 3.13
-     - 2023.10.20260302.1
-     - 03/16/2026
-     - ``ami-044265172bea55d51``
-   * - 1.26.4
-     - 3.13
-     - 2023.10.20260302.1
-     - 03/26/2026
-     - ``ami-0b76605999d8f5d2b``
-
-New AMIs will be added to this list as they become available.
 
 Supported Parameters
 --------------------
@@ -191,14 +232,19 @@ The ORB AWS EC2 worker manager supports ORB-specific configuration parameters as
 ORB AWS EC2 Template Configuration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-*   ``--image-id`` (Required): AMI ID for the worker instances.
+*   ``--image-id``: AMI ID for the worker instances. Mutually exclusive with ``--python-version`` and
+    ``--requirements-txt``. When provided, the latest AL2023 AMI is not used and no packages are installed.
+*   ``--python-version``: Python version to install on each worker instance (e.g. ``3.13``). Required when
+    ``--image-id`` is not specified.
+*   ``--requirements-txt``: Requirements to install on each worker instance. Can be a path to a local
+    ``requirements.txt`` file or a string literal. The content is embedded in the EC2 user data script and
+    installed via ``pip install -r``. ``opengris-scaler`` must be included. Required when ``--image-id`` is
+    not specified.
 *   ``--instance-type``: EC2 instance type (default: ``t2.micro``).
 *   ``--aws-region``: AWS region (default: ``us-east-1``).
 *   ``--key-name``: AWS key pair name for the instances. If not provided, a temporary key pair will be created and deleted on cleanup.
 *   ``--subnet-id``: AWS subnet ID where the instances will be launched. If not provided, it attempts to discover the default subnet in the default VPC.
 *   ``--security-group-ids``: Comma-separated list of AWS security group IDs.
-*   ``--allowed-ip``: IP address to allow in the security group (if created automatically). Defaults to the manager's external IP.
-*   ``--orb-config-path``: Path to the ORB root directory (default: ``src/scaler/drivers/orb``).
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~
@@ -218,6 +264,3 @@ The manager attempts to delete these temporary resources and terminate all launc
 
 .. tip::
     It is recommended to periodically check your AWS console for any orphaned resources (instances, security groups, key pairs, or launch templates) and clean them up manually if necessary to avoid unexpected costs.
-
-.. warning::
-    **Subnet and Security Groups**: Currently, specifying ``--subnet-id`` or ``--security-group-ids`` via configuration might not have the intended effect as the manager is designed to auto-discover or create these resources. Specifically, the manager may still attempt to use default subnets or create its own temporary security groups regardless of these parameters.

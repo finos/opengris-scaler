@@ -16,7 +16,42 @@ class ORBAWSEC2WorkerAdapterConfig(ConfigClass):
     worker_manager_config: WorkerManagerConfig
 
     # ORB AWS EC2 Template configuration
-    image_id: str = dataclasses.field(metadata=dict(help="AMI ID for the worker instances", required=True))
+    image_id: Optional[str] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            help="AMI ID for the worker instances. If not provided, the latest AL2023 AMI is discovered automatically."
+        ),
+    )
+    python_version: Optional[str] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            help=(
+                "Python version to install on the worker instance (e.g. '3.13'). "
+                "Required when --image-id is not provided."
+            )
+        ),
+    )
+    requirements_txt: Optional[str] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            help=(
+                "Requirements to install on each worker instance. "
+                "Can be a path to a requirements.txt file or a string literal. "
+                "Must include opengris-scaler. Required when --image-id is not provided."
+            )
+        ),
+    )
+
+    def __post_init__(self) -> None:
+        if self.image_id is not None:
+            if self.python_version is not None or self.requirements_txt is not None:
+                raise ValueError("--image-id is mutually exclusive with --python-version and --requirements-txt")
+        else:
+            if self.python_version is None or self.requirements_txt is None:
+                raise ValueError(
+                    "Both --python-version and --requirements-txt must be provided when --image-id is not specified"
+                )
+
     key_name: Optional[str] = dataclasses.field(
         default=None, metadata=dict(help="AWS key pair name for the instances (optional)")
     )

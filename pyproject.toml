@@ -55,6 +55,7 @@ aws = [
 orb = [
     "orb-py~=1.5.1; python_version >= '3.10'",
     "boto3",
+    "packaging",
     "botocore[crt]",
 ]
 all = [
