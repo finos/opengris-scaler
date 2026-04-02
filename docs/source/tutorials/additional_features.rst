@@ -1,5 +1,5 @@
-Additional Features
-===================
+Monitoring
+==========
 
 Scaler comes with a number of features that can be used to monitor and profile tasks, and customize behavior.
 

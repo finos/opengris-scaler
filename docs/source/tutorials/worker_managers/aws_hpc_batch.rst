@@ -13,33 +13,92 @@ Prerequisites
 * `Docker <https://docs.docker.com/get-docker/>`_ installed (for building the worker container image)
 * Python packages: ``pip install opengris-scaler boto3``
 
+.. _aws_hpc_batch_quick_start:
+
 Quick Start
 -----------
 
-Provision the required AWS resources (S3 bucket, IAM roles, compute environment, job queue, and
-job definition):
+Install AWS CLI v2:
+
+.. warning::
+
+   Do not use ``pip install awscli`` for this setup. That installs AWS CLI v1.
+   Use the official AWS CLI v2 installer instead.
+
+.. tabs::
+
+   .. group-tab:: Linux x86_64
+
+      .. code-block:: bash
+
+         curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+         unzip awscliv2.zip
+         sudo ./aws/install
+
+         aws --version
+
+   .. group-tab:: Linux ARM64
+
+      .. code-block:: bash
+
+         curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
+         unzip awscliv2.zip
+         sudo ./aws/install
+
+Create a virtual environment, install Scaler AWS extras, and authenticate:
 
 .. code-block:: bash
 
-   python -m scaler.worker_manager_adapter.aws_hpc.utility.provisioner provision \
-       --region us-east-1 \
-       --prefix scaler-batch \
-       --vcpus 1 \
-       --memory 2048 \
-       --max-vcpus 256
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install opengris-scaler[aws]
+
+.. tabs::
+
+   .. group-tab:: Local Machine
+
+      .. code-block:: bash
+
+         aws login
+
+      Click the page link and proceed in your default browser to sign in, then
+      follow the AWS CLI instructions in the terminal.
+
+   .. group-tab:: Remote Server
+
+      .. code-block:: bash
+
+         aws login --remote
+
+      Open the URL shown by the command in your local browser, complete
+      sign-in, then copy the returned code/token and paste it back into the
+      remote terminal to complete authentication.
+
+Provision required AWS resources (S3 bucket, IAM roles, compute environment,
+job queue, and job definition):
+
+.. code-block:: bash
+
+   python -m scaler.worker_manager_adapter.aws_hpc.utility.provisioner provision --region us-east-1 --prefix scaler-batch --vcpus 1 --memory 2048 --max-vcpus 256
    source tests/worker_manager_adapter/aws_hpc/.scaler_aws_hpc.env
 
-The provisioner creates resources named ``scaler-batch-*``. The TOML below uses those names
-directly — just update ``s3_bucket`` with the value printed by the provisioner (it includes
-your AWS account ID):
+The provisioner also builds and pushes the worker image from ``Dockerfile.batch``.
+The image must use the same Python version as the client and include ``cloudpickle`` and ``boto3``.
+The provisioner also creates required AWS resources and applies required IAM
+permissions. See :ref:`aws_hpc_required_resources` and
+:ref:`aws_hpc_required_iam_permissions`.
+
+Start scheduler and worker manager from one TOML file (replace account ID):
 
 .. code-block:: toml
    :caption: config.toml
 
+   [scheduler]
+   scheduler_address = "tcp://127.0.0.1:8516"
+
    [[worker_manager]]
    type = "aws_hpc"
    scheduler_address = "tcp://127.0.0.1:8516"
-   object_storage_address = "tcp://127.0.0.1:8517"
    worker_manager_id = "wm-batch"
    job_queue = "scaler-batch-queue"
    job_definition = "scaler-batch-job"
@@ -50,11 +109,7 @@ your AWS account ID):
 
 .. code-block:: bash
 
-   # Terminal 1 — Scheduler
-   scaler_scheduler tcp://0.0.0.0:8516
-
-   # Terminal 2 — AWS HPC Worker Manager (Batch backend)
-   $ scaler config.toml
+   scaler config.toml
 
 .. code-block:: python
    :caption: my_client.py (Terminal 3)
@@ -68,39 +123,10 @@ your AWS account ID):
        futures = client.map(heavy_computation, range(50))
        print([f.result() for f in futures])
 
-If you don't have AWS Batch resources yet, follow the detailed setup below.
-
 Detailed Setup
 --------------
 
-Step 1: Configure AWS Credentials
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: bash
-
-   aws configure
-   # Enter your AWS Access Key ID, Secret Access Key, region (e.g. us-east-1), and output format (json)
-
-Your IAM user needs the following permissions:
-
-* **S3**: ``s3:CreateBucket``, ``s3:PutObject``, ``s3:GetObject``, ``s3:DeleteObject``, ``s3:PutLifecycleConfiguration``
-* **IAM**: ``iam:CreateRole``, ``iam:AttachRolePolicy``, ``iam:PutRolePolicy``, ``iam:CreateInstanceProfile``, ``iam:AddRoleToInstanceProfile``, ``iam:GetRole``, ``iam:PassRole``
-* **Batch**: ``batch:CreateComputeEnvironment``, ``batch:CreateJobQueue``, ``batch:RegisterJobDefinition``, ``batch:SubmitJob``, ``batch:DescribeJobs``, ``batch:DescribeComputeEnvironments``, ``batch:DescribeJobQueues``, ``batch:TerminateJob``, ``batch:DeregisterJobDefinition``
-* **ECR**: ``ecr:CreateRepository``, ``ecr:GetAuthorizationToken``, ``ecr:PutLifecyclePolicy``, ``ecr:BatchDeleteImage``
-* **EC2**: ``ec2:DescribeSubnets``, ``ec2:DescribeSecurityGroups``
-* **CloudWatch Logs**: ``logs:CreateLogGroup``, ``logs:PutRetentionPolicy``, ``logs:GetLogEvents``
-
-Or attach the following AWS managed policies for quick setup:
-
-.. code-block:: text
-
-   AmazonS3FullAccess
-   AWSBatchFullAccess
-   AmazonEC2ContainerRegistryFullAccess
-   IAMFullAccess
-   CloudWatchLogsFullAccess
-
-Step 2: Provision AWS Resources
+Step 1: Provision AWS Resources
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. warning::
@@ -155,10 +181,10 @@ If you already have AWS Batch resources (created via CloudFormation, CDK, Terraf
    EOF
    source .scaler_aws_hpc.env
 
-Then continue from Step 3.
+Then continue from Step 2.
 
-Step 3: Start the Scheduler
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 2: Start the Scheduler
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 
@@ -167,7 +193,7 @@ Step 3: Start the Scheduler
 .. note::
    The scheduler address must be reachable from the machine running the AWS HPC worker manager. Use ``0.0.0.0`` to bind to all interfaces, or your machine's public/private IP.
 
-Step 4: Start the AWS HPC Worker Manager
+Step 3: Start the AWS HPC Worker Manager
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
@@ -182,7 +208,7 @@ Or use a TOML configuration file:
 
 .. code-block:: bash
 
-   $ scaler config.toml
+   scaler config.toml
 
 .. code-block:: toml
    :caption: config.toml
@@ -199,7 +225,7 @@ Or use a TOML configuration file:
    max_concurrent_jobs = 100
    job_timeout_minutes = 60
 
-Step 5: Submit Tasks
+Step 4: Submit Tasks
 ~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
@@ -375,3 +401,71 @@ Your job definition image must have the same Python version as the client (requi
 
 **Timeout waiting for result:**
 Check the AWS Batch console for job status. Increase ``--max-concurrent-jobs`` if jobs are queued, or check compute environment capacity.
+
+.. _aws_hpc_required_resources:
+
+Required AWS Resources
+----------------------
+
+The provisioner creates these resources automatically:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 30 40
+
+   * - Resource
+     - Name pattern
+     - Purpose
+   * - S3 bucket
+     - ``{prefix}-{account_id}-{region}``
+     - Task payloads and results (1-day lifecycle)
+   * - IAM job role
+     - ``{prefix}-job-role``
+     - Assumed by Batch container tasks
+   * - IAM instance role
+     - ``{prefix}-instance-role``
+     - Assumed by EC2 instances in compute environment
+   * - EC2 instance profile
+     - ``{prefix}-instance-profile``
+     - Wraps instance role for EC2
+   * - ECR repository
+     - ``{prefix}-worker``
+     - Stores worker Docker image
+   * - Compute environment
+     - ``{prefix}-compute``
+     - Managed EC2 fleet
+   * - Job queue
+     - ``{prefix}-queue``
+     - Routes jobs to compute environment
+   * - Job definition
+     - ``{prefix}-job``
+     - Container spec and entrypoint
+   * - CloudWatch log group
+     - ``/aws/batch/job``
+     - Job logs (30-day retention)
+
+.. _aws_hpc_required_iam_permissions:
+
+Required AWS IAM Permissions
+----------------------------
+
+1. Your IAM user/role (to run the provisioner and worker manager)
+
+* **S3**: ``s3:CreateBucket``, ``s3:PutObject``, ``s3:GetObject``, ``s3:DeleteObject``, ``s3:PutLifecycleConfiguration``
+* **IAM**: ``iam:CreateRole``, ``iam:AttachRolePolicy``, ``iam:PutRolePolicy``, ``iam:CreateInstanceProfile``, ``iam:AddRoleToInstanceProfile``, ``iam:GetRole``, ``iam:PassRole``
+* **Batch**: ``batch:CreateComputeEnvironment``, ``batch:CreateJobQueue``, ``batch:RegisterJobDefinition``, ``batch:SubmitJob``, ``batch:DescribeJobs``, ``batch:DescribeComputeEnvironments``, ``batch:DescribeJobQueues``, ``batch:TerminateJob``, ``batch:DeregisterJobDefinition``
+* **ECR**: ``ecr:CreateRepository``, ``ecr:GetAuthorizationToken``, ``ecr:PutLifecyclePolicy``, ``ecr:BatchDeleteImage``
+* **EC2**: ``ec2:DescribeSubnets``, ``ec2:DescribeSecurityGroups``
+* **CloudWatch Logs**: ``logs:CreateLogGroup``, ``logs:PutRetentionPolicy``, ``logs:GetLogEvents``
+
+Quick-setup managed policies: ``AmazonS3FullAccess``, ``AWSBatchFullAccess``,
+``AmazonEC2ContainerRegistryFullAccess``, ``IAMFullAccess``, ``CloudWatchLogsFullAccess``.
+
+2. Batch job role (``{prefix}-job-role``, assumed by ``ecs-tasks.amazonaws.com``)
+
+* ``AmazonECSTaskExecutionRolePolicy`` (managed; covers ECR pulls and CloudWatch logs writes)
+* Inline S3 policy: ``s3:GetObject``, ``s3:PutObject``, ``s3:DeleteObject`` on ``arn:aws:s3:::{bucket}/{prefix}/*``
+
+3. EC2 instance role (``{prefix}-instance-role``, assumed by ``ec2.amazonaws.com``)
+
+* ``AmazonEC2ContainerServiceforEC2Role`` (managed; allows EC2 to register with ECS/Batch, pull images, report status)

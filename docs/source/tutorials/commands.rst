@@ -71,7 +71,7 @@ sections as separate processes.
 
 .. code-block:: bash
 
-    $ scaler <toml config file>
+    scaler <toml config file>
 
 Scaler examples
 ~~~~~~~~~~~~~~~
@@ -132,13 +132,13 @@ Scaler examples
 
         .. code-block:: bash
 
-            $ scaler config.toml
+            scaler config.toml
 
     .. group-tab:: command line
 
         .. code-block:: bash
 
-            $ scaler config.toml
+            scaler config.toml
 
 Scaler arguments
 ~~~~~~~~~~~~~~~~
@@ -166,7 +166,7 @@ not supplied, object storage is created automatically on ``scheduler port + 1``.
 
 .. code-block:: bash
 
-    $ scaler_scheduler [options] <scheduler_address>
+    scaler_scheduler [options] <scheduler_address>
 
 Scheduler examples
 ~~~~~~~~~~~~~~~~~~
@@ -192,13 +192,13 @@ Scheduler examples
 
         .. code-block:: bash
 
-            $ scaler_scheduler --config scheduler.toml tcp://127.0.0.1:6378
+            scaler_scheduler --config scheduler.toml tcp://127.0.0.1:6378
 
     .. group-tab:: command line
 
         .. code-block:: bash
 
-            $ scaler_scheduler tcp://127.0.0.1:6378 \
+            scaler_scheduler tcp://127.0.0.1:6378 \
                 --object-storage-address tcp://127.0.0.1:6379 \
                 --monitor-address tcp://127.0.0.1:6380 \
                 --policy-engine-type simple \
@@ -322,7 +322,7 @@ When ``--protected`` is enabled, client shutdown requests cannot stop the schedu
 
 .. code-block:: bash
 
-    $ scaler_scheduler tcp://127.0.0.1:8516 --protected
+    scaler_scheduler tcp://127.0.0.1:8516 --protected
 
 Event loop selection
 ^^^^^^^^^^^^^^^^^^^^
@@ -331,8 +331,8 @@ The scheduler uses ``builtin`` event loop by default. You can switch to ``uvloop
 
 .. code-block:: bash
 
-    $ pip install uvloop
-    $ scaler_scheduler tcp://127.0.0.1:8516 -el uvloop
+    pip install uvloop
+    scaler_scheduler tcp://127.0.0.1:8516 -el uvloop
 
 
 .. _cmd-scaler-worker-manager:
@@ -345,7 +345,7 @@ with a subcommand and then pass shared and adapter-specific options.
 
 .. code-block:: bash
 
-    $ scaler_worker_manager <subcommand> [options] <scheduler_address>
+    scaler_worker_manager <subcommand> [options] <scheduler_address>
 
 Available subcommands:
 
@@ -457,8 +457,8 @@ Workers can run initialization logic before processing tasks via ``--preload``.
 
 .. code-block:: bash
 
-    $ scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --worker-manager-id wm-preload --preload "mypackage.init:setup"
-    $ scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --worker-manager-id wm-preload --preload "mypackage.init:configure('production', debug=False)"
+    scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --worker-manager-id wm-preload --preload "mypackage.init:setup"
+    scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --worker-manager-id wm-preload --preload "mypackage.init:configure('production', debug=False)"
 
 Death timeout
 ^^^^^^^^^^^^^
@@ -467,7 +467,7 @@ Death timeout
 
 .. code-block:: bash
 
-    $ scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --worker-manager-id wm-fixed --mode fixed --max-task-concurrency 10 -dts 300
+    scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 --worker-manager-id wm-fixed --mode fixed --max-task-concurrency 10 -dts 300
 
 Subcommand: ``baremetal_native``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -476,7 +476,7 @@ Local-process worker manager (dynamic auto-scaling or fixed pre-spawned workers)
 
 .. code-block:: bash
 
-    $ scaler_worker_manager baremetal_native [options] <scheduler_address>
+    scaler_worker_manager baremetal_native [options] <scheduler_address>
 
 .. tabs::
 
@@ -495,13 +495,13 @@ Local-process worker manager (dynamic auto-scaling or fixed pre-spawned workers)
 
         .. code-block:: bash
 
-            $ scaler config.toml
+            scaler config.toml
 
     .. group-tab:: command line
 
         .. code-block:: bash
 
-            $ scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 \
+            scaler_worker_manager baremetal_native tcp://127.0.0.1:6378 \
                 --worker-manager-id wm-native \
                 --mode dynamic \
                 --max-task-concurrency 8
@@ -533,7 +533,7 @@ IBM Spectrum Symphony worker manager.
 
 .. code-block:: bash
 
-    $ scaler_worker_manager symphony [options] <scheduler_address>
+    scaler_worker_manager symphony [options] <scheduler_address>
 
 .. tabs::
 
@@ -551,13 +551,13 @@ IBM Spectrum Symphony worker manager.
 
         .. code-block:: bash
 
-            $ scaler config.toml
+            scaler config.toml
 
     .. group-tab:: command line
 
         .. code-block:: bash
 
-            $ scaler_worker_manager symphony tcp://127.0.0.1:6378 \
+            scaler_worker_manager symphony tcp://127.0.0.1:6378 \
                 --worker-manager-id wm-symphony \
                 --service-name ScalerService
 
@@ -580,7 +580,7 @@ AWS ECS (Fargate) worker manager.
 
 .. code-block:: bash
 
-    $ scaler_worker_manager aws_raw_ecs [options] <scheduler_address>
+    scaler_worker_manager aws_raw_ecs [options] <scheduler_address>
 
 .. tabs::
 
@@ -602,13 +602,13 @@ AWS ECS (Fargate) worker manager.
 
         .. code-block:: bash
 
-            $ scaler config.toml
+            scaler config.toml
 
     .. group-tab:: command line
 
         .. code-block:: bash
 
-            $ scaler_worker_manager aws_raw_ecs tcp://127.0.0.1:6378 \
+            scaler_worker_manager aws_raw_ecs tcp://127.0.0.1:6378 \
                 --object-storage-address tcp://127.0.0.1:6379 \
                 --worker-manager-id wm-ecs \
                 --ecs-subnets subnet-0abc123,subnet-0def456 \
@@ -675,7 +675,7 @@ AWS Batch worker manager.
 
 .. code-block:: bash
 
-    $ scaler_worker_manager aws_hpc [options] <scheduler_address>
+    scaler_worker_manager aws_hpc [options] <scheduler_address>
 
 .. tabs::
 
@@ -697,13 +697,13 @@ AWS Batch worker manager.
 
         .. code-block:: bash
 
-            $ scaler config.toml
+            scaler config.toml
 
     .. group-tab:: command line
 
         .. code-block:: bash
 
-            $ scaler_worker_manager aws_hpc tcp://127.0.0.1:6378 \
+            scaler_worker_manager aws_hpc tcp://127.0.0.1:6378 \
                 --object-storage-address tcp://127.0.0.1:6379 \
                 --worker-manager-id wm-batch \
                 --job-queue scaler-job-queue \
@@ -762,7 +762,7 @@ ORB (Open Resource Broker) worker manager — dynamically provisions workers on 
 
 .. code-block:: bash
 
-    $ scaler_worker_manager orb_aws_ec2 [options] <scheduler_address>
+    scaler_worker_manager orb_aws_ec2 [options] <scheduler_address>
 
 .. tabs::
 
@@ -783,13 +783,13 @@ ORB (Open Resource Broker) worker manager — dynamically provisions workers on 
 
         .. code-block:: bash
 
-            $ scaler config.toml
+            scaler config.toml
 
     .. group-tab:: command line
 
         .. code-block:: bash
 
-            $ scaler_worker_manager orb_aws_ec2 tcp://127.0.0.1:6378 \
+            scaler_worker_manager orb_aws_ec2 tcp://127.0.0.1:6378 \
                 --worker-manager-id wm-orb \
                 --object-storage-address tcp://127.0.0.1:6379 \
                 --image-id ami-0528819f94f4f5fa5 \
@@ -840,7 +840,7 @@ scaler_object_storage_server
 
 .. code-block:: bash
 
-    $ scaler_object_storage_server [options] <object_storage_address>
+    scaler_object_storage_server [options] <object_storage_address>
 
 Object storage examples
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -858,13 +858,13 @@ Object storage examples
 
         .. code-block:: bash
 
-            $ scaler_object_storage_server --config object_storage.toml tcp://127.0.0.1:6379
+            scaler_object_storage_server --config object_storage.toml tcp://127.0.0.1:6379
 
     .. group-tab:: command line
 
         .. code-block:: bash
 
-            $ scaler_object_storage_server tcp://127.0.0.1:6379
+            scaler_object_storage_server tcp://127.0.0.1:6379
 
 Object storage arguments
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -893,7 +893,7 @@ endpoint.
 
 .. code-block:: bash
 
-    $ scaler_top [options] <monitor_address>
+    scaler_top [options] <monitor_address>
 
 Top examples
 ~~~~~~~~~~~~
@@ -912,13 +912,13 @@ Top examples
 
         .. code-block:: bash
 
-            $ scaler_top --config top.toml tcp://127.0.0.1:6380
+            scaler_top --config top.toml tcp://127.0.0.1:6380
 
     .. group-tab:: command line
 
         .. code-block:: bash
 
-            $ scaler_top tcp://127.0.0.1:6380 --timeout 5
+            scaler_top tcp://127.0.0.1:6380 --timeout 5
 
 Top arguments
 ~~~~~~~~~~~~~
@@ -953,7 +953,7 @@ scaler_gui
 
 .. code-block:: bash
 
-    $ scaler_gui [options] <monitor_address>
+    scaler_gui [options] <monitor_address>
 
 UI examples
 ~~~~~~~~~~~
@@ -973,13 +973,13 @@ UI examples
 
         .. code-block:: bash
 
-            $ scaler_gui --config gui.toml tcp://127.0.0.1:6380
+            scaler_gui --config gui.toml tcp://127.0.0.1:6380
 
     .. group-tab:: command line
 
         .. code-block:: bash
 
-            $ scaler_gui tcp://127.0.0.1:6380 --gui-address 127.0.0.1:50001
+            scaler_gui tcp://127.0.0.1:6380 --gui-address 127.0.0.1:50001
 
 UI arguments
 ~~~~~~~~~~~~

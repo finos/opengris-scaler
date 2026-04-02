@@ -1,5 +1,5 @@
-How To Develop/Contribute
-=========================
+Development
+===========
 
 This section covers contributor workflow, coding expectations, and local development setup.
 

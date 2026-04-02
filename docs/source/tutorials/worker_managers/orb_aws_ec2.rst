@@ -1,223 +1,349 @@
-ORB AWS EC2 Worker Manager
-==========================
+Open Resource Broker AWS EC2 Worker Manager
+===========================================
 
-The ORB AWS EC2 worker manager allows Scaler to dynamically provision workers on AWS EC2 instances using the ORB (Open Resource Broker) system. This is particularly useful for scaling workloads that require significant compute resources or specialized hardware available in the cloud.
-
-This tutorial describes the steps required to get up and running with the ORB AWS EC2 manager.
+Use this worker manager to provision Scaler workers dynamically on AWS EC2 via
+ORB (Open Resource Broker).
 
 Requirements
 ------------
 
-Before using the ORB AWS EC2 worker manager, ensure the following requirements are met on the machine that will run the manager:
+Before using the ORB AWS EC2 worker manager, make sure:
 
-1.  **orb-py and boto3**: The ``orb-py`` and ``boto3`` packages must be installed. These can be installed using the ``orb`` optional dependency of Scaler:
+* You have an AWS account.
+* Python is installed on the machine that runs the worker manager.
+* The scheduler host can be reached from provisioned AWS workers. If your scheduler is behind a firewall/private network, set up NAT so workers can connect back to the scheduler.
 
-    .. code-block:: bash
+.. _orb_aws_ec2_quick_setup:
 
-        pip install "opengris-scaler[orb]"
+Quick Setup
+-----------
 
-2.  **AWS CLI**: The AWS Command Line Interface must be installed and configured with a default profile that has permissions to launch, describe, and terminate EC2 instances.
+.. warning::
 
-3.  **Network Connectivity**: The manager must be able to communicate with AWS APIs and the Scaler scheduler.
+   Do not use ``pip install awscli`` for this setup. That installs AWS CLI v1.
+   Use the official AWS CLI v2 installer instead.
+
+.. tabs::
+
+   .. group-tab:: Linux x86_64
+
+      .. code-block:: bash
+
+         curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+         unzip awscliv2.zip
+         sudo ./aws/install
+
+         aws --version
+
+   .. group-tab:: Linux ARM64
+
+      .. code-block:: bash
+
+         curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
+         unzip awscliv2.zip
+         sudo ./aws/install
+
+Then create a new virtual environment and install Scaler with ORB extras:
+
+.. code-block:: bash
+
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install opengris-scaler[orb]
+
+Then authenticate with AWS CLI:
+
+.. tabs::
+
+   .. group-tab:: Local Machine
+
+      .. code-block:: bash
+
+         aws login
+
+      Click the page link and proceed in your default browser to sign in, then
+      follow the AWS CLI instructions in the terminal.
+
+   .. group-tab:: Remote Server
+
+      .. code-block:: bash
+
+         aws login --remote
+
+      Open the URL printed by the command in your local browser, complete
+      sign-in, then copy the returned code/token and paste it back into the
+      remote terminal to finish login.
 
 AWS Permissions
----------------
+~~~~~~~~~~~~~~~
 
-The AWS credentials used by the manager must have the following IAM permissions:
+.. tabs::
 
-.. code-block:: json
+   .. group-tab:: AWS Root account
 
-    {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Action": [
-                    "ec2:CancelSpotFleetRequests",
-                    "ec2:CreateFleet",
-                    "ec2:CreateKeyPair",
-                    "ec2:CreateLaunchTemplate",
-                    "ec2:CreateSecurityGroup",
-                    "ec2:CreateTags",
-                    "ec2:DeleteFleet",
-                    "ec2:DeleteKeyPair",
-                    "ec2:DeleteLaunchTemplate",
-                    "ec2:DeleteNetworkInterface",
-                    "ec2:DeleteSecurityGroup",
-                    "ec2:DeleteVolume",
-                    "ec2:DescribeFleets",
-                    "ec2:DescribeImages",
-                    "ec2:DescribeInstanceStatus",
-                    "ec2:DescribeInstances",
-                    "ec2:DescribeInstanceTypes",
-                    "ec2:DescribeLaunchTemplates",
-                    "ec2:DescribeNetworkInterfaces",
-                    "ec2:DescribeSecurityGroups",
-                    "ec2:DescribeSpotFleetInstances",
-                    "ec2:DescribeSpotFleetRequests",
-                    "ec2:DescribeSubnets",
-                    "ec2:DescribeVolumes",
-                    "ec2:DescribeVpcs",
-                    "ec2:RequestSpotFleet",
-                    "ec2:RunInstances",
-                    "ec2:TerminateInstances",
-                    "autoscaling:CreateAutoScalingGroup",
-                    "autoscaling:CreateLaunchConfiguration",
-                    "autoscaling:CreateOrUpdateTags",
-                    "autoscaling:DeleteAutoScalingGroup",
-                    "autoscaling:DeleteLaunchConfiguration",
-                    "autoscaling:DescribeAutoScalingGroups",
-                    "autoscaling:DescribeAutoScalingInstances",
-                    "autoscaling:UpdateAutoScalingGroup",
-                    "iam:GetRole",
-                    "iam:PassRole",
-                    "ssm:GetParameter",
-                    "sts:GetCallerIdentity"
-                ],
-                "Resource": "*"
-            }
-        ]
-    }
+      The AWS root account does not require additional IAM policy grants for this setup.
 
-The EC2 and Auto Scaling permissions are used for provisioning and managing worker instances. ``iam:PassRole``
-is required to associate an IAM role with launched instances. ``ssm:GetParameter`` is used to resolve AMI IDs
-from the SSM Parameter Store. ``sts:GetCallerIdentity`` is used to validate credentials on startup.
+   .. group-tab:: IAM User
 
-.. note::
-    If you do not intend to use Spot Fleet or Auto Scaling, you may omit the ``ec2:*SpotFleet*``,
-    ``ec2:*Fleet*``, and ``autoscaling:*`` actions. The core permissions needed for basic on-demand
-    instance provisioning are the ``ec2:Describe*``, ``ec2:RunInstances``, ``ec2:TerminateInstances``,
-    ``ec2:CreateTags``, ``ec2:CreateLaunchTemplate``, ``ec2:DeleteLaunchTemplate``,
-    ``ec2:CreateKeyPair``, ``ec2:DeleteKeyPair``, ``ec2:CreateSecurityGroup``,
-    ``ec2:DeleteSecurityGroup``, ``iam:PassRole``, and ``sts:GetCallerIdentity`` permissions.
+      If you are using the root account, first create an IAM user. Before running
+      the commands below, prepare these values:
 
-If you plan to use Spot Fleet, the ``AWSServiceRoleForEC2SpotFleet`` service-linked role must exist in your
-account. If it does not, create it with:
+      * IAM user name (for ``--user-name``)
+      * AWS account ID (for policy ARN)
+      * IAM role name, if attaching the same policy to a role
 
-.. code-block:: bash
+      Then create the policy and attach it to an IAM user/role:
 
-    aws iam create-service-linked-role --aws-service-name spotfleet.amazonaws.com
+      .. code-block:: bash
 
-Getting Started
----------------
+         aws iam create-policy \
+           --policy-name ScalerORBWorkerManagerPolicy \
+           --policy-document '{
+             "Version": "2012-10-17",
+             "Statement": [
+               {
+                 "Effect": "Allow",
+                 "Action": [
+                   "ec2:CancelSpotFleetRequests",
+                   "ec2:CreateFleet",
+                   "ec2:CreateKeyPair",
+                   "ec2:CreateLaunchTemplate",
+                   "ec2:CreateSecurityGroup",
+                   "ec2:CreateTags",
+                   "ec2:DeleteFleet",
+                   "ec2:DeleteKeyPair",
+                   "ec2:DeleteLaunchTemplate",
+                   "ec2:DeleteNetworkInterface",
+                   "ec2:DeleteSecurityGroup",
+                   "ec2:DeleteVolume",
+                   "ec2:DescribeFleets",
+                   "ec2:DescribeImages",
+                   "ec2:DescribeInstanceStatus",
+                   "ec2:DescribeInstances",
+                   "ec2:DescribeInstanceTypes",
+                   "ec2:DescribeLaunchTemplates",
+                   "ec2:DescribeNetworkInterfaces",
+                   "ec2:DescribeSecurityGroups",
+                   "ec2:DescribeSpotFleetInstances",
+                   "ec2:DescribeSpotFleetRequests",
+                   "ec2:DescribeSubnets",
+                   "ec2:DescribeVolumes",
+                   "ec2:DescribeVpcs",
+                   "ec2:RequestSpotFleet",
+                   "ec2:RunInstances",
+                   "ec2:TerminateInstances",
+                   "autoscaling:CreateAutoScalingGroup",
+                   "autoscaling:CreateLaunchConfiguration",
+                   "autoscaling:CreateOrUpdateTags",
+                   "autoscaling:DeleteAutoScalingGroup",
+                   "autoscaling:DeleteLaunchConfiguration",
+                   "autoscaling:DescribeAutoScalingGroups",
+                   "autoscaling:DescribeAutoScalingInstances",
+                   "autoscaling:UpdateAutoScalingGroup",
+                   "iam:GetRole",
+                   "iam:PassRole",
+                   "ssm:GetParameter",
+                   "sts:GetCallerIdentity"
+                 ],
+                 "Resource": "*"
+               }
+             ]
+           }'
 
-To start the ORB AWS EC2 worker manager, use the ``scaler_worker_manager orb_aws_ec2`` subcommand:
+      Attach to an IAM user:
 
-.. code-block:: bash
+      .. code-block:: bash
 
-    scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
-        --worker-manager-id wm-orb \
-        --public-scheduler-address tcp://<SCHEDULER_EXTERNAL_IP>:8516 \
-        --object-storage-address tcp://<OSS_EXTERNAL_IP>:8517 \
-        --instance-type t3.medium \
-        --aws-region us-east-1 \
-        --logging-level INFO \
-        --task-timeout-seconds 60
+         aws iam attach-user-policy \
+           --user-name <YOUR_USER> \
+           --policy-arn arn:aws:iam::<ACCOUNT_ID>:policy/ScalerORBWorkerManagerPolicy
 
-Equivalent configuration using a TOML file with ``scaler``:
+      Attach to an IAM role:
 
-.. code-block:: toml
+      .. code-block:: bash
 
-    # stack.toml
+         aws iam attach-role-policy \
+           --role-name <YOUR_ROLE> \
+           --policy-arn arn:aws:iam::<ACCOUNT_ID>:policy/ScalerORBWorkerManagerPolicy
 
-    [scheduler]
-    # 0.0.0.0 is a special address for binding which means "listen on all interfaces"
-    scheduler_address = "tcp://0.0.0.0:8516"
+      Spot Fleet service-linked role (once per account, only if using Spot Fleet):
 
-    [[worker_manager]]
-    type = "orb_aws_ec2"
-    scheduler_address = "tcp://<SCHEDULER_IP>:8516"
-    worker_manager_id = "wm-orb"
-    public_scheduler_address = "tcp://<SCHEDULER_EXTERNAL_IP>:8516"
-    object_storage_address = "tcp://<OSS_EXTERNAL_IP>:8517"
-    # Option A: auto-install (both required) — requirements_txt can be a file path or an inline string
-    # python_version = "3.13"
-    # requirements_txt = "/path/to/requirements.txt"
-    # requirements_txt = """
-    # opengris-scaler>=1.26.6
-    # numpy
-    # pandas
-    # """
-    # Option B: pre-built AMI (skips Python/package install entirely)
-    # image_id = "ami-..."
-    instance_type = "t3.medium"
-    aws_region = "us-east-1"
-    logging_level = "INFO"
-    task_timeout_seconds = 60
+      .. code-block:: bash
 
-.. code-block:: bash
+         aws iam create-service-linked-role --aws-service-name spotfleet.amazonaws.com
 
-    scaler stack.toml
+      Get your account ID:
 
-*   ``tcp://<SCHEDULER_EXTERNAL_IP>:8516`` is the address workers will use to connect to the scheduler.
-*   ``tcp://<OSS_EXTERNAL_IP>:8517`` is the address workers will use to connect to the object storage server.
+      .. code-block:: bash
 
-Worker Environment Modes
-------------------------
+         aws sts get-caller-identity --query Account --output text
 
-The adapter supports two mutually exclusive modes for preparing the worker environment on each EC2
-instance. Exactly one mode must be selected.
+Start Services
+~~~~~~~~~~~~~~
 
-**Mode 1 — Auto-install**
+Before starting services, make sure NAT setup is complete. If this machine
+already has a public IP, you can ignore NAT setup. Then copy the
+``config.toml`` below and replace ``PUBLIC_IP`` with your real public IP
+address.
 
-Provide both ``--python-version`` and ``--requirements-txt`` (neither may be omitted). Workers run on
-the latest Amazon Linux 2023 (AL2023) AMI. The packages listed in ``--requirements-txt`` will be
-installed on the worker; ``opengris-scaler`` must be included.
+.. tabs::
 
-.. code-block:: bash
+   .. group-tab:: config.toml
 
-    # Requirements as a file path
-    scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
-        --worker-manager-id wm-orb \
-        --public-scheduler-address tcp://<SCHEDULER_EXTERNAL_IP>:8516 \
-        --object-storage-address tcp://<OSS_EXTERNAL_IP>:8517 \
-        --instance-type t3.medium \
-        --python-version 3.13 \
-        --requirements-txt /path/to/requirements.txt
+      .. code-block:: toml
 
-    # Requirements as a string literal
-    scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
-        --worker-manager-id wm-orb \
-        --public-scheduler-address tcp://<SCHEDULER_EXTERNAL_IP>:8516 \
-        --object-storage-address tcp://<OSS_EXTERNAL_IP>:8517 \
-        --instance-type t3.medium \
-        --python-version 3.13 \
-        --requirements-txt "opengris-scaler>=1.26.6"
+         [scheduler]
+         # use 0.0.0.0 so NAT and forward traffic from your public IP to this machine
+         scheduler_address = "tcp://0.0.0.0:8516"
 
-Or equivalently in a TOML file:
+         [[worker_manager]]
+         type = "orb_aws_ec2"
+         scheduler_address = "tcp://127.0.0.1:8516"   
+         worker_manager_id = "wm-orb"
+         # worker provisioned in AWS need reach to your PUBLIC_IP, and your router 
+         # then forward packets to the machine you started services
+         object_storage_address = "tcp://<PUBLIC_IP>:8517"
+         public_scheduler_address = "tcp://<PUBLIC_IP>:8516"
+         # You can start either with pre-built AMI or with specified python version
+         # and requirements_txt
+         # image_id = "ami-..."
+         python_version = "3.13"
+         requirements_txt = """
+         opengris-scaler>=1.27.0
+         numpy
+         pandas
+         """
+         instance_type = "t3.medium"
+         aws_region = "us-east-1"
+         logging_level = "INFO"
+         task_timeout_seconds = 60
 
-.. code-block:: toml
+      Run command:
 
-    [[worker_manager]]
-    type = "orb_aws_ec2"
-    scheduler_address = "tcp://<SCHEDULER_IP>:8516"
-    worker_manager_id = "wm-orb"
-    public_scheduler_address = "tcp://<SCHEDULER_EXTERNAL_IP>:8516"
-    object_storage_address = "tcp://<OSS_EXTERNAL_IP>:8517"
-    instance_type = "t3.medium"
-    python_version = "3.13"
-    requirements_txt = """
-    opengris-scaler>=1.26.6
-    numpy
-    pandas
-    """
+      .. code-block:: bash
 
-**Mode 2 — Pre-built AMI**
+         scaler config.toml
 
-Provide ``--image-id``. The specified AMI is used as-is and must already have ``opengris-scaler``
-installed with ``scaler_worker_manager`` available on the ``PATH``.
+   .. group-tab:: command line
 
-This mode is recommended for production deployments where startup latency matters or where the worker
-environment must be tightly controlled.
+      .. code-block:: bash
 
-.. code-block:: bash
+         scaler_scheduler tcp://0.0.0.0:8516
+         scaler_worker_manager orb_aws_ec2 tcp://127.0.0.1:8516 \
+             --worker-manager-id wm-orb \
+             --public-scheduler-address tcp://<PUBLIC_IP>:8516 \
+             --object-storage-address tcp://<PUBLIC_IP>:8517 \
+             --python-version 3.13 \
+             --requirements-txt /path/to/requirements.txt \
+             --instance-type t3.medium \
+             --aws-region us-east-1 \
+             --logging-level INFO \
+             --task-timeout-seconds 60
 
-    scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
-        --worker-manager-id wm-orb \
-        --public-scheduler-address tcp://<SCHEDULER_EXTERNAL_IP>:8516 \
-        --object-storage-address tcp://<OSS_EXTERNAL_IP>:8517 \
-        --instance-type t3.medium \
-        --image-id ami-0123456789abcdef0
+After services are up, you should be good to go and can use the client to
+submit tasks to workers provisioned on AWS.
+
+Worker Image Customization Modes
+--------------------------------
+
+The adapter supports two mutually exclusive worker-image modes. Choose exactly one:
+
+* Use an existing pre-built AMI image.
+* Use a base image and install Python/packages when instances start.
+
+**Base Image + Startup Install**
+
+Provide both ``--python-version`` and ``--requirements-txt`` (both required). Instances use the
+base Amazon Linux 2023 (AL2023) image, then install the specified Python version and dependencies
+at startup. ``opengris-scaler`` must be included in ``requirements_txt``.
+
+.. tabs::
+
+   .. group-tab:: config.toml
+
+      .. code-block:: toml
+
+         [[worker_manager]]
+         type = "orb_aws_ec2"
+         scheduler_address = "tcp://<SCHEDULER_IP>:8516"
+         worker_manager_id = "wm-orb"
+         public_scheduler_address = "tcp://<PUBLIC_IP>:8516"
+         object_storage_address = "tcp://<PUBLIC_IP>:8517"
+         instance_type = "t3.medium"
+         python_version = "3.13"
+         requirements_txt = """
+         opengris-scaler>=1.26.6
+         numpy
+         pandas
+         """
+
+      Run command:
+
+      .. code-block:: bash
+
+         scaler config.toml
+
+   .. group-tab:: command line
+
+      .. code-block:: bash
+
+         # Requirements as a file path
+         scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
+             --worker-manager-id wm-orb \
+             --public-scheduler-address tcp://<PUBLIC_IP>:8516 \
+             --object-storage-address tcp://<PUBLIC_IP>:8517 \
+             --instance-type t3.medium \
+             --python-version 3.13 \
+             --requirements-txt /path/to/requirements.txt
+
+         # Requirements as a string literal
+         scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
+             --worker-manager-id wm-orb \
+             --public-scheduler-address tcp://<PUBLIC_IP>:8516 \
+             --object-storage-address tcp://<PUBLIC_IP>:8517 \
+             --instance-type t3.medium \
+             --python-version 3.13 \
+             --requirements-txt "opengris-scaler>=1.26.6"
+
+**Existing Pre-built AMI**
+
+Provide ``--image-id``. The specified AMI is used as-is and must already include
+``opengris-scaler`` with ``scaler_worker_manager`` available on ``PATH``.
+
+This mode is recommended for production deployments where startup latency matters or where the
+worker environment must be tightly controlled.
+
+.. tabs::
+
+   .. group-tab:: config.toml
+
+      .. code-block:: toml
+
+         [[worker_manager]]
+         type = "orb_aws_ec2"
+         scheduler_address = "tcp://<SCHEDULER_IP>:8516"
+         worker_manager_id = "wm-orb"
+         public_scheduler_address = "tcp://<PUBLIC_IP>:8516"
+         object_storage_address = "tcp://<PUBLIC_IP>:8517"
+         instance_type = "t3.medium"
+         image_id = "ami-0123456789abcdef0"
+
+      Run command:
+
+      .. code-block:: bash
+
+         scaler config.toml
+
+   .. group-tab:: command line
+
+      .. code-block:: bash
+
+         scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
+             --worker-manager-id wm-orb \
+             --public-scheduler-address tcp://<PUBLIC_IP>:8516 \
+             --object-storage-address tcp://<PUBLIC_IP>:8517 \
+             --instance-type t3.medium \
+             --image-id ami-0123456789abcdef0
 
 Networking Configuration
 ------------------------
