@@ -50,10 +50,12 @@ graphblas = [
 ]
 aws = [
     "boto3",
+    "botocore[crt]",
 ]
 orb = [
     "orb-py~=1.5.1; python_version >= '3.10'",
-    "boto3; python_version >= '3.10'",
+    "boto3",
+    "botocore[crt]",
 ]
 all = [
     "opengris-scaler[aws]",
