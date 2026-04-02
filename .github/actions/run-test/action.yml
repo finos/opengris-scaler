@@ -41,7 +41,7 @@ runs:
       run: |
         wheel_file=$(ls dist/*.whl | head -n 1)
         echo "Installing wheel: $wheel_file"
-        uv pip install --system "$wheel_file"
+        uv pip install --system "$wheel_file[all]"
 
     - name: Run Unittests
       if: inputs.os != 'Windows'
