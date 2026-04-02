@@ -36,6 +36,16 @@ class SchedulerConfig(ConfigClass):
             "then object storage address is tcp://localhost:2346",
         ),
     )
+    advertised_object_storage_address: Optional[ObjectStorageAddressConfig] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            short="-aosa",
+            help=(
+                "advertised object storage address forwarded to clients/workers; defaults to object_storage_address. "
+                "Use this when scheduler is local/private but clients/workers connect via public IP/port."
+            ),
+        ),
+    )
     monitor_address: Optional[ZMQConfig] = dataclasses.field(
         default=None,
         metadata=dict(

@@ -66,7 +66,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
         await self._binder.send(
             client_id,
             ClientHeartbeatEcho.new_msg(
-                object_storage_address=self._config_controller.get_config("object_storage_address")
+                object_storage_address=self._config_controller.get_config("advertised_object_storage_address")
             ),
         )
         if client_id not in self._client_last_seen:
