@@ -5,10 +5,14 @@ import signal
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
-import boto3
 import zmq
-from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name
+
+try:
+    import boto3
+    from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
+except ModuleNotFoundError as exc:
+    raise ModuleNotFoundError('execute "pip install opengris-scaler[orb]" to use ORB AWS EC2 worker Manager') from exc
 
 from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
 from scaler.io import ymq
@@ -235,9 +239,14 @@ class ORBAWSEC2WorkerAdapter:
         self._loop.add_signal_handler(signal.SIGTERM, self.__destroy)
 
     async def _run(self) -> None:
-        from orb import ORBClient as orb
-
         register_event_loop(self._event_loop)
+
+        try:
+            from orb import ORBClient as orb
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                'execute "pip install opengris-scaler[orb]" to use ORB AWS EC2 worker Manager'
+            ) from exc
 
         async with orb(app_config=self._build_app_config()) as sdk:
             self._sdk = sdk
