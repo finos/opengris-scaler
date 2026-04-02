@@ -6,14 +6,19 @@ Quick Installation
 
 .. code:: bash
 
-    $ pip install opengris-scaler[all]
+    pip install opengris-scaler[all]
 
-See :ref:`introduction_installation` for other install choices and optional dependencies.
+See :ref:`installation_options` for other install choices and optional dependencies.
 
-Start Native Cluster
---------------------
+Start Services
+--------------
 
-Start a local scheduler and one native worker manager.
+The instructions below start a local scheduler with an elastic native worker
+manager (``baremetal_native``). If you want to run scheduler + worker manager
+locally but provision workers on cloud infrastructure, use these quick starts:
+
+* :ref:`Open Resource Broker AWS EC2 Quick Start <orb_aws_ec2_quick_setup>`.
+* :ref:`AWS HPC Batch Quick Start <aws_hpc_batch_quick_start>`.
 
 .. tabs::
 
@@ -33,7 +38,7 @@ Start a local scheduler and one native worker manager.
 
         .. code-block:: bash
 
-            $ scaler config.toml
+            scaler config.toml
 
     .. group-tab:: command line
 
@@ -41,16 +46,14 @@ Start a local scheduler and one native worker manager.
 
         .. code-block:: bash
 
-            $ scaler_scheduler tcp://127.0.0.1:8516
+            scaler_scheduler tcp://127.0.0.1:8516
 
         In terminal 2:
 
         .. code-block:: bash
 
-            $ scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 --worker-manager-id wm-native
+            scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 --worker-manager-id wm-native
 
-
-For more sophisticated cluster startup options, see :ref:`scaler <cmd-scaler>`.
 
 Start Compute Tasks
 -------------------

@@ -14,42 +14,151 @@ Prerequisites
 Quick Start
 -----------
 
-Get a subnet ID from your default VPC:
+.. warning::
+
+   Do not use ``pip install awscli`` for this setup. That installs AWS CLI v1.
+   Use the official AWS CLI v2 installer instead.
+
+.. tabs::
+
+   .. group-tab:: Linux x86_64
+
+      .. code-block:: bash
+
+         curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+         unzip awscliv2.zip
+         sudo ./aws/install
+
+         aws --version
+
+   .. group-tab:: Linux ARM64
+
+      .. code-block:: bash
+
+         curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
+         unzip awscliv2.zip
+         sudo ./aws/install
+
+Create a virtual environment and install Scaler with AWS extras:
+
+.. code-block:: bash
+
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install opengris-scaler[aws]
+
+Authenticate with AWS CLI:
+
+.. tabs::
+
+   .. group-tab:: Local Machine
+
+      .. code-block:: bash
+
+         aws login
+
+      Click the page link and proceed in your default browser to sign in, then
+      follow the AWS CLI instructions in the terminal.
+
+   .. group-tab:: Remote Server
+
+      .. code-block:: bash
+
+         aws login --remote
+
+      Open the URL printed by the command in your local browser, complete
+      sign-in, then copy the returned code/token and paste it back into the
+      remote terminal to finish login.
+
+AWS Permissions
+~~~~~~~~~~~~~~~
+
+.. tabs::
+
+   .. group-tab:: AWS Root account
+
+      The AWS root account does not require additional IAM policy grants for this setup.
+
+   .. group-tab:: IAM User
+
+      If you use an IAM user, grant at least these permissions:
+
+      * **ECS**: ``ecs:CreateCluster``, ``ecs:DescribeClusters``, ``ecs:RegisterTaskDefinition``,
+        ``ecs:DescribeTaskDefinition``, ``ecs:RunTask``, ``ecs:StopTask``
+      * **IAM**: ``iam:CreateRole``, ``iam:AttachRolePolicy``, ``iam:GetRole``, ``iam:PassRole``
+      * **EC2**: ``ec2:DescribeSubnets``, ``ec2:DescribeSecurityGroups``
+
+      Quick-start managed policies:
+
+      .. code-block:: text
+
+         AmazonECS_FullAccess
+         IAMFullAccess
+
+Start Services
+~~~~~~~~~~~~~~
+
+Before starting services, make sure the scheduler endpoint is reachable from
+ECS tasks. If this machine is behind a firewall/private network, configure NAT
+or equivalent routing. If this machine already has a public IP, you can skip
+NAT setup.
+
+Get one subnet ID from your default VPC:
 
 .. code-block:: bash
 
    aws ec2 describe-subnets \
-       --filters "Name=default-for-az,Values=true" \
-       --query "Subnets[0].SubnetId" \
-       --output text
+        --filters "Name=default-for-az,Values=true" \
+        --query "Subnets[0].SubnetId" \
+        --output text
 
-Paste the result into the TOML below and run the three commands:
+Copy ``config.toml`` below, replace ``PUBLIC_IP`` and subnet values, then start
+services:
 
-.. code-block:: toml
-   :caption: config.toml
+.. tabs::
 
-   [[worker_manager]]
-   type = "aws_raw_ecs"
-   scheduler_address = "tcp://<SCHEDULER_PUBLIC_IP>:8516"
-   object_storage_address = "tcp://<SCHEDULER_PUBLIC_IP>:8517"
-   worker_manager_id = "wm-ecs"
-   ecs_subnets = "subnet-0abc1234def56789a"  # paste your subnet ID here
-   aws_region = "us-east-1"
-   max_task_concurrency = 4
-   ecs_task_cpu = 4
-   ecs_task_memory = 30
+   .. group-tab:: config.toml
 
-.. code-block:: bash
+      .. code-block:: toml
+         :caption: config.toml
 
-   # Terminal 1 — Scheduler (use your public/private IP, not 127.0.0.1)
-   scaler_scheduler tcp://0.0.0.0:8516 \
-       --policy-content "allocate=even_load; scaling=vanilla"
+         [scheduler]
+         scheduler_address = "tcp://0.0.0.0:8516"
 
+         [[worker_manager]]
+         type = "aws_raw_ecs"
+         scheduler_address = "tcp://127.0.0.1:8516"
+         public_scheduler_address = "tcp://<PUBLIC_IP>:8516"
+         object_storage_address = "tcp://<PUBLIC_IP>:8517"
+         worker_manager_id = "wm-ecs"
+         ecs_subnets = "subnet-0abc1234def56789a"
+         aws_region = "us-east-1"
+         max_task_concurrency = 4
+         ecs_task_cpu = 4
+         ecs_task_memory = 30
 
-.. code-block:: bash
+      Run command:
 
-   # Terminal 2 — AWS Raw ECS Worker Manager
-   $ scaler config.toml
+      .. code-block:: bash
+
+         scaler config.toml
+
+   .. group-tab:: command line
+
+      .. code-block:: bash
+
+         scaler_scheduler tcp://0.0.0.0:8516 --policy-content "allocate=even_load; scaling=vanilla"
+         scaler_worker_manager aws_raw_ecs tcp://127.0.0.1:8516 \
+             --public-scheduler-address tcp://<PUBLIC_IP>:8516 \
+             --object-storage-address tcp://<PUBLIC_IP>:8517 \
+             --worker-manager-id wm-ecs \
+             --ecs-subnets subnet-0abc1234def56789a \
+             --aws-region us-east-1 \
+             --max-task-concurrency 4 \
+             --ecs-task-cpu 4 \
+             --ecs-task-memory 30
+
+After services are up, use a client to submit tasks to ECS-provisioned workers.
 
 .. code-block:: python
    :caption: my_client.py (Terminal 3)
@@ -59,38 +168,15 @@ Paste the result into the TOML below and run the three commands:
    def compute(x):
        return x ** 2
 
-   with Client(address="tcp://<SCHEDULER_PUBLIC_IP>:8516") as client:
+   with Client(address="tcp://<PUBLIC_IP>:8516") as client:
        futures = client.map(compute, range(50))
        print([f.result() for f in futures])
-
-If you need help finding your subnet IDs or setting up permissions, follow the detailed setup below.
 
 Detailed Setup
 --------------
 
-Step 1: Configure AWS Credentials
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: bash
-
-   aws configure
-   # Enter your AWS Access Key ID, Secret Access Key, region (e.g. us-east-1), and output format (json)
-
-Your IAM user needs the following permissions:
-
-* **ECS**: ``ecs:CreateCluster``, ``ecs:DescribeClusters``, ``ecs:RegisterTaskDefinition``, ``ecs:DescribeTaskDefinition``, ``ecs:RunTask``, ``ecs:StopTask``
-* **IAM**: ``iam:CreateRole``, ``iam:AttachRolePolicy``, ``iam:GetRole``, ``iam:PassRole``
-* **EC2**: ``ec2:DescribeSubnets``, ``ec2:DescribeSecurityGroups``
-
-Or attach the following AWS managed policies for quick setup:
-
-.. code-block:: text
-
-   AmazonECS_FullAccess
-   IAMFullAccess
-
-Step 2: Find Your Subnet IDs
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 1: Find Your Subnet IDs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The ECS worker manager needs at least one subnet ID to launch Fargate tasks. Find your default VPC subnets:
 
@@ -103,8 +189,8 @@ The ECS worker manager needs at least one subnet ID to launch Fargate tasks. Fin
 
 Copy one or more subnet IDs (e.g. ``subnet-0abc1234def56789a``).
 
-Step 3: Start the Scheduler
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 2: Start the Scheduler
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The scheduler must be reachable from the Fargate tasks. Use your machine's public or private IP (not ``127.0.0.1``):
 
@@ -117,42 +203,52 @@ The scheduler must be reachable from the Fargate tasks. Use your machine's publi
 .. important::
    Fargate tasks must be able to reach the scheduler address over the network. Ensure your security group allows inbound TCP on port 8516 from the Fargate subnet CIDR, and that the scheduler binds to an accessible IP.
 
-Step 4: Start the AWS Raw ECS Worker Manager
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 3: Start the AWS Raw ECS Worker Manager
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: bash
+.. tabs::
 
-   scaler_worker_manager aws_raw_ecs tcp://<SCHEDULER_PUBLIC_IP>:8516 \
-       --ecs-subnets subnet-0abc1234def56789a \
-       --aws-region us-east-1 \
-       --max-task-concurrency 4 \
-       --ecs-task-cpu 4 \
-       --ecs-task-memory 30
+   .. group-tab:: config.toml
 
-Or use a TOML configuration file:
+      .. code-block:: toml
+         :caption: config.toml
 
-.. code-block:: bash
+         [[worker_manager]]
+         type = "aws_raw_ecs"
+         scheduler_address = "tcp://127.0.0.1:8516"
+         public_scheduler_address = "tcp://<PUBLIC_IP>:8516"
+         object_storage_address = "tcp://<PUBLIC_IP>:8517"
+         worker_manager_id = "wm-ecs"
+         ecs_subnets = "subnet-0abc1234def56789a"
+         aws_region = "us-east-1"
+         max_task_concurrency = 4
+         ecs_task_cpu = 4
+         ecs_task_memory = 30
+         ecs_cluster = "scaler-cluster"
+         ecs_task_definition = "scaler-task-definition"
+         ecs_task_image = "public.ecr.aws/v4u8j8r6/scaler:latest"
 
-   $ scaler config.toml
+      Run command:
 
-.. code-block:: toml
-   :caption: config.toml
+      .. code-block:: bash
 
-   [[worker_manager]]
-   type = "aws_raw_ecs"
-   scheduler_address = "tcp://<SCHEDULER_PUBLIC_IP>:8516"
-   object_storage_address = "tcp://<SCHEDULER_PUBLIC_IP>:8517"
-   worker_manager_id = "wm-ecs"
-   ecs_subnets = "subnet-0abc1234def56789a"
-   aws_region = "us-east-1"
-   max_task_concurrency = 4
-   ecs_task_cpu = 4
-   ecs_task_memory = 30
-   ecs_cluster = "scaler-cluster"
-   ecs_task_definition = "scaler-task-definition"
-   ecs_task_image = "public.ecr.aws/v4u8j8r6/scaler:latest"
+         scaler config.toml
 
-Step 5: Submit Tasks
+   .. group-tab:: command line
+
+      .. code-block:: bash
+
+         scaler_worker_manager aws_raw_ecs tcp://127.0.0.1:8516 \
+             --public-scheduler-address tcp://<PUBLIC_IP>:8516 \
+             --object-storage-address tcp://<PUBLIC_IP>:8517 \
+             --worker-manager-id wm-ecs \
+             --ecs-subnets subnet-0abc1234def56789a \
+             --aws-region us-east-1 \
+             --max-task-concurrency 4 \
+             --ecs-task-cpu 4 \
+             --ecs-task-memory 30
+
+Step 4: Submit Tasks
 ~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
@@ -162,7 +258,7 @@ Step 5: Submit Tasks
    def compute(x):
        return x ** 2
 
-   with Client(address="tcp://<SCHEDULER_PUBLIC_IP>:8516") as client:
+   with Client(address="tcp://<PUBLIC_IP>:8516") as client:
        futures = client.map(compute, range(50))
        results = [f.result() for f in futures]
        print(results)
@@ -195,7 +291,7 @@ AWS Raw ECS Parameters
 * ``--ecs-task-memory``: Memory per Fargate task in GB (default: ``30``).
 * ``--ecs-python-requirements``: Python packages to install in the container at startup (default: ``tomli;pargraph;parfun;pandas``).
 * ``--ecs-python-version``: Python version for the container (default: ``3.12.11``).
-* ``--max-task-concurrency`` (``-mtc``): Maximum number of Fargate tasks (default: number of CPUs − 1).
+* ``--max-task-concurrency`` (``-mtc``): Maximum number of Fargate tasks (default: local CPU count).
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~
@@ -208,11 +304,11 @@ Architecture
 .. code-block:: text
 
    ┌─────────┐     ┌───────────┐     ┌──────────────────┐     ┌─────────────────────┐
-   │  Client  │────>│ Scheduler │<───>│ ECS WorkerAdapter│────>│ AWS ECS (Fargate)   │
+   │  Client │────>│ Scheduler │<───>│ ECS WorkerAdapter│────>│ AWS ECS (Fargate)   │
    └─────────┘     └─────┬─────┘     └──────────────────┘     └──────────┬──────────┘
-                         │                                                │
-                         │            ┌──────────────────┐                │
-                         └───────────>│  Object Storage  │<───────────────┘
+                         │                                               │
+                         │            ┌──────────────────┐               │
+                         └───────────>│  Object Storage  │<──────────────┘
                                       └──────────────────┘       (scaler_cluster
                                                                   runs inside each
                                                                   Fargate task)

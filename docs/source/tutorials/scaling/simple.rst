@@ -37,17 +37,17 @@ The example below starts a scheduler and one native worker manager using ``vanil
 
         .. code-block:: bash
 
-            $ scaler config.toml
+            scaler config.toml
 
     .. group-tab:: command line
 
         .. code-block:: bash
 
-            $ scaler_scheduler tcp://127.0.0.1:8516 \
+            scaler_scheduler tcp://127.0.0.1:8516 \
                 --object-storage-address tcp://127.0.0.1:8517 \
                 --policy-engine-type simple \
                 --policy-content "allocate=even_load; scaling=vanilla" &
-            $ scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 \
+            scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 \
                 --object-storage-address tcp://127.0.0.1:8517 \
                 --worker-manager-id NAT|default \
                 --max-task-concurrency 8

@@ -101,7 +101,7 @@ Or use a TOML configuration file:
 
 .. code-block:: bash
 
-   $ scaler config.toml
+   scaler config.toml
 
 .. code-block:: toml
    :caption: config.toml
@@ -137,7 +137,7 @@ Or use a TOML configuration file:
 
 .. code-block:: bash
 
-   $ scaler config.toml
+   scaler config.toml
 
 .. code-block:: toml
    :caption: config.toml
