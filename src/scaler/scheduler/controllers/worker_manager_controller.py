@@ -86,19 +86,20 @@ class WorkerManagerController(Looper, Reporter):
         if source in self._pending_commands:
             return
 
+        commands = self._policy_controller.get_scaling_commands(
+            information_snapshot, heartbeat, managed_worker_ids, managed_worker_capabilities, worker_manager_snapshots
+        )
+
         # If this manager previously reported TooManyWorkers, suppress new StartWorkers requests
         # until the scheduler's worker count grows beyond the baseline recorded at that time.
         # This handles the visibility gap where the ORB adapter has created instances that have
         # not yet sent their first heartbeat to the scheduler.
+        # ShutdownWorkers commands must never be suppressed, the baseline only applies to scale-up.
         if source in self._at_capacity_baseline:
             if len(managed_worker_ids) > self._at_capacity_baseline[source]:
                 del self._at_capacity_baseline[source]
             else:
-                return
-
-        commands = self._policy_controller.get_scaling_commands(
-            information_snapshot, heartbeat, managed_worker_ids, managed_worker_capabilities, worker_manager_snapshots
-        )
+                commands = [c for c in commands if c.command != WorkerManagerCommandType.StartWorkers]
 
         for command in commands:
             await self._send_command(source, command)
@@ -125,6 +126,10 @@ class WorkerManagerController(Looper, Reporter):
         elif response.command == WorkerManagerCommandType.ShutdownWorkers:
             if response.status != WorkerManagerCommandResponse.Status.Success:
                 logging.warning(f"ShutdownWorkers failed: {response.status.name}")
+            else:
+                # Successful shutdown changes the capacity situation; clear any TooManyWorkers baseline
+                # so subsequent StartWorkers requests are no longer suppressed.
+                self._at_capacity_baseline.pop(source, None)
 
     async def routine(self):
         await self._clean_managers()
