@@ -2,13 +2,15 @@
 AWS HPC Task Manager.
 
 Handles task queuing, priority, semaphore, and execution via AWS Batch.
+Supports array jobs for batching multiple tasks into a single Batch submission.
 Follows the same pattern as SymphonyTaskManager for consistency.
 """
 
 import asyncio
 import logging
-from concurrent.futures import Future
-from typing import Any, Dict, List, Optional, Set, cast
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 import cloudpickle
 from bidict import bidict
@@ -23,6 +25,11 @@ from scaler.utility.mixins import Looper
 from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
 from scaler.utility.serialization import serialize_failure
 from scaler.worker.agent.mixins import HeartbeatManager, TaskManager
+
+# Array job batching constants
+ARRAY_JOB_BATCH_WINDOW_SECONDS: float = 0.5
+ARRAY_JOB_MIN_BATCH_SIZE: int = 2
+ARRAY_JOB_MAX_BATCH_SIZE: int = 10000  # AWS Batch limit
 
 
 class AWSHPCTaskManager(Looper, TaskManager):
@@ -78,6 +85,13 @@ class AWSHPCTaskManager(Looper, TaskManager):
         # AWS clients (initialized lazily)
         self._batch_client: Any = None
         self._s3_client: Any = None
+
+        # Thread pool for non-blocking boto3 calls
+        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="aws-hpc")
+
+        # Array job batching: accumulate tasks before submitting as one array job
+        self._batch_pending: List[Tuple[Task, Any, List[Any]]] = []
+        self._batch_window_start: float = 0.0
 
     def _initialize_aws_clients(self) -> None:
         """Initialize AWS Batch and S3 clients."""
@@ -281,7 +295,8 @@ class AWSHPCTaskManager(Looper, TaskManager):
 
     async def __execute_task(self, task: Task) -> asyncio.Future:
         """
-        Execute a task via AWS Batch job submission.
+        Execute a task via AWS Batch. Tasks are batched into array jobs
+        when multiple arrive within a short window.
         """
         serializer_id = ObjectID.generate_serializer_object_id(task.source)
 
@@ -303,25 +318,245 @@ class AWSHPCTaskManager(Looper, TaskManager):
         function = serializer.deserialize(function_bytes)
         arg_objects = [serializer.deserialize(object_bytes) for object_bytes in arg_bytes]
 
-        # Submit to AWS Batch
+        # Create future for this task
         future: Future = Future()
         future.set_running_or_notify_cancel()
 
-        try:
-            batch_job_id = await self._submit_batch_job(task, function, arg_objects)
-            self._task_id_to_batch_job_id[task.task_id] = batch_job_id
-            logging.info(f"Task {task.task_id.hex()[:8]} submitted as Batch job {batch_job_id}")
+        # Add to batch pending queue
+        self._batch_pending.append((task, function, arg_objects))
+        if len(self._batch_pending) == 1:
+            self._batch_window_start = time.monotonic()
 
-            # Start monitoring the job
-            asyncio.create_task(self._monitor_batch_job(batch_job_id, future, task.task_id))
-        except Exception as e:
-            logging.exception(f"Failed to submit task {task.task_id.hex()[:8]}: {e}")
-            future.set_exception(e)
+        # If batch is full, flush immediately
+        if len(self._batch_pending) >= ARRAY_JOB_MAX_BATCH_SIZE:
+            batch = self._batch_pending[:]
+            self._batch_pending.clear()
+            futures_map = self._build_futures_map(batch, task.task_id, future)
+            await self._flush_batch(batch, futures_map)
+            return asyncio.wrap_future(future)
+
+        # Wait for batch window to fill
+        elapsed = time.monotonic() - self._batch_window_start
+        remaining = ARRAY_JOB_BATCH_WINDOW_SECONDS - elapsed
+        if remaining > 0:
+            await asyncio.sleep(remaining)
+
+        # Check if this task is still in the pending batch (not already flushed)
+        if not any(t.task_id == task.task_id for t, _, _ in self._batch_pending):
+            return asyncio.wrap_future(future)
+
+        # Flush the batch
+        batch = self._batch_pending[:]
+        self._batch_pending.clear()
+        futures_map = self._build_futures_map(batch, task.task_id, future)
+        await self._flush_batch(batch, futures_map)
 
         return asyncio.wrap_future(future)
 
-    async def _submit_batch_job(self, task: Task, function: Any, arguments: List[Any]) -> str:
-        """Submit task as AWS Batch job."""
+    def _build_futures_map(
+        self, batch: List[Tuple[Task, Any, List[Any]]], current_task_id: TaskID, current_future: Future
+    ) -> Dict[TaskID, Future]:
+        """Build a map of task_id -> future for all tasks in the batch."""
+        futures_map: Dict[TaskID, Future] = {}
+        for batch_task, _, _ in batch:
+            if batch_task.task_id == current_task_id:
+                futures_map[batch_task.task_id] = current_future
+            else:
+                f: Future = Future()
+                f.set_running_or_notify_cancel()
+                futures_map[batch_task.task_id] = f
+                self._task_id_to_future[batch_task.task_id] = asyncio.wrap_future(f)
+        return futures_map
+
+    async def _flush_batch(
+        self, batch: List[Tuple[Task, Any, List[Any]]], futures_map: Dict[TaskID, Future]
+    ) -> None:
+        """Submit a batch of tasks as either an array job or a single job."""
+        try:
+            if len(batch) >= ARRAY_JOB_MIN_BATCH_SIZE:
+                await self._submit_array_job(batch, futures_map)
+            else:
+                single_task, single_func, single_args = batch[0]
+                single_future = futures_map[single_task.task_id]
+                batch_job_id = await self._submit_single_batch_job(single_task, single_func, single_args)
+                self._task_id_to_batch_job_id[single_task.task_id] = batch_job_id
+                logging.info(f"Task {single_task.task_id.hex()[:8]} submitted as Batch job {batch_job_id}")
+                asyncio.create_task(self._monitor_batch_job(batch_job_id, single_future, single_task.task_id))
+        except Exception as e:
+            logging.exception(f"Failed to submit batch of {len(batch)} tasks: {e}")
+            for f in futures_map.values():
+                if not f.done():
+                    f.set_exception(e)
+
+    async def _run_in_executor(self, func: Any, *args: Any, **kwargs: Any) -> Any:
+        """Run a blocking function in the thread pool to avoid starving the event loop."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self._executor, lambda: func(*args, **kwargs))
+
+    async def _submit_array_job(
+        self,
+        batch: List[Tuple[Task, Any, List[Any]]],
+        futures_map: Dict[TaskID, Future],
+    ) -> None:
+        """Submit multiple tasks as a single AWS Batch array job."""
+        import gzip
+        import re
+        import uuid
+
+        from botocore.exceptions import ClientError
+
+        array_id = uuid.uuid4().hex[:12]
+        array_size = len(batch)
+
+        # Upload all payloads to S3 with index-based keys
+        s3_prefix_array = f"{self._s3_prefix}/array/{array_id}"
+        index_to_task_id: Dict[int, TaskID] = {}
+
+        for index, (task, function, arguments) in enumerate(batch):
+            task_data = {
+                "task_id": task.task_id.hex(),
+                "source": task.source.hex(),
+                "function": function,
+                "arguments": arguments,
+            }
+            payload = cloudpickle.dumps(task_data)
+            if len(payload) > 4 * 1024:
+                payload = gzip.compress(payload)
+
+            s3_key = f"{s3_prefix_array}/{index}.pkl"
+            await self._run_in_executor(
+                self._s3_client.put_object, Bucket=self._s3_bucket, Key=s3_key, Body=payload
+            )
+            index_to_task_id[index] = task.task_id
+
+        # Get function name for job naming
+        _, first_func, _ = batch[0]
+        func_name = getattr(first_func, "__name__", "unknown")
+        safe_func_name = re.sub(r"[^a-zA-Z0-9_-]", "_", func_name)[:50]
+        job_name = f"{safe_func_name}-array-{array_id}"
+
+        submit_kwargs: Dict[str, Any] = dict(
+            jobName=job_name,
+            jobQueue=self._job_queue,
+            jobDefinition=self._job_definition,
+            arrayProperties={"size": array_size},
+            parameters={
+                "task_id": "array",
+                "payload": "",
+                "compressed": "0",
+                "s3_bucket": self._s3_bucket,
+                "s3_prefix": self._s3_prefix,
+                "s3_key": f"{s3_prefix_array}/ARRAY_INDEX.pkl",
+            },
+            timeout={"attemptDurationSeconds": self._job_timeout_seconds},
+        )
+
+        try:
+            response = await self._run_in_executor(self._batch_client.submit_job, **submit_kwargs)
+        except ClientError as e:
+            if "ExpiredToken" in str(e) or "expired" in str(e).lower():
+                logging.warning("AWS credentials expired, refreshing...")
+                self._initialize_aws_clients()
+                response = await self._run_in_executor(self._batch_client.submit_job, **submit_kwargs)
+            else:
+                raise
+
+        parent_job_id = response["jobId"]
+        logging.info(
+            f"Submitted array job {parent_job_id} with {array_size} tasks "
+            f"(s3://{self._s3_bucket}/{s3_prefix_array}/)"
+        )
+
+        # Track all child jobs
+        for index, task_id in index_to_task_id.items():
+            child_job_id = f"{parent_job_id}:{index}"
+            self._task_id_to_batch_job_id[task_id] = child_job_id
+
+        # Start monitoring the array job
+        asyncio.create_task(
+            self._monitor_array_job(parent_job_id, index_to_task_id, futures_map, s3_prefix_array)
+        )
+
+    async def _monitor_array_job(
+        self,
+        parent_job_id: str,
+        index_to_task_id: Dict[int, TaskID],
+        futures_map: Dict[TaskID, Future],
+        s3_prefix_array: str,
+    ) -> None:
+        """Monitor an AWS Batch array job and resolve individual task futures."""
+        import gzip
+
+        poll_interval = 3.0
+        resolved: Set[int] = set()
+        total = len(index_to_task_id)
+
+        while len(resolved) < total:
+            await asyncio.sleep(poll_interval)
+
+            try:
+                unresolved_indices = [i for i in index_to_task_id if i not in resolved]
+                for batch_start in range(0, len(unresolved_indices), 100):
+                    batch_indices = unresolved_indices[batch_start : batch_start + 100]
+                    child_job_ids = [f"{parent_job_id}:{i}" for i in batch_indices]
+
+                    response = await self._run_in_executor(self._batch_client.describe_jobs, jobs=child_job_ids)
+                    for job in response.get("jobs", []):
+                        child_id = job["jobId"]
+                        index = int(child_id.split(":")[-1])
+                        status = job["status"]
+                        task_id = index_to_task_id[index]
+                        future = futures_map.get(task_id)
+
+                        if future is None or future.done():
+                            resolved.add(index)
+                            continue
+
+                        if status == "SUCCEEDED":
+                            result_key = f"{self._s3_prefix}/results/{child_id}.pkl"
+                            try:
+                                try:
+                                    s3_resp = await self._run_in_executor(
+                                        self._s3_client.get_object, Bucket=self._s3_bucket, Key=result_key
+                                    )
+                                except self._s3_client.exceptions.NoSuchKey:
+                                    result_key += ".gz"
+                                    s3_resp = await self._run_in_executor(
+                                        self._s3_client.get_object, Bucket=self._s3_bucket, Key=result_key
+                                    )
+                                result_bytes = s3_resp["Body"].read()
+                                if len(result_bytes) >= 2 and result_bytes[0:2] == b"\x1f\x8b":
+                                    result_bytes = gzip.decompress(result_bytes)
+                                result = cloudpickle.loads(result_bytes)
+                                future.set_result(result)
+                                await self._run_in_executor(
+                                    self._s3_client.delete_object, Bucket=self._s3_bucket, Key=result_key
+                                )
+                            except Exception as e:
+                                future.set_exception(
+                                    RuntimeError(f"Failed to fetch result for index {index}: {e}")
+                                )
+                            resolved.add(index)
+
+                        elif status == "FAILED":
+                            reason = job.get("statusReason", "Unknown failure")
+                            future.set_exception(RuntimeError(f"Array job child {index} failed: {reason}"))
+                            resolved.add(index)
+
+            except Exception as e:
+                logging.exception(f"Error monitoring array job {parent_job_id}: {e}")
+
+        # Cleanup S3 array payloads
+        try:
+            for index in index_to_task_id:
+                await self._run_in_executor(
+                    self._s3_client.delete_object, Bucket=self._s3_bucket, Key=f"{s3_prefix_array}/{index}.pkl"
+                )
+        except Exception as e:
+            logging.warning(f"Failed to cleanup array payloads: {e}")
+
+    async def _submit_single_batch_job(self, task: Task, function: Any, arguments: List[Any]) -> str:
+        """Submit a single task as an individual AWS Batch job."""
         import base64
         import gzip
         import re
@@ -331,71 +566,55 @@ class AWSHPCTaskManager(Looper, TaskManager):
         task_id_hex = task.task_id.hex()
         func_name = getattr(function, "__name__", "unknown")
 
-        # Create payload with embedded function and arguments
         task_data = {"task_id": task_id_hex, "source": task.source.hex(), "function": function, "arguments": arguments}
 
         payload = cloudpickle.dumps(task_data)
         payload_size = len(payload)
 
-        # Compress if larger than 4KB
         compressed = False
         if payload_size > 4 * 1024:
             payload = gzip.compress(payload)
             compressed = True
-            logging.debug(f"Compressed payload: {payload_size} -> {len(payload)} bytes")
 
-        # Create job name
         safe_func_name = re.sub(r"[^a-zA-Z0-9_-]", "_", func_name)[:50]
         job_name = f"{safe_func_name}-{task_id_hex[:12]}"
 
-        # Determine if we need S3 or can use inline
-        max_inline_size = 28 * 1024  # 28KB for inline payload
+        max_inline_size = 28 * 1024
 
         if len(payload) <= max_inline_size:
-            # Use inline payload
             encoded_payload = base64.b64encode(payload).decode("ascii")
             s3_key = "none"
         else:
-            # Store in S3
             s3_key = f"{self._s3_prefix}/inputs/{task_id_hex}.pkl"
             if compressed:
                 s3_key += ".gz"
-            self._s3_client.put_object(Bucket=self._s3_bucket, Key=s3_key, Body=payload)
+            await self._run_in_executor(
+                self._s3_client.put_object, Bucket=self._s3_bucket, Key=s3_key, Body=payload
+            )
             encoded_payload = ""
 
+        submit_kwargs: Dict[str, Any] = dict(
+            jobName=job_name,
+            jobQueue=self._job_queue,
+            jobDefinition=self._job_definition,
+            parameters={
+                "task_id": task_id_hex,
+                "payload": encoded_payload,
+                "compressed": "1" if compressed else "0",
+                "s3_bucket": self._s3_bucket,
+                "s3_prefix": self._s3_prefix,
+                "s3_key": s3_key,
+            },
+            timeout={"attemptDurationSeconds": self._job_timeout_seconds},
+        )
+
         try:
-            response = self._batch_client.submit_job(
-                jobName=job_name,
-                jobQueue=self._job_queue,
-                jobDefinition=self._job_definition,
-                parameters={
-                    "task_id": task_id_hex,
-                    "payload": encoded_payload,
-                    "compressed": "1" if compressed else "0",
-                    "s3_bucket": self._s3_bucket,
-                    "s3_prefix": self._s3_prefix,
-                    "s3_key": s3_key,
-                },
-                timeout={"attemptDurationSeconds": self._job_timeout_seconds},
-            )
+            response = await self._run_in_executor(self._batch_client.submit_job, **submit_kwargs)
         except ClientError as e:
             if "ExpiredToken" in str(e) or "expired" in str(e).lower():
                 logging.warning("AWS credentials expired, refreshing...")
                 self._initialize_aws_clients()
-                response = self._batch_client.submit_job(
-                    jobName=job_name,
-                    jobQueue=self._job_queue,
-                    jobDefinition=self._job_definition,
-                    parameters={
-                        "task_id": task_id_hex,
-                        "payload": encoded_payload,
-                        "compressed": "1" if compressed else "0",
-                        "s3_bucket": self._s3_bucket,
-                        "s3_prefix": self._s3_prefix,
-                        "s3_key": s3_key,
-                    },
-                    timeout={"attemptDurationSeconds": self._job_timeout_seconds},
-                )
+                response = await self._run_in_executor(self._batch_client.submit_job, **submit_kwargs)
             else:
                 raise
 
@@ -411,7 +630,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
             await asyncio.sleep(poll_interval)
 
             try:
-                response = self._batch_client.describe_jobs(jobs=[job_id])
+                response = await self._run_in_executor(self._batch_client.describe_jobs, jobs=[job_id])
                 if not response.get("jobs"):
                     continue
 
@@ -422,7 +641,15 @@ class AWSHPCTaskManager(Looper, TaskManager):
                     # Fetch result from S3
                     result_key = f"{self._s3_prefix}/results/{job_id}.pkl"
                     try:
-                        response = self._s3_client.get_object(Bucket=self._s3_bucket, Key=result_key)
+                        try:
+                            response = await self._run_in_executor(
+                                self._s3_client.get_object, Bucket=self._s3_bucket, Key=result_key
+                            )
+                        except self._s3_client.exceptions.NoSuchKey:
+                            result_key += ".gz"
+                            response = await self._run_in_executor(
+                                self._s3_client.get_object, Bucket=self._s3_bucket, Key=result_key
+                            )
                         result_bytes = response["Body"].read()
 
                         # Check if compressed
@@ -433,7 +660,9 @@ class AWSHPCTaskManager(Looper, TaskManager):
                         future.set_result(result)
 
                         # Cleanup S3
-                        self._s3_client.delete_object(Bucket=self._s3_bucket, Key=result_key)
+                        await self._run_in_executor(
+                            self._s3_client.delete_object, Bucket=self._s3_bucket, Key=result_key
+                        )
                     except Exception as e:
                         future.set_exception(RuntimeError(f"Failed to fetch result: {e}"))
                     return
@@ -458,7 +687,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
     async def _cancel_batch_job(self, job_id: str) -> None:
         """Cancel an AWS Batch job."""
         try:
-            self._batch_client.terminate_job(jobId=job_id, reason="Canceled by Scaler")
+            await self._run_in_executor(self._batch_client.terminate_job, jobId=job_id, reason="Canceled by Scaler")
             logging.info(f"Canceled Batch job {job_id}")
         except Exception as e:
             logging.warning(f"Failed to cancel Batch job {job_id}: {e}")

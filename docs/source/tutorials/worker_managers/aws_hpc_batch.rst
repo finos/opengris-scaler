@@ -261,11 +261,11 @@ How It Works
 
 1. The worker manager connects to the Scaler scheduler as a worker and receives tasks.
 2. Each task is serialized with ``cloudpickle`` and either passed inline (≤ 28 KB) or uploaded to S3.
-3. The worker manager submits an AWS Batch job for each task.
-4. Inside the Batch container, a runner script (``batch_job_runner.py``) deserializes the task, executes the function, and writes the result to S3.
+3. When multiple tasks arrive within a short window (0.5s), they are automatically batched into a single AWS Batch **array job**, reducing API calls from N to 1. Single tasks are submitted individually.
+4. Inside the Batch container, a runner script (``batch_job_runner.py``) deserializes the task, executes the function, and writes the result to S3. For array jobs, each child container uses its ``AWS_BATCH_JOB_ARRAY_INDEX`` to pick the correct payload.
 5. The worker manager polls for job completion, fetches the result from S3, and returns it to the scheduler.
 
-A semaphore limits concurrent Batch jobs (``--max-concurrent-jobs``) to prevent exceeding AWS service quotas.
+A semaphore limits concurrent Batch jobs (``--max-concurrent-jobs``) to prevent exceeding AWS service quotas. All AWS API calls run in a thread pool to avoid blocking the heartbeat loop.
 
 Configuration Reference
 ------------------------
