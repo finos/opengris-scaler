@@ -15,6 +15,7 @@ from scaler.config.section.webgui import WebGUIConfig
 
 README_TOML = b"""
 [scheduler]
+bind_address = "tcp://127.0.0.1:6378"
 object_storage_address = "tcp://127.0.0.1:6379"
 monitor_address = "tcp://127.0.0.1:6380"
 logging_level = "INFO"
@@ -33,6 +34,7 @@ logging_level = "INFO"
 logging_paths = ["/dev/stdout", "/var/log/scaler/worker.log"]
 
 [object_storage_server]
+bind_address = "tcp://127.0.0.1:6379"
 
 [gui]
 gui_address = "127.0.0.1:8081"
@@ -40,7 +42,17 @@ gui_address = "127.0.0.1:8081"
 
 
 class TestReadmeConfig(unittest.TestCase):
-    @patch("sys.argv", ["scaler_scheduler", "tcp://127.0.0.1:6378", "--config", "config.toml"])
+    @patch(
+        "sys.argv",
+        [
+            "scaler_scheduler",
+            "tcp://127.0.0.1:6378",
+            "--object-storage-address",
+            "tcp://127.0.0.1:6379",
+            "--config",
+            "config.toml",
+        ],
+    )
     @patch("builtins.open", mock_open(read_data=README_TOML))
     def test_scheduler_section(self) -> None:
         config = SchedulerConfig.parse("scaler_scheduler", "scheduler")

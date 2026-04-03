@@ -26,7 +26,8 @@ Step 2: Start the Scheduler
 
 .. code-block:: bash
 
-   scaler_scheduler tcp://0.0.0.0:8516 \
+   scaler_object_storage_server tcp://127.0.0.1:8517
+   scaler_scheduler tcp://0.0.0.0:8516 --object-storage-address tcp://127.0.0.1:8517 \
        --policy-content "allocate=even_load; scaling=vanilla"
 
 
@@ -47,6 +48,13 @@ Or use a TOML configuration file:
 
 .. code-block:: toml
    :caption: config.toml
+
+   [object_storage_server]
+   bind_address = "tcp://127.0.0.1:8517"
+
+   [scheduler]
+   bind_address = "tcp://0.0.0.0:8516"
+   object_storage_address = "tcp://127.0.0.1:8517"
 
    [[worker_manager]]
    type = "symphony"

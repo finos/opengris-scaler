@@ -18,9 +18,9 @@ def main():
 
     try:
         ObjectStorageServer().run(
-            oss_config.object_storage_address.host,
-            oss_config.object_storage_address.port,
-            oss_config.object_storage_address.identity,
+            oss_config.bind_address.host,
+            oss_config.bind_address.port,
+            oss_config.bind_address.identity,
             log_level_str,
             log_format_str,
             log_paths,

@@ -18,10 +18,13 @@ Configure the scheduler with a scaling policy, then start a worker manager:
 
 .. code-block:: bash
 
-    # Terminal 1 — Scheduler
-    scaler_scheduler tcp://127.0.0.1:8516 -pc "allocate=even_load; scaling=vanilla"
+    # Terminal 1 — Object storage server
+    scaler_object_storage_server tcp://127.0.0.1:8517
 
-    # Terminal 2 — Worker Manager (e.g., Baremetal Native)
+    # Terminal 2 — Scheduler
+    scaler_scheduler tcp://127.0.0.1:8516 --object-storage-address tcp://127.0.0.1:8517 -pc "allocate=even_load; scaling=vanilla"
+
+    # Terminal 3 — Worker Manager (e.g., Baremetal Native)
     scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 --max-task-concurrency 8
 
 The vanilla policy automatically scales workers up and down based on the task-to-worker ratio. For available policies and their parameters, see :doc:`../scaling`.

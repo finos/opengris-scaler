@@ -1,36 +1,17 @@
 # PYTHON_ARGCOMPLETE_OK
 from typing import Optional
 
-from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
 from scaler.config.section.scheduler import SchedulerConfig
-from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 
 
 def main(scheduler_config: Optional[SchedulerConfig] = None) -> None:
     if scheduler_config is None:
         scheduler_config = SchedulerConfig.parse("Scaler Scheduler", "scheduler")
 
-    object_storage_address = scheduler_config.object_storage_address
-    object_storage = None
-
-    if object_storage_address is None:
-        assert scheduler_config.scheduler_address.port is not None, "Scheduler address must have a port"
-        object_storage_address = ObjectStorageAddressConfig(
-            host=scheduler_config.scheduler_address.host, port=scheduler_config.scheduler_address.port + 1
-        )
-        object_storage = ObjectStorageServerProcess(
-            object_storage_address=object_storage_address,
-            logging_paths=scheduler_config.logging_config.paths,
-            logging_config_file=scheduler_config.logging_config.config_file,
-            logging_level=scheduler_config.logging_config.level,
-        )
-        object_storage.start()
-        object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
-
     scheduler = SchedulerProcess(
-        address=scheduler_config.scheduler_address,
-        object_storage_address=object_storage_address,
+        bind_address=scheduler_config.bind_address,
+        object_storage_address=scheduler_config.object_storage_address,
         monitor_address=scheduler_config.monitor_address,
         io_threads=scheduler_config.io_threads,
         max_number_of_tasks_waiting=scheduler_config.max_number_of_tasks_waiting,
@@ -49,5 +30,3 @@ def main(scheduler_config: Optional[SchedulerConfig] = None) -> None:
     scheduler.start()
 
     scheduler.join()
-    if object_storage is not None:
-        object_storage.join()

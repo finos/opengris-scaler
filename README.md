@@ -118,12 +118,13 @@ This will start a scheduler with 4 workers on port `2345`.
 ### Setting up a computing cluster from the CLI
 
 The object storage server, scheduler and workers can also be started from the command line with
-`scaler_scheduler` and `scaler_worker_manager`.
+`scaler_object_storage_server`, `scaler_scheduler` and `scaler_worker_manager`.
 
-First, start the scheduler, and make it connect to the object storage server:
+First, start the object storage server and scheduler:
 
 ```bash
-$ scaler_scheduler "tcp://127.0.0.1:2345"
+$ scaler_object_storage_server "tcp://127.0.0.1:2346"
+$ scaler_scheduler "tcp://127.0.0.1:2345" --object-storage-address "tcp://127.0.0.1:2346"
 [INFO]2025-06-06 13:13:15+0200: logging to ('/dev/stdout',)
 [INFO]2025-06-06 13:13:15+0200: use event loop: builtin
 [INFO]2025-06-06 13:13:15+0200: Scheduler: listen to scheduler address tcp://127.0.0.1:2345
@@ -159,16 +160,16 @@ Create a `stack.toml`:
 
 ```toml
 [object_storage_server]
-object_storage_address = "tcp://127.0.0.1:2346"
+bind_address = "tcp://127.0.0.1:2346"
 
 [scheduler]
-scheduler_address = "tcp://127.0.0.1:2345"
+bind_address = "tcp://127.0.0.1:2345"
 object_storage_address = "tcp://127.0.0.1:2346"
 
 [[worker_manager]]
 type = "baremetal_native"
 worker_manager_id = "wm-1"
-scheduler_address = "tcp://127.0.0.1:2345"
+    bind_address = "tcp://127.0.0.1:2345"
 mode = "fixed"
 max_task_concurrency = 4
 ```
@@ -179,8 +180,8 @@ Then start the entire stack with a single command:
 $ scaler stack.toml
 ```
 
-The `[object_storage_server]` section is required; `object_storage_address` must be set in
-both `[object_storage_server]` and `[scheduler]` and the two addresses should match.
+The `[object_storage_server]` section is required; `bind_address` must be set in
+`[object_storage_server]`, and `[scheduler].object_storage_address` should point to the same address.
 
 Multiple worker managers can be defined using the `[[worker_manager]]` array-of-tables syntax, each with its own
 `type`, concurrency settings, and logging configuration.
@@ -293,6 +294,7 @@ Here is an example of a single `example_config.toml` file that configures multip
 # This is a unified configuration file for all Scaler components.
 
 [scheduler]
+bind_address = "tcp://127.0.0.1:6378"
 object_storage_address = "tcp://127.0.0.1:6379"
 monitor_address = "tcp://127.0.0.1:6380"
 logging_level = "INFO"
@@ -317,7 +319,7 @@ logging_level = "INFO"
 logging_paths = ["/dev/stdout", "/var/log/scaler/worker.log"]
 
 [object_storage_server]
-object_storage_address = "tcp://127.0.0.1:6379"
+bind_address = "tcp://127.0.0.1:6379"
 
 [gui]
 gui_address = "0.0.0.0:8081"
@@ -384,7 +386,7 @@ The scheduler can be started with the experimental capability allocation policy 
 argument.
 
 ```bash
-$ scaler_scheduler --allocate-policy capability tcp://127.0.0.1:2345
+$ scaler_scheduler tcp://127.0.0.1:2345 --object-storage-address tcp://127.0.0.1:2346 --policy-engine-type simple --policy-content "allocate=capability; scaling=capability"
 ```
 
 ### Defining Worker Supported Capabilities
@@ -522,7 +524,8 @@ The ORB AWS EC2 worker manager can also be included in a `scaler` all-in-one TOM
 
 ```toml
 [scheduler]
-scheduler_address = "tcp://127.0.0.1:2345"
+bind_address = "tcp://127.0.0.1:2345"
+object_storage_address = "tcp://127.0.0.1:2346"
 
 [[worker_manager]]
 type = "orb_aws_ec2"
@@ -572,7 +575,7 @@ For better async performance, you can install uvloop (`pip install uvloop`) and 
 `--event-loop` or as a keyword argument for `event_loop` in Python code when initializing the scheduler.
 
 ```bash
-scaler_scheduler --event-loop uvloop tcp://127.0.0.1:2345
+scaler_scheduler --event-loop uvloop tcp://127.0.0.1:2345 --object-storage-address tcp://127.0.0.1:2346
 ```
 
 ```python

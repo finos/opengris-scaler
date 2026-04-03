@@ -15,12 +15,12 @@ This example uses two native worker managers to simulate two tiers.
 
         .. code-block:: toml
 
+            [object_storage_server]
+            bind_address = "tcp://127.0.0.1:8517"
+
             [scheduler]
-            scheduler_address = "tcp://127.0.0.1:8516"
-            # for following object_storage_address
-            # - if omitted, object storage is auto-started at scheduler port + 1
-            # - if specified, scheduler will connect to specified address without start one
-            # object_storage_address = "tcp://127.0.0.1:8517"
+            bind_address = "tcp://127.0.0.1:8516"
+            object_storage_address = "tcp://127.0.0.1:8517"
             policy_engine_type = "waterfall_v1"
             policy_content = """
             #  priority, worker_manager_id, max_task_concurrency
@@ -52,6 +52,7 @@ This example uses two native worker managers to simulate two tiers.
 
         .. code-block:: bash
 
+            scaler_object_storage_server tcp://127.0.0.1:8517 &
             scaler_scheduler tcp://127.0.0.1:8516 \
                 --object-storage-address tcp://127.0.0.1:8517 \
                 --policy-engine-type waterfall_v1 \

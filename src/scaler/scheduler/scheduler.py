@@ -47,27 +47,24 @@ class Scheduler:
     def __init__(self, config: SchedulerConfig):
         self._config_controller = VanillaConfigController(config)
 
-        if config.scheduler_address.type != ZMQType.tcp:
+        if config.bind_address.type != ZMQType.tcp:
             raise TypeError(
-                f"{self.__class__.__name__}: scheduler address must be tcp type: "
-                f"{config.scheduler_address.to_address()}"
+                f"{self.__class__.__name__}: scheduler bind address must be tcp type: "
+                f"{config.bind_address.to_address()}"
             )
 
         self._context = zmq.asyncio.Context(io_threads=config.io_threads)
 
-        self._binder: AsyncBinder = create_async_binder(
-            self._context, name="scheduler", address=config.scheduler_address
-        )
+        self._binder: AsyncBinder = create_async_binder(self._context, name="scheduler", address=config.bind_address)
         self._address: ZMQConfig = self._binder.address
+        assert self._address.port is not None, "scheduler bind address must have a port"
+        scheduler_port = self._address.port
 
         logging.info(f"{self.__class__.__name__}: listen to scheduler address {self._address}")
 
-        if config.object_storage_address is not None:
-            object_storage_address = ObjectStorageAddress.new_msg(
-                host=config.object_storage_address.host, port=config.object_storage_address.port
-            )
-        else:
-            object_storage_address = ObjectStorageAddress.new_msg(host=self._address.host, port=self._address.port + 1)
+        object_storage_address = ObjectStorageAddress.new_msg(
+            host=config.object_storage_address.host, port=config.object_storage_address.port
+        )
 
         if config.advertised_object_storage_address is not None:
             advertised_object_storage_address = ObjectStorageAddress.new_msg(
@@ -80,7 +77,7 @@ class Scheduler:
         self._config_controller.update_config("advertised_object_storage_address", advertised_object_storage_address)
 
         monitor_address = config.monitor_address or ZMQConfig(
-            type=ZMQType.tcp, host=self._address.host, port=self._address.port + 2
+            type=ZMQType.tcp, host=self._address.host, port=scheduler_port + 2
         )
 
         self._connector_storage: AsyncObjectStorageConnector = create_async_object_storage_connector()

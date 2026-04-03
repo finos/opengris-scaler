@@ -36,22 +36,28 @@ Scaler has three components that must run together: a **scheduler**, **workers**
 
 Start the scheduler first, then start a fixed pool of workers, then submit work from a client.
 
-**Terminal 1 — Scheduler:**
+**Terminal 1 — Object storage server:**
 
 .. code-block:: bash
 
-   scaler_scheduler tcp://127.0.0.1:8516
+   scaler_object_storage_server tcp://127.0.0.1:8517
+
+**Terminal 2 — Scheduler:**
+
+.. code-block:: bash
+
+   scaler_scheduler tcp://127.0.0.1:8516 --object-storage-address tcp://127.0.0.1:8517
 
 .. note::
-   The scheduler also starts an object storage server on port 8517 (scheduler port + 1) and a monitor on port 8518 (scheduler port + 2) by default.
+   The scheduler monitor endpoint defaults to scheduler port + 2 (for example, ``tcp://127.0.0.1:8518``).
 
-**Terminal 2 — Workers:**
+**Terminal 3 — Workers:**
 
 .. code-block:: bash
 
    scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 --mode fixed --max-task-concurrency 4
 
-**Terminal 3 — Client (save as** ``my_client.py`` **and run** ``python my_client.py`` **):**
+**Terminal 4 — Client (save as** ``my_client.py`` **and run** ``python my_client.py`` **):**
 
 .. code-block:: python
 
@@ -69,22 +75,29 @@ Quick Start (CLI — Dynamic Scaling)
 
 For dynamic scaling, use ``scaler_worker_manager baremetal_native`` (without ``--mode fixed``). The scheduler's scaling policy will automatically start and stop workers as needed.
 
-**Terminal 1 — Scheduler:**
+**Terminal 1 — Object storage server:**
+
+.. code-block:: bash
+
+   scaler_object_storage_server tcp://127.0.0.1:8517
+
+**Terminal 2 — Scheduler:**
 
 .. code-block:: bash
 
    scaler_scheduler tcp://127.0.0.1:8516 \
+       --object-storage-address tcp://127.0.0.1:8517 \
        --policy-content "allocate=even_load; scaling=vanilla"
 
 
-**Terminal 2 — Baremetal Native Worker Manager:**
+**Terminal 3 — Baremetal Native Worker Manager:**
 
 .. code-block:: bash
 
    scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 \
        --max-task-concurrency 4
 
-**Terminal 3 — Client (save as** ``my_client.py`` **and run** ``python my_client.py`` **):**
+**Terminal 4 — Client (save as** ``my_client.py`` **and run** ``python my_client.py`` **):**
 
 .. code-block:: python
 
@@ -106,6 +119,13 @@ Or use a TOML configuration file:
 .. code-block:: toml
    :caption: config.toml
 
+   [object_storage_server]
+   bind_address = "tcp://127.0.0.1:8517"
+
+   [scheduler]
+   bind_address = "tcp://127.0.0.1:8516"
+   object_storage_address = "tcp://127.0.0.1:8517"
+
    [[worker_manager]]
    type = "baremetal_native"
    scheduler_address = "tcp://127.0.0.1:8516"
@@ -119,13 +139,19 @@ Quick Start (CLI — Fixed Mode)
 
 You can also use ``scaler_worker_manager baremetal_native`` in fixed mode, which spawns a static pool of workers at startup.
 
-**Terminal 1 — Scheduler:**
+**Terminal 1 — Object storage server:**
 
 .. code-block:: bash
 
-   scaler_scheduler tcp://127.0.0.1:8516
+   scaler_object_storage_server tcp://127.0.0.1:8517
 
-**Terminal 2 — Baremetal Native Worker Manager (Fixed):**
+**Terminal 2 — Scheduler:**
+
+.. code-block:: bash
+
+   scaler_scheduler tcp://127.0.0.1:8516 --object-storage-address tcp://127.0.0.1:8517
+
+**Terminal 3 — Baremetal Native Worker Manager (Fixed):**
 
 .. code-block:: bash
 
@@ -141,6 +167,13 @@ Or use a TOML configuration file:
 
 .. code-block:: toml
    :caption: config.toml
+
+   [object_storage_server]
+   bind_address = "tcp://127.0.0.1:8517"
+
+   [scheduler]
+   bind_address = "tcp://127.0.0.1:8516"
+   object_storage_address = "tcp://127.0.0.1:8517"
 
    [[worker_manager]]
    type = "baremetal_native"
