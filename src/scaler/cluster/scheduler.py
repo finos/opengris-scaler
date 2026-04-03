@@ -7,7 +7,7 @@ from typing import Any, Optional, Tuple
 from scaler.config.section.scheduler import PolicyConfig, SchedulerConfig
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.zmq import ZMQConfig
-from scaler.scheduler.scheduler import Scheduler, scheduler_main
+from scaler.scheduler.scheduler import Scheduler
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.logging.utility import setup_logger
 
@@ -15,8 +15,8 @@ from scaler.utility.logging.utility import setup_logger
 class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
     def __init__(
         self,
-        address: ZMQConfig,
-        object_storage_address: Optional[ObjectStorageAddressConfig],
+        bind_address: ZMQConfig,
+        object_storage_address: ObjectStorageAddressConfig,
         monitor_address: Optional[ZMQConfig],
         io_threads: int,
         max_number_of_tasks_waiting: int,
@@ -34,7 +34,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
     ):
         multiprocessing.Process.__init__(self, name="Scheduler")
         self._scheduler_config = SchedulerConfig(
-            scheduler_address=address,
+            bind_address=bind_address,
             object_storage_address=object_storage_address,
             monitor_address=monitor_address,
             protected=protected,
@@ -45,7 +45,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
             load_balance_seconds=load_balance_seconds,
             load_balance_trigger_times=load_balance_trigger_times,
             event_loop=event_loop,
-            worker_io_threads=io_threads,
+            io_threads=io_threads,
             policy=policy,
         )
 
@@ -64,7 +64,8 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
     async def _run(self) -> None:
         self.__initialize()
 
-        self._task = self._loop.create_task(scheduler_main(self._scheduler_config))
+        scheduler = Scheduler(self._scheduler_config)
+        self._task = self._loop.create_task(scheduler.get_loops())
         self.__register_signal()
         await self._task
 

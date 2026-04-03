@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from scaler.config.section.webui import WebUIConfig
+from scaler.config.section.webgui import WebGUIConfig
 from scaler.io.sync_subscriber import ZMQSyncSubscriber
 from scaler.protocol.python.common import TaskState, WorkerState
 from scaler.protocol.python.message import StateBalanceAdvice, StateScheduler, StateTask, StateWorker
@@ -54,10 +54,10 @@ def _format_worker_name(worker_name: str, cutoff: int = 15) -> str:
 def _capabilities_color(capabilities_str: str, color_map: Dict[str, str]) -> str:
     if capabilities_str not in color_map:
         h = hashlib.md5(capabilities_str.encode()).hexdigest()
-        color = f"#{h[:6]}"
-        if color == "#ffffff":
-            color = "#0000ff"
-        color_map[capabilities_str] = color
+        hue = int(h[:4], 16) % 360
+        sat = 55 + (int(h[4:6], 16) % 20)  # 55-75%
+        lit = 45 + (int(h[6:8], 16) % 15)  # 45-60%
+        color_map[capabilities_str] = f"hsl({hue},{sat}%,{lit}%)"
     return color_map[capabilities_str]
 
 
@@ -77,7 +77,7 @@ class TaskStreamState:
         # worker tracking
         self._seen_workers: Set[str] = set()
         self._worker_capabilities: Dict[str, Set[str]] = {}
-        self._capabilities_color_map: Dict[str, str] = {"<no capabilities>": "#22c55e"}
+        self._capabilities_color_map: Dict[str, str] = {"<no capabilities>": "#ffffff"}
 
         # task tracking  (worker -> {task_id -> start_time})
         self._current_tasks: Dict[str, Dict[bytes, datetime.datetime]] = {}
@@ -96,6 +96,19 @@ class TaskStreamState:
 
     def set_stream_window(self, minutes: int) -> None:
         self._stream_window = SLIDING_WINDOW_OPTIONS.get(minutes, datetime.timedelta(minutes=5))
+
+    def _caps_to_colors(self, caps_str: str) -> List[str]:
+        """Return a list of colors for the capabilities string.
+
+        Single-capability and no-capability tasks return one color.
+        Multi-capability tasks return one color per individual capability (sorted).
+        """
+        if caps_str == "<no capabilities>":
+            return ["#ffffff"]
+        parts = caps_str.split()
+        if len(parts) <= 1:
+            return [_capabilities_color(caps_str, self._capabilities_color_map)]
+        return [_capabilities_color(p, self._capabilities_color_map) for p in parts]
 
     def _ensure_worker(self, worker: str, now: datetime.datetime) -> None:
         if worker not in self._seen_workers:
@@ -184,15 +197,17 @@ class TaskStreamState:
         task_map = self._current_tasks.get(worker, {})
 
         # use ProfileResult duration for accurate start time when available
+        # (skip for cancelled tasks — profile data may be from a prior attempt)
         start = now
         end = now
-        try:
-            if state.metadata and state.metadata != b"":
-                profile = ProfileResult.deserialize(state.metadata)
-                if profile.duration_s > 0:
-                    start = now - datetime.timedelta(seconds=profile.duration_s)
-        except struct.error:
-            pass
+        if state.state not in (TaskState.Canceled, TaskState.CanceledNotFound):
+            try:
+                if state.metadata and state.metadata != b"":
+                    profile = ProfileResult.deserialize(state.metadata)
+                    if profile.duration_s > 0:
+                        start = now - datetime.timedelta(seconds=profile.duration_s)
+            except struct.error:
+                pass
 
         # fallback to Running message timestamp if no profile data
         if start == end and task_id in task_map:
@@ -214,8 +229,20 @@ class TaskStreamState:
         task_state: TaskState,
     ) -> None:
         caps = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
-        color = _capabilities_color(caps, self._capabilities_color_map)
+        colors = self._caps_to_colors(caps)
         func = self._task_id_to_function.get(task_id, "")
+
+        # For cancelled tasks, clip start to the end of the last completed bar on this worker
+        # so the cancelled bar only extends back to where the previous task ended.
+        if task_state in (TaskState.Canceled, TaskState.CanceledNotFound):
+            worker_bars = self._bar_history.get(worker, [])
+            for prev_bar in reversed(worker_bars):
+                if prev_bar["pattern"] != "/":
+                    last_end = datetime.datetime.fromtimestamp(prev_bar["end"])
+                    if last_end > start_time:
+                        start_time = last_end
+                    break
+
         duration = (end_time - start_time).total_seconds()
 
         pattern = ""
@@ -230,7 +257,8 @@ class TaskStreamState:
         bar = {
             "start": start_time.timestamp(),
             "end": end_time.timestamp(),
-            "color": color,
+            "color": colors,
+            "caps": caps,
             "pattern": pattern,
             "outline_color": outline_color,
             "outline_width": outline_width,
@@ -292,6 +320,8 @@ class TaskStreamState:
             bars: List[Dict[str, Any]] = []
 
             # 1) Running tasks (drawn first / behind completed bars)
+            #    Compute sublanes per row: if N tasks running on same worker, each gets sl=0..N-1, sn=N
+            running_per_row: Dict[int, List[Dict[str, Any]]] = {}
             for row_idx, worker in enumerate(worker_order):
                 task_map = self._current_tasks.get(worker)
                 if not task_map:
@@ -305,22 +335,31 @@ class TaskStreamState:
                     if w <= 0:
                         continue
                     caps = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
-                    color = _capabilities_color(caps, self._capabilities_color_map)
+                    colors = self._caps_to_colors(caps)
                     func = self._task_id_to_function.get(task_id, "")
-                    bars.append(
-                        {
-                            "r": row_idx,
-                            "x": x_start,
-                            "w": w,
-                            "c": color,
-                            "p": "",
-                            "oc": "#eab308",  # yellow for running
-                            "ow": 2,
-                            "h": f"{func} ({actual_duration:.1f}s) - Running",
-                        }
-                    )
+                    bar_dict = {
+                        "r": row_idx,
+                        "x": x_start,
+                        "w": w,
+                        "cs": colors,
+                        "p": "",
+                        "oc": "#eab308",  # yellow for running
+                        "ow": 2,
+                        "h": f"{func} ({actual_duration:.1f}s) - Running",
+                        "rn": 1,
+                    }
+                    running_per_row.setdefault(row_idx, []).append(bar_dict)
+
+            for row_idx, row_bars in running_per_row.items():
+                count = len(row_bars)
+                for i, b in enumerate(row_bars):
+                    b["sl"] = i
+                    b["sn"] = count
+                bars.extend(row_bars)
 
             # 2) Completed bars in reverse order (newest first, oldest last = oldest drawn on top)
+            #    Collect per-row first so we can compute sublane assignments.
+            completed_per_row: Dict[int, List[Dict[str, Any]]] = {}
             for row_idx, worker in enumerate(worker_order):
                 worker_bars = self._bar_history.get(worker, [])
                 for bar in reversed(worker_bars):
@@ -334,27 +373,103 @@ class TaskStreamState:
                     w = x_end - x_start
                     if w <= 0:
                         continue
-                    bars.append(
-                        {
-                            "r": row_idx,
-                            "x": x_start,
-                            "w": w,
-                            "c": bar["color"],
-                            "p": bar["pattern"],
-                            "oc": bar["outline_color"],
-                            "ow": bar["outline_width"],
-                            "h": bar["hover"],
-                        }
-                    )
+                    bar_dict = {
+                        "r": row_idx,
+                        "x": x_start,
+                        "w": w,
+                        "cs": bar["color"],
+                        "p": bar["pattern"],
+                        "oc": bar["outline_color"],
+                        "ow": bar["outline_width"],
+                        "h": bar["hover"],
+                    }
+                    completed_per_row.setdefault(row_idx, []).append(bar_dict)
 
-            # capability legend
-            legend: List[Dict[str, str]] = []
-            seen_caps: Set[str] = set()
-            for worker in sorted(self._seen_workers):
-                for cap in sorted(self._worker_capabilities.get(worker, set())):
-                    if cap not in seen_caps:
-                        seen_caps.add(cap)
-                        legend.append({"name": cap, "color": _capabilities_color(cap, self._capabilities_color_map)})
+            # Compute sublane assignments per row.
+            # Only non-cancelled completed bars participate; cancelled bars keep sl=0/sn=1.
+            # Overlaps of <= 2 seconds are ignored (likely timing rounding).
+            # Bars are grouped into connected overlap components so non-overlapping
+            # bars remain full height.
+            OVERLAP_THRESHOLD = 2.0  # seconds
+            for row_idx, row_bars in completed_per_row.items():
+                # Separate cancelled bars (they don't participate in sublane logic)
+                normal_bars = [b for b in row_bars if b["p"] != "/"]
+                for b in row_bars:
+                    if b["p"] == "/":
+                        b["sl"] = 0
+                        b["sn"] = 1
+
+                if not normal_bars:
+                    continue
+
+                sorted_bars = sorted(normal_bars, key=lambda b: b["x"])
+
+                # Build connected overlap groups (merge-intervals with threshold)
+                groups: List[List[int]] = []  # each group is list of indices into sorted_bars
+                group_end = -float("inf")
+                for idx, b in enumerate(sorted_bars):
+                    b_end = b["x"] + b["w"]
+                    if b["x"] < group_end - OVERLAP_THRESHOLD:
+                        # overlaps current group by more than threshold
+                        groups[-1].append(idx)
+                        if b_end > group_end:
+                            group_end = b_end
+                    else:
+                        # start new group
+                        groups.append([idx])
+                        group_end = b_end
+
+                # Assign lanes within each group
+                for group in groups:
+                    if len(group) == 1:
+                        sorted_bars[group[0]]["sl"] = 0
+                        sorted_bars[group[0]]["sn"] = 1
+                        continue
+                    # greedy interval coloring within the group
+                    lane_ends: List[float] = []
+                    bar_lanes: List[int] = []
+                    for idx in group:
+                        b = sorted_bars[idx]
+                        placed = False
+                        for lane_idx, end in enumerate(lane_ends):
+                            if end <= b["x"] + OVERLAP_THRESHOLD:
+                                lane_ends[lane_idx] = b["x"] + b["w"]
+                                bar_lanes.append(lane_idx)
+                                placed = True
+                                break
+                        if not placed:
+                            bar_lanes.append(len(lane_ends))
+                            lane_ends.append(b["x"] + b["w"])
+                    total_lanes = len(lane_ends)
+                    for i, idx in enumerate(group):
+                        sorted_bars[idx]["sl"] = bar_lanes[i]
+                        sorted_bars[idx]["sn"] = total_lanes
+
+            # Add completed bars to the bars list (preserving original reverse order)
+            for row_idx in sorted(completed_per_row.keys()):
+                bars.extend(completed_per_row[row_idx])
+
+            # capability legend: derived from tasks visible in the stream
+            active_caps: Set[str] = set()
+            # from running tasks
+            for worker in worker_order:
+                for task_id in self._current_tasks.get(worker, {}):
+                    caps_str = self._task_id_to_capabilities.get(task_id, "<no capabilities>")
+                    if caps_str != "<no capabilities>":
+                        active_caps.update(caps_str.split())
+            # from completed bars in the visible window
+            for worker in worker_order:
+                for bar in self._bar_history.get(worker, []):
+                    if bar["end"] >= window_start_ts:
+                        task_caps = bar.get("caps", "")
+                        if task_caps and task_caps != "<no capabilities>":
+                            active_caps.update(task_caps.split())
+
+            legend: List[Dict[str, str]] = [{"name": "<no capabilities>", "color": "#ffffff"}]
+            legend.extend(
+                {"name": cap, "color": _capabilities_color(cap, self._capabilities_color_map)}
+                for cap in sorted(active_caps)
+            )
 
             # time axis ticks
             ticks: List[Dict[str, Any]] = []
@@ -447,7 +562,7 @@ class MemoryChartState:
 class WebUIApp:
     """Main application holding all server-side state and managing connections."""
 
-    def __init__(self, config: WebUIConfig) -> None:
+    def __init__(self, config: WebGUIConfig) -> None:
         self._config = config
         self._message_queue: queue.Queue[Message] = queue.Queue()
         self._clients: List[WebSocket] = []
@@ -464,6 +579,11 @@ class WebUIApp:
         self._memory_chart = MemoryChartState()
         self._worker_processors: Dict[str, Dict[str, Any]] = {}
         self._worker_manager_map: Dict[str, str] = {}  # worker_name -> manager_id (persistent)
+        self._worker_managers_data: Dict[str, Dict[str, Any]] = {}  # manager_id -> manager info
+        self._dead_managers: Dict[str, float] = {}  # manager_id -> disconnect timestamp
+        self._manager_color_map: Dict[str, str] = {}  # manager_id -> color hex
+        self._monitor_address: str = str(config.monitor_address)
+        self._last_message_time: Optional[datetime.datetime] = None
 
         self._settings = {"stream_window": 5, "memory_scale": "linear"}
 
@@ -506,8 +626,8 @@ class WebUIApp:
                 except queue.Empty:
                     break
 
-            if not messages:
-                continue
+            if messages:
+                self._last_message_time = datetime.datetime.now()
 
             # Process messages
             has_scheduler_update = False
@@ -535,8 +655,17 @@ class WebUIApp:
             # Build broadcast payload
             payload: Dict[str, Any] = {}
 
+            # Always include scheduler data with fresh last_seen
+            if self._scheduler_data:
+                sched = dict(self._scheduler_data)
+                if self._last_message_time is not None:
+                    elapsed = int((datetime.datetime.now() - self._last_message_time).total_seconds())
+                    sched["last_seen"] = f"{elapsed}s"
+                else:
+                    sched["last_seen"] = "\u2014"
+                payload["scheduler"] = sched
+
             if has_scheduler_update:
-                payload["scheduler"] = self._scheduler_data
                 payload["workers"] = list(self._workers_data.values())
 
             if worker_events:
@@ -547,6 +676,7 @@ class WebUIApp:
 
             # Always send chart data (auto-scrolling)
             stream_data = self._task_stream.get_render_data()
+            self._enrich_stream_with_managers(stream_data)
             payload["task_stream"] = stream_data
 
             memory_data = self._memory_chart.get_render_data(stream_data["window"])
@@ -555,6 +685,7 @@ class WebUIApp:
             # Worker processors
             if has_scheduler_update:
                 payload["processors"] = self._build_processors_data()
+                payload["worker_managers"] = list(self._worker_managers_data.values())
 
             await self._broadcast(payload)
 
@@ -563,6 +694,7 @@ class WebUIApp:
             "cpu": format_percentage(data.scheduler.cpu),
             "rss": format_bytes(data.scheduler.rss),
             "rss_free": format_bytes(data.rss_free),
+            "monitor_address": self._monitor_address,
         }
 
         # Update persistent worker-to-manager mapping with latest data
@@ -570,6 +702,37 @@ class WebUIApp:
             manager_name = manager_id_bytes.decode() if manager_id_bytes else "unknown"
             for wid in worker_ids:
                 self._worker_manager_map[bytes(wid).decode()] = manager_name
+
+        # Update worker manager details from scaling_manager
+        current_managers: Set[str] = set()
+        for detail in data.scaling_manager.worker_manager_details:
+            manager_id = detail["worker_manager_id"].decode() if detail["worker_manager_id"] else "unknown"
+            current_managers.add(manager_id)
+            worker_ids_for_manager = data.scaling_manager.managed_workers.get(detail["worker_manager_id"], [])
+            self._worker_managers_data[manager_id] = {
+                "manager_id": manager_id,
+                "identity": detail["identity"],
+                "last_seen": format_seconds(detail["last_seen_s"]),
+                "max_task_concurrency": detail["max_task_concurrency"],
+                "worker_count": len(worker_ids_for_manager),
+                "capabilities": detail["capabilities"],
+            }
+        # Mark newly-disappeared managers with a disconnect timestamp instead of
+        # removing immediately, so the UI keeps showing them for a grace period.
+        now_ts = datetime.datetime.now().timestamp()
+        newly_dead = set(self._worker_managers_data.keys()) - current_managers
+        for mid in newly_dead:
+            if mid not in self._dead_managers:
+                self._dead_managers[mid] = now_ts
+        # Re-alive managers that came back
+        for mid in current_managers:
+            self._dead_managers.pop(mid, None)
+        # Evict managers that have been gone for more than 2 minutes
+        manager_retention_seconds = 120
+        evict = [mid for mid, ts in self._dead_managers.items() if now_ts - ts > manager_retention_seconds]
+        for mid in evict:
+            self._dead_managers.pop(mid)
+            self._worker_managers_data.pop(mid, None)
 
         current_workers = set()
         now = datetime.datetime.now()
@@ -639,6 +802,32 @@ class WebUIApp:
             self._task_stream.handle_worker_state(
                 StateWorker.new_msg(WorkerID(w.encode()), WorkerState.Disconnected, {})
             )
+
+        # Aggregate summary stats from workers into each worker manager entry
+        for manager_id, mgr_data in self._worker_managers_data.items():
+            mgr_proc_cpu = 0.0
+            mgr_proc_rss = 0
+            mgr_free = 0
+            mgr_sent = 0
+            mgr_queued = 0
+            mgr_suspended = 0
+            worker_count = 0
+            for w_data in self._workers_data.values():
+                if w_data.get("manager_id") == manager_id:
+                    worker_count += 1
+                    mgr_proc_cpu += w_data.get("proc_cpu", 0)
+                    mgr_proc_rss += w_data.get("proc_rss", 0)
+                    mgr_free += w_data.get("free", 0)
+                    mgr_sent += w_data.get("sent", 0)
+                    mgr_queued += w_data.get("queued", 0)
+                    mgr_suspended += w_data.get("suspended", 0)
+            mgr_data["worker_count"] = worker_count
+            mgr_data["total_proc_cpu"] = round(mgr_proc_cpu, 1)
+            mgr_data["total_proc_rss"] = mgr_proc_rss
+            mgr_data["total_free"] = mgr_free
+            mgr_data["total_sent"] = mgr_sent
+            mgr_data["total_queued"] = mgr_queued
+            mgr_data["total_suspended"] = mgr_suspended
 
     def _process_worker_state(self, state_worker: StateWorker) -> Optional[Dict[str, Any]]:
         worker_id = state_worker.worker_id.decode()
@@ -736,12 +925,31 @@ class WebUIApp:
             self._active_tasks[task_id_hex] = entry
             return entry
 
+    def _enrich_stream_with_managers(self, stream_data: Dict[str, Any]) -> None:
+        """Add per-row manager IDs and a manager color legend to task stream data."""
+        full_rows = stream_data.get("full_rows", [])
+        row_managers = [self._worker_manager_map.get(w, "") for w in full_rows]
+        stream_data["row_managers"] = row_managers
+
+        seen: Set[str] = set()
+        for mid in row_managers:
+            if mid:
+                seen.add(mid)
+        manager_legend: List[Dict[str, str]] = [
+            {"name": mid, "color": _capabilities_color(mid, self._manager_color_map)} for mid in sorted(seen)
+        ]
+        stream_data["manager_legend"] = manager_legend
+
     def _build_processors_data(self) -> List[Dict[str, Any]]:
         # Group workers by manager_id and include per-manager summary stats
         managers: Dict[str, List[Dict[str, Any]]] = {}
         for wp in self._worker_processors.values():
             mid = wp.get("manager_id", "—")
             managers.setdefault(mid, []).append(wp)
+
+        # Ensure all known worker managers appear even if they have no workers
+        for mid in self._worker_managers_data:
+            managers.setdefault(mid, [])
 
         result = []
         for manager_id, workers in sorted(managers.items()):
@@ -811,17 +1019,27 @@ class WebUIApp:
         self._drain_pending_messages()
 
         stream_data = self._task_stream.get_render_data()
+        self._enrich_stream_with_managers(stream_data)
         memory_data = self._memory_chart.get_render_data(stream_data["window"])
         # combine active + completed for initial task log, sorted by time (newest first)
         initial_task_log = list(self._active_tasks.values()) + list(self._task_log)
         initial_task_log.sort(key=lambda e: e.get("time", 0), reverse=True)
+        # Build scheduler data with fresh last_seen
+        sched = dict(self._scheduler_data) if self._scheduler_data else {}
+        if self._last_message_time is not None:
+            elapsed = int((datetime.datetime.now() - self._last_message_time).total_seconds())
+            sched["last_seen"] = f"{elapsed}s"
+        else:
+            sched["last_seen"] = "—"
+
         return {
-            "scheduler": self._scheduler_data,
+            "scheduler": sched,
             "workers": list(self._workers_data.values()),
             "task_log": initial_task_log,
             "task_stream": stream_data,
             "memory_chart": memory_data,
             "processors": self._build_processors_data(),
+            "worker_managers": list(self._worker_managers_data.values()),
             "settings": self._settings,
         }
 
@@ -831,7 +1049,8 @@ class WebUIApp:
 
     async def remove_client(self, ws: WebSocket) -> None:
         async with self._clients_lock:
-            self._clients.remove(ws)
+            if ws in self._clients:
+                self._clients.remove(ws)
 
     async def _broadcast(self, payload: Dict[str, Any]) -> None:
         data = json.dumps(payload)
@@ -846,7 +1065,7 @@ class WebUIApp:
                 self._clients.remove(ws)
 
 
-def create_app(config: WebUIConfig) -> FastAPI:
+def create_app(config: WebGUIConfig) -> FastAPI:
     app_state = WebUIApp(config)
 
     # Start ZMQ subscriber immediately so messages are collected even while uvicorn
@@ -854,7 +1073,7 @@ def create_app(config: WebUIConfig) -> FastAPI:
     # the asyncio batch_loop (started in the startup event) drains it later.
     app_state.start_subscriber()
 
-    app = FastAPI(title="Scaler Web UI")
+    app = FastAPI(title="Scaler Web GUI")
 
     @app.middleware("http")
     async def no_cache_headers(request: Request, call_next):  # type: ignore[no-untyped-def]

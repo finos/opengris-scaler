@@ -10,7 +10,6 @@
 #include "scaler/utility/move_only_function.h"
 #include "scaler/wrapper/uv/callback.h"
 #include "scaler/wrapper/uv/error.h"
-#include "scaler/wrapper/uv/loop.h"
 #include "scaler/ymq/bytes.h"
 #include "scaler/ymq/typedefs.h"
 
@@ -50,7 +49,6 @@ public:
     using RecvMessageCallback = scaler::utility::MoveOnlyFunction<void(scaler::ymq::Bytes)>;
 
     MessageConnection(
-        scaler::wrapper::uv::Loop& loop,
         Identity localIdentity,
         std::optional<Identity> remoteIdentity,
         RemoteIdentityCallback onRemoteIdentityCallback,
@@ -116,8 +114,6 @@ private:
 
     State _state {State::Disconnected};
 
-    scaler::wrapper::uv::Loop& _loop;
-
     Identity _localIdentity;
     std::optional<Identity> _remoteIdentity;
 
@@ -151,6 +147,8 @@ private:
     void sendLocalIdentity() noexcept;
 
     void processSendQueue() noexcept;
+
+    void processSendOperation(SendOperation operation) noexcept;
 
     void write(std::span<const std::span<const uint8_t>> buffers, scaler::wrapper::uv::WriteCallback callback) noexcept;
 

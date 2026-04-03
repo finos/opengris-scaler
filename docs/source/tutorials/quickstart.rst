@@ -1,146 +1,74 @@
 Quickstart
 ==========
 
-
-When to use it
---------------
-
-Scaler is inspired by Dask and functions like other parallel backends. It handles the communication between the Client, Scheduler, and Workers to orchestrate the execution of tasks. It is a good fit for scaling compute-heavy jobs across multiple machines, or even on a local machine using process-level parallelization.
-
-Architecture
-------------
-
-Below is a diagram of the relationship between the Client, Scheduler, and Workers.
-
-.. image:: images/architecture.png
-   :width: 600
-
-
-* The Client submits tasks to the scheduler. This is the primary user-facing API.
-* The Client is responsible for serializing the tasks
-* The Scheduler receives tasks from the client and distributes the tasks among the workers
-* Workers perform the computation and return the results
-
-.. note::
-    Although the architecture is similar to Dask, Scaler has a better decoupling of these systems and separation of concerns. For example, the Client only knows about the Scheduler and doesn't directly see the number of workers.
-
-.. note::
-    Scaler's Client is cross platform, supporting Windows and GNU/Linux, while other components can only be run on GNU/Linux.
-
-
-Installation
-------------
-
-The `scaler` package is available on PyPI and can be installed using any compatible package manager.
+Quick Installation
+------------------
 
 .. code:: bash
 
-    pip install opengris-scaler
-
-    # or with graphblas and uvloop and webui support
-    pip install opengris-scaler[graphblas,uvloop,gui]
-
-    # or install all dependencies
     pip install opengris-scaler[all]
 
+See :ref:`installation_options` for other install choices and optional dependencies.
 
-First Look (Code API)
----------------------
+Start Services
+--------------
 
-Client.map
-----------
+The instructions below start a local scheduler with an elastic native worker
+manager (``baremetal_native``). If you want to run scheduler + worker manager
+locally but provision workers on cloud infrastructure, use these quick starts:
 
-:py:func:`~Client.map()` allows us to submit a batch of tasks to execute in parallel by pairing a function with a list of inputs.
+* :ref:`Open Resource Broker AWS EC2 Quick Start <orb_aws_ec2_quick_setup>`.
+* :ref:`AWS HPC Batch Quick Start <aws_hpc_batch_quick_start>`.
 
-In the example below, we spin up a scheduler and some workers on the local machine using ``SchedulerClusterCombo``. We create the scheduler with a localhost address, and then pass that address to the client so that it can connect. We then use :py:func:`~Client.map()` to submit tasks.
+.. tabs::
 
-.. literalinclude:: ../../../examples/map_client.py
-   :language: python
+    .. group-tab:: config.toml
 
+        .. code-block:: toml
 
-Client.submit
--------------
+            [object_storage_server]
+            bind_address = "tcp://127.0.0.1:8517"
 
-There is another way of to submit task to the scheduler: :py:func:`~Client.submit()`, which is used to submit a single function and arguments. The results will be lazily retrieved on the first call to ``result()``.
+            [scheduler]
+            bind_address = "tcp://127.0.0.1:8516"
+            object_storage_address = "tcp://127.0.0.1:8517"
 
-.. literalinclude:: ../../../examples/simple_client.py
-   :language: python
+            [[worker_manager]]
+            type = "baremetal_native"
+            scheduler_address = "tcp://127.0.0.1:8516"
+            worker_manager_id = "wm-native"
 
+        Run command:
 
-Things to Avoid
----------------
+        .. code-block:: bash
 
-please note that the :py:func:`~Client.submit()` method is used to submit a single task. If you wish to submit multiple tasks using the same function but with many sets of arguments, use :py:func:`~Client.map()` instead to avoid unnecessary serialization overhead. The following is an example `what not to do`.
+            scaler config.toml
 
-.. testcode:: python
+    .. group-tab:: command line
 
-    import functools
-    import random
+        In terminal 1:
 
-    from scaler import Client, SchedulerClusterCombo
+        .. code-block:: bash
 
-    def lookup(heavy_map: bytes, index: int):
-        return index * 1
+            scaler_object_storage_server tcp://127.0.0.1:8517
 
+        In terminal 2:
 
-    def main():
-        address = "tcp://127.0.0.1:2345"
+        .. code-block:: bash
 
-        cluster = SchedulerClusterCombo(address=address, n_workers=3)
+            scaler_scheduler tcp://127.0.0.1:8516 --object-storage-address tcp://127.0.0.1:8517
 
-        # a heavy function that is expensive to serialize
-        big_func = functools.partial(lookup, b"1" * 5_000_000_000)
+        In terminal 3:
 
-        arguments = [random.randint(0, 100) for _ in range(100)]
+        .. code-block:: bash
 
-        with Client(address=address) as client:
-            # we incur serialization overhead for every call to client.submit -- use client.map instead
-            futures = [client.submit(big_func, i) for i in arguments]
-            print([fut.result() for fut in futures])
-
-        cluster.shutdown()
-
-
-    if __name__ == "__main__":
-        main()
+            scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 --worker-manager-id wm-native
 
 
-This will be extremely slow, because it will serialize the argument function ``big_func()`` each time :py:func:`~Client.submit()` is called.
+Start Compute Tasks
+-------------------
 
-Functions may also be 'heavy' if they accept large objects as arguments. In this case, consider using :py:func:`~Client.send_object()` to send the object to the scheduler, and then later use :py:func:`~Client.submit()` to submit the function.
-
-Spinning up Scheduler and Cluster Separately
---------------------------------------------
-
-The object storage server, scheduler and workers can be spun up independently through the CLI.
-Here we use localhost addresses for demonstration, however the scheduler and workers can be started on different machines.
-
-
-.. code:: bash
-
-    scaler_object_storage_server tcp://127.0.0.1:8517
-
-
-.. code:: bash
-
-    scaler_scheduler tcp://127.0.0.1:8516 -osa tcp://127.0.0.1:8517
-
-
-.. code:: console
-
-    [INFO]2025-06-06 13:30:05+0200: logging to ('/dev/stdout',)
-    [INFO]2025-06-06 13:30:05+0200: use event loop: builtin
-    [INFO]2025-06-06 13:30:05+0200: Scheduler: listen to scheduler address tcp://127.0.0.1:8516
-    [INFO]2025-06-06 13:30:05+0200: Scheduler: connect to object storage server tcp://127.0.0.1:8517
-    [INFO]2025-06-06 13:30:05+0200: Scheduler: listen to scheduler monitor address tcp://127.0.0.1:8518
-
-
-.. code:: bash
-
-    scaler_cluster -n 10 tcp://127.0.0.1:8516
-
-
-From here, connect the Python Client and begin submitting tasks:
+Connect the Python client and submit tasks:
 
 .. code:: python
 

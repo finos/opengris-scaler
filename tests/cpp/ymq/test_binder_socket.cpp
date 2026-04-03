@@ -33,7 +33,6 @@ public:
         , _loop(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init()))
         , _binder(_context, binderIdentity)
         , _client(
-              _loop,
               clientIdentity,
               std::nullopt,
               [](scaler::ymq::Identity identity) { ASSERT_EQ(identity, binderIdentity); },  // onRemoteIdentity
@@ -245,7 +244,7 @@ TEST_F(YMQBinderSocketTest, CloseConnection)
 
     // Send a message from the client to the binder
     bool sendCalled    = false;
-    auto onMessageSent = [&](std::expected<void, scaler::ymq::Error> result) { sendCalled = true; };
+    auto onMessageSent = [&]([[maybe_unused]] std::expected<void, scaler::ymq::Error> result) { sendCalled = true; };
     client.sendMessage(scaler::ymq::Bytes(messagePayload), onMessageSent);
 
     while (!sendCalled) {

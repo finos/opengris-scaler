@@ -281,10 +281,10 @@ static PyGetSetDef PyBinderSocket_properties[] = {
 };
 
 static PyMethodDef PyBinderSocket_methods[] = {
-    {"bind_to", (PyCFunction)PyBinderSocket_bind_to, METH_VARARGS | METH_KEYWORDS, nullptr},
-    {"send_message", (PyCFunction)PyBinderSocket_send_message, METH_VARARGS | METH_KEYWORDS, nullptr},
-    {"recv_message", (PyCFunction)PyBinderSocket_recv_message, METH_VARARGS | METH_KEYWORDS, nullptr},
-    {"close_connection", (PyCFunction)PyBinderSocket_close_connection, METH_VARARGS | METH_KEYWORDS, nullptr},
+    {"bind_to", (PyCFunction)(void*)PyBinderSocket_bind_to, METH_VARARGS | METH_KEYWORDS, nullptr},
+    {"send_message", (PyCFunction)(void*)PyBinderSocket_send_message, METH_VARARGS | METH_KEYWORDS, nullptr},
+    {"recv_message", (PyCFunction)(void*)PyBinderSocket_recv_message, METH_VARARGS | METH_KEYWORDS, nullptr},
+    {"close_connection", (PyCFunction)(void*)PyBinderSocket_close_connection, METH_VARARGS | METH_KEYWORDS, nullptr},
     {nullptr, nullptr, 0, nullptr},
 };
 

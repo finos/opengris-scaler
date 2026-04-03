@@ -23,6 +23,18 @@ runs:
         uv pip install --system flake8 pyproject-flake8 mypy
         uv pip install --system -r pyproject.toml --extra graphblas --extra gui
 
+    - name: Check import sorting with isort
+      shell: bash
+      run: |
+        uvx --python 3.13 "isort==7.0.0" --profile black --line-length 120 --check --diff . || \
+        { echo "::error::Import sorting check failed. Run 'isort --profile black --line-length 120 .' to fix."; exit 1; }
+
+    - name: Check formatting with black
+      shell: bash
+      run: |
+        uvx --python 3.13 "black==26.3.1" -l 120 -C --check --diff . || \
+        { echo "::error::Black formatting check failed. Run 'black -l 120 -C .' to fix."; exit 1; }
+
     - name: Lint With flake8
       shell: bash
       run: |

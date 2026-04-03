@@ -5,7 +5,7 @@ from typing import Any, Callable, Optional, TypeVar, Union
 try:
     from typing import Concatenate, ParamSpec  # type: ignore[attr-defined]
 except ImportError:
-    from typing_extensions import ParamSpec, Concatenate  # type: ignore[assignment]
+    from typing_extensions import Concatenate, ParamSpec  # type: ignore[assignment]
 
 
 P = ParamSpec("P")

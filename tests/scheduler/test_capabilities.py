@@ -45,12 +45,11 @@ class TestCapabilities(unittest.TestCase):
             gpu_manager = NativeWorkerManager(
                 NativeWorkerManagerConfig(
                     worker_manager_config=WorkerManagerConfig(
-                        scheduler_address=base_manager._address, object_storage_address=None, max_task_concurrency=1
+                        scheduler_address=base_manager._address,
+                        worker_manager_id="test_manager",
+                        object_storage_address=None,
+                        max_task_concurrency=1,
                     ),
-                    worker_manager_id="test_manager",
-                    preload=None,
-                    event_loop=base_manager._event_loop,
-                    worker_io_threads=1,
                     mode=NativeWorkerManagerMode.FIXED,
                     worker_config=WorkerConfig(
                         per_worker_capabilities=WorkerCapabilities({"gpu": -1}),
@@ -61,6 +60,8 @@ class TestCapabilities(unittest.TestCase):
                         garbage_collect_interval_seconds=base_manager._garbage_collect_interval_seconds,
                         trim_memory_threshold_bytes=base_manager._trim_memory_threshold_bytes,
                         hard_processor_suspend=base_manager._hard_processor_suspend,
+                        io_threads=1,
+                        event_loop=base_manager._event_loop,
                     ),
                     logging_config=LoggingConfig(
                         paths=base_manager._logging_paths,
@@ -94,12 +95,11 @@ class TestCapabilities(unittest.TestCase):
             gpu_manager = NativeWorkerManager(
                 NativeWorkerManagerConfig(
                     worker_manager_config=WorkerManagerConfig(
-                        scheduler_address=base_manager._address, object_storage_address=None, max_task_concurrency=1
+                        scheduler_address=base_manager._address,
+                        worker_manager_id="test_manager",
+                        object_storage_address=None,
+                        max_task_concurrency=1,
                     ),
-                    worker_manager_id="test_manager",
-                    preload=None,
-                    event_loop=base_manager._event_loop,
-                    worker_io_threads=1,
                     mode=NativeWorkerManagerMode.FIXED,
                     worker_config=WorkerConfig(
                         per_worker_capabilities=WorkerCapabilities({"gpu": -1}),
@@ -110,6 +110,8 @@ class TestCapabilities(unittest.TestCase):
                         garbage_collect_interval_seconds=base_manager._garbage_collect_interval_seconds,
                         trim_memory_threshold_bytes=base_manager._trim_memory_threshold_bytes,
                         hard_processor_suspend=base_manager._hard_processor_suspend,
+                        io_threads=1,
+                        event_loop=base_manager._event_loop,
                     ),
                     logging_config=LoggingConfig(
                         paths=base_manager._logging_paths,

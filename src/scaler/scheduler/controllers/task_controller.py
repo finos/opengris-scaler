@@ -144,10 +144,11 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             return
 
         if (
-            current_state == TaskState.BalanceCanceling
+            current_state in {TaskState.Canceling, TaskState.BalanceCanceling}
             and task_cancel_confirm.cancel_confirm_type == TaskCancelConfirmType.CancelFailed
         ):
-            # balance cancel failed
+            # cancel failed (task is ongoing on worker), pass worker_id so __state_running can identify the
+            # previous state and wait for the real result
             worker_id = self._worker_controller.get_worker_by_task_id(task_cancel_confirm.task_id)
             await self.__routing(task_cancel_confirm.task_id, transition, worker_id=worker_id)
             return
@@ -290,7 +291,8 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
     async def __send_task_cancel_to_worker(self, task_cancel: TaskCancel):
         worker = await self._worker_controller.on_task_cancel(task_cancel)
-        if not worker:
+        assert isinstance(worker, WorkerID)
+        if not worker.is_valid():
             logging.error(f"{task_cancel.task_id!r}: cannot find task in worker to cancel")
             await self.__routing(
                 task_cancel.task_id,
@@ -301,7 +303,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             )
             return
 
-        await self._binder.send(worker, TaskCancel.new_msg(task_cancel.task_id))
+        await self._binder.send(worker, task_cancel)
         await self.__send_monitor(task_cancel.task_id, b"")
 
     async def __send_task_result_to_client(self, task_result: TaskResult):

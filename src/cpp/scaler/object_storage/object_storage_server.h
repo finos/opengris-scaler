@@ -96,15 +96,15 @@ private:
         Bytes headerPayload   = Bytes((char*)messageBuffer.asBytes().begin(), messageBuffer.asBytes().size());
         auto sendHeaderFuture = _socket->sendMessage(client->_identity, std::move(headerPayload));
 
-        if (!payload.data()) {
-            _pendingSendMessageFuts.emplace_back(std::move(sendHeaderFuture));
+        _pendingSendMessageFuts.emplace_back(std::move(sendHeaderFuture));
+
+        if (payload.empty()) {
             return;
         }
 
         Bytes payloadBytes     = Bytes((char*)payload.data(), payload.size());
         auto sendPayloadFuture = _socket->sendMessage(client->_identity, std::move(payloadBytes));
 
-        _pendingSendMessageFuts.emplace_back(std::move(sendHeaderFuture));
         _pendingSendMessageFuts.emplace_back(std::move(sendPayloadFuture));
     }
 

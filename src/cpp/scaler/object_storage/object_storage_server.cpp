@@ -1,5 +1,7 @@
 #include "scaler/object_storage/object_storage_server.h"
 
+#include <unistd.h>
+
 #include <algorithm>
 #include <csignal>
 #include <cstdint>
@@ -16,7 +18,7 @@ namespace object_storage {
 static std::atomic<bool> sigRequestStop {false};
 
 // Signal handler for SIGTERM
-extern "C" void handleSigTerm(int signum)
+extern "C" void handleSigTerm([[maybe_unused]] int signum)
 {
     sigRequestStop = true;
 }

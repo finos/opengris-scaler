@@ -1,4 +1,4 @@
-/* Scaler Web UI - Client-side application */
+/* Scaler Web GUI - Client-side application */
 "use strict";
 
 // ── State ──
@@ -14,6 +14,8 @@ var taskRowMap = {};  // task_id -> tr element for in-place updates
 var streamBars = [];       // current bar data from server
 var streamRows = [];       // row labels (truncated)
 var streamFullRows = [];   // row labels (full worker names)
+var streamRowManagers = []; // manager color per row
+var streamManagerColors = {}; // manager_id -> color
 var memoryPoints = [];     // memory chart points
 var memoryScale = "linear";
 var memoryYTicks = [];
@@ -25,9 +27,12 @@ var memoryNeedsRedraw = false;
 // ── DOM refs ──
 var $ = function(id) { return document.getElementById(id); };
 var connStatus = $("conn-status");
+var schedAddress = $("sched-address");
 var schedCpu = $("sched-cpu");
 var schedRss = $("sched-rss");
 var schedRssFree = $("sched-rss-free");
+var schedLastSeen = $("sched-last-seen");
+var managersBody = $("managers-body");
 var workersBody = $("workers-body");
 var tasklogBody = $("tasklog-body");
 var tasklogCount = $("tasklog-count");
@@ -161,6 +166,9 @@ function handleMessage(data) {
     if (data.workers) {
         updateWorkers(data.workers);
     }
+    if (data.worker_managers) {
+        updateWorkerManagers(data.worker_managers);
+    }
     if (data.worker_events) {
         handleWorkerEvents(data.worker_events);
     }
@@ -181,6 +189,7 @@ function handleMessage(data) {
 function handleFullState(data) {
     if (data.scheduler) updateScheduler(data.scheduler);
     if (data.workers) updateWorkers(data.workers);
+    if (data.worker_managers) updateWorkerManagers(data.worker_managers);
     if (data.task_log) {
         tasklogBody.innerHTML = "";
         taskLogCount = 0;
@@ -210,9 +219,81 @@ function applySettings(settings) {
 
 // ── Live Tab: Scheduler ──
 function updateScheduler(sched) {
+    schedAddress.textContent = sched.monitor_address || "—";
     schedCpu.textContent = sched.cpu || "—";
     schedRss.textContent = sched.rss || "—";
     schedRssFree.textContent = sched.rss_free || "—";
+    schedLastSeen.textContent = sched.last_seen || "—";
+}
+
+// ── Live Tab: Worker Managers ──
+function updateWorkerManagers(managers) {
+    managersBody.innerHTML = "";
+    if (!managers || managers.length === 0) {
+        var tr = document.createElement("tr");
+        var td = document.createElement("td");
+        td.colSpan = 12;
+        td.style.color = "#64748b";
+        td.textContent = "No worker managers connected";
+        tr.appendChild(td);
+        managersBody.appendChild(tr);
+        return;
+    }
+    for (var i = 0; i < managers.length; i++) {
+        var m = managers[i];
+        var tr = document.createElement("tr");
+
+        var tdId = document.createElement("td");
+        tdId.textContent = m.manager_id || "—";
+        tr.appendChild(tdId);
+
+        var tdAddr = document.createElement("td");
+        tdAddr.textContent = m.identity || "—";
+        tdAddr.title = m.identity || "";
+        tr.appendChild(tdAddr);
+
+        var tdSeen = document.createElement("td");
+        tdSeen.textContent = m.last_seen || "—";
+        tr.appendChild(tdSeen);
+
+        var tdConc = document.createElement("td");
+        tdConc.textContent = m.max_task_concurrency != null ? m.max_task_concurrency : "—";
+        tr.appendChild(tdConc);
+
+        var tdWC = document.createElement("td");
+        tdWC.textContent = m.worker_count != null ? m.worker_count : "0";
+        tr.appendChild(tdWC);
+
+        var tdCpu = document.createElement("td");
+        tdCpu.textContent = m.total_proc_cpu != null ? m.total_proc_cpu + "%" : "—";
+        tr.appendChild(tdCpu);
+
+        var tdRss = document.createElement("td");
+        tdRss.textContent = m.total_proc_rss != null ? m.total_proc_rss : "—";
+        tr.appendChild(tdRss);
+
+        var tdFree = document.createElement("td");
+        tdFree.textContent = m.total_free != null ? m.total_free : "—";
+        tr.appendChild(tdFree);
+
+        var tdSent = document.createElement("td");
+        tdSent.textContent = m.total_sent != null ? m.total_sent : "—";
+        tr.appendChild(tdSent);
+
+        var tdQueued = document.createElement("td");
+        tdQueued.textContent = m.total_queued != null ? m.total_queued : "—";
+        tr.appendChild(tdQueued);
+
+        var tdSusp = document.createElement("td");
+        tdSusp.textContent = m.total_suspended != null ? m.total_suspended : "—";
+        tr.appendChild(tdSusp);
+
+        var tdCaps = document.createElement("td");
+        tdCaps.textContent = m.capabilities || "—";
+        tr.appendChild(tdCaps);
+
+        managersBody.appendChild(tr);
+    }
 }
 
 // ── Live Tab: Workers ──
@@ -491,12 +572,19 @@ function updateTaskStream(data) {
     streamBars = data.bars || [];
     streamRows = data.rows || [];
     streamFullRows = data.full_rows || streamRows;
+    streamRowManagers = data.row_managers || [];
+    streamManagerColors = {};
+    var managerLegend = data.manager_legend || [];
+    for (var ml = 0; ml < managerLegend.length; ml++) {
+        streamManagerColors[managerLegend[ml].name] = managerLegend[ml].color;
+    }
     streamTicks = data.ticks || [];
     streamWindow = data.window || 300;
     streamNeedsRedraw = true;
 
     // Update legend
     var legend = data.legend || [];
+    var managerLegend = data.manager_legend || [];
     streamLegend.innerHTML = "";
     // Add status patterns to legend
     var failed = document.createElement("span");
@@ -509,6 +597,30 @@ function updateTaskStream(data) {
     canceled.innerHTML = '<span class="legend-swatch pattern-slash"></span> Canceled';
     streamLegend.appendChild(canceled);
 
+    // Manager legend first (with separator)
+    if (managerLegend.length > 0) {
+        var sep1 = document.createElement("span");
+        sep1.className = "legend-item";
+        sep1.style.color = "#94a3b8";
+        sep1.textContent = "|";
+        streamLegend.appendChild(sep1);
+        for (var k = 0; k < managerLegend.length; k++) {
+            var mItem = document.createElement("span");
+            mItem.className = "legend-item";
+            mItem.innerHTML = '<span class="legend-swatch" style="background:' +
+                managerLegend[k].color + '"></span> ' + escapeHTML(managerLegend[k].name);
+            streamLegend.appendChild(mItem);
+        }
+    }
+
+    // Capability legend (with separator)
+    if (legend.length > 0) {
+        var sep2 = document.createElement("span");
+        sep2.className = "legend-item";
+        sep2.style.color = "#94a3b8";
+        sep2.textContent = "|";
+        streamLegend.appendChild(sep2);
+    }
     for (var i = 0; i < legend.length; i++) {
         var item = document.createElement("span");
         item.className = "legend-item";
@@ -563,48 +675,98 @@ function drawTaskStream() {
         // label
         streamCtx.fillStyle = "#334155";
         streamCtx.fillText(streamRows[i], 4, y + STREAM_ROW_HEIGHT / 2);
+        // manager color stripe
+        var mgr = streamRowManagers[i];
+        if (mgr && streamManagerColors[mgr]) {
+            streamCtx.fillStyle = streamManagerColors[mgr];
+            streamCtx.fillRect(0, y, 4, STREAM_ROW_HEIGHT);
+        }
     }
 
-    // Draw bars: two passes so outlines are always visible between adjacent bars
-    // Pass 1: fills, patterns, and outlines for cancelled bars (so they stay beneath completed bars)
-    for (var j = 0; j < streamBars.length; j++) {
-        var bar = streamBars[j];
+    // Helper: compute bar geometry from sublane fields
+    function barGeom(bar) {
         var fullBarHeight = STREAM_ROW_HEIGHT - 4;
-        var barHeight = bar.p === "/" ? Math.floor(fullBarHeight / 2) : fullBarHeight;
-        var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + (fullBarHeight - barHeight);
+        var sn = bar.sn || 1;
+        var sl = bar.sl || 0;
+        var laneHeight = fullBarHeight / sn;
+        var bh = bar.p === "/" ? Math.floor(laneHeight / 2) : laneHeight;
+        var laneY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + sl * laneHeight;
+        var ry = laneY + (laneHeight - bh);
         var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
         var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
-        var barWidth = Math.max(x2 - x1, 1);
+        return { x: x1, y: ry, w: Math.max(x2 - x1, 1), h: bh, lh: laneHeight, ly: laneY };
+    }
 
-        streamCtx.fillStyle = bar.c;
-        streamCtx.fillRect(x1, rowY, barWidth, barHeight);
-
-        if (bar.p === "x") {
-            drawCrossHatch(streamCtx, x1, rowY, barWidth, barHeight);
-        } else if (bar.p === "/") {
-            drawSlashHatch(streamCtx, x1, rowY, barWidth, barHeight);
-            // draw outline in same layer so completed bars paint over it
-            if (bar.ow > 0) {
-                streamCtx.strokeStyle = bar.oc;
-                streamCtx.lineWidth = bar.ow;
-                streamCtx.strokeRect(x1, rowY, barWidth, barHeight);
+    function drawBarFill(bar, g) {
+        var colors = bar.cs;
+        if (colors.length === 1) {
+            streamCtx.fillStyle = colors[0];
+            streamCtx.fillRect(g.x, g.y, g.w, g.h);
+        } else {
+            var stripeW = 6;
+            var cx = 0;
+            var ci = 0;
+            while (cx < g.w) {
+                var sw = Math.min(stripeW, g.w - cx);
+                streamCtx.fillStyle = colors[ci % colors.length];
+                streamCtx.fillRect(g.x + cx, g.y, sw, g.h);
+                cx += sw;
+                ci++;
             }
         }
     }
 
-    // Pass 2: outlines on top (skip cancelled bars — already drawn in pass 1)
+    // Draw bars in 3 passes for correct layering:
+    //   Pass 1: Running bars (bottom layer)
+    //   Pass 2: Completed bars — newest first, oldest on top
+    //   Pass 3: Cancelled bars on top so they're always visible
+
+    // Pass 1: Running bars (fill + outline, bottom layer)
     for (var j = 0; j < streamBars.length; j++) {
         var bar = streamBars[j];
-        if (bar.ow > 0 && bar.p !== "/") {
-            var fullBarHeight = STREAM_ROW_HEIGHT - 4;
-            var barHeight = fullBarHeight;
-            var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2;
-            var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
-            var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
-            var barWidth = Math.max(x2 - x1, 1);
+        if (!bar.rn) continue;
+        var g = barGeom(bar);
+        drawBarFill(bar, g);
+        if (bar.ow > 0) {
             streamCtx.strokeStyle = bar.oc;
             streamCtx.lineWidth = bar.ow;
-            streamCtx.strokeRect(x1, rowY, barWidth, barHeight);
+            streamCtx.strokeRect(g.x, g.ly, g.w, g.lh);
+        }
+    }
+
+    // Pass 2: Non-cancelled completed bars — newest first (behind), oldest last (on top)
+    var completedBars = [];
+    for (var j = 0; j < streamBars.length; j++) {
+        var bar = streamBars[j];
+        if (!bar.rn && bar.p !== "/") completedBars.push(bar);
+    }
+    completedBars.sort(function(a, b) { return b.x - a.x; });
+
+    for (var j = 0; j < completedBars.length; j++) {
+        var bar = completedBars[j];
+        var g = barGeom(bar);
+        drawBarFill(bar, g);
+        if (bar.p === "x") {
+            drawCrossHatch(streamCtx, g.x, g.y, g.w, g.h);
+        }
+        if (bar.ow > 0) {
+            streamCtx.strokeStyle = bar.oc;
+            streamCtx.lineWidth = bar.ow;
+            streamCtx.strokeRect(g.x, g.ly, g.w, g.lh);
+        }
+    }
+
+    // Pass 3: Cancelled bars on top so they're visible over completed bars
+    for (var j = 0; j < streamBars.length; j++) {
+        var bar = streamBars[j];
+        if (bar.rn || bar.p !== "/") continue;
+        var g = barGeom(bar);
+        drawBarFill(bar, g);
+        drawSlashHatch(streamCtx, g.x, g.y, g.w, g.h);
+        if (bar.ow > 0) {
+            streamCtx.strokeStyle = bar.oc;
+            streamCtx.lineWidth = bar.ow;
+            streamCtx.strokeRect(g.x, g.y, g.w, g.h);
         }
     }
 
@@ -661,8 +823,12 @@ streamCanvas.addEventListener("mousemove", function(evt) {
     for (var i = streamBars.length - 1; i >= 0; i--) {
         var bar = streamBars[i];
         var fullBarHeight = STREAM_ROW_HEIGHT - 4;
-        var barHeight = bar.p === "/" ? Math.floor(fullBarHeight / 2) : fullBarHeight;
-        var rowY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + (fullBarHeight - barHeight);
+        var sn = bar.sn || 1;
+        var sl = bar.sl || 0;
+        var laneHeight = fullBarHeight / sn;
+        var barHeight = bar.p === "/" ? Math.floor(laneHeight / 2) : laneHeight;
+        var laneY = STREAM_PADDING_TOP + bar.r * STREAM_ROW_HEIGHT + 2 + sl * laneHeight;
+        var rowY = laneY + (laneHeight - barHeight);
         var x1 = STREAM_LABEL_WIDTH + ((bar.x + streamWindow) / streamWindow) * chartWidth;
         var x2 = STREAM_LABEL_WIDTH + ((bar.x + bar.w + streamWindow) / streamWindow) * chartWidth;
 
@@ -874,7 +1040,7 @@ function updateProcessors(processors) {
             '<span class="manager-title">Manager: ' + escapeHTML(group.manager_id) + '</span>' +
             '<span class="manager-stats">' +
                 '<span class="manager-stat"><b>Workers:</b> ' + group.worker_count + '</span>' +
-                '<span class="manager-stat"><b>Processors:</b> ' + group.active_processors + '/' + group.total_processors + ' active</span>' +
+                '<span class="manager-stat"><b>Processors:</b> ' + group.active_processors + ' active</span>' +
                 '<span class="manager-stat"><b>Total RSS:</b> ' + group.total_rss + ' MB</span>' +
                 '<span class="manager-stat"><b>RSS Free:</b> ' + group.total_rss_free + ' MB</span>' +
                 '<span class="manager-stat"><b>Total CPU:</b> ' + group.total_cpu + '%</span>' +
@@ -890,6 +1056,13 @@ function updateProcessors(processors) {
 
         // Worker details within this manager group
         var workers = group.workers;
+        if (workers.length === 0) {
+            var emptyMsg = document.createElement("p");
+            emptyMsg.style.color = "#64748b";
+            emptyMsg.style.padding = "8px 16px";
+            emptyMsg.textContent = "No workers currently running for this manager";
+            managerSection.appendChild(emptyMsg);
+        }
         for (var i = 0; i < workers.length; i++) {
             var wp = workers[i];
             var details = document.createElement("details");

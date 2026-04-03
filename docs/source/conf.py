@@ -42,6 +42,8 @@ extensions = [
     "sphinx_substitution_extensions",
     "sphinx.ext.napoleon",
     "sphinx.ext.autosectionlabel",
+    "sphinx_copybutton",
+    "sphinx_tabs.tabs",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -60,7 +62,8 @@ exclude_patterns = []
 #
 # html_theme = "alabaster"
 
-html_theme = "sphinx_rtd_theme"
+html_theme = "shibuya"
+html_title = f"{project} {version}"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -75,3 +78,6 @@ html_css_files = ["style.css"]
 # -- Extension configuration -------------------------------------------------
 
 autosectionlabel_prefix_document = True
+
+copybutton_prompt_text = r"\$ "
+copybutton_prompt_is_regexp = True

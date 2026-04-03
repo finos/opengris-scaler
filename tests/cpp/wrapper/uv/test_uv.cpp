@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "scaler/wrapper/uv/async.h"
@@ -125,7 +126,7 @@ TEST_F(UVTest, Request)
 
     int nTimesCalled = 0;
 
-    scaler::wrapper::uv::WriteRequest request {[&](int status) { ++nTimesCalled; }};
+    scaler::wrapper::uv::WriteRequest request {[&]([[maybe_unused]] int status) { ++nTimesCalled; }};
 
     scaler::wrapper::uv::WriteRequest::onCallback(&request.native(), UV_EOVERFLOW);
 

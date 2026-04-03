@@ -11,10 +11,11 @@ namespace internal {
 
 EventLoopThread::EventLoopThread() noexcept
     : _loop(UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init()))
+    , _executeMutex {std::make_unique<std::mutex>()}
     , _executeAsync(UV_EXIT_ON_ERROR(
           scaler::wrapper::uv::Async::init(_loop, std::bind_front(&EventLoopThread::processExecuteCallbacks, this))))
 {
-    _thread = std::jthread([this](std::stop_token stop_token) { run(); });
+    _thread = std::jthread([this]([[maybe_unused]] std::stop_token stop_token) { run(); });
 }
 
 EventLoopThread::~EventLoopThread() noexcept
@@ -33,7 +34,7 @@ scaler::wrapper::uv::Loop& EventLoopThread::loop() noexcept
 void EventLoopThread::executeThreadSafe(Callback callback) noexcept
 {
     {
-        std::lock_guard<std::mutex> lock(_executeMutex);
+        std::lock_guard<std::mutex> lock(*_executeMutex);
         _executeQueue.push(std::move(callback));
     }
 
@@ -50,7 +51,7 @@ void EventLoopThread::processExecuteCallbacks() noexcept
 {
     std::queue<Callback> callbacks;
     {
-        std::lock_guard<std::mutex> lock(_executeMutex);
+        std::lock_guard<std::mutex> lock(*_executeMutex);
         std::swap(callbacks, _executeQueue);
     }
 

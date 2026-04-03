@@ -14,8 +14,8 @@ struct KeyValueDictSet {
     auto cend() const { return _keyToValueSet.cend(); }
     auto begin() { return _keyToValueSet.begin(); }
     auto end() { return _keyToValueSet.end(); }
-    const auto begin() const { return cbegin(); }
-    const auto end() const { return cend(); }
+    auto begin() const { return cbegin(); }
+    auto end() const { return cend(); }
 
     bool contains(const K& key) { return _keyToValueSet.contains(key); }
 

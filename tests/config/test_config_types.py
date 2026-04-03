@@ -1,11 +1,31 @@
 import unittest
 
+from scaler.config.types.http import HTTPConfig
 from scaler.config.types.worker import WorkerCapabilities, WorkerNames
 from scaler.config.types.zmq import ZMQConfig
 
 
 class TestConfigTypes(unittest.TestCase):
     """Tests for individual ConfigType helper classes."""
+
+    def test_http_config_from_string(self):
+        """Test HTTPConfig.from_string parses host:port correctly."""
+        cfg = HTTPConfig.from_string("0.0.0.0:50001")
+        self.assertEqual(cfg.host, "0.0.0.0")
+        self.assertEqual(cfg.port, 50001)
+        self.assertEqual(str(cfg), "0.0.0.0:50001")
+
+    def test_http_config_ipv6(self):
+        """Test HTTPConfig.from_string handles IPv6 addresses via rpartition."""
+        cfg = HTTPConfig.from_string("::1:8080")
+        self.assertEqual(cfg.port, 8080)
+
+    def test_http_config_validation(self):
+        """Test HTTPConfig.from_string raises ValueError for malformed strings."""
+        with self.assertRaises(ValueError):
+            HTTPConfig.from_string("no-port-here")
+        with self.assertRaises(ValueError):
+            HTTPConfig.from_string("0.0.0.0:notanumber")
 
     def test_zmq_config_validation(self):
         """Test ZMQConfig.from_string raises ValueError for malformed strings."""

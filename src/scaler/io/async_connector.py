@@ -37,9 +37,12 @@ class ZMQAsyncConnector(AsyncConnector):
         self._socket.setsockopt(zmq.RCVHWM, 0)
 
         if bind_or_connect == "bind":
-            self._socket.bind(self.address)
+            self._socket.bind(self._address.to_address())
+            endpoint = self._socket.getsockopt(zmq.LAST_ENDPOINT)
+            assert isinstance(endpoint, bytes)
+            self._address = ZMQConfig.from_string(endpoint.decode())
         elif bind_or_connect == "connect":
-            self._socket.connect(self.address)
+            self._socket.connect(self._address.to_address())
         else:
             raise TypeError("bind_or_connect has to be 'bind' or 'connect'")
 

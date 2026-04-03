@@ -1,3 +1,4 @@
+# PYTHON_ARGCOMPLETE_OK
 import logging
 import sys
 
@@ -9,15 +10,17 @@ from scaler.utility.logging.utility import get_logger_info, setup_logger
 def main():
     oss_config = ObjectStorageServerConfig.parse("Scaler Object Storage Server", "object_storage_server")
 
-    setup_logger()
+    setup_logger(
+        oss_config.logging_config.paths, oss_config.logging_config.config_file, oss_config.logging_config.level
+    )
 
     log_format_str, log_level_str, log_paths = get_logger_info(logging.getLogger())
 
     try:
         ObjectStorageServer().run(
-            oss_config.object_storage_address.host,
-            oss_config.object_storage_address.port,
-            oss_config.object_storage_address.identity,
+            oss_config.bind_address.host,
+            oss_config.bind_address.port,
+            oss_config.bind_address.identity,
             log_level_str,
             log_format_str,
             log_paths,

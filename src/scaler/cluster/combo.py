@@ -83,7 +83,7 @@ class SchedulerClusterCombo:
             self._monitor_address = ZMQConfig.from_string(monitor_address)
 
         self._object_storage = ObjectStorageServerProcess(
-            object_storage_address=self._object_storage_address,
+            bind_address=self._object_storage_address,
             logging_paths=logging_paths,
             logging_level=logging_level,
             logging_config_file=logging_config_file,
@@ -95,13 +95,10 @@ class SchedulerClusterCombo:
             NativeWorkerManagerConfig(
                 worker_manager_config=WorkerManagerConfig(
                     scheduler_address=self._address,
+                    worker_manager_id=worker_manager_id,
                     object_storage_address=self._object_storage_address,
                     max_task_concurrency=n_workers,
                 ),
-                worker_manager_id=worker_manager_id,
-                preload=None,
-                event_loop=event_loop,
-                worker_io_threads=worker_io_threads,
                 mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities(per_worker_capabilities or {}),
@@ -112,6 +109,8 @@ class SchedulerClusterCombo:
                     garbage_collect_interval_seconds=garbage_collect_interval_seconds,
                     trim_memory_threshold_bytes=trim_memory_threshold_bytes,
                     hard_processor_suspend=hard_processor_suspend,
+                    io_threads=worker_io_threads,
+                    event_loop=event_loop,
                 ),
                 logging_config=LoggingConfig(paths=logging_paths, config_file=logging_config_file, level=logging_level),
             )
@@ -120,7 +119,7 @@ class SchedulerClusterCombo:
         self._worker_manager_process = multiprocessing.Process(target=self._worker_manager.run)
 
         self._scheduler = SchedulerProcess(
-            address=self._address,
+            bind_address=self._address,
             object_storage_address=self._object_storage_address,
             monitor_address=self._monitor_address,
             io_threads=scheduler_io_threads,

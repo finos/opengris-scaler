@@ -16,12 +16,14 @@ struct PyManyToManyDict {
     scaler::utility::ManyToManyDict<OwnedPyObject<>, OwnedPyObject<>> dict;
 };
 
-static PyObject* PyManyToManyDictNew(PyTypeObject* type, PyObject* args, PyObject* kwds)
+static PyObject* PyManyToManyDictNew(
+    PyTypeObject* type, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwds)
 {
     return type->tp_alloc(type, 0);
 }
 
-static int PyManyToManyDictInit(PyManyToManyDict* self, PyObject* args, PyObject* kwds)
+static int PyManyToManyDictInit(
+    PyManyToManyDict* self, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwds)
 {
     new (&(self->dict)) scaler::utility::ManyToManyDict<OwnedPyObject<>, OwnedPyObject<>>();
     return 0;
@@ -89,7 +91,7 @@ static PyObject* PyManyToManyDictHasKeyPair(PyManyToManyDict* self, PyObject* ar
     }
 }
 
-static PyObject* PyManyToManyDictLeftKeys(PyManyToManyDict* self, PyObject* args)
+static PyObject* PyManyToManyDictLeftKeys(PyManyToManyDict* self, [[maybe_unused]] PyObject* args)
 {
     const auto& leftKeys = self->dict.leftKeys();
 
@@ -107,7 +109,7 @@ static PyObject* PyManyToManyDictLeftKeys(PyManyToManyDict* self, PyObject* args
     return leftKeysSet.take();
 }
 
-static PyObject* PyManyToManyDictRightKeys(PyManyToManyDict* self, PyObject* args)
+static PyObject* PyManyToManyDictRightKeys(PyManyToManyDict* self, [[maybe_unused]] PyObject* args)
 {
     const auto& rightKeys = self->dict.rightKeys();
 
@@ -141,7 +143,7 @@ static PyObject* PyManyToManyDictRemove(PyManyToManyDict* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
-static PyObject* PyManyToManyDictLeftKeyItems(PyManyToManyDict* self, PyObject* args)
+static PyObject* PyManyToManyDictLeftKeyItems(PyManyToManyDict* self, [[maybe_unused]] PyObject* args)
 {
     OwnedPyObject<> itemList = PyList_New(0);
     if (!itemList) {
@@ -173,7 +175,7 @@ static PyObject* PyManyToManyDictLeftKeyItems(PyManyToManyDict* self, PyObject* 
     return itemList.take();
 }
 
-static PyObject* PyManyToManyDictRightKeyItems(PyManyToManyDict* self, PyObject* args)
+static PyObject* PyManyToManyDictRightKeyItems(PyManyToManyDict* self, [[maybe_unused]] PyObject* args)
 {
     OwnedPyObject<> itemList = PyList_New(0);
     if (!itemList) {
@@ -317,7 +319,7 @@ static PyObject* PyManyToManyDictRemoveRightKey(PyManyToManyDict* self, PyObject
     return leftKeysSet.take();
 }
 
-static PyObject* PyManyToManyDictClassGetItem(PyObject* cls, PyObject* args)
+static PyObject* PyManyToManyDictClassGetItem([[maybe_unused]] PyObject* cls, [[maybe_unused]] PyObject* args)
 {
     Py_INCREF(cls);
     return cls;
@@ -360,7 +362,7 @@ static PyMethodDef PyManyToManyDictMethods[] = {
      METH_VARARGS,
      "Remove a right key from the dictionary and return all associated left keys"},
     {"__class_getitem__", (PyCFunction)PyManyToManyDictClassGetItem, METH_CLASS | METH_VARARGS, "__class_getitem__"},
-    {nullptr},
+    {nullptr, nullptr, 0, nullptr},
 };
 
 static PyType_Slot PyManyToManyDictSlots[] = {
@@ -372,17 +374,21 @@ static PyType_Slot PyManyToManyDictSlots[] = {
 };
 
 static PyModuleDef many_to_many_dict_module = {
-    .m_base  = PyModuleDef_HEAD_INIT,
-    .m_name  = "many_to_many_dict",
-    .m_doc   = PyDoc_STR("A module that wraps the C++ ManyToManyDict class"),
-    .m_size  = 0,
-    .m_slots = nullptr,
-    .m_free  = nullptr,
+    .m_base     = PyModuleDef_HEAD_INIT,
+    .m_name     = "many_to_many_dict",
+    .m_doc      = PyDoc_STR("A module that wraps the C++ ManyToManyDict class"),
+    .m_size     = 0,
+    .m_methods  = nullptr,
+    .m_slots    = nullptr,
+    .m_traverse = nullptr,
+    .m_clear    = nullptr,
+    .m_free     = nullptr,
 };
 
 static PyType_Spec PyManyToManyDictSpec = {
     .name      = "many_to_many_dict.ManyToManyDict",
     .basicsize = sizeof(PyManyToManyDict),
+    .itemsize  = 0,
     .flags     = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
     .slots     = PyManyToManyDictSlots,
 };
