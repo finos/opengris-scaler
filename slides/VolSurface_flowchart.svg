@@ -1,0 +1,60 @@
+<svg width="100%" viewBox="0 0 1060 420" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+
+<!-- ═══ Top container: parfun ═══ -->
+<rect x="20" y="14" width="1020" height="270" rx="8" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:0.5px;stroke-dasharray:6px, 3px;"/>
+<text x="32" y="32" dominant-baseline="central" style="fill:rgb(156, 154, 146);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">parfun</text>
+
+<!-- Row 1: Sequential chain (same as native) -->
+<g><rect x="340" y="54" width="100" height="28" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="390" y="68" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:500;">load quotes</text></g>
+<line x1="440" y1="68" x2="456" y2="68" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="456" y="54" width="72" height="28" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="492" y="68" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:500;">SVI ×8</text></g>
+<line x1="528" y1="68" x2="544" y2="68" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="544" y="54" width="80" height="28" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="584" y="68" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:500;">validate</text></g>
+<line x1="624" y1="68" x2="640" y2="68" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="640" y="54" width="80" height="28" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="680" y="68" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:500;">local vol</text></g>
+
+<text x="530" y="98" text-anchor="middle" dominant-baseline="central" style="fill:rgb(120, 118, 110);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:10px;font-style:italic;">runs sequentially (same as native)</text>
+
+<!-- Arrow from sequential chain down to @pf.parallel section -->
+<line x1="530" y1="106" x2="530" y2="130" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+
+<!-- Row 2: @pf.parallel section -->
+<rect x="250" y="132" width="560" height="70" rx="6" style="fill:rgba(8,80,65,0.06);stroke:rgb(93, 202, 165);stroke-width:0.5px;stroke-dasharray:4px, 2px;"/>
+<g>
+<rect x="444" y="151" width="184" height="28" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;opacity:0.3;"/>
+<rect x="441" y="148" width="184" height="28" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;opacity:0.5;"/>
+<rect x="438" y="145" width="184" height="28" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/>
+<text x="530" y="159" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:500;">PDE + vega per trade</text>
+<text x="530" y="188" text-anchor="middle" dominant-baseline="central" style="fill:rgb(120, 118, 110);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:10px;font-style:italic;">×150 trades</text>
+</g>
+<text x="530" y="216" text-anchor="middle" dominant-baseline="central" style="fill:rgb(93, 202, 165);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:11px;font-style:italic;">@pf.parallel — 150 trades distributed across Scaler workers</text>
+
+<!-- Arrow from @pf.parallel section to aggregate -->
+<line x1="530" y1="202" x2="530" y2="240" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+
+<!-- Row 3: aggregate_book_greeks (result pill) -->
+<g><rect x="460" y="242" width="140" height="28" rx="14" style="fill:rgb(113, 43, 19);stroke:rgb(240, 153, 123);stroke-width:0.5px;"/><text x="530" y="256" text-anchor="middle" dominant-baseline="central" style="fill:rgb(240, 153, 123);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">book greeks</text></g>
+
+<!-- ═══ Bottom container: native sequential execution ═══ -->
+<rect x="20" y="310" width="1020" height="86" rx="8" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:0.5px;stroke-dasharray:6px, 3px;"/>
+<text x="32" y="328" dominant-baseline="central" style="fill:rgb(156, 154, 146);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:14px;font-weight:500;">native sequential execution</text>
+
+<!-- Sequential chain -->
+<g><rect x="42" y="350" width="50" height="28" rx="6" style="fill:rgb(68, 68, 65);stroke:rgb(180, 178, 169);stroke-width:0.5px;"/><text x="67" y="364" text-anchor="middle" dominant-baseline="central" style="fill:rgb(180, 178, 169);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">start</text></g>
+<line x1="92" y1="364" x2="108" y2="364" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="108" y="350" width="86" height="28" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="151" y="364" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:500;">load quotes</text></g>
+<line x1="194" y1="364" x2="210" y2="364" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="210" y="350" width="72" height="28" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="246" y="364" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:500;">SVI ×8</text></g>
+<line x1="282" y1="364" x2="298" y2="364" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="298" y="350" width="72" height="28" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="334" y="364" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:500;">validate</text></g>
+<line x1="370" y1="364" x2="386" y2="364" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="386" y="350" width="72" height="28" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="422" y="364" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:500;">local vol</text></g>
+<line x1="458" y1="364" x2="474" y2="364" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="474" y="350" width="86" height="28" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="517" y="364" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:500;">PDE ×150</text></g>
+<line x1="560" y1="364" x2="576" y2="364" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="576" y="350" width="90" height="28" rx="6" style="fill:rgb(8, 80, 65);stroke:rgb(93, 202, 165);stroke-width:0.5px;"/><text x="621" y="364" text-anchor="middle" dominant-baseline="central" style="fill:rgb(159, 225, 203);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:500;">vega ×150</text></g>
+<line x1="666" y1="364" x2="682" y2="364" marker-end="url(#arrow)" style="fill:none;stroke:rgb(156, 154, 146);stroke-width:1.5px;"/>
+<g><rect x="682" y="350" width="100" height="28" rx="14" style="fill:rgb(113, 43, 19);stroke:rgb(240, 153, 123);stroke-width:0.5px;"/><text x="732" y="364" text-anchor="middle" dominant-baseline="central" style="fill:rgb(240, 153, 123);stroke:none;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:12px;font-weight:400;">book greeks</text></g>
+
+</svg>
