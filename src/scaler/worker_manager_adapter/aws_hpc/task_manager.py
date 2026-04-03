@@ -161,9 +161,9 @@ class AWSHPCTaskManager(Looper, TaskManager):
 
         # Handle queued task cancellation
         if task_queued:
-            self._queued_task_ids.remove(task_cancel.task_id)
+            self._queued_task_ids.discard(task_cancel.task_id)
             self._queued_task_id_queue.remove(task_cancel.task_id)
-            self._task_id_to_task.pop(task_cancel.task_id)
+            self._task_id_to_task.pop(task_cancel.task_id, None)
 
         # Handle processing task cancellation
         if task_processing:
@@ -177,6 +177,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
                 await self._cancel_batch_job(batch_job_id)
 
             self._processing_task_ids.discard(task_cancel.task_id)
+            self._task_id_to_task.pop(task_cancel.task_id, None)
             self._canceled_task_ids.add(task_cancel.task_id)
 
         result = TaskCancelConfirm.new_msg(
@@ -187,11 +188,11 @@ class AWSHPCTaskManager(Looper, TaskManager):
     async def on_task_result(self, result: TaskResult) -> None:
         """Handle task result processing."""
         if result.task_id in self._queued_task_ids:
-            self._queued_task_ids.remove(result.task_id)
+            self._queued_task_ids.discard(result.task_id)
             self._queued_task_id_queue.remove(result.task_id)
 
-        self._processing_task_ids.remove(result.task_id)
-        self._task_id_to_task.pop(result.task_id)
+        self._processing_task_ids.discard(result.task_id)
+        self._task_id_to_task.pop(result.task_id, None)
 
         # Clean up batch job tracking
         self._task_id_to_batch_job_id.pop(result.task_id, None)
