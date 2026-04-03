@@ -23,18 +23,15 @@ class PolicyConfig(ConfigClass):
 
 @dataclasses.dataclass
 class SchedulerConfig(ConfigClass):
-    scheduler_address: ZMQConfig = dataclasses.field(
+    bind_address: ZMQConfig = dataclasses.field(
         metadata=dict(positional=True, required=True, help="scheduler address to bind to, e.g.: `tcp://0.0.0.0:6378`")
     )
-    object_storage_address: Optional[ObjectStorageAddressConfig] = dataclasses.field(
-        default=None,
+    object_storage_address: ObjectStorageAddressConfig = dataclasses.field(
         metadata=dict(
             short="-osa",
-            help="specify the object storage server address, if not specified, "
-            "the address is scheduler address with port number plus 1, "
-            "e.g.: if scheduler address is tcp://localhost:2345, "
-            "then object storage address is tcp://localhost:2346",
-        ),
+            required=True,
+            help="specify the object storage server address for scheduler to connect to, e.g.: tcp://127.0.0.1:6379",
+        )
     )
     advertised_object_storage_address: Optional[ObjectStorageAddressConfig] = dataclasses.field(
         default=None,

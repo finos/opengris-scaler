@@ -192,9 +192,13 @@ address.
 
       .. code-block:: toml
 
+         [object_storage_server]
+         bind_address = "tcp://127.0.0.1:8517"
+
          [scheduler]
          # use 0.0.0.0 so NAT and forward traffic from your public IP to this machine
-         scheduler_address = "tcp://0.0.0.0:8516"
+         bind_address = "tcp://0.0.0.0:8516"
+         object_storage_address = "tcp://127.0.0.1:8517"
 
          [[worker_manager]]
          type = "orb_aws_ec2"
@@ -203,7 +207,7 @@ address.
          # worker provisioned in AWS need reach to your PUBLIC_IP, and your router 
          # then forward packets to the machine you started services
          object_storage_address = "tcp://<PUBLIC_IP>:8517"
-         public_scheduler_address = "tcp://<PUBLIC_IP>:8516"
+         worker_scheduler_address = "tcp://<PUBLIC_IP>:8516"
          # You can start either with pre-built AMI or with specified python version
          # and requirements_txt
          # image_id = "ami-..."
@@ -228,10 +232,11 @@ address.
 
       .. code-block:: bash
 
-         scaler_scheduler tcp://0.0.0.0:8516
+         scaler_object_storage_server tcp://127.0.0.1:8517
+         scaler_scheduler tcp://0.0.0.0:8516 --object-storage-address tcp://127.0.0.1:8517
          scaler_worker_manager orb_aws_ec2 tcp://127.0.0.1:8516 \
              --worker-manager-id wm-orb \
-             --public-scheduler-address tcp://<PUBLIC_IP>:8516 \
+             --worker-scheduler-address tcp://<PUBLIC_IP>:8516 \
              --object-storage-address tcp://<PUBLIC_IP>:8517 \
              --python-version 3.13 \
              --requirements-txt /path/to/requirements.txt \
@@ -267,7 +272,7 @@ at startup. ``opengris-scaler`` must be included in ``requirements_txt``.
          type = "orb_aws_ec2"
          scheduler_address = "tcp://<SCHEDULER_IP>:8516"
          worker_manager_id = "wm-orb"
-         public_scheduler_address = "tcp://<PUBLIC_IP>:8516"
+         worker_scheduler_address = "tcp://<PUBLIC_IP>:8516"
          object_storage_address = "tcp://<PUBLIC_IP>:8517"
          instance_type = "t3.medium"
          python_version = "3.13"
@@ -290,7 +295,7 @@ at startup. ``opengris-scaler`` must be included in ``requirements_txt``.
          # Requirements as a file path
          scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
              --worker-manager-id wm-orb \
-             --public-scheduler-address tcp://<PUBLIC_IP>:8516 \
+             --worker-scheduler-address tcp://<PUBLIC_IP>:8516 \
              --object-storage-address tcp://<PUBLIC_IP>:8517 \
              --instance-type t3.medium \
              --python-version 3.13 \
@@ -299,7 +304,7 @@ at startup. ``opengris-scaler`` must be included in ``requirements_txt``.
          # Requirements as a string literal
          scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
              --worker-manager-id wm-orb \
-             --public-scheduler-address tcp://<PUBLIC_IP>:8516 \
+             --worker-scheduler-address tcp://<PUBLIC_IP>:8516 \
              --object-storage-address tcp://<PUBLIC_IP>:8517 \
              --instance-type t3.medium \
              --python-version 3.13 \
@@ -323,7 +328,7 @@ worker environment must be tightly controlled.
          type = "orb_aws_ec2"
          scheduler_address = "tcp://<SCHEDULER_IP>:8516"
          worker_manager_id = "wm-orb"
-         public_scheduler_address = "tcp://<PUBLIC_IP>:8516"
+         worker_scheduler_address = "tcp://<PUBLIC_IP>:8516"
          object_storage_address = "tcp://<PUBLIC_IP>:8517"
          instance_type = "t3.medium"
          image_id = "ami-0123456789abcdef0"
@@ -340,7 +345,7 @@ worker environment must be tightly controlled.
 
          scaler_worker_manager orb_aws_ec2 tcp://<SCHEDULER_IP>:8516 \
              --worker-manager-id wm-orb \
-             --public-scheduler-address tcp://<PUBLIC_IP>:8516 \
+             --worker-scheduler-address tcp://<PUBLIC_IP>:8516 \
              --object-storage-address tcp://<PUBLIC_IP>:8517 \
              --instance-type t3.medium \
              --image-id ami-0123456789abcdef0

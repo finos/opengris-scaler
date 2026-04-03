@@ -93,8 +93,12 @@ Start scheduler and worker manager from one TOML file (replace account ID):
 .. code-block:: toml
    :caption: config.toml
 
+   [object_storage_server]
+   bind_address = "tcp://127.0.0.1:8517"
+
    [scheduler]
-   scheduler_address = "tcp://127.0.0.1:8516"
+   bind_address = "tcp://127.0.0.1:8516"
+   object_storage_address = "tcp://127.0.0.1:8517"
 
    [[worker_manager]]
    type = "aws_hpc"
@@ -188,7 +192,8 @@ Step 2: Start the Scheduler
 
 .. code-block:: bash
 
-   scaler_scheduler tcp://0.0.0.0:8516
+   scaler_object_storage_server tcp://127.0.0.1:8517
+   scaler_scheduler tcp://0.0.0.0:8516 --object-storage-address tcp://127.0.0.1:8517
 
 .. note::
    The scheduler address must be reachable from the machine running the AWS HPC worker manager. Use ``0.0.0.0`` to bind to all interfaces, or your machine's public/private IP.

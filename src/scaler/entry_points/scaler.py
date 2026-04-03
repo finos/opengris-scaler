@@ -80,24 +80,12 @@ def main() -> None:
         print("scaler: no any recognized section found in config file", file=sys.stderr)
         sys.exit(1)
 
-    if (
-        config.object_storage is not None
-        and config.scheduler is not None
-        and config.scheduler.object_storage_address is None
-    ):
-        print(
-            "scaler: object_storage_address is required in section [scheduler]"
-            " when section [object_storage_server] is present",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
     processes: List[multiprocessing.Process] = []
 
     if config.object_storage is not None:
         oss_logging = config.object_storage.logging_config
         oss_process = ObjectStorageServerProcess(
-            object_storage_address=config.object_storage.object_storage_address,
+            bind_address=config.object_storage.bind_address,
             logging_paths=oss_logging.paths,
             logging_config_file=oss_logging.config_file,
             logging_level=oss_logging.level,

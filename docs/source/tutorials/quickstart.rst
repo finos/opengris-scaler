@@ -26,8 +26,12 @@ locally but provision workers on cloud infrastructure, use these quick starts:
 
         .. code-block:: toml
 
+            [object_storage_server]
+            bind_address = "tcp://127.0.0.1:8517"
+
             [scheduler]
-            scheduler_address = "tcp://127.0.0.1:8516"
+            bind_address = "tcp://127.0.0.1:8516"
+            object_storage_address = "tcp://127.0.0.1:8517"
 
             [[worker_manager]]
             type = "baremetal_native"
@@ -46,9 +50,15 @@ locally but provision workers on cloud infrastructure, use these quick starts:
 
         .. code-block:: bash
 
-            scaler_scheduler tcp://127.0.0.1:8516
+            scaler_object_storage_server tcp://127.0.0.1:8517
 
         In terminal 2:
+
+        .. code-block:: bash
+
+            scaler_scheduler tcp://127.0.0.1:8516 --object-storage-address tcp://127.0.0.1:8517
+
+        In terminal 3:
 
         .. code-block:: bash
 

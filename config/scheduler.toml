@@ -3,15 +3,17 @@
 
 [scheduler]
 # Required: address the scheduler binds to (tcp://<host>:<port>, ipc://<path>, or inproc://<name>)
-scheduler_address = "tcp://0.0.0.0:6378"
+bind_address = "tcp://0.0.0.0:6378"
 
-# Optional: object storage server address.
-# If omitted, defaults to scheduler_address host with port+1 (e.g. tcp://0.0.0.0:6379).
-# An embedded object storage server is started automatically in that case.
-# object_storage_address = "tcp://0.0.0.0:6379"
+# Required: object storage server address the scheduler connects to.
+object_storage_address = "tcp://127.0.0.1:6379"
+
+# Optional: object storage address advertised to clients/workers.
+# If omitted, scheduler advertises object_storage_address.
+# advertised_object_storage_address = "tcp://203.0.113.10:6379"
 
 # Optional: monitoring address.
-# If omitted, defaults to scheduler_address host with port+2 (e.g. tcp://0.0.0.0:6380).
+# If omitted, defaults to bind_address host with port+2 (e.g. tcp://0.0.0.0:6380).
 # monitor_address = "tcp://0.0.0.0:6380"
 
 # Protect the scheduler and workers from being shut down by clients.

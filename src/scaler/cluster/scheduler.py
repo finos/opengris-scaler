@@ -15,8 +15,8 @@ from scaler.utility.logging.utility import setup_logger
 class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
     def __init__(
         self,
-        address: ZMQConfig,
-        object_storage_address: Optional[ObjectStorageAddressConfig],
+        bind_address: ZMQConfig,
+        object_storage_address: ObjectStorageAddressConfig,
         monitor_address: Optional[ZMQConfig],
         io_threads: int,
         max_number_of_tasks_waiting: int,
@@ -34,7 +34,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
     ):
         multiprocessing.Process.__init__(self, name="Scheduler")
         self._scheduler_config = SchedulerConfig(
-            scheduler_address=address,
+            bind_address=bind_address,
             object_storage_address=object_storage_address,
             monitor_address=monitor_address,
             protected=protected,

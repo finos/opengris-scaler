@@ -17,10 +17,10 @@ class WorkerManagerConfig(ConfigClass):
         metadata=dict(short="-wmi", required=True, help="worker manager ID to identify this manager")
     )
 
-    public_scheduler_address: Optional[ZMQConfig] = dataclasses.field(
+    worker_scheduler_address: Optional[ZMQConfig] = dataclasses.field(
         default=None,
         metadata=dict(
-            short="-psa",
+            short="-wsa",
             help=(
                 "scheduler address forwarded to spawned workers; defaults to scheduler_address if not set. "
                 "Use this when the manager and workers are on different networks (e.g. NAT/EC2 setups) "
@@ -47,7 +47,7 @@ class WorkerManagerConfig(ConfigClass):
 
     @property
     def effective_worker_scheduler_address(self) -> ZMQConfig:
-        return self.public_scheduler_address if self.public_scheduler_address is not None else self.scheduler_address
+        return self.worker_scheduler_address if self.worker_scheduler_address is not None else self.scheduler_address
 
     def __post_init__(self) -> None:
         if not self.worker_manager_id:
