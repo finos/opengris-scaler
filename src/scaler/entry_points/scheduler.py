@@ -12,6 +12,7 @@ def main(scheduler_config: Optional[SchedulerConfig] = None) -> None:
     scheduler = SchedulerProcess(
         bind_address=scheduler_config.bind_address,
         object_storage_address=scheduler_config.object_storage_address,
+        advertised_object_storage_address=scheduler_config.advertised_object_storage_address,
         monitor_address=scheduler_config.monitor_address,
         io_threads=scheduler_config.io_threads,
         max_number_of_tasks_waiting=scheduler_config.max_number_of_tasks_waiting,

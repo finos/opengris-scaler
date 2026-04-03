@@ -17,6 +17,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         self,
         bind_address: ZMQConfig,
         object_storage_address: ObjectStorageAddressConfig,
+        advertised_object_storage_address: Optional[ObjectStorageAddressConfig],
         monitor_address: Optional[ZMQConfig],
         io_threads: int,
         max_number_of_tasks_waiting: int,
@@ -36,6 +37,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         self._scheduler_config = SchedulerConfig(
             bind_address=bind_address,
             object_storage_address=object_storage_address,
+            advertised_object_storage_address=advertised_object_storage_address,
             monitor_address=monitor_address,
             protected=protected,
             max_number_of_tasks_waiting=max_number_of_tasks_waiting,

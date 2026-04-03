@@ -68,6 +68,7 @@ class TestScaling(unittest.TestCase):
         scheduler = SchedulerProcess(
             bind_address=ZMQConfig.from_string(self.scheduler_address),
             object_storage_address=self.object_storage_config,
+            advertised_object_storage_address=None,
             monitor_address=None,
             policy=PolicyConfig(policy_content="allocate=even_load; scaling=vanilla"),
             io_threads=DEFAULT_IO_THREADS,
@@ -114,6 +115,7 @@ class TestScaling(unittest.TestCase):
         scheduler = SchedulerProcess(
             bind_address=ZMQConfig.from_string(self.scheduler_address),
             object_storage_address=self.object_storage_config,
+            advertised_object_storage_address=None,
             monitor_address=None,
             io_threads=DEFAULT_IO_THREADS,
             max_number_of_tasks_waiting=DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,

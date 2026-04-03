@@ -121,6 +121,7 @@ class SchedulerClusterCombo:
         self._scheduler = SchedulerProcess(
             bind_address=self._address,
             object_storage_address=self._object_storage_address,
+            advertised_object_storage_address=None,
             monitor_address=self._monitor_address,
             io_threads=scheduler_io_threads,
             max_number_of_tasks_waiting=max_number_of_tasks_waiting,
