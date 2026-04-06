@@ -11,6 +11,8 @@ from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectRes
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ObjectID
 
+YMQ_MAGIC_STRING = b"YMQ\x01"
+
 
 class PyAsyncObjectStorageConnector(AsyncObjectStorageConnector):
     """An asyncio connector that uses an raw TCP socket to connect to a Scaler's object storage instance."""
@@ -42,13 +44,17 @@ class PyAsyncObjectStorageConnector(AsyncObjectStorageConnector):
             raise ObjectStorageException("connector is already connected.")
 
         self._reader, self._writer = await asyncio.open_connection(self._host, self._port)
-        await self.__read_framed_message()
+
+        self.__write_magic_string()
         self.__write_framed(self._identity)
 
         try:
             await self._writer.drain()
         except ConnectionResetError:
             self.__raise_connection_failure()
+
+        await self.__read_magic_string()
+        await self.__read_framed_message()
 
         # Makes sure the socket is TCP_NODELAY. It seems to be the case by default, but that's not specified in the
         # asyncio's documentation and might change in the future.
@@ -209,6 +215,14 @@ class PyAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         length_bytes = await self._reader.readexactly(8)
         (payload_length,) = struct.unpack("<Q", length_bytes)
         return await self._reader.readexactly(payload_length) if payload_length > 0 else bytes()
+
+    async def __read_magic_string(self) -> None:
+        magic_string = await self._reader.readexactly(len(YMQ_MAGIC_STRING))
+        if magic_string != YMQ_MAGIC_STRING:
+            raise ObjectStorageException("invalid YMQ magic string.")
+
+    def __write_magic_string(self) -> None:
+        self._writer.write(YMQ_MAGIC_STRING)
 
     def __write_framed(self, payload: bytes):
         self._writer.write(struct.pack("<Q", len(payload)))

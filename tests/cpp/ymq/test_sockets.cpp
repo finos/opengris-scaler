@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cassert>
 #include <chrono>
 #include <cstdint>
@@ -15,6 +16,7 @@
 #include "scaler/error/error.h"
 #include "scaler/ymq/address.h"
 #include "scaler/ymq/bytes.h"
+#include "scaler/ymq/configuration.h"
 #include "scaler/ymq/future/binder_socket.h"
 #include "scaler/ymq/future/connector_socket.h"
 #include "scaler/ymq/io_context.h"
@@ -53,6 +55,18 @@ protected:
         return "invalid-transport";
     }
 };
+
+void writeMagicString(const Socket& socket)
+{
+    socket.writeAll(scaler::ymq::magicString.data(), scaler::ymq::magicString.size());
+}
+
+bool readMagicString(const Socket& socket)
+{
+    std::array<uint8_t, scaler::ymq::magicString.size()> magicBuffer {};
+    socket.readExact(magicBuffer.data(), magicBuffer.size());
+    return magicBuffer == scaler::ymq::magicString;
+}
 
 // --------------------
 //  clients and servers
@@ -99,6 +113,10 @@ TestResult basicServerRaw(std::string address_str)
 
     socket->listen(5);  // Default backlog
     auto client = socket->accept();
+
+    writeMagicString(*client);
+    RETURN_FAILURE_IF_FALSE(readMagicString(*client));
+
     client->writeMessage("server");
     auto client_identity = client->readMessage();
     RETURN_FAILURE_IF_FALSE(client_identity == "client");
@@ -111,6 +129,9 @@ TestResult basicServerRaw(std::string address_str)
 TestResult basicClientRaw(std::string address_str)
 {
     auto socket = connectSocket(address_str);
+
+    writeMagicString(*socket);
+    RETURN_FAILURE_IF_FALSE(readMagicString(*socket));
 
     socket->writeMessage("client");
     auto server_identity = socket->readMessage();
@@ -140,6 +161,9 @@ TestResult clientSendsBigMessage(std::string address_str)
 {
     auto socket = connectSocket(address_str);
 
+    writeMagicString(*socket);
+    RETURN_FAILURE_IF_FALSE(readMagicString(*socket));
+
     socket->writeMessage("client");
     auto remote_identity = socket->readMessage();
     RETURN_FAILURE_IF_FALSE(remote_identity == "server");
@@ -152,6 +176,9 @@ TestResult clientSendsBigMessage(std::string address_str)
 TestResult clientSimulatedSlowNetwork(std::string address)
 {
     auto socket = connectSocket(address);
+
+    writeMagicString(*socket);
+    RETURN_FAILURE_IF_FALSE(readMagicString(*socket));
 
     socket->writeMessage("client");
     auto remote_identity = socket->readMessage();
@@ -177,6 +204,9 @@ TestResult clientSendsIncompleteIdentity(std::string address)
     {
         auto socket = connectSocket(address);
 
+        writeMagicString(*socket);
+        RETURN_FAILURE_IF_FALSE(readMagicString(*socket));
+
         auto server_identity = socket->readMessage();
         RETURN_FAILURE_IF_FALSE(server_identity == "server");
 
@@ -190,6 +220,9 @@ TestResult clientSendsIncompleteIdentity(std::string address)
     // connect again and try to send a message
     {
         auto socket = connectSocket(address);
+
+        writeMagicString(*socket);
+        RETURN_FAILURE_IF_FALSE(readMagicString(*socket));
 
         auto server_identity = socket->readMessage();
         RETURN_FAILURE_IF_FALSE(server_identity == "server");
@@ -221,6 +254,9 @@ TestResult clientSendsHugeHeader(std::string address)
     {
         auto socket = connectSocket(address);
 
+        writeMagicString(*socket);
+        RETURN_FAILURE_IF_FALSE(readMagicString(*socket));
+
         socket->writeMessage("client");
         auto server_identity = socket->readMessage();
         RETURN_FAILURE_IF_FALSE(server_identity == "server");
@@ -249,6 +285,9 @@ TestResult clientSendsHugeHeader(std::string address)
 
         {
             auto socket = connectSocket(address);
+
+            writeMagicString(*socket);
+            RETURN_FAILURE_IF_FALSE(readMagicString(*socket));
 
             socket->writeMessage("client");
             auto server_identity = socket->readMessage();

@@ -14,6 +14,8 @@ from scaler.utility.identifiers import ObjectID
 # Some OSes raise an OSError when sending buffers too large with send() or sendmsg().
 MAX_CHUNK_SIZE = 128 * 1024 * 1024
 
+YMQ_MAGIC_STRING = b"YMQ\x01"
+
 
 class PySyncObjectStorageConnector(SyncObjectStorageConnector):
     """An synchronous connector that uses an raw TCP socket to connect to a Scaler's object storage instance."""
@@ -33,7 +35,9 @@ class PySyncObjectStorageConnector(SyncObjectStorageConnector):
 
         self._socket_lock = Lock()
 
+        self.__send_magic_string()
         self.__send_buffers([struct.pack("<Q", len(self._identity)), self._identity])
+        self.__read_magic_string()
         self.__read_framed_message()  # receive server identity
 
     def __del__(self):
@@ -151,6 +155,14 @@ class PySyncObjectStorageConnector(SyncObjectStorageConnector):
             )
         else:
             self.__send_buffers([struct.pack("<Q", len(header_bytes)), header_bytes])
+
+    def __send_magic_string(self) -> None:
+        self.__send_buffer(YMQ_MAGIC_STRING)
+
+    def __read_magic_string(self) -> None:
+        magic_string = bytes(self.__read_exactly(len(YMQ_MAGIC_STRING)))
+        if magic_string != YMQ_MAGIC_STRING:
+            raise ObjectStorageException("invalid YMQ magic string.")
 
     def __send_buffers(self, buffers: List[bytes]) -> None:
         if len(buffers) < 1:

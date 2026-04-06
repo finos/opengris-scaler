@@ -102,7 +102,7 @@ private:
         std::optional<internal::AcceptServer> _acceptServer {};
 
         // Common fields
-        std::optional<internal::MessageConnection> _connection {};
+        std::unique_ptr<internal::MessageConnection> _connection {};
         std::queue<RecvMessageCallback> _pendingRecvCallbacks {};
         std::queue<Message> _pendingRecvMessages {};
 

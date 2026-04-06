@@ -87,7 +87,7 @@ private:
 
         ConnectionID _connectionCounter {0};
 
-        std::map<ConnectionID, internal::MessageConnection> _connections {};
+        std::map<ConnectionID, std::unique_ptr<internal::MessageConnection>> _connections {};
         std::map<Identity, ConnectionID> _identityToConnectionID {};
 
         std::map<Identity, std::vector<PendingSendMessage>> _pendingSendMessages {};

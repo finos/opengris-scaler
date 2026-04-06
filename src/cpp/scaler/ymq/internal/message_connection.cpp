@@ -29,7 +29,7 @@ MessageConnection::MessageConnection(
     , _onRemoteDisconnectCallback(std::move(onRemoteDisconnectCallback))
     , _onRecvMessageCallback(std::move(onRecvMessageCallback))
 {
-    sendLocalIdentity();
+    initialize();
 }
 
 MessageConnection::~MessageConnection() noexcept
@@ -40,8 +40,8 @@ MessageConnection::~MessageConnection() noexcept
 
     // Fail all pending send operations
     while (!_sendPending.empty()) {
-        auto& callback = _sendPending.front()._onMessageSent;
-        callback(std::unexpected(scaler::ymq::Error(scaler::ymq::Error::ErrorCode::SocketStopRequested)));
+        auto& callback = _sendPending.front()._onSendDone;
+        callback(std::unexpected(Error {Error::ErrorCode::SocketStopRequested}));
         _sendPending.pop();
     }
 }
@@ -79,7 +79,7 @@ void MessageConnection::disconnect() noexcept
 
     shutdownClient();
 
-    reinitialize();
+    initialize();
 }
 
 void MessageConnection::abort() noexcept
@@ -93,7 +93,7 @@ void MessageConnection::abort() noexcept
 
     UV_EXIT_ON_ERROR(socket->closeReset());
 
-    reinitialize();
+    initialize();
 }
 
 const Identity& MessageConnection::localIdentity() const noexcept
@@ -106,18 +106,23 @@ const std::optional<Identity>& MessageConnection::remoteIdentity() const noexcep
     return _remoteIdentity;
 }
 
-void MessageConnection::sendMessage(scaler::ymq::Bytes messagePayload, SendMessageCallback onMessageSent) noexcept
+void MessageConnection::sendMessage(Bytes messagePayload, SendMessageCallback onMessageSent) noexcept
 {
-    SendOperation operation;
-    operation._messagePayload = std::move(messagePayload);
-    operation._onMessageSent  = std::move(onMessageSent);
-    operation._messageSize    = operation._messagePayload.size();
+    // Heap allocate the header buffer until the send completes.
+    std::unique_ptr<Header> header = std::make_unique<Header>(messagePayload.size());
 
-    _sendPending.push(std::move(operation));
+    const std::vector<std::span<const uint8_t>> buffers {
+        std::span<const uint8_t> {reinterpret_cast<const uint8_t*>(header.get()), sizeof(Header)},  // header
+        std::span<const uint8_t> {messagePayload.data(), messagePayload.size()}                     // payload
+    };
 
-    if (connected()) {
-        processSendQueue();
-    }
+    send(
+        std::move(buffers),
+        [header         = std::move(header),
+         messagePayload = std::move(messagePayload),
+         onMessageSent  = std::move(onMessageSent)](std::expected<void, Error> result) mutable {
+            onMessageSent(std::move(result));
+        });
 }
 
 void MessageConnection::shutdownClient() noexcept
@@ -149,13 +154,104 @@ void MessageConnection::shutdownClient() noexcept
     }
 }
 
-void MessageConnection::reinitialize() noexcept
+void MessageConnection::initialize() noexcept
 {
     _client      = std::nullopt;
     _state       = State::Disconnected;
     _recvCurrent = RecvOperation {};
 
-    sendLocalIdentity();  // enqueue the first identity message in case we reconnect.
+    sendHandshake();
+    recvMagicNumber();
+}
+
+void MessageConnection::send(std::vector<std::span<const uint8_t>> buffers, SendCallback callback) noexcept
+{
+    SendOperation operation;
+    operation._buffers    = std::move(buffers);
+    operation._onSendDone = std::move(callback);
+
+    _sendPending.push(std::move(operation));
+
+    if (connected()) {
+        processSendQueue();
+    }
+}
+
+void MessageConnection::recv(size_t size, RecvCallback callback) noexcept
+{
+    assert(_recvCurrent._cursor == _recvCurrent._buffer.size() && "previous recv() call not yet completed");
+
+    _recvCurrent._cursor = 0;
+
+    try {
+        _recvCurrent._buffer = Bytes::alloc(size);
+    } catch (const std::bad_alloc& e) {
+        _logger.log(Logger::LoggingLevel::error, "Failed to allocate ", size, " bytes.");
+        onRemoteDisconnect(DisconnectReason::Aborted);
+        return;
+    }
+
+    if (size == 0) {
+        // Empty read, complete immediately with an empty buffer.
+        callback(std::move(_recvCurrent._buffer));
+        return;
+    }
+
+    _recvCurrent._onRecvDone = std::move(callback);
+}
+
+void MessageConnection::sendHandshake() noexcept
+{
+    assert(_sendPending.empty() && "handshake should be sent first");
+
+    // Magic string
+    const std::vector<std::span<const uint8_t>> magicStringBuffer {std::span<const uint8_t> {magicString}};
+    send(std::move(magicStringBuffer), []([[maybe_unused]] std::expected<void, Error> result) {});
+
+    // Identity
+    const Bytes identityBytes {_localIdentity.data(), _localIdentity.size()};
+    sendMessage(std::move(identityBytes), []([[maybe_unused]] std::expected<void, Error> result) {});
+}
+
+void MessageConnection::recvMagicNumber() noexcept
+{
+    recv(magicString.size(), [this](Bytes payload) {
+        assert(connected());
+        assert(payload.size() == magicString.size());
+
+        const bool magicIsValid = std::memcmp(payload.data(), magicString.data(), magicString.size()) == 0;
+
+        if (!magicIsValid) {
+            _logger.log(Logger::LoggingLevel::error, "Invalid YMQ magic string received");
+            onRemoteDisconnect(DisconnectReason::Aborted);
+            return;
+        }
+
+        recvMessage();  // next, expect the remote identity message.
+    });
+}
+
+void MessageConnection::recvMessage() noexcept
+{
+    recv(sizeof(Header), [this](Bytes headerPayload) {
+        assert(connected());
+
+        Header header;
+        std::memcpy(&header, headerPayload.data(), sizeof(Header));
+
+        recv(header, [this](Bytes messagePayload) {
+            assert(connected());
+
+            if (!established()) {
+                // First message received is the remote identity
+                onRemoteIdentity(std::move(messagePayload));
+            } else {
+                _onRecvMessageCallback(std::move(messagePayload));
+            }
+
+            recvMessage();  // next message
+        });
+    });
 }
 
 void MessageConnection::onWriteDone(
@@ -215,64 +311,35 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
     const std::span<const uint8_t> data = result.value();
     size_t offset                       = 0;
 
-    while (offset < data.size()) {
-        // Read header
-        if (_recvCurrent._cursor < HEADER_SIZE) {
-            offset += readHeader(data.subspan(offset));
+    while (offset < data.size() && connected()) {
+        // Read into the current receive buffer
+        assert(_recvCurrent._cursor < _recvCurrent._buffer.size() && "no receive operation in progress");
 
-            // Allocate message buffer
-            if (_recvCurrent._cursor == HEADER_SIZE) {
-                bool success = allocateMessage();
+        const size_t readCount = std::min(_recvCurrent._buffer.size() - _recvCurrent._cursor, data.size() - offset);
+        uint8_t* readDest      = _recvCurrent._buffer.data() + _recvCurrent._cursor;
 
-                if (!success) {
-                    _logger.log(
-                        scaler::ymq::Logger::LoggingLevel::error,
-                        "Failed to allocate ",
-                        _recvCurrent._header,
-                        " bytes.");
-                    onRemoteDisconnect(DisconnectReason::Aborted);
-                    return;
-                }
-            }
-        }
+        std::memcpy(readDest, data.subspan(offset).data(), readCount);
 
-        // Read message's content
-        if (_recvCurrent._cursor >= HEADER_SIZE) {
-            offset += readMessage(data.subspan(offset));
-        }
+        _recvCurrent._cursor += readCount;
+        offset += readCount;
 
-        // Dispatch message if completed
-        if (_recvCurrent._cursor == HEADER_SIZE + _recvCurrent._header) {
-            onMessage(std::move(_recvCurrent._messagePayload));
-
-            _recvCurrent = RecvOperation {};
+        // If the receive buffer is full, invoke the callback
+        if (_recvCurrent._cursor == _recvCurrent._buffer.size()) {
+            _recvCurrent._onRecvDone(_recvCurrent._buffer);
         }
     }
 }
 
-void MessageConnection::onMessage(scaler::ymq::Bytes messagePayload) noexcept
-{
-    assert(connected());
-
-    // First message received is the remote identity
-    if (!established()) {
-        onRemoteIdentity(std::move(messagePayload));
-        return;
-    }
-
-    _onRecvMessageCallback(std::move(messagePayload));
-}
-
-void MessageConnection::onRemoteIdentity(scaler::ymq::Bytes messagePayload) noexcept
+void MessageConnection::onRemoteIdentity(Bytes payload) noexcept
 {
     assert(connected());
     assert(!established());
 
-    Identity receivedIdentity {reinterpret_cast<const char*>(messagePayload.data()), messagePayload.size()};
+    Identity receivedIdentity = payload.as_string().value();
 
     if (_remoteIdentity.has_value() && *_remoteIdentity != receivedIdentity) {
         _logger.log(
-            scaler::ymq::Logger::LoggingLevel::error,
+            Logger::LoggingLevel::error,
             "Received identity (",
             receivedIdentity,
             ") does not match previously known identity (",
@@ -292,20 +359,9 @@ void MessageConnection::onRemoteDisconnect(MessageConnection::DisconnectReason r
     assert(connected());
 
     readStop();
-    reinitialize();
+    initialize();
 
     _onRemoteDisconnectCallback(reason);
-}
-
-void MessageConnection::sendLocalIdentity() noexcept
-{
-    assert(_sendPending.empty() && "Identity should be the first message");
-
-    scaler::ymq::Bytes messagePayload = scaler::ymq::Bytes(_localIdentity.data(), _localIdentity.size());
-
-    SendMessageCallback callback = []([[maybe_unused]] std::expected<void, scaler::ymq::Error> result) {};
-
-    sendMessage(std::move(messagePayload), std::move(callback));
 }
 
 void MessageConnection::processSendQueue() noexcept
@@ -322,44 +378,43 @@ void MessageConnection::processSendQueue() noexcept
 
 void MessageConnection::processSendOperation(SendOperation operation) noexcept
 {
-    // Move operation into a unique_ptr to ensure it stays alive during the async write
-    auto operationPtr = std::make_unique<SendOperation>(std::move(operation));
+    // Calculate total size of all buffers
+    size_t totalSize = 0;
+    for (const auto& buffer: operation._buffers) {
+        totalSize += buffer.size();
+    }
 
-    const uint8_t* headerData = reinterpret_cast<const uint8_t*>(&operationPtr->_messageSize);
-    const std::span<const uint8_t> headerBuffer {headerData, HEADER_SIZE};
-    const uint8_t* messageData = operationPtr->_messagePayload.data();
-    const size_t messageSize   = operationPtr->_messagePayload.size();
-    const size_t totalSize     = HEADER_SIZE + messageSize;
-
-    // Make the callback own the heap-allocated operation object to keep it alive until the write completes
-    auto callback = [operationPtr =
-                         std::move(operationPtr)](std::expected<void, scaler::wrapper::uv::Error> result) mutable {
-        MessageConnection::onWriteDone(std::move(operationPtr->_onMessageSent), std::move(result));
+    // Make the callback own the operation's callback
+    auto callback = [onSendDone = std::move(operation._onSendDone)](
+                        std::expected<void, scaler::wrapper::uv::Error> result) mutable {
+        onWriteDone(std::move(onSendDone), std::move(result));
     };
 
     if (totalSize <= maxWriteBufferSize) {
-        // Small message: header + payload in one syscall
-        std::array<std::span<const uint8_t>, 2> buffers = {
-            {headerBuffer, std::span<const uint8_t> {messageData, messageSize}}};
-        write(buffers, std::move(callback));
+        // Small message: all buffers in one syscall
+        write(
+            std::span<const std::span<const uint8_t>> {operation._buffers.data(), operation._buffers.size()},
+            std::move(callback));
     } else {
-        // Large message: chunk the payload in write() calls of up to maxWriteBufferSize.
+        // Large message: chunk the buffers in write() calls of up to maxWriteBufferSize.
         //
         // Not doing this makes some OSes fail (macOS, Windows) with EINVAL as these don't support large writes.
-        write(std::span(&headerBuffer, 1), [](auto) {});
+        size_t offset = 0;
+        for (const auto& buffer: operation._buffers) {
+            for (size_t bufferOffset = 0; bufferOffset < buffer.size(); bufferOffset += maxWriteBufferSize) {
+                const size_t chunkSize = std::min(buffer.size() - bufferOffset, maxWriteBufferSize);
+                const std::span<const uint8_t> chunk {buffer.data() + bufferOffset, chunkSize};
 
-        for (size_t offset = 0; offset < messageSize; offset += maxWriteBufferSize) {
-            const size_t chunkSize = std::min(messageSize - offset, maxWriteBufferSize);
-            const std::span<const uint8_t> chunk {messageData + offset, chunkSize};
+                const bool isLastChunk = (offset + bufferOffset + chunkSize >= totalSize);
 
-            const bool isLastChunk = offset + chunkSize >= messageSize;
-
-            if (!isLastChunk) {
-                write(std::span(&chunk, 1), [](auto) {});
-            } else {
-                // Attach the callback to the last write() call.
-                write(std::span(&chunk, 1), std::move(callback));
+                if (!isLastChunk) {
+                    write(std::span(&chunk, 1), [](auto) {});
+                } else {
+                    // Attach the callback to the last write() call.
+                    write(std::span(&chunk, 1), std::move(callback));
+                }
             }
+            offset += buffer.size();
         }
     }
 }
@@ -411,46 +466,6 @@ void MessageConnection::readStop() noexcept
     } else {
         std::unreachable();
     }
-}
-
-size_t MessageConnection::readHeader(std::span<const uint8_t> data) noexcept
-{
-    uint8_t* readDest = reinterpret_cast<uint8_t*>(&_recvCurrent._header) + _recvCurrent._cursor;
-    size_t readCount  = std::min(HEADER_SIZE - _recvCurrent._cursor, data.size());
-
-    std::memcpy(readDest, data.data(), readCount);
-
-    _recvCurrent._cursor += readCount;
-
-    return readCount;
-}
-
-size_t MessageConnection::readMessage(std::span<const uint8_t> data) noexcept
-{
-    size_t messageSize   = _recvCurrent._header;
-    size_t messageOffset = _recvCurrent._cursor - HEADER_SIZE;
-
-    uint8_t* readDest = _recvCurrent._messagePayload.data() + messageOffset;
-    size_t readCount  = std::min(messageSize - messageOffset, data.size());
-
-    std::memcpy(readDest, data.data(), readCount);
-
-    _recvCurrent._cursor += readCount;
-
-    return readCount;
-}
-
-bool MessageConnection::allocateMessage() noexcept
-{
-    if (_recvCurrent._header >= 0) {
-        try {
-            _recvCurrent._messagePayload = scaler::ymq::Bytes::alloc(_recvCurrent._header);
-        } catch (const std::bad_alloc& e) {
-            return false;
-        }
-    }
-
-    return true;
 }
 
 }  // namespace internal

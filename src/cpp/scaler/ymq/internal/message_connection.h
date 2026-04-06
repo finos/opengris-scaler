@@ -5,6 +5,7 @@
 #include <optional>
 #include <queue>
 #include <span>
+#include <vector>
 
 #include "scaler/logging/logging.h"
 #include "scaler/utility/move_only_function.h"
@@ -44,9 +45,9 @@ public:
 
     using RemoteDisconnectCallback = scaler::utility::MoveOnlyFunction<void(DisconnectReason)>;
 
-    using SendMessageCallback = scaler::utility::MoveOnlyFunction<void(std::expected<void, scaler::ymq::Error>)>;
+    using SendMessageCallback = scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
 
-    using RecvMessageCallback = scaler::utility::MoveOnlyFunction<void(scaler::ymq::Bytes)>;
+    using RecvMessageCallback = scaler::utility::MoveOnlyFunction<void(Bytes)>;
 
     MessageConnection(
         Identity localIdentity,
@@ -57,8 +58,8 @@ public:
 
     ~MessageConnection() noexcept;
 
-    MessageConnection(MessageConnection&&) noexcept            = default;
-    MessageConnection& operator=(MessageConnection&&) noexcept = default;
+    MessageConnection(MessageConnection&&) noexcept            = delete;
+    MessageConnection& operator=(MessageConnection&&) noexcept = delete;
 
     MessageConnection(const MessageConnection&) noexcept            = delete;
     MessageConnection& operator=(const MessageConnection&) noexcept = delete;
@@ -90,27 +91,29 @@ public:
     // If the connection is not established yet, the message is queued and sent once the connection is established.
     //
     // If the connection disconnects, the message will be queued again until the connection is re-established.
-    void sendMessage(scaler::ymq::Bytes messagePayload, SendMessageCallback onMessageSent) noexcept;
+    void sendMessage(Bytes messagePayload, SendMessageCallback onMessageSent) noexcept;
 
 private:
-    static constexpr size_t HEADER_SIZE = sizeof(uint64_t);
+    using Header = uint64_t;
+
+    using SendCallback = scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
+
+    using RecvCallback = scaler::utility::MoveOnlyFunction<void(Bytes)>;
 
     struct SendOperation {
-        scaler::ymq::Bytes _messagePayload;
-        SendMessageCallback _onMessageSent;
+        std::vector<std::span<const uint8_t>> _buffers;
 
-        // This is strictly equal to _messagePayload.size(), but we need a dereferenceable and stable memory location
-        // for that value while doing the write().
-        uint64_t _messageSize;
+        SendCallback _onSendDone;
     };
 
     struct RecvOperation {
+        Bytes _buffer {};
         size_t _cursor {0};
-        uint64_t _header {0};
-        scaler::ymq::Bytes _messagePayload {};
+
+        RecvCallback _onRecvDone {};
     };
 
-    scaler::ymq::Logger _logger {};
+    Logger _logger {};
 
     State _state {State::Disconnected};
 
@@ -123,28 +126,38 @@ private:
 
     std::optional<Client> _client {};
 
-    // Messages not yet submitted to the remote.
+    // Sent buffers not yet submitted to the remote.
     std::queue<SendOperation> _sendPending {};
 
-    // The current partially received message being assembled.
+    // The current partially received receive buffer being assembled.
     RecvOperation _recvCurrent {};
 
     void shutdownClient() noexcept;
 
-    void reinitialize() noexcept;
+    void initialize() noexcept;
+
+    // Sends the buffers.
+    //
+    // Buffers' memory must remain valid until the callback is called.
+    void send(std::vector<std::span<const uint8_t>> buffers, SendCallback callback) noexcept;
+
+    // Receives a buffer of exactly the given size.
+    void recv(size_t size, RecvCallback result) noexcept;
+
+    void sendHandshake() noexcept;
+
+    void recvMagicNumber() noexcept;
+
+    void recvMessage() noexcept;
 
     static void onWriteDone(
         SendMessageCallback callback, std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
 
     void onRead(std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) noexcept;
 
-    void onMessage(scaler::ymq::Bytes messagePayload) noexcept;
-
-    void onRemoteIdentity(scaler::ymq::Bytes messagePayload) noexcept;
+    void onRemoteIdentity(Bytes payload) noexcept;
 
     void onRemoteDisconnect(DisconnectReason reason) noexcept;
-
-    void sendLocalIdentity() noexcept;
 
     void processSendQueue() noexcept;
 
@@ -157,12 +170,6 @@ private:
     void readStart() noexcept;
 
     void readStop() noexcept;
-
-    size_t readHeader(std::span<const uint8_t> data) noexcept;
-
-    size_t readMessage(std::span<const uint8_t> data) noexcept;
-
-    bool allocateMessage() noexcept;
 };
 
 }  // namespace internal

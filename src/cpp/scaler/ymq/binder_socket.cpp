@@ -89,7 +89,7 @@ void BinderSocket::sendMessage(
             return;
         }
 
-        internal::MessageConnection& connection = state->_connections.at(it->second);
+        internal::MessageConnection& connection = *state->_connections.at(it->second);
         connection.sendMessage(std::move(messagePayload), std::move(callback));
     });
 }
@@ -143,7 +143,7 @@ void BinderSocket::onRemoteIdentity(
     // Send any pending messages previously queued for this identity
     auto pendingIt = state->_pendingSendMessages.find(remoteIdentity);
     if (pendingIt != state->_pendingSendMessages.end()) {
-        internal::MessageConnection& connection = state->_connections.at(connectionId);
+        internal::MessageConnection& connection = *state->_connections.at(connectionId);
         for (auto& pending: pendingIt->second) {
             connection.sendMessage(std::move(pending.messagePayload), std::move(pending.onMessageSent));
         }
@@ -159,7 +159,7 @@ void BinderSocket::onRemoteDisconnect(
     auto node = state->_connections.extract(connectionId);
     assert(!node.empty());
 
-    internal::MessageConnection& connection = node.mapped();
+    internal::MessageConnection& connection = *node.mapped();
     if (connection.remoteIdentity()) {
         state->_identityToConnectionID.erase(connection.remoteIdentity().value());
     }
@@ -167,7 +167,7 @@ void BinderSocket::onRemoteDisconnect(
 
 void BinderSocket::onMessage(std::shared_ptr<State> state, ConnectionID connectionId, Bytes messagePayload) noexcept
 {
-    internal::MessageConnection& connection = state->_connections.at(connectionId);
+    internal::MessageConnection& connection = *state->_connections.at(connectionId);
     assert(connection.remoteIdentity().has_value());
 
     Message message;
@@ -190,7 +190,7 @@ internal::MessageConnection& BinderSocket::createConnection(
 {
     ConnectionID connectionId = state->_connectionCounter++;
 
-    internal::MessageConnection connection(
+    auto connection = std::make_unique<internal::MessageConnection>(
         state->_identity,
         remoteIdentity,
         std::bind_front(&BinderSocket::onRemoteIdentity, state, connectionId),
@@ -199,7 +199,7 @@ internal::MessageConnection& BinderSocket::createConnection(
 
     auto [it, inserted] = state->_connections.emplace(connectionId, std::move(connection));
 
-    return it->second;
+    return *it->second;
 }
 
 }  // namespace ymq

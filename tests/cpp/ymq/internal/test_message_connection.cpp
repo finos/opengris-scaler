@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <expected>
+#include <memory>
+#include <span>
 #include <string>
 
 #include "scaler/wrapper/uv/callback.h"
@@ -288,4 +290,60 @@ TEST_F(YMQMessageConnectionTest, EmptyMessage)
     while (!serverMessageReceived) {
         loop.run(UV_RUN_ONCE);
     }
+}
+
+TEST_F(YMQMessageConnectionTest, InvalidMagicString)
+{
+    // Check the message connection abort a connection if it does not receive the expected magic string
+
+    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
+
+    // Create a TCP server that always answer with a HTTP response
+
+    const std::string_view httpResponse = "HTTP/1.1 200 OK\n";
+
+    scaler::wrapper::uv::TCPServer server = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPServer::init(loop));
+
+    const auto listenAddress = scaler::ymq::Address::fromString("tcp://127.0.0.1:0").value();
+    UV_EXIT_ON_ERROR(server.bind(listenAddress.asTCP(), uv_tcp_flags(0)));
+
+    UV_EXIT_ON_ERROR(server.listen(16, [&](std::expected<void, scaler::wrapper::uv::Error>) {
+        auto serverSocket = std::make_unique<scaler::wrapper::uv::TCPSocket>(
+            UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(loop)));
+        UV_EXIT_ON_ERROR(server.accept(*serverSocket));
+
+        const std::span<const uint8_t> payload {
+            reinterpret_cast<const uint8_t*>(httpResponse.data()), httpResponse.size()};
+
+        UV_EXIT_ON_ERROR(serverSocket->write(
+            std::span(&payload, 1),
+            [serverSocket = std::move(serverSocket)](auto result) mutable { UV_EXIT_ON_ERROR(result); }));
+    }));
+
+    // Make the message connection connect to this HTTP server
+
+    bool aborted = false;
+
+    scaler::wrapper::uv::TCPSocket clientSocket = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(loop));
+    scaler::ymq::internal::MessageConnection clientConnection(
+        "client-identity",
+        std::nullopt,
+        [](auto) { FAIL() << "Unexpected identity callback"; },
+        [&](auto reason) {
+            ASSERT_EQ(reason, scaler::ymq::internal::MessageConnection::DisconnectReason::Aborted);
+            aborted = true;
+        },
+        [](auto) { FAIL() << "Unexpected message callback"; });
+
+    UV_EXIT_ON_ERROR(clientSocket.connect(
+        UV_EXIT_ON_ERROR(server.getSockName()),
+        [&](std::expected<void, scaler::wrapper::uv::Error>) { clientConnection.connect(std::move(clientSocket)); }));
+
+    // Wait until the message connection raise an abort event
+
+    while (!aborted) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    ASSERT_FALSE(clientConnection.connected());
 }

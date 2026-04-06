@@ -223,13 +223,12 @@ void ConnectorSocket::onMessage(std::shared_ptr<State> state, Bytes messagePaylo
 
 void ConnectorSocket::emplaceMessageConnection(std::shared_ptr<State> state) noexcept
 {
-    state->_connection.emplace(
-        internal::MessageConnection {
-            state->_identity,
-            std::nullopt,
-            [](Identity) {},
-            std::bind_front(&ConnectorSocket::onRemoteDisconnect, state),
-            std::bind_front(&ConnectorSocket::onMessage, state)});
+    state->_connection = std::make_unique<internal::MessageConnection>(
+        state->_identity,
+        std::nullopt,
+        [](Identity) {},
+        std::bind_front(&ConnectorSocket::onRemoteDisconnect, state),
+        std::bind_front(&ConnectorSocket::onMessage, state));
 }
 
 void ConnectorSocket::fillPendingRecvCallbacksWithErr(std::shared_ptr<State> state, Error err) noexcept
