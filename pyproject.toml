@@ -60,7 +60,7 @@ orb = [
 ]
 all = [
     "opengris-scaler[aws]",
-    "opengris-scaler[graphblas]",
+    "opengris-scaler[graphblas]; python_version <= '3.13'",
     "opengris-scaler[gui]",
     "opengris-scaler[orb]",
     "opengris-scaler[uvloop]",
