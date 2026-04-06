@@ -160,6 +160,7 @@ scaler_worker_manager_oci_raw_container_instance \
 | `--instance-ocpus` | `4.0` | |
 | `--instance-memory-gb` | `30.0` | |
 | `--oci-auth-type` | `config_file` | Use `instance_principal` on OCI VMs |
+| `--scaler-package` | `opengris-scaler[oci]` | Package/wheel installed in each raw worker container at startup |
 
 ### OCI HPC (via `.scaler_oci_config.json`)
 

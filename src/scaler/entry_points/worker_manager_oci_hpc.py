@@ -42,6 +42,7 @@ def main():
         event_loop=config.event_loop,
         job_timeout_seconds=config.job_timeout_seconds,
         oci_config_profile=config.oci_config_profile,
+        oci_auth_type=config.oci_auth_type,
     )
 
     worker.start()
