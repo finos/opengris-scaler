@@ -422,11 +422,12 @@ def run_simple_test(client: Any, timeout: int) -> bool:
 
 
 def run_map_test(client: Any, timeout: int) -> bool:
-    """Test client.map with 5 tasks"""
+    """Test map-like execution with 5 tasks, enforcing timeout per task."""
     print("\n--- Test: map ---")
-    print("  Submitting: client.map(simple_task, [0,1,2,3,4])")
+    print("  Submitting: simple_task for [0,1,2,3,4]")
     try:
-        results = client.map(simple_task, list(range(5)))
+        futures = [client.submit(simple_task, value) for value in range(5)]
+        results = [future.result(timeout=timeout) for future in futures]
         print(f"  Results: {results}")
         expected = [0, 2, 4, 6, 8]
         passed = results == expected

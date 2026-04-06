@@ -403,6 +403,7 @@ class OCIHPCTaskManager(Looper, TaskManager):
         we never hold a semaphore slot while waiting for a task to appear.
         """
         _, task_id = await self._queued_task_id_queue.get()
+        self._queued_task_ids.discard(task_id)
         task = self._task_id_to_task[task_id]
 
         await self._executor_semaphore.acquire()
@@ -512,7 +513,7 @@ class OCIHPCTaskManager(Looper, TaskManager):
             encoded_payload = ""
 
         # Environment variables passed to the container job runner.
-        # Must be List[EnvironmentVariable] — NOT a plain dict.
+        # OCI SDK expects a plain dict(str, str) for environment_variables.
         env_vars = {
             "TASK_ID": task_id_hex,
             "OCI_NAMESPACE": self._object_storage_namespace,
@@ -522,11 +523,6 @@ class OCIHPCTaskManager(Looper, TaskManager):
             "PAYLOAD_B64": encoded_payload,
             "COMPRESSED": "1" if compressed else "0",
         }
-
-        env_var_models = [
-            oci.container_instances.models.EnvironmentVariable(name=key, value=value)
-            for key, value in env_vars.items()
-        ]
 
         create_details = oci.container_instances.models.CreateContainerInstanceDetails(
             compartment_id=self._compartment_id,
@@ -539,7 +535,7 @@ class OCIHPCTaskManager(Looper, TaskManager):
                 oci.container_instances.models.CreateContainerDetails(
                     image_url=self._container_image,
                     display_name=display_name,
-                    environment_variables=env_var_models,  # list of EnvironmentVariable models
+                    environment_variables=env_vars,
                 )
             ],
             vnics=[oci.container_instances.models.CreateContainerVnicDetails(subnet_id=self._subnet_id)],

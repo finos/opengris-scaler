@@ -87,34 +87,20 @@ class OCIContainerInstanceWorkerAdapter:
         self._container_image = config.container_image
         self._oci_python_requirements = config.oci_python_requirements
         self._oci_python_version = config.oci_python_version
+        self._scaler_package = config.scaler_package
         self._instance_shape = config.instance_shape
         self._instance_ocpus = config.instance_ocpus
         self._instance_memory_gb = config.instance_memory_gb
 
-        import oci
-
-        if self._oci_auth_type == "instance_principal":
-            signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
-            self._container_instances_client = oci.container_instances.ContainerInstanceClient(config={}, signer=signer)
-        else:
-            oci_config = oci.config.from_file(profile_name=self._oci_config_profile)
-            self._container_instances_client = oci.container_instances.ContainerInstanceClient(oci_config)
-
         self._worker_groups: Dict[WorkerGroupID, WorkerGroupInfo] = {}
 
-        self._context = create_async_simple_context()
         self._name = "worker_adapter_oci_container_instance"
         self._ident = f"{self._name}|{uuid.uuid4().bytes.hex()}".encode()
 
-        self._connector_external = create_async_connector(
-            self._context,
-            name=self._name,
-            socket_type=zmq.DEALER,
-            address=self._address,
-            bind_or_connect="connect",
-            callback=self.__on_receive_external,
-            identity=self._ident,
-        )
+        # Initialized in __initialize() after event loop registration
+        self._container_instances_client = None
+        self._context = None
+        self._connector_external = None
 
     async def __on_receive_external(self, message: Message):
         if isinstance(message, WorkerAdapterCommand):
@@ -136,7 +122,10 @@ class OCIContainerInstanceWorkerAdapter:
             cmd_res = WorkerAdapterCommandType.StartWorkerGroup
             worker_group_id, response_status = await self.start_worker_group()
             if response_status == Status.Success:
-                worker_ids = [bytes(wid) for wid in self._worker_groups[worker_group_id].worker_ids]
+                # Don't report individual worker IDs — workers inside the container
+                # self-register with the scheduler using their own generated IDs.
+                # Reporting IDs here would create a mismatch since WorkerID.generate_worker_id()
+                # appends a random UUID that differs between adapter and container.
                 capabilities = self._capabilities
         elif cmd_type == WorkerAdapterCommandType.ShutdownWorkerGroup:
             cmd_res = WorkerAdapterCommandType.ShutdownWorkerGroup
@@ -179,9 +168,35 @@ class OCIContainerInstanceWorkerAdapter:
         self._loop.add_signal_handler(signal.SIGINT, self.__destroy)
         self._loop.add_signal_handler(signal.SIGTERM, self.__destroy)
 
-    async def _run(self) -> None:
+    def __initialize(self) -> None:
         register_event_loop(self._event_loop)
         setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
+
+        import oci
+
+        if self._oci_auth_type == "instance_principal":
+            signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+            self._container_instances_client = oci.container_instances.ContainerInstanceClient(
+                config={"region": self._oci_region}, signer=signer
+            )
+        else:
+            oci_config = oci.config.from_file(profile_name=self._oci_config_profile)
+            oci_config["region"] = self._oci_region
+            self._container_instances_client = oci.container_instances.ContainerInstanceClient(oci_config)
+
+        self._context = create_async_simple_context()
+        self._connector_external = create_async_connector(
+            self._context,
+            name=self._name,
+            socket_type=zmq.DEALER,
+            address=self._address,
+            bind_or_connect="connect",
+            callback=self.__on_receive_external,
+            identity=self._ident,
+        )
+
+    async def _run(self) -> None:
+        self.__initialize()
         self._task = self._loop.create_task(self.__get_loops())
         self.__register_signal()
         await self._task
@@ -248,12 +263,12 @@ class OCIContainerInstanceWorkerAdapter:
                 oci.container_instances.models.CreateContainerDetails(
                     image_url=self._container_image,
                     display_name="scaler-container",
-                  environment_variables={
-                    "COMMAND": command,
-                    "PYTHON_REQUIREMENTS": self._oci_python_requirements,
-                    "PYTHON_VERSION": self._oci_python_version,
-                    "SCALER_PACKAGE": "opengris-scaler==1.15.0",
-},
+                    environment_variables={
+                        "COMMAND": command,
+                        "PYTHON_REQUIREMENTS": self._oci_python_requirements,
+                        "PYTHON_VERSION": self._oci_python_version,
+                        "SCALER_PACKAGE": self._scaler_package,
+                    },
                 )
             ],
             vnics=[oci.container_instances.models.CreateContainerVnicDetails(subnet_id=self._subnet_id)],

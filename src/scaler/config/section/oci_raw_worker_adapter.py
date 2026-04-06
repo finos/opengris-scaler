@@ -84,6 +84,13 @@ class OCIRawWorkerAdapterConfig(ConfigClass):
     oci_python_version: str = dataclasses.field(
         default="3.12.11", metadata=dict(help="Python version for the container instance")
     )
+    scaler_package: str = dataclasses.field(
+        default="opengris-scaler[oci]",
+        metadata=dict(
+            env_var="SCALER_PACKAGE",
+            help="Scaler package spec installed in the worker container (e.g. opengris-scaler[oci] or a wheel URL)",
+        ),
+    )
 
     # Container instance sizing
     instance_shape: str = dataclasses.field(
