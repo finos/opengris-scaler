@@ -22,7 +22,7 @@ class VanillaScalingController(ScalingController):
     """
 
     def __init__(self):
-        self._lower_task_ratio = 1
+        self._lower_task_ratio = 0
         self._upper_task_ratio = 10
 
     def get_scaling_commands(

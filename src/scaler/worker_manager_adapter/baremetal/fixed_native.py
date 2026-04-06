@@ -1,5 +1,5 @@
 import uuid
-from typing import Dict
+from typing import Dict, List
 
 from scaler.config.section.fixed_native_worker_adapter import FixedNativeWorkerAdapterConfig
 from scaler.utility.identifiers import WorkerID
@@ -26,12 +26,19 @@ class FixedNativeWorkerAdapter:
         self._logging_level = config.logging_config.level
         self._logging_config_file = config.logging_config.config_file
         self._preload = config.preload
+        self._worker_names: List[str] = config.worker_names
 
         self._workers: Dict[WorkerID, Worker] = {}
+        self._name_index: int = 0
 
     def _spawn_worker(self):
+        if self._name_index < len(self._worker_names):
+            name = self._worker_names[self._name_index]
+            self._name_index += 1
+        else:
+            name = f"FIX|{uuid.uuid4().hex}"
         worker = Worker(
-            name=f"FIX|{uuid.uuid4().hex}",
+            name=name,
             address=self._address,
             object_storage_address=self._object_storage_address,
             preload=self._preload,

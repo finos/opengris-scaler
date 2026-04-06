@@ -86,6 +86,7 @@ class OCIContainerInstanceWorker(_SpawnProcess):  # type: ignore[valid-type, mis
         event_loop: Event loop backend (``"builtin"`` or ``"uvloop"``).
         job_timeout_seconds: Maximum runtime for a single container instance.
         oci_config_profile: OCI config file profile name (default: ``"DEFAULT"``).
+        oci_auth_type: OCI auth mode (``"config_file"`` or ``"instance_principal"``).
     """
 
     def __init__(
@@ -113,6 +114,7 @@ class OCIContainerInstanceWorker(_SpawnProcess):  # type: ignore[valid-type, mis
         event_loop: str = "builtin",
         job_timeout_seconds: int = 3600,
         oci_config_profile: str = "DEFAULT",
+        oci_auth_type: str = "config_file",
     ) -> None:
         multiprocessing.Process.__init__(self, name="OCIContainerInstanceWorker")
 
@@ -139,6 +141,7 @@ class OCIContainerInstanceWorker(_SpawnProcess):  # type: ignore[valid-type, mis
         self._base_concurrency = base_concurrency
         self._job_timeout_seconds = job_timeout_seconds
         self._oci_config_profile = oci_config_profile
+        self._oci_auth_type = oci_auth_type
 
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._death_timeout_seconds = death_timeout_seconds
@@ -212,6 +215,7 @@ class OCIContainerInstanceWorker(_SpawnProcess):  # type: ignore[valid-type, mis
             instance_memory_gb=self._instance_memory_gb,
             job_timeout_seconds=self._job_timeout_seconds,
             oci_config_profile=self._oci_config_profile,
+            oci_auth_type=self._oci_auth_type,
         )
 
         self._timeout_manager = VanillaTimeoutManager(death_timeout_seconds=self._death_timeout_seconds)

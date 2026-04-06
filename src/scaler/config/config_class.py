@@ -266,20 +266,14 @@ class ConfigClass:
         return cls(**kwargs)
 
 
-class UnderscoreTomlConfigParser:
+class UnderscoreTomlConfigParser(TomlConfigParser):
     """A TOML config parser that converts underscores to hyphens in key names"""
-
-    def __init__(self, sections: Optional[List[str]] = None):
-        self._parser = TomlConfigParser(sections=sections)
 
     def __call__(self):
         return self
 
     def parse(self, stream) -> OrderedDict[str, Any]:
-        return OrderedDict((k.replace("_", "-"), v) for k, v in self._parser.parse(stream).items())
-
-    def get_syntax_description(self) -> str:
-        return self._parser.get_syntax_description()
+        return OrderedDict((k.replace("_", "-"), v) for k, v in super().parse(stream).items())
 
 
 def parse_bool(s: str) -> bool:

@@ -39,6 +39,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         # to ensure that it's created in the correct process
         self._worker_adapter_config = FixedNativeWorkerAdapterConfig(
             preload=config.preload,
+            worker_names=config.worker_names.names,
             worker_adapter_config=WorkerAdapterConfig(
                 scheduler_address=config.scheduler_address,
                 object_storage_address=config.object_storage_address,
