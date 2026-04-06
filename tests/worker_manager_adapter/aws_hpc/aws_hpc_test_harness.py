@@ -100,7 +100,7 @@ def square(value: int) -> int:
 def run_map_100_test(client: Client, timeout: int) -> bool:
     """Test client.map with 100 tasks using array jobs"""
     count = 100
-    print(f"\n--- Test: map_100 ---")
+    print("\n--- Test: map_100 ---")
     print(f"  Submitting: client.map(square, range({count}))")
     try:
         import time

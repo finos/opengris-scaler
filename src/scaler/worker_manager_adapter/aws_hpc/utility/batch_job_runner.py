@@ -145,9 +145,6 @@ def main():
     s3_bucket = args.get("s3_bucket")
     s3_prefix = args.get("s3_prefix", "scaler-tasks")
     job_id = os.environ.get("AWS_BATCH_JOB_ID", task_id)
-    array_index = os.environ.get("AWS_BATCH_JOB_ARRAY_INDEX")
-    if array_index is not None:
-        job_id = f"{job_id}:{array_index}"
 
     logging.info(f"Starting task {task_id[:8]}...")
     logging.info(f"Args: task_id={task_id[:8]}, s3_bucket={s3_bucket}, s3_prefix={s3_prefix}")

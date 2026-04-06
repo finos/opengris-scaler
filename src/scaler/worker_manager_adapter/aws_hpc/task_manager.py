@@ -90,7 +90,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
         self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="aws-hpc")
 
         # Array job batching: accumulate tasks before submitting as one array job
-        self._batch_pending: List[Tuple[Task, Any, List[Any]]] = []
+        self._batch_pending: List[Tuple[Task, Any, List[Any], Future]] = []
         self._batch_window_start: float = 0.0
 
     def _initialize_aws_clients(self) -> None:
@@ -115,8 +115,13 @@ class AWSHPCTaskManager(Looper, TaskManager):
         self._initialize_aws_clients()
 
     async def routine(self) -> None:
-        """Task manager routine - AWS HPC has two main loops like Symphony."""
-        pass
+        """Task manager routine - flush any pending batch that has waited long enough."""
+        if not self._batch_pending:
+            return
+
+        elapsed = time.monotonic() - self._batch_window_start
+        if elapsed >= ARRAY_JOB_BATCH_WINDOW_SECONDS:
+            await self._flush_pending_batch()
 
     async def on_object_instruction(self, instruction: ObjectInstruction) -> None:
         """Handle object lifecycle instructions."""
@@ -230,7 +235,11 @@ class AWSHPCTaskManager(Looper, TaskManager):
         done, _ = await asyncio.wait(self._task_id_to_future.values(), return_when=asyncio.FIRST_COMPLETED)
         for future in done:
             task_id = self._task_id_to_future.inv.pop(future)
-            task = self._task_id_to_task[task_id]
+            task = self._task_id_to_task.get(task_id)
+
+            if task is None:
+                logging.warning(f"Cannot find task in worker queue: task_id={task_id.hex()}")
+                continue
 
             if task_id in self._processing_task_ids:
                 self._processing_task_ids.remove(task_id)
@@ -295,8 +304,9 @@ class AWSHPCTaskManager(Looper, TaskManager):
 
     async def __execute_task(self, task: Task) -> asyncio.Future:
         """
-        Execute a task via AWS Batch. Tasks are batched into array jobs
-        when multiple arrive within a short window.
+        Prepare a task for AWS Batch execution and add it to the pending batch.
+        The batch is flushed by routine() after the batch window expires,
+        or immediately if the batch reaches max size.
         """
         serializer_id = ObjectID.generate_serializer_object_id(task.source)
 
@@ -323,54 +333,30 @@ class AWSHPCTaskManager(Looper, TaskManager):
         future.set_running_or_notify_cancel()
 
         # Add to batch pending queue
-        self._batch_pending.append((task, function, arg_objects))
+        self._batch_pending.append((task, function, arg_objects, future))
         if len(self._batch_pending) == 1:
             self._batch_window_start = time.monotonic()
 
         # If batch is full, flush immediately
         if len(self._batch_pending) >= ARRAY_JOB_MAX_BATCH_SIZE:
-            batch = self._batch_pending[:]
-            self._batch_pending.clear()
-            futures_map = self._build_futures_map(batch, task.task_id, future)
-            await self._flush_batch(batch, futures_map)
-            return asyncio.wrap_future(future)
-
-        # Wait for batch window to fill
-        elapsed = time.monotonic() - self._batch_window_start
-        remaining = ARRAY_JOB_BATCH_WINDOW_SECONDS - elapsed
-        if remaining > 0:
-            await asyncio.sleep(remaining)
-
-        # Check if this task is still in the pending batch (not already flushed)
-        if not any(t.task_id == task.task_id for t, _, _ in self._batch_pending):
-            return asyncio.wrap_future(future)
-
-        # Flush the batch
-        batch = self._batch_pending[:]
-        self._batch_pending.clear()
-        futures_map = self._build_futures_map(batch, task.task_id, future)
-        await self._flush_batch(batch, futures_map)
+            await self._flush_pending_batch()
 
         return asyncio.wrap_future(future)
 
-    def _build_futures_map(
-        self, batch: List[Tuple[Task, Any, List[Any]]], current_task_id: TaskID, current_future: Future
-    ) -> Dict[TaskID, Future]:
-        """Build a map of task_id -> future for all tasks in the batch."""
-        futures_map: Dict[TaskID, Future] = {}
-        for batch_task, _, _ in batch:
-            if batch_task.task_id == current_task_id:
-                futures_map[batch_task.task_id] = current_future
-            else:
-                f: Future = Future()
-                f.set_running_or_notify_cancel()
-                futures_map[batch_task.task_id] = f
-                self._task_id_to_future[batch_task.task_id] = asyncio.wrap_future(f)
-        return futures_map
+    async def _flush_pending_batch(self) -> None:
+        """Flush all pending tasks as a single array job or individual job."""
+        if not self._batch_pending:
+            return
 
-    async def _flush_batch(
-        self, batch: List[Tuple[Task, Any, List[Any]]], futures_map: Dict[TaskID, Future]
-    ) -> None:
+        pending = self._batch_pending[:]
+        self._batch_pending.clear()
+
+        batch = [(t, f, a) for t, f, a, _ in pending]
+        futures_map: Dict[TaskID, Future] = {t.task_id: fut for t, _, _, fut in pending}
+
+        await self._flush_batch(batch, futures_map)
+
+    async def _flush_batch(self, batch: List[Tuple[Task, Any, List[Any]]], futures_map: Dict[TaskID, Future]) -> None:
         """Submit a batch of tasks as either an array job or a single job."""
         try:
             if len(batch) >= ARRAY_JOB_MIN_BATCH_SIZE:
@@ -394,9 +380,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
         return await loop.run_in_executor(self._executor, lambda: func(*args, **kwargs))
 
     async def _submit_array_job(
-        self,
-        batch: List[Tuple[Task, Any, List[Any]]],
-        futures_map: Dict[TaskID, Future],
+        self, batch: List[Tuple[Task, Any, List[Any]]], futures_map: Dict[TaskID, Future]
     ) -> None:
         """Submit multiple tasks as a single AWS Batch array job."""
         import gzip
@@ -424,9 +408,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
                 payload = gzip.compress(payload)
 
             s3_key = f"{s3_prefix_array}/{index}.pkl"
-            await self._run_in_executor(
-                self._s3_client.put_object, Bucket=self._s3_bucket, Key=s3_key, Body=payload
-            )
+            await self._run_in_executor(self._s3_client.put_object, Bucket=self._s3_bucket, Key=s3_key, Body=payload)
             index_to_task_id[index] = task.task_id
 
         # Get function name for job naming
@@ -442,7 +424,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
             arrayProperties={"size": array_size},
             parameters={
                 "task_id": "array",
-                "payload": "",
+                "payload": "none",
                 "compressed": "0",
                 "s3_bucket": self._s3_bucket,
                 "s3_prefix": self._s3_prefix,
@@ -473,9 +455,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
             self._task_id_to_batch_job_id[task_id] = child_job_id
 
         # Start monitoring the array job
-        asyncio.create_task(
-            self._monitor_array_job(parent_job_id, index_to_task_id, futures_map, s3_prefix_array)
-        )
+        asyncio.create_task(self._monitor_array_job(parent_job_id, index_to_task_id, futures_map, s3_prefix_array))
 
     async def _monitor_array_job(
         self,
@@ -507,23 +487,40 @@ class AWSHPCTaskManager(Looper, TaskManager):
                         status = job["status"]
                         task_id = index_to_task_id[index]
                         future = futures_map.get(task_id)
+                        logging.debug(f"Array child {child_id}: status={status}, index={index}")
 
                         if future is None or future.done():
                             resolved.add(index)
                             continue
 
                         if status == "SUCCEEDED":
-                            result_key = f"{self._s3_prefix}/results/{child_id}.pkl"
+                            # The runner stores results using {AWS_BATCH_JOB_ID}:{AWS_BATCH_JOB_ARRAY_INDEX}
+                            # which equals {parent_job_id}:{index}
+                            result_key = f"{self._s3_prefix}/results/{parent_job_id}:{index}.pkl"
                             try:
-                                try:
-                                    s3_resp = await self._run_in_executor(
-                                        self._s3_client.get_object, Bucket=self._s3_bucket, Key=result_key
-                                    )
-                                except self._s3_client.exceptions.NoSuchKey:
-                                    result_key += ".gz"
-                                    s3_resp = await self._run_in_executor(
-                                        self._s3_client.get_object, Bucket=self._s3_bucket, Key=result_key
-                                    )
+                                # Retry with delay - result may not be written yet when status changes
+                                s3_resp = None
+                                for attempt in range(5):
+                                    for key_candidate in [
+                                        result_key,
+                                        result_key + ".gz",
+                                        f"{self._s3_prefix}/results/{child_id}.pkl",
+                                        f"{self._s3_prefix}/results/{child_id}.pkl.gz",
+                                    ]:
+                                        try:
+                                            s3_resp = await self._run_in_executor(
+                                                self._s3_client.get_object, Bucket=self._s3_bucket, Key=key_candidate
+                                            )
+                                            result_key = key_candidate
+                                            break
+                                        except self._s3_client.exceptions.NoSuchKey:
+                                            continue
+                                    if s3_resp is not None:
+                                        break
+                                    await asyncio.sleep(3)
+
+                                if s3_resp is None:
+                                    raise RuntimeError(f"Result not found for index {index} after 5 retries")
                                 result_bytes = s3_resp["Body"].read()
                                 if len(result_bytes) >= 2 and result_bytes[0:2] == b"\x1f\x8b":
                                     result_bytes = gzip.decompress(result_bytes)
@@ -533,9 +530,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
                                     self._s3_client.delete_object, Bucket=self._s3_bucket, Key=result_key
                                 )
                             except Exception as e:
-                                future.set_exception(
-                                    RuntimeError(f"Failed to fetch result for index {index}: {e}")
-                                )
+                                future.set_exception(RuntimeError(f"Failed to fetch result for index {index}: {e}"))
                             resolved.add(index)
 
                         elif status == "FAILED":
@@ -588,9 +583,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
             s3_key = f"{self._s3_prefix}/inputs/{task_id_hex}.pkl"
             if compressed:
                 s3_key += ".gz"
-            await self._run_in_executor(
-                self._s3_client.put_object, Bucket=self._s3_bucket, Key=s3_key, Body=payload
-            )
+            await self._run_in_executor(self._s3_client.put_object, Bucket=self._s3_bucket, Key=s3_key, Body=payload)
             encoded_payload = ""
 
         submit_kwargs: Dict[str, Any] = dict(
