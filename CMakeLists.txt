@@ -69,6 +69,10 @@ elseif(APPLE)
     add_compile_options(-Wall -Wextra)
     add_link_options(-Wl,-rpath,@loader_path)
 
+    # needed for jthread in Apple Clang's libc++
+    add_compile_options(-fexperimental-library)
+    add_link_options(-fexperimental-library)
+
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         # Linux GCC

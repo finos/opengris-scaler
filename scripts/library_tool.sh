@@ -34,8 +34,11 @@ else
     NUM_CORES=1
 fi
 
-PREFIX=$(readlink -f "${PREFIX}")
-mkdir -p "${PREFIX}/include/"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    PREFIX="$(cd "$(dirname "${PREFIX}")" && pwd -P)/$(basename "${PREFIX}")"
+else
+    PREFIX=$(readlink -f "${PREFIX}")
+fi
 
 show_help() {
     echo "Usage: ./library_tool.sh [boost|capnp|libuv] [download|compile|install] [--prefix=DIR]"
@@ -58,6 +61,7 @@ if [ "$1" == "boost" ]; then
         echo "Compiled Boost to ${THIRD_PARTY_COMPILED}/${BOOST_FOLDER_NAME}"
 
     elif [ "$2" == "install" ]; then
+        mkdir -p "${PREFIX}/include/"
         cp -r "${THIRD_PARTY_COMPILED}/${BOOST_FOLDER_NAME}/boost" "${PREFIX}/include/."
         echo "Installed Boost into ${PREFIX}/include/boost"
 

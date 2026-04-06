@@ -60,7 +60,7 @@ orb = [
 ]
 all = [
     "opengris-scaler[aws]",
-    "opengris-scaler[graphblas]",
+    # "opengris-scaler[graphblas]",
     "opengris-scaler[gui]",
     "opengris-scaler[orb]",
     "opengris-scaler[uvloop]",
@@ -82,7 +82,7 @@ regex = '(?P<value>\d+\.\d+\.\d+(\.[1-9]\d*)?)'
 input = "./src/scaler/version.txt"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -113,6 +113,7 @@ build.targets = [
 [tool.scikit-build.cmake.define]
 CMAKE_C_COMPILER = { env = "CMAKE_C_COMPILER", default = "gcc" }
 CMAKE_CXX_COMPILER = { env = "CMAKE_CXX_COMPILER", default = "g++" }
+CMAKE_PREFIX_PATH = { env = "CMAKE_PREFIX_PATH", default = "/usr/local" }
 
 [tool.mypy]
 no_strict_optional = true
@@ -175,7 +176,7 @@ extend_skip_glob = [
 ]
 
 [tool.cibuildwheel]
-skip = "pp* cp39-*"
+skip = "pp* cp39-* cp38-macosx_arm64 cp314t-*"
 
 [tool.cibuildwheel.linux]
 archs = ["x86_64"]
@@ -207,10 +208,17 @@ apk add cmake g++ make; \
 ldconfig /usr/local/lib;
 """
 
-#[tool.cibuildwheel.macos]
-#archs = ["x86_64", "arm64"]
-#before-all = """
-#yum install -y sudo; \
-#sudo ./scripts/library_tool.sh capnp compile; \
-#sudo ./scripts/library_tool.sh capnp install;
-#"""
+[tool.cibuildwheel.macos]
+archs = ["arm64"]
+environment = { MACOSX_DEPLOYMENT_TARGET = "14.0" }
+before-all = """
+set -ex && \
+brew install cmake && \
+./scripts/library_tool.sh capnp download && \
+./scripts/library_tool.sh capnp compile && \
+sudo ./scripts/library_tool.sh capnp install && \
+./scripts/library_tool.sh libuv download && \
+./scripts/library_tool.sh libuv compile && \
+sudo ./scripts/library_tool.sh libuv install && \
+ls /usr/local/lib/cmake/CapnProto/CapnProtoConfig.cmake
+"""

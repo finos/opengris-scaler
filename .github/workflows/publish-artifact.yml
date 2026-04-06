@@ -1,8 +1,10 @@
 name: Publish Python package to PyPI
 
 on:
-  release:
-    types: [ created ]
+  pull_request:
+    branches: [ "main" ]
+  # release:
+  #   types: [ created ]
 
 permissions:
   contents: read
@@ -14,7 +16,7 @@ jobs:
     environment: release
     strategy:
       matrix:
-        os: [ ubuntu-latest ]
+        os: [ ubuntu-latest, macos-latest ]
     permissions:
       id-token: write
     steps:
@@ -30,15 +32,11 @@ jobs:
         with:
           os: ${{ runner.os }}
 
-      - uses: ./.github/actions/3rd-party-libraries-download
-        with:
-          os: ${{ runner.os }}
-
       - uses: ./.github/actions/create-artifacts
         with:
           os: ${{ runner.os }}
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: ./dist/
+      # - name: Publish to PyPI
+      #   uses: pypa/gh-action-pypi-publish@release/v1
+      #   with:
+      #     packages-dir: ./dist/
