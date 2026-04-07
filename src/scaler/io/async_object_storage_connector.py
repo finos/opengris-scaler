@@ -36,14 +36,27 @@ class PyAsyncObjectStorageConnector(AsyncObjectStorageConnector):
     def __del__(self):
         self.destroy()
 
-    async def connect(self, host: str, port: int):
+    async def connect(self, host: str, port: int, max_retries: int = 4, init_retry_delay: float = 2.0):
         self._host = host
         self._port = port
 
         if self.is_connected():
             raise ObjectStorageException("connector is already connected.")
 
-        self._reader, self._writer = await asyncio.open_connection(self._host, self._port)
+        delay = init_retry_delay
+        for attempt in range(max_retries + 1):
+            try:
+                self._reader, self._writer = await asyncio.open_connection(self._host, self._port)
+                break
+            except ConnectionRefusedError:
+                if attempt == max_retries:
+                    raise
+                logging.warning(
+                    f"object storage connection refused ({self._host}:{self._port}), "
+                    f"retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})"
+                )
+                await asyncio.sleep(delay)
+                delay *= 2
 
         self.__write_magic_string()
         self.__write_framed(self._identity)

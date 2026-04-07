@@ -1,11 +1,12 @@
 import logging
 import multiprocessing
-import socket
 import time
 from typing import Optional, Tuple
 
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
+from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector
 from scaler.object_storage.object_storage_server import ObjectStorageServer
+from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.logging.utility import get_logger_info, setup_logger
 
 
@@ -26,17 +27,21 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
         self._bind_address = bind_address
 
     def wait_until_ready(self) -> None:
-        """Blocks until the object storage server is available to server requests."""
+        """Blocks until the object storage server is ready to serve requests.
+
+        Verifies full protocol readiness by completing the identity handshake, not just TCP connectivity.
+        This ensures workers spawned afterward can connect without racing against server initialisation.
+        """
         host = self._bind_address.host
         port = self._bind_address.port
 
         start_time = time.time()
         while time.time() - start_time < 30:
             try:
-                # Try to connect to the port
-                with socket.create_connection((host, port), timeout=1):
-                    return
-            except (ConnectionRefusedError, socket.timeout, OSError):
+                connector = PySyncObjectStorageConnector(host, port)
+                connector.destroy()
+                return
+            except (ConnectionRefusedError, OSError, ObjectStorageException):
                 time.sleep(0.1)
 
         raise TimeoutError(f"ObjectStorageServer at {host}:{port} failed to start within 30 seconds")
