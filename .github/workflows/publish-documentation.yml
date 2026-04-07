@@ -26,5 +26,6 @@ jobs:
       - uses: ./.github/actions/setup-env
         with:
           os: ${{ runner.os }}
+          python-version: '3.14'
 
       - uses: ./.github/actions/publish-doc
