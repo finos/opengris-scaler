@@ -11,7 +11,17 @@ Prerequisites
 * An AWS account
 * `AWS CLI <https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html>`_ installed and configured (``aws configure``)
 * `Docker <https://docs.docker.com/get-docker/>`_ installed (for building the worker container image)
-* Python packages: ``pip install opengris-scaler boto3``
+* Python 3.10+ with ``pip install opengris-scaler[aws]``
+
+.. note::
+   Building from source requires C++ build tools (``cmake``, ``ninja``, ``pkg-config``, and a C++20 compiler).
+   On macOS: ``brew install ninja pkg-config``.
+   Alternatively, use the project's devcontainer which has all dependencies pre-installed:
+
+   .. code-block:: bash
+
+      docker build -t scaler-dev -f .devcontainer/Dockerfile .
+      docker run -it --rm -v $(pwd):/workspace -w /workspace scaler-dev bash
 
 .. _aws_hpc_batch_quick_start:
 
@@ -94,15 +104,16 @@ Start scheduler and worker manager from one TOML file (replace account ID):
    :caption: config.toml
 
    [object_storage_server]
-   bind_address = "tcp://127.0.0.1:8517"
+   bind_address = "tcp://127.0.0.1:2346"
 
    [scheduler]
-   bind_address = "tcp://127.0.0.1:8516"
-   object_storage_address = "tcp://127.0.0.1:8517"
+   bind_address = "tcp://127.0.0.1:2345"
+   object_storage_address = "tcp://127.0.0.1:2346"
 
    [[worker_manager]]
    type = "aws_hpc"
-   scheduler_address = "tcp://127.0.0.1:8516"
+   scheduler_address = "tcp://127.0.0.1:2345"
+   object_storage_address = "tcp://127.0.0.1:2346"
    worker_manager_id = "wm-batch"
    job_queue = "scaler-batch-queue"
    job_definition = "scaler-batch-job"
@@ -116,16 +127,16 @@ Start scheduler and worker manager from one TOML file (replace account ID):
    scaler config.toml
 
 .. code-block:: python
-   :caption: my_client.py (Terminal 3)
+   :caption: my_client.py (Terminal 2)
 
    from scaler import Client
 
    def heavy_computation(x):
        return x ** 2
 
-   with Client(address="tcp://127.0.0.1:8516") as client:
-       futures = client.map(heavy_computation, range(50))
-       print([f.result() for f in futures])
+   with Client(address="tcp://127.0.0.1:2345") as client:
+       results = client.map(heavy_computation, range(50))
+       print(results)
 
 Detailed Setup
 --------------
@@ -187,51 +198,105 @@ If you already have AWS Batch resources (created via CloudFormation, CDK, Terraf
 
 Then continue from Step 2.
 
-Step 2: Start the Scheduler
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 2: Set Up the Environment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Option A: Native install (macOS/Linux)**
 
 .. code-block:: bash
 
-   scaler_object_storage_server tcp://127.0.0.1:8517
-   scaler_scheduler tcp://0.0.0.0:8516 --object-storage-address tcp://127.0.0.1:8517
+   pip install opengris-scaler[aws]
+
+On macOS, you may need build tools: ``brew install ninja pkg-config``.
+
+**Option B: Devcontainer (recommended for development/testing)**
+
+The devcontainer has all C++ build tools and dependencies pre-installed.
+
+1. Build the devcontainer image (on host):
+
+.. code-block:: bash
+
+   docker build -t scaler-dev -f .devcontainer/Dockerfile .
+
+2. Export AWS credentials and start the container:
+
+.. code-block:: bash
+
+   # If using assumed roles (isengardcli, SSO, etc.)
+   eval $(aws configure export-credentials --format env)
+
+   docker run -it --rm \
+       -e AWS_ACCESS_KEY_ID \
+       -e AWS_SECRET_ACCESS_KEY \
+       -e AWS_SESSION_TOKEN \
+       -e AWS_DEFAULT_REGION=us-east-1 \
+       -v $(pwd):/workspace -w /workspace scaler-dev bash
+
+   # If using static credentials (~/.aws/credentials)
+   # docker run -it --rm -v ~/.aws:/root/.aws:ro \
+   #     -v $(pwd):/workspace -w /workspace scaler-dev bash
+
+3. Install inside the container:
+
+.. code-block:: bash
+
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -e ".[dev]"
+   pip install boto3
+
+.. note::
+   Session credentials expire (typically 1 hour). If you get credential errors, exit the container, re-export credentials on the host, and restart the container.
+
+Step 3: Start All Processes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use a single TOML configuration file to start the object storage server, scheduler, and worker manager together.
+
+1. Source the provisioned config and generate the TOML:
+
+.. code-block:: bash
+
+   source tests/worker_manager_adapter/aws_hpc/.scaler_aws_hpc.env
+   sed -e "s|scaler-batch-queue|${SCALER_JOB_QUEUE}|" \
+       -e "s|scaler-batch-job|${SCALER_JOB_DEFINITION}|" \
+       -e "s|scaler-batch-ACCOUNT_ID-us-east-1|${SCALER_S3_BUCKET}|" \
+       -e "s|aws_region = \"us-east-1\"|aws_region = \"${SCALER_AWS_REGION}\"|" \
+       tests/worker_manager_adapter/aws_hpc/scaler_aws_hpc_batch.toml > /tmp/config.toml
+
+2. Start all processes:
+
+.. code-block:: bash
+
+   scaler /tmp/config.toml
+
+See ``tests/worker_manager_adapter/aws_hpc/scaler_aws_hpc_batch.toml`` for the template.
+
+Alternatively, start each process separately:
+
+.. code-block:: bash
+
+   scaler_object_storage_server tcp://127.0.0.1:2346 &
+   scaler_scheduler tcp://0.0.0.0:2345 --object-storage-address tcp://127.0.0.1:2346 &
+   scaler_worker_manager aws_hpc tcp://127.0.0.1:2345 -wmi wm-batch \
+       --job-queue "$SCALER_JOB_QUEUE" --job-definition "$SCALER_JOB_DEFINITION" \
+       --s3-bucket "$SCALER_S3_BUCKET" --aws-region "$SCALER_AWS_REGION" &
 
 .. note::
    The scheduler address must be reachable from the machine running the AWS HPC worker manager. Use ``0.0.0.0`` to bind to all interfaces, or your machine's public/private IP.
 
-Step 3: Start the AWS HPC Worker Manager
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 4: Run Tests
+~~~~~~~~~~~~~~~~~
+
+With all processes running (from Step 2), submit tasks:
 
 .. code-block:: bash
 
-   scaler_worker_manager aws_hpc tcp://<SCHEDULER_IP>:8516 \
-       --job-queue "$SCALER_JOB_QUEUE" \
-       --job-definition "$SCALER_JOB_DEFINITION" \
-       --s3-bucket "$SCALER_S3_BUCKET" \
-       --aws-region "$SCALER_AWS_REGION"
+   python tests/worker_manager_adapter/aws_hpc/aws_hpc_test_harness.py \
+       --scheduler tcp://127.0.0.1:2345 --test all
 
-Or use a TOML configuration file:
-
-.. code-block:: bash
-
-   scaler config.toml
-
-.. code-block:: toml
-   :caption: config.toml
-
-   [[worker_manager]]
-   type = "aws_hpc"
-   scheduler_address = "tcp://<SCHEDULER_IP>:8516"
-   object_storage_address = "tcp://<SCHEDULER_IP>:8517"
-   worker_manager_id = "wm-batch"
-   job_queue = "scaler-batch-queue"
-   job_definition = "scaler-batch-job"
-   s3_bucket = "scaler-batch-123456789012-us-east-1"
-   aws_region = "us-east-1"
-   max_concurrent_jobs = 100
-   job_timeout_minutes = 60
-
-Step 4: Submit Tasks
-~~~~~~~~~~~~~~~~~~~~
+Or use the Scaler client directly:
 
 .. code-block:: python
 
@@ -240,7 +305,7 @@ Step 4: Submit Tasks
    def heavy_computation(x):
        return x ** 2
 
-   with Client(address="tcp://<SCHEDULER_IP>:8516") as client:
+   with Client(address="tcp://<SCHEDULER_IP>:2345") as client:
        futures = client.map(heavy_computation, range(50))
        results = [f.result() for f in futures]
        print(results)
@@ -261,11 +326,11 @@ How It Works
 
 1. The worker manager connects to the Scaler scheduler as a worker and receives tasks.
 2. Each task is serialized with ``cloudpickle`` and either passed inline (≤ 28 KB) or uploaded to S3.
-3. The worker manager submits an AWS Batch job for each task.
-4. Inside the Batch container, a runner script (``batch_job_runner.py``) deserializes the task, executes the function, and writes the result to S3.
+3. When multiple tasks arrive within a short window (0.5s), they are automatically batched into a single AWS Batch **array job**, reducing API calls from N to 1. Single tasks are submitted individually.
+4. Inside the Batch container, a runner script (``batch_job_runner.py``) deserializes the task, executes the function, and writes the result to S3. For array jobs, each child container uses its ``AWS_BATCH_JOB_ARRAY_INDEX`` to pick the correct payload.
 5. The worker manager polls for job completion, fetches the result from S3, and returns it to the scheduler.
 
-A semaphore limits concurrent Batch jobs (``--max-concurrent-jobs``) to prevent exceeding AWS service quotas.
+A semaphore limits concurrent Batch jobs (``--max-concurrent-jobs``) to prevent exceeding AWS service quotas. All AWS API calls run in a thread pool to avoid blocking the heartbeat loop.
 
 Configuration Reference
 ------------------------
@@ -274,6 +339,7 @@ AWS HPC Parameters
 ~~~~~~~~~~~~~~~~~~
 
 * ``scheduler_address`` (positional, required): Address of the Scaler scheduler.
+* ``--worker-manager-id`` (``-wmi``, required): Unique identifier for this worker manager instance.
 * ``--job-queue`` (``-q``, required): AWS Batch job queue name.
 * ``--job-definition`` (``-d``, required): AWS Batch job definition name.
 * ``--s3-bucket`` (required): S3 bucket for task payloads and results.

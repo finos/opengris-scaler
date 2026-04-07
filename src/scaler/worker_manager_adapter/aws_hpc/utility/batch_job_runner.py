@@ -75,11 +75,21 @@ def parse_args() -> dict:
 
 
 def get_payload(args: dict) -> bytes:
-    """Fetch task payload from job parameters or S3."""
+    """Fetch task payload from job parameters or S3.
+
+    For array jobs, the s3_key contains 'ARRAY_INDEX' which is replaced
+    with the actual AWS_BATCH_JOB_ARRAY_INDEX environment variable.
+    """
     compressed = args.get("compressed", "0") == "1"
     payload_b64 = args.get("payload")
     s3_key = args.get("s3_key")
     s3_bucket = args.get("s3_bucket")
+
+    # Handle array job index substitution
+    array_index = os.environ.get("AWS_BATCH_JOB_ARRAY_INDEX")
+    if s3_key and "ARRAY_INDEX" in s3_key and array_index is not None:
+        s3_key = s3_key.replace("ARRAY_INDEX", array_index)
+        logging.info(f"Array job index {array_index}, resolved S3 key: {s3_key}")
 
     # Try inline payload from job parameters
     if payload_b64:

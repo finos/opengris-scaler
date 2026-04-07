@@ -234,6 +234,7 @@ class AWSBatchWorker(_SpawnProcess):  # type: ignore[valid-type, misc]
                 create_async_loop_routine(self._connector_storage.routine, 0),
                 create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
                 create_async_loop_routine(self._timeout_manager.routine, 1),
+                create_async_loop_routine(self._task_manager.routine, 0),
                 create_async_loop_routine(self._task_manager.process_task, 0),
                 create_async_loop_routine(self._task_manager.resolve_tasks, 0),
             )
