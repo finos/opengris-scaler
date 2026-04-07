@@ -41,7 +41,7 @@ Worker Managers Overview
      - Description
      - Scaling
      - Infrastructure
-   * - :doc:`ORB AWS EC2 <orb_aws_ec2>`
+   * - :doc:`ORB AWS EC2 <orb_aws_ec2/index>`
      - Dynamically provisions workers on AWS EC2 instances using the ORB system.
      - Dynamic (scheduler-driven)
      - AWS EC2
@@ -75,7 +75,7 @@ The :ref:`scaler <cmd-scaler>` command boots the full stack from a single TOML c
     :maxdepth: 1
     :hidden:
 
-    orb_aws_ec2
+    orb_aws_ec2/index
     aws_hpc_batch
     aws_raw_ecs
     baremetal_native

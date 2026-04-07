@@ -4,6 +4,25 @@ Open Resource Broker AWS EC2 Worker Manager
 Use this worker manager to provision Scaler workers dynamically on AWS EC2 via
 ORB (Open Resource Broker).
 
+Quickstart Guides
+-----------------
+
+Two quickstart setups are available depending on your environment:
+
+.. toctree::
+   :maxdepth: 1
+
+   quickstart_ec2
+   quickstart_nat
+
+:doc:`Quickstart (EC2) <quickstart_ec2>` is recommended for most users. It runs
+all services on a fresh EC2 instance, so workers can connect via private VPC
+addresses — no NAT or port-forwarding required.
+
+:doc:`Quickstart (NAT) <quickstart_nat>` runs the scheduler and worker manager
+on your local machine and forwards traffic from a public IP to reach AWS workers.
+Use this if you need to keep the scheduler on a machine you already manage.
+
 Requirements
 ------------
 
@@ -13,66 +32,7 @@ Before using the ORB AWS EC2 worker manager, make sure:
 * Python is installed on the machine that runs the worker manager.
 * The scheduler host can be reached from provisioned AWS workers. If your scheduler is behind a firewall/private network, set up NAT so workers can connect back to the scheduler.
 
-.. _orb_aws_ec2_quick_setup:
-
-Quick Setup
------------
-
-.. warning::
-
-   Do not use ``pip install awscli`` for this setup. That installs AWS CLI v1.
-   Use the official AWS CLI v2 installer instead.
-
-.. tabs::
-
-   .. group-tab:: Linux x86_64
-
-      .. code-block:: bash
-
-         curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-         unzip awscliv2.zip
-         sudo ./aws/install
-
-         aws --version
-
-   .. group-tab:: Linux ARM64
-
-      .. code-block:: bash
-
-         curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
-         unzip awscliv2.zip
-         sudo ./aws/install
-
-Then create a new virtual environment and install Scaler with ORB extras:
-
-.. code-block:: bash
-
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install opengris-scaler[orb]
-
-Then authenticate with AWS CLI:
-
-.. tabs::
-
-   .. group-tab:: Local Machine
-
-      .. code-block:: bash
-
-         aws login
-
-      Click the page link and proceed in your default browser to sign in, then
-      follow the AWS CLI instructions in the terminal.
-
-   .. group-tab:: Remote Server
-
-      .. code-block:: bash
-
-         aws login --remote
-
-      Open the URL printed by the command in your local browser, complete
-      sign-in, then copy the returned code/token and paste it back into the
-      remote terminal to finish login.
+.. _orb_aws_ec2_permissions:
 
 AWS Permissions
 ~~~~~~~~~~~~~~~
@@ -85,7 +45,16 @@ AWS Permissions
 
    .. group-tab:: IAM User
 
-      If you are using the root account, first create an IAM user. Before running
+      If you are not using the root account, attach the ``SignInLocalDevelopmentAccess``
+      AWS managed policy to your IAM user so that ``aws login`` (SSO) works:
+
+      .. code-block:: bash
+
+         aws iam attach-user-policy \
+           --user-name <YOUR_USER> \
+           --policy-arn arn:aws:iam::aws:policy/SignInLocalDevelopmentAccess
+
+      Then create and attach the EC2 provisioning policy. Before running
       the commands below, prepare these values:
 
       * IAM user name (for ``--user-name``)
@@ -178,78 +147,8 @@ AWS Permissions
 
          aws sts get-caller-identity --query Account --output text
 
-Start Services
-~~~~~~~~~~~~~~
-
-Before starting services, make sure NAT setup is complete. If this machine
-already has a public IP, you can ignore NAT setup. Then copy the
-``config.toml`` below and replace ``PUBLIC_IP`` with your real public IP
-address.
-
-.. tabs::
-
-   .. group-tab:: config.toml
-
-      .. code-block:: toml
-
-         [object_storage_server]
-         bind_address = "tcp://127.0.0.1:8517"
-
-         [scheduler]
-         # use 0.0.0.0 so NAT and forward traffic from your public IP to this machine
-         bind_address = "tcp://0.0.0.0:8516"
-         object_storage_address = "tcp://127.0.0.1:8517"
-
-         [[worker_manager]]
-         type = "orb_aws_ec2"
-         scheduler_address = "tcp://127.0.0.1:8516"   
-         worker_manager_id = "wm-orb"
-         # worker provisioned in AWS need reach to your PUBLIC_IP, and your router 
-         # then forward packets to the machine you started services
-         object_storage_address = "tcp://<PUBLIC_IP>:8517"
-         worker_scheduler_address = "tcp://<PUBLIC_IP>:8516"
-         # You can start either with pre-built AMI or with specified python version
-         # and requirements_txt
-         # image_id = "ami-..."
-         python_version = "3.13"
-         requirements_txt = """
-         opengris-scaler>=1.27.0
-         numpy
-         pandas
-         """
-         instance_type = "t3.medium"
-         aws_region = "us-east-1"
-         logging_level = "INFO"
-         task_timeout_seconds = 60
-
-      Run command:
-
-      .. code-block:: bash
-
-         scaler config.toml
-
-   .. group-tab:: command line
-
-      .. code-block:: bash
-
-         scaler_object_storage_server tcp://127.0.0.1:8517
-         scaler_scheduler tcp://0.0.0.0:8516 --object-storage-address tcp://127.0.0.1:8517
-         scaler_worker_manager orb_aws_ec2 tcp://127.0.0.1:8516 \
-             --worker-manager-id wm-orb \
-             --worker-scheduler-address tcp://<PUBLIC_IP>:8516 \
-             --object-storage-address tcp://<PUBLIC_IP>:8517 \
-             --python-version 3.13 \
-             --requirements-txt /path/to/requirements.txt \
-             --instance-type t3.medium \
-             --aws-region us-east-1 \
-             --logging-level INFO \
-             --task-timeout-seconds 60
-
-After services are up, you should be good to go and can use the client to
-submit tasks to workers provisioned on AWS.
-
 Worker Image Customization Modes
---------------------------------
+---------------------------------
 
 The adapter supports two mutually exclusive worker-image modes. Choose exactly one:
 
@@ -264,7 +163,7 @@ at startup. ``opengris-scaler`` must be included in ``requirements_txt``.
 
 .. tabs::
 
-   .. group-tab:: config.toml
+   .. group-tab:: stack.toml
 
       .. code-block:: toml
 
@@ -275,7 +174,7 @@ at startup. ``opengris-scaler`` must be included in ``requirements_txt``.
          worker_scheduler_address = "tcp://<PUBLIC_IP>:8516"
          object_storage_address = "tcp://<PUBLIC_IP>:8517"
          instance_type = "t3.medium"
-         python_version = "3.13"
+         python_version = "3.14"
          requirements_txt = """
          opengris-scaler>=1.26.6
          numpy
@@ -286,7 +185,7 @@ at startup. ``opengris-scaler`` must be included in ``requirements_txt``.
 
       .. code-block:: bash
 
-         scaler config.toml
+         scaler stack.toml
 
    .. group-tab:: command line
 
@@ -298,7 +197,7 @@ at startup. ``opengris-scaler`` must be included in ``requirements_txt``.
              --worker-scheduler-address tcp://<PUBLIC_IP>:8516 \
              --object-storage-address tcp://<PUBLIC_IP>:8517 \
              --instance-type t3.medium \
-             --python-version 3.13 \
+             --python-version 3.14 \
              --requirements-txt /path/to/requirements.txt
 
          # Requirements as a string literal
@@ -307,7 +206,7 @@ at startup. ``opengris-scaler`` must be included in ``requirements_txt``.
              --worker-scheduler-address tcp://<PUBLIC_IP>:8516 \
              --object-storage-address tcp://<PUBLIC_IP>:8517 \
              --instance-type t3.medium \
-             --python-version 3.13 \
+             --python-version 3.14 \
              --requirements-txt "opengris-scaler>=1.26.6"
 
 **Existing Pre-built AMI**
@@ -320,7 +219,7 @@ worker environment must be tightly controlled.
 
 .. tabs::
 
-   .. group-tab:: config.toml
+   .. group-tab:: stack.toml
 
       .. code-block:: toml
 
@@ -337,7 +236,7 @@ worker environment must be tightly controlled.
 
       .. code-block:: bash
 
-         scaler config.toml
+         scaler stack.toml
 
    .. group-tab:: command line
 
@@ -362,7 +261,7 @@ Supported Parameters
 --------------------
 
 .. note::
-    For more details on how to configure Scaler, see the :doc:`../commands` section.
+    For more details on how to configure Scaler, see the :doc:`../../commands` section.
 
 The ORB AWS EC2 worker manager supports ORB-specific configuration parameters as well as common worker manager parameters.
 
@@ -371,7 +270,7 @@ ORB AWS EC2 Template Configuration
 
 *   ``--image-id``: AMI ID for the worker instances. Mutually exclusive with ``--python-version`` and
     ``--requirements-txt``. When provided, the latest AL2023 AMI is not used and no packages are installed.
-*   ``--python-version``: Python version to install on each worker instance (e.g. ``3.13``). Required when
+*   ``--python-version``: Python version to install on each worker instance (e.g. ``3.14``). Required when
     ``--image-id`` is not specified.
 *   ``--requirements-txt``: Requirements to install on each worker instance. Can be a path to a local
     ``requirements.txt`` file or a string literal. The content is embedded in the EC2 user data script and
@@ -386,7 +285,7 @@ ORB AWS EC2 Template Configuration
 Common Parameters
 ~~~~~~~~~~~~~~~~~
 
-For a full list of common parameters including networking (``--worker-manager-id``, ``--max-task-concurrency``, ``--object-storage-address``, etc.), worker configuration, and logging, see :doc:`common_parameters`.
+For a full list of common parameters including networking (``--worker-manager-id``, ``--max-task-concurrency``, ``--object-storage-address``, etc.), worker configuration, and logging, see :doc:`../common_parameters`.
 
 Cleanup
 -------

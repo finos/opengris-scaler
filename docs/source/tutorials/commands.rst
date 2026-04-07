@@ -842,7 +842,7 @@ ORB (Open Resource Broker) worker manager — dynamically provisions workers on 
      - ``[]``
      - Comma-separated AWS security group IDs. A temporary group is created if omitted.
 
-For full details, see :doc:`worker_managers/orb_aws_ec2`.
+For full details, see :doc:`worker_managers/orb_aws_ec2/index`.
 
 
 .. _cmd-scaler-object-storage-server:
