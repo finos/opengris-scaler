@@ -60,7 +60,8 @@ orb = [
 ]
 all = [
     "opengris-scaler[aws]",
-    "opengris-scaler[graphblas]; python_version <= '3.13'",
+    # graphblas need compile on 3.14, and this python condition prevents up from building 3.14 wheel, comment it out for now
+    # "opengris-scaler[graphblas]; python_version <= '3.13'",  
     "opengris-scaler[gui]",
     "opengris-scaler[orb]",
     "opengris-scaler[uvloop]",
