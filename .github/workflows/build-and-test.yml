@@ -29,6 +29,7 @@ jobs:
       - uses: ./.github/actions/setup-env
         with:
           os: ${{ runner.os }}
+          python-version: ${{ runner.os == 'macOS' && '3.12' || '3.8' }}  # bump it after symphony
 
       - uses: ./.github/actions/3rd-party-libraries-download
         with:

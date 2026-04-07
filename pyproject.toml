@@ -179,8 +179,9 @@ extend_skip_glob = [
 skip = "pp* cp39-*"
 
 [tool.cibuildwheel.linux]
-archs = ["x86_64"]
+archs = ["x86_64", "aarch64"]
 manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
 before-all = """
 yum install -y cmake gcc-toolset-14-gcc gcc-toolset-14-gcc-c++; \
 source /opt/rh/gcc-toolset-14/enable; \
