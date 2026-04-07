@@ -8,10 +8,9 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  build:
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    environment: release
     strategy:
       matrix:
         os: [ ubuntu-latest, macos-latest ]
@@ -33,6 +32,27 @@ jobs:
       - uses: ./.github/actions/create-artifacts
         with:
           os: ${{ runner.os }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist-${{ matrix.os }}
+          path: ./dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: ./dist/
+          pattern: dist-*
+          merge-multiple: true
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
