@@ -103,7 +103,7 @@ private:
 
     std::shared_ptr<State> _state;
 
-    static void onClientConnect(std::shared_ptr<State> state, Client client) noexcept;
+    static void onClientConnect(std::shared_ptr<State> state, internal::Client client) noexcept;
 
     static void onRemoteIdentity(
         std::shared_ptr<State> state, ConnectionID connectionId, Identity remoteIdentity) noexcept;

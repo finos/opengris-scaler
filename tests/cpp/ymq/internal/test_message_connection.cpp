@@ -51,12 +51,12 @@ public:
             scaler::wrapper::uv::TCPSocket serverSocket = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(_loop));
             UV_EXIT_ON_ERROR(_server.accept(serverSocket));
 
-            _serverConnection.connect(std::move(serverSocket));
+            _serverConnection.connect(scaler::ymq::internal::Client(std::move(serverSocket)));
         }));
 
         UV_EXIT_ON_ERROR(
             _clientSocket.connect(serverAddress(), [this](std::expected<void, scaler::wrapper::uv::Error>) {
-                _clientConnection.connect(std::move(_clientSocket));
+                _clientConnection.connect(scaler::ymq::internal::Client(std::move(_clientSocket)));
             }));
     }
 
@@ -243,7 +243,7 @@ TEST_F(YMQMessageConnectionTest, UnexpectedDisconnect)
     // Reconnect the client with a new TCP socket
     scaler::wrapper::uv::TCPSocket socket = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(loop));
     UV_EXIT_ON_ERROR(socket.connect(connections.serverAddress(), [&](std::expected<void, scaler::wrapper::uv::Error>) {
-        client.connect(std::move(socket));
+        client.connect(scaler::ymq::internal::Client(std::move(socket)));
     }));
 
     // Wait again for identity exchange
@@ -336,8 +336,9 @@ TEST_F(YMQMessageConnectionTest, InvalidMagicString)
         [](auto) { FAIL() << "Unexpected message callback"; });
 
     UV_EXIT_ON_ERROR(clientSocket.connect(
-        UV_EXIT_ON_ERROR(server.getSockName()),
-        [&](std::expected<void, scaler::wrapper::uv::Error>) { clientConnection.connect(std::move(clientSocket)); }));
+        UV_EXIT_ON_ERROR(server.getSockName()), [&](std::expected<void, scaler::wrapper::uv::Error>) {
+            clientConnection.connect(scaler::ymq::internal::Client(std::move(clientSocket)));
+        }));
 
     // Wait until the message connection raise an abort event
 

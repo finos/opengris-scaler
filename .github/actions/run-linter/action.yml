@@ -9,8 +9,8 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Install Python Packages (Linux)
-      if: inputs.os == 'Linux'
+    - name: Install Python Packages
+      if: inputs.os != 'Windows'
       shell: bash
       run: |
         uv pip install --system flake8 pyproject-flake8 mypy

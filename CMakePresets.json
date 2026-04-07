@@ -29,6 +29,15 @@
       "binaryDir": "${sourceDir}/build_darwin_arm64"
     },
     {
+      "name": "darwin-x86_64",
+      "displayName": "Apple Intel build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/src"
+      },
+      "binaryDir": "${sourceDir}/build_darwin_x86_64"
+    },
+    {
       "name": "windows-x64",
       "displayName": "Windows x64 (MSVC)",
       "generator": "Visual Studio 17 2022",
@@ -75,6 +84,16 @@
       }
     },
     {
+      "name": "darwin-x86_64",
+      "displayName": "Apple Intel build",
+      "configurePreset": "darwin-x86_64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
       "name": "windows-x64",
       "displayName": "Windows x64 build",
       "configurePreset": "windows-x64",
@@ -113,6 +132,18 @@
     {
       "name": "darwin-arm64",
       "configurePreset": "darwin-arm64",
+      "output": {
+        "outputOnFailure": true
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
+      "name": "darwin-x86_64",
+      "configurePreset": "darwin-x86_64",
       "output": {
         "outputOnFailure": true
       },

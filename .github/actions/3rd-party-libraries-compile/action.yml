@@ -24,6 +24,13 @@ runs:
         ./scripts/library_tool.sh capnp compile
         ./scripts/library_tool.sh libuv compile
 
+    - name: Compile Libraries (macOS)
+      shell: bash
+      if: (inputs.os == 'macOS') && (steps.download-libraries.outputs.cache-hit != 'true')
+      run: |
+        ./scripts/library_tool.sh capnp compile
+        ./scripts/library_tool.sh libuv compile
+
     - name: Compile Libraries (Windows)
       shell: pwsh
       if: (inputs.os == 'Windows') && (steps.compiled-libraries.outputs.cache-hit != 'true')

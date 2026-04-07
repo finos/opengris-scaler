@@ -122,9 +122,9 @@ private:
         std::shared_ptr<State> state,
         ConnectCallback onConnectCallback,
         Address parsedAddress,
-        std::expected<Client, Error> result) noexcept;
+        std::expected<internal::Client, Error> result) noexcept;
 
-    static void onClientAccepted(std::shared_ptr<State> state, Client client) noexcept;
+    static void onClientAccepted(std::shared_ptr<State> state, internal::Client client) noexcept;
 
     static void onRemoteDisconnect(
         std::shared_ptr<State> state, internal::MessageConnection::DisconnectReason reason) noexcept;

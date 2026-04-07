@@ -55,7 +55,7 @@ public:
 
         // Connect the client to the binder
         _clientSocket.connect(boundAddress.asTCP(), [this](std::expected<void, scaler::wrapper::uv::Error>) {
-            _client.connect(std::move(_clientSocket));
+            _client.connect(scaler::ymq::internal::Client(std::move(_clientSocket)));
         });
     }
 

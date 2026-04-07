@@ -60,7 +60,8 @@ orb = [
 ]
 all = [
     "opengris-scaler[aws]",
-    "opengris-scaler[graphblas]",
+    # graphblas need compile on 3.14, and this python condition prevents up from building 3.14 wheel, comment it out for now
+    # "opengris-scaler[graphblas]; python_version <= '3.13'",  
     "opengris-scaler[gui]",
     "opengris-scaler[orb]",
     "opengris-scaler[uvloop]",
@@ -178,8 +179,9 @@ extend_skip_glob = [
 skip = "pp* cp39-*"
 
 [tool.cibuildwheel.linux]
-archs = ["x86_64"]
+archs = ["x86_64", "aarch64"]
 manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
 before-all = """
 yum install -y cmake gcc-toolset-14-gcc gcc-toolset-14-gcc-c++; \
 source /opt/rh/gcc-toolset-14/enable; \
@@ -207,10 +209,15 @@ apk add cmake g++ make; \
 ldconfig /usr/local/lib;
 """
 
-#[tool.cibuildwheel.macos]
-#archs = ["x86_64", "arm64"]
-#before-all = """
-#yum install -y sudo; \
-#sudo ./scripts/library_tool.sh capnp compile; \
-#sudo ./scripts/library_tool.sh capnp install;
-#"""
+[tool.cibuildwheel.macos]
+archs = ["native"]
+environment = { MACOSX_DEPLOYMENT_TARGET = "15.0" }
+before-all = """
+set -ex && \
+./scripts/library_tool.sh capnp download; \
+./scripts/library_tool.sh capnp compile --prefix="$CMAKE_PREFIX_PATH"; \
+./scripts/library_tool.sh capnp install --prefix="$CMAKE_PREFIX_PATH"; \
+./scripts/library_tool.sh libuv download; \
+./scripts/library_tool.sh libuv compile --prefix="$CMAKE_PREFIX_PATH"; \
+./scripts/library_tool.sh libuv install --prefix="$CMAKE_PREFIX_PATH"; \
+"""

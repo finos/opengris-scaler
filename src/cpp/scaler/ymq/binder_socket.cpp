@@ -124,7 +124,7 @@ void BinderSocket::closeConnection(Identity remoteIdentity) noexcept
     });
 }
 
-void BinderSocket::onClientConnect(std::shared_ptr<State> state, Client client) noexcept
+void BinderSocket::onClientConnect(std::shared_ptr<State> state, internal::Client client) noexcept
 {
     internal::MessageConnection& connection = createConnection(state, std::nullopt);
     connection.connect(std::move(client));

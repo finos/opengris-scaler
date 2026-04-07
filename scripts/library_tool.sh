@@ -22,7 +22,7 @@ PREFIX="/usr/local"
 # Parse the optional --prefix= argument
 for arg in "$@"; do
 	if [[ "$arg" == --prefix=* ]]; then
-			PREFIX="${arg#--prefix=}"
+		PREFIX="${arg#--prefix=}"
 	fi
 done
 
@@ -34,8 +34,7 @@ else
     NUM_CORES=1
 fi
 
-PREFIX=$(readlink -f "${PREFIX}")
-mkdir -p "${PREFIX}/include/"
+PREFIX=$(mkdir -p "${PREFIX}" && cd "${PREFIX}" && pwd)
 
 show_help() {
     echo "Usage: ./library_tool.sh [boost|capnp|libuv] [download|compile|install] [--prefix=DIR]"

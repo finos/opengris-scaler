@@ -1,16 +1,12 @@
 #include "scaler/ymq/internal/message_connection.h"
 
-#include <array>
 #include <cassert>
 #include <cstring>
 #include <functional>
 #include <memory>
 #include <utility>
-#include <variant>
 #include <vector>
 
-#include "scaler/wrapper/uv/pipe.h"
-#include "scaler/wrapper/uv/tcp.h"
 #include "scaler/ymq/configuration.h"
 
 namespace scaler {
@@ -68,8 +64,8 @@ void MessageConnection::connect(Client client) noexcept
     _client = std::move(client);
     _state  = State::Connected;
 
-    setNoDelay();
-    readStart();
+    UV_EXIT_ON_ERROR(_client->setNoDelay(true));
+    UV_EXIT_ON_ERROR(_client->readStart(std::bind_front(&MessageConnection::onRead, this)));
     processSendQueue();
 }
 
@@ -86,12 +82,8 @@ void MessageConnection::abort() noexcept
 {
     assert(connected());
 
-    readStop();
-
-    scaler::wrapper::uv::TCPSocket* socket = std::get_if<scaler::wrapper::uv::TCPSocket>(&_client.value());
-    assert(socket && "abort() only supported for TCP sockets");
-
-    UV_EXIT_ON_ERROR(socket->closeReset());
+    _client->readStop();
+    UV_EXIT_ON_ERROR(_client->closeReset());
 
     initialize();
 }
@@ -129,7 +121,7 @@ void MessageConnection::shutdownClient() noexcept
 {
     assert(connected());
 
-    readStop();
+    _client->readStop();
 
     // Call shutdown() on the client socket *before* closing it. This forces a FIN segment.
     // We transfer ownership of the Client instance to the shutdown callback. As the Client destructor implicitly calls
@@ -145,13 +137,7 @@ void MessageConnection::shutdownClient() noexcept
         UV_EXIT_ON_ERROR(result);
     };
 
-    if (auto* tcpSocket = std::get_if<scaler::wrapper::uv::TCPSocket>(clientPtr)) {
-        UV_EXIT_ON_ERROR(tcpSocket->shutdown(std::move(shutdownCallback)));
-    } else if (auto* pipe = std::get_if<scaler::wrapper::uv::Pipe>(clientPtr)) {
-        UV_EXIT_ON_ERROR(pipe->shutdown(std::move(shutdownCallback)));
-    } else {
-        std::unreachable();
-    }
+    UV_EXIT_ON_ERROR(clientPtr->shutdown(std::move(shutdownCallback)));
 }
 
 void MessageConnection::initialize() noexcept
@@ -358,7 +344,7 @@ void MessageConnection::onRemoteDisconnect(MessageConnection::DisconnectReason r
 {
     assert(connected());
 
-    readStop();
+    _client->readStop();
     initialize();
 
     _onRemoteDisconnectCallback(reason);
@@ -392,9 +378,9 @@ void MessageConnection::processSendOperation(SendOperation operation) noexcept
 
     if (totalSize <= maxWriteBufferSize) {
         // Small message: all buffers in one syscall
-        write(
+        UV_EXIT_ON_ERROR(_client->write(
             std::span<const std::span<const uint8_t>> {operation._buffers.data(), operation._buffers.size()},
-            std::move(callback));
+            std::move(callback)));
     } else {
         // Large message: chunk the buffers in write() calls of up to maxWriteBufferSize.
         //
@@ -408,63 +394,14 @@ void MessageConnection::processSendOperation(SendOperation operation) noexcept
                 const bool isLastChunk = (offset + bufferOffset + chunkSize >= totalSize);
 
                 if (!isLastChunk) {
-                    write(std::span(&chunk, 1), [](auto) {});
+                    UV_EXIT_ON_ERROR(_client->write(std::span(&chunk, 1), [](auto) {}));
                 } else {
                     // Attach the callback to the last write() call.
-                    write(std::span(&chunk, 1), std::move(callback));
+                    UV_EXIT_ON_ERROR(_client->write(std::span(&chunk, 1), std::move(callback)));
                 }
             }
             offset += buffer.size();
         }
-    }
-}
-
-void MessageConnection::write(
-    std::span<const std::span<const uint8_t>> buffers, scaler::wrapper::uv::WriteCallback callback) noexcept
-{
-    assert(connected());
-
-    if (auto* tcpSocket = std::get_if<scaler::wrapper::uv::TCPSocket>(&_client.value())) {
-        UV_EXIT_ON_ERROR(tcpSocket->write(buffers, std::move(callback)));
-    } else if (auto* pipe = std::get_if<scaler::wrapper::uv::Pipe>(&_client.value())) {
-        UV_EXIT_ON_ERROR(pipe->write(buffers, std::move(callback)));
-    } else {
-        std::unreachable();
-    }
-}
-
-void MessageConnection::setNoDelay() noexcept
-{
-    assert(connected());
-
-    if (auto* tcpSocket = std::get_if<scaler::wrapper::uv::TCPSocket>(&_client.value())) {
-        UV_EXIT_ON_ERROR(tcpSocket->nodelay(true));
-    }
-}
-
-void MessageConnection::readStart() noexcept
-{
-    assert(connected());
-
-    if (auto* tcpSocket = std::get_if<scaler::wrapper::uv::TCPSocket>(&_client.value())) {
-        UV_EXIT_ON_ERROR(tcpSocket->readStart(std::bind_front(&MessageConnection::onRead, this)));
-    } else if (auto* pipe = std::get_if<scaler::wrapper::uv::Pipe>(&_client.value())) {
-        UV_EXIT_ON_ERROR(pipe->readStart(std::bind_front(&MessageConnection::onRead, this)));
-    } else {
-        std::unreachable();
-    }
-}
-
-void MessageConnection::readStop() noexcept
-{
-    assert(connected());
-
-    if (auto* tcpSocket = std::get_if<scaler::wrapper::uv::TCPSocket>(&_client.value())) {
-        tcpSocket->readStop();
-    } else if (auto* pipe = std::get_if<scaler::wrapper::uv::Pipe>(&_client.value())) {
-        pipe->readStop();
-    } else {
-        std::unreachable();
     }
 }
 

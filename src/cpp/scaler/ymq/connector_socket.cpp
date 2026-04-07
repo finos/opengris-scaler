@@ -143,7 +143,7 @@ void ConnectorSocket::tryConnect(std::shared_ptr<State> state, ConnectCallback o
         state->_thread.loop(),
         state->_address,
         [state, onConnectCallback = std::move(onConnectCallback), address = state->_address](
-            std::expected<Client, Error> result) mutable {
+            std::expected<internal::Client, Error> result) mutable {
             ConnectorSocket::onClientConnected(
                 std::move(state), std::move(onConnectCallback), std::move(address), std::move(result));
         },
@@ -155,7 +155,7 @@ void ConnectorSocket::onClientConnected(
     std::shared_ptr<State> state,
     ConnectCallback onConnectCallback,
     [[maybe_unused]] Address address,
-    std::expected<Client, Error> result) noexcept
+    std::expected<internal::Client, Error> result) noexcept
 {
     assert(!state->_isBinding);
 
@@ -176,7 +176,7 @@ void ConnectorSocket::onClientConnected(
     onConnectCallback({});
 }
 
-void ConnectorSocket::onClientAccepted(std::shared_ptr<State> state, Client client) noexcept
+void ConnectorSocket::onClientAccepted(std::shared_ptr<State> state, internal::Client client) noexcept
 {
     assert(state->_isBinding);
 
