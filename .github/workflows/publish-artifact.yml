@@ -16,8 +16,9 @@ jobs:
         include:
           - os: ubuntu-latest
             cibw_archs: x86_64
-          - os: ubuntu-latest
-            cibw_archs: aarch64
+          # TODO: re-enable after fixing QEMU exec format error
+          # - os: ubuntu-latest
+          #   cibw_archs: aarch64
           - os: macos-latest
             cibw_archs: native
     steps:
@@ -45,6 +46,7 @@ jobs:
           os: ${{ runner.os }}
         env:
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
+          CIBW_CONTAINER_ENGINE: ${{ matrix.cibw_archs == 'aarch64' && 'docker; create_args: --platform linux/arm64/v8' || 'docker' }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
