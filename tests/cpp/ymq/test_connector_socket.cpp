@@ -49,7 +49,7 @@ public:
             scaler::wrapper::uv::TCPSocket serverSocket = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(_loop));
             UV_EXIT_ON_ERROR(_server.accept(serverSocket));
 
-            _serverConnection.connect(std::move(serverSocket));
+            _serverConnection.connect(scaler::ymq::internal::Client(std::move(serverSocket)));
         }));
 
         scaler::wrapper::uv::SocketAddress serverAddr = UV_EXIT_ON_ERROR(_server.getSockName());

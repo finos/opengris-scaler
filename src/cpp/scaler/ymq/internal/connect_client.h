@@ -11,8 +11,8 @@
 #include "scaler/wrapper/uv/timer.h"
 #include "scaler/ymq/address.h"
 #include "scaler/ymq/configuration.h"
+#include "scaler/ymq/internal/client.h"
 #include "scaler/ymq/internal/event_loop_thread.h"
-#include "scaler/ymq/typedefs.h"
 
 namespace scaler {
 namespace ymq {

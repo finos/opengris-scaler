@@ -68,7 +68,7 @@ void ConnectClient::tryConnect(std::shared_ptr<State> state) noexcept
             state->_connectRequest = UV_EXIT_ON_ERROR(
                 tcpClient.connect(state->_address.asTCP(), std::bind_front(&ConnectClient::onConnect, state)));
 
-            state->_client = std::move(tcpClient);
+            state->_client = Client(std::move(tcpClient));
             break;
         }
         case Address::Type::IPC: {
@@ -77,7 +77,7 @@ void ConnectClient::tryConnect(std::shared_ptr<State> state) noexcept
             state->_connectRequest = UV_EXIT_ON_ERROR(
                 ipcClient.connect(state->_address.asIPC(), std::bind_front(&ConnectClient::onConnect, state)));
 
-            state->_client = std::move(ipcClient);
+            state->_client = Client(std::move(ipcClient));
             break;
         }
         default: std::unreachable();

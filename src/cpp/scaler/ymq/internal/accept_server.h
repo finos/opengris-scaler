@@ -9,7 +9,7 @@
 #include "scaler/wrapper/uv/pipe.h"
 #include "scaler/wrapper/uv/tcp.h"
 #include "scaler/ymq/address.h"
-#include "scaler/ymq/typedefs.h"
+#include "scaler/ymq/internal/client.h"
 
 namespace scaler {
 namespace ymq {

@@ -9,9 +9,9 @@
 
 #include "scaler/logging/logging.h"
 #include "scaler/utility/move_only_function.h"
-#include "scaler/wrapper/uv/callback.h"
 #include "scaler/wrapper/uv/error.h"
 #include "scaler/ymq/bytes.h"
+#include "scaler/ymq/internal/client.h"
 #include "scaler/ymq/typedefs.h"
 
 namespace scaler {
@@ -162,14 +162,6 @@ private:
     void processSendQueue() noexcept;
 
     void processSendOperation(SendOperation operation) noexcept;
-
-    void write(std::span<const std::span<const uint8_t>> buffers, scaler::wrapper::uv::WriteCallback callback) noexcept;
-
-    void setNoDelay() noexcept;
-
-    void readStart() noexcept;
-
-    void readStop() noexcept;
 };
 
 }  // namespace internal

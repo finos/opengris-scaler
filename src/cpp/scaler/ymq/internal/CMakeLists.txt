@@ -1,4 +1,7 @@
 target_sources(ymq_objs PRIVATE
+    client.h
+    client.cpp
+
     accept_server.h
     accept_server.cpp
 

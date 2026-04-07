@@ -33,7 +33,7 @@ TEST_F(YMQConnectClientTest, ConnectClient)
 
     bool callbackCalled = false;
 
-    auto onConnectCallback = [&](std::expected<scaler::ymq::Client, scaler::ymq::Error> result) {
+    auto onConnectCallback = [&](std::expected<scaler::ymq::internal::Client, scaler::ymq::Error> result) {
         ASSERT_TRUE(result.has_value());
         callbackCalled = true;
     };
@@ -63,7 +63,7 @@ TEST_F(YMQConnectClientTest, ConnectClientFailure)
 
     bool callbackCalled = false;
 
-    auto onConnectCallback = [&](std::expected<scaler::ymq::Client, scaler::ymq::Error> result) {
+    auto onConnectCallback = [&](std::expected<scaler::ymq::internal::Client, scaler::ymq::Error> result) {
         ASSERT_FALSE(result.has_value());
         ASSERT_EQ(result.error()._errorCode, scaler::ymq::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
         callbackCalled = true;
@@ -90,7 +90,7 @@ TEST_F(YMQConnectClientTest, ConnectClientDisconnect)
 
     bool callbackCalled = false;
 
-    auto onConnectCallback = [&](std::expected<scaler::ymq::Client, scaler::ymq::Error> result) {
+    auto onConnectCallback = [&](std::expected<scaler::ymq::internal::Client, scaler::ymq::Error> result) {
         ASSERT_FALSE(result.has_value());
         ASSERT_EQ(result.error()._errorCode, scaler::ymq::Error::ErrorCode::SocketStopRequested);
         callbackCalled = true;

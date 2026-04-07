@@ -107,11 +107,11 @@ void AcceptServer::onConnection(
     if (auto* tcpServer = std::get_if<scaler::wrapper::uv::TCPServer>(&state->_server.value())) {
         scaler::wrapper::uv::TCPSocket tcpClient = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(state->_loop));
         UV_EXIT_ON_ERROR(tcpServer->accept(tcpClient));
-        return state->_onConnectionCallback(std::move(tcpClient));
+        return state->_onConnectionCallback(Client(std::move(tcpClient)));
     } else if (auto* pipeServer = std::get_if<scaler::wrapper::uv::PipeServer>(&state->_server.value())) {
         scaler::wrapper::uv::Pipe pipeClient = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Pipe::init(state->_loop, false));
         UV_EXIT_ON_ERROR(pipeServer->accept(pipeClient));
-        return state->_onConnectionCallback(std::move(pipeClient));
+        return state->_onConnectionCallback(Client(std::move(pipeClient)));
     } else {
         std::unreachable();
     }

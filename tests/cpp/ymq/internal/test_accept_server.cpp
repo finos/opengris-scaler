@@ -21,7 +21,7 @@ TEST_F(YMQAcceptServerTest, AcceptServer)
 
     size_t nConnectionCount = 0;
     scaler::ymq::internal::AcceptServer server(
-        loop, listenAddress, [&]([[maybe_unused]] scaler::ymq::Client client) { ++nConnectionCount; });
+        loop, listenAddress, [&]([[maybe_unused]] scaler::ymq::internal::Client client) { ++nConnectionCount; });
 
     // Get the actual bound address (since we used port 0)
     scaler::wrapper::uv::SocketAddress boundAddress = server.address().asTCP();
