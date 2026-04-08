@@ -16,7 +16,6 @@ if ($args[0] -eq "--clean") {
     if (Test-Path $BUILD_DIR) {
         Remove-Item -Recurse -Force $BUILD_DIR
     }
-    Get-ChildItem "scaler/protocol/capnp" -Include *.c++, *.h -ErrorAction SilentlyContinue | Remove-Item -Force
 }
 
 Write-Host "Build directory: $BUILD_DIR"

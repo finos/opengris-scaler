@@ -1,7 +1,5 @@
 #include "scaler/object_storage/object_storage_server.h"
 
-#include <unistd.h>
-
 #include <algorithm>
 #include <csignal>
 #include <cstdint>
@@ -26,14 +24,7 @@ extern "C" void handleSigTerm([[maybe_unused]] int signum)
 // Function to install the signal handler
 void setupSignalHandling()
 {
-    struct sigaction sa {};
-    sa.sa_handler = handleSigTerm;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-
-    if (sigaction(SIGTERM, &sa, nullptr) == -1) {
-        perror("sigaction");
-    }
+    std::signal(SIGTERM, handleSigTerm);
 }
 
 ObjectStorageServer::ObjectStorageServer()
@@ -82,16 +73,8 @@ void ObjectStorageServer::run(
 
 void ObjectStorageServer::waitUntilReady()
 {
-    uint64_t value;
-    ssize_t ret = read(onServerReadyReader, &value, sizeof(uint64_t));
-
-    if (ret != sizeof(uint64_t)) {
-        _logger.log(
-            scaler::ymq::Logger::LoggingLevel::error,
-            "ObjectStorageServer: read from onServerReadyReader failed, errno=",
-            errno);
-        std::terminate();
-    }
+    std::unique_lock<std::mutex> lock {this->_serverReadyMutex};
+    this->_serverReadyConditionVariable.wait(lock, [this] { return this->_isServerReady; });
 }
 
 void ObjectStorageServer::shutdown()
@@ -103,45 +86,26 @@ void ObjectStorageServer::shutdown()
 
 void ObjectStorageServer::initServerReadyFds()
 {
-    int pipeFds[2] {};
-    int ret = pipe(pipeFds);
-
-    if (ret != 0) {
-        _logger.log(
-            scaler::ymq::Logger::LoggingLevel::error,
-            "ObjectStorageServer: create on server ready FDs failed, errno=",
-            errno);
-        std::terminate();
-    }
-
-    onServerReadyReader = pipeFds[0];
-    onServerReadyWriter = pipeFds[1];
+    std::lock_guard<std::mutex> guard {this->_serverReadyMutex};
+    this->_isServerReady = false;
 }
 
 void ObjectStorageServer::setServerReadyFd()
 {
-    uint64_t value = 1;
-    ssize_t ret    = write(onServerReadyWriter, &value, sizeof(uint64_t));
-
-    if (ret != sizeof(uint64_t)) {
-        _logger.log(
-            scaler::ymq::Logger::LoggingLevel::error,
-            "ObjectStorageServer: write to onServerReadyWriter failed, errno=",
-            errno);
-        std::terminate();
+    {
+        std::lock_guard<std::mutex> guard {this->_serverReadyMutex};
+        this->_isServerReady = true;
     }
+    this->_serverReadyConditionVariable.notify_all();
 }
 
 void ObjectStorageServer::closeServerReadyFds()
 {
-    const std::array<int, 2> fds {onServerReadyReader, onServerReadyWriter};
-
-    for (const int fd: fds) {
-        if (close(fd) != 0) {
-            _logger.log(scaler::ymq::Logger::LoggingLevel::error, "ObjectStorageServer: close failed, errno=", errno);
-            std::terminate();
-        }
+    {
+        std::lock_guard<std::mutex> guard {this->_serverReadyMutex};
+        this->_isServerReady = true;
     }
+    this->_serverReadyConditionVariable.notify_all();
 }
 
 void ObjectStorageServer::processRequests(std::function<bool()> running)

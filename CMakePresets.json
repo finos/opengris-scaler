@@ -49,6 +49,16 @@
         "strategy": "external"
       },
       "binaryDir": "${sourceDir}/build_windows_x64"
+    },
+    {
+      "name": "windows-x64-wheel",
+      "displayName": "Windows x64 wheel build (matches cibuildwheel)",
+      "inherits": "windows-x64",
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "Release",
+        "CMAKE_PREFIX_PATH": "$env{TEMP}/opengris-thirdparties"
+      },
+      "binaryDir": "${sourceDir}/build_windows_x64_wheel"
     }
   ],
   "buildPresets": [

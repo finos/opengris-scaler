@@ -1,7 +1,7 @@
 # protocol_objs ======================================================================================================
 # compile all protocol schema capnp files
 set(CAPNPC_SRC_PREFIX "${PROJECT_SOURCE_DIR}/src/protocol" CACHE STRING "" FORCE)
-set(CAPNPC_OUTPUT_DIR "${PROJECT_SOURCE_DIR}/src/protocol" CACHE STRING "" FORCE)
+set(CAPNPC_OUTPUT_DIR "${PROJECT_BINARY_DIR}/src/protocol" CACHE STRING "" FORCE)
 file(MAKE_DIRECTORY "${CAPNPC_OUTPUT_DIR}")
 
 capnp_generate_cpp(
@@ -29,7 +29,7 @@ add_library(protocol_objs OBJECT
     ${OBJECT_STORAGE_CAPNP_HEADERS}
 )
 
-target_include_directories(protocol_objs PUBLIC "${PROJECT_SOURCE_DIR}/src")
+target_include_directories(protocol_objs PUBLIC "${PROJECT_BINARY_DIR}/src" "${PROJECT_SOURCE_DIR}/src")
 
 # py_capnp python module ==============================================================================================
 scaler_add_python_module(

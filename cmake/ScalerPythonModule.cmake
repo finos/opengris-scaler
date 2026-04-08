@@ -11,6 +11,16 @@ message(STATUS "Python ABI: ${Python3_SOABI}")
 if(WIN32 AND TARGET Python3::Module)
     # Python.org Windows builds usually ship only the release import library.
     set_property(TARGET Python3::Module PROPERTY MAP_IMPORTED_CONFIG_DEBUG Release)
+
+    get_target_property(PYTHON3_MODULE_IMPLIB_RELEASE Python3::Module IMPORTED_IMPLIB_RELEASE)
+    if(PYTHON3_MODULE_IMPLIB_RELEASE)
+        set_property(TARGET Python3::Module PROPERTY IMPORTED_IMPLIB_DEBUG "${PYTHON3_MODULE_IMPLIB_RELEASE}")
+    endif()
+
+    get_target_property(PYTHON3_MODULE_LOCATION_RELEASE Python3::Module IMPORTED_LOCATION_RELEASE)
+    if(PYTHON3_MODULE_LOCATION_RELEASE)
+        set_property(TARGET Python3::Module PROPERTY IMPORTED_LOCATION_DEBUG "${PYTHON3_MODULE_LOCATION_RELEASE}")
+    endif()
 endif()
 
 # Create a C Python extension module

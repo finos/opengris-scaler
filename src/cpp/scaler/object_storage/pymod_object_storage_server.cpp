@@ -64,20 +64,20 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
 
     // we have to copy this memory before releasing the GIL
     // because it's owned by Python
-    std::string s_addr(addr);
-    std::string s_port = std::to_string(port);
-    std::string s_identity(identity);
-    std::string s_log_level(log_level);
-    std::string s_log_format(log_format);
+    std::string addressString(addr);
+    std::string portString = std::to_string(port);
+    std::string identityString(identity);
+    std::string logLevelString(log_level);
+    std::string logFormatString(log_format);
 
     Py_BEGIN_ALLOW_THREADS;
     ((PyObjectStorageServer*)self)
         ->server.run(
-            std::move(s_addr),
-            std::move(s_port),
-            std::move(s_identity),
-            std::move(s_log_level),
-            std::move(s_log_format),
+            std::move(addressString),
+            std::move(portString),
+            std::move(identityString),
+            std::move(logLevelString),
+            std::move(logFormatString),
             std::move(logging_paths),
             std::move(running));
     Py_END_ALLOW_THREADS;

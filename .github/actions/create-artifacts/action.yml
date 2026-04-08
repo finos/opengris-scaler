@@ -16,6 +16,15 @@ runs:
         uv pip install --system --upgrade build cibuildwheel twine
         rm -rf dist
 
+    - name: Install Python Packages (Windows)
+      if: inputs.os == 'Windows'
+      shell: pwsh
+      run: |
+        uv pip install --system --upgrade build cibuildwheel twine
+        if (Test-Path dist) {
+          Remove-Item -Recurse -Force dist
+        }
+
     - name: Build Sdist (Linux)
       if: inputs.os == 'Linux'
       shell: bash
@@ -25,4 +34,9 @@ runs:
     - name: Build Wheel (Linux/macOS)
       if: inputs.os != 'Windows'
       shell: bash
+      run: python -m cibuildwheel --output-dir dist
+
+    - name: Build Wheel (Windows)
+      if: inputs.os == 'Windows'
+      shell: pwsh
       run: python -m cibuildwheel --output-dir dist

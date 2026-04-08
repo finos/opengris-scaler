@@ -19,6 +19,8 @@ jobs:
           # TODO: re-enable after fixing QEMU exec format error
           # - os: ubuntu-latest
           #   cibw_archs: aarch64
+          - os: windows-latest
+            cibw_archs: AMD64
           - os: macos-latest
             cibw_archs: native
           - os: macos-15-intel

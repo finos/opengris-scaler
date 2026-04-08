@@ -1,9 +1,11 @@
 #pragma once
 
+#include <condition_variable>
 #include <expected>
 #include <future>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <span>
 
 #include "scaler/logging/logging.h"
@@ -58,8 +60,9 @@ private:
     scaler::ymq::IOContext _ioContext;
     std::unique_ptr<scaler::ymq::future::BinderSocket> _socket;
 
-    int onServerReadyReader;
-    int onServerReadyWriter;
+    std::mutex _serverReadyMutex;
+    std::condition_variable _serverReadyConditionVariable;
+    bool _isServerReady {false};
 
     ObjectManager objectManager;
 
