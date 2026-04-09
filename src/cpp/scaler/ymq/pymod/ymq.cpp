@@ -62,7 +62,7 @@ int YMQ_createIntEnum(
         if (!value)
             return -1;
 
-        auto status = PyDict_SetItemString(*enumDict, entry.first, *value);
+        auto status = PyDict_SetItemString(enumDict.get(), entry.first, value.get());
         if (status < 0)
             return -1;
     }
@@ -73,7 +73,8 @@ int YMQ_createIntEnum(
         return -1;
 
     // create our class by calling enum.IntEnum(enumName, enumDict)
-    OwnedPyObject enumClass = PyObject_CallMethod(*state->enumModule, "IntEnum", "sO", enumName.c_str(), *enumDict);
+    OwnedPyObject enumClass =
+        PyObject_CallMethod(state->enumModule.get(), "IntEnum", "sO", enumName.c_str(), enumDict.get());
     if (!enumClass)
         return -1;
 
@@ -81,7 +82,7 @@ int YMQ_createIntEnum(
 
     // add the class to the module
     // this increments the reference count of enumClass
-    return PyModule_AddObjectRef(pyModule, enumName.c_str(), *enumClass);
+    return PyModule_AddObjectRef(pyModule, enumName.c_str(), enumClass.get());
 }
 
 static PyObject* YMQErrorCode_explanation(PyObject* self, PyObject* Py_UNUSED(args))
@@ -90,12 +91,12 @@ static PyObject* YMQErrorCode_explanation(PyObject* self, PyObject* Py_UNUSED(ar
     if (!pyValue)
         return nullptr;
 
-    if (!PyLong_Check(*pyValue)) {
+    if (!PyLong_Check(pyValue.get())) {
         PyErr_SetString(PyExc_TypeError, "Expected an integer value");
         return nullptr;
     }
 
-    long value = PyLong_AsLong(*pyValue);
+    long value = PyLong_AsLong(pyValue.get());
 
     if (value == -1 && PyErr_Occurred())
         return nullptr;
@@ -129,17 +130,17 @@ int YMQ_createErrorCodeEnum(PyObject* pyModule, YMQState* state)
         METH_NOARGS,
         PyDoc_STR("Returns an explanation of a YMQ error code")};
 
-    OwnedPyObject iter = PyObject_GetIter(*state->PyErrorCodeType);
+    OwnedPyObject iter = PyObject_GetIter(state->PyErrorCodeType.get());
     if (!iter)
         return -1;
 
     OwnedPyObject item {};
-    while ((item = PyIter_Next(*iter))) {
-        OwnedPyObject fn = PyCFunction_NewEx(&YMQErrorCode_explanation_def, *item, pyModule);
+    while ((item = PyIter_Next(iter.get()))) {
+        OwnedPyObject fn = PyCFunction_NewEx(&YMQErrorCode_explanation_def, item.get(), pyModule);
         if (!fn)
             return -1;
 
-        auto status = PyObject_SetAttrString(*item, "explanation", *fn);
+        auto status = PyObject_SetAttrString(item.get(), "explanation", fn.get());
         if (status < 0)
             return -1;
     }
@@ -177,11 +178,11 @@ int YMQ_createExceptions(PyObject* pyModule, YMQState* state)
             slots,
         };
 
-        OwnedPyObject<> bases = PyTuple_Pack(1, *state->PyExceptionType);
+        OwnedPyObject<> bases = PyTuple_Pack(1, state->PyExceptionType.get());
         if (!bases)
             return -1;
 
-        PyObject* subtype = PyType_FromModuleAndSpec(pyModule, &spec, *bases);
+        PyObject* subtype = PyType_FromModuleAndSpec(pyModule, &spec, bases.get());
 
         if (!subtype)
             return -1;
@@ -212,11 +213,11 @@ static int YMQ_createType(
         return -1;
 
 #if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION == 8
-    if (PyObject_SetAttrString(**storage, "__module_object__", pyModule) < 0)
+    if (PyObject_SetAttrString(storage->get(), "__module_object__", pyModule) < 0)
         return -1;
 
     if (getbuffer && releasebuffer) {
-        PyTypeObject* type_obj = (PyTypeObject*)**storage;
+        PyTypeObject* type_obj = (PyTypeObject*)storage->get();
 
         type_obj->tp_as_buffer->bf_getbuffer     = getbuffer;
         type_obj->tp_as_buffer->bf_releasebuffer = releasebuffer;
@@ -225,7 +226,7 @@ static int YMQ_createType(
 #endif
 
     if (add)
-        if (PyModule_AddObjectRef(pyModule, name, **storage) < 0)
+        if (PyModule_AddObjectRef(pyModule, name, storage->get()) < 0)
             return -1;
 
     return 0;
@@ -323,9 +324,9 @@ OwnedPyObject<> YMQ_GetRaisedException()
 
 OwnedPyObject<> completeCallback(const OwnedPyObject<>& callback, const OwnedPyObject<>& result)
 {
-    OwnedPyObject callbackResult = PyObject_CallFunctionObjArgs(*callback, *result, nullptr);
+    OwnedPyObject callbackResult = PyObject_CallFunctionObjArgs(callback.get(), result.get(), nullptr);
     if (!callbackResult) {
-        PyErr_WriteUnraisable(*callback);
+        PyErr_WriteUnraisable(callback.get());
     }
     return callbackResult;
 }
@@ -333,9 +334,9 @@ OwnedPyObject<> completeCallback(const OwnedPyObject<>& callback, const OwnedPyO
 OwnedPyObject<> completeCallbackWithRaisedException(const OwnedPyObject<>& callback)
 {
     OwnedPyObject exception      = YMQ_GetRaisedException();
-    OwnedPyObject callbackResult = PyObject_CallFunctionObjArgs(*callback, *exception, nullptr);
+    OwnedPyObject callbackResult = PyObject_CallFunctionObjArgs(callback.get(), exception.get(), nullptr);
     if (!callbackResult) {
-        PyErr_WriteUnraisable(*callback);
+        PyErr_WriteUnraisable(callback.get());
     }
     return callbackResult;
 }
@@ -344,9 +345,9 @@ OwnedPyObject<> completeCallbackWithCoreError(
     YMQState* state, const OwnedPyObject<>& callback, const scaler::ymq::Error& error)
 {
     OwnedPyObject exception      = YMQException_createFromCoreError(state, error);
-    OwnedPyObject callbackResult = PyObject_CallFunctionObjArgs(*callback, *exception, nullptr);
+    OwnedPyObject callbackResult = PyObject_CallFunctionObjArgs(callback.get(), exception.get(), nullptr);
     if (!callbackResult) {
-        PyErr_WriteUnraisable(*callback);
+        PyErr_WriteUnraisable(callback.get());
     }
     return callbackResult;
 }

@@ -11,6 +11,11 @@ message(STATUS "Python version: ${Python3_VERSION}")
 message(STATUS "Python include dirs: ${Python3_INCLUDE_DIRS}")
 message(STATUS "Python ABI: ${Python3_SOABI}")
 
+if(WIN32 AND TARGET Python3::Module)
+    # Python.org Windows builds usually ship only the release import library.
+    set_property(TARGET Python3::Module PROPERTY MAP_IMPORTED_CONFIG_DEBUG Release)
+endif()
+
 # Create a C Python extension module
 #
 # scaler_add_python_module(
@@ -54,6 +59,7 @@ function(scaler_add_python_module)
             LIBRARY_OUTPUT_DIRECTORY_DEBUG          ${CMAKE_BINARY_DIR}/src/${PYMOD_INSTALL_DEST}
             LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_BINARY_DIR}/src/${PYMOD_INSTALL_DEST}
             LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL     ${CMAKE_BINARY_DIR}/src/${PYMOD_INSTALL_DEST}
+            MSVC_RUNTIME_LIBRARY                    "MultiThreadedDLL"
         )
     endif()
 

@@ -52,8 +52,7 @@ runs:
         find . \
         -type d -name third_party -prune -o \
         -type d -name thirdparties -prune -o \
-        -type d -name capnp -prune -o \
+        -type d -name protocol -prune -o \
         -type d -name 'build*' -prune -o \
         -type f \( -name '*.cpp' -o -name '*.h' \) -print0 | \
         xargs -0 clang-format-21 --Werror --dry-run --
-

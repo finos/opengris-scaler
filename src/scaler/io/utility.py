@@ -4,12 +4,10 @@ from typing import List, Optional
 
 import zmq.asyncio
 
+import scaler.protocol.python._message as _message
 from scaler.config.defaults import CAPNP_DATA_SIZE_LIMIT, CAPNP_MESSAGE_SIZE_LIMIT, SCALER_NETWORK_BACKEND
 from scaler.config.types.network_backend import NetworkBackend
-from scaler.io.async_object_storage_connector import PyAsyncObjectStorageConnector
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector, SyncObjectStorageConnector
-from scaler.io.sync_object_storage_connector import PySyncObjectStorageConnector
-from scaler.protocol.capnp._python import _message  # noqa
 from scaler.protocol.python.message import PROTOCOL
 from scaler.protocol.python.mixins import Message
 from scaler.utility.exceptions import ObjectStorageException
@@ -71,51 +69,31 @@ def create_async_connector(ctx: zmq.asyncio.Context, *args, **kwargs) -> AsyncCo
 
 
 def create_async_object_storage_connector(*args, **kwargs) -> AsyncObjectStorageConnector:
-    connector_type = get_scaler_network_backend_from_env()
-    if connector_type == NetworkBackend.ymq:
-        from scaler.io.ymq_async_object_storage_connector import YMQAsyncObjectStorageConnector
+    # The object storage server currently speaks YMQ in every supported deployment mode.
+    from scaler.io.ymq_async_object_storage_connector import YMQAsyncObjectStorageConnector
 
-        return YMQAsyncObjectStorageConnector(*args, **kwargs)
-    elif connector_type == NetworkBackend.tcp_zmq:
-        return PyAsyncObjectStorageConnector(*args, **kwargs)
-    else:
-        raise ValueError(
-            f"Invalid SCALER_NETWORK_BACKEND value." f"Expected one of: {[e.name for e in NetworkBackend]}"
-        )
+    return YMQAsyncObjectStorageConnector(*args, **kwargs)
 
 
 def create_sync_object_storage_connector(*args, **kwargs) -> SyncObjectStorageConnector:
-    connector_type = get_scaler_network_backend_from_env()
-    if connector_type == NetworkBackend.ymq:
-        from scaler.io.ymq_sync_object_storage_connector import YMQSyncObjectStorageConnector
+    from scaler.io.ymq_sync_object_storage_connector import YMQSyncObjectStorageConnector
 
-        try:
-            return YMQSyncObjectStorageConnector(*args, **kwargs)
-        except ConnectionRefusedError as error:
-            host = kwargs.get("host", args[0] if len(args) > 0 else "<unknown-host>")
-            port = kwargs.get("port", args[1] if len(args) > 1 else "<unknown-port>")
-            raise ObjectStorageException(f"cannot connect to object storage address tcp://{host}:{port}") from error
-    elif connector_type == NetworkBackend.tcp_zmq:
-        try:
-            return PySyncObjectStorageConnector(*args, **kwargs)
-        except ConnectionRefusedError as error:
-            host = kwargs.get("host", args[0] if len(args) > 0 else "<unknown-host>")
-            port = kwargs.get("port", args[1] if len(args) > 1 else "<unknown-port>")
-            raise ObjectStorageException(f"cannot connect to object storage address tcp://{host}:{port}") from error
-    else:
-        raise ValueError(
-            f"Invalid SCALER_NETWORK_BACKEND value." f"Expected one of: {[e.name for e in NetworkBackend]}"
-        )
+    try:
+        return YMQSyncObjectStorageConnector(*args, **kwargs)
+    except ConnectionRefusedError as error:
+        host = kwargs.get("host", args[0] if len(args) > 0 else "<unknown-host>")
+        port = kwargs.get("port", args[1] if len(args) > 1 else "<unknown-port>")
+        raise ObjectStorageException(f"cannot connect to object storage address tcp://{host}:{port}") from error
 
 
 def deserialize(data: Buffer) -> Optional[Message]:
-    with _message.Message.from_bytes(data, traversal_limit_in_words=CAPNP_MESSAGE_SIZE_LIMIT) as payload:
-        if not hasattr(payload, payload.which()):
-            logging.error(f"unknown message type: {payload.which()}")
-            return None
+    payload = _message.Message.from_bytes(data, traversal_limit_in_words=CAPNP_MESSAGE_SIZE_LIMIT)
+    if not hasattr(payload, payload.which()):
+        logging.error(f"unknown message type: {payload.which()}")
+        return None
 
-        message = getattr(payload, payload.which())
-        return PROTOCOL[payload.which()](message)
+    message = getattr(payload, payload.which())
+    return PROTOCOL[payload.which()](message)
 
 
 def serialize(message: Message) -> bytes:

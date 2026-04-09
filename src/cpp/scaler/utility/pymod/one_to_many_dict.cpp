@@ -126,7 +126,7 @@ static PyObject* PyOneToManyDictGetValues(PyOneToManyDict* self, PyObject* args)
     }
 
     for (const auto& value: *values) {
-        if (PySet_Add(*valueSet, *value) == -1) {
+        if (PySet_Add(valueSet.get(), value.get()) == -1) {
             return nullptr;
         }
     }
@@ -153,7 +153,7 @@ static PyObject* PyOneToManyDictRemoveKey(PyOneToManyDict* self, PyObject* args)
     }
 
     for (const auto& value: result.first) {
-        if (PySet_Add(*valueSet, *value) == -1) {
+        if (PySet_Add(valueSet.get(), value.get()) == -1) {
             return nullptr;
         }
     }
@@ -185,7 +185,7 @@ static PyObject* PyOneToManyDictKeys(PyOneToManyDict* self, [[maybe_unused]] PyO
     }
 
     for (const auto& entry: self->dict.keys()) {
-        if (PySet_Add(*keySet, *entry.first) == -1) {
+        if (PySet_Add(keySet.get(), entry.first.get()) == -1) {
             return nullptr;
         }
     }
@@ -212,11 +212,11 @@ static PyObject* PyOneToManyDictValues(PyOneToManyDict* self, [[maybe_unused]] P
         }
 
         for (const auto& v: vs) {
-            if (PySet_Add(*pySet, *v) == -1) {
+            if (PySet_Add(pySet.get(), v.get()) == -1) {
                 return nullptr;
             }
         }
-        if (PyList_Append(*resultList, *pySet) == -1) {
+        if (PyList_Append(resultList.get(), pySet.get()) == -1) {
             return nullptr;
         }
     }
@@ -238,17 +238,17 @@ static PyObject* PyOneToManyDictItems(PyOneToManyDict* self, [[maybe_unused]] Py
         }
 
         for (const auto& value: values) {
-            if (PySet_Add(*valueSet, *value) == -1) {
+            if (PySet_Add(valueSet.get(), value.get()) == -1) {
                 return nullptr;
             }
         }
 
-        OwnedPyObject<> itemTuple = PyTuple_Pack(2, *key, *valueSet);
+        OwnedPyObject<> itemTuple = PyTuple_Pack(2, key.get(), valueSet.get());
         if (!itemTuple) {
             return nullptr;
         }
 
-        if (PyList_Append(*itemList, *itemTuple) == -1) {
+        if (PyList_Append(itemList.get(), itemTuple.get()) == -1) {
             return nullptr;
         }
     }

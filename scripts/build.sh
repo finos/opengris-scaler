@@ -15,8 +15,9 @@ BUILD_PRESET="${OS}-${ARCH}"
 
 if [[ "$1" == "--clean" ]]; then
     rm -rf $BUILD_DIR
-    rm -f src/scaler/protocol/capnp/*.c++
-    rm -f src/scaler/protocol/capnp/*.h
+    rm -f src/protocol/*.capnp.c++
+    rm -f src/protocol/*.capnp.cpp
+    rm -f src/protocol/*.capnp.h
 fi
 
 echo "Build directory: $BUILD_DIR"

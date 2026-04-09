@@ -86,7 +86,7 @@ static PyObject* PyAddress_fromAddress(YMQState* state, const scaler::ymq::Addre
     if (!state)
         return nullptr;
 
-    PyAddress* pyAddress = PyObject_New(PyAddress, reinterpret_cast<PyTypeObject*>(*state->PyAddressType));
+    PyAddress* pyAddress = PyObject_New(PyAddress, reinterpret_cast<PyTypeObject*>(state->PyAddressType.get()));
     if (!pyAddress)
         return nullptr;
 
@@ -125,7 +125,7 @@ static PyObject* PyAddress_type_getter(PyAddress* self, void* Py_UNUSED(closure)
     if (!addressTypeIntObj)
         return nullptr;
 
-    return PyObject_CallOneArg(*state->PyAddressTypeEnumType, *addressTypeIntObj);
+    return PyObject_CallOneArg(state->PyAddressTypeEnumType.get(), addressTypeIntObj.get());
 }
 
 static PyGetSetDef PyAddress_properties[] = {

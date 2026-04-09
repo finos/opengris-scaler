@@ -1,5 +1,8 @@
 @0xf57f79ac88fab620;
 
+using Cxx = import "/capnp/c++.capnp";
+$Cxx.namespace("scaler::protocol");
+
 enum TaskResultType {
     success @0;           # if submit and task is done and get result
     failed @1;            # if submit and task is failed on worker

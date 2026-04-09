@@ -4,9 +4,9 @@ import socket
 import uuid
 from typing import Dict, Optional, Tuple
 
+import scaler.protocol.python._object_storage as _object_storage  # noqa
 from scaler.io.mixins import AsyncObjectStorageConnector
 from scaler.io.ymq import Bytes, ConnectorSocket, IOContext, YMQException
-from scaler.protocol.capnp._python import _object_storage  # noqa
 from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader, to_capnp_object_id
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ObjectID
@@ -169,8 +169,8 @@ class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         assert header_data is not None
         assert len(header_data) == ObjectResponseHeader.MESSAGE_LENGTH
 
-        with _object_storage.ObjectResponseHeader.from_bytes(header_data) as header_message:
-            return ObjectResponseHeader(header_message)
+        header_message = _object_storage.ObjectResponseHeader.from_bytes(header_data)
+        return ObjectResponseHeader(header_message)
 
     async def __read_response_payload(self, header: ObjectResponseHeader) -> bytes:
         assert self._socket is not None

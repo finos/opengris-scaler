@@ -1,15 +1,3 @@
-# capnp_objs ===========================================================================================================
-# compile object storage schema capnp
-set(CAPNPC_SRC_PREFIX "${PROJECT_SOURCE_DIR}/src/scaler/protocol/capnp" CACHE STRING "" FORCE)
-set(CAPNPC_OUTPUT_DIR "${PROJECT_SOURCE_DIR}/src/scaler/protocol/capnp" CACHE STRING "" FORCE)
-file(MAKE_DIRECTORY "${CAPNPC_OUTPUT_DIR}")
-capnp_generate_cpp(OBJECT_STORAGE_CAPNP_SRCS OBJECT_STORAGE_CAPNP_HEADERS "${PROJECT_SOURCE_DIR}/src/scaler/protocol/capnp/object_storage.capnp")
-
-add_library(capnp_objs OBJECT
-    ${OBJECT_STORAGE_CAPNP_SRCS}
-    ${OBJECT_STORAGE_CAPNP_HEADERS}
-)
-
 # object_storage_server_objs ===========================================================================================
 add_library(object_storage_server_objs OBJECT
     io_helper.cpp
@@ -18,6 +6,7 @@ add_library(object_storage_server_objs OBJECT
     object_manager.cpp
 )
 
+target_link_libraries(object_storage_server_objs PUBLIC protocol_objs)
 
 # object_storage_server python =========================================================================================
 scaler_add_python_module(
@@ -26,7 +15,7 @@ scaler_add_python_module(
     INSTALL_DEST scaler/object_storage
     SOURCES pymod_object_storage_server.cpp
     LINK_LIBRARIES
-        capnp_objs
+        protocol_objs
         ymq_objs
         object_storage_server_objs
         CapnProto::capnp
