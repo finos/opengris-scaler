@@ -33,7 +33,7 @@ from scaler.io.utility import (
     create_async_object_storage_connector,
     get_scaler_network_backend_from_env,
 )
-from scaler.io.ymq import ymq
+from scaler.io import ymq
 from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,

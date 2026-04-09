@@ -22,7 +22,7 @@ import zmq
 from scaler.config.section.oci_raw_worker_adapter import OCIRawWorkerAdapterConfig
 from scaler.io import uv_ymq
 from scaler.io.utility import create_async_connector, create_async_simple_context
-from scaler.io.ymq import ymq
+from scaler.io import ymq
 from scaler.protocol.python.message import (
     Message,
     WorkerAdapterCommand,
