@@ -223,6 +223,20 @@ class TestRayCompat(unittest.TestCase):
 
         self.assertEqual(ray.get(random.remote()), 7)
 
+    def test_decorate_before_explicit_init(self) -> None:
+        # Decoration must not trigger auto-initialization — the caller needs to call scaler_init()
+        # with a custom config before submitting any tasks.
+        @ray.remote
+        def fn() -> int:
+            return 1
+
+        self.assertFalse(ray.is_initialized())
+
+        combo = SchedulerClusterCombo(n_workers=1)
+        scaler_init(address=combo.get_address())
+
+        self.assertEqual(ray.get(fn.remote()), 1)
+
     def test_ray_actor_not_implemented(self) -> None:
         with self.assertRaises(NotImplementedError):
             # Any access to ray.actor should raise NotImplementedError

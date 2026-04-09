@@ -7,13 +7,12 @@ import scaler.compat.ray  # noqa: F401
 
 
 def main():
-    # the scaler is implicitly initialized here
-    # see basic_remote_cluster.py for more advanced usage
     @ray.remote
     def my_function():
         return 1
 
-    # this is executed by the local scaler cluster
+    # Scaler is implicitly initialized on the first .remote() call using default settings.
+    # See basic_remote_cluster.py for explicit initialization with custom settings.
     future = my_function.remote()
     assert ray.get(future) == 1
 
