@@ -129,11 +129,13 @@ def show_status(status: Message, screen):
     try:
         screen.addstr(new_row, 0, "-" * max_cols)
         screen.addstr(new_row + 1, 0, "Shortcuts: " + " ".join([f"{v}[{chr(k)}]" for k, v in SORT_BY_OPTIONS.items()]))
+        total_pending = sum(d.get("pending_workers", 0) for d in status.scaling_manager.worker_manager_details)
+        pending_str = f", {total_pending} pending" if total_pending > 0 else ""
         screen.addstr(
             new_row + 3,
             0,
             f"Total {len(status.scaling_manager.managed_workers)} manager(s) "
-            f"with {len(status.worker_manager.workers)} worker(s)",
+            f"with {len(status.worker_manager.workers)} worker(s){pending_str}",
         )
         _ = __print_table(screen, new_row + 4, table3)
     except curses.error:

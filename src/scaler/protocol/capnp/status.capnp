@@ -68,6 +68,7 @@ struct ScalingManagerStatus {
         lastSeenS @2 :UInt8;
         maxTaskConcurrency @3 :UInt32;
         capabilities @4 :Text;
+        pendingWorkers @5 :UInt32;
     }
 }
 

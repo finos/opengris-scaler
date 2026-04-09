@@ -45,6 +45,9 @@ class CapabilityScalingPolicy(ScalingPolicy):
         # Group workers by their provided capabilities
         workers_by_capability = self._group_workers_by_capability(information_snapshot)
 
+        snapshot = worker_manager_snapshots.get(worker_manager_heartbeat.worker_manager_id)
+        pending = snapshot.pending_worker_count if snapshot else 0
+
         # Try to get start commands first - if any, return early
         start_commands = self._get_start_commands(
             tasks_by_capability,
@@ -52,6 +55,7 @@ class CapabilityScalingPolicy(ScalingPolicy):
             managed_worker_ids,
             managed_worker_capabilities,
             worker_manager_heartbeat,
+            pending,
         )
         if start_commands:
             return start_commands
@@ -115,6 +119,7 @@ class CapabilityScalingPolicy(ScalingPolicy):
         managed_worker_ids: List[WorkerID],
         managed_worker_capabilities: Dict[str, int],
         worker_manager_heartbeat: WorkerManagerHeartbeat,
+        pending_worker_count: int = 0,
     ) -> List[WorkerManagerCommand]:
         """Collect all start commands for capability sets that need scaling up."""
         commands: List[WorkerManagerCommand] = []
@@ -132,13 +137,17 @@ class CapabilityScalingPolicy(ScalingPolicy):
                 if not self._has_capable_managed_workers(
                     capability_keys, managed_worker_ids, managed_worker_capabilities
                 ):
-                    command = self._create_start_command(capability_dict, managed_worker_ids, worker_manager_heartbeat)
+                    command = self._create_start_command(
+                        capability_dict, managed_worker_ids, worker_manager_heartbeat, pending_worker_count
+                    )
                     if command is not None:
                         commands.append(command)
             elif worker_count > 0:
                 task_ratio = task_count / worker_count
                 if task_ratio > self._upper_task_ratio:
-                    command = self._create_start_command(capability_dict, managed_worker_ids, worker_manager_heartbeat)
+                    command = self._create_start_command(
+                        capability_dict, managed_worker_ids, worker_manager_heartbeat, pending_worker_count
+                    )
                     if command is not None:
                         commands.append(command)
 
@@ -214,10 +223,11 @@ class CapabilityScalingPolicy(ScalingPolicy):
         capability_dict: Dict[str, int],
         managed_worker_ids: List[WorkerID],
         worker_manager_heartbeat: WorkerManagerHeartbeat,
+        pending_worker_count: int = 0,
     ) -> Optional[WorkerManagerCommand]:
         """Create a start workers command if capacity allows."""
         max_concurrency = worker_manager_heartbeat.max_task_concurrency
-        if max_concurrency != -1 and len(managed_worker_ids) >= max_concurrency:
+        if max_concurrency != -1 and len(managed_worker_ids) + pending_worker_count >= max_concurrency:
             return None
 
         logging.info(f"Requesting worker with capabilities: {capability_dict!r}")

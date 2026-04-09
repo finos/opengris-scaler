@@ -42,11 +42,10 @@ class WorkerManagerController(Looper, Reporter):
         # Reverse map: worker_manager_id -> source (for duplicate detection)
         self._manager_id_to_source: Dict[bytes, bytes] = {}
 
-        # Sources that have reported TooManyWorkers: maps source -> worker count at the time
-        # TooManyWorkers was received. Suppress new StartWorkers until the scheduler's view of
-        # managed workers grows beyond that baseline, meaning at least one booting instance has
-        # sent its first heartbeat and the ORB adapter slot is no longer occupied by a pending boot.
-        self._at_capacity_baseline: Dict[bytes, int] = {}
+        # Pending worker tracking: workers launched (StartWorkers success) but not yet connected.
+        # _pending_worker_count[source] is decremented as workers appear in the worker controller.
+        self._pending_worker_count: Dict[bytes, int] = {}
+        self._last_worker_count: Dict[bytes, int] = {}
 
     def register(self, binder: AsyncBinder, task_controller: TaskController, worker_controller: WorkerController):
         self._binder = binder
@@ -75,6 +74,15 @@ class WorkerManagerController(Looper, Reporter):
 
         # Get managed worker IDs from worker controller (heartbeat-based live truth)
         managed_worker_ids = self._worker_controller.get_workers_by_manager_id(heartbeat.worker_manager_id)
+
+        # Update pending worker count: decrement for each worker that newly connected.
+        worker_count = len(managed_worker_ids)
+        prev_count = self._last_worker_count.get(source, 0)
+        newly_connected = max(0, worker_count - prev_count)
+        if newly_connected > 0:
+            self._pending_worker_count[source] = max(0, self._pending_worker_count.get(source, 0) - newly_connected)
+        self._last_worker_count[source] = worker_count
+
         managed_worker_capabilities = self._manager_capabilities[source]
 
         # Build cross-manager snapshots from all known managers
@@ -90,17 +98,6 @@ class WorkerManagerController(Looper, Reporter):
             information_snapshot, heartbeat, managed_worker_ids, managed_worker_capabilities, worker_manager_snapshots
         )
 
-        # If this manager previously reported TooManyWorkers, suppress new StartWorkers requests
-        # until the scheduler's worker count grows beyond the baseline recorded at that time.
-        # This handles the visibility gap where the ORB adapter has created instances that have
-        # not yet sent their first heartbeat to the scheduler.
-        # ShutdownWorkers commands must never be suppressed, the baseline only applies to scale-up.
-        if source in self._at_capacity_baseline:
-            if len(managed_worker_ids) > self._at_capacity_baseline[source]:
-                del self._at_capacity_baseline[source]
-            else:
-                commands = [c for c in commands if c.command != WorkerManagerCommandType.StartWorkers]
-
         for command in commands:
             await self._send_command(source, command)
 
@@ -114,22 +111,13 @@ class WorkerManagerController(Looper, Reporter):
             if response.status == WorkerManagerCommandResponse.Status.Success:
                 if response.capabilities:
                     self._manager_capabilities[source] = dict(response.capabilities)
+                self._pending_worker_count[source] = self._pending_worker_count.get(source, 0) + 1
             else:
                 logging.warning(f"StartWorkers failed: {response.status.name}")
-                if response.status == WorkerManagerCommandResponse.Status.TooManyWorkers:
-                    manager_entry = self._manager_alive_since.get(source)
-                    if manager_entry is not None:
-                        _, hb = manager_entry
-                        baseline = len(self._worker_controller.get_workers_by_manager_id(hb.worker_manager_id))
-                        self._at_capacity_baseline[source] = baseline
 
         elif response.command == WorkerManagerCommandType.ShutdownWorkers:
             if response.status != WorkerManagerCommandResponse.Status.Success:
                 logging.warning(f"ShutdownWorkers failed: {response.status.name}")
-            else:
-                # Successful shutdown changes the capacity situation; clear any TooManyWorkers baseline
-                # so subsequent StartWorkers requests are no longer suppressed.
-                self._at_capacity_baseline.pop(source, None)
 
     async def routine(self):
         await self._clean_managers()
@@ -150,6 +138,7 @@ class WorkerManagerController(Looper, Reporter):
                     "last_seen_s": min(int(now - last_seen), 255),
                     "max_task_concurrency": heartbeat.max_task_concurrency,
                     "capabilities": caps_str,
+                    "pending_workers": self._pending_worker_count.get(source, 0),
                 }
             )
 
@@ -177,6 +166,7 @@ class WorkerManagerController(Looper, Reporter):
                 worker_manager_id=manager_id,
                 max_task_concurrency=heartbeat.max_task_concurrency,
                 worker_count=worker_count,
+                pending_worker_count=self._pending_worker_count.get(source, 0),
                 last_seen_s=last_seen,
                 capabilities=heartbeat.capabilities,
             )
@@ -214,4 +204,5 @@ class WorkerManagerController(Looper, Reporter):
         self._manager_alive_since.pop(source)
         self._pending_commands.pop(source, None)
         self._manager_capabilities.pop(source, None)
-        self._at_capacity_baseline.pop(source, None)
+        self._pending_worker_count.pop(source, None)
+        self._last_worker_count.pop(source, None)

@@ -3,6 +3,7 @@ import signal
 import time
 import unittest
 from multiprocessing import Process
+from unittest.mock import AsyncMock, MagicMock
 
 from scaler import Client
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
@@ -34,12 +35,15 @@ from scaler.protocol.python.message import (
     InformationSnapshot,
     Task,
     WorkerHeartbeat,
+    WorkerManagerCommandResponse,
     WorkerManagerCommandType,
     WorkerManagerHeartbeat,
 )
 from scaler.protocol.python.status import Resource
 from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla import VanillaScalingPolicy
+from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
@@ -391,6 +395,42 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         self.assertIn(bytes(w0), shutdown_ids)
         self.assertIn(bytes(w1), shutdown_ids)
 
+    def test_pending_fills_max_suppresses_capability_start(self):
+        """When pending workers reach max_concurrency, no StartWorkers should be issued."""
+        task_id = TaskID.generate_task_id()
+        task = _create_mock_task(task_id, {"gpu": 1})
+        snapshot = InformationSnapshot(tasks={task_id: task}, workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=3)
+        manager_snapshot = WorkerManagerSnapshot(
+            worker_manager_id=b"mgr", max_task_concurrency=3, worker_count=0, last_seen_s=0.0, pending_worker_count=3
+        )
+
+        commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], {}, {b"mgr": manager_snapshot})
+
+        start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
+        self.assertEqual(len(start_cmds), 0)
+
+    def test_managed_plus_pending_below_max_allows_capability_start(self):
+        """When managed + pending < max_concurrency, capability StartWorkers should be issued."""
+        task_id = TaskID.generate_task_id()
+        task = _create_mock_task(task_id, {"gpu": 1})
+        managed = [WorkerID(b"w0")]
+        snapshot = InformationSnapshot(tasks={task_id: task}, workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=5)
+        manager_snapshot = WorkerManagerSnapshot(
+            worker_manager_id=b"mgr",
+            max_task_concurrency=5,
+            worker_count=1,
+            last_seen_s=0.0,
+            pending_worker_count=2,  # 1 + 2 == 3 < 5
+        )
+
+        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {b"mgr": manager_snapshot})
+
+        start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
+        self.assertEqual(len(start_cmds), 1)
+        self.assertEqual(start_cmds[0].capabilities, {"gpu": 1})
+
 
 class TestVanillaScalingPolicy(unittest.TestCase):
     """Unit tests for VanillaScalingPolicy greedy shutdown."""
@@ -490,6 +530,207 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         self.assertNotIn(bytes(WorkerID(b"w9")), set(shutdown_ids))
         # First in list should be least busy
         self.assertEqual(shutdown_ids[0], bytes(WorkerID(b"w0")))
+
+    def test_pending_fills_max_concurrency_suppresses_start(self):
+        """When pending workers alone reach max_concurrency, no StartWorkers should be issued."""
+        tasks = {}
+        for _ in range(5):
+            tid = TaskID.generate_task_id()
+            tasks[tid] = _create_mock_task(tid, {})
+        snapshot = InformationSnapshot(tasks=tasks, workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=3)
+        manager_snapshot = WorkerManagerSnapshot(
+            worker_manager_id=b"mgr", max_task_concurrency=3, worker_count=0, last_seen_s=0.0, pending_worker_count=3
+        )
+
+        commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], {}, {b"mgr": manager_snapshot})
+
+        start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
+        self.assertEqual(len(start_cmds), 0)
+
+    def test_managed_plus_pending_equals_max_suppresses_start(self):
+        """When managed + pending == max_concurrency, no StartWorkers should be issued."""
+        tasks = {}
+        for _ in range(20):
+            tid = TaskID.generate_task_id()
+            tasks[tid] = _create_mock_task(tid, {})
+        managed = [WorkerID(b"w0"), WorkerID(b"w1")]
+        workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=10) for wid in managed}
+        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=5)
+        manager_snapshot = WorkerManagerSnapshot(
+            worker_manager_id=b"mgr",
+            max_task_concurrency=5,
+            worker_count=2,
+            last_seen_s=0.0,
+            pending_worker_count=3,  # 2 + 3 == 5
+        )
+
+        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {b"mgr": manager_snapshot})
+
+        start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
+        self.assertEqual(len(start_cmds), 0)
+
+    def test_managed_plus_pending_below_max_allows_start(self):
+        """When managed + pending < max_concurrency, StartWorkers should still be issued."""
+        tasks = {}
+        for _ in range(20):
+            tid = TaskID.generate_task_id()
+            tasks[tid] = _create_mock_task(tid, {})
+        managed = [WorkerID(b"w0")]
+        workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=10) for wid in managed}
+        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=5)
+        manager_snapshot = WorkerManagerSnapshot(
+            worker_manager_id=b"mgr",
+            max_task_concurrency=5,
+            worker_count=1,
+            last_seen_s=0.0,
+            pending_worker_count=2,  # 1 + 2 == 3 < 5
+        )
+
+        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {b"mgr": manager_snapshot})
+
+        start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
+        self.assertEqual(len(start_cmds), 1)
+
+    # TODO: uncomment once finos/opengris-scaler#696 is resolved.
+    # maxTaskConcurrency is UInt32 in Cap'n Proto and cannot represent -1, so
+    # WorkerManagerHeartbeat.new_msg(max_task_concurrency=-1, ...) currently raises KjException.
+    # def test_unlimited_concurrency_ignores_pending(self):
+    #     """When max_concurrency == -1, StartWorkers is issued regardless of pending count."""
+    #     tid = TaskID.generate_task_id()
+    #     snapshot = InformationSnapshot(tasks={tid: _create_mock_task(tid, {})}, workers={})
+    #     heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=-1)
+    #     manager_snapshot = WorkerManagerSnapshot(
+    #         worker_manager_id=b"mgr", max_task_concurrency=-1,
+    #         worker_count=0, last_seen_s=0.0, pending_worker_count=1000,
+    #     )
+    #     commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], {}, {b"mgr": manager_snapshot})
+    #     start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
+    #     self.assertEqual(len(start_cmds), 1)
+
+
+class TestWorkerManagerControllerPendingTracking(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        setup_logger()
+        config_controller = MagicMock()
+        policy_controller = MagicMock()
+        policy_controller.get_scaling_commands.return_value = []
+        policy_controller.get_scaling_status.return_value = MagicMock(managed_workers={})
+
+        self.controller = WorkerManagerController(config_controller, policy_controller)
+        self.policy_controller = policy_controller
+
+        binder = AsyncMock()
+        task_controller = MagicMock()
+        task_controller._task_id_to_task = {}
+        self.worker_controller = MagicMock()
+        self.worker_controller.get_workers_by_manager_id.return_value = []
+        self.worker_controller._worker_alive_since = {}
+
+        self.controller.register(binder, task_controller, self.worker_controller)
+
+    async def test_start_success_increments_pending_count(self):
+        """A successful StartWorkers response increments _pending_worker_count by 1."""
+        source = b"mgr-src"
+        self.controller._pending_commands[source] = MagicMock()
+        response = WorkerManagerCommandResponse.new_msg(
+            command=WorkerManagerCommandType.StartWorkers, status=WorkerManagerCommandResponse.Status.Success
+        )
+
+        await self.controller.on_command_response(source, response)
+
+        self.assertEqual(self.controller._pending_worker_count.get(source, 0), 1)
+
+    async def test_multiple_start_successes_accumulate_pending(self):
+        """Each successful StartWorkers response adds 1 to _pending_worker_count."""
+        source = b"mgr-src"
+        response = WorkerManagerCommandResponse.new_msg(
+            command=WorkerManagerCommandType.StartWorkers, status=WorkerManagerCommandResponse.Status.Success
+        )
+
+        for _ in range(3):
+            self.controller._pending_commands[source] = MagicMock()
+            await self.controller.on_command_response(source, response)
+
+        self.assertEqual(self.controller._pending_worker_count.get(source, 0), 3)
+
+    async def test_start_failure_does_not_increment_pending_count(self):
+        """A failed StartWorkers response must NOT increment _pending_worker_count."""
+        source = b"mgr-src"
+        self.controller._pending_commands[source] = MagicMock()
+        response = WorkerManagerCommandResponse.new_msg(
+            command=WorkerManagerCommandType.StartWorkers, status=WorkerManagerCommandResponse.Status.TooManyWorkers
+        )
+
+        await self.controller.on_command_response(source, response)
+
+        self.assertEqual(self.controller._pending_worker_count.get(source, 0), 0)
+
+    async def test_newly_connected_workers_decrement_pending_count(self):
+        """When new workers appear, on_heartbeat decrements pending by the newly-connected count."""
+        source = b"mgr-src"
+        manager_id = b"mgr-id"
+        heartbeat = _create_worker_manager_heartbeat(manager_id)
+        self.controller._manager_alive_since[source] = (0.0, heartbeat)
+        self.controller._manager_id_to_source[manager_id] = source
+        self.controller._pending_worker_count[source] = 3
+        self.controller._last_worker_count[source] = 0
+        self.worker_controller.get_workers_by_manager_id.return_value = [WorkerID(b"w0"), WorkerID(b"w1")]
+
+        await self.controller.on_heartbeat(source, heartbeat)
+
+        self.assertEqual(self.controller._pending_worker_count[source], 1)  # 3 - 2
+        self.assertEqual(self.controller._last_worker_count[source], 2)
+
+    async def test_pending_count_clamped_to_zero_on_excess_connections(self):
+        """_pending_worker_count must never go negative even if more workers connect than expected."""
+        source = b"mgr-src"
+        manager_id = b"mgr-id"
+        heartbeat = _create_worker_manager_heartbeat(manager_id)
+        self.controller._manager_alive_since[source] = (0.0, heartbeat)
+        self.controller._manager_id_to_source[manager_id] = source
+        self.controller._pending_worker_count[source] = 1
+        self.controller._last_worker_count[source] = 0
+        self.worker_controller.get_workers_by_manager_id.return_value = [
+            WorkerID(b"w0"),
+            WorkerID(b"w1"),
+            WorkerID(b"w2"),  # 3 connected, only 1 was pending
+        ]
+
+        await self.controller.on_heartbeat(source, heartbeat)
+
+        self.assertGreaterEqual(self.controller._pending_worker_count[source], 0)
+
+    async def test_disconnect_clears_pending_state(self):
+        """_disconnect_manager removes both _pending_worker_count and _last_worker_count entries."""
+        source = b"mgr-src"
+        manager_id = b"mgr-id"
+        heartbeat = _create_worker_manager_heartbeat(manager_id)
+        self.controller._manager_alive_since[source] = (0.0, heartbeat)
+        self.controller._manager_id_to_source[manager_id] = source
+        self.controller._pending_worker_count[source] = 5
+        self.controller._last_worker_count[source] = 3
+
+        await self.controller._disconnect_manager(source)
+
+        self.assertNotIn(source, self.controller._pending_worker_count)
+        self.assertNotIn(source, self.controller._last_worker_count)
+
+    def test_get_status_includes_pending_workers_count(self):
+        """get_status should expose pending_workers in each worker manager detail dict."""
+        source = b"mgr-src"
+        manager_id = b"mgr-id"
+        heartbeat = _create_worker_manager_heartbeat(manager_id)
+        self.controller._manager_alive_since[source] = (0.0, heartbeat)
+        self.controller._pending_worker_count[source] = 2
+        self.worker_controller.get_workers_by_manager_id.return_value = []
+
+        status = self.controller.get_status()
+
+        detail = next(d for d in status.worker_manager_details if d["worker_manager_id"] == manager_id)
+        self.assertEqual(detail["pending_workers"], 2)
 
 
 def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:

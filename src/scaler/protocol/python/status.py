@@ -245,6 +245,7 @@ class ScalingManagerStatus(Message):
                 "last_seen_s": d.lastSeenS,
                 "max_task_concurrency": d.maxTaskConcurrency,
                 "capabilities": d.capabilities,
+                "pending_workers": d.pendingWorkers,
             }
             for d in self._msg.workerManagerDetails
         ]
@@ -269,6 +270,7 @@ class ScalingManagerStatus(Message):
                         lastSeenS=d["last_seen_s"],
                         maxTaskConcurrency=d["max_task_concurrency"],
                         capabilities=d.get("capabilities", ""),
+                        pendingWorkers=d.get("pending_workers", 0),
                     )
                     for d in details
                 ],

@@ -30,14 +30,17 @@ class VanillaScalingPolicy(ScalingPolicy):
         managed_worker_capabilities: Dict[str, int],
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
+        snapshot = worker_manager_snapshots.get(worker_manager_heartbeat.worker_manager_id)
+        pending = snapshot.pending_worker_count if snapshot else 0
+
         if not information_snapshot.workers:
             if information_snapshot.tasks:
-                return self._create_start_commands(managed_worker_ids, worker_manager_heartbeat)
+                return self._create_start_commands(managed_worker_ids, worker_manager_heartbeat, pending)
             return []
 
         task_ratio = len(information_snapshot.tasks) / len(information_snapshot.workers)
         if task_ratio > self._upper_task_ratio:
-            return self._create_start_commands(managed_worker_ids, worker_manager_heartbeat)
+            return self._create_start_commands(managed_worker_ids, worker_manager_heartbeat, pending)
         elif task_ratio < self._lower_task_ratio:
             return self._create_shutdown_commands(information_snapshot, managed_worker_ids)
 
@@ -47,10 +50,13 @@ class VanillaScalingPolicy(ScalingPolicy):
         return ScalingManagerStatus.new_msg(managed_workers=managed_workers)
 
     def _create_start_commands(
-        self, managed_worker_ids: List[WorkerID], worker_manager_heartbeat: WorkerManagerHeartbeat
+        self,
+        managed_worker_ids: List[WorkerID],
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
+        pending_worker_count: int = 0,
     ) -> List[WorkerManagerCommand]:
         max_concurrency = worker_manager_heartbeat.max_task_concurrency
-        if max_concurrency != -1 and len(managed_worker_ids) >= max_concurrency:
+        if max_concurrency != -1 and len(managed_worker_ids) + pending_worker_count >= max_concurrency:
             return []
         return [WorkerManagerCommand.new_msg(worker_ids=[], command=WorkerManagerCommandType.StartWorkers)]
 

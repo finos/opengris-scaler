@@ -12,6 +12,7 @@ class WorkerManagerSnapshot:
     worker_count: int
     last_seen_s: float  # time.time() epoch seconds of last heartbeat
     capabilities: Dict[str, int] = dataclasses.field(default_factory=dict)
+    pending_worker_count: int = 0
 
 
 class ScalingPolicyStrategy(enum.Enum):

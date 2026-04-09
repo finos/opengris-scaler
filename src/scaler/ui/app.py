@@ -715,6 +715,7 @@ class WebUIApp:
                 "last_seen": format_seconds(detail["last_seen_s"]),
                 "max_task_concurrency": detail["max_task_concurrency"],
                 "worker_count": len(worker_ids_for_manager),
+                "pending_workers": detail.get("pending_workers", 0),
                 "capabilities": detail["capabilities"],
             }
         # Mark newly-disappeared managers with a disconnect timestamp instead of
