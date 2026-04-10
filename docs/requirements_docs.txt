@@ -3,3 +3,4 @@ shibuya
 sphinx-substitution-extensions
 sphinx-tabs
 sphinx-copybutton
+nbsphinx

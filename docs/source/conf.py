@@ -44,6 +44,7 @@ extensions = [
     "sphinx.ext.autosectionlabel",
     "sphinx_copybutton",
     "sphinx_tabs.tabs",
+    "nbsphinx",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -65,6 +66,15 @@ exclude_patterns = []
 html_theme = "shibuya"
 html_title = f"{project} {version}"
 
+html_theme_options = {
+    "nav_links": [
+        {
+            "title": "Example Gallery",
+            "url": "gallery/index",
+        },
+    ],
+}
+
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
@@ -81,3 +91,5 @@ autosectionlabel_prefix_document = True
 
 copybutton_prompt_text = r"\$ "
 copybutton_prompt_is_regexp = True
+
+nbsphinx_execute = "never"
