@@ -10,7 +10,7 @@ import zmq
 from scaler.config.types.zmq import ZMQConfig
 from scaler.io.mixins import SyncConnector
 from scaler.io.utility import deserialize, serialize
-from scaler.protocol.python.mixins import Message
+from scaler.protocol.mixins import Message
 
 
 class ZMQSyncConnector(SyncConnector):

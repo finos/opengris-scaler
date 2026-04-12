@@ -1,18 +1,19 @@
 import logging
 from collections import defaultdict
-from math import ceil
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
-from scaler.protocol.python.message import (
-    InformationSnapshot,
+from math import ceil
+
+from scaler.protocol.capnp import (
+    ScalingManagerStatus,
     WorkerManagerCommand,
     WorkerManagerCommandType,
     WorkerManagerHeartbeat,
 )
-from scaler.protocol.python.status import ScalingManagerStatus
 from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.utility.identifiers import WorkerID
+from scaler.utility.snapshot import InformationSnapshot
 
 
 class CapabilityScalingPolicy(ScalingPolicy):
@@ -45,7 +46,7 @@ class CapabilityScalingPolicy(ScalingPolicy):
         # Group workers by their provided capabilities
         workers_by_capability = self._group_workers_by_capability(information_snapshot)
 
-        snapshot = worker_manager_snapshots.get(worker_manager_heartbeat.worker_manager_id)
+        snapshot = worker_manager_snapshots.get(worker_manager_heartbeat.workerManagerID)
         pending = snapshot.pending_worker_count if snapshot else 0
 
         # Try to get start commands first - if any, return early
@@ -66,7 +67,7 @@ class CapabilityScalingPolicy(ScalingPolicy):
         )
 
     def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
-        return ScalingManagerStatus.new_msg(managed_workers=managed_workers)
+        return ScalingManagerStatus(managedWorkers=managed_workers)
 
     def _group_tasks_by_capability(
         self, information_snapshot: InformationSnapshot
@@ -91,7 +92,7 @@ class CapabilityScalingPolicy(ScalingPolicy):
 
         for worker_id, worker_heartbeat in information_snapshot.workers.items():
             capability_keys = frozenset(worker_heartbeat.capabilities.keys())
-            workers_by_capability[capability_keys].append((worker_id, worker_heartbeat.queued_tasks))
+            workers_by_capability[capability_keys].append((worker_id, worker_heartbeat.queuedTasks))
 
         return workers_by_capability
 
@@ -201,7 +202,11 @@ class CapabilityScalingPolicy(ScalingPolicy):
         if not shutdown_ids:
             return []
 
-        return [WorkerManagerCommand.new_msg(worker_ids=shutdown_ids, command=WorkerManagerCommandType.ShutdownWorkers)]
+        return [
+            WorkerManagerCommand(
+                workerIDs=shutdown_ids, command=WorkerManagerCommandType.shutdownWorkers, capabilities={}
+            )
+        ]
 
     def _has_capable_managed_workers(
         self,
@@ -226,11 +231,11 @@ class CapabilityScalingPolicy(ScalingPolicy):
         pending_worker_count: int = 0,
     ) -> Optional[WorkerManagerCommand]:
         """Create a start workers command if capacity allows."""
-        max_concurrency = worker_manager_heartbeat.max_task_concurrency
+        max_concurrency = worker_manager_heartbeat.maxTaskConcurrency
         if max_concurrency != -1 and len(managed_worker_ids) + pending_worker_count >= max_concurrency:
             return None
 
         logging.info(f"Requesting worker with capabilities: {capability_dict!r}")
-        return WorkerManagerCommand.new_msg(
-            worker_ids=[], command=WorkerManagerCommandType.StartWorkers, capabilities=capability_dict
+        return WorkerManagerCommand(
+            workerIDs=[], command=WorkerManagerCommandType.startWorkers, capabilities=capability_dict
         )

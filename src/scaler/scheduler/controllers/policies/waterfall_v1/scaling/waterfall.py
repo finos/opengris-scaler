@@ -1,18 +1,19 @@
 import logging
-from math import ceil
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
-from scaler.protocol.python.message import (
-    InformationSnapshot,
+from math import ceil
+
+from scaler.protocol.capnp import (
+    ScalingManagerStatus,
     WorkerManagerCommand,
     WorkerManagerCommandType,
     WorkerManagerHeartbeat,
 )
-from scaler.protocol.python.status import ScalingManagerStatus
 from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.controllers.policies.waterfall_v1.scaling.types import WaterfallRule
 from scaler.utility.identifiers import WorkerID
+from scaler.utility.snapshot import InformationSnapshot
 
 
 class WaterfallScalingPolicy(ScalingPolicy):
@@ -44,7 +45,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         managed_worker_capabilities: Dict[str, int],
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
-        manager_id = worker_manager_heartbeat.worker_manager_id
+        manager_id = worker_manager_heartbeat.workerManagerID
         rule = self._find_rule(manager_id)
 
         if rule is None:
@@ -79,7 +80,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         return []
 
     def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
-        return ScalingManagerStatus.new_msg(managed_workers=managed_workers)
+        return ScalingManagerStatus(managedWorkers=managed_workers)
 
     def _create_capability_start_commands(
         self,
@@ -158,11 +159,11 @@ class WaterfallScalingPolicy(ScalingPolicy):
 
             # This is the highest-priority capable manager with capacity
             if rule.worker_manager_id == current_rule.worker_manager_id:
-                local_capacity = min(current_rule.max_task_concurrency, worker_manager_heartbeat.max_task_concurrency)
+                local_capacity = min(current_rule.max_task_concurrency, worker_manager_heartbeat.maxTaskConcurrency)
                 if len(managed_worker_ids) >= local_capacity:
                     return None
-                return WorkerManagerCommand.new_msg(
-                    worker_ids=[], command=WorkerManagerCommandType.StartWorkers, capabilities=capability_dict
+                return WorkerManagerCommand(
+                    workerIDs=[], command=WorkerManagerCommandType.startWorkers, capabilities=capability_dict
                 )
             else:
                 # A higher-priority capable manager should handle it
@@ -192,11 +193,11 @@ class WaterfallScalingPolicy(ScalingPolicy):
                 return []
 
         # Check this manager's effective capacity
-        effective_capacity = min(current_rule.max_task_concurrency, worker_manager_heartbeat.max_task_concurrency)
+        effective_capacity = min(current_rule.max_task_concurrency, worker_manager_heartbeat.maxTaskConcurrency)
         if len(managed_worker_ids) >= effective_capacity:
             return []
 
-        return [WorkerManagerCommand.new_msg(worker_ids=[], command=WorkerManagerCommandType.StartWorkers)]
+        return [WorkerManagerCommand(workerIDs=[], command=WorkerManagerCommandType.startWorkers, capabilities={})]
 
     def _create_shutdown_commands(
         self,
@@ -225,9 +226,9 @@ class WaterfallScalingPolicy(ScalingPolicy):
             if wid in information_snapshot.workers:
                 worker_hb = information_snapshot.workers[wid]
                 if worker_hb.capabilities:
-                    has_cap_candidates.append((wid, worker_hb.queued_tasks))
+                    has_cap_candidates.append((wid, worker_hb.queuedTasks))
                 else:
-                    no_cap_candidates.append((wid, worker_hb.queued_tasks))
+                    no_cap_candidates.append((wid, worker_hb.queuedTasks))
 
         no_cap_candidates.sort(key=lambda x: x[1])
         has_cap_candidates.sort(key=lambda x: x[1])
@@ -247,7 +248,11 @@ class WaterfallScalingPolicy(ScalingPolicy):
             return []
 
         shutdown_ids = [bytes(wid) for wid, _ in workers_with_load[:to_shutdown]]
-        return [WorkerManagerCommand.new_msg(worker_ids=shutdown_ids, command=WorkerManagerCommandType.ShutdownWorkers)]
+        return [
+            WorkerManagerCommand(
+                workerIDs=shutdown_ids, command=WorkerManagerCommandType.shutdownWorkers, capabilities={}
+            )
+        ]
 
     def _find_rule(self, manager_id: bytes) -> Optional[WaterfallRule]:
         """Find the rule whose worker manager ID matches *manager_id*."""

@@ -3,8 +3,7 @@ from typing import Any, Callable, Optional
 
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
-from scaler.protocol.python.common import TaskState
-from scaler.protocol.python.message import Task, TaskCancel
+from scaler.protocol.capnp import Task, TaskCancel, TaskState
 from scaler.utility.event_list import EventList
 from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
@@ -38,7 +37,7 @@ class ScalerFuture(concurrent.futures.Future):
         self._waiters = EventList(self._waiters)  # type: ignore[assignment]
         self._waiters.add_update_callback(self._on_waiters_updated)  # type: ignore[attr-defined]
 
-        self._task_id: TaskID = task.task_id
+        self._task_id: TaskID = task.taskId
         self._is_delayed: bool = is_delayed
         self._group_task_id: Optional[TaskID] = group_task_id
         self._serializer: Serializer = serializer
@@ -176,9 +175,9 @@ class ScalerFuture(concurrent.futures.Future):
                 cancel_flags = TaskCancel.TaskCancelFlags(force=True)
 
                 if self._group_task_id is not None:
-                    self._connector_agent.send(TaskCancel.new_msg(self._group_task_id, flags=cancel_flags))
+                    self._connector_agent.send(TaskCancel(taskId=self._group_task_id, flags=cancel_flags))
                 else:
-                    self._connector_agent.send(TaskCancel.new_msg(self._task_id, flags=cancel_flags))
+                    self._connector_agent.send(TaskCancel(taskId=self._task_id, flags=cancel_flags))
 
                 self._cancel_requested = True
 
@@ -223,9 +222,9 @@ class ScalerFuture(concurrent.futures.Future):
                 # TODO: graph task results could also be deleted if these are not required by another task of the graph.
                 self._connector_storage.delete_object(self._result_object_id)
 
-            if self._task_state == TaskState.Success:
+            if self._task_state == TaskState.success:
                 self.set_result(self._serializer.deserialize(object_bytes))
-            elif self._task_state == TaskState.Failed:
+            elif self._task_state == TaskState.failed:
                 self.set_exception(deserialize_failure(object_bytes))
             else:
                 raise ValueError(f"unexpected task status: {self._task_state}")

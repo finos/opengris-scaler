@@ -6,7 +6,7 @@ from scaler.utility.one_to_many_dict import OneToManyDict
 class TestOneToManyDict(unittest.TestCase):
     def setUp(self):
         # Create an instance of OneToManyDict before each test
-        self._dict = OneToManyDict()
+        self._dict: OneToManyDict[object, object] = OneToManyDict()
 
     def test_add(self):
         # Add a key-value pair and check if the dictionary behaves correctly

@@ -3,8 +3,7 @@ from typing import Optional
 import psutil
 
 from scaler.io.mixins import AsyncBinder, AsyncConnector
-from scaler.protocol.python.message import InformationRequest, StateScheduler
-from scaler.protocol.python.status import Resource
+from scaler.protocol.capnp import InformationRequest, Resource, StateScheduler
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import (
     ClientController,
@@ -55,14 +54,14 @@ class VanillaInformationController(InformationController, Looper):
 
     async def routine(self):
         await self._monitor_binder.send(
-            StateScheduler.new_msg(
+            StateScheduler(
                 binder=self._binder.get_status(),
-                scheduler=Resource.new_msg(int(self._process.cpu_percent() * 10), self._process.memory_info().rss),
-                rss_free=psutil.virtual_memory().available,
-                client_manager=self._client_controller.get_status(),
-                object_manager=self._object_controller.get_status(),
-                task_manager=self._task_controller.get_status(),
-                worker_manager=self._worker_controller.get_status(),
-                scaling_manager=self._worker_manager_controller.get_status(),
+                scheduler=Resource(cpu=int(self._process.cpu_percent() * 10), rss=self._process.memory_info().rss),
+                rssFree=psutil.virtual_memory().available,
+                clientManager=self._client_controller.get_status(),
+                objectManager=self._object_controller.get_status(),
+                taskManager=self._task_controller.get_status(),
+                workerManager=self._worker_controller.get_status(),
+                scalingManager=self._worker_manager_controller.get_status(),
             )
         )

@@ -2,7 +2,7 @@ from typing import Optional
 
 from scaler.client.agent.mixins import DisconnectManager
 from scaler.io.mixins import AsyncConnector
-from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse
+from scaler.protocol.capnp import ClientDisconnect, ClientShutdownResponse
 from scaler.utility.exceptions import ClientQuitException, ClientShutdownException
 
 
@@ -16,12 +16,14 @@ class ClientDisconnectManager(DisconnectManager):
         self._connector_external = connector_external
 
     async def on_client_disconnect(self, disconnect: ClientDisconnect):
+        assert self._connector_external is not None
         await self._connector_external.send(disconnect)
 
-        if disconnect.disconnect_type == ClientDisconnect.DisconnectType.Disconnect:
+        if disconnect.disconnectType == ClientDisconnect.DisconnectType.disconnect:
             raise ClientQuitException("client disconnecting")
 
     async def on_client_shutdown_response(self, response: ClientShutdownResponse):
+        assert self._connector_internal is not None
         await self._connector_internal.send(response)
 
         raise ClientShutdownException("cluster shutting down")

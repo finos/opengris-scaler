@@ -2,8 +2,8 @@ import abc
 from typing import Awaitable, Callable, Optional
 
 from scaler.config.types.zmq import ZMQConfig
-from scaler.protocol.python.mixins import Message
-from scaler.protocol.python.status import BinderStatus
+from scaler.protocol.capnp import BinderStatus
+from scaler.protocol.mixins import Message
 from scaler.utility.identifiers import ObjectID
 from scaler.utility.mixins import Looper, Reporter
 

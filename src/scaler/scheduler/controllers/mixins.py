@@ -1,15 +1,15 @@
 import abc
 from typing import Any, Dict, List, Optional, Set
 
-from scaler.protocol.python.common import ObjectMetadata
-from scaler.protocol.python.message import (
+from scaler.protocol.capnp import (
     ClientDisconnect,
     ClientHeartbeat,
     DisconnectRequest,
     GraphTask,
     InformationRequest,
-    InformationSnapshot,
     ObjectInstruction,
+    ObjectMetadata,
+    ScalingManagerStatus,
     Task,
     TaskCancel,
     TaskCancelConfirm,
@@ -18,10 +18,10 @@ from scaler.protocol.python.message import (
     WorkerManagerCommand,
     WorkerManagerHeartbeat,
 )
-from scaler.protocol.python.status import ScalingManagerStatus
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.mixins import Reporter
+from scaler.utility.snapshot import InformationSnapshot
 
 
 class ConfigController(metaclass=abc.ABCMeta):

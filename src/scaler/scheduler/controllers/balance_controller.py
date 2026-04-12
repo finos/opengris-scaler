@@ -2,7 +2,7 @@ import logging
 from typing import Dict, List, Optional
 
 from scaler.io.mixins import AsyncBinder, AsyncConnector
-from scaler.protocol.python.message import StateBalanceAdvice
+from scaler.protocol.capnp import StateBalanceAdvice
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import PolicyController, TaskController
 from scaler.utility.identifiers import TaskID, WorkerID
@@ -37,7 +37,7 @@ class VanillaBalanceController(Looper):
         worker_to_num_tasks = {worker: len(task_ids) for worker, task_ids in current_advice.items()}
         logging.info(f"balancing task: {worker_to_num_tasks}")
         for worker, task_ids in current_advice.items():
-            await self._binder_monitor.send(StateBalanceAdvice.new_msg(worker, task_ids))
+            await self._binder_monitor.send(StateBalanceAdvice(workerId=worker, taskIds=task_ids))
 
         self._last_balance_advice = current_advice
         for worker, task_ids in current_advice.items():

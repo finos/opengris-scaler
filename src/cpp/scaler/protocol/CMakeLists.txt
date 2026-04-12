@@ -35,7 +35,7 @@ target_include_directories(protocol_objs PUBLIC "${PROJECT_SOURCE_DIR}/src")
 scaler_add_python_module(
     TARGET py_capnp
     MODULE_NAME capnp
-    INSTALL_DEST scaler/protocol/python
+    INSTALL_DEST scaler/protocol
     SOURCES
         pymod/bootstrap.cpp
         pymod/capnp.cpp

@@ -27,7 +27,7 @@ from scaler.io.utility import (
     create_async_object_storage_connector,
     get_scaler_network_backend_from_env,
 )
-from scaler.protocol.python.message import (
+from scaler.protocol.capnp import (
     ClientDisconnect,
     DisconnectRequest,
     DisconnectResponse,
@@ -36,7 +36,7 @@ from scaler.protocol.python.message import (
     TaskCancel,
     WorkerHeartbeatEcho,
 )
-from scaler.protocol.python.mixins import Message
+from scaler.protocol.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import WorkerID
@@ -211,7 +211,7 @@ class AWSBatchWorker(_SpawnProcess):  # type: ignore[valid-type, misc]
             return
 
         if isinstance(message, ClientDisconnect):
-            if message.disconnect_type == ClientDisconnect.DisconnectType.Shutdown:
+            if message.disconnectType == ClientDisconnect.DisconnectType.shutdown:
                 raise ClientShutdownException("received client shutdown, quitting")
             logging.error(f"Worker received invalid ClientDisconnect type, ignoring {message=}")
             return
@@ -262,7 +262,7 @@ class AWSBatchWorker(_SpawnProcess):  # type: ignore[valid-type, misc]
 
     async def __graceful_shutdown(self) -> None:
         try:
-            await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
+            await self._connector_external.send(DisconnectRequest(worker=self.identity))
         except ymq.YMQException:
             pass
 

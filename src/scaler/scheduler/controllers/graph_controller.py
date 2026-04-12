@@ -5,8 +5,18 @@ from asyncio import Queue
 from typing import Dict, List, Optional, Set, Tuple, Union
 
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
-from scaler.protocol.python.common import ObjectMetadata, TaskCancelConfirmType, TaskResultType
-from scaler.protocol.python.message import GraphTask, StateGraphTask, Task, TaskCancel, TaskCancelConfirm, TaskResult
+from scaler.protocol.capnp import (
+    GraphTask,
+    ObjectMetadata,
+    StateGraphTask,
+    Task,
+    TaskCancel,
+    TaskCancelConfirm,
+    TaskCancelConfirmType,
+    TaskResult,
+    TaskResultType,
+)
+from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import ClientController, GraphTaskController, ObjectController, TaskController
 from scaler.utility.graph.topological_sorter import TopologicalSorter
@@ -106,34 +116,34 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         await self._unassigned.put((client_id, graph_task))
 
     async def on_graph_task_cancel(self, task_cancel: TaskCancel):
-        graph_task_id = self._task_id_to_graph_task_id[task_cancel.task_id]
+        graph_task_id = self._task_id_to_graph_task_id[task_cancel.taskId]
 
         # received any subtask canceling will lead the whole graph canceling
         await self.__cancel_whole_graph(graph_task_id)
 
     async def on_graph_sub_task_result(self, result: TaskResult):
-        graph_task_id = self._task_id_to_graph_task_id[result.task_id]
+        graph_task_id = self._task_id_to_graph_task_id[result.taskId]
         graph_info = self._graph_task_id_to_graph[graph_task_id]
 
         if graph_info.status == _GraphState.Canceling:
             # there will be case when we are canceling the whole graph, and at the moment, result is returning
             # before we see cancel confirm, we treat them as cancel confirm
             await self.on_graph_sub_task_cancel_confirm(
-                TaskCancelConfirm.new_msg(result.task_id, TaskCancelConfirmType.Canceled)
+                TaskCancelConfirm(taskId=result.taskId, cancelConfirmType=TaskCancelConfirmType.canceled)
             )
             return
 
         self.__mark_node_done(result)
 
-        if result.result_type == TaskResultType.Success:
+        if result.resultType == TaskResultType.success:
             await self.__check_one_graph(graph_task_id)
             return
 
-        assert result.result_type != TaskResultType.Success
+        assert result.resultType != TaskResultType.success
         await self.__abort_whole_graph(graph_task_id, result)
 
     async def on_graph_sub_task_cancel_confirm(self, task_cancel_confirm: TaskCancelConfirm):
-        graph_task_id = self._task_id_to_graph_task_id[task_cancel_confirm.task_id]
+        graph_task_id = self._task_id_to_graph_task_id[task_cancel_confirm.taskId]
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         self.__mark_node_canceled(graph_info, task_cancel_confirm)
 
@@ -152,48 +162,52 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
     async def __add_new_graph(self, client_id: ClientID, graph_task: GraphTask):
         graph = {}
 
-        self._client_controller.on_task_begin(client_id, graph_task.task_id)
+        self._client_controller.on_task_begin(client_id, graph_task.taskId)
 
         # add graph umbrella task, note that umbrella is also a graph subtask
-        self._task_id_to_graph_task_id[graph_task.task_id] = graph_task.task_id
+        self._task_id_to_graph_task_id[graph_task.taskId] = graph_task.taskId
 
         tasks = dict()
         depended_task_id_to_task_id: ManyToManyDict[TaskID, TaskID] = ManyToManyDict()
         for task in graph_task.graph:
-            self._task_id_to_graph_task_id[task.task_id] = graph_task.task_id
-            tasks[task.task_id] = _TaskInfo(_NodeTaskState.Inactive, task)
+            self._task_id_to_graph_task_id[task.taskId] = graph_task.taskId
+            tasks[task.taskId] = _TaskInfo(_NodeTaskState.Inactive, task)
 
-            required_task_ids = {arg for arg in task.function_args if isinstance(arg, TaskID)}
+            required_task_ids = {
+                TaskID(argument.data)
+                for argument in task.functionArgs
+                if argument.type == Task.Argument.ArgumentType.task
+            }
             for required_task_id in required_task_ids:
-                depended_task_id_to_task_id.add(required_task_id, task.task_id)
+                depended_task_id_to_task_id.add(required_task_id, task.taskId)
 
-            graph[task.task_id] = required_task_ids
+            graph[task.taskId] = required_task_ids
 
             await self._binder_monitor.send(
-                StateGraphTask.new_msg(
-                    graph_task.task_id,
-                    task.task_id,
-                    (
-                        StateGraphTask.NodeTaskType.Target
-                        if task.task_id in graph_task.targets
-                        else StateGraphTask.NodeTaskType.Normal
+                StateGraphTask(
+                    graphTaskId=graph_task.taskId,
+                    taskId=task.taskId,
+                    nodeTaskType=(
+                        StateGraphTask.NodeTaskType.target
+                        if task.taskId in graph_task.targets
+                        else StateGraphTask.NodeTaskType.normal
                     ),
-                    required_task_ids,
+                    parentTaskIds=required_task_ids,
                 )
             )
 
         sorter = TopologicalSorter(graph)
         sorter.prepare()
 
-        self._graph_task_id_to_graph[graph_task.task_id] = _Graph(
+        self._graph_task_id_to_graph[graph_task.taskId] = _Graph(
             graph_task.targets, sorter, tasks, depended_task_id_to_task_id, client_id
         )
-        await self.__check_one_graph(graph_task.task_id)
+        await self.__check_one_graph(graph_task.taskId)
 
     async def __check_one_graph(self, graph_task_id: TaskID):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         if not graph_info.sorter.is_active():
-            await self.__done_graph_umbrella_task(graph_task_id, TaskResultType.Success)
+            await self.__done_graph_umbrella_task(graph_task_id, TaskResultType.success)
             return
 
         ready_task_ids = graph_info.sorter.get_ready()
@@ -205,13 +219,26 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
             task_info.state = _NodeTaskState.Running
             graph_info.running_task_ids.add(task_id)
 
-            task = Task.new_msg(
-                task_id=task_info.task.task_id,
+            task = Task(
+                taskId=task_info.task.taskId,
                 source=task_info.task.source,
                 metadata=task_info.task.metadata,
-                func_object_id=task_info.task.func_object_id,
-                function_args=[self.__get_argument_object(graph_task_id, arg) for arg in task_info.task.function_args],
-                capabilities=task_info.task.capabilities,
+                funcObjectId=task_info.task.funcObjectId,
+                functionArgs=[
+                    Task.Argument(
+                        type=Task.Argument.ArgumentType.objectID,
+                        data=self.__get_argument_object(
+                            graph_task_id,
+                            (
+                                TaskID(argument.data)
+                                if argument.type == Task.Argument.ArgumentType.task
+                                else ObjectID(argument.data)
+                            ),
+                        ),
+                    )
+                    for argument in task_info.task.functionArgs
+                ],
+                capabilities=capabilities_to_dict(task_info.task.capabilities),
             )
 
             await self._task_controller.on_task_new(task)
@@ -232,7 +259,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         await asyncio.gather(
             *[
                 self._task_controller.on_task_cancel(
-                    graph_info.client, TaskCancel.new_msg(task_id, flags=TaskCancel.TaskCancelFlags(force=True))
+                    graph_info.client, TaskCancel(taskId=task_id, flags=TaskCancel.TaskCancelFlags(force=True))
                 )
                 for task_id in graph_info.running_task_ids
             ]
@@ -246,7 +273,9 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
                 break
 
             for task_id in ready_task_ids:
-                task_cancel_confirm = TaskCancelConfirm.new_msg(task_id, TaskCancelConfirmType.Canceled)
+                task_cancel_confirm = TaskCancelConfirm(
+                    taskId=task_id, cancelConfirmType=TaskCancelConfirmType.canceled
+                )
                 self.__mark_node_canceled(graph_info, task_cancel_confirm)
                 task_cancel_confirms.append(task_cancel_confirm)
 
@@ -257,27 +286,27 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
 
     @staticmethod
     def __mark_node_canceled(graph_info: _Graph, task_cancel_confirm: TaskCancelConfirm):
-        if task_cancel_confirm.task_id not in graph_info.tasks:
+        if task_cancel_confirm.taskId not in graph_info.tasks:
             return
 
-        task_info = graph_info.tasks[task_cancel_confirm.task_id]
-        if task_cancel_confirm.cancel_confirm_type == TaskCancelConfirmType.Canceled:
+        task_info = graph_info.tasks[task_cancel_confirm.taskId]
+        if task_cancel_confirm.cancelConfirmType == TaskCancelConfirmType.canceled:
             task_info.state = _NodeTaskState.Canceled
-        elif task_cancel_confirm.cancel_confirm_type == TaskCancelConfirmType.CancelFailed:
+        elif task_cancel_confirm.cancelConfirmType == TaskCancelConfirmType.cancelFailed:
             pass
-        elif task_cancel_confirm.cancel_confirm_type == TaskCancelConfirmType.CancelNotFound:
+        elif task_cancel_confirm.cancelConfirmType == TaskCancelConfirmType.cancelNotFound:
             task_info.state = _NodeTaskState.Canceled
         else:
             raise ValueError(f"received unexpected task cancel confirm {task_cancel_confirm}")
 
-        graph_info.sorter.done(task_cancel_confirm.task_id)
+        graph_info.sorter.done(task_cancel_confirm.taskId)
 
-        if task_cancel_confirm.task_id in graph_info.running_task_ids:
-            graph_info.running_task_ids.remove(task_cancel_confirm.task_id)
+        if task_cancel_confirm.taskId in graph_info.running_task_ids:
+            graph_info.running_task_ids.remove(task_cancel_confirm.taskId)
 
     async def __abort_whole_graph(self, graph_task_id: TaskID, result: TaskResult):
         if self.__is_graph_finished(graph_task_id):
-            await self.__done_graph_umbrella_task(graph_task_id, result.result_type)
+            await self.__done_graph_umbrella_task(graph_task_id, result.resultType)
             return
 
         graph_info = self._graph_task_id_to_graph[graph_task_id]
@@ -292,8 +321,11 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         results: List[TaskResult] = list()
         for task_id in graph_info.running_task_ids.copy():
             new_result_object_ids = await self.__duplicate_objects(graph_info.client, result_objects)
-            result = TaskResult.new_msg(
-                task_id, result.result_type, result.metadata, [bytes(object_id) for object_id in new_result_object_ids]
+            result = TaskResult(
+                taskId=task_id,
+                resultType=result.resultType,
+                metadata=result.metadata,
+                results=[bytes(object_id) for object_id in new_result_object_ids],
             )
             self.__mark_node_done(result)
             results.append(result)
@@ -302,11 +334,11 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         while graph_info.sorter.is_active():
             for task_id in graph_info.sorter.get_ready():
                 new_result_object_ids = await self.__duplicate_objects(graph_info.client, result_objects)
-                result = TaskResult.new_msg(
-                    task_id,
-                    result.result_type,
-                    result.metadata,
-                    [bytes(object_id) for object_id in new_result_object_ids],
+                result = TaskResult(
+                    taskId=task_id,
+                    resultType=result.resultType,
+                    metadata=result.metadata,
+                    results=[bytes(object_id) for object_id in new_result_object_ids],
                 )
                 self.__mark_node_done(result)
                 results.append(result)
@@ -314,30 +346,30 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         await self.__send_results(graph_info.client, results)
 
         if self.__is_graph_finished(graph_task_id):
-            await self.__done_graph_umbrella_task(graph_task_id, result.result_type)
+            await self.__done_graph_umbrella_task(graph_task_id, result.resultType)
             return
 
     def __mark_node_done(self, result: TaskResult):
-        graph_task_id = self._task_id_to_graph_task_id.pop(result.task_id)
+        graph_task_id = self._task_id_to_graph_task_id.pop(result.taskId)
         graph_info = self._graph_task_id_to_graph[graph_task_id]
-        task_info = graph_info.tasks[result.task_id]
+        task_info = graph_info.tasks[result.taskId]
 
         task_info.result_object_ids = [ObjectID(object_id_bytes) for object_id_bytes in result.results]
 
-        if result.result_type == TaskResultType.Success:
+        if result.resultType == TaskResultType.success:
             task_info.state = _NodeTaskState.Success
-        elif result.result_type == TaskResultType.Failed:
+        elif result.resultType == TaskResultType.failed:
             task_info.state = _NodeTaskState.Failed
-        elif result.result_type == TaskResultType.FailedWorkerDied:
+        elif result.resultType == TaskResultType.failedWorkerDied:
             task_info.state = _NodeTaskState.Failed
         else:
             raise ValueError(f"received unexpected task result {result}")
 
-        self.__clean_intermediate_result(graph_task_id, result.task_id)
-        graph_info.sorter.done(result.task_id)
+        self.__clean_intermediate_result(graph_task_id, result.taskId)
+        graph_info.sorter.done(result.taskId)
 
-        if result.task_id in graph_info.running_task_ids:
-            graph_info.running_task_ids.remove(result.task_id)
+        if result.taskId in graph_info.running_task_ids:
+            graph_info.running_task_ids.remove(result.taskId)
 
     async def __cancel_graph_umbrella_task(self, graph_task_id: TaskID):
         if not self.__is_graph_finished(graph_task_id):
@@ -347,14 +379,16 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         self._task_id_to_graph_task_id.pop(graph_task_id)
         info = self._graph_task_id_to_graph.pop(graph_task_id)
         await self._binder.send(
-            info.client, TaskCancelConfirm.new_msg(graph_task_id, cancel_confirm_type=TaskCancelConfirmType.Canceled)
+            info.client, TaskCancelConfirm(taskId=graph_task_id, cancelConfirmType=TaskCancelConfirmType.canceled)
         )
 
     async def __done_graph_umbrella_task(self, graph_task_id: TaskID, result_type: TaskResultType):
         self._client_controller.on_task_finish(graph_task_id)
         self._task_id_to_graph_task_id.pop(graph_task_id)
         info = self._graph_task_id_to_graph.pop(graph_task_id)
-        await self._binder.send(info.client, TaskResult.new_msg(graph_task_id, result_type))
+        await self._binder.send(
+            info.client, TaskResult(taskId=graph_task_id, resultType=result_type, metadata=b"", results=[])
+        )
 
     def __is_graph_finished(self, graph_task_id: TaskID):
         if graph_task_id not in self._graph_task_id_to_graph:
@@ -380,19 +414,22 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         task_info = graph_info.tasks[task_id]
 
-        for argument in task_info.task.function_args:
-            if not isinstance(argument, TaskID):
+        for argument in task_info.task.functionArgs:
+            if argument.type != Task.Argument.ArgumentType.task:
                 continue
 
-            graph_info.depended_task_id_to_task_id.remove(argument, task_id)
-            if graph_info.depended_task_id_to_task_id.has_left_key(argument):
+            depended_task_id = TaskID(argument.data)
+            graph_info.depended_task_id_to_task_id.remove(depended_task_id, task_id)
+            if graph_info.depended_task_id_to_task_id.has_left_key(depended_task_id):
                 continue
 
-            if argument in graph_info.target_task_ids:
+            if depended_task_id in graph_info.target_task_ids:
                 continue
 
             # delete intermediate results as they are not needed anymore
-            self._object_controller.on_del_objects(graph_info.client, set(graph_info.tasks[argument].result_object_ids))
+            self._object_controller.on_del_objects(
+                graph_info.client, set(graph_info.tasks[depended_task_id].result_object_ids)
+            )
 
     async def __duplicate_objects(
         self, owner: ClientID, result_objects: List[Tuple[ObjectID, bytes]]
@@ -414,7 +451,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         await self._connector_storage.duplicate_object_id(object_id, new_object_id)
 
         self._object_controller.on_add_object(
-            owner, new_object_id, ObjectMetadata.ObjectContentType.Object, object_name
+            owner, new_object_id, ObjectMetadata.ObjectContentType.object, object_name
         )
 
     async def __send_results(self, client_id: ClientID, results: List[TaskResult]):

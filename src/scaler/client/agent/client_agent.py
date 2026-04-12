@@ -18,20 +18,20 @@ from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.mixins import AsyncConnector
 from scaler.io.utility import create_async_connector
 from scaler.io.ymq import YMQException
-from scaler.protocol.python.common import ObjectStorageAddress
-from scaler.protocol.python.message import (
+from scaler.protocol.capnp import (
     ClientDisconnect,
     ClientHeartbeatEcho,
     ClientShutdownResponse,
     GraphTask,
     ObjectInstruction,
+    ObjectStorageAddress,
     Task,
     TaskCancel,
     TaskCancelConfirm,
     TaskLog,
     TaskResult,
 )
-from scaler.protocol.python.mixins import Message
+from scaler.protocol.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
 from scaler.utility.exceptions import ClientCancelledException, ClientQuitException, ClientShutdownException
 from scaler.utility.identifiers import ClientID
@@ -65,7 +65,9 @@ class ClientAgent(threading.Thread):
         self._object_storage_address: Future[ObjectStorageAddress] = Future()
         if object_storage_address is not None:
             manual_config = ZMQConfig.from_string(object_storage_address)
-            self._object_storage_address_override = ObjectStorageAddress.new_msg(manual_config.host, manual_config.port)
+            self._object_storage_address_override = ObjectStorageAddress(
+                host=manual_config.host, port=manual_config.port
+            )
         else:
             self._object_storage_address_override = None
 
@@ -164,7 +166,7 @@ class ClientAgent(threading.Thread):
             return
 
         if isinstance(message, TaskLog):
-            log_type = sys.stdout if message.log_type == TaskLog.LogType.Stdout else sys.stderr
+            log_type = sys.stdout if message.logType == TaskLog.LogType.stdout else sys.stderr
             print(message.content, file=log_type, end="")
             return
 

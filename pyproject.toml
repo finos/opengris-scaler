@@ -60,7 +60,7 @@ orb = [
 all = [
     "opengris-scaler[aws]",
     # graphblas need compile on 3.14, and this python condition prevents up from building 3.14 wheel, comment it out for now
-    # "opengris-scaler[graphblas]; python_version <= '3.13'",  
+    # "opengris-scaler[graphblas]; python_version <= '3.13'",
     "opengris-scaler[gui]",
     "opengris-scaler[orb]",
     "opengris-scaler[uvloop]",
@@ -82,7 +82,7 @@ regex = '(?P<value>\d+\.\d+\.\d+(\.[1-9]\d*)?)'
 input = "./src/scaler/version.txt"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -176,7 +176,7 @@ extend_skip_glob = [
 ]
 
 [tool.cibuildwheel]
-skip = "pp* cp39-*"
+skip = "cp39-*"
 
 [tool.cibuildwheel.linux]
 archs = ["x86_64", "aarch64"]

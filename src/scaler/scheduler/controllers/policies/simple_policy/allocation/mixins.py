@@ -1,7 +1,7 @@
 import abc
 from typing import Dict, List, Optional, Set
 
-from scaler.protocol.python.message import Task
+from scaler.protocol.capnp import Task
 from scaler.utility.identifiers import TaskID, WorkerID
 
 

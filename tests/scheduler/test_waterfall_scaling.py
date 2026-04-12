@@ -3,14 +3,7 @@ import time
 import unittest
 from typing import Dict, List, Optional
 
-from scaler.protocol.python.message import (
-    InformationSnapshot,
-    Task,
-    WorkerHeartbeat,
-    WorkerManagerCommandType,
-    WorkerManagerHeartbeat,
-)
-from scaler.protocol.python.status import Resource
+from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerCommandType, WorkerManagerHeartbeat
 from scaler.scheduler.controllers.policies.library.utility import create_policy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.controllers.policies.waterfall_v1.scaling.types import WaterfallRule
@@ -18,6 +11,7 @@ from scaler.scheduler.controllers.policies.waterfall_v1.scaling.waterfall import
 from scaler.scheduler.controllers.policies.waterfall_v1.waterfall_v1_policy import WaterfallV1Policy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.snapshot import InformationSnapshot
 
 
 class TestWaterfallScalingPolicy(unittest.TestCase):
@@ -50,7 +44,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         )
 
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.startWorkers)
 
     def test_priority_cascade_higher_priority_fills_first(self):
         """Lower-priority manager should not scale up while higher-priority has capacity."""
@@ -71,7 +65,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
             snapshot, heartbeat_a, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
         self.assertEqual(len(commands_a), 1)
-        self.assertEqual(commands_a[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands_a[0].command, WorkerManagerCommandType.startWorkers)
 
         # Heartbeat from manager_b: should NOT scale up (manager_a still has room)
         heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
@@ -99,7 +93,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         )
 
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.startWorkers)
 
     def test_offline_manager_fallback(self):
         """Lower-priority manager should scale up when higher-priority is offline (absent from snapshots)."""
@@ -119,7 +113,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         )
 
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.startWorkers)
 
     def test_reverse_shutdown_order(self):
         """Higher-priority manager should not shut down while lower-priority still has workers."""
@@ -140,8 +134,8 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
             snapshot, heartbeat_b, managed_worker_ids_b, managed_worker_capabilities, manager_snapshots
         )
         self.assertEqual(len(commands_b), 1)
-        self.assertEqual(commands_b[0].command, WorkerManagerCommandType.ShutdownWorkers)
-        self.assertEqual(len(commands_b[0].worker_ids), 2)
+        self.assertEqual(commands_b[0].command, WorkerManagerCommandType.shutdownWorkers)
+        self.assertEqual(len(commands_b[0].workerIDs), 2)
 
         # Heartbeat from manager_a (higher priority): should NOT shut down (B still has workers)
         managed_worker_ids_a = [WorkerID(b"worker-0"), WorkerID(b"worker-1"), WorkerID(b"worker-2")]
@@ -227,14 +221,14 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
             snapshot, heartbeat_a, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
         self.assertEqual(len(commands_a), 1)
-        self.assertEqual(commands_a[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands_a[0].command, WorkerManagerCommandType.startWorkers)
 
         heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=10)
         commands_b = policy.get_scaling_commands(
             snapshot, heartbeat_b, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
         self.assertEqual(len(commands_b), 1)
-        self.assertEqual(commands_b[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands_b[0].command, WorkerManagerCommandType.startWorkers)
 
     def test_scale_down_least_busy_worker(self):
         """When shutting down greedily, should shut down all workers sorted by busyness (least busy first)."""
@@ -262,11 +256,11 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
         # With 0 tasks, all workers should be shut down greedily
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
-        self.assertEqual(len(commands[0].worker_ids), 2)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.shutdownWorkers)
+        self.assertEqual(len(commands[0].workerIDs), 2)
         # Least busy first
-        self.assertEqual(commands[0].worker_ids[0], bytes(WorkerID(b"worker-idle")))
-        self.assertEqual(commands[0].worker_ids[1], bytes(WorkerID(b"worker-busy")))
+        self.assertEqual(commands[0].workerIDs[0], bytes(WorkerID(b"worker-idle")))
+        self.assertEqual(commands[0].workerIDs[1], bytes(WorkerID(b"worker-busy")))
 
     def test_higher_priority_manager_never_seen(self):
         """If higher-priority manager was never seen, lower-priority should scale up."""
@@ -286,7 +280,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         )
 
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.startWorkers)
 
     def test_shutdown_allowed_when_lower_priority_offline(self):
         """Higher-priority manager can shut down if lower-priority manager is offline (absent from snapshots)."""
@@ -308,8 +302,8 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
         # With 0 tasks, all 3 workers should be shut down greedily
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
-        self.assertEqual(len(commands[0].worker_ids), 3)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.shutdownWorkers)
+        self.assertEqual(len(commands[0].workerIDs), 3)
 
     def test_exact_matching_with_runtime_ids(self):
         """Worker manager IDs like NAT|12345 should match rules with exact worker_manager_id."""
@@ -335,7 +329,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
             snapshot, heartbeat_nat, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
         self.assertEqual(len(commands_nat), 1)
-        self.assertEqual(commands_nat[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands_nat[0].command, WorkerManagerCommandType.startWorkers)
 
         # Heartbeat from ECS manager: should NOT scale up (NAT still has room)
         heartbeat_ecs = _create_worker_manager_heartbeat(b"ECS|67890", max_task_concurrency=20)
@@ -371,7 +365,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
             snapshot, heartbeat_ecs, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.startWorkers)
 
     def test_blocked_when_any_higher_priority_has_room(self):
         """Lower priority should not scale up if any manager at a higher priority still has room."""
@@ -424,9 +418,9 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         )
 
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.shutdownWorkers)
         # 10 workers - 1 kept = 9 shut down
-        self.assertEqual(len(commands[0].worker_ids), 9)
+        self.assertEqual(len(commands[0].workerIDs), 9)
 
 
 class TestWaterfallCapabilities(unittest.TestCase):
@@ -456,7 +450,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
         )
 
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.startWorkers)
         self.assertIn("gpu", commands[0].capabilities)
 
     def test_unmet_capability_skips_incapable_higher_priority(self):
@@ -493,7 +487,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
             snapshot, heartbeat_gpu, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
         self.assertEqual(len(commands_gpu), 1)
-        self.assertEqual(commands_gpu[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands_gpu[0].command, WorkerManagerCommandType.startWorkers)
         self.assertIn("gpu", commands_gpu[0].capabilities)
 
     def test_unmet_capability_respects_waterfall_priority(self):
@@ -619,10 +613,10 @@ class TestWaterfallCapabilities(unittest.TestCase):
 
         # With 0 tasks, both workers are shut down greedily; no-cap worker comes first
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
-        self.assertEqual(len(commands[0].worker_ids), 2)
-        self.assertEqual(commands[0].worker_ids[0], bytes(WorkerID(b"worker-bare")))
-        self.assertEqual(commands[0].worker_ids[1], bytes(WorkerID(b"worker-gpu")))
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.shutdownWorkers)
+        self.assertEqual(len(commands[0].workerIDs), 2)
+        self.assertEqual(commands[0].workerIDs[0], bytes(WorkerID(b"worker-bare")))
+        self.assertEqual(commands[0].workerIDs[1], bytes(WorkerID(b"worker-gpu")))
 
     def test_shutdown_fallback_to_capable_workers(self):
         """When all workers have capabilities, shutdown should still pick the least busy first."""
@@ -643,10 +637,10 @@ class TestWaterfallCapabilities(unittest.TestCase):
 
         # With 0 tasks, both shut down greedily; least busy first
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
-        self.assertEqual(len(commands[0].worker_ids), 2)
-        self.assertEqual(commands[0].worker_ids[0], bytes(WorkerID(b"worker-idle")))
-        self.assertEqual(commands[0].worker_ids[1], bytes(WorkerID(b"worker-busy")))
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.shutdownWorkers)
+        self.assertEqual(len(commands[0].workerIDs), 2)
+        self.assertEqual(commands[0].workerIDs[0], bytes(WorkerID(b"worker-idle")))
+        self.assertEqual(commands[0].workerIDs[1], bytes(WorkerID(b"worker-busy")))
 
     def test_generic_tasks_unchanged(self):
         """Tasks with no capabilities should use existing ratio-based logic (no regression)."""
@@ -661,7 +655,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, [], {}, manager_snapshots)
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.startWorkers)
         self.assertEqual(commands[0].capabilities, {})
 
     def test_value_agnostic_matching(self):
@@ -680,7 +674,7 @@ class TestWaterfallCapabilities(unittest.TestCase):
         # Should NOT issue capability start — workers already handle {a}
         commands = policy.get_scaling_commands(snapshot, heartbeat, [], {}, manager_snapshots)
         capability_starts = [
-            c for c in commands if c.command == WorkerManagerCommandType.StartWorkers and c.capabilities
+            c for c in commands if c.command == WorkerManagerCommandType.startWorkers and c.capabilities
         ]
         self.assertEqual(len(capability_starts), 0)
 
@@ -768,7 +762,7 @@ class TestWaterfallV1Policy(unittest.TestCase):
             snapshot, heartbeat_a, managed_worker_ids, managed_worker_capabilities, manager_snapshots
         )
         self.assertEqual(len(commands_a), 1)
-        self.assertEqual(commands_a[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands_a[0].command, WorkerManagerCommandType.startWorkers)
 
         # Manager B heartbeat: manager A still has room, so B should NOT scale up
         heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
@@ -785,7 +779,7 @@ class TestWaterfallV1Policy(unittest.TestCase):
         """get_scaling_status should return a ScalingManagerStatus."""
         policy = WaterfallV1Policy("1,manager_a,10")
 
-        from scaler.protocol.python.status import ScalingManagerStatus
+        from scaler.protocol.capnp import ScalingManagerStatus
 
         managed_workers = {b"mgr-1": [WorkerID(b"worker-1")]}
         status = policy.get_scaling_status(managed_workers)
@@ -794,12 +788,12 @@ class TestWaterfallV1Policy(unittest.TestCase):
 
 def _create_mock_task(task_id: TaskID, capabilities: Optional[Dict[str, int]] = None) -> Task:
     client_id = ClientID.generate_client_id()
-    return Task.new_msg(
-        task_id=task_id,
+    return Task(
+        taskId=task_id,
         source=client_id,
         metadata=b"",
-        func_object_id=ObjectID.generate_object_id(client_id),
-        function_args=[],
+        funcObjectId=ObjectID.generate_object_id(client_id),
+        functionArgs=[],
         capabilities=capabilities or {},
     )
 
@@ -807,24 +801,24 @@ def _create_mock_task(task_id: TaskID, capabilities: Optional[Dict[str, int]] = 
 def _create_mock_worker_heartbeat(
     queued_tasks: int = 0, capabilities: Optional[Dict[str, int]] = None
 ) -> WorkerHeartbeat:
-    return WorkerHeartbeat.new_msg(
-        agent=Resource.new_msg(cpu=1, rss=1000000),
-        rss_free=500000,
-        queue_size=10,
-        queued_tasks=queued_tasks,
-        latency_us=100,
-        task_lock=False,
+    return WorkerHeartbeat(
+        agent=Resource(cpu=1, rss=1000000),
+        rssFree=500000,
+        queueSize=10,
+        queuedTasks=queued_tasks,
+        latencyUS=100,
+        taskLock=False,
         processors=[],
         capabilities=capabilities or {},
-        worker_manager_id=b"test",
+        workerManagerID=b"test",
     )
 
 
 def _create_worker_manager_heartbeat(
     worker_manager_id: bytes, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
 ) -> WorkerManagerHeartbeat:
-    return WorkerManagerHeartbeat.new_msg(
-        max_task_concurrency=max_task_concurrency, capabilities=capabilities or {}, worker_manager_id=worker_manager_id
+    return WorkerManagerHeartbeat(
+        maxTaskConcurrency=max_task_concurrency, capabilities=capabilities or {}, workerManagerID=worker_manager_id
     )
 
 

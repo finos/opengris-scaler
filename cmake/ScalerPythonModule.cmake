@@ -1,12 +1,9 @@
-# Find Python3 development components
-execute_process(
-    COMMAND python3-config --prefix
-    OUTPUT_VARIABLE PYTHON_PREFIX
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-set(Python3_ROOT_DIR "${PYTHON_PREFIX}")
+# Find Python3 development components for the active build interpreter.
+# Rely on CMake/scikit-build selection instead of the system python3-config,
+# which can point at a different ABI than the environment running the build.
+set(Python3_FIND_VIRTUALENV FIRST)
 
-find_package(Python3 REQUIRED COMPONENTS Development.Module)
+find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
 message(STATUS "Python version: ${Python3_VERSION}")
 message(STATUS "Python include dirs: ${Python3_INCLUDE_DIRS}")
 message(STATUS "Python ABI: ${Python3_SOABI}")

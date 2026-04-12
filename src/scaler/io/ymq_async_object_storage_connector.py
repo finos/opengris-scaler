@@ -4,16 +4,18 @@ import socket
 import uuid
 from typing import Dict, Optional, Tuple
 
-import scaler.protocol.python._object_storage as _object_storage  # noqa
 from scaler.io.mixins import AsyncObjectStorageConnector
 from scaler.io.ymq import Bytes, ConnectorSocket, IOContext, YMQException
-from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader, to_capnp_object_id
+from scaler.protocol.capnp import ObjectRequestHeader, ObjectResponseHeader
+from scaler.protocol.helpers import from_capnp_object_id, to_capnp_object_id
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ObjectID
 
 
 class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
     """An asyncio connector that uses YMQ to connect to a Scaler's object storage instance."""
+
+    RESPONSE_HEADER_LENGTH = 80
 
     def __init__(self):
         self._host: Optional[str] = None
@@ -26,7 +28,7 @@ class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
 
         self._lock = asyncio.Lock()
         self._identity: str = f"{self.__class__.__name__}|{socket.gethostname().split('.')[0]}|{uuid.uuid4()}"
-        self._io_context: IOContext = IOContext()
+        self._io_context: Optional[IOContext] = IOContext()
         self._socket: Optional[ConnectorSocket] = None
 
     def __del__(self):
@@ -42,6 +44,7 @@ class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         if self.is_connected():
             raise ObjectStorageException("connector is already connected.")
 
+        assert self._io_context is not None
         self._socket = ConnectorSocket.connect(self._io_context, self._identity, self.address)
         self._connected_event.set()
 
@@ -70,19 +73,19 @@ class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
 
         header, payload = response
 
-        if header.response_type != ObjectResponseHeader.ObjectResponseType.GetOK:
+        if header.responseType != ObjectResponseHeader.ObjectResponseType.getOK:
             return
 
-        pending_get_future = self._pending_get_requests.pop(header.object_id, None)
+        pending_get_future = self._pending_get_requests.pop(from_capnp_object_id(header.objectID), None)
 
         if pending_get_future is None:
-            logging.warning(f"unknown get-ok response for unrequested object_id={repr(header.object_id)}.")
+            logging.warning(f"unknown get-ok response for unrequested object_id={repr(header.objectID)}.")
             return
 
         pending_get_future.set_result(payload)
 
     async def set_object(self, object_id: ObjectID, payload: bytes) -> None:
-        await self.__send_request(object_id, len(payload), ObjectRequestHeader.ObjectRequestType.SetObject, payload)
+        await self.__send_request(object_id, len(payload), ObjectRequestHeader.ObjectRequestType.setObject, payload)
 
     async def get_object(self, object_id: ObjectID, max_payload_length: int = 2**64 - 1) -> bytes:
         pending_get_future = self._pending_get_requests.get(object_id)
@@ -92,13 +95,13 @@ class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
             self._pending_get_requests[object_id] = pending_get_future
 
             await self.__send_request(
-                object_id, max_payload_length, ObjectRequestHeader.ObjectRequestType.GetObject, None
+                object_id, max_payload_length, ObjectRequestHeader.ObjectRequestType.getObject, None
             )
 
         return await pending_get_future
 
     async def delete_object(self, object_id: ObjectID) -> None:
-        await self.__send_request(object_id, 0, ObjectRequestHeader.ObjectRequestType.DeleteObject, None)
+        await self.__send_request(object_id, 0, ObjectRequestHeader.ObjectRequestType.deleteObject, None)
 
     async def duplicate_object_id(self, object_id: ObjectID, new_object_id: ObjectID) -> None:
         object_id_payload = to_capnp_object_id(object_id).to_bytes()
@@ -106,7 +109,7 @@ class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         await self.__send_request(
             new_object_id,
             len(object_id_payload),
-            ObjectRequestHeader.ObjectRequestType.DuplicateObjectID,
+            ObjectRequestHeader.ObjectRequestType.duplicateObjectID,
             object_id_payload,
         )
 
@@ -127,7 +130,12 @@ class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         self._next_request_id += 1
         self._next_request_id %= 2**64 - 1  # UINT64_MAX
 
-        header = ObjectRequestHeader.new_msg(object_id, payload_length, request_id, request_type)
+        header = ObjectRequestHeader(
+            objectID=to_capnp_object_id(object_id),
+            payloadLength=payload_length,
+            requestID=request_id,
+            requestType=request_type,
+        )
 
         try:
             async with self._lock:
@@ -136,13 +144,13 @@ class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
                 if payload is not None:
                     await self.__write_request_payload(payload)
 
-        except YMQException:
+        except YMQException as e:
             self._socket = None
-            self.__raise_connection_failure()
+            raise ObjectStorageException("connection failure to object storage server.") from e
 
     async def __write_request_header(self, header: ObjectRequestHeader):
         assert self._socket is not None
-        await self._socket.send_message(Bytes(header.get_message().to_bytes()))
+        await self._socket.send_message(Bytes(header.to_bytes()))
 
     async def __write_request_payload(self, payload: bytes):
         assert self._socket is not None
@@ -155,9 +163,9 @@ class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         try:
             header = await self.__read_response_header()
             payload = await self.__read_response_payload(header)
-        except YMQException:
+        except YMQException as e:
             self._socket = None
-            self.__raise_connection_failure()
+            raise ObjectStorageException("connection failure to object storage server.") from e
 
         return header, payload
 
@@ -167,23 +175,18 @@ class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         msg = await self._socket.recv_message()
         header_data = msg.payload.data
         assert header_data is not None
-        assert len(header_data) == ObjectResponseHeader.MESSAGE_LENGTH
+        assert len(header_data) == self.RESPONSE_HEADER_LENGTH
 
-        header_message = _object_storage.ObjectResponseHeader.from_bytes(header_data)
-        return ObjectResponseHeader(header_message)
+        return ObjectResponseHeader.from_bytes(header_data)
 
     async def __read_response_payload(self, header: ObjectResponseHeader) -> bytes:
         assert self._socket is not None
 
-        if header.payload_length > 0:
+        if header.payloadLength > 0:
             res = await self._socket.recv_message()
             payload_data = res.payload.data
             assert payload_data is not None
-            assert len(payload_data) == header.payload_length
+            assert len(payload_data) == header.payloadLength
             return payload_data
         else:
             return b""
-
-    @staticmethod
-    def __raise_connection_failure():
-        raise ObjectStorageException("connection failure to object storage server.")
