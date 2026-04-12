@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from scaler.protocol.capnp._python import _status  # noqa
+import scaler.protocol.python.capnp as _status  # noqa
 from scaler.protocol.python.common import TaskState
 from scaler.protocol.python.mixins import Message
 from scaler.utility.identifiers import ClientID, WorkerID

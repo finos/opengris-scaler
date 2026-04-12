@@ -1,5 +1,8 @@
 @0xaf44f44ea94a4675;
 
+using Cxx = import "/capnp/c++.capnp";
+$Cxx.namespace("scaler::protocol");
+
 using CommonType = import "common.capnp";
 using Status = import "status.capnp";
 

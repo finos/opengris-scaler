@@ -22,7 +22,6 @@ dependencies = [
     "bidict",
     "cloudpickle",
     "psutil==7.2.2",
-    "pycapnp==2.2.2",
     "pyzmq",
     "sortedcontainers==2.4.0",
     "tblib",
@@ -109,6 +108,7 @@ build.targets = [
     "py_stable_priority_queue",
     "py_many_to_many_dict",
     "py_indexed_queue",
+    "py_capnp",
 ]
 
 [tool.scikit-build.cmake.define]

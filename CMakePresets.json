@@ -42,7 +42,6 @@
       "displayName": "Windows x64 (MSVC)",
       "generator": "Visual Studio 17 2022",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/src"
       },
       "architecture": {
@@ -97,6 +96,7 @@
       "name": "windows-x64",
       "displayName": "Windows x64 build",
       "configurePreset": "windows-x64",
+      "configuration": "Release",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -156,6 +156,7 @@
     {
       "name": "windows-x64",
       "configurePreset": "windows-x64",
+      "configuration": "Release",
       "output": {
         "outputOnFailure": true
       },

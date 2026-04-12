@@ -44,12 +44,12 @@ static inline int PyModule_AddObjectRef(PyObject* mod, const char* name, PyObjec
 #if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 9
 // This is a very dirty hack, we basically place the raw pointer to this dict when init,
 // see scaler/utility/pymod_ymq/ymq.h for more detail
-PyObject* PyType_GetModule(PyTypeObject* type)
+static inline PyObject* PyType_GetModule(PyTypeObject* type)
 {
     return PyObject_GetAttrString((PyObject*)(type), "__module_object__");
 }
 
-PyObject* PyType_GetModuleState(PyTypeObject* type)
+static inline PyObject* PyType_GetModuleState(PyTypeObject* type)
 {
     PyObject* module = PyObject_GetAttrString((PyObject*)(type), "__module_object__");
     if (!module)
@@ -148,7 +148,8 @@ public:
     bool operator!() const { return _ptr == nullptr; }
 
     T* operator->() const { return _ptr; }
-    T* operator*() const { return _ptr; }
+    T* operator*() const = delete;
+    T* get() const { return _ptr; }
 
     Py_hash_t hash() const { return PyObject_Hash(_ptr); }
 
@@ -177,7 +178,7 @@ static inline PyObject* PyObject_CallOneArg(PyObject* callable, PyObject* arg)
     scaler::utility::pymod::OwnedPyObject<> args = PyTuple_Pack(1, arg);
     if (!args)
         return nullptr;
-    PyObject* result = PyObject_Call(callable, *args, nullptr);
+    PyObject* result = PyObject_Call(callable, args.get(), nullptr);
     return result;
 }
 #endif

@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <vector>
 
-#include "scaler/protocol/capnp/object_storage.capnp.h"
+#include "protocol/object_storage.capnp.h"
 
 namespace scaler {
 namespace object_storage {

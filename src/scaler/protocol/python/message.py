@@ -1,10 +1,10 @@
 import dataclasses
 import enum
-from typing import Dict, List, Optional, Set, Type, Union
+from typing import Any, Dict, List, Optional, Set, Type, Union, cast
 
 import bidict
 
-from scaler.protocol.capnp._python import _message  # noqa
+import scaler.protocol.python.capnp as _message  # noqa
 from scaler.protocol.python.common import (
     ObjectMetadata,
     ObjectStorageAddress,
@@ -89,19 +89,21 @@ class Task(Message):
 
     @staticmethod
     def _from_capnp_task_argument(value: _message.Task.Argument) -> Union[ObjectID, TaskID]:
-        if value.type.raw == _message.Task.Argument.ArgumentType.task:
-            return TaskID(value.data)
+        capnp_argument = cast(Any, value)
+
+        if capnp_argument.type.raw == _message.Task.Argument.ArgumentType.task.value:
+            return TaskID(capnp_argument.data)
         else:
-            assert value.type.raw == _message.Task.Argument.ArgumentType.objectID
-            return ObjectID(value.data)
+            assert capnp_argument.type.raw == _message.Task.Argument.ArgumentType.objectID.value
+            return ObjectID(capnp_argument.data)
 
     @staticmethod
     def _to_capnp_task_argument(value: Union[ObjectID, TaskID]) -> _message.Task.Argument:
         if isinstance(value, TaskID):
-            return _message.Task.Argument(type=_message.Task.Argument.ArgumentType.task, data=bytes(value))
+            return _message.Task.Argument(type=_message.Task.Argument.ArgumentType.task.value, data=bytes(value))
         else:
             assert isinstance(value, ObjectID)
-            return _message.Task.Argument(type=_message.Task.Argument.ArgumentType.objectID, data=bytes(value))
+            return _message.Task.Argument(type=_message.Task.Argument.ArgumentType.objectID.value, data=bytes(value))
 
 
 class TaskCancel(Message):
@@ -132,8 +134,8 @@ class TaskCancel(Message):
 
 class TaskLog(Message):
     class LogType(enum.Enum):
-        Stdout = _message.TaskLog.LogType.stdout
-        Stderr = _message.TaskLog.LogType.stderr
+        Stdout = _message.TaskLog.LogType.stdout.value
+        Stderr = _message.TaskLog.LogType.stderr.value
 
     def __init__(self, msg):
         super().__init__(msg)
@@ -396,8 +398,8 @@ class WorkerManagerHeartbeatEcho(Message):
 
 
 class WorkerManagerCommandType(enum.Enum):
-    StartWorkers = _message.WorkerManagerCommandType.startWorkers
-    ShutdownWorkers = _message.WorkerManagerCommandType.shutdownWorkers
+    StartWorkers = _message.WorkerManagerCommandType.startWorkers.value
+    ShutdownWorkers = _message.WorkerManagerCommandType.shutdownWorkers.value
 
 
 class WorkerManagerCommand(Message):
@@ -435,10 +437,10 @@ class WorkerManagerCommand(Message):
 
 class WorkerManagerCommandResponse(Message):
     class Status(enum.Enum):
-        TooManyWorkers = _message.WorkerManagerCommandResponse.Status.tooManyWorkers
-        UnknownAction = _message.WorkerManagerCommandResponse.Status.unknownAction
-        WorkerNotFound = _message.WorkerManagerCommandResponse.Status.workerNotFound
-        Success = _message.WorkerManagerCommandResponse.Status.success
+        TooManyWorkers = _message.WorkerManagerCommandResponse.Status.tooManyWorkers.value
+        UnknownAction = _message.WorkerManagerCommandResponse.Status.unknownAction.value
+        WorkerNotFound = _message.WorkerManagerCommandResponse.Status.workerNotFound.value
+        Success = _message.WorkerManagerCommandResponse.Status.success.value
 
     def __init__(self, msg):
         super().__init__(msg)
@@ -494,9 +496,9 @@ class WorkerHeartbeatEcho(Message):
 
 class ObjectInstruction(Message):
     class ObjectInstructionType(enum.Enum):
-        Create = _message.ObjectInstruction.ObjectInstructionType.create
-        Delete = _message.ObjectInstruction.ObjectInstructionType.delete
-        Clear = _message.ObjectInstruction.ObjectInstructionType.clear
+        Create = _message.ObjectInstruction.ObjectInstructionType.create.value
+        Delete = _message.ObjectInstruction.ObjectInstructionType.delete.value
+        Clear = _message.ObjectInstruction.ObjectInstructionType.clear.value
 
     def __init__(self, msg):
         super().__init__(msg)
@@ -555,8 +557,8 @@ class DisconnectResponse(Message):
 
 class ClientDisconnect(Message):
     class DisconnectType(enum.Enum):
-        Disconnect = _message.ClientDisconnect.DisconnectType.disconnect
-        Shutdown = _message.ClientDisconnect.DisconnectType.shutdown
+        Disconnect = _message.ClientDisconnect.DisconnectType.disconnect.value
+        Shutdown = _message.ClientDisconnect.DisconnectType.shutdown.value
 
     def __init__(self, msg):
         super().__init__(msg)
@@ -763,8 +765,8 @@ class StateTask(Message):
 
 class StateGraphTask(Message):
     class NodeTaskType(enum.Enum):
-        Normal = _message.StateGraphTask.NodeTaskType.normal
-        Target = _message.StateGraphTask.NodeTaskType.target
+        Normal = _message.StateGraphTask.NodeTaskType.normal.value
+        Target = _message.StateGraphTask.NodeTaskType.target.value
 
     def __init__(self, msg):
         super().__init__(msg)

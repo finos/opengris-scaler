@@ -33,23 +33,23 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds)
 
     // address can be None, which means the message has no address
     // check if the address and payload are of type PyBytes
-    if (PyObject_IsInstance(address, *state->PyBytesType)) {
+    if (PyObject_IsInstance(address, state->PyBytesType.get())) {
         self->address = OwnedPyObject<PyBytes>::fromBorrowed((PyBytes*)address);
     } else if (address == Py_None) {
         self->address = OwnedPyObject<PyBytes>::none();
     } else {
         OwnedPyObject args = PyTuple_Pack(1, address);
-        self->address      = (PyBytes*)PyObject_CallObject(*state->PyBytesType, *args);
+        self->address      = (PyBytes*)PyObject_CallObject(state->PyBytesType.get(), args.get());
 
         if (!self->address)
             return -1;
     }
 
-    if (PyObject_IsInstance(payload, *state->PyBytesType)) {
+    if (PyObject_IsInstance(payload, state->PyBytesType.get())) {
         self->payload = OwnedPyObject<PyBytes>::fromBorrowed((PyBytes*)payload);
     } else {
         OwnedPyObject args = PyTuple_Pack(1, payload);
-        self->payload      = (PyBytes*)PyObject_CallObject(*state->PyBytesType, *args);
+        self->payload      = (PyBytes*)PyObject_CallObject(state->PyBytesType.get(), args.get());
 
         if (!self->payload) {
             return -1;
@@ -76,7 +76,7 @@ static void PyMessage_dealloc(PyMessage* self)
 
 static PyObject* PyMessage_repr(PyMessage* self)
 {
-    return PyUnicode_FromFormat("<Message address=%R payload=%R>", *self->address, *self->payload);
+    return PyUnicode_FromFormat("<Message address=%R payload=%R>", self->address.get(), self->payload.get());
 }
 
 static PyMemberDef PyMessage_members[] = {

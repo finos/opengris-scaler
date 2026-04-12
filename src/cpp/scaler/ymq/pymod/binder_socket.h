@@ -50,7 +50,7 @@ static int PyBinderSocket_init(PyBinderSocket* self, PyObject* args, PyObject* k
             kwds,
             "O!s#",
             (char**)kwlist,
-            (PyTypeObject*)*state->PyIOContextType,
+            (PyTypeObject*)state->PyIOContextType.get(),
             &pyIOContext,
             &identity,
             &identityLen))
@@ -156,7 +156,7 @@ static PyObject* PyBinderSocket_send_message(PyBinderSocket* self, PyObject* arg
             &callback,
             &remoteIdentity,
             &remoteIdentityLen,
-            (PyTypeObject*)*state->PyBytesType,
+            (PyTypeObject*)state->PyBytesType.get(),
             &messagePayload))
         return nullptr;
 
@@ -213,7 +213,7 @@ static PyObject* PyBinderSocket_recv_message(PyBinderSocket* self, PyObject* arg
 
             scaler::ymq::Message& message = result.value();
 
-            OwnedPyObject<PyBytes> address = (PyBytes*)PyObject_CallNoArgs(*state->PyBytesType);
+            OwnedPyObject<PyBytes> address = (PyBytes*)PyObject_CallNoArgs(state->PyBytesType.get());
             if (!address) {
                 completeCallbackWithRaisedException(callback);
                 return;
@@ -221,7 +221,7 @@ static PyObject* PyBinderSocket_recv_message(PyBinderSocket* self, PyObject* arg
 
             address->bytes = std::move(message.address);
 
-            OwnedPyObject<PyBytes> payload = (PyBytes*)PyObject_CallNoArgs(*state->PyBytesType);
+            OwnedPyObject<PyBytes> payload = (PyBytes*)PyObject_CallNoArgs(state->PyBytesType.get());
             if (!payload) {
                 completeCallbackWithRaisedException(callback);
                 return;
@@ -229,7 +229,8 @@ static PyObject* PyBinderSocket_recv_message(PyBinderSocket* self, PyObject* arg
 
             payload->bytes = std::move(message.payload);
 
-            OwnedPyObject pyMessage = PyObject_CallFunction(*state->PyMessageType, "OO", *address, *payload);
+            OwnedPyObject pyMessage =
+                PyObject_CallFunction(state->PyMessageType.get(), "OO", address.get(), payload.get());
             if (!pyMessage) {
                 completeCallbackWithRaisedException(callback);
                 return;

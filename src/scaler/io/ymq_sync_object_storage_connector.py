@@ -3,9 +3,9 @@ import uuid
 from threading import Lock
 from typing import Iterable, Optional
 
+import scaler.protocol.python._object_storage as _object_storage  # noqa
 from scaler.io.mixins import SyncObjectStorageConnector
 from scaler.io.ymq import Bytes, ConnectorSocket, IOContext, YMQException
-from scaler.protocol.capnp._python import _object_storage  # noqa
 from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader, to_capnp_object_id
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ObjectID
@@ -168,8 +168,8 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         # That's is annoying because it leads to an unnecessary copy of the header's buffer.
         # See https://github.com/capnproto/pycapnp/issues/153
 
-        with _object_storage.ObjectResponseHeader.from_bytes(header_bytes) as header_message:
-            return ObjectResponseHeader(header_message)
+        header_message = _object_storage.ObjectResponseHeader.from_bytes(header_bytes)
+        return ObjectResponseHeader(header_message)
 
     def __read_response_payload(self, header: ObjectResponseHeader) -> bytearray:
         if header.payload_length > 0:

@@ -1,8 +1,9 @@
 import dataclasses
 import enum
 import struct
+from typing import Any, cast
 
-from scaler.protocol.capnp._python import _object_storage  # noqa
+import scaler.protocol.python.capnp as _object_storage  # noqa
 from scaler.protocol.python.mixins import Message
 from scaler.utility.identifiers import ObjectID
 
@@ -12,10 +13,10 @@ OBJECT_ID_FORMAT = "!QQQQ"
 @dataclasses.dataclass
 class ObjectRequestHeader(Message):
     class ObjectRequestType(enum.Enum):
-        SetObject = _object_storage.ObjectRequestHeader.ObjectRequestType.setObject
-        GetObject = _object_storage.ObjectRequestHeader.ObjectRequestType.getObject
-        DeleteObject = _object_storage.ObjectRequestHeader.ObjectRequestType.deleteObject
-        DuplicateObjectID = _object_storage.ObjectRequestHeader.ObjectRequestType.duplicateObjectID
+        SetObject = _object_storage.ObjectRequestHeader.ObjectRequestType.setObject.value
+        GetObject = _object_storage.ObjectRequestHeader.ObjectRequestType.getObject.value
+        DeleteObject = _object_storage.ObjectRequestHeader.ObjectRequestType.deleteObject.value
+        DuplicateObjectID = _object_storage.ObjectRequestHeader.ObjectRequestType.duplicateObjectID.value
 
     def __init__(self, msg):
         super().__init__(msg)
@@ -58,11 +59,11 @@ class ObjectResponseHeader(Message):
     MESSAGE_LENGTH = 80  # there does not seem to be a way to statically know the size of a pycapnp message
 
     class ObjectResponseType(enum.Enum):
-        SetOK = _object_storage.ObjectResponseHeader.ObjectResponseType.setOK
-        GetOK = _object_storage.ObjectResponseHeader.ObjectResponseType.getOK
-        DelOK = _object_storage.ObjectResponseHeader.ObjectResponseType.delOK
-        DelNotExists = _object_storage.ObjectResponseHeader.ObjectResponseType.delNotExists
-        DuplicateOK = _object_storage.ObjectResponseHeader.ObjectResponseType.duplicateOK
+        SetOK = _object_storage.ObjectResponseHeader.ObjectResponseType.setOK.value
+        GetOK = _object_storage.ObjectResponseHeader.ObjectResponseType.getOK.value
+        DelOK = _object_storage.ObjectResponseHeader.ObjectResponseType.delOK.value
+        DelNotExists = _object_storage.ObjectResponseHeader.ObjectResponseType.delNotExists.value
+        DuplicateOK = _object_storage.ObjectResponseHeader.ObjectResponseType.duplicateOK.value
 
     def __init__(self, msg):
         super().__init__(msg)
@@ -107,12 +108,14 @@ def to_capnp_object_id(object_id: ObjectID) -> _object_storage.ObjectID:
 
 
 def from_capnp_object_id(capnp_object_id: _object_storage.ObjectID) -> ObjectID:
+    capnp_object_id_fields = cast(Any, capnp_object_id)
+
     return ObjectID(
         struct.pack(
             OBJECT_ID_FORMAT,
-            capnp_object_id.field0,
-            capnp_object_id.field1,
-            capnp_object_id.field2,
-            capnp_object_id.field3,
+            capnp_object_id_fields.field0,
+            capnp_object_id_fields.field1,
+            capnp_object_id_fields.field2,
+            capnp_object_id_fields.field3,
         )
     )

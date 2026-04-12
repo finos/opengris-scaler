@@ -34,7 +34,7 @@ static int YMQException_init(YMQException* self, PyObject* args, PyObject* kwds)
     if (!PyArg_ParseTuple(args, "OO", &errorCode, &errorMessage))
         return -1;
 
-    if (!PyObject_IsInstance(errorCode, *state->PyErrorCodeType)) {
+    if (!PyObject_IsInstance(errorCode, state->PyErrorCodeType.get())) {
         PyErr_SetString(PyExc_TypeError, "expected code to be of type ErrorCode");
         return -1;
     }
@@ -89,7 +89,7 @@ inline OwnedPyObject<> YMQException_argtupleFromCoreError(YMQState* state, const
     if (!code)
         return nullptr;
 
-    OwnedPyObject pyCode = PyObject_CallFunction(*state->PyErrorCodeType, "O", *code);
+    OwnedPyObject pyCode = PyObject_CallFunction(state->PyErrorCodeType.get(), "O", code.get());
 
     if (!pyCode)
         return nullptr;
@@ -99,16 +99,16 @@ inline OwnedPyObject<> YMQException_argtupleFromCoreError(YMQState* state, const
     if (!message)
         return nullptr;
 
-    return PyTuple_Pack(2, *pyCode, *message);
+    return PyTuple_Pack(2, pyCode.get(), message.get());
 }
 
 inline PyObject* YMQException_getTypeForError(YMQState* state, const scaler::ymq::Error& error)
 {
     auto it = state->PyExceptionSubtypes.find(static_cast<int>(error._errorCode));
     if (it != state->PyExceptionSubtypes.end()) {
-        return *it->second;
+        return it->second.get();
     }
-    return *state->PyExceptionType;
+    return state->PyExceptionType.get();
 }
 
 inline void YMQException_setFromCoreError(YMQState* state, const scaler::ymq::Error& error)
@@ -117,7 +117,7 @@ inline void YMQException_setFromCoreError(YMQState* state, const scaler::ymq::Er
     if (!tuple)
         return;
 
-    PyErr_SetObject(YMQException_getTypeForError(state, error), *tuple);
+    PyErr_SetObject(YMQException_getTypeForError(state, error), tuple.get());
 }
 
 inline OwnedPyObject<> YMQException_createFromCoreError(YMQState* state, const scaler::ymq::Error& error)
@@ -126,7 +126,7 @@ inline OwnedPyObject<> YMQException_createFromCoreError(YMQState* state, const s
     if (!tuple)
         return nullptr;
 
-    return PyObject_CallObject(YMQException_getTypeForError(state, error), *tuple);
+    return PyObject_CallObject(YMQException_getTypeForError(state, error), tuple.get());
 }
 
 }  // namespace pymod

@@ -101,7 +101,7 @@ static PyObject* PyManyToManyDictLeftKeys(PyManyToManyDict* self, [[maybe_unused
     }
 
     for (const auto& [leftKey, _]: leftKeys) {
-        if (PySet_Add(*leftKeysSet, *leftKey) == -1) {
+        if (PySet_Add(leftKeysSet.get(), leftKey.get()) == -1) {
             return nullptr;
         }
     }
@@ -119,7 +119,7 @@ static PyObject* PyManyToManyDictRightKeys(PyManyToManyDict* self, [[maybe_unuse
     }
 
     for (const auto& [rightKey, _]: rightKeys) {
-        if (PySet_Add(*rightKeysSet, *rightKey) == -1) {
+        if (PySet_Add(rightKeysSet.get(), rightKey.get()) == -1) {
             return nullptr;
         }
     }
@@ -157,17 +157,17 @@ static PyObject* PyManyToManyDictLeftKeyItems(PyManyToManyDict* self, [[maybe_un
         }
 
         for (const auto& value: values) {
-            if (PySet_Add(*valueSet, *value) == -1) {
+            if (PySet_Add(valueSet.get(), value.get()) == -1) {
                 return nullptr;
             }
         }
 
-        OwnedPyObject<> itemTuple = PyTuple_Pack(2, *key, *valueSet);
+        OwnedPyObject<> itemTuple = PyTuple_Pack(2, key.get(), valueSet.get());
         if (!itemTuple) {
             return nullptr;
         }
 
-        if (PyList_Append(*itemList, *itemTuple) == -1) {
+        if (PyList_Append(itemList.get(), itemTuple.get()) == -1) {
             return nullptr;
         }
     }
@@ -189,17 +189,17 @@ static PyObject* PyManyToManyDictRightKeyItems(PyManyToManyDict* self, [[maybe_u
         }
 
         for (const auto& value: values) {
-            if (PySet_Add(*valueSet, *value) == -1) {
+            if (PySet_Add(valueSet.get(), value.get()) == -1) {
                 return nullptr;
             }
         }
 
-        OwnedPyObject<> itemTuple = PyTuple_Pack(2, *key, *valueSet);
+        OwnedPyObject<> itemTuple = PyTuple_Pack(2, key.get(), valueSet.get());
         if (!itemTuple) {
             return nullptr;
         }
 
-        if (PyList_Append(*itemList, *itemTuple) == -1) {
+        if (PyList_Append(itemList.get(), itemTuple.get()) == -1) {
             return nullptr;
         }
     }
@@ -227,7 +227,7 @@ static PyObject* PyManyToManyDictGetLeftItems(PyManyToManyDict* self, PyObject* 
     }
 
     for (const auto& leftKey: *leftKeys) {
-        if (PySet_Add(*leftKeysSet, *leftKey) == -1) {
+        if (PySet_Add(leftKeysSet.get(), leftKey.get()) == -1) {
             return nullptr;
         }
     }
@@ -255,7 +255,7 @@ static PyObject* PyManyToManyDictGetRightItems(PyManyToManyDict* self, PyObject*
     }
 
     for (const auto& rightKey: *rightKeys) {
-        if (PySet_Add(*rightKeysSet, *rightKey) == -1) {
+        if (PySet_Add(rightKeysSet.get(), rightKey.get()) == -1) {
             return nullptr;
         }
     }
@@ -283,7 +283,7 @@ static PyObject* PyManyToManyDictRemoveLeftKey(PyManyToManyDict* self, PyObject*
     }
 
     for (const auto& rightKey: rightKeys) {
-        if (PySet_Add(*rightKeysSet, *rightKey) == -1) {
+        if (PySet_Add(rightKeysSet.get(), rightKey.get()) == -1) {
             return nullptr;
         }
     }
@@ -311,7 +311,7 @@ static PyObject* PyManyToManyDictRemoveRightKey(PyManyToManyDict* self, PyObject
     }
 
     for (const auto& leftKey: leftKeys) {
-        if (PySet_Add(*leftKeysSet, *leftKey) == -1) {
+        if (PySet_Add(leftKeysSet.get(), leftKey.get()) == -1) {
             return nullptr;
         }
     }
