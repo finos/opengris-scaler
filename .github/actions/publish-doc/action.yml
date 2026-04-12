@@ -7,6 +7,8 @@ runs:
     - name: Install dependencies
       shell: bash
       run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq pandoc
         uv pip install --system -r pyproject.toml
         uv pip install --system -r docs/requirements_docs.txt
 
