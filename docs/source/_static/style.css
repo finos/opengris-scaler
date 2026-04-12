@@ -34,3 +34,41 @@
 dl.class > dt:first-of-type {
     display: block !important;
 }
+
+/* Let content use full available width and minimize padding */
+.sy-main .max-w-6xl {
+    max-width: none !important;
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+}
+
+/* Diff table colors — semi-transparent so they work on both light and dark themes */
+table.diff th {
+    background-color: transparent !important;
+}
+table.diff td.diff_add {
+    background-color: rgba(46, 160, 67, 0.25) !important;
+}
+table.diff td.diff_chg {
+    background-color: rgba(187, 128, 9, 0.3) !important;
+}
+table.diff td.diff_sub {
+    background-color: rgba(248, 81, 73, 0.25) !important;
+}
+table.diff span.diff_add {
+    background-color: rgba(46, 160, 67, 0.5) !important;
+}
+table.diff span.diff_chg {
+    background-color: rgba(187, 128, 9, 0.55) !important;
+}
+table.diff span.diff_sub {
+    background-color: rgba(248, 81, 73, 0.5) !important;
+}
+
+/* Visible separator between diff chunks — high contrast for both themes */
+table.diff tbody + tbody {
+    border-top: 3px solid #1a1a1a !important;
+}
+html.dark table.diff tbody + tbody {
+    border-top: 3px solid #e6e6e6 !important;
+}
