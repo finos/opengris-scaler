@@ -20,11 +20,11 @@ Install `uv <https://docs.astral.sh/uv/getting-started/installation>`_:
 
             powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.sh | iex"
 
-Then create and activate a virtual environment with Python 3.13 and install OpenGRIS Scaler:
+Then create and activate a virtual environment and install OpenGRIS Scaler:
 
 .. code-block:: bash
 
-    uv venv --python 3.13
+    uv venv
     source .venv/bin/activate
     uv pip install 'opengris-scaler[all]'
 
@@ -106,7 +106,7 @@ Start Services
             worker_manager_id = "wm-orb"
             worker_scheduler_address = "tcp://<EC2_PRIVATE_IP>:6788"
             object_storage_address = "tcp://<EC2_PRIVATE_IP>:6789"
-            python_version = "3.13"
+            python_version = "3.14"
             requirements_txt = """
             opengris-scaler>=1.27.0
             numpy
@@ -155,22 +155,10 @@ Start Services
 Start Compute Tasks
 -------------------
 
-See the application examples for real-world usage patterns:
+Jupyter notebooks demonstrating real-world distributed computing use cases
+with Scaler, ParFun, and ParGraph.
 
-* :doc:`Calculate Implied Volatility <application_examples/implied_volatility>`
-* :doc:`Option Close Price <application_examples/option_close_price>`
-* :doc:`Distributed Image Processing <application_examples/distributed_image_processing>`
-* :doc:`Parallel Timeseries Cross-Validation <application_examples/parallel_timeseries_cross_validation>`
-
-Or explore the example Jupyter notebooks:
-
-* `Multi-Signal Alpha Research Platform with ParFun <https://github.com/finos/opengris-scaler/blob/main/slides/AlphaResearch.ipynb>`_
-* `OpenGRIS Scaler Demo With Multiple Backends (IBM Symphony + AWS ECS) <https://github.com/finos/opengris-scaler/blob/main/slides/bermudan_option.ipynb>`_
-* `OpenGRIS Scaler Demo With Waterfall Policy (Native + EKS + Allegro) <https://github.com/finos/opengris-scaler/blob/main/slides/waterfall_bermudan_option.ipynb>`_
-* `Parallel Colebrook-White Friction Factor Solver with ParFun <https://github.com/finos/opengris-scaler/blob/main/slides/Simple_Colebrook_White_Parfun.ipynb>`_
-* `Heavy American Option Pricing with Longstaff-Schwartz (LSM) and ParFun <https://github.com/finos/opengris-scaler/blob/main/slides/Simple_Deep_American_Option_Parfun.ipynb>`_
-* `Parallel Heston Calibration with ParFun + QuantLib <https://github.com/finos/opengris-scaler/blob/main/slides/Simple_Heston_Calibration_Parfun.ipynb>`_
-* `Parallel Hull-White Calibration with ParFun + QuantLib <https://github.com/finos/opengris-scaler/blob/main/slides/Simple_Hull_White_Calibration_Parfun.ipynb>`_
-* `Parallel Swap Portfolio CVA with ParGraph + ParFun <https://github.com/finos/opengris-scaler/blob/main/slides/SwapCVA.ipynb>`_
-* `Parallel Vol Surface Calibration & PDE Exotic Pricing with ParFun <https://github.com/finos/opengris-scaler/blob/main/slides/VolSurface.ipynb>`_
-* `Portfolio-Level XVA Risk Computation with ParGraph <https://github.com/finos/opengris-scaler/blob/main/slides/XVA.ipynb>`_
+- :doc:`Multi-Signal Alpha Research Platform with ParFun <../gallery/AlphaResearch>`
+- :doc:`Parallel Vol Surface Calibration & PDE Exotic Pricing with ParFun <../gallery/VolSurface>`
+- :doc:`Parallel Swap Portfolio CVA with ParGraph + ParFun <../gallery/SwapCVA>`
+- :doc:`Portfolio-Level XVA Risk Computation with ParGraph <../gallery/XVA>`

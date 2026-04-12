@@ -175,8 +175,8 @@ Then, on the **EC2 instance**, install uv and Scaler:
    curl -LsSf https://astral.sh/uv/install.sh | sh
    source $HOME/.local/bin/env
 
-   # Create and activate a virtual environment with Python 3.13 and install Scaler
-   uv venv --python 3.13
+   # Create and activate a virtual environment and install Scaler
+   uv venv
    source .venv/bin/activate
    uv pip install 'opengris-scaler[all]'
 
@@ -242,7 +242,7 @@ network.
          # workers run in the same VPC — use the private IP for lower latency
          worker_scheduler_address = "tcp://<EC2_PRIVATE_IP>:6788"
          object_storage_address = "tcp://<EC2_PRIVATE_IP>:6789"
-         python_version = "3.13"
+         python_version = "3.14"
          requirements_txt = """
          opengris-scaler>=1.27.0
          numpy
@@ -277,7 +277,7 @@ network.
              --worker-manager-id wm-orb \
              --public-scheduler-address tcp://<EC2_PRIVATE_IP>:6788 \
              --object-storage-address tcp://<EC2_PRIVATE_IP>:6789 \
-             --python-version 3.13 \
+             --python-version 3.14 \
              --requirements-txt $'opengris-scaler>=1.27.0\nnumpy' \
              --instance-type t3.medium \
              --aws-region us-east-1 \
@@ -292,8 +292,8 @@ no additional configuration is needed.
 
 .. note::
 
-   The local client must use the same Python version (3.13) and the same version
-   of ``opengris-scaler`` as the EC2 instance. Version mismatches can cause
+   The local client must use the same Python version as the EC2 instance and the
+   same version of ``opengris-scaler``. Version mismatches can cause
    serialization errors at runtime.
 
 The example below uses ``numpy``, which is included in ``requirements_txt`` and

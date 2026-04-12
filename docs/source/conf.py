@@ -13,7 +13,12 @@
 import os
 import sys
 
+from pygments.lexers.python import PythonLexer
+from sphinx.highlighting import lexers
+
 sys.path.insert(0, os.path.abspath(os.path.join("..", "..", "src")))
+
+lexers["ipython3"] = PythonLexer()
 
 
 # -- Project information -----------------------------------------------------
@@ -86,3 +91,4 @@ copybutton_prompt_text = r"\$ "
 copybutton_prompt_is_regexp = True
 
 nbsphinx_execute = "never"
+nbsphinx_codecell_lexer = "python"
