@@ -1,11 +1,11 @@
 from typing import Dict, List, Optional, Set
 
-from scaler.protocol.python.message import InformationSnapshot, Task, WorkerManagerCommand, WorkerManagerHeartbeat
-from scaler.protocol.python.status import ScalingManagerStatus
+from scaler.protocol.capnp import ScalingManagerStatus, Task, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.scheduler.controllers.mixins import PolicyController
 from scaler.scheduler.controllers.policies.library.utility import create_policy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.utility.identifiers import TaskID, WorkerID
+from scaler.utility.snapshot import InformationSnapshot
 
 
 class VanillaPolicyController(PolicyController):

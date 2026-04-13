@@ -9,7 +9,7 @@ import psutil
 from scaler.config.defaults import DEFAULT_PROCESSOR_KILL_DELAY_SECONDS
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.zmq import ZMQConfig
-from scaler.protocol.python.message import Task
+from scaler.protocol.capnp import Task
 from scaler.utility.identifiers import ProcessorID
 from scaler.worker.agent.processor.processor import SUSPEND_SIGNAL, Processor
 

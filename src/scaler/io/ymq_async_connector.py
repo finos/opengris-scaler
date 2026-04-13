@@ -7,7 +7,7 @@ from scaler.config.types.zmq import ZMQConfig
 from scaler.io.mixins import AsyncConnector
 from scaler.io.utility import deserialize, serialize
 from scaler.io.ymq import Bytes, ConnectorSocket, IOContext
-from scaler.protocol.python.mixins import Message
+from scaler.protocol.mixins import Message
 
 
 class YMQAsyncConnector(AsyncConnector):

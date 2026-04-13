@@ -5,20 +5,21 @@ from typing import Dict, List, Optional, Tuple
 
 from scaler.config.defaults import DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
 from scaler.io.mixins import AsyncBinder
-from scaler.protocol.python.message import (
-    InformationSnapshot,
+from scaler.protocol.capnp import (
+    ScalingManagerStatus,
     WorkerManagerCommand,
     WorkerManagerCommandResponse,
     WorkerManagerCommandType,
     WorkerManagerHeartbeat,
     WorkerManagerHeartbeatEcho,
 )
-from scaler.protocol.python.status import ScalingManagerStatus
+from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import PolicyController, TaskController, WorkerController
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.mixins import Looper, Reporter
+from scaler.utility.snapshot import InformationSnapshot
 
 
 class WorkerManagerController(Looper, Reporter):
@@ -53,8 +54,9 @@ class WorkerManagerController(Looper, Reporter):
         self._worker_controller = worker_controller
 
     async def on_heartbeat(self, source: bytes, heartbeat: WorkerManagerHeartbeat):
+        heartbeat.capabilities = capabilities_to_dict(heartbeat.capabilities)
         if source not in self._manager_alive_since:
-            manager_id = heartbeat.worker_manager_id
+            manager_id = heartbeat.workerManagerID
             existing_source = self._manager_id_to_source.get(manager_id)
             if existing_source is not None and existing_source != source:
                 logging.warning(
@@ -68,12 +70,12 @@ class WorkerManagerController(Looper, Reporter):
 
         self._manager_alive_since[source] = (time.time(), heartbeat)
 
-        await self._binder.send(source, WorkerManagerHeartbeatEcho.new_msg())
+        await self._binder.send(source, WorkerManagerHeartbeatEcho())
 
         information_snapshot = self._build_snapshot()
 
         # Get managed worker IDs from worker controller (heartbeat-based live truth)
-        managed_worker_ids = self._worker_controller.get_workers_by_manager_id(heartbeat.worker_manager_id)
+        managed_worker_ids = self._worker_controller.get_workers_by_manager_id(heartbeat.workerManagerID)
 
         # Update pending worker count: decrement for each worker that newly connected.
         worker_count = len(managed_worker_ids)
@@ -103,21 +105,22 @@ class WorkerManagerController(Looper, Reporter):
 
     async def on_command_response(self, source: bytes, response: WorkerManagerCommandResponse):
         """Called by scheduler event loop when WorkerManagerCommandResponse is received."""
+        response_capabilities = capabilities_to_dict(getattr(response, "capabilities", {}))
         pending = self._pending_commands.pop(source, None)
         if pending is None:
             logging.warning(f"Received response from {source!r} but no pending command found")
 
-        if response.command == WorkerManagerCommandType.StartWorkers:
-            if response.status == WorkerManagerCommandResponse.Status.Success:
-                if response.capabilities:
-                    self._manager_capabilities[source] = dict(response.capabilities)
+        if response.command == WorkerManagerCommandType.startWorkers:
+            if response.status == WorkerManagerCommandResponse.Status.success:
+                if response_capabilities:
+                    self._manager_capabilities[source] = response_capabilities
                 self._pending_worker_count[source] = self._pending_worker_count.get(source, 0) + 1
             else:
-                logging.warning(f"StartWorkers failed: {response.status.name}")
+                logging.warning(f"StartWorkers failed: {response.status._as_str()}")
 
-        elif response.command == WorkerManagerCommandType.ShutdownWorkers:
-            if response.status != WorkerManagerCommandResponse.Status.Success:
-                logging.warning(f"ShutdownWorkers failed: {response.status.name}")
+        elif response.command == WorkerManagerCommandType.shutdownWorkers:
+            if response.status != WorkerManagerCommandResponse.Status.success:
+                logging.warning(f"ShutdownWorkers failed: {response.status._as_str()}")
 
     async def routine(self):
         await self._clean_managers()
@@ -133,22 +136,22 @@ class WorkerManagerController(Looper, Reporter):
             caps_str = " ".join(sorted(caps.keys())) if caps else ""
             details.append(
                 {
-                    "worker_manager_id": heartbeat.worker_manager_id,
+                    "worker_manager_id": heartbeat.workerManagerID,
                     "identity": source.decode(errors="replace"),
                     "last_seen_s": min(int(now - last_seen), 255),
-                    "max_task_concurrency": heartbeat.max_task_concurrency,
+                    "max_task_concurrency": heartbeat.maxTaskConcurrency,
                     "capabilities": caps_str,
                     "pending_workers": self._pending_worker_count.get(source, 0),
                 }
             )
 
-        return ScalingManagerStatus.new_msg(managed_workers=base_status.managed_workers, worker_manager_details=details)
+        return ScalingManagerStatus(managedWorkers=base_status.managedWorkers, workerManagerDetails=details)
 
     def get_managed_workers(self) -> Dict[bytes, List[WorkerID]]:
         """Return managed workers keyed by worker_manager_id (from heartbeat)."""
         result: Dict[bytes, List[WorkerID]] = {}
         for source, (_, heartbeat) in self._manager_alive_since.items():
-            manager_id = heartbeat.worker_manager_id
+            manager_id = heartbeat.workerManagerID
             result[manager_id] = self._worker_controller.get_workers_by_manager_id(manager_id)
         return result
 
@@ -160,11 +163,11 @@ class WorkerManagerController(Looper, Reporter):
         """Build cross-manager snapshots from all known managers, keyed by worker_manager_id."""
         snapshots: Dict[bytes, WorkerManagerSnapshot] = {}
         for source, (last_seen, heartbeat) in self._manager_alive_since.items():
-            manager_id = heartbeat.worker_manager_id
+            manager_id = heartbeat.workerManagerID
             worker_count = len(self._worker_controller.get_workers_by_manager_id(manager_id))
             snapshots[manager_id] = WorkerManagerSnapshot(
                 worker_manager_id=manager_id,
-                max_task_concurrency=heartbeat.max_task_concurrency,
+                max_task_concurrency=heartbeat.maxTaskConcurrency,
                 worker_count=worker_count,
                 pending_worker_count=self._pending_worker_count.get(source, 0),
                 last_seen_s=last_seen,
@@ -176,7 +179,10 @@ class WorkerManagerController(Looper, Reporter):
         tasks = self._task_controller._task_id_to_task  # type: ignore # noqa
         workers = {
             worker_id: worker_heartbeat
-            for worker_id, (_, worker_heartbeat) in self._worker_controller._worker_alive_since.items()  # type: ignore # noqa
+            for worker_id, (
+                _,
+                worker_heartbeat,
+            ) in self._worker_controller._worker_alive_since.items()  # type: ignore # noqa
         }
         return InformationSnapshot(tasks=tasks, workers=workers)
 
@@ -197,7 +203,7 @@ class WorkerManagerController(Looper, Reporter):
             return
 
         _, heartbeat = self._manager_alive_since[source]
-        manager_id = heartbeat.worker_manager_id
+        manager_id = heartbeat.workerManagerID
         self._manager_id_to_source.pop(manager_id, None)
 
         logging.info(f"WorkerManager {source!r} disconnected")

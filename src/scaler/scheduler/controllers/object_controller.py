@@ -4,9 +4,7 @@ from asyncio import Queue
 from typing import Optional, Set
 
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
-from scaler.protocol.python.common import ObjectMetadata
-from scaler.protocol.python.message import ObjectInstruction
-from scaler.protocol.python.status import ObjectManagerStatus
+from scaler.protocol.capnp import ObjectInstruction, ObjectManagerStatus, ObjectMetadata
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import ClientController, ObjectController, WorkerController
 from scaler.scheduler.object_usage.object_tracker import ObjectTracker, ObjectUsage
@@ -57,15 +55,15 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
         self._worker_manager = worker_manager
 
     async def on_object_instruction(self, source: bytes, instruction: ObjectInstruction):
-        if instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Create:
+        if instruction.instructionType == ObjectInstruction.ObjectInstructionType.create:
             self.__on_object_create(source, instruction)
             return
 
-        if instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Delete:
-            self.on_del_objects(instruction.object_user, set(instruction.object_metadata.object_ids))
+        if instruction.instructionType == ObjectInstruction.ObjectInstructionType.delete:
+            self.on_del_objects(instruction.objectUser, set(instruction.objectMetadata.objectIds))
             return
 
-        logging.error(f"received unknown object instruction_type={instruction.instruction_type} from {source=}")
+        logging.error(f"received unknown object instruction_type={instruction.instructionType} from {source=}")
 
     def on_add_object(
         self,
@@ -105,7 +103,7 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
         return self._object_tracker.get_object(object_id).object_name
 
     def get_status(self) -> ObjectManagerStatus:
-        return ObjectManagerStatus.new_msg(self._object_tracker.object_count())
+        return ObjectManagerStatus(numberOfObjects=self._object_tracker.object_count())
 
     async def __routine_send_objects_deletions(self):
         deleted_object_ids = [await self._queue_deleted_object_ids.get()]
@@ -118,12 +116,12 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
         for worker in self._worker_manager.get_worker_ids():
             await self._binder.send(
                 worker,
-                ObjectInstruction.new_msg(
-                    ObjectInstruction.ObjectInstructionType.Delete,
+                ObjectInstruction(
+                    instructionType=ObjectInstruction.ObjectInstructionType.delete,
                     # TODO: ideally object_user should be set to the owning client ID, but then we cannot batch these
                     # Delete instructions.
-                    None,
-                    ObjectMetadata.new_msg(tuple(deleted_object_ids)),
+                    objectUser=b"",
+                    objectMetadata=ObjectMetadata(objectIds=tuple(deleted_object_ids)),
                 ),
             )
 
@@ -131,16 +129,16 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
             await self._connector_storage.delete_object(object_id)
 
     def __on_object_create(self, source: bytes, instruction: ObjectInstruction):
-        if not self._client_manager.has_client_id(instruction.object_user):
-            logging.error(f"received object creation from {source!r} for unknown client {instruction.object_user!r}")
+        if not self._client_manager.has_client_id(instruction.objectUser):
+            logging.error(f"received object creation from {source!r} for unknown client {instruction.objectUser!r}")
             return
 
         for object_id, object_type, object_name in zip(
-            instruction.object_metadata.object_ids,
-            instruction.object_metadata.object_types,
-            instruction.object_metadata.object_names,
+            instruction.objectMetadata.objectIds,
+            instruction.objectMetadata.objectTypes,
+            instruction.objectMetadata.objectNames,
         ):
-            self.on_add_object(instruction.object_user, object_id, object_type, object_name)
+            self.on_add_object(instruction.objectUser, object_id, object_type, object_name)
 
     def __finished_object_storage(self, creation: _ObjectCreation):
         logging.debug(f"del object cache object_name={creation.object_name!r}, object_id={creation.object_id!r}")

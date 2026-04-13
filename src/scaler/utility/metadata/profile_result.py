@@ -2,7 +2,7 @@ import dataclasses
 import struct
 from typing import Optional
 
-from scaler.protocol.python.message import TaskResult
+from scaler.protocol.capnp import TaskResult
 
 
 @dataclasses.dataclass

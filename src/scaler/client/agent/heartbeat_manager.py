@@ -6,9 +6,7 @@ import psutil
 
 from scaler.client.agent.mixins import HeartbeatManager, ObjectManager
 from scaler.io.mixins import AsyncConnector
-from scaler.protocol.python.common import ObjectStorageAddress
-from scaler.protocol.python.message import ClientHeartbeat, ClientHeartbeatEcho
-from scaler.protocol.python.status import Resource
+from scaler.protocol.capnp import ClientHeartbeat, ClientHeartbeatEcho, ObjectStorageAddress, Resource
 from scaler.utility.mixins import Looper
 
 
@@ -32,9 +30,9 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
 
     async def send_heartbeat(self):
         await self._connector_external.send(
-            ClientHeartbeat.new_msg(
-                Resource.new_msg(int(self._process.cpu_percent() * 10), self._process.memory_info().rss),
-                self._latency_us,
+            ClientHeartbeat(
+                resource=Resource(cpu=int(self._process.cpu_percent() * 10), rss=self._process.memory_info().rss),
+                latencyUS=self._latency_us,
             )
         )
 
@@ -53,7 +51,7 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         if self._object_storage_address.done():
             return
 
-        self._object_storage_address.set_result(heartbeat.object_storage_address())
+        self._object_storage_address.set_result(heartbeat.objectStorageAddress)
 
     async def routine(self):
         if time.time() - self._last_scheduler_contact > self._death_timeout_seconds:

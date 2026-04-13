@@ -3,18 +3,22 @@ import time
 from typing import Dict, List, Optional, Set, Tuple
 
 from scaler.io.mixins import AsyncBinder, AsyncConnector
-from scaler.protocol.python.common import WorkerState
-from scaler.protocol.python.message import (
+from scaler.protocol.capnp import (
     ClientDisconnect,
     DisconnectRequest,
     DisconnectResponse,
+    ProcessorStatus,
+    Resource,
     StateWorker,
     Task,
     TaskCancel,
     WorkerHeartbeat,
     WorkerHeartbeatEcho,
+    WorkerManagerStatus,
+    WorkerState,
+    WorkerStatus,
 )
-from scaler.protocol.python.status import ProcessorStatus, Resource, WorkerManagerStatus, WorkerStatus
+from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import PolicyController, TaskController, WorkerController
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
@@ -45,9 +49,9 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         return self._policy_controller.assign_task(task)
 
     async def on_task_cancel(self, task_cancel: TaskCancel) -> WorkerID:
-        worker = self._policy_controller.remove_task(task_cancel.task_id)
+        worker = self._policy_controller.remove_task(task_cancel.taskId)
         if not worker.is_valid():
-            logging.error(f"cannot find task_id={task_cancel.task_id.hex()} in task workers")
+            logging.error(f"cannot find task_id={task_cancel.taskId.hex()} in task workers")
 
         return worker
 
@@ -59,20 +63,23 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         return worker
 
     async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat):
-        if self._policy_controller.add_worker(worker_id, info.capabilities, info.queue_size):
+        info.capabilities = capabilities_to_dict(info.capabilities)
+        if self._policy_controller.add_worker(worker_id, info.capabilities, info.queueSize):
             logging.info(f"worker {worker_id!r} connected")
-            await self._binder_monitor.send(StateWorker.new_msg(worker_id, WorkerState.Connected, info.capabilities))
+            await self._binder_monitor.send(
+                StateWorker(workerId=worker_id, state=WorkerState.connected, capabilities=info.capabilities)
+            )
             await self._task_controller.on_worker_connect(worker_id)
 
         if worker_id not in self._worker_to_manager:
-            self._worker_to_manager[worker_id] = info.worker_manager_id
-            self._manager_to_workers.setdefault(info.worker_manager_id, set()).add(worker_id)
+            self._worker_to_manager[worker_id] = info.workerManagerID
+            self._manager_to_workers.setdefault(info.workerManagerID, set()).add(worker_id)
 
         self._worker_alive_since[worker_id] = (time.time(), info)
         await self._binder.send(
             worker_id,
-            WorkerHeartbeatEcho.new_msg(
-                object_storage_address=self._config_controller.get_config("advertised_object_storage_address")
+            WorkerHeartbeatEcho(
+                objectStorageAddress=self._config_controller.get_config("advertised_object_storage_address")
             ),
         )
 
@@ -82,15 +89,15 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
     async def on_disconnect(self, worker_id: WorkerID, request: DisconnectRequest):
         await self.__disconnect_worker(request.worker)
-        await self._binder.send(worker_id, DisconnectResponse.new_msg(request.worker))
+        await self._binder.send(worker_id, DisconnectResponse(worker=request.worker))
 
     async def routine(self):
         await self.__clean_workers()
 
     def get_status(self) -> WorkerManagerStatus:
         worker_to_task_numbers = self._policy_controller.statistics()
-        return WorkerManagerStatus.new_msg(
-            [
+        return WorkerManagerStatus(
+            workers=[
                 self.__worker_status_from_heartbeat(worker, worker_to_task_numbers[worker], last, info)
                 for worker, (last, info) in self._worker_alive_since.items()
             ]
@@ -105,28 +112,28 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         last_s = min(int(time.time() - last), UINT8_MAX)
 
         if current_processor:
-            debug_info = f"{int(current_processor.initialized)}{int(current_processor.has_task)}{int(info.task_lock)}"
+            debug_info = f"{int(current_processor.initialized)}{int(current_processor.hasTask)}{int(info.taskLock)}"
         else:
-            debug_info = f"00{int(info.task_lock)}"
+            debug_info = f"00{int(info.taskLock)}"
 
-        return WorkerStatus.new_msg(
-            worker_id=worker_id,
+        return WorkerStatus(
+            workerId=worker_id,
             agent=info.agent,
-            rss_free=info.rss_free,
+            rssFree=info.rssFree,
             free=worker_task_numbers["free"],
             sent=worker_task_numbers["sent"],
-            queued=info.queued_tasks,
+            queued=info.queuedTasks,
             suspended=suspended,
-            lag_us=info.latency_us,
-            last_s=last_s,
+            lagUS=info.latencyUS,
+            lastS=last_s,
             itl=debug_info,
-            processor_statuses=[
-                ProcessorStatus.new_msg(
+            processorStatuses=[
+                ProcessorStatus(
                     pid=p.pid,
                     initialized=p.initialized,
-                    has_task=p.has_task,
+                    hasTask=p.hasTask,
                     suspended=p.suspended,
-                    resource=Resource.new_msg(p.resource.cpu, p.resource.rss),
+                    resource=Resource(cpu=p.resource.cpu, rss=p.resource.rss),
                 )
                 for p in info.processors
             ],
@@ -160,7 +167,9 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             return
 
         logging.info(f"{worker_id!r} disconnected")
-        await self._binder_monitor.send(StateWorker.new_msg(worker_id, WorkerState.Disconnected, {}))
+        await self._binder_monitor.send(
+            StateWorker(workerId=worker_id, state=WorkerState.disconnected, capabilities={})
+        )
         self._worker_alive_since.pop(worker_id)
         manager_id = self._worker_to_manager.pop(worker_id)
         workers_set = self._manager_to_workers[manager_id]
@@ -177,5 +186,5 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             await self._task_controller.on_worker_disconnect(task_id, worker_id)
 
     async def __shutdown_worker(self, worker_id: WorkerID):
-        await self._binder.send(worker_id, ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Shutdown))
+        await self._binder.send(worker_id, ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.shutdown))
         await self.__disconnect_worker(worker_id)

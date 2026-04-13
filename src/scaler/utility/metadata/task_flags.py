@@ -1,7 +1,7 @@
 import dataclasses
 import struct
 
-from scaler.protocol.python.message import Task
+from scaler.protocol.capnp import Task
 
 
 @dataclasses.dataclass

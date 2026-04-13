@@ -498,8 +498,8 @@ bool initialize_runtime_modules(PyObject* module)
         return false;
     }
 
-    OwnedPyObject<> base_module {PyModule_New("scaler.protocol.python._base")};
-    if (!base_module || !register_module(base_module.get(), "scaler.protocol.python._base")) {
+    OwnedPyObject<> base_module {PyModule_New("scaler.protocol._base")};
+    if (!base_module || !register_module(base_module.get(), "scaler.protocol._base")) {
         return false;
     }
 
@@ -514,7 +514,7 @@ bool initialize_runtime_modules(PyObject* module)
     PyDict_SetItemString(
         enum_field_value_dict.get(),
         "__module__",
-        OwnedPyObject<>(PyUnicode_FromString("scaler.protocol.python.capnp")).get());
+        OwnedPyObject<>(PyUnicode_FromString("scaler.protocol.capnp")).get());
     OwnedPyObject<> enum_field_value_type {
         create_python_class("EnumFieldValue", empty_bases.get(), enum_field_value_dict.get())};
     if (!enum_field_value_type) {
@@ -544,9 +544,7 @@ bool initialize_runtime_modules(PyObject* module)
         OwnedPyObject<>(make_method_descriptor(enum_field_value_type.get(), &ENUM_FIELD_VALUE_INT_DEF)).get());
 
     PyDict_SetItemString(
-        capnp_struct_dict.get(),
-        "__module__",
-        OwnedPyObject<>(PyUnicode_FromString("scaler.protocol.python.capnp")).get());
+        capnp_struct_dict.get(), "__module__", OwnedPyObject<>(PyUnicode_FromString("scaler.protocol.capnp")).get());
     PyDict_SetItemString(capnp_struct_dict.get(), "_enum_fields", OwnedPyObject<>(PyDict_New()).get());
     PyDict_SetItemString(capnp_struct_dict.get(), "_list_enum_fields", OwnedPyObject<>(PyDict_New()).get());
     PyDict_SetItemString(
@@ -570,7 +568,7 @@ bool initialize_runtime_modules(PyObject* module)
     PyDict_SetItemString(
         capnp_union_struct_dict.get(),
         "__module__",
-        OwnedPyObject<>(PyUnicode_FromString("scaler.protocol.python.capnp")).get());
+        OwnedPyObject<>(PyUnicode_FromString("scaler.protocol.capnp")).get());
     PyDict_SetItemString(capnp_union_struct_dict.get(), "_union_fields", OwnedPyObject<>(PySet_New(nullptr)).get());
     PyDict_SetItemString(
         capnp_union_struct_dict.get(),
@@ -612,7 +610,7 @@ bool initialize_runtime_modules(PyObject* module)
         if (!descriptors) {
             return false;
         }
-        std::string full_module_name = std::string("scaler.protocol.python._") + short_module_name;
+        std::string full_module_name = std::string("scaler.protocol._") + short_module_name;
         OwnedPyObject<> generated_module {PyModule_New(full_module_name.c_str())};
         if (!generated_module || !register_module(generated_module.get(), full_module_name.c_str())) {
             return false;

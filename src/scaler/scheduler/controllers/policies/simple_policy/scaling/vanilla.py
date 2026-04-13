@@ -1,16 +1,17 @@
-from math import ceil
 from typing import Dict, List
 
-from scaler.protocol.python.message import (
-    InformationSnapshot,
+from math import ceil
+
+from scaler.protocol.capnp import (
+    ScalingManagerStatus,
     WorkerManagerCommand,
     WorkerManagerCommandType,
     WorkerManagerHeartbeat,
 )
-from scaler.protocol.python.status import ScalingManagerStatus
 from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.utility.identifiers import WorkerID
+from scaler.utility.snapshot import InformationSnapshot
 
 
 class VanillaScalingPolicy(ScalingPolicy):
@@ -30,7 +31,7 @@ class VanillaScalingPolicy(ScalingPolicy):
         managed_worker_capabilities: Dict[str, int],
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
-        snapshot = worker_manager_snapshots.get(worker_manager_heartbeat.worker_manager_id)
+        snapshot = worker_manager_snapshots.get(worker_manager_heartbeat.workerManagerID)
         pending = snapshot.pending_worker_count if snapshot else 0
 
         if not information_snapshot.workers:
@@ -47,7 +48,7 @@ class VanillaScalingPolicy(ScalingPolicy):
         return []
 
     def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
-        return ScalingManagerStatus.new_msg(managed_workers=managed_workers)
+        return ScalingManagerStatus(managedWorkers=managed_workers)
 
     def _create_start_commands(
         self,
@@ -55,10 +56,10 @@ class VanillaScalingPolicy(ScalingPolicy):
         worker_manager_heartbeat: WorkerManagerHeartbeat,
         pending_worker_count: int = 0,
     ) -> List[WorkerManagerCommand]:
-        max_concurrency = worker_manager_heartbeat.max_task_concurrency
+        max_concurrency = worker_manager_heartbeat.maxTaskConcurrency
         if max_concurrency != -1 and len(managed_worker_ids) + pending_worker_count >= max_concurrency:
             return []
-        return [WorkerManagerCommand.new_msg(worker_ids=[], command=WorkerManagerCommandType.StartWorkers)]
+        return [WorkerManagerCommand(workerIDs=[], command=WorkerManagerCommandType.startWorkers, capabilities={})]
 
     def _create_shutdown_commands(
         self, information_snapshot: InformationSnapshot, managed_worker_ids: List[WorkerID]
@@ -69,7 +70,7 @@ class VanillaScalingPolicy(ScalingPolicy):
         workers_with_load = []
         for wid in managed_worker_ids:
             if wid in information_snapshot.workers:
-                workers_with_load.append((wid, information_snapshot.workers[wid].queued_tasks))
+                workers_with_load.append((wid, information_snapshot.workers[wid].queuedTasks))
         workers_with_load.sort(key=lambda x: x[1])
 
         if not workers_with_load:
@@ -86,4 +87,8 @@ class VanillaScalingPolicy(ScalingPolicy):
             return []
 
         shutdown_ids = [bytes(wid) for wid, _ in workers_with_load[:to_shutdown]]
-        return [WorkerManagerCommand.new_msg(worker_ids=shutdown_ids, command=WorkerManagerCommandType.ShutdownWorkers)]
+        return [
+            WorkerManagerCommand(
+                workerIDs=shutdown_ids, command=WorkerManagerCommandType.shutdownWorkers, capabilities={}
+            )
+        ]

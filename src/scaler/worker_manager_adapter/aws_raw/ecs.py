@@ -12,7 +12,7 @@ import zmq
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
 from scaler.io import ymq
 from scaler.io.utility import create_async_connector, create_async_simple_context
-from scaler.protocol.python.message import (
+from scaler.protocol.capnp import (
     Message,
     WorkerManagerCommand,
     WorkerManagerCommandResponse,
@@ -141,34 +141,34 @@ class ECSWorkerManager:
 
     async def _handle_command(self, command: WorkerManagerCommand):
         cmd_type = command.command
-        response_status = Status.Success
+        response_status: Status = Status.success
         worker_ids: List[bytes] = []
         capabilities: Dict[str, int] = {}
 
-        if cmd_type == WorkerManagerCommandType.StartWorkers:
+        if cmd_type == WorkerManagerCommandType.startWorkers:
             new_worker_ids, response_status = await self._start_ecs_task()
-            if response_status == Status.Success:
+            if response_status == Status.success:
                 worker_ids = new_worker_ids
                 capabilities = self._capabilities
-        elif cmd_type == WorkerManagerCommandType.ShutdownWorkers:
-            affected_worker_ids, response_status = await self._shutdown_by_worker_ids(command.worker_ids)
-            if response_status == Status.Success:
+        elif cmd_type == WorkerManagerCommandType.shutdownWorkers:
+            affected_worker_ids, response_status = await self._shutdown_by_worker_ids(list(command.workerIDs))
+            if response_status == Status.success:
                 worker_ids = affected_worker_ids
         else:
             raise ValueError("Unknown Command")
 
         await self._connector_external.send(
-            WorkerManagerCommandResponse.new_msg(
-                command=cmd_type, status=response_status, worker_ids=worker_ids, capabilities=capabilities
+            WorkerManagerCommandResponse(
+                command=cmd_type, status=response_status, workerIDs=worker_ids, capabilities=capabilities
             )
         )
 
     async def __send_heartbeat(self):
         await self._connector_external.send(
-            WorkerManagerHeartbeat.new_msg(
-                max_task_concurrency=self._max_instances * self._ecs_task_cpu,
+            WorkerManagerHeartbeat(
+                maxTaskConcurrency=self._max_instances * self._ecs_task_cpu,
                 capabilities=self._capabilities,
-                worker_manager_id=self._worker_manager_id,
+                workerManagerID=self._worker_manager_id,
             )
         )
 
@@ -211,7 +211,7 @@ class ECSWorkerManager:
 
     async def _start_ecs_task(self) -> Tuple[List[bytes], Status]:
         if len(self._worker_groups) >= self._max_instances != -1:
-            return [], Status.TooManyWorkers
+            return [], Status.tooManyWorkers
 
         command = (
             f"scaler_worker_manager baremetal_native {self._worker_scheduler_address.to_address()} "
@@ -277,12 +277,12 @@ class ECSWorkerManager:
 
         # Workers self-assign UUIDs at startup; IDs are not known until they heartbeat.
         # The scheduler tracks worker-to-manager mapping via worker_manager_id in heartbeats.
-        return [], Status.Success
+        return [], Status.success
 
     async def _shutdown_by_worker_ids(self, worker_ids: List[bytes]) -> Tuple[List[bytes], Status]:
         """Stop one ECS task. Worker-to-task mapping is unavailable; stops the first tracked task."""
         if not self._worker_groups:
-            return [], Status.WorkerNotFound
+            return [], Status.workerNotFound
 
         group_id, group_info = next(iter(self._worker_groups.items()))
 
@@ -292,7 +292,7 @@ class ECSWorkerManager:
         failures = resp.get("failures") or []
         if failures:
             logging.error(f"ECS stop task failed: {failures}")
-            return [], Status.UnknownAction
+            return [], Status.unknownAction
 
         self._worker_groups.pop(group_id)
-        return [], Status.Success
+        return [], Status.success

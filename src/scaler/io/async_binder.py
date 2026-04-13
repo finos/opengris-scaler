@@ -11,8 +11,8 @@ from zmq import Frame
 from scaler.config.types.zmq import ZMQConfig
 from scaler.io.mixins import AsyncBinder
 from scaler.io.utility import deserialize, serialize
-from scaler.protocol.python.mixins import Message
-from scaler.protocol.python.status import BinderStatus
+from scaler.protocol.capnp import BinderStatus
+from scaler.protocol.mixins import Message
 
 
 class ZMQAsyncBinder(AsyncBinder):
@@ -71,7 +71,7 @@ class ZMQAsyncBinder(AsyncBinder):
         await self._socket.send_multipart([to, serialize(message)], copy=False)
 
     def get_status(self) -> BinderStatus:
-        return BinderStatus.new_msg(received=self._received, sent=self._sent)
+        return BinderStatus(received=self._received, sent=self._sent)
 
     def __set_socket_options(self):
         self._socket.setsockopt(zmq.IDENTITY, self._identity)

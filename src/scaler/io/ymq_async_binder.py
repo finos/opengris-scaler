@@ -8,8 +8,8 @@ from scaler.config.types.zmq import ZMQConfig
 from scaler.io.mixins import AsyncBinder
 from scaler.io.utility import deserialize, serialize
 from scaler.io.ymq import BinderSocket, Bytes, IOContext
-from scaler.protocol.python.mixins import Message
-from scaler.protocol.python.status import BinderStatus
+from scaler.protocol.capnp import BinderStatus
+from scaler.protocol.mixins import Message
 
 
 class YMQAsyncBinder(AsyncBinder):
@@ -60,7 +60,7 @@ class YMQAsyncBinder(AsyncBinder):
         await self._socket.send_message(to.decode(), Bytes(serialize(message)))
 
     def get_status(self) -> BinderStatus:
-        return BinderStatus.new_msg(received=self._received, sent=self._sent)
+        return BinderStatus(received=self._received, sent=self._sent)
 
     def __count_received(self, message_type: str):
         self._received[message_type] += 1

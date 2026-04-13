@@ -4,9 +4,19 @@ from collections import deque
 from typing import Any, Awaitable, Callable, Deque, Dict, List, Optional, Tuple
 
 from scaler.io.mixins import AsyncBinder, AsyncConnector
-from scaler.protocol.python.common import TaskCancelConfirmType, TaskResultType, TaskState, TaskTransition
-from scaler.protocol.python.message import StateTask, Task, TaskCancel, TaskCancelConfirm, TaskResult
-from scaler.protocol.python.status import TaskManagerStatus
+from scaler.protocol.capnp import (
+    StateTask,
+    Task,
+    TaskCancel,
+    TaskCancelConfirm,
+    TaskCancelConfirmType,
+    TaskManagerStatus,
+    TaskResult,
+    TaskResultType,
+    TaskState,
+    TaskTransition,
+)
+from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import (
     ClientController,
@@ -39,26 +49,26 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         self._unassigned: Deque[TaskID] = deque()  # type: ignore[misc]
 
         self._state_functions: Dict[TaskState, Callable[[*Tuple[Any, ...]], Awaitable[None]]] = {
-            TaskState.Inactive: self.__state_inactive,  # type: ignore[dict-item]
-            TaskState.Running: self.__state_running,  # type: ignore[dict-item]
-            TaskState.Canceling: self.__state_canceling,  # type: ignore[dict-item]
-            TaskState.BalanceCanceling: self.__state_balance_canceling,  # type: ignore[dict-item]
-            TaskState.WorkerDisconnecting: self.__state_worker_disconnecting,  # type: ignore[dict-item]
-            TaskState.Canceled: self.__state_canceled,  # type: ignore[dict-item]
-            TaskState.CanceledNotFound: self.__state_canceled_not_found,  # type: ignore[dict-item]
-            TaskState.Success: self.__state_success,  # type: ignore[dict-item]
-            TaskState.Failed: self.__state_failed,  # type: ignore[dict-item]
-            TaskState.FailedWorkerDied: self.__state_failed_worker_died,  # type: ignore[dict-item]
+            TaskState.inactive: self.__state_inactive,  # type: ignore[dict-item]
+            TaskState.running: self.__state_running,  # type: ignore[dict-item]
+            TaskState.canceling: self.__state_canceling,  # type: ignore[dict-item]
+            TaskState.balanceCanceling: self.__state_balance_canceling,  # type: ignore[dict-item]
+            TaskState.workerDisconnecting: self.__state_worker_disconnecting,  # type: ignore[dict-item]
+            TaskState.canceled: self.__state_canceled,  # type: ignore[dict-item]
+            TaskState.canceledNotFound: self.__state_canceled_not_found,  # type: ignore[dict-item]
+            TaskState.success: self.__state_success,  # type: ignore[dict-item]
+            TaskState.failed: self.__state_failed,  # type: ignore[dict-item]
+            TaskState.failedWorkerDied: self.__state_failed_worker_died,  # type: ignore[dict-item]
         }
         self._task_result_transition_map = {
-            TaskResultType.Success: TaskTransition.TaskResultSuccess,
-            TaskResultType.Failed: TaskTransition.TaskResultFailed,
-            TaskResultType.FailedWorkerDied: TaskTransition.TaskResultWorkerDied,
+            TaskResultType.success: TaskTransition.taskResultSuccess,
+            TaskResultType.failed: TaskTransition.taskResultFailed,
+            TaskResultType.failedWorkerDied: TaskTransition.taskResultWorkerDied,
         }
         self._task_cancel_confirm_transition_map = {
-            TaskCancelConfirmType.Canceled: TaskTransition.TaskCancelConfirmCanceled,
-            TaskCancelConfirmType.CancelNotFound: TaskTransition.TaskCancelConfirmNotFound,
-            TaskCancelConfirmType.CancelFailed: TaskTransition.TaskCancelConfirmFailed,
+            TaskCancelConfirmType.canceled: TaskTransition.taskCancelConfirmCanceled,
+            TaskCancelConfirmType.cancelNotFound: TaskTransition.taskCancelConfirmNotFound,
+            TaskCancelConfirmType.cancelFailed: TaskTransition.taskCancelConfirmFailed,
         }
 
     def register(
@@ -83,129 +93,131 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         pass
 
     async def on_task_new(self, task: Task):
-        if self._task_state_manager.get_state_machine(task.task_id) is not None:
+        task.capabilities = capabilities_to_dict(task.capabilities)
+        if self._task_state_manager.get_state_machine(task.taskId) is not None:
             logging.error(
-                f"{task.task_id!r}: state machine already exists: "
-                f"{self._task_state_manager.get_state_machine(task.task_id)}"
+                f"{task.taskId!r}: state machine already exists: "
+                f"{self._task_state_manager.get_state_machine(task.taskId)}"
             )
             return
 
-        state_machine = self._task_state_manager.add_state_machine(task.task_id)
-        await self.__state_inactive(task_id=task.task_id, state_machine=state_machine, task=task)
+        state_machine = self._task_state_manager.add_state_machine(task.taskId)
+        await self.__state_inactive(task_id=task.taskId, state_machine=state_machine, task=task)
 
     async def on_task_cancel(self, client_id: ClientID, task_cancel: TaskCancel):
-        state_machine = self._task_state_manager.get_state_machine(task_cancel.task_id)
+        state_machine = self._task_state_manager.get_state_machine(task_cancel.taskId)
         if state_machine is None:
-            logging.error(f"{task_cancel.task_id!r}: task not exists while received TaskCancel, send TaskCancelConfirm")
+            logging.error(f"{task_cancel.taskId!r}: task not exists while received TaskCancel, send TaskCancelConfirm")
 
-            task_cancel_confirm = TaskCancelConfirm.new_msg(task_cancel.task_id, TaskCancelConfirmType.CancelNotFound)
+            task_cancel_confirm = TaskCancelConfirm(
+                taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelNotFound
+            )
 
-            if self._graph_controller.is_graph_subtask(task_cancel.task_id):
+            if self._graph_controller.is_graph_subtask(task_cancel.taskId):
                 await self._graph_controller.on_graph_sub_task_cancel_confirm(task_cancel_confirm)
 
             await self._binder.send(client_id, task_cancel_confirm)
             return
 
-        if state_machine.current_state() == TaskState.Inactive:
+        if state_machine.current_state() == TaskState.inactive:
             await self.__routing(
-                task_cancel.task_id,
-                TaskTransition.TaskCancel,
-                task_cancel_confirm=TaskCancelConfirm.new_msg(
-                    task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.Canceled
+                task_cancel.taskId,
+                TaskTransition.taskCancel,
+                task_cancel_confirm=TaskCancelConfirm(
+                    taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.canceled
                 ),
             )
             return
 
-        await self.__routing(task_cancel.task_id, TaskTransition.TaskCancel, client=client_id, task_cancel=task_cancel)
+        await self.__routing(task_cancel.taskId, TaskTransition.taskCancel, client=client_id, task_cancel=task_cancel)
 
     async def on_task_balance_cancel(self, task_id: TaskID):
-        await self.__routing(task_id, TaskTransition.BalanceTaskCancel)
+        await self.__routing(task_id, TaskTransition.balanceTaskCancel)
 
     async def on_task_cancel_confirm(self, task_cancel_confirm: TaskCancelConfirm):
-        transition = self._task_cancel_confirm_transition_map.get(task_cancel_confirm.cancel_confirm_type, None)
+        cancel_confirm_type = TaskCancelConfirmType(task_cancel_confirm.cancelConfirmType.raw)
+        transition = self._task_cancel_confirm_transition_map.get(cancel_confirm_type, None)
         if transition is None:
-            raise ValueError(f"unknown TaskCancelConfirmType: {task_cancel_confirm.cancel_confirm_type}")
+            raise ValueError(f"unknown TaskCancelConfirmType: {task_cancel_confirm.cancelConfirmType}")
 
-        state_machine = self._task_state_manager.get_state_machine(task_cancel_confirm.task_id)
+        state_machine = self._task_state_manager.get_state_machine(task_cancel_confirm.taskId)
         if state_machine is None:
             logging.error(
-                f"{task_cancel_confirm.task_id!r}: task not exists while received TaskCancelTaskCancelConfirm, ignore"
+                f"{task_cancel_confirm.taskId!r}: task not exists while received TaskCancelTaskCancelConfirm, ignore"
             )
             return
 
         current_state = state_machine.current_state()
-        if (
-            current_state == TaskState.BalanceCanceling
-            and task_cancel_confirm.cancel_confirm_type == TaskCancelConfirmType.Canceled
-        ):
+        if current_state == TaskState.balanceCanceling and cancel_confirm_type == TaskCancelConfirmType.canceled:
             # if balance cancel success
-            task = self._task_id_to_task[task_cancel_confirm.task_id]
-            await self.__routing(task_cancel_confirm.task_id, transition, task=task)
+            task = self._task_id_to_task[task_cancel_confirm.taskId]
+            await self.__routing(task_cancel_confirm.taskId, transition, task=task)
             return
 
         if (
-            current_state in {TaskState.Canceling, TaskState.BalanceCanceling}
-            and task_cancel_confirm.cancel_confirm_type == TaskCancelConfirmType.CancelFailed
+            current_state in {TaskState.canceling, TaskState.balanceCanceling}
+            and cancel_confirm_type == TaskCancelConfirmType.cancelFailed
         ):
             # cancel failed (task is ongoing on worker), pass worker_id so __state_running can identify the
             # previous state and wait for the real result
-            worker_id = self._worker_controller.get_worker_by_task_id(task_cancel_confirm.task_id)
-            await self.__routing(task_cancel_confirm.task_id, transition, worker_id=worker_id)
+            worker_id = self._worker_controller.get_worker_by_task_id(task_cancel_confirm.taskId)
+            await self.__routing(task_cancel_confirm.taskId, transition, worker_id=worker_id)
             return
 
-        await self.__routing(task_cancel_confirm.task_id, transition, task_cancel_confirm=task_cancel_confirm)
+        await self.__routing(task_cancel_confirm.taskId, transition, task_cancel_confirm=task_cancel_confirm)
 
     async def on_task_result(self, task_result: TaskResult):
-        transition = self._task_result_transition_map.get(task_result.result_type, None)
+        result_type = TaskResultType(task_result.resultType.raw)
+        transition = self._task_result_transition_map.get(result_type, None)
         if transition is None:
-            raise ValueError(f"unknown TaskResultType: {task_result.result_type}")
+            raise ValueError(f"unknown TaskResultType: {task_result.resultType}")
 
-        await self.__routing(task_result.task_id, transition, task_result=task_result)
+        await self.__routing(task_result.taskId, transition, task_result=task_result)
 
     async def on_worker_connect(self, worker_id: WorkerID):
         await self.__retry_unassignable()
 
     async def on_worker_disconnect(self, task_id: TaskID, worker_id: WorkerID):
-        await self.__routing(task_id, TaskTransition.WorkerDisconnect, worker_id=worker_id)
+        await self.__routing(task_id, TaskTransition.workerDisconnect, worker_id=worker_id)
 
     def get_status(self) -> TaskManagerStatus:
-        return TaskManagerStatus.new_msg(state_to_count=self._task_state_manager.get_statistics())
+        return TaskManagerStatus(stateToCount=self._task_state_manager.get_statistics())
 
     async def __state_inactive(self, task_id: TaskID, state_machine: TaskStateMachine, task: Task):
-        assert task_id == task.task_id
-        assert state_machine.current_state() == TaskState.Inactive
+        assert task_id == task.taskId
+        assert state_machine.current_state() == TaskState.inactive
 
-        self._client_controller.on_task_begin(task.source, task.task_id)
-        self._task_id_to_task[task.task_id] = task
+        self._client_controller.on_task_begin(task.source, task.taskId)
+        self._task_id_to_task[task.taskId] = task
 
         worker_id = self._worker_controller.acquire_worker(self._task_id_to_task[task_id])
         if not worker_id.is_valid():
             # put task on hold until there is worker is added or task is finished/canceled (means have capacity)
             self._unassigned.append(task_id)
-            await self.__send_monitor(task.task_id, self._object_controller.get_object_name(task.func_object_id))
+            await self.__send_monitor(task.taskId, self._object_controller.get_object_name(task.funcObjectId))
             return
 
-        await self.__routing(task_id, TaskTransition.HasCapacity, worker_id=worker_id)
-        await self.__send_monitor(task.task_id, self._object_controller.get_object_name(task.func_object_id))
+        await self.__routing(task_id, TaskTransition.hasCapacity, worker_id=worker_id)
+        await self.__send_monitor(task.taskId, self._object_controller.get_object_name(task.funcObjectId))
 
     async def __state_running(self, task_id: TaskID, state_machine: TaskStateMachine, worker_id: WorkerID):
-        if state_machine.previous_state() in {TaskState.Canceling, TaskState.BalanceCanceling}:
+        if state_machine.previous_state() in {TaskState.canceling, TaskState.balanceCanceling}:
             # if cancel failed (task is ongoing), we should wait here for the result
             return
 
-        assert state_machine.current_state() == TaskState.Running
+        assert state_machine.current_state() == TaskState.running
 
         task = self._task_id_to_task[task_id]
         await self._binder.send(worker_id, task)
-        await self.__send_monitor(task_id, self._object_controller.get_object_name(task.func_object_id))
+        await self.__send_monitor(task_id, self._object_controller.get_object_name(task.funcObjectId))
 
     async def __state_canceling(
         self, task_id: TaskID, state_machine: TaskStateMachine, client: ClientID, task_cancel: TaskCancel
     ):
-        assert task_id == task_cancel.task_id
-        assert state_machine.current_state() == TaskState.Canceling
+        assert task_id == task_cancel.taskId
+        assert state_machine.current_state() == TaskState.canceling
 
-        if state_machine.previous_state() == TaskState.BalanceCanceling:
+        if state_machine.previous_state() == TaskState.balanceCanceling:
             # we don't need to send another TaskCancel as it's already sent in previous state
             return
 
@@ -220,119 +232,121 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         # task is either in unassigned or unassignable
         await self.__routing(
             task_id,
-            TaskTransition.TaskCancelConfirmCanceled,
-            task_cancel_confirm=TaskCancelConfirm.new_msg(task_id, TaskCancelConfirmType.Canceled),
+            TaskTransition.taskCancelConfirmCanceled,
+            task_cancel_confirm=TaskCancelConfirm(taskId=task_id, cancelConfirmType=TaskCancelConfirmType.canceled),
         )
 
         if task_id in self._unassigned:
             self._unassigned.remove(task_id)
 
     async def __state_balance_canceling(self, task_id: TaskID, state_machine: TaskStateMachine):
-        assert state_machine.current_state() == TaskState.BalanceCanceling
+        assert state_machine.current_state() == TaskState.balanceCanceling
         await self.__send_task_cancel_to_worker(
-            TaskCancel.new_msg(task_id=task_id, flags=TaskCancel.TaskCancelFlags(force=False))
+            TaskCancel(taskId=task_id, flags=TaskCancel.TaskCancelFlags(force=False))
         )
 
     async def __state_worker_disconnecting(self, task_id: TaskID, state_machine: TaskStateMachine, worker_id: WorkerID):
-        assert isinstance(worker_id, WorkerID)
-        assert state_machine.current_state() == TaskState.WorkerDisconnecting
+        worker_id = WorkerID(worker_id)
+        assert state_machine.current_state() == TaskState.workerDisconnecting
 
         # this is where we decide to reroute or just send fail
         task = self._task_id_to_task.get(task_id)
         if task is None:
             await self.__routing(
                 task_id,
-                TaskTransition.SchedulerHasNoTask,
-                task_result=TaskResult.new_msg(task_id, TaskResultType.FailedWorkerDied),
+                TaskTransition.schedulerHasNoTask,
+                task_result=TaskResult(
+                    taskId=task_id, resultType=TaskResultType.failedWorkerDied, metadata=b"", results=[]
+                ),
             )
         else:
-            await self.__routing(task_id, TaskTransition.SchedulerHasTask, task=task)
+            await self.__routing(task_id, TaskTransition.schedulerHasTask, task=task)
 
     async def __state_canceled(
         self, task_id: TaskID, state_machine: TaskStateMachine, task_cancel_confirm: TaskCancelConfirm
     ):
-        assert task_id == task_cancel_confirm.task_id
-        assert task_cancel_confirm.cancel_confirm_type == TaskCancelConfirmType.Canceled
-        assert state_machine.current_state() == TaskState.Canceled
+        assert task_id == task_cancel_confirm.taskId
+        assert task_cancel_confirm.cancelConfirmType == TaskCancelConfirmType.canceled
+        assert state_machine.current_state() == TaskState.canceled
 
-        if task_cancel_confirm.task_id in self._unassigned:
+        if task_cancel_confirm.taskId in self._unassigned:
             # if task is not assigned to any worker, we don't need to deal with worker manager
-            self._unassigned.remove(task_cancel_confirm.task_id)
+            self._unassigned.remove(task_cancel_confirm.taskId)
         else:
-            await self._worker_controller.on_task_done(task_cancel_confirm.task_id)
+            await self._worker_controller.on_task_done(task_cancel_confirm.taskId)
 
         await self.__send_task_cancel_confirm_to_client(task_cancel_confirm)
 
     async def __state_canceled_not_found(
         self, task_id: TaskID, state_machine: TaskStateMachine, task_cancel_confirm: TaskCancelConfirm
     ):
-        assert task_id == task_cancel_confirm.task_id
-        assert task_cancel_confirm.cancel_confirm_type == TaskCancelConfirmType.CancelNotFound
-        assert state_machine.current_state() == TaskState.CanceledNotFound
+        assert task_id == task_cancel_confirm.taskId
+        assert task_cancel_confirm.cancelConfirmType == TaskCancelConfirmType.cancelNotFound
+        assert state_machine.current_state() == TaskState.canceledNotFound
 
         await self.__send_task_cancel_confirm_to_client(task_cancel_confirm)
 
     async def __state_success(self, task_id: TaskID, state_machine: TaskStateMachine, task_result: TaskResult):
-        assert task_id == task_result.task_id
-        assert state_machine.current_state() == TaskState.Success
+        assert task_id == task_result.taskId
+        assert state_machine.current_state() == TaskState.success
         await self.__send_task_result_to_client(task_result)
 
     async def __state_failed(self, task_id: TaskID, state_machine: TaskStateMachine, task_result: TaskResult):
-        assert task_id == task_result.task_id
-        assert state_machine.current_state() == TaskState.Failed
+        assert task_id == task_result.taskId
+        assert state_machine.current_state() == TaskState.failed
         await self.__send_task_result_to_client(task_result)
 
     async def __state_failed_worker_died(
         self, task_id: TaskID, state_machine: TaskStateMachine, task_result: TaskResult
     ):
-        assert task_id == task_result.task_id
-        assert state_machine.current_state() == TaskState.FailedWorkerDied
+        assert task_id == task_result.taskId
+        assert state_machine.current_state() == TaskState.failedWorkerDied
         await self.__send_task_result_to_client(task_result)
 
     async def __send_task_cancel_to_worker(self, task_cancel: TaskCancel):
         worker = await self._worker_controller.on_task_cancel(task_cancel)
         assert isinstance(worker, WorkerID)
         if not worker.is_valid():
-            logging.error(f"{task_cancel.task_id!r}: cannot find task in worker to cancel")
+            logging.error(f"{task_cancel.taskId!r}: cannot find task in worker to cancel")
             await self.__routing(
-                task_cancel.task_id,
-                TaskTransition.TaskCancelConfirmNotFound,
-                task_cancel_confirm=TaskCancelConfirm.new_msg(
-                    task_cancel.task_id, TaskCancelConfirmType.CancelNotFound
+                task_cancel.taskId,
+                TaskTransition.taskCancelConfirmNotFound,
+                task_cancel_confirm=TaskCancelConfirm(
+                    taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelNotFound
                 ),
             )
             return
 
         await self._binder.send(worker, task_cancel)
-        await self.__send_monitor(task_cancel.task_id, b"")
+        await self.__send_monitor(task_cancel.taskId, b"")
 
     async def __send_task_result_to_client(self, task_result: TaskResult):
-        await self._worker_controller.on_task_done(task_result.task_id)
-        client = self._client_controller.on_task_finish(task_result.task_id)
+        await self._worker_controller.on_task_done(task_result.taskId)
+        client = self._client_controller.on_task_finish(task_result.taskId)
         await self._binder.send(client, task_result)
 
         func_name = b""
-        task = self._task_id_to_task.get(task_result.task_id)
+        task = self._task_id_to_task.get(task_result.taskId)
         if task:
-            func_name = self._object_controller.get_object_name(task.func_object_id)
-        await self.__send_monitor(task_result.task_id, func_name, task_result.metadata)
+            func_name = self._object_controller.get_object_name(task.funcObjectId)
+        await self.__send_monitor(task_result.taskId, func_name, task_result.metadata)
 
-        self._task_state_manager.remove_state_machine(task_result.task_id)
-        self._task_id_to_task.pop(task_result.task_id)
+        self._task_state_manager.remove_state_machine(task_result.taskId)
+        self._task_id_to_task.pop(task_result.taskId)
 
-        if self._graph_controller.is_graph_subtask(task_result.task_id):
+        if self._graph_controller.is_graph_subtask(task_result.taskId):
             await self._graph_controller.on_graph_sub_task_result(task_result)
 
         await self.__retry_unassignable()
 
     async def __send_task_cancel_confirm_to_client(self, task_cancel_confirm: TaskCancelConfirm):
-        client = self._client_controller.on_task_finish(task_cancel_confirm.task_id)
+        client = self._client_controller.on_task_finish(task_cancel_confirm.taskId)
         await self._binder.send(client, task_cancel_confirm)
-        await self.__send_monitor(task_cancel_confirm.task_id, b"")
-        self._task_state_manager.remove_state_machine(task_cancel_confirm.task_id)
-        self._task_id_to_task.pop(task_cancel_confirm.task_id)
+        await self.__send_monitor(task_cancel_confirm.taskId, b"")
+        self._task_state_manager.remove_state_machine(task_cancel_confirm.taskId)
+        self._task_id_to_task.pop(task_cancel_confirm.taskId)
 
-        if self._graph_controller.is_graph_subtask(task_cancel_confirm.task_id):
+        if self._graph_controller.is_graph_subtask(task_cancel_confirm.taskId):
             await self._graph_controller.on_graph_sub_task_cancel_confirm(task_cancel_confirm)
 
         await self.__retry_unassignable()
@@ -342,7 +356,14 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         task_state = self._task_state_manager.get_state_machine(task_id).current_state()
         capabilities = self._task_id_to_task[task_id].capabilities if task_id in self._task_id_to_task else {}
         await self._binder_monitor.send(
-            StateTask.new_msg(task_id, function_name, task_state, worker, capabilities, metadata)
+            StateTask(
+                taskId=task_id,
+                functionName=function_name,
+                state=task_state,
+                worker=worker,
+                capabilities=capabilities,
+                metadata=metadata,
+            )
         )
 
     async def __routing(self, task_id: TaskID, transition: TaskTransition, **kwargs):
@@ -361,7 +382,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
     async def __retry_unassignable(self):
         futures = [
-            self.__routing(task_id, TaskTransition.HasCapacity, worker_id=worker_id)
+            self.__routing(task_id, TaskTransition.hasCapacity, worker_id=worker_id)
             for task_id, worker_id in self.__acquire_workers()
         ]
 

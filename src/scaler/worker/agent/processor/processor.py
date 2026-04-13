@@ -16,9 +16,16 @@ from scaler.config.types.zmq import ZMQConfig
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
 from scaler.io.sync_connector import ZMQSyncConnector
 from scaler.io.utility import create_sync_object_storage_connector
-from scaler.protocol.python.common import ObjectMetadata, TaskResultType
-from scaler.protocol.python.message import ObjectInstruction, ProcessorInitialized, Task, TaskLog, TaskResult
-from scaler.protocol.python.mixins import Message
+from scaler.protocol.capnp import (
+    ObjectInstruction,
+    ObjectMetadata,
+    ProcessorInitialized,
+    Task,
+    TaskLog,
+    TaskResult,
+    TaskResultType,
+)
+from scaler.protocol.mixins import Message
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
@@ -141,7 +148,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
     def __run_forever(self):
         try:
-            self._connector_agent.send(ProcessorInitialized.new_msg())
+            self._connector_agent.send(ProcessorInitialized())
             while True:
                 message = self._connector_agent.receive()
                 if message is None:
@@ -181,8 +188,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         logging.error(f"unknown {message=}")
 
     def __on_receive_object_instruction(self, instruction: ObjectInstruction):
-        if instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Delete:
-            for object_id in instruction.object_metadata.object_ids:
+        if instruction.instructionType == ObjectInstruction.ObjectInstructionType.delete:
+            for object_id in instruction.objectMetadata.objectIds:
                 self._object_cache.del_object(object_id)
             return
 
@@ -210,8 +217,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         serializer_id = ObjectID.generate_serializer_object_id(task.source)
         object_ids = [
             serializer_id,
-            task.func_object_id,
-            *(cast(ObjectID, argument) for argument in task.function_args),
+            ObjectID(task.funcObjectId),
+            *(ObjectID(argument.data) for argument in task.functionArgs),
         ]
         return object_ids
 
@@ -219,15 +226,15 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         task_flags = retrieve_task_flags_from_task(task)
 
         try:
-            function = self._object_cache.get_object(task.func_object_id)
+            function = self._object_cache.get_object(ObjectID(task.funcObjectId))
 
-            args = [self._object_cache.get_object(cast(ObjectID, arg)) for arg in task.function_args]
+            args = [self._object_cache.get_object(ObjectID(argument.data)) for argument in task.functionArgs]
 
             if task_flags.stream_output:
                 with StreamingBuffer(
-                    task.task_id, TaskLog.LogType.Stdout, self._connector_agent
+                    task.taskId, TaskLog.LogType.stdout, self._connector_agent
                 ) as stdout_buf, StreamingBuffer(
-                    task.task_id, TaskLog.LogType.Stderr, self._connector_agent
+                    task.taskId, TaskLog.LogType.stderr, self._connector_agent
                 ) as stderr_buf, self.__processor_context(), redirect_stdout(
                     cast(IO[str], stdout_buf)
                 ), redirect_stderr(
@@ -239,14 +246,14 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                     result = function(*args)
 
             result_bytes = self._object_cache.serialize(task.source, result)
-            task_result_type = TaskResultType.Success
+            task_result_type = TaskResultType.success
 
         except Exception as e:
-            logging.exception(f"exception when processing task_id={task.task_id.hex()}:")
-            task_result_type = TaskResultType.Failed
+            logging.exception(f"exception when processing task_id={task.taskId.hex()}:")
+            task_result_type = TaskResultType.failed
             result_bytes = serialize_failure(e)
 
-        self.__send_result(task.source, task.task_id, task_result_type, result_bytes)
+        self.__send_result(task.source, task.taskId, task_result_type, result_bytes)
 
     def __send_result(self, source: ClientID, task_id: TaskID, task_result_type: TaskResultType, result_bytes: bytes):
         self._current_task = None
@@ -255,18 +262,18 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self._connector_storage.set_object(result_object_id, result_bytes)
         self._connector_agent.send(
-            ObjectInstruction.new_msg(
-                ObjectInstruction.ObjectInstructionType.Create,
-                source,
-                ObjectMetadata.new_msg(
-                    (result_object_id,),
-                    (ObjectMetadata.ObjectContentType.Object,),
-                    (f"<res {repr(result_object_id)}>".encode(),),
+            ObjectInstruction(
+                instructionType=ObjectInstruction.ObjectInstructionType.create,
+                objectUser=source,
+                objectMetadata=ObjectMetadata(
+                    objectIds=(result_object_id,),
+                    objectTypes=(ObjectMetadata.ObjectContentType.object,),
+                    objectNames=(f"<res {repr(result_object_id)}>".encode(),),
                 ),
             )
         )
         self._connector_agent.send(
-            TaskResult.new_msg(task_id, task_result_type, metadata=b"", results=[bytes(result_object_id)])
+            TaskResult(taskId=task_id, resultType=task_result_type, metadata=b"", results=[bytes(result_object_id)])
         )
 
     @staticmethod

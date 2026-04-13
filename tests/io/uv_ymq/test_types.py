@@ -4,7 +4,7 @@ from enum import IntEnum
 
 from scaler.io.utility import deserialize, serialize
 from scaler.io.ymq import Address, AddressType, Bytes, ErrorCode, IOContext, Message, SysCallError, YMQException
-from scaler.protocol.python.message import TaskCancel
+from scaler.protocol.capnp import TaskCancel
 from scaler.utility.identifiers import TaskID
 
 
@@ -91,7 +91,7 @@ class TestTypes(unittest.TestCase):
         self.assertEqual(ctx.num_threads, 3)
 
     def test_buffer_interface(self):
-        msg = TaskCancel.new_msg(TaskID.generate_task_id())
+        msg = TaskCancel(taskId=TaskID.generate_task_id())
         data = serialize(msg)
 
         # verify that capnp can deserialize this data
@@ -103,4 +103,4 @@ class TestTypes(unittest.TestCase):
         # this should deserialize without creating a copy
         # because Bytes uses the buffer protocol
         deserialized: TaskCancel = deserialize(copy)  # type: ignore
-        self.assertEqual(deserialized.task_id, msg.task_id)
+        self.assertEqual(deserialized.taskId, msg.taskId)

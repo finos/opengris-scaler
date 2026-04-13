@@ -31,15 +31,14 @@ from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.config.types.zmq import ZMQConfig
-from scaler.protocol.python.message import (
-    InformationSnapshot,
+from scaler.protocol.capnp import (
+    Resource,
     Task,
     WorkerHeartbeat,
     WorkerManagerCommandResponse,
     WorkerManagerCommandType,
     WorkerManagerHeartbeat,
 )
-from scaler.protocol.python.status import Resource
 from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla import VanillaScalingPolicy
@@ -47,6 +46,7 @@ from scaler.scheduler.controllers.worker_manager_controller import WorkerManager
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
+from scaler.utility.snapshot import InformationSnapshot
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
@@ -181,7 +181,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         )
 
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.startWorkers)
         self.assertEqual(commands[0].capabilities, {"gpu": 1})
 
     def test_no_scale_when_capable_workers_exist(self):
@@ -203,7 +203,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         )
 
         # Should not return any start commands
-        start_commands = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
+        start_commands = [c for c in commands if c.command == WorkerManagerCommandType.startWorkers]
         self.assertEqual(len(start_commands), 0)
 
     def test_scales_when_task_ratio_exceeds_threshold(self):
@@ -229,7 +229,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         )
 
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.startWorkers)
         self.assertEqual(commands[0].capabilities, {"gpu": 1})
 
     def test_different_capability_sets_handled_separately(self):
@@ -252,7 +252,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
             {},
         )
 
-        start_commands = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
+        start_commands = [c for c in commands if c.command == WorkerManagerCommandType.startWorkers]
         self.assertEqual(len(start_commands), 2)
 
         capabilities_requested = {frozenset(c.capabilities.keys()) for c in start_commands}
@@ -280,7 +280,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         )
 
         # No StartWorkers command should be returned
-        start_commands = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
+        start_commands = [c for c in commands if c.command == WorkerManagerCommandType.startWorkers]
         self.assertEqual(len(start_commands), 0)
 
     def test_tasks_without_capabilities_handled(self):
@@ -301,7 +301,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
 
         # Should start a worker with empty capabilities
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.startWorkers)
         self.assertEqual(commands[0].capabilities, {})
 
     def test_get_status_returns_scaling_manager_status(self):
@@ -310,7 +310,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
 
         status = self.policy.get_status(managed_workers)
 
-        from scaler.protocol.python.status import ScalingManagerStatus
+        from scaler.protocol.capnp import ScalingManagerStatus
 
         self.assertIsInstance(status, ScalingManagerStatus)
 
@@ -331,7 +331,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         )
 
         self.assertEqual(len(commands1), 1)
-        self.assertEqual(commands1[0].command, WorkerManagerCommandType.StartWorkers)
+        self.assertEqual(commands1[0].command, WorkerManagerCommandType.startWorkers)
         self.assertEqual(commands1[0].capabilities, {"mqa": 1})
 
         # Simulate state update as if manager responded successfully
@@ -349,7 +349,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         )
 
         # No StartWorkers command should be returned
-        start_commands = [c for c in commands2 if c.command == WorkerManagerCommandType.StartWorkers]
+        start_commands = [c for c in commands2 if c.command == WorkerManagerCommandType.startWorkers]
         self.assertEqual(len(start_commands), 0, "Should not start new worker when capable worker is pending")
 
     def test_greedy_shutdown_multiple_same_capability(self):
@@ -366,9 +366,9 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
 
-        shutdown_commands = [c for c in commands if c.command == WorkerManagerCommandType.ShutdownWorkers]
+        shutdown_commands = [c for c in commands if c.command == WorkerManagerCommandType.shutdownWorkers]
         self.assertEqual(len(shutdown_commands), 1)
-        self.assertEqual(len(shutdown_commands[0].worker_ids), 3)
+        self.assertEqual(len(shutdown_commands[0].workerIDs), 3)
 
     def test_shutdown_allows_duplicate_worker_ids(self):
         """Worker appearing in multiple capability groups may appear multiple times in shutdown."""
@@ -387,9 +387,9 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
 
-        shutdown_commands = [c for c in commands if c.command == WorkerManagerCommandType.ShutdownWorkers]
+        shutdown_commands = [c for c in commands if c.command == WorkerManagerCommandType.shutdownWorkers]
         self.assertEqual(len(shutdown_commands), 1)
-        shutdown_ids = shutdown_commands[0].worker_ids
+        shutdown_ids = shutdown_commands[0].workerIDs
         # Both workers should be present; duplicates are acceptable
         self.assertTrue(len(shutdown_ids) >= 2)
         self.assertIn(bytes(w0), shutdown_ids)
@@ -407,7 +407,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], {}, {b"mgr": manager_snapshot})
 
-        start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
+        start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.startWorkers]
         self.assertEqual(len(start_cmds), 0)
 
     def test_managed_plus_pending_below_max_allows_capability_start(self):
@@ -427,7 +427,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {b"mgr": manager_snapshot})
 
-        start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
+        start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.startWorkers]
         self.assertEqual(len(start_cmds), 1)
         self.assertEqual(start_cmds[0].capabilities, {"gpu": 1})
 
@@ -454,8 +454,8 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
 
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
-        self.assertEqual(len(commands[0].worker_ids), 4)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.shutdownWorkers)
+        self.assertEqual(len(commands[0].workerIDs), 4)
 
     def test_greedy_shutdown_partial(self):
         """5 tasks, 10 workers -> shutdown 9, keep 1 (ceil(5/10)=1)."""
@@ -477,10 +477,10 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
 
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.ShutdownWorkers)
-        self.assertEqual(len(commands[0].worker_ids), 9)
+        self.assertEqual(commands[0].command, WorkerManagerCommandType.shutdownWorkers)
+        self.assertEqual(len(commands[0].workerIDs), 9)
         # The busiest worker (w9) should NOT be in the shutdown list
-        shutdown_set = set(commands[0].worker_ids)
+        shutdown_set = set(commands[0].workerIDs)
         self.assertNotIn(bytes(WorkerID(b"w9")), shutdown_set)
 
     def test_greedy_shutdown_no_action_when_ratio_ok(self):
@@ -525,7 +525,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
 
         self.assertEqual(len(commands), 1)
         # w0..w8 should be shut down (9 least busy), w9 kept
-        shutdown_ids = commands[0].worker_ids
+        shutdown_ids = commands[0].workerIDs
         self.assertEqual(len(shutdown_ids), 9)
         self.assertNotIn(bytes(WorkerID(b"w9")), set(shutdown_ids))
         # First in list should be least busy
@@ -545,7 +545,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], {}, {b"mgr": manager_snapshot})
 
-        start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
+        start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.startWorkers]
         self.assertEqual(len(start_cmds), 0)
 
     def test_managed_plus_pending_equals_max_suppresses_start(self):
@@ -568,7 +568,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {b"mgr": manager_snapshot})
 
-        start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
+        start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.startWorkers]
         self.assertEqual(len(start_cmds), 0)
 
     def test_managed_plus_pending_below_max_allows_start(self):
@@ -591,11 +591,11 @@ class TestVanillaScalingPolicy(unittest.TestCase):
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {b"mgr": manager_snapshot})
 
-        start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
+        start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.startWorkers]
         self.assertEqual(len(start_cmds), 1)
 
     # TODO: uncomment once finos/opengris-scaler#696 is resolved.
-    # maxTaskConcurrency is UInt32 in Cap'n Proto and cannot represent -1, so
+    # max_task_concurrency is UInt32 in Cap'n Proto and cannot represent -1, so
     # WorkerManagerHeartbeat.new_msg(max_task_concurrency=-1, ...) currently raises KjException.
     # def test_unlimited_concurrency_ignores_pending(self):
     #     """When max_concurrency == -1, StartWorkers is issued regardless of pending count."""
@@ -607,7 +607,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
     #         worker_count=0, last_seen_s=0.0, pending_worker_count=1000,
     #     )
     #     commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], {}, {b"mgr": manager_snapshot})
-    #     start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.StartWorkers]
+    #     start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.startWorkers]
     #     self.assertEqual(len(start_cmds), 1)
 
 
@@ -635,8 +635,8 @@ class TestWorkerManagerControllerPendingTracking(unittest.IsolatedAsyncioTestCas
         """A successful StartWorkers response increments _pending_worker_count by 1."""
         source = b"mgr-src"
         self.controller._pending_commands[source] = MagicMock()
-        response = WorkerManagerCommandResponse.new_msg(
-            command=WorkerManagerCommandType.StartWorkers, status=WorkerManagerCommandResponse.Status.Success
+        response = WorkerManagerCommandResponse(
+            command=WorkerManagerCommandType.startWorkers, status=WorkerManagerCommandResponse.Status.success
         )
 
         await self.controller.on_command_response(source, response)
@@ -646,8 +646,8 @@ class TestWorkerManagerControllerPendingTracking(unittest.IsolatedAsyncioTestCas
     async def test_multiple_start_successes_accumulate_pending(self):
         """Each successful StartWorkers response adds 1 to _pending_worker_count."""
         source = b"mgr-src"
-        response = WorkerManagerCommandResponse.new_msg(
-            command=WorkerManagerCommandType.StartWorkers, status=WorkerManagerCommandResponse.Status.Success
+        response = WorkerManagerCommandResponse(
+            command=WorkerManagerCommandType.startWorkers, status=WorkerManagerCommandResponse.Status.success
         )
 
         for _ in range(3):
@@ -660,8 +660,8 @@ class TestWorkerManagerControllerPendingTracking(unittest.IsolatedAsyncioTestCas
         """A failed StartWorkers response must NOT increment _pending_worker_count."""
         source = b"mgr-src"
         self.controller._pending_commands[source] = MagicMock()
-        response = WorkerManagerCommandResponse.new_msg(
-            command=WorkerManagerCommandType.StartWorkers, status=WorkerManagerCommandResponse.Status.TooManyWorkers
+        response = WorkerManagerCommandResponse(
+            command=WorkerManagerCommandType.startWorkers, status=WorkerManagerCommandResponse.Status.tooManyWorkers
         )
 
         await self.controller.on_command_response(source, response)
@@ -729,41 +729,41 @@ class TestWorkerManagerControllerPendingTracking(unittest.IsolatedAsyncioTestCas
 
         status = self.controller.get_status()
 
-        detail = next(d for d in status.worker_manager_details if d["worker_manager_id"] == manager_id)
+        detail = next(d for d in status.workerManagerDetails if d["worker_manager_id"] == manager_id)
         self.assertEqual(detail["pending_workers"], 2)
 
 
 def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
     client_id = ClientID.generate_client_id()
-    return Task.new_msg(
-        task_id=task_id,
+    return Task(
+        taskId=task_id,
         source=client_id,
         metadata=b"",
-        func_object_id=ObjectID.generate_object_id(client_id),
-        function_args=[],
+        funcObjectId=ObjectID.generate_object_id(client_id),
+        functionArgs=[],
         capabilities=capabilities,
     )
 
 
 def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> WorkerHeartbeat:
-    return WorkerHeartbeat.new_msg(
-        agent=Resource.new_msg(cpu=1, rss=1000000),
-        rss_free=500000,
-        queue_size=10,
-        queued_tasks=queued_tasks,
-        latency_us=100,
-        task_lock=False,
+    return WorkerHeartbeat(
+        agent=Resource(cpu=1, rss=1000000),
+        rssFree=500000,
+        queueSize=10,
+        queuedTasks=queued_tasks,
+        latencyUS=100,
+        taskLock=False,
         processors=[],
         capabilities=capabilities,
-        worker_manager_id=b"test",
+        workerManagerID=b"test",
     )
 
 
 def _create_worker_manager_heartbeat(
     worker_manager_id: bytes, max_task_concurrency: int = 10
 ) -> WorkerManagerHeartbeat:
-    return WorkerManagerHeartbeat.new_msg(
-        max_task_concurrency=max_task_concurrency, capabilities={}, worker_manager_id=worker_manager_id
+    return WorkerManagerHeartbeat(
+        maxTaskConcurrency=max_task_concurrency, capabilities={}, workerManagerID=worker_manager_id
     )
 
 

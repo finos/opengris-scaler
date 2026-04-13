@@ -5,8 +5,8 @@ from typing import Dict, List, Literal, Union
 
 from scaler.config.section.top import TopConfig
 from scaler.io.sync_subscriber import ZMQSyncSubscriber
-from scaler.protocol.python.message import StateScheduler
-from scaler.protocol.python.mixins import Message
+from scaler.protocol.capnp import StateScheduler
+from scaler.protocol.mixins import Message
 from scaler.utility.formatter import (
     format_bytes,
     format_integer,
@@ -64,25 +64,23 @@ def show_status(status: Message, screen):
         {
             "cpu": format_percentage(status.scheduler.cpu),
             "rss": format_bytes(status.scheduler.rss),
-            "rss_free": format_bytes(status.rss_free),
+            "rss_free": format_bytes(status.rssFree),
         },
     )
 
     task_manager_table = __generate_keyword_data(
         "task_manager",
-        dict(sorted((k.name, v) for k, v in status.task_manager.state_to_count.items())),
+        dict(sorted((k._as_str(), v) for k, v in status.taskManager.stateToCount.items())),
         format_integer_flag=True,
     )
-    object_manager = __generate_keyword_data("object_manager", {"num_of_objs": status.object_manager.number_of_objects})
+    object_manager = __generate_keyword_data("object_manager", {"num_of_objs": status.objectManager.numberOfObjects})
     sent_table = __generate_keyword_data("scheduler_sent", status.binder.sent, format_integer_flag=True)
     received_table = __generate_keyword_data("scheduler_received", status.binder.received, format_integer_flag=True)
-    client_table = __generate_keyword_data(
-        "client_manager", status.client_manager.client_to_num_of_tasks, key_col_length=18
-    )
+    client_table = __generate_keyword_data("client_manager", status.clientManager.clientToNumOfTask, key_col_length=18)
 
     manager_map = {}
-    if status.scaling_manager.managed_workers:
-        for worker_manager_id, worker_ids in status.scaling_manager.managed_workers.items():
+    if status.scalingManager.managedWorkers:
+        for worker_manager_id, worker_ids in status.scalingManager.managedWorkers.items():
             manager_id_str = worker_manager_id.decode()
             for worker_id in worker_ids:
                 manager_map[worker_id.decode()] = manager_id_str
@@ -91,22 +89,22 @@ def show_status(status: Message, screen):
     worker_manager_table = __generate_worker_manager_table(
         [
             {
-                "manager": manager_map.get(worker.worker_id.decode(), ""),
-                "worker": worker.worker_id.decode(),
+                "manager": manager_map.get(worker.workerId.decode(), ""),
+                "worker": worker.workerId.decode(),
                 "agt_cpu": worker.agent.cpu,
                 "agt_rss": worker.agent.rss,
-                "cpu": sum(p.resource.cpu for p in worker.processor_statuses),
-                "rss": sum(p.resource.rss for p in worker.processor_statuses),
-                "os_rss_free": worker.rss_free,
+                "cpu": sum(p.resource.cpu for p in worker.processorStatuses),
+                "rss": sum(p.resource.rss for p in worker.processorStatuses),
+                "os_rss_free": worker.rssFree,
                 "free": worker.free,
                 "sent": worker.sent,
                 "queued": worker.queued,
                 "suspended": worker.suspended,
-                "lag": worker.lag_us,
-                "last": worker.last_s,
+                "lag": worker.lagUS,
+                "last": worker.lastS,
                 "ITL": worker.itl,
             }
-            for worker in status.worker_manager.workers
+            for worker in status.workerManager.workers
         ],
         manager_length=10,
         worker_length=20,
@@ -129,13 +127,13 @@ def show_status(status: Message, screen):
     try:
         screen.addstr(new_row, 0, "-" * max_cols)
         screen.addstr(new_row + 1, 0, "Shortcuts: " + " ".join([f"{v}[{chr(k)}]" for k, v in SORT_BY_OPTIONS.items()]))
-        total_pending = sum(d.get("pending_workers", 0) for d in status.scaling_manager.worker_manager_details)
+        total_pending = sum(d.get("pending_workers", 0) for d in status.scalingManager.workerManagerDetails)
         pending_str = f", {total_pending} pending" if total_pending > 0 else ""
         screen.addstr(
             new_row + 3,
             0,
-            f"Total {len(status.scaling_manager.managed_workers)} manager(s) "
-            f"with {len(status.worker_manager.workers)} worker(s){pending_str}",
+            f"Total {len(status.scalingManager.managedWorkers)} manager(s) "
+            f"with {len(status.workerManager.workers)} worker(s){pending_str}",
         )
         _ = __print_table(screen, new_row + 4, table3)
     except curses.error:

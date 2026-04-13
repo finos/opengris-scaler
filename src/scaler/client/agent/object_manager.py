@@ -2,8 +2,7 @@ from typing import Optional, Set
 
 from scaler.client.agent.mixins import ObjectManager
 from scaler.io.mixins import AsyncConnector
-from scaler.protocol.python.common import ObjectMetadata
-from scaler.protocol.python.message import ObjectInstruction, TaskResult
+from scaler.protocol.capnp import ObjectInstruction, ObjectMetadata, TaskResult
 from scaler.utility.identifiers import ClientID, ObjectID
 
 
@@ -22,11 +21,11 @@ class ClientObjectManager(ObjectManager):
         self._connector_external = connector_external
 
     async def on_object_instruction(self, instruction: ObjectInstruction):
-        if instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Create:
+        if instruction.instructionType == ObjectInstruction.ObjectInstructionType.create:
             await self.__send_object_creation(instruction)
-        elif instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Delete:
+        elif instruction.instructionType == ObjectInstruction.ObjectInstructionType.delete:
             await self.__delete_objects(instruction)
-        elif instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Clear:
+        elif instruction.instructionType == ObjectInstruction.ObjectInstructionType.clear:
             await self.clear_all_objects(clear_serializer=False)
 
     def on_task_result(self, task_result: TaskResult):
@@ -43,56 +42,67 @@ class ClientObjectManager(ObjectManager):
         self._sent_object_ids.difference_update(cleared_object_ids)
 
         await self._connector_external.send(
-            ObjectInstruction.new_msg(
-                ObjectInstruction.ObjectInstructionType.Delete,
-                self._identity,
-                ObjectMetadata.new_msg(tuple(cleared_object_ids)),
+            ObjectInstruction(
+                instructionType=ObjectInstruction.ObjectInstructionType.delete,
+                objectUser=self._identity,
+                objectMetadata=ObjectMetadata(objectIds=tuple(cleared_object_ids)),
             )
         )
 
     async def __send_object_creation(self, instruction: ObjectInstruction):
-        assert instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Create
+        assert instruction.instructionType == ObjectInstruction.ObjectInstructionType.create
 
-        new_object_ids = set(instruction.object_metadata.object_ids) - self._sent_object_ids
+        new_object_ids = {
+            ObjectID(object_id) for object_id in instruction.objectMetadata.objectIds
+        } - self._sent_object_ids
         if not new_object_ids:
             return
 
-        if ObjectMetadata.ObjectContentType.Serializer in instruction.object_metadata.object_types:
+        if ObjectMetadata.ObjectContentType.serializer in instruction.objectMetadata.objectTypes:
             if self._sent_serializer_id is not None:
                 raise ValueError("trying to send multiple serializers.")
 
-            serializer_index = instruction.object_metadata.object_types.index(
-                ObjectMetadata.ObjectContentType.Serializer
-            )
-            self._sent_serializer_id = instruction.object_metadata.object_ids[serializer_index]
+            serializer_index = instruction.objectMetadata.objectTypes.index(ObjectMetadata.ObjectContentType.serializer)
+            self._sent_serializer_id = ObjectID(instruction.objectMetadata.objectIds[serializer_index])
 
-        new_object_content = ObjectMetadata.new_msg(
-            *zip(
-                *filter(
-                    lambda object_pack: object_pack[0] in new_object_ids,
-                    zip(
-                        instruction.object_metadata.object_ids,
-                        instruction.object_metadata.object_types,
-                        instruction.object_metadata.object_names,
-                    ),
+        new_object_content = ObjectMetadata(
+            objectIds=[
+                object_id for object_id in instruction.objectMetadata.objectIds if ObjectID(object_id) in new_object_ids
+            ],
+            objectTypes=[
+                object_type
+                for object_id, object_type in zip(
+                    instruction.objectMetadata.objectIds, instruction.objectMetadata.objectTypes
                 )
-            )
+                if ObjectID(object_id) in new_object_ids
+            ],
+            objectNames=[
+                object_name
+                for object_id, object_name in zip(
+                    instruction.objectMetadata.objectIds, instruction.objectMetadata.objectNames
+                )
+                if ObjectID(object_id) in new_object_ids
+            ],
         )
 
-        self._sent_object_ids.update(set(new_object_content.object_ids))
+        self._sent_object_ids.update(ObjectID(object_id) for object_id in new_object_content.objectIds)
 
         await self._connector_external.send(
-            ObjectInstruction.new_msg(
-                ObjectInstruction.ObjectInstructionType.Create, instruction.object_user, new_object_content
+            ObjectInstruction(
+                instructionType=ObjectInstruction.ObjectInstructionType.create,
+                objectUser=instruction.objectUser,
+                objectMetadata=new_object_content,
             )
         )
 
     async def __delete_objects(self, instruction: ObjectInstruction):
-        assert instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Delete
+        assert instruction.instructionType == ObjectInstruction.ObjectInstructionType.delete
 
-        if self._sent_serializer_id in instruction.object_metadata.object_ids:
+        if self._sent_serializer_id in {ObjectID(object_id) for object_id in instruction.objectMetadata.objectIds}:
             raise ValueError("trying to delete serializer.")
 
-        self._sent_object_ids.difference_update(instruction.object_metadata.object_ids)
+        self._sent_object_ids.difference_update(
+            ObjectID(object_id) for object_id in instruction.objectMetadata.objectIds
+        )
 
         await self._connector_external.send(instruction)

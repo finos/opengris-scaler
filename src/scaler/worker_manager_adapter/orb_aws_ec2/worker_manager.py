@@ -18,7 +18,7 @@ from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdap
 from scaler.io import ymq
 from scaler.io.mixins import AsyncConnector
 from scaler.io.utility import create_async_connector, create_async_simple_context
-from scaler.protocol.python.message import (
+from scaler.protocol.capnp import (
     Message,
     WorkerManagerCommand,
     WorkerManagerCommandResponse,
@@ -195,34 +195,34 @@ class ORBAWSEC2WorkerAdapter:
 
     async def _handle_command(self, command: WorkerManagerCommand):
         cmd_type = command.command
-        response_status = Status.Success
+        response_status: Status = Status.success
         worker_ids: List[bytes] = []
         capabilities: Dict[str, int] = {}
 
-        if cmd_type == WorkerManagerCommandType.StartWorkers:
+        if cmd_type == WorkerManagerCommandType.startWorkers:
             worker_ids, response_status = await self.start_worker()
-            if response_status == Status.Success:
+            if response_status == Status.success:
                 capabilities = self._capabilities
-        elif cmd_type == WorkerManagerCommandType.ShutdownWorkers:
-            worker_ids, response_status = await self.shutdown_workers(list(command.worker_ids))
+        elif cmd_type == WorkerManagerCommandType.shutdownWorkers:
+            worker_ids, response_status = await self.shutdown_workers(list(command.workerIDs))
         else:
             logging.error(f"Received unknown command type: {cmd_type!r}")
             raise ValueError(f"Unknown Command: {cmd_type!r}")
 
         assert self._connector_external is not None
         await self._connector_external.send(
-            WorkerManagerCommandResponse.new_msg(
-                command=cmd_type, status=response_status, worker_ids=worker_ids, capabilities=capabilities
+            WorkerManagerCommandResponse(
+                command=cmd_type, status=response_status, workerIDs=worker_ids, capabilities=capabilities
             )
         )
 
     async def __send_heartbeat(self):
         assert self._connector_external is not None
         await self._connector_external.send(
-            WorkerManagerHeartbeat.new_msg(
-                max_task_concurrency=self._max_task_concurrency,
+            WorkerManagerHeartbeat(
+                maxTaskConcurrency=self._max_task_concurrency,
                 capabilities=self._capabilities,
-                worker_manager_id=self._worker_manager_id,
+                workerManagerID=self._worker_manager_id,
             )
         )
 
@@ -470,19 +470,19 @@ nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address.to_
             logging.warning(
                 f"Worker start rejected: at capacity ({len(self._workers)}/{self._max_task_concurrency} workers)"
             )
-            return [], Status.TooManyWorkers
+            return [], Status.tooManyWorkers
 
         logging.info(f"Submitting ORB machine request for template {self._template_id}...")
         try:
             create_response = await self._sdk.create_request(template_id=self._template_id, count=1)
         except Exception:
             logging.exception("ORB create_request failed")
-            return [], Status.UnknownAction
+            return [], Status.unknownAction
 
         request_id = create_response.get("created_request_id") if isinstance(create_response, dict) else None
         if not request_id:
             logging.error(f"ORB create_request returned no request ID. Response: {create_response}")
-            return [], Status.UnknownAction
+            return [], Status.unknownAction
 
         logging.info(f"ORB request {request_id} submitted, polling for instance ID...")
         timeout_seconds = ORB_AWS_EC2_MAX_POLLING_ATTEMPTS * ORB_AWS_EC2_POLLING_INTERVAL_SECONDS
@@ -496,7 +496,7 @@ nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address.to_
                 status_response = await self._sdk.get_request_status(request_ids=[request_id])
             except Exception:
                 logging.exception(f"ORB get_request_status failed for request {request_id}")
-                return [], Status.UnknownAction
+                return [], Status.unknownAction
 
             requests = status_response.get("requests", []) if isinstance(status_response, dict) else []
             if not requests:
@@ -514,18 +514,18 @@ nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address.to_
                 logging.info(
                     f"ORB request {request_id} fulfilled: launched worker '{worker_name}' (instance {instance_id})"
                 )
-                return [bytes(worker_id)], Status.Success
+                return [bytes(worker_id)], Status.success
 
             if status.lower() in {"failed", "error", "cancelled", "canceled"}:
                 logging.error(f"ORB request {request_id} reached terminal status '{status}' with no instance ID.")
-                return [], Status.UnknownAction
+                return [], Status.unknownAction
 
         logging.error(f"ORB request {request_id} timed out after {timeout_seconds:.0f}s waiting for instance ID.")
-        return [], Status.UnknownAction
+        return [], Status.unknownAction
 
     async def shutdown_workers(self, worker_ids: List[bytes]) -> Tuple[List[bytes], Status]:
         if not worker_ids:
-            return [], Status.WorkerNotFound
+            return [], Status.workerNotFound
 
         instance_ids = []
         affected_worker_ids = []
@@ -533,7 +533,7 @@ nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address.to_
             worker_id = WorkerID(wid_bytes)
             if worker_id not in self._workers:
                 logging.warning(f"Worker with ID {wid_bytes!r} does not exist.")
-                return [], Status.WorkerNotFound
+                return [], Status.workerNotFound
             instance_ids.append(self._workers[worker_id])
             affected_worker_ids.append(wid_bytes)
 
@@ -542,10 +542,10 @@ nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address.to_
             await self._sdk.create_return_request(machine_ids=instance_ids)
         except Exception as e:
             logging.error(f"Failed to return instances {instance_ids} to ORB: {e}")
-            return [], Status.UnknownAction
+            return [], Status.unknownAction
 
         for wid_bytes in affected_worker_ids:
             del self._workers[WorkerID(wid_bytes)]
 
         logging.info(f"Successfully stopped {len(affected_worker_ids)} worker(s): instances {instance_ids}")
-        return affected_worker_ids, Status.Success
+        return affected_worker_ids, Status.success

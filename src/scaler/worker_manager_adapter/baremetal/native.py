@@ -11,7 +11,7 @@ from scaler.config.section.native_worker_manager import NativeWorkerManagerConfi
 from scaler.io import ymq
 from scaler.io.mixins import AsyncConnector
 from scaler.io.utility import create_async_connector, create_async_simple_context
-from scaler.protocol.python.message import (
+from scaler.protocol.capnp import (
     Message,
     WorkerManagerCommand,
     WorkerManagerCommandResponse,
@@ -120,45 +120,45 @@ class NativeWorkerManager:
 
     async def _handle_command(self, command: WorkerManagerCommand):
         cmd_type = command.command
-        response_status = Status.Success
+        response_status: Status = Status.success
         worker_ids: List[bytes] = []
 
-        if cmd_type == WorkerManagerCommandType.StartWorkers:
+        if cmd_type == WorkerManagerCommandType.startWorkers:
             new_wid, response_status = await self.start_worker()
-            if response_status == Status.Success:
+            if response_status == Status.success:
                 worker_ids = [bytes(new_wid)]
-        elif cmd_type == WorkerManagerCommandType.ShutdownWorkers:
-            response_status = await self.shutdown_workers(command.worker_ids)
-            if response_status == Status.Success:
-                worker_ids = command.worker_ids
+        elif cmd_type == WorkerManagerCommandType.shutdownWorkers:
+            response_status = await self.shutdown_workers(command.workerIDs)
+            if response_status == Status.success:
+                worker_ids = list(command.workerIDs)
         else:
             raise ValueError("Unknown WorkerManagerCommand")
 
         await self._connector_external.send(
-            WorkerManagerCommandResponse.new_msg(
-                command=cmd_type, status=response_status, worker_ids=worker_ids, capabilities=self._capabilities
+            WorkerManagerCommandResponse(
+                command=cmd_type, status=response_status, workerIDs=worker_ids, capabilities=self._capabilities
             )
         )
 
     async def start_worker(self) -> Tuple[WorkerID, Status]:
         if len(self._workers) >= self._max_task_concurrency != -1:
-            return WorkerID(b""), Status.TooManyWorkers
+            return WorkerID(b""), Status.tooManyWorkers
 
         worker = self._create_worker()
         worker.start()
         self._workers[worker.identity] = worker
         logging.info(f"Start worker, {self._ident!r}")
-        return worker.identity, Status.Success
+        return worker.identity, Status.success
 
     async def shutdown_workers(self, worker_ids: List[bytes]) -> Status:
         if not worker_ids:
-            return Status.WorkerNotFound
+            return Status.workerNotFound
 
         for wid_bytes in worker_ids:
             wid = WorkerID(wid_bytes)
             if wid not in self._workers:
                 logging.warning(f"Worker with ID {wid!r} does not exist.")
-                return Status.WorkerNotFound
+                return Status.workerNotFound
 
         for wid_bytes in worker_ids:
             wid = WorkerID(wid_bytes)
@@ -166,7 +166,7 @@ class NativeWorkerManager:
             os.kill(worker.pid, signal.SIGINT)
             worker.join()
 
-        return Status.Success
+        return Status.success
 
     def run(self) -> None:
         if self._mode == NativeWorkerManagerMode.FIXED:
@@ -212,10 +212,10 @@ class NativeWorkerManager:
 
     async def __send_heartbeat(self) -> None:
         await self._connector_external.send(
-            WorkerManagerHeartbeat.new_msg(
-                max_task_concurrency=self._max_task_concurrency,
+            WorkerManagerHeartbeat(
+                maxTaskConcurrency=self._max_task_concurrency,
                 capabilities=self._capabilities,
-                worker_manager_id=self._worker_manager_id,
+                workerManagerID=self._worker_manager_id,
             )
         )
 

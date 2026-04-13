@@ -10,14 +10,14 @@ from scaler.io.async_connector import ZMQAsyncConnector
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
 from scaler.io.utility import create_async_binder, create_async_object_storage_connector
 from scaler.io.ymq import YMQException
-from scaler.protocol.python.common import ObjectStorageAddress
-from scaler.protocol.python.message import (
+from scaler.protocol.capnp import (
     ClientDisconnect,
     ClientHeartbeat,
     DisconnectRequest,
     GraphTask,
     InformationRequest,
     ObjectInstruction,
+    ObjectStorageAddress,
     Task,
     TaskCancel,
     TaskCancelConfirm,
@@ -27,7 +27,7 @@ from scaler.protocol.python.message import (
     WorkerManagerCommandResponse,
     WorkerManagerHeartbeat,
 )
-from scaler.protocol.python.mixins import Message
+from scaler.protocol.mixins import Message
 from scaler.scheduler.controllers.balance_controller import VanillaBalanceController
 from scaler.scheduler.controllers.client_controller import VanillaClientController
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
@@ -62,12 +62,12 @@ class Scheduler:
 
         logging.info(f"{self.__class__.__name__}: listen to scheduler address {self._address}")
 
-        object_storage_address = ObjectStorageAddress.new_msg(
+        object_storage_address = ObjectStorageAddress(
             host=config.object_storage_address.host, port=config.object_storage_address.port
         )
 
         if config.advertised_object_storage_address is not None:
-            advertised_object_storage_address = ObjectStorageAddress.new_msg(
+            advertised_object_storage_address = ObjectStorageAddress(
                 host=config.advertised_object_storage_address.host, port=config.advertised_object_storage_address.port
             )
         else:
@@ -189,7 +189,7 @@ class Scheduler:
             return
 
         if isinstance(message, TaskCancel):
-            if self._graph_controller.is_graph_subtask(message.task_id):
+            if self._graph_controller.is_graph_subtask(message.taskId):
                 await self._graph_controller.on_graph_task_cancel(message)
             else:
                 await self._task_controller.on_task_cancel(ClientID(source), message)
@@ -204,7 +204,7 @@ class Scheduler:
             return
 
         if isinstance(message, TaskLog):
-            client = self._client_manager.get_client_id(message.task_id)
+            client = self._client_manager.get_client_id(message.taskId)
             if client is not None:
                 await self._binder.send(client, message)
             return

@@ -2,7 +2,7 @@ import logging
 import math
 from typing import Dict, List, Optional, Set
 
-from scaler.protocol.python.message import Task
+from scaler.protocol.capnp import Task
 from scaler.scheduler.controllers.policies.simple_policy.allocation.mixins import TaskAllocatePolicy
 from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
@@ -114,7 +114,7 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
         if len(task.capabilities) > 0:
             logging.warning(f"allocate policy ignores task capabilities: {task.capabilities!r}.")
 
-        task_id = task.task_id
+        task_id = task.taskId
 
         if task_id in self._task_id_to_worker:
             return self._task_id_to_worker[task_id]

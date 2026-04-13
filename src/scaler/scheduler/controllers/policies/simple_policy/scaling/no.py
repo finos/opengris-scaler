@@ -1,10 +1,10 @@
 from typing import Dict, List
 
-from scaler.protocol.python.message import InformationSnapshot, WorkerManagerCommand, WorkerManagerHeartbeat
-from scaler.protocol.python.status import ScalingManagerStatus
+from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.utility.identifiers import WorkerID
+from scaler.utility.snapshot import InformationSnapshot
 
 
 class NoScalingPolicy(ScalingPolicy):
@@ -22,4 +22,4 @@ class NoScalingPolicy(ScalingPolicy):
         return []
 
     def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
-        return ScalingManagerStatus.new_msg(managed_workers={})
+        return ScalingManagerStatus(managedWorkers={})

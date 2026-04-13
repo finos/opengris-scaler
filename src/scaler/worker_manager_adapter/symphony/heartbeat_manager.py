@@ -5,8 +5,7 @@ import psutil
 
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
-from scaler.protocol.python.message import WorkerHeartbeat, WorkerHeartbeatEcho
-from scaler.protocol.python.status import Resource
+from scaler.protocol.capnp import Resource, WorkerHeartbeat, WorkerHeartbeatEcho
 from scaler.utility.mixins import Looper
 from scaler.worker.agent.mixins import HeartbeatManager, TimeoutManager
 from scaler.worker_manager_adapter.symphony.task_manager import SymphonyTaskManager
@@ -58,7 +57,7 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
         self._timeout_manager.update_last_seen_time()
 
         if self._object_storage_address is None:
-            address_message = heartbeat.object_storage_address()
+            address_message = heartbeat.objectStorageAddress
             self._object_storage_address = ObjectStorageAddressConfig(address_message.host, address_message.port)
             await self._connector_storage.connect(self._object_storage_address.host, self._object_storage_address.port)
 
@@ -70,16 +69,18 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
             return
 
         await self._connector_external.send(
-            WorkerHeartbeat.new_msg(
-                Resource.new_msg(int(self._agent_process.cpu_percent() * 10), self._agent_process.memory_info().rss),
-                psutil.virtual_memory().available,
-                self._task_queue_size,
-                self._worker_task_manager.get_queued_size(),
-                self._latency_us,
-                self._worker_task_manager.can_accept_task(),
-                [],
-                self._capabilities,
-                self._worker_manager_id,
+            WorkerHeartbeat(
+                agent=Resource(
+                    cpu=int(self._agent_process.cpu_percent() * 10), rss=self._agent_process.memory_info().rss
+                ),
+                rssFree=psutil.virtual_memory().available,
+                queueSize=self._task_queue_size,
+                queuedTasks=self._worker_task_manager.get_queued_size(),
+                latencyUS=self._latency_us,
+                taskLock=self._worker_task_manager.can_accept_task(),
+                processors=[],
+                capabilities=self._capabilities,
+                workerManagerID=self._worker_manager_id,
             )
         )
         self._start_timestamp_ns = time.time_ns()

@@ -21,7 +21,7 @@ from scaler.config.types.zmq import ZMQConfig, ZMQType
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
 from scaler.io.sync_connector import ZMQSyncConnector
 from scaler.io.utility import create_sync_object_storage_connector
-from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
+from scaler.protocol.capnp import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
 from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.graph.topological_sorter import TopologicalSorter
@@ -377,16 +377,16 @@ class Client:
 
         self._future_manager.add_future(
             self._future_factory(
-                task=Task.new_msg(
-                    task_id=graph_task.task_id,
+                task=Task(
+                    taskId=graph_task.taskId,
                     source=self._identity,
                     metadata=b"",
-                    func_object_id=None,
-                    function_args=[],
+                    funcObjectId=b"",
+                    functionArgs=[],
                     capabilities=capabilities,
                 ),
                 is_delayed=not block,
-                group_task_id=graph_task.task_id,
+                group_task_id=graph_task.taskId,
             )
         )
         for future in compute_futures.values():
@@ -460,7 +460,7 @@ class Client:
 
         self._future_manager.cancel_all_futures()
 
-        self._connector_agent.send(ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Disconnect))
+        self._connector_agent.send(ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.disconnect))
 
         self.__destroy()
 
@@ -487,7 +487,7 @@ class Client:
 
         self._future_manager.cancel_all_futures()
 
-        self._connector_agent.send(ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Shutdown))
+        self._connector_agent.send(ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.shutdown))
         try:
             self.__receive_shutdown_response()
         finally:
@@ -516,12 +516,14 @@ class Client:
 
         task_flags_bytes = self.__get_task_flags().serialize()
 
-        task = Task.new_msg(
-            task_id=task_id,
+        task = Task(
+            taskId=task_id,
             source=self._identity,
             metadata=task_flags_bytes,
-            func_object_id=function_object_id,
-            function_args=function_args,
+            funcObjectId=function_object_id,
+            functionArgs=[
+                Task.Argument(type=Task.Argument.ArgumentType.objectID, data=argument) for argument in function_args
+            ],
             capabilities=capabilities,
         )
 
@@ -632,17 +634,29 @@ class Client:
                 else:
                     raise ValueError("Not possible")
 
-            task_id_to_tasks[task_id] = Task.new_msg(
-                task_id=task_id,
+            task_id_to_tasks[task_id] = Task(
+                taskId=task_id,
                 source=self._identity,
                 metadata=task_flags_bytes,
-                func_object_id=function_cache.object_id,
-                function_args=arguments,
+                funcObjectId=function_cache.object_id,
+                functionArgs=[
+                    Task.Argument(
+                        type=(
+                            Task.Argument.ArgumentType.task
+                            if isinstance(argument, TaskID)
+                            else Task.Argument.ArgumentType.objectID
+                        ),
+                        data=argument,
+                    )
+                    for argument in arguments
+                ],
                 capabilities=capabilities,
             )
 
         result_task_ids = [node_name_to_task_id[key] for key in keys if key in call_graph]
-        graph_task = GraphTask.new_msg(graph_task_id, self._identity, result_task_ids, list(task_id_to_tasks.values()))
+        graph_task = GraphTask(
+            taskId=graph_task_id, source=self._identity, targets=result_task_ids, graph=list(task_id_to_tasks.values())
+        )
 
         compute_futures = {}
         ready_futures = {}
@@ -655,12 +669,12 @@ class Client:
             elif key in node_name_to_arguments:
                 argument, data = node_name_to_arguments[key]
                 future: ScalerFuture = self._future_factory(
-                    task=Task.new_msg(
-                        task_id=TaskID.generate_task_id(),
+                    task=Task(
+                        taskId=TaskID.generate_task_id(),
                         source=self._identity,
                         metadata=b"",
-                        func_object_id=None,
-                        function_args=[],
+                        funcObjectId=b"",
+                        functionArgs=[],
                         capabilities={},
                     ),
                     is_delayed=False,

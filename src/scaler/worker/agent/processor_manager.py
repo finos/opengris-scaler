@@ -8,8 +8,14 @@ from scaler.config.types.zmq import ZMQConfig
 
 # from scaler.utility.logging.utility import setup_logger
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
-from scaler.protocol.python.common import ObjectMetadata, TaskResultType
-from scaler.protocol.python.message import ObjectInstruction, ProcessorInitialized, Task, TaskResult
+from scaler.protocol.capnp import (
+    ObjectInstruction,
+    ObjectMetadata,
+    ProcessorInitialized,
+    Task,
+    TaskResult,
+    TaskResultType,
+)
 from scaler.utility.exceptions import ProcessorDiedError
 from scaler.utility.identifiers import ObjectID, ProcessorID, TaskID, WorkerID
 from scaler.utility.metadata.profile_result import ProfileResult
@@ -116,7 +122,7 @@ class VanillaProcessorManager(ProcessorManager):
         assert holder.task() is None
         holder.set_task(task)
 
-        self._profiling_manager.on_task_start(holder.pid(), task.task_id)
+        self._profiling_manager.on_task_start(holder.pid(), task.taskId)
 
         await self._binder_internal.send(holder.processor_id(), task)
 
@@ -160,23 +166,30 @@ class VanillaProcessorManager(ProcessorManager):
 
         if task is not None:
             source = task.source
-            task_id = task.task_id
+            task_id = task.taskId
 
             result_object_id = ObjectID.generate_object_id(source)
             result_object_bytes = serialize_failure(ProcessorDiedError(f"{process_status=}"))
 
             await self._connector_storage.set_object(result_object_id, result_object_bytes)
             await self._connector_external.send(
-                ObjectInstruction.new_msg(
-                    ObjectInstruction.ObjectInstructionType.Create,
-                    source,
-                    ObjectMetadata.new_msg((result_object_id,), (ObjectMetadata.ObjectContentType.Object,), (b"",)),
+                ObjectInstruction(
+                    instructionType=ObjectInstruction.ObjectInstructionType.create,
+                    objectUser=source,
+                    objectMetadata=ObjectMetadata(
+                        objectIds=(result_object_id,),
+                        objectTypes=(ObjectMetadata.ObjectContentType.object,),
+                        objectNames=(b"",),
+                    ),
                 )
             )
 
             await self._task_manager.on_task_result(
-                TaskResult.new_msg(
-                    task_id, TaskResultType.Failed, profile_result.serialize(), [bytes(result_object_id)]
+                TaskResult(
+                    taskId=task_id,
+                    resultType=TaskResultType.failed,
+                    metadata=profile_result.serialize(),
+                    results=[bytes(result_object_id)],
                 )
             )
 
@@ -186,7 +199,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         current_task = holder.task()
 
-        if current_task is None or current_task.task_id != task_id:
+        if current_task is None or current_task.taskId != task_id:
             return False
 
         holder.suspend()
@@ -221,7 +234,7 @@ class VanillaProcessorManager(ProcessorManager):
 
     async def on_task_result(self, processor_id: ProcessorID, task_result: TaskResult):
         assert self._current_holder is not None
-        task_id = task_result.task_id
+        task_id = task_result.taskId
 
         if task_id == self.current_task_id():
             assert self._current_holder.processor_id() == processor_id
@@ -245,9 +258,9 @@ class VanillaProcessorManager(ProcessorManager):
             return
 
         await self._task_manager.on_task_result(
-            TaskResult.new_msg(
-                task_id=task_id,
-                result_type=task_result.result_type,
+            TaskResult(
+                taskId=task_id,
+                resultType=task_result.resultType,
                 metadata=profile_result.serialize(),
                 results=task_result.results,
             )
@@ -288,7 +301,7 @@ class VanillaProcessorManager(ProcessorManager):
         if task is None:
             return None
         else:
-            return task.task_id
+            return task.taskId
 
     def processors(self) -> List[ProcessorHolder]:
         return list(self._holders_by_processor_id.values())
@@ -348,7 +361,7 @@ class VanillaProcessorManager(ProcessorManager):
         self._holders_by_processor_id = {}
 
     def __end_task(self, processor_holder: ProcessorHolder) -> ProfileResult:
-        profile_result = self._profiling_manager.on_task_end(processor_holder.pid(), processor_holder.task().task_id)
+        profile_result = self._profiling_manager.on_task_end(processor_holder.pid(), processor_holder.task().taskId)
         processor_holder.set_task(None)
 
         return profile_result

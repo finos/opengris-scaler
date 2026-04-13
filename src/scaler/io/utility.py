@@ -3,13 +3,11 @@ import os
 from typing import List, Optional
 
 import zmq.asyncio
-
-import scaler.protocol.python._message as _message
 from scaler.config.defaults import CAPNP_DATA_SIZE_LIMIT, CAPNP_MESSAGE_SIZE_LIMIT, SCALER_NETWORK_BACKEND
 from scaler.config.types.network_backend import NetworkBackend
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector, SyncObjectStorageConnector
-from scaler.protocol.python.message import PROTOCOL
-from scaler.protocol.python.mixins import Message
+from scaler.protocol.helpers import PROTOCOL
+from scaler.protocol.mixins import Message
 from scaler.utility.exceptions import ObjectStorageException
 
 try:
@@ -47,9 +45,7 @@ def create_async_binder(ctx: zmq.asyncio.Context, *args, **kwargs) -> AsyncBinde
 
         return ZMQAsyncBinder(context=ctx, *args, **kwargs)  # type: ignore[misc]
     else:
-        raise ValueError(
-            f"Invalid SCALER_NETWORK_BACKEND value." f"Expected one of: {[e.name for e in NetworkBackend]}"
-        )
+        raise ValueError(f"Invalid SCALER_NETWORK_BACKEND value. Expected one of: {[e.name for e in NetworkBackend]}")
 
 
 def create_async_connector(ctx: zmq.asyncio.Context, *args, **kwargs) -> AsyncConnector:
@@ -63,9 +59,7 @@ def create_async_connector(ctx: zmq.asyncio.Context, *args, **kwargs) -> AsyncCo
 
         return ZMQAsyncConnector(context=ctx, *args, **kwargs)  # type: ignore[misc]
     else:
-        raise ValueError(
-            f"Invalid SCALER_NETWORK_BACKEND value." f"Expected one of: {[e.name for e in NetworkBackend]}"
-        )
+        raise ValueError(f"Invalid SCALER_NETWORK_BACKEND value. Expected one of: {[e.name for e in NetworkBackend]}")
 
 
 def create_async_object_storage_connector(*args, **kwargs) -> AsyncObjectStorageConnector:
@@ -87,17 +81,16 @@ def create_sync_object_storage_connector(*args, **kwargs) -> SyncObjectStorageCo
 
 
 def deserialize(data: Buffer) -> Optional[Message]:
-    payload = _message.Message.from_bytes(data, traversal_limit_in_words=CAPNP_MESSAGE_SIZE_LIMIT)
+    payload = Message.from_bytes(data, traversal_limit_in_words=CAPNP_MESSAGE_SIZE_LIMIT)
     if not hasattr(payload, payload.which()):
         logging.error(f"unknown message type: {payload.which()}")
         return None
 
-    message = getattr(payload, payload.which())
-    return PROTOCOL[payload.which()](message)
+    return getattr(payload, payload.which())
 
 
 def serialize(message: Message) -> bytes:
-    payload = _message.Message(**{PROTOCOL.inverse[type(message)]: message.get_message()})
+    payload = Message(**{PROTOCOL.inverse[type(message)]: message})
     return payload.to_bytes()
 
 

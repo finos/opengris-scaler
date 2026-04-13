@@ -17,8 +17,16 @@ from bidict import bidict
 
 from scaler import Serializer
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
-from scaler.protocol.python.common import ObjectMetadata, TaskCancelConfirmType, TaskResultType
-from scaler.protocol.python.message import ObjectInstruction, Task, TaskCancel, TaskCancelConfirm, TaskResult
+from scaler.protocol.capnp import (
+    ObjectInstruction,
+    ObjectMetadata,
+    Task,
+    TaskCancel,
+    TaskCancelConfirm,
+    TaskCancelConfirmType,
+    TaskResult,
+    TaskResultType,
+)
 from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper
@@ -125,8 +133,8 @@ class AWSHPCTaskManager(Looper, TaskManager):
 
     async def on_object_instruction(self, instruction: ObjectInstruction) -> None:
         """Handle object lifecycle instructions."""
-        if instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Delete:
-            for object_id in instruction.object_metadata.object_ids:
+        if instruction.instructionType == ObjectInstruction.ObjectInstructionType.delete:
+            for object_id in instruction.objectMetadata.objectIds:
                 self._serializers.pop(object_id, None)  # we only cache serializers
             return
 
@@ -148,73 +156,67 @@ class AWSHPCTaskManager(Looper, TaskManager):
                 if task_priority <= acquired_task_priority:
                     break
             else:
-                self._task_id_to_task[task.task_id] = task
-                self._processing_task_ids.add(task.task_id)
-                self._task_id_to_future[task.task_id] = await self.__execute_task(task)
+                self._task_id_to_task[task.taskId] = task
+                self._processing_task_ids.add(task.taskId)
+                self._task_id_to_future[task.taskId] = await self.__execute_task(task)
                 return
 
-        self._task_id_to_task[task.task_id] = task
-        self._queued_task_id_queue.put_nowait((-task_priority, task.task_id))
-        self._queued_task_ids.add(task.task_id)
+        self._task_id_to_task[task.taskId] = task
+        self._queued_task_id_queue.put_nowait((-task_priority, task.taskId))
+        self._queued_task_ids.add(task.taskId)
 
     async def on_cancel_task(self, task_cancel: TaskCancel) -> None:
         """Handle task cancellation requests."""
-        task_queued = task_cancel.task_id in self._queued_task_ids
-        task_processing = task_cancel.task_id in self._processing_task_ids
+        task_queued = task_cancel.taskId in self._queued_task_ids
+        task_processing = task_cancel.taskId in self._processing_task_ids
 
         if not task_queued and not task_processing:
             await self._connector_external.send(
-                TaskCancelConfirm.new_msg(
-                    task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.CancelNotFound
-                )
+                TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelNotFound)
             )
             return
 
         if task_processing and not task_cancel.flags.force:
             await self._connector_external.send(
-                TaskCancelConfirm.new_msg(
-                    task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.CancelFailed
-                )
+                TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelFailed)
             )
             return
 
         # Handle queued task cancellation
         if task_queued:
-            self._queued_task_ids.discard(task_cancel.task_id)
-            self._queued_task_id_queue.remove(task_cancel.task_id)
-            self._task_id_to_task.pop(task_cancel.task_id, None)
+            self._queued_task_ids.discard(task_cancel.taskId)
+            self._queued_task_id_queue.remove(task_cancel.taskId)
+            self._task_id_to_task.pop(task_cancel.taskId, None)
 
         # Handle processing task cancellation
         if task_processing:
-            future = self._task_id_to_future.get(task_cancel.task_id)
+            future = self._task_id_to_future.get(task_cancel.taskId)
             if future is not None:
                 future.cancel()
 
             # Cancel AWS Batch job if it exists
-            if task_cancel.task_id in self._task_id_to_batch_job_id:
-                batch_job_id = self._task_id_to_batch_job_id[task_cancel.task_id]
+            if task_cancel.taskId in self._task_id_to_batch_job_id:
+                batch_job_id = self._task_id_to_batch_job_id[task_cancel.taskId]
                 await self._cancel_batch_job(batch_job_id)
 
-            self._processing_task_ids.discard(task_cancel.task_id)
-            self._task_id_to_task.pop(task_cancel.task_id, None)
-            self._canceled_task_ids.add(task_cancel.task_id)
+            self._processing_task_ids.discard(task_cancel.taskId)
+            self._task_id_to_task.pop(task_cancel.taskId, None)
+            self._canceled_task_ids.add(task_cancel.taskId)
 
-        result = TaskCancelConfirm.new_msg(
-            task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.Canceled
-        )
+        result = TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.canceled)
         await self._connector_external.send(result)
 
     async def on_task_result(self, result: TaskResult) -> None:
         """Handle task result processing."""
-        if result.task_id in self._queued_task_ids:
-            self._queued_task_ids.discard(result.task_id)
-            self._queued_task_id_queue.remove(result.task_id)
+        if result.taskId in self._queued_task_ids:
+            self._queued_task_ids.discard(result.taskId)
+            self._queued_task_id_queue.remove(result.taskId)
 
-        self._processing_task_ids.discard(result.task_id)
-        self._task_id_to_task.pop(result.task_id, None)
+        self._processing_task_ids.discard(result.taskId)
+        self._task_id_to_task.pop(result.taskId, None)
 
         # Clean up batch job tracking
-        self._task_id_to_batch_job_id.pop(result.task_id, None)
+        self._task_id_to_batch_job_id.pop(result.taskId, None)
 
         await self._connector_external.send(result)
 
@@ -249,11 +251,11 @@ class AWSHPCTaskManager(Looper, TaskManager):
                     serializer_id = ObjectID.generate_serializer_object_id(task.source)
                     serializer = self._serializers[serializer_id]
                     result_bytes = serializer.serialize(future.result())
-                    result_type = TaskResultType.Success
+                    result_type = TaskResultType.success
                 else:
                     # Failure case
                     result_bytes = serialize_failure(cast(Exception, future.exception()))
-                    result_type = TaskResultType.Failed
+                    result_type = TaskResultType.failed
 
                 # Store result in object storage
                 result_object_id = ObjectID.generate_object_id(task.source)
@@ -261,20 +263,20 @@ class AWSHPCTaskManager(Looper, TaskManager):
 
                 # Notify about object creation
                 await self._connector_external.send(
-                    ObjectInstruction.new_msg(
-                        ObjectInstruction.ObjectInstructionType.Create,
-                        task.source,
-                        ObjectMetadata.new_msg(
-                            object_ids=(result_object_id,),
-                            object_types=(ObjectMetadata.ObjectContentType.Object,),
-                            object_names=(f"<res {result_object_id.hex()[:6]}>".encode(),),
+                    ObjectInstruction(
+                        instructionType=ObjectInstruction.ObjectInstructionType.create,
+                        objectUser=task.source,
+                        objectMetadata=ObjectMetadata(
+                            objectIds=(result_object_id,),
+                            objectTypes=(ObjectMetadata.ObjectContentType.object,),
+                            objectNames=(f"<res {result_object_id.hex()[:6]}>".encode(),),
                         ),
                     )
                 )
 
                 # Send task result
                 await self._connector_external.send(
-                    TaskResult.new_msg(task_id, result_type, metadata=b"", results=[bytes(result_object_id)])
+                    TaskResult(taskId=task_id, resultType=result_type, metadata=b"", results=[bytes(result_object_id)])
                 )
 
             elif task_id in self._canceled_task_ids:
@@ -300,7 +302,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
 
         self._acquiring_task_ids.add(task_id)
         self._processing_task_ids.add(task_id)
-        self._task_id_to_future[task.task_id] = await self.__execute_task(task)
+        self._task_id_to_future[task.taskId] = await self.__execute_task(task)
 
     async def __execute_task(self, task: Task) -> asyncio.Future:
         """
@@ -320,7 +322,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
         # Fetch function and arguments concurrently
         get_tasks = [
             self._connector_storage.get_object(object_id)
-            for object_id in [task.func_object_id, *(cast(ObjectID, arg) for arg in task.function_args)]
+            for object_id in [ObjectID(task.funcObjectId), *(ObjectID(argument.data) for argument in task.functionArgs)]
         ]
 
         function_bytes, *arg_bytes = await asyncio.gather(*get_tasks)
@@ -352,7 +354,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
         self._batch_pending.clear()
 
         batch = [(t, f, a) for t, f, a, _ in pending]
-        futures_map: Dict[TaskID, Future] = {t.task_id: fut for t, _, _, fut in pending}
+        futures_map: Dict[TaskID, Future] = {t.taskId: fut for t, _, _, fut in pending}
 
         await self._flush_batch(batch, futures_map)
 
@@ -363,11 +365,11 @@ class AWSHPCTaskManager(Looper, TaskManager):
                 await self._submit_array_job(batch, futures_map)
             else:
                 single_task, single_func, single_args = batch[0]
-                single_future = futures_map[single_task.task_id]
+                single_future = futures_map[single_task.taskId]
                 batch_job_id = await self._submit_single_batch_job(single_task, single_func, single_args)
-                self._task_id_to_batch_job_id[single_task.task_id] = batch_job_id
-                logging.info(f"Task {single_task.task_id.hex()[:8]} submitted as Batch job {batch_job_id}")
-                asyncio.create_task(self._monitor_batch_job(batch_job_id, single_future, single_task.task_id))
+                self._task_id_to_batch_job_id[single_task.taskId] = batch_job_id
+                logging.info(f"Task {single_task.taskId.hex()[:8]} submitted as Batch job {batch_job_id}")
+                asyncio.create_task(self._monitor_batch_job(batch_job_id, single_future, single_task.taskId))
         except Exception as e:
             logging.exception(f"Failed to submit batch of {len(batch)} tasks: {e}")
             for f in futures_map.values():
@@ -398,7 +400,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
 
         for index, (task, function, arguments) in enumerate(batch):
             task_data = {
-                "task_id": task.task_id.hex(),
+                "task_id": task.taskId.hex(),
                 "source": task.source.hex(),
                 "function": function,
                 "arguments": arguments,
@@ -409,7 +411,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
 
             s3_key = f"{s3_prefix_array}/{index}.pkl"
             await self._run_in_executor(self._s3_client.put_object, Bucket=self._s3_bucket, Key=s3_key, Body=payload)
-            index_to_task_id[index] = task.task_id
+            index_to_task_id[index] = task.taskId
 
         # Get function name for job naming
         _, first_func, _ = batch[0]
@@ -558,7 +560,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
 
         from botocore.exceptions import ClientError
 
-        task_id_hex = task.task_id.hex()
+        task_id_hex = task.taskId.hex()
         func_name = getattr(function, "__name__", "unknown")
 
         task_data = {"task_id": task_id_hex, "source": task.source.hex(), "function": function, "arguments": arguments}

@@ -2,7 +2,7 @@ import abc
 from typing import List, Optional
 
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
-from scaler.protocol.python.message import (
+from scaler.protocol.capnp import (
     ObjectInstruction,
     ProcessorInitialized,
     Task,

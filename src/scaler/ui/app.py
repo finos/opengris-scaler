@@ -16,9 +16,8 @@ from fastapi.staticfiles import StaticFiles
 
 from scaler.config.section.webgui import WebGUIConfig
 from scaler.io.sync_subscriber import ZMQSyncSubscriber
-from scaler.protocol.python.common import TaskState, WorkerState
-from scaler.protocol.python.message import StateBalanceAdvice, StateScheduler, StateTask, StateWorker
-from scaler.protocol.python.mixins import Message
+from scaler.protocol.capnp import StateBalanceAdvice, StateScheduler, StateTask, StateWorker, TaskState, WorkerState
+from scaler.protocol.mixins import Message
 from scaler.utility.formatter import format_bytes, format_microseconds, format_percentage, format_seconds
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.metadata.profile_result import ProfileResult
@@ -31,11 +30,11 @@ BATCH_INTERVAL_SECONDS = 0.1
 TASK_LOG_MAX_SIZE = 100
 
 COMPLETED_TASK_STATUSES = {
-    TaskState.Success,
-    TaskState.Canceled,
-    TaskState.CanceledNotFound,
-    TaskState.Failed,
-    TaskState.FailedWorkerDied,
+    TaskState.success,
+    TaskState.canceled,
+    TaskState.canceledNotFound,
+    TaskState.failed,
+    TaskState.failedWorkerDied,
 }
 
 SLIDING_WINDOW_OPTIONS = {
@@ -116,15 +115,15 @@ class TaskStreamState:
             self._bar_history.setdefault(worker, [])
 
     def handle_worker_state(self, state_worker: StateWorker) -> None:
-        worker_id = state_worker.worker_id.decode()
+        worker_id = state_worker.workerId.decode()
         worker_state = state_worker.state
         now = datetime.datetime.now()
 
         with self._lock:
-            if worker_state == WorkerState.Connected:
+            if worker_state == WorkerState.connected:
                 self._ensure_worker(worker_id, now)
                 self._worker_capabilities[worker_id] = set(state_worker.capabilities.keys())
-            elif worker_state == WorkerState.Disconnected:
+            elif worker_state == WorkerState.disconnected:
                 self._current_tasks.pop(worker_id, None)
                 self._dead_workers.append((now, worker_id))
 
@@ -146,14 +145,14 @@ class TaskStreamState:
             if worker_str not in self._worker_capabilities:
                 self._worker_capabilities[worker_str] = set()
 
-            if task_state == TaskState.Running:
+            if task_state == TaskState.running:
                 self._handle_running_task(state_task, worker_str, now)
 
     def _handle_running_task(self, state_task: StateTask, worker: str, now: datetime.datetime) -> None:
-        task_id = state_task.task_id
+        task_id = state_task.taskId
         caps = _display_capabilities(set(state_task.capabilities.keys()))
         self._task_id_to_capabilities[task_id] = caps
-        func_name = state_task.function_name.decode()
+        func_name = state_task.functionName.decode()
         if func_name:
             self._task_id_to_function[task_id] = func_name
 
@@ -163,7 +162,7 @@ class TaskStreamState:
             task_map = self._current_tasks.get(prev_worker, {})
             start_time = task_map.get(task_id)
             if start_time:
-                self._add_bar(prev_worker, task_id, start_time, now, TaskState.Canceled)
+                self._add_bar(prev_worker, task_id, start_time, now, TaskState.canceled)
             task_map.pop(task_id, None)
             self._worker_to_task_ids.get(prev_worker, set()).discard(task_id)
 
@@ -176,7 +175,7 @@ class TaskStreamState:
             task_map[task_id] = now
 
     def _handle_task_result(self, state: StateTask, now: datetime.datetime) -> None:
-        task_id = state.task_id
+        task_id = state.taskId
         worker = self._task_id_to_worker.get(task_id, "")
 
         # fallback: use worker from the completion message itself (late-connect case)
@@ -190,7 +189,7 @@ class TaskStreamState:
         # store capabilities/function from completion message if not already known
         if task_id not in self._task_id_to_capabilities and state.capabilities:
             self._task_id_to_capabilities[task_id] = _display_capabilities(set(state.capabilities.keys()))
-        func_name = state.function_name.decode() if state.function_name else ""
+        func_name = state.functionName.decode() if state.functionName else ""
         if func_name and task_id not in self._task_id_to_function:
             self._task_id_to_function[task_id] = func_name
 
@@ -200,7 +199,7 @@ class TaskStreamState:
         # (skip for cancelled tasks — profile data may be from a prior attempt)
         start = now
         end = now
-        if state.state not in (TaskState.Canceled, TaskState.CanceledNotFound):
+        if state.state not in (TaskState.canceled, TaskState.canceledNotFound):
             try:
                 if state.metadata and state.metadata != b"":
                     profile = ProfileResult.deserialize(state.metadata)
@@ -234,7 +233,7 @@ class TaskStreamState:
 
         # For cancelled tasks, clip start to the end of the last completed bar on this worker
         # so the cancelled bar only extends back to where the previous task ended.
-        if task_state in (TaskState.Canceled, TaskState.CanceledNotFound):
+        if task_state in (TaskState.canceled, TaskState.canceledNotFound):
             worker_bars = self._bar_history.get(worker, [])
             for prev_bar in reversed(worker_bars):
                 if prev_bar["pattern"] != "/":
@@ -248,10 +247,10 @@ class TaskStreamState:
         pattern = ""
         outline_color = "black"
         outline_width = 1
-        if task_state in (TaskState.Failed, TaskState.FailedWorkerDied):
+        if task_state in (TaskState.failed, TaskState.failedWorkerDied):
             pattern = "x"
             outline_color = "red"
-        elif task_state in (TaskState.Canceled, TaskState.CanceledNotFound):
+        elif task_state in (TaskState.canceled, TaskState.canceledNotFound):
             pattern = "/"
 
         bar = {
@@ -262,7 +261,7 @@ class TaskStreamState:
             "pattern": pattern,
             "outline_color": outline_color,
             "outline_width": outline_width,
-            "hover": f"{func} ({duration:.2f}s) - {task_state.name}",
+            "hover": f"{func} ({duration:.2f}s) - {task_state._as_str()}",
         }
 
         self._bar_history.setdefault(worker, []).append(bar)
@@ -693,22 +692,22 @@ class WebUIApp:
         self._scheduler_data = {
             "cpu": format_percentage(data.scheduler.cpu),
             "rss": format_bytes(data.scheduler.rss),
-            "rss_free": format_bytes(data.rss_free),
+            "rss_free": format_bytes(data.rssFree),
             "monitor_address": self._monitor_address,
         }
 
         # Update persistent worker-to-manager mapping with latest data
-        for manager_id_bytes, worker_ids in data.scaling_manager.managed_workers.items():
+        for manager_id_bytes, worker_ids in data.scalingManager.managedWorkers.items():
             manager_name = manager_id_bytes.decode() if manager_id_bytes else "unknown"
             for wid in worker_ids:
                 self._worker_manager_map[bytes(wid).decode()] = manager_name
 
         # Update worker manager details from scaling_manager
         current_managers: Set[str] = set()
-        for detail in data.scaling_manager.worker_manager_details:
+        for detail in data.scalingManager.workerManagerDetails:
             manager_id = detail["worker_manager_id"].decode() if detail["worker_manager_id"] else "unknown"
             current_managers.add(manager_id)
-            worker_ids_for_manager = data.scaling_manager.managed_workers.get(detail["worker_manager_id"], [])
+            worker_ids_for_manager = data.scalingManager.managedWorkers.get(detail["worker_manager_id"], [])
             self._worker_managers_data[manager_id] = {
                 "manager_id": manager_id,
                 "identity": detail["identity"],
@@ -737,15 +736,15 @@ class WebUIApp:
 
         current_workers = set()
         now = datetime.datetime.now()
-        for worker_data in data.worker_manager.workers:
-            worker_name = worker_data.worker_id.decode()
+        for worker_data in data.workerManager.workers:
+            worker_name = worker_data.workerId.decode()
             current_workers.add(worker_name)
             # ensure task stream knows about this worker (handles late UI connect)
             self._task_stream._ensure_worker(worker_name, now)
-            total_proc_cpu = sum(p.resource.cpu for p in worker_data.processor_statuses)
-            total_proc_rss = sum(p.resource.rss for p in worker_data.processor_statuses)
+            total_proc_cpu = sum(p.resource.cpu for p in worker_data.processorStatuses)
+            total_proc_rss = sum(p.resource.rss for p in worker_data.processorStatuses)
             total_rss = int(total_proc_rss / 1e6)
-            rss_free = int(worker_data.rss_free / 1e6)
+            rss_free = int(worker_data.rssFree / 1e6)
 
             self._workers_data[worker_name] = {
                 "id": worker_name,
@@ -762,9 +761,9 @@ class WebUIApp:
                 "sent": worker_data.sent,
                 "queued": worker_data.queued,
                 "suspended": worker_data.suspended,
-                "lag": format_microseconds(worker_data.lag_us),
+                "lag": format_microseconds(worker_data.lagUS),
                 "itl": worker_data.itl,
-                "last_seen": format_seconds(worker_data.last_s),
+                "last_seen": format_seconds(worker_data.lastS),
                 "capabilities": _display_capabilities(set(self._worker_capabilities.get(worker_name, {}).keys())),
             }
 
@@ -777,7 +776,7 @@ class WebUIApp:
                 "processors": [],
             }
             max_rss = 0
-            for ps in sorted(worker_data.processor_statuses, key=lambda x: x.pid):
+            for ps in sorted(worker_data.processorStatuses, key=lambda x: x.pid):
                 rss_val = int(ps.resource.rss / 1e6)
                 if ps.resource.rss > max_rss:
                     max_rss = ps.resource.rss
@@ -789,7 +788,7 @@ class WebUIApp:
                         "max_rss": int(max_rss / 1e6),
                         "rss_max_gauge": rss_val + rss_free,
                         "initialized": bool(ps.initialized),
-                        "has_task": bool(ps.has_task),
+                        "has_task": bool(ps.hasTask),
                         "suspended": bool(ps.suspended),
                     }
                 )
@@ -801,7 +800,7 @@ class WebUIApp:
             self._worker_processors.pop(w, None)
             self._worker_manager_map.pop(w, None)
             self._task_stream.handle_worker_state(
-                StateWorker.new_msg(WorkerID(w.encode()), WorkerState.Disconnected, {})
+                StateWorker(workerId=WorkerID(w.encode()), state=WorkerState.disconnected, capabilities={})
             )
 
         # Aggregate summary stats from workers into each worker manager entry
@@ -831,23 +830,27 @@ class WebUIApp:
             mgr_data["total_suspended"] = mgr_suspended
 
     def _process_worker_state(self, state_worker: StateWorker) -> Optional[Dict[str, Any]]:
-        worker_id = state_worker.worker_id.decode()
+        worker_id = state_worker.workerId.decode()
         state = state_worker.state
 
-        if state == WorkerState.Connected:
+        if state == WorkerState.connected:
             self._worker_capabilities[worker_id] = state_worker.capabilities
-        elif state == WorkerState.Disconnected:
+        elif state == WorkerState.disconnected:
             self._workers_data.pop(worker_id, None)
             self._worker_capabilities.pop(worker_id, None)
             self._worker_processors.pop(worker_id, None)
 
         self._task_stream.handle_worker_state(state_worker)
 
-        return {"worker_id": worker_id, "state": state.name, "capabilities": list(state_worker.capabilities.keys())}
+        return {
+            "worker_id": worker_id,
+            "state": state._as_str(),
+            "capabilities": list(state_worker.capabilities.keys()),
+        }
 
     def _process_task_state(self, state_task: StateTask) -> Optional[Dict[str, Any]]:
-        task_id_hex = state_task.task_id.hex()
-        func_name = state_task.function_name.decode()
+        task_id_hex = state_task.taskId.hex()
+        func_name = state_task.functionName.decode()
 
         if func_name and task_id_hex not in self._task_id_to_function:
             self._task_id_to_function[task_id_hex] = func_name
@@ -898,7 +901,7 @@ class WebUIApp:
                 "time": submitted_time,
                 "duration": duration_str,
                 "peak_mem": peak_mem_str,
-                "status": state_task.state.name,
+                "status": state_task.state._as_str(),
                 "capabilities": caps_str,
             }
             self._task_log.appendleft(entry)
@@ -920,7 +923,7 @@ class WebUIApp:
                 "time": submitted_time,
                 "duration": "",
                 "peak_mem": "",
-                "status": state_task.state.name,
+                "status": state_task.state._as_str(),
                 "capabilities": caps_str,
             }
             self._active_tasks[task_id_hex] = entry

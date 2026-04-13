@@ -11,8 +11,7 @@ import psutil
 
 from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
-from scaler.protocol.python.message import WorkerHeartbeat, WorkerHeartbeatEcho
-from scaler.protocol.python.status import ProcessorStatus, Resource
+from scaler.protocol.capnp import ProcessorStatus, Resource, WorkerHeartbeat, WorkerHeartbeatEcho
 from scaler.utility.mixins import Looper
 from scaler.worker.agent.mixins import HeartbeatManager, TimeoutManager
 
@@ -64,7 +63,7 @@ class AWSBatchHeartbeatManager(Looper, HeartbeatManager):
         self._timeout_manager.update_last_seen_time()
 
         if self._object_storage_address is None:
-            address_message = heartbeat.object_storage_address()
+            address_message = heartbeat.objectStorageAddress
             self._object_storage_address = ObjectStorageAddressConfig(address_message.host, address_message.port)
             await self._connector_storage.connect(self._object_storage_address.host, self._object_storage_address.port)
 
@@ -93,25 +92,25 @@ class AWSBatchHeartbeatManager(Looper, HeartbeatManager):
         task_lock = not self._task_manager.can_accept_task() if self._task_manager else False
 
         # Create agent resource (cpu percentage, rss memory)
-        agent_resource = Resource.new_msg(cpu=agent_cpu, rss=agent_rss)
+        agent_resource = Resource(cpu=agent_cpu, rss=agent_rss)
 
         # Create processor status for the adapter (simulated as single processor)
         # pid=0 since AWS Batch jobs run remotely, initialized=True means ready
-        processor_resource = Resource.new_msg(cpu=0, rss=0)
-        processor_status = ProcessorStatus.new_msg(
-            pid=0, initialized=True, has_task=has_task, suspended=False, resource=processor_resource
+        processor_resource = Resource(cpu=0, rss=0)
+        processor_status = ProcessorStatus(
+            pid=0, initialized=True, hasTask=has_task, suspended=False, resource=processor_resource
         )
 
-        heartbeat = WorkerHeartbeat.new_msg(
+        heartbeat = WorkerHeartbeat(
             agent=agent_resource,
-            rss_free=rss_free,
-            queue_size=self._task_queue_size,
-            queued_tasks=queued_tasks + processing_tasks,
-            latency_us=self._latency_us,
-            task_lock=task_lock,
+            rssFree=rss_free,
+            queueSize=self._task_queue_size,
+            queuedTasks=queued_tasks + processing_tasks,
+            latencyUS=self._latency_us,
+            taskLock=task_lock,
             processors=[processor_status],
             capabilities=self._capabilities,
-            worker_manager_id=self._worker_manager_id,
+            workerManagerID=self._worker_manager_id,
         )
 
         await self._connector_external.send(heartbeat)

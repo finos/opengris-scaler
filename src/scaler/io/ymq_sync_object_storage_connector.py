@@ -3,10 +3,10 @@ import uuid
 from threading import Lock
 from typing import Iterable, Optional
 
-import scaler.protocol.python._object_storage as _object_storage  # noqa
 from scaler.io.mixins import SyncObjectStorageConnector
 from scaler.io.ymq import Bytes, ConnectorSocket, IOContext, YMQException
-from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader, to_capnp_object_id
+from scaler.protocol.capnp import ObjectRequestHeader, ObjectResponseHeader
+from scaler.protocol.helpers import to_capnp_object_id
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ObjectID
 
@@ -51,10 +51,10 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         """
 
         with self._socket_lock:
-            self.__send_request(object_id, len(payload), ObjectRequestHeader.ObjectRequestType.SetObject, payload)
+            self.__send_request(object_id, len(payload), ObjectRequestHeader.ObjectRequestType.setObject, payload)
             response_header, response_payload = self.__receive_response()
 
-        self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.SetOK])
+        self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.setOK])
         self.__ensure_empty_payload(response_payload)
 
     def get_object(self, object_id: ObjectID, max_payload_length: int = 2**64 - 1) -> bytearray:
@@ -65,10 +65,10 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         """
 
         with self._socket_lock:
-            self.__send_request(object_id, max_payload_length, ObjectRequestHeader.ObjectRequestType.GetObject)
+            self.__send_request(object_id, max_payload_length, ObjectRequestHeader.ObjectRequestType.getObject)
             response_header, response_payload = self.__receive_response()
 
-        self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.GetOK])
+        self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.getOK])
 
         return response_payload
 
@@ -76,20 +76,20 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         """
         Removes the object from the object storage server.
 
-        Returns `False` if the object wasn't found in the server. Otherwise returns `True`.
+        Returns `False` if the object wasn't found in the server. Otherwise, returns `True`.
         """
 
         with self._socket_lock:
-            self.__send_request(object_id, 0, ObjectRequestHeader.ObjectRequestType.DeleteObject)
+            self.__send_request(object_id, 0, ObjectRequestHeader.ObjectRequestType.deleteObject)
             response_header, response_payload = self.__receive_response()
 
         self.__ensure_response_type(
             response_header,
-            [ObjectResponseHeader.ObjectResponseType.DelOK, ObjectResponseHeader.ObjectResponseType.DelNotExists],
+            [ObjectResponseHeader.ObjectResponseType.delOK, ObjectResponseHeader.ObjectResponseType.delNotExists],
         )
         self.__ensure_empty_payload(response_payload)
 
-        return response_header.response_type == ObjectResponseHeader.ObjectResponseType.DelOK
+        return response_header.responseType == ObjectResponseHeader.ObjectResponseType.delOK
 
     def duplicate_object_id(self, object_id: ObjectID, new_object_id: ObjectID) -> None:
         """
@@ -102,25 +102,27 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
             self.__send_request(
                 new_object_id,
                 len(object_id_payload),
-                ObjectRequestHeader.ObjectRequestType.DuplicateObjectID,
+                ObjectRequestHeader.ObjectRequestType.duplicateObjectID,
                 object_id_payload,
             )
             response_header, response_payload = self.__receive_response()
 
-        self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.DuplicateOK])
+        self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.duplicateOK])
         self.__ensure_empty_payload(response_payload)
 
     def __ensure_is_connected(self):
         if self._socket is None:
             raise ObjectStorageException("connector is closed.")
 
+    @staticmethod
     def __ensure_response_type(
-        self, header: ObjectResponseHeader, valid_response_types: Iterable[ObjectResponseHeader.ObjectResponseType]
+        header: ObjectResponseHeader, valid_response_types: Iterable[ObjectResponseHeader.ObjectResponseType]
     ):
-        if header.response_type not in valid_response_types:
-            raise RuntimeError(f"unexpected object storage response_type={header.response_type}.")
+        if header.responseType not in valid_response_types:
+            raise RuntimeError(f"unexpected object storage response_type={header.responseType}.")
 
-    def __ensure_empty_payload(self, payload: bytearray):
+    @staticmethod
+    def __ensure_empty_payload(payload: bytearray):
         if len(payload) != 0:
             raise RuntimeError(f"unexpected response payload_length={len(payload)}, expected 0.")
 
@@ -138,8 +140,13 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         self._next_request_id += 1
         self._next_request_id %= 2**64 - 1  # UINT64_MAX
 
-        header = ObjectRequestHeader.new_msg(object_id, payload_length, request_id, request_type)
-        header_bytes = header.get_message().to_bytes()
+        header = ObjectRequestHeader(
+            objectID=to_capnp_object_id(object_id),
+            payloadLength=payload_length,
+            requestID=request_id,
+            requestType=request_type,
+        )
+        header_bytes = header.to_bytes()
 
         if payload is not None:
             self._socket.send_message_sync(Bytes(header_bytes))
@@ -164,20 +171,15 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         if header_bytes is None:
             self.__raise_connection_failure()
 
-        # pycapnp does not like to read from a bytearray object. This look like an not-yet-resolved issue.
-        # That's is annoying because it leads to an unnecessary copy of the header's buffer.
-        # See https://github.com/capnproto/pycapnp/issues/153
-
-        header_message = _object_storage.ObjectResponseHeader.from_bytes(header_bytes)
-        return ObjectResponseHeader(header_message)
+        return ObjectResponseHeader.from_bytes(header_bytes)
 
     def __read_response_payload(self, header: ObjectResponseHeader) -> bytearray:
-        if header.payload_length > 0:
+        if header.payloadLength > 0:
             payload_msg = self._socket.recv_message_sync()
             res = payload_msg.payload.data
             if res is None:
                 self.__raise_connection_failure()
-            assert len(res) == header.payload_length
+            assert len(res) == header.payloadLength
             return bytearray(res)
         else:
             return bytearray()
