@@ -1,8 +1,9 @@
 # PYTHON_ARGCOMPLETE_OK
 import dataclasses
 import multiprocessing
+import multiprocessing.connection
 import sys
-from typing import List, Optional
+from typing import List, Optional, cast
 
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.config.config_class import ConfigClass
@@ -111,8 +112,14 @@ def main() -> None:
         processes.append(gui_process)  # type: ignore[arg-type]
 
     try:
-        for process in processes:
-            process.join()
+        sentinel_to_process = {p.sentinel: p for p in processes}
+        done = multiprocessing.connection.wait(sentinel_to_process)
+        exited = sentinel_to_process[cast(int, done[0])]
+        for other in processes:
+            other.terminate()
+        for other in processes:
+            other.join()
+        sys.exit(exited.exitcode or 0)
     except KeyboardInterrupt:
         for process in processes:
             process.terminate()
