@@ -71,7 +71,12 @@ exclude_patterns = []
 html_theme = "shibuya"
 html_title = f"{project} {version}"
 
-html_theme_options = {"nav_links": [{"title": "Example Gallery", "url": "gallery/index"}]}
+html_theme_options = {
+    "nav_links": [
+        {"title": "Release Notes", "url": "release_notes"},
+        {"title": "Example Gallery", "url": "gallery/index"},
+    ]
+}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,

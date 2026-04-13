@@ -6,14 +6,18 @@
 Example Gallery
 ===============
 
-Jupyter notebooks demonstrating real-world distributed computing use cases
-with Scaler, Parfun, and Pargraph.
-
 Install prerequisites:
 
 .. code-block:: bash
 
    uv pip install numpy scipy pandas opengris-parfun pargraph
+
+Basic examples demonstrating how to use Scaler with pargraph and parfun.
+
+- :doc:`Task parallelism using parfun <parfun>`
+- :doc:`Concurrent graph computation using pargraph <pargraph>`
+
+Jupyter notebooks demonstrating real-world distributed computing use cases with Scaler, parfun, and pargraph.
 
 - :doc:`Multi-Signal Alpha Research Platform with Parfun <AlphaResearch>`
 - :doc:`Parallel Vol Surface Calibration & PDE Exotic Pricing with Parfun <VolSurface>`
@@ -23,6 +27,8 @@ Install prerequisites:
 .. toctree::
    :hidden:
 
+   parfun
+   pargraph
    AlphaResearch
    VolSurface
    SwapCVA

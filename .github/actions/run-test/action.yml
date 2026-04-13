@@ -53,8 +53,6 @@ runs:
       if: inputs.os == 'Linux'
       shell: bash
       run: |
-        uv pip install --system -r examples/applications/requirements_applications.txt
-        uv pip install --system -r examples/ray_compat/requirements.txt
         readarray -t skip_examples < examples/skip_examples.txt
         for example in "./examples"/*.py; do
           filename=$(basename "$example")
@@ -65,6 +63,8 @@ runs:
           echo "Running $example"
           python $example
         done
+
+        uv pip install --system -r examples/ray_compat/requirements.txt
         readarray -t skip_tests < examples/ray_compat/skip_tests.txt
         for example in "./examples/ray_compat"/*.py; do
           filename=$(basename "$example")
@@ -76,6 +76,8 @@ runs:
           echo "Running $example"
           python $example
         done
+
+        uv pip install --system -r examples/applications/requirements_applications.txt
         for example in "./examples/applications"/*.py; do
           if python -c 'import sys; sys.exit(not sys.version_info <= (3, 10))'; then
             if [ "$example" = "./examples/applications/yfinance_historical_price.py" ]; then
@@ -87,3 +89,13 @@ runs:
           echo "Running $example"
           python $example
         done
+
+        if python -c 'import sys; sys.exit(not sys.version_info >= (3, 10))'; then
+          uv pip install --system -r examples/libraries/requirements.txt
+          for example in "./examples/libraries"/*.py; do
+            echo "Running $example"
+            python $example
+          done
+        else
+          echo "Skipping examples/libraries on Python < 3.10"
+        fi

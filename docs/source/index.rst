@@ -9,7 +9,6 @@
 
    <div style="display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 0.8rem 0;">
      <h1 style="margin: 0;">OpenGris Scaler</h1>
-     <a href="release_notes.html"><strong>Release Notes</strong></a>
    </div>
 
 Scaler is a lightweight distributed computing Python framework that lets you easily distribute tasks across single/multiple local machines, multiple different clouds.
@@ -25,7 +24,6 @@ Content
 
    tutorials/quickstart
    tutorials/installation
-   release_notes
    tutorials/overview
    tutorials/commands
    tutorials/scaler_client

@@ -155,14 +155,23 @@ Start Services
 Start Compute Tasks
 -------------------
 
-Jupyter notebooks demonstrating real-world distributed computing use cases
-with Scaler, Parfun, and Pargraph.
+While Scaler :doc:`provides a lower level API for submitting tasks <scaler_client>`,
+it's most often used through its associated higher-level APIs:
+`parfun <https://github.com/finos/opengris-parfun>`_ and
+`pargraph <https://github.com/finos/opengris-pargraph>`_.
 
-Install prerequisites:
+Make sure you get these libraries installed before running the examples below:
 
 .. code-block:: bash
 
-   uv pip install numpy scipy pandas opengris-parfun pargraph
+    uv pip install numpy scipy pandas opengris-parfun pargraph
+
+Basic examples
+
+- :doc:`Task parallelism using parfun <../gallery/parfun>`
+- :doc:`Concurrent graph computation using pargraph <../gallery/pargraph>`
+
+Additional Jupyter notebooks demonstrating real-world distributed computing use cases with Scaler, parfun, and pargraph:
 
 - :doc:`Multi-Signal Alpha Research Platform with Parfun <../gallery/AlphaResearch>`
 - :doc:`Parallel Vol Surface Calibration & PDE Exotic Pricing with Parfun <../gallery/VolSurface>`
