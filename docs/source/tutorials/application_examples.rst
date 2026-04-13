@@ -18,10 +18,10 @@ Example applications
 Example notebooks
 -----------------
 
-- :doc:`Multi-Signal Alpha Research Platform with ParFun <application_examples/alpha_research_notebook>`
-- :doc:`Parallel Vol Surface Calibration & PDE Exotic Pricing with ParFun <application_examples/vol_surface_notebook>`
-- :doc:`Parallel Swap Portfolio CVA with ParGraph + ParFun <application_examples/swap_cva_notebook>`
-- :doc:`Portfolio-Level XVA Risk Computation with ParGraph <application_examples/xva_notebook>`
+- :doc:`Multi-Signal Alpha Research Platform with Parfun <application_examples/alpha_research_notebook>`
+- :doc:`Parallel Vol Surface Calibration & PDE Exotic Pricing with Parfun <application_examples/vol_surface_notebook>`
+- :doc:`Parallel Swap Portfolio CVA with Pargraph + Parfun <application_examples/swap_cva_notebook>`
+- :doc:`Portfolio-Level XVA Risk Computation with Pargraph <application_examples/xva_notebook>`
 
 .. toctree::
    :hidden:

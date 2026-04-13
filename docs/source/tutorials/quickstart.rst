@@ -156,9 +156,9 @@ Start Compute Tasks
 -------------------
 
 Jupyter notebooks demonstrating real-world distributed computing use cases
-with Scaler, ParFun, and ParGraph.
+with Scaler, Parfun, and Pargraph.
 
-- :doc:`Multi-Signal Alpha Research Platform with ParFun <../gallery/AlphaResearch>`
-- :doc:`Parallel Vol Surface Calibration & PDE Exotic Pricing with ParFun <../gallery/VolSurface>`
-- :doc:`Parallel Swap Portfolio CVA with ParGraph + ParFun <../gallery/SwapCVA>`
-- :doc:`Portfolio-Level XVA Risk Computation with ParGraph <../gallery/XVA>`
+- :doc:`Multi-Signal Alpha Research Platform with Parfun <../gallery/AlphaResearch>`
+- :doc:`Parallel Vol Surface Calibration & PDE Exotic Pricing with Parfun <../gallery/VolSurface>`
+- :doc:`Parallel Swap Portfolio CVA with Pargraph + Parfun <../gallery/SwapCVA>`
+- :doc:`Portfolio-Level XVA Risk Computation with Pargraph <../gallery/XVA>`

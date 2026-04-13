@@ -1,4 +1,4 @@
-Portfolio-Level XVA Risk Computation with ParGraph
+Portfolio-Level XVA Risk Computation with Pargraph
 ==================================================
 
 See the full notebook in the gallery:

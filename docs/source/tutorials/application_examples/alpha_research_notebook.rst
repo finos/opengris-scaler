@@ -1,4 +1,4 @@
-Multi-Signal Alpha Research Platform with ParFun
+Multi-Signal Alpha Research Platform with Parfun
 ================================================
 
 See the full notebook in the gallery:

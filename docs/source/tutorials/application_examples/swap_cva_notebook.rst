@@ -1,4 +1,4 @@
-Parallel Swap Portfolio CVA with ParGraph + ParFun
+Parallel Swap Portfolio CVA with Pargraph + Parfun
 ==================================================
 
 See the full notebook in the gallery:
