@@ -60,11 +60,23 @@ public:
             }));
     }
 
-    scaler::wrapper::uv::SocketAddress serverAddress() const { return UV_EXIT_ON_ERROR(_server.getSockName()); }
+    scaler::wrapper::uv::SocketAddress serverAddress() const
+    {
+        return UV_EXIT_ON_ERROR(_server.getSockName());
+    }
 
-    scaler::wrapper::uv::Loop& loop() { return _loop; }
-    scaler::ymq::internal::MessageConnection& server() { return _serverConnection; }
-    scaler::ymq::internal::MessageConnection& client() { return _clientConnection; }
+    scaler::wrapper::uv::Loop& loop()
+    {
+        return _loop;
+    }
+    scaler::ymq::internal::MessageConnection& server()
+    {
+        return _serverConnection;
+    }
+    scaler::ymq::internal::MessageConnection& client()
+    {
+        return _clientConnection;
+    }
 
 private:
     scaler::wrapper::uv::Loop _loop;

@@ -47,7 +47,10 @@ public:
         ASSERT_TRUE(result.has_value());
     }
 
-    auto readYMQMessage() { return socket.recvMessage(); }
+    auto readYMQMessage()
+    {
+        return socket.recvMessage();
+    }
 
     void writeRequest(const ObjectRequestHeader& header, const std::optional<ObjectPayload>& payload)
     {
@@ -114,8 +117,14 @@ protected:
     std::thread serverThread;
 
     inline static std::shared_ptr<IOContext> ioContext;
-    static void SetUpTestSuite() { ioContext = std::make_shared<IOContext>(); }
-    static void TearDownTestSuite() { ioContext.reset(); }
+    static void SetUpTestSuite()
+    {
+        ioContext = std::make_shared<IOContext>();
+    }
+    static void TearDownTestSuite()
+    {
+        ioContext.reset();
+    }
 
     void SetUp() override
     {

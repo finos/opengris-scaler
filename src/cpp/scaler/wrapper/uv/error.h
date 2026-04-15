@@ -14,7 +14,9 @@ namespace uv {
 
 struct Error {
     // See UV_xxx error codes.
-    constexpr Error(int code) noexcept: _code(code) {}
+    constexpr Error(int code) noexcept: _code(code)
+    {
+    }
 
     int code() const noexcept;
 

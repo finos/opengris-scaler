@@ -22,7 +22,10 @@ protected:
         cleanupLogFiles();
     }
 
-    void TearDown() override { cleanupLogFiles(); }
+    void TearDown() override
+    {
+        cleanupLogFiles();
+    }
 
     void cleanupLogFiles()
     {

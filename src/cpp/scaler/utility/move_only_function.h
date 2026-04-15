@@ -36,9 +36,15 @@ public:
     MoveOnlyFunction(const MoveOnlyFunction&)            = delete;
     MoveOnlyFunction& operator=(const MoveOnlyFunction&) = delete;
 
-    R operator()(Args... args) { return (*callable_)(std::forward<Args>(args)...); }
+    R operator()(Args... args)
+    {
+        return (*callable_)(std::forward<Args>(args)...);
+    }
 
-    explicit operator bool() const noexcept { return static_cast<bool>(callable_); }
+    explicit operator bool() const noexcept
+    {
+        return static_cast<bool>(callable_);
+    }
 
 private:
     // Required for type-erasure, so that we support std::function, lambdas, function pointers ...
@@ -51,8 +57,13 @@ private:
         requires std::invocable<F, Args...> && std::convertible_to<std::invoke_result_t<F, Args...>, R>
     struct CallableContainer: CallableBase {
         mutable std::remove_reference_t<F> f;
-        explicit CallableContainer(F&& f_): f(std::forward<F>(f_)) {}
-        R operator()(Args... args) const override { return std::invoke(f, std::forward<Args>(args)...); }
+        explicit CallableContainer(F&& f_): f(std::forward<F>(f_))
+        {
+        }
+        R operator()(Args... args) const override
+        {
+            return std::invoke(f, std::forward<Args>(args)...);
+        }
     };
 
     std::unique_ptr<CallableBase> callable_;

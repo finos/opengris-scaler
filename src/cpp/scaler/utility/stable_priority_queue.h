@@ -19,9 +19,14 @@ struct StablePriorityQueue {
     std::map<MapKeyType, T> _queue;
     CounterType _itemCounter;
 
-    StablePriorityQueue(): _itemCounter {} {}
+    StablePriorityQueue(): _itemCounter {}
+    {
+    }
 
-    constexpr uint64_t size() const { return _queue.size(); }
+    constexpr uint64_t size() const
+    {
+        return _queue.size();
+    }
 
     void put(ItemType item)
     {

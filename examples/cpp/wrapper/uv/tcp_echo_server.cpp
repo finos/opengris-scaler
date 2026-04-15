@@ -25,7 +25,10 @@ public:
         UV_EXIT_ON_ERROR(_server.listen(defaultBacklog, std::bind_front(&TCPEchoServer::onNewConnection, this)));
     }
 
-    scaler::wrapper::uv::SocketAddress address() { return UV_EXIT_ON_ERROR(_server.getSockName()); }
+    scaler::wrapper::uv::SocketAddress address()
+    {
+        return UV_EXIT_ON_ERROR(_server.getSockName());
+    }
 
 private:
     scaler::wrapper::uv::Loop& _loop;

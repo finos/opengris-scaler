@@ -30,13 +30,22 @@ struct ObjectID {
 
     constexpr ObjectID(uint64_t v0, uint64_t v1, uint64_t v2, uint64_t v3): value({v0, v1, v2, v3}) {};
 
-    constexpr uint64_t& operator[](size_t index) { return value[index]; }
+    constexpr uint64_t& operator[](size_t index)
+    {
+        return value[index];
+    }
 
-    constexpr const uint64_t& operator[](size_t index) const { return value[index]; }
+    constexpr const uint64_t& operator[](size_t index) const
+    {
+        return value[index];
+    }
 
     constexpr std::strong_ordering operator<=>(const ObjectID& other) const = default;
 
-    static constexpr size_t bufferSize() { return 48; }
+    static constexpr size_t bufferSize()
+    {
+        return 48;
+    }
 
     kj::Array<const capnp::word> toBuffer() const;
 
@@ -60,7 +69,10 @@ struct ObjectRequestHeader {
     uint64_t requestID;
     scaler::protocol::ObjectRequestHeader::ObjectRequestType requestType;
 
-    static constexpr size_t bufferSize() { return CAPNP_HEADER_SIZE; }
+    static constexpr size_t bufferSize()
+    {
+        return CAPNP_HEADER_SIZE;
+    }
 
     kj::Array<const capnp::word> toBuffer() const;
 
@@ -96,7 +108,10 @@ struct ObjectResponseHeader {
     uint64_t responseID;
     scaler::protocol::ObjectResponseHeader::ObjectResponseType responseType;
 
-    static constexpr size_t bufferSize() { return CAPNP_HEADER_SIZE; }
+    static constexpr size_t bufferSize()
+    {
+        return CAPNP_HEADER_SIZE;
+    }
 
     kj::Array<const capnp::word> toBuffer() const;
 

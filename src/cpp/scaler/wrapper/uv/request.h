@@ -33,9 +33,15 @@ public:
         uv_req_set_data(reinterpret_cast<uv_req_t*>(&_holder->_native), _holder.get());
     }
 
-    constexpr NativeRequestType& native() noexcept { return _holder->_native; }
+    constexpr NativeRequestType& native() noexcept
+    {
+        return _holder->_native;
+    }
 
-    constexpr const NativeRequestType& native() const noexcept { return _holder->_native; }
+    constexpr const NativeRequestType& native() const noexcept
+    {
+        return _holder->_native;
+    }
 
     // See uv_req_cancel
     std::expected<void, Error> cancel() noexcept

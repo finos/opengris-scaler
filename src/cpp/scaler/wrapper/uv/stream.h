@@ -22,9 +22,15 @@ namespace uv {
 template <typename NativeHandleType>
 class Stream {
 public:
-    constexpr Handle<NativeHandleType, ReadCallback>& handle() noexcept { return _handle; }
+    constexpr Handle<NativeHandleType, ReadCallback>& handle() noexcept
+    {
+        return _handle;
+    }
 
-    constexpr const Handle<NativeHandleType, ReadCallback>& handle() const noexcept { return _handle; }
+    constexpr const Handle<NativeHandleType, ReadCallback>& handle() const noexcept
+    {
+        return _handle;
+    }
 
     // See uv_read_start
     std::expected<void, Error> readStart(ReadCallback callback) noexcept
@@ -146,9 +152,15 @@ private:
 template <typename NativeHandleType, typename ConnectionType>
 class StreamServer {
 public:
-    constexpr Handle<NativeHandleType, ConnectionCallback>& handle() noexcept { return _handle; }
+    constexpr Handle<NativeHandleType, ConnectionCallback>& handle() noexcept
+    {
+        return _handle;
+    }
 
-    constexpr const Handle<NativeHandleType, ConnectionCallback>& handle() const noexcept { return _handle; }
+    constexpr const Handle<NativeHandleType, ConnectionCallback>& handle() const noexcept
+    {
+        return _handle;
+    }
 
     // See uv_listen
     std::expected<void, Error> listen(int backlog, ConnectionCallback callback) noexcept

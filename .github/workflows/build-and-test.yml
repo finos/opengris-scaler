@@ -31,6 +31,10 @@ jobs:
           os: ${{ runner.os }}
           python-version: ${{ runner.os == 'macOS' && '3.12' || '3.8' }}  # bump it after symphony
 
+      - uses: ./.github/actions/run-linter
+        with:
+          os: ${{ runner.os }}
+
       - uses: ./.github/actions/3rd-party-libraries-download
         with:
           os: ${{ runner.os }}
@@ -44,10 +48,6 @@ jobs:
           os: ${{ runner.os }}
 
       - uses: ./.github/actions/compile-libraries
-        with:
-          os: ${{ runner.os }}
-
-      - uses: ./.github/actions/run-linter
         with:
           os: ${{ runner.os }}
 

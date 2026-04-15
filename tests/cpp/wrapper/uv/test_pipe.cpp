@@ -32,7 +32,10 @@ public:
         UV_EXIT_ON_ERROR(_server.listen(16, std::bind_front(&PipeEchoServer::onClientConnected, this)));
     }
 
-    std::string pipeName() const { return UV_EXIT_ON_ERROR(_server.getSockName()); }
+    std::string pipeName() const
+    {
+        return UV_EXIT_ON_ERROR(_server.getSockName());
+    }
 
 private:
     scaler::wrapper::uv::Loop& _loop;

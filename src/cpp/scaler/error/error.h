@@ -37,7 +37,9 @@ struct Error: public std::exception {
     {
     }
 
-    Error() noexcept: _errorCode(ErrorCode::Uninit) {}
+    Error() noexcept: _errorCode(ErrorCode::Uninit)
+    {
+    }
 
     static inline constexpr std::string_view convertErrorToExplanation(ErrorCode e) noexcept
     {
@@ -59,7 +61,10 @@ struct Error: public std::exception {
         std::exit(1);
     }
 
-    constexpr const char* what() const noexcept override { return _logMsg.c_str(); }
+    constexpr const char* what() const noexcept override
+    {
+        return _logMsg.c_str();
+    }
 
     ErrorCode _errorCode;
     std::string _logMsg;

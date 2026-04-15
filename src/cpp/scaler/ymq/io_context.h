@@ -25,7 +25,10 @@ public:
     // Fetch the next thread in the round-robin pool.
     internal::EventLoopThread& nextThread() noexcept;
 
-    constexpr size_t numThreads() const noexcept { return _threads.size(); }
+    constexpr size_t numThreads() const noexcept
+    {
+        return _threads.size();
+    }
 
 private:
     std::vector<internal::EventLoopThread> _threads;

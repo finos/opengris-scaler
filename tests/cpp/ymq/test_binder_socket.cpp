@@ -59,9 +59,18 @@ public:
         });
     }
 
-    scaler::ymq::BinderSocket& binder() { return _binder; }
-    scaler::ymq::internal::MessageConnection& client() { return _client; }
-    scaler::wrapper::uv::Loop& loop() { return _loop; }
+    scaler::ymq::BinderSocket& binder()
+    {
+        return _binder;
+    }
+    scaler::ymq::internal::MessageConnection& client()
+    {
+        return _client;
+    }
+    scaler::wrapper::uv::Loop& loop()
+    {
+        return _loop;
+    }
 
 private:
     scaler::ymq::IOContext _context;

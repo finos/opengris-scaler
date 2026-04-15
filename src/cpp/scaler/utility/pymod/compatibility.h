@@ -89,13 +89,23 @@ namespace pymod {
 template <typename T = PyObject>
 class OwnedPyObject {
 public:
-    OwnedPyObject(): _ptr(nullptr) {}
+    OwnedPyObject(): _ptr(nullptr)
+    {
+    }
 
     // steals a reference
-    OwnedPyObject(T* ptr): _ptr(ptr) {}
+    OwnedPyObject(T* ptr): _ptr(ptr)
+    {
+    }
 
-    OwnedPyObject(const OwnedPyObject& other) { this->_ptr = (T*)Py_XNewRef((PyObject*)other._ptr); }
-    OwnedPyObject(OwnedPyObject&& other) noexcept: _ptr(other._ptr) { other._ptr = nullptr; }
+    OwnedPyObject(const OwnedPyObject& other)
+    {
+        this->_ptr = (T*)Py_XNewRef((PyObject*)other._ptr);
+    }
+    OwnedPyObject(OwnedPyObject&& other) noexcept: _ptr(other._ptr)
+    {
+        other._ptr = nullptr;
+    }
     OwnedPyObject& operator=(const OwnedPyObject& other)
     {
         if (this == &other)
@@ -116,7 +126,10 @@ public:
         return *this;
     }
 
-    ~OwnedPyObject() { this->free(); }
+    ~OwnedPyObject()
+    {
+        this->free();
+    }
 
     inline friend bool operator==(const OwnedPyObject<T>& x, const OwnedPyObject<T>& y)
     {
@@ -124,12 +137,21 @@ public:
     }
 
     // creates a new OwnedPyObject from a borrowed reference
-    static OwnedPyObject fromBorrowed(T* ptr) { return OwnedPyObject((T*)Py_XNewRef((PyObject*)ptr)); }
+    static OwnedPyObject fromBorrowed(T* ptr)
+    {
+        return OwnedPyObject((T*)Py_XNewRef((PyObject*)ptr));
+    }
 
     // convenience method for creating an OwnedPyObject that holds Py_None
-    static OwnedPyObject none() { return OwnedPyObject((T*)Py_NewRef(Py_None)); }
+    static OwnedPyObject none()
+    {
+        return OwnedPyObject((T*)Py_NewRef(Py_None));
+    }
 
-    bool is_none() const { return (PyObject*)_ptr == Py_None; }
+    bool is_none() const
+    {
+        return (PyObject*)_ptr == Py_None;
+    }
 
     // takes the pointer out of the OwnedPyObject
     // without decrementing the reference count
@@ -141,17 +163,35 @@ public:
         return ptr;
     }
 
-    void forget() { this->_ptr = nullptr; }
+    void forget()
+    {
+        this->_ptr = nullptr;
+    }
 
     // operator T*() const { return _ptr; }
-    explicit operator bool() const { return _ptr != nullptr; }
-    bool operator!() const { return _ptr == nullptr; }
+    explicit operator bool() const
+    {
+        return _ptr != nullptr;
+    }
+    bool operator!() const
+    {
+        return _ptr == nullptr;
+    }
 
-    T* operator->() const { return _ptr; }
+    T* operator->() const
+    {
+        return _ptr;
+    }
     T* operator*() const = delete;
-    T* get() const { return _ptr; }
+    T* get() const
+    {
+        return _ptr;
+    }
 
-    Py_hash_t hash() const { return PyObject_Hash(_ptr); }
+    Py_hash_t hash() const
+    {
+        return PyObject_Hash(_ptr);
+    }
 
 private:
     T* _ptr;

@@ -59,9 +59,18 @@ public:
             scaler::ymq::ConnectorSocket::connect(_context, connectorIdentity, address, std::move(connectorOnConnect)));
     }
 
-    scaler::ymq::internal::MessageConnection& server() { return _serverConnection; }
-    scaler::ymq::ConnectorSocket& connector() { return *_connector; }
-    scaler::wrapper::uv::Loop& loop() { return _loop; }
+    scaler::ymq::internal::MessageConnection& server()
+    {
+        return _serverConnection;
+    }
+    scaler::ymq::ConnectorSocket& connector()
+    {
+        return *_connector;
+    }
+    scaler::wrapper::uv::Loop& loop()
+    {
+        return _loop;
+    }
 
 private:
     scaler::ymq::IOContext _context;

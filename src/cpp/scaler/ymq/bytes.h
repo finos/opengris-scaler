@@ -31,14 +31,22 @@ class Bytes {
         _data = nullptr;
     }
 
-    explicit Bytes(uint8_t* data, size_t len): _data(data), _len(len) {}
+    explicit Bytes(uint8_t* data, size_t len): _data(data), _len(len)
+    {
+    }
 
 public:
-    Bytes(char* data, size_t len): _data(datadup((uint8_t*)data, len)), _len(len) {}
+    Bytes(char* data, size_t len): _data(datadup((uint8_t*)data, len)), _len(len)
+    {
+    }
 
-    explicit Bytes(const std::string& s): _data(datadup((uint8_t*)s.data(), s.length())), _len(s.length()) {}
+    explicit Bytes(const std::string& s): _data(datadup((uint8_t*)s.data(), s.length())), _len(s.length())
+    {
+    }
 
-    Bytes(): _data {}, _len {} {}
+    Bytes(): _data {}, _len {}
+    {
+    }
 
     Bytes(const Bytes& other) noexcept
     {
@@ -72,7 +80,10 @@ public:
     }
 
     // https://stackoverflow.com/questions/68221024/why-must-i-provide-operator-when-operator-is-enough
-    friend bool operator==(const Bytes& x, const Bytes& y) noexcept { return x <=> y == 0; }
+    friend bool operator==(const Bytes& x, const Bytes& y) noexcept
+    {
+        return x <=> y == 0;
+    }
 
     Bytes& operator=(Bytes&& other) noexcept
     {
@@ -88,11 +99,20 @@ public:
         return *this;
     }
 
-    ~Bytes() { this->free(); }
+    ~Bytes()
+    {
+        this->free();
+    }
 
-    [[nodiscard]] constexpr bool operator!() const noexcept { return is_null(); }
+    [[nodiscard]] constexpr bool operator!() const noexcept
+    {
+        return is_null();
+    }
 
-    [[nodiscard]] constexpr bool is_null() const noexcept { return !this->_data; }
+    [[nodiscard]] constexpr bool is_null() const noexcept
+    {
+        return !this->_data;
+    }
 
     std::optional<std::string> as_string() const
     {
@@ -109,10 +129,22 @@ public:
         return Bytes {ptr, len};
     }
 
-    [[nodiscard]] constexpr size_t len() const { return _len; }
-    [[nodiscard]] constexpr size_t size() const { return _len; }
-    [[nodiscard]] constexpr const uint8_t* data() const { return _data; }
-    [[nodiscard]] constexpr uint8_t* data() { return _data; }
+    [[nodiscard]] constexpr size_t len() const
+    {
+        return _len;
+    }
+    [[nodiscard]] constexpr size_t size() const
+    {
+        return _len;
+    }
+    [[nodiscard]] constexpr const uint8_t* data() const
+    {
+        return _data;
+    }
+    [[nodiscard]] constexpr uint8_t* data()
+    {
+        return _data;
+    }
 };
 
 }  // namespace ymq
