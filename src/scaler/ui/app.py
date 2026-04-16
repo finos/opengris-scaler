@@ -37,13 +37,13 @@ STATIC_DIR = Path(__file__).parent / "static"
 BATCH_INTERVAL_SECONDS = 0.1
 TASK_LOG_MAX_SIZE = 100
 
-COMPLETED_TASK_STATUSES = {
+COMPLETED_TASK_STATUSES = (
     TaskState.success,
     TaskState.canceled,
     TaskState.canceledNotFound,
     TaskState.failed,
     TaskState.failedWorkerDied,
-}
+)
 
 SLIDING_WINDOW_OPTIONS = {
     5: datetime.timedelta(minutes=5),
@@ -140,7 +140,7 @@ class TaskStreamState:
         now = datetime.datetime.now()
 
         with self._lock:
-            if task_state in COMPLETED_TASK_STATUSES:
+            if any(task_state == s for s in COMPLETED_TASK_STATUSES):
                 self._handle_task_result(state_task, now)
                 return
 
@@ -882,7 +882,7 @@ class WebUIApp:
         caps_str = _display_capabilities(set(capabilities_to_dict(state_task.capabilities).keys()))
         now = datetime.datetime.now()
 
-        if state_task.state in COMPLETED_TASK_STATUSES:
+        if any(state_task.state == s for s in COMPLETED_TASK_STATUSES):
             # preserve worker/time from active entry if completion message lacks them
             prev_entry = self._active_tasks.pop(task_id_hex, None)
             if not worker_str and prev_entry:

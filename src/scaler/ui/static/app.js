@@ -436,7 +436,7 @@ function updateWorkerRow(tr, w) {
 function handleWorkerEvents(events) {
     for (var i = 0; i < events.length; i++) {
         var ev = events[i];
-        if (ev.state === "Disconnected" && workerRows[ev.worker_id]) {
+        if (ev.state === "disconnected" && workerRows[ev.worker_id]) {
             workersBody.removeChild(workerRows[ev.worker_id]);
             delete workerRows[ev.worker_id];
         }
@@ -454,8 +454,8 @@ function formatTime(epoch) {
 }
 
 function statusClass(status) {
-    if (status === "Success") return "status-success";
-    if (status === "Running" || status === "Inactive" || status === "Canceling" || status === "BalanceCanceling") return "status-running";
+    if (status === "success") return "status-success";
+    if (status === "running" || status === "inactive" || status === "canceling" || status === "balanceCanceling") return "status-running";
     return "status-fail";
 }
 
