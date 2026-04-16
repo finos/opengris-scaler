@@ -1,5 +1,5 @@
 import struct
-from typing import Dict
+from typing import Dict, Optional
 
 import bidict
 
@@ -32,6 +32,31 @@ def capabilities_to_dict(capabilities) -> Dict[str, int]:
         return dict(capabilities)
 
     return {capability.name: capability.value for capability in capabilities}
+
+
+def build_scaling_manager_status(
+    managed_workers: Dict[bytes, list], worker_manager_details: Optional[list] = None
+) -> "capnp.ScalingManagerStatus":
+    details = worker_manager_details or []
+    return capnp.ScalingManagerStatus(
+        managedWorkers=[
+            capnp.ScalingManagerStatus.Pair(
+                workerManagerID=worker_manager_id, workerIDs=[bytes(worker_id) for worker_id in worker_ids]
+            )
+            for worker_manager_id, worker_ids in managed_workers.items()
+        ],
+        workerManagerDetails=[
+            capnp.ScalingManagerStatus.WorkerManagerDetail(
+                workerManagerID=d["worker_manager_id"],
+                identity=d["identity"],
+                lastSeenS=d["last_seen_s"],
+                maxTaskConcurrency=d["max_task_concurrency"],
+                capabilities=d.get("capabilities", ""),
+                pendingWorkers=d.get("pending_workers", 0),
+            )
+            for d in details
+        ],
+    )
 
 
 PROTOCOL: bidict.bidict[str, type] = bidict.bidict(
