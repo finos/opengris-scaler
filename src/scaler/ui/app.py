@@ -163,13 +163,10 @@ class TaskStreamState:
         if func_name:
             self._task_id_to_function[task_id] = func_name
 
-        # if reassigned from another worker, cancel old assignment
+        # if reassigned from another worker, clean up old worker tracking
         prev_worker = self._task_id_to_worker.get(task_id)
         if prev_worker and prev_worker != worker:
             task_map = self._current_tasks.get(prev_worker, {})
-            start_time = task_map.get(task_id)
-            if start_time:
-                self._add_bar(prev_worker, task_id, start_time, now, TaskState.canceled)
             task_map.pop(task_id, None)
             self._worker_to_task_ids.get(prev_worker, set()).discard(task_id)
 
