@@ -10,15 +10,16 @@ from scaler.scheduler.controllers.policies.waterfall_v1.scaling.waterfall import
 from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.snapshot import InformationSnapshot
 
-_DEFAULT_ALLOCATE_POLICY = AllocatePolicyStrategy.EVEN_LOAD
+_DEFAULT_ALLOCATE_POLICY = AllocatePolicyStrategy.CAPABILITY
 
 
 class WaterfallV1Policy(ScalerPolicy):
     """
     Policy for waterfall scaling across prioritized worker managers.
 
-    Uses even_load allocation by default. Cross-manager state (worker_manager_snapshots)
-    is built by WorkerManagerController and passed through the call chain.
+    Uses capability-aware allocation so that tasks declaring capabilities are only assigned to workers that
+    advertise those capabilities. Cross-manager state (worker_manager_snapshots) is built by
+    WorkerManagerController and passed through the call chain.
     """
 
     def __init__(self, policy_content: str):
