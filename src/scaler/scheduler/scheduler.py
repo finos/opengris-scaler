@@ -1,14 +1,12 @@
 import asyncio
 import logging
 
-import zmq.asyncio
-
 from scaler.config.defaults import CLEANUP_INTERVAL_SECONDS, STATUS_REPORT_INTERVAL_SECONDS
 from scaler.config.section.scheduler import SchedulerConfig
-from scaler.config.types.zmq import ZMQConfig, ZMQType
-from scaler.io.async_connector import ZMQAsyncConnector
-from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
-from scaler.io.utility import create_async_binder, create_async_object_storage_connector
+from scaler.config.types.address import AddressConfig, SocketType
+from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher
+from scaler.io.network_backends import get_network_backend_from_env
+from scaler.io.utility import generate_identity_from_name
 from scaler.io.ymq import YMQException
 from scaler.protocol.capnp import (
     BaseMessage,
@@ -18,7 +16,6 @@ from scaler.protocol.capnp import (
     GraphTask,
     InformationRequest,
     ObjectInstruction,
-    ObjectStorageAddress,
     Task,
     TaskCancel,
     TaskCancelConfirm,
@@ -47,57 +44,18 @@ class Scheduler:
     def __init__(self, config: SchedulerConfig):
         self._config_controller = VanillaConfigController(config)
 
-        if config.bind_address.type != ZMQType.tcp:
-            raise TypeError(
-                f"{self.__class__.__name__}: scheduler bind address must be tcp type: "
-                f"{config.bind_address.to_address()}"
-            )
+        self._identity = generate_identity_from_name("scheduler")
+        self._backend = get_network_backend_from_env(io_threads=config.io_threads)
 
-        self._context = zmq.asyncio.Context(io_threads=config.io_threads)
+        self._address = config.bind_address
 
-        self._binder: AsyncBinder = create_async_binder(self._context, name="scheduler", address=config.bind_address)
-        self._address: ZMQConfig = self._binder.address
-        assert self._address.port is not None, "scheduler bind address must have a port"
-        scheduler_port = self._address.port
-
-        logging.info(f"{self.__class__.__name__}: listen to scheduler address {self._address}")
-
-        object_storage_address = ObjectStorageAddress(
-            host=config.object_storage_address.host, port=config.object_storage_address.port
+        self._binder: AsyncBinder = self._backend.create_async_binder(
+            identity=self._identity, callback=self.on_receive_message
         )
-
-        if config.advertised_object_storage_address is not None:
-            advertised_object_storage_address = ObjectStorageAddress(
-                host=config.advertised_object_storage_address.host, port=config.advertised_object_storage_address.port
-            )
-        else:
-            advertised_object_storage_address = object_storage_address
-
-        self._config_controller.update_config("object_storage_address", object_storage_address)
-        self._config_controller.update_config("advertised_object_storage_address", advertised_object_storage_address)
-
-        monitor_address = config.monitor_address or ZMQConfig(
-            type=ZMQType.tcp, host=self._address.host, port=scheduler_port + 2
+        self._connector_storage: AsyncObjectStorageConnector = self._backend.create_async_object_storage_connector(
+            identity=self._identity
         )
-
-        self._connector_storage: AsyncObjectStorageConnector = create_async_object_storage_connector()
-        logging.info(f"{self.__class__.__name__}: connect to object storage server {object_storage_address!r}")
-        logging.info(
-            f"{self.__class__.__name__}: advertise object storage address {advertised_object_storage_address!r}"
-        )
-
-        self._binder_monitor: AsyncConnector = ZMQAsyncConnector(
-            context=self._context,
-            name="scheduler_monitor",
-            socket_type=zmq.PUB,
-            address=monitor_address,
-            bind_or_connect="bind",
-            callback=None,
-            identity=None,
-        )
-        actual_monitor_address = ZMQConfig.from_string(self._binder_monitor.address)
-        self._config_controller.update_config("monitor_address", actual_monitor_address)
-        logging.info(f"{self.__class__.__name__}: listen to scheduler monitor address {actual_monitor_address}")
+        self._binder_monitor: AsyncPublisher = self._backend.create_async_publisher(identity=self._identity)
 
         self._policy_controller = VanillaPolicyController(
             config.policy.policy_engine_type, config.policy.policy_content
@@ -118,8 +76,6 @@ class Scheduler:
             config_controller=self._config_controller, policy_controller=self._policy_controller
         )
 
-        # register
-        self._binder.register(self.on_receive_message)
         self._client_manager.register(
             self._binder, self._binder_monitor, self._object_controller, self._task_controller, self._worker_controller
         )
@@ -157,12 +113,55 @@ class Scheduler:
         )
 
     @property
-    def address(self) -> ZMQConfig:
+    def address(self) -> AddressConfig:
+        assert self._address is not None
         return self._address
 
-    async def connect_to_storage(self):
-        object_storage_address = self._config_controller.get_config("object_storage_address")
-        await self._connector_storage.connect(object_storage_address.host, object_storage_address.port)
+    async def __initialize_network(self) -> None:
+        # Scheduler's binder
+        assert self._address is not None
+
+        await self._binder.bind(self._address)
+
+        self._address = self._binder.address
+        assert self._address is not None
+        self._config_controller.update_config("bind_address", self._address)
+
+        logging.info(f"{self.__class__.__name__}: listen to scheduler address {self._address}")
+
+        # Object storage
+
+        await self._connector_storage.connect(self._config_controller.get_config("object_storage_address"))
+        object_storage_address = self._connector_storage.address
+
+        logging.info(f"{self.__class__.__name__}: connected to object storage server {object_storage_address!r}")
+
+        advertised_object_storage_address = (
+            self._config_controller.get_config("advertised_object_storage_address") or object_storage_address
+        )
+
+        logging.info(
+            f"{self.__class__.__name__}: advertise object storage address {advertised_object_storage_address!r}"
+        )
+
+        self._config_controller.update_config("object_storage_address", object_storage_address)
+        self._config_controller.update_config("advertised_object_storage_address", advertised_object_storage_address)
+
+        # Monitor
+
+        assert self._address.port is not None, "scheduler bind address must have a port"
+
+        monitor_address = self._config_controller.get_config("monitor_address") or AddressConfig(
+            type=SocketType.tcp, host=self._address.host, port=self._address.port + 2
+        )
+
+        await self._binder_monitor.bind(monitor_address)
+
+        monitor_address = self._binder_monitor.address
+        assert monitor_address is not None
+        self._config_controller.update_config("monitor_address", monitor_address)
+
+        logging.info(f"{self.__class__.__name__}: listen to scheduler monitor address {monitor_address!r}")
 
     async def on_receive_message(self, source: bytes, message: BaseMessage):
         # =====================================================================================
@@ -244,7 +243,7 @@ class Scheduler:
         logging.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")
 
     async def get_loops(self):
-        await self.connect_to_storage()
+        await self.__initialize_network()
 
         loops = [
             create_async_loop_routine(self._binder.routine, 0),

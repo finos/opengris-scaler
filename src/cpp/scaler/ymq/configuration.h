@@ -11,8 +11,8 @@ namespace ymq {
 // Expect all connections to start with this string.
 constexpr std::array<uint8_t, 4> magicString {'Y', 'M', 'Q', 1};
 
-constexpr size_t defaultClientMaxRetryTimes = 4;
-constexpr std::chrono::milliseconds defaultClientInitRetryDelay {2000};
+constexpr size_t defaultClientMaxRetryTimes = 8;
+constexpr std::chrono::milliseconds defaultClientInitRetryDelay {100};
 
 constexpr int serverListenBacklog = 1024;
 

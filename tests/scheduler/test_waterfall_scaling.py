@@ -786,6 +786,72 @@ class TestWaterfallV1Policy(unittest.TestCase):
         self.assertIsInstance(status, ScalingManagerStatus)
 
 
+class TestWaterfallV1PolicyAssignmentWithCapabilities(unittest.TestCase):
+    """
+    Tests that WaterfallV1Policy.assign_task respects task capabilities.
+
+    Bug being exposed:
+        WaterfallV1Policy delegates assign_task to EvenLoadAllocatePolicy,
+        which ignores task capabilities and routes a task requiring "gpu" to
+        any available worker (even one without the capability), instead of to
+        the worker that actually has it.
+    """
+
+    def setUp(self):
+        setup_logger()
+        try:
+            asyncio.get_event_loop()
+        except RuntimeError:
+            asyncio.set_event_loop(asyncio.new_event_loop())
+
+    def test_task_with_capability_assigned_to_capable_worker(self):
+        """Task requiring {"gpu": -1} must land on a worker that has gpu."""
+        policy = WaterfallV1Policy("1,manager_a,10\n2,manager_b,20")
+
+        worker_no_gpu = WorkerID(b"worker-no-gpu")
+        worker_gpu = WorkerID(b"worker-gpu")
+
+        # Insertion order matters: the no-gpu worker is queued first, so an
+        # even-load allocator will hand it out first when both have count 0.
+        self.assertTrue(policy.add_worker(worker_no_gpu, capabilities={}, queue_size=10))
+        self.assertTrue(policy.add_worker(worker_gpu, capabilities={"gpu": -1}, queue_size=10))
+
+        task = _create_mock_task(TaskID.generate_task_id(), capabilities={"gpu": -1})
+        assigned = policy.assign_task(task)
+
+        self.assertEqual(
+            assigned, worker_gpu, f"task requiring gpu was assigned to {assigned!r}, expected {worker_gpu!r}"
+        )
+
+    def test_task_with_capability_not_assigned_when_no_capable_worker(self):
+        """Task requiring gpu must not be assigned if no worker has gpu."""
+        policy = WaterfallV1Policy("1,manager_a,10")
+
+        worker_no_gpu = WorkerID(b"worker-no-gpu")
+        self.assertTrue(policy.add_worker(worker_no_gpu, capabilities={}, queue_size=10))
+
+        task = _create_mock_task(TaskID.generate_task_id(), capabilities={"gpu": -1})
+        assigned = policy.assign_task(task)
+
+        self.assertEqual(
+            assigned,
+            WorkerID.invalid_worker_id(),
+            f"task requiring gpu was incorrectly assigned to {assigned!r} that has no gpu",
+        )
+
+    def test_has_available_worker_respects_capabilities(self):
+        """has_available_worker({"gpu": -1}) must be False if no worker has gpu."""
+        policy = WaterfallV1Policy("1,manager_a,10")
+
+        worker_no_gpu = WorkerID(b"worker-no-gpu")
+        self.assertTrue(policy.add_worker(worker_no_gpu, capabilities={}, queue_size=10))
+
+        self.assertFalse(
+            policy.has_available_worker({"gpu": -1}),
+            "has_available_worker should return False when no worker has the requested capability",
+        )
+
+
 def _create_mock_task(task_id: TaskID, capabilities: Optional[Dict[str, int]] = None) -> Task:
     client_id = ClientID.generate_client_id()
     return Task(

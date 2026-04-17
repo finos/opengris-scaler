@@ -11,7 +11,6 @@ from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.capnp import (
     ObjectInstruction,
     ObjectMetadata,
-    ObjectStorageAddress,
     Task,
     TaskCancel,
     TaskCancelConfirm,
@@ -55,8 +54,6 @@ class SymphonyTaskManager(Looper, TaskManager):
         self._acquiring_task_ids: Set[TaskID] = set()  # tasks contesting the semaphore
         self._processing_task_ids: Set[TaskID] = set()
         self._canceled_task_ids: Set[TaskID] = set()
-
-        self._object_storage_address: Optional[ObjectStorageAddress] = None
 
         self._connector_external: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None

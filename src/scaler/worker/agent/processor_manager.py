@@ -4,9 +4,8 @@ from typing import Dict, List, Optional, Tuple
 
 import tblib.pickling_support
 
-from scaler.config.types.zmq import ZMQConfig
-
 # from scaler.utility.logging.utility import setup_logger
+from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.capnp import (
     ObjectInstruction,
@@ -29,8 +28,8 @@ class VanillaProcessorManager(ProcessorManager):
         self,
         identity: WorkerID,
         event_loop: str,
-        address_internal: ZMQConfig,
-        scheduler_address: ZMQConfig,
+        address_internal: AddressConfig,
+        scheduler_address: AddressConfig,
         preload: Optional[str],
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
@@ -57,7 +56,7 @@ class VanillaProcessorManager(ProcessorManager):
         self._connector_external: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
 
-        self._address_internal: ZMQConfig = address_internal
+        self._address_internal: AddressConfig = address_internal
 
         self._current_holder: Optional[ProcessorHolder] = None
         self._suspended_holders_by_task_id: Dict[bytes, ProcessorHolder] = {}
@@ -271,7 +270,12 @@ class VanillaProcessorManager(ProcessorManager):
             self._can_accept_task_lock.release()
 
     async def on_external_object_instruction(self, instruction: ObjectInstruction):
-        for processor_id in self._holders_by_processor_id.keys():
+        processor_ids = list(self._holders_by_processor_id.keys())
+
+        for processor_id in processor_ids:
+            if processor_id not in self._holders_by_processor_id:
+                continue  # processor got killed while we were iterating over the list
+
             await self._binder_internal.send(processor_id, instruction)
 
     async def on_internal_object_instruction(self, processor_id: ProcessorID, instruction: ObjectInstruction):

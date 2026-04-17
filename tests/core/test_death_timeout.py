@@ -18,8 +18,8 @@ from scaler.config.defaults import (
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
 )
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
+from scaler.config.types.address import AddressConfig
 from scaler.config.types.worker import WorkerCapabilities
-from scaler.config.types.zmq import ZMQConfig
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
@@ -39,7 +39,7 @@ class TestDeathTimeout(unittest.TestCase):
         manager = NativeWorkerManager(
             NativeWorkerManagerConfig(
                 worker_manager_config=WorkerManagerConfig(
-                    scheduler_address=ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
+                    scheduler_address=AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
                     worker_manager_id="test_manager",
                     object_storage_address=None,
                     max_task_concurrency=2,

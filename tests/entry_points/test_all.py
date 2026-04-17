@@ -291,10 +291,10 @@ class TestRunWorkerManager(unittest.TestCase):
         from scaler.config.common.worker import WorkerConfig
         from scaler.config.common.worker_manager import WorkerManagerConfig
         from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
-        from scaler.config.types.zmq import ZMQConfig
+        from scaler.config.types.address import AddressConfig
 
         wmc = WorkerManagerConfig(
-            scheduler_address=ZMQConfig.from_string("tcp://localhost:6378"), worker_manager_id="wm-test"
+            scheduler_address=AddressConfig.from_string("tcp://localhost:6378"), worker_manager_id="wm-test"
         )
         return NativeWorkerManagerConfig(
             worker_manager_config=wmc,
@@ -333,10 +333,10 @@ class TestRunWorkerManager(unittest.TestCase):
         from scaler.config.common.worker import WorkerConfig
         from scaler.config.common.worker_manager import WorkerManagerConfig
         from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
-        from scaler.config.types.zmq import ZMQConfig
+        from scaler.config.types.address import AddressConfig
 
         wmc = WorkerManagerConfig(
-            scheduler_address=ZMQConfig.from_string("tcp://localhost:6378"), worker_manager_id="wm-test"
+            scheduler_address=AddressConfig.from_string("tcp://localhost:6378"), worker_manager_id="wm-test"
         )
         return ORBAWSEC2WorkerAdapterConfig(
             worker_manager_config=wmc,

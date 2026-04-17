@@ -5,18 +5,14 @@ import threading
 from concurrent.futures import Future
 from typing import Optional
 
-import zmq.asyncio
-
 from scaler.client.agent.disconnect_manager import ClientDisconnectManager
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.agent.heartbeat_manager import ClientHeartbeatManager
 from scaler.client.agent.object_manager import ClientObjectManager
 from scaler.client.agent.task_manager import ClientTaskManager
 from scaler.client.serializer.mixins import Serializer
-from scaler.config.types.zmq import ZMQConfig
-from scaler.io.async_connector import ZMQAsyncConnector
-from scaler.io.mixins import AsyncConnector
-from scaler.io.utility import create_async_connector
+from scaler.config.types.address import AddressConfig
+from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend
 from scaler.io.ymq import YMQException
 from scaler.protocol.capnp import (
     BaseMessage,
@@ -25,7 +21,6 @@ from scaler.protocol.capnp import (
     ClientShutdownResponse,
     GraphTask,
     ObjectInstruction,
-    ObjectStorageAddress,
     Task,
     TaskCancel,
     TaskCancelConfirm,
@@ -41,9 +36,9 @@ class ClientAgent(threading.Thread):
     def __init__(
         self,
         identity: ClientID,
-        client_agent_address: ZMQConfig,
-        scheduler_address: ZMQConfig,
-        context: zmq.Context,
+        client_agent_address: AddressConfig,
+        scheduler_address: AddressConfig,
+        network_backend: NetworkBackend,
         future_manager: ClientFutureManager,
         stop_event: threading.Event,
         timeout_seconds: int,
@@ -61,36 +56,21 @@ class ClientAgent(threading.Thread):
         self._identity = identity
         self._client_agent_address = client_agent_address
         self._scheduler_address = scheduler_address
-        self._io_context = context
-        self._object_storage_address: Future[ObjectStorageAddress] = Future()
+        self._network_backend = network_backend
+        self._object_storage_address: Future[AddressConfig] = Future()
         if object_storage_address is not None:
-            manual_config = ZMQConfig.from_string(object_storage_address)
-            self._object_storage_address_override = ObjectStorageAddress(
-                host=manual_config.host, port=manual_config.port
-            )
+            self._object_storage_address_override = AddressConfig.from_string(object_storage_address)
         else:
             self._object_storage_address_override = None
 
         self._future_manager = future_manager
 
-        self._connector_internal: AsyncConnector = ZMQAsyncConnector(
-            context=zmq.asyncio.Context.shadow(self._io_context),
-            name="client_agent_internal",
-            socket_type=zmq.PAIR,
-            bind_or_connect="bind",
-            address=self._client_agent_address,
-            callback=self.__on_receive_from_client,
-            identity=None,
+        self._connector_internal: AsyncConnector = self._network_backend.create_async_connector(
+            identity=self._identity, callback=self.__on_receive_from_client
         )
 
-        self._connector_external: AsyncConnector = create_async_connector(
-            zmq.asyncio.Context.shadow(self._io_context),
-            name="client_agent_external",
-            socket_type=zmq.DEALER,
-            address=self._scheduler_address,
-            bind_or_connect="connect",
-            callback=self.__on_receive_from_scheduler,
-            identity=self._identity,
+        self._connector_external: AsyncConnector = self._network_backend.create_async_connector(
+            identity=self._identity, callback=self.__on_receive_from_scheduler
         )
 
         self._disconnect_manager: Optional[ClientDisconnectManager] = None
@@ -127,7 +107,7 @@ class ClientAgent(threading.Thread):
         self.__initialize()
         await self.__get_loops()
 
-    def get_object_storage_address(self) -> ObjectStorageAddress:
+    def get_object_storage_address(self) -> AddressConfig:
         """Returns the object storage address, or block until it receives it."""
         if self._object_storage_address_override is not None:
             return self._object_storage_address_override
@@ -181,6 +161,9 @@ class ClientAgent(threading.Thread):
         raise TypeError(f"Unknown {message=}")
 
     async def __get_loops(self):
+        await self._connector_internal.bind(self._client_agent_address)
+        await self._connector_external.connect(self._scheduler_address, ConnectorRemoteType.Binder)
+
         await self._heartbeat_manager.send_heartbeat()
 
         loops = [
@@ -219,7 +202,7 @@ class ClientAgent(threading.Thread):
             logging.info("ClientAgent: client quitting")
             self._future_manager.set_all_futures_with_exception(exception)
         elif isinstance(exception, (TimeoutError, YMQException)):
-            logging.error(f"ClientAgent: client timeout when connecting to {self._scheduler_address.to_address()}")
+            logging.error(f"ClientAgent: client timeout when connecting to {self._scheduler_address!r}")
             self._future_manager.set_all_futures_with_exception(TimeoutError())
         else:
             raise exception

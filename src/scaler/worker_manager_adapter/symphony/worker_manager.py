@@ -5,11 +5,11 @@ import signal
 import uuid
 from typing import Dict, List, Tuple
 
-import zmq
-
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
 from scaler.io import ymq
-from scaler.io.utility import create_async_connector, create_async_simple_context
+from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend
+from scaler.io.network_backends import get_network_backend_from_env
+from scaler.io.utility import generate_identity_from_name
 from scaler.protocol.capnp import (
     BaseMessage,
     WorkerManagerCommand,
@@ -40,18 +40,12 @@ class SymphonyWorkerManager:
         self._death_timeout_seconds = config.worker_config.death_timeout_seconds
         self._event_loop = config.worker_config.event_loop
 
-        self._context = create_async_simple_context()
+        self._backend: NetworkBackend = get_network_backend_from_env(io_threads=self._io_threads)
         self._name = "worker_manager_symphony"
-        self._ident = f"{self._name}|{uuid.uuid4().bytes.hex()}".encode()
+        self._ident = generate_identity_from_name(self._name)
 
-        self._connector_external = create_async_connector(
-            self._context,
-            name="worker_manager_symphony",
-            socket_type=zmq.DEALER,
-            address=self._address,
-            bind_or_connect="connect",
-            callback=self.__on_receive_external,
-            identity=self._ident,
+        self._connector_external: AsyncConnector = self._backend.create_async_connector(
+            identity=self._ident, callback=self.__on_receive_external
         )
 
         self._workers: Dict[WorkerID, SymphonyWorker] = {}
@@ -160,6 +154,8 @@ class SymphonyWorkerManager:
         )
 
     async def __get_loops(self):
+        await self._connector_external.connect(self._address, ConnectorRemoteType.Binder)
+
         loops = [
             create_async_loop_routine(self._connector_external.routine, 0),
             create_async_loop_routine(self.__send_heartbeat, self._heartbeat_interval_seconds),

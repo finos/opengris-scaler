@@ -3,14 +3,13 @@ import logging
 import os
 import signal
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
-
-import zmq
+from typing import Dict, List, Optional, Tuple
 
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.io import ymq
-from scaler.io.mixins import AsyncConnector
-from scaler.io.utility import create_async_connector, create_async_simple_context
+from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend
+from scaler.io.network_backends import get_network_backend_from_env
+from scaler.io.utility import generate_identity_from_name
 from scaler.protocol.capnp import (
     BaseMessage,
     WorkerManagerCommand,
@@ -60,26 +59,21 @@ class NativeWorkerManager:
 
         self._workers: Dict[WorkerID, Worker] = {}
 
-        # ZMQ setup is deferred to _setup_zmq(), called at the start of run().
+        # Network setup is deferred to __initialize_network(), called at the start of run().
         # This keeps the object picklable so callers can do Process(target=adapter.run).start().
-        self._context: Optional[Any] = None
+        self._backend: Optional[NetworkBackend] = None
         self._connector_external: Optional[AsyncConnector] = None
         self._ident: Optional[bytes] = None
 
-    def _setup_zmq(self) -> None:
+    async def __initialize_network(self) -> None:
         self._name = "worker_manager_native"
+        self._ident = generate_identity_from_name(self._name)
+        self._backend = get_network_backend_from_env(io_threads=self._io_threads)
 
-        self._ident = f"{self._name}|{uuid.uuid4().bytes.hex()}".encode()
-        self._context = create_async_simple_context()
-        self._connector_external = create_async_connector(
-            self._context,
-            name="worker_manager_native",
-            socket_type=zmq.DEALER,
-            address=self._address,
-            bind_or_connect="connect",
-            callback=self.__on_receive_external,
-            identity=self._ident,
+        self._connector_external = self._backend.create_async_connector(
+            identity=self._ident, callback=self.__on_receive_external
         )
+        await self._connector_external.connect(self._address, ConnectorRemoteType.Binder)
 
     def _create_worker(self) -> Worker:
         return Worker(
@@ -173,8 +167,6 @@ class NativeWorkerManager:
             self._run_fixed()
             return
 
-        # DYNAMIC mode
-        self._setup_zmq()
         self._loop = asyncio.new_event_loop()
         run_task_forever(self._loop, self._run(), cleanup_callback=self._cleanup)
 
@@ -220,6 +212,8 @@ class NativeWorkerManager:
         )
 
     async def __get_loops(self) -> None:
+        await self.__initialize_network()
+
         loops = [
             create_async_loop_routine(self._connector_external.routine, 0),
             create_async_loop_routine(self.__send_heartbeat, self._heartbeat_interval_seconds),

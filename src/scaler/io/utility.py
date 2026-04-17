@@ -1,15 +1,11 @@
 import logging
 import os
+import uuid
 from typing import List, Optional
 
-import zmq.asyncio
-
-from scaler.config.defaults import CAPNP_DATA_SIZE_LIMIT, CAPNP_MESSAGE_SIZE_LIMIT, SCALER_NETWORK_BACKEND
-from scaler.config.types.network_backend import NetworkBackend
-from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector, SyncObjectStorageConnector
+from scaler.config.defaults import CAPNP_DATA_SIZE_LIMIT, CAPNP_MESSAGE_SIZE_LIMIT
 from scaler.protocol.capnp import BaseMessage, Message
 from scaler.protocol.helpers import PROTOCOL
-from scaler.utility.exceptions import ObjectStorageException
 
 try:
     from collections.abc import Buffer  # type: ignore[attr-defined]
@@ -17,68 +13,8 @@ except ImportError:
     from typing_extensions import Buffer
 
 
-def get_scaler_network_backend_from_env():
-    backend_str = os.environ.get("SCALER_NETWORK_BACKEND")  # Default to tcp_zmq
-    if backend_str is None:
-        return SCALER_NETWORK_BACKEND
-    return NetworkBackend[backend_str]
-
-
-def create_async_simple_context():
-    type = get_scaler_network_backend_from_env()
-    if type == NetworkBackend.tcp_zmq:
-        return zmq.asyncio.Context()
-    elif type == NetworkBackend.ymq:
-        from scaler.io.ymq import IOContext
-
-        return IOContext()
-    raise ValueError("Unknown network backend")
-
-
-def create_async_binder(ctx: zmq.asyncio.Context, *args, **kwargs) -> AsyncBinder:
-    connector_type = get_scaler_network_backend_from_env()
-    if connector_type == NetworkBackend.ymq:
-        from scaler.io.ymq_async_binder import YMQAsyncBinder
-
-        return YMQAsyncBinder(*args, **kwargs)
-    elif connector_type == NetworkBackend.tcp_zmq:
-        from scaler.io.async_binder import ZMQAsyncBinder
-
-        return ZMQAsyncBinder(context=ctx, *args, **kwargs)  # type: ignore[misc]
-    else:
-        raise ValueError(f"Invalid SCALER_NETWORK_BACKEND value. Expected one of: {[e.name for e in NetworkBackend]}")
-
-
-def create_async_connector(ctx: zmq.asyncio.Context, *args, **kwargs) -> AsyncConnector:
-    connector_type = get_scaler_network_backend_from_env()
-    if connector_type == NetworkBackend.ymq:
-        from scaler.io.ymq_async_connector import YMQAsyncConnector
-
-        return YMQAsyncConnector(*args, **kwargs)
-    elif connector_type == NetworkBackend.tcp_zmq:
-        from scaler.io.async_connector import ZMQAsyncConnector
-
-        return ZMQAsyncConnector(context=ctx, *args, **kwargs)  # type: ignore[misc]
-    else:
-        raise ValueError(f"Invalid SCALER_NETWORK_BACKEND value. Expected one of: {[e.name for e in NetworkBackend]}")
-
-
-def create_async_object_storage_connector(*args, **kwargs) -> AsyncObjectStorageConnector:
-    # The object storage server currently speaks YMQ in every supported deployment mode.
-    from scaler.io.ymq_async_object_storage_connector import YMQAsyncObjectStorageConnector
-
-    return YMQAsyncObjectStorageConnector(*args, **kwargs)
-
-
-def create_sync_object_storage_connector(*args, **kwargs) -> SyncObjectStorageConnector:
-    from scaler.io.ymq_sync_object_storage_connector import YMQSyncObjectStorageConnector
-
-    try:
-        return YMQSyncObjectStorageConnector(*args, **kwargs)
-    except ConnectionRefusedError as error:
-        host = kwargs.get("host", args[0] if len(args) > 0 else "<unknown-host>")
-        port = kwargs.get("port", args[1] if len(args) > 1 else "<unknown-port>")
-        raise ObjectStorageException(f"cannot connect to object storage address tcp://{host}:{port}") from error
+def generate_identity_from_name(name: str) -> bytes:
+    return f"{os.getpid()}|{name}|{uuid.uuid4()}".encode()
 
 
 def deserialize(data: Buffer) -> Optional[BaseMessage]:

@@ -3,7 +3,7 @@ import logging
 from asyncio import Queue
 from typing import Optional, Set
 
-from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
+from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher
 from scaler.protocol.capnp import ObjectInstruction, ObjectManagerStatus, ObjectMetadata
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import ClientController, ObjectController, WorkerController
@@ -34,7 +34,7 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
         self._queue_deleted_object_ids: Queue[ObjectID] = Queue()
 
         self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncConnector] = None
+        self._binder_monitor: Optional[AsyncPublisher] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
 
         self._client_manager: Optional[ClientController] = None
@@ -43,7 +43,7 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
     def register(
         self,
         binder: AsyncBinder,
-        binder_monitor: AsyncConnector,
+        binder_monitor: AsyncPublisher,
         connector_storage: AsyncObjectStorageConnector,
         client_manager: ClientController,
         worker_manager: WorkerController,

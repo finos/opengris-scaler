@@ -3,7 +3,7 @@ import logging
 from collections import deque
 from typing import Any, Awaitable, Callable, Deque, Dict, List, Optional, Tuple
 
-from scaler.io.mixins import AsyncBinder, AsyncConnector
+from scaler.io.mixins import AsyncBinder, AsyncPublisher
 from scaler.protocol.capnp import (
     StateTask,
     Task,
@@ -35,7 +35,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     def __init__(self, config_controller: VanillaConfigController):
         self._config_controller = config_controller
         self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncConnector] = None
+        self._binder_monitor: Optional[AsyncPublisher] = None
 
         self._client_controller: Optional[ClientController] = None
         self._object_controller: Optional[ObjectController] = None
@@ -74,7 +74,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     def register(
         self,
         binder: AsyncBinder,
-        binder_monitor: AsyncConnector,
+        binder_monitor: AsyncPublisher,
         client_controller: ClientController,
         object_controller: ObjectController,
         worker_controller: WorkerController,

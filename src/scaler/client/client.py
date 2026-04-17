@@ -7,8 +7,6 @@ from collections import Counter
 from inspect import signature
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
-import zmq
-
 from scaler.client.agent.client_agent import ClientAgent
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.future import ScalerFuture
@@ -17,10 +15,9 @@ from scaler.client.object_reference import ObjectReference
 from scaler.client.serializer.default import DefaultSerializer
 from scaler.client.serializer.mixins import Serializer
 from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
-from scaler.config.types.zmq import ZMQConfig, ZMQType
-from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
-from scaler.io.sync_connector import ZMQSyncConnector
-from scaler.io.utility import create_sync_object_storage_connector
+from scaler.config.types.address import AddressConfig
+from scaler.io.mixins import ConnectorRemoteType, NetworkBackend, SyncConnector, SyncObjectStorageConnector
+from scaler.io.network_backends import get_network_backend_from_env
 from scaler.protocol.capnp import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
 from scaler.utility.graph.optimization import cull_graph
@@ -79,7 +76,6 @@ class Client:
                                        If None, will use address received from scheduler.
         :type object_storage_address: Optional[str]
         """
-        address = self._resolve_scheduler_address(address)
         self.__initialize__(
             address,
             profiling,
@@ -92,7 +88,7 @@ class Client:
 
     def __initialize__(
         self,
-        address: str,
+        address: Optional[str],
         profiling: bool,
         timeout_seconds: int,
         heartbeat_interval_seconds: int,
@@ -106,23 +102,24 @@ class Client:
         self._stream_output = stream_output
         self._identity = ClientID.generate_client_id()
 
-        self._client_agent_address = ZMQConfig(ZMQType.inproc, host=f"scaler_client_{uuid.uuid4().hex}")
-        self._scheduler_address = ZMQConfig.from_string(address)
+        self._backend: NetworkBackend = get_network_backend_from_env()
+
+        self._client_agent_address = self._backend.create_internal_address(
+            f"scaler_client_{uuid.uuid4().hex}", same_process=True
+        )
+
+        self._scheduler_address = self.__resolve_scheduler_address(address)
         self._timeout_seconds = timeout_seconds
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
 
         self._stop_event = threading.Event()
-        self._context = zmq.Context()
-        self._connector_agent: SyncConnector = ZMQSyncConnector(
-            context=self._context, socket_type=zmq.PAIR, address=self._client_agent_address, identity=self._identity
-        )
 
         self._future_manager = ClientFutureManager(self._serializer)
         self._agent = ClientAgent(
             identity=self._identity,
             client_agent_address=self._client_agent_address,
-            scheduler_address=ZMQConfig.from_string(address),
-            context=self._context,
+            scheduler_address=self._scheduler_address,
+            network_backend=self._backend,
             future_manager=self._future_manager,
             stop_event=self._stop_event,
             timeout_seconds=self._timeout_seconds,
@@ -137,9 +134,15 @@ class Client:
         # Blocks until the agent receives the object storage address
         self._object_storage_address = self._agent.get_object_storage_address()
 
+        self._connector_agent: SyncConnector = self._backend.create_sync_connector(
+            identity=self._identity,
+            connector_remote_type=ConnectorRemoteType.Connector,
+            address=self._client_agent_address,
+        )
+
         logging.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
-        self._connector_storage: SyncObjectStorageConnector = create_sync_object_storage_connector(
-            self._object_storage_address.host, self._object_storage_address.port
+        self._connector_storage: SyncObjectStorageConnector = self._backend.create_sync_object_storage_connector(
+            identity=self._identity, address=self._object_storage_address
         )
 
         self._object_buffer = ObjectBuffer(
@@ -194,7 +197,7 @@ class Client:
         """
 
         return {
-            "address": self._scheduler_address.to_address(),
+            "address": repr(self._scheduler_address),
             "profiling": self._profiling,
             "stream_output": self._stream_output,
             "timeout_seconds": self._timeout_seconds,
@@ -456,7 +459,7 @@ class Client:
             self.__destroy()
             return
 
-        logging.info(f"ScalerClient: disconnect from {self._scheduler_address.to_address()}")
+        logging.info(f"ScalerClient: disconnect from {self._scheduler_address!r}")
 
         self._future_manager.cancel_all_futures()
 
@@ -483,7 +486,7 @@ class Client:
             self.__destroy()
             return
 
-        logging.info(f"ScalerClient: request shutdown for {self._scheduler_address.to_address()}")
+        logging.info(f"ScalerClient: request shutdown for {self._scheduler_address!r}")
 
         self._future_manager.cancel_all_futures()
 
@@ -704,7 +707,9 @@ class Client:
 
     def __destroy(self):
         self._agent.join()
-        self._context.destroy(linger=1)
+
+        self._connector_agent.destroy()
+        self._connector_storage.destroy()
 
     @staticmethod
     def __get_parent_task_priority() -> Optional[int]:
@@ -720,11 +725,11 @@ class Client:
 
         return retrieve_task_flags_from_task(current_task).priority
 
-    def _resolve_scheduler_address(self, address: Optional[str]) -> str:
+    def __resolve_scheduler_address(self, address: Optional[str]) -> AddressConfig:
         """Resolve the scheduler address based on the provided address and worker context."""
         # Provided address always takes precedence
         if address is not None:
-            return address
+            return AddressConfig.from_string(address)
 
         # No address provided, check if we're running inside a worker context
         current_processor = Processor.get_current_processor()
@@ -735,4 +740,4 @@ class Client:
             )
 
         # Return the scheduler address from the current processor
-        return current_processor.scheduler_address().to_address()
+        return current_processor.scheduler_address()

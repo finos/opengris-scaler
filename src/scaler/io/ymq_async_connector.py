@@ -1,44 +1,46 @@
 import logging
-import os
-import uuid
-from typing import Awaitable, Callable, Literal, Optional
+from typing import Awaitable, Callable, Optional
 
-from scaler.config.types.zmq import ZMQConfig
-from scaler.io.mixins import AsyncConnector
+from scaler.config.types.address import AddressConfig
+from scaler.io.mixins import AsyncConnector, ConnectorRemoteType
 from scaler.io.utility import deserialize, serialize
 from scaler.io.ymq import Bytes, ConnectorSocket, IOContext
 from scaler.protocol.capnp import BaseMessage
 
 
 class YMQAsyncConnector(AsyncConnector):
-    def __init__(
-        self,
-        name: str,
-        socket_type: int,
-        address: ZMQConfig,
-        bind_or_connect: Literal["bind", "connect"],
-        callback: Optional[Callable[[BaseMessage], Awaitable[None]]],
-        identity: Optional[bytes],
-    ):
-        self._address = address
-
-        self._context = IOContext()
-
-        if identity is None:
-            identity = f"{os.getpid()}|{name}|{uuid.uuid4().bytes.hex()}".encode()
+    def __init__(self, context: IOContext, identity: bytes, callback: Callable[[BaseMessage], Awaitable[None]]):
+        self._context = context
         self._identity = identity
+        self._address: Optional[AddressConfig] = None
 
-        self._callback: Optional[Callable[[BaseMessage], Awaitable[None]]] = callback
+        self._callback: Callable[[BaseMessage], Awaitable[None]] = callback
+        self._socket: Optional[ConnectorSocket] = None
 
-        # Create connector socket
-        if bind_or_connect == "bind":
-            self._socket = ConnectorSocket.bind(self._context, self._identity.decode(), self.address)
-        elif bind_or_connect == "connect":
-            self._socket = ConnectorSocket.connect(self._context, self._identity.decode(), self.address)
-        else:
-            raise TypeError("bind_or_connect has to be 'bind' or 'connect'")
+    def __del__(self):
+        self.destroy()
+
+    async def connect(self, address: AddressConfig, remote_type: ConnectorRemoteType) -> None:
+        assert self._context is not None
+
+        if remote_type not in {ConnectorRemoteType.Binder, ConnectorRemoteType.Connector}:
+            raise ValueError(f"unsupported remote_type={remote_type}")
+
+        self._address = address
+        self._socket = ConnectorSocket.connect(self._context, self._identity.decode(), repr(self._address))
+
+    async def bind(self, address: AddressConfig) -> None:
+        assert self._context is not None
+
+        self._address = address
+        self._socket = ConnectorSocket.bind(self._context, self._identity.decode(), repr(self._address))
 
     def destroy(self):
+        if self._socket is None:
+            return
+
+        self._socket.shutdown()
+
         self._socket = None
         self._context = None
 
@@ -47,17 +49,10 @@ class YMQAsyncConnector(AsyncConnector):
         return self._identity
 
     @property
-    def socket(self) -> ConnectorSocket:
-        return self._socket
-
-    @property
-    def address(self) -> str:
-        return self._address.to_address()
+    def address(self) -> Optional[AddressConfig]:
+        return self._address
 
     async def routine(self):
-        if self._callback is None:
-            return
-
         message: Optional[BaseMessage] = await self.receive()
         if message is None:
             return
@@ -72,12 +67,19 @@ class YMQAsyncConnector(AsyncConnector):
             return None
 
         msg = await self._socket.recv_message()
-        result: Optional[BaseMessage] = deserialize(msg.payload.data)
+        payload_data = msg.payload.data
+        if payload_data is None:
+            return None
+
+        result: Optional[BaseMessage] = deserialize(payload_data)
         if result is None:
-            logging.error(f"received unknown message: {msg.payload.data!r}")
+            logging.error(f"received unknown message: {payload_data!r}")
             return None
 
         return result
 
     async def send(self, message: BaseMessage):
+        if self._socket is None:
+            return
+
         await self._socket.send_message(Bytes(serialize(message)))

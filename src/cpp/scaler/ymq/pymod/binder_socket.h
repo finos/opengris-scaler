@@ -68,8 +68,13 @@ static int PyBinderSocket_init(PyBinderSocket* self, PyObject* args, PyObject* k
     return 0;
 }
 
-static void PyBinderSocket_dealloc(PyBinderSocket* self)
+static PyObject* PyBinderSocket_shutdown(
+    PyBinderSocket* self, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwargs)
 {
+    if (!self->socket) {
+        Py_RETURN_NONE;
+    }
+
     try {
         std::promise<void> onShutdown;
         self->socket->shutdown([&onShutdown]() { onShutdown.set_value(); });
@@ -79,10 +84,21 @@ static void PyBinderSocket_dealloc(PyBinderSocket* self)
         onShutdown.get_future().wait();
         Py_END_ALLOW_THREADS;
 
+        // Explicitly call destructors for placement-new'd members
         self->socket.reset();
         self->ioContext.reset();
     } catch (...) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to deallocate BinderSocket");
+        PyErr_SetString(PyExc_RuntimeError, "Failed to shutdown BinderSocket");
+        return nullptr;
+    }
+
+    Py_RETURN_NONE;
+}
+
+static void PyBinderSocket_dealloc(PyBinderSocket* self)
+{
+    OwnedPyObject<> result = PyBinderSocket_shutdown(self, nullptr, nullptr);
+    if (!result) {
         PyErr_WriteUnraisable((PyObject*)self);
     }
 
@@ -286,6 +302,7 @@ static PyMethodDef PyBinderSocket_methods[] = {
     {"send_message", (PyCFunction)(void*)PyBinderSocket_send_message, METH_VARARGS | METH_KEYWORDS, nullptr},
     {"recv_message", (PyCFunction)(void*)PyBinderSocket_recv_message, METH_VARARGS | METH_KEYWORDS, nullptr},
     {"close_connection", (PyCFunction)(void*)PyBinderSocket_close_connection, METH_VARARGS | METH_KEYWORDS, nullptr},
+    {"shutdown", (PyCFunction)(void*)PyBinderSocket_shutdown, METH_VARARGS | METH_KEYWORDS, nullptr},
     {nullptr, nullptr, 0, nullptr},
 };
 

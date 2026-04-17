@@ -28,9 +28,8 @@ from scaler.config.defaults import (
 )
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.section.scheduler import PolicyConfig
-from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
+from scaler.config.types.address import AddressConfig
 from scaler.config.types.worker import WorkerCapabilities
-from scaler.config.types.zmq import ZMQConfig
 from scaler.protocol.capnp import (
     Resource,
     Task,
@@ -57,11 +56,12 @@ class TestScaling(unittest.TestCase):
         logging_test_name(self)
 
         self.scheduler_address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        self.object_storage_config = ObjectStorageAddressConfig("127.0.0.1", get_available_tcp_port())
+        self.object_storage_address = AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}")
 
     def test_scaling_basic(self):
         object_storage = ObjectStorageServerProcess(
-            bind_address=self.object_storage_config,
+            bind_address=self.object_storage_address,
+            identity="ObjectStorageServer",
             logging_paths=("/dev/stdout",),
             logging_config_file=None,
             logging_level="INFO",
@@ -70,8 +70,8 @@ class TestScaling(unittest.TestCase):
         object_storage.wait_until_ready()
 
         scheduler = SchedulerProcess(
-            bind_address=ZMQConfig.from_string(self.scheduler_address),
-            object_storage_address=self.object_storage_config,
+            bind_address=AddressConfig.from_string(self.scheduler_address),
+            object_storage_address=self.object_storage_address,
             advertised_object_storage_address=None,
             monitor_address=None,
             policy=PolicyConfig(policy_content="allocate=even_load; scaling=vanilla"),
@@ -108,7 +108,8 @@ class TestScaling(unittest.TestCase):
     def test_capability_scaling_basic(self):
         """Test that capability scaling starts workers with the correct capabilities."""
         object_storage = ObjectStorageServerProcess(
-            bind_address=self.object_storage_config,
+            bind_address=self.object_storage_address,
+            identity="ObjectStorageServer",
             logging_paths=("/dev/stdout",),
             logging_config_file=None,
             logging_level="INFO",
@@ -117,8 +118,8 @@ class TestScaling(unittest.TestCase):
         object_storage.wait_until_ready()
 
         scheduler = SchedulerProcess(
-            bind_address=ZMQConfig.from_string(self.scheduler_address),
-            object_storage_address=self.object_storage_config,
+            bind_address=AddressConfig.from_string(self.scheduler_address),
+            object_storage_address=self.object_storage_address,
             advertised_object_storage_address=None,
             monitor_address=None,
             io_threads=DEFAULT_IO_THREADS,
@@ -773,7 +774,7 @@ def _run_native_worker_manager(
     manager = NativeWorkerManager(
         NativeWorkerManagerConfig(
             worker_manager_config=WorkerManagerConfig(
-                scheduler_address=ZMQConfig.from_string(scheduler_address),
+                scheduler_address=AddressConfig.from_string(scheduler_address),
                 worker_manager_id=worker_manager_id,
                 object_storage_address=None,
                 max_task_concurrency=max_task_concurrency,

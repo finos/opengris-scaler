@@ -4,7 +4,7 @@ import socket
 import time
 from typing import Optional, Tuple
 
-from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
+from scaler.config.types.address import AddressConfig
 from scaler.object_storage.object_storage_server import ObjectStorageServer
 from scaler.utility.logging.utility import get_logger_info, setup_logger
 
@@ -12,12 +12,15 @@ from scaler.utility.logging.utility import get_logger_info, setup_logger
 class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
     def __init__(
         self,
-        bind_address: ObjectStorageAddressConfig,
+        bind_address: AddressConfig,
+        identity: str,
         logging_paths: Tuple[str, ...],
         logging_level: str,
         logging_config_file: Optional[str],
     ):
         super().__init__(name="ObjectStorageServer")
+
+        self._ident = identity
 
         self._logging_paths = logging_paths
         self._logging_level = logging_level
@@ -43,7 +46,7 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
 
     def run(self) -> None:
         setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
-        logging.info(f"ObjectStorageServer: start and listen to {self._bind_address.to_string()}")
+        logging.info(f"ObjectStorageServer: start and listen to {self._bind_address!r}")
 
         log_format_str, log_level_str, logging_paths = get_logger_info(logging.getLogger())
 
@@ -52,7 +55,7 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
             self._server.run(
                 self._bind_address.host,
                 self._bind_address.port,
-                self._bind_address.identity,
+                self._ident,
                 log_level_str,
                 log_format_str,
                 logging_paths,

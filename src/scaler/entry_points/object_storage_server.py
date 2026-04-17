@@ -20,7 +20,7 @@ def main():
         ObjectStorageServer().run(
             oss_config.bind_address.host,
             oss_config.bind_address.port,
-            oss_config.bind_address.identity,
+            oss_config.identity,
             log_level_str,
             log_format_str,
             log_paths,

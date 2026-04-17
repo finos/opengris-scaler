@@ -7,11 +7,12 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
 import boto3
-import zmq
 
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
 from scaler.io import ymq
-from scaler.io.utility import create_async_connector, create_async_simple_context
+from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend
+from scaler.io.network_backends import get_network_backend_from_env
+from scaler.io.utility import generate_identity_from_name
 from scaler.protocol.capnp import (
     BaseMessage,
     WorkerManagerCommand,
@@ -117,18 +118,12 @@ class ECSWorkerManager:
             )
         self._ecs_task_definition = resp["taskDefinition"]["taskDefinitionArn"]
 
-        self._context = create_async_simple_context()
+        self._backend: NetworkBackend = get_network_backend_from_env(io_threads=self._io_threads)
         self._name = "worker_manager_ecs"
-        self._ident = f"{self._name}|{uuid.uuid4().bytes.hex()}".encode()
+        self._ident = generate_identity_from_name(self._name)
 
-        self._connector_external = create_async_connector(
-            self._context,
-            name=self._name,
-            socket_type=zmq.DEALER,
-            address=self._address,
-            bind_or_connect="connect",
-            callback=self.__on_receive_external,
-            identity=self._ident,
+        self._connector_external: AsyncConnector = self._backend.create_async_connector(
+            identity=self._ident, callback=self.__on_receive_external
         )
 
     async def __on_receive_external(self, message: BaseMessage):
@@ -194,6 +189,8 @@ class ECSWorkerManager:
         await self._task
 
     async def __get_loops(self):
+        await self._connector_external.connect(self._address, ConnectorRemoteType.Binder)
+
         loops = [
             create_async_loop_routine(self._connector_external.routine, 0),
             create_async_loop_routine(self.__send_heartbeat, self._heartbeat_interval_seconds),
@@ -214,7 +211,7 @@ class ECSWorkerManager:
             return [], Status.tooManyWorkers
 
         command = (
-            f"scaler_worker_manager baremetal_native {self._worker_scheduler_address.to_address()} "
+            f"scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} "
             f"--mode fixed "
             f"--worker-type ECS "
             f"--max-task-concurrency {self._ecs_task_cpu} "
@@ -232,7 +229,7 @@ class ECSWorkerManager:
             command += " --hard-processor-suspend"
 
         if self._object_storage_address:
-            command += f" --object-storage-address {self._object_storage_address.to_string()}"
+            command += f" --object-storage-address {self._object_storage_address!r}"
 
         if format_capabilities(self._capabilities).strip():
             command += f" --per-worker-capabilities {format_capabilities(self._capabilities)}"

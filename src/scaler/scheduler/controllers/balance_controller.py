@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, List, Optional
 
-from scaler.io.mixins import AsyncBinder, AsyncConnector
+from scaler.io.mixins import AsyncBinder, AsyncPublisher
 from scaler.protocol.capnp import StateBalanceAdvice
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import PolicyController, TaskController
@@ -19,11 +19,11 @@ class VanillaBalanceController(Looper):
         self._same_load_balance_advice_count = 0
 
         self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncConnector] = None
+        self._binder_monitor: Optional[AsyncPublisher] = None
 
         self._task_controller: Optional[TaskController] = None
 
-    def register(self, binder: AsyncBinder, binder_monitor: AsyncConnector, task_controller: TaskController):
+    def register(self, binder: AsyncBinder, binder_monitor: AsyncPublisher, task_controller: TaskController):
         self._binder = binder
         self._binder_monitor = binder_monitor
 

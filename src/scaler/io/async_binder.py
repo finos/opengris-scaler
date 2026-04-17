@@ -1,6 +1,4 @@
 import logging
-import os
-import uuid
 from collections import defaultdict
 from typing import Awaitable, Callable, Dict, List, Optional
 
@@ -8,44 +6,52 @@ import zmq
 import zmq.asyncio
 from zmq import Frame
 
-from scaler.config.types.zmq import ZMQConfig
+from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncBinder
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.capnp import BaseMessage, BinderStatus
 
 
 class ZMQAsyncBinder(AsyncBinder):
-    def __init__(self, context: zmq.asyncio.Context, name: str, address: ZMQConfig, identity: Optional[bytes] = None):
-        if identity is None:
-            identity = f"{os.getpid()}|{name}|{uuid.uuid4()}".encode()
-        self._identity = identity
-
+    def __init__(
+        self, context: zmq.asyncio.Context, identity: bytes, callback: Callable[[bytes, BaseMessage], Awaitable[None]]
+    ):
         self._context = context
-        self._socket = self._context.socket(zmq.ROUTER)
-        self.__set_socket_options()
-        self._socket.bind(address.to_address())
-        endpoint = self._socket.getsockopt(zmq.LAST_ENDPOINT)
-        assert isinstance(endpoint, bytes)
-        self._address: ZMQConfig = ZMQConfig.from_string(endpoint.decode())
+        self._identity = identity
+        self._address: Optional[AddressConfig] = None
 
-        self._callback: Optional[Callable[[bytes, BaseMessage], Awaitable[None]]] = None
+        self._socket = self._context.socket(zmq.ROUTER)
+
+        self._callback: Callable[[bytes, BaseMessage], Awaitable[None]] = callback
 
         self._received: Dict[str, int] = defaultdict(lambda: 0)
         self._sent: Dict[str, int] = defaultdict(lambda: 0)
 
+    def __del__(self):
+        self.destroy()
+
+    def destroy(self):
+        if self._socket.closed:
+            return
+
+        self._socket.close(linger=0)
+
+    async def bind(self, address: AddressConfig) -> None:
+        self.__set_socket_options()
+        self._socket.bind(repr(address))
+
+        endpoint = self._socket.getsockopt(zmq.LAST_ENDPOINT)
+        assert isinstance(endpoint, bytes)
+
+        self._address = AddressConfig.from_string(endpoint.decode())
+
     @property
-    def identity(self):
+    def identity(self) -> bytes:
         return self._identity
 
     @property
-    def address(self) -> ZMQConfig:
+    def address(self) -> Optional[AddressConfig]:
         return self._address
-
-    def destroy(self):
-        self._context.destroy(linger=0)
-
-    def register(self, callback: Callable[[bytes, BaseMessage], Awaitable[None]]):
-        self._callback = callback
 
     async def routine(self):
         frames: List[Frame] = await self._socket.recv_multipart(copy=False)
@@ -91,4 +97,4 @@ class ZMQAsyncBinder(AsyncBinder):
         self._sent[message_type] += 1
 
     def __get_prefix(self):
-        return f"{self.__class__.__name__}[{self._identity.decode()}]:"
+        return f"{self.__class__.__name__}[{self._identity!r}]:"

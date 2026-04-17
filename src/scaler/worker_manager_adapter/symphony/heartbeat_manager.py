@@ -3,7 +3,7 @@ from typing import Dict, Optional
 
 import psutil
 
-from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
+from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.capnp import Resource, WorkerHeartbeat, WorkerHeartbeatEcho
 from scaler.utility.mixins import Looper
@@ -14,7 +14,7 @@ from scaler.worker_manager_adapter.symphony.task_manager import SymphonyTaskMana
 class SymphonyHeartbeatManager(Looper, HeartbeatManager):
     def __init__(
         self,
-        object_storage_address: Optional[ObjectStorageAddressConfig],
+        object_storage_address: Optional[AddressConfig],
         capabilities: Dict[str, int],
         task_queue_size: int,
         worker_manager_id: bytes,
@@ -33,7 +33,7 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
         self._start_timestamp_ns = 0
         self._latency_us = 0
 
-        self._object_storage_address: Optional[ObjectStorageAddressConfig] = object_storage_address
+        self._object_storage_address: Optional[AddressConfig] = object_storage_address
 
     def register(
         self,
@@ -58,10 +58,10 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
 
         if self._object_storage_address is None:
             address_message = heartbeat.objectStorageAddress
-            self._object_storage_address = ObjectStorageAddressConfig(address_message.host, address_message.port)
-            await self._connector_storage.connect(self._object_storage_address.host, self._object_storage_address.port)
+            self._object_storage_address = AddressConfig(SocketType.tcp, address_message.host, address_message.port)
+            await self._connector_storage.connect(self._object_storage_address)
 
-    def get_object_storage_address(self) -> Optional[ObjectStorageAddressConfig]:
+    def get_object_storage_address(self) -> Optional[AddressConfig]:
         return self._object_storage_address
 
     async def routine(self):

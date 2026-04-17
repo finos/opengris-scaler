@@ -39,6 +39,9 @@ class BinderSocket:
     def close_connection(self, remote_identity: str) -> None:
         self._base.close_connection(remote_identity)
 
+    def shutdown(self) -> None:
+        self._base.shutdown()
+
 
 class ConnectorSocket:
     __doc__ = _ymq.ConnectorSocket.__doc__
@@ -95,3 +98,6 @@ class ConnectorSocket:
 
     def recv_message_sync(self, /, timeout: Optional[float] = None) -> _ymq.Message:
         return call_sync(self._base.recv_message, timeout=timeout)
+
+    def shutdown(self) -> None:
+        self._base.shutdown()

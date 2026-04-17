@@ -1,8 +1,7 @@
-import socket
-import uuid
 from threading import Lock
 from typing import Iterable, Optional
 
+from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import SyncObjectStorageConnector
 from scaler.io.ymq import Bytes, ConnectorSocket, IOContext, YMQException
 from scaler.protocol.capnp import ObjectRequestHeader, ObjectResponseHeader
@@ -17,33 +16,34 @@ MAX_CHUNK_SIZE = 128 * 1024 * 1024
 class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
     """A synchronous connector that uses YMQ to connect to a Scaler's object storage instance."""
 
-    def __init__(self, host: str, port: int):
-        self._host = host
-        self._port = port
+    def __init__(self, context: IOContext, identity: bytes, address: AddressConfig):
+        self._context = context
+        self._identity = identity
+        self._address = address
 
         self._next_request_id = 0
 
         self._socket_lock = Lock()
-        self._io_context: Optional[IOContext] = None
         self._socket: Optional[ConnectorSocket] = None
 
-        self._identity: str = f"{self.__class__.__name__}|{socket.gethostname().split('.')[0]}|{uuid.uuid4()}"
-
-        self._io_context = IOContext()
-        self._socket = ConnectorSocket.connect(self._io_context, self._identity, self.address)
+        self._socket = ConnectorSocket.connect(self._context, self._identity.decode(), repr(self._address))
 
     def __del__(self):
         self.destroy()
 
     def destroy(self):
         with self._socket_lock:
-            if self._socket is not None:
-                self._socket = None
-                self._io_context = None
+            if self._socket is None:
+                return
+
+            self._socket.shutdown()
+
+            self._socket = None
+            self._context = None
 
     @property
-    def address(self) -> str:
-        return f"tcp://{self._host}:{self._port}"
+    def address(self) -> AddressConfig:
+        return self._address
 
     def set_object(self, object_id: ObjectID, payload: bytes):
         """

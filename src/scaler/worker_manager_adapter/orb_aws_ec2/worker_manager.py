@@ -2,10 +2,7 @@ import asyncio
 import logging
 import os
 import signal
-import uuid
 from typing import Any, Dict, List, Optional, Tuple
-
-import zmq
 
 try:
     import boto3
@@ -16,8 +13,9 @@ except ModuleNotFoundError as exc:
 
 from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
 from scaler.io import ymq
-from scaler.io.mixins import AsyncConnector
-from scaler.io.utility import create_async_connector, create_async_simple_context
+from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend
+from scaler.io.network_backends import get_network_backend_from_env
+from scaler.io.utility import generate_identity_from_name
 from scaler.protocol.capnp import (
     BaseMessage,
     WorkerManagerCommand,
@@ -76,7 +74,7 @@ class ORBAWSEC2WorkerAdapter:
 
         self._sdk: Optional[Any] = None
         self._ec2: Optional[Any] = None
-        self._context = None
+        self._backend: Optional[NetworkBackend] = None
         self._connector_external: Optional[AsyncConnector] = None
         self._created_security_group_id: Optional[str] = None
         self._created_key_name: Optional[str] = None
@@ -155,18 +153,12 @@ class ORBAWSEC2WorkerAdapter:
         validate_result = await self._sdk.validate_template(template_id=self._template_id)
         logging.info(f"validate_template result: {validate_result}")
 
-        self._context = create_async_simple_context()
+        self._backend = get_network_backend_from_env()
         self._name = "worker_manager_orb_aws_ec2"
-        self._ident = f"{self._name}|{uuid.uuid4().bytes.hex()}".encode()
+        self._ident = generate_identity_from_name(self._name)
 
-        self._connector_external = create_async_connector(
-            self._context,
-            name=self._name,
-            socket_type=zmq.DEALER,
-            address=self._address,
-            bind_or_connect="connect",
-            callback=self.__on_receive_external,
-            identity=self._ident,
+        self._connector_external = self._backend.create_async_connector(
+            identity=self._ident, callback=self.__on_receive_external
         )
 
     async def __terminate_all_workers(self) -> None:
@@ -267,6 +259,8 @@ class ORBAWSEC2WorkerAdapter:
 
     async def __get_loops(self):
         assert self._connector_external is not None
+        await self._connector_external.connect(self._address, ConnectorRemoteType.Binder)
+
         loops = [
             create_async_loop_routine(self._connector_external.routine, 0),
             create_async_loop_routine(self.__send_heartbeat, self._heartbeat_interval_seconds),
@@ -351,7 +345,7 @@ set +e
         # NOTE: --max-task-concurrency is not passed; scaler_worker_manager defaults to cpu_count - 1 workers,
         # where cpu_count is determined by the machine type configured by the user.
         script += f"""INSTANCE_ID=$(ec2-metadata --instance-id --quiet)
-nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address.to_address()} \
+nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} \
     --mode fixed \
     --worker-type ORB \
     --worker-manager-id "${{INSTANCE_ID}}" \
@@ -370,7 +364,7 @@ nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address.to_
 
         if adapter_config.object_storage_address:
             script += f" \
-    --object-storage-address {adapter_config.object_storage_address.to_string()}"
+    --object-storage-address {adapter_config.object_storage_address!r}"
 
         capabilities = worker_config.per_worker_capabilities.capabilities
         if capabilities:

@@ -5,8 +5,9 @@ from typing import Optional
 import psutil
 
 from scaler.client.agent.mixins import HeartbeatManager, ObjectManager
+from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.mixins import AsyncConnector
-from scaler.protocol.capnp import ClientHeartbeat, ClientHeartbeatEcho, ObjectStorageAddress, Resource
+from scaler.protocol.capnp import ClientHeartbeat, ClientHeartbeatEcho, Resource
 from scaler.utility.mixins import Looper
 
 
@@ -51,7 +52,10 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         if self._object_storage_address.done():
             return
 
-        self._object_storage_address.set_result(heartbeat.objectStorageAddress)
+        object_storage_address_message = heartbeat.objectStorageAddress
+        self._object_storage_address.set_result(
+            AddressConfig(SocketType.tcp, object_storage_address_message.host, object_storage_address_message.port)
+        )
 
     async def routine(self):
         if time.time() - self._last_scheduler_contact > self._death_timeout_seconds:
@@ -67,6 +71,6 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         await self.send_heartbeat()
         self._start_timestamp_ns = time.time_ns()
 
-    def get_object_storage_address(self) -> ObjectStorageAddress:
+    def get_object_storage_address(self) -> AddressConfig:
         """Returns the object storage configuration, or block until it receives it."""
         return self._object_storage_address.result()

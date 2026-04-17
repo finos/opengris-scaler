@@ -4,7 +4,7 @@ import enum
 from asyncio import Queue
 from typing import Dict, List, Optional, Set, Tuple, Union
 
-from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
+from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher
 from scaler.protocol.capnp import (
     GraphTask,
     ObjectMetadata,
@@ -84,7 +84,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         self._config_controller = config_controller
 
         self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncConnector] = None
+        self._binder_monitor: Optional[AsyncPublisher] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
 
         self._client_controller: Optional[ClientController] = None
@@ -99,7 +99,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
     def register(
         self,
         binder: AsyncBinder,
-        binder_monitor: AsyncConnector,
+        binder_monitor: AsyncPublisher,
         connector_storage: AsyncObjectStorageConnector,
         client_controller: ClientController,
         task_controller: TaskController,

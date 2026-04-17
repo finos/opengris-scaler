@@ -1,46 +1,46 @@
 import logging
-import os
-import socket
 import threading
-import uuid
 from typing import Optional
 
 import zmq
 
-from scaler.config.types.zmq import ZMQConfig
-from scaler.io.mixins import SyncConnector
+from scaler.config.types.address import AddressConfig
+from scaler.io.mixins import ConnectorRemoteType, SyncConnector
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.capnp import BaseMessage
 
 
 class ZMQSyncConnector(SyncConnector):
-    def __init__(self, context: zmq.Context, socket_type: int, address: ZMQConfig, identity: Optional[bytes]):
+    def __init__(
+        self, context: zmq.Context, identity: bytes, address: AddressConfig, connector_remote_type: ConnectorRemoteType
+    ):
+        self._context = context
+        self._identity = identity
         self._address = address
 
-        self._context = context
-        self._socket = self._context.socket(socket_type)
-
-        self._identity: bytes = (
-            f"{os.getpid()}|{socket.gethostname().split('.')[0]}|{uuid.uuid4()}".encode()
-            if identity is None
-            else identity
-        )
+        self._socket = self._context.socket(self.__to_zmq_socket_type(connector_remote_type))
 
         # set socket option
         self._socket.setsockopt(zmq.IDENTITY, self._identity)
         self._socket.setsockopt(zmq.SNDHWM, 0)
         self._socket.setsockopt(zmq.RCVHWM, 0)
 
-        self._socket.connect(self._address.to_address())
+        self._socket.connect(repr(self._address))
 
         self._lock = threading.Lock()
 
+    def __del__(self):
+        self.destroy()
+
     def destroy(self):
-        self._socket.close()
+        if self._socket.closed:
+            return
+
+        self._socket.close(linger=1)
 
     @property
-    def address(self) -> str:
-        return self._address.to_address()
+    def address(self) -> AddressConfig:
+        return self._address
 
     @property
     def identity(self) -> bytes:
@@ -65,4 +65,14 @@ class ZMQSyncConnector(SyncConnector):
         return result
 
     def __get_prefix(self):
-        return f"{self.__class__.__name__}[{self._identity.decode()}]:"
+        return f"{self.__class__.__name__}[{self._identity!r}]:"
+
+    @staticmethod
+    def __to_zmq_socket_type(connector_remote_type: ConnectorRemoteType) -> int:
+        if connector_remote_type == ConnectorRemoteType.Connector:
+            return zmq.PAIR
+
+        if connector_remote_type == ConnectorRemoteType.Binder:
+            return zmq.DEALER
+
+        raise ValueError(f"unsupported connector_remote_type={connector_remote_type}")

@@ -383,10 +383,10 @@ def _make_orb_config(
     from scaler.config.common.worker import WorkerConfig
     from scaler.config.common.worker_manager import WorkerManagerConfig
     from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
-    from scaler.config.types.zmq import ZMQConfig
+    from scaler.config.types.address import AddressConfig
 
     wmc = WorkerManagerConfig(
-        scheduler_address=ZMQConfig.from_string("tcp://127.0.0.1:6378"), worker_manager_id="wm-test"
+        scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:6378"), worker_manager_id="wm-test"
     )
     return ORBAWSEC2WorkerAdapterConfig(
         worker_manager_config=wmc,
@@ -533,9 +533,9 @@ class TestWorkerSchedulerAddress(unittest.TestCase):
         )
         self.assertIsNotNone(config.worker_manager_config.worker_scheduler_address)
         self.assertEqual(
-            config.worker_manager_config.effective_worker_scheduler_address.to_address(), "tcp://203.0.113.5:6378"
+            repr(config.worker_manager_config.effective_worker_scheduler_address), "tcp://203.0.113.5:6378"
         )
-        self.assertEqual(config.worker_manager_config.scheduler_address.to_address(), "tcp://127.0.0.1:6378")
+        self.assertEqual(repr(config.worker_manager_config.scheduler_address), "tcp://127.0.0.1:6378")
 
     def test_worker_scheduler_address_short_flag(self) -> None:
         from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
@@ -546,7 +546,7 @@ class TestWorkerSchedulerAddress(unittest.TestCase):
             argv=["--worker-manager-id", "wm-test", "tcp://127.0.0.1:6378", "-wsa", "tcp://203.0.113.5:6378"],
         )
         self.assertEqual(
-            config.worker_manager_config.effective_worker_scheduler_address.to_address(), "tcp://203.0.113.5:6378"
+            repr(config.worker_manager_config.effective_worker_scheduler_address), "tcp://203.0.113.5:6378"
         )
 
     def test_worker_scheduler_address_from_toml(self) -> None:
@@ -560,5 +560,5 @@ class TestWorkerSchedulerAddress(unittest.TestCase):
         }
         config = NativeWorkerManagerConfig.parse_with_section("scaler_worker_manager", section_data, argv=[])
         self.assertEqual(
-            config.worker_manager_config.effective_worker_scheduler_address.to_address(), "tcp://203.0.113.5:6378"
+            repr(config.worker_manager_config.effective_worker_scheduler_address), "tcp://203.0.113.5:6378"
         )

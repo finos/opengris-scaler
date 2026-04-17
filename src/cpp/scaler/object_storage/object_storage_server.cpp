@@ -156,7 +156,8 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
             for (auto& fut: _pendingSendMessageFuts) {
                 if (fut.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                     auto result = fut.get();
-                    if (!result.has_value()) {
+                    if (!result.has_value() &&
+                        result.error()._errorCode != scaler::ymq::Error::ErrorCode::SocketStopRequested) {
                         _logger.log(
                             scaler::ymq::Logger::LoggingLevel::error,
                             "ObjectStorageServer: send message failed: ",

@@ -2,7 +2,7 @@ from typing import Optional
 
 import psutil
 
-from scaler.io.mixins import AsyncBinder, AsyncConnector
+from scaler.io.mixins import AsyncBinder, AsyncPublisher
 from scaler.protocol.capnp import InformationRequest, Resource, StateScheduler
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import (
@@ -22,7 +22,7 @@ class VanillaInformationController(InformationController, Looper):
 
         self._process = psutil.Process()
 
-        self._monitor_binder: Optional[AsyncConnector] = None
+        self._monitor_binder: Optional[AsyncPublisher] = None
         self._binder: Optional[AsyncBinder] = None
         self._client_controller: Optional[ClientController] = None
         self._object_controller: Optional[ObjectController] = None
@@ -32,7 +32,7 @@ class VanillaInformationController(InformationController, Looper):
 
     def register_managers(
         self,
-        monitor_binder: AsyncConnector,
+        monitor_binder: AsyncPublisher,
         binder: AsyncBinder,
         client_controller: ClientController,
         object_controller: ObjectController,

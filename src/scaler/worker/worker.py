@@ -1,26 +1,22 @@
 import asyncio
 import logging
 import multiprocessing
-import os
+import pathlib
 import signal
-import tempfile
 import uuid
 from typing import Dict, Optional, Tuple
 
-import zmq.asyncio
-
 from scaler.config.defaults import PROFILING_INTERVAL_SECONDS
-from scaler.config.types.network_backend import NetworkBackend
-from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
-from scaler.config.types.zmq import ZMQConfig, ZMQType
+from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io import ymq
-from scaler.io.async_binder import ZMQAsyncBinder
-from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
-from scaler.io.utility import (
-    create_async_connector,
-    create_async_object_storage_connector,
-    get_scaler_network_backend_from_env,
+from scaler.io.mixins import (
+    AsyncBinder,
+    AsyncConnector,
+    AsyncObjectStorageConnector,
+    ConnectorRemoteType,
+    NetworkBackend,
 )
+from scaler.io.network_backends import YMQNetworkBackend, ZMQNetworkBackend, get_network_backend_from_env
 from scaler.protocol.capnp import (
     BaseMessage,
     ClientDisconnect,
@@ -50,8 +46,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self,
         event_loop: str,
         name: str,
-        address: ZMQConfig,
-        object_storage_address: Optional[ObjectStorageAddressConfig],
+        address: AddressConfig,
+        object_storage_address: Optional[AddressConfig],
         preload: Optional[str],
         capabilities: Dict[str, int],
         io_threads: int,
@@ -83,8 +79,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         else:
             self._ident = WorkerID.generate_worker_id(name)
 
-        self._address_path_internal = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
-        self._address_internal = ZMQConfig(ZMQType.ipc, host=self._address_path_internal)
+        self._address_internal: Optional[AddressConfig] = None
 
         self._task_queue_size = task_queue_size
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
@@ -98,7 +93,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._logging_level = logging_level
         self._worker_manager_id = worker_manager_id
 
-        self._context: Optional[zmq.asyncio.Context] = None
+        self._backend: Optional[NetworkBackend] = None
         self._connector_external: Optional[AsyncConnector] = None
         self._binder_internal: Optional[AsyncBinder] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
@@ -132,24 +127,21 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         setup_logger()
         register_event_loop(self._event_loop)
 
-        self._context = zmq.asyncio.Context()
+        self._backend = get_network_backend_from_env(io_threads=self._io_threads)
 
-        self._connector_external = create_async_connector(
-            self._context,
-            name=self.name,
-            socket_type=zmq.DEALER,
-            address=self._address,
-            bind_or_connect="connect",
-            callback=self.__on_receive_external,
-            identity=self._ident,
+        self._address_internal = self._backend.create_internal_address(
+            f"scaler_worker_{uuid.uuid4().hex}", same_process=False
         )
 
-        self._binder_internal = ZMQAsyncBinder(
-            context=self._context, name=self.name, address=self._address_internal, identity=self._ident
+        self._connector_external = self._backend.create_async_connector(
+            identity=self._ident, callback=self.__on_receive_external
         )
-        self._binder_internal.register(self.__on_receive_internal)
 
-        self._connector_storage = create_async_object_storage_connector()
+        self._binder_internal = self._backend.create_async_binder(
+            identity=self._ident, callback=self.__on_receive_internal
+        )
+
+        self._connector_storage = self._backend.create_async_object_storage_connector(identity=self._ident)
 
         self._heartbeat_manager = VanillaHeartbeatManager(
             object_storage_address=self._object_storage_address,
@@ -244,9 +236,12 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         raise TypeError(f"Unknown message from {processor_id!r}: {message}")
 
     async def __get_loops(self):
+        await self._connector_external.connect(self._address, ConnectorRemoteType.Binder)
+        await self._binder_internal.bind(self._address_internal)
+
         if self._object_storage_address is not None:
             # With a manually set storage address, immediately connect to the object storage server.
-            await self._connector_storage.connect(self._object_storage_address.host, self._object_storage_address.port)
+            await self._connector_storage.connect(self._object_storage_address)
 
         try:
             await asyncio.gather(
@@ -276,23 +271,24 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         except Exception as e:
             logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
-        if get_scaler_network_backend_from_env() == NetworkBackend.tcp_zmq:
+        if isinstance(self._backend, ZMQNetworkBackend):
             await self.__graceful_shutdown()
 
         self._connector_external.destroy()
         self._processor_manager.destroy("quit")
         self._binder_internal.destroy()
         self._connector_storage.destroy()
-        os.remove(self._address_path_internal)
+
+        if self._address_internal.type == SocketType.ipc:
+            pathlib.Path(self._address_internal.host).unlink(missing_ok=True)
 
         logging.info(f"{self.identity!r}: quit")
 
     def __register_signal(self):
-        backend = get_scaler_network_backend_from_env()
-        if backend == NetworkBackend.tcp_zmq:
+        if isinstance(self._backend, ZMQNetworkBackend):
             self._loop.add_signal_handler(signal.SIGINT, self.__destroy)
             self._loop.add_signal_handler(signal.SIGTERM, self.__destroy)
-        elif backend == NetworkBackend.ymq:
+        elif isinstance(self._backend, YMQNetworkBackend):
             self._loop.add_signal_handler(signal.SIGINT, lambda: asyncio.ensure_future(self.__graceful_shutdown()))
             self._loop.add_signal_handler(signal.SIGTERM, lambda: asyncio.ensure_future(self.__graceful_shutdown()))
 

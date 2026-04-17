@@ -125,6 +125,7 @@ max_task_concurrency
 Engine behavior and limits
 --------------------------
 
-* Allocation policy is fixed to ``even_load``.
+* Allocation policy is fixed to ``capability``: tasks that declare capabilities are only assigned to workers that
+  advertise those capabilities; tasks without capabilities can be assigned to any worker.
 * Ratio thresholds are fixed at ``10`` for scale-up and ``1`` for scale-down.
 * Threshold values are not runtime-configurable.

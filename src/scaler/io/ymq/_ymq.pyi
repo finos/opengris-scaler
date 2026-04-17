@@ -95,6 +95,9 @@ class BinderSocket:
     def close_connection(self, remote_identity: str) -> None:
         """Close the connection to a specific remote peer."""
 
+    def shutdown(self) -> None:
+        """Shut down the socket and fail pending callbacks."""
+
 class ConnectorSocket:
     """A connector socket that exchanges messages with a single remote peer.
 
@@ -131,6 +134,9 @@ class ConnectorSocket:
 
     def recv_message(self, callback: Callable[[Union[Message, Exception]], None]) -> None:
         """Receive a message from the connected remote peer."""
+
+    def shutdown(self) -> None:
+        """Shut down the socket and fail pending callbacks."""
 
 class ErrorCode(IntEnum):
     Uninit = 0

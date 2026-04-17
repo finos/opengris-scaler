@@ -252,12 +252,14 @@ void MessageConnection::onWriteDone(
             case UV_ENETDOWN:
                 // Connection closed/failed WHILE libuv issued the write to the OS.
                 // No need to handle this disconnect event, as this will be handled by onRead().
+                callback({});
                 return;
             case UV_ECANCELED:
                 // Connection closed/failed BEFORE libuv issued the write to the OS.
                 // FIXME: as we are certain these bytes haven't been issued on the wire, we could requeue these messages
                 // in case the connection is later re-established. But we can't be sure the MessageConnection object is
                 // still live, as this callback might be called after the connection object got destroyed.
+                callback(std::unexpected(Error {Error::ErrorCode::SocketStopRequested}));
                 return;
             default:
                 // Unexpected error

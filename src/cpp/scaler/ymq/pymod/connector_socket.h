@@ -195,24 +195,37 @@ static PyObject* PyConnectorSocket_bind(PyObject* cls, PyObject* args, PyObject*
     return reinterpret_cast<PyObject*>(self.take());
 }
 
-static void PyConnectorSocket_dealloc(PyConnectorSocket* self)
+static PyObject* PyConnectorSocket_shutdown(
+    PyConnectorSocket* self, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwargs)
 {
-    try {
-        if (self->socket) {
-            std::promise<void> onShutdown;
-            self->socket->shutdown([&onShutdown]() { onShutdown.set_value(); });
+    if (!self->socket) {
+        Py_RETURN_NONE;
+    }
 
-            // release the GIL until the socket is actually closed
-            Py_BEGIN_ALLOW_THREADS;
-            onShutdown.get_future().wait();
-            Py_END_ALLOW_THREADS;
-        }
+    try {
+        std::promise<void> onShutdown;
+        self->socket->shutdown([&onShutdown]() { onShutdown.set_value(); });
+
+        // release the GIL until the socket is actually closed
+        Py_BEGIN_ALLOW_THREADS;
+        onShutdown.get_future().wait();
+        Py_END_ALLOW_THREADS;
 
         // Explicitly call destructors for placement-new'd members
         self->socket.reset();
         self->ioContext.reset();
     } catch (...) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to deallocate ConnectorSocket");
+        PyErr_SetString(PyExc_RuntimeError, "Failed to shutdown ConnectorSocket");
+        return nullptr;
+    }
+
+    Py_RETURN_NONE;
+}
+
+static void PyConnectorSocket_dealloc(PyConnectorSocket* self)
+{
+    OwnedPyObject<> result = PyConnectorSocket_shutdown(self, nullptr, nullptr);
+    if (!result) {
         PyErr_WriteUnraisable((PyObject*)self);
     }
 
@@ -339,6 +352,7 @@ static PyGetSetDef PyConnectorSocket_properties[] = {
 static PyMethodDef PyConnectorSocket_methods[] = {
     {"connect", (PyCFunction)(void*)PyConnectorSocket_connect, METH_CLASS | METH_VARARGS | METH_KEYWORDS, nullptr},
     {"bind", (PyCFunction)(void*)PyConnectorSocket_bind, METH_CLASS | METH_VARARGS | METH_KEYWORDS, nullptr},
+    {"shutdown", (PyCFunction)(void*)PyConnectorSocket_shutdown, METH_VARARGS | METH_KEYWORDS, nullptr},
     {"send_message", (PyCFunction)(void*)PyConnectorSocket_send_message, METH_VARARGS | METH_KEYWORDS, nullptr},
     {"recv_message", (PyCFunction)(void*)PyConnectorSocket_recv_message, METH_VARARGS | METH_KEYWORDS, nullptr},
     {nullptr, nullptr, 0, nullptr},

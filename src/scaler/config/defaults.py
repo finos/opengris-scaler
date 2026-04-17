@@ -1,6 +1,6 @@
 import os
 
-from scaler.config.types.network_backend import NetworkBackend
+from scaler.config.types.network_backend import NetworkBackendType
 
 # ==============
 # SYSTEM OPTIONS
@@ -95,4 +95,4 @@ DEFAULT_LOGGING_PATHS = ("/dev/stdout",)
 # =======================
 # SCALER NETWORK BACKEND SPECIFIC OPTIONS
 
-SCALER_NETWORK_BACKEND = NetworkBackend.tcp_zmq
+SCALER_NETWORK_BACKEND = NetworkBackendType.tcp_zmq

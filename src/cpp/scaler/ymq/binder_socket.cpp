@@ -40,7 +40,12 @@ void BinderSocket::shutdown(ShutdownCallback onShutdownCallback) noexcept
             callback(std::unexpected {Error {Error::ErrorCode::SocketStopRequested}});
         }
 
-        // Clear all pending messages
+        // Fail all pending send callbacks
+        for (auto& [_, pendingMessages]: state->_pendingSendMessages) {
+            for (auto& pendingMessage: pendingMessages) {
+                pendingMessage.onMessageSent(std::unexpected {Error {Error::ErrorCode::SocketStopRequested}});
+            }
+        }
         state->_pendingSendMessages.clear();
         state->_pendingRecvMessages = {};
 

@@ -2,13 +2,14 @@ import logging
 import time
 from typing import Dict, Optional, Set, Tuple
 
-from scaler.io.mixins import AsyncBinder, AsyncConnector
+from scaler.io.mixins import AsyncBinder, AsyncPublisher
 from scaler.protocol.capnp import (
     ClientDisconnect,
     ClientHeartbeat,
     ClientHeartbeatEcho,
     ClientManagerStatus,
     ClientShutdownResponse,
+    ObjectStorageAddress,
     TaskCancel,
 )
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
@@ -26,7 +27,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
         self._client_to_task_ids: OneToManyDict[ClientID, TaskID] = OneToManyDict()
 
         self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncConnector] = None
+        self._binder_monitor: Optional[AsyncPublisher] = None
         self._object_controller: Optional[ObjectController] = None
         self._task_controller: Optional[TaskController] = None
         self._worker_controller: Optional[WorkerController] = None
@@ -36,7 +37,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
     def register(
         self,
         binder: AsyncBinder,
-        binder_monitor: AsyncConnector,
+        binder_monitor: AsyncPublisher,
         object_controller: ObjectController,
         task_controller: TaskController,
         worker_controller: WorkerController,
@@ -63,10 +64,14 @@ class VanillaClientController(ClientController, Looper, Reporter):
         return self._client_to_task_ids.remove_value(task_id)
 
     async def on_heartbeat(self, client_id: ClientID, info: ClientHeartbeat):
+        object_storage_address = self._config_controller.get_config("advertised_object_storage_address")
+
         await self._binder.send(
             client_id,
             ClientHeartbeatEcho(
-                objectStorageAddress=self._config_controller.get_config("advertised_object_storage_address")
+                objectStorageAddress=ObjectStorageAddress(
+                    host=object_storage_address.host, port=object_storage_address.port
+                )
             ),
         )
         if client_id not in self._client_last_seen:
