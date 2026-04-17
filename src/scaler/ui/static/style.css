@@ -321,6 +321,10 @@ th.sort-desc::after {
     border-radius: 2px;
 }
 
+.legend-swatch.legend-swatch-narrow {
+    width: 4px;
+}
+
 .legend-swatch.pattern-x {
     background: repeating-linear-gradient(
         135deg, transparent, transparent 3px, #333 3px, #333 4px

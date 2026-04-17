@@ -586,7 +586,26 @@ function updateTaskStream(data) {
     var legend = data.legend || [];
     var managerLegend = data.manager_legend || [];
     streamLegend.innerHTML = "";
-    // Add status patterns to legend
+
+    // Manager legend (narrow swatches matching the 4px row stripe)
+    if (managerLegend.length > 0) {
+        for (var k = 0; k < managerLegend.length; k++) {
+            var mItem = document.createElement("span");
+            mItem.className = "legend-item";
+            mItem.innerHTML = '<span class="legend-swatch legend-swatch-narrow" style="background:' +
+                managerLegend[k].color + '"></span> ' + escapeHTML(managerLegend[k].name);
+            streamLegend.appendChild(mItem);
+        }
+    }
+
+    // Separator + status patterns
+    if (managerLegend.length > 0) {
+        var sep1 = document.createElement("span");
+        sep1.className = "legend-item";
+        sep1.style.color = "#94a3b8";
+        sep1.textContent = "|";
+        streamLegend.appendChild(sep1);
+    }
     var failed = document.createElement("span");
     failed.className = "legend-item";
     failed.innerHTML = '<span class="legend-swatch pattern-x"></span> Failed';
@@ -596,22 +615,6 @@ function updateTaskStream(data) {
     canceled.className = "legend-item";
     canceled.innerHTML = '<span class="legend-swatch pattern-slash"></span> Canceled';
     streamLegend.appendChild(canceled);
-
-    // Manager legend first (with separator)
-    if (managerLegend.length > 0) {
-        var sep1 = document.createElement("span");
-        sep1.className = "legend-item";
-        sep1.style.color = "#94a3b8";
-        sep1.textContent = "|";
-        streamLegend.appendChild(sep1);
-        for (var k = 0; k < managerLegend.length; k++) {
-            var mItem = document.createElement("span");
-            mItem.className = "legend-item";
-            mItem.innerHTML = '<span class="legend-swatch" style="background:' +
-                managerLegend[k].color + '"></span> ' + escapeHTML(managerLegend[k].name);
-            streamLegend.appendChild(mItem);
-        }
-    }
 
     // Capability legend (with separator)
     if (legend.length > 0) {
