@@ -8,6 +8,8 @@ from scaler.io.utility import deserialize, serialize
 from scaler.io.ymq import BinderSocket, Bytes, IOContext
 from scaler.protocol.capnp import BaseMessage, BinderStatus
 
+logger = logging.getLogger(__name__)
+
 
 class YMQAsyncBinder(AsyncBinder):
     def __init__(self, context: IOContext, identity: bytes, callback: Callable[[bytes, BaseMessage], Awaitable[None]]):
@@ -53,7 +55,7 @@ class YMQAsyncBinder(AsyncBinder):
 
         message: Optional[BaseMessage] = deserialize(ymq_msg.payload.data)
         if message is None:
-            logging.error(f"received unknown message from {ymq_msg.address.data!r}: {ymq_msg.payload.data!r}")
+            logger.error(f"received unknown message from {ymq_msg.address.data!r}: {ymq_msg.payload.data!r}")
             return
 
         self.__count_received(message.__class__.__name__)

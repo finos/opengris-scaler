@@ -25,6 +25,8 @@ from scaler.scheduler.controllers.mixins import PolicyController, TaskController
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.mixins import Looper, Reporter
 
+logger = logging.getLogger(__name__)
+
 UINT8_MAX = 2**8 - 1
 
 
@@ -52,21 +54,21 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
     async def on_task_cancel(self, task_cancel: TaskCancel) -> WorkerID:
         worker = self._policy_controller.remove_task(task_cancel.taskId)
         if not worker.is_valid():
-            logging.error(f"cannot find task_id={task_cancel.taskId.hex()} in task workers")
+            logger.error(f"cannot find task_id={task_cancel.taskId.hex()} in task workers")
 
         return worker
 
     async def on_task_done(self, task_id: TaskID) -> WorkerID:
         worker = self._policy_controller.remove_task(task_id)
         if not worker.is_valid():
-            logging.error(f"Cannot find task in worker queue: task_id={task_id.hex()}")
+            logger.error(f"Cannot find task in worker queue: task_id={task_id.hex()}")
 
         return worker
 
     async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat):
         info.capabilities = capabilities_to_dict(info.capabilities)
         if self._policy_controller.add_worker(worker_id, info.capabilities, info.queueSize):
-            logging.info(f"worker {worker_id!r} connected")
+            logger.info(f"worker {worker_id!r} connected")
             await self._binder_monitor.send(
                 StateWorker(workerId=worker_id, state=WorkerState.connected, capabilities=info.capabilities)
             )
@@ -171,7 +173,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         if worker_id not in self._worker_alive_since:
             return
 
-        logging.info(f"{worker_id!r} disconnected")
+        logger.info(f"{worker_id!r} disconnected")
         await self._binder_monitor.send(
             StateWorker(workerId=worker_id, state=WorkerState.disconnected, capabilities={})
         )
@@ -186,7 +188,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         if not task_ids:
             return
 
-        logging.info(f"{len(task_ids)} task(s) failed due to worker {worker_id!r} disconnected")
+        logger.info(f"{len(task_ids)} task(s) failed due to worker {worker_id!r} disconnected")
         for task_id in task_ids:
             await self._task_controller.on_worker_disconnect(task_id, worker_id)
 

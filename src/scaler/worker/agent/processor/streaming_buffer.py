@@ -5,6 +5,8 @@ from scaler.io.mixins import SyncConnector
 from scaler.protocol.capnp import TaskLog
 from scaler.utility.identifiers import TaskID
 
+logger = logging.getLogger(__name__)
+
 
 class StreamingBuffer(io.TextIOBase):
     """A custom IO buffer that sends content as it's written."""
@@ -23,6 +25,6 @@ class StreamingBuffer(io.TextIOBase):
             try:
                 self._connector_agent.send(TaskLog(taskId=self._task_id, logType=self._log_type, content=content))
             except Exception as e:
-                logging.warning(f"Failed to send stream content: {e}")
+                logger.warning(f"Failed to send stream content: {e}")
 
         return 0

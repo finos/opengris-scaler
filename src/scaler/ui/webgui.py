@@ -6,6 +6,8 @@ from scaler.config.section.webgui import WebGUIConfig
 from scaler.ui.app import create_app
 from scaler.utility.logging.utility import setup_logger
 
+logger = logging.getLogger(__name__)
+
 
 def start_webgui(config: WebGUIConfig) -> None:
     setup_logger(
@@ -13,5 +15,5 @@ def start_webgui(config: WebGUIConfig) -> None:
     )
 
     app = create_app(config)
-    logging.info(f"Web GUI is now listening on: http://{config.gui_address}")
+    logger.info(f"Web GUI is now listening on: http://{config.gui_address}")
     uvicorn.run(app, host=config.gui_address.host, port=config.gui_address.port)

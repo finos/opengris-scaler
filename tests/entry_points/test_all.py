@@ -326,7 +326,9 @@ class TestRunWorkerManager(unittest.TestCase):
             mock_nm.return_value.run.return_value = None
             _run_worker_manager(config)
 
-        mock_log.assert_called_once_with(config.logging_config.paths, config.logging_config.config_file, "WARNING")
+        mock_log.assert_called_once_with(
+            config.logging_config.paths, config.logging_config.config_file, "WARNING", process_name=config._tag
+        )
 
     def _make_orb_aws_ec2_config(self, event_loop="builtin", logging_level="INFO"):
         from scaler.config.common.logging import LoggingConfig

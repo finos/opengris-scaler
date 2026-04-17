@@ -30,6 +30,8 @@ from scaler.scheduler.task.task_state_manager import TaskStateManager
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.mixins import Looper, Reporter
 
+logger = logging.getLogger(__name__)
+
 
 class VanillaTaskController(TaskController, Looper, Reporter):
     def __init__(self, config_controller: VanillaConfigController):
@@ -95,7 +97,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     async def on_task_new(self, task: Task):
         task.capabilities = capabilities_to_dict(task.capabilities)
         if self._task_state_manager.get_state_machine(task.taskId) is not None:
-            logging.error(
+            logger.error(
                 f"{task.taskId!r}: state machine already exists: "
                 f"{self._task_state_manager.get_state_machine(task.taskId)}"
             )
@@ -107,7 +109,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     async def on_task_cancel(self, client_id: ClientID, task_cancel: TaskCancel):
         state_machine = self._task_state_manager.get_state_machine(task_cancel.taskId)
         if state_machine is None:
-            logging.error(f"{task_cancel.taskId!r}: task not exists while received TaskCancel, send TaskCancelConfirm")
+            logger.error(f"{task_cancel.taskId!r}: task not exists while received TaskCancel, send TaskCancelConfirm")
 
             task_cancel_confirm = TaskCancelConfirm(
                 taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelNotFound
@@ -142,7 +144,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
         state_machine = self._task_state_manager.get_state_machine(task_cancel_confirm.taskId)
         if state_machine is None:
-            logging.error(
+            logger.error(
                 f"{task_cancel_confirm.taskId!r}: task not exists while received TaskCancelTaskCancelConfirm, ignore"
             )
             return
@@ -307,7 +309,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         worker = await self._worker_controller.on_task_cancel(task_cancel)
         assert isinstance(worker, WorkerID)
         if not worker.is_valid():
-            logging.error(f"{task_cancel.taskId!r}: cannot find task in worker to cancel")
+            logger.error(f"{task_cancel.taskId!r}: cannot find task in worker to cancel")
             await self.__routing(
                 task_cancel.taskId,
                 TaskTransition.taskCancelConfirmNotFound,
@@ -369,13 +371,13 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     async def __routing(self, task_id: TaskID, transition: TaskTransition, **kwargs):
         state_machine = self._task_state_manager.on_transition(task_id, transition)
         if state_machine is None:
-            logging.info(f"{task_id!r}: unknown transition: {transition}")
+            logger.info(f"{task_id!r}: unknown transition: {transition}")
             return
 
         try:
             await self._state_functions[state_machine.current_state()](task_id, state_machine, **kwargs)  # noqa
         except Exception as e:
-            logging.exception(
+            logger.exception(
                 f"{task_id!r}: exception happened, transition: {transition} path: {state_machine.get_path()}"
             )
             raise e

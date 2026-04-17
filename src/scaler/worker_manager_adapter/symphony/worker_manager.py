@@ -11,6 +11,8 @@ from scaler.worker_manager_adapter.symphony.worker import create_symphony_worker
 from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRunner
 from scaler.worker_manager_adapter.worker_process import WorkerProcess
 
+logger = logging.getLogger(__name__)
+
 Status = WorkerManagerCommandResponse.Status
 
 
@@ -59,7 +61,7 @@ class SymphonyWorkerProvisioner(WorkerProvisioner):
         for wid_bytes in worker_ids:
             wid = WorkerID(wid_bytes)
             if wid not in self._workers:
-                logging.warning(f"Worker with ID {wid!r} does not exist.")
+                logger.warning(f"Worker with ID {wid!r} does not exist.")
                 return [], Status.workerNotFound
 
         for wid_bytes in worker_ids:

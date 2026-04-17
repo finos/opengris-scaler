@@ -27,6 +27,8 @@ from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
 from scaler.worker.agent.processor.processor import Processor
 
+logger = logging.getLogger(__name__)
+
 _T = TypeVar("_T")
 
 
@@ -129,7 +131,7 @@ class Client:
         )
         self._agent.start()
 
-        logging.info(f"ScalerClient: connect to scheduler at {self._scheduler_address}")
+        logger.info(f"ScalerClient: connect to scheduler at {self._scheduler_address}")
 
         # Blocks until the agent receives the object storage address
         self._object_storage_address = self._agent.get_object_storage_address()
@@ -140,7 +142,7 @@ class Client:
             address=self._client_agent_address,
         )
 
-        logging.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
+        logger.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
         self._connector_storage: SyncObjectStorageConnector = self._backend.create_sync_object_storage_connector(
             identity=self._identity, address=self._object_storage_address
         )
@@ -328,7 +330,7 @@ class Client:
         try:
             results = [fut.result() for fut in futures]
         except Exception as e:
-            logging.exception(f"Error occured during scaler client.starmap:\n{e}")
+            logger.exception(f"Error occured during scaler client.starmap:\n{e}")
             self.disconnect()
             raise e
 
@@ -410,7 +412,7 @@ class Client:
         try:
             results = {k: v.result() for k, v in futures.items()}
         except Exception as e:
-            logging.exception(f"error happened when do scaler client.get:\n{e}")
+            logger.exception(f"error happened when do scaler client.get:\n{e}")
             self.disconnect()
             raise e
 
@@ -459,7 +461,7 @@ class Client:
             self.__destroy()
             return
 
-        logging.info(f"ScalerClient: disconnect from {self._scheduler_address!r}")
+        logger.info(f"ScalerClient: disconnect from {self._scheduler_address!r}")
 
         self._future_manager.cancel_all_futures()
 
@@ -486,7 +488,7 @@ class Client:
             self.__destroy()
             return
 
-        logging.info(f"ScalerClient: request shutdown for {self._scheduler_address!r}")
+        logger.info(f"ScalerClient: request shutdown for {self._scheduler_address!r}")
 
         self._future_manager.cancel_all_futures()
 

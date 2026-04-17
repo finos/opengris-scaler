@@ -17,7 +17,7 @@ def main():
         process_name="object_storage_server",
     )
 
-    log_format_str, log_level_str, log_paths = get_logger_info(logging.getLogger())
+    log_format_str, log_level_str, log_paths = get_logger_info(logging.getLogger("scaler"))
 
     try:
         ObjectStorageServer().run(

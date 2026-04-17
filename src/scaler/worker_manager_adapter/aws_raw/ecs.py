@@ -12,6 +12,8 @@ from scaler.worker_manager_adapter.common import format_capabilities
 from scaler.worker_manager_adapter.mixins import WorkerProvisioner
 from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRunner
 
+logger = logging.getLogger(__name__)
+
 Status = WorkerManagerCommandResponse.Status
 
 _WorkerGroupID = bytes
@@ -60,13 +62,13 @@ class ECSWorkerProvisioner(WorkerProvisioner):
         resp = self._ecs_client.describe_clusters(clusters=[self._ecs_cluster])
         clusters = resp.get("clusters") or []
         if not clusters or clusters[0]["status"] != "ACTIVE":
-            logging.info(f"ECS cluster '{self._ecs_cluster}' missing, creating it.")
+            logger.info(f"ECS cluster '{self._ecs_cluster}' missing, creating it.")
             self._ecs_client.create_cluster(clusterName=self._ecs_cluster)
 
         try:
             resp = self._ecs_client.describe_task_definition(taskDefinition=self._ecs_task_definition)
         except self._ecs_client.exceptions.ClientException:
-            logging.info(f"ECS task definition '{self._ecs_task_definition}' missing, creating it.")
+            logger.info(f"ECS task definition '{self._ecs_task_definition}' missing, creating it.")
             iam_client = aws_session.client("iam")
             try:
                 resp = iam_client.get_role(RoleName="ecsTaskExecutionRole")
@@ -177,7 +179,7 @@ class ECSWorkerProvisioner(WorkerProvisioner):
         )
         failures = resp.get("failures") or []
         if failures:
-            logging.error(f"ECS stop task failed: {failures}")
+            logger.error(f"ECS stop task failed: {failures}")
             return [], Status.unknownAction
 
         self._worker_groups.pop(group_id)

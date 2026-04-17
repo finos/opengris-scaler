@@ -7,6 +7,8 @@ from scaler.config.defaults import CAPNP_DATA_SIZE_LIMIT, CAPNP_MESSAGE_SIZE_LIM
 from scaler.protocol.capnp import BaseMessage, Message
 from scaler.protocol.helpers import PROTOCOL
 
+logger = logging.getLogger(__name__)
+
 try:
     from collections.abc import Buffer  # type: ignore[attr-defined]
 except ImportError:
@@ -20,7 +22,7 @@ def generate_identity_from_name(name: str) -> bytes:
 def deserialize(data: Buffer) -> Optional[BaseMessage]:
     payload = Message.from_bytes(bytes(data), traversal_limit_in_words=CAPNP_MESSAGE_SIZE_LIMIT)
     if not hasattr(payload, payload.which()):
-        logging.error(f"unknown message type: {payload.which()}")
+        logger.error(f"unknown message type: {payload.which()}")
         return None
 
     return getattr(payload, payload.which())

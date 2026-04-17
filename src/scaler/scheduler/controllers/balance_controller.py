@@ -8,6 +8,8 @@ from scaler.scheduler.controllers.mixins import PolicyController, TaskController
 from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.mixins import Looper
 
+logger = logging.getLogger(__name__)
+
 
 class VanillaBalanceController(Looper):
     def __init__(self, config_controller: VanillaConfigController, policy_controller: PolicyController):
@@ -35,7 +37,7 @@ class VanillaBalanceController(Looper):
             return
 
         worker_to_num_tasks = {worker: len(task_ids) for worker, task_ids in current_advice.items()}
-        logging.info(f"balancing task: {worker_to_num_tasks}")
+        logger.info(f"balancing task: {worker_to_num_tasks}")
         for worker, task_ids in current_advice.items():
             await self._binder_monitor.send(StateBalanceAdvice(workerId=worker, taskIds=task_ids))
 

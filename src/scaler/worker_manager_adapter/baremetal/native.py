@@ -11,6 +11,8 @@ from scaler.worker.worker import Worker
 from scaler.worker_manager_adapter.mixins import WorkerProvisioner
 from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRunner
 
+logger = logging.getLogger(__name__)
+
 Status = WorkerManagerCommandResponse.Status
 
 
@@ -74,7 +76,7 @@ class NativeWorkerProvisioner(WorkerProvisioner):
             self._workers[worker.identity] = worker
 
         def _on_signal(sig: int, frame: object) -> None:
-            logging.info("NativeWorkerProvisioner (FIXED): received signal %d, terminating workers", sig)
+            logger.info("NativeWorkerProvisioner (FIXED): received signal %d, terminating workers", sig)
             for worker in self._workers.values():
                 if worker.is_alive():
                     worker.terminate()
@@ -92,7 +94,7 @@ class NativeWorkerProvisioner(WorkerProvisioner):
         worker = self._create_worker()
         worker.start()
         self._workers[worker.identity] = worker
-        logging.info(f"Started native worker {worker.identity!r}")
+        logger.info(f"Started native worker {worker.identity!r}")
         return [bytes(worker.identity)], Status.success
 
     async def shutdown_workers(self, worker_ids: List[bytes]) -> Tuple[List[bytes], Status]:
@@ -102,7 +104,7 @@ class NativeWorkerProvisioner(WorkerProvisioner):
         for wid_bytes in worker_ids:
             wid = WorkerID(wid_bytes)
             if wid not in self._workers:
-                logging.warning(f"Worker with ID {wid!r} does not exist.")
+                logger.warning(f"Worker with ID {wid!r} does not exist.")
                 return [], Status.workerNotFound
 
         for wid_bytes in worker_ids:

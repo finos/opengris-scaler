@@ -22,6 +22,8 @@ from scaler.utility.identifiers import WorkerID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.snapshot import InformationSnapshot
 
+logger = logging.getLogger(__name__)
+
 
 class WorkerManagerController(Looper, Reporter):
     def __init__(self, config_controller: VanillaConfigController, policy_controller: PolicyController):
@@ -60,14 +62,14 @@ class WorkerManagerController(Looper, Reporter):
             manager_id = heartbeat.workerManagerID
             existing_source = self._manager_id_to_source.get(manager_id)
             if existing_source is not None and existing_source != source:
-                logging.warning(
+                logger.warning(
                     f"Duplicate worker_manager_id {manager_id!r}: source {source!r} rejected, "
                     f"already registered by source {existing_source!r}"
                 )
                 return
             self._manager_id_to_source[manager_id] = source
 
-            logging.info(f"WorkerManager {manager_id!r} connected")
+            logger.info(f"WorkerManager {manager_id!r} connected")
 
         self._manager_alive_since[source] = (time.time(), heartbeat)
 
@@ -109,7 +111,7 @@ class WorkerManagerController(Looper, Reporter):
         response_capabilities = capabilities_to_dict(getattr(response, "capabilities", {}))
         pending = self._pending_commands.pop(source, None)
         if pending is None:
-            logging.warning(f"Received response from {source!r} but no pending command found")
+            logger.warning(f"Received response from {source!r} but no pending command found")
 
         if response.command == WorkerManagerCommandType.startWorkers:
             if response.status == WorkerManagerCommandResponse.Status.success:
@@ -117,11 +119,11 @@ class WorkerManagerController(Looper, Reporter):
                     self._manager_capabilities[source] = response_capabilities
                 self._pending_worker_count[source] = self._pending_worker_count.get(source, 0) + 1
             else:
-                logging.warning(f"StartWorkers failed: {response.status._as_str()}")
+                logger.warning(f"StartWorkers failed: {response.status._as_str()}")
 
         elif response.command == WorkerManagerCommandType.shutdownWorkers:
             if response.status != WorkerManagerCommandResponse.Status.success:
-                logging.warning(f"ShutdownWorkers failed: {response.status._as_str()}")
+                logger.warning(f"ShutdownWorkers failed: {response.status._as_str()}")
 
     async def routine(self):
         await self._clean_managers()
@@ -206,7 +208,7 @@ class WorkerManagerController(Looper, Reporter):
         manager_id = heartbeat.workerManagerID
         self._manager_id_to_source.pop(manager_id, None)
 
-        logging.info(f"WorkerManager {source!r} disconnected")
+        logger.info(f"WorkerManager {source!r} disconnected")
         self._manager_alive_since.pop(source)
         self._pending_commands.pop(source, None)
         self._manager_capabilities.pop(source, None)

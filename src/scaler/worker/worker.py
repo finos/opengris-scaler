@@ -40,6 +40,8 @@ from scaler.worker.agent.profiling_manager import VanillaProfilingManager
 from scaler.worker.agent.task_manager import VanillaTaskManager
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 
+logger = logging.getLogger(__name__)
+
 
 class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __init__(
@@ -204,11 +206,11 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         if isinstance(message, ClientDisconnect):
             if message.disconnectType == ClientDisconnect.DisconnectType.shutdown:
                 raise ClientShutdownException("received client shutdown, quitting")
-            logging.error(f"Worker received invalid ClientDisconnect type, ignoring {message=}")
+            logger.error(f"Worker received invalid ClientDisconnect type, ignoring {message=}")
             return
 
         if isinstance(message, DisconnectResponse):
-            logging.error("Worker initiated DisconnectRequest got replied")
+            logger.error("Worker initiated DisconnectRequest got replied")
             self._task.cancel()
             return
 
@@ -265,11 +267,11 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
                 pass
             else:
-                logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
+                logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
         except (ClientShutdownException, TimeoutError) as e:
-            logging.info(f"{self.identity!r}: {str(e)}")
+            logger.info(f"{self.identity!r}: {str(e)}")
         except Exception as e:
-            logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
+            logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
         if isinstance(self._backend, ZMQNetworkBackend):
             await self.__graceful_shutdown()
@@ -282,7 +284,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         if self._address_internal.type == SocketType.ipc:
             pathlib.Path(self._address_internal.host).unlink(missing_ok=True)
 
-        logging.info(f"{self.identity!r}: quit")
+        logger.info(f"{self.identity!r}: quit")
 
     def __register_signal(self):
         if isinstance(self._backend, ZMQNetworkBackend):

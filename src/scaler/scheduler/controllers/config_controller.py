@@ -4,6 +4,8 @@ from typing import Any, Dict
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.scheduler.controllers.mixins import ConfigController
 
+logger = logging.getLogger(__name__)
+
 
 class VanillaConfigController(ConfigController):
     def __init__(self, config: SchedulerConfig):
@@ -23,9 +25,9 @@ class VanillaConfigController(ConfigController):
 
         if path not in self._config:
             self._config[path] = value
-            logging.info(f"ConfigController: {path} = {value}")
+            logger.info(f"ConfigController: {path} = {value}")
             return
 
         old_value = self._config[path]
         self._config[path] = value
-        logging.info(f"ConfigController: updated `{path}` from `{old_value}` to `{value}`")
+        logger.info(f"ConfigController: updated `{path}` from `{old_value}` to `{value}`")

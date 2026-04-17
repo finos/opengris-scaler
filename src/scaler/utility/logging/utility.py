@@ -8,6 +8,8 @@ import typing
 
 from scaler.config.defaults import DEFAULT_LOGGING_PATHS
 
+logger = logging.getLogger(__name__)
+
 
 class LogType(enum.Enum):
     Screen = enum.auto()
@@ -48,7 +50,7 @@ def setup_logger(
 
     resolved_log_paths = [LogPath(log_type=__detect_log_types(file_name), path=file_name) for file_name in log_paths]
     __logging_config(log_paths=resolved_log_paths, logging_level=logging_level, process_name=process_name)
-    logging.info(f"logging to {log_paths}")
+    logger.info(f"logging to {log_paths}")
 
 
 def __detect_log_types(file_name: str) -> LogType:
@@ -71,7 +73,10 @@ def __generate_log_config(process_name: str) -> typing.Dict:
             "verbose": {"format": verbose_format, "datefmt": "%Y-%m-%d %H:%M:%S%z"},
         },
         "handlers": {},
-        "loggers": {"": {"handlers": [], "level": "DEBUG", "propagate": True}},
+        # Configure only the "scaler" logger so we do not mutate the host
+        # application's root logger (library-safety). propagate=False prevents
+        # our handlers from re-emitting through any root handler the host set up.
+        "loggers": {"scaler": {"handlers": [], "level": "DEBUG", "propagate": False}},
     }
 
 
@@ -86,17 +91,17 @@ def __logging_config(
 
     config = __generate_log_config(process_name)
     handlers = config["handlers"]
-    root_loggers = config["loggers"][""]["handlers"]
+    scaler_handlers = config["loggers"]["scaler"]["handlers"]
 
     for log_path in log_paths:
         if log_path.log_type == LogType.Screen:
             handlers["console"] = __create_stdout_handler(logging_level)
-            root_loggers.append("console")
+            scaler_handlers.append("console")
             continue
 
         elif log_path.log_type == LogType.File:
             handlers[log_path.path] = __create_time_rotating_file_handler(logging_level, log_path.path)
-            root_loggers.append(log_path.path)
+            scaler_handlers.append(log_path.path)
             continue
 
         raise TypeError(f"Unsupported LogPath: {log_path}")
