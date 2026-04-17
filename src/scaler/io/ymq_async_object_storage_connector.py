@@ -10,6 +10,8 @@ from scaler.protocol.helpers import from_capnp_object_id, to_capnp_object_id
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ObjectID
 
+logger = logging.getLogger(__name__)
+
 
 class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
     """An asyncio connector that uses YMQ to connect to a Scaler's object storage instance."""
@@ -76,7 +78,7 @@ class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
         pending_get_future = self._pending_get_requests.pop(from_capnp_object_id(header.objectID), None)
 
         if pending_get_future is None:
-            logging.warning(f"unknown get-ok response for unrequested object_id={repr(header.objectID)}.")
+            logger.warning(f"unknown get-ok response for unrequested object_id={repr(header.objectID)}.")
             return
 
         pending_get_future.set_result(payload)

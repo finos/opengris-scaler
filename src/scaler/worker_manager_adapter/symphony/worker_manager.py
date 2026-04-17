@@ -15,6 +15,7 @@ from scaler.worker_manager_adapter.worker_process import WorkerProcess
 
 if TYPE_CHECKING:
     from scaler.protocol.capnp import WorkerManagerCommand
+logger = logging.getLogger(__name__)
 
 
 class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
@@ -64,7 +65,7 @@ class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
         )
         worker.start()
         self._workers.append(worker)
-        logging.info(f"Started Symphony worker {worker.identity!r}")
+        logger.info(f"Started Symphony worker {worker.identity!r}")
 
     async def start_units(self, count: int) -> None:
         for _ in range(count):
@@ -73,11 +74,11 @@ class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
     async def stop_units(self, count: int) -> None:
         to_stop = self._workers[:count]
         if len(to_stop) < count:
-            logging.warning(f"Requested to stop {count} worker(s) but only {len(to_stop)} available.")
+            logger.warning(f"Requested to stop {count} worker(s) but only {len(to_stop)} available.")
         for worker in to_stop:
             os.kill(worker.pid, signal.SIGINT)
             self._workers.pop(0)
-            logging.info(f"Stopped Symphony worker {worker.identity!r}")
+            logger.info(f"Stopped Symphony worker {worker.identity!r}")
 
     async def terminate(self) -> None:
         self._capacity_coordinator.cancel()
