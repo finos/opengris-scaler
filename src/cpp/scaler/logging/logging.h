@@ -1,5 +1,8 @@
 #pragma once
 
+#include <uv.h>
+
+#include <cctype>
 #include <cstddef>
 #include <fstream>
 #include <iostream>
@@ -26,10 +29,11 @@ public:
 #endif
 
     Logger(
-        std::string log_format             = "%(levelname)s: %(message)s",
+        std::string log_format             = "%(asctime)s %(levelname)s %(name)s[%(process)d]: %(message)s",
         std::vector<std::string> log_paths = {"/dev/stdout"},
-        LoggingLevel level                 = DEFAULT_LOGGING_LEVEL)
-        : _log_paths(std::move(log_paths)), _level(level)
+        LoggingLevel level                 = DEFAULT_LOGGING_LEVEL,
+        std::string name                   = "scaler")
+        : _log_paths(std::move(log_paths)), _level(level), _name(std::move(name))
     {
         preprocessFormat(log_format);
     }
@@ -81,12 +85,15 @@ public:
                         (output_stream << ... << std::forward<Args>(args));
                     }
                 } else if (part.content == "name") {
-                    output_stream << "cpp-logger";
+                    output_stream << _name;
+                } else if (part.content == "process") {
+                    uv_pid_t pid = uv_os_getpid();
+                    output_stream << pid;
                 } else if (part.content == "lineno") {
                     output_stream << "0";
                 } else {
-                    // Unknown token, print literally
-                    output_stream << "%(" << part.content << ")s";
+                    // Unknown token, print literally (with the original specifier)
+                    output_stream << "%(" << part.content << ")" << part.spec;
                 }
             } else {
                 output_stream << part.content;
@@ -115,11 +122,15 @@ private:
     struct FormatPart {
         std::string content;
         bool is_token;
+        // For tokens, the format specifier letter that followed ')' (e.g. 's' in "%(name)s",
+        // 'd' in "%(process)d"). Kept so that unknown tokens can be emitted verbatim.
+        char spec = '\0';
     };
 
     std::vector<FormatPart> _processed_format;
     std::vector<std::string> _log_paths;
     LoggingLevel _level;
+    std::string _name;
 
     void preprocessFormat(const std::string& format)
     {
@@ -138,11 +149,12 @@ private:
             }
 
             if (format.length() > find_pos + 1 && format[find_pos + 1] == '(') {
-                size_t token_end = format.find(")s", find_pos + 2);
-                if (token_end != std::string::npos) {
-                    std::string token = format.substr(find_pos + 2, token_end - (find_pos + 2));
-                    _processed_format.push_back({token, true});
-                    last_pos = token_end + 2;
+                size_t close_paren = format.find(')', find_pos + 2);
+                if (close_paren != std::string::npos && close_paren + 1 < format.length() &&
+                    std::isalpha(static_cast<unsigned char>(format[close_paren + 1]))) {
+                    std::string token = format.substr(find_pos + 2, close_paren - (find_pos + 2));
+                    _processed_format.push_back({token, true, format[close_paren + 1]});
+                    last_pos = close_paren + 2;
                     continue;
                 }
             }
