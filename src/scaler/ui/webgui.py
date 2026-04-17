@@ -8,7 +8,9 @@ from scaler.utility.logging.utility import setup_logger
 
 
 def start_webgui(config: WebGUIConfig) -> None:
-    setup_logger(config.logging_config.paths, config.logging_config.config_file, config.logging_config.level)
+    setup_logger(
+        config.logging_config.paths, config.logging_config.config_file, config.logging_config.level, process_name="gui"
+    )
 
     app = create_app(config)
     logging.info(f"Web GUI is now listening on: http://{config.gui_address}")

@@ -71,7 +71,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         await self._task
 
     def __initialize(self) -> None:
-        setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
+        setup_logger(self._logging_paths, self._logging_config_file, self._logging_level, process_name="scheduler")
         register_event_loop(self._scheduler_config.event_loop)
 
     def __register_signal(self):

@@ -45,7 +45,9 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
         raise TimeoutError(f"ObjectStorageServer at {host}:{port} failed to start within 30 seconds")
 
     def run(self) -> None:
-        setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
+        setup_logger(
+            self._logging_paths, self._logging_config_file, self._logging_level, process_name="object_storage_server"
+        )
         logging.info(f"ObjectStorageServer: start and listen to {self._bind_address!r}")
 
         log_format_str, log_level_str, logging_paths = get_logger_info(logging.getLogger())
