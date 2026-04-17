@@ -19,6 +19,8 @@ from scaler.utility.identifiers import WorkerID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.snapshot import InformationSnapshot
 
+logger = logging.getLogger(__name__)
+
 
 class WorkerManagerController(Looper, Reporter):
     def __init__(self, config_controller: VanillaConfigController, policy_controller: PolicyController):
@@ -50,14 +52,14 @@ class WorkerManagerController(Looper, Reporter):
             manager_id = heartbeat.workerManagerID
             existing_source = self._manager_id_to_source.get(manager_id)
             if existing_source is not None and existing_source != source:
-                logging.warning(
+                logger.warning(
                     f"Duplicate worker_manager_id {manager_id!r}: source {source!r} rejected, "
                     f"already registered by source {existing_source!r}"
                 )
                 return
             self._manager_id_to_source[manager_id] = source
 
-            logging.info(f"WorkerManager {manager_id!r} connected")
+            logger.info(f"WorkerManager {manager_id!r} connected")
 
         self._manager_alive_since[source] = (time.time(), heartbeat)
 
@@ -159,7 +161,7 @@ class WorkerManagerController(Looper, Reporter):
         manager_id = heartbeat.workerManagerID
         self._manager_id_to_source.pop(manager_id, None)
 
-        logging.info(f"WorkerManager {source!r} disconnected")
+        logger.info(f"WorkerManager {source!r} disconnected")
         self._manager_alive_since.pop(source)
         self._last_desired_total.pop(source, None)
 

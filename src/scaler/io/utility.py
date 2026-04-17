@@ -8,6 +8,8 @@ from scaler.protocol.capnp import BaseMessage, Message
 from scaler.protocol.helpers import PROTOCOL
 from scaler.utility.exceptions import CapnpDeserializationError
 
+logger = logging.getLogger(__name__)
+
 try:
     from collections.abc import Buffer  # type: ignore[attr-defined]
 except ImportError:
@@ -24,7 +26,7 @@ def deserialize(data: Buffer) -> Optional[BaseMessage]:
     except (ValueError, RuntimeError) as e:
         raise CapnpDeserializationError(str(e)) from e
     if not hasattr(payload, payload.which()):
-        logging.error(f"unknown message type: {payload.which()}")
+        logger.error(f"unknown message type: {payload.which()}")
         return None
 
     return getattr(payload, payload.which())
