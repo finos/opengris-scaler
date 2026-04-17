@@ -20,6 +20,9 @@
                 "[python]": {
                     "editor.defaultFormatter": "ms-python.black-formatter",
                     "editor.formatOnSave": true,
+                    "editor.codeActionsOnSave": {
+                        "source.organizeImports": "explicit"
+                    },
                     "editor.tabSize": 4,
                     "files.trimTrailingWhitespace": true
                 },

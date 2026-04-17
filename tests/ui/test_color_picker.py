@@ -1,6 +1,6 @@
 import unittest
 
-from scaler.ui.app import _capabilities_color, _extract_hue, _find_best_hue, _hue_distance, _MIN_HUE_DISTANCE
+from scaler.ui.app import _MIN_HUE_DISTANCE, _capabilities_color, _extract_hue, _find_best_hue, _hue_distance
 
 
 class TestHueDistance(unittest.TestCase):
