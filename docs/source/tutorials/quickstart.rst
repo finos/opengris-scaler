@@ -1,6 +1,11 @@
 Quickstart
 ==========
 
+.. image:: images/quickstart_steps.svg
+   :alt: Quickstart steps overview
+
+Interested? Try it out yourself, step by step.
+
 Quick Installation
 ------------------
 
