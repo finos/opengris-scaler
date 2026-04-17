@@ -127,7 +127,6 @@ class WorkerManagerController(Looper, Reporter):
 
     def get_status(self) -> ScalingManagerStatus:
         managed_workers = self.get_managed_workers()
-        base_status = self._policy_controller.get_scaling_status(managed_workers)
 
         now = time.time()
         details = []

@@ -11,6 +11,7 @@
         "vscode": {
             "extensions": [
                 "ms-python.black-formatter",
+                "ms-python.flake8",
                 "ms-python.isort",
                 "ms-python.python",
                 "ms-vscode.cmake-tools",
@@ -28,6 +29,7 @@
                 },
                 "black-formatter.args": ["-l", "120", "-C"],
                 "isort.args": ["--profile", "black", "--line-length", "120"],
+                "flake8.args": ["--max-line-length", "120", "--extend-ignore", "E203"],
                 "cmake.configureOnOpen": false
             }
         }
