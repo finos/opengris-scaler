@@ -5,6 +5,8 @@ import os
 import traceback
 from typing import Any, Dict, List, Optional, Tuple
 
+logger = logging.getLogger(__name__)
+
 
 class PreloadSpecError(Exception):
     pass
@@ -17,7 +19,7 @@ def execute_preload(spec: str) -> None:
     Example: 'foo.bar:preload_function("a", 2)'
     """
     module_path, func_name, args, kwargs = _parse_preload_spec(spec)
-    logging.info("preloading: %s:%s with args=%s kwargs=%s", module_path, func_name, args, kwargs)
+    logger.info("preloading: %s:%s with args=%s kwargs=%s", module_path, func_name, args, kwargs)
 
     try:
         module = importlib.import_module(module_path)
@@ -31,7 +33,7 @@ def execute_preload(spec: str) -> None:
     try:
         target = getattr(module, func_name)
     except AttributeError:
-        logging.exception(f"Failed to find attribute {func_name!r} in {module_path!r}.")
+        logger.exception(f"Failed to find attribute {func_name!r} in {module_path!r}.")
         raise PreloadSpecError(f"Failed to find attribute {func_name!r} in {module_path!r}.")
 
     if not callable(target):

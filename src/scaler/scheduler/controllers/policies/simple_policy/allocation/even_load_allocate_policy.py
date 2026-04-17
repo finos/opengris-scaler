@@ -8,6 +8,8 @@ from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
 from scaler.utility.queues.indexed_queue import IndexedQueue
 
+logger = logging.getLogger(__name__)
+
 
 class EvenLoadAllocatePolicy(TaskAllocatePolicy):
     """This Allocator policy is trying to make all workers load as equal as possible"""
@@ -25,7 +27,7 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
             return False
 
         if len(capabilities) > 0:
-            logging.warning(f"allocate policy ignores worker capabilities: {capabilities!r}.")
+            logger.warning(f"allocate policy ignores worker capabilities: {capabilities!r}.")
 
         self._workers_to_task_ids[worker] = IndexedQueue()
         self._workers_to_queue_size[worker] = queue_size
@@ -112,7 +114,7 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
 
     def assign_task(self, task: Task) -> WorkerID:
         if len(task.capabilities) > 0:
-            logging.warning(f"allocate policy ignores task capabilities: {task.capabilities!r}.")
+            logger.warning(f"allocate policy ignores task capabilities: {task.capabilities!r}.")
 
         task_id = task.taskId
 

@@ -3,6 +3,8 @@ import enum
 import logging
 from typing import Awaitable, Callable, Optional
 
+logger = logging.getLogger(__name__)
+
 
 class EventLoopType(enum.Enum):
     builtin = enum.auto()
@@ -28,7 +30,7 @@ def register_event_loop(event_loop_type: str):
 
     assert event_loop_type in EventLoopType.allowed_types()
 
-    logging.info(f"use event loop: {event_loop_type}")
+    logger.info(f"use event loop: {event_loop_type}")
 
 
 def create_async_loop_routine(routine: Callable[[], Awaitable], seconds: int):
@@ -40,10 +42,10 @@ def create_async_loop_routine(routine: Callable[[], Awaitable], seconds: int):
 
     async def loop():
         if seconds < 0:
-            logging.info(f"{routine.__self__.__class__.__name__}: disabled")  # type: ignore[attr-defined]
+            logger.info(f"{routine.__self__.__class__.__name__}: disabled")  # type: ignore[attr-defined]
             return
 
-        logging.info(f"{routine.__self__.__class__.__name__}: started")  # type: ignore[attr-defined]
+        logger.info(f"{routine.__self__.__class__.__name__}: started")  # type: ignore[attr-defined]
         try:
             while True:
                 await routine()
@@ -53,7 +55,7 @@ def create_async_loop_routine(routine: Callable[[], Awaitable], seconds: int):
         except KeyboardInterrupt:
             pass
 
-        logging.info(f"{routine.__self__.__class__.__name__}: exited")  # type: ignore[attr-defined]
+        logger.info(f"{routine.__self__.__class__.__name__}: exited")  # type: ignore[attr-defined]
 
     return loop()
 
