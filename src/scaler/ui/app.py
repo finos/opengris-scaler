@@ -35,7 +35,7 @@ _logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
 
 BATCH_INTERVAL_SECONDS = 0.1
-TASK_LOG_MAX_SIZE = 100
+TASK_LOG_MAX_SIZE = 500
 
 COMPLETED_TASK_STATUSES = (
     TaskState.success,
