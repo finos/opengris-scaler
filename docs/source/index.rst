@@ -5,19 +5,28 @@
 
 .. title:: OpenGris Scaler
 
-.. raw:: html
-
-   <div style="display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 0.8rem 0;">
-     <h1 style="margin: 0;">OpenGris Scaler</h1>
-   </div>
+OpenGris Scaler
+===============
 
 Scaler is a lightweight distributed computing Python framework that lets you easily distribute tasks across single/multiple local machines, multiple different clouds.
 
 .. image:: tutorials/images/client_usage_framework.svg
    :alt: Scaler architecture
 
+Performances
+------------
+
+Scaler is efficient at scaling short tasks over a high number of CPUs with very low overhead and minimal latency.
+
+The following benchmark shows the scaling performance of Scaler when running
+`this parallel task <https://github.com/finos/opengris-parfun/blob/main/examples/count_bigrams/main.py>`_:
+
+.. image:: tutorials/images/benchmark_count_bigrams.svg
+   :alt: Scaler scaling benchmark using parfun
+   :width: 750px
+
 Content
-=======
+-------
 
 .. toctree::
    :maxdepth: 2
