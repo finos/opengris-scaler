@@ -130,18 +130,14 @@ TEST_F(LoggingUnitTest, TestLogsProcessToken)
 TEST_F(LoggingUnitTest, TestLogsNameToken)
 {
     scaler::ymq::Logger logger(
-        "%(name)s: %(message)s",
-        {curr_log_filename},
-        scaler::ymq::Logger::LoggingLevel::info,
-        "scheduler");
+        "%(name)s: %(message)s", {curr_log_filename}, scaler::ymq::Logger::LoggingLevel::info, "scheduler");
     logger.log(scaler::ymq::Logger::LoggingLevel::info, "hello");
     EXPECT_EQ(readLogFile(curr_log_filename), "scheduler: hello");
 }
 
 TEST_F(LoggingUnitTest, TestLogsUnknownTokenPreservesSpecifier)
 {
-    scaler::ymq::Logger logger(
-        "Count %(unknown)d here", {curr_log_filename}, scaler::ymq::Logger::LoggingLevel::info);
+    scaler::ymq::Logger logger("Count %(unknown)d here", {curr_log_filename}, scaler::ymq::Logger::LoggingLevel::info);
     logger.log(scaler::ymq::Logger::LoggingLevel::info);
     EXPECT_EQ(readLogFile(curr_log_filename), "Count %(unknown)d here");
 }
