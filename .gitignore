@@ -47,3 +47,4 @@ orb/metrics/
 .agents-local.md
 
 .ipynb_checkpoints/
+.claude/
