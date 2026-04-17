@@ -16,6 +16,8 @@ from scaler.config.defaults import CLEANUP_INTERVAL_SECONDS
 from scaler.utility.exceptions import DeserializeObjectError
 from scaler.utility.identifiers import ClientID, ObjectID
 
+logger = logging.getLogger(__name__)
+
 
 class ObjectCache(threading.Thread):
     def __init__(self, garbage_collect_interval_seconds: int, trim_memory_threshold_bytes: int):
@@ -67,7 +69,7 @@ class ObjectCache(threading.Thread):
             try:
                 deserialized: Any = self.deserialize(client, object_bytes)
             except Exception as exc:  # noqa: BLE001
-                logging.exception(f"failed to deserialize received {object_id!r}, length={len(object_bytes)}")
+                logger.exception(f"failed to deserialize received {object_id!r}, length={len(object_bytes)}")
                 deserialized = DeserializeObjectError(
                     f"failed to deserialize {object_id!r}: {type(exc).__name__}: {exc}"
                 )

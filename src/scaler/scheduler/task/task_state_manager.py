@@ -5,6 +5,8 @@ from scaler.protocol.capnp import TaskState, TaskTransition
 from scaler.scheduler.task.task_state_machine import TaskStateMachine
 from scaler.utility.identifiers import TaskID
 
+logger = logging.getLogger(__name__)
+
 
 class TaskStateManager:
     TASK_STATES = (
@@ -51,7 +53,7 @@ class TaskStateManager:
 
         task_state_machine = self._task_id_to_state_machine.get(task_id, None)
         if task_state_machine is None:
-            logging.error(f"{task_id!r}: unknown {transition=} for non-existed state machine")
+            logger.error(f"{task_id!r}: unknown {transition=} for non-existed state machine")
             return None
 
         transit_success = task_state_machine.on_transition(transition)
@@ -59,7 +61,7 @@ class TaskStateManager:
             self._statistics[task_state_machine.previous_state()] -= 1
             self._statistics[task_state_machine.current_state()] += 1
         else:
-            logging.error(
+            logger.error(
                 f"{task_id!r}: cannot apply {transition} to current state" f" {task_state_machine.current_state()}"
             )
 
