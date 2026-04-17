@@ -5,6 +5,7 @@ import bidict
 
 from scaler.protocol import capnp
 from scaler.protocol.capnp import ObjectID as CapnpObjectID
+from scaler.protocol.capnp import ScalingManagerStatus
 from scaler.utility.identifiers import ObjectID as ScalerObjectID
 
 OBJECT_ID_FORMAT = "!QQQQ"
@@ -36,7 +37,7 @@ def capabilities_to_dict(capabilities) -> Dict[str, int]:
 
 def build_scaling_manager_status(
     managed_workers: Dict[bytes, list], worker_manager_details: Optional[list] = None
-) -> "capnp.ScalingManagerStatus":
+) -> ScalingManagerStatus:
     details = worker_manager_details or []
     return capnp.ScalingManagerStatus(
         managedWorkers=[

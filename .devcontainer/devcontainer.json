@@ -13,6 +13,7 @@
                 "ms-python.black-formatter",
                 "ms-python.flake8",
                 "ms-python.isort",
+                "ms-python.mypy-type-checker",
                 "ms-python.python",
                 "ms-vscode.cmake-tools",
                 "ms-vscode.cpptools"

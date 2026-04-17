@@ -827,7 +827,7 @@ class WebUIApp:
                 "lag": format_microseconds(worker_data.lagUS),
                 "itl": worker_data.itl,
                 "last_seen": format_seconds(worker_data.lastS),
-                "capabilities": _display_capabilities(self._worker_capabilities.get(worker_name, set())),
+                "capabilities": _display_capabilities(set(self._worker_capabilities.get(worker_name, {}).keys())),
             }
 
             # update processor details
