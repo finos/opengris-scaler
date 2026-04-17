@@ -58,13 +58,65 @@ def _format_worker_name(worker_name: str, cutoff: int = 15) -> str:
     return worker_name[:cutoff] + "+"
 
 
+# Minimum angular distance (degrees) between any two assigned hues.
+# 30° allows ~12 maximally-distinct slots; beyond that the algorithm
+# degrades gracefully by placing new hues in the largest available gap.
+_MIN_HUE_DISTANCE = 30
+
+
+def _hue_distance(a: float, b: float) -> float:
+    """Angular distance between two hues on the 360° wheel."""
+    d = abs(a - b) % 360
+    return min(d, 360 - d)
+
+
+def _extract_hue(hsl_str: str) -> Optional[float]:
+    """Extract hue from an ``hsl(H,S%,L%)`` string. Returns *None* for non-HSL values."""
+    if not hsl_str.startswith("hsl("):
+        return None
+    try:
+        return float(hsl_str[4 : hsl_str.index(",")])
+    except (ValueError, IndexError):
+        return None
+
+
+def _find_best_hue(preferred_hue: float, existing_hues: List[float]) -> float:
+    """Return *preferred_hue* if it is far enough from every existing hue,
+    otherwise place the new hue at the midpoint of the largest angular gap."""
+    if not existing_hues:
+        return preferred_hue
+
+    # Check whether the preferred hue has enough distance from all existing ones.
+    if all(_hue_distance(preferred_hue, h) >= _MIN_HUE_DISTANCE for h in existing_hues):
+        return preferred_hue
+
+    # Find the largest gap on the hue wheel and place the new hue at its midpoint.
+    sorted_hues = sorted(existing_hues)
+    best_gap = 0.0
+    best_mid = preferred_hue  # fallback
+
+    for i in range(len(sorted_hues)):
+        next_hue = sorted_hues[(i + 1) % len(sorted_hues)]
+        prev_hue = sorted_hues[i]
+        gap = (next_hue - prev_hue) % 360
+        if gap > best_gap:
+            best_gap = gap
+            best_mid = (prev_hue + gap / 2) % 360
+
+    return best_mid
+
+
 def _capabilities_color(capabilities_str: str, color_map: Dict[str, str]) -> str:
     if capabilities_str not in color_map:
         h = hashlib.md5(capabilities_str.encode()).hexdigest()
-        hue = int(h[:4], 16) % 360
+        preferred_hue = int(h[:4], 16) % 360
         sat = 55 + (int(h[4:6], 16) % 20)  # 55-75%
         lit = 45 + (int(h[6:8], 16) % 15)  # 45-60%
-        color_map[capabilities_str] = f"hsl({hue},{sat}%,{lit}%)"
+
+        existing_hues = [eh for v in color_map.values() if (eh := _extract_hue(v)) is not None]
+        hue = _find_best_hue(preferred_hue, existing_hues)
+
+        color_map[capabilities_str] = f"hsl({hue:.0f},{sat}%,{lit}%)"
     return color_map[capabilities_str]
 
 
