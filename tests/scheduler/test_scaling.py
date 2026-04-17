@@ -730,8 +730,8 @@ class TestWorkerManagerControllerPendingTracking(unittest.IsolatedAsyncioTestCas
 
         status = self.controller.get_status()
 
-        detail = next(d for d in status.workerManagerDetails if d["worker_manager_id"] == manager_id)
-        self.assertEqual(detail["pending_workers"], 2)
+        detail = next(d for d in status.workerManagerDetails if d.workerManagerID == manager_id)
+        self.assertEqual(detail.pendingWorkers, 2)
 
 
 def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
