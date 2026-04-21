@@ -1,0 +1,19 @@
+Skip building capnp host tools when targeting Emscripten.
+
+The capnp/capnpc-c++/capnpc-capnp executables can't run inside the wasm
+target environment, so they're useless to build there. They also fail to link
+against Emscripten's libc++ (no __cxa_get_globals, no fallocate). Skip the
+whole block when EMSCRIPTEN is set; the wasm Pyodide build uses the host
+capnp tools (symlinked under <prefix>/bin/<tool>.js) for code generation.
+
+--- a/src/capnp/CMakeLists.txt
++++ b/src/capnp/CMakeLists.txt
+@@ -178,7 +178,7 @@ if(NOT CAPNP_LITE)
+   install(FILES ${capnpc_headers} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/capnp")
+ endif()
+ 
+-if(NOT CAPNP_LITE)
++if(NOT CAPNP_LITE AND NOT EMSCRIPTEN)
+   add_executable(capnp_tool
+     compiler/module-loader.c++
+     compiler/capnp.c++

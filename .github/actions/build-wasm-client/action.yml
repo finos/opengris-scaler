@@ -1,0 +1,63 @@
+name: "Build WASM Client"
+description: "Cross-compile capnp + libuv with Emscripten and build the Pyodide wheel"
+
+inputs:
+  emsdk-version:
+    description: "Emscripten SDK version (must match setup-wasm-env). Used in the wasm-libs cache key so toolchain bumps invalidate stale builds."
+    required: false
+    default: "3.1.58"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Cache wasm-built thirdparty libraries
+      id: cache-wasm-libs
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+      with:
+        path: thirdparties/wasm/install
+        key: wasm-libs-${{ runner.os }}-emsdk-${{ inputs.emsdk-version }}-${{ hashFiles('scripts/library_tool.sh', 'scripts/patches/*.patch') }}
+
+    - name: Download capnp + libuv tarballs
+      shell: bash
+      run: |
+        ./scripts/library_tool.sh capnp download
+        ./scripts/library_tool.sh libuv download
+
+    - name: Cross-compile capnp + libuv (wasm)
+      if: steps.cache-wasm-libs.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        # shellcheck disable=SC1091
+        source thirdparties/emsdk/emsdk_env.sh
+        ./scripts/library_tool.sh libuv compile --target=wasm
+        ./scripts/library_tool.sh libuv install --target=wasm
+        ./scripts/library_tool.sh capnp compile --target=wasm
+        ./scripts/library_tool.sh capnp install --target=wasm
+
+    - name: Re-link host capnp tools (after cache restore)
+      if: steps.cache-wasm-libs.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        # The capnp wasm install step normally creates these symlinks, but a
+        # cache restore only restores files (not symlink targets reliably on
+        # all runners). Recreate them so capnp_generate_cpp() can find the
+        # host tools.
+        set -euo pipefail
+        mkdir -p thirdparties/wasm/install/bin
+        for tool in capnp capnpc-c++ capnpc-capnp; do
+          host_tool="$(command -v "${tool}" || true)"
+          if [[ -z "${host_tool}" ]]; then
+            echo "Host capnp tool '${tool}' not found on PATH; setup-wasm-env must run first." >&2
+            exit 1
+          fi
+          ln -sf "${host_tool}" "thirdparties/wasm/install/bin/${tool}.js"
+        done
+
+    - name: Build wasm wheel
+      shell: bash
+      run: |
+        # shellcheck disable=SC1091
+        source thirdparties/emsdk/emsdk_env.sh
+        export CMAKE_PREFIX_PATH="${PWD}/thirdparties/wasm/install"
+        export CapnProto_DIR="${PWD}/thirdparties/wasm/install/lib/cmake/CapnProto"
+        pyodide build . --outdir dist_wasm

@@ -4,6 +4,7 @@ __pychace__/
 *.so
 
 dist/
+dist_wasm/
 sdist/
 wheels/
 eggs/

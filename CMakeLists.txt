@@ -69,6 +69,12 @@ elseif(APPLE)
     add_compile_options(-Wall -Wextra)
     add_link_options(-Wl,-rpath,@loader_path)
 
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    message(STATUS "Emscripten")
+
+    # Emscripten controls libc++ and threading flags via emcc; do not override them.
+    add_compile_options(-Wall)
+
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         # Linux GCC
@@ -101,6 +107,20 @@ include(cmake/ScalerPythonModule.cmake)
 find_package(CapnProto CONFIG REQUIRED)
 get_target_property(CAPNP_INCLUDE_DIRS CapnProto::capnp INTERFACE_INCLUDE_DIRECTORIES)
 message(STATUS "Found Capnp includes in ${CAPNP_INCLUDE_DIRS}")
+
+if(EMSCRIPTEN)
+    # CapnProtoConfig.cmake hard-codes CAPNP_EXECUTABLE / CAPNPC_CXX_EXECUTABLE
+    # to $<TARGET_FILE:CapnProto::capnp_tool> etc., but those targets aren't
+    # built when cross-compiling to wasm. The wasm install layout exposes the
+    # host capnp tools as <prefix>/bin/<tool>.js (created by library_tool.sh
+    # capnp install --target=wasm); point the codegen variables at them.
+    find_program(_SCALER_CAPNP_HOST NAMES capnp.js capnp REQUIRED)
+    find_program(_SCALER_CAPNPC_CXX_HOST NAMES capnpc-c++.js capnpc-c++ REQUIRED)
+    set(CAPNP_EXECUTABLE "${_SCALER_CAPNP_HOST}" CACHE FILEPATH "Location of capnp executable" FORCE)
+    set(CAPNPC_CXX_EXECUTABLE "${_SCALER_CAPNPC_CXX_HOST}" CACHE FILEPATH "Location of capnpc-c++ executable" FORCE)
+    unset(_SCALER_CAPNP_HOST CACHE)
+    unset(_SCALER_CAPNPC_CXX_HOST CACHE)
+endif()
 
 # Make LSP happy
 include_directories(${CAPNP_INCLUDE_DIRS})
