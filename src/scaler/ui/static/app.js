@@ -455,7 +455,7 @@ function formatTime(epoch) {
 
 function statusClass(status) {
     if (status === "success") return "status-success";
-    if (status === "running" || status === "inactive" || status === "canceling" || status === "balanceCanceling") return "status-running";
+    if (status in {"running":1, "inactive":1, "canceling":1, "balanceCanceling":1}) return "status-running";
     return "status-fail";
 }
 

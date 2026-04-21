@@ -1,7 +1,8 @@
 import unittest
 
 from scaler.protocol.capnp import ScalingManagerStatus, StateTask, StateWorker, TaskCapability, TaskState, WorkerState
-from scaler.protocol.helpers import build_scaling_manager_status, capabilities_to_dict
+from scaler.protocol.helpers import capabilities_to_dict
+from scaler.scheduler.controllers.worker_manager_utilties import build_scaling_manager_status
 
 
 def _roundtrip_state_task(**kwargs) -> StateTask:
