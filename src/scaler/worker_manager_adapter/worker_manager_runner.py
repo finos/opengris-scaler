@@ -137,7 +137,11 @@ class WorkerManagerRunner:
         elif cmd_type == WorkerManagerCommandType.shutdownWorkers:
             worker_ids, response_status = await self._worker_provisioner.shutdown_workers(list(command.workerIDs))
         else:
-            raise ValueError(f"Unknown WorkerManagerCommand: {cmd_type!r}")
+            # Worker managers silently ignore command variants they do not implement (e.g.
+            # setDesiredTaskConcurrency during the transition to declarative scaling). No
+            # response is sent so the scheduler's single-in-flight gate must bypass these.
+            logging.debug(f"Ignoring unimplemented WorkerManagerCommand: {cmd_type!r}")
+            return
 
         await self._connector_external.send(
             WorkerManagerCommandResponse(

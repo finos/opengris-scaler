@@ -250,11 +250,17 @@ class WorkerManagerCommandType(EnumFieldValue):
     def __new__(cls, value: int) -> "WorkerManagerCommandType": ...
     startWorkers: ClassVar["WorkerManagerCommandType"]
     shutdownWorkers: ClassVar["WorkerManagerCommandType"]
+    setDesiredTaskConcurrency: ClassVar["WorkerManagerCommandType"]
 
 class WorkerManagerCommand(BaseMessage):
     workerIDs: Any
     command: WorkerManagerCommandType
     capabilities: Any
+    setDesiredTaskConcurrencyRequests: Any
+
+    class DesiredTaskConcurrencyRequest(CapnpStruct):
+        taskConcurrency: int
+        capabilities: Any
 
 class WorkerManagerCommandResponse(BaseMessage):
     command: WorkerManagerCommandType

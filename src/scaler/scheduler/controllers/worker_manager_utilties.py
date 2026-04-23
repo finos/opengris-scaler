@@ -1,7 +1,7 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from scaler.protocol import capnp
-from scaler.protocol.capnp import ScalingManagerStatus
+from scaler.protocol.capnp import ScalingManagerStatus, TaskCapability, WorkerManagerCommand, WorkerManagerCommandType
 
 
 def build_scaling_manager_status(
@@ -26,4 +26,26 @@ def build_scaling_manager_status(
             )
             for d in details
         ],
+    )
+
+
+def build_set_desired_command(desired_per_capset: List[Tuple[Dict[str, int], int]]) -> WorkerManagerCommand:
+    """Build a declarative setDesiredTaskConcurrency command.
+
+    Each entry in desired_per_capset maps a capability set (as Dict[str, int]) to a
+    desired worker count. An empty list is valid and yields a command whose requests
+    list is empty (declarative "no opinion").
+    """
+    requests = [
+        WorkerManagerCommand.DesiredTaskConcurrencyRequest(
+            taskConcurrency=max(0, count),
+            capabilities=[TaskCapability(name=name, value=value) for name, value in caps.items()],
+        )
+        for caps, count in desired_per_capset
+    ]
+    return WorkerManagerCommand(
+        workerIDs=[],
+        command=WorkerManagerCommandType.setDesiredTaskConcurrency,
+        capabilities=[],
+        setDesiredTaskConcurrencyRequests=requests,
     )

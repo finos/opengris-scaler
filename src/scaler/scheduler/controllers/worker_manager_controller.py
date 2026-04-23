@@ -156,7 +156,11 @@ class WorkerManagerController(Looper, Reporter):
         return result
 
     async def _send_command(self, source: bytes, command: WorkerManagerCommand):
-        self._pending_commands[source] = command
+        # setDesiredTaskConcurrency is declarative and worker managers may silently ignore it
+        # during the transition. No response is guaranteed, so it must bypass the single-
+        # in-flight gate; otherwise the gate would wedge and block all subsequent scaling.
+        if command.command != WorkerManagerCommandType.setDesiredTaskConcurrency:
+            self._pending_commands[source] = command
         await self._binder.send(source, command)
 
     def _build_manager_snapshots(self) -> Dict[bytes, WorkerManagerSnapshot]:

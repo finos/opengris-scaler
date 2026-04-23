@@ -95,12 +95,23 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(dict(response.capabilities), {})
         self.provisioner.shutdown_workers.assert_called_once_with(worker_ids)
 
-    async def test_unknown_command_type_raises_value_error(self) -> None:
+    async def test_unknown_command_type_is_silently_ignored(self) -> None:
         cmd = MagicMock(spec=WorkerManagerCommand)
         cmd.command = object()
 
-        with self.assertRaises(ValueError):
-            await self.runner._handle_command(cmd)
+        await self.runner._handle_command(cmd)
+
+        self.send_mock.assert_not_called()
+
+    async def test_set_desired_task_concurrency_is_silently_ignored(self) -> None:
+        cmd = MagicMock(spec=WorkerManagerCommand)
+        cmd.command = WorkerManagerCommandType.setDesiredTaskConcurrency
+
+        await self.runner._handle_command(cmd)
+
+        self.send_mock.assert_not_called()
+        self.provisioner.start_worker.assert_not_called()
+        self.provisioner.shutdown_workers.assert_not_called()
 
 
 class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
