@@ -2,7 +2,7 @@ Worker Managers
 ===============
 
 Worker managers handle the provisioning and destruction of worker resources. They bridge Scaler's
-:doc:`scaling policies <../scaling>` and the underlying infrastructure — local processes, cloud
+:doc:`policy engine <../policy_engine>` and the underlying infrastructure — local processes, cloud
 instances, or container orchestrators.
 
 .. note::
@@ -27,7 +27,7 @@ Configure the scheduler with a scaling policy, then start a worker manager:
     # Terminal 3 — Worker Manager (e.g., Baremetal Native)
     scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 --max-task-concurrency 8
 
-The vanilla policy automatically scales workers up and down based on the task-to-worker ratio. For available policies and their parameters, see :doc:`../scaling`.
+The vanilla policy automatically scales workers up and down based on the task-to-worker ratio. For available policies and their parameters, see :doc:`../policy_engine`.
 
 Worker Managers Overview
 ------------------------

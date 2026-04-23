@@ -9,6 +9,7 @@ Worker Managers, and Workers.
 
 .. image:: images/architecture.svg
    :alt: Scaler architecture diagram
+   :width: 1000px
 
 
 * Multiple clients can submit tasks to the same scheduler concurrently.
@@ -43,7 +44,7 @@ your deployment style:
 * **Local elastic workers managed by a worker manager:** run scheduler +
   ``baremetal_native`` worker manager in dynamic mode and let scheduler policies
   scale workers up/down. See :doc:`quickstart`, :doc:`worker_managers/index`,
-  and :doc:`scaling`.
+  and :doc:`policy_engine`.
 
 * **Remote elastic workers managed by cloud worker managers:** keep the scheduler
   on one machine and attach one or more remote managers (for example,
