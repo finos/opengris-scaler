@@ -15,8 +15,8 @@ from unittest.mock import patch
 from scaler.client.agent import bridge as bridge_module
 from scaler.client.agent.bridge import (
     ClientAgentBridge,
-    IPCAgentBridge,
     InProcessAgentBridge,
+    IPCAgentBridge,
     _InProcessAsyncConnector,
     _InProcessSyncConnector,
     create_default_bridge,
@@ -66,10 +66,7 @@ class InProcessConnectorPairTest(unittest.TestCase):
             received.append(msg)
 
         async_conn = _InProcessAsyncConnector(
-            identity=b"ident",
-            callback=callback,
-            incoming=incoming,
-            outgoing=outgoing,
+            identity=b"ident", callback=callback, incoming=incoming, outgoing=outgoing
         )
         sync_conn = _InProcessSyncConnector(
             identity=b"ident",
@@ -184,10 +181,7 @@ class BridgeSurfaceParityTest(unittest.TestCase):
         methods = {"start", "get_object_storage_address", "connector", "is_alive", "join"}
         for cls in (IPCAgentBridge, InProcessAgentBridge):
             for name in methods:
-                self.assertTrue(
-                    hasattr(cls, name),
-                    f"{cls.__name__} is missing required bridge method {name!r}",
-                )
+                self.assertTrue(hasattr(cls, name), f"{cls.__name__} is missing required bridge method {name!r}")
 
     def test_both_bridges_are_client_agent_bridges(self) -> None:
         self.assertTrue(issubclass(IPCAgentBridge, ClientAgentBridge))

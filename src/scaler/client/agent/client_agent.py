@@ -45,9 +45,7 @@ class ClientAgent(threading.Thread):
         heartbeat_interval_seconds: int,
         serializer: Serializer,
         object_storage_address: Optional[str] = None,
-        internal_connector_factory: Optional[
-            "Callable[..., AsyncConnector]"
-        ] = None,
+        internal_connector_factory: Optional["Callable[..., AsyncConnector]"] = None,
     ):
         threading.Thread.__init__(self, daemon=True)
 

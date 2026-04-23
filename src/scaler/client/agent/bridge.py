@@ -330,14 +330,9 @@ class InProcessAgentBridge(ClientAgentBridge):
             outgoing=self._agent_to_client,
         )
 
-        def _internal_factory(
-            identity: bytes, callback: Callable[[BaseMessage], Awaitable[None]]
-        ) -> AsyncConnector:
+        def _internal_factory(identity: bytes, callback: Callable[[BaseMessage], Awaitable[None]]) -> AsyncConnector:
             return _InProcessAsyncConnector(
-                identity=identity,
-                callback=callback,
-                incoming=self._client_to_agent,
-                outgoing=self._agent_to_client,
+                identity=identity, callback=callback, incoming=self._client_to_agent, outgoing=self._agent_to_client
             )
 
         self._agent = ClientAgent(

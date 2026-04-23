@@ -20,8 +20,8 @@ import pathlib
 import re
 import unittest
 
-from scaler.io.ymq import _ymq_wasm
 from scaler.io.ymq import _ymq as _ymq_native
+from scaler.io.ymq import _ymq_wasm
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 _CPP_CONFIG = _REPO_ROOT / "src" / "cpp" / "scaler" / "ymq" / "configuration.h"
@@ -38,17 +38,13 @@ class WireProtocolParityTest(unittest.TestCase):
     def test_configuration_header_exists(self) -> None:
         self.assertTrue(
             _CPP_CONFIG.is_file(),
-            f"Cannot find C++ wire-protocol config at {_CPP_CONFIG}; "
-            "the shim cannot be verified against it.",
+            f"Cannot find C++ wire-protocol config at {_CPP_CONFIG}; " "the shim cannot be verified against it.",
         )
 
     def test_magic_string_matches_cpp(self) -> None:
         text = _CPP_CONFIG.read_text(encoding="utf-8")
         # Match: std::array<uint8_t, N> magicString {'Y', 'M', 'Q', 1};
-        match = re.search(
-            r"magicString\s*\{([^}]*)\}",
-            text,
-        )
+        match = re.search(r"magicString\s*\{([^}]*)\}", text)
         self.assertIsNotNone(match, "Could not find magicString in configuration.h")
         parts = [p.strip() for p in match.group(1).split(",") if p.strip()]
         cpp_bytes = bytearray()
@@ -71,9 +67,7 @@ class WireProtocolParityTest(unittest.TestCase):
         import struct
 
         self.assertEqual(struct.calcsize(_ymq_wasm._HEADER_FORMAT), 8)
-        conn_header = (
-            _REPO_ROOT / "src" / "cpp" / "scaler" / "ymq" / "internal" / "message_connection.h"
-        )
+        conn_header = _REPO_ROOT / "src" / "cpp" / "scaler" / "ymq" / "internal" / "message_connection.h"
         if conn_header.is_file():
             text = conn_header.read_text(encoding="utf-8")
             self.assertIn(
@@ -109,14 +103,8 @@ class ModuleSurfaceParityTest(unittest.TestCase):
     def test_all_names_present(self) -> None:
         for name in self._SHARED_NAMES:
             with self.subTest(name=name):
-                self.assertTrue(
-                    hasattr(_ymq_native, name),
-                    f"native _ymq is missing {name!r} (shim expected parity)",
-                )
-                self.assertTrue(
-                    hasattr(_ymq_wasm, name),
-                    f"shim _ymq_wasm is missing {name!r}",
-                )
+                self.assertTrue(hasattr(_ymq_native, name), f"native _ymq is missing {name!r} (shim expected parity)")
+                self.assertTrue(hasattr(_ymq_wasm, name), f"shim _ymq_wasm is missing {name!r}")
 
     def test_exception_hierarchy_matches(self) -> None:
         subclass_names = [
@@ -132,12 +120,10 @@ class ModuleSurfaceParityTest(unittest.TestCase):
                 native_cls = getattr(_ymq_native, name)
                 shim_cls = getattr(_ymq_wasm, name)
                 self.assertTrue(
-                    issubclass(native_cls, _ymq_native.YMQException),
-                    f"native {name} is not a YMQException subclass",
+                    issubclass(native_cls, _ymq_native.YMQException), f"native {name} is not a YMQException subclass"
                 )
                 self.assertTrue(
-                    issubclass(shim_cls, _ymq_wasm.YMQException),
-                    f"shim {name} is not a YMQException subclass",
+                    issubclass(shim_cls, _ymq_wasm.YMQException), f"shim {name} is not a YMQException subclass"
                 )
 
 
@@ -148,15 +134,13 @@ class ErrorCodeParityTest(unittest.TestCase):
         for native_code in _ymq_native.ErrorCode:
             with self.subTest(name=native_code.name):
                 self.assertTrue(
-                    hasattr(_ymq_wasm.ErrorCode, native_code.name),
-                    f"shim ErrorCode is missing {native_code.name!r}",
+                    hasattr(_ymq_wasm.ErrorCode, native_code.name), f"shim ErrorCode is missing {native_code.name!r}"
                 )
                 shim_code = getattr(_ymq_wasm.ErrorCode, native_code.name)
                 self.assertEqual(
                     int(shim_code),
                     int(native_code),
-                    f"ErrorCode.{native_code.name} value drifted: "
-                    f"native={int(native_code)} shim={int(shim_code)}",
+                    f"ErrorCode.{native_code.name} value drifted: " f"native={int(native_code)} shim={int(shim_code)}",
                 )
 
     def test_all_shim_codes_present_in_native(self) -> None:
@@ -212,9 +196,7 @@ class AddressParityTest(unittest.TestCase):
 
 class IOContextParityTest(unittest.TestCase):
     def test_default_num_threads(self) -> None:
-        self.assertEqual(
-            _ymq_native.IOContext().num_threads, _ymq_wasm.IOContext().num_threads
-        )
+        self.assertEqual(_ymq_native.IOContext().num_threads, _ymq_wasm.IOContext().num_threads)
 
     def test_custom_num_threads_preserved(self) -> None:
         self.assertEqual(_ymq_native.IOContext(num_threads=4).num_threads, 4)
