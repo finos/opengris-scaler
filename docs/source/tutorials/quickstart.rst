@@ -57,35 +57,6 @@ Start Services
         Run the scheduler, object storage server, and ORB worker manager on an EC2
         instance. Workers are provisioned automatically in the same VPC.
 
-        .. code-block:: toml
-            :caption: config.toml (on the EC2 instance)
-
-            [object_storage_server]
-            bind_address = "tcp://0.0.0.0:6789"
-
-            [scheduler]
-            bind_address = "tcp://0.0.0.0:6788"
-            object_storage_address = "tcp://127.0.0.1:6789"
-            advertised_object_storage_address = "tcp://<EC2_PUBLIC_IP>:6789"
-
-            [[worker_manager]]
-            type = "orb_aws_ec2"
-            scheduler_address = "tcp://127.0.0.1:6788"
-            worker_manager_id = "wm-orb"
-            worker_scheduler_address = "tcp://<EC2_PRIVATE_IP>:6788"
-            object_storage_address = "tcp://<EC2_PRIVATE_IP>:6789"
-            python_version = "3.14"
-            requirements_txt = """
-            opengris-scaler>=1.27.0
-            numpy
-            """
-            instance_type = "t3.medium"
-            aws_region = "us-east-1"
-
-        .. code-block:: bash
-
-            scaler config.toml
-
         See :ref:`orb_aws_ec2_ec2_quick_setup` for full setup instructions.
 
     .. group-tab:: Remote AWS HPC
