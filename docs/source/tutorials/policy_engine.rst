@@ -1,5 +1,5 @@
-Scaling Policies
-================
+Policy Engine
+=============
 
 Scaler's auto-scaling is controlled by the scheduler policy engine. Pick the engine with
 ``policy_engine_type``, then configure it with ``policy_content``.

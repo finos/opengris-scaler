@@ -40,56 +40,7 @@ Start Services
 
 .. tabs::
 
-    .. group-tab:: Local Scaler Cluster
-
-        The instructions below start a local scheduler with an elastic native worker
-        manager (``baremetal_native``).
-
-        .. tabs::
-
-            .. group-tab:: config.toml
-
-                .. code-block:: toml
-
-                    [object_storage_server]
-                    bind_address = "tcp://127.0.0.1:8517"
-
-                    [scheduler]
-                    bind_address = "tcp://127.0.0.1:8516"
-                    object_storage_address = "tcp://127.0.0.1:8517"
-
-                    [[worker_manager]]
-                    type = "baremetal_native"
-                    scheduler_address = "tcp://127.0.0.1:8516"
-                    worker_manager_id = "wm-native"
-
-                Run command:
-
-                .. code-block:: bash
-
-                    scaler config.toml
-
-            .. group-tab:: command line
-
-                In terminal 1:
-
-                .. code-block:: bash
-
-                    scaler_object_storage_server tcp://127.0.0.1:8517
-
-                In terminal 2:
-
-                .. code-block:: bash
-
-                    scaler_scheduler tcp://127.0.0.1:8516 --object-storage-address tcp://127.0.0.1:8517
-
-                In terminal 3:
-
-                .. code-block:: bash
-
-                    scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 --worker-manager-id wm-native
-
-    .. group-tab:: Remote AWS EC2 Cluster
+    .. group-tab:: Remote AWS EC2
 
         Run the scheduler, object storage server, and ORB worker manager on an EC2
         instance. Workers are provisioned automatically in the same VPC.
@@ -125,7 +76,7 @@ Start Services
 
         See :ref:`orb_aws_ec2_ec2_quick_setup` for full setup instructions.
 
-    .. group-tab:: Remote AWS HPC Batch Cluster
+    .. group-tab:: Remote AWS HPC
 
         Run the scheduler and worker manager locally; tasks execute as AWS Batch jobs.
 

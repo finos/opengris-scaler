@@ -12,6 +12,7 @@ Scaler is a lightweight distributed computing Python framework that lets you eas
 
 .. image:: tutorials/images/client_usage_framework.svg
    :alt: Scaler architecture
+   :width: 1000px
 
 Performances
 ------------
@@ -23,7 +24,7 @@ The following benchmark shows the scaling performance of Scaler when running
 
 .. image:: tutorials/images/benchmark_count_bigrams.svg
    :alt: Scaler scaling benchmark using parfun
-   :width: 750px
+   :width: 1000px
 
 Content
 -------
@@ -37,8 +38,8 @@ Content
    tutorials/commands
    tutorials/scaler_client
    tutorials/compatibility
-   tutorials/scaling
+   tutorials/policy_engine
    tutorials/worker_managers/index
    tutorials/additional_features
-   tutorials/application_examples
+   tutorials/example
    tutorials/development
