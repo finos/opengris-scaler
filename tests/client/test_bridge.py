@@ -53,13 +53,19 @@ class InProcessConnectorPairTest(unittest.TestCase):
     def setUp(self) -> None:
         self._driver = _ImmediateRunSync()
         self._loop = self._driver.loop
+        # On Python 3.8 asyncio.Queue() binds to the current loop at construction
+        # time; make sure that's the loop we drive in these tests.
+        asyncio.set_event_loop(self._loop)
 
     def tearDown(self) -> None:
         self._driver.close()
+        asyncio.set_event_loop(None)
 
     def _make_pair(self):
-        incoming: asyncio.Queue = asyncio.Queue()
-        outgoing: asyncio.Queue = asyncio.Queue()
+        async def _new_queues() -> Any:
+            return asyncio.Queue(), asyncio.Queue()
+
+        incoming, outgoing = self._loop.run_until_complete(_new_queues())
 
         received: List[Any] = []
 
