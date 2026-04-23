@@ -52,21 +52,6 @@ class VanillaScalingPolicy(ScalingPolicy):
         declarative = build_set_desired_command([({}, desired)])
         return [declarative] + imperative
 
-    def _compute_desired_worker_count(
-        self,
-        managed_worker_ids: List[WorkerID],
-        pending_worker_count: int,
-        imperative_commands: List[WorkerManagerCommand],
-    ) -> int:
-        """Desired count equals current + pending adjusted by this tick's imperative deltas."""
-        desired = len(managed_worker_ids) + pending_worker_count
-        for command in imperative_commands:
-            if command.command == WorkerManagerCommandType.startWorkers:
-                desired += 1
-            elif command.command == WorkerManagerCommandType.shutdownWorkers:
-                desired -= len(command.workerIDs)
-        return max(0, desired)
-
     def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
         return build_scaling_manager_status(managed_workers)
 
@@ -112,3 +97,18 @@ class VanillaScalingPolicy(ScalingPolicy):
                 workerIDs=shutdown_ids, command=WorkerManagerCommandType.shutdownWorkers, capabilities={}
             )
         ]
+
+    def _compute_desired_worker_count(
+        self,
+        managed_worker_ids: List[WorkerID],
+        pending_worker_count: int,
+        imperative_commands: List[WorkerManagerCommand],
+    ) -> int:
+        """Desired count equals current + pending adjusted by this tick's imperative deltas."""
+        desired = len(managed_worker_ids) + pending_worker_count
+        for command in imperative_commands:
+            if command.command == WorkerManagerCommandType.startWorkers:
+                desired += 1
+            elif command.command == WorkerManagerCommandType.shutdownWorkers:
+                desired -= len(command.workerIDs)
+        return max(0, desired)

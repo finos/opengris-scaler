@@ -69,28 +69,6 @@ class CapabilityScalingPolicy(ScalingPolicy):
         declarative = build_set_desired_command(desired_per_capset)
         return [declarative] + imperative
 
-    def _compute_desired_per_capset(
-        self,
-        tasks_by_capability: Dict[FrozenSet[str], List[Dict[str, int]]],
-        worker_manager_heartbeat: WorkerManagerHeartbeat,
-    ) -> List[Tuple[Dict[str, int], int]]:
-        """Compute desired worker count per capability set from observed tasks.
-
-        Capsets with zero tasks are omitted (declarative "no opinion" for that capset).
-        Each desired count is clamped by the manager's maxTaskConcurrency.
-        """
-        max_concurrency = worker_manager_heartbeat.maxTaskConcurrency
-        result: List[Tuple[Dict[str, int], int]] = []
-        for _capability_keys, tasks in tasks_by_capability.items():
-            if not tasks:
-                continue
-            desired = max(1, ceil(len(tasks) / self._upper_task_ratio))
-            if max_concurrency != -1:
-                desired = min(desired, max_concurrency)
-            # Use first task's concrete capability dict as the representative for the capset.
-            result.append((tasks[0], desired))
-        return result
-
     def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
         return build_scaling_manager_status(managed_workers)
 
@@ -264,3 +242,25 @@ class CapabilityScalingPolicy(ScalingPolicy):
         return WorkerManagerCommand(
             workerIDs=[], command=WorkerManagerCommandType.startWorkers, capabilities=capability_dict
         )
+
+    def _compute_desired_per_capset(
+        self,
+        tasks_by_capability: Dict[FrozenSet[str], List[Dict[str, int]]],
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
+    ) -> List[Tuple[Dict[str, int], int]]:
+        """Compute desired worker count per capability set from observed tasks.
+
+        Capsets with zero tasks are omitted (declarative "no opinion" for that capset).
+        Each desired count is clamped by the manager's maxTaskConcurrency.
+        """
+        max_concurrency = worker_manager_heartbeat.maxTaskConcurrency
+        result: List[Tuple[Dict[str, int], int]] = []
+        for _capability_keys, tasks in tasks_by_capability.items():
+            if not tasks:
+                continue
+            desired = max(1, ceil(len(tasks) / self._upper_task_ratio))
+            if max_concurrency != -1:
+                desired = min(desired, max_concurrency)
+            # Use first task's concrete capability dict as the representative for the capset.
+            result.append((tasks[0], desired))
+        return result

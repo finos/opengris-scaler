@@ -61,6 +61,9 @@ class WaterfallScalingPolicy(ScalingPolicy):
         declarative = build_set_desired_command(desired_per_capset)
         return [declarative] + imperative
 
+    def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
+        return build_scaling_manager_status(managed_workers)
+
     def _build_imperative(
         self,
         rule: WaterfallRule,
@@ -95,52 +98,6 @@ class WaterfallScalingPolicy(ScalingPolicy):
             )
 
         return []
-
-    def _compute_desired_per_capset(
-        self,
-        rule: WaterfallRule,
-        information_snapshot: InformationSnapshot,
-        worker_manager_heartbeat: WorkerManagerHeartbeat,
-        managed_worker_ids: List[WorkerID],
-        imperative_commands: List[WorkerManagerCommand],
-    ) -> List[Tuple[Dict[str, int], int]]:
-        """Compute desired per capability set using current + imperative delta.
-
-        A single request with empty capabilities covers the generic (non-capability)
-        demand for this manager. Capability-specific requests mirror imperative
-        startWorkers commands carrying non-empty capabilities (i.e. capsets this
-        manager has been asked to scale up for this heartbeat).
-        """
-        current = len(managed_worker_ids)
-
-        start_delta = sum(1 for c in imperative_commands if c.command == WorkerManagerCommandType.startWorkers)
-        shutdown_delta = sum(
-            len(c.workerIDs) for c in imperative_commands if c.command == WorkerManagerCommandType.shutdownWorkers
-        )
-        desired_generic = max(0, current + start_delta - shutdown_delta)
-        effective_capacity = min(rule.max_task_concurrency, worker_manager_heartbeat.maxTaskConcurrency)
-        if effective_capacity >= 0:
-            desired_generic = min(desired_generic, effective_capacity)
-
-        result: List[Tuple[Dict[str, int], int]] = [({}, desired_generic)]
-
-        for command in imperative_commands:
-            if command.command != WorkerManagerCommandType.startWorkers:
-                continue
-            caps = command.capabilities
-            caps_dict = dict(caps) if isinstance(caps, dict) else {c.name: c.value for c in caps}
-            if not caps_dict:
-                continue
-            # Capability-specific capset: +1 worker requested this tick.
-            cap_desired = 1
-            if effective_capacity >= 0:
-                cap_desired = min(cap_desired, effective_capacity)
-            result.append((caps_dict, cap_desired))
-
-        return result
-
-    def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
-        return build_scaling_manager_status(managed_workers)
 
     def _create_capability_start_commands(
         self,
@@ -323,3 +280,46 @@ class WaterfallScalingPolicy(ScalingPolicy):
     ) -> Optional[WorkerManagerSnapshot]:
         """Return the manager snapshot matching *rule*'s worker manager ID, or None."""
         return snapshots.get(rule.worker_manager_id)
+
+    def _compute_desired_per_capset(
+        self,
+        rule: WaterfallRule,
+        information_snapshot: InformationSnapshot,
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
+        managed_worker_ids: List[WorkerID],
+        imperative_commands: List[WorkerManagerCommand],
+    ) -> List[Tuple[Dict[str, int], int]]:
+        """Compute desired per capability set using current + imperative delta.
+
+        A single request with empty capabilities covers the generic (non-capability)
+        demand for this manager. Capability-specific requests mirror imperative
+        startWorkers commands carrying non-empty capabilities (i.e. capsets this
+        manager has been asked to scale up for this heartbeat).
+        """
+        current = len(managed_worker_ids)
+
+        start_delta = sum(1 for c in imperative_commands if c.command == WorkerManagerCommandType.startWorkers)
+        shutdown_delta = sum(
+            len(c.workerIDs) for c in imperative_commands if c.command == WorkerManagerCommandType.shutdownWorkers
+        )
+        desired_generic = max(0, current + start_delta - shutdown_delta)
+        effective_capacity = min(rule.max_task_concurrency, worker_manager_heartbeat.maxTaskConcurrency)
+        if effective_capacity >= 0:
+            desired_generic = min(desired_generic, effective_capacity)
+
+        result: List[Tuple[Dict[str, int], int]] = [({}, desired_generic)]
+
+        for command in imperative_commands:
+            if command.command != WorkerManagerCommandType.startWorkers:
+                continue
+            caps = command.capabilities
+            caps_dict = dict(caps) if isinstance(caps, dict) else {c.name: c.value for c in caps}
+            if not caps_dict:
+                continue
+            # Capability-specific capset: +1 worker requested this tick.
+            cap_desired = 1
+            if effective_capacity >= 0:
+                cap_desired = min(cap_desired, effective_capacity)
+            result.append((caps_dict, cap_desired))
+
+        return result
