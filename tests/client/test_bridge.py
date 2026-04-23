@@ -23,6 +23,7 @@ from scaler.client.agent.bridge import (
 )
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.protocol.capnp import ClientDisconnect
+from scaler.utility.identifiers import ClientID
 
 
 class _ImmediateRunSync:
@@ -146,7 +147,7 @@ class CreateDefaultBridgeTest(unittest.TestCase):
         with patch.object(bridge_module.sys, "platform", "linux"):
             with patch.object(bridge_module, "IPCAgentBridge") as mock_cls:
                 create_default_bridge(
-                    identity=b"id",
+                    identity=ClientID.generate_client_id(),
                     scheduler_address=AddressConfig(SocketType.tcp, "127.0.0.1", 1),
                     network_backend=object(),  # type: ignore[arg-type]
                     future_manager=object(),  # type: ignore[arg-type]
@@ -161,7 +162,7 @@ class CreateDefaultBridgeTest(unittest.TestCase):
         with patch.object(bridge_module.sys, "platform", "emscripten"):
             with patch.object(bridge_module, "InProcessAgentBridge") as mock_cls:
                 create_default_bridge(
-                    identity=b"id",
+                    identity=ClientID.generate_client_id(),
                     scheduler_address=AddressConfig(SocketType.ws, "host", 1),
                     network_backend=object(),  # type: ignore[arg-type]
                     future_manager=object(),  # type: ignore[arg-type]
