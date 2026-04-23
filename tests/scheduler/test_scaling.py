@@ -38,6 +38,7 @@ from scaler.protocol.capnp import (
     WorkerManagerCommandType,
     WorkerManagerHeartbeat,
 )
+from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla import VanillaScalingPolicy
@@ -181,9 +182,10 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
             {},
         )
 
-        self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.startWorkers)
-        self.assertEqual(commands[0].capabilities, {"gpu": 1})
+        imperative = _imperative(commands)
+        self.assertEqual(len(imperative), 1)
+        self.assertEqual(imperative[0].command, WorkerManagerCommandType.startWorkers)
+        self.assertEqual(imperative[0].capabilities, {"gpu": 1})
 
     def test_no_scale_when_capable_workers_exist(self):
         """Test that no worker is started when workers with matching capabilities exist."""
@@ -229,9 +231,10 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
             {},
         )
 
-        self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.startWorkers)
-        self.assertEqual(commands[0].capabilities, {"gpu": 1})
+        imperative = _imperative(commands)
+        self.assertEqual(len(imperative), 1)
+        self.assertEqual(imperative[0].command, WorkerManagerCommandType.startWorkers)
+        self.assertEqual(imperative[0].capabilities, {"gpu": 1})
 
     def test_different_capability_sets_handled_separately(self):
         """Test that tasks with different capabilities trigger separate scaling suggestions."""
@@ -301,9 +304,10 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         )
 
         # Should start a worker with empty capabilities
-        self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.startWorkers)
-        self.assertEqual(commands[0].capabilities, {})
+        imperative = _imperative(commands)
+        self.assertEqual(len(imperative), 1)
+        self.assertEqual(imperative[0].command, WorkerManagerCommandType.startWorkers)
+        self.assertEqual(imperative[0].capabilities, {})
 
     def test_get_status_returns_scaling_manager_status(self):
         """Test that get_status returns a ScalingManagerStatus object."""
@@ -331,9 +335,10 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
             {},
         )
 
-        self.assertEqual(len(commands1), 1)
-        self.assertEqual(commands1[0].command, WorkerManagerCommandType.startWorkers)
-        self.assertEqual(commands1[0].capabilities, {"mqa": 1})
+        imperative1 = _imperative(commands1)
+        self.assertEqual(len(imperative1), 1)
+        self.assertEqual(imperative1[0].command, WorkerManagerCommandType.startWorkers)
+        self.assertEqual(imperative1[0].capabilities, {"mqa": 1})
 
         # Simulate state update as if manager responded successfully
         updated_worker_ids = [WorkerID(b"w-mqa")]
@@ -454,9 +459,10 @@ class TestVanillaScalingPolicy(unittest.TestCase):
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
 
-        self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.shutdownWorkers)
-        self.assertEqual(len(commands[0].workerIDs), 4)
+        imperative = _imperative(commands)
+        self.assertEqual(len(imperative), 1)
+        self.assertEqual(imperative[0].command, WorkerManagerCommandType.shutdownWorkers)
+        self.assertEqual(len(imperative[0].workerIDs), 4)
 
     def test_greedy_shutdown_partial(self):
         """5 tasks, 10 workers -> shutdown 9, keep 1 (ceil(5/10)=1)."""
@@ -477,11 +483,12 @@ class TestVanillaScalingPolicy(unittest.TestCase):
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
 
-        self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0].command, WorkerManagerCommandType.shutdownWorkers)
-        self.assertEqual(len(commands[0].workerIDs), 9)
+        imperative = _imperative(commands)
+        self.assertEqual(len(imperative), 1)
+        self.assertEqual(imperative[0].command, WorkerManagerCommandType.shutdownWorkers)
+        self.assertEqual(len(imperative[0].workerIDs), 9)
         # The busiest worker (w9) should NOT be in the shutdown list
-        shutdown_set = set(commands[0].workerIDs)
+        shutdown_set = set(imperative[0].workerIDs)
         self.assertNotIn(bytes(WorkerID(b"w9")), shutdown_set)
 
     def test_greedy_shutdown_no_action_when_ratio_ok(self):
@@ -502,7 +509,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         heartbeat = _create_worker_manager_heartbeat(b"test")
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
-        self.assertEqual(len(commands), 0)
+        self.assertEqual(len(_imperative(commands)), 0)
 
     def test_greedy_shutdown_worker_ordering(self):
         """Verify least-busy workers are selected first for shutdown."""
@@ -524,9 +531,10 @@ class TestVanillaScalingPolicy(unittest.TestCase):
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
 
-        self.assertEqual(len(commands), 1)
+        imperative = _imperative(commands)
+        self.assertEqual(len(imperative), 1)
         # w0..w8 should be shut down (9 least busy), w9 kept
-        shutdown_ids = commands[0].workerIDs
+        shutdown_ids = imperative[0].workerIDs
         self.assertEqual(len(shutdown_ids), 9)
         self.assertNotIn(bytes(WorkerID(b"w9")), set(shutdown_ids))
         # First in list should be least busy
@@ -610,6 +618,96 @@ class TestVanillaScalingPolicy(unittest.TestCase):
     #     commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], {}, {b"mgr": manager_snapshot})
     #     start_cmds = [c for c in commands if c.command == WorkerManagerCommandType.startWorkers]
     #     self.assertEqual(len(start_cmds), 1)
+
+
+class TestDeclarativeEmission(unittest.TestCase):
+    """Verify the declarative setDesiredTaskConcurrency command is always emitted."""
+
+    def setUp(self):
+        setup_logger()
+
+    def test_vanilla_emits_desired_every_heartbeat_even_when_idle(self):
+        """Empty state: declarative is still emitted with desired=0."""
+        policy = VanillaScalingPolicy()
+        snapshot = InformationSnapshot(tasks={}, workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"mgr")
+
+        commands = policy.get_scaling_commands(snapshot, heartbeat, [], {}, {})
+
+        declarative = _declarative(commands)
+        self.assertEqual(len(declarative), 1)
+        self.assertEqual(len(_imperative(commands)), 0)
+        requests = list(declarative[0].setDesiredTaskConcurrencyRequests)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0].taskConcurrency, 0)
+
+    def test_vanilla_desired_tracks_start_delta(self):
+        """On start: desired = current + pending + 1."""
+        policy = VanillaScalingPolicy()
+        tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(20)}
+        managed = [WorkerID(b"w0")]
+        workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=5) for wid in managed}
+        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=10)
+
+        commands = policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
+
+        declarative = _declarative(commands)
+        self.assertEqual(len(declarative), 1)
+        requests = list(declarative[0].setDesiredTaskConcurrencyRequests)
+        self.assertEqual(len(requests), 1)
+        # 1 managed + 0 pending + 1 (from startWorkers imperative) = 2
+        self.assertEqual(requests[0].taskConcurrency, 2)
+
+    def test_vanilla_desired_tracks_shutdown_delta(self):
+        """On shutdown: desired = current - shutdown_count."""
+        policy = VanillaScalingPolicy()
+        workers = {
+            WorkerID(b"w0"): _create_mock_worker_heartbeat({}, queued_tasks=0),
+            WorkerID(b"w1"): _create_mock_worker_heartbeat({}, queued_tasks=1),
+            WorkerID(b"w2"): _create_mock_worker_heartbeat({}, queued_tasks=2),
+        }
+        managed = list(workers.keys())
+        snapshot = InformationSnapshot(tasks={}, workers=workers)
+        heartbeat = _create_worker_manager_heartbeat(b"mgr")
+
+        commands = policy.get_scaling_commands(snapshot, heartbeat, managed, {}, {})
+
+        declarative = _declarative(commands)
+        requests = list(declarative[0].setDesiredTaskConcurrencyRequests)
+        # 3 managed, shutdown all 3 -> desired = 0
+        self.assertEqual(requests[0].taskConcurrency, 0)
+
+    def test_capability_desired_one_request_per_capset(self):
+        """Two capsets with tasks: declarative has one request per capset."""
+        policy = CapabilityScalingPolicy()
+        gpu_id = TaskID.generate_task_id()
+        tpu_id = TaskID.generate_task_id()
+        tasks = {gpu_id: _create_mock_task(gpu_id, {"gpu": 1}), tpu_id: _create_mock_task(tpu_id, {"tpu": 1})}
+        snapshot = InformationSnapshot(tasks=tasks, workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"mgr")
+
+        commands = policy.get_scaling_commands(snapshot, heartbeat, [], {}, {})
+
+        declarative = _declarative(commands)
+        self.assertEqual(len(declarative), 1)
+        requests = list(declarative[0].setDesiredTaskConcurrencyRequests)
+        caps_in_requests = {frozenset(capabilities_to_dict(r.capabilities).keys()) for r in requests}
+        self.assertIn(frozenset({"gpu"}), caps_in_requests)
+        self.assertIn(frozenset({"tpu"}), caps_in_requests)
+        self.assertEqual(len(requests), 2)
+
+    def test_capability_desired_omits_empty_capset(self):
+        """Capsets with no tasks are absent from the declarative request list."""
+        policy = CapabilityScalingPolicy()
+        snapshot = InformationSnapshot(tasks={}, workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"mgr")
+
+        commands = policy.get_scaling_commands(snapshot, heartbeat, [], {}, {})
+
+        declarative = _declarative(commands)
+        self.assertEqual(len(declarative), 1)
+        self.assertEqual(len(list(declarative[0].setDesiredTaskConcurrencyRequests)), 0)
 
 
 class TestWorkerManagerControllerPendingTracking(unittest.IsolatedAsyncioTestCase):
@@ -732,6 +830,36 @@ class TestWorkerManagerControllerPendingTracking(unittest.IsolatedAsyncioTestCas
 
         detail = next(d for d in status.workerManagerDetails if d.workerManagerID == manager_id)
         self.assertEqual(detail.pendingWorkers, 2)
+
+    async def test_set_desired_command_does_not_gate_on_response(self):
+        """setDesiredTaskConcurrency must not populate _pending_commands since no response is expected."""
+        from scaler.scheduler.controllers.worker_manager_utilties import build_set_desired_command
+
+        source = b"mgr-src"
+        manager_id = b"mgr-id"
+        heartbeat = _create_worker_manager_heartbeat(manager_id)
+        self.controller._manager_id_to_source[manager_id] = source
+
+        declarative = build_set_desired_command([({}, 3)])
+        self.policy_controller.get_scaling_commands.return_value = [declarative]
+
+        await self.controller.on_heartbeat(source, heartbeat)
+
+        self.assertNotIn(source, self.controller._pending_commands)
+
+        # A subsequent heartbeat can still trigger policy evaluation (gate not wedged).
+        await self.controller.on_heartbeat(source, heartbeat)
+        self.assertEqual(self.policy_controller.get_scaling_commands.call_count, 2)
+
+
+def _imperative(commands):
+    """Filter out the declarative setDesiredTaskConcurrency command emitted each policy run."""
+    return [c for c in commands if c.command != WorkerManagerCommandType.setDesiredTaskConcurrency]
+
+
+def _declarative(commands):
+    """Return the declarative setDesiredTaskConcurrency commands emitted each policy run."""
+    return [c for c in commands if c.command == WorkerManagerCommandType.setDesiredTaskConcurrency]
 
 
 def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
