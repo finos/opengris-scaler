@@ -27,11 +27,23 @@ Install `uv <https://docs.astral.sh/uv/getting-started/installation>`_:
 
 Then create and activate a virtual environment and install OpenGRIS Scaler:
 
-.. code-block:: bash
+.. tabs::
 
-    uv venv
-    source .venv/bin/activate
-    uv pip install 'opengris-scaler[all]'
+    .. group-tab:: Linux / macOS
+
+        .. code-block:: bash
+
+            uv venv
+            source .venv/bin/activate
+            uv pip install 'opengris-scaler[all]'
+
+    .. group-tab:: Windows
+
+        .. code-block:: powershell
+
+            uv venv
+            .venv\Scripts\activate
+            uv pip install 'opengris-scaler[all]'
 
 See :ref:`installation_options` for other install choices and optional dependencies.
 
