@@ -234,13 +234,13 @@ Create a ``config.toml`` on the **EC2 instance**, filling in the placeholders:
 *   Replace ``<REGION>`` with the AWS region of this EC2 instance. ORB
     provisions workers in the same region, so the values must match, e.g.
     ``us-east-1``.
-*   The scheduler's ``advertised_object_storage_address`` is forwarded to
-    connecting clients, so it must be set to the EC2 **public** IP.
-*   The scheduler's ``object_storage_address`` points to the local object
-    storage server.
-*   The worker manager's ``object_storage_address`` and
-    ``worker_scheduler_address`` use the EC2 **private** IP so that
-    ORB-provisioned workers stay on the faster internal VPC network.
+
+The scheduler's ``advertised_object_storage_address`` is forwarded to connecting
+clients, so it must be set to the EC2 **public** IP. The ``object_storage_address``
+points to the local object storage server. The worker manager's
+``object_storage_address`` and ``worker_scheduler_address`` use the EC2
+**private** IP so that ORB-provisioned workers stay on the faster internal VPC
+network.
 
 .. tabs::
 
