@@ -114,13 +114,15 @@ Run on your **local machine**:
      --description "Scaler scheduler security group" \
      --query GroupId --output text)
 
-   # Allow SSH, scheduler (6788), and object storage (6789) from your IP
+   # Allow SSH, scheduler (6788), object storage (6789), and web GUI (50001) from your IP
    aws ec2 authorize-security-group-ingress --group-id $SG_ID \
      --protocol tcp --port 22 --cidr $MY_IP/32
    aws ec2 authorize-security-group-ingress --group-id $SG_ID \
      --protocol tcp --port 6788 --cidr $MY_IP/32
    aws ec2 authorize-security-group-ingress --group-id $SG_ID \
      --protocol tcp --port 6789 --cidr $MY_IP/32
+   aws ec2 authorize-security-group-ingress --group-id $SG_ID \
+     --protocol tcp --port 50001 --cidr $MY_IP/32
 
    # Allow all inbound traffic from EC2 private addresses (172.16.0.0/12)
    # so ORB-provisioned workers can connect back to this instance
@@ -208,50 +210,43 @@ Example output:
 Step 4 — Start Services
 ------------------------
 
-Create a ``config.toml`` on the **EC2 instance**. Replace ``<EC2_PUBLIC_IP>`` and
-``<EC2_PRIVATE_IP>`` with the values printed in Step 2.
-
-The scheduler's ``advertised_object_storage_address`` is forwarded to connecting
-clients, so it must be set to the EC2 **public** IP. The ``object_storage_address``
-points to the local object storage server. The worker manager's
-``object_storage_address`` and ``worker_scheduler_address`` use the EC2
-**private** IP so that ORB-provisioned workers stay on the faster internal VPC
-network.
-
 .. tabs::
 
-   .. group-tab:: config.toml
+   .. group-tab:: scaler_orb_ec2_config
 
-      .. code-block:: toml
+      Generate ``config.toml`` on the **EC2 instance** by running ``scaler_orb_ec2_config``.
+      The command queries the instance metadata service to fill in the public and private IP
+      addresses automatically:
 
-         [object_storage_server]
-         bind_address = "tcp://0.0.0.0:6789"
+      .. code-block:: bash
 
-         [scheduler]
-         # bind on all interfaces so both the local client and workers can reach this instance
-         bind_address = "tcp://0.0.0.0:6788"
-         # connect to the local object storage server
-         object_storage_address = "tcp://127.0.0.1:6789"
-         # advertise the public IP as the object storage address so clients can connect from outside AWS
-         advertised_object_storage_address = "tcp://<EC2_PUBLIC_IP>:6789"
+         scaler_orb_ec2_config
 
-         [[worker_manager]]
-         type = "orb_aws_ec2"
-         scheduler_address = "tcp://127.0.0.1:6788"
-         worker_manager_id = "wm-orb"
-         # workers run in the same VPC — use the private IP for lower latency
-         worker_scheduler_address = "tcp://<EC2_PRIVATE_IP>:6788"
-         object_storage_address = "tcp://<EC2_PRIVATE_IP>:6789"
-         python_version = "3.14"
-         requirements_txt = """
-         opengris-scaler>=1.27.0
-         numpy
-         """
-         instance_type = "t3.medium"
-         aws_region = "us-east-1"
-         logging_level = "INFO"
+      Example output:
 
-      Run command:
+      .. code-block:: text
+
+         Config written to config.toml
+
+         To add Python packages for your workers, edit the requirements_txt field in config.toml.
+
+         Start Scaler on this instance:
+             scaler config.toml
+
+         Connect from your local machine (scheduler port 6788):
+             from scaler import Client
+             with Client(address="tcp://54.123.45.67:6788") as client:
+                 ...
+
+         Open the web GUI in your browser (ensure port 50001 is open in the EC2 security group):
+             http://54.123.45.67:50001
+
+      The scheduler's ``advertised_object_storage_address`` (forwarded to connecting clients)
+      is set to the EC2 **public** IP. Worker manager addresses use the EC2 **private** IP
+      so that ORB-provisioned workers stay on the faster internal VPC network.
+
+      Edit the ``requirements_txt`` field in ``config.toml`` to add any Python packages your
+      workers need, then start the cluster:
 
       .. code-block:: bash
 
@@ -264,6 +259,51 @@ network.
          [INFO] ObjectStorageServer listening on tcp://0.0.0.0:6789
          [INFO] Scheduler listening on tcp://0.0.0.0:6788
          [INFO] ORBWorkerManager started, worker_manager_id=wm-orb
+
+      .. note::
+
+         ``scaler_orb_ec2_config`` accepts flags to customize the instance type, region,
+         ports, and more. Run ``scaler_orb_ec2_config --help`` for the full list.
+
+   .. group-tab:: config.toml
+
+      Create ``config.toml`` on the **EC2 instance**, replacing ``<EC2_PUBLIC_IP>``
+      and ``<EC2_PRIVATE_IP>`` with the addresses printed in Step 2:
+
+      .. code-block:: toml
+
+         [object_storage_server]
+         bind_address = "tcp://0.0.0.0:6789"
+
+         [scheduler]
+         bind_address = "tcp://0.0.0.0:6788"
+         object_storage_address = "tcp://127.0.0.1:6789"
+         advertised_object_storage_address = "tcp://<EC2_PUBLIC_IP>:6789"
+
+         [[worker_manager]]
+         type = "orb_aws_ec2"
+         scheduler_address = "tcp://127.0.0.1:6788"
+         worker_manager_id = "wm-orb"
+         worker_scheduler_address = "tcp://<EC2_PRIVATE_IP>:6788"
+         object_storage_address = "tcp://<EC2_PRIVATE_IP>:6789"
+         instance_type = "t3.medium"
+         aws_region = "us-east-1"
+         logging_level = "INFO"
+         python_version = "3.14"
+         requirements_txt = """
+         opengris-scaler
+         """
+
+         [gui]
+         monitor_address = "tcp://127.0.0.1:6790"
+         gui_address = "0.0.0.0:50001"
+
+      Edit the ``requirements_txt`` field to add any Python packages your workers need,
+      then start the cluster:
+
+      .. code-block:: bash
+
+         scaler config.toml
 
    .. group-tab:: command line
 
@@ -281,7 +321,8 @@ network.
              --requirements-txt $'opengris-scaler>=1.27.0\nnumpy' \
              --instance-type t3.medium \
              --aws-region us-east-1 \
-             --logging-level INFO
+             --logging-level INFO &
+         scaler_gui tcp://127.0.0.1:6790 --gui-address 0.0.0.0:50001
 
 Step 5 — Connect a Client
 --------------------------
@@ -316,3 +357,24 @@ will be installed on each worker instance automatically.
    print(results)
 
 Once connected, see :ref:`quickstart_start_compute_tasks` for more example workloads.
+
+Step 6 — Open the Web GUI
+--------------------------
+
+The generated ``config.toml`` includes a ``[gui]`` section so the web GUI starts
+automatically alongside the scheduler. Open the following URL in your browser,
+replacing ``<EC2_PUBLIC_IP>`` with your instance's public IP:
+
+.. code-block:: text
+
+   http://<EC2_PUBLIC_IP>:50001
+
+The GUI connects to the scheduler's monitor endpoint (``scheduler_port + 2``, i.e.
+port 6790 by default) to stream live metrics — active workers, task throughput, and
+object storage usage.
+
+.. note::
+
+   Make sure port 50001 is open in the EC2 security group (Step 2 above). If you used
+   a custom port via ``--gui-port``, substitute that value instead. You can also change
+   the port at any time by editing the ``gui_address`` field in ``config.toml``.
