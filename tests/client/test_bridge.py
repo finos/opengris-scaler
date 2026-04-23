@@ -188,5 +188,44 @@ class BridgeSurfaceParityTest(unittest.TestCase):
         self.assertTrue(issubclass(InProcessAgentBridge, ClientAgentBridge))
 
 
+class CheckBrowserRuntimeTest(unittest.TestCase):
+    """``check_browser_runtime`` guards ``Client`` against being instantiated
+    on an emscripten build that lacks JSPI (where the sync API would
+    deadlock). On native platforms it must be a silent no-op."""
+
+    def test_native_platform_is_noop(self) -> None:
+        with patch.object(bridge_module.sys, "platform", "linux"):
+            bridge_module.check_browser_runtime()  # must not raise
+
+    def test_emscripten_without_jspi_raises(self) -> None:
+        import builtins
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "pyodide.ffi" or name.startswith("pyodide"):
+                raise ImportError("simulated: no pyodide module")
+            return real_import(name, *args, **kwargs)
+
+        with patch.object(bridge_module.sys, "platform", "emscripten"):
+            with patch.object(builtins, "__import__", fake_import):
+                with self.assertRaises(RuntimeError) as ctx:
+                    bridge_module.check_browser_runtime()
+        # Error message should mention JSPI so users know what's missing.
+        self.assertIn("JSPI", str(ctx.exception))
+
+    def test_emscripten_with_jspi_does_not_raise(self) -> None:
+        import types
+
+        fake_ffi = types.ModuleType("pyodide.ffi")
+        fake_ffi.run_sync = lambda coro: None  # type: ignore[attr-defined]
+        fake_pyodide = types.ModuleType("pyodide")
+        fake_pyodide.ffi = fake_ffi  # type: ignore[attr-defined]
+
+        with patch.object(bridge_module.sys, "platform", "emscripten"):
+            with patch.dict("sys.modules", {"pyodide": fake_pyodide, "pyodide.ffi": fake_ffi}):
+                bridge_module.check_browser_runtime()  # must not raise
+
+
 if __name__ == "__main__":
     unittest.main()

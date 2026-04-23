@@ -440,3 +440,29 @@ def create_default_bridge(
         serializer=serializer,
         object_storage_address=object_storage_address,
     )
+
+
+def check_browser_runtime() -> None:
+    """Raise ``RuntimeError`` if the current runtime cannot host a ``Client``.
+
+    The browser bridge (``InProcessAgentBridge``) drives the agent coroutine
+    on the same event loop as the user and uses JavaScript Promise
+    Integration (``pyodide.ffi.run_sync``) to keep ``Client``'s synchronous
+    public API working. When JSPI is not available the sync API would
+    deadlock, so we fail fast with an actionable error instead.
+
+    On non-emscripten platforms this is a no-op.
+    """
+    if sys.platform != "emscripten":
+        return
+
+    try:
+        from pyodide.ffi import run_sync  # type: ignore[import-not-found]  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError(
+            "Scaler's browser client requires Pyodide's JavaScript Promise Integration (JSPI). "
+            "pyodide.ffi.run_sync could not be imported. "
+            "Please use a Pyodide build that exposes JSPI (Pyodide 0.27+ with a JSPI-capable browser, "
+            "e.g. Chrome/Edge 137+). Alternatively, use 'await client.submit(...)' instead of the "
+            "blocking sync API."
+        ) from exc

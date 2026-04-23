@@ -6,7 +6,7 @@ from collections import Counter
 from inspect import signature
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
-from scaler.client.agent.bridge import ClientAgentBridge, create_default_bridge
+from scaler.client.agent.bridge import ClientAgentBridge, check_browser_runtime, create_default_bridge
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.future import ScalerFuture
 from scaler.client.object_buffer import ObjectBuffer
@@ -95,6 +95,8 @@ class Client:
         stream_output: bool = False,
         object_storage_address: Optional[str] = None,
     ):
+        check_browser_runtime()
+
         self._serializer = serializer
 
         self._profiling = profiling
