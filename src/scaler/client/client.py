@@ -2,12 +2,11 @@ import dataclasses
 import functools
 import logging
 import threading
-import uuid
 from collections import Counter
 from inspect import signature
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
-from scaler.client.agent.client_agent import ClientAgent
+from scaler.client.agent.bridge import ClientAgentBridge, check_browser_runtime, create_default_bridge
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.future import ScalerFuture
 from scaler.client.object_buffer import ObjectBuffer
@@ -16,7 +15,7 @@ from scaler.client.serializer.default import DefaultSerializer
 from scaler.client.serializer.mixins import Serializer
 from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
 from scaler.config.types.address import AddressConfig
-from scaler.io.mixins import ConnectorRemoteType, NetworkBackend, SyncConnector, SyncObjectStorageConnector
+from scaler.io.mixins import NetworkBackend, SyncConnector, SyncObjectStorageConnector
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.protocol.capnp import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
@@ -96,6 +95,8 @@ class Client:
         stream_output: bool = False,
         object_storage_address: Optional[str] = None,
     ):
+        check_browser_runtime()
+
         self._serializer = serializer
 
         self._profiling = profiling
@@ -104,10 +105,6 @@ class Client:
 
         self._backend: NetworkBackend = get_network_backend_from_env()
 
-        self._client_agent_address = self._backend.create_internal_address(
-            f"scaler_client_{uuid.uuid4().hex}", same_process=True
-        )
-
         self._scheduler_address = self.__resolve_scheduler_address(address)
         self._timeout_seconds = timeout_seconds
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
@@ -115,9 +112,8 @@ class Client:
         self._stop_event = threading.Event()
 
         self._future_manager = ClientFutureManager(self._serializer)
-        self._agent = ClientAgent(
+        self._bridge: ClientAgentBridge = create_default_bridge(
             identity=self._identity,
-            client_agent_address=self._client_agent_address,
             scheduler_address=self._scheduler_address,
             network_backend=self._backend,
             future_manager=self._future_manager,
@@ -127,18 +123,14 @@ class Client:
             serializer=self._serializer,
             object_storage_address=object_storage_address,
         )
-        self._agent.start()
+        self._bridge.start()
 
         logging.info(f"ScalerClient: connect to scheduler at {self._scheduler_address}")
 
         # Blocks until the agent receives the object storage address
-        self._object_storage_address = self._agent.get_object_storage_address()
+        self._object_storage_address = self._bridge.get_object_storage_address()
 
-        self._connector_agent: SyncConnector = self._backend.create_sync_connector(
-            identity=self._identity,
-            connector_remote_type=ConnectorRemoteType.Connector,
-            address=self._client_agent_address,
-        )
+        self._connector_agent: SyncConnector = self._bridge.connector
 
         logging.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
         self._connector_storage: SyncObjectStorageConnector = self._backend.create_sync_object_storage_connector(
@@ -482,7 +474,7 @@ class Client:
         then it cannot shut down scheduler and the workers
         """
 
-        if not self._agent.is_alive():
+        if not self._bridge.is_alive():
             self.__destroy()
             return
 
@@ -706,7 +698,7 @@ class Client:
             raise ClientQuitException("client is already stopped.")
 
     def __destroy(self):
-        self._agent.join()
+        self._bridge.join()
 
         self._connector_agent.destroy()
         self._connector_storage.destroy()

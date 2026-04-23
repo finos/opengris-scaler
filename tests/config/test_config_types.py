@@ -39,6 +39,22 @@ class TestConfigTypes(unittest.TestCase):
         cfg = AddressConfig.from_string("ipc://a-valid-path")
         self.assertEqual(cfg.host, "a-valid-path")
 
+    def test_address_config_websocket(self):
+        """Test AddressConfig.from_string accepts ws:// and wss:// with host:port."""
+        cfg = AddressConfig.from_string("ws://scheduler.example.com:5555")
+        self.assertEqual(cfg.host, "scheduler.example.com")
+        self.assertEqual(cfg.port, 5555)
+        self.assertEqual(str(cfg), "ws://scheduler.example.com:5555")
+
+        cfg_secure = AddressConfig.from_string("wss://example:443")
+        self.assertEqual(cfg_secure.host, "example")
+        self.assertEqual(cfg_secure.port, 443)
+        self.assertEqual(str(cfg_secure), "wss://example:443")
+
+        # ws/wss require a port, like tcp.
+        with self.assertRaises(ValueError):
+            AddressConfig.from_string("ws://no-port")
+
     def test_worker_names_config_value(self):
         """Test the WorkerNames ConfigType class."""
         wn = WorkerNames.from_string(" worker1 , worker2 ")

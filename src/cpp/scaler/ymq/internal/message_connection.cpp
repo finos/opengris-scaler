@@ -134,10 +134,15 @@ void MessageConnection::shutdownClient() noexcept
 
     auto shutdownCallback = [client =
                                  std::move(client)](std::expected<void, scaler::wrapper::uv::Error> result) noexcept {
-        UV_EXIT_ON_ERROR(result);
+        if (!result.has_value() && result.error().code() != UV_ENOTCONN) {
+            UV_EXIT_ON_ERROR(result);
+        }
     };
 
-    UV_EXIT_ON_ERROR(clientPtr->shutdown(std::move(shutdownCallback)));
+    if (auto result = clientPtr->shutdown(std::move(shutdownCallback));
+        !result && result.error().code() != UV_ENOTCONN) {
+        UV_EXIT_ON_ERROR(result);
+    }
 }
 
 void MessageConnection::initialize() noexcept
@@ -250,6 +255,7 @@ void MessageConnection::onWriteDone(
             case UV_ETIMEDOUT:
             case UV_EPIPE:
             case UV_ENETDOWN:
+            case UV_ENOTCONN:
                 // Connection closed/failed WHILE libuv issued the write to the OS.
                 // No need to handle this disconnect event, as this will be handled by onRead().
                 callback({});
@@ -286,6 +292,7 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
             case UV_ETIMEDOUT:
             case UV_EPIPE:
             case UV_ENETDOWN:
+            case UV_ENOTCONN:
                 // Connection aborted unexpectedly
                 onRemoteDisconnect(DisconnectReason::Aborted);
                 return;
@@ -372,17 +379,25 @@ void MessageConnection::processSendOperation(SendOperation operation) noexcept
         totalSize += buffer.size();
     }
 
-    // Make the callback own the operation's callback
-    auto callback = [onSendDone = std::move(operation._onSendDone)](
-                        std::expected<void, scaler::wrapper::uv::Error> result) mutable {
-        onWriteDone(std::move(onSendDone), std::move(result));
-    };
+    auto onSendDonePtr = std::make_shared<std::optional<SendMessageCallback>>(std::move(operation._onSendDone));
 
     if (totalSize <= maxWriteBufferSize) {
         // Small message: all buffers in one syscall
-        UV_EXIT_ON_ERROR(_client->write(
+        auto result = _client->write(
             std::span<const std::span<const uint8_t>> {operation._buffers.data(), operation._buffers.size()},
-            std::move(callback)));
+            [this, onSendDonePtr](std::expected<void, scaler::wrapper::uv::Error> res) mutable {
+                if (onSendDonePtr->has_value()) {
+                    onWriteDone(std::move(onSendDonePtr->value()), std::move(res));
+                    onSendDonePtr->reset();
+                }
+            });
+
+        if (!result.has_value()) {
+            if (onSendDonePtr->has_value()) {
+                onWriteDone(std::move(onSendDonePtr->value()), std::unexpected(result.error()));
+                onSendDonePtr->reset();
+            }
+        }
     } else {
         // Large message: chunk the buffers in write() calls of up to maxWriteBufferSize.
         //
@@ -395,11 +410,23 @@ void MessageConnection::processSendOperation(SendOperation operation) noexcept
 
                 const bool isLastChunk = (offset + bufferOffset + chunkSize >= totalSize);
 
-                if (!isLastChunk) {
-                    UV_EXIT_ON_ERROR(_client->write(std::span(&chunk, 1), [](auto) {}));
-                } else {
-                    // Attach the callback to the last write() call.
-                    UV_EXIT_ON_ERROR(_client->write(std::span(&chunk, 1), std::move(callback)));
+                auto result = _client->write(
+                    std::span(&chunk, 1),
+                    [this, onSendDonePtr, isLastChunk](std::expected<void, scaler::wrapper::uv::Error> res) mutable {
+                        if (!res.has_value() || isLastChunk) {
+                            if (onSendDonePtr->has_value()) {
+                                onWriteDone(std::move(onSendDonePtr->value()), std::move(res));
+                                onSendDonePtr->reset();
+                            }
+                        }
+                    });
+
+                if (!result.has_value()) {
+                    if (onSendDonePtr->has_value()) {
+                        onWriteDone(std::move(onSendDonePtr->value()), std::unexpected(result.error()));
+                        onSendDonePtr->reset();
+                    }
+                    return;
                 }
             }
             offset += buffer.size();

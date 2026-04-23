@@ -22,6 +22,7 @@ if(LINUX OR WIN32)
 		net/socket_utils.h
 		net/tcp_socket.h
 		net/uds_socket.h
+		net/websocket_socket.h
 
 		pipe/pipe.h
 		pipe/pipe_utils.h
@@ -37,6 +38,8 @@ if(LINUX OR WIN32)
 			net/socket_utils_linux.cpp
 			net/tcp_socket_linux.cpp
 			net/uds_socket.cpp
+			net/websocket_socket.cpp
+			net/websocket_socket_linux.cpp
 
 			pipe/pipe_utils_linux.cpp
 			pipe/pipe_reader_linux.cpp
@@ -48,6 +51,8 @@ if(LINUX OR WIN32)
 
 			net/socket_utils_windows.cpp
 			net/tcp_socket_windows.cpp
+			net/websocket_socket.cpp
+			net/websocket_socket_windows.cpp
 
 			pipe/pipe_utils_windows.cpp
 			pipe/pipe_reader_windows.cpp

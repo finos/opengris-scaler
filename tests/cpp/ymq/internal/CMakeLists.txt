@@ -3,4 +3,5 @@ target_sources(test_ymq PRIVATE
     test_connect_client.cpp
     test_event_loop_thread.cpp
     test_message_connection.cpp
+    test_websocket_stream.cpp
 )

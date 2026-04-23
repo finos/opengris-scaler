@@ -7,6 +7,7 @@
 #include "scaler/wrapper/uv/pipe.h"
 #include "scaler/wrapper/uv/socket_address.h"
 #include "scaler/wrapper/uv/tcp.h"
+#include "scaler/ymq/internal/websocket_stream.h"
 
 namespace scaler {
 namespace ymq {
@@ -56,6 +57,7 @@ void ConnectClient::disconnect() noexcept
     }
 
     _state->_connectRequest.reset();
+    _state->_upgradeSocket.reset();
     _state->_client.reset();
 }
 
@@ -80,6 +82,15 @@ void ConnectClient::tryConnect(std::shared_ptr<State> state) noexcept
             state->_client = Client(std::move(ipcClient));
             break;
         }
+        case Address::Type::WebSocket: {
+            auto tcpClient = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(state->_loop));
+
+            state->_connectRequest = UV_EXIT_ON_ERROR(tcpClient.connect(
+                state->_address.asWebSocket().tcpAddress, std::bind_front(&ConnectClient::onConnectWS, state)));
+
+            state->_upgradeSocket = std::move(tcpClient);
+            break;
+        }
         default: std::unreachable();
     }
 }
@@ -100,6 +111,40 @@ void ConnectClient::onConnect(
 
     state->_onConnectCallback(std::move(state->_client.value()));
     state->_onConnectCallback = {};
+}
+
+void ConnectClient::onConnectWS(
+    std::shared_ptr<State> state, std::expected<void, scaler::wrapper::uv::Error> result) noexcept
+{
+    if (!result.has_value()) {
+        state->_upgradeSocket.reset();
+
+        if (result.error() == scaler::wrapper::uv::Error {UV_ECANCELED}) {
+            state->_onConnectCallback(
+                std::unexpected(scaler::ymq::Error(scaler::ymq::Error::ErrorCode::SocketStopRequested)));
+            state->_onConnectCallback = {};
+        } else {
+            retry(std::move(state));
+        }
+        return;
+    }
+
+    scaler::wrapper::uv::TCPSocket socket = std::move(state->_upgradeSocket.value());
+    state->_upgradeSocket.reset();
+
+    const WebSocketAddress& wsAddr = state->_address.asWebSocket();
+    WebSocketStream::upgradeAsClient(
+        std::move(socket),
+        wsAddr,
+        [state](std::expected<WebSocketStream, scaler::wrapper::uv::Error> wsResult) mutable {
+            if (!wsResult.has_value()) {
+                retry(state);
+                return;
+            }
+
+            state->_onConnectCallback(Client(std::move(wsResult.value())));
+            state->_onConnectCallback = {};
+        });
 }
 
 void ConnectClient::retry(std::shared_ptr<State> state) noexcept

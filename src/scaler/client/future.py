@@ -1,3 +1,4 @@
+import asyncio
 import concurrent.futures
 from typing import Any, Callable, Optional
 
@@ -186,6 +187,23 @@ class ScalerFuture(concurrent.futures.Future):
             self._wait_result_ready(timeout)
 
         return self.cancelled()
+
+    def __await__(self):
+        """Allow ``await scaler_future`` from any asyncio context.
+
+        ``ScalerFuture`` is a :class:`concurrent.futures.Future` subclass, so
+        it is completed by the client agent (on a background thread natively,
+        or on the same asyncio loop under Pyodide). ``asyncio.wrap_future``
+        bridges the two worlds using thread-safe future completion, and
+        degrades to the same-loop case gracefully when both sides already
+        share a loop.
+
+        This enables notebook code such as ``result = await client.submit(...)``
+        to work identically in CPython and in the browser without requiring
+        the sync blocking ``.result()`` path (which in the browser depends on
+        JSPI).
+        """
+        return asyncio.wrap_future(self).__await__()
 
     def add_done_callback(self, fn: Callable[["ScalerFuture"], Any]) -> None:
         with self._condition:
