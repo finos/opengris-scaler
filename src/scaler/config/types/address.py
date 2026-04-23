@@ -14,6 +14,8 @@ class SocketType(enum.Enum):
     inproc = "inproc"
     ipc = "ipc"
     tcp = "tcp"
+    ws = "ws"
+    wss = "wss"
 
     @staticmethod
     def allowed_types():
@@ -34,7 +36,7 @@ class AddressConfig(ConfigType):
             raise TypeError(f"Host should be string, given {self.host}")
 
         if self.port is None:
-            if self.type == SocketType.tcp:
+            if self.type in {SocketType.tcp, SocketType.ws, SocketType.wss}:
                 raise ValueError(f"type {self.type.value} should have `port`")
         else:
             if self.type in {SocketType.inproc, SocketType.ipc}:
@@ -56,7 +58,7 @@ class AddressConfig(ConfigType):
         if socket_type_enum in {SocketType.inproc, SocketType.ipc}:
             host = host_port
             port_int = None
-        elif socket_type_enum == SocketType.tcp:
+        elif socket_type_enum in {SocketType.tcp, SocketType.ws, SocketType.wss}:
             host, port = host_port.split(":")
             try:
                 port_int = int(port)
@@ -68,8 +70,8 @@ class AddressConfig(ConfigType):
         return cls(socket_type_enum, host, port_int)
 
     def __repr__(self) -> str:
-        if self.type == SocketType.tcp:
-            return f"tcp://{self.host}:{self.port}"
+        if self.type in {SocketType.tcp, SocketType.ws, SocketType.wss}:
+            return f"{self.type.value}://{self.host}:{self.port}"
 
         if self.type in {SocketType.inproc, SocketType.ipc}:
             return f"{self.type.value}://{self.host}"
