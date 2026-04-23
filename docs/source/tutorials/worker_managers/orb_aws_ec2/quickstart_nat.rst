@@ -87,7 +87,7 @@ address.
          bind_address = "tcp://127.0.0.1:8517"
 
          [scheduler]
-         # use 0.0.0.0 so NAT and forward traffic from your public IP to this machine
+         # bind to 0.0.0.0 so NAT can forward traffic from your public IP to this machine
          bind_address = "tcp://0.0.0.0:8516"
          object_storage_address = "tcp://127.0.0.1:8517"
 
@@ -95,8 +95,8 @@ address.
          type = "orb_aws_ec2"
          scheduler_address = "tcp://127.0.0.1:8516"
          worker_manager_id = "wm-orb"
-         # worker provisioned in AWS need reach to your PUBLIC_IP, and your router
-         # then forward packets to the machine you started services
+         # workers provisioned in AWS need to reach your PUBLIC_IP, from where your
+         # router forwards packets to the machine running the services
          object_storage_address = "tcp://<PUBLIC_IP>:8517"
          worker_scheduler_address = "tcp://<PUBLIC_IP>:8516"
          # You can start either with pre-built AMI or with specified python version

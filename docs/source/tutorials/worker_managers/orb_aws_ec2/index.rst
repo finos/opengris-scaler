@@ -152,7 +152,7 @@ Worker Image Customization Modes
 
 The adapter supports two mutually exclusive worker-image modes. Choose exactly one:
 
-* Use an existing pre-built AMI image.
+* Use an existing pre-built AMI.
 * Use a base image and install Python/packages when instances start.
 
 **Base Image + Startup Install**

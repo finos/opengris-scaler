@@ -289,7 +289,7 @@ Alternatively, start each process separately:
 Step 4: Run Tests
 ~~~~~~~~~~~~~~~~~
 
-With all processes running (from Step 2), submit tasks:
+With all processes running (from Step 3), submit tasks:
 
 .. code-block:: bash
 

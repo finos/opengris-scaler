@@ -275,7 +275,7 @@ network.
              --advertised-object-storage-address tcp://<EC2_PUBLIC_IP>:6789 &
          scaler_worker_manager orb_aws_ec2 tcp://127.0.0.1:6788 \
              --worker-manager-id wm-orb \
-             --public-scheduler-address tcp://<EC2_PRIVATE_IP>:6788 \
+             --worker-scheduler-address tcp://<EC2_PRIVATE_IP>:6788 \
              --object-storage-address tcp://<EC2_PRIVATE_IP>:6789 \
              --python-version 3.14 \
              --requirements-txt $'opengris-scaler>=1.27.0\nnumpy' \

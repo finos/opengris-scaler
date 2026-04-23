@@ -21,11 +21,11 @@ Worker Managers, and Workers.
 Key Features
 ------------
 
-* Cross cloud computing support with unified and single client api
-* Easy spawn clusters on either local machine or clouds
-* Python ``multiprocessing``-style client API, for example ``client.map()`` ``client.starmap()`` and ``client.submit()``.
+* Cross-cloud computing with a unified single-client API
+* Easily spawn clusters on a local machine or in the cloud
+* Python ``multiprocessing``-style client API, for example ``client.map()``, ``client.starmap()``, and ``client.submit()``.
 * Graph tasks for DAG-based execution with explicit dependencies use ``client.get()``.
-* Both CLI and WebUI Monitoring dashboard for real-time worker and task visibility.
+* Both CLI and WebUI monitoring dashboards for real-time worker and task visibility.
 * Task profiling for runtime and resource diagnostics.
 
 
