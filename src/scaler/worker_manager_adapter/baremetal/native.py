@@ -1,33 +1,21 @@
-import asyncio
 import logging
 import os
 import signal
 import uuid
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
-from scaler.io import ymq
-from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend
-from scaler.io.network_backends import get_network_backend_from_env
-from scaler.io.utility import generate_identity_from_name
-from scaler.protocol.capnp import (
-    BaseMessage,
-    WorkerManagerCommand,
-    WorkerManagerCommandResponse,
-    WorkerManagerCommandType,
-    WorkerManagerHeartbeat,
-    WorkerManagerHeartbeatEcho,
-)
-from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
+from scaler.protocol.capnp import WorkerManagerCommandResponse
 from scaler.utility.identifiers import WorkerID
 from scaler.worker.worker import Worker
+from scaler.worker_manager_adapter.mixins import WorkerProvisioner
+from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRunner
 
 Status = WorkerManagerCommandResponse.Status
 
 
-class NativeWorkerManager:
-    def __init__(self, config: NativeWorkerManagerConfig):
-        self._address = config.worker_manager_config.scheduler_address
+class NativeWorkerProvisioner(WorkerProvisioner):
+    def __init__(self, config: NativeWorkerManagerConfig) -> None:
         self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
@@ -46,34 +34,17 @@ class NativeWorkerManager:
         self._logging_paths = config.logging_config.paths
         self._logging_level = config.logging_config.level
         self._logging_config_file = config.logging_config.config_file
-        self._mode = config.mode
 
         if config.worker_type is not None:
             self._worker_prefix = config.worker_type
-        elif self._mode == NativeWorkerManagerMode.FIXED:
+        elif config.mode == NativeWorkerManagerMode.FIXED:
             self._worker_prefix = "FIX"
-        elif self._mode == NativeWorkerManagerMode.DYNAMIC:
+        elif config.mode == NativeWorkerManagerMode.DYNAMIC:
             self._worker_prefix = "NAT"
         else:
-            raise ValueError(f"worker_type is not set and mode is unrecognised: {self._mode!r}")
+            raise ValueError(f"worker_type is not set and mode is unrecognised: {config.mode!r}")
 
         self._workers: Dict[WorkerID, Worker] = {}
-
-        # Network setup is deferred to __initialize_network(), called at the start of run().
-        # This keeps the object picklable so callers can do Process(target=adapter.run).start().
-        self._backend: Optional[NetworkBackend] = None
-        self._connector_external: Optional[AsyncConnector] = None
-        self._ident: Optional[bytes] = None
-
-    async def __initialize_network(self) -> None:
-        self._name = "worker_manager_native"
-        self._ident = generate_identity_from_name(self._name)
-        self._backend = get_network_backend_from_env(io_threads=self._io_threads)
-
-        self._connector_external = self._backend.create_async_connector(
-            identity=self._ident, callback=self.__on_receive_external
-        )
-        await self._connector_external.connect(self._address, ConnectorRemoteType.Binder)
 
     def _create_worker(self) -> Worker:
         return Worker(
@@ -96,85 +67,14 @@ class NativeWorkerManager:
             worker_manager_id=self._worker_manager_id,
         )
 
-    def _spawn_initial_workers(self) -> None:
+    def run_fixed(self) -> None:
         for _ in range(self._max_task_concurrency):
             worker = self._create_worker()
             worker.start()
             self._workers[worker.identity] = worker
 
-    async def __on_receive_external(self, message: BaseMessage):
-        if isinstance(message, WorkerManagerCommand):
-            await self._handle_command(message)
-
-        elif isinstance(message, WorkerManagerHeartbeatEcho):
-            pass
-
-        else:
-            print(f"Received unknown message type: {type(message)}")
-
-    async def _handle_command(self, command: WorkerManagerCommand):
-        cmd_type = command.command
-        response_status: Status = Status.success
-        worker_ids: List[bytes] = []
-
-        if cmd_type == WorkerManagerCommandType.startWorkers:
-            new_wid, response_status = await self.start_worker()
-            if response_status == Status.success:
-                worker_ids = [bytes(new_wid)]
-        elif cmd_type == WorkerManagerCommandType.shutdownWorkers:
-            response_status = await self.shutdown_workers(command.workerIDs)
-            if response_status == Status.success:
-                worker_ids = list(command.workerIDs)
-        else:
-            raise ValueError("Unknown WorkerManagerCommand")
-
-        await self._connector_external.send(
-            WorkerManagerCommandResponse(
-                command=cmd_type, status=response_status, workerIDs=worker_ids, capabilities=self._capabilities
-            )
-        )
-
-    async def start_worker(self) -> Tuple[WorkerID, Status]:
-        if len(self._workers) >= self._max_task_concurrency != -1:
-            return WorkerID(b""), Status.tooManyWorkers
-
-        worker = self._create_worker()
-        worker.start()
-        self._workers[worker.identity] = worker
-        logging.info(f"Start worker, {self._ident!r}")
-        return worker.identity, Status.success
-
-    async def shutdown_workers(self, worker_ids: List[bytes]) -> Status:
-        if not worker_ids:
-            return Status.workerNotFound
-
-        for wid_bytes in worker_ids:
-            wid = WorkerID(wid_bytes)
-            if wid not in self._workers:
-                logging.warning(f"Worker with ID {wid!r} does not exist.")
-                return Status.workerNotFound
-
-        for wid_bytes in worker_ids:
-            wid = WorkerID(wid_bytes)
-            worker = self._workers.pop(wid)
-            os.kill(worker.pid, signal.SIGINT)
-            worker.join()
-
-        return Status.success
-
-    def run(self) -> None:
-        if self._mode == NativeWorkerManagerMode.FIXED:
-            self._run_fixed()
-            return
-
-        self._loop = asyncio.new_event_loop()
-        run_task_forever(self._loop, self._run(), cleanup_callback=self._cleanup)
-
-    def _run_fixed(self) -> None:
-        self._spawn_initial_workers()
-
         def _on_signal(sig: int, frame: object) -> None:
-            logging.info("NativeWorkerManager (FIXED): received signal %d, terminating workers", sig)
+            logging.info("NativeWorkerProvisioner (FIXED): received signal %d, terminating workers", sig)
             for worker in self._workers.values():
                 if worker.is_alive():
                     worker.terminate()
@@ -185,46 +85,58 @@ class NativeWorkerManager:
         for worker in self._workers.values():
             worker.join()
 
-    def _cleanup(self) -> None:
-        if self._connector_external is not None:
-            self._connector_external.destroy()
+    async def start_worker(self) -> Tuple[List[bytes], Status]:
+        if self._max_task_concurrency != -1 and len(self._workers) >= self._max_task_concurrency:
+            return [], Status.tooManyWorkers
 
-    def __destroy(self):
-        print(f"Worker manager {self._ident!r} received signal, shutting down")
-        self._task.cancel()
+        worker = self._create_worker()
+        worker.start()
+        self._workers[worker.identity] = worker
+        logging.info(f"Started native worker {worker.identity!r}")
+        return [bytes(worker.identity)], Status.success
 
-    def __register_signal(self):
-        self._loop.add_signal_handler(signal.SIGINT, self.__destroy)
-        self._loop.add_signal_handler(signal.SIGTERM, self.__destroy)
+    async def shutdown_workers(self, worker_ids: List[bytes]) -> Tuple[List[bytes], Status]:
+        if not worker_ids:
+            return [], Status.workerNotFound
 
-    async def _run(self) -> None:
-        self._task = self._loop.create_task(self.__get_loops())
-        self.__register_signal()
-        await self._task
+        for wid_bytes in worker_ids:
+            wid = WorkerID(wid_bytes)
+            if wid not in self._workers:
+                logging.warning(f"Worker with ID {wid!r} does not exist.")
+                return [], Status.workerNotFound
 
-    async def __send_heartbeat(self) -> None:
-        await self._connector_external.send(
-            WorkerManagerHeartbeat(
-                maxTaskConcurrency=self._max_task_concurrency,
-                capabilities=self._capabilities,
-                workerManagerID=self._worker_manager_id,
-            )
+        for wid_bytes in worker_ids:
+            wid = WorkerID(wid_bytes)
+            worker = self._workers.pop(wid)
+            os.kill(worker.pid, signal.SIGINT)
+            worker.join()
+
+        return list(worker_ids), Status.success
+
+
+class NativeWorkerManager:
+    def __init__(self, config: NativeWorkerManagerConfig) -> None:
+        self._config = config
+
+    @property
+    def config(self) -> NativeWorkerManagerConfig:
+        return self._config
+
+    def run(self) -> None:
+        provisioner = NativeWorkerProvisioner(self._config)
+
+        if self._config.mode == NativeWorkerManagerMode.FIXED:
+            provisioner.run_fixed()
+            return
+
+        runner = WorkerManagerRunner(
+            address=self._config.worker_manager_config.scheduler_address,
+            name="worker_manager_native",
+            heartbeat_interval_seconds=self._config.worker_config.heartbeat_interval_seconds,
+            capabilities=self._config.worker_config.per_worker_capabilities.capabilities,
+            max_task_concurrency=self._config.worker_manager_config.max_task_concurrency,
+            worker_manager_id=self._config.worker_manager_config.worker_manager_id.encode(),
+            worker_provisioner=provisioner,
+            io_threads=self._config.worker_config.io_threads,
         )
-
-    async def __get_loops(self) -> None:
-        await self.__initialize_network()
-
-        loops = [
-            create_async_loop_routine(self._connector_external.routine, 0),
-            create_async_loop_routine(self.__send_heartbeat, self._heartbeat_interval_seconds),
-        ]
-
-        try:
-            await asyncio.gather(*loops)
-        except asyncio.CancelledError:
-            pass
-        except ymq.YMQException as e:
-            if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
-                pass
-            else:
-                logging.exception(f"{self._ident!r}: failed with unhandled exception:\n{e}")
+        runner.run()

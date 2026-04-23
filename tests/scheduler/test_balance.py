@@ -49,11 +49,11 @@ class TestBalance(unittest.TestCase):
 
         time.sleep(3)
 
-        base_manager = combo._worker_manager
+        base_config = combo._worker_manager.config
         new_manager = NativeWorkerManager(
             NativeWorkerManagerConfig(
                 worker_manager_config=WorkerManagerConfig(
-                    scheduler_address=base_manager._address,
+                    scheduler_address=base_config.worker_manager_config.scheduler_address,
                     worker_manager_id="test_manager",
                     object_storage_address=None,
                     max_task_concurrency=N_WORKERS - 1,
@@ -61,20 +61,20 @@ class TestBalance(unittest.TestCase):
                 mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities({}),
-                    per_worker_task_queue_size=base_manager._task_queue_size,
-                    heartbeat_interval_seconds=base_manager._heartbeat_interval_seconds,
-                    task_timeout_seconds=base_manager._task_timeout_seconds,
-                    death_timeout_seconds=base_manager._death_timeout_seconds,
-                    garbage_collect_interval_seconds=base_manager._garbage_collect_interval_seconds,
-                    trim_memory_threshold_bytes=base_manager._trim_memory_threshold_bytes,
-                    hard_processor_suspend=base_manager._hard_processor_suspend,
+                    per_worker_task_queue_size=base_config.worker_config.per_worker_task_queue_size,
+                    heartbeat_interval_seconds=base_config.worker_config.heartbeat_interval_seconds,
+                    task_timeout_seconds=base_config.worker_config.task_timeout_seconds,
+                    death_timeout_seconds=base_config.worker_config.death_timeout_seconds,
+                    garbage_collect_interval_seconds=base_config.worker_config.garbage_collect_interval_seconds,
+                    trim_memory_threshold_bytes=base_config.worker_config.trim_memory_threshold_bytes,
+                    hard_processor_suspend=base_config.worker_config.hard_processor_suspend,
                     io_threads=1,
-                    event_loop=base_manager._event_loop,
+                    event_loop=base_config.worker_config.event_loop,
                 ),
                 logging_config=LoggingConfig(
-                    paths=base_manager._logging_paths,
-                    level=base_manager._logging_level,
-                    config_file=base_manager._logging_config_file,
+                    paths=base_config.logging_config.paths,
+                    level=base_config.logging_config.level,
+                    config_file=base_config.logging_config.config_file,
                 ),
             )
         )

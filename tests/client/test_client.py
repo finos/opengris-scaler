@@ -361,7 +361,9 @@ class TestClientPreload(unittest.TestCase):
         self.combo.shutdown()
 
     def _create_preload_cluster(self, preload: str, logging_paths: tuple = ("/dev/stdout",)):
-        base_manager = self.combo._worker_manager
+        base_config = self.combo._worker_manager.config
+        base_worker_config = base_config.worker_config
+        base_logging_config = base_config.logging_config
         preload_manager = NativeWorkerManager(
             NativeWorkerManagerConfig(
                 worker_manager_config=WorkerManagerConfig(
@@ -373,21 +375,19 @@ class TestClientPreload(unittest.TestCase):
                 mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities({}),
-                    per_worker_task_queue_size=base_manager._task_queue_size,
-                    heartbeat_interval_seconds=base_manager._heartbeat_interval_seconds,
-                    task_timeout_seconds=base_manager._task_timeout_seconds,
-                    death_timeout_seconds=base_manager._death_timeout_seconds,
-                    garbage_collect_interval_seconds=base_manager._garbage_collect_interval_seconds,
-                    trim_memory_threshold_bytes=base_manager._trim_memory_threshold_bytes,
-                    hard_processor_suspend=base_manager._hard_processor_suspend,
-                    io_threads=base_manager._io_threads,
-                    event_loop=base_manager._event_loop,
+                    per_worker_task_queue_size=base_worker_config.per_worker_task_queue_size,
+                    heartbeat_interval_seconds=base_worker_config.heartbeat_interval_seconds,
+                    task_timeout_seconds=base_worker_config.task_timeout_seconds,
+                    death_timeout_seconds=base_worker_config.death_timeout_seconds,
+                    garbage_collect_interval_seconds=base_worker_config.garbage_collect_interval_seconds,
+                    trim_memory_threshold_bytes=base_worker_config.trim_memory_threshold_bytes,
+                    hard_processor_suspend=base_worker_config.hard_processor_suspend,
+                    io_threads=base_worker_config.io_threads,
+                    event_loop=base_worker_config.event_loop,
                     preload=preload,
                 ),
                 logging_config=LoggingConfig(
-                    paths=logging_paths,
-                    level=base_manager._logging_level,
-                    config_file=base_manager._logging_config_file,
+                    paths=logging_paths, level=base_logging_config.level, config_file=base_logging_config.config_file
                 ),
             )
         )

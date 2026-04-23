@@ -57,6 +57,9 @@ private:
         std::optional<Client> _client {};
         std::optional<scaler::wrapper::uv::ConnectRequest> _connectRequest {};
 
+        // Holds the TCP socket during the WebSocket upgrade phase (after TCP connect, before upgrade done).
+        std::optional<scaler::wrapper::uv::TCPSocket> _upgradeSocket {};
+
         size_t _maxRetryTimes;
         size_t _retryTimes {0};
         std::chrono::milliseconds _initRetryDelay;
@@ -75,6 +78,11 @@ private:
     static void tryConnect(std::shared_ptr<State> state) noexcept;
 
     static void onConnect(
+        std::shared_ptr<State> state, std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
+
+    // Called when the underlying TCP connection for a WebSocket address is established.
+    // Kicks off the HTTP upgrade handshake.
+    static void onConnectWS(
         std::shared_ptr<State> state, std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
 
     static void retry(std::shared_ptr<State> state) noexcept;

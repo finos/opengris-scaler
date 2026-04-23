@@ -48,7 +48,14 @@ private:
 
         std::optional<Server> _server;
 
-        State(scaler::wrapper::uv::Loop& loop, ConnectionCallback onConnectionCallback, Server server) noexcept;
+        // Set when the transport is WebSocket; used to reconstruct the address() return value.
+        std::optional<WebSocketAddress> _webSocketAddress;
+
+        State(
+            scaler::wrapper::uv::Loop& loop,
+            ConnectionCallback onConnectionCallback,
+            Server server,
+            std::optional<WebSocketAddress> webSocketAddress) noexcept;
     };
 
     std::shared_ptr<State> _state;

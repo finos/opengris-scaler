@@ -9,16 +9,18 @@
 #include "scaler/wrapper/uv/error.h"
 #include "scaler/wrapper/uv/pipe.h"
 #include "scaler/wrapper/uv/tcp.h"
+#include "scaler/ymq/internal/websocket_stream.h"
 
 namespace scaler {
 namespace ymq {
 namespace internal {
 
-// A connected client socket abstracting TCP and IPC libuv sockets.
+// A connected client socket abstracting TCP, IPC, and WebSocket transports.
 class Client {
 public:
     explicit Client(scaler::wrapper::uv::TCPSocket socket) noexcept;
     explicit Client(scaler::wrapper::uv::Pipe pipe) noexcept;
+    explicit Client(WebSocketStream stream) noexcept;
 
     ~Client() noexcept = default;
 
@@ -29,6 +31,7 @@ public:
     Client& operator=(Client&&) noexcept = default;
 
     bool isTCP() const noexcept;
+    bool isWebSocket() const noexcept;
 
     // The buffers' content must remain valid until the callback is called.
     std::expected<void, scaler::wrapper::uv::Error> write(
@@ -42,10 +45,11 @@ public:
 
     std::expected<void, scaler::wrapper::uv::Error> shutdown(scaler::wrapper::uv::ShutdownCallback callback) noexcept;
 
+    // Only valid for TCP and WebSocket (which is TCP-backed) clients.
     std::expected<void, scaler::wrapper::uv::Error> closeReset() noexcept;
 
 private:
-    std::variant<scaler::wrapper::uv::TCPSocket, scaler::wrapper::uv::Pipe> _socket;
+    std::variant<scaler::wrapper::uv::TCPSocket, scaler::wrapper::uv::Pipe, WebSocketStream> _socket;
 };
 
 }  // namespace internal

@@ -1,4 +1,4 @@
-__pychace__/
+__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -34,8 +34,8 @@ build*/
 CMakeUserPresets.json
 CMakeFiles/
 .vs/
-src/scaler/protocol/capnp/*.c++
-src/scaler/protocol/capnp/*.h
+src/protocol/*.capnp.c++
+src/protocol/*.capnp.h
 
 orb/logs/
 orb/metrics/

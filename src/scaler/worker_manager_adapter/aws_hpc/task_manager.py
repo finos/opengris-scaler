@@ -1,54 +1,32 @@
 """
-AWS HPC Task Manager.
+AWS Batch Execution Backend.
 
-Handles task queuing, priority, semaphore, and execution via AWS Batch.
-Supports array jobs for batching multiple tasks into a single Batch submission.
-Follows the same pattern as SymphonyTaskManager for consistency.
+Handles task execution via AWS Batch, including array job batching, S3 payload
+storage, job monitoring, and result fetching.
 """
 
 import asyncio
 import logging
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Any, Dict, List, Optional, Set, Tuple, cast
+from typing import Any, Awaitable, Callable, Dict, List, Set, Tuple
 
 import cloudpickle
-from bidict import bidict
 
-from scaler import Serializer
-from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
-from scaler.protocol.capnp import (
-    ObjectInstruction,
-    ObjectMetadata,
-    Task,
-    TaskCancel,
-    TaskCancelConfirm,
-    TaskCancelConfirmType,
-    TaskResult,
-    TaskResultType,
-)
-from scaler.utility.identifiers import ObjectID, TaskID
-from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
-from scaler.utility.mixins import Looper
-from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
-from scaler.utility.serialization import serialize_failure
-from scaler.worker.agent.mixins import HeartbeatManager, TaskManager
+from scaler.protocol.capnp import Task, TaskCancel
+from scaler.utility.identifiers import TaskID
+from scaler.worker_manager_adapter.mixins import ExecutionBackend, TaskInputLoader
 
-# Array job batching constants
 ARRAY_JOB_BATCH_WINDOW_SECONDS: float = 0.5
 ARRAY_JOB_MIN_BATCH_SIZE: int = 2
-ARRAY_JOB_MAX_BATCH_SIZE: int = 10000  # AWS Batch limit
+ARRAY_JOB_MAX_BATCH_SIZE: int = 10000
 
 
-class AWSHPCTaskManager(Looper, TaskManager):
-    """
-    AWS HPC Task Manager that handles task execution via AWS Batch jobs.
-    Follows the same pattern as SymphonyTaskManager for consistency.
-    """
+class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
+    _loader: Callable[[Task], Awaitable[Tuple[Any, List[Any]]]]
 
     def __init__(
         self,
-        base_concurrency: int,
         job_queue: str,
         job_definition: str,
         aws_region: str,
@@ -56,10 +34,6 @@ class AWSHPCTaskManager(Looper, TaskManager):
         s3_prefix: str = "scaler-tasks",
         job_timeout_seconds: int = 3600,
     ) -> None:
-        if isinstance(base_concurrency, int) and base_concurrency <= 0:
-            raise ValueError(f"base_concurrency must be a positive integer, got {base_concurrency}")
-
-        self._base_concurrency = base_concurrency
         self._job_queue = job_queue
         self._job_definition = job_definition
         self._aws_region = aws_region
@@ -67,42 +41,24 @@ class AWSHPCTaskManager(Looper, TaskManager):
         self._s3_prefix = s3_prefix
         self._job_timeout_seconds = job_timeout_seconds
 
-        # Task execution control
-        self._executor_semaphore = asyncio.Semaphore(value=self._base_concurrency)
-
-        # Task tracking
-        self._task_id_to_task: Dict[TaskID, Task] = dict()
-        self._task_id_to_future: bidict[TaskID, asyncio.Future] = bidict()
         self._task_id_to_batch_job_id: Dict[TaskID, str] = dict()
 
-        # Serializer cache
-        self._serializers: Dict[bytes, Serializer] = dict()
-
-        # Task queues and state tracking
-        self._queued_task_id_queue = AsyncPriorityQueue()
-        self._queued_task_ids: Set[bytes] = set()
-        self._acquiring_task_ids: Set[TaskID] = set()  # tasks contesting the semaphore
-        self._processing_task_ids: Set[TaskID] = set()
-        self._canceled_task_ids: Set[TaskID] = set()
-
-        # Connectors
-        self._connector_external: Optional[AsyncConnector] = None
-        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
-        self._heartbeat_manager: Optional[HeartbeatManager] = None
-
-        # AWS clients (initialized lazily)
         self._batch_client: Any = None
         self._s3_client: Any = None
 
-        # Thread pool for non-blocking boto3 calls
         self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="aws-hpc")
 
-        # Array job batching: accumulate tasks before submitting as one array job
         self._batch_pending: List[Tuple[Task, Any, List[Any], Future]] = []
         self._batch_window_start: float = 0.0
 
+    def register(self, load_task_inputs: Callable[[Task], Awaitable[Tuple[Any, List[Any]]]]) -> None:
+        self._loader = load_task_inputs
+        self._initialize_aws_clients()
+
+    async def load_task_inputs(self, task: Task) -> Tuple[Any, List[Any]]:
+        return await self._loader(task)
+
     def _initialize_aws_clients(self) -> None:
-        """Initialize AWS Batch and S3 clients."""
         import boto3
 
         session = boto3.Session(region_name=self._aws_region)
@@ -110,20 +66,8 @@ class AWSHPCTaskManager(Looper, TaskManager):
         self._s3_client = session.client("s3")
         logging.info(f"AWS HPC task manager initialized: region={self._aws_region}, queue={self._job_queue}")
 
-    def register(
-        self,
-        connector_external: AsyncConnector,
-        connector_storage: AsyncObjectStorageConnector,
-        heartbeat_manager: HeartbeatManager,
-    ) -> None:
-        """Register required components."""
-        self._connector_external = connector_external
-        self._connector_storage = connector_storage
-        self._heartbeat_manager = heartbeat_manager
-        self._initialize_aws_clients()
-
     async def routine(self) -> None:
-        """Task manager routine - flush any pending batch that has waited long enough."""
+        """Flush pending batch when the collection window has expired."""
         if not self._batch_pending:
             return
 
@@ -131,222 +75,30 @@ class AWSHPCTaskManager(Looper, TaskManager):
         if elapsed >= ARRAY_JOB_BATCH_WINDOW_SECONDS:
             await self._flush_pending_batch()
 
-    async def on_object_instruction(self, instruction: ObjectInstruction) -> None:
-        """Handle object lifecycle instructions."""
-        if instruction.instructionType == ObjectInstruction.ObjectInstructionType.delete:
-            for object_id in instruction.objectMetadata.objectIds:
-                self._serializers.pop(object_id, None)  # we only cache serializers
-            return
+    def on_cleanup(self, task_id: TaskID) -> None:
+        self._task_id_to_batch_job_id.pop(task_id, None)
 
-        logging.error(f"worker received unknown object instruction type {instruction=}")
+    async def on_cancel(self, task_cancel: TaskCancel) -> None:
+        if task_cancel.taskId in self._task_id_to_batch_job_id:
+            batch_job_id = self._task_id_to_batch_job_id[task_cancel.taskId]
+            await self._cancel_batch_job(batch_job_id)
 
-    async def on_task_new(self, task: Task) -> None:
-        """
-        Handle new task submission.
-        Uses priority queue like Symphony for task ordering.
-        """
-        task_priority = self.__get_task_priority(task)
+    async def execute(self, task: Task) -> asyncio.Future:
+        function, arg_objects = await self.load_task_inputs(task)
 
-        # if semaphore is locked, check if task is higher priority than all acquired tasks
-        # if so, bypass acquiring and execute the task immediately
-        if self._executor_semaphore.locked():
-            for acquired_task_id in self._acquiring_task_ids:
-                acquired_task = self._task_id_to_task[acquired_task_id]
-                acquired_task_priority = self.__get_task_priority(acquired_task)
-                if task_priority <= acquired_task_priority:
-                    break
-            else:
-                self._task_id_to_task[task.taskId] = task
-                self._processing_task_ids.add(task.taskId)
-                self._task_id_to_future[task.taskId] = await self.__execute_task(task)
-                return
-
-        self._task_id_to_task[task.taskId] = task
-        self._queued_task_id_queue.put_nowait((-task_priority, task.taskId))
-        self._queued_task_ids.add(task.taskId)
-
-    async def on_cancel_task(self, task_cancel: TaskCancel) -> None:
-        """Handle task cancellation requests."""
-        task_queued = task_cancel.taskId in self._queued_task_ids
-        task_processing = task_cancel.taskId in self._processing_task_ids
-
-        if not task_queued and not task_processing:
-            await self._connector_external.send(
-                TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelNotFound)
-            )
-            return
-
-        if task_processing and not task_cancel.flags.force:
-            await self._connector_external.send(
-                TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelFailed)
-            )
-            return
-
-        # Handle queued task cancellation
-        if task_queued:
-            self._queued_task_ids.discard(task_cancel.taskId)
-            self._queued_task_id_queue.remove(task_cancel.taskId)
-            self._task_id_to_task.pop(task_cancel.taskId, None)
-
-        # Handle processing task cancellation
-        if task_processing:
-            future = self._task_id_to_future.get(task_cancel.taskId)
-            if future is not None:
-                future.cancel()
-
-            # Cancel AWS Batch job if it exists
-            if task_cancel.taskId in self._task_id_to_batch_job_id:
-                batch_job_id = self._task_id_to_batch_job_id[task_cancel.taskId]
-                await self._cancel_batch_job(batch_job_id)
-
-            self._processing_task_ids.discard(task_cancel.taskId)
-            self._task_id_to_task.pop(task_cancel.taskId, None)
-            self._canceled_task_ids.add(task_cancel.taskId)
-
-        result = TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.canceled)
-        await self._connector_external.send(result)
-
-    async def on_task_result(self, result: TaskResult) -> None:
-        """Handle task result processing."""
-        if result.taskId in self._queued_task_ids:
-            self._queued_task_ids.discard(result.taskId)
-            self._queued_task_id_queue.remove(result.taskId)
-
-        self._processing_task_ids.discard(result.taskId)
-        self._task_id_to_task.pop(result.taskId, None)
-
-        # Clean up batch job tracking
-        self._task_id_to_batch_job_id.pop(result.taskId, None)
-
-        await self._connector_external.send(result)
-
-    def get_queued_size(self) -> int:
-        """Get number of queued tasks."""
-        return self._queued_task_id_queue.qsize()
-
-    def can_accept_task(self) -> bool:
-        """Check if more tasks can be accepted."""
-        return not self._executor_semaphore.locked()
-
-    async def resolve_tasks(self) -> None:
-        """Resolve completed task futures and handle results."""
-        if not self._task_id_to_future:
-            await asyncio.sleep(0.1)  # Small sleep to avoid CPU spin when idle
-            return
-
-        done, _ = await asyncio.wait(self._task_id_to_future.values(), return_when=asyncio.FIRST_COMPLETED)
-        for future in done:
-            task_id = self._task_id_to_future.inv.pop(future)
-            task = self._task_id_to_task.get(task_id)
-
-            if task is None:
-                logging.warning(f"Cannot find task in worker queue: task_id={task_id.hex()}")
-                continue
-
-            if task_id in self._processing_task_ids:
-                self._processing_task_ids.remove(task_id)
-
-                if future.exception() is None:
-                    # Success case
-                    serializer_id = ObjectID.generate_serializer_object_id(task.source)
-                    serializer = self._serializers[serializer_id]
-                    result_bytes = serializer.serialize(future.result())
-                    result_type = TaskResultType.success
-                else:
-                    # Failure case
-                    result_bytes = serialize_failure(cast(Exception, future.exception()))
-                    result_type = TaskResultType.failed
-
-                # Store result in object storage
-                result_object_id = ObjectID.generate_object_id(task.source)
-                await self._connector_storage.set_object(result_object_id, result_bytes)
-
-                # Notify about object creation
-                await self._connector_external.send(
-                    ObjectInstruction(
-                        instructionType=ObjectInstruction.ObjectInstructionType.create,
-                        objectUser=task.source,
-                        objectMetadata=ObjectMetadata(
-                            objectIds=(result_object_id,),
-                            objectTypes=(ObjectMetadata.ObjectContentType.object,),
-                            objectNames=(f"<res {result_object_id.hex()[:6]}>".encode(),),
-                        ),
-                    )
-                )
-
-                # Send task result
-                await self._connector_external.send(
-                    TaskResult(taskId=task_id, resultType=result_type, metadata=b"", results=[bytes(result_object_id)])
-                )
-
-            elif task_id in self._canceled_task_ids:
-                self._canceled_task_ids.remove(task_id)
-            else:
-                raise ValueError(f"task_id {task_id.hex()} not found in processing or canceled tasks")
-
-            # Release semaphore
-            if task_id in self._acquiring_task_ids:
-                self._acquiring_task_ids.remove(task_id)
-                self._executor_semaphore.release()
-
-            # Clean up
-            self._task_id_to_task.pop(task_id)
-            self._task_id_to_batch_job_id.pop(task_id, None)
-
-    async def process_task(self) -> None:
-        """Process next queued task."""
-        await self._executor_semaphore.acquire()
-
-        _, task_id = await self._queued_task_id_queue.get()
-        task = self._task_id_to_task[task_id]
-
-        self._acquiring_task_ids.add(task_id)
-        self._processing_task_ids.add(task_id)
-        self._task_id_to_future[task.taskId] = await self.__execute_task(task)
-
-    async def __execute_task(self, task: Task) -> asyncio.Future:
-        """
-        Prepare a task for AWS Batch execution and add it to the pending batch.
-        The batch is flushed by routine() after the batch window expires,
-        or immediately if the batch reaches max size.
-        """
-        serializer_id = ObjectID.generate_serializer_object_id(task.source)
-
-        if serializer_id not in self._serializers:
-            serializer_bytes = await self._connector_storage.get_object(serializer_id)
-            serializer = cloudpickle.loads(serializer_bytes)
-            self._serializers[serializer_id] = serializer
-        else:
-            serializer = self._serializers[serializer_id]
-
-        # Fetch function and arguments concurrently
-        get_tasks = [
-            self._connector_storage.get_object(object_id)
-            for object_id in [ObjectID(task.funcObjectId), *(ObjectID(argument.data) for argument in task.functionArgs)]
-        ]
-
-        function_bytes, *arg_bytes = await asyncio.gather(*get_tasks)
-
-        function = serializer.deserialize(function_bytes)
-        arg_objects = [serializer.deserialize(object_bytes) for object_bytes in arg_bytes]
-
-        # Create future for this task
         future: Future = Future()
         future.set_running_or_notify_cancel()
 
-        # Add to batch pending queue
         self._batch_pending.append((task, function, arg_objects, future))
         if len(self._batch_pending) == 1:
             self._batch_window_start = time.monotonic()
 
-        # If batch is full, flush immediately
         if len(self._batch_pending) >= ARRAY_JOB_MAX_BATCH_SIZE:
             await self._flush_pending_batch()
 
         return asyncio.wrap_future(future)
 
     async def _flush_pending_batch(self) -> None:
-        """Flush all pending tasks as a single array job or individual job."""
         if not self._batch_pending:
             return
 
@@ -359,7 +111,6 @@ class AWSHPCTaskManager(Looper, TaskManager):
         await self._flush_batch(batch, futures_map)
 
     async def _flush_batch(self, batch: List[Tuple[Task, Any, List[Any]]], futures_map: Dict[TaskID, Future]) -> None:
-        """Submit a batch of tasks as either an array job or a single job."""
         try:
             if len(batch) >= ARRAY_JOB_MIN_BATCH_SIZE:
                 await self._submit_array_job(batch, futures_map)
@@ -377,14 +128,14 @@ class AWSHPCTaskManager(Looper, TaskManager):
                     f.set_exception(e)
 
     async def _run_in_executor(self, func: Any, *args: Any, **kwargs: Any) -> Any:
-        """Run a blocking function in the thread pool to avoid starving the event loop."""
-        loop = asyncio.get_event_loop()
+        """Run a blocking AWS SDK call in the thread pool to avoid starving the event loop."""
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._executor, lambda: func(*args, **kwargs))
 
     async def _submit_array_job(
         self, batch: List[Tuple[Task, Any, List[Any]]], futures_map: Dict[TaskID, Future]
     ) -> None:
-        """Submit multiple tasks as a single AWS Batch array job."""
+        """Submit multiple tasks as a single AWS Batch array job and monitor child results."""
         import gzip
         import re
         import uuid
@@ -394,7 +145,6 @@ class AWSHPCTaskManager(Looper, TaskManager):
         array_id = uuid.uuid4().hex[:12]
         array_size = len(batch)
 
-        # Upload all payloads to S3 with index-based keys
         s3_prefix_array = f"{self._s3_prefix}/array/{array_id}"
         index_to_task_id: Dict[int, TaskID] = {}
 
@@ -413,7 +163,6 @@ class AWSHPCTaskManager(Looper, TaskManager):
             await self._run_in_executor(self._s3_client.put_object, Bucket=self._s3_bucket, Key=s3_key, Body=payload)
             index_to_task_id[index] = task.taskId
 
-        # Get function name for job naming
         _, first_func, _ = batch[0]
         func_name = getattr(first_func, "__name__", "unknown")
         safe_func_name = re.sub(r"[^a-zA-Z0-9_-]", "_", func_name)[:50]
@@ -451,12 +200,10 @@ class AWSHPCTaskManager(Looper, TaskManager):
             f"(s3://{self._s3_bucket}/{s3_prefix_array}/)"
         )
 
-        # Track all child jobs
         for index, task_id in index_to_task_id.items():
             child_job_id = f"{parent_job_id}:{index}"
             self._task_id_to_batch_job_id[task_id] = child_job_id
 
-        # Start monitoring the array job
         asyncio.create_task(self._monitor_array_job(parent_job_id, index_to_task_id, futures_map, s3_prefix_array))
 
     async def _monitor_array_job(
@@ -466,15 +213,15 @@ class AWSHPCTaskManager(Looper, TaskManager):
         futures_map: Dict[TaskID, Future],
         s3_prefix_array: str,
     ) -> None:
-        """Monitor an AWS Batch array job and resolve individual task futures."""
+        """Poll child job statuses and resolve each task future as jobs complete or fail."""
         import gzip
 
-        poll_interval = 3.0
+        poll_interval_seconds = 3.0
         resolved: Set[int] = set()
         total = len(index_to_task_id)
 
         while len(resolved) < total:
-            await asyncio.sleep(poll_interval)
+            await asyncio.sleep(poll_interval_seconds)
 
             try:
                 unresolved_indices = [i for i in index_to_task_id if i not in resolved]
@@ -496,11 +243,8 @@ class AWSHPCTaskManager(Looper, TaskManager):
                             continue
 
                         if status == "SUCCEEDED":
-                            # The runner stores results using {AWS_BATCH_JOB_ID}:{AWS_BATCH_JOB_ARRAY_INDEX}
-                            # which equals {parent_job_id}:{index}
                             result_key = f"{self._s3_prefix}/results/{parent_job_id}:{index}.pkl"
                             try:
-                                # Retry with delay - result may not be written yet when status changes
                                 s3_resp = None
                                 for attempt in range(5):
                                     for key_candidate in [
@@ -543,7 +287,6 @@ class AWSHPCTaskManager(Looper, TaskManager):
             except Exception as e:
                 logging.exception(f"Error monitoring array job {parent_job_id}: {e}")
 
-        # Cleanup S3 array payloads
         try:
             for index in index_to_task_id:
                 await self._run_in_executor(
@@ -553,7 +296,6 @@ class AWSHPCTaskManager(Looper, TaskManager):
             logging.warning(f"Failed to cleanup array payloads: {e}")
 
     async def _submit_single_batch_job(self, task: Task, function: Any, arguments: List[Any]) -> str:
-        """Submit a single task as an individual AWS Batch job."""
         import base64
         import gzip
         import re
@@ -616,13 +358,13 @@ class AWSHPCTaskManager(Looper, TaskManager):
         return response["jobId"]
 
     async def _monitor_batch_job(self, job_id: str, future: Future, task_id: TaskID) -> None:
-        """Monitor AWS Batch job and resolve future when complete."""
+        """Poll a single Batch job until it succeeds or fails, then resolve the future."""
         import gzip
 
-        poll_interval = 2.0  # seconds
+        poll_interval_seconds = 2.0
 
         while True:
-            await asyncio.sleep(poll_interval)
+            await asyncio.sleep(poll_interval_seconds)
 
             try:
                 response = await self._run_in_executor(self._batch_client.describe_jobs, jobs=[job_id])
@@ -633,7 +375,6 @@ class AWSHPCTaskManager(Looper, TaskManager):
                 status = job["status"]
 
                 if status == "SUCCEEDED":
-                    # Fetch result from S3
                     result_key = f"{self._s3_prefix}/results/{job_id}.pkl"
                     try:
                         try:
@@ -647,14 +388,12 @@ class AWSHPCTaskManager(Looper, TaskManager):
                             )
                         result_bytes = response["Body"].read()
 
-                        # Check if compressed
                         if len(result_bytes) >= 2 and result_bytes[0:2] == b"\x1f\x8b":
                             result_bytes = gzip.decompress(result_bytes)
 
                         result = cloudpickle.loads(result_bytes)
                         future.set_result(result)
 
-                        # Cleanup S3
                         await self._run_in_executor(
                             self._s3_client.delete_object, Bucket=self._s3_bucket, Key=result_key
                         )
@@ -680,7 +419,6 @@ class AWSHPCTaskManager(Looper, TaskManager):
                 logging.exception(f"Error monitoring job {job_id}: {e}")
 
     async def _cancel_batch_job(self, job_id: str) -> None:
-        """Cancel an AWS Batch job."""
         try:
             await self._run_in_executor(self._batch_client.terminate_job, jobId=job_id, reason="Canceled by Scaler")
             logging.info(f"Canceled Batch job {job_id}")
@@ -688,7 +426,6 @@ class AWSHPCTaskManager(Looper, TaskManager):
             logging.warning(f"Failed to cancel Batch job {job_id}: {e}")
 
     async def _fetch_job_logs(self, job_id: str) -> str:
-        """Fetch CloudWatch logs for a failed job."""
         try:
             import boto3
 
@@ -696,7 +433,7 @@ class AWSHPCTaskManager(Looper, TaskManager):
 
             log_group = "/aws/batch/job"
 
-            job_response = self._batch_client.describe_jobs(jobs=[job_id])
+            job_response = await self._run_in_executor(self._batch_client.describe_jobs, jobs=[job_id])
             if not job_response.get("jobs"):
                 return "(Job not found)"
 
@@ -717,8 +454,12 @@ class AWSHPCTaskManager(Looper, TaskManager):
             await asyncio.sleep(2)
 
             try:
-                response = logs_client.get_log_events(
-                    logGroupName=log_group, logStreamName=log_stream, limit=100, startFromHead=True
+                response = await self._run_in_executor(
+                    logs_client.get_log_events,
+                    logGroupName=log_group,
+                    logStreamName=log_stream,
+                    limit=100,
+                    startFromHead=True,
                 )
 
                 events = response.get("events", [])
@@ -734,13 +475,3 @@ class AWSHPCTaskManager(Looper, TaskManager):
         except Exception as e:
             logging.warning(f"Failed to fetch logs for job {job_id}: {e}")
             return f"(Failed to fetch logs: {e})"
-
-    @staticmethod
-    def __get_task_priority(task: Task) -> int:
-        """Get task priority from task metadata."""
-        priority = retrieve_task_flags_from_task(task).priority
-
-        if priority < 0:
-            raise ValueError(f"invalid task priority, must be positive or zero, got {priority}")
-
-        return priority

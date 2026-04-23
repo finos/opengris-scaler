@@ -4,6 +4,7 @@
 #include "scaler/ymq/address.h"
 #include "tests/cpp/ymq/net/socket_utils.h"
 #include "tests/cpp/ymq/net/tcp_socket.h"
+#include "tests/cpp/ymq/net/websocket_socket.h"
 
 std::unique_ptr<Socket> connectSocket(std::string& address_str)
 {
@@ -11,6 +12,10 @@ std::unique_ptr<Socket> connectSocket(std::string& address_str)
 
     if (address.type() == scaler::ymq::Address::Type::TCP) {
         auto socket = std::make_unique<TCPSocket>();
+        socket->tryConnect(address);
+        return socket;
+    } else if (address.type() == scaler::ymq::Address::Type::WebSocket) {
+        auto socket = std::make_unique<WebSocketSocket>();
         socket->tryConnect(address);
         return socket;
     }
@@ -24,6 +29,10 @@ std::unique_ptr<Socket> bindSocket(std::string& address_str)
 
     if (address.type() == scaler::ymq::Address::Type::TCP) {
         auto socket = std::make_unique<TCPSocket>();
+        socket->bind(address);
+        return socket;
+    } else if (address.type() == scaler::ymq::Address::Type::WebSocket) {
+        auto socket = std::make_unique<WebSocketSocket>();
         socket->bind(address);
         return socket;
     }

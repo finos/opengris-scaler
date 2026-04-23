@@ -4,24 +4,24 @@ AWS HPC Worker Manager for OpenGRIS Scaler.
 Supports multiple AWS HPC backends:
 - AWS Batch: Receives tasks from scheduler and submits as Batch jobs
 
-Architecture (TaskManager pattern):
-    Scheduler Stream → AWSBatchWorker → AWSHPCTaskManager → AWS Batch Jobs
-                                ↓
-                        Heartbeats to Scheduler
-                                ↓
-                    Poll Results → TaskResult to Scheduler
+Architecture (composition pattern):
+    Scheduler Stream → WorkerProcess → AWSBatchExecutionBackend → AWS Batch Jobs
+                            ↓
+                    Heartbeats to Scheduler
+                            ↓
+                Poll Results → TaskResult to Scheduler
 
 Components:
-    - AWSBatchWorker: Process connecting to scheduler stream
-    - AWSHPCTaskManager: Handles task queuing, priority, and AWS Batch submission
-    - AWSBatchHeartbeatManager: Sends heartbeats to scheduler
+    - WorkerProcess: Process connecting to scheduler stream
+    - AWSBatchExecutionBackend: Handles task queuing, priority, and AWS Batch submission
+    - AWSProcessorStatusProvider: Provides processor status for heartbeats
     - BatchJobCallback: Tracks task→job mappings
     - batch_job_runner: Script running inside AWS Batch containers
 """
 
 from scaler.worker_manager_adapter.aws_hpc.callback import BatchJobCallback
-from scaler.worker_manager_adapter.aws_hpc.heartbeat_manager import AWSBatchHeartbeatManager
-from scaler.worker_manager_adapter.aws_hpc.task_manager import AWSHPCTaskManager
-from scaler.worker_manager_adapter.aws_hpc.worker import AWSBatchWorker
+from scaler.worker_manager_adapter.aws_hpc.heartbeat_manager import AWSProcessorStatusProvider
+from scaler.worker_manager_adapter.aws_hpc.task_manager import AWSBatchExecutionBackend
+from scaler.worker_manager_adapter.aws_hpc.worker import create_aws_batch_worker
 
-__all__ = ["AWSBatchWorker", "AWSHPCTaskManager", "AWSBatchHeartbeatManager", "BatchJobCallback"]
+__all__ = ["create_aws_batch_worker", "AWSBatchExecutionBackend", "AWSProcessorStatusProvider", "BatchJobCallback"]

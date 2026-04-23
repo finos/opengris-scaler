@@ -404,14 +404,14 @@ Architecture
 
 .. code-block:: text
 
-   ┌─────────┐     ┌───────────┐     ┌─────────────────┐     ┌───────────────────┐     ┌───────────┐
-   │  Client  │────>│ Scheduler │────>│  AWSBatchWorker │────>│ AWSHPCTaskManager │────>│ AWS Batch │
-   └─────────┘     └───────────┘     └─────────────────┘     └───────────────────┘     └───────────┘
-                                              │                        │                      │
-                                              v                        v                      v
-                                     ┌─────────────────┐         ┌───────────┐         ┌───────────┐
-                                     │HeartbeatManager │         │ S3 Bucket │<────────│ Batch Job │
-                                     └─────────────────┘         └───────────┘         └───────────┘
+   ┌─────────┐     ┌───────────┐     ┌───────────────┐     ┌──────────────────────────┐     ┌───────────┐
+   │  Client  │────>│ Scheduler │────>│ WorkerProcess │────>│ AWSBatchExecutionBackend │────>│ AWS Batch │
+   └─────────┘     └───────────┘     └───────────────┘     └──────────────────────────┘     └───────────┘
+                                              │                                                    │
+                                              v                                                    v
+                                     ┌─────────────────┐                                   ┌───────────┐
+                                     │HeartbeatManager │                                   │ S3 Bucket │
+                                     └─────────────────┘                                   └───────────┘
 
 .. list-table:: Components
    :header-rows: 1
@@ -423,10 +423,10 @@ Architecture
      - Submits tasks to the scheduler using the Scaler API
    * - **Scheduler**
      - Distributes tasks to available workers via ZMQ streaming
-   * - **AWSBatchWorker**
-     - Process that connects to the scheduler and routes messages to the TaskManager
-   * - **AWSHPCTaskManager**
-     - Handles task queuing, priority, concurrency control, and AWS Batch job submission
+   * - **WorkerProcess**
+     - Shared process class that connects to the scheduler, manages the heartbeat loop, and routes messages to the execution backend
+   * - **AWSBatchExecutionBackend**
+     - Handles AWS Batch job submission, array job batching, S3 payload storage, job monitoring, and result fetching
    * - **HeartbeatManager**
      - Sends periodic heartbeats to the scheduler with worker status
    * - **S3 Bucket**

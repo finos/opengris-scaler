@@ -1,7 +1,7 @@
 import logging
 
 from scaler.config.section.aws_hpc_worker_manager import AWSBatchWorkerManagerConfig, AWSHPCBackend
-from scaler.worker_manager_adapter.aws_hpc.worker import AWSBatchWorker
+from scaler.worker_manager_adapter.aws_hpc.worker import create_aws_batch_worker
 
 
 class AWSHPCWorkerManager:
@@ -14,8 +14,8 @@ class AWSHPCWorkerManager:
         if config.backend != AWSHPCBackend.batch:
             raise NotImplementedError(f"backend {config.backend.name!r} is not yet implemented")
 
-        worker = AWSBatchWorker(
-            name=config.name or "aws-batch-worker",
+        worker = create_aws_batch_worker(
+            name=config.name,
             address=config.worker_manager_config.effective_worker_scheduler_address,
             object_storage_address=config.worker_manager_config.object_storage_address,
             job_queue=config.job_queue,

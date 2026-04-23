@@ -50,6 +50,9 @@ protected:
             }
             return std::format("ipc:///tmp/ymq-test-{}.ipc", port);
         }
+        if (transport == "ws") {
+            return std::format("ws://127.0.0.1:{}/", port);
+        }
         // Gtest should not select this for unsupported platforms, but as a fallback,
         // return something that will cause tests to fail clearly.
         return "invalid-transport";
@@ -739,6 +742,7 @@ std::vector<std::string> GetTransports()
 {
     std::vector<std::string> transports;
     transports.push_back("tcp");
+    transports.push_back("ws");
 #ifdef __linux__
     transports.push_back("ipc");
 #endif

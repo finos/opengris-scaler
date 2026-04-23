@@ -1,116 +1,24 @@
-"""
-AWS Batch Heartbeat Manager.
+from typing import TYPE_CHECKING, List, Optional
 
-Sends periodic heartbeats to the scheduler with worker status.
-"""
+from scaler.protocol.capnp import ProcessorStatus, Resource
+from scaler.worker_manager_adapter.mixins import ProcessorStatusProvider
 
-import time
-from typing import Any, Dict, Optional
-
-import psutil
-
-from scaler.config.types.address import AddressConfig, SocketType
-from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
-from scaler.protocol.capnp import ProcessorStatus, Resource, WorkerHeartbeat, WorkerHeartbeatEcho
-from scaler.utility.mixins import Looper
-from scaler.worker.agent.mixins import HeartbeatManager, TimeoutManager
+if TYPE_CHECKING:
+    from scaler.worker_manager_adapter.task_manager import TaskManager
 
 
-class AWSBatchHeartbeatManager(Looper, HeartbeatManager):
-    """
-    Heartbeat manager for AWS Batch worker manager.
-    """
+class AWSProcessorStatusProvider(ProcessorStatusProvider):
+    def __init__(self) -> None:
+        self._task_manager: Optional["TaskManager"] = None
 
-    def __init__(
-        self,
-        object_storage_address: Optional[AddressConfig],
-        capabilities: Dict[str, int],
-        task_queue_size: int,
-        worker_manager_id: bytes,
-    ) -> None:
-        self._capabilities = capabilities
-        self._task_queue_size = task_queue_size
-        self._worker_manager_id = worker_manager_id
-        self._agent_process = psutil.Process()
+    def set_task_manager(self, task_manager: "TaskManager") -> None:
+        self._task_manager = task_manager
 
-        self._connector_external: Optional[AsyncConnector] = None
-        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
-        self._task_manager: Any = None  # AWSHPCTaskManager
-        self._timeout_manager: Optional[TimeoutManager] = None
-
-        self._start_timestamp_ns = 0
-        self._latency_us = 0
-        self._object_storage_address: Optional[AddressConfig] = object_storage_address
-
-    def register(
-        self,
-        connector_external: AsyncConnector,
-        connector_storage: AsyncObjectStorageConnector,
-        worker_task_manager: Any,  # AWSHPCTaskManager
-        timeout_manager: TimeoutManager,
-    ) -> None:
-        self._connector_external = connector_external
-        self._connector_storage = connector_storage
-        self._task_manager = worker_task_manager
-        self._timeout_manager = timeout_manager
-
-    async def on_heartbeat_echo(self, heartbeat: WorkerHeartbeatEcho) -> None:
-        if self._start_timestamp_ns == 0:
-            return
-
-        self._latency_us = int(((time.time_ns() - self._start_timestamp_ns) / 2) // 1_000)
-        self._start_timestamp_ns = 0
-        self._timeout_manager.update_last_seen_time()
-
-        if self._object_storage_address is None:
-            address_message = heartbeat.objectStorageAddress
-            self._object_storage_address = AddressConfig(SocketType.tcp, address_message.host, address_message.port)
-            await self._connector_storage.connect(self._object_storage_address)
-
-    def get_object_storage_address(self) -> Optional[AddressConfig]:
-        return self._object_storage_address
-
-    async def routine(self) -> None:
-        if self._start_timestamp_ns != 0:
-            return
-
-        self._start_timestamp_ns = time.time_ns()
-
-        try:
-            agent_cpu = int(self._agent_process.cpu_percent())
-            agent_rss = self._agent_process.memory_info().rss
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            agent_cpu = 0
-            agent_rss = 0
-
-        rss_free = psutil.virtual_memory().available
-
-        # Get pending job count from task manager
-        queued_tasks = self._task_manager.get_queued_size() if self._task_manager else 0
-        processing_tasks = len(self._task_manager._processing_task_ids) if self._task_manager else 0
-        has_task = processing_tasks > 0
-        task_lock = not self._task_manager.can_accept_task() if self._task_manager else False
-
-        # Create agent resource (cpu percentage, rss memory)
-        agent_resource = Resource(cpu=agent_cpu, rss=agent_rss)
-
-        # Create processor status for the adapter (simulated as single processor)
-        # pid=0 since AWS Batch jobs run remotely, initialized=True means ready
-        processor_resource = Resource(cpu=0, rss=0)
-        processor_status = ProcessorStatus(
-            pid=0, initialized=True, hasTask=has_task, suspended=False, resource=processor_resource
-        )
-
-        heartbeat = WorkerHeartbeat(
-            agent=agent_resource,
-            rssFree=rss_free,
-            queueSize=self._task_queue_size,
-            queuedTasks=queued_tasks + processing_tasks,
-            latencyUS=self._latency_us,
-            taskLock=task_lock,
-            processors=[processor_status],
-            capabilities=self._capabilities,
-            workerManagerID=self._worker_manager_id,
-        )
-
-        await self._connector_external.send(heartbeat)
+    def get_processor_statuses(self) -> List[ProcessorStatus]:
+        assert self._task_manager is not None, "set_task_manager() must be called before get_processor_statuses()"
+        processing_tasks = self._task_manager.processing_task_count
+        return [
+            ProcessorStatus(
+                pid=0, initialized=True, hasTask=processing_tasks > 0, suspended=False, resource=Resource(cpu=0, rss=0)
+            )
+        ]

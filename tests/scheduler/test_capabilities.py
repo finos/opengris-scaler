@@ -30,7 +30,7 @@ class TestCapabilities(unittest.TestCase):
         self.combo.shutdown()
 
     def test_capabilities(self):
-        base_manager = self.combo._worker_manager
+        base_config = self.combo._worker_manager.config
 
         with Client(self.address) as client:
             client.submit(round, 3.14).result()  # Ensures the cluster is ready
@@ -45,7 +45,7 @@ class TestCapabilities(unittest.TestCase):
             gpu_manager = NativeWorkerManager(
                 NativeWorkerManagerConfig(
                     worker_manager_config=WorkerManagerConfig(
-                        scheduler_address=base_manager._address,
+                        scheduler_address=base_config.worker_manager_config.scheduler_address,
                         worker_manager_id="test_manager",
                         object_storage_address=None,
                         max_task_concurrency=1,
@@ -53,20 +53,20 @@ class TestCapabilities(unittest.TestCase):
                     mode=NativeWorkerManagerMode.FIXED,
                     worker_config=WorkerConfig(
                         per_worker_capabilities=WorkerCapabilities({"gpu": -1}),
-                        per_worker_task_queue_size=base_manager._task_queue_size,
-                        heartbeat_interval_seconds=base_manager._heartbeat_interval_seconds,
-                        task_timeout_seconds=base_manager._task_timeout_seconds,
-                        death_timeout_seconds=base_manager._death_timeout_seconds,
-                        garbage_collect_interval_seconds=base_manager._garbage_collect_interval_seconds,
-                        trim_memory_threshold_bytes=base_manager._trim_memory_threshold_bytes,
-                        hard_processor_suspend=base_manager._hard_processor_suspend,
+                        per_worker_task_queue_size=base_config.worker_config.per_worker_task_queue_size,
+                        heartbeat_interval_seconds=base_config.worker_config.heartbeat_interval_seconds,
+                        task_timeout_seconds=base_config.worker_config.task_timeout_seconds,
+                        death_timeout_seconds=base_config.worker_config.death_timeout_seconds,
+                        garbage_collect_interval_seconds=base_config.worker_config.garbage_collect_interval_seconds,
+                        trim_memory_threshold_bytes=base_config.worker_config.trim_memory_threshold_bytes,
+                        hard_processor_suspend=base_config.worker_config.hard_processor_suspend,
                         io_threads=1,
-                        event_loop=base_manager._event_loop,
+                        event_loop=base_config.worker_config.event_loop,
                     ),
                     logging_config=LoggingConfig(
-                        paths=base_manager._logging_paths,
-                        level=base_manager._logging_level,
-                        config_file=base_manager._logging_config_file,
+                        paths=base_config.logging_config.paths,
+                        level=base_config.logging_config.level,
+                        config_file=base_config.logging_config.config_file,
                     ),
                 )
             )
@@ -79,7 +79,7 @@ class TestCapabilities(unittest.TestCase):
             gpu_process.join()
 
     def test_graph_capabilities(self):
-        base_manager = self.combo._worker_manager
+        base_config = self.combo._worker_manager.config
 
         with Client(self.address) as client:
             client.submit(round, 3.14).result()  # Ensures the cluster is ready
@@ -95,7 +95,7 @@ class TestCapabilities(unittest.TestCase):
             gpu_manager = NativeWorkerManager(
                 NativeWorkerManagerConfig(
                     worker_manager_config=WorkerManagerConfig(
-                        scheduler_address=base_manager._address,
+                        scheduler_address=base_config.worker_manager_config.scheduler_address,
                         worker_manager_id="test_manager",
                         object_storage_address=None,
                         max_task_concurrency=1,
@@ -103,20 +103,20 @@ class TestCapabilities(unittest.TestCase):
                     mode=NativeWorkerManagerMode.FIXED,
                     worker_config=WorkerConfig(
                         per_worker_capabilities=WorkerCapabilities({"gpu": -1}),
-                        per_worker_task_queue_size=base_manager._task_queue_size,
-                        heartbeat_interval_seconds=base_manager._heartbeat_interval_seconds,
-                        task_timeout_seconds=base_manager._task_timeout_seconds,
-                        death_timeout_seconds=base_manager._death_timeout_seconds,
-                        garbage_collect_interval_seconds=base_manager._garbage_collect_interval_seconds,
-                        trim_memory_threshold_bytes=base_manager._trim_memory_threshold_bytes,
-                        hard_processor_suspend=base_manager._hard_processor_suspend,
+                        per_worker_task_queue_size=base_config.worker_config.per_worker_task_queue_size,
+                        heartbeat_interval_seconds=base_config.worker_config.heartbeat_interval_seconds,
+                        task_timeout_seconds=base_config.worker_config.task_timeout_seconds,
+                        death_timeout_seconds=base_config.worker_config.death_timeout_seconds,
+                        garbage_collect_interval_seconds=base_config.worker_config.garbage_collect_interval_seconds,
+                        trim_memory_threshold_bytes=base_config.worker_config.trim_memory_threshold_bytes,
+                        hard_processor_suspend=base_config.worker_config.hard_processor_suspend,
                         io_threads=1,
-                        event_loop=base_manager._event_loop,
+                        event_loop=base_config.worker_config.event_loop,
                     ),
                     logging_config=LoggingConfig(
-                        paths=base_manager._logging_paths,
-                        level=base_manager._logging_level,
-                        config_file=base_manager._logging_config_file,
+                        paths=base_config.logging_config.paths,
+                        level=base_config.logging_config.level,
+                        config_file=base_config.logging_config.config_file,
                     ),
                 )
             )
