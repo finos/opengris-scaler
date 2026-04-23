@@ -231,9 +231,10 @@ Create a ``config.toml`` on the **EC2 instance**, filling in the placeholders:
 
 *   Replace ``<EC2_PUBLIC_IP>`` and ``<EC2_PRIVATE_IP>`` with the values printed
     in Step 2.
-*   Replace ``<REGION>`` with the AWS region of this EC2 instance. ORB
-    provisions workers in the same region, so the values must match, e.g.
-    ``us-east-1``.
+*   Replace ``<REGION>`` with the AWS region of this EC2 instance (e.g.
+    ``us-east-1``). This controls where ORB launches worker instances; it
+    defaults to ``us-east-1`` if unset, so set it explicitly to match the
+    scheduler's region and avoid cross-region launches.
 
 The scheduler's ``advertised_object_storage_address`` is forwarded to connecting
 clients, so it must be set to the EC2 **public** IP. The ``object_storage_address``
