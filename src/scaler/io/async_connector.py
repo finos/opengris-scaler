@@ -9,6 +9,8 @@ from scaler.io.mixins import AsyncConnector, ConnectorRemoteType
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.capnp import BaseMessage
 
+logger = logging.getLogger(__name__)
+
 
 class ZMQAsyncConnector(AsyncConnector):
     def __init__(
@@ -83,7 +85,7 @@ class ZMQAsyncConnector(AsyncConnector):
         payload = await self._socket.recv(copy=False)
         result: Optional[BaseMessage] = deserialize(payload.bytes)
         if result is None:
-            logging.error(f"received unknown message: {payload.bytes!r}")
+            logger.error(f"received unknown message: {payload.bytes!r}")
             return None
 
         return result

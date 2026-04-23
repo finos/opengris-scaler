@@ -17,6 +17,8 @@ from scaler.protocol.capnp import Task, TaskCancel
 from scaler.utility.identifiers import TaskID
 from scaler.worker_manager_adapter.mixins import ExecutionBackend, TaskInputLoader
 
+logger = logging.getLogger(__name__)
+
 ARRAY_JOB_BATCH_WINDOW_SECONDS: float = 0.5
 ARRAY_JOB_MIN_BATCH_SIZE: int = 2
 ARRAY_JOB_MAX_BATCH_SIZE: int = 10000
@@ -64,7 +66,7 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
         session = boto3.Session(region_name=self._aws_region)
         self._batch_client = session.client("batch")
         self._s3_client = session.client("s3")
-        logging.info(f"AWS HPC task manager initialized: region={self._aws_region}, queue={self._job_queue}")
+        logger.info(f"AWS HPC task manager initialized: region={self._aws_region}, queue={self._job_queue}")
 
     async def routine(self) -> None:
         """Flush pending batch when the collection window has expired."""
@@ -119,10 +121,10 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
                 single_future = futures_map[single_task.taskId]
                 batch_job_id = await self._submit_single_batch_job(single_task, single_func, single_args)
                 self._task_id_to_batch_job_id[single_task.taskId] = batch_job_id
-                logging.info(f"Task {single_task.taskId.hex()[:8]} submitted as Batch job {batch_job_id}")
+                logger.info(f"Task {single_task.taskId.hex()[:8]} submitted as Batch job {batch_job_id}")
                 asyncio.create_task(self._monitor_batch_job(batch_job_id, single_future, single_task.taskId))
         except Exception as e:
-            logging.exception(f"Failed to submit batch of {len(batch)} tasks: {e}")
+            logger.exception(f"Failed to submit batch of {len(batch)} tasks: {e}")
             for f in futures_map.values():
                 if not f.done():
                     f.set_exception(e)
@@ -188,14 +190,14 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
             response = await self._run_in_executor(self._batch_client.submit_job, **submit_kwargs)
         except ClientError as e:
             if "ExpiredToken" in str(e) or "expired" in str(e).lower():
-                logging.warning("AWS credentials expired, refreshing...")
+                logger.warning("AWS credentials expired, refreshing...")
                 self._initialize_aws_clients()
                 response = await self._run_in_executor(self._batch_client.submit_job, **submit_kwargs)
             else:
                 raise
 
         parent_job_id = response["jobId"]
-        logging.info(
+        logger.info(
             f"Submitted array job {parent_job_id} with {array_size} tasks "
             f"(s3://{self._s3_bucket}/{s3_prefix_array}/)"
         )
@@ -236,7 +238,7 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
                         status = job["status"]
                         task_id = index_to_task_id[index]
                         future = futures_map.get(task_id)
-                        logging.debug(f"Array child {child_id}: status={status}, index={index}")
+                        logger.debug(f"Array child {child_id}: status={status}, index={index}")
 
                         if future is None or future.done():
                             resolved.add(index)
@@ -285,7 +287,7 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
                             resolved.add(index)
 
             except Exception as e:
-                logging.exception(f"Error monitoring array job {parent_job_id}: {e}")
+                logger.exception(f"Error monitoring array job {parent_job_id}: {e}")
 
         try:
             for index in index_to_task_id:
@@ -293,7 +295,7 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
                     self._s3_client.delete_object, Bucket=self._s3_bucket, Key=f"{s3_prefix_array}/{index}.pkl"
                 )
         except Exception as e:
-            logging.warning(f"Failed to cleanup array payloads: {e}")
+            logger.warning(f"Failed to cleanup array payloads: {e}")
 
     async def _submit_single_batch_job(self, task: Task, function: Any, arguments: List[Any]) -> str:
         import base64
@@ -349,7 +351,7 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
             response = await self._run_in_executor(self._batch_client.submit_job, **submit_kwargs)
         except ClientError as e:
             if "ExpiredToken" in str(e) or "expired" in str(e).lower():
-                logging.warning("AWS credentials expired, refreshing...")
+                logger.warning("AWS credentials expired, refreshing...")
                 self._initialize_aws_clients()
                 response = await self._run_in_executor(self._batch_client.submit_job, **submit_kwargs)
             else:
@@ -413,17 +415,17 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
                 elif status in ("SUBMITTED", "PENDING", "RUNNABLE", "STARTING", "RUNNING"):
                     continue
                 else:
-                    logging.warning(f"Unknown job status: {status}")
+                    logger.warning(f"Unknown job status: {status}")
 
             except Exception as e:
-                logging.exception(f"Error monitoring job {job_id}: {e}")
+                logger.exception(f"Error monitoring job {job_id}: {e}")
 
     async def _cancel_batch_job(self, job_id: str) -> None:
         try:
             await self._run_in_executor(self._batch_client.terminate_job, jobId=job_id, reason="Canceled by Scaler")
-            logging.info(f"Canceled Batch job {job_id}")
+            logger.info(f"Canceled Batch job {job_id}")
         except Exception as e:
-            logging.warning(f"Failed to cancel Batch job {job_id}: {e}")
+            logger.warning(f"Failed to cancel Batch job {job_id}: {e}")
 
     async def _fetch_job_logs(self, job_id: str) -> str:
         try:
@@ -473,5 +475,5 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
                 return "Job debug info:\n" + "\n".join(debug_info) + f"\n\n(Log stream not found: {log_stream})"
 
         except Exception as e:
-            logging.warning(f"Failed to fetch logs for job {job_id}: {e}")
+            logger.warning(f"Failed to fetch logs for job {job_id}: {e}")
             return f"(Failed to fetch logs: {e})"

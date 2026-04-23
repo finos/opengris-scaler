@@ -19,6 +19,8 @@ from scaler.utility.identifiers import ClientID, TaskID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.one_to_many_dict import OneToManyDict
 
+logger = logging.getLogger(__name__)
+
 
 class VanillaClientController(ClientController, Looper, Reporter):
     def __init__(self, config_controller: VanillaConfigController):
@@ -75,7 +77,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
             ),
         )
         if client_id not in self._client_last_seen:
-            logging.info(f"{client_id!r} connected")
+            logger.info(f"{client_id!r} connected")
 
         self._client_last_seen[client_id] = (time.time(), info)
 
@@ -85,10 +87,10 @@ class VanillaClientController(ClientController, Looper, Reporter):
             return
 
         if self._config_controller.get_config("protected"):
-            logging.warning("cannot shutdown clusters as scheduler is running in protected mode")
+            logger.warning("cannot shutdown clusters as scheduler is running in protected mode")
             accepted = False
         else:
-            logging.info(f"shutdown scheduler and all clusters as received signal from {client_id!r}")
+            logger.info(f"shutdown scheduler and all clusters as received signal from {client_id!r}")
             accepted = True
 
         await self._binder.send(client_id, ClientShutdownResponse(accepted=accepted))
@@ -120,7 +122,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
             await self.__on_client_disconnect(client)
 
     async def __on_client_disconnect(self, client_id: ClientID):
-        logging.info(f"{client_id!r} disconnected")
+        logger.info(f"{client_id!r} disconnected")
         if client_id in self._client_last_seen:
             self._client_last_seen.pop(client_id)
 

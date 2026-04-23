@@ -31,6 +31,8 @@ from scaler.utility.event_loop import create_async_loop_routine, run_task_foreve
 from scaler.utility.exceptions import ClientCancelledException, ClientQuitException, ClientShutdownException
 from scaler.utility.identifiers import ClientID
 
+logger = logging.getLogger(__name__)
+
 
 class ClientAgent(threading.Thread):
     def __init__(
@@ -196,13 +198,13 @@ class ClientAgent(threading.Thread):
             self._object_storage_address.set_exception(exception)
 
         if isinstance(exception, asyncio.CancelledError):
-            logging.error("ClientAgent: async. loop cancelled")
+            logger.error("ClientAgent: async. loop cancelled")
             self._future_manager.set_all_futures_with_exception(ClientCancelledException("client cancelled"))
         elif isinstance(exception, (ClientQuitException, ClientShutdownException)):
-            logging.info("ClientAgent: client quitting")
+            logger.info("ClientAgent: client quitting")
             self._future_manager.set_all_futures_with_exception(exception)
         elif isinstance(exception, (TimeoutError, YMQException)):
-            logging.error(f"ClientAgent: client timeout when connecting to {self._scheduler_address!r}")
+            logger.error(f"ClientAgent: client timeout when connecting to {self._scheduler_address!r}")
             self._future_manager.set_all_futures_with_exception(TimeoutError())
         else:
             raise exception

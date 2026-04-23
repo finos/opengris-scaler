@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include <cstdio>
 #include <fstream>
@@ -115,6 +116,30 @@ TEST_F(LoggingUnitTest, TestLogsMismatchedArguments)
         "[%(levelname)s] No message token here", {curr_log_filename}, scaler::ymq::Logger::LoggingLevel::info);
     logger.log(scaler::ymq::Logger::LoggingLevel::info, "this part is ignored", 123);
     EXPECT_EQ(readLogFile(curr_log_filename), "[INFO] No message token here");
+}
+
+TEST_F(LoggingUnitTest, TestLogsProcessToken)
+{
+    scaler::ymq::Logger logger(
+        "pid=%(process)d msg=%(message)s", {curr_log_filename}, scaler::ymq::Logger::LoggingLevel::info);
+    logger.log(scaler::ymq::Logger::LoggingLevel::info, "hello");
+    std::string expected = "pid=" + std::to_string(::getpid()) + " msg=hello";
+    EXPECT_EQ(readLogFile(curr_log_filename), expected);
+}
+
+TEST_F(LoggingUnitTest, TestLogsNameToken)
+{
+    scaler::ymq::Logger logger(
+        "%(name)s: %(message)s", {curr_log_filename}, scaler::ymq::Logger::LoggingLevel::info, "scheduler");
+    logger.log(scaler::ymq::Logger::LoggingLevel::info, "hello");
+    EXPECT_EQ(readLogFile(curr_log_filename), "scheduler: hello");
+}
+
+TEST_F(LoggingUnitTest, TestLogsUnknownTokenPreservesSpecifier)
+{
+    scaler::ymq::Logger logger("Count %(unknown)d here", {curr_log_filename}, scaler::ymq::Logger::LoggingLevel::info);
+    logger.log(scaler::ymq::Logger::LoggingLevel::info);
+    EXPECT_EQ(readLogFile(curr_log_filename), "Count %(unknown)d here");
 }
 
 // New test case to verify logging to multiple files

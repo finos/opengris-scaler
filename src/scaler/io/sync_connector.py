@@ -9,6 +9,8 @@ from scaler.io.mixins import ConnectorRemoteType, SyncConnector
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.capnp import BaseMessage
 
+logger = logging.getLogger(__name__)
+
 
 class ZMQSyncConnector(SyncConnector):
     def __init__(
@@ -59,7 +61,7 @@ class ZMQSyncConnector(SyncConnector):
     def __compose_message(self, payload: bytes) -> Optional[BaseMessage]:
         result: Optional[BaseMessage] = deserialize(payload)
         if result is None:
-            logging.error(f"{self.__get_prefix()}: received unknown message: {payload!r}")
+            logger.error(f"{self.__get_prefix()}: received unknown message: {payload!r}")
             return None
 
         return result

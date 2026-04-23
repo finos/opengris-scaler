@@ -11,6 +11,8 @@ from scaler.worker_manager_adapter.mixins import ExecutionBackend, TaskInputLoad
 from scaler.worker_manager_adapter.symphony.callback import SessionCallback
 from scaler.worker_manager_adapter.symphony.message import SoamMessage
 
+logger = logging.getLogger(__name__)
+
 try:
     import soamapi
 except ImportError:
@@ -30,7 +32,7 @@ class SymphonyExecutionBackend(TaskInputLoader, ExecutionBackend):
         self._ibm_soam_connection = soamapi.connect(
             self._service_name, soamapi.DefaultSecurityCallback("Guest", "Guest")
         )
-        logging.info(f"established IBM Spectrum Symphony connection {self._ibm_soam_connection.get_id()}")
+        logger.info(f"established IBM Spectrum Symphony connection {self._ibm_soam_connection.get_id()}")
 
         ibm_soam_session_attr = soamapi.SessionCreationAttributes()
         ibm_soam_session_attr.set_session_type("RecoverableAllHistoricalData")
@@ -38,7 +40,7 @@ class SymphonyExecutionBackend(TaskInputLoader, ExecutionBackend):
         ibm_soam_session_attr.set_session_flags(soamapi.SessionFlags.PARTIAL_ASYNC)
         ibm_soam_session_attr.set_session_callback(self._session_callback)
         self._ibm_soam_session = self._ibm_soam_connection.create_session(ibm_soam_session_attr)
-        logging.info(f"established IBM Spectrum Symphony session {self._ibm_soam_session.get_id()}")
+        logger.info(f"established IBM Spectrum Symphony session {self._ibm_soam_session.get_id()}")
 
     def register(self, load_task_inputs: Callable[[Task], Awaitable[Tuple[Any, List[Any]]]]) -> None:
         self._loader = load_task_inputs

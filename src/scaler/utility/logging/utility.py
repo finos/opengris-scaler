@@ -8,6 +8,8 @@ import typing
 
 from scaler.config.defaults import DEFAULT_LOGGING_PATHS
 
+logger = logging.getLogger(__name__)
+
 
 class LogType(enum.Enum):
     Screen = enum.auto()
@@ -33,6 +35,7 @@ def setup_logger(
     log_paths: typing.Tuple[str, ...] = DEFAULT_LOGGING_PATHS,
     logging_config_file: typing.Optional[str] = None,
     logging_level: str = LoggingLevel.INFO.name,
+    process_name: str = "scaler",
 ):
     if not log_paths and not logging_config_file:
         return
@@ -46,8 +49,8 @@ def setup_logger(
         return
 
     resolved_log_paths = [LogPath(log_type=__detect_log_types(file_name), path=file_name) for file_name in log_paths]
-    __logging_config(log_paths=resolved_log_paths, logging_level=logging_level)
-    logging.info(f"logging to {log_paths}")
+    __logging_config(log_paths=resolved_log_paths, logging_level=logging_level, process_name=process_name)
+    logger.info(f"logging to {log_paths}")
 
 
 def __detect_log_types(file_name: str) -> LogType:
@@ -57,61 +60,48 @@ def __detect_log_types(file_name: str) -> LogType:
     return LogType.File
 
 
-def __format(name) -> str:
-    if not name:
-        return ""
-
-    return "%({name})s".format(name=name)
-
-
-def __generate_log_config() -> typing.Dict:
+def __generate_log_config(process_name: str) -> typing.Dict:
+    standard_format = f"%(asctime)s %(levelname)s {process_name}[%(process)d]: %(message)s"
+    verbose_format = (
+        f"%(asctime)s %(levelname)s {process_name}[%(process)d] " f"%(name)s:%(funcName)s:%(lineno)s: %(message)s"
+    )
     return {
         "version": 1,
         "disable_existing_loggers": False,  # this fixes the problem
         "formatters": {
-            "standard": {
-                "format": "[{levelname}]{asctime}: {message}".format(
-                    levelname=__format("levelname"), asctime=__format("asctime"), message=__format("message")
-                ),
-                "datefmt": "%Y-%m-%d %H:%M:%S%z",
-            },
-            "verbose": {
-                "format": "[{levelname}]{asctime}:{module}:{funcName}:{lineno}: {message}".format(
-                    levelname=__format("levelname"),
-                    asctime=__format("asctime"),
-                    module=__format("module"),
-                    funcName=__format("funcName"),
-                    lineno=__format("lineno"),
-                    message=__format("message"),
-                ),
-                "datefmt": "%Y-%m-%d %H:%M:%S%z",
-            },
+            "standard": {"format": standard_format, "datefmt": "%Y-%m-%d %H:%M:%S%z"},
+            "verbose": {"format": verbose_format, "datefmt": "%Y-%m-%d %H:%M:%S%z"},
         },
         "handlers": {},
-        "loggers": {"": {"handlers": [], "level": "DEBUG", "propagate": True}},
+        # Configure only the "scaler" logger so we do not mutate the host
+        # application's root logger (library-safety). propagate=False prevents
+        # our handlers from re-emitting through any root handler the host set up.
+        "loggers": {"scaler": {"handlers": [], "level": "DEBUG", "propagate": False}},
     }
 
 
-def __logging_config(log_paths: typing.List[LogPath], logging_level: str = LoggingLevel.INFO.name):
+def __logging_config(
+    log_paths: typing.List[LogPath], logging_level: str = LoggingLevel.INFO.name, process_name: str = "scaler"
+):
     logging.addLevelName(logging.INFO, "INFO")
     logging.addLevelName(logging.WARNING, "WARN")
     logging.addLevelName(logging.ERROR, "EROR")
     logging.addLevelName(logging.DEBUG, "DEBG")
     logging.addLevelName(logging.CRITICAL, "CTIC")
 
-    config = __generate_log_config()
+    config = __generate_log_config(process_name)
     handlers = config["handlers"]
-    root_loggers = config["loggers"][""]["handlers"]
+    scaler_handlers = config["loggers"]["scaler"]["handlers"]
 
     for log_path in log_paths:
         if log_path.log_type == LogType.Screen:
             handlers["console"] = __create_stdout_handler(logging_level)
-            root_loggers.append("console")
+            scaler_handlers.append("console")
             continue
 
         elif log_path.log_type == LogType.File:
             handlers[log_path.path] = __create_time_rotating_file_handler(logging_level, log_path.path)
-            root_loggers.append(log_path.path)
+            scaler_handlers.append(log_path.path)
             continue
 
         raise TypeError(f"Unsupported LogPath: {log_path}")

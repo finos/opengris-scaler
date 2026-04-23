@@ -15,6 +15,8 @@ from scaler.scheduler.controllers.worker_manager_utilties import build_scaling_m
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot
 
+logger = logging.getLogger(__name__)
+
 
 class CapabilityScalingPolicy(ScalingPolicy):
     """
@@ -238,7 +240,7 @@ class CapabilityScalingPolicy(ScalingPolicy):
         if max_concurrency != -1 and len(managed_worker_ids) + pending_worker_count >= max_concurrency:
             return None
 
-        logging.info(f"Requesting worker with capabilities: {capability_dict!r}")
+        logger.info(f"Requesting worker with capabilities: {capability_dict!r}")
         return WorkerManagerCommand(
             workerIDs=[], command=WorkerManagerCommandType.startWorkers, capabilities=capability_dict
         )

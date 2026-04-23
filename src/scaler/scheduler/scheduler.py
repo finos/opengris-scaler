@@ -39,6 +39,8 @@ from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ClientID, WorkerID
 
+logger = logging.getLogger(__name__)
+
 
 class Scheduler:
     def __init__(self, config: SchedulerConfig):
@@ -127,20 +129,20 @@ class Scheduler:
         assert self._address is not None
         self._config_controller.update_config("bind_address", self._address)
 
-        logging.info(f"{self.__class__.__name__}: listen to scheduler address {self._address}")
+        logger.info(f"{self.__class__.__name__}: listen to scheduler address {self._address}")
 
         # Object storage
 
         await self._connector_storage.connect(self._config_controller.get_config("object_storage_address"))
         object_storage_address = self._connector_storage.address
 
-        logging.info(f"{self.__class__.__name__}: connected to object storage server {object_storage_address!r}")
+        logger.info(f"{self.__class__.__name__}: connected to object storage server {object_storage_address!r}")
 
         advertised_object_storage_address = (
             self._config_controller.get_config("advertised_object_storage_address") or object_storage_address
         )
 
-        logging.info(
+        logger.info(
             f"{self.__class__.__name__}: advertise object storage address {advertised_object_storage_address!r}"
         )
 
@@ -161,7 +163,7 @@ class Scheduler:
         assert monitor_address is not None
         self._config_controller.update_config("monitor_address", monitor_address)
 
-        logging.info(f"{self.__class__.__name__}: listen to scheduler monitor address {monitor_address!r}")
+        logger.info(f"{self.__class__.__name__}: listen to scheduler monitor address {monitor_address!r}")
 
     async def on_receive_message(self, source: bytes, message: BaseMessage):
         # =====================================================================================
@@ -240,7 +242,7 @@ class Scheduler:
             await self._worker_manager_controller.on_command_response(source, message)
             return
 
-        logging.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")
+        logger.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")
 
     async def get_loops(self):
         await self.__initialize_network()
@@ -264,7 +266,7 @@ class Scheduler:
         except asyncio.CancelledError:
             pass
         except ClientShutdownException as e:
-            logging.info(f"{self.__class__.__name__}: {e}")
+            logger.info(f"{self.__class__.__name__}: {e}")
             pass
         except YMQException:
             pass

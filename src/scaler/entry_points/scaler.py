@@ -44,7 +44,12 @@ def _run_scheduler(config: SchedulerConfig) -> None:
 
 
 def _run_worker_manager(config: WorkerManagerUnion) -> None:
-    setup_logger(config.logging_config.paths, config.logging_config.config_file, config.logging_config.level)
+    setup_logger(
+        config.logging_config.paths,
+        config.logging_config.config_file,
+        config.logging_config.level,
+        process_name=config._tag,
+    )
     register_event_loop(config.worker_config.event_loop)
     if isinstance(config, NativeWorkerManagerConfig):
         from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager

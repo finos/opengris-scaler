@@ -11,6 +11,8 @@ from scaler.io.mixins import AsyncBinder
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.capnp import BaseMessage, BinderStatus
 
+logger = logging.getLogger(__name__)
+
 
 class ZMQAsyncBinder(AsyncBinder):
     def __init__(
@@ -62,10 +64,10 @@ class ZMQAsyncBinder(AsyncBinder):
         try:
             message: Optional[BaseMessage] = deserialize(payload.bytes)
             if message is None:
-                logging.error(f"received unknown message from {source.bytes!r}: {payload!r}")
+                logger.error(f"received unknown message from {source.bytes!r}: {payload!r}")
                 return
         except Exception as e:
-            logging.error(f"{self.__get_prefix()} failed to deserialize message from {source.bytes!r}: {e}")
+            logger.error(f"{self.__get_prefix()} failed to deserialize message from {source.bytes!r}: {e}")
             return
 
         self.__count_received(message.__class__.__name__)
@@ -85,7 +87,7 @@ class ZMQAsyncBinder(AsyncBinder):
 
     def __is_valid_message(self, frames: List[Frame]) -> bool:
         if len(frames) != 2:
-            logging.error(f"{self.__get_prefix()} received unexpected frames {frames}")
+            logger.error(f"{self.__get_prefix()} received unexpected frames {frames}")
             return False
 
         return True

@@ -10,6 +10,8 @@ from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.mixins import Looper
 from scaler.worker.agent.mixins import ProfilingManager
 
+logger = logging.getLogger(__name__)
+
 
 @dataclasses.dataclass
 class _ProcessProfiler:
@@ -74,7 +76,7 @@ class VanillaProfilingManager(ProfilingManager, Looper):
         try:
             cpu_time_delta = self.__process_cpu_time(process) - process_profiler.start_cpu_time
         except psutil.ZombieProcess:
-            logging.warning(f"profiling zombie process: {pid=}")
+            logger.warning(f"profiling zombie process: {pid=}")
             cpu_time_delta = 0
 
         memory_delta = process_profiler.peak_memory_rss - process_profiler.init_memory_rss
@@ -93,7 +95,7 @@ class VanillaProfilingManager(ProfilingManager, Looper):
                         process_profiler.peak_memory_rss, self.__process_memory_rss(process_profiler.process)
                     )
                 except psutil.ZombieProcess:
-                    logging.warning(f"profiling zombie process: pid={process_profiler.process.pid}")
+                    logger.warning(f"profiling zombie process: pid={process_profiler.process.pid}")
 
     @staticmethod
     def __process_time():

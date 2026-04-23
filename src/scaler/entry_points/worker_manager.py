@@ -84,7 +84,12 @@ def main() -> None:
         config_cls.parse_with_section("scaler_worker_manager", section_data, argv=remaining_argv),
     )
 
-    setup_logger(wm_config.logging_config.paths, wm_config.logging_config.config_file, wm_config.logging_config.level)
+    setup_logger(
+        wm_config.logging_config.paths,
+        wm_config.logging_config.config_file,
+        wm_config.logging_config.level,
+        process_name=wm_type,
+    )
     register_event_loop(wm_config.worker_config.event_loop)
 
     if isinstance(wm_config, NativeWorkerManagerConfig):
