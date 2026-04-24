@@ -58,12 +58,16 @@ orb = [
     "packaging",
     "botocore[crt]",
 ]
+oci = [
+    "oci",
+]
 all = [
     "opengris-scaler[aws]",
     # graphblas need compile on 3.14, and this python condition prevents up from building 3.14 wheel, comment it out for now
     # "opengris-scaler[graphblas]; python_version <= '3.13'",
     "opengris-scaler[gui]",
     "opengris-scaler[orb]",
+    "opengris-scaler[oci]",
     "opengris-scaler[uvloop]",
 ]
 
@@ -97,6 +101,8 @@ scaler_top = "scaler.entry_points.top:main"
 scaler_gui = "scaler.entry_points.webgui:main"
 scaler_object_storage_server = "scaler.entry_points.object_storage_server:main"
 scaler_worker_manager = "scaler.entry_points.worker_manager:main"
+scaler_worker_manager_oci_raw_container_instance = "scaler.entry_points.worker_manager_oci_raw_container_instance:main"
+scaler_worker_manager_oci_hpc = "scaler.entry_points.worker_manager_oci_hpc:main"
 scaler = "scaler.entry_points.scaler:main"
 
 [tool.scikit-build]
