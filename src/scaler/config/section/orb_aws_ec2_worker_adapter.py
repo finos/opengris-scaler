@@ -15,6 +15,10 @@ class ORBAWSEC2WorkerAdapterConfig(ConfigClass):
 
     worker_manager_config: WorkerManagerConfig
 
+    aws_region: str = dataclasses.field(
+        metadata=dict(required=True, help="AWS region where ORB launches worker instances")
+    )
+
     # ORB AWS EC2 Template configuration
     image_id: Optional[str] = dataclasses.field(
         default=None,
@@ -63,7 +67,6 @@ class ORBAWSEC2WorkerAdapterConfig(ConfigClass):
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
 
     instance_type: str = dataclasses.field(default="t2.micro", metadata=dict(help="EC2 instance type"))
-    aws_region: Optional[str] = dataclasses.field(default="us-east-1", metadata=dict(help="AWS region"))
     security_group_ids: List[str] = dataclasses.field(
         default_factory=list,
         metadata=dict(

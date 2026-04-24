@@ -162,7 +162,7 @@ class ORBAWSEC2WorkerAdapter:
             self._validate_requirements(requirements_content)
 
     def _build_app_config(self) -> dict:
-        region = self._config.aws_region or "us-east-1"
+        region = self._config.aws_region
         return {
             "provider": {
                 "selection_policy": "FIRST_AVAILABLE",
@@ -189,7 +189,7 @@ class ORBAWSEC2WorkerAdapter:
         }
 
     async def _setup(self, sdk: Any) -> None:
-        region = self._config.aws_region or "us-east-1"
+        region = self._config.aws_region
         self._ec2 = boto3.client("ec2", region_name=region)
         self._subnet_id = self._config.subnet_id or self._discover_default_subnet()
 

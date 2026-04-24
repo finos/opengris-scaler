@@ -255,6 +255,8 @@ _ORB_AWS_EC2_IMAGE_ARGV = [
     "tcp://127.0.0.1:6378",
     "--worker-manager-id",
     "wm-test",
+    "--aws-region",
+    "us-east-1",
     "--image-id",
     "ami-0528819f94f4f5fa5",
 ]
@@ -262,6 +264,8 @@ _ORB_AWS_EC2_AUTO_ARGV = [
     "tcp://127.0.0.1:6378",
     "--worker-manager-id",
     "wm-test",
+    "--aws-region",
+    "us-east-1",
     "--python-version",
     "3.13",
     "--requirements-txt",
@@ -300,7 +304,19 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
             "scaler_worker_manager", {}, argv=_ORB_AWS_EC2_IMAGE_ARGV
         )
         self.assertEqual(config.instance_type, "t2.micro")
-        self.assertEqual(config.aws_region, "us-east-1")
+
+    def test_orb_aws_ec2_missing_aws_region_raises(self) -> None:
+        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+
+        argv_without_region = [
+            "tcp://127.0.0.1:6378",
+            "--worker-manager-id",
+            "wm-test",
+            "--image-id",
+            "ami-0528819f94f4f5fa5",
+        ]
+        with self.assertRaises(SystemExit):
+            ORBAWSEC2WorkerAdapterConfig.parse_with_section("scaler_worker_manager", {}, argv=argv_without_region)
 
     def test_orb_aws_ec2_instance_type_and_region_from_cli(self) -> None:
         from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
@@ -326,7 +342,9 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             ORBAWSEC2WorkerAdapterConfig.parse_with_section(
-                "scaler_worker_manager", {}, argv=["tcp://127.0.0.1:6378", "--worker-manager-id", "wm-test"]
+                "scaler_worker_manager",
+                {},
+                argv=["tcp://127.0.0.1:6378", "--worker-manager-id", "wm-test", "--aws-region", "us-east-1"],
             )
 
     def test_orb_aws_ec2_image_id_and_python_version_raises(self) -> None:
@@ -340,6 +358,8 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
                     "tcp://127.0.0.1:6378",
                     "--worker-manager-id",
                     "wm-test",
+                    "--aws-region",
+                    "us-east-1",
                     "--image-id",
                     "ami-0528819f94f4f5fa5",
                     "--python-version",
@@ -356,7 +376,15 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
             ORBAWSEC2WorkerAdapterConfig.parse_with_section(
                 "scaler_worker_manager",
                 {},
-                argv=["tcp://127.0.0.1:6378", "--worker-manager-id", "wm-test", "--python-version", "3.13"],
+                argv=[
+                    "tcp://127.0.0.1:6378",
+                    "--worker-manager-id",
+                    "wm-test",
+                    "--aws-region",
+                    "us-east-1",
+                    "--python-version",
+                    "3.13",
+                ],
             )
 
     def test_orb_aws_ec2_requirements_without_python_version_raises(self) -> None:
@@ -370,6 +398,8 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
                     "tcp://127.0.0.1:6378",
                     "--worker-manager-id",
                     "wm-test",
+                    "--aws-region",
+                    "us-east-1",
                     "--requirements-txt",
                     "opengris-scaler",
                 ],
@@ -377,7 +407,11 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
 
 
 def _make_orb_config(
-    *, image_id: Optional[str] = None, python_version: Optional[str] = None, requirements_txt: Optional[str] = None
+    *,
+    image_id: Optional[str] = None,
+    python_version: Optional[str] = None,
+    requirements_txt: Optional[str] = None,
+    aws_region: str = "us-east-1",
 ):
     from scaler.config.common.logging import LoggingConfig
     from scaler.config.common.worker import WorkerConfig
@@ -393,6 +427,7 @@ def _make_orb_config(
         image_id=image_id,
         python_version=python_version,
         requirements_txt=requirements_txt,
+        aws_region=aws_region,
         worker_config=WorkerConfig(),
         logging_config=LoggingConfig(),
     )

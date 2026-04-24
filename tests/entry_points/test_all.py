@@ -240,6 +240,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
                 "scheduler_address": "tcp://127.0.0.1:6378",
                 "worker_manager_id": "wm-orb",
                 "image_id": "ami-0528819f94f4f5fa5",
+                "aws_region": "us-east-1",
             }
         }
         config = self._parse(toml)
@@ -274,6 +275,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
                     "scheduler_address": "tcp://127.0.0.1:6378",
                     "worker_manager_id": "wm-orb",
                     "image_id": "ami-0528819f94f4f5fa5",
+                    "aws_region": "us-east-1",
                 },
             ]
         }
@@ -341,6 +343,7 @@ class TestRunWorkerManager(unittest.TestCase):
         return ORBAWSEC2WorkerAdapterConfig(
             worker_manager_config=wmc,
             image_id="ami-0528819f94f4f5fa5",
+            aws_region="us-east-1",
             worker_config=WorkerConfig(event_loop=event_loop),
             logging_config=LoggingConfig(level=logging_level),
         )
