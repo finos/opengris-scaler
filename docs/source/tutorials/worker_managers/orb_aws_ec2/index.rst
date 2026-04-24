@@ -277,7 +277,7 @@ ORB AWS EC2 Template Configuration
     installed via ``pip install -r``. ``opengris-scaler`` must be included. Required when ``--image-id`` is
     not specified.
 *   ``--instance-type``: EC2 instance type (default: ``t2.micro``).
-*   ``--aws-region``: AWS region (default: ``us-east-1``).
+*   ``--aws-region``: AWS region where ORB launches worker instances (required).
 *   ``--key-name``: AWS key pair name for the instances. If not provided, a temporary key pair will be created and deleted on cleanup.
 *   ``--subnet-id``: AWS subnet ID where the instances will be launched. If not provided, it attempts to discover the default subnet in the default VPC.
 *   ``--security-group-ids``: Comma-separated list of AWS security group IDs.

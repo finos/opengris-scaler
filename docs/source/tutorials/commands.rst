@@ -826,9 +826,9 @@ ORB (Open Resource Broker) worker manager — dynamically provisions workers on 
      - ``t2.micro``
      - EC2 instance type.
    * - ``--aws-region``
-     - No
-     - ``us-east-1``
-     - AWS region.
+     - Yes
+     - -
+     - AWS region where ORB launches worker instances.
    * - ``--key-name``
      - No
      - ``None``
