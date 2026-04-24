@@ -41,5 +41,5 @@ Content
    tutorials/policy_engine
    tutorials/worker_managers/index
    tutorials/additional_features
-   tutorials/example
+   tutorials/examples
    tutorials/development

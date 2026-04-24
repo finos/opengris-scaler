@@ -1,5 +1,5 @@
-Example
-=======
+Examples
+========
 
 This page shows example notebooks.
 
