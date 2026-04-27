@@ -731,11 +731,13 @@ class TestWorkerManagerControllerPendingTracking(unittest.IsolatedAsyncioTestCas
         self.controller.register(binder, task_controller, self.worker_controller)
 
     async def test_start_success_increments_pending_count(self):
-        """A successful StartWorkers response increments _pending_worker_count by 1."""
+        """A successful StartWorkers response increments _pending_worker_count by len(workerIDs)."""
         source = b"mgr-src"
         self.controller._pending_commands[source] = MagicMock()
         response = WorkerManagerCommandResponse(
-            command=WorkerManagerCommandType.startWorkers, status=WorkerManagerCommandResponse.Status.success
+            command=WorkerManagerCommandType.startWorkers,
+            status=WorkerManagerCommandResponse.Status.success,
+            workerIDs=[WorkerID(b"w0")],
         )
 
         await self.controller.on_command_response(source, response)
@@ -743,15 +745,45 @@ class TestWorkerManagerControllerPendingTracking(unittest.IsolatedAsyncioTestCas
         self.assertEqual(self.controller._pending_worker_count.get(source, 0), 1)
 
     async def test_multiple_start_successes_accumulate_pending(self):
-        """Each successful StartWorkers response adds 1 to _pending_worker_count."""
+        """Each successful StartWorkers response adds len(workerIDs) to _pending_worker_count."""
         source = b"mgr-src"
         response = WorkerManagerCommandResponse(
-            command=WorkerManagerCommandType.startWorkers, status=WorkerManagerCommandResponse.Status.success
+            command=WorkerManagerCommandType.startWorkers,
+            status=WorkerManagerCommandResponse.Status.success,
+            workerIDs=[WorkerID(b"w0")],
         )
 
         for _ in range(3):
             self.controller._pending_commands[source] = MagicMock()
             await self.controller.on_command_response(source, response)
+
+        self.assertEqual(self.controller._pending_worker_count.get(source, 0), 3)
+
+    async def test_declarative_noop_response_does_not_increment_pending(self):
+        """A success response with empty workerIDs (declarative no-op) must not increment pending."""
+        source = b"mgr-src"
+        self.controller._pending_commands[source] = MagicMock()
+        response = WorkerManagerCommandResponse(
+            command=WorkerManagerCommandType.startWorkers,
+            status=WorkerManagerCommandResponse.Status.success,
+            workerIDs=[],
+        )
+
+        await self.controller.on_command_response(source, response)
+
+        self.assertEqual(self.controller._pending_worker_count.get(source, 0), 0)
+
+    async def test_multi_worker_response_increments_by_worker_count(self):
+        """A success response with N workerIDs increments pending by N, not 1."""
+        source = b"mgr-src"
+        self.controller._pending_commands[source] = MagicMock()
+        response = WorkerManagerCommandResponse(
+            command=WorkerManagerCommandType.startWorkers,
+            status=WorkerManagerCommandResponse.Status.success,
+            workerIDs=[WorkerID(b"w0"), WorkerID(b"w1"), WorkerID(b"w2")],
+        )
+
+        await self.controller.on_command_response(source, response)
 
         self.assertEqual(self.controller._pending_worker_count.get(source, 0), 3)
 
