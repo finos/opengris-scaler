@@ -2,7 +2,7 @@
 # This script builds and installs the required 3rd party C++ libraries.
 #
 # Usage:
-#    	./scripts/library_tool.sh [boost|capnp|uv] [compile|install] [--prefix=PREFIX]
+#    	./scripts/library_tool.sh [boost|capnp|libuv] [compile|install] [--prefix=PREFIX]
 
 # Remember:
 #	Update the usage string when you are add/remove dependency

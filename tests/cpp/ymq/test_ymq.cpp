@@ -36,6 +36,21 @@ TEST_F(YMQTest, Address)
     ASSERT_EQ(address->type(), scaler::ymq::Address::Type::IPC);
     ASSERT_EQ(std::get<std::string>(address->value()), "some_ipc_socket_name");
 
+    address = scaler::ymq::Address::fromString("ws://127.0.0.1:8765/");
+    ASSERT_TRUE(address.has_value());
+    ASSERT_EQ(address->type(), scaler::ymq::Address::Type::WebSocket);
+    ASSERT_FALSE(address->asWebSocket().secure);
+    ASSERT_EQ(address->asWebSocket().path, "/");
+
+    address = scaler::ymq::Address::fromString("ws://127.0.0.1:9000/ymq");
+    ASSERT_TRUE(address.has_value());
+    ASSERT_EQ(address->asWebSocket().path, "/ymq");
+
+    address = scaler::ymq::Address::fromString("wss://127.0.0.1:443/");
+    ASSERT_TRUE(address.has_value());
+    ASSERT_EQ(address->type(), scaler::ymq::Address::Type::WebSocket);
+    ASSERT_TRUE(address->asWebSocket().secure);
+
     // Invalid addresses
 
     address = scaler::ymq::Address::fromString("http://127.0.0.1:8080");
@@ -45,6 +60,9 @@ TEST_F(YMQTest, Address)
     ASSERT_FALSE(address.has_value());
 
     address = scaler::ymq::Address::fromString("tcp://127.0.0.1");
+    ASSERT_FALSE(address.has_value());
+
+    address = scaler::ymq::Address::fromString("ws://127.0.0.1");
     ASSERT_FALSE(address.has_value());
 
     address = scaler::ymq::Address::fromString("");

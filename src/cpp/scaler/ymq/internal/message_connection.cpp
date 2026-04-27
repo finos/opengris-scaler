@@ -250,6 +250,7 @@ void MessageConnection::onWriteDone(
             case UV_ETIMEDOUT:
             case UV_EPIPE:
             case UV_ENETDOWN:
+            case UV_ENOTCONN:
                 // Connection closed/failed WHILE libuv issued the write to the OS.
                 // No need to handle this disconnect event, as this will be handled by onRead().
                 callback({});
@@ -286,6 +287,7 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
             case UV_ETIMEDOUT:
             case UV_EPIPE:
             case UV_ENETDOWN:
+            case UV_ENOTCONN:
                 // Connection aborted unexpectedly
                 onRemoteDisconnect(DisconnectReason::Aborted);
                 return;
@@ -378,11 +380,19 @@ void MessageConnection::processSendOperation(SendOperation operation) noexcept
         onWriteDone(std::move(onSendDone), std::move(result));
     };
 
+    // uv_write() normally delivers errors asynchronously via the callback, but returns UV_ENOTCONN synchronously
+    // (without invoking the callback) if the socket is already torn down at call time. This can happen in a narrow
+    // accept-then-write race: onConnect() drains the pending send queue immediately after a peer is accepted, but
+    // the peer may have disconnected between accept() and this write(). Tolerate UV_ENOTCONN silently here —
+    // onRead() will detect and propagate the disconnect through the normal disconnect path.
+
     if (totalSize <= maxWriteBufferSize) {
         // Small message: all buffers in one syscall
-        UV_EXIT_ON_ERROR(_client->write(
+        auto result = _client->write(
             std::span<const std::span<const uint8_t>> {operation._buffers.data(), operation._buffers.size()},
-            std::move(callback)));
+            std::move(callback));
+        if (!result.has_value() && result.error().code() != UV_ENOTCONN)
+            UV_EXIT_ON_ERROR(result);
     } else {
         // Large message: chunk the buffers in write() calls of up to maxWriteBufferSize.
         //
@@ -396,10 +406,17 @@ void MessageConnection::processSendOperation(SendOperation operation) noexcept
                 const bool isLastChunk = (offset + bufferOffset + chunkSize >= totalSize);
 
                 if (!isLastChunk) {
-                    UV_EXIT_ON_ERROR(_client->write(std::span(&chunk, 1), [](auto) {}));
+                    auto result = _client->write(std::span(&chunk, 1), [](auto) {});
+                    if (!result.has_value()) {
+                        if (result.error().code() != UV_ENOTCONN)
+                            UV_EXIT_ON_ERROR(result);
+                        return;
+                    }
                 } else {
                     // Attach the callback to the last write() call.
-                    UV_EXIT_ON_ERROR(_client->write(std::span(&chunk, 1), std::move(callback)));
+                    auto result = _client->write(std::span(&chunk, 1), std::move(callback));
+                    if (!result.has_value() && result.error().code() != UV_ENOTCONN)
+                        UV_EXIT_ON_ERROR(result);
                 }
             }
             offset += buffer.size();
