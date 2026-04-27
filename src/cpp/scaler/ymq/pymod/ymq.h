@@ -52,9 +52,7 @@ static int YMQ_createType(
     // whether or not to add this type to the module
     bool add = true,
     // the inherited types base classes
-    PyObject* bases                 = nullptr,
-    getbufferproc getbuffer         = nullptr,
-    releasebufferproc releasebuffer = nullptr);
+    PyObject* bases = nullptr);
 
 int YMQ_createIntEnum(
     PyObject* pyModule,

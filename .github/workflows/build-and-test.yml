@@ -29,7 +29,7 @@ jobs:
       - uses: ./.github/actions/setup-env
         with:
           os: ${{ runner.os }}
-          python-version: ${{ runner.os == 'macOS' && '3.12' || '3.8' }}  # bump it after symphony
+          python-version: '3.10'
 
       - uses: ./.github/actions/run-linter
         with:

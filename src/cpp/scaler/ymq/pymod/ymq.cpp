@@ -25,10 +25,6 @@ YMQState* YMQStateFromType(PyObject* type)
     if (!pyModule)
         return nullptr;
 
-#if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION == 8
-    Py_DECREF(pyModule);  // As we get a real ref in 3.8 backport
-#endif
-
     return (YMQState*)PyModule_GetState(pyModule);
 }
 
@@ -197,33 +193,13 @@ int YMQ_createExceptions(PyObject* pyModule, YMQState* state)
 }
 
 static int YMQ_createType(
-    PyObject* pyModule,
-    OwnedPyObject<>* storage,
-    PyType_Spec* spec,
-    const char* name,
-    bool add,
-    PyObject* bases,
-    [[maybe_unused]] getbufferproc getbuffer,
-    [[maybe_unused]] releasebufferproc releasebuffer)
+    PyObject* pyModule, OwnedPyObject<>* storage, PyType_Spec* spec, const char* name, bool add, PyObject* bases)
 {
     assert(storage != nullptr);
 
     *storage = PyType_FromModuleAndSpec(pyModule, spec, bases);
     if (!*storage)
         return -1;
-
-#if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION == 8
-    if (PyObject_SetAttrString(storage->get(), "__module_object__", pyModule) < 0)
-        return -1;
-
-    if (getbuffer && releasebuffer) {
-        PyTypeObject* type_obj = (PyTypeObject*)storage->get();
-
-        type_obj->tp_as_buffer->bf_getbuffer     = getbuffer;
-        type_obj->tp_as_buffer->bf_releasebuffer = releasebuffer;
-        type_obj->tp_flags |= 0;  // Do I need to add tp_flags? Seems not
-    }
-#endif
 
     if (add)
         if (PyModule_AddObjectRef(pyModule, name, storage->get()) < 0)
@@ -248,21 +224,8 @@ static int YMQ_exec(PyObject* pyModule)
     if (YMQ_createErrorCodeEnum(pyModule, state) < 0)
         return -1;
 
-#if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION == 8
-    if (YMQ_createType(
-            pyModule,
-            &state->PyBytesType,
-            &PyBytes_spec,
-            "Bytes",
-            true,
-            nullptr,
-            (getbufferproc)PyBytes_getbuffer,
-            (releasebufferproc)PyBytes_releasebuffer) < 0)
-        return -1;
-#else
     if (YMQ_createType(pyModule, &state->PyBytesType, &PyBytes_spec, "Bytes") < 0)
         return -1;
-#endif
 
     if (YMQ_createType(pyModule, &state->PyMessageType, &PyMessage_spec, "Message") < 0)
         return -1;

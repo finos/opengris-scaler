@@ -99,10 +99,8 @@ static PyType_Slot PyBytes_slots[] = {
     {Py_tp_repr, (void*)PyBytes_repr},
     {Py_mp_length, (void*)PyBytes_len},
     {Py_tp_getset, (void*)PyBytes_properties},
-#if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION > 8
     {Py_bf_getbuffer, (void*)PyBytes_getbuffer},
     {Py_bf_releasebuffer, (void*)PyBytes_releasebuffer},
-#endif
     {0, nullptr},
 };
 

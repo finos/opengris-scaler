@@ -1,6 +1,5 @@
 #pragma once
-// NOTE: This file is needed because of we support backward compatibility to
-// Python 3.8. This file will be removed once we drop the support to Python 3.8.
+
 #define PY_SSIZE_T_CLEAN
 
 // if on Windows and in debug mode, undefine _DEBUG before including Python.h
@@ -17,69 +16,6 @@
 
 #include "scaler/error/error.h"
 #include "scaler/utility/pymod/gil.h"
-
-#if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 10
-#define Py_TPFLAGS_IMMUTABLETYPE          (0)
-#define Py_TPFLAGS_DISALLOW_INSTANTIATION (0)
-
-static inline PyObject* Py_NewRef(PyObject* obj)
-{
-    Py_INCREF(obj);
-    return obj;
-}
-
-static inline PyObject* Py_XNewRef(PyObject* obj)
-{
-    Py_XINCREF(obj);
-    return obj;
-}
-
-static inline int PyModule_AddObjectRef(PyObject* mod, const char* name, PyObject* value)
-{
-    Py_INCREF(value);  // Since PyModule_AddObject steals a ref, we balance it
-    return PyModule_AddObject(mod, name, value);
-}
-#endif  // <3.10
-
-#if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 9
-// This is a very dirty hack, we basically place the raw pointer to this dict when init,
-// see scaler/utility/pymod_ymq/ymq.h for more detail
-static inline PyObject* PyType_GetModule(PyTypeObject* type)
-{
-    return PyObject_GetAttrString((PyObject*)(type), "__module_object__");
-}
-
-static inline PyObject* PyType_GetModuleState(PyTypeObject* type)
-{
-    PyObject* module = PyObject_GetAttrString((PyObject*)(type), "__module_object__");
-    if (!module)
-        return nullptr;
-    void* state = PyModule_GetState(module);
-    Py_DECREF(module);
-    return (PyObject*)state;
-}
-
-static inline PyObject* PyObject_CallNoArgs(PyObject* callable)
-{
-    return PyObject_Call(callable, PyTuple_New(0), nullptr);
-}
-
-static inline PyObject* PyType_FromModuleAndSpec(PyObject* pymodule, PyType_Spec* spec, PyObject* bases)
-{
-    (void)pymodule;
-    if (!bases) {
-        bases = PyTuple_Pack(1, (PyObject*)&PyBaseObject_Type);
-        if (bases) {
-            PyObject* res = PyType_FromSpecWithBases(spec, bases);
-            Py_DECREF(bases);  // avoid leak
-            return res;
-        }
-        PyObject* res = PyType_FromSpecWithBases(spec, bases);
-        return res;
-    }
-    return PyType_FromSpecWithBases(spec, bases);
-}
-#endif  // <3.9
 
 namespace scaler {
 namespace utility {
@@ -211,17 +147,6 @@ private:
 }  // namespace pymod
 }  // namespace utility
 }  // namespace scaler
-
-#if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION == 8
-static inline PyObject* PyObject_CallOneArg(PyObject* callable, PyObject* arg)
-{
-    scaler::utility::pymod::OwnedPyObject<> args = PyTuple_Pack(1, arg);
-    if (!args)
-        return nullptr;
-    PyObject* result = PyObject_Call(callable, args.get(), nullptr);
-    return result;
-}
-#endif
 
 template <>
 struct std::hash<scaler::utility::pymod::OwnedPyObject<PyObject>> {

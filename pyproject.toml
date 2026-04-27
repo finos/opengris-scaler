@@ -1,11 +1,11 @@
 [build-system]
-requires = ["scikit-build-core>=0.5.0", "setuptools-scm", "mypy", "black", "flake8", "pyproject-flake8"]
+requires = ["scikit-build-core>=0.5.0", "setuptools-scm"]
 build-backend = "scikit_build_core.build"
 
 [project]
 name = "opengris-scaler"
 description = "OpenGRIS Scaler Distribution Framework"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { text = "Apache 2.0" }
 authors = [{ name = "Citi", email = "opensource@citi.com" }]
@@ -26,7 +26,6 @@ dependencies = [
     "pyzmq; python_version >= '3.9'",
     "sortedcontainers==2.4.0",
     "tblib",
-    "graphlib-backport; python_version < '3.9'",
     "typing-extensions",
     "tomli>=2.0; python_version < '3.11'",
 ]
@@ -41,12 +40,8 @@ gui = [
     "websockets>=11.0",
 ]
 graphblas = [
-    "python-graphblas==2023.7.0; python_version == '3.8'",
-    "python-graphblas==2024.2.0; python_version >= '3.9' and python_version < '3.11'",
-    "python-graphblas==2025.2.0; python_version >= '3.11'",
-    "numpy==1.24.4; python_version == '3.8'",
-    "numpy==2.0.2; python_version == '3.9'",
-    "numpy==2.2.6; python_version >= '3.10'",
+    "python-graphblas==2025.2.0",
+    "numpy==2.2.6",
 ]
 aws = [
     "boto3",
@@ -177,7 +172,7 @@ extend_skip_glob = [
 ]
 
 [tool.cibuildwheel]
-skip = "cp39-*"
+skip = "cp38-* cp39-*"
 
 [tool.cibuildwheel.linux]
 archs = ["x86_64", "aarch64"]
@@ -224,7 +219,6 @@ set -ex && \
 """
 
 [tool.cibuildwheel.windows]
-skip = "cp38-* cp39-*"
 archs = ["AMD64"]
 before-all = "pwsh -File ./scripts/cibuildwheel_before_all_windows.ps1"
 environment = { CMAKE_C_COMPILER = "cl", CMAKE_CXX_COMPILER = "cl", CMAKE_GENERATOR = "Visual Studio 17 2022", CMAKE_GENERATOR_PLATFORM = "x64", CMAKE_CONFIGURATION_TYPES = "Release", CMAKE_PREFIX_PATH = "$TEMP/opengris-thirdparties" }

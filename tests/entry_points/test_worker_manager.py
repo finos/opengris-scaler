@@ -465,8 +465,9 @@ class TestORBAWSEC2CreateUserData(unittest.TestCase):
         import unittest.mock
 
         file_content = "opengris-scaler>=1.26.6\nboto3\nnumpy\n"
-        with unittest.mock.patch("os.path.isfile", return_value=True), unittest.mock.patch(
-            "builtins.open", unittest.mock.mock_open(read_data=file_content)
+        with (
+            unittest.mock.patch("os.path.isfile", return_value=True),
+            unittest.mock.patch("builtins.open", unittest.mock.mock_open(read_data=file_content)),
         ):
             adapter = self._make_adapter(python_version="3.13", requirements_txt="/path/to/requirements.txt")
             script = adapter._create_user_data()

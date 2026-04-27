@@ -240,14 +240,12 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             args = [self._object_cache.get_object(ObjectID(argument.data)) for argument in task.functionArgs]
 
             if task_flags.stream_output:
-                with StreamingBuffer(
-                    task.taskId, TaskLog.LogType.stdout, self._connector_agent
-                ) as stdout_buf, StreamingBuffer(
-                    task.taskId, TaskLog.LogType.stderr, self._connector_agent
-                ) as stderr_buf, self.__processor_context(), redirect_stdout(
-                    cast(IO[str], stdout_buf)
-                ), redirect_stderr(
-                    cast(IO[str], stderr_buf)
+                with (
+                    StreamingBuffer(task.taskId, TaskLog.LogType.stdout, self._connector_agent) as stdout_buf,
+                    StreamingBuffer(task.taskId, TaskLog.LogType.stderr, self._connector_agent) as stderr_buf,
+                    self.__processor_context(),
+                    redirect_stdout(cast(IO[str], stdout_buf)),
+                    redirect_stderr(cast(IO[str], stderr_buf)),
                 ):
                     result = function(*args)
             else:
