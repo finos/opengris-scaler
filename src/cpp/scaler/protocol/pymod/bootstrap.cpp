@@ -148,6 +148,11 @@ PyObject* py_capnp_struct_init_method(PyObject* self, PyObject* args, PyObject* 
     return ::scaler::protocol::pymod::capnp_struct_init_method(self, args, kwargs).take();
 }
 
+PyObject* py_capnp_struct_get_attr(PyObject* self, PyObject* args)
+{
+    return ::scaler::protocol::pymod::capnp_struct_get_attr(self, args).take();
+}
+
 PyObject* py_capnp_struct_to_bytes(PyObject* self, PyObject* /*unused*/)
 {
     return ::scaler::protocol::pymod::capnp_struct_to_bytes(self).take();
@@ -276,6 +281,8 @@ static PyMethodDef ENUM_FIELD_VALUE_HASH_DEF = {"__hash__", (PyCFunction)enum_fi
 static PyMethodDef ENUM_FIELD_VALUE_INT_DEF  = {"__int__", (PyCFunction)enum_field_value_int, METH_NOARGS, nullptr};
 static PyMethodDef CAPNP_STRUCT_INIT_DEF     = {
     "__init__", (PyCFunction)(void (*)(void))py_capnp_struct_init_method, METH_VARARGS | METH_KEYWORDS, nullptr};
+static PyMethodDef CAPNP_STRUCT_GETATTR_DEF = {
+    "__getattr__", (PyCFunction)py_capnp_struct_get_attr, METH_VARARGS, nullptr};
 static PyMethodDef CAPNP_STRUCT_TO_BYTES_DEF = {
     "to_bytes", (PyCFunction)py_capnp_struct_to_bytes, METH_NOARGS, nullptr};
 static PyMethodDef CAPNP_STRUCT_FROM_BYTES_DEF = {
@@ -583,6 +590,10 @@ bool initialize_runtime_modules(PyObject* module)
         capnp_struct_type.get(),
         "__init__",
         OwnedPyObject<>(make_method_descriptor(capnp_struct_type.get(), &CAPNP_STRUCT_INIT_DEF)).get());
+    PyObject_SetAttrString(
+        capnp_struct_type.get(),
+        "__getattr__",
+        OwnedPyObject<>(make_method_descriptor(capnp_struct_type.get(), &CAPNP_STRUCT_GETATTR_DEF)).get());
     PyObject_SetAttrString(
         capnp_struct_type.get(),
         "to_bytes",

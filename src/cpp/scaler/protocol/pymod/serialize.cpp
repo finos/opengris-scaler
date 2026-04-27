@@ -5,6 +5,7 @@
 #include <capnp/serialize.h>
 #include <kj/array.h>
 
+#include <cstdint>
 #include <cstring>
 #include <stdexcept>
 
@@ -25,15 +26,6 @@ OwnedPyObject<> builder_to_bytes(capnp::MessageBuilder& builder)
     auto bytes = flat.asBytes();
     return OwnedPyObject<> {
         PyBytes_FromStringAndSize(reinterpret_cast<const char*>(bytes.begin()), static_cast<Py_ssize_t>(bytes.size()))};
-}
-
-kj::Array<capnp::word> copy_bytes_to_words(const char* data, Py_ssize_t size)
-{
-    size_t word_count = (static_cast<size_t>(size) + sizeof(capnp::word) - 1) / sizeof(capnp::word);
-    auto words        = kj::heapArray<capnp::word>(word_count);
-    memset(words.begin(), 0, word_count * sizeof(capnp::word));
-    memcpy(words.begin(), data, static_cast<size_t>(size));
-    return words;
 }
 
 }  // namespace
@@ -68,13 +60,28 @@ OwnedPyObject<> message_from_bytes(PyObject* data, unsigned long long traversal_
         PyErr_SetString(PyExc_RuntimeError, "capnp module state is unavailable");
         return {};
     }
-    auto words = copy_bytes_to_words(static_cast<const char*>(buffer.buf), buffer.len);
+    if ((reinterpret_cast<uintptr_t>(buffer.buf) % alignof(capnp::word)) != 0 ||
+        (buffer.len % static_cast<Py_ssize_t>(sizeof(capnp::word))) != 0) {
+        PyBuffer_Release(&buffer);
+        PyErr_SetString(PyExc_ValueError, "Cap'n Proto input buffer must be word-aligned for zero-copy reads");
+        return {};
+    }
+
     capnp::ReaderOptions options;
     options.traversalLimitInWords = traversal_limit;
-    capnp::FlatArrayMessageReader reader(words.asPtr(), options);
+    auto words                    = kj::arrayPtr(
+        reinterpret_cast<const capnp::word*>(buffer.buf), static_cast<size_t>(buffer.len) / sizeof(capnp::word));
+    capnp::FlatArrayMessageReader reader(words, options);
     auto message_schema = capnp::Schema::from<scaler::protocol::Message>().asStruct();
     auto root           = reader.getRoot<capnp::DynamicStruct>(message_schema);
-    OwnedPyObject<> result {dynamic_value_to_py_object(root, message_schema)};
+    OwnedPyObject<> source {PyMemoryView_FromObject(data)};
+    OwnedPyObject<> path {PyTuple_New(0)};
+    if (!source || !path) {
+        PyBuffer_Release(&buffer);
+        return {};
+    }
+    OwnedPyObject<> result {dynamic_value_to_py_object(
+        root, message_schema, source.get(), traversal_limit, message_schema.getProto().getId(), path.get())};
     PyBuffer_Release(&buffer);
     return result;
 }
@@ -124,12 +131,27 @@ OwnedPyObject<> struct_from_bytes(const char* type_name, PyObject* data, unsigne
         return {};
     }
 
-    auto words = copy_bytes_to_words(static_cast<const char*>(buffer.buf), buffer.len);
+    if ((reinterpret_cast<uintptr_t>(buffer.buf) % alignof(capnp::word)) != 0 ||
+        (buffer.len % static_cast<Py_ssize_t>(sizeof(capnp::word))) != 0) {
+        PyBuffer_Release(&buffer);
+        PyErr_SetString(PyExc_ValueError, "Cap'n Proto input buffer must be word-aligned for zero-copy reads");
+        return {};
+    }
+
     capnp::ReaderOptions options;
     options.traversalLimitInWords = traversal_limit;
-    capnp::FlatArrayMessageReader reader(words.asPtr(), options);
+    auto words                    = kj::arrayPtr(
+        reinterpret_cast<const capnp::word*>(buffer.buf), static_cast<size_t>(buffer.len) / sizeof(capnp::word));
+    capnp::FlatArrayMessageReader reader(words, options);
     auto root = reader.getRoot<capnp::DynamicStruct>(schema);
-    OwnedPyObject<> result {dynamic_value_to_py_object(root, schema)};
+    OwnedPyObject<> source {PyMemoryView_FromObject(data)};
+    OwnedPyObject<> path {PyTuple_New(0)};
+    if (!source || !path) {
+        PyBuffer_Release(&buffer);
+        return {};
+    }
+    OwnedPyObject<> result {
+        dynamic_value_to_py_object(root, schema, source.get(), traversal_limit, schema.getProto().getId(), path.get())};
     PyBuffer_Release(&buffer);
     return result;
 }
