@@ -115,7 +115,8 @@ class WorkerManagerController(Looper, Reporter):
             if response.status == WorkerManagerCommandResponse.Status.success:
                 if response_capabilities:
                     self._manager_capabilities[source] = response_capabilities
-                self._pending_worker_count[source] = self._pending_worker_count.get(source, 0) + 1
+                new_workers = len(response.workerIDs)
+                self._pending_worker_count[source] = self._pending_worker_count.get(source, 0) + new_workers
             else:
                 logging.warning(f"StartWorkers failed: {response.status._as_str()}")
 
