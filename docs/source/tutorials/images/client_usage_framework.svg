@@ -48,20 +48,18 @@
   <text x="275" y="455" text-anchor="middle" fill="#ffffff" font-size="18">Pargraph</text>
   <text x="275" y="475" text-anchor="middle" fill="#9ca3af" font-size="14">(@graph, @delayed)</text>
   
-  <g stroke="#9ca3af" stroke-width="2">
-    <line x1="185" y1="535" x2="215" y2="535" />
-    <line x1="235" y1="535" x2="265" y2="510" />
-    <line x1="235" y1="535" x2="265" y2="560" />
-    <line x1="285" y1="510" x2="315" y2="535" />
-    <line x1="285" y1="560" x2="315" y2="535" />
-    <line x1="335" y1="535" x2="365" y2="535" />
+  <g transform="translate(182, 535)">
+    <path d="M 20 20 L 50 20 L 80 0 M 50 20 L 80 40 M 80 0 L 110 0 L 140 20 M 80 40 L 110 20 L 140 20 M 110 40 L 140 20 M 140 20 L 170 20" fill="none" stroke="#9ca3af" stroke-width="2" />
+    <rect x="10" y="10" width="16" height="16" rx="4" fill="#60a5fa" />
+    <rect x="40" y="10" width="16" height="16" rx="4" fill="#60a5fa" />
+    <rect x="70" y="-10" width="16" height="16" rx="4" fill="#4ade80" />
+    <rect x="100" y="-10" width="16" height="16" rx="4" fill="#4ade80" />
+    <rect x="70" y="30" width="16" height="16" rx="4" fill="#4ade80" />
+    <rect x="100" y="10" width="16" height="16" rx="4" fill="#4ade80" />
+    <rect x="100" y="30" width="16" height="16" rx="4" fill="#4ade80" />
+    <rect x="130" y="10" width="16" height="16" rx="4" fill="#f59e0b" />
+    <rect x="160" y="10" width="16" height="16" rx="4" fill="#f59e0b" />
   </g>
-  <rect x="165" y="525" width="20" height="20" fill="#60a5fa" rx="3" />
-  <rect x="215" y="525" width="20" height="20" fill="#60a5fa" rx="3" />
-  <rect x="265" y="500" width="20" height="20" fill="#4ade80" rx="3" />
-  <rect x="265" y="550" width="20" height="20" fill="#4ade80" rx="3" />
-  <rect x="315" y="525" width="20" height="20" fill="#f59e0b" rx="3" />
-  <rect x="365" y="525" width="20" height="20" fill="#f59e0b" rx="3" />
 
   <text x="275" y="610" text-anchor="middle" fill="#9ca3af" font-size="13">Build task graphs with dependencies</text>
   
@@ -90,25 +88,33 @@
   <line x1="55" y1="780" x2="90" y2="780" stroke="#9ca3af" stroke-width="2" marker-end="url(#arrow)" />
 
 
-  <rect x="600" y="140" width="350" height="760" fill="#161e2e" stroke="#64748b" stroke-width="2" rx="8" />
+  <rect x="540" y="140" width="320" height="760" fill="#161e2e" stroke="#64748b" stroke-width="2" rx="8" />
   
-  <text x="775" y="200" text-anchor="middle" fill="#ffffff" font-size="22" font-weight="500">Scaler Client</text>
-  <text x="775" y="230" text-anchor="middle" fill="#ffffff" font-size="20">(Unified Execution Interface)</text>
+  <text x="700" y="200" text-anchor="middle" fill="#ffffff" font-size="22" font-weight="500">Scaler Client</text>
+  <text x="700" y="230" text-anchor="middle" fill="#ffffff" font-size="20">(Unified Execution Interface)</text>
 
-  <rect x="650" y="330" width="250" height="50" fill="#0f172a" stroke="#334155" stroke-width="1" rx="4" />
-  <text x="670" y="362" fill="#60a5fa" font-family="monospace" font-size="16">[]_ client.submit()</text>
+  <rect x="585" y="330" width="230" height="50" fill="#0f172a" stroke="#334155" stroke-width="1" rx="4" />
+  <text x="605" y="362" fill="#60a5fa" font-family="monospace" font-size="16">❯_ client.submit()</text>
 
-  <rect x="650" y="450" width="250" height="50" fill="#0f172a" stroke="#334155" stroke-width="1" rx="4" />
-  <text x="670" y="482" fill="#4ade80" font-family="monospace" font-size="16">[]_ client.map()</text>
+  <rect x="585" y="450" width="230" height="50" fill="#0f172a" stroke="#334155" stroke-width="1" rx="4" />
+  <text x="605" y="482" fill="#4ade80" font-family="monospace" font-size="16">❯_ client.map()</text>
 
-  <rect x="650" y="570" width="250" height="50" fill="#0f172a" stroke="#334155" stroke-width="1" rx="4" />
-  <text x="670" y="602" fill="#facc15" font-family="monospace" font-size="16">[] client.get()</text>
+  <rect x="585" y="570" width="230" height="50" fill="#0f172a" stroke="#334155" stroke-width="1" rx="4" />
+  <text x="605" y="602" fill="#facc15" font-family="monospace" font-size="16">📦 client.get()</text>
 
-  <text x="775" y="740" text-anchor="middle" fill="#9ca3af" font-size="14">Manages task submission, mapping,</text>
-  <text x="775" y="760" text-anchor="middle" fill="#9ca3af" font-size="14">and result retrieval across backends.</text>
+  <text x="700" y="740" text-anchor="middle" fill="#9ca3af" font-size="14">Manages task submission, mapping,</text>
+  <text x="700" y="760" text-anchor="middle" fill="#9ca3af" font-size="14">and result retrieval across backends.</text>
 
 
-  <text x="1290" y="120" text-anchor="middle" fill="#9ca3af" font-size="14" font-weight="600" letter-spacing="1">SUPPORTED SCALER WORKER MANAGER (Resource Provisioning &amp; Scaling)</text>
+  <rect x="890" y="380" width="125" height="300" fill="#1e1b2e" stroke="#a855f7" stroke-width="2" rx="8" />
+  <text x="952.5" y="500" text-anchor="middle" fill="#ffffff" font-size="18" font-weight="500">Scaler</text>
+  <text x="952.5" y="525" text-anchor="middle" fill="#ffffff" font-size="18" font-weight="500">Scheduler</text>
+  <text x="952.5" y="555" text-anchor="middle" fill="#9ca3af" font-size="12">Task routing</text>
+  <text x="952.5" y="573" text-anchor="middle" fill="#9ca3af" font-size="12">and recovery</text>
+
+
+  <text x="1290" y="112" text-anchor="middle" fill="#9ca3af" font-size="14" font-weight="600" letter-spacing="1">SUPPORTED SCALER WORKER MANAGER</text>
+  <text x="1290" y="132" text-anchor="middle" fill="#9ca3af" font-size="14" font-weight="600" letter-spacing="1">(Resource Provisioning &amp; Scaling)</text>
 
   <rect x="1080" y="140" width="420" height="760" fill="none" stroke="#475569" stroke-width="2" rx="8" />
 
@@ -189,20 +195,21 @@
 
 
   <g stroke="#9ca3af" stroke-width="2" fill="none" marker-end="url(#arrow)">
-    <line x1="450" y1="280" x2="590" y2="280" />
-    <line x1="450" y1="530" x2="590" y2="530" /> 
-    <line x1="450" y1="780" x2="590" y2="780" />
+    <line x1="450" y1="280" x2="530" y2="280" />
+    <line x1="450" y1="530" x2="530" y2="530" /> 
+    <line x1="450" y1="780" x2="530" y2="780" />
   </g>
 
   <g stroke="#9ca3af" stroke-width="2" fill="none">
-    <line x1="950" y1="530" x2="1020" y2="530" />
-    <line x1="1020" y1="230" x2="1020" y2="830" />
+    <line x1="860" y1="530" x2="890" y2="530" marker-end="url(#arrow)" />
+    <line x1="1015" y1="530" x2="1060" y2="530" />
+    <line x1="1060" y1="230" x2="1060" y2="830" />
     
-    <line x1="1020" y1="230" x2="1090" y2="230" marker-end="url(#arrow)" />
-    <line x1="1020" y1="380" x2="1090" y2="380" marker-end="url(#arrow)" />
-    <line x1="1020" y1="530" x2="1090" y2="530" marker-end="url(#arrow)" />
-    <line x1="1020" y1="680" x2="1090" y2="680" marker-end="url(#arrow)" />
-    <line x1="1020" y1="830" x2="1090" y2="830" marker-end="url(#arrow)" />
+    <line x1="1060" y1="230" x2="1090" y2="230" marker-end="url(#arrow)" />
+    <line x1="1060" y1="380" x2="1090" y2="380" marker-end="url(#arrow)" />
+    <line x1="1060" y1="530" x2="1090" y2="530" marker-end="url(#arrow)" />
+    <line x1="1060" y1="680" x2="1090" y2="680" marker-end="url(#arrow)" />
+    <line x1="1060" y1="830" x2="1090" y2="830" marker-end="url(#arrow)" />
   </g>
 
 </svg>
