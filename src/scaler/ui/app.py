@@ -322,7 +322,7 @@ class TaskStreamState:
             "pattern": pattern,
             "outline_color": outline_color,
             "outline_width": outline_width,
-            "hover": f"{func} ({duration:.2f}s) - {task_state._as_str()}",
+            "hover": f"{func} ({duration:.2f}s) - {task_state.name}",
         }
 
         self._bar_history.setdefault(worker, []).append(bar)
@@ -915,7 +915,7 @@ class WebUIApp:
 
         return {
             "worker_id": worker_id,
-            "state": state._as_str(),
+            "state": state.name,
             "capabilities": list(capabilities_to_dict(state_worker.capabilities).keys()),
         }
 
@@ -972,7 +972,7 @@ class WebUIApp:
                 "time": submitted_time,
                 "duration": duration_str,
                 "peak_mem": peak_mem_str,
-                "status": state_task.state._as_str(),
+                "status": state_task.state.name,
                 "capabilities": caps_str,
             }
             self._task_log.appendleft(entry)
@@ -994,7 +994,7 @@ class WebUIApp:
                 "time": submitted_time,
                 "duration": "",
                 "peak_mem": "",
-                "status": state_task.state._as_str(),
+                "status": state_task.state.name,
                 "capabilities": caps_str,
             }
             self._active_tasks[task_id_hex] = entry

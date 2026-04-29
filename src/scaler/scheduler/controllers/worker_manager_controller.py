@@ -118,11 +118,11 @@ class WorkerManagerController(Looper, Reporter):
                 new_workers = len(response.workerIDs)
                 self._pending_worker_count[source] = self._pending_worker_count.get(source, 0) + new_workers
             else:
-                logging.warning(f"StartWorkers failed: {response.status._as_str()}")
+                logging.warning(f"StartWorkers failed: {response.status.name}")
 
         elif response.command == WorkerManagerCommandType.shutdownWorkers:
             if response.status != WorkerManagerCommandResponse.Status.success:
-                logging.warning(f"ShutdownWorkers failed: {response.status._as_str()}")
+                logging.warning(f"ShutdownWorkers failed: {response.status.name}")
 
     async def routine(self):
         await self._clean_managers()

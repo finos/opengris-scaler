@@ -61,10 +61,11 @@ class TestEnumFieldValueComparison(unittest.TestCase):
             self.assertEqual(sw.state, ws)
 
 
-class TestEnumAsStrCamelCase(unittest.TestCase):
-    """_as_str() must return camelCase strings that match the JS frontend expectations."""
+class TestEnumNameCamelCase(unittest.TestCase):
+    """Deserialized enum fields must expose `.name` returning camelCase strings that match
+    the JS frontend expectations (the schema member names)."""
 
-    def test_task_state_as_str(self):
+    def test_task_state_name(self):
         expected = {
             TaskState.success: "success",
             TaskState.running: "running",
@@ -78,13 +79,13 @@ class TestEnumAsStrCamelCase(unittest.TestCase):
         }
         for ts, expected_str in expected.items():
             st = _roundtrip_state_task(state=ts, taskId=b"t1", functionName=b"fn", worker=b"w1")
-            self.assertEqual(st.state._as_str(), expected_str)
+            self.assertEqual(st.state.name, expected_str)
 
-    def test_worker_state_as_str(self):
+    def test_worker_state_name(self):
         expected = {WorkerState.connected: "connected", WorkerState.disconnected: "disconnected"}
         for ws, expected_str in expected.items():
             sw = _roundtrip_state_worker(state=ws, workerId=b"w1", capabilities=[])
-            self.assertEqual(sw.state._as_str(), expected_str)
+            self.assertEqual(sw.state.name, expected_str)
 
 
 class TestCapabilitiesToDict(unittest.TestCase):

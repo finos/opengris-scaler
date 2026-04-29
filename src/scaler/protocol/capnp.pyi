@@ -1,12 +1,9 @@
+import enum
 from typing import Any, ClassVar
 
 from scaler.utility.identifiers import ClientID
 from scaler.utility.identifiers import ObjectID as ScalerObjectID
 from scaler.utility.identifiers import TaskID, WorkerID
-
-class EnumFieldValue:
-    raw: int
-    def _as_str(self) -> str: ...
 
 class CapnpStruct:
     def __init__(self, **kwargs: Any) -> None: ...
@@ -20,51 +17,46 @@ class BaseMessage(CapnpStruct): ...
 class CapnpUnionStruct(CapnpStruct):
     def which(self) -> str: ...
 
-class TaskResultType(EnumFieldValue):
-    def __new__(cls, value: int) -> "TaskResultType": ...
-    success: ClassVar["TaskResultType"]
-    failed: ClassVar["TaskResultType"]
-    failedWorkerDied: ClassVar["TaskResultType"]
+class TaskResultType(enum.Enum):
+    success = 0
+    failed = 1
+    failedWorkerDied = 2
 
-class TaskCancelConfirmType(EnumFieldValue):
-    def __new__(cls, value: int) -> "TaskCancelConfirmType": ...
-    canceled: ClassVar["TaskCancelConfirmType"]
-    cancelFailed: ClassVar["TaskCancelConfirmType"]
-    cancelNotFound: ClassVar["TaskCancelConfirmType"]
+class TaskCancelConfirmType(enum.Enum):
+    canceled = 0
+    cancelFailed = 1
+    cancelNotFound = 2
 
-class TaskTransition(EnumFieldValue):
-    def __new__(cls, value: int) -> "TaskTransition": ...
-    hasCapacity: ClassVar["TaskTransition"]
-    taskResultSuccess: ClassVar["TaskTransition"]
-    taskResultFailed: ClassVar["TaskTransition"]
-    taskResultWorkerDied: ClassVar["TaskTransition"]
-    taskCancel: ClassVar["TaskTransition"]
-    taskCancelConfirmCanceled: ClassVar["TaskTransition"]
-    taskCancelConfirmFailed: ClassVar["TaskTransition"]
-    taskCancelConfirmNotFound: ClassVar["TaskTransition"]
-    balanceTaskCancel: ClassVar["TaskTransition"]
-    workerDisconnect: ClassVar["TaskTransition"]
-    schedulerHasTask: ClassVar["TaskTransition"]
-    schedulerHasNoTask: ClassVar["TaskTransition"]
+class TaskTransition(enum.Enum):
+    hasCapacity = 0
+    taskResultSuccess = 1
+    taskResultFailed = 2
+    taskResultWorkerDied = 3
+    taskCancel = 4
+    taskCancelConfirmCanceled = 5
+    taskCancelConfirmFailed = 6
+    taskCancelConfirmNotFound = 7
+    balanceTaskCancel = 8
+    workerDisconnect = 9
+    schedulerHasTask = 10
+    schedulerHasNoTask = 11
 
-class TaskState(EnumFieldValue):
-    def __new__(cls, value: int) -> "TaskState": ...
-    inactive: ClassVar["TaskState"]
-    running: ClassVar["TaskState"]
-    canceling: ClassVar["TaskState"]
-    balanceCanceling: ClassVar["TaskState"]
-    success: ClassVar["TaskState"]
-    failed: ClassVar["TaskState"]
-    failedWorkerDied: ClassVar["TaskState"]
-    canceled: ClassVar["TaskState"]
-    canceledNotFound: ClassVar["TaskState"]
-    balanceCanceled: ClassVar["TaskState"]
-    workerDisconnecting: ClassVar["TaskState"]
+class TaskState(enum.Enum):
+    inactive = 0
+    running = 1
+    canceling = 2
+    balanceCanceling = 3
+    success = 4
+    failed = 5
+    failedWorkerDied = 6
+    canceled = 7
+    canceledNotFound = 8
+    balanceCanceled = 9
+    workerDisconnecting = 10
 
-class WorkerState(EnumFieldValue):
-    def __new__(cls, value: int) -> "WorkerState": ...
-    connected: ClassVar["WorkerState"]
-    disconnected: ClassVar["WorkerState"]
+class WorkerState(enum.Enum):
+    connected = 0
+    disconnected = 1
 
 class TaskCapability(CapnpStruct):
     name: str
@@ -73,10 +65,9 @@ class TaskCapability(CapnpStruct):
     def new_msg(name: str, value: int) -> "TaskCapability": ...
 
 class ObjectMetadata(CapnpStruct):
-    class ObjectContentType(EnumFieldValue):
-        def __new__(cls, value: int) -> "ObjectMetadata.ObjectContentType": ...
-        serializer: ClassVar["ObjectMetadata.ObjectContentType"]
-        object: ClassVar["ObjectMetadata.ObjectContentType"]
+    class ObjectContentType(enum.Enum):
+        serializer = 0
+        object = 1
 
     objectIds: Any
     objectTypes: Any
@@ -171,10 +162,9 @@ class Task(BaseMessage):
         type: Any
         data: bytes
 
-        class ArgumentType(EnumFieldValue):
-            def __new__(cls, value: int) -> "Task.Argument.ArgumentType": ...
-            task: ClassVar["Task.Argument.ArgumentType"]
-            objectID: ClassVar["Task.Argument.ArgumentType"]
+        class ArgumentType(enum.Enum):
+            task = 0
+            objectID = 1
 
     @staticmethod
     def new_msg(*args: Any, **kwargs: Any) -> "Task": ...
@@ -194,10 +184,9 @@ class TaskLog(BaseMessage):
     logType: Any
     content: str
 
-    class LogType(EnumFieldValue):
-        def __new__(cls, value: int) -> "TaskLog.LogType": ...
-        stdout: ClassVar["TaskLog.LogType"]
-        stderr: ClassVar["TaskLog.LogType"]
+    class LogType(enum.Enum):
+        stdout = 0
+        stderr = 1
 
     @staticmethod
     def new_msg(*args: Any, **kwargs: Any) -> "TaskLog": ...
@@ -246,11 +235,10 @@ class WorkerManagerHeartbeat(BaseMessage):
 
 class WorkerManagerHeartbeatEcho(BaseMessage): ...
 
-class WorkerManagerCommandType(EnumFieldValue):
-    def __new__(cls, value: int) -> "WorkerManagerCommandType": ...
-    startWorkers: ClassVar["WorkerManagerCommandType"]
-    shutdownWorkers: ClassVar["WorkerManagerCommandType"]
-    setDesiredTaskConcurrency: ClassVar["WorkerManagerCommandType"]
+class WorkerManagerCommandType(enum.Enum):
+    startWorkers = 0
+    shutdownWorkers = 1
+    setDesiredTaskConcurrency = 2
 
 class WorkerManagerCommand(BaseMessage):
     workerIDs: Any
@@ -268,23 +256,21 @@ class WorkerManagerCommandResponse(BaseMessage):
     workerIDs: Any
     capabilities: Any
 
-    class Status(EnumFieldValue):
-        def __new__(cls, value: int) -> "WorkerManagerCommandResponse.Status": ...
-        tooManyWorkers: ClassVar["WorkerManagerCommandResponse.Status"]
-        unknownAction: ClassVar["WorkerManagerCommandResponse.Status"]
-        workerNotFound: ClassVar["WorkerManagerCommandResponse.Status"]
-        success: ClassVar["WorkerManagerCommandResponse.Status"]
+    class Status(enum.Enum):
+        tooManyWorkers = 0
+        unknownAction = 1
+        workerNotFound = 2
+        success = 3
 
 class ObjectInstruction(BaseMessage):
     instructionType: "ObjectInstruction.ObjectInstructionType"
     objectUser: ClientID
     objectMetadata: ObjectMetadata
 
-    class ObjectInstructionType(EnumFieldValue):
-        def __new__(cls, value: int) -> "ObjectInstruction.ObjectInstructionType": ...
-        create: ClassVar["ObjectInstruction.ObjectInstructionType"]
-        delete: ClassVar["ObjectInstruction.ObjectInstructionType"]
-        clear: ClassVar["ObjectInstruction.ObjectInstructionType"]
+    class ObjectInstructionType(enum.Enum):
+        create = 0
+        delete = 1
+        clear = 2
 
 class DisconnectRequest(BaseMessage):
     worker: WorkerID
@@ -295,10 +281,9 @@ class DisconnectResponse(BaseMessage):
 class ClientDisconnect(BaseMessage):
     disconnectType: "ClientDisconnect.DisconnectType"
 
-    class DisconnectType(EnumFieldValue):
-        def __new__(cls, value: int) -> "ClientDisconnect.DisconnectType": ...
-        disconnect: ClassVar["ClientDisconnect.DisconnectType"]
-        shutdown: ClassVar["ClientDisconnect.DisconnectType"]
+    class DisconnectType(enum.Enum):
+        disconnect = 0
+        shutdown = 1
 
 class ClientShutdownResponse(BaseMessage):
     accepted: bool
@@ -339,10 +324,9 @@ class StateGraphTask(BaseMessage):
     nodeTaskType: "StateGraphTask.NodeTaskType"
     parentTaskIds: Any
 
-    class NodeTaskType(EnumFieldValue):
-        def __new__(cls, value: int) -> "StateGraphTask.NodeTaskType": ...
-        normal: ClassVar["StateGraphTask.NodeTaskType"]
-        target: ClassVar["StateGraphTask.NodeTaskType"]
+    class NodeTaskType(enum.Enum):
+        normal = 0
+        target = 1
 
 class ProcessorInitialized(BaseMessage): ...
 
@@ -390,13 +374,12 @@ class ObjectRequestHeader(CapnpStruct):
     requestID: int
     requestType: "ObjectRequestHeader.ObjectRequestType"
 
-    class ObjectRequestType(EnumFieldValue):
-        def __new__(cls, value: int) -> "ObjectRequestHeader.ObjectRequestType": ...
-        setObject: ClassVar["ObjectRequestHeader.ObjectRequestType"]
-        getObject: ClassVar["ObjectRequestHeader.ObjectRequestType"]
-        deleteObject: ClassVar["ObjectRequestHeader.ObjectRequestType"]
-        duplicateObjectID: ClassVar["ObjectRequestHeader.ObjectRequestType"]
-        infoGetTotal: ClassVar["ObjectRequestHeader.ObjectRequestType"]
+    class ObjectRequestType(enum.Enum):
+        setObject = 0
+        getObject = 1
+        deleteObject = 2
+        duplicateObjectID = 3
+        infoGetTotal = 4
 
 class ObjectID(CapnpStruct):
     field0: int
@@ -411,14 +394,13 @@ class ObjectResponseHeader(CapnpStruct):
     responseID: int
     responseType: "ObjectResponseHeader.ObjectResponseType"
 
-    class ObjectResponseType(EnumFieldValue):
-        def __new__(cls, value: int) -> "ObjectResponseHeader.ObjectResponseType": ...
-        setOK: ClassVar["ObjectResponseHeader.ObjectResponseType"]
-        getOK: ClassVar["ObjectResponseHeader.ObjectResponseType"]
-        delOK: ClassVar["ObjectResponseHeader.ObjectResponseType"]
-        delNotExists: ClassVar["ObjectResponseHeader.ObjectResponseType"]
-        duplicateOK: ClassVar["ObjectResponseHeader.ObjectResponseType"]
-        infoGetTotalOK: ClassVar["ObjectResponseHeader.ObjectResponseType"]
+    class ObjectResponseType(enum.Enum):
+        setOK = 0
+        getOK = 1
+        delOK = 2
+        delNotExists = 3
+        duplicateOK = 4
+        infoGetTotalOK = 5
 
 def get_module_descriptor(module_name: str) -> Any: ...
 def message_to_bytes(variant_name: str, inner: Any) -> bytes: ...

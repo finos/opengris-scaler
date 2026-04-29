@@ -74,12 +74,7 @@ def show_status(status: BaseMessage, screen):
 
     task_manager_table = __generate_keyword_data(
         "task_manager",
-        dict(
-            sorted(
-                (TaskState(pair.state).name, pair.count)  # type: ignore[attr-defined]
-                for pair in status.taskManager.stateToCount
-            )
-        ),
+        dict(sorted((TaskState(pair.state).name, pair.count) for pair in status.taskManager.stateToCount)),
         format_integer_flag=True,
     )
     object_manager = __generate_keyword_data("object_manager", {"num_of_objs": status.objectManager.numberOfObjects})

@@ -51,8 +51,8 @@ class TaskStateMachine:
 
     def get_path(self):
         return (
-            " ".join(f"[{state._as_str()}] -{transition._as_str()}->" for state, transition in self._paths)
-            + f" [{self._state._as_str()}]"
+            " ".join(f"[{state.name}] -{transition.name}->" for state, transition in self._paths)
+            + f" [{self._state.name}]"
         )
 
     def previous_state(self) -> Optional[TaskState]:

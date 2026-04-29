@@ -204,6 +204,13 @@ static PyObject* enum_field_value_init(PyObject* self, PyObject* args)
     if (PyObject_SetAttrString(self, "_member", member.get()) < 0) {
         return nullptr;
     }
+    OwnedPyObject<> name {member.is_none() ? PyObject_Str(raw) : PyObject_GetAttrString(member.get(), "name")};
+    if (!name) {
+        return nullptr;
+    }
+    if (PyObject_SetAttrString(self, "name", name.get()) < 0 || PyObject_SetAttrString(self, "value", raw) < 0) {
+        return nullptr;
+    }
     Py_RETURN_NONE;
 }
 

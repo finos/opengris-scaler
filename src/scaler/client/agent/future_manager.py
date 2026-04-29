@@ -47,7 +47,7 @@ class ClientFutureManager(FutureManager):
             self._task_id_to_future.clear()
 
     def on_task_result(self, result: TaskResult):
-        result_type = TaskResultType(result.resultType.raw)
+        result_type = TaskResultType(result.resultType.value)
         with self._lock:
             task_id = result.taskId
             if task_id not in self._task_id_to_future:
@@ -75,7 +75,7 @@ class ClientFutureManager(FutureManager):
                 raise TypeError(f"{result.taskId.hex()}: Unknown task status: {result.resultType}")
 
     def on_task_cancel_confirm(self, cancel_confirm: TaskCancelConfirm):
-        cancel_confirm_type = TaskCancelConfirmType(cancel_confirm.cancelConfirmType.raw)
+        cancel_confirm_type = TaskCancelConfirmType(cancel_confirm.cancelConfirmType.value)
         with self._lock:
             task_id = cancel_confirm.taskId
             if task_id not in self._task_id_to_future:

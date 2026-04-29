@@ -49,16 +49,16 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         self._unassigned: Deque[TaskID] = deque()  # type: ignore[misc]
 
         self._state_functions: Dict[TaskState, Callable[[*Tuple[Any, ...]], Awaitable[None]]] = {
-            TaskState.inactive: self.__state_inactive,  # type: ignore[dict-item]
-            TaskState.running: self.__state_running,  # type: ignore[dict-item]
-            TaskState.canceling: self.__state_canceling,  # type: ignore[dict-item]
-            TaskState.balanceCanceling: self.__state_balance_canceling,  # type: ignore[dict-item]
-            TaskState.workerDisconnecting: self.__state_worker_disconnecting,  # type: ignore[dict-item]
-            TaskState.canceled: self.__state_canceled,  # type: ignore[dict-item]
-            TaskState.canceledNotFound: self.__state_canceled_not_found,  # type: ignore[dict-item]
-            TaskState.success: self.__state_success,  # type: ignore[dict-item]
-            TaskState.failed: self.__state_failed,  # type: ignore[dict-item]
-            TaskState.failedWorkerDied: self.__state_failed_worker_died,  # type: ignore[dict-item]
+            TaskState.inactive: self.__state_inactive,
+            TaskState.running: self.__state_running,
+            TaskState.canceling: self.__state_canceling,
+            TaskState.balanceCanceling: self.__state_balance_canceling,
+            TaskState.workerDisconnecting: self.__state_worker_disconnecting,
+            TaskState.canceled: self.__state_canceled,
+            TaskState.canceledNotFound: self.__state_canceled_not_found,
+            TaskState.success: self.__state_success,
+            TaskState.failed: self.__state_failed,
+            TaskState.failedWorkerDied: self.__state_failed_worker_died,
         }
         self._task_result_transition_map = {
             TaskResultType.success: TaskTransition.taskResultSuccess,
@@ -135,7 +135,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         await self.__routing(task_id, TaskTransition.balanceTaskCancel)
 
     async def on_task_cancel_confirm(self, task_cancel_confirm: TaskCancelConfirm):
-        cancel_confirm_type = TaskCancelConfirmType(task_cancel_confirm.cancelConfirmType.raw)
+        cancel_confirm_type = TaskCancelConfirmType(task_cancel_confirm.cancelConfirmType.value)
         transition = self._task_cancel_confirm_transition_map.get(cancel_confirm_type, None)
         if transition is None:
             raise ValueError(f"unknown TaskCancelConfirmType: {task_cancel_confirm.cancelConfirmType}")
@@ -167,7 +167,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         await self.__routing(task_cancel_confirm.taskId, transition, task_cancel_confirm=task_cancel_confirm)
 
     async def on_task_result(self, task_result: TaskResult):
-        result_type = TaskResultType(task_result.resultType.raw)
+        result_type = TaskResultType(task_result.resultType.value)
         transition = self._task_result_transition_map.get(result_type, None)
         if transition is None:
             raise ValueError(f"unknown TaskResultType: {task_result.resultType}")
@@ -185,8 +185,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
         return TaskManagerStatus(
             stateToCount=[
-                TaskManagerStatus.Pair(state=task_state.value, count=count)  # type: ignore[attr-defined]
-                for task_state, count in statistics.items()
+                TaskManagerStatus.Pair(state=task_state.value, count=count) for task_state, count in statistics.items()
             ]
         )
 
