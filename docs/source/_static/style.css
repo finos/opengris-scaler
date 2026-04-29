@@ -72,3 +72,8 @@ table.diff tbody + tbody {
 html.dark table.diff tbody + tbody {
     border-top: 3px solid #e6e6e6 !important;
 }
+
+section.hidden-page-title > h1:first-child,
+div.hidden-page-title > h1:first-child {
+    display: none;
+}
