@@ -15,28 +15,21 @@ def _roundtrip_state_worker(**kwargs) -> StateWorker:
     return StateWorker.from_bytes(StateWorker(**kwargs).to_bytes())
 
 
-class TestEnumFieldValueComparison(unittest.TestCase):
-    """After Cap'n Proto round-trip, enum fields become EnumFieldValue objects.
-
-    == works, but hash() differs from the real enum member so `in {set}` fails.
-    The UI code must use `any(val == s for s in ...)` instead of `val in {set}`.
-    """
+class TestDeserializedEnumSetMembership(unittest.TestCase):
+    """After Cap'n Proto round-trip, enum fields are real IntEnum members. Equality,
+    hash, and set membership all behave the same as the in-process enum members."""
 
     def test_deserialized_task_state_equality(self):
-        """Deserialized TaskState should compare equal via == to the enum member."""
         for ts in (TaskState.success, TaskState.running, TaskState.canceled, TaskState.failed):
             st = _roundtrip_state_task(state=ts, taskId=b"t1", functionName=b"fn", worker=b"w1")
             self.assertEqual(st.state, ts)
 
-    def test_deserialized_task_state_not_in_set(self):
-        """Demonstrate that deserialized enum values fail hash-based set lookup."""
+    def test_deserialized_task_state_in_set(self):
         completed = {TaskState.success, TaskState.canceled, TaskState.failed, TaskState.failedWorkerDied}
         st = _roundtrip_state_task(state=TaskState.success, taskId=b"t1", functionName=b"fn", worker=b"w1")
-        # This is the bug that was fixed — `in` on a set uses hash, which doesn't match
-        self.assertFalse(st.state in completed, "EnumFieldValue should NOT match via `in` on a set")
+        self.assertIn(st.state, completed)
 
     def test_deserialized_task_state_any_pattern(self):
-        """The any() pattern used in the fix should correctly identify completed states."""
         completed = (
             TaskState.success,
             TaskState.canceled,
@@ -55,7 +48,6 @@ class TestEnumFieldValueComparison(unittest.TestCase):
             self.assertFalse(any(st.state == s for s in completed), f"{ts} should NOT match completed")
 
     def test_deserialized_worker_state_equality(self):
-        """Deserialized WorkerState should compare equal via ==."""
         for ws in (WorkerState.connected, WorkerState.disconnected):
             sw = _roundtrip_state_worker(state=ws, workerId=b"w1", capabilities=[])
             self.assertEqual(sw.state, ws)

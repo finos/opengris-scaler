@@ -50,7 +50,6 @@ int clear_module_state(PyObject* module)
     }
 
     state->enum_class              = {};
-    state->enum_field_value_type   = {};
     state->capnp_struct_type       = {};
     state->capnp_union_struct_type = {};
     state->type_registry.clear();
@@ -66,11 +65,9 @@ int traverse_module_state(PyObject* module, visitproc visit, void* arg)
     }
 
     PyObject* enum_class              = state->enum_class.get();
-    PyObject* enum_field_value_type   = state->enum_field_value_type.get();
     PyObject* capnp_struct_type       = state->capnp_struct_type.get();
     PyObject* capnp_union_struct_type = state->capnp_union_struct_type.get();
     Py_VISIT(enum_class);
-    Py_VISIT(enum_field_value_type);
     Py_VISIT(capnp_struct_type);
     Py_VISIT(capnp_union_struct_type);
 

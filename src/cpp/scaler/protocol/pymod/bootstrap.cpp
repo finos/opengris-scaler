@@ -183,104 +183,6 @@ PyObject* py_capnp_union_from_bytes(PyObject* cls, PyObject* args, PyObject* kwa
     return ::scaler::protocol::pymod::capnp_union_from_bytes(cls, args, kwargs).take();
 }
 
-static PyObject* enum_field_value_init(PyObject* self, PyObject* args)
-{
-    PyObject* raw       = nullptr;
-    PyObject* enum_type = nullptr;
-    if (!PyArg_ParseTuple(args, "OO", &raw, &enum_type)) {
-        return nullptr;
-    }
-    if (PyObject_SetAttrString(self, "raw", raw) < 0 || PyObject_SetAttrString(self, "_enum_type", enum_type) < 0) {
-        return nullptr;
-    }
-    OwnedPyObject<> member {PyObject_CallOneArg(enum_type, raw)};
-    if (!member) {
-        if (!PyErr_ExceptionMatches(PyExc_ValueError)) {
-            return nullptr;
-        }
-        PyErr_Clear();
-        member = OwnedPyObject<>::none();
-    }
-    if (PyObject_SetAttrString(self, "_member", member.get()) < 0) {
-        return nullptr;
-    }
-    OwnedPyObject<> name {member.is_none() ? PyObject_Str(raw) : PyObject_GetAttrString(member.get(), "name")};
-    if (!name) {
-        return nullptr;
-    }
-    if (PyObject_SetAttrString(self, "name", name.get()) < 0 || PyObject_SetAttrString(self, "value", raw) < 0) {
-        return nullptr;
-    }
-    Py_RETURN_NONE;
-}
-
-static PyObject* enum_field_value_as_str(PyObject* self, PyObject* /*unused*/)
-{
-    OwnedPyObject<> member {get_attr(self, "_member")};
-    if (!member) {
-        return nullptr;
-    }
-    if (member.is_none()) {
-        OwnedPyObject<> raw {get_attr(self, "raw")};
-        if (!raw) {
-            return nullptr;
-        }
-        return PyObject_Str(raw.get());
-    }
-    return PyObject_GetAttrString(member.get(), "name");
-}
-
-static PyObject* enum_field_value_eq(PyObject* self, PyObject* other)
-{
-    OwnedPyObject<> raw {get_attr(self, "raw")};
-    if (!raw) {
-        return nullptr;
-    }
-    if (PyLong_Check(other)) {
-        return PyBool_FromLong(PyObject_RichCompareBool(raw.get(), other, Py_EQ));
-    }
-    auto* state = get_module_state();
-    if (state && state->enum_class && PyObject_IsInstance(other, state->enum_class.get()) == 1) {
-        OwnedPyObject<> other_value {get_attr(other, "value")};
-        if (!other_value) {
-            return nullptr;
-        }
-        return PyBool_FromLong(PyObject_RichCompareBool(raw.get(), other_value.get(), Py_EQ));
-    }
-    if (state && state->enum_field_value_type && PyObject_IsInstance(other, state->enum_field_value_type.get()) == 1) {
-        OwnedPyObject<> other_raw {get_attr(other, "raw")};
-        if (!other_raw) {
-            return nullptr;
-        }
-        return PyBool_FromLong(PyObject_RichCompareBool(raw.get(), other_raw.get(), Py_EQ));
-    }
-    Py_RETURN_NOTIMPLEMENTED;
-}
-
-static PyObject* enum_field_value_hash(PyObject* self, PyObject* /*unused*/)
-{
-    OwnedPyObject<> raw {get_attr(self, "raw")};
-    if (!raw) {
-        return nullptr;
-    }
-    auto hash = PyObject_Hash(raw.get());
-    if (hash == -1 && PyErr_Occurred()) {
-        return nullptr;
-    }
-    return PyLong_FromSsize_t(hash);
-}
-
-static PyObject* enum_field_value_int(PyObject* self, PyObject* /*unused*/)
-{
-    return PyObject_GetAttrString(self, "raw");
-}
-
-static PyMethodDef ENUM_FIELD_VALUE_INIT_DEF = {"__init__", (PyCFunction)enum_field_value_init, METH_VARARGS, nullptr};
-static PyMethodDef ENUM_FIELD_VALUE_AS_STR_DEF = {
-    "_as_str", (PyCFunction)enum_field_value_as_str, METH_NOARGS, nullptr};
-static PyMethodDef ENUM_FIELD_VALUE_EQ_DEF   = {"__eq__", (PyCFunction)enum_field_value_eq, METH_O, nullptr};
-static PyMethodDef ENUM_FIELD_VALUE_HASH_DEF = {"__hash__", (PyCFunction)enum_field_value_hash, METH_NOARGS, nullptr};
-static PyMethodDef ENUM_FIELD_VALUE_INT_DEF  = {"__int__", (PyCFunction)enum_field_value_int, METH_NOARGS, nullptr};
 static PyMethodDef CAPNP_STRUCT_INIT_DEF     = {
     "__init__", (PyCFunction)(void (*)(void))py_capnp_struct_init_method, METH_VARARGS | METH_KEYWORDS, nullptr};
 static PyMethodDef CAPNP_STRUCT_TO_BYTES_DEF = {
@@ -473,15 +375,6 @@ OwnedPyObject<> get_enum_by_schema_id(uint64_t schema_id)
     return it->second;
 }
 
-OwnedPyObject<> get_enum_field_value_type()
-{
-    auto* state = get_module_state();
-    if (!state || !state->enum_field_value_type) {
-        return {};
-    }
-    return state->enum_field_value_type;
-}
-
 OwnedPyObject<> get_module_descriptor(const char* module_name)
 {
     auto* state = get_module_state();
@@ -524,7 +417,7 @@ bool initialize_runtime_modules(PyObject* module)
     if (!enum_module) {
         return false;
     }
-    state->enum_class = PyObject_GetAttrString(enum_module.get(), "Enum");
+    state->enum_class = PyObject_GetAttrString(enum_module.get(), "IntEnum");
     if (!state->enum_class) {
         return false;
     }
@@ -535,44 +428,11 @@ bool initialize_runtime_modules(PyObject* module)
     }
 
     OwnedPyObject<> empty_bases {PyTuple_Pack(1, (PyObject*)&PyBaseObject_Type)};
-    OwnedPyObject<> enum_field_value_dict {PyDict_New()};
     OwnedPyObject<> capnp_struct_dict {PyDict_New()};
     OwnedPyObject<> capnp_union_struct_dict {PyDict_New()};
-    if (!empty_bases || !enum_field_value_dict || !capnp_struct_dict || !capnp_union_struct_dict) {
+    if (!empty_bases || !capnp_struct_dict || !capnp_union_struct_dict) {
         return false;
     }
-
-    PyDict_SetItemString(
-        enum_field_value_dict.get(),
-        "__module__",
-        OwnedPyObject<>(PyUnicode_FromString("scaler.protocol.capnp")).get());
-    OwnedPyObject<> enum_field_value_type {
-        create_python_class("EnumFieldValue", empty_bases.get(), enum_field_value_dict.get())};
-    if (!enum_field_value_type) {
-        return false;
-    }
-    Py_INCREF(enum_field_value_type.get());
-    state->enum_field_value_type = enum_field_value_type.get();
-    PyObject_SetAttrString(
-        enum_field_value_type.get(),
-        "__init__",
-        OwnedPyObject<>(make_method_descriptor(enum_field_value_type.get(), &ENUM_FIELD_VALUE_INIT_DEF)).get());
-    PyObject_SetAttrString(
-        enum_field_value_type.get(),
-        "_as_str",
-        OwnedPyObject<>(make_method_descriptor(enum_field_value_type.get(), &ENUM_FIELD_VALUE_AS_STR_DEF)).get());
-    PyObject_SetAttrString(
-        enum_field_value_type.get(),
-        "__eq__",
-        OwnedPyObject<>(make_method_descriptor(enum_field_value_type.get(), &ENUM_FIELD_VALUE_EQ_DEF)).get());
-    PyObject_SetAttrString(
-        enum_field_value_type.get(),
-        "__hash__",
-        OwnedPyObject<>(make_method_descriptor(enum_field_value_type.get(), &ENUM_FIELD_VALUE_HASH_DEF)).get());
-    PyObject_SetAttrString(
-        enum_field_value_type.get(),
-        "__int__",
-        OwnedPyObject<>(make_method_descriptor(enum_field_value_type.get(), &ENUM_FIELD_VALUE_INT_DEF)).get());
 
     PyDict_SetItemString(
         capnp_struct_dict.get(), "__module__", OwnedPyObject<>(PyUnicode_FromString("scaler.protocol.capnp")).get());
@@ -629,7 +489,6 @@ bool initialize_runtime_modules(PyObject* module)
         "to_bytes",
         OwnedPyObject<>(make_method_descriptor(capnp_union_struct_type.get(), &CAPNP_UNION_TO_BYTES_DEF)).get());
 
-    PyModule_AddObjectRef(base_module.get(), "EnumFieldValue", enum_field_value_type.get());
     PyModule_AddObjectRef(base_module.get(), "CapnpStruct", capnp_struct_type.get());
     PyModule_AddObjectRef(base_module.get(), "CapnpUnionStruct", capnp_union_struct_type.get());
     PyModule_AddObjectRef(module, "BaseMessage", capnp_struct_type.get());

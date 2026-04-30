@@ -40,3 +40,10 @@ class ClientQuitException(Exception):
 
 class ObjectStorageException(Exception):
     pass
+
+
+class CapnpDeserializationError(Exception):
+    """Raised when scaler.protocol.capnp fails to decode a wire message,
+    including unknown enum ordinals from a newer schema."""
+
+    pass

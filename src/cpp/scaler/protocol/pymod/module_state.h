@@ -13,7 +13,6 @@ using scaler::utility::pymod::OwnedPyObject;
 struct CapnpModuleState {
     SchemaRegistry schema_registry {};
     OwnedPyObject<> enum_class {};
-    OwnedPyObject<> enum_field_value_type {};
     OwnedPyObject<> capnp_struct_type {};
     OwnedPyObject<> capnp_union_struct_type {};
     std::unordered_map<uint64_t, OwnedPyObject<>> type_registry;

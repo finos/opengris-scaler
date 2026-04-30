@@ -18,25 +18,14 @@ OwnedPyObject<> get_attr(PyObject* obj, const char* name)
 
 bool read_enum_raw(PyObject* obj, uint16_t& out)
 {
+    // IntEnum members satisfy PyLong_Check, as do plain ints. That covers every
+    // well-formed input post-#761; anything else is a programming error.
     if (PyLong_Check(obj)) {
         out = static_cast<uint16_t>(PyLong_AsUnsignedLong(obj));
         return !PyErr_Occurred();
     }
-
-    OwnedPyObject<> raw = get_attr(obj, "raw");
-    if (raw) {
-        out = static_cast<uint16_t>(PyLong_AsUnsignedLong(raw.get()));
-        return !PyErr_Occurred();
-    }
-    PyErr_Clear();
-
-    OwnedPyObject<> value = get_attr(obj, "value");
-    if (!value) {
-        return false;
-    }
-
-    out = static_cast<uint16_t>(PyLong_AsUnsignedLong(value.get()));
-    return !PyErr_Occurred();
+    PyErr_SetString(PyExc_TypeError, "enum field requires an int or IntEnum value");
+    return false;
 }
 
 bool load_buffer(PyObject* obj, Py_buffer& buffer)
@@ -51,34 +40,19 @@ namespace {
 
 using DynamicListIndex = std::remove_cv_t<decltype(std::declval<capnp::DynamicList::Builder>().size())>;
 
-PyObject* wrap_enum_value(PyObject* enum_type, PyObject* value)
+PyObject* normalize_enum_value(PyObject* enum_type, PyObject* value)
 {
-    OwnedPyObject<> enum_field_value_type {get_enum_field_value_type()};
-    if (!enum_field_value_type) {
-        return nullptr;
-    }
-    if (PyObject_IsInstance(value, enum_field_value_type.get()) == 1) {
+    // IntEnum(member) returns the same member; IntEnum(int) returns the matching
+    // member or raises ValueError; IntEnum(<bad type>) raises TypeError. We let
+    // both exceptions propagate so construction-time mistakes surface immediately.
+    if (PyObject_IsInstance(value, enum_type) == 1) {
         return Py_NewRef(value);
     }
-    if (PyObject_IsInstance(value, enum_type) == 1) {
-        OwnedPyObject<> enum_value {get_attr(value, "value")};
-        if (!enum_value) {
-            return nullptr;
-        }
-        return PyObject_CallFunctionObjArgs(enum_field_value_type.get(), enum_value.get(), enum_type, nullptr);
-    }
-    if (PyLong_Check(value)) {
-        return PyObject_CallFunctionObjArgs(enum_field_value_type.get(), value, enum_type, nullptr);
-    }
-    return Py_NewRef(value);
+    return PyObject_CallOneArg(enum_type, value);
 }
 
-PyObject* wrap_enum_list_value(PyObject* enum_type, PyObject* values)
+PyObject* normalize_enum_list_value(PyObject* enum_type, PyObject* values)
 {
-    OwnedPyObject<> enum_field_value_type {get_enum_field_value_type()};
-    if (!enum_field_value_type) {
-        return nullptr;
-    }
     OwnedPyObject<> fast {PySequence_Fast(values, "expected a sequence")};
     if (!fast) {
         return nullptr;
@@ -90,21 +64,7 @@ PyObject* wrap_enum_list_value(PyObject* enum_type, PyObject* values)
     }
     for (Py_ssize_t index = 0; index < size; ++index) {
         PyObject* item = PySequence_Fast_GET_ITEM(fast.get(), index);
-        OwnedPyObject<> wrapped;
-        if (PyUnicode_Check(item)) {
-            OwnedPyObject<> enum_member {PyObject_GetItem(enum_type, item)};
-            if (!enum_member) {
-                return nullptr;
-            }
-            OwnedPyObject<> enum_value {get_attr(enum_member.get(), "value")};
-            if (!enum_value) {
-                return nullptr;
-            }
-            wrapped = OwnedPyObject<> {
-                PyObject_CallFunctionObjArgs(enum_field_value_type.get(), enum_value.get(), enum_type, nullptr)};
-        } else {
-            wrapped = OwnedPyObject<> {wrap_enum_value(enum_type, item)};
-        }
+        OwnedPyObject<> wrapped {normalize_enum_value(enum_type, item)};
         if (!wrapped) {
             return nullptr;
         }
@@ -137,14 +97,14 @@ int capnp_struct_init(PyObject* self, PyObject* args, PyObject* kwargs)
             PyObject* enum_type = PyDict_GetItem(enum_fields.get(), key);
             if (enum_type) {
                 Py_DECREF(normalized_value);
-                normalized_value = wrap_enum_value(enum_type, value);
+                normalized_value = normalize_enum_value(enum_type, value);
             }
         }
         if (normalized_value && PyDict_Check(list_enum_fields.get())) {
             PyObject* enum_type = PyDict_GetItem(list_enum_fields.get(), key);
             if (enum_type) {
                 Py_DECREF(normalized_value);
-                normalized_value = wrap_enum_list_value(enum_type, value);
+                normalized_value = normalize_enum_list_value(enum_type, value);
             }
         }
         if (!normalized_value) {
@@ -159,18 +119,22 @@ int capnp_struct_init(PyObject* self, PyObject* args, PyObject* kwargs)
     return 0;
 }
 
-OwnedPyObject<> build_enum_field_value(uint64_t enum_schema_id, uint16_t raw)
+OwnedPyObject<> build_enum_value(uint64_t enum_schema_id, uint16_t raw)
 {
+    // IntEnum(raw) returns the matching member or raises ValueError on unknown
+    // ordinals. The exception propagates back to Python via the nullptr return
+    // from this function; serialize.cpp catches kj exceptions, but Python
+    // exceptions just bubble through PyObject_CallOneArg's NULL-with-error
+    // contract.
     OwnedPyObject<> enum_type {get_enum_by_schema_id(enum_schema_id)};
-    OwnedPyObject<> enum_field_value_type {get_enum_field_value_type()};
-    if (!enum_type || !enum_field_value_type) {
+    if (!enum_type) {
         return {};
     }
-    OwnedPyObject<> args {Py_BuildValue("(kO)", static_cast<unsigned long>(raw), enum_type.get())};
-    if (!args) {
+    OwnedPyObject<> raw_obj {PyLong_FromUnsignedLong(static_cast<unsigned long>(raw))};
+    if (!raw_obj) {
         return {};
     }
-    return OwnedPyObject<> {PyObject_Call(enum_field_value_type.get(), args.get(), nullptr)};
+    return OwnedPyObject<> {PyObject_CallOneArg(enum_type.get(), raw_obj.get())};
 }
 
 bool set_text_field(capnp::DynamicStruct::Builder builder, capnp::StructSchema::Field field, PyObject* value)
@@ -512,7 +476,7 @@ OwnedPyObject<> dynamic_value_to_py_object(capnp::DynamicValue::Reader value, ca
         }
         case capnp::schema::Type::ENUM: {
             auto dynamic_enum = value.as<capnp::DynamicEnum>();
-            return build_enum_field_value(type.asEnum().getProto().getId(), dynamic_enum.getRaw());
+            return build_enum_value(type.asEnum().getProto().getId(), dynamic_enum.getRaw());
         }
         case capnp::schema::Type::STRUCT: {
             OwnedPyObject<> type_object {get_type_by_schema_id(type.asStruct().getProto().getId())};

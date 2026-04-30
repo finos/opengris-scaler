@@ -1,4 +1,4 @@
-import enum
+from enum import IntEnum
 from typing import Any, ClassVar
 
 from scaler.utility.identifiers import ClientID
@@ -17,17 +17,17 @@ class BaseMessage(CapnpStruct): ...
 class CapnpUnionStruct(CapnpStruct):
     def which(self) -> str: ...
 
-class TaskResultType(enum.Enum):
+class TaskResultType(IntEnum):
     success = 0
     failed = 1
     failedWorkerDied = 2
 
-class TaskCancelConfirmType(enum.Enum):
+class TaskCancelConfirmType(IntEnum):
     canceled = 0
     cancelFailed = 1
     cancelNotFound = 2
 
-class TaskTransition(enum.Enum):
+class TaskTransition(IntEnum):
     hasCapacity = 0
     taskResultSuccess = 1
     taskResultFailed = 2
@@ -41,7 +41,7 @@ class TaskTransition(enum.Enum):
     schedulerHasTask = 10
     schedulerHasNoTask = 11
 
-class TaskState(enum.Enum):
+class TaskState(IntEnum):
     inactive = 0
     running = 1
     canceling = 2
@@ -54,7 +54,7 @@ class TaskState(enum.Enum):
     balanceCanceled = 9
     workerDisconnecting = 10
 
-class WorkerState(enum.Enum):
+class WorkerState(IntEnum):
     connected = 0
     disconnected = 1
 
@@ -65,7 +65,7 @@ class TaskCapability(CapnpStruct):
     def new_msg(name: str, value: int) -> "TaskCapability": ...
 
 class ObjectMetadata(CapnpStruct):
-    class ObjectContentType(enum.Enum):
+    class ObjectContentType(IntEnum):
         serializer = 0
         object = 1
 
@@ -162,7 +162,7 @@ class Task(BaseMessage):
         type: Any
         data: bytes
 
-        class ArgumentType(enum.Enum):
+        class ArgumentType(IntEnum):
             task = 0
             objectID = 1
 
@@ -184,7 +184,7 @@ class TaskLog(BaseMessage):
     logType: Any
     content: str
 
-    class LogType(enum.Enum):
+    class LogType(IntEnum):
         stdout = 0
         stderr = 1
 
@@ -235,7 +235,7 @@ class WorkerManagerHeartbeat(BaseMessage):
 
 class WorkerManagerHeartbeatEcho(BaseMessage): ...
 
-class WorkerManagerCommandType(enum.Enum):
+class WorkerManagerCommandType(IntEnum):
     startWorkers = 0
     shutdownWorkers = 1
     setDesiredTaskConcurrency = 2
@@ -256,7 +256,7 @@ class WorkerManagerCommandResponse(BaseMessage):
     workerIDs: Any
     capabilities: Any
 
-    class Status(enum.Enum):
+    class Status(IntEnum):
         tooManyWorkers = 0
         unknownAction = 1
         workerNotFound = 2
@@ -267,7 +267,7 @@ class ObjectInstruction(BaseMessage):
     objectUser: ClientID
     objectMetadata: ObjectMetadata
 
-    class ObjectInstructionType(enum.Enum):
+    class ObjectInstructionType(IntEnum):
         create = 0
         delete = 1
         clear = 2
@@ -281,7 +281,7 @@ class DisconnectResponse(BaseMessage):
 class ClientDisconnect(BaseMessage):
     disconnectType: "ClientDisconnect.DisconnectType"
 
-    class DisconnectType(enum.Enum):
+    class DisconnectType(IntEnum):
         disconnect = 0
         shutdown = 1
 
@@ -324,7 +324,7 @@ class StateGraphTask(BaseMessage):
     nodeTaskType: "StateGraphTask.NodeTaskType"
     parentTaskIds: Any
 
-    class NodeTaskType(enum.Enum):
+    class NodeTaskType(IntEnum):
         normal = 0
         target = 1
 
@@ -374,7 +374,7 @@ class ObjectRequestHeader(CapnpStruct):
     requestID: int
     requestType: "ObjectRequestHeader.ObjectRequestType"
 
-    class ObjectRequestType(enum.Enum):
+    class ObjectRequestType(IntEnum):
         setObject = 0
         getObject = 1
         deleteObject = 2
@@ -394,7 +394,7 @@ class ObjectResponseHeader(CapnpStruct):
     responseID: int
     responseType: "ObjectResponseHeader.ObjectResponseType"
 
-    class ObjectResponseType(enum.Enum):
+    class ObjectResponseType(IntEnum):
         setOK = 0
         getOK = 1
         delOK = 2

@@ -4,8 +4,10 @@
 #include <capnp/message.h>
 #include <capnp/serialize.h>
 #include <kj/array.h>
+#include <kj/exception.h>
 
 #include <cstring>
+#include <exception>
 #include <stdexcept>
 
 #include "protocol/message.capnp.h"
@@ -71,12 +73,26 @@ OwnedPyObject<> message_from_bytes(PyObject* data, unsigned long long traversal_
     auto words = copy_bytes_to_words(static_cast<const char*>(buffer.buf), buffer.len);
     capnp::ReaderOptions options;
     options.traversalLimitInWords = traversal_limit;
-    capnp::FlatArrayMessageReader reader(words.asPtr(), options);
-    auto message_schema = capnp::Schema::from<scaler::protocol::Message>().asStruct();
-    auto root           = reader.getRoot<capnp::DynamicStruct>(message_schema);
-    OwnedPyObject<> result {dynamic_value_to_py_object(root, message_schema)};
-    PyBuffer_Release(&buffer);
-    return result;
+    try {
+        capnp::FlatArrayMessageReader reader(words.asPtr(), options);
+        auto message_schema = capnp::Schema::from<scaler::protocol::Message>().asStruct();
+        auto root           = reader.getRoot<capnp::DynamicStruct>(message_schema);
+        OwnedPyObject<> result {dynamic_value_to_py_object(root, message_schema)};
+        PyBuffer_Release(&buffer);
+        return result;
+    } catch (const kj::Exception& e) {
+        PyBuffer_Release(&buffer);
+        if (!PyErr_Occurred()) {
+            PyErr_SetString(PyExc_RuntimeError, e.getDescription().cStr());
+        }
+        return {};
+    } catch (const std::exception& e) {
+        PyBuffer_Release(&buffer);
+        if (!PyErr_Occurred()) {
+            PyErr_SetString(PyExc_RuntimeError, e.what());
+        }
+        return {};
+    }
 }
 
 OwnedPyObject<> struct_to_bytes(const char* type_name, PyObject* obj)
@@ -127,11 +143,25 @@ OwnedPyObject<> struct_from_bytes(const char* type_name, PyObject* data, unsigne
     auto words = copy_bytes_to_words(static_cast<const char*>(buffer.buf), buffer.len);
     capnp::ReaderOptions options;
     options.traversalLimitInWords = traversal_limit;
-    capnp::FlatArrayMessageReader reader(words.asPtr(), options);
-    auto root = reader.getRoot<capnp::DynamicStruct>(schema);
-    OwnedPyObject<> result {dynamic_value_to_py_object(root, schema)};
-    PyBuffer_Release(&buffer);
-    return result;
+    try {
+        capnp::FlatArrayMessageReader reader(words.asPtr(), options);
+        auto root = reader.getRoot<capnp::DynamicStruct>(schema);
+        OwnedPyObject<> result {dynamic_value_to_py_object(root, schema)};
+        PyBuffer_Release(&buffer);
+        return result;
+    } catch (const kj::Exception& e) {
+        PyBuffer_Release(&buffer);
+        if (!PyErr_Occurred()) {
+            PyErr_SetString(PyExc_RuntimeError, e.getDescription().cStr());
+        }
+        return {};
+    } catch (const std::exception& e) {
+        PyBuffer_Release(&buffer);
+        if (!PyErr_Occurred()) {
+            PyErr_SetString(PyExc_RuntimeError, e.what());
+        }
+        return {};
+    }
 }
 
 }  // namespace scaler::protocol::pymod
