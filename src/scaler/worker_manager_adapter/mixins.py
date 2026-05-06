@@ -4,14 +4,12 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Tuple
 
-from scaler.protocol.capnp import ProcessorStatus, Task, TaskCancel, WorkerManagerCommandResponse
-from scaler.utility.identifiers import TaskID, WorkerID
+from scaler.protocol.capnp import ProcessorStatus, Task, TaskCancel
+from scaler.utility.identifiers import TaskID
 
 if TYPE_CHECKING:
     from scaler.protocol.capnp import WorkerManagerCommand
     from scaler.worker_manager_adapter.task_manager import TaskManager
-
-Status = WorkerManagerCommandResponse.Status
 
 
 class ProcessorStatusProvider(ABC):
@@ -45,14 +43,6 @@ class ExecutionBackend(ABC):
 
     @abstractmethod
     def register(self, load_task_inputs: Callable[[Task], Awaitable[Tuple[Any, List[Any]]]]) -> None: ...
-
-
-class ImperativeWorkerProvisioner(ABC):
-    @abstractmethod
-    async def start_worker(self) -> Tuple[List[WorkerID], Status]: ...
-
-    @abstractmethod
-    async def shutdown_workers(self, worker_ids: List[WorkerID]) -> Tuple[List[WorkerID], Status]: ...
 
 
 class DeclarativeWorkerProvisioner(ABC):

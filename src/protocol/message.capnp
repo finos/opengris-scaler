@@ -98,39 +98,13 @@ struct WorkerManagerHeartbeat {
 struct WorkerManagerHeartbeatEcho {
 }
 
-enum WorkerManagerCommandType {
-    # During the transition to the declarative scaling protocol, the scheduler emits both
-    # startWorkers/shutdownWorkers (old imperative) and setDesiredTaskConcurrency (new
-    # declarative). A worker manager may handle either the old or the new variants - it is
-    # expected to ignore the ones it does not implement.
-    startWorkers @0;
-    shutdownWorkers @1;
-    setDesiredTaskConcurrency @2;
-}
-
 struct WorkerManagerCommand {
     struct DesiredTaskConcurrencyRequest {
         taskConcurrency @0 :UInt32;
         capabilities @1 :List(CommonType.TaskCapability);
     }
 
-    workerIDs @0 :List(Data);
-    command @1 :WorkerManagerCommandType;
-    capabilities @2 :List(CommonType.TaskCapability);
-    setDesiredTaskConcurrencyRequests @3 :List(DesiredTaskConcurrencyRequest);
-}
-
-struct WorkerManagerCommandResponse {
-    workerIDs @0 :List(Data);
-    command @1 :WorkerManagerCommandType;
-    status @2 :Status;
-    capabilities @3 :List(CommonType.TaskCapability);
-    enum Status {
-        tooManyWorkers @0;
-        unknownAction @1;
-        workerNotFound @2;
-        success @3;
-    }
+    setDesiredTaskConcurrencyRequests @0 :List(DesiredTaskConcurrencyRequest);
 }
 
 struct ObjectInstruction {
@@ -266,6 +240,5 @@ struct Message {
         workerManagerHeartbeat @25 :WorkerManagerHeartbeat;
         workerManagerHeartbeatEcho @26 :WorkerManagerHeartbeatEcho;
         workerManagerCommand @27 :WorkerManagerCommand;
-        workerManagerCommandResponse @28 :WorkerManagerCommandResponse;
     }
 }

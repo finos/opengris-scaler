@@ -109,7 +109,7 @@ void AcceptServer::disconnect() noexcept
 
     std::optional<std::string> pipeName {};
     if (auto* pipeServer = std::get_if<scaler::wrapper::uv::PipeServer>(&_state->_server.value())) {
-        *pipeName = UV_EXIT_ON_ERROR(pipeServer->getSockName());
+        pipeName = UV_EXIT_ON_ERROR(pipeServer->getSockName());
     }
 
     _state->_server = std::nullopt;

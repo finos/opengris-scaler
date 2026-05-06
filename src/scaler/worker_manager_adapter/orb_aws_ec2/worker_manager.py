@@ -16,15 +16,13 @@ except ModuleNotFoundError as exc:
     raise ModuleNotFoundError('execute "pip install opengris-scaler[orb]" to use ORB AWS EC2 worker Manager') from exc
 
 from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
-from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerCommandResponse
+from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager_adapter.common import extract_desired_count, format_capabilities
 from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRunner
-
-Status = WorkerManagerCommandResponse.Status
 
 ORB_AWS_EC2_POLLING_INTERVAL_SECONDS = 5
 ORB_AWS_EC2_MAX_POLLING_ATTEMPTS = 60

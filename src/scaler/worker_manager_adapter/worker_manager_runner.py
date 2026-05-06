@@ -1,27 +1,17 @@
 import asyncio
 import logging
 import signal
-from typing import Dict, List, Optional, Union
+from typing import Dict, Optional
 
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
 from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.utility import generate_identity_from_name
-from scaler.protocol.capnp import (
-    BaseMessage,
-    WorkerManagerCommand,
-    WorkerManagerCommandResponse,
-    WorkerManagerCommandType,
-    WorkerManagerHeartbeat,
-    WorkerManagerHeartbeatEcho,
-)
+from scaler.protocol.capnp import BaseMessage, WorkerManagerCommand, WorkerManagerHeartbeat, WorkerManagerHeartbeatEcho
 from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
-from scaler.utility.identifiers import WorkerID
-from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner, ImperativeWorkerProvisioner
-
-Status = WorkerManagerCommandResponse.Status
+from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
 
 
 class WorkerManagerRunner:
@@ -33,7 +23,7 @@ class WorkerManagerRunner:
         capabilities: Dict[str, int],
         max_provisioner_units: int,
         worker_manager_id: bytes,
-        worker_provisioner: Union[ImperativeWorkerProvisioner, DeclarativeWorkerProvisioner],
+        worker_provisioner: DeclarativeWorkerProvisioner,
         io_threads: int = 1,
         workers_per_provisioner_unit: int = 1,
     ) -> None:
@@ -115,8 +105,7 @@ class WorkerManagerRunner:
         except Exception:
             logging.exception(f"{self._ident!r}: failed with unhandled exception")
 
-        if isinstance(self._worker_provisioner, DeclarativeWorkerProvisioner):
-            await self._worker_provisioner.terminate()
+        await self._worker_provisioner.terminate()
 
     async def _on_receive_external(self, message: BaseMessage) -> None:
         try:
@@ -125,49 +114,13 @@ class WorkerManagerRunner:
             elif isinstance(message, WorkerManagerHeartbeatEcho):
                 pass
             else:
-                logging.warning(f"Received unknown message type: {type(message)}")
+                logging.warning(f"Unknown action: received unrecognized message type {type(message).__name__!r}")
         except Exception:
             logging.exception(f"Unhandled exception while processing message {type(message).__name__}")
 
     async def _handle_command(self, command: WorkerManagerCommand) -> None:
-        cmd_type = command.command
-        response_status: Status = Status.success
-        worker_ids: List[WorkerID] = []
-        capabilities: Dict[str, int] = {}
-
-        if cmd_type == WorkerManagerCommandType.startWorkers:
-            if isinstance(self._worker_provisioner, ImperativeWorkerProvisioner):
-                worker_ids, response_status = await self._worker_provisioner.start_worker()
-                if response_status == Status.success:
-                    capabilities = self._capabilities
-            else:
-                # declarative provisioners send a no-op success so the scheduler's
-                # single-in-flight gate is not blocked waiting for a response that never comes
-                logging.debug(f"Ignoring unimplemented WorkerManagerCommand: {cmd_type!r}")
-        elif cmd_type == WorkerManagerCommandType.shutdownWorkers:
-            if isinstance(self._worker_provisioner, ImperativeWorkerProvisioner):
-                worker_ids, response_status = await self._worker_provisioner.shutdown_workers(
-                    [WorkerID(wid) for wid in command.workerIDs]
-                )
-            else:
-                logging.debug(f"Ignoring unimplemented WorkerManagerCommand: {cmd_type!r}")
-        elif cmd_type == WorkerManagerCommandType.setDesiredTaskConcurrency:
-            if isinstance(self._worker_provisioner, DeclarativeWorkerProvisioner):
-                await self._worker_provisioner.set_desired_task_concurrency(
-                    list(command.setDesiredTaskConcurrencyRequests)
-                )
-            else:
-                logging.debug(f"Ignoring unimplemented WorkerManagerCommand: {cmd_type!r}")
+        requests = getattr(command, "setDesiredTaskConcurrencyRequests", None)
+        if requests is None:
+            logging.warning("Unknown action: received WorkerManagerCommand with no recognized payload")
             return
-        else:
-            logging.debug(f"Ignoring unimplemented WorkerManagerCommand: {cmd_type!r}")
-            return
-
-        await self._connector_external.send(
-            WorkerManagerCommandResponse(
-                command=cmd_type,
-                status=response_status,
-                workerIDs=worker_ids,
-                capabilities=dict_to_capabilities(capabilities),
-            )
-        )
+        await self._worker_provisioner.set_desired_task_concurrency(list(requests))

@@ -127,6 +127,5 @@ The ``scaling`` option controls how worker capacity grows or shrinks.
 Notes:
 
 * ``policy_content`` must contain exactly ``allocate`` and ``scaling`` keys.
-* Scale-up is capped by each manager heartbeat's ``max_task_concurrency``.
-* Pending (booting) workers count toward the cap: if ``connected_workers + pending_workers >= max_task_concurrency``, no additional ``StartWorkers`` request is issued, preventing duplicate launches during the boot window.
+* The desired worker count emitted in ``setDesiredTaskConcurrency`` is capped by each manager heartbeat's ``max_task_concurrency``.
 * Threshold values are currently fixed in code.

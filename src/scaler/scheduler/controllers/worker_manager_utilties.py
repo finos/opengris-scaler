@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Tuple
 
 from scaler.protocol import capnp
-from scaler.protocol.capnp import ScalingManagerStatus, TaskCapability, WorkerManagerCommand, WorkerManagerCommandType
+from scaler.protocol.capnp import ScalingManagerStatus, TaskCapability, WorkerManagerCommand
 
 
 def build_scaling_manager_status(
@@ -43,9 +43,21 @@ def build_set_desired_command(desired_per_capset: List[Tuple[Dict[str, int], int
         )
         for caps, count in desired_per_capset
     ]
-    return WorkerManagerCommand(
-        workerIDs=[],
-        command=WorkerManagerCommandType.setDesiredTaskConcurrency,
-        capabilities=[],
-        setDesiredTaskConcurrencyRequests=requests,
-    )
+    return WorkerManagerCommand(setDesiredTaskConcurrencyRequests=requests)
+
+
+def effective_desired_for_manager(
+    desired_per_capset: List[Tuple[Dict[str, int], int]], manager_capabilities: Dict[str, int]
+) -> int:
+    """Sum taskConcurrency across capsets the manager can serve.
+
+    Capability subsumption is by name only: a request capset whose keys are a subset of
+    the manager's advertised capability names is considered serviceable, regardless of
+    the numeric values attached to either side (matches waterfall's allocation rule).
+    """
+    manager_keys = set(manager_capabilities.keys())
+    total = 0
+    for caps, count in desired_per_capset:
+        if set(caps.keys()) <= manager_keys:
+            total += count
+    return total

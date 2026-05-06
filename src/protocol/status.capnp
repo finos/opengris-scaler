@@ -71,6 +71,8 @@ struct ScalingManagerStatus {
         lastSeenS @2 :UInt8;
         maxTaskConcurrency @3 :UInt32;
         capabilities @4 :Text;
+        # Workers the scheduler has requested but that have not yet connected.
+        # Computed each tick as max(0, total_requested - connected_count).
         pendingWorkers @5 :UInt32;
     }
 }
