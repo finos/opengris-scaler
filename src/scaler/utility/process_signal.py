@@ -43,6 +43,7 @@ def register_async_shutdown(
         loop.add_signal_handler(signal.SIGINT, on_shutdown)
         loop.add_signal_handler(signal.SIGTERM, on_shutdown)
     else:
+
         def _signal_handler(signum, frame):  # type: ignore[no-untyped-def]
             loop.call_soon_threadsafe(on_shutdown)
 
@@ -68,9 +69,7 @@ async def _windows_wakeup() -> None:
 
 
 def _start_event_watcher(
-    loop: asyncio.AbstractEventLoop,
-    on_shutdown: Callable[[], None],
-    shutdown_event: MultiprocessingEvent,
+    loop: asyncio.AbstractEventLoop, on_shutdown: Callable[[], None], shutdown_event: MultiprocessingEvent
 ) -> None:
     def _watch():
         shutdown_event.wait()

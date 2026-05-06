@@ -219,6 +219,7 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         if isinstance(self._backend, ZMQNetworkBackend):
             register_async_shutdown(self._loop, self.__destroy, shutdown_event=self._shutdown_event)
         elif isinstance(self._backend, YMQNetworkBackend):
+
             def _on_shutdown() -> None:
                 asyncio.ensure_future(self.__graceful_shutdown())
 
