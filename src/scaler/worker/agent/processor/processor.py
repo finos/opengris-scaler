@@ -2,11 +2,10 @@ import contextlib
 import logging
 import multiprocessing
 import os
-import signal
 from contextlib import redirect_stderr, redirect_stdout
 from contextvars import ContextVar, Token
 from multiprocessing.synchronize import Event as EventType
-from typing import IO, Callable, List, Optional, Tuple, cast
+from typing import IO, List, Optional, Tuple, cast
 
 import tblib.pickling_support
 
@@ -30,11 +29,10 @@ from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.serialization import serialize_failure
+from scaler.worker.agent.processor.control_thread import ProcessorControlThread
 from scaler.worker.agent.processor.object_cache import ObjectCache
 from scaler.worker.agent.processor.streaming_buffer import StreamingBuffer
 from scaler.worker.preload import execute_preload
-
-SUSPEND_SIGNAL = "SIGUSR1"  # use str instead of a signal.Signal to not trigger an import error on unsupported systems.
 
 _current_processor: ContextVar[Optional["Processor"]] = ContextVar("_current_processor", default=None)
 
@@ -49,6 +47,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         preload: Optional[str],
         resume_event: Optional[EventType],
         resumed_event: Optional[EventType],
+        suspend_event: EventType,
+        terminate_event: EventType,
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
         logging_paths: Tuple[str, ...],
@@ -67,6 +67,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self._resume_event = resume_event
         self._resumed_event = resumed_event
+        self._suspend_event = suspend_event
+        self._terminate_event = terminate_event
 
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
@@ -74,6 +76,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._logging_level = logging_level
 
         self._object_cache: Optional[ObjectCache] = None
+        self._control_thread: Optional[ProcessorControlThread] = None
 
         self._current_task: Optional[Task] = None
 
@@ -120,7 +123,13 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         )
         self._object_cache.start()
 
-        self.__register_signals()
+        self._control_thread = ProcessorControlThread(
+            suspend_event=self._suspend_event,
+            terminate_event=self._terminate_event,
+            on_suspend=self.__suspend,
+            on_terminate=self.__interrupt,
+        )
+        self._control_thread.start()
 
         # Execute optional preload hook if provided
         if self._preload is not None:
@@ -131,19 +140,16 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                     f"Processor[{self.pid}] initialization failed due to preload error: {self._preload}"
                 ) from e
 
-    def __register_signals(self):
-        self.__register_signal("SIGTERM", self.__interrupt)
-
-        if self._resume_event is not None:
-            self.__register_signal(SUSPEND_SIGNAL, self.__suspend)
-
-    def __interrupt(self, *args):
+    def __interrupt(self) -> None:
         self._connector_agent.destroy()  # interrupts any blocking socket.
         self._connector_storage.destroy()
 
-    def __suspend(self, *args):
-        assert self._resume_event is not None
-        assert self._resumed_event is not None
+    def __suspend(self) -> None:
+        if self._resume_event is None or self._resumed_event is None:
+            # Hard-suspend mode: parent does not arm soft-suspend. The control thread
+            # should never schedule this callable in hard-suspend mode (no _suspend_event
+            # set), but guard defensively.
+            return
 
         self._resume_event.wait()  # stops any computation in the main thread until the event is triggered
 
@@ -295,14 +301,6 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             yield
         finally:
             self.__set_current_processor(None)
-
-    @staticmethod
-    def __register_signal(signal_name: str, handler: Callable) -> None:
-        signal_instance = getattr(signal, signal_name, None)
-        if signal_instance is None:
-            raise RuntimeError(f"unsupported platform, signal not available: {signal_name}.")
-
-        signal.signal(signal_instance, handler)
 
     @staticmethod
     def __is_closed_zmq_socket_exception(exception: Exception) -> bool:

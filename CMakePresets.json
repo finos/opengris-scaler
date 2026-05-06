@@ -106,7 +106,7 @@
       "name": "windows-x64",
       "displayName": "Windows x64 build",
       "configurePreset": "windows-x64",
-      "configuration": "Release",
+      "configuration": "Debug",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",

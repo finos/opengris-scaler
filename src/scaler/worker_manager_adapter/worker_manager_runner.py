@@ -1,6 +1,6 @@
 import asyncio
 import logging
-import signal
+from multiprocessing.synchronize import Event as MultiprocessingEvent
 from typing import Dict, List, Optional, Union
 
 from scaler.config.types.address import AddressConfig
@@ -19,6 +19,7 @@ from scaler.protocol.capnp import (
 from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
 from scaler.utility.identifiers import WorkerID
+from scaler.utility.process_signal import register_async_shutdown
 from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner, ImperativeWorkerProvisioner
 
 Status = WorkerManagerCommandResponse.Status
@@ -36,6 +37,7 @@ class WorkerManagerRunner:
         worker_provisioner: Union[ImperativeWorkerProvisioner, DeclarativeWorkerProvisioner],
         io_threads: int = 1,
         workers_per_provisioner_unit: int = 1,
+        shutdown_event: Optional[MultiprocessingEvent] = None,
     ) -> None:
         self._address = address
         self._name = name
@@ -46,6 +48,7 @@ class WorkerManagerRunner:
         self._worker_provisioner = worker_provisioner
         self._io_threads = io_threads
         self._workers_per_provisioner_unit = workers_per_provisioner_unit
+        self._shutdown_event = shutdown_event
 
         self._backend: Optional[NetworkBackend] = None
         self._connector_external: Optional[AsyncConnector] = None
@@ -77,8 +80,7 @@ class WorkerManagerRunner:
         self._task.cancel()
 
     def _register_signal(self) -> None:
-        self._loop.add_signal_handler(signal.SIGINT, self._destroy)
-        self._loop.add_signal_handler(signal.SIGTERM, self._destroy)
+        register_async_shutdown(self._loop, self._destroy, shutdown_event=self._shutdown_event)
 
     async def _run(self) -> None:
         self._task = self._loop.create_task(self._get_loops())

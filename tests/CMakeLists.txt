@@ -13,6 +13,9 @@ FetchContent_MakeAvailable(googletest)
 
 find_package(Python3 COMPONENTS Development REQUIRED)
 
+scaler_patch_python_imported_target(Python3::Module)
+scaler_patch_python_imported_target(Python3::Python)
+
 # This function compiles, links, and adds a C++ test executable using Google Test.
 # It is shared by all test subdirectories.
 function(add_test_executable test_name source_file)

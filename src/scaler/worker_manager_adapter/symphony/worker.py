@@ -1,5 +1,6 @@
 import uuid
 from functools import partial
+from multiprocessing.synchronize import Event as MultiprocessingEvent
 from typing import Dict, Optional
 
 from scaler.config.types.address import AddressConfig
@@ -20,6 +21,7 @@ def create_symphony_worker(
     io_threads: int,
     event_loop: str,
     worker_manager_id: bytes,
+    shutdown_event: Optional[MultiprocessingEvent] = None,
 ) -> WorkerProcess:
     return WorkerProcess(
         name=f"SYM|{uuid.uuid4().hex}",
@@ -35,4 +37,5 @@ def create_symphony_worker(
         worker_manager_id=worker_manager_id,
         processor_status_provider_factory=SymphonyProcessorStatusProvider,
         execution_backend_factory=partial(SymphonyExecutionBackend, service_name=service_name),
+        shutdown_event=shutdown_event,
     )

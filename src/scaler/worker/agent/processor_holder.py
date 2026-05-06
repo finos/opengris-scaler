@@ -10,7 +10,7 @@ from scaler.config.defaults import DEFAULT_PROCESSOR_KILL_DELAY_SECONDS
 from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import Task
 from scaler.utility.identifiers import ProcessorID
-from scaler.worker.agent.processor.processor import SUSPEND_SIGNAL, Processor
+from scaler.worker.agent.processor.processor import Processor
 
 
 class ProcessorHolder:
@@ -32,13 +32,20 @@ class ProcessorHolder:
         self._suspended = False
 
         self._hard_suspend = hard_suspend
+        context = multiprocessing.get_context("spawn")
         if hard_suspend:
+            # Hard suspend uses SIGSTOP/SIGCONT directly; no soft-suspend events needed.
             self._resume_event = None
             self._resumed_event = None
         else:
-            context = multiprocessing.get_context("spawn")
             self._resume_event = context.Event()
             self._resumed_event = context.Event()
+
+        # Cross-platform control channel: replaces POSIX SIGUSR1 (suspend trigger) and
+        # SIGTERM (graceful interrupt). Always created so the processor's daemon thread
+        # has stable handles, regardless of suspend mode.
+        self._suspend_event = context.Event()
+        self._terminate_event = context.Event()
 
         self._processor = Processor(
             event_loop=event_loop,
@@ -48,6 +55,8 @@ class ProcessorHolder:
             preload=preload,
             resume_event=self._resume_event,
             resumed_event=self._resumed_event,
+            suspend_event=self._suspend_event,
+            terminate_event=self._terminate_event,
             garbage_collect_interval_seconds=garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=trim_memory_threshold_bytes,
             logging_paths=logging_paths,
@@ -102,7 +111,10 @@ class ProcessorHolder:
             self._resume_event.clear()
             self._resumed_event.clear()
 
-            self.__send_signal(SUSPEND_SIGNAL)
+            # The processor's daemon thread observes _suspend_event and uses
+            # pending_call.schedule(__suspend) to inject the suspend on the main
+            # interpreter thread (replaces POSIX SIGUSR1 delivery).
+            self._suspend_event.set()
 
         self._suspended = True
 
@@ -125,15 +137,22 @@ class ProcessorHolder:
         self._suspended = False
 
     def kill(self):
-        self.__send_signal("SIGTERM")
+        # If the processor is currently soft-suspended, the main thread is blocked in
+        # _resume_event.wait(); pending_call trampolines cannot run until that returns.
+        # Unblock first so the daemon thread's __interrupt schedule has a chance to land.
+        if self._resume_event is not None:
+            self._resume_event.set()
+
+        self._terminate_event.set()
         self._processor.join(DEFAULT_PROCESSOR_KILL_DELAY_SECONDS)
 
         if self._processor.exitcode is None:
             # TODO: some processors fail to interrupt because of a blocking 0mq call. Ideally we should interrupt
             # these blocking calls instead of sending a SIGKILL signal.
 
-            logging.warning(f"Processor[{self.pid()}] does not terminate in time, send SIGKILL.")
-            self.__send_signal("SIGKILL")
+            logging.warning(f"Processor[{self.pid()}] does not terminate in time, hard-killing.")
+            # Process.kill is cross-platform: SIGKILL on POSIX, TerminateProcess on Windows.
+            self._processor.kill()
             self._processor.join()
 
         self.set_task(None)

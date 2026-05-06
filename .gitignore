@@ -48,3 +48,4 @@ orb/metrics/
 
 .ipynb_checkpoints/
 .claude/
+*.dll

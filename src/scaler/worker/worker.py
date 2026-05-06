@@ -2,8 +2,8 @@ import asyncio
 import logging
 import multiprocessing
 import pathlib
-import signal
 import uuid
+from multiprocessing.synchronize import Event as MultiprocessingEvent
 from typing import Dict, Optional, Tuple
 
 from scaler.config.defaults import PROFILING_INTERVAL_SECONDS
@@ -34,6 +34,7 @@ from scaler.utility.event_loop import create_async_loop_routine, register_event_
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ProcessorID, WorkerID
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.process_signal import register_async_shutdown
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
 from scaler.worker.agent.processor_manager import VanillaProcessorManager
 from scaler.worker.agent.profiling_manager import VanillaProfilingManager
@@ -62,6 +63,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         logging_level: str,
         worker_manager_id: bytes,
         deterministic_worker_ids: bool = False,
+        shutdown_event: Optional[MultiprocessingEvent] = None,
     ):
         super().__init__(name="Agent")
 
@@ -92,6 +94,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._logging_paths = logging_paths
         self._logging_level = logging_level
         self._worker_manager_id = worker_manager_id
+        self._shutdown_event = shutdown_event
 
         self._backend: Optional[NetworkBackend] = None
         self._connector_external: Optional[AsyncConnector] = None
@@ -286,11 +289,12 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
     def __register_signal(self):
         if isinstance(self._backend, ZMQNetworkBackend):
-            self._loop.add_signal_handler(signal.SIGINT, self.__destroy)
-            self._loop.add_signal_handler(signal.SIGTERM, self.__destroy)
+            register_async_shutdown(self._loop, self.__destroy, shutdown_event=self._shutdown_event)
         elif isinstance(self._backend, YMQNetworkBackend):
-            self._loop.add_signal_handler(signal.SIGINT, lambda: asyncio.ensure_future(self.__graceful_shutdown()))
-            self._loop.add_signal_handler(signal.SIGTERM, lambda: asyncio.ensure_future(self.__graceful_shutdown()))
+            def _on_shutdown() -> None:
+                asyncio.ensure_future(self.__graceful_shutdown())
+
+            register_async_shutdown(self._loop, _on_shutdown, shutdown_event=self._shutdown_event)
 
     async def __graceful_shutdown(self):
         try:

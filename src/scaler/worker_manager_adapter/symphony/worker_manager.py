@@ -1,6 +1,6 @@
 import logging
-import os
-import signal
+import multiprocessing
+from multiprocessing.synchronize import Event as MultiprocessingEvent
 from typing import Dict, List, Tuple
 
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
@@ -29,11 +29,13 @@ class SymphonyWorkerProvisioner(ImperativeWorkerProvisioner):
         self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
 
         self._workers: Dict[WorkerID, WorkerProcess] = {}
+        self._worker_shutdown_events: Dict[WorkerID, MultiprocessingEvent] = {}
 
     async def start_worker(self) -> Tuple[List[WorkerID], Status]:
         if self._max_task_concurrency != -1 and len(self._workers) >= self._max_task_concurrency:
             return [], Status.tooManyWorkers
 
+        shutdown_event = multiprocessing.get_context("spawn").Event()
         worker = create_symphony_worker(
             address=self._worker_scheduler_address,
             object_storage_address=self._object_storage_address,
@@ -46,10 +48,12 @@ class SymphonyWorkerProvisioner(ImperativeWorkerProvisioner):
             io_threads=self._io_threads,
             event_loop=self._event_loop,
             worker_manager_id=self._worker_manager_id,
+            shutdown_event=shutdown_event,
         )
 
         worker.start()
         self._workers[worker.identity] = worker
+        self._worker_shutdown_events[worker.identity] = shutdown_event
         return [worker.identity], Status.success
 
     async def shutdown_workers(self, worker_ids: List[WorkerID]) -> Tuple[List[WorkerID], Status]:
@@ -63,7 +67,7 @@ class SymphonyWorkerProvisioner(ImperativeWorkerProvisioner):
 
         for wid in worker_ids:
             worker = self._workers.pop(wid)
-            os.kill(worker.pid, signal.SIGINT)
+            self._worker_shutdown_events.pop(wid).set()
             worker.join()
 
         return list(worker_ids), Status.success

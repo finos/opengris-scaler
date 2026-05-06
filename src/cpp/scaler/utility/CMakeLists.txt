@@ -29,3 +29,13 @@ scaler_add_python_module(
     INSTALL_DEST scaler/utility/queues
     SOURCES pymod/indexed_queue.cpp
 )
+
+# pending_call python module - cross-platform replacement for POSIX signal-driven
+# main-thread interruption (used by the worker's processor for soft suspend / graceful
+# interrupt). Wraps CPython's Py_AddPendingCall.
+scaler_add_python_module(
+    TARGET py_pending_call
+    MODULE_NAME pending_call
+    INSTALL_DEST scaler/utility
+    SOURCES pymod/pending_call.cpp
+)

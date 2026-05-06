@@ -1,7 +1,7 @@
 import asyncio
 import multiprocessing
-import signal
 from asyncio import AbstractEventLoop, Task
+from multiprocessing.synchronize import Event as MultiprocessingEvent
 from typing import Any, Optional, Tuple
 
 from scaler.config.section.scheduler import PolicyConfig, SchedulerConfig
@@ -9,6 +9,7 @@ from scaler.config.types.address import AddressConfig
 from scaler.scheduler.scheduler import Scheduler
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.process_signal import register_async_shutdown
 
 
 class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
@@ -31,6 +32,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         logging_paths: Tuple[str, ...],
         logging_config_file: Optional[str],
         logging_level: str,
+        shutdown_event: Optional[MultiprocessingEvent] = None,
     ):
         super().__init__(name="Scheduler")
         self._scheduler_config = SchedulerConfig(
@@ -53,6 +55,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         self._logging_paths = logging_paths
         self._logging_config_file = logging_config_file
         self._logging_level = logging_level
+        self._shutdown_event = shutdown_event
 
         self._scheduler: Optional[Scheduler] = None
         self._loop: Optional[AbstractEventLoop] = None
@@ -75,8 +78,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         register_event_loop(self._scheduler_config.event_loop)
 
     def __register_signal(self):
-        self._loop.add_signal_handler(signal.SIGINT, self.__handle_signal)
-        self._loop.add_signal_handler(signal.SIGTERM, self.__handle_signal)
+        register_async_shutdown(self._loop, self.__handle_signal, shutdown_event=self._shutdown_event)
 
     def __handle_signal(self):
         self._loop.call_soon_threadsafe(self._task.cancel)

@@ -1,4 +1,5 @@
 import dataclasses
+import sys
 from typing import Optional
 
 from scaler.config import defaults
@@ -79,3 +80,8 @@ class WorkerConfig(ConfigClass):
             raise ValueError("trim_memory_threshold_bytes cannot be negative.")
         if self.io_threads <= 0:
             raise ValueError("io_threads must be a positive integer.")
+        if self.hard_processor_suspend and sys.platform == "win32":
+            raise ValueError(
+                "hard_processor_suspend is not supported on Windows; "
+                "set it to False or use the soft-suspend default."
+            )

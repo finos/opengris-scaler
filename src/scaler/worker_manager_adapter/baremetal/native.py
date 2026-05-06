@@ -1,7 +1,8 @@
 import logging
-import os
+import multiprocessing
 import signal
 import uuid
+from multiprocessing.synchronize import Event as MultiprocessingEvent
 from typing import Dict, List, Tuple
 
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
@@ -45,9 +46,13 @@ class NativeWorkerProvisioner(ImperativeWorkerProvisioner):
             raise ValueError(f"worker_type is not set and mode is unrecognised: {config.mode!r}")
 
         self._workers: Dict[WorkerID, Worker] = {}
+        # Per-worker graceful-shutdown channel. Replaces POSIX-only os.kill(pid, SIGINT)
+        # so Windows works the same way and POSIX has one shutdown path.
+        self._worker_shutdown_events: Dict[WorkerID, MultiprocessingEvent] = {}
 
-    def _create_worker(self) -> Worker:
-        return Worker(
+    def _create_worker(self) -> Tuple[Worker, MultiprocessingEvent]:
+        shutdown_event = multiprocessing.get_context("spawn").Event()
+        worker = Worker(
             name=f"{self._worker_prefix}|{uuid.uuid4().hex}",
             address=self._worker_scheduler_address,
             object_storage_address=self._object_storage_address,
@@ -65,13 +70,16 @@ class NativeWorkerProvisioner(ImperativeWorkerProvisioner):
             logging_paths=self._logging_paths,
             logging_level=self._logging_level,
             worker_manager_id=self._worker_manager_id,
+            shutdown_event=shutdown_event,
         )
+        return worker, shutdown_event
 
     def run_fixed(self) -> None:
         for _ in range(self._max_task_concurrency):
-            worker = self._create_worker()
+            worker, shutdown_event = self._create_worker()
             worker.start()
             self._workers[worker.identity] = worker
+            self._worker_shutdown_events[worker.identity] = shutdown_event
 
         def _on_signal(sig: int, frame: object) -> None:
             logging.info("NativeWorkerProvisioner (FIXED): received signal %d, terminating workers", sig)
@@ -79,6 +87,8 @@ class NativeWorkerProvisioner(ImperativeWorkerProvisioner):
                 if worker.is_alive():
                     worker.terminate()
 
+        # signal.signal works on Windows for SIGINT (Ctrl+C); SIGTERM is not delivered on
+        # Windows, so combo.py shutdown there comes via Process.terminate() (TerminateProcess).
         signal.signal(signal.SIGTERM, _on_signal)
         signal.signal(signal.SIGINT, _on_signal)
 
@@ -89,9 +99,10 @@ class NativeWorkerProvisioner(ImperativeWorkerProvisioner):
         if self._max_task_concurrency != -1 and len(self._workers) >= self._max_task_concurrency:
             return [], Status.tooManyWorkers
 
-        worker = self._create_worker()
+        worker, shutdown_event = self._create_worker()
         worker.start()
         self._workers[worker.identity] = worker
+        self._worker_shutdown_events[worker.identity] = shutdown_event
         logging.info(f"Started native worker {worker.identity!r}")
         return [worker.identity], Status.success
 
@@ -106,7 +117,7 @@ class NativeWorkerProvisioner(ImperativeWorkerProvisioner):
 
         for wid in worker_ids:
             worker = self._workers.pop(wid)
-            os.kill(worker.pid, signal.SIGINT)
+            self._worker_shutdown_events.pop(wid).set()
             worker.join()
 
         return list(worker_ids), Status.success
