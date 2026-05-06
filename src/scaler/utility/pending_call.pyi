@@ -1,0 +1,3 @@
+from typing import Callable
+
+def schedule(callable: Callable[[], object]) -> None: ...

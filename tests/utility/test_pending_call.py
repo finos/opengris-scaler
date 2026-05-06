@@ -33,7 +33,7 @@ class TestPendingCall(unittest.TestCase):
 
     def test_rejects_non_callable(self):
         with self.assertRaises(TypeError):
-            pending_call.schedule(42)
+            pending_call.schedule(42)  # type: ignore[arg-type]
 
     def test_callable_exception_does_not_propagate(self):
         # Pending-call handlers cannot propagate exceptions. The trampoline routes
