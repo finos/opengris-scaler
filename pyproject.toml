@@ -108,6 +108,7 @@ build.targets = [
     "py_many_to_many_dict",
     "py_indexed_queue",
     "py_capnp",
+    "py_pending_call",
 ]
 
 [tool.scikit-build.cmake.define]
