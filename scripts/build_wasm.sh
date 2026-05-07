@@ -73,13 +73,41 @@ python -m wheel tags \
     --platform-tag emscripten_4_0_9_wasm32 \
     dist_wasm/opengris_scaler-*pyemscripten*wasm32.whl
 
-# 7. Deploy to docs.  Wipe any prior wheels first: ``python -m http.server``
-#    serves the directory listing in alphabetical order, and the JupyterLite
-#    debug notebook picks the first ``opengris_scaler*wasm32.whl`` it sees,
-#    so a leftover older-version wheel would shadow the freshly built one.
-mkdir -p docs/build/html/_static/wasm
-rm -f docs/build/html/_static/wasm/opengris_scaler-*wasm32.whl
-cp dist_wasm/opengris_scaler-*emscripten_4_0_9*wasm32.whl docs/build/html/_static/wasm/
+# 7. Deploy to the docs source tree. The lite build (jupyterlite-sphinx) runs
+#    during ``make html`` and reads piplite_urls from
+#    docs/source/jupyter_lite_config.json — those URLs are resolved relative to
+#    the config file, so the wheel(s) MUST live under docs/source/ before docs
+#    build. Sphinx then copies _static/ into docs/build/html/_static/ as usual.
+#    Wipe any prior wheels first to avoid the JupyterLite debug notebook
+#    picking up a stale older-version wheel from the directory listing.
+WASM_STATIC="docs/source/_static/wasm"
+mkdir -p "${WASM_STATIC}"
+rm -f "${WASM_STATIC}"/opengris_scaler-*wasm32.whl
+cp dist_wasm/opengris_scaler-*emscripten_4_0_9*wasm32.whl "${WASM_STATIC}/"
+
+# 8. Stable-name copy of the scaler wheel so jupyter_lite_config.json can
+#    reference it without knowing the version. Pyodide / piplite read the
+#    wheel's internal METADATA for the actual version, so the on-disk filename
+#    only needs to match what the config points at.
+VERSIONED_WHL=$(ls "${WASM_STATIC}"/opengris_scaler-*emscripten_4_0_9_wasm32.whl | head -n1)
+cp "${VERSIONED_WHL}" "${WASM_STATIC}/opengris_scaler-cp313-cp313-emscripten_4_0_9_wasm32.whl"
+
+# 9. Vendor the pure-Python runtime deps Pyodide does not bundle so the
+#    JupyterLite site is fully offline-capable.
+#      - cloudpickle: not in Pyodide's bundled package set
+#      - tblib >= 3.2.0: Pyodide 0.29.x bundles 3.0.0, but the native worker
+#        pickles exceptions via 'unpickle_exception_with_attrs' (added in 3.2.0)
+rm -f "${WASM_STATIC}"/cloudpickle-*.whl "${WASM_STATIC}"/tblib-*.whl
+python -m pip download --quiet --no-deps --dest "${WASM_STATIC}" "cloudpickle" "tblib>=3.2.0"
+
+# 10. Regenerate docs/source/jupyter_lite_config.json from the wheels we just
+#     deployed. jupyterlite-sphinx reads this during ``make html`` and the
+#     PipliteAddon embeds the listed wheels in the lite kernel's pypi index so
+#     ``await piplite.install(...)`` resolves to local URLs (no network).
+python scripts/generate_jupyterlite_config.py
+
 echo ""
-echo "Wheel deployed to docs/build/html/_static/wasm/"
+echo "Wheels deployed to ${WASM_STATIC}/"
+ls -1 "${WASM_STATIC}"
+echo ""
 echo "Run scripts/test_jupyterlite.sh to start the cluster."

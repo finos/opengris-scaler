@@ -107,6 +107,13 @@ nbsphinx_codecell_lexer = "python"
 # during ``make html`` and exposes the listed notebooks inside it.
 jupyterlite_contents = ["gallery/*.ipynb"]
 
+# Bundle the scaler wasm wheel + cloudpickle + tblib into the lite kernel's
+# pypi index so ``await piplite.install("opengris-scaler")`` resolves to local
+# URLs (no network needed). The config file is regenerated from the wheels in
+# ``_static/wasm/`` by ``scripts/generate_jupyterlite_config.py``, which is
+# called from ``scripts/build_wasm.sh``.
+jupyterlite_config = "jupyter_lite_config.json"
+
 # Inject a styled "Try in your browser" banner at the top of every rendered
 # notebook so users landing directly on a notebook page see the option.
 nbsphinx_prolog = r"""
