@@ -116,6 +116,8 @@ jobs:
 
       - name: Install docs build deps + Playwright
         run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pandoc
           python -m pip install --upgrade pip
           python -m pip install -r docs/requirements_docs.txt playwright
           playwright install --with-deps chromium
