@@ -86,9 +86,29 @@ Basic examples
 - :doc:`Task parallelism using parfun <../gallery/parfun>`
 - :doc:`Concurrent graph computation using pargraph <../gallery/pargraph>`
 
-Additional Jupyter notebooks demonstrating real-world distributed computing use cases with Scaler, parfun, and pargraph:
+Additional Jupyter notebooks demonstrating real-world distributed computing use cases with Scaler, parfun, and pargraph. Each can be opened in your browser without installing anything—point it at a running scheduler and you're off:
 
-- :doc:`Multi-Signal Alpha Research Platform with Parfun <../gallery/AlphaResearch>`
-- :doc:`Parallel Vol Surface Calibration & PDE Exotic Pricing with Parfun <../gallery/VolSurface>`
-- :doc:`Parallel Swap Portfolio CVA with Pargraph + Parfun <../gallery/SwapCVA>`
-- :doc:`Portfolio-Level XVA Risk Computation with Pargraph <../gallery/XVA>`
+.. list-table::
+   :widths: 70 30
+   :header-rows: 0
+
+   * - :doc:`Parallel square roots (warm-up) <../gallery/parallel_sqrt>`
+     - .. raw:: html
+
+          <a class="try-in-browser" href="../lite/lab/index.html?path=parallel_sqrt.ipynb" target="_blank" rel="noopener">▶ Try in your browser</a>
+   * - :doc:`Multi-Signal Alpha Research Platform with Parfun <../gallery/AlphaResearch>`
+     - .. raw:: html
+
+          <a class="try-in-browser" href="../lite/lab/index.html?path=AlphaResearch.ipynb" target="_blank" rel="noopener">▶ Try in your browser</a>
+   * - :doc:`Parallel Vol Surface Calibration & PDE Exotic Pricing with Parfun <../gallery/VolSurface>`
+     - .. raw:: html
+
+          <a class="try-in-browser" href="../lite/lab/index.html?path=VolSurface.ipynb" target="_blank" rel="noopener">▶ Try in your browser</a>
+   * - :doc:`Parallel Swap Portfolio CVA with Pargraph + Parfun <../gallery/SwapCVA>`
+     - .. raw:: html
+
+          <a class="try-in-browser" href="../lite/lab/index.html?path=SwapCVA.ipynb" target="_blank" rel="noopener">▶ Try in your browser</a>
+   * - :doc:`Portfolio-Level XVA Risk Computation with Pargraph <../gallery/XVA>`
+     - .. raw:: html
+
+          <a class="try-in-browser" href="../lite/lab/index.html?path=XVA.ipynb" target="_blank" rel="noopener">▶ Try in your browser</a>
