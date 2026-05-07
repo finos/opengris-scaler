@@ -95,4 +95,4 @@ DEFAULT_LOGGING_PATHS = ("/dev/stdout",)
 # =======================
 # SCALER NETWORK BACKEND SPECIFIC OPTIONS
 
-SCALER_NETWORK_BACKEND = NetworkBackendType.tcp_zmq
+SCALER_NETWORK_BACKEND = NetworkBackendType.ymq

@@ -9,7 +9,6 @@ from multiprocessing.synchronize import Event as EventType
 from typing import IO, Callable, List, Optional, Tuple, cast
 
 import tblib.pickling_support
-import zmq
 
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
@@ -162,10 +161,6 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
                 self.__on_connector_receive(message)
 
-        except zmq.error.ZMQError as e:
-            if e.errno != zmq.ENOTSOCK:  # ignore if socket got closed
-                raise
-
         except ymq.SocketStopRequestedError:
             pass
 
@@ -176,6 +171,9 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             pass
 
         except Exception as e:
+            if self.__is_closed_zmq_socket_exception(e):
+                return
+
             logging.exception(f"Processor[{self.pid}]: failed with unhandled exception:\n{e}")
 
         finally:
@@ -305,3 +303,16 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             raise RuntimeError(f"unsupported platform, signal not available: {signal_name}.")
 
         signal.signal(signal_instance, handler)
+
+    @staticmethod
+    def __is_closed_zmq_socket_exception(exception: Exception) -> bool:
+        """Validates whether exception represents a closed ZMQ socket error, lazily importing pyzmq."""
+
+        if exception.__class__.__name__ != "ZMQError":
+            return False
+
+        import zmq
+
+        assert isinstance(exception, zmq.error.ZMQError)
+
+        return exception.errno == zmq.ENOTSOCK

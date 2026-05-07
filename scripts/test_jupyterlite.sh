@@ -40,9 +40,9 @@ SCHEDULER_WS_ADDR="ws://0.0.0.0:${SCHEDULER_WS_PORT}"
 SCHEDULER_WS_CLIENT_ADDR="ws://127.0.0.1:${SCHEDULER_WS_PORT}"
 MONITOR_ADDR="tcp://127.0.0.1:${MONITOR_PORT}"
 
-# ws:// addresses require the YMQ network backend.  ZMQ (the default) only
-# understands tcp:// / ipc:// / inproc://.
-export SCALER_NETWORK_BACKEND=ymq
+# YMQ is now the default network backend (ws:// requires it; ZMQ only understands
+# tcp:// / ipc:// / inproc://).  Override SCALER_NETWORK_BACKEND only if you have
+# explicitly opted out elsewhere.
 
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 
@@ -79,7 +79,7 @@ sleep 2
 # 5. Docs HTTP server — serves JupyterLite + wasm wheel
 tmux new-window -t "$SESSION" -n docs_server
 tmux send-keys -t "$SESSION:docs_server" \
-    "cd /workspaces/scaler/docs/build/html && python -m http.server $DOCS_PORT" Enter
+    "source $VENV && cd /workspaces/scaler/docs/build/html && python -m http.server $DOCS_PORT" Enter
 
 sleep 1
 
