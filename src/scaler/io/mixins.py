@@ -233,7 +233,7 @@ class SyncObjectStorageConnector(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_object(self, object_id: ObjectID, max_payload_length: int = 2**64 - 1) -> bytearray:
+    def get_object(self, object_id: ObjectID, max_payload_length: int = 2**64 - 1) -> bytes:
         raise NotImplementedError()
 
     @abc.abstractmethod

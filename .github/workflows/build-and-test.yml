@@ -82,8 +82,8 @@ jobs:
           name: wasm-client-wheel
           path: ./dist_wasm/*.whl
 
-  jupyterlite-smoke:
-    name: JupyterLite Headless Smoke (Chromium)
+  jupyterlite-test:
+    name: JupyterLite Headless Test (Chromium)
     needs: build-wasm-client
     runs-on: ubuntu-latest
     steps:
@@ -110,10 +110,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p docs/source/_static/wasm
-          cp dist_wasm/opengris_scaler-*emscripten*wasm32.whl docs/source/_static/wasm/
-          # Stable-name copy for jupyter_lite_config.json.
-          versioned=$(ls docs/source/_static/wasm/opengris_scaler-*emscripten_4_0_9_wasm32.whl | head -n1)
-          cp "${versioned}" docs/source/_static/wasm/opengris_scaler-cp313-cp313-emscripten_4_0_9_wasm32.whl
+          cp dist_wasm/opengris_scaler-*wasm32.whl docs/source/_static/wasm/
           python -m pip download --quiet --no-deps --dest docs/source/_static/wasm/ "cloudpickle" "tblib>=3.2.0"
           python scripts/generate_jupyterlite_config.py
 
@@ -126,7 +123,7 @@ jobs:
       - name: Build docs (incl. JupyterLite)
         run: cd docs && make html
 
-      - name: Run JupyterLite headless smoke test
+      - name: Run JupyterLite headless test
         env:
-          RUN_JUPYTERLITE_SMOKE: '1'
-        run: python -m unittest tests.wasm.test_jupyterlite_smoke -v
+          RUN_JUPYTERLITE_TEST: '1'
+        run: python -m unittest tests.wasm.test_jupyterlite -v

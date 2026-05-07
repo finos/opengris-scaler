@@ -1,5 +1,5 @@
 """
-Headless JupyterLite smoke test.
+Headless JupyterLite test.
 
 Drives a headless Chromium against the locally-built docs site and runs the
 ``parallel_sqrt.ipynb`` notebook end-to-end inside JupyterLite to confirm:
@@ -11,10 +11,10 @@ Drives a headless Chromium against the locally-built docs site and runs the
 
 This catches breakage in the actual JupyterLite runtime path (lockfiles,
 wheel tagging, MIME types, piplite_urls resolution) which the
-``pyodide venv`` import smoke test in
+``pyodide venv`` import test in
 ``tests/wasm/test_browser_client_imports.py`` does not.
 
-The test is gated by ``RUN_JUPYTERLITE_SMOKE=1`` so it stays out of the
+The test is gated by ``RUN_JUPYTERLITE_TEST=1`` so it stays out of the
 default ``python -m unittest discover`` run on developer laptops. CI sets
 the variable explicitly.
 
@@ -29,7 +29,7 @@ Then build the docs (which embeds the wasm wheel) before running:
 
 To run locally:
 
-    RUN_JUPYTERLITE_SMOKE=1 python -m unittest tests.wasm.test_jupyterlite_smoke
+    RUN_JUPYTERLITE_TEST=1 python -m unittest tests.wasm.test_jupyterlite
 """
 
 import http.server
@@ -54,11 +54,10 @@ WASM_PLATFORM_TAG = "emscripten"
 
 
 @unittest.skipUnless(
-    os.environ.get("RUN_JUPYTERLITE_SMOKE") == "1",
-    "Set RUN_JUPYTERLITE_SMOKE=1 to enable the headless JupyterLite smoke test.",
+    os.environ.get("RUN_JUPYTERLITE_TEST") == "1", "Set RUN_JUPYTERLITE_TEST=1 to enable the headless JupyterLite test."
 )
-class JupyterLiteSmokeTests(unittest.TestCase):
-    """Headless smoke test for the docs-site JupyterLite build."""
+class JupyterLiteTests(unittest.TestCase):
+    """Headless test for the docs-site JupyterLite build."""
 
     server: socketserver.TCPServer
     server_thread: threading.Thread

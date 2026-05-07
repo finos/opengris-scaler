@@ -57,7 +57,7 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.setOK])
         self.__ensure_empty_payload(response_payload)
 
-    def get_object(self, object_id: ObjectID, max_payload_length: int = 2**64 - 1) -> bytearray:
+    def get_object(self, object_id: ObjectID, max_payload_length: int = 2**64 - 1) -> bytes:
         """
         Returns the object's payload from the object storage server.
 
@@ -70,7 +70,7 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
 
         self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.getOK])
 
-        return response_payload
+        return bytes(response_payload)
 
     def delete_object(self, object_id: ObjectID) -> bool:
         """

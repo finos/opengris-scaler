@@ -41,4 +41,4 @@ def chunk_to_list_of_bytes(data: bytes) -> List[bytes]:
 
 
 def concat_list_of_bytes(data: List[bytes]) -> bytes:
-    return bytearray().join(data)
+    return b"".join(data)
