@@ -31,9 +31,7 @@ SCALER_STABLE_NAME = "opengris_scaler-cp313-cp313-emscripten_4_0_9_wasm32.whl"
 
 def main() -> None:
     if not WHEEL_DIR.is_dir():
-        raise SystemExit(
-            f"{WHEEL_DIR} does not exist. Run scripts/build_wasm.sh first."
-        )
+        raise SystemExit(f"{WHEEL_DIR} does not exist. Run scripts/build_wasm.sh first.")
 
     urls = []
 
@@ -44,18 +42,14 @@ def main() -> None:
         # Fall back to whatever versioned scaler wheel is present.
         scaler_wheels = sorted(WHEEL_DIR.glob("opengris_scaler-*wasm32.whl"))
         if not scaler_wheels:
-            raise SystemExit(
-                f"No opengris_scaler wasm wheel in {WHEEL_DIR}. "
-                "Run scripts/build_wasm.sh."
-            )
+            raise SystemExit(f"No opengris_scaler wasm wheel in {WHEEL_DIR}. " "Run scripts/build_wasm.sh.")
         urls.append(f"_static/wasm/{scaler_wheels[-1].name}")
 
     for prefix in ("cloudpickle-", "tblib-"):
         matches = sorted(WHEEL_DIR.glob(f"{prefix}*.whl"))
         if not matches:
             raise SystemExit(
-                f"No wheel matching {prefix}*.whl in {WHEEL_DIR}. "
-                "Run scripts/build_wasm.sh to vendor it."
+                f"No wheel matching {prefix}*.whl in {WHEEL_DIR}. " "Run scripts/build_wasm.sh to vendor it."
             )
         urls.append(f"_static/wasm/{matches[-1].name}")
 
