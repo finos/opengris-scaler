@@ -85,14 +85,7 @@ mkdir -p "${WASM_STATIC}"
 rm -f "${WASM_STATIC}"/opengris_scaler-*wasm32.whl
 cp dist_wasm/opengris_scaler-*emscripten_4_0_9*wasm32.whl "${WASM_STATIC}/"
 
-# 8. Stable-name copy of the scaler wheel so jupyter_lite_config.json can
-#    reference it without knowing the version. Pyodide / piplite read the
-#    wheel's internal METADATA for the actual version, so the on-disk filename
-#    only needs to match what the config points at.
-VERSIONED_WHL=$(ls "${WASM_STATIC}"/opengris_scaler-*emscripten_4_0_9_wasm32.whl | head -n1)
-cp "${VERSIONED_WHL}" "${WASM_STATIC}/opengris_scaler-cp313-cp313-emscripten_4_0_9_wasm32.whl"
-
-# 9. Vendor the pure-Python runtime deps Pyodide does not bundle so the
+# 8. Vendor the pure-Python runtime deps Pyodide does not bundle so the
 #    JupyterLite site is fully offline-capable.
 #      - cloudpickle: not in Pyodide's bundled package set
 #      - tblib >= 3.2.0: Pyodide 0.29.x bundles 3.0.0, but the native worker
@@ -100,7 +93,7 @@ cp "${VERSIONED_WHL}" "${WASM_STATIC}/opengris_scaler-cp313-cp313-emscripten_4_0
 rm -f "${WASM_STATIC}"/cloudpickle-*.whl "${WASM_STATIC}"/tblib-*.whl
 python -m pip download --quiet --no-deps --dest "${WASM_STATIC}" "cloudpickle" "tblib>=3.2.0"
 
-# 10. Regenerate docs/source/jupyter_lite_config.json from the wheels we just
+# 9. Regenerate docs/source/jupyter_lite_config.json from the wheels we just
 #     deployed. jupyterlite-sphinx reads this during ``make html`` and the
 #     PipliteAddon embeds the listed wheels in the lite kernel's pypi index so
 #     ``await piplite.install(...)`` resolves to local URLs (no network).

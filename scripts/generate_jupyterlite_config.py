@@ -23,11 +23,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 WHEEL_DIR = REPO_ROOT / "docs" / "source" / "_static" / "wasm"
 CONFIG_PATH = REPO_ROOT / "docs" / "source" / "jupyter_lite_config.json"
 
-# Stable filename produced alongside the versioned scaler wheel by
-# ``scripts/build_wasm.sh``. Listed first so it shadows any leftover
-# version-pinned copy in the same directory.
-SCALER_STABLE_NAME = "opengris_scaler-cp313-cp313-emscripten_4_0_9_wasm32.whl"
-
 
 def main() -> None:
     if not WHEEL_DIR.is_dir():
@@ -35,15 +30,13 @@ def main() -> None:
 
     urls = []
 
-    scaler_stable = WHEEL_DIR / SCALER_STABLE_NAME
-    if scaler_stable.is_file():
-        urls.append(f"_static/wasm/{SCALER_STABLE_NAME}")
-    else:
-        # Fall back to whatever versioned scaler wheel is present.
-        scaler_wheels = sorted(WHEEL_DIR.glob("opengris_scaler-*wasm32.whl"))
-        if not scaler_wheels:
-            raise SystemExit(f"No opengris_scaler wasm wheel in {WHEEL_DIR}. " "Run scripts/build_wasm.sh.")
-        urls.append(f"_static/wasm/{scaler_wheels[-1].name}")
+    # Pyodide/piplite require a PEP 427-compliant wheel filename
+    # ({name}-{version}-{python}-{abi}-{platform}.whl). Use the versioned
+    # wheel produced by ``scripts/build_wasm.sh``.
+    scaler_wheels = sorted(WHEEL_DIR.glob("opengris_scaler-*wasm32.whl"))
+    if not scaler_wheels:
+        raise SystemExit(f"No opengris_scaler wasm wheel in {WHEEL_DIR}. " "Run scripts/build_wasm.sh.")
+    urls.append(f"_static/wasm/{scaler_wheels[-1].name}")
 
     for prefix in ("cloudpickle-", "tblib-"):
         matches = sorted(WHEEL_DIR.glob(f"{prefix}*.whl"))

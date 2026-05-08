@@ -57,7 +57,12 @@ def _injection_for(packages: list[str]) -> str:
     pushes = []
     for pkg in packages:
         # Each line becomes a Python statement inside the bootstrap.
-        pushes.append(f"s.push(\"await piplite.install('{pkg}', keep_going=True)\")")
+        # ``reinstall=True`` is required because Pyodide preloads tblib 3.0.0
+        # into the kernel before this bootstrap runs; without it, micropip
+        # raises ValueError on the version mismatch and aborts the whole
+        # transaction (which would also stop scaler/cloudpickle from
+        # installing, since piplite.install processes the list atomically).
+        pushes.append(f"s.push(\"await piplite.install('{pkg}', keep_going=True, reinstall=True)\")")
     return SENTINEL + ";" + ";".join(pushes) + ";" + MARKER
 
 

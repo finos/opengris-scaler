@@ -1,7 +1,7 @@
 {
     "PipliteAddon": {
         "piplite_urls": [
-            "_static/wasm/opengris_scaler-cp313-cp313-emscripten_4_0_9_wasm32.whl",
+            "_static/wasm/opengris_scaler-2.3.0-cp313-cp313-emscripten_4_0_9_wasm32.whl",
             "_static/wasm/cloudpickle-3.1.2-py3-none-any.whl",
             "_static/wasm/tblib-3.2.2-py3-none-any.whl"
         ]
