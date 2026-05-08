@@ -22,8 +22,13 @@
 
 set -euo pipefail
 
+# Resolve repo root from the script location so this works regardless of
+# the user's CWD or where the repo is checked out (devcontainer or host).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 SESSION="scaler-jl"
-VENV="/workspaces/scaler/.venv/bin/activate"
+VENV="$REPO_ROOT/.venv/bin/activate"
 
 # Ports — match the SCHEDULER_ADDRESS = "ws://127.0.0.1:2345" placeholder
 # in the gallery notebooks
@@ -80,7 +85,7 @@ sleep 2
 # 5. Docs HTTP server — serves JupyterLite + wasm wheel
 tmux new-window -t "$SESSION" -n docs_server
 tmux send-keys -t "$SESSION:docs_server" \
-    "source $VENV && cd /workspaces/scaler/docs/build/html && python -m http.server $DOCS_PORT" Enter
+    "source $VENV && cd $REPO_ROOT/docs/build/html && python -m http.server $DOCS_PORT" Enter
 
 sleep 1
 
