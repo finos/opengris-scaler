@@ -62,6 +62,22 @@ runs:
         export CapnProto_DIR="${PWD}/thirdparties/wasm/install/lib/cmake/CapnProto"
         pyodide build . --outdir dist_wasm
 
+    - name: Retag wheel for Pyodide micropip ABI
+      shell: bash
+      run: |
+        # pyodide-build 0.34.x tags wheels as ``pyemscripten_2025_0_wasm32``,
+        # but Pyodide 0.29.3's micropip (used by the in-browser JupyterLite
+        # kernel) only accepts the ``emscripten_4_0_9_wasm32`` ABI. Produce a
+        # second wheel with the retagged platform so the JupyterLite job can
+        # pick it up from the uploaded artifact. Mirrors the retag step in
+        # ``scripts/build_wasm.sh`` for local builds.
+        set -euo pipefail
+        python -m pip install --quiet wheel
+        python -m wheel tags \
+          --python-tag cp313 --abi-tag cp313 \
+          --platform-tag emscripten_4_0_9_wasm32 \
+          dist_wasm/opengris_scaler-*pyemscripten*wasm32.whl
+
     - name: Run browser-client import tests under Pyodide
       shell: bash
       run: |
