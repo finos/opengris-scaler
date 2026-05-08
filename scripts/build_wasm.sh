@@ -38,7 +38,7 @@ mkdir -p "${WASM_VENV_ROOT}"
 uv venv "${WASM_VENV}" --python 3.13 --allow-existing
 # shellcheck disable=SC1091
 source "${WASM_VENV}/bin/activate"
-uv pip install "pyodide-build==0.34.3" wheel
+uv pip install "pyodide-build==0.34.3" wheel pip
 
 # 2. Activate emsdk.
 if [[ ! -f "${EMSDK_ENV}" ]]; then
