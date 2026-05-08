@@ -52,3 +52,4 @@ orb/metrics/
 .claude/
 docs/source/_static/wasm/
 docs/source/.jupyterlite.doit.db
+docs/source/jupyter_lite_config.json

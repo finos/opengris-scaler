@@ -93,11 +93,9 @@ cp dist_wasm/opengris_scaler-*emscripten_4_0_9*wasm32.whl "${WASM_STATIC}/"
 rm -f "${WASM_STATIC}"/cloudpickle-*.whl "${WASM_STATIC}"/tblib-*.whl
 python -m pip download --quiet --no-deps --dest "${WASM_STATIC}" "cloudpickle" "tblib>=3.2.0"
 
-# 9. Regenerate docs/source/jupyter_lite_config.json from the wheels we just
-#     deployed. jupyterlite-sphinx reads this during ``make html`` and the
-#     PipliteAddon embeds the listed wheels in the lite kernel's pypi index so
-#     ``await piplite.install(...)`` resolves to local URLs (no network).
-python scripts/generate_jupyterlite_config.py
+# 9. ``jupyter_lite_config.json`` is regenerated automatically from the
+#    wheels above by ``docs/source/conf.py`` during ``make html``, so it
+#    does not need to live in git or be regenerated explicitly here.
 
 echo ""
 echo "Wheels deployed to ${WASM_STATIC}/"

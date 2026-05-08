@@ -117,9 +117,39 @@ jupyterlite_contents = [
 # Bundle the scaler wasm wheel + cloudpickle + tblib into the lite kernel's
 # pypi index so ``await piplite.install("opengris-scaler")`` resolves to local
 # URLs (no network needed). The config file is regenerated from the wheels in
-# ``_static/wasm/`` by ``scripts/generate_jupyterlite_config.py``, which is
-# called from ``scripts/build_wasm.sh``.
+# ``_static/wasm/`` on every doc build (see ``_regen_jupyterlite_config`` below)
+# so its contents track the actual versioned wheel filenames automatically and
+# the config does not need to be checked in.
 jupyterlite_config = "jupyter_lite_config.json"
+
+
+def _regen_jupyterlite_config():
+    """Regenerate ``jupyter_lite_config.json`` from the wheels in ``_static/wasm``.
+
+    Runs at conf.py import time, before jupyterlite-sphinx reads the config.
+    The file is gitignored; the wheel filenames are versioned (e.g.
+    ``opengris_scaler-2.3.0-cp313-cp313-emscripten_4_0_9_wasm32.whl``) so the
+    config has to be derived from whatever is on disk at build time.
+    """
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    _scripts = _Path(__file__).resolve().parent.parent.parent / "scripts"
+    _sys.path.insert(0, str(_scripts))
+    try:
+        import generate_jupyterlite_config as _gen
+
+        _gen.main()
+    except SystemExit as exc:
+        # Wheels not staged yet (e.g. running sphinx without a prior wasm
+        # build). Leave any stale config in place and let jupyterlite-sphinx
+        # surface the real error.
+        print(f"[conf.py] skipping jupyter_lite_config regen: {exc}")
+    finally:
+        _sys.path.pop(0)
+
+
+_regen_jupyterlite_config()
 
 # Inject a styled "Try in your browser" banner at the top of every rendered
 # notebook so users landing directly on a notebook page see the option.

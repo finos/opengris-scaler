@@ -30,12 +30,18 @@ def main() -> None:
 
     urls = []
 
-    # Pyodide/piplite require a PEP 427-compliant wheel filename
-    # ({name}-{version}-{python}-{abi}-{platform}.whl). Use the versioned
-    # wheel produced by ``scripts/build_wasm.sh``.
-    scaler_wheels = sorted(WHEEL_DIR.glob("opengris_scaler-*wasm32.whl"))
+    # Pyodide/piplite require the Emscripten ABI tag the running Pyodide
+    # release was compiled against (currently ``emscripten_4_0_9_wasm32``).
+    # ``scripts/build_wasm.sh`` produces two wheels per build -- the original
+    # ``pyemscripten_2025_0_wasm32`` and a re-tagged ``emscripten_4_0_9_wasm32``
+    # copy -- and CI uploads both as a single artifact, so filter explicitly
+    # to the emscripten ABI tag here. Picking the wrong tag silently makes
+    # micropip reject the wheel ("not a pure Python 3 wheel").
+    scaler_wheels = sorted(WHEEL_DIR.glob("opengris_scaler-*emscripten_*_wasm32.whl"))
+    # Drop the legacy pyemscripten retagging artefact if it slipped in.
+    scaler_wheels = [w for w in scaler_wheels if "pyemscripten" not in w.name]
     if not scaler_wheels:
-        raise SystemExit(f"No opengris_scaler wasm wheel in {WHEEL_DIR}. " "Run scripts/build_wasm.sh.")
+        raise SystemExit(f"No opengris_scaler emscripten_*_wasm32 wheel in {WHEEL_DIR}. " "Run scripts/build_wasm.sh.")
     urls.append(f"_static/wasm/{scaler_wheels[-1].name}")
 
     for prefix in ("cloudpickle-", "tblib-"):
