@@ -107,6 +107,7 @@ nbsphinx_codecell_lexer = "python"
 # during ``make html`` and exposes the listed notebooks inside it.
 jupyterlite_contents = [
     "gallery/parallel_sqrt.ipynb",
+    "gallery/send_heavy_object.ipynb",
     "gallery/AlphaResearch.ipynb",
     "gallery/VolSurface.ipynb",
     "gallery/SwapCVA.ipynb",
@@ -136,3 +137,34 @@ nbsphinx_prolog = r"""
       </a>
     </div>
 """
+
+
+# -- Auto-install opengris-scaler in the JupyterLite kernel ------------------
+# After ``jupyter lite build`` finishes (which jupyterlite-sphinx triggers
+# during ``make html``), patch the kernel boot bundle so ``import scaler``
+# Just Works in browser notebooks without a visible install cell. See
+# scripts/patch_jupyterlite_kernel.py for the full rationale.
+def _patch_jupyterlite_kernel(app, exception):
+    if exception is not None:
+        return
+    if app.builder.name != "html":
+        return
+
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    repo_root = _Path(app.srcdir).resolve().parent.parent
+    lite_dir = _Path(app.outdir) / "lite"
+    if not lite_dir.is_dir():
+        return
+
+    _sys.path.insert(0, str(repo_root / "scripts"))
+    try:
+        import patch_jupyterlite_kernel as _patcher
+    finally:
+        _sys.path.pop(0)
+    _patcher.patch_tree(lite_dir)
+
+
+def setup(app):
+    app.connect("build-finished", _patch_jupyterlite_kernel)

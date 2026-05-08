@@ -96,6 +96,10 @@ Additional Jupyter notebooks demonstrating real-world distributed computing use 
      - .. raw:: html
 
           <a class="try-in-browser" href="../lite/lab/index.html?path=parallel_sqrt.ipynb" target="_blank" rel="noopener">▶ Try in your browser</a>
+   * - :doc:`Heavy object reuse with send_object <../gallery/send_heavy_object>`
+     - .. raw:: html
+
+          <a class="try-in-browser" href="../lite/lab/index.html?path=send_heavy_object.ipynb" target="_blank" rel="noopener">▶ Try in your browser</a>
    * - :doc:`Multi-Signal Alpha Research Platform with Parfun <../gallery/AlphaResearch>`
      - .. raw:: html
 

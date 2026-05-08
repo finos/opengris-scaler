@@ -30,6 +30,19 @@ Examples
      - .. raw:: html
 
           <a class="try-in-browser" href="../lite/lab/index.html?path=parallel_sqrt.ipynb" target="_blank" rel="noopener">▶ Browser</a>
+   * - :doc:`Heavy object reuse with send_object <../gallery/send_heavy_object>`
+     - No
+     - No
+     - Local
+     - Local
+     - 1+
+     - —
+     - —
+     - —
+     - —
+     - .. raw:: html
+
+          <a class="try-in-browser" href="../lite/lab/index.html?path=send_heavy_object.ipynb" target="_blank" rel="noopener">▶ Browser</a>
    * - :doc:`Multi-Signal Alpha Research <../gallery/AlphaResearch>`
      - Yes
      - No
@@ -89,6 +102,7 @@ Examples
    :titlesonly:
 
    Parallel square roots (warm-up) <../gallery/parallel_sqrt>
+   Heavy object reuse with send_object <../gallery/send_heavy_object>
    Multi-Signal Alpha Research <../gallery/AlphaResearch>
    Vol Surface Calibration & PDE Exotic Pricing <../gallery/VolSurface>
    Swap Portfolio CVA <../gallery/SwapCVA>

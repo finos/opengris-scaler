@@ -10,8 +10,8 @@
 # bind address covers both.
 #
 # After this script exits you can open the URL printed below in a browser,
-# navigate to debug_jupyterlite.ipynb, and run cells one-by-one to exercise
-# the wasm client.
+# navigate to send_heavy_object.ipynb (the lightweight smoke test) or any of
+# the gallery notebooks, and run cells one-by-one to exercise the wasm client.
 #
 # Prerequisites:
 #   - .venv is set up (uv pip install -e ".[all]" and dev deps: uv sync --group dev)
@@ -90,7 +90,7 @@ echo "======================================================================"
 echo ""
 echo "  Scaler monitor UI  : http://localhost:50001"
 echo "  JupyterLite site   : http://localhost:${DOCS_PORT}/lite/lab/index.html"
-echo "  Debug notebook     : http://localhost:${DOCS_PORT}/lite/lab/index.html?path=debug_jupyterlite.ipynb"
+echo "  Debug notebook     : http://localhost:${DOCS_PORT}/lite/lab/index.html?path=send_heavy_object.ipynb"
 echo ""
 echo "  Scheduler (workers + browser wasm): ${SCHEDULER_WS_CLIENT_ADDR}"
 echo "  Object storage (workers + browser wasm): ${OBJECT_STORAGE_CLIENT_ADDR}"

@@ -78,7 +78,7 @@ python -m wheel tags \
 #    docs/source/jupyter_lite_config.json — those URLs are resolved relative to
 #    the config file, so the wheel(s) MUST live under docs/source/ before docs
 #    build. Sphinx then copies _static/ into docs/build/html/_static/ as usual.
-#    Wipe any prior wheels first to avoid the JupyterLite debug notebook
+#    Wipe any prior wheels first to avoid the JupyterLite kernel
 #    picking up a stale older-version wheel from the directory listing.
 WASM_STATIC="docs/source/_static/wasm"
 mkdir -p "${WASM_STATIC}"
