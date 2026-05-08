@@ -25,10 +25,11 @@ set -euo pipefail
 SESSION="scaler-jl"
 VENV="/workspaces/scaler/.venv/bin/activate"
 
-# Ports
-OBJECT_STORAGE_PORT=7379
-SCHEDULER_WS_PORT=7380    # workers + browser wasm client both use this
-MONITOR_PORT=7381
+# Ports — match the SCHEDULER_ADDRESS = "ws://127.0.0.1:2345" placeholder
+# in the gallery notebooks
+SCHEDULER_WS_PORT=2345    # workers + browser wasm client both use this
+OBJECT_STORAGE_PORT=2346
+MONITOR_PORT=2347
 DOCS_PORT=8765
 
 # Object storage is bound on ws:// so the browser wasm client (which can
@@ -101,4 +102,9 @@ echo "        The wasm wheel must be at docs/build/html/_static/wasm/ before run
 echo ""
 echo "  To attach to tmux : tmux attach -t $SESSION"
 echo "  To stop everything: tmux kill-session -t $SESSION"
+echo ""
+echo "  If 'import scaler' fails in the notebook after a fresh docs rebuild,"
+echo "  open the lite site in a private window (or clear site data for"
+echo "  localhost:${DOCS_PORT}). The kernel-boot bundle is patched in-place,"
+echo "  so cached service workers will keep serving the unpatched copy."
 echo "======================================================================"
