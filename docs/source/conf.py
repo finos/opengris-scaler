@@ -105,7 +105,13 @@ nbsphinx_codecell_lexer = "python"
 # -- JupyterLite (Try in your browser) --------------------------------------
 # jupyterlite-sphinx builds a JupyterLite (Pyodide) site under build/html/lite
 # during ``make html`` and exposes the listed notebooks inside it.
-jupyterlite_contents = ["gallery/*.ipynb"]
+jupyterlite_contents = [
+    "gallery/parallel_sqrt.ipynb",
+    "gallery/AlphaResearch.ipynb",
+    "gallery/VolSurface.ipynb",
+    "gallery/SwapCVA.ipynb",
+    "gallery/XVA.ipynb",
+]
 
 # Bundle the scaler wasm wheel + cloudpickle + tblib into the lite kernel's
 # pypi index so ``await piplite.install("opengris-scaler")`` resolves to local
