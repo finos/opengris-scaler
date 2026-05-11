@@ -131,11 +131,12 @@ if command -v pyodide >/dev/null 2>&1; then
     # smoke env so the imports below resolve. In the browser these come
     # from pyodide-lock.json instead, but the import surface is the same.
     "${SMOKE_VENV}/bin/pip" install --quiet \
-        attrs jsonschema msgpack numpy scikit-learn pyparsing
+        attrs jsonschema msgpack numpy scikit-learn pyparsing \
+        argcomplete sortedcontainers
     "${SMOKE_VENV}/bin/pip" install --quiet --no-index --find-links "${SMOKE_WHEELS}" \
         cloudpickle "tblib>=3.2.0" bidict pydot psutil loky
     "${SMOKE_VENV}/bin/pip" install --quiet --no-deps --no-index \
-        --find-links "${SMOKE_WHEELS}" opengris-parfun pargraph
+        --find-links "${SMOKE_WHEELS}" opengris-parfun pargraph opengris-scaler
     # Pyodide's CLI sometimes raises a benign TypeError from its shutdown
     # excepthook after a successful run; check for the OK marker on stdout
     # rather than trusting the process exit code.
@@ -150,6 +151,14 @@ proc = psutil.Process()
 assert isinstance(proc.cpu_percent(), float)
 assert isinstance(proc.memory_info().rss, int)
 assert isinstance(psutil.virtual_memory().available, int)
+# Verify parfun's lazy 'from scaler import Client, SchedulerClusterCombo'
+# import succeeds under emscripten so the scaler_remote backend gets
+# registered in BACKEND_REGISTRY. SchedulerClusterCombo resolves to a
+# stub class under wasm (real one needs multiprocessing) but the symbol
+# must exist for parfun.backend.scaler to import cleanly.
+from scaler import Client, SchedulerClusterCombo  # noqa: F401
+from parfun.entry_point import BACKEND_REGISTRY
+assert 'scaler_remote' in BACKEND_REGISTRY, sorted(BACKEND_REGISTRY)
 print('wasm import smoke test: OK (psutil.cpu_count={})'.format(psutil.cpu_count()))
 " 2>&1 || true)"
     echo "${SMOKE_OUT}"
