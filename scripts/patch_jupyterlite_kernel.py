@@ -49,7 +49,9 @@ SENTINEL = "/* opengris-scaler-bootstrap-patched */"
 #   - tblib >= 3.2.0: Pyodide 0.29.x bundles tblib 3.0.0, but the native
 #     worker pickles exceptions via 'unpickle_exception_with_attrs', which
 #     was added in 3.2.0.
-PACKAGES = ["opengris-scaler", "cloudpickle", "tblib>=3.2.0"]
+#   - opengris-parfun, pargraph: pure-Python parallel-task libraries the
+#     gallery notebooks import directly.
+PACKAGES = ["opengris-scaler", "cloudpickle", "tblib>=3.2.0", "opengris-parfun", "pargraph"]
 
 
 def _injection_for(packages: list[str]) -> str:

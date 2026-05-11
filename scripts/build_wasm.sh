@@ -90,8 +90,12 @@ cp dist_wasm/opengris_scaler-*emscripten_4_0_9*wasm32.whl "${WASM_STATIC}/"
 #      - cloudpickle: not in Pyodide's bundled package set
 #      - tblib >= 3.2.0: Pyodide 0.29.x bundles 3.0.0, but the native worker
 #        pickles exceptions via 'unpickle_exception_with_attrs' (added in 3.2.0)
-rm -f "${WASM_STATIC}"/cloudpickle-*.whl "${WASM_STATIC}"/tblib-*.whl
-python -m pip download --quiet --no-deps --dest "${WASM_STATIC}" "cloudpickle" "tblib>=3.2.0"
+#      - opengris-parfun, pargraph: pure-Python parallel-task libraries the
+#        gallery notebooks import directly.
+rm -f "${WASM_STATIC}"/cloudpickle-*.whl "${WASM_STATIC}"/tblib-*.whl \
+      "${WASM_STATIC}"/opengris_parfun-*.whl "${WASM_STATIC}"/pargraph-*.whl
+python -m pip download --quiet --no-deps --dest "${WASM_STATIC}" \
+    "cloudpickle" "tblib>=3.2.0" "opengris-parfun" "pargraph"
 
 # 9. ``jupyter_lite_config.json`` is regenerated automatically from the
 #    wheels above by ``docs/source/conf.py`` during ``make html``, so it

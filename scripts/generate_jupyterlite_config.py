@@ -44,7 +44,7 @@ def main() -> None:
         raise SystemExit(f"No opengris_scaler emscripten_*_wasm32 wheel in {WHEEL_DIR}. " "Run scripts/build_wasm.sh.")
     urls.append(f"_static/wasm/{scaler_wheels[-1].name}")
 
-    for prefix in ("cloudpickle-", "tblib-"):
+    for prefix in ("cloudpickle-", "tblib-", "opengris_parfun-", "pargraph-"):
         matches = sorted(WHEEL_DIR.glob(f"{prefix}*.whl"))
         if not matches:
             raise SystemExit(
