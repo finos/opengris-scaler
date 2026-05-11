@@ -44,7 +44,12 @@ def main() -> None:
         raise SystemExit(f"No opengris_scaler emscripten_*_wasm32 wheel in {WHEEL_DIR}. " "Run scripts/build_wasm.sh.")
     urls.append(f"_static/wasm/{scaler_wheels[-1].name}")
 
-    for prefix in ("cloudpickle-", "tblib-", "opengris_parfun-", "pargraph-", "bidict-", "loky-", "attrs-"):
+    # Wheels in this directory fall into two groups: real PyPI wheels
+    # (cloudpickle, tblib, opengris-parfun, pargraph, bidict, pydot) and
+    # locally-built stub wheels for psutil/loky (see scripts/wasm_stubs/).
+    # All of them must be listed in piplite_urls so the JupyterLite kernel
+    # can resolve them by name without going to PyPI.
+    for prefix in ("cloudpickle-", "tblib-", "opengris_parfun-", "pargraph-", "bidict-", "pydot-", "psutil-", "loky-"):
         matches = sorted(WHEEL_DIR.glob(f"{prefix}*.whl"))
         if not matches:
             raise SystemExit(

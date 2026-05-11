@@ -114,7 +114,11 @@ jobs:
           # uploaded as part of the same artifact has the wrong ABI tag for
           # micropip and would shadow the right wheel in the lite kernel.
           cp dist_wasm/opengris_scaler-*emscripten_4_0_9*wasm32.whl docs/source/_static/wasm/
-          python -m pip download --quiet --no-deps --dest docs/source/_static/wasm/ "cloudpickle" "tblib>=3.2.0" "opengris-parfun" "pargraph" "bidict" "loky" "attrs"
+          python -m pip download --quiet --no-deps --dest docs/source/_static/wasm/ "cloudpickle" "tblib>=3.2.0" "opengris-parfun" "pargraph" "bidict" "pydot"
+          for stub in psutil loky; do
+            python -m pip wheel --quiet --no-deps \
+              --wheel-dir docs/source/_static/wasm/ "scripts/wasm_stubs/${stub}"
+          done
           # jupyter_lite_config.json is regenerated automatically from the
           # wheels above by docs/source/conf.py during ``make html``.
 

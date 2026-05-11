@@ -43,34 +43,47 @@ SENTINEL = "/* opengris-scaler-bootstrap-patched */"
 # Packages to install at kernel boot. Each entry is (spec, deps) where
 # ``deps=False`` tells micropip to skip transitive PyPI dependency resolution
 # for that package -- needed when a dep pins a version Pyodide cannot satisfy
-# from its bundled package set (e.g. parfun pins psutil>=7.0.0 but Pyodide
-# 0.29.3 bundles psutil 5.9.5 as a C-extension package). Pyodide's runtime
-# auto-loads bundled packages (psutil, attrs, scikit-learn, jsonschema,
-# msgpack, pydot, ...) on first ``import``, so skipping their resolution at
-# install time is safe as long as every transitive dep is either bundled by
-# Pyodide, vendored alongside this script (cloudpickle, bidict, loky), or
-# unused by the gallery notebooks.
-#   - opengris-scaler: the wasm wheel itself (resolved from the local
-#     piplite index built by PipliteAddon).
-#   - cloudpickle: not in Pyodide's bundled package set; needed by Client to
-#     pickle user functions.
-#   - tblib >= 3.2.0: Pyodide 0.29.x bundles tblib 3.0.0, but the native
-#     worker pickles exceptions via 'unpickle_exception_with_attrs', which
-#     was added in 3.2.0.
-#   - bidict, loky: pure-Python pargraph runtime deps not in Pyodide's
-#     bundled set. Both are also installed with deps=False because loky's
-#     metadata can pull psutil (same version-mismatch problem as parfun).
-#   - attrs: parfun imports it at module load time and Pyodide's bundled
-#     auto-loader does not always trip before parfun's own import resolves,
-#     so install it explicitly.
-#   - opengris-parfun, pargraph: pure-Python parallel-task libraries the
-#     gallery notebooks import directly.
+# from its bundled package set or when the dep does not exist for wasm at
+# all. JupyterLite's piplite resolves package names against (a) the local
+# piplite_urls index built by PipliteAddon from the wheels in
+# docs/source/_static/wasm/ and (b) Pyodide's own pyodide-lock.json. We list
+# Pyodide-bundled deps explicitly here so the resolution happens up-front,
+# before parfun/pargraph import them at module load.
+#
+#   - opengris-scaler: the wasm wheel itself (vendored).
+#   - cloudpickle: vendored (Pyodide bundles 2.x; gallery code wants 3.x).
+#   - tblib >= 3.2.0: vendored (Pyodide bundles 3.0.0 but the native worker
+#     pickles exceptions via 'unpickle_exception_with_attrs', new in 3.2.0).
+#   - attrs, jsonschema, msgpack, scikit-learn: Pyodide-bundled. Installed
+#     explicitly so they are loaded before parfun/pargraph import them at
+#     module load (the on-demand auto-loader does not always fire in time
+#     for imports that happen during another piplite.install transaction).
+#   - bidict, pydot: vendored pure-Python deps not in Pyodide's bundle.
+#   - psutil, loky: vendored stub wheels built from scripts/wasm_stubs/.
+#     Real psutil has no pure-Python wheel and real loky imports the
+#     missing _multiprocessing C extension at load. The stubs satisfy the
+#     module-load imports parfun/pargraph perform; runtime calls into
+#     either stub raise a clear error message.
+#   - opengris-parfun, pargraph: the libraries gallery notebooks import.
+#     Installed with deps=False because their PyPI metadata pins
+#     ``psutil>=7.0.0`` which our stub satisfies via the local index, but
+#     micropip would otherwise try (and fail) to fetch a real pure-Python
+#     psutil wheel from PyPI.
 PACKAGES: list[tuple[str, bool]] = [
     ("opengris-scaler", True),
     ("cloudpickle", True),
     ("tblib>=3.2.0", True),
+    # Pyodide-bundled deps. Listed explicitly so piplite resolves and loads
+    # them before parfun/pargraph import them at module load.
     ("attrs", True),
+    ("jsonschema", True),
+    ("msgpack", True),
+    ("numpy", True),
+    ("scikit-learn", True),
+    ("pyparsing", True),  # transitive dep of pydot
     ("bidict", False),
+    ("pydot", False),
+    ("psutil", False),
     ("loky", False),
     ("opengris-parfun", False),
     ("pargraph", False),

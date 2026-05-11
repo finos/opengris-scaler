@@ -85,26 +85,74 @@ mkdir -p "${WASM_STATIC}"
 rm -f "${WASM_STATIC}"/opengris_scaler-*wasm32.whl
 cp dist_wasm/opengris_scaler-*emscripten_4_0_9*wasm32.whl "${WASM_STATIC}/"
 
-# 8. Vendor the pure-Python runtime deps Pyodide does not bundle so the
-#    JupyterLite site is fully offline-capable.
-#      - cloudpickle: not in Pyodide's bundled package set
-#      - tblib >= 3.2.0: Pyodide 0.29.x bundles 3.0.0, but the native worker
-#        pickles exceptions via 'unpickle_exception_with_attrs' (added in 3.2.0)
-#      - opengris-parfun, pargraph: pure-Python parallel-task libraries the
-#        gallery notebooks import directly.
-#      - bidict, loky: pure-Python pargraph runtime deps not bundled by
-#        Pyodide (everything else pargraph/parfun pulls -- psutil,
-#        scikit-learn, jsonschema, msgpack, pydot -- is bundled by Pyodide
-#        and auto-loads on first import).
-#      - attrs: parfun imports it at module load time; vendor it so the
-#        first ``import parfun`` succeeds without waiting on the Pyodide
-#        package auto-loader.
+# 8. Vendor / build the runtime deps the JupyterLite kernel pulls at boot.
+#    Wheels are split into three groups:
+#      a) Real pure-Python wheels from PyPI (cloudpickle, tblib>=3.2.0,
+#         opengris-parfun, pargraph, bidict, pydot). cloudpickle/tblib are
+#         vendored even though Pyodide bundles older copies because the
+#         scaler worker pickles exceptions via tblib 3.2.0+ APIs.
+#      b) Stub wheels built from scripts/wasm_stubs/ (psutil, loky). Pyodide
+#         0.29 does not bundle psutil and the upstream package has no
+#         pure-Python wheel; loky imports multiprocessing.synchronize at
+#         module load which needs the _multiprocessing C extension Pyodide
+#         lacks. The stubs satisfy the imports parfun/pargraph perform at
+#         module load (psutil.cpu_count, loky.get_reusable_executor) so the
+#         gallery notebooks can ``import parfun`` and ``import pargraph``.
+#      c) Pyodide-bundled deps (attrs, jsonschema, msgpack, scikit-learn).
+#         These are NOT vendored: piplite.install resolves them from
+#         Pyodide's own pyodide-lock.json at boot. We list them in PACKAGES
+#         (in patch_jupyterlite_kernel.py) so the resolution happens
+#         explicitly before parfun/pargraph import them.
 rm -f "${WASM_STATIC}"/cloudpickle-*.whl "${WASM_STATIC}"/tblib-*.whl \
       "${WASM_STATIC}"/opengris_parfun-*.whl "${WASM_STATIC}"/pargraph-*.whl \
-      "${WASM_STATIC}"/bidict-*.whl "${WASM_STATIC}"/loky-*.whl \
+      "${WASM_STATIC}"/bidict-*.whl "${WASM_STATIC}"/pydot-*.whl \
+      "${WASM_STATIC}"/psutil-*.whl "${WASM_STATIC}"/loky-*.whl \
       "${WASM_STATIC}"/attrs-*.whl
 python -m pip download --quiet --no-deps --dest "${WASM_STATIC}" \
-    "cloudpickle" "tblib>=3.2.0" "opengris-parfun" "pargraph" "bidict" "loky" "attrs"
+    "cloudpickle" "tblib>=3.2.0" "opengris-parfun" "pargraph" "bidict" "pydot"
+for stub in psutil loky; do
+    python -m pip wheel --quiet --no-deps \
+        --wheel-dir "${WASM_STATIC}" "scripts/wasm_stubs/${stub}"
+done
+
+# 8b. Smoke-test that the vendored + stub wheels are importable inside a
+#     Pyodide virtualenv. This catches the most common breakage class --
+#     a transitive dep that imports a missing C extension at module load --
+#     before the wheels reach end users in the browser. Skipped if the
+#     pyodide CLI is unavailable (e.g. the dedicated wasm venv was wiped).
+if command -v pyodide >/dev/null 2>&1; then
+    SMOKE_PARENT="$(mktemp -d)"
+    SMOKE_VENV="${SMOKE_PARENT}/pyo-smoke"
+    SMOKE_WHEELS="${PWD}/${WASM_STATIC}"
+    pyodide venv "${SMOKE_VENV}" >/dev/null
+    # Pyodide pip ignores relative --find-links, hence the absolute path.
+    # Stand-in for the Pyodide-bundled deps (attrs, jsonschema, msgpack,
+    # numpy, scikit-learn, pyparsing, ...): pull from PyPI in the local
+    # smoke env so the imports below resolve. In the browser these come
+    # from pyodide-lock.json instead, but the import surface is the same.
+    "${SMOKE_VENV}/bin/pip" install --quiet \
+        attrs jsonschema msgpack numpy scikit-learn pyparsing
+    "${SMOKE_VENV}/bin/pip" install --quiet --no-index --find-links "${SMOKE_WHEELS}" \
+        cloudpickle "tblib>=3.2.0" bidict pydot psutil loky
+    "${SMOKE_VENV}/bin/pip" install --quiet --no-deps --no-index \
+        --find-links "${SMOKE_WHEELS}" opengris-parfun pargraph
+    # Pyodide's CLI sometimes raises a benign TypeError from its shutdown
+    # excepthook after a successful run; check for the OK marker on stdout
+    # rather than trusting the process exit code.
+    SMOKE_OUT="$("${SMOKE_VENV}/bin/python" -c "
+import psutil, loky, bidict, pydot, cloudpickle, tblib
+import attrs, jsonschema, msgpack, numpy, sklearn
+import parfun, pargraph
+print('wasm import smoke test: OK (psutil.cpu_count={})'.format(psutil.cpu_count()))
+" 2>&1 || true)"
+    echo "${SMOKE_OUT}"
+    if ! echo "${SMOKE_OUT}" | grep -q "wasm import smoke test: OK"; then
+        echo "wasm import smoke test FAILED" >&2
+        rm -rf "${SMOKE_PARENT}"
+        exit 1
+    fi
+    rm -rf "${SMOKE_PARENT}"
+fi
 
 # 9. ``jupyter_lite_config.json`` is regenerated automatically from the
 #    wheels above by ``docs/source/conf.py`` during ``make html``, so it
