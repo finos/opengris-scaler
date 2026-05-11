@@ -93,14 +93,18 @@ cp dist_wasm/opengris_scaler-*emscripten_4_0_9*wasm32.whl "${WASM_STATIC}/"
 #      - opengris-parfun, pargraph: pure-Python parallel-task libraries the
 #        gallery notebooks import directly.
 #      - bidict, loky: pure-Python pargraph runtime deps not bundled by
-#        Pyodide (everything else pargraph/parfun pulls -- psutil, attrs,
+#        Pyodide (everything else pargraph/parfun pulls -- psutil,
 #        scikit-learn, jsonschema, msgpack, pydot -- is bundled by Pyodide
 #        and auto-loads on first import).
+#      - attrs: parfun imports it at module load time; vendor it so the
+#        first ``import parfun`` succeeds without waiting on the Pyodide
+#        package auto-loader.
 rm -f "${WASM_STATIC}"/cloudpickle-*.whl "${WASM_STATIC}"/tblib-*.whl \
       "${WASM_STATIC}"/opengris_parfun-*.whl "${WASM_STATIC}"/pargraph-*.whl \
-      "${WASM_STATIC}"/bidict-*.whl "${WASM_STATIC}"/loky-*.whl
+      "${WASM_STATIC}"/bidict-*.whl "${WASM_STATIC}"/loky-*.whl \
+      "${WASM_STATIC}"/attrs-*.whl
 python -m pip download --quiet --no-deps --dest "${WASM_STATIC}" \
-    "cloudpickle" "tblib>=3.2.0" "opengris-parfun" "pargraph" "bidict" "loky"
+    "cloudpickle" "tblib>=3.2.0" "opengris-parfun" "pargraph" "bidict" "loky" "attrs"
 
 # 9. ``jupyter_lite_config.json`` is regenerated automatically from the
 #    wheels above by ``docs/source/conf.py`` during ``make html``, so it

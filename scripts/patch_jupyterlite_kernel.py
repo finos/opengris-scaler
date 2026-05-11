@@ -60,12 +60,16 @@ SENTINEL = "/* opengris-scaler-bootstrap-patched */"
 #   - bidict, loky: pure-Python pargraph runtime deps not in Pyodide's
 #     bundled set. Both are also installed with deps=False because loky's
 #     metadata can pull psutil (same version-mismatch problem as parfun).
+#   - attrs: parfun imports it at module load time and Pyodide's bundled
+#     auto-loader does not always trip before parfun's own import resolves,
+#     so install it explicitly.
 #   - opengris-parfun, pargraph: pure-Python parallel-task libraries the
 #     gallery notebooks import directly.
 PACKAGES: list[tuple[str, bool]] = [
     ("opengris-scaler", True),
     ("cloudpickle", True),
     ("tblib>=3.2.0", True),
+    ("attrs", True),
     ("bidict", False),
     ("loky", False),
     ("opengris-parfun", False),
