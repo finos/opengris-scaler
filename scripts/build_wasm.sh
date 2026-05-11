@@ -143,6 +143,13 @@ if command -v pyodide >/dev/null 2>&1; then
 import psutil, loky, bidict, pydot, cloudpickle, tblib
 import attrs, jsonschema, msgpack, numpy, sklearn
 import parfun, pargraph
+# Exercise the psutil surface scaler's client heartbeat manager touches
+# every loop iteration. The stub returns zeros; what we are checking is
+# that the calls do not raise AttributeError.
+proc = psutil.Process()
+assert isinstance(proc.cpu_percent(), float)
+assert isinstance(proc.memory_info().rss, int)
+assert isinstance(psutil.virtual_memory().available, int)
 print('wasm import smoke test: OK (psutil.cpu_count={})'.format(psutil.cpu_count()))
 " 2>&1 || true)"
     echo "${SMOKE_OUT}"
