@@ -62,9 +62,19 @@ tmux send-keys -t "$SESSION:object_storage" \
 sleep 1
 
 # 2. Scheduler — ws:// so both native workers and browser wasm client can connect.
+#
+# -ct / -wt bumped to 30 minutes for the gallery notebooks. The browser kernel
+# runs the scaler client agent on the same single-threaded asyncio loop as the
+# notebook code, so heavy synchronous work (cloudpickle (de)serialization, large
+# pargraph dict walks, multi-minute Monte Carlo result aggregation) blocks the
+# loop and pauses heartbeats. With the default 60s timeout the scheduler would
+# drop SwapCVA/XVA clients before they finished. Workers get the same headroom
+# so a long Monte Carlo task on a single worker is not killed mid-computation.
+CLIENT_TIMEOUT_SECONDS=1800
+WORKER_TIMEOUT_SECONDS=1800
 tmux new-window -t "$SESSION" -n scheduler
 tmux send-keys -t "$SESSION:scheduler" \
-    "source $VENV && scaler_scheduler $SCHEDULER_WS_ADDR -osa $OBJECT_STORAGE_CLIENT_ADDR -ma $MONITOR_ADDR" Enter
+    "source $VENV && scaler_scheduler $SCHEDULER_WS_ADDR -osa $OBJECT_STORAGE_CLIENT_ADDR -ma $MONITOR_ADDR -ct $CLIENT_TIMEOUT_SECONDS -wt $WORKER_TIMEOUT_SECONDS" Enter
 
 sleep 1
 

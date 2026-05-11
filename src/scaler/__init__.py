@@ -46,10 +46,7 @@ def __getattr__(name: str) -> Any:
             import sys
 
             if sys.platform == "emscripten":
-                return _browser_unsupported_stub(
-                    "SchedulerClusterCombo",
-                    f"missing dependency: {exc.name}",
-                )
+                return _browser_unsupported_stub("SchedulerClusterCombo", f"missing dependency: {exc.name}")
             raise
         return getattr(module, name)
 
@@ -60,10 +57,7 @@ def __getattr__(name: str) -> Any:
             import sys
 
             if sys.platform == "emscripten":
-                return _browser_unsupported_stub(
-                    "Scheduler",
-                    f"missing dependency: {exc.name}",
-                )
+                return _browser_unsupported_stub("Scheduler", f"missing dependency: {exc.name}")
             raise
         return getattr(module, name)
 

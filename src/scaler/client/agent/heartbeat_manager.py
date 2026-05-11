@@ -68,11 +68,21 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         )
 
     async def routine(self):
-        if time.time() - self._last_scheduler_contact > self._death_timeout_seconds:
-            raise TimeoutError(
-                f"Timeout when connecting to scheduler {self._connector_external.address} "
-                f"in {self._death_timeout_seconds} seconds"
-            )
+        # On Pyodide the agent shares the single asyncio event loop with the
+        # user's notebook code. Any long synchronous block in user code (large
+        # cloudpickle (de)serialization, pargraph graph walking, big numpy
+        # result hand-off) freezes the loop, so this routine cannot run. By
+        # the time the loop is unblocked, ``time.time() - last_scheduler_contact``
+        # already exceeds the death timeout and this self-check would falsely
+        # raise, killing the agent mid-computation. The scheduler still runs
+        # its own dead-client cleanup over the WebSocket, and the user can
+        # interrupt the kernel manually, so skip the local check in browser.
+        if sys.platform != "emscripten":
+            if time.time() - self._last_scheduler_contact > self._death_timeout_seconds:
+                raise TimeoutError(
+                    f"Timeout when connecting to scheduler {self._connector_external.address} "
+                    f"in {self._death_timeout_seconds} seconds"
+                )
 
         if self._start_timestamp_ns != 0:
             # already sent heartbeat, expecting heartbeat echo, so not sending
