@@ -40,8 +40,16 @@ MARKER = 's.push("import pyodide_kernel")'
 # Sentinel we leave behind so the patcher is idempotent.
 SENTINEL = "/* opengris-scaler-bootstrap-patched */"
 
-# Packages to install at kernel boot. Order matches what the gallery notebooks
-# need:
+# Packages to install at kernel boot. Each entry is (spec, deps) where
+# ``deps=False`` tells micropip to skip transitive PyPI dependency resolution
+# for that package -- needed when a dep pins a version Pyodide cannot satisfy
+# from its bundled package set (e.g. parfun pins psutil>=7.0.0 but Pyodide
+# 0.29.3 bundles psutil 5.9.5 as a C-extension package). Pyodide's runtime
+# auto-loads bundled packages (psutil, attrs, scikit-learn, jsonschema,
+# msgpack, pydot, ...) on first ``import``, so skipping their resolution at
+# install time is safe as long as every transitive dep is either bundled by
+# Pyodide, vendored alongside this script (cloudpickle, bidict, loky), or
+# unused by the gallery notebooks.
 #   - opengris-scaler: the wasm wheel itself (resolved from the local
 #     piplite index built by PipliteAddon).
 #   - cloudpickle: not in Pyodide's bundled package set; needed by Client to
@@ -49,22 +57,34 @@ SENTINEL = "/* opengris-scaler-bootstrap-patched */"
 #   - tblib >= 3.2.0: Pyodide 0.29.x bundles tblib 3.0.0, but the native
 #     worker pickles exceptions via 'unpickle_exception_with_attrs', which
 #     was added in 3.2.0.
+#   - bidict, loky: pure-Python pargraph runtime deps not in Pyodide's
+#     bundled set. Both are also installed with deps=False because loky's
+#     metadata can pull psutil (same version-mismatch problem as parfun).
 #   - opengris-parfun, pargraph: pure-Python parallel-task libraries the
 #     gallery notebooks import directly.
-PACKAGES = ["opengris-scaler", "cloudpickle", "tblib>=3.2.0", "opengris-parfun", "pargraph"]
+PACKAGES: list[tuple[str, bool]] = [
+    ("opengris-scaler", True),
+    ("cloudpickle", True),
+    ("tblib>=3.2.0", True),
+    ("bidict", False),
+    ("loky", False),
+    ("opengris-parfun", False),
+    ("pargraph", False),
+]
 
 
-def _injection_for(packages: list[str]) -> str:
+def _injection_for(packages: list[tuple[str, bool]]) -> str:
     """Build the JS that pushes our piplite.install lines onto ``s``."""
     pushes = []
-    for pkg in packages:
+    for pkg, deps in packages:
         # Each line becomes a Python statement inside the bootstrap.
         # ``reinstall=True`` is required because Pyodide preloads tblib 3.0.0
         # into the kernel before this bootstrap runs; without it, micropip
         # raises ValueError on the version mismatch and aborts the whole
         # transaction (which would also stop scaler/cloudpickle from
         # installing, since piplite.install processes the list atomically).
-        pushes.append(f"s.push(\"await piplite.install('{pkg}', keep_going=True, reinstall=True)\")")
+        deps_kw = "" if deps else ", deps=False"
+        pushes.append(f"s.push(\"await piplite.install('{pkg}', keep_going=True, reinstall=True{deps_kw})\")")
     return SENTINEL + ";" + ";".join(pushes) + ";" + MARKER
 
 
