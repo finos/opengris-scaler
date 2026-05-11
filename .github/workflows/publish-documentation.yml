@@ -11,7 +11,30 @@ permissions:
   id-token: write
 
 jobs:
+  build-wasm-client:
+    name: Build WASM Client (Pyodide)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
+      - name: 'Checkout Repository'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: ./.github/actions/setup-wasm-env
+
+      - uses: ./.github/actions/build-wasm-client
+
+      - name: Upload wasm wheel
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: wasm-client-wheel
+          path: ./dist_wasm/*.whl
+
   deploy:
+    needs: build-wasm-client
     runs-on: ubuntu-latest
     steps:
       # - uses: ./.github/actions/checkout
@@ -23,9 +46,27 @@ jobs:
       - name: 'Checkout Repository'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      - name: Download wasm wheel artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: wasm-client-wheel
+          path: ./dist_wasm/
+
       - uses: ./.github/actions/setup-env
         with:
           os: ${{ runner.os }}
           python-version: '3.14'
+
+      - name: Stage wasm wheel + vendored deps under docs/source/_static/wasm
+        run: |
+          set -euo pipefail
+          mkdir -p docs/source/_static/wasm
+          # Only stage the emscripten_4_0_9 ABI wheel; the pyemscripten copy
+          # uploaded as part of the same artifact has the wrong ABI tag for
+          # micropip and would shadow the right wheel in the lite kernel.
+          cp dist_wasm/opengris_scaler-*emscripten_4_0_9*wasm32.whl docs/source/_static/wasm/
+          python -m pip download --quiet --no-deps --dest docs/source/_static/wasm/ "cloudpickle" "tblib>=3.2.0"
+          # jupyter_lite_config.json is regenerated automatically from the
+          # wheels above by docs/source/conf.py during ``make html``.
 
       - uses: ./.github/actions/publish-doc
