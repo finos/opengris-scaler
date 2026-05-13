@@ -20,11 +20,11 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import concurrent.futures
 import sys
 import threading
-import time
 import uuid
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Iterable, Iterator, Optional
 
 from scaler.client.agent.client_agent import ClientAgent
 from scaler.client.agent.future_manager import ClientFutureManager
@@ -174,67 +174,111 @@ def _run_sync(coro: Awaitable[Any]) -> Any:
     return run_sync(coro)
 
 
-# Periodic-yield hook for the browser bridge.
+# JSPI-aware patches for ``concurrent.futures.wait`` / ``as_completed``.
 #
-# The agent coroutine runs on the same asyncio loop as the user's notebook
-# code. While the user is executing a long synchronous block (numpy / pandas
-# /pure-Python compute), no asyncio task gets a chance to run, so the agent
-# cannot send heartbeats. The scheduler then trips its
-# ``client_timeout_seconds`` (default 60s) and disconnects the client, which
-# orphans every in-flight task.
+# The agent coroutine runs on the same single-threaded asyncio loop as the
+# user's notebook code in the browser. ``ScalerFuture._wait_result_ready``
+# already suspends the wasm stack via JSPI when ``.result()`` is called, so
+# the loop keeps running and the agent keeps sending heartbeats. But code
+# that blocks on multiple futures via the standard library — most notably
+# ``pargraph.GraphEngine.get`` which calls
+# ``concurrent.futures.wait(..., return_when=FIRST_COMPLETED)`` — uses
+# ``threading.Event.wait`` internally, which blocks the only thread without
+# letting the loop run. The agent never gets to send heartbeats, the
+# scheduler trips ``client_timeout_seconds`` (60s default), and the client
+# is disconnected mid-computation.
 #
-# To keep the agent alive without requiring users to sprinkle
-# ``await``/``yield`` calls through their code, we install a ``sys.setprofile``
-# hook on emscripten that pumps the asyncio loop (via ``run_sync(sleep(0))``)
-# at most once every ``_YIELD_MIN_INTERVAL_SECONDS``. ``setprofile`` only
-# fires on Python function call/return events, so the overhead is bounded
-# (one wall-clock check per call), and it covers the realistic workloads
-# (anything calling into a Python function — including most numpy/pandas
-# entry points).
-#
-# Pure-arithmetic loops with no function calls (e.g. ``for i in range(N): s
-# += i``) are not covered by ``setprofile``; users with such loops still need
-# to either insert an explicit yield or break the loop into shorter chunks.
+# When the browser bridge starts, monkey-patch ``concurrent.futures.wait``
+# and ``concurrent.futures.as_completed`` to drive the asyncio loop via JSPI
+# while waiting. The patch only activates on ``sys.platform == "emscripten"``
+# and is idempotent.
 
-_YIELD_MIN_INTERVAL_SECONDS: float = 1.0
-_yield_state: dict = {"last": 0.0, "in_progress": False, "previous_profile": None, "installed": False}
+_concurrent_futures_patched: bool = False
+_original_wait: Optional[Callable[..., concurrent.futures._base.DoneAndNotDoneFutures]] = None
+_original_as_completed: Optional[Callable[..., Iterator[concurrent.futures.Future]]] = None
 
 
-def _yield_profile_hook(frame: Any, event: str, arg: Any) -> None:
-    if _yield_state["in_progress"]:
+def _jspi_wait(
+    fs: Iterable[concurrent.futures.Future],
+    timeout: Optional[float] = None,
+    return_when: str = concurrent.futures.ALL_COMPLETED,
+) -> concurrent.futures._base.DoneAndNotDoneFutures:
+    fs = list(fs)
+    if not fs:
+        return concurrent.futures._base.DoneAndNotDoneFutures(set(), set())
+
+    asyncio_return_when = {
+        concurrent.futures.FIRST_COMPLETED: asyncio.FIRST_COMPLETED,
+        concurrent.futures.FIRST_EXCEPTION: asyncio.FIRST_EXCEPTION,
+        concurrent.futures.ALL_COMPLETED: asyncio.ALL_COMPLETED,
+    }[return_when]
+
+    async def _await() -> None:
+        wrapped = [asyncio.wrap_future(f) for f in fs]
+        # ``asyncio.wait`` registers callbacks on each wrapped future and
+        # returns once ``return_when`` is satisfied (or ``timeout`` elapses).
+        # We deliberately do NOT cancel the wrappers afterwards: cancelling
+        # an ``asyncio.wrap_future`` wrapper propagates ``cancel()`` to the
+        # underlying ``concurrent.futures.Future``, which would silently kill
+        # the user's in-flight tasks. The wrappers fall out of scope and are
+        # GC'd; their done callbacks are no-ops once the original future
+        # completes.
+        await asyncio.wait(wrapped, timeout=timeout, return_when=asyncio_return_when)
+
+    _run_sync(_await())
+
+    done: set = set()
+    not_done: set = set()
+    for f in fs:
+        if f.done():
+            done.add(f)
+        else:
+            not_done.add(f)
+    return concurrent.futures._base.DoneAndNotDoneFutures(done, not_done)
+
+
+def _jspi_as_completed(
+    fs: Iterable[concurrent.futures.Future], timeout: Optional[float] = None
+) -> Iterator[concurrent.futures.Future]:
+    fs = list(fs)
+    pending = set(fs)
+    # Yield any already-completed futures up front, mirroring stdlib semantics.
+    for f in list(pending):
+        if f.done():
+            pending.discard(f)
+            yield f
+
+    while pending:
+        result = _jspi_wait(pending, timeout=timeout, return_when=concurrent.futures.FIRST_COMPLETED)
+        if not result.done:
+            raise concurrent.futures.TimeoutError(f"{len(pending)} (of {len(fs)}) futures unfinished")
+        for f in result.done:
+            pending.discard(f)
+            yield f
+
+
+def _install_concurrent_futures_jspi_patch() -> None:
+    global _concurrent_futures_patched, _original_wait, _original_as_completed
+    if _concurrent_futures_patched:
         return
-    if event not in ("call", "c_call"):
-        return
-    now = time.monotonic()
-    if now - _yield_state["last"] < _YIELD_MIN_INTERVAL_SECONDS:
-        return
-    _yield_state["last"] = now
-    _yield_state["in_progress"] = True
-    try:
-        _run_sync(asyncio.sleep(0))
-    except BaseException:
-        # Never raise out of a profile hook — that would corrupt the
-        # interpreter's profiling state and could kill the user's notebook.
-        pass
-    finally:
-        _yield_state["in_progress"] = False
+    _original_wait = concurrent.futures.wait
+    _original_as_completed = concurrent.futures.as_completed
+    concurrent.futures.wait = _jspi_wait  # type: ignore[assignment]
+    concurrent.futures.as_completed = _jspi_as_completed  # type: ignore[assignment]
+    _concurrent_futures_patched = True
 
 
-def _install_yield_hook() -> None:
-    if _yield_state["installed"]:
+def _uninstall_concurrent_futures_jspi_patch() -> None:
+    global _concurrent_futures_patched, _original_wait, _original_as_completed
+    if not _concurrent_futures_patched:
         return
-    _yield_state["previous_profile"] = sys.getprofile()
-    _yield_state["last"] = time.monotonic()
-    _yield_state["installed"] = True
-    sys.setprofile(_yield_profile_hook)
-
-
-def _uninstall_yield_hook() -> None:
-    if not _yield_state["installed"]:
-        return
-    sys.setprofile(_yield_state["previous_profile"])
-    _yield_state["previous_profile"] = None
-    _yield_state["installed"] = False
+    if _original_wait is not None:
+        concurrent.futures.wait = _original_wait  # type: ignore[assignment]
+    if _original_as_completed is not None:
+        concurrent.futures.as_completed = _original_as_completed  # type: ignore[assignment]
+    _original_wait = None
+    _original_as_completed = None
+    _concurrent_futures_patched = False
 
 
 _IN_PROCESS_ADDRESS: AddressConfig = AddressConfig(SocketType.inproc, host="scaler-client-agent")
@@ -425,11 +469,13 @@ class InProcessAgentBridge(ClientAgentBridge):
         # but in-process we drive it as a plain asyncio task.
         self._task = loop.create_task(self._agent._run())  # noqa: SLF001
         self._running = True
-        # Pump the loop periodically while user code is executing so the agent
-        # task gets to send heartbeats during long synchronous blocks. Only
-        # active on emscripten because run_sync requires JSPI.
+        # Make ``concurrent.futures.wait`` / ``as_completed`` JSPI-aware so
+        # libraries like pargraph (which block on multiple futures via the
+        # standard library) keep the asyncio loop running and let the agent
+        # send heartbeats. Only active on emscripten because run_sync
+        # requires JSPI.
         if sys.platform == "emscripten":
-            _install_yield_hook()
+            _install_concurrent_futures_jspi_patch()
 
     def get_object_storage_address(self) -> AddressConfig:
         # ClientAgent resolves ``_object_storage_address`` early during its
@@ -468,7 +514,7 @@ class InProcessAgentBridge(ClientAgentBridge):
             return
         self._running = False
         if sys.platform == "emscripten":
-            _uninstall_yield_hook()
+            _uninstall_concurrent_futures_jspi_patch()
 
         async def _await_task() -> None:
             try:
