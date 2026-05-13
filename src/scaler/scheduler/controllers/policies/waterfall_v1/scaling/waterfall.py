@@ -110,6 +110,15 @@ class WaterfallScalingPolicy(ScalingPolicy):
         """Allocate this manager's share of the cluster-wide generic worker target."""
         task_count = len(information_snapshot.tasks)
         if task_count == 0:
+            # Drain lower-priority managers first: if any lower-priority manager still has
+            # connected workers, this manager holds its current count rather than draining.
+            for rule in self._rules:
+                if rule.priority <= current_rule.priority:
+                    continue
+                snap = snapshots.get(rule.worker_manager_id)
+                if snap is not None and snap.worker_count > 0:
+                    own_snap = snapshots.get(current_rule.worker_manager_id)
+                    return own_snap.worker_count if own_snap is not None else 0
             return 0
         total_desired = max(1, ceil(task_count / self._upper_task_ratio))
 
