@@ -257,14 +257,38 @@ def _jspi_as_completed(
             yield f
 
 
+def _rebind_in_loaded_modules(old_wait: Any, old_as_completed: Any, new_wait: Any, new_as_completed: Any) -> None:
+    # ``from concurrent.futures import wait`` captures a local reference at
+    # the importing module's load time, so rebinding ``concurrent.futures.wait``
+    # later doesn't affect callers that already imported it (pargraph does
+    # exactly this). Walk every loaded module and replace any attribute that
+    # still points at the original function. ``concurrent.futures._base``
+    # holds the canonical definitions and re-export, so it's covered too.
+    for module in list(sys.modules.values()):
+        if module is None:
+            continue
+        try:
+            module_dict = getattr(module, "__dict__", None)
+            if module_dict is None:
+                continue
+            for name, value in list(module_dict.items()):
+                if value is old_wait:
+                    module_dict[name] = new_wait
+                elif value is old_as_completed:
+                    module_dict[name] = new_as_completed
+        except Exception:
+            # Some modules raise on __dict__ access (lazy importers, C
+            # extensions with dynamic attribute lookup); skip them.
+            continue
+
+
 def _install_concurrent_futures_jspi_patch() -> None:
     global _concurrent_futures_patched, _original_wait, _original_as_completed
     if _concurrent_futures_patched:
         return
     _original_wait = concurrent.futures.wait
     _original_as_completed = concurrent.futures.as_completed
-    concurrent.futures.wait = _jspi_wait  # type: ignore[assignment]
-    concurrent.futures.as_completed = _jspi_as_completed  # type: ignore[assignment]
+    _rebind_in_loaded_modules(_original_wait, _original_as_completed, _jspi_wait, _jspi_as_completed)
     _concurrent_futures_patched = True
 
 
@@ -272,10 +296,8 @@ def _uninstall_concurrent_futures_jspi_patch() -> None:
     global _concurrent_futures_patched, _original_wait, _original_as_completed
     if not _concurrent_futures_patched:
         return
-    if _original_wait is not None:
-        concurrent.futures.wait = _original_wait  # type: ignore[assignment]
-    if _original_as_completed is not None:
-        concurrent.futures.as_completed = _original_as_completed  # type: ignore[assignment]
+    if _original_wait is not None and _original_as_completed is not None:
+        _rebind_in_loaded_modules(_jspi_wait, _jspi_as_completed, _original_wait, _original_as_completed)
     _original_wait = None
     _original_as_completed = None
     _concurrent_futures_patched = False
