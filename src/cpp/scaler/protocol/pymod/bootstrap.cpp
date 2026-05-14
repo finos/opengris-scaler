@@ -192,6 +192,11 @@ PyObject* py_capnp_struct_to_bytes(PyObject* self, PyObject* /*unused*/)
     return ::scaler::protocol::pymod::capnp_struct_to_bytes(self).take();
 }
 
+PyObject* py_capnp_struct_repr(PyObject* self, PyObject* /*unused*/)
+{
+    return ::scaler::protocol::pymod::capnp_struct_repr(self).take();
+}
+
 PyObject* py_capnp_struct_from_bytes(PyObject* cls, PyObject* args, PyObject* kwargs)
 {
     return ::scaler::protocol::pymod::capnp_struct_from_bytes(cls, args, kwargs).take();
