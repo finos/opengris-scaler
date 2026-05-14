@@ -158,6 +158,11 @@ PyObject* py_capnp_struct_to_bytes(PyObject* self, PyObject* /*unused*/)
     return ::scaler::protocol::pymod::capnp_struct_to_bytes(self).take();
 }
 
+PyObject* py_capnp_struct_repr(PyObject* self, PyObject* /*unused*/)
+{
+    return ::scaler::protocol::pymod::capnp_struct_repr(self).take();
+}
+
 PyObject* py_capnp_struct_from_bytes(PyObject* cls, PyObject* args, PyObject* kwargs)
 {
     return ::scaler::protocol::pymod::capnp_struct_from_bytes(cls, args, kwargs).take();
@@ -194,6 +199,7 @@ static PyMethodDef CAPNP_STRUCT_GETATTR_DEF = {
     "__getattr__", (PyCFunction)py_capnp_struct_get_attr, METH_VARARGS, nullptr};
 static PyMethodDef CAPNP_STRUCT_TO_BYTES_DEF = {
     "to_bytes", (PyCFunction)py_capnp_struct_to_bytes, METH_NOARGS, nullptr};
+static PyMethodDef CAPNP_STRUCT_REPR_DEF       = {"__repr__", (PyCFunction)py_capnp_struct_repr, METH_NOARGS, nullptr};
 static PyMethodDef CAPNP_STRUCT_FROM_BYTES_DEF = {
     "from_bytes", (PyCFunction)(void (*)(void))py_capnp_struct_from_bytes, METH_VARARGS | METH_KEYWORDS, nullptr};
 static PyMethodDef CAPNP_UNION_INIT_DEF = {
@@ -465,6 +471,10 @@ bool initialize_runtime_modules(PyObject* module)
         capnp_struct_type.get(),
         "to_bytes",
         OwnedPyObject<>(make_method_descriptor(capnp_struct_type.get(), &CAPNP_STRUCT_TO_BYTES_DEF)).get());
+    PyObject_SetAttrString(
+        capnp_struct_type.get(),
+        "__repr__",
+        OwnedPyObject<>(make_method_descriptor(capnp_struct_type.get(), &CAPNP_STRUCT_REPR_DEF)).get());
 
     OwnedPyObject<> union_bases {PyTuple_Pack(1, capnp_struct_type.get())};
     PyDict_SetItemString(
