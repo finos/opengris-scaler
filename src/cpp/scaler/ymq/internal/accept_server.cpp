@@ -115,8 +115,11 @@ void AcceptServer::disconnect() noexcept
     _state->_server = std::nullopt;
 
     if (pipeName.has_value()) {
-        // libuv does not remove the pipe file. Make sure the pipe is actually destroyed.
-        std::filesystem::remove(pipeName.value());
+        // libuv does not remove the pipe file on POSIX. On Windows the path is a Windows named pipe
+        // (\\.\pipe\<name>) which has no filesystem entry to remove, and std::filesystem::remove
+        // would throw inside this noexcept function. Use the non-throwing overload.
+        std::error_code ec;
+        std::filesystem::remove(pipeName.value(), ec);
     }
 }
 

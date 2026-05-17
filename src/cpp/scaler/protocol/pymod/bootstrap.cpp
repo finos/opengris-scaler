@@ -183,7 +183,7 @@ PyObject* py_capnp_union_from_bytes(PyObject* cls, PyObject* args, PyObject* kwa
     return ::scaler::protocol::pymod::capnp_union_from_bytes(cls, args, kwargs).take();
 }
 
-static PyMethodDef CAPNP_STRUCT_INIT_DEF     = {
+static PyMethodDef CAPNP_STRUCT_INIT_DEF = {
     "__init__", (PyCFunction)(void (*)(void))py_capnp_struct_init_method, METH_VARARGS | METH_KEYWORDS, nullptr};
 static PyMethodDef CAPNP_STRUCT_TO_BYTES_DEF = {
     "to_bytes", (PyCFunction)py_capnp_struct_to_bytes, METH_NOARGS, nullptr};

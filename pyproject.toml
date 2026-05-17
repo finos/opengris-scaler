@@ -107,6 +107,7 @@ build.targets = [
     "py_stable_priority_queue",
     "py_many_to_many_dict",
     "py_indexed_queue",
+    "py_pending_call",
     "py_capnp",
 ]
 

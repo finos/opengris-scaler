@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import signal
 from typing import Dict, Optional
 
 from scaler.config.types.address import AddressConfig
@@ -11,6 +10,7 @@ from scaler.io.utility import generate_identity_from_name
 from scaler.protocol.capnp import BaseMessage, WorkerManagerCommand, WorkerManagerHeartbeat, WorkerManagerHeartbeatEcho
 from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
+from scaler.utility.signal_handler import install_async_shutdown_handler
 from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
 
 
@@ -67,8 +67,7 @@ class WorkerManagerRunner:
         self._task.cancel()
 
     def _register_signal(self) -> None:
-        self._loop.add_signal_handler(signal.SIGINT, self._destroy)
-        self._loop.add_signal_handler(signal.SIGTERM, self._destroy)
+        install_async_shutdown_handler(self._loop, self._destroy)
 
     async def _run(self) -> None:
         self._task = self._loop.create_task(self._get_loops())

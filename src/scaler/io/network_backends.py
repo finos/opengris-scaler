@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 from datetime import timedelta
 from typing import Awaitable, Callable, Optional
@@ -133,7 +134,12 @@ class YMQNetworkBackend(NetworkBackend):
 
     @staticmethod
     def create_internal_address(name: str, same_process: bool) -> AddressConfig:
-        ipc_path = os.path.join(tempfile.gettempdir(), name)
+        if sys.platform == "win32":
+            # libuv's uv_pipe_bind on Windows expects a Windows named-pipe path. Filesystem-style
+            # paths under TEMP are rejected with EACCES because named pipes do not live on disk.
+            ipc_path = f"\\\\.\\pipe\\{name}"
+        else:
+            ipc_path = os.path.join(tempfile.gettempdir(), name)
         return AddressConfig(SocketType.ipc, host=ipc_path)
 
     def create_async_binder(

@@ -161,19 +161,19 @@ class ClientAgent(threading.Thread):
         raise TypeError(f"Unknown {message=}")
 
     async def __get_loops(self):
-        await self._connector_internal.bind(self._client_agent_address)
-        await self._connector_external.connect(self._scheduler_address, ConnectorRemoteType.Binder)
-
-        await self._heartbeat_manager.send_heartbeat()
-
-        loops = [
-            create_async_loop_routine(self._connector_external.routine, 0),
-            create_async_loop_routine(self._connector_internal.routine, 0),
-            create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
-        ]
-
         exception = None
         try:
+            await self._connector_internal.bind(self._client_agent_address)
+            await self._connector_external.connect(self._scheduler_address, ConnectorRemoteType.Binder)
+
+            await self._heartbeat_manager.send_heartbeat()
+
+            loops = [
+                create_async_loop_routine(self._connector_external.routine, 0),
+                create_async_loop_routine(self._connector_internal.routine, 0),
+                create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
+            ]
+
             await asyncio.gather(*loops)
         except BaseException as e:
             exception = e
@@ -192,17 +192,31 @@ class ClientAgent(threading.Thread):
         if exception is None:
             return
 
-        if not self._object_storage_address.done():
-            self._object_storage_address.set_exception(exception)
-
+        public_exception: BaseException
         if isinstance(exception, asyncio.CancelledError):
+            # asyncio.CancelledError is a BaseException (not Exception) in Python 3.8+, so it
+            # cannot go into set_all_futures_with_exception directly. Translate to the
+            # public-facing ClientCancelledException.
             logging.error("ClientAgent: async. loop cancelled")
-            self._future_manager.set_all_futures_with_exception(ClientCancelledException("client cancelled"))
+            cancelled = ClientCancelledException("client cancelled")
+            self._future_manager.set_all_futures_with_exception(cancelled)
+            public_exception = cancelled
         elif isinstance(exception, (ClientQuitException, ClientShutdownException)):
             logging.info("ClientAgent: client quitting")
             self._future_manager.set_all_futures_with_exception(exception)
+            public_exception = exception
         elif isinstance(exception, (TimeoutError, YMQException)):
             logging.error(f"ClientAgent: client timeout when connecting to {self._scheduler_address!r}")
             self._future_manager.set_all_futures_with_exception(TimeoutError())
+            public_exception = exception
         else:
+            public_exception = exception
+
+        if not self._object_storage_address.done():
+            self._object_storage_address.set_exception(public_exception)
+
+        if not isinstance(
+            exception,
+            (asyncio.CancelledError, ClientQuitException, ClientShutdownException, TimeoutError, YMQException),
+        ):
             raise exception

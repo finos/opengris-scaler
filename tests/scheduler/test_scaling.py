@@ -1,5 +1,6 @@
 import os
 import signal
+import sys
 import time
 import unittest
 from multiprocessing import Process
@@ -49,6 +50,15 @@ class TestScaling(unittest.TestCase):
         self.scheduler_address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         self.object_storage_address = AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}")
 
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "Declarative scale-down calls stop_units mid-test, which on POSIX uses os.kill(pid, SIGINT) "
+        "so the worker runs __graceful_shutdown and sends DisconnectRequest. Windows has no equivalent "
+        "for delivering SIGINT to a multiprocessing.spawn child (Python's os.kill on Windows maps SIGINT "
+        "to TerminateProcess, and CTRL_C_EVENT requires CREATE_NEW_PROCESS_GROUP), so any scaled-down "
+        "worker is killed without notice and the scheduler waits ~60s for heartbeat timeout. The scaling "
+        "policy logic itself is covered by TestVanillaScalingPolicy below.",
+    )
     def test_scaling_basic(self):
         object_storage = ObjectStorageServerProcess(
             bind_address=self.object_storage_address,
@@ -96,6 +106,11 @@ class TestScaling(unittest.TestCase):
         manager_process.terminate()
         manager_process.join()
 
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "See test_scaling_basic: declarative scale-down has no graceful path on Windows. "
+        "Capability policy logic is covered by TestCapabilityScalingPolicy below.",
+    )
     def test_capability_scaling_basic(self):
         """Test that capability scaling starts workers with the correct capabilities."""
         object_storage = ObjectStorageServerProcess(

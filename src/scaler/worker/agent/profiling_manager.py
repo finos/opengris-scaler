@@ -73,8 +73,10 @@ class VanillaProfilingManager(ProfilingManager, Looper):
 
         try:
             cpu_time_delta = self.__process_cpu_time(process) - process_profiler.start_cpu_time
-        except psutil.ZombieProcess:
-            logging.warning(f"profiling zombie process: {pid=}")
+        except (psutil.ZombieProcess, psutil.NoSuchProcess):
+            # Linux reports dead-but-not-yet-reaped processes as zombies; Windows raises NoSuchProcess
+            # immediately because there is no zombie state.
+            logging.warning(f"profiling missing process: {pid=}")
             cpu_time_delta = 0
 
         memory_delta = process_profiler.peak_memory_rss - process_profiler.init_memory_rss
@@ -92,8 +94,8 @@ class VanillaProfilingManager(ProfilingManager, Looper):
                     process_profiler.peak_memory_rss = max(
                         process_profiler.peak_memory_rss, self.__process_memory_rss(process_profiler.process)
                     )
-                except psutil.ZombieProcess:
-                    logging.warning(f"profiling zombie process: pid={process_profiler.process.pid}")
+                except (psutil.ZombieProcess, psutil.NoSuchProcess):
+                    logging.warning(f"profiling missing process: pid={process_profiler.process.pid}")
 
     @staticmethod
     def __process_time():

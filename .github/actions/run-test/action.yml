@@ -15,7 +15,7 @@ runs:
 
     - name: Install pydivert and pywin32 for MITM tests (Windows)
       if: inputs.os == 'Windows'
-      shell: pwsh
+      shell: bash
       run: uv pip install --system pydivert pywin32
 
     - name: Run C++ Tests (Linux/macOS)
@@ -29,14 +29,12 @@ runs:
       run: ./scripts/test.ps1 -C Debug
 
     - name: Build Wheel
-      if: inputs.os != 'Windows'
       shell: bash
       run: |
         uv pip install --system build
         python -m build --wheel
 
     - name: Install Wheel
-      if: inputs.os != 'Windows'
       shell: bash
       run: |
         wheel_file=$(ls dist/*.whl | head -n 1)
@@ -44,7 +42,6 @@ runs:
         uv pip install --system "$wheel_file[all]"
 
     - name: Run Unittests
-      if: inputs.os != 'Windows'
       shell: bash
       run: |
         python -m unittest discover -v tests -t .
