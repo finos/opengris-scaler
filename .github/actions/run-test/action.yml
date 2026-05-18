@@ -43,32 +43,34 @@ runs:
         echo "Installing wheel: $wheel_file"
         uv pip install --system "$wheel_file[all]"
 
-    # TEMPORARY: full suite replaced with a loop of ONLY test_none_value so we can
-    # iterate fast and capture the [YMQDIAG] accept/connect timeline on a genuine
-    # flaky failure. Restore `python -m unittest discover -v tests -t .` when done.
-    - name: Run test_none_value in a loop (instrumented)
+    # TEMPORARY: full suite replaced with a loop of the whole TestGraph class so we
+    # can iterate fast AND keep the prior-test combo churn that test_none_value needs
+    # (it passes 30/30 in isolation; the failure only emerges in the class sequence).
+    # The instrumented _ymq emits [YMQDIAG] accept/connect logging.
+    # Restore `python -m unittest discover -v tests -t .` when done.
+    - name: Run TestGraph class in a loop (instrumented)
       shell: bash
       run: |
         set -o pipefail
-        ITERS=30
-        PER_ITER_TIMEOUT=300
-        TEST=tests.graph.test_graph.TestGraph.test_none_value
+        ITERS=15
+        PER_ITER_TIMEOUT=900
+        TEST=tests.graph.test_graph.TestGraph
         python -c "import sys,platform,scaler;print('PYTHON',sys.version);print('PLATFORM',platform.platform());print('SCALER',scaler.__file__)"
         echo "Running $TEST x$ITERS (instrumented _ymq: [YMQDIAG] accept/connect logging active)"
         fail=0
         for i in $(seq 1 $ITERS); do
-          echo "==================== test_none_value ITER $i / $ITERS START ===================="
+          echo "==================== TestGraph ITER $i / $ITERS START ===================="
           # -u unbuffered + faulthandler so a hang dumps stacks; 2>&1 keeps [YMQDIAG]
           # (stderr) interleaved with the [INFO]/EROR logs (stdout) in iteration order.
           if timeout ${PER_ITER_TIMEOUT} python -u -X faulthandler -m unittest -v "$TEST" 2>&1; then
-            echo "==================== test_none_value ITER $i RESULT=PASS ===================="
+            echo "==================== TestGraph ITER $i RESULT=PASS ===================="
           else
             rc=$?
             fail=$((fail+1))
-            echo "==================== test_none_value ITER $i RESULT=FAIL (rc=$rc) ===================="
+            echo "==================== TestGraph ITER $i RESULT=FAIL (rc=$rc) ===================="
           fi
         done
-        echo "==================== test_none_value SUMMARY: $fail / $ITERS FAILED ===================="
+        echo "==================== TestGraph SUMMARY: $fail / $ITERS FAILED ===================="
         # Non-zero so the job is red when it reproduces (all logs above are retained).
         test "$fail" -eq 0
 
