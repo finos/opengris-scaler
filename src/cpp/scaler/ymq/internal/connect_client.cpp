@@ -67,6 +67,12 @@ void ConnectClient::tryConnect(std::shared_ptr<State> state) noexcept
         case Address::Type::TCP: {
             auto tcpClient = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(state->_loop));
 
+            state->_logger.log(
+                scaler::ymq::Logger::LoggingLevel::error,
+                "[YMQDIAG] connect ISSUING to ",
+                state->_address.toString().value_or("<addr?>"),
+                " attempt#",
+                state->_retryTimes);
             state->_connectRequest = UV_EXIT_ON_ERROR(
                 tcpClient.connect(state->_address.asTCP(), std::bind_front(&ConnectClient::onConnect, state)));
 
@@ -104,11 +110,27 @@ void ConnectClient::onConnect(
                 std::unexpected(scaler::ymq::Error(scaler::ymq::Error::ErrorCode::SocketStopRequested)));
             state->_onConnectCallback = {};  // immediately release the callback resources
         } else {
+            state->_logger.log(
+                scaler::ymq::Logger::LoggingLevel::error,
+                "[YMQDIAG] connect attempt failed to ",
+                state->_address.toString().value_or("<addr?>"),
+                " uv=",
+                result.error().name(),
+                " (",
+                result.error().message(),
+                ") attempt#",
+                state->_retryTimes);
             retry(std::move(state));
         }
         return;
     }
 
+    state->_logger.log(
+        scaler::ymq::Logger::LoggingLevel::error,
+        "[YMQDIAG] connect SUCCESS to ",
+        state->_address.toString().value_or("<addr?>"),
+        " attempt#",
+        state->_retryTimes);
     state->_onConnectCallback(std::move(state->_client.value()));
     state->_onConnectCallback = {};
 }
@@ -153,7 +175,11 @@ void ConnectClient::retry(std::shared_ptr<State> state) noexcept
 
     if (state->_retryTimes > state->_maxRetryTimes) {
         state->_logger.log(
-            scaler::ymq::Logger::LoggingLevel::error, "Retried times has reached maximum: ", state->_maxRetryTimes);
+            scaler::ymq::Logger::LoggingLevel::error,
+            "Retried times has reached maximum: ",
+            state->_maxRetryTimes,
+            " [YMQDIAG] giving up connecting to ",
+            state->_address.toString().value_or("<addr?>"));
         state->_client = std::nullopt;
 
         state->_onConnectCallback(

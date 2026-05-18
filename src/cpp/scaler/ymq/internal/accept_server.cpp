@@ -2,10 +2,19 @@
 
 #include <uv.h>
 
+#include <atomic>
 #include <cassert>
+#include <cstdio>
 #include <filesystem>
 #include <functional>
 #include <utility>
+
+#define YMQDIAG(...)                                  \
+    do {                                              \
+        std::fprintf(stderr, "[YMQDIAG] " __VA_ARGS__); \
+        std::fputc('\n', stderr);                     \
+        std::fflush(stderr);                          \
+    } while (0)
 
 #include "scaler/wrapper/uv/pipe.h"
 #include "scaler/wrapper/uv/socket_address.h"
@@ -50,10 +59,13 @@ AcceptServer::AcceptServer(
     _state = std::make_shared<State>(
         loop, std::move(onConnectionCallback), std::move(server.value()), std::move(webSocketAddress));
 
+    std::string diagAddr = address.toString().value_or("<addr?>");
     if (auto* tcpServer = std::get_if<scaler::wrapper::uv::TCPServer>(&_state->_server.value())) {
         UV_EXIT_ON_ERROR(tcpServer->listen(serverListenBacklog, std::bind_front(&AcceptServer::onConnection, _state)));
+        YMQDIAG("AcceptServer LISTEN tcp %s backlog=%d", diagAddr.c_str(), serverListenBacklog);
     } else if (auto* pipeServer = std::get_if<scaler::wrapper::uv::PipeServer>(&_state->_server.value())) {
         UV_EXIT_ON_ERROR(pipeServer->listen(serverListenBacklog, std::bind_front(&AcceptServer::onConnection, _state)));
+        YMQDIAG("AcceptServer LISTEN ipc %s backlog=%d", diagAddr.c_str(), serverListenBacklog);
     } else {
         std::unreachable();
     }
@@ -112,6 +124,7 @@ void AcceptServer::disconnect() noexcept
         pipeName = UV_EXIT_ON_ERROR(pipeServer->getSockName());
     }
 
+    YMQDIAG("AcceptServer DISCONNECT (stop listening)");
     _state->_server = std::nullopt;
 
     if (pipeName.has_value()) {
@@ -126,15 +139,28 @@ void AcceptServer::disconnect() noexcept
 void AcceptServer::onConnection(
     std::shared_ptr<State> state, std::expected<void, scaler::wrapper::uv::Error> result) noexcept
 {
+    static std::atomic<uint64_t> s_acceptSeq {0};
+
+    if (!result.has_value()) {
+        YMQDIAG("AcceptServer onConnection ERROR uv=%d (about to UV_EXIT_ON_ERROR)", result.error().code());
+    }
     UV_EXIT_ON_ERROR(result);
 
     if (state->_server == std::nullopt) {
+        YMQDIAG("AcceptServer onConnection FIRED but server=nullopt (disconnecting) -- connection dropped");
         return;  // server disconnecting
     }
 
     if (auto* tcpServer = std::get_if<scaler::wrapper::uv::TCPServer>(&state->_server.value())) {
+        int diagPort = -1;
+        if (auto sn = tcpServer->getSockName(); sn.has_value()) {
+            diagPort = static_cast<int>(sn.value().port());
+        }
+        uint64_t seq = ++s_acceptSeq;
+        YMQDIAG("AcceptServer onConnection ENTER tcp port=%d (totalAccepts=%llu)", diagPort, (unsigned long long)seq);
         scaler::wrapper::uv::TCPSocket tcpClient = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(state->_loop));
         UV_EXIT_ON_ERROR(tcpServer->accept(tcpClient));
+        YMQDIAG("AcceptServer ACCEPTED tcp port=%d seq=%llu", diagPort, (unsigned long long)seq);
 
         if (state->_webSocketAddress.has_value()) {
             WebSocketStream::upgradeAsServer(

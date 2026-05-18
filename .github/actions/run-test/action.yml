@@ -18,13 +18,15 @@ runs:
       shell: bash
       run: uv pip install --system pydivert pywin32
 
+    # TEMPORARY: C++ GTest skipped during the test_none_value investigation (not needed,
+    # saves CI time). Restore the two steps below when done.
     - name: Run C++ Tests (Linux/macOS)
-      if: inputs.os != 'Windows'
+      if: ${{ false }}
       shell: bash
       run: sudo ./scripts/test.sh
 
     - name: Run C++ Tests (Windows)
-      if: inputs.os == 'Windows'
+      if: ${{ false }}
       shell: pwsh
       run: ./scripts/test.ps1 -C Debug
 
@@ -41,10 +43,34 @@ runs:
         echo "Installing wheel: $wheel_file"
         uv pip install --system "$wheel_file[all]"
 
-    - name: Run Unittests
+    # TEMPORARY: full suite replaced with a loop of ONLY test_none_value so we can
+    # iterate fast and capture the [YMQDIAG] accept/connect timeline on a genuine
+    # flaky failure. Restore `python -m unittest discover -v tests -t .` when done.
+    - name: Run test_none_value in a loop (instrumented)
       shell: bash
       run: |
-        python -m unittest discover -v tests -t .
+        set -o pipefail
+        ITERS=30
+        PER_ITER_TIMEOUT=300
+        TEST=tests.graph.test_graph.TestGraph.test_none_value
+        python -c "import sys,platform,scaler;print('PYTHON',sys.version);print('PLATFORM',platform.platform());print('SCALER',scaler.__file__)"
+        echo "Running $TEST x$ITERS (instrumented _ymq: [YMQDIAG] accept/connect logging active)"
+        fail=0
+        for i in $(seq 1 $ITERS); do
+          echo "==================== test_none_value ITER $i / $ITERS START ===================="
+          # -u unbuffered + faulthandler so a hang dumps stacks; 2>&1 keeps [YMQDIAG]
+          # (stderr) interleaved with the [INFO]/EROR logs (stdout) in iteration order.
+          if timeout ${PER_ITER_TIMEOUT} python -u -X faulthandler -m unittest -v "$TEST" 2>&1; then
+            echo "==================== test_none_value ITER $i RESULT=PASS ===================="
+          else
+            rc=$?
+            fail=$((fail+1))
+            echo "==================== test_none_value ITER $i RESULT=FAIL (rc=$rc) ===================="
+          fi
+        done
+        echo "==================== test_none_value SUMMARY: $fail / $ITERS FAILED ===================="
+        # Non-zero so the job is red when it reproduces (all logs above are retained).
+        test "$fail" -eq 0
 
     - name: Run Examples (Linux)
       if: inputs.os == 'Linux'
