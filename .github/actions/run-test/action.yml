@@ -43,34 +43,51 @@ runs:
         echo "Installing wheel: $wheel_file"
         uv pip install --system "$wheel_file[all]"
 
-    # TEMPORARY: full suite replaced with a loop of the whole TestGraph class so we
-    # can iterate fast AND keep the prior-test combo churn that test_none_value needs
-    # (it passes 30/30 in isolation; the failure only emerges in the class sequence).
-    # The instrumented _ymq emits [YMQDIAG] accept/connect logging.
-    # Restore `python -m unittest discover -v tests -t .` when done.
-    - name: Run TestGraph class in a loop (instrumented)
+    # TEMPORARY: the full unittest fleet is the ONLY thing that reproduces the
+    # Windows test_none_value TimeoutError. In isolation it does NOT reproduce:
+    # test_none_value x30 = 0 fail (~1.5s each); whole TestGraph class x15 = 0
+    # fail (~31s each, max connect attempt#2). So run the EXACT original command
+    # (`python -m unittest discover -v tests -t .`) in a short loop, instrumented
+    # (_ymq emits [YMQDIAG] accept/connect logging), with a background
+    # [PROCWATCH] sampler logging the python.exe process count -- to test whether
+    # leaked combo-teardown processes accumulate across the ~438-test fleet and
+    # starve the 2-core runner right when a fresh combo's scheduler bind is
+    # delayed past the connector retry window.
+    # To restore: replace this whole step with master's single `Run Unittests`
+    # step (`python -m unittest discover -v tests -t .`).
+    - name: Run full unittest fleet in a loop (instrumented + procwatch)
       shell: bash
       run: |
         set -o pipefail
-        ITERS=15
-        PER_ITER_TIMEOUT=900
-        TEST=tests.graph.test_graph.TestGraph
+        ITERS=3
+        PER_ITER_TIMEOUT=2400
         python -c "import sys,platform,scaler;print('PYTHON',sys.version);print('PLATFORM',platform.platform());print('SCALER',scaler.__file__)"
-        echo "Running $TEST x$ITERS (instrumented _ymq: [YMQDIAG] accept/connect logging active)"
+        echo "Running full fleet (unittest discover) x$ITERS (instrumented _ymq: [YMQDIAG] active)"
+        # Background sampler: python process count every 20s. A rising count
+        # across the fleet => leaked workers/processors from prior combos.
+        ( while true; do
+            n=$(tasklist 2>/dev/null | grep -ci 'python' || true)
+            echo "[PROCWATCH] $(date +%H:%M:%S) python_procs=$n"
+            sleep 20
+          done ) &
+        watch_pid=$!
+        trap 'kill $watch_pid 2>/dev/null || true' EXIT
         fail=0
         for i in $(seq 1 $ITERS); do
-          echo "==================== TestGraph ITER $i / $ITERS START ===================="
-          # -u unbuffered + faulthandler so a hang dumps stacks; 2>&1 keeps [YMQDIAG]
-          # (stderr) interleaved with the [INFO]/EROR logs (stdout) in iteration order.
-          if timeout ${PER_ITER_TIMEOUT} python -u -X faulthandler -m unittest -v "$TEST" 2>&1; then
-            echo "==================== TestGraph ITER $i RESULT=PASS ===================="
+          echo "==================== FLEET ITER $i / $ITERS START $(date +%H:%M:%S) ===================="
+          # -u unbuffered + faulthandler (a hard crash -> exit 127 dumps stacks);
+          # 2>&1 keeps [YMQDIAG]/[PROCWATCH] (stderr/bg) interleaved with the
+          # unittest -v progress so the failing test's connect timeline is in order.
+          if timeout ${PER_ITER_TIMEOUT} python -u -X faulthandler -m unittest discover -v tests -t . 2>&1; then
+            echo "==================== FLEET ITER $i RESULT=PASS $(date +%H:%M:%S) ===================="
           else
             rc=$?
             fail=$((fail+1))
-            echo "==================== TestGraph ITER $i RESULT=FAIL (rc=$rc) ===================="
+            echo "==================== FLEET ITER $i RESULT=FAIL (rc=$rc) $(date +%H:%M:%S) ===================="
           fi
         done
-        echo "==================== TestGraph SUMMARY: $fail / $ITERS FAILED ===================="
+        kill $watch_pid 2>/dev/null || true
+        echo "==================== FLEET SUMMARY: $fail / $ITERS FAILED ===================="
         # Non-zero so the job is red when it reproduces (all logs above are retained).
         test "$fail" -eq 0
 
