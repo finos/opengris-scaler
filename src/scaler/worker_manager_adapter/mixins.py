@@ -48,7 +48,7 @@ class ExecutionBackend(ABC):
 class DeclarativeWorkerProvisioner(ABC):
     """Provisioner that converges toward a desired task concurrency via start_units/stop_units.
 
-    A unit is the atomic resource this provisioner allocates — e.g. a VM, a container, or a
+    A unit is the atomic resource this provisioner allocates - e.g. a VM, a container, or a
     process group. One unit may host one or more workers (see workers_per_provisioner_unit in
     WorkerManagerRunner). Units are identified by opaque strings whose meaning is
     implementation-defined (e.g. an EC2 instance ID).

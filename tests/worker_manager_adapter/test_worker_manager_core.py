@@ -56,7 +56,7 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
     async def test_unknown_command_payload_logs_warning_without_crashing(self) -> None:
         cmd = MagicMock(spec=WorkerManagerCommand)
         # Remove the only recognized payload field to simulate an unknown variant from a
-        # newer scheduler (or a remote adapter) that this runner does not understand.
+        # newer scheduler (or a remote worker manager) that this runner does not understand.
         del cmd.setDesiredTaskConcurrencyRequests
 
         with self.assertLogs(level=logging.WARNING) as captured:

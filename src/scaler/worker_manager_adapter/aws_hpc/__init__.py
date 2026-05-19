@@ -5,17 +5,19 @@ Supports multiple AWS HPC backends:
 - AWS Batch: Receives tasks from scheduler and submits as Batch jobs
 
 Architecture (composition pattern):
-    Scheduler Stream → WorkerProcess → AWSBatchExecutionBackend → AWS Batch Jobs
-                            ↓
+    Scheduler Stream -> WorkerProcess -> AWSBatchExecutionBackend -> AWS Batch Jobs
+                            |
+                            v
                     Heartbeats to Scheduler
-                            ↓
-                Poll Results → TaskResult to Scheduler
+                            |
+                            v
+                Poll Results -> TaskResult to Scheduler
 
 Components:
     - WorkerProcess: Process connecting to scheduler stream
     - AWSBatchExecutionBackend: Handles task queuing, priority, and AWS Batch submission
     - AWSProcessorStatusProvider: Provides processor status for heartbeats
-    - BatchJobCallback: Tracks task→job mappings
+    - BatchJobCallback: Tracks task->job mappings
     - batch_job_runner: Script running inside AWS Batch containers
 """
 

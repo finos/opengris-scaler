@@ -22,13 +22,13 @@ namespace {
 
 static constexpr size_t MAX_UPGRADE_HEADER_SIZE = 64 * 1024;  // 64 KB
 
-// WebSocket frame flags and masks (RFC 6455 §5.2)
+// WebSocket frame flags and masks (RFC 6455 section 5.2)
 static constexpr uint8_t FLAG_FIN    = 0x80;
 static constexpr uint8_t FLAG_MASKED = 0x80;
 static constexpr uint8_t MASK_OPCODE = 0x0F;
 static constexpr uint8_t MASK_LENGTH = 0x7F;
 
-// WebSocket opcodes (RFC 6455 §5.2)
+// WebSocket opcodes (RFC 6455 section 5.2)
 static constexpr uint8_t OPCODE_CONTINUATION = 0x0;
 static constexpr uint8_t OPCODE_TEXT         = 0x1;
 static constexpr uint8_t OPCODE_BINARY       = 0x2;
@@ -36,7 +36,7 @@ static constexpr uint8_t OPCODE_CLOSE        = 0x8;
 static constexpr uint8_t OPCODE_PING         = 0x9;
 static constexpr uint8_t OPCODE_PONG         = 0xA;
 
-// WebSocket payload length encoding (RFC 6455 §5.2)
+// WebSocket payload length encoding (RFC 6455 section 5.2)
 static constexpr uint8_t PAYLOAD_LEN_16BIT         = 126;
 static constexpr uint8_t PAYLOAD_LEN_64BIT         = 127;
 static constexpr size_t PAYLOAD_LEN_16BIT_MAX      = 65536;
@@ -89,7 +89,7 @@ std::vector<uint8_t> buildServerFrameHeader(size_t payloadSize) noexcept
     return header;
 }
 
-// Returns {header+mask, masked-payload-copy} for a client-side frame (masked, RFC 6455 §5.3).
+// Returns {header+mask, masked-payload-copy} for a client-side frame (masked, RFC 6455 section 5.3).
 std::pair<std::vector<uint8_t>, std::vector<uint8_t>> buildClientFrame(
     std::span<const std::span<const uint8_t>> buffers, size_t totalSize) noexcept
 {
@@ -124,7 +124,7 @@ std::pair<std::vector<uint8_t>, std::vector<uint8_t>> buildClientFrame(
     return {std::move(header), std::move(masked)};
 }
 
-// Builds a control frame (CLOSE, PING, PONG). RFC 6455 §5.5:
+// Builds a control frame (CLOSE, PING, PONG). RFC 6455 section 5.5:
 // control frames are always FIN=1 and carry at most 125 bytes of payload.
 // Client frames must be masked; server frames must not.
 std::vector<uint8_t> buildControlFrame(uint8_t opcode, bool isClient, std::span<const uint8_t> payload) noexcept
@@ -132,7 +132,7 @@ std::vector<uint8_t> buildControlFrame(uint8_t opcode, bool isClient, std::span<
     static thread_local std::mt19937 rng(std::random_device {}());
     std::uniform_int_distribution<uint32_t> dist;
 
-    const uint8_t len = static_cast<uint8_t>(payload.size());  // caller ensures ≤ 125
+    const uint8_t len = static_cast<uint8_t>(payload.size());  // caller ensures <= 125
 
     std::vector<uint8_t> frame;
     frame.push_back(FLAG_FIN | opcode);
@@ -158,9 +158,9 @@ struct DecodedFrame {
 };
 
 // Tries to parse one complete WebSocket frame from buffer, consuming it in-place.
-//   unexpected(error) — protocol error
-//   {nullopt}         — buffer does not yet contain a full frame
-//   {DecodedFrame}    — one frame decoded and consumed
+//   unexpected(error) - protocol error
+//   {nullopt}         - buffer does not yet contain a full frame
+//   {DecodedFrame}    - one frame decoded and consumed
 std::expected<std::optional<DecodedFrame>, scaler::wrapper::uv::Error> tryDecodeFrame(
     std::vector<uint8_t>& buffer) noexcept
 {
@@ -432,7 +432,7 @@ void WebSocketStream::upgradeAsServer(
     auto readStartResult = ctx->socket->readStart(
         [ctx](std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> readResult) mutable {
             if (!readResult.has_value()) {
-                // Copy ctx to the stack before readStop() — readStop() destroys this lambda (and the
+                // Copy ctx to the stack before readStop() - readStop() destroys this lambda (and the
                 // captured ctx) via setData({}), so ctx must outlive that call.
                 auto safeCtx = ctx;
                 ctx->socket->readStop();
@@ -536,7 +536,7 @@ void WebSocketStream::onRead(
             auto closeFrame = buildControlFrame(OPCODE_CLOSE, !state->_isServer, {});
             auto frameData  = std::make_shared<std::vector<uint8_t>>(std::move(closeFrame));
             const std::span<const uint8_t> frameSpan(*frameData);
-            // Best-effort CLOSE echo — connection is shutting down regardless.
+            // Best-effort CLOSE echo - connection is shutting down regardless.
             if (auto r = state->_socket.write(
                     std::span<const std::span<const uint8_t>>(&frameSpan, 1),
                     [frameData = std::move(frameData)](std::expected<void, scaler::wrapper::uv::Error>) {});
@@ -548,14 +548,14 @@ void WebSocketStream::onRead(
         }
 
         if (frame.opcode == OPCODE_PING) {
-            // PING: respond with PONG carrying the same payload (RFC 6455 §5.5.3).
+            // PING: respond with PONG carrying the same payload (RFC 6455 section 5.5.3).
             auto pongPayload = frame.payload;
             if (pongPayload.size() > MAX_CONTROL_FRAME_PAYLOAD)
                 pongPayload.resize(MAX_CONTROL_FRAME_PAYLOAD);
             auto pongFrame = buildControlFrame(OPCODE_PONG, !state->_isServer, pongPayload);
             auto frameData = std::make_shared<std::vector<uint8_t>>(std::move(pongFrame));
             const std::span<const uint8_t> frameSpan(*frameData);
-            // Best-effort PONG — if this write fails the next read will catch the error.
+            // Best-effort PONG - if this write fails the next read will catch the error.
             if (auto r = state->_socket.write(
                     std::span<const std::span<const uint8_t>>(&frameSpan, 1),
                     [frameData = std::move(frameData)](std::expected<void, scaler::wrapper::uv::Error>) {});
@@ -565,24 +565,24 @@ void WebSocketStream::onRead(
         }
 
         if (frame.opcode == OPCODE_PONG) {
-            // PONG: unsolicited or in response to our PING — ignore.
+            // PONG: unsolicited or in response to our PING - ignore.
             continue;
         }
 
-        // Data frames: handle fragmentation per RFC 6455 §5.4.
+        // Data frames: handle fragmentation per RFC 6455 section 5.4.
         if (frame.opcode == OPCODE_TEXT || frame.opcode == OPCODE_BINARY) {
             if (frame.fin) {
                 // Complete single-frame message.
                 state->_readCallback(std::span<const uint8_t>(frame.payload));
             } else {
-                // First fragment — start accumulating.
+                // First fragment - start accumulating.
                 state->_fragmentBuffer = std::move(frame.payload);
             }
         } else if (frame.opcode == OPCODE_CONTINUATION) {
             // Continuation frame.
             state->_fragmentBuffer.insert(state->_fragmentBuffer.end(), frame.payload.begin(), frame.payload.end());
             if (frame.fin) {
-                // Final fragment — deliver assembled message.
+                // Final fragment - deliver assembled message.
                 state->_readCallback(std::span<const uint8_t>(state->_fragmentBuffer));
                 state->_fragmentBuffer.clear();
             }
@@ -627,12 +627,12 @@ std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::shutdown(
         [state, frameData = std::move(frameData), callbackPtr](
             std::expected<void, scaler::wrapper::uv::Error> writeErr) mutable {
             if (!writeErr.has_value()) {
-                // CLOSE frame failed (connection already gone) — treat as successful shutdown.
+                // CLOSE frame failed (connection already gone) - treat as successful shutdown.
                 (*callbackPtr)({});
                 return;
             }
             // UV_ENOTCONN from the TCP shutdown callback means the peer already closed the
-            // connection after we sent the CLOSE frame — treat as successful shutdown.
+            // connection after we sent the CLOSE frame - treat as successful shutdown.
             auto r = state->_socket.shutdown(
                 [callbackPtr](std::expected<void, scaler::wrapper::uv::Error> shutdownErr) mutable {
                     if (!shutdownErr.has_value() && shutdownErr.error().code() == UV_ENOTCONN)
@@ -650,7 +650,7 @@ std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::shutdown(
 
     if (!result.has_value()) {
         if (result.error().code() == UV_ENOTCONN) {
-            // Socket already disconnected — no CLOSE frame needed.
+            // Socket already disconnected - no CLOSE frame needed.
             (*callbackPtr)({});
             return {};
         }

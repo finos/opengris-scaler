@@ -61,13 +61,13 @@ def _format_worker_name(worker_name: str, cutoff: int = 15) -> str:
 
 
 # Minimum angular distance (degrees) between any two assigned hues.
-# 30° allows ~12 maximally-distinct slots; beyond that the algorithm
+# 30 deg allows ~12 maximally-distinct slots; beyond that the algorithm
 # degrades gracefully by placing new hues in the largest available gap.
 _MIN_HUE_DISTANCE = 30
 
 
 def _hue_distance(a: float, b: float) -> float:
-    """Angular distance between two hues on the 360° wheel."""
+    """Angular distance between two hues on the 360 deg wheel."""
     d = abs(a - b) % 360
     return min(d, 360 - d)
 
@@ -257,7 +257,7 @@ class TaskStreamState:
         task_map = self._current_tasks.get(worker, {})
 
         # use ProfileResult duration for accurate start time when available
-        # (skip for cancelled tasks — profile data may be from a prior attempt)
+        # (skip for cancelled tasks - profile data may be from a prior attempt)
         start = now
         end = now
         if state.state not in (TaskState.canceled, TaskState.canceledNotFound):
@@ -354,7 +354,7 @@ class TaskStreamState:
             window_seconds = self._stream_window.total_seconds()
             window_start_ts = now_ts - window_seconds
 
-            # one row per worker, sorted by name — only include workers with visible activity
+            # one row per worker, sorted by name - only include workers with visible activity
             row_labels: List[str] = []
             full_row_labels: List[str] = []
             worker_order: List[str] = []
@@ -980,7 +980,7 @@ class WebUIApp:
             self._task_log.appendleft(entry)
             return entry
         else:
-            # running/inactive/canceling — track as active task
+            # running/inactive/canceling - track as active task
             prev_entry = self._active_tasks.get(task_id_hex)
             submitted_time = prev_entry["time"] if prev_entry and "time" in prev_entry else now.timestamp()
             if not worker_str and prev_entry:

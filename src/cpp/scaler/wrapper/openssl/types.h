@@ -14,7 +14,7 @@ struct SSLDeleter;
 
 // A unique_ptr alias specialized for SSL datastructures.
 //
-//     SSLPtr<SSL> ssl { SSL_new(...) };
+//     SSLPtr<SSL> ssl { SSL_new(...) };
 //
 template <typename T>
 using SSLPtr = std::unique_ptr<T, SSLDeleter<T>>;

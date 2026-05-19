@@ -28,7 +28,7 @@ void runUntil(scaler::wrapper::uv::Loop& loop, const bool& done)
 }
 
 // Creates a pair of connected TCP sockets via a local loopback server.
-// Not movable — lambdas capture 'this' by pointer.
+// Not movable - lambdas capture 'this' by pointer.
 struct TestTCPPair {
     scaler::wrapper::uv::Loop& _loop;
     std::optional<scaler::wrapper::uv::TCPServer> _server;
@@ -79,7 +79,7 @@ struct TestTCPPair {
 // so tests can craft and inspect frames at the wire level.
 // _tcp is kept alive for the lifetime of this struct so that its internal listen
 // callback (which captures a pointer to the TestTCPPair) is never left dangling.
-// Not movable — lambdas capture 'this' by pointer.
+// Not movable - lambdas capture 'this' by pointer.
 struct TestWebSocketStreamPair {
     scaler::wrapper::uv::Loop& _loop;
     std::unique_ptr<TestTCPPair> _tcp;
@@ -140,7 +140,7 @@ struct TestWebSocketStreamPair {
     TestWebSocketStreamPair& operator=(TestWebSocketStreamPair&&)      = delete;
 };
 
-// Builds a masked WebSocket frame (client→server) for payloads up to 125 bytes.
+// Builds a masked WebSocket frame (client->server) for payloads up to 125 bytes.
 // byte0 encodes FIN and opcode: 0x82 (FIN|binary), 0x02 (FIN=0|binary),
 // 0x00 (FIN=0|continuation), 0x80 (FIN=1|continuation), 0x89 (FIN|ping).
 std::vector<uint8_t> maskedFrame(uint8_t byte0, std::vector<uint8_t> payload)

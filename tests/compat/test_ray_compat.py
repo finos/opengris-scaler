@@ -224,7 +224,7 @@ class TestRayCompat(unittest.TestCase):
         self.assertEqual(ray.get(random.remote()), 7)
 
     def test_decorate_before_explicit_init(self) -> None:
-        # Decoration must not trigger auto-initialization — the caller needs to call scaler_init()
+        # Decoration must not trigger auto-initialization - the caller needs to call scaler_init()
         # with a custom config before submitting any tasks.
         @ray.remote
         def fn() -> int:

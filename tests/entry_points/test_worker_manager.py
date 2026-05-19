@@ -86,7 +86,7 @@ class TestWorkerManagerSubcommands(unittest.TestCase):
         self.assertIsNotNone(config.foo)
         # CLI --value 5 should override TOML value 99
         self.assertEqual(config.foo.value, 5)
-        # name not provided on CLI → TOML value used
+        # name not provided on CLI -> TOML value used
         self.assertEqual(config.foo.name, "from_toml")
 
     @patch(
@@ -274,23 +274,23 @@ _ORB_AWS_EC2_AUTO_ARGV = [
 
 
 class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
-    """Tests that ORBAWSEC2WorkerAdapterConfig is correctly parsed via parse_with_section."""
+    """Tests that ORBAWSEC2WorkerManagerConfig is correctly parsed via parse_with_section."""
 
     def test_orb_aws_ec2_image_id_parsed(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
-        config = ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+        config = ORBAWSEC2WorkerManagerConfig.parse_with_section(
             "scaler_worker_manager", {}, argv=_ORB_AWS_EC2_IMAGE_ARGV
         )
-        self.assertIsInstance(config, ORBAWSEC2WorkerAdapterConfig)
+        self.assertIsInstance(config, ORBAWSEC2WorkerManagerConfig)
         self.assertEqual(config.image_id, "ami-0528819f94f4f5fa5")
         self.assertIsNone(config.python_version)
         self.assertIsNone(config.requirements_txt)
 
     def test_orb_aws_ec2_auto_install_mode_parsed(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
-        config = ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+        config = ORBAWSEC2WorkerManagerConfig.parse_with_section(
             "scaler_worker_manager", {}, argv=_ORB_AWS_EC2_AUTO_ARGV
         )
         self.assertIsNone(config.image_id)
@@ -298,15 +298,15 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
         self.assertEqual(config.requirements_txt, "opengris-scaler>=1.26.6")
 
     def test_orb_aws_ec2_defaults(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
-        config = ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+        config = ORBAWSEC2WorkerManagerConfig.parse_with_section(
             "scaler_worker_manager", {}, argv=_ORB_AWS_EC2_IMAGE_ARGV
         )
         self.assertEqual(config.instance_type, "t2.micro")
 
     def test_orb_aws_ec2_missing_aws_region_raises(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
         argv_without_region = [
             "tcp://127.0.0.1:6378",
@@ -316,12 +316,12 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
             "ami-0528819f94f4f5fa5",
         ]
         with self.assertRaises(SystemExit):
-            ORBAWSEC2WorkerAdapterConfig.parse_with_section("scaler_worker_manager", {}, argv=argv_without_region)
+            ORBAWSEC2WorkerManagerConfig.parse_with_section("scaler_worker_manager", {}, argv=argv_without_region)
 
     def test_orb_aws_ec2_instance_type_and_region_from_cli(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
-        config = ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+        config = ORBAWSEC2WorkerManagerConfig.parse_with_section(
             "scaler_worker_manager",
             {},
             argv=[*_ORB_AWS_EC2_IMAGE_ARGV, "--instance-type", "t3.medium", "--aws-region", "eu-west-1"],
@@ -330,28 +330,28 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
         self.assertEqual(config.aws_region, "eu-west-1")
 
     def test_orb_aws_ec2_logging_level_from_cli(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
-        config = ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+        config = ORBAWSEC2WorkerManagerConfig.parse_with_section(
             "scaler_worker_manager", {}, argv=[*_ORB_AWS_EC2_IMAGE_ARGV, "--logging-level", "DEBUG"]
         )
         self.assertEqual(config.logging_config.level, "DEBUG")
 
     def test_orb_aws_ec2_no_mode_raises(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
         with self.assertRaises(ValueError):
-            ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+            ORBAWSEC2WorkerManagerConfig.parse_with_section(
                 "scaler_worker_manager",
                 {},
                 argv=["tcp://127.0.0.1:6378", "--worker-manager-id", "wm-test", "--aws-region", "us-east-1"],
             )
 
     def test_orb_aws_ec2_image_id_and_python_version_raises(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
         with self.assertRaises(ValueError):
-            ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+            ORBAWSEC2WorkerManagerConfig.parse_with_section(
                 "scaler_worker_manager",
                 {},
                 argv=[
@@ -370,10 +370,10 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
             )
 
     def test_orb_aws_ec2_python_version_without_requirements_raises(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
         with self.assertRaises(ValueError):
-            ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+            ORBAWSEC2WorkerManagerConfig.parse_with_section(
                 "scaler_worker_manager",
                 {},
                 argv=[
@@ -388,25 +388,25 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
             )
 
     def test_orb_aws_ec2_instance_tags_default_empty(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
-        config = ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+        config = ORBAWSEC2WorkerManagerConfig.parse_with_section(
             "scaler_worker_manager", {}, argv=_ORB_AWS_EC2_IMAGE_ARGV
         )
         self.assertEqual(config.instance_tags, {})
 
     def test_orb_aws_ec2_instance_tags_single_tag_from_cli(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
-        config = ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+        config = ORBAWSEC2WorkerManagerConfig.parse_with_section(
             "scaler_worker_manager", {}, argv=[*_ORB_AWS_EC2_IMAGE_ARGV, "--instance-tags", "Name=my-worker"]
         )
         self.assertEqual(config.instance_tags, {"Name": "my-worker"})
 
     def test_orb_aws_ec2_instance_tags_multiple_tags_from_cli(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
-        config = ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+        config = ORBAWSEC2WorkerManagerConfig.parse_with_section(
             "scaler_worker_manager",
             {},
             argv=[*_ORB_AWS_EC2_IMAGE_ARGV, "--instance-tags", "Name=my-worker,Env=prod,Team=data"],
@@ -414,15 +414,15 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
         self.assertEqual(config.instance_tags, {"Name": "my-worker", "Env": "prod", "Team": "data"})
 
     def test_orb_aws_ec2_instance_tags_value_with_equals_from_cli(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
-        config = ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+        config = ORBAWSEC2WorkerManagerConfig.parse_with_section(
             "scaler_worker_manager", {}, argv=[*_ORB_AWS_EC2_IMAGE_ARGV, "--instance-tags", "Tag=key=val"]
         )
         self.assertEqual(config.instance_tags, {"Tag": "key=val"})
 
     def test_orb_aws_ec2_instance_tags_from_toml(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
         section_data = {
             "type": "orb_aws_ec2",
@@ -432,14 +432,14 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
             "image_id": "ami-0528819f94f4f5fa5",
             "instance_tags": "Name=my-worker,Env=prod",
         }
-        config = ORBAWSEC2WorkerAdapterConfig.parse_with_section("scaler_worker_manager", section_data, argv=[])
+        config = ORBAWSEC2WorkerManagerConfig.parse_with_section("scaler_worker_manager", section_data, argv=[])
         self.assertEqual(config.instance_tags, {"Name": "my-worker", "Env": "prod"})
 
     def test_orb_aws_ec2_requirements_without_python_version_raises(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
         with self.assertRaises(ValueError):
-            ORBAWSEC2WorkerAdapterConfig.parse_with_section(
+            ORBAWSEC2WorkerManagerConfig.parse_with_section(
                 "scaler_worker_manager",
                 {},
                 argv=[
@@ -464,13 +464,13 @@ def _make_orb_config(
     from scaler.config.common.logging import LoggingConfig
     from scaler.config.common.worker import WorkerConfig
     from scaler.config.common.worker_manager import WorkerManagerConfig
-    from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+    from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
     from scaler.config.types.address import AddressConfig
 
     wmc = WorkerManagerConfig(
         scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:6378"), worker_manager_id="wm-test"
     )
-    return ORBAWSEC2WorkerAdapterConfig(
+    return ORBAWSEC2WorkerManagerConfig(
         worker_manager_config=wmc,
         image_id=image_id,
         python_version=python_version,
@@ -482,29 +482,31 @@ def _make_orb_config(
 
 
 class TestORBAWSEC2CreateUserData(unittest.TestCase):
-    """Tests for ORBAWSEC2WorkerAdapter._create_user_data covering the two environment modes."""
+    """Tests for ORBAWSEC2WorkerManager._create_user_data covering the two environment modes."""
 
-    def _make_adapter(self, **kwargs):
-        from scaler.worker_manager_adapter.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerAdapter
+    def _make_worker_manager(self, **kwargs):
+        from scaler.worker_manager_adapter.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerManager
 
-        return ORBAWSEC2WorkerAdapter(_make_orb_config(**kwargs))
+        return ORBAWSEC2WorkerManager(_make_orb_config(**kwargs))
 
     def test_image_id_mode_skips_install(self) -> None:
-        adapter = self._make_adapter(image_id="ami-abc123")
-        script = adapter._create_user_data()
+        worker_manager = self._make_worker_manager(image_id="ami-abc123")
+        script = worker_manager._create_user_data()
         self.assertNotIn("dnf", script)
         self.assertNotIn("pip install", script)
         self.assertNotIn("venv", script)
 
     def test_auto_install_mode_installs_python(self) -> None:
-        adapter = self._make_adapter(python_version="3.13", requirements_txt="opengris-scaler>=1.26.6")
-        script = adapter._create_user_data()
+        worker_manager = self._make_worker_manager(python_version="3.13", requirements_txt="opengris-scaler>=1.26.6")
+        script = worker_manager._create_user_data()
         self.assertIn("python3.13", script)
         self.assertIn("dnf install", script)
 
     def test_auto_install_mode_embeds_literal_requirements(self) -> None:
-        adapter = self._make_adapter(python_version="3.13", requirements_txt="opengris-scaler>=1.26.6\nboto3")
-        script = adapter._create_user_data()
+        worker_manager = self._make_worker_manager(
+            python_version="3.13", requirements_txt="opengris-scaler>=1.26.6\nboto3"
+        )
+        script = worker_manager._create_user_data()
         self.assertIn("opengris-scaler>=1.26.6", script)
         self.assertIn("boto3", script)
         self.assertIn("pip install -r /tmp/requirements.txt", script)
@@ -517,21 +519,23 @@ class TestORBAWSEC2CreateUserData(unittest.TestCase):
             unittest.mock.patch("os.path.isfile", return_value=True),
             unittest.mock.patch("builtins.open", unittest.mock.mock_open(read_data=file_content)),
         ):
-            adapter = self._make_adapter(python_version="3.13", requirements_txt="/path/to/requirements.txt")
-            script = adapter._create_user_data()
+            worker_manager = self._make_worker_manager(
+                python_version="3.13", requirements_txt="/path/to/requirements.txt"
+            )
+            script = worker_manager._create_user_data()
 
         self.assertIn("opengris-scaler>=1.26.6", script)
         self.assertIn("numpy", script)
         self.assertIn("pip install -r /tmp/requirements.txt", script)
 
     def test_image_id_mode_launches_worker_manager(self) -> None:
-        adapter = self._make_adapter(image_id="ami-abc123")
-        script = adapter._create_user_data()
+        worker_manager = self._make_worker_manager(image_id="ami-abc123")
+        script = worker_manager._create_user_data()
         self.assertIn("scaler_worker_manager baremetal_native", script)
 
     def test_auto_install_mode_launches_worker_manager(self) -> None:
-        adapter = self._make_adapter(python_version="3.13", requirements_txt="opengris-scaler>=1.26.6")
-        script = adapter._create_user_data()
+        worker_manager = self._make_worker_manager(python_version="3.13", requirements_txt="opengris-scaler>=1.26.6")
+        script = worker_manager._create_user_data()
         self.assertIn("scaler_worker_manager baremetal_native", script)
 
 

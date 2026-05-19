@@ -11,7 +11,7 @@ from scaler.config.section.aws_hpc_worker_manager import AWSBatchWorkerManagerCo
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 from scaler.config.section.object_storage_server import ObjectStorageServerConfig
-from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
 from scaler.config.section.webgui import WebGUIConfig
@@ -62,10 +62,10 @@ def _run_worker_manager(config: WorkerManagerUnion) -> None:
         from scaler.worker_manager_adapter.aws_hpc.worker_manager import AWSHPCWorkerManager
 
         AWSHPCWorkerManager(config).run()
-    elif isinstance(config, ORBAWSEC2WorkerAdapterConfig):
-        from scaler.worker_manager_adapter.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerAdapter
+    elif isinstance(config, ORBAWSEC2WorkerManagerConfig):
+        from scaler.worker_manager_adapter.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerManager
 
-        ORBAWSEC2WorkerAdapter(config).run()
+        ORBAWSEC2WorkerManager(config).run()
 
 
 def _run_gui(config: WebGUIConfig) -> None:

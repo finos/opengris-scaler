@@ -69,6 +69,7 @@ Both C++ and Python code share these standards:
 - Matching of naming of files, tests, namespaces/modules and directories is highly encouraged
 - When renaming a class, also check for subclasses, variables, parameters, and fields that derive their name from
   the old class name and rename those too
+- Code, and in-code comment should not contain non-ascii characters. Non-ascii characters enclosed as a string is fine. Logging output should not contain non-ascii characters.
 
 ### Python Code
 

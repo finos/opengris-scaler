@@ -15,7 +15,7 @@ try:
 except ModuleNotFoundError as exc:
     raise ModuleNotFoundError('execute "pip install opengris-scaler[orb]" to use ORB AWS EC2 worker Manager') from exc
 
-from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.logging.utility import setup_logger
@@ -31,7 +31,7 @@ ORB_AWS_EC2_MAX_POLLING_ATTEMPTS = 60
 class ORBWorkerProvisioner(DeclarativeWorkerProvisioner):
     def __init__(
         self,
-        config: ORBAWSEC2WorkerAdapterConfig,
+        config: ORBAWSEC2WorkerManagerConfig,
         max_instances: int,
         sdk: Any,
         template_id: str,
@@ -128,8 +128,8 @@ class ORBWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._units.clear()
 
 
-class ORBAWSEC2WorkerAdapter:
-    def __init__(self, config: ORBAWSEC2WorkerAdapterConfig) -> None:
+class ORBAWSEC2WorkerManager:
+    def __init__(self, config: ORBAWSEC2WorkerManagerConfig) -> None:
         self._config = config
         self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._event_loop = config.worker_config.event_loop
@@ -182,7 +182,7 @@ class ORBAWSEC2WorkerAdapter:
         max_instances = math.ceil(mtc / workers_per_instance) if mtc != -1 else -1
         logging.info(
             f"ORB instance type {self._config.instance_type!r}: {workers_per_instance} vCPUs/instance, "
-            f"max_task_concurrency={mtc} → max_instances={max_instances}"
+            f"max_task_concurrency={mtc} -> max_instances={max_instances}"
         )
 
         template_id = os.urandom(8).hex()
@@ -308,7 +308,7 @@ class ORBAWSEC2WorkerAdapter:
 
     def _create_user_data(self) -> str:
         worker_config = self._config.worker_config
-        adapter_config = self._config.worker_manager_config
+        worker_manager_config = self._config.worker_manager_config
 
         script = "#!/bin/bash\n"
 
@@ -354,8 +354,8 @@ set +e
         if worker_config.hard_processor_suspend:
             script += " \\\n    --hard-processor-suspend"
 
-        if adapter_config.object_storage_address:
-            script += f" \\\n    --object-storage-address {adapter_config.object_storage_address!r}"
+        if worker_manager_config.object_storage_address:
+            script += f" \\\n    --object-storage-address {worker_manager_config.object_storage_address!r}"
 
         capabilities = worker_config.per_worker_capabilities.capabilities
         if capabilities:
@@ -411,7 +411,7 @@ set +e
 
         group_name = f"opengris-orb-sg-{template_id}"
         sg_response = self._ec2.create_security_group(
-            Description="Temporary security group created for OpenGRIS ORB worker adapter",
+            Description="Temporary security group created for OpenGRIS ORB worker manager",
             GroupName=group_name,
             VpcId=vpc_id,
         )

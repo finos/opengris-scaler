@@ -94,7 +94,7 @@ void WebSocketSocket::sendFrame(const void* data, size_t size) const
     header.push_back(0x82);  // FIN | binary opcode
 
     if (_isServer) {
-        // Server sends unmasked frames (RFC 6455 §5.1)
+        // Server sends unmasked frames (RFC 6455 section 5.1)
         if (size < 126) {
             header.push_back(static_cast<uint8_t>(size));
         } else if (size < 65536) {
@@ -109,7 +109,7 @@ void WebSocketSocket::sendFrame(const void* data, size_t size) const
         rawWriteAll(header.data(), header.size());
         rawWriteAll(data, size);
     } else {
-        // Client sends masked frames (RFC 6455 §5.3)
+        // Client sends masked frames (RFC 6455 section 5.3)
         static thread_local std::mt19937 rng(std::random_device {}());
         std::uniform_int_distribution<uint32_t> dist;
         std::array<uint8_t, 4> maskKey;

@@ -350,8 +350,8 @@ The scheduler uses ``builtin`` event loop by default. You can switch to ``uvloop
 scaler_worker_manager
 ---------------------
 
-``scaler_worker_manager`` is the unified worker-manager entry point. You select an adapter
-with a subcommand and then pass shared and adapter-specific options.
+``scaler_worker_manager`` is the unified worker-manager entry point. You select a worker manager
+with a subcommand and then pass shared and worker-manager-specific options.
 
 .. code-block:: bash
 

@@ -188,7 +188,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
             logging.warning(f"Requested to stop {count} ECS task(s) but only {len(to_stop)} available.")
         for task_arn in to_stop:
             resp = self._ecs_client.stop_task(
-                cluster=self._ecs_cluster, task=task_arn, reason="Shutdown requested by ECS adapter"
+                cluster=self._ecs_cluster, task=task_arn, reason="Shutdown requested by ECS worker manager"
             )
             failures = resp.get("failures") or []
             if failures:

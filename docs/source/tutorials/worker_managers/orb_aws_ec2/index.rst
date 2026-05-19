@@ -150,7 +150,7 @@ AWS Permissions
 Worker Image Customization Modes
 ---------------------------------
 
-The adapter supports two mutually exclusive worker-image modes. Choose exactly one:
+The worker manager supports two mutually exclusive worker-image modes. Choose exactly one:
 
 * Use an existing pre-built AMI.
 * Use a base image and install Python/packages when instances start.
