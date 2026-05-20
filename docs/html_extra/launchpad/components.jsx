@@ -315,11 +315,13 @@ function InstancePicker({ value, onChange, defaultCat = "gpu" }) {
     if (!triggerRef.current) return;
     const r = triggerRef.current.getBoundingClientRect();
     const vh = window.innerHeight;
+    const vw = window.innerWidth;
     const gap = 4;
-    const minW = Math.max(540, r.width);
+    const minW = Math.min(Math.max(540, r.width), vw - 8);
     const POPUP_H = 370;
     const spaceBelow = vh - r.bottom - gap;
     const spaceAbove = r.top - gap;
+    const left = Math.min(r.left, vw - minW - 4);
 
     let style;
     if (spaceBelow >= POPUP_H || spaceBelow >= spaceAbove) {
@@ -327,7 +329,7 @@ function InstancePicker({ value, onChange, defaultCat = "gpu" }) {
       style = {
         position: "fixed",
         top: r.bottom + gap,
-        left: r.left,
+        left,
         minWidth: minW,
         maxResultsH: Math.min(280, availH),
       };
@@ -336,7 +338,7 @@ function InstancePicker({ value, onChange, defaultCat = "gpu" }) {
       style = {
         position: "fixed",
         bottom: vh - r.top + gap,
-        left: r.left,
+        left,
         minWidth: minW,
         maxResultsH: Math.min(280, availH),
       };
