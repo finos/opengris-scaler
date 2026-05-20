@@ -236,31 +236,6 @@ function WorkerManagerCard({ wm, onChange, onRemove, allInstances, canRemove, fu
             }}
           />
         </div>
-        {canRemove && (
-          <button
-            onClick={onRemove}
-            style={{
-              background: "none",
-              border: "1px solid var(--border-danger)",
-              borderRadius: 3,
-              color: "var(--text-danger)",
-              fontFamily: "inherit",
-              fontSize: 12,
-              width: 28,
-              height: 28,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              transition: "border-color 0.15s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.borderColor = "rgba(255,80,60,0.6)")}
-            onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border-danger)")}
-          >
-            ✕
-          </button>
-        )}
       </div>
 
       {/* orb_aws_ec2 */}
@@ -271,68 +246,43 @@ function WorkerManagerCard({ wm, onChange, onRemove, allInstances, canRemove, fu
             <InstancePicker value={wm.instanceType} onChange={(v) => set("instanceType", v)} defaultCat="all" />
           </div>
           <div>
-            <Label>Scale Limit</Label>
-            <ToggleRow
-              options={[
-                ["instances", "Instance cap"],
-                ["budget", "USD/hr cap"],
-              ]}
-              value={wm.capMode}
-              onChange={(v) => set("capMode", v)}
-            />
-            <div style={{ marginTop: 7 }}>
+            <Label>Budget</Label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               {wm.capMode === "instances" ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <NumericStepper
-                    value={wm.instanceCap || 1}
-                    onChange={(v) => set("instanceCap", v)}
-                    min={1}
-                    max={1000}
-                  />
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>max instances</span>
-                </div>
+                <NumericStepper
+                  value={wm.instanceCap || 1}
+                  onChange={(v) => set("instanceCap", v)}
+                  min={1}
+                  max={1000}
+                />
               ) : (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <NumericStepper
-                    value={wm.budgetCap || 10}
-                    onChange={(v) => set("budgetCap", v)}
-                    min={0}
-                    step={0.5}
-                    width={64}
-                  />
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>max USD/h</span>
-                </div>
+                <NumericStepper
+                  value={wm.budgetCap || 10}
+                  onChange={(v) => set("budgetCap", v)}
+                  min={0}
+                  step={0.5}
+                  width={64}
+                />
               )}
+              <select
+                value={wm.capMode}
+                onChange={(e) => set("capMode", e.target.value)}
+                style={{
+                  background: "var(--bg-surface)",
+                  border: "1px solid var(--border-accent)",
+                  borderRadius: 3,
+                  padding: "6px 8px",
+                  color: "var(--text-primary)",
+                  fontFamily: "inherit",
+                  fontSize: 11,
+                  outline: "none",
+                  cursor: "pointer",
+                }}
+              >
+                <option value="budget">USD/h cap</option>
+                <option value="instances">instance cap</option>
+              </select>
             </div>
-          </div>
-          <div
-            style={{
-              padding: "8px 10px",
-              background: "rgba(0,255,136,0.04)",
-              border: "1px solid var(--border-success)",
-              borderRadius: 3,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "baseline",
-            }}
-          >
-            <span
-              style={{
-                fontSize: 10,
-                color: "var(--text-muted)",
-              }}
-            >
-              Cost
-            </span>
-            <span
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: "var(--text-success)",
-              }}
-            >
-              USD {costPerHr.toFixed(2)}/h
-            </span>
           </div>
           <button
             onClick={() => setShowAdv((v) => !v)}
@@ -352,7 +302,7 @@ function WorkerManagerCard({ wm, onChange, onRemove, allInstances, canRemove, fu
             }}
           >
             <span>Advanced</span>
-            <span style={{ fontSize: 11 }}>{showAdv ? "▴" : "▾"}</span>
+            <span style={{ display: "inline-block", width: 7, height: 7, borderRight: "1.5px solid var(--text-muted)", borderBottom: "1.5px solid var(--text-muted)", transform: showAdv ? "rotate(225deg)" : "rotate(45deg)", position: "relative", top: showAdv ? "2px" : "-2px" }} />
           </button>
           {showAdv && (
             <div>
@@ -379,6 +329,22 @@ function WorkerManagerCard({ wm, onChange, onRemove, allInstances, canRemove, fu
               />
             </div>
           )}
+          <div
+            style={{
+              padding: "8px 10px",
+              background: "rgba(0,255,136,0.04)",
+              border: "1px solid var(--border-success)",
+              borderRadius: 3,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+            }}
+          >
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Cost</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-success)" }}>
+              USD {costPerHr.toFixed(2)}/h
+            </span>
+          </div>
         </>
       )}
 
@@ -516,55 +482,6 @@ function WorkerManagerCard({ wm, onChange, onRemove, allInstances, canRemove, fu
         </>
       )}
 
-      {/* baremetal_native */}
-      {wm.type === "baremetal_native" && (
-        <>
-          <div>
-            <Label>Mode</Label>
-            <ToggleRow
-              options={[
-                ["dynamic", "Dynamic"],
-                ["fixed", "Fixed"],
-              ]}
-              value={wm.mode || "fixed"}
-              onChange={(v) => set("mode", v)}
-            />
-          </div>
-          <div>
-            <Label>Worker Type Prefix</Label>
-            <input
-              value={wm.workerType || ""}
-              onChange={(e) => set("workerType", e.target.value)}
-              style={inp}
-              placeholder="optional"
-            />
-          </div>
-          {(wm.mode || "fixed") === "fixed" ? (
-            <div>
-              <Label help="Exact number of worker processes to pre-spawn.">Number of Workers</Label>
-              <NumericStepper
-                value={wm.maxTaskConcurrency != null && wm.maxTaskConcurrency >= 1 ? wm.maxTaskConcurrency : 4}
-                onChange={(v) => set("maxTaskConcurrency", Math.max(1, v))}
-                min={1}
-              />
-            </div>
-          ) : (
-            <div>
-              <Label help="Maximum concurrent workers the scheduler may spawn. -1 = no limit (uses cpu_count).">
-                Max Task Concurrency
-              </Label>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <NumericStepper
-                  value={wm.maxTaskConcurrency != null ? wm.maxTaskConcurrency : -1}
-                  onChange={(v) => set("maxTaskConcurrency", v)}
-                  min={-1}
-                />
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>(-1 = no limit)</span>
-              </div>
-            </div>
-          )}
-        </>
-      )}
     </div>
   );
 }
@@ -632,13 +549,7 @@ function DeploymentCard({ state, onDownload, keyMaterial, isRunning }) {
         animation: "fadeSlideIn 0.3s ease",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center" }}>
         <div
           style={{
             fontSize: 11,
@@ -648,22 +559,6 @@ function DeploymentCard({ state, onDownload, keyMaterial, isRunning }) {
         >
           Active Deployment
         </div>
-        <button
-          onClick={onDownload}
-          style={{
-            background: "none",
-            border: "1px solid var(--border-accent)",
-            borderRadius: 3,
-            color: "var(--text-muted)",
-            fontFamily: "inherit",
-            fontSize: 10,
-            padding: "3px 9px",
-            cursor: "pointer",
-            letterSpacing: "0.05em",
-          }}
-        >
-          ↓ State JSON
-        </button>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1045,7 +940,7 @@ function App() {
       id: "wm-1",
       type: "orb_aws_ec2",
       instanceType: "t3.medium",
-      capMode: "instances",
+      capMode: "budget",
       instanceCap: 4,
       budgetCap: 10,
       requirements: "opengris-scaler[all]",
@@ -1176,7 +1071,7 @@ function App() {
         id: newId,
         type: "orb_aws_ec2",
         instanceType: "t3.medium",
-        capMode: "instances",
+        capMode: "budget",
         instanceCap: 4,
         budgetCap: 10,
         requirements: "opengris-scaler[all]",
@@ -1389,29 +1284,6 @@ function App() {
     } catch (_) {}
   }, []);
 
-  const handleLoadState = useCallback(
-    (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        try {
-          const state = JSON.parse(ev.target.result);
-          savePartial(state);
-          setLog([]);
-          try {
-            localStorage.removeItem("scaler_log");
-          } catch (_) {}
-          setPhase("ready");
-        } catch {
-          alert("Invalid state file — expected JSON from a previous provision run.");
-        }
-      };
-      reader.readAsText(file);
-      e.target.value = "";
-    },
-    [savePartial],
-  );
 
   const Label = ({ children, help }) => (
     <div
@@ -1490,7 +1362,7 @@ function App() {
       }}
     >
       <span>{label}</span>
-      <span style={{ fontSize: 11 }}>{show ? "▴" : "▾"}</span>
+      <span style={{ display: "inline-block", width: 7, height: 7, borderRight: "1.5px solid var(--text-muted)", borderBottom: "1.5px solid var(--text-muted)", transform: show ? "rotate(225deg)" : "rotate(45deg)", position: "relative", top: show ? "2px" : "-2px" }} />
     </button>
   );
 
@@ -1787,8 +1659,8 @@ function App() {
                       lineHeight: 1.5,
                     }}
                   >
-                    Your credentials are never stored anywhere and never leave your machine. All API calls are made
-                    directly from your browser.
+                    Your credentials are used from this browser to provision AWS resources and are made available to
+                    the scheduler instance for worker management. They are not stored by this application.
                   </span>
                 </div>
               </PanelBox>
@@ -1797,7 +1669,7 @@ function App() {
                 <div>
                   <Label
                     help={
-                      "WebSocket — connect to your cluster from a browser or any WebSocket client. Requires YMQ.\n---\nTCP — direct socket connection; slightly lower overhead. Works with YMQ or ZMQ."
+                      "WebSocket — connect to your cluster from a browser or any WebSocket client.\n---\nTCP — direct socket connection; slightly lower overhead."
                     }
                   >
                     Transport Protocol
@@ -1808,30 +1680,7 @@ function App() {
                       ["tcp", "TCP"],
                     ]}
                     value={transport}
-                    onSelect={(v) => {
-                      setTransport(v);
-                      if (v === "ws") setNetBack("ymq");
-                    }}
-                  />
-                </div>
-                <div>
-                  <Label
-                    help={
-                      "YMQ — OpenGRIS's built-in high-performance networking layer. Required for WebSocket connections. Recommended.\n---\nZMQ — industry-standard messaging library. TCP only. Use if you need ZMQ compatibility."
-                    }
-                  >
-                    Network Backend
-                  </Label>
-                  <TogglePair
-                    options={[
-                      ["ymq", "YMQ"],
-                      ["zmq", "ZMQ", transport === "ws"],
-                    ]}
-                    value={networkBackend}
-                    onSelect={(v) => {
-                      setNetBack(v);
-                      if (v === "zmq") setTransport("tcp");
-                    }}
+                    onSelect={setTransport}
                   />
                 </div>
                 <div>
@@ -1952,86 +1801,61 @@ function App() {
                 }}
               >
                 <PanelBox title="Policy">
-                  <div>
-                    <Label help="Policy engine that controls task allocation and worker scaling.">Engine</Label>
-                    <select
-                      disabled
-                      style={{
-                        width: "100%",
-                        background: "var(--bg-surface)",
-                        border: "1px solid var(--border-accent)",
-                        borderRadius: 3,
-                        padding: "7px 10px",
-                        color: "var(--text-primary)",
-                        fontFamily: "inherit",
-                        fontSize: 12,
-                        outline: "none",
-                      }}
-                    >
-                      <option value="simple">simple</option>
-                      <option value="waterfall_v1">waterfall_v1</option>
-                    </select>
-                  </div>
-                  <div>
-                    <Label help="How tasks are assigned to workers. even_load distributes work evenly; capability routes tasks to workers that advertise matching capabilities.">
-                      Allocate
-                    </Label>
-                    <select
-                      disabled
-                      style={{
-                        width: "100%",
-                        background: "var(--bg-surface)",
-                        border: "1px solid var(--border-accent)",
-                        borderRadius: 3,
-                        padding: "7px 10px",
-                        color: "var(--text-primary)",
-                        fontFamily: "inherit",
-                        fontSize: 12,
-                        outline: "none",
-                      }}
-                    >
-                      <option value="even_load">even_load</option>
-                      <option value="capability">capability</option>
-                    </select>
-                  </div>
-                  <div>
-                    <Label help="How the scheduler scales worker counts up or down. vanilla uses a task-to-worker ratio; capability scales per-capability group; no disables autoscaling.">
-                      Scaling
-                    </Label>
-                    <select
-                      disabled
-                      style={{
-                        width: "100%",
-                        background: "var(--bg-surface)",
-                        border: "1px solid var(--border-accent)",
-                        borderRadius: 3,
-                        padding: "7px 10px",
-                        color: "var(--text-primary)",
-                        fontFamily: "inherit",
-                        fontSize: 12,
-                        outline: "none",
-                      }}
-                    >
-                      <option value="vanilla">vanilla</option>
-                      <option value="no">no</option>
-                      <option value="capability">capability</option>
-                    </select>
-                  </div>
+                  {[
+                    { label: "Engine", help: "Policy engine that controls task allocation and worker scaling.", options: ["simple", "waterfall_v1"] },
+                    { label: "Allocate", help: "How tasks are assigned to workers. even_load distributes work evenly; capability routes tasks to workers that advertise matching capabilities.", options: ["even_load", "capability"] },
+                    { label: "Scaling", help: "How the scheduler scales worker counts up or down. vanilla uses a task-to-worker ratio; capability scales per-capability group; no disables autoscaling.", options: ["vanilla", "no", "capability"] },
+                  ].map(({ label, help, options }) => (
+                    <div key={label}>
+                      <Label help={help}>{label}</Label>
+                      <div style={{ position: "relative" }}>
+                        <select
+                          disabled
+                          style={{
+                            width: "100%",
+                            background: "var(--bg-surface)",
+                            border: "1px solid var(--border-accent)",
+                            borderRadius: 3,
+                            padding: "7px 28px 7px 10px",
+                            color: "var(--text-primary)",
+                            fontFamily: "inherit",
+                            fontSize: 12,
+                            outline: "none",
+                            appearance: "none",
+                            WebkitAppearance: "none",
+                          }}
+                        >
+                          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                        <span style={{
+                          position: "absolute",
+                          right: 10,
+                          top: "50%",
+                          display: "block",
+                          width: 7,
+                          height: 7,
+                          borderRight: "1.5px solid var(--text-muted)",
+                          borderBottom: "1.5px solid var(--text-muted)",
+                          transform: "rotate(45deg)",
+                          marginTop: "-5px",
+                          pointerEvents: "none",
+                        }} />
+                      </div>
+                    </div>
+                  ))}
                 </PanelBox>
               </div>
             </div>
 
             {/* Column 3: Worker Managers + Cost Summary */}
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <PanelBox title={`Worker Managers (${workerManagers.length})`} style={{ gap: 8, padding: "16px 22px 0" }}>
+              <PanelBox title={`Worker Managers (${workerManagers.length})`} style={{ gap: 8, padding: "16px 22px" }}>
                 <div
                   style={{
                     display: "flex",
                     marginLeft: -22,
                     marginRight: -22,
                     borderTop: "1px solid var(--border-accent)",
-                    height: 360,
-                    overflow: "hidden",
                   }}
                 >
                   {/* vertical tab list */}
@@ -2043,35 +1867,88 @@ function App() {
                       flexDirection: "column",
                       flexShrink: 0,
                       overflowY: "auto",
+                      maxHeight: 420,
+                      alignSelf: "flex-start",
                     }}
                   >
                     {workerManagers.map((wm) => (
-                      <button
+                      <div
                         key={wm.id}
-                        title={wm.id}
-                        onClick={() => setSelectedWmId(wm.id)}
                         style={{
+                          display: "flex",
+                          alignItems: "stretch",
                           background: selectedWmId === wm.id ? "rgba(0,200,224,0.1)" : "transparent",
                           borderLeft: selectedWmId === wm.id ? "2px solid var(--tab-active)" : "2px solid transparent",
-                          borderRight: "none",
-                          borderTop: "none",
                           borderBottom: "1px solid rgba(255,255,255,0.04)",
-                          color: selectedWmId === wm.id ? "var(--text-accent)" : "var(--text-muted)",
-                          fontFamily: "inherit",
-                          fontSize: 10,
-                          padding: "10px 10px",
-                          textAlign: "left",
-                          cursor: "pointer",
-                          letterSpacing: "0.05em",
-                          transition: "background 0.12s, color 0.12s",
-                          width: "100%",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
+                          transition: "background 0.12s",
                         }}
                       >
-                        {wm.id}
-                      </button>
+                        <button
+                          title={wm.id}
+                          onClick={() => setSelectedWmId(wm.id)}
+                          style={{
+                            flex: 1,
+                            background: "transparent",
+                            border: "none",
+                            color: selectedWmId === wm.id ? "var(--text-accent)" : "var(--text-muted)",
+                            fontFamily: "inherit",
+                            fontSize: 10,
+                            padding: "10px 6px 10px 10px",
+                            textAlign: "left",
+                            cursor: "pointer",
+                            letterSpacing: "0.05em",
+                            transition: "color 0.12s",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            minWidth: 0,
+                          }}
+                        >
+                          {wm.id}
+                        </button>
+                        {workerManagers.length > 1 && (
+                          <button
+                            onClick={() => removeWorkerManager(wm.id)}
+                            title="Remove"
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              color: "var(--text-muted)",
+                              fontFamily: "inherit",
+                              fontSize: 9,
+                              padding: 0,
+                              margin: "0 7px",
+                              cursor: "pointer",
+                              flexShrink: 0,
+                              alignSelf: "center",
+                              display: "flex",
+                              alignItems: "center",
+                              transition: "color 0.12s",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.color = "var(--text-danger)";
+                              e.currentTarget.querySelector("span").style.borderColor = "var(--border-danger)";
+                              e.currentTarget.querySelector("span").style.background = "rgba(229,72,77,0.08)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.color = "var(--text-muted)";
+                              e.currentTarget.querySelector("span").style.borderColor = "var(--border-accent)";
+                              e.currentTarget.querySelector("span").style.background = "transparent";
+                            }}
+                          >
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: 14,
+                              height: 14,
+                              border: "1px solid var(--border-accent)",
+                              borderRadius: 2,
+                              transition: "border-color 0.12s, background 0.12s",
+                            }}>✕</span>
+                          </button>
+                        )}
+                      </div>
                     ))}
                     <button
                       onClick={addWorkerManager}
@@ -2102,7 +1979,7 @@ function App() {
                     </button>
                   </div>
                   {/* selected card */}
-                  <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
+                  <div style={{ flex: 1, padding: "14px 16px" }}>
                     {workerManagers
                       .filter((wm) => wm.id === selectedWmId)
                       .map((wm) => (
@@ -2234,29 +2111,8 @@ function App() {
             </div>
           </div>
 
-          {/* Load state / download config links (idle only) */}
           {phase === "idle" && (
             <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-              <label
-                style={{
-                  fontSize: 10,
-                  color: "var(--text-accent)",
-                  cursor: "pointer",
-                  textDecoration: "underline",
-                  textDecorationColor: "var(--border-accent)",
-                }}
-              >
-                Load state from file
-                <input type="file" accept=".json" onChange={handleLoadState} style={{ display: "none" }} />
-              </label>
-              <span
-                style={{
-                  width: 1,
-                  height: 12,
-                  background: "var(--text-muted)",
-                  display: "inline-block",
-                }}
-              />
               <button
                 onClick={handleDownloadConfig}
                 style={{

@@ -135,7 +135,7 @@ function RegionSelect({ value, onChange }) {
             </span>
           )}
         </span>
-        <span style={{ color: "var(--text-muted)", fontSize: 10, flexShrink: 0 }}>{open ? "▲" : "▼"}</span>
+        <span style={{ display: "inline-block", width: 7, height: 7, borderRight: "1.5px solid var(--text-muted)", borderBottom: "1.5px solid var(--text-muted)", transform: open ? "rotate(225deg)" : "rotate(45deg)", position: "relative", top: open ? "2px" : "-2px", flexShrink: 0 }} />
       </button>
       {open &&
         ReactDOM.createPortal(
@@ -635,7 +635,7 @@ function InstancePicker({ value, onChange, defaultCat = "gpu" }) {
             USD {selected.price.toFixed(2)}/h
           </span>
         )}
-        <span style={{ color: "var(--text-muted)", fontSize: 10 }}>{open ? "▲" : "▼"}</span>
+        <span style={{ display: "inline-block", width: 7, height: 7, borderRight: "1.5px solid var(--text-muted)", borderBottom: "1.5px solid var(--text-muted)", transform: open ? "rotate(225deg)" : "rotate(45deg)", position: "relative", top: open ? "2px" : "-2px", flexShrink: 0 }} />
       </button>
       {open && ReactDOM.createPortal(dropdown, document.body)}
     </div>
@@ -1383,32 +1383,26 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
 const WM_TYPE_DEFS = [
   {
     value: "orb_aws_ec2",
-    label: "ORB / AWS EC2",
-    badge: "EC2",
+    label: "AWS EC2",
+    badge: "AWS",
     desc: "Managed EC2 instances via ORB worker manager",
   },
   {
     value: "aws_raw_ecs",
     label: "AWS ECS",
-    badge: "ECS",
+    badge: "AWS",
     desc: "Container tasks on Elastic Container Service",
   },
   {
     value: "aws_hpc",
-    label: "AWS Batch (HPC)",
-    badge: "HPC",
+    label: "AWS Batch",
+    badge: "AWS",
     desc: "High-performance compute via AWS Batch",
-  },
-  {
-    value: "baremetal_native",
-    label: "Bare Metal",
-    badge: "BARE",
-    desc: "Directly attached bare-metal workers",
   },
   {
     value: "symphony",
     label: "IBM Spectrum Symphony",
-    badge: "SYM",
+    badge: "IBM",
     desc: "IBM Spectrum Symphony grid via soamapi",
   },
   {
@@ -1513,7 +1507,7 @@ function WorkerManagerTypeSelect({ value, onChange }) {
             {selected ? selected.label : "Select type…"}
           </span>
         </span>
-        <span style={{ color: "var(--text-muted)", fontSize: 9, flexShrink: 0 }}>{open ? "▲" : "▼"}</span>
+        <span style={{ display: "inline-block", width: 7, height: 7, borderRight: "1.5px solid var(--text-muted)", borderBottom: "1.5px solid var(--text-muted)", transform: open ? "rotate(225deg)" : "rotate(45deg)", position: "relative", top: open ? "2px" : "-2px", flexShrink: 0 }} />
       </button>
       {open &&
         ReactDOM.createPortal(
