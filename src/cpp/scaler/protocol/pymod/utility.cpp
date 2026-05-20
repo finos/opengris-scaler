@@ -152,41 +152,6 @@ constexpr const char* CAPNP_TRAVERSAL_LIMIT_ATTR = "_capnp_traversal_limit_in_wo
 constexpr const char* CAPNP_ROOT_SCHEMA_ID_ATTR  = "_capnp_root_schema_node_id";
 constexpr const char* CAPNP_PATH_ATTR            = "_capnp_path";
 
-OwnedPyObject<> append_path_item(PyObject* path, PyObject* item)
-{
-    Py_ssize_t n = PyTuple_GET_SIZE(path);
-    OwnedPyObject<> new_path {PyTuple_New(n + 1)};
-    if (!new_path) {
-        return {};
-    }
-    for (Py_ssize_t i = 0; i < n; ++i) {
-        PyObject* existing = PyTuple_GET_ITEM(path, i);
-        Py_INCREF(existing);
-        PyTuple_SET_ITEM(new_path.get(), i, existing);
-    }
-    Py_INCREF(item);
-    PyTuple_SET_ITEM(new_path.get(), n, item);
-    return new_path;
-}
-
-OwnedPyObject<> append_path_field(PyObject* path, const char* field_name)
-{
-    OwnedPyObject<> item {PyUnicode_FromString(field_name)};
-    if (!item) {
-        return {};
-    }
-    return append_path_item(path, item.get());
-}
-
-OwnedPyObject<> append_path_index(PyObject* path, Py_ssize_t index)
-{
-    OwnedPyObject<> item {PyLong_FromSsize_t(index)};
-    if (!item) {
-        return {};
-    }
-    return append_path_item(path, item.get());
-}
-
 OwnedPyObject<> create_lazy_struct_object(
     PyObject* type_object,
     PyObject* source,
@@ -394,7 +359,15 @@ OwnedPyObject<> load_struct_field(PyObject* self, const char* name)
                 }
             }
 
-            OwnedPyObject<> field_path {append_path_field(path, name)};
+            OwnedPyObject<> field_item {PyUnicode_FromString(name)};
+            if (!field_item) {
+                return nullptr;
+            }
+            OwnedPyObject<> field_tail {PyTuple_Pack(1, field_item.get())};
+            if (!field_tail) {
+                return nullptr;
+            }
+            OwnedPyObject<> field_path {PySequence_Concat(path, field_tail.get())};
             if (!field_path) {
                 return nullptr;
             }
@@ -821,7 +794,15 @@ OwnedPyObject<> dynamic_value_to_py_object(
             }
             auto element_type = type.asList().getElementType();
             for (DynamicListIndex index = 0; index < list_reader.size(); ++index) {
-                OwnedPyObject<> item_path {append_path_index(path, static_cast<Py_ssize_t>(index))};
+                OwnedPyObject<> index_item {PyLong_FromSsize_t(static_cast<Py_ssize_t>(index))};
+                if (!index_item) {
+                    return nullptr;
+                }
+                OwnedPyObject<> index_tail {PyTuple_Pack(1, index_item.get())};
+                if (!index_tail) {
+                    return nullptr;
+                }
+                OwnedPyObject<> item_path {PySequence_Concat(path, index_tail.get())};
                 if (!item_path) {
                     return nullptr;
                 }
