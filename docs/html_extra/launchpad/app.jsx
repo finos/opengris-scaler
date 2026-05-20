@@ -973,57 +973,60 @@ function TopNav({
         style={{ height: 34, marginRight: 28, flexShrink: 0 }}
       />
       <div style={{ display: "flex", flex: 1 }}>
-        {tabs
-          .filter((t) => !t.postLaunch || showPostLaunch)
-          .map((t) =>
-            t.isLink ? (
-              <a
-                key={t.id}
-                href={t.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  padding: "14px 18px",
-                  background: "transparent",
-                  border: "none",
-                  borderBottom: "2px solid transparent",
-                  color: t.href ? "var(--text-muted)" : "var(--text-dim)",
-                  fontFamily: "inherit",
-                  fontSize: 12,
-                  cursor: t.href ? "pointer" : "default",
-                  textDecoration: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  pointerEvents: t.href ? undefined : "none",
-                }}
-              >
-                {t.label} ↗
-              </a>
-            ) : (
-              <button
-                key={t.id}
-                onClick={() => setActiveTab(t.id)}
-                style={{
-                  padding: "14px 18px",
-                  background: "transparent",
-                  border: "none",
-                  borderBottom:
-                    activeTab === t.id
-                      ? "2px solid var(--tab-active)"
-                      : "2px solid transparent",
-                  color:
-                    activeTab === t.id
-                      ? "var(--text-accent)"
-                      : "var(--text-muted)",
-                  fontFamily: "inherit",
-                  fontSize: 12,
-                  cursor: "pointer",
-                }}
-              >
-                {t.label}
-              </button>
-            ),
-          )}
+        {tabs.map((t) => {
+          const disabled = t.postLaunch && !showPostLaunch;
+          return t.isLink ? (
+            <a
+              key={t.id}
+              href={disabled ? undefined : t.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: "14px 18px",
+                background: "transparent",
+                border: "none",
+                borderBottom: "2px solid transparent",
+                color:
+                  disabled || !t.href ? "var(--text-dim)" : "var(--text-muted)",
+                fontFamily: "inherit",
+                fontSize: 12,
+                cursor: disabled || !t.href ? "default" : "pointer",
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                pointerEvents: disabled || !t.href ? "none" : undefined,
+                opacity: disabled ? 0.4 : 1,
+              }}
+            >
+              {t.label} ↗
+            </a>
+          ) : (
+            <button
+              key={t.id}
+              onClick={() => !disabled && setActiveTab(t.id)}
+              style={{
+                padding: "14px 18px",
+                background: "transparent",
+                border: "none",
+                borderBottom:
+                  activeTab === t.id
+                    ? "2px solid var(--tab-active)"
+                    : "2px solid transparent",
+                color: disabled
+                  ? "var(--text-dim)"
+                  : activeTab === t.id
+                    ? "var(--text-accent)"
+                    : "var(--text-muted)",
+                fontFamily: "inherit",
+                fontSize: 12,
+                cursor: disabled ? "default" : "pointer",
+                opacity: disabled ? 0.4 : 1,
+              }}
+            >
+              {t.label}
+            </button>
+          );
+        })}
       </div>
       {launchControl && <div style={{ marginRight: 16 }}>{launchControl}</div>}
       <label
