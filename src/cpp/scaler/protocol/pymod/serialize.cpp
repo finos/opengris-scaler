@@ -29,6 +29,41 @@ OwnedPyObject<> builder_to_bytes(capnp::MessageBuilder& builder)
         PyBytes_FromStringAndSize(reinterpret_cast<const char*>(bytes.begin()), static_cast<Py_ssize_t>(bytes.size()))};
 }
 
+OwnedPyObject<> read_struct_from_buffer(
+    Py_buffer& buffer, PyObject* data, capnp::StructSchema schema, unsigned long long traversal_limit)
+{
+    capnp::ReaderOptions options;
+    options.traversalLimitInWords = traversal_limit;
+    auto words                    = kj::arrayPtr(
+        reinterpret_cast<const capnp::word*>(buffer.buf), static_cast<size_t>(buffer.len) / sizeof(capnp::word));
+    try {
+        capnp::FlatArrayMessageReader reader(words, options);
+        auto root = reader.getRoot<capnp::DynamicStruct>(schema);
+        OwnedPyObject<> source {PyMemoryView_FromObject(data)};
+        OwnedPyObject<> path {PyTuple_New(0)};
+        if (!source || !path) {
+            PyBuffer_Release(&buffer);
+            return {};
+        }
+        OwnedPyObject<> result {dynamic_value_to_py_object(
+            root, schema, source.get(), traversal_limit, schema.getProto().getId(), path.get())};
+        PyBuffer_Release(&buffer);
+        return result;
+    } catch (const kj::Exception& e) {
+        PyBuffer_Release(&buffer);
+        if (!PyErr_Occurred()) {
+            PyErr_SetString(PyExc_RuntimeError, e.getDescription().cStr());
+        }
+        return {};
+    } catch (const std::exception& e) {
+        PyBuffer_Release(&buffer);
+        if (!PyErr_Occurred()) {
+            PyErr_SetString(PyExc_RuntimeError, e.what());
+        }
+        return {};
+    }
+}
+
 }  // namespace
 
 OwnedPyObject<> message_to_bytes(const char* variant_name, PyObject* inner)
@@ -67,37 +102,8 @@ OwnedPyObject<> message_from_bytes(PyObject* data, unsigned long long traversal_
         return {};
     }
 
-    capnp::ReaderOptions options;
-    options.traversalLimitInWords = traversal_limit;
-    auto words                    = kj::arrayPtr(
-        reinterpret_cast<const capnp::word*>(buffer.buf), static_cast<size_t>(buffer.len) / sizeof(capnp::word));
-    try {
-        capnp::FlatArrayMessageReader reader(words, options);
-        auto message_schema = capnp::Schema::from<scaler::protocol::Message>().asStruct();
-        auto root           = reader.getRoot<capnp::DynamicStruct>(message_schema);
-        OwnedPyObject<> source {PyMemoryView_FromObject(data)};
-        OwnedPyObject<> path {PyTuple_New(0)};
-        if (!source || !path) {
-            PyBuffer_Release(&buffer);
-            return {};
-        }
-        OwnedPyObject<> result {dynamic_value_to_py_object(
-            root, message_schema, source.get(), traversal_limit, message_schema.getProto().getId(), path.get())};
-        PyBuffer_Release(&buffer);
-        return result;
-    } catch (const kj::Exception& e) {
-        PyBuffer_Release(&buffer);
-        if (!PyErr_Occurred()) {
-            PyErr_SetString(PyExc_RuntimeError, e.getDescription().cStr());
-        }
-        return {};
-    } catch (const std::exception& e) {
-        PyBuffer_Release(&buffer);
-        if (!PyErr_Occurred()) {
-            PyErr_SetString(PyExc_RuntimeError, e.what());
-        }
-        return {};
-    }
+    return read_struct_from_buffer(
+        buffer, data, capnp::Schema::from<scaler::protocol::Message>().asStruct(), traversal_limit);
 }
 
 OwnedPyObject<> struct_to_bytes(const char* type_name, PyObject* obj)
@@ -151,36 +157,7 @@ OwnedPyObject<> struct_from_bytes(const char* type_name, PyObject* data, unsigne
         return {};
     }
 
-    capnp::ReaderOptions options;
-    options.traversalLimitInWords = traversal_limit;
-    auto words                    = kj::arrayPtr(
-        reinterpret_cast<const capnp::word*>(buffer.buf), static_cast<size_t>(buffer.len) / sizeof(capnp::word));
-    try {
-        capnp::FlatArrayMessageReader reader(words, options);
-        auto root = reader.getRoot<capnp::DynamicStruct>(schema);
-        OwnedPyObject<> source {PyMemoryView_FromObject(data)};
-        OwnedPyObject<> path {PyTuple_New(0)};
-        if (!source || !path) {
-            PyBuffer_Release(&buffer);
-            return {};
-        }
-        OwnedPyObject<> result {dynamic_value_to_py_object(
-            root, schema, source.get(), traversal_limit, schema.getProto().getId(), path.get())};
-        PyBuffer_Release(&buffer);
-        return result;
-    } catch (const kj::Exception& e) {
-        PyBuffer_Release(&buffer);
-        if (!PyErr_Occurred()) {
-            PyErr_SetString(PyExc_RuntimeError, e.getDescription().cStr());
-        }
-        return {};
-    } catch (const std::exception& e) {
-        PyBuffer_Release(&buffer);
-        if (!PyErr_Occurred()) {
-            PyErr_SetString(PyExc_RuntimeError, e.what());
-        }
-        return {};
-    }
+    return read_struct_from_buffer(buffer, data, schema, traversal_limit);
 }
 
 }  // namespace scaler::protocol::pymod
