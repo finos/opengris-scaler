@@ -1,7 +1,14 @@
 const { useState, useEffect, useCallback, useRef } = React;
 
 /* ── NumericStepper ── */
-function NumericStepper({ value, onChange, min = 0, max = Infinity, step = 1, width = 56 }) {
+function NumericStepper({
+  value,
+  onChange,
+  min = 0,
+  max = Infinity,
+  step = 1,
+  width = 56,
+}) {
   const [hov, setHov] = useState(null);
   const [localValue, setLocalValue] = useState(null);
   const btnStyle = (side) => ({
@@ -120,7 +127,14 @@ function PanelBox({ title, children, style }) {
 }
 
 /* ── WorkerManagerCard ── */
-function WorkerManagerCard({ wm, onChange, onRemove, allInstances, canRemove, fullWidth }) {
+function WorkerManagerCard({
+  wm,
+  onChange,
+  onRemove,
+  allInstances,
+  canRemove,
+  fullWidth,
+}) {
   const [localId, setLocalId] = useState(wm.id);
   const [showAdv, setShowAdv] = useState(false);
   useEffect(() => {
@@ -177,7 +191,11 @@ function WorkerManagerCard({ wm, onChange, onRemove, allInstances, canRemove, fu
             cursor: disabled ? "not-allowed" : "pointer",
             border: "none",
             background: value === val ? "rgba(0,200,224,0.18)" : "transparent",
-            color: disabled ? "var(--text-dim)" : value === val ? "var(--text-accent)" : "var(--text-muted)",
+            color: disabled
+              ? "var(--text-dim)"
+              : value === val
+                ? "var(--text-accent)"
+                : "var(--text-muted)",
             transition: "background 0.15s, color 0.15s",
           }}
         >
@@ -210,9 +228,14 @@ function WorkerManagerCard({ wm, onChange, onRemove, allInstances, canRemove, fu
       <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <Label>Type</Label>
-          <WorkerManagerTypeSelect value={wm.type} onChange={(v) => set("type", v)} />
+          <WorkerManagerTypeSelect
+            value={wm.type}
+            onChange={(v) => set("type", v)}
+          />
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
+        <div
+          style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}
+        >
           <Label help="Unique name for this worker manager.">Name</Label>
           <input
             value={localId}
@@ -243,7 +266,11 @@ function WorkerManagerCard({ wm, onChange, onRemove, allInstances, canRemove, fu
         <>
           <div>
             <Label>Worker Instance Type</Label>
-            <InstancePicker value={wm.instanceType} onChange={(v) => set("instanceType", v)} defaultCat="all" />
+            <InstancePicker
+              value={wm.instanceType}
+              onChange={(v) => set("instanceType", v)}
+              defaultCat="all"
+            />
           </div>
           <div>
             <Label>Budget</Label>
@@ -302,11 +329,26 @@ function WorkerManagerCard({ wm, onChange, onRemove, allInstances, canRemove, fu
             }}
           >
             <span>Advanced</span>
-            <span style={{ display: "inline-block", width: 7, height: 7, borderRight: "1.5px solid var(--text-muted)", borderBottom: "1.5px solid var(--text-muted)", transform: showAdv ? "rotate(225deg)" : "rotate(45deg)", position: "relative", top: showAdv ? "2px" : "-2px" }} />
+            <span
+              style={{
+                display: "inline-block",
+                width: 7,
+                height: 7,
+                borderRight: "1.5px solid var(--text-muted)",
+                borderBottom: "1.5px solid var(--text-muted)",
+                transform: showAdv ? "rotate(225deg)" : "rotate(45deg)",
+                position: "relative",
+                top: showAdv ? "2px" : "-2px",
+              }}
+            />
           </button>
           {showAdv && (
             <div>
-              <Label help={"- Installed on each worker instance\n- opengris-scaler must be included"}>
+              <Label
+                help={
+                  "- Installed on each worker instance\n- opengris-scaler must be included"
+                }
+              >
                 requirements.txt
               </Label>
               <textarea
@@ -340,8 +382,16 @@ function WorkerManagerCard({ wm, onChange, onRemove, allInstances, canRemove, fu
               alignItems: "baseline",
             }}
           >
-            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Cost</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-success)" }}>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+              Cost
+            </span>
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--text-success)",
+              }}
+            >
               USD {costPerHr.toFixed(2)}/h
             </span>
           </div>
@@ -390,7 +440,12 @@ function WorkerManagerCard({ wm, onChange, onRemove, allInstances, canRemove, fu
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 1 }}>
               <Label>vCPU</Label>
-              <NumericStepper value={wm.ecsTaskCpu || 4} onChange={(v) => set("ecsTaskCpu", v)} min={1} max={64} />
+              <NumericStepper
+                value={wm.ecsTaskCpu || 4}
+                onChange={(v) => set("ecsTaskCpu", v)}
+                min={1}
+                max={64}
+              />
             </div>
             <div style={{ flex: 1 }}>
               <Label>Memory (GB)</Label>
@@ -481,7 +536,6 @@ function WorkerManagerCard({ wm, onChange, onRemove, allInstances, canRemove, fu
           </div>
         </>
       )}
-
     </div>
   );
 }
@@ -503,9 +557,18 @@ function CopyBtn({ value }) {
       style={{
         background: hov && !copied ? "rgba(0,200,224,0.08)" : "none",
         border:
-          "1px solid " + (copied ? "var(--border-success)" : hov ? "var(--border-strong)" : "var(--border-accent)"),
+          "1px solid " +
+          (copied
+            ? "var(--border-success)"
+            : hov
+              ? "var(--border-strong)"
+              : "var(--border-accent)"),
         borderRadius: 3,
-        color: copied ? "var(--text-success)" : hov ? "var(--text-accent)" : "var(--text-muted)",
+        color: copied
+          ? "var(--text-success)"
+          : hov
+            ? "var(--text-accent)"
+            : "var(--text-muted)",
         fontFamily: "inherit",
         fontSize: 10,
         padding: "2px 7px",
@@ -530,7 +593,12 @@ function DeploymentCard({ state, onDownload, keyMaterial, isRunning }) {
     {
       label: "SSH",
       value: state.public_ip
-        ? "chmod 400 " + state.key_file + " &&\nssh -i " + state.key_file + " ec2-user@" + state.public_ip
+        ? "chmod 400 " +
+          state.key_file +
+          " &&\nssh -i " +
+          state.key_file +
+          " ec2-user@" +
+          state.public_ip
         : null,
       code: true,
     },
@@ -669,7 +737,9 @@ function DeploymentCard({ state, onDownload, keyMaterial, isRunning }) {
           </span>
           {keyMaterial ? (
             <button
-              onClick={() => downloadText(keyMaterial.name + ".pem", keyMaterial.mat)}
+              onClick={() =>
+                downloadText(keyMaterial.name + ".pem", keyMaterial.mat)
+              }
               style={{
                 background: "none",
                 border: "1px solid var(--border-accent)",
@@ -685,11 +755,23 @@ function DeploymentCard({ state, onDownload, keyMaterial, isRunning }) {
               ↓ {keyMaterial.name}.pem
             </button>
           ) : isRunning ? (
-            <span style={{ fontSize: 12, color: "var(--text-dim)", fontStyle: "italic" }}>
+            <span
+              style={{
+                fontSize: 12,
+                color: "var(--text-dim)",
+                fontStyle: "italic",
+              }}
+            >
               pending…
             </span>
           ) : (
-            <span style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--text-dim)",
+                lineHeight: 1.5,
+              }}
+            >
               not saved — download during provisioning
               <br />
               or retrieve from the AWS console
@@ -703,26 +785,60 @@ function DeploymentCard({ state, onDownload, keyMaterial, isRunning }) {
 
 /* ── Python syntax highlighter (theme-aware, no external deps) ── */
 const PY_KEYWORDS = new Set([
-  "False", "None", "True", "and", "as", "assert", "async", "await",
-  "break", "class", "continue", "def", "del", "elif", "else", "except",
-  "finally", "for", "from", "global", "if", "import", "in", "is",
-  "lambda", "nonlocal", "not", "or", "pass", "raise", "return", "try",
-  "while", "with", "yield",
+  "False",
+  "None",
+  "True",
+  "and",
+  "as",
+  "assert",
+  "async",
+  "await",
+  "break",
+  "class",
+  "continue",
+  "def",
+  "del",
+  "elif",
+  "else",
+  "except",
+  "finally",
+  "for",
+  "from",
+  "global",
+  "if",
+  "import",
+  "in",
+  "is",
+  "lambda",
+  "nonlocal",
+  "not",
+  "or",
+  "pass",
+  "raise",
+  "return",
+  "try",
+  "while",
+  "with",
+  "yield",
 ]);
 
 function tokenizePython(code) {
   const tokens = [];
-  const re = /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(\b\d+(?:\.\d+)?\b)|([A-Za-z_]\w*)(\s*\()?|(\s+|[^\w\s#"']+)/g;
+  const re =
+    /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(\b\d+(?:\.\d+)?\b)|([A-Za-z_]\w*)(\s*\()?|(\s+|[^\w\s#"']+)/g;
   let m;
   while ((m = re.exec(code)) !== null) {
-    if (m[1])       tokens.push({ text: m[1], color: "var(--text-dim)" });
-    else if (m[2])  tokens.push({ text: m[2], color: "var(--text-warning)" });
-    else if (m[3])  tokens.push({ text: m[3], color: "var(--text-danger)" });
+    if (m[1]) tokens.push({ text: m[1], color: "var(--text-dim)" });
+    else if (m[2]) tokens.push({ text: m[2], color: "var(--text-warning)" });
+    else if (m[3]) tokens.push({ text: m[3], color: "var(--text-danger)" });
     else if (m[4]) {
-      const word = m[4], call = m[5] || "";
+      const word = m[4],
+        call = m[5] || "";
       const color = PY_KEYWORDS.has(word)
         ? "var(--text-accent)"
-        : call ? "var(--text-success)" : "var(--text-primary)";
+        : call
+          ? "var(--text-success)"
+          : "var(--text-primary)";
       tokens.push({ text: word, color });
       if (call) tokens.push({ text: call, color: "var(--text-primary)" });
     } else {
@@ -750,7 +866,9 @@ function PyCode({ code }) {
       }}
     >
       {tokens.map((t, i) => (
-        <span key={i} style={{ color: t.color }}>{t.text}</span>
+        <span key={i} style={{ color: t.color }}>
+          {t.text}
+        </span>
       ))}
     </pre>
   );
@@ -788,7 +906,9 @@ with Client(address="${addr}") as client:
       </div>
       {ready ? (
         <>
-          <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>
+          <div
+            style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}
+          >
             Connect a client to your deployment and submit tasks:
           </div>
           <div style={{ position: "relative" }}>
@@ -799,7 +919,13 @@ with Client(address="${addr}") as client:
           </div>
         </>
       ) : (
-        <div style={{ fontSize: 11, color: "var(--text-dim)", fontStyle: "italic" }}>
+        <div
+          style={{
+            fontSize: 11,
+            color: "var(--text-dim)",
+            fontStyle: "italic",
+          }}
+        >
           Waiting for scheduler…
         </div>
       )}
@@ -808,13 +934,27 @@ with Client(address="${addr}") as client:
 }
 
 /* ── TopNav ── */
-function TopNav({ activeTab, setActiveTab, theme, setTheme, showPostLaunch, launchControl, guiAddress }) {
+function TopNav({
+  activeTab,
+  setActiveTab,
+  theme,
+  setTheme,
+  showPostLaunch,
+  launchControl,
+  guiAddress,
+}) {
   const tabs = [
     { id: "config", label: "Config" },
     { id: "deployment", label: "Deployment", postLaunch: true },
     { id: "logs", label: "Scheduler Logs", postLaunch: true },
     // { id: "gui", label: "GUI", postLaunch: true },
-    { id: "gui", label: "GUI", postLaunch: true, isLink: true, href: guiAddress },
+    {
+      id: "gui",
+      label: "GUI",
+      postLaunch: true,
+      isLink: true,
+      href: guiAddress,
+    },
   ];
   return (
     <div
@@ -867,8 +1007,14 @@ function TopNav({ activeTab, setActiveTab, theme, setTheme, showPostLaunch, laun
                   padding: "14px 18px",
                   background: "transparent",
                   border: "none",
-                  borderBottom: activeTab === t.id ? "2px solid var(--tab-active)" : "2px solid transparent",
-                  color: activeTab === t.id ? "var(--text-accent)" : "var(--text-muted)",
+                  borderBottom:
+                    activeTab === t.id
+                      ? "2px solid var(--tab-active)"
+                      : "2px solid transparent",
+                  color:
+                    activeTab === t.id
+                      ? "var(--text-accent)"
+                      : "var(--text-muted)",
                   fontFamily: "inherit",
                   fontSize: 12,
                   cursor: "pointer",
@@ -876,7 +1022,7 @@ function TopNav({ activeTab, setActiveTab, theme, setTheme, showPostLaunch, laun
               >
                 {t.label}
               </button>
-            )
+            ),
           )}
       </div>
       {launchControl && <div style={{ marginRight: 16 }}>{launchControl}</div>}
@@ -894,17 +1040,17 @@ function TopNav({ activeTab, setActiveTab, theme, setTheme, showPostLaunch, laun
           value={theme}
           onChange={(e) => setTheme(e.target.value)}
           style={{
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border-accent)",
-          borderRadius: 3,
-          color: "var(--text-secondary)",
-          fontFamily: "inherit",
-          fontSize: 10,
-          padding: "4px 8px",
-          cursor: "pointer",
-          outline: "none",
-        }}
-      >
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border-accent)",
+            borderRadius: 3,
+            color: "var(--text-secondary)",
+            fontFamily: "inherit",
+            fontSize: 10,
+            padding: "4px 8px",
+            cursor: "pointer",
+            outline: "none",
+          }}
+        >
           <option value="dark">Dark</option>
           <option value="light">Light</option>
           <option value="zenburn">Zenburn</option>
@@ -922,15 +1068,20 @@ function App() {
   const [transport, setTransport] = useState("ws");
   const [networkBackend, setNetBack] = useState("ymq");
   const [pythonVersion, setPyVer] = useState("3.14");
-  const [schedulerRequirements, setSchedulerReqs] = useState("opengris-scaler[all]");
+  const [schedulerRequirements, setSchedulerReqs] = useState(
+    "opengris-scaler[all]",
+  );
   const [schedulerType, setSchedulerType] = useState("c5.xlarge");
   const [schedulerPort, setSchedPort] = useState(6788);
   const [objectStoragePort, setObjPort] = useState(6789);
   const [showSchedAdv, setShowSchedAdv] = useState(false);
   const [activeTab, setActiveTab] = useState("config");
-  const [theme, setTheme] = useState(() =>
-    localStorage.getItem("launchpad-theme") ||
-    (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"),
+  const [theme, setTheme] = useState(
+    () =>
+      localStorage.getItem("launchpad-theme") ||
+      (window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light"),
   );
 
   const wmCounterRef = useRef(1);
@@ -1058,7 +1209,8 @@ function App() {
         : Math.max(0, Math.floor((wm.budgetCap || 0) / (inst.price || 1)));
     return count * inst.price;
   });
-  const totalCostPerHr = schedulerInst.price + wmCosts.reduce((a, b) => a + b, 0);
+  const totalCostPerHr =
+    schedulerInst.price + wmCosts.reduce((a, b) => a + b, 0);
 
   const addWorkerManager = useCallback(() => {
     wmCounterRef.current += 1;
@@ -1087,11 +1239,15 @@ function App() {
     });
   }, []);
   const updateWorkerManager = useCallback(
-    (id, updated) => setWorkerManagers((prev) => prev.map((wm) => (wm.id === id ? updated : wm))),
+    (id, updated) =>
+      setWorkerManagers((prev) =>
+        prev.map((wm) => (wm.id === id ? updated : wm)),
+      ),
     [],
   );
 
-  const hasCredentials = accessKeyId.trim().length > 0 && secretKey.trim().length > 0;
+  const hasCredentials =
+    accessKeyId.trim().length > 0 && secretKey.trim().length > 0;
 
   const monitorPort = schedulerPort + 2;
   const GUI_PORT = 50001;
@@ -1099,13 +1255,21 @@ function App() {
   if (schedulerPort === objectStoragePort)
     portConflicts.push("Scheduler port and object storage port must differ.");
   if (objectStoragePort === monitorPort)
-    portConflicts.push(`Object storage port conflicts with the monitor port (scheduler + 2 = ${monitorPort}).`);
+    portConflicts.push(
+      `Object storage port conflicts with the monitor port (scheduler + 2 = ${monitorPort}).`,
+    );
   if (schedulerPort === GUI_PORT)
-    portConflicts.push(`Scheduler port conflicts with the GUI port (${GUI_PORT}).`);
+    portConflicts.push(
+      `Scheduler port conflicts with the GUI port (${GUI_PORT}).`,
+    );
   if (objectStoragePort === GUI_PORT)
-    portConflicts.push(`Object storage port conflicts with the GUI port (${GUI_PORT}).`);
+    portConflicts.push(
+      `Object storage port conflicts with the GUI port (${GUI_PORT}).`,
+    );
   if (monitorPort === GUI_PORT)
-    portConflicts.push(`Monitor port (scheduler + 2 = ${monitorPort}) conflicts with the GUI port (${GUI_PORT}).`);
+    portConflicts.push(
+      `Monitor port (scheduler + 2 = ${monitorPort}) conflicts with the GUI port (${GUI_PORT}).`,
+    );
 
   const checks = [
     {
@@ -1219,7 +1383,9 @@ function App() {
           "• Key pair: " +
           (provState.key_pair_name || "—") +
           "\n" +
-          (provState.iam && provState.iam.created ? "• IAM role & profile\n" : "") +
+          (provState.iam && provState.iam.created
+            ? "• IAM role & profile\n"
+            : "") +
           "\nThis cannot be undone.",
       )
     )
@@ -1229,7 +1395,12 @@ function App() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      await teardown(provState, { accessKeyId, secretKey }, addLog, controller.signal);
+      await teardown(
+        provState,
+        { accessKeyId, secretKey },
+        addLog,
+        controller.signal,
+      );
       try {
         localStorage.removeItem("scaler_state");
         localStorage.removeItem("scaler_log");
@@ -1239,9 +1410,17 @@ function App() {
       setPhase("idle");
     } catch (err) {
       if (err.name === "AbortError") {
-        addLog("\nTeardown aborted. Some resources may still exist — run Destroy again to retry.", "warn");
+        addLog(
+          "\nTeardown aborted. Some resources may still exist — run Destroy again to retry.",
+          "warn",
+        );
       } else {
-        addLog("\nError during teardown: " + err.message + "\nFix the issue and run Destroy again to retry.", "err");
+        addLog(
+          "\nError during teardown: " +
+            err.message +
+            "\nFix the issue and run Destroy again to retry.",
+          "err",
+        );
       }
       setPhase("ready");
     } finally {
@@ -1283,7 +1462,6 @@ function App() {
       localStorage.removeItem("scaler_log");
     } catch (_) {}
   }, []);
-
 
   const Label = ({ children, help }) => (
     <div
@@ -1333,7 +1511,11 @@ function App() {
             cursor: dis ? "not-allowed" : "pointer",
             border: "none",
             background: value === val ? "rgba(0,200,224,0.18)" : "transparent",
-            color: dis ? "var(--text-dim)" : value === val ? "var(--text-accent)" : "var(--text-muted)",
+            color: dis
+              ? "var(--text-dim)"
+              : value === val
+                ? "var(--text-accent)"
+                : "var(--text-muted)",
             transition: "background 0.15s, color 0.15s",
           }}
         >
@@ -1362,7 +1544,18 @@ function App() {
       }}
     >
       <span>{label}</span>
-      <span style={{ display: "inline-block", width: 7, height: 7, borderRight: "1.5px solid var(--text-muted)", borderBottom: "1.5px solid var(--text-muted)", transform: show ? "rotate(225deg)" : "rotate(45deg)", position: "relative", top: show ? "2px" : "-2px" }} />
+      <span
+        style={{
+          display: "inline-block",
+          width: 7,
+          height: 7,
+          borderRight: "1.5px solid var(--text-muted)",
+          borderBottom: "1.5px solid var(--text-muted)",
+          transform: show ? "rotate(225deg)" : "rotate(45deg)",
+          position: "relative",
+          top: show ? "2px" : "-2px",
+        }}
+      />
     </button>
   );
 
@@ -1377,7 +1570,9 @@ function App() {
           background: !hasCredentials
             ? "rgba(255,80,60,0.04)"
             : "linear-gradient(135deg, oklch(0.32 0.18 15) 0%, oklch(0.26 0.14 30) 100%)",
-          border: "1px solid " + (!hasCredentials ? "var(--border-danger)" : "oklch(0.48 0.18 15)"),
+          border:
+            "1px solid " +
+            (!hasCredentials ? "var(--border-danger)" : "oklch(0.48 0.18 15)"),
           borderRadius: 4,
           color: !hasCredentials ? "var(--text-danger)" : "oklch(0.88 0.1 30)",
           fontFamily: "inherit",
@@ -1401,7 +1596,9 @@ function App() {
           background: !formReady
             ? "var(--bg-surface)"
             : "linear-gradient(135deg, oklch(0.38 0.16 155) 0%, oklch(0.32 0.14 200) 100%)",
-          border: "1px solid " + (!formReady ? "var(--border-accent)" : "oklch(0.55 0.16 155)"),
+          border:
+            "1px solid " +
+            (!formReady ? "var(--border-accent)" : "oklch(0.55 0.16 155)"),
           borderRadius: 4,
           color: !formReady ? "var(--text-muted)" : "oklch(0.92 0.1 155)",
           fontFamily: "inherit",
@@ -1425,7 +1622,9 @@ function App() {
           background: !hasCredentials
             ? "rgba(255,80,60,0.04)"
             : "linear-gradient(135deg, oklch(0.32 0.18 15) 0%, oklch(0.26 0.14 30) 100%)",
-          border: "1px solid " + (!hasCredentials ? "var(--border-danger)" : "oklch(0.48 0.18 15)"),
+          border:
+            "1px solid " +
+            (!hasCredentials ? "var(--border-danger)" : "oklch(0.48 0.18 15)"),
           borderRadius: 4,
           color: !hasCredentials ? "var(--text-danger)" : "oklch(0.88 0.1 30)",
           fontFamily: "inherit",
@@ -1445,10 +1644,20 @@ function App() {
         <div
           style={{
             padding: "6px 12px",
-            background: phase === "destroying" ? "rgba(255,80,60,0.04)" : "rgba(0,200,224,0.04)",
-            border: "1px solid " + (phase === "destroying" ? "var(--border-danger)" : "var(--border-accent)"),
+            background:
+              phase === "destroying"
+                ? "rgba(255,80,60,0.04)"
+                : "rgba(0,200,224,0.04)",
+            border:
+              "1px solid " +
+              (phase === "destroying"
+                ? "var(--border-danger)"
+                : "var(--border-accent)"),
             borderRadius: 4,
-            color: phase === "destroying" ? "var(--text-danger)" : "var(--text-muted)",
+            color:
+              phase === "destroying"
+                ? "var(--text-danger)"
+                : "var(--text-muted)",
             fontSize: 11,
           }}
         >
@@ -1495,7 +1704,9 @@ function App() {
         setActiveTab={setActiveTab}
         theme={theme}
         setTheme={setTheme}
-        showPostLaunch={phase !== "idle" || ["deployment", "logs", "gui"].includes(activeTab)}
+        showPostLaunch={
+          phase !== "idle" || ["deployment", "logs", "gui"].includes(activeTab)
+        }
         launchControl={launchControl}
         guiAddress={phase === "ready" ? provState?.gui_address : undefined}
       />
@@ -1559,9 +1770,13 @@ function App() {
                           cursor: disabled ? "default" : "pointer",
                           border: "none",
                           marginBottom: -1,
-                          borderBottom: active ? "2px solid var(--tab-active)" : "2px solid transparent",
+                          borderBottom: active
+                            ? "2px solid var(--tab-active)"
+                            : "2px solid transparent",
                           background: "transparent",
-                          color: active ? "var(--text-label)" : "var(--text-dim)",
+                          color: active
+                            ? "var(--text-label)"
+                            : "var(--text-dim)",
                           opacity: disabled ? 0.35 : 1,
                         }}
                       >
@@ -1571,10 +1786,14 @@ function App() {
                   })}
                 </div>
                 <div>
-                  <Label help="The AWS region where your cluster will be deployed.">AWS Region</Label>
+                  <Label help="The AWS region where your cluster will be deployed.">
+                    AWS Region
+                  </Label>
                   <RegionSelect value={region} onChange={setRegion} />
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 6 }}
+                >
                   <div
                     style={{
                       background: "var(--bg-surface)",
@@ -1647,8 +1866,12 @@ function App() {
                       textDecoration: "none",
                       alignSelf: "flex-end",
                     }}
-                    onMouseOver={(e) => (e.currentTarget.style.color = "var(--text-accent)")}
-                    onMouseOut={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                    onMouseOver={(e) =>
+                      (e.currentTarget.style.color = "var(--text-accent)")
+                    }
+                    onMouseOut={(e) =>
+                      (e.currentTarget.style.color = "var(--text-muted)")
+                    }
                   >
                     Generate access keys in AWS Console ↗
                   </a>
@@ -1659,8 +1882,10 @@ function App() {
                       lineHeight: 1.5,
                     }}
                   >
-                    Your credentials are used from this browser to provision AWS resources and are made available to
-                    the scheduler instance for worker management. They are not stored by this application.
+                    Your credentials are used from this browser to provision AWS
+                    resources and are made available to the scheduler instance
+                    for worker management. They are not stored by this
+                    application.
                   </span>
                 </div>
               </PanelBox>
@@ -1704,7 +1929,11 @@ function App() {
                   <Label help="EC2 instance type for the scheduler. Compute-optimized (c5/c6i) works well for most deployments.">
                     Instance Type
                   </Label>
-                  <InstancePicker value={schedulerType} onChange={setSchedulerType} defaultCat="all" />
+                  <InstancePicker
+                    value={schedulerType}
+                    onChange={setSchedulerType}
+                    defaultCat="all"
+                  />
                 </div>
                 <div
                   style={{
@@ -1735,7 +1964,11 @@ function App() {
                     USD {schedulerInst.price.toFixed(2)}/h
                   </span>
                 </div>
-                {advBtn(showSchedAdv, () => setShowSchedAdv((v) => !v), "Advanced")}
+                {advBtn(
+                  showSchedAdv,
+                  () => setShowSchedAdv((v) => !v),
+                  "Advanced",
+                )}
                 {showSchedAdv && (
                   <div
                     style={{
@@ -1746,7 +1979,13 @@ function App() {
                   >
                     <div>
                       <Label>Scheduler Port</Label>
-                      <NumericStepper value={schedulerPort} onChange={setSchedPort} min={1024} max={65535} width={80} />
+                      <NumericStepper
+                        value={schedulerPort}
+                        onChange={setSchedPort}
+                        min={1024}
+                        max={65535}
+                        width={80}
+                      />
                     </div>
                     <div>
                       <Label>Object Storage Port</Label>
@@ -1759,14 +1998,24 @@ function App() {
                       />
                     </div>
                     {portConflicts.length > 0 && (
-                      <div style={{ color: "var(--text-danger)", fontSize: 11, lineHeight: 1.5 }}>
+                      <div
+                        style={{
+                          color: "var(--text-danger)",
+                          fontSize: 11,
+                          lineHeight: 1.5,
+                        }}
+                      >
                         {portConflicts.map((msg, i) => (
                           <div key={i}>{msg}</div>
                         ))}
                       </div>
                     )}
                     <div>
-                      <Label help={"- Installed on the scheduler instance\n- Shared by native worker manager workers (same instance)\n- opengris-scaler must be included"}>
+                      <Label
+                        help={
+                          "- Installed on the scheduler instance\n- Shared by native worker manager workers (same instance)\n- opengris-scaler must be included"
+                        }
+                      >
                         requirements.txt
                       </Label>
                       <textarea
@@ -1802,9 +2051,21 @@ function App() {
               >
                 <PanelBox title="Policy">
                   {[
-                    { label: "Engine", help: "Policy engine that controls task allocation and worker scaling.", options: ["simple", "waterfall_v1"] },
-                    { label: "Allocate", help: "How tasks are assigned to workers. even_load distributes work evenly; capability routes tasks to workers that advertise matching capabilities.", options: ["even_load", "capability"] },
-                    { label: "Scaling", help: "How the scheduler scales worker counts up or down. vanilla uses a task-to-worker ratio; capability scales per-capability group; no disables autoscaling.", options: ["vanilla", "no", "capability"] },
+                    {
+                      label: "Engine",
+                      help: "Policy engine that controls task allocation and worker scaling.",
+                      options: ["simple", "waterfall_v1"],
+                    },
+                    {
+                      label: "Allocate",
+                      help: "How tasks are assigned to workers. even_load distributes work evenly; capability routes tasks to workers that advertise matching capabilities.",
+                      options: ["even_load", "capability"],
+                    },
+                    {
+                      label: "Scaling",
+                      help: "How the scheduler scales worker counts up or down. vanilla uses a task-to-worker ratio; capability scales per-capability group; no disables autoscaling.",
+                      options: ["vanilla", "no", "capability"],
+                    },
                   ].map(({ label, help, options }) => (
                     <div key={label}>
                       <Label help={help}>{label}</Label>
@@ -1825,21 +2086,27 @@ function App() {
                             WebkitAppearance: "none",
                           }}
                         >
-                          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+                          {options.map((o) => (
+                            <option key={o} value={o}>
+                              {o}
+                            </option>
+                          ))}
                         </select>
-                        <span style={{
-                          position: "absolute",
-                          right: 10,
-                          top: "50%",
-                          display: "block",
-                          width: 7,
-                          height: 7,
-                          borderRight: "1.5px solid var(--text-muted)",
-                          borderBottom: "1.5px solid var(--text-muted)",
-                          transform: "rotate(45deg)",
-                          marginTop: "-5px",
-                          pointerEvents: "none",
-                        }} />
+                        <span
+                          style={{
+                            position: "absolute",
+                            right: 10,
+                            top: "50%",
+                            display: "block",
+                            width: 7,
+                            height: 7,
+                            borderRight: "1.5px solid var(--text-muted)",
+                            borderBottom: "1.5px solid var(--text-muted)",
+                            transform: "rotate(45deg)",
+                            marginTop: "-5px",
+                            pointerEvents: "none",
+                          }}
+                        />
                       </div>
                     </div>
                   ))}
@@ -1849,7 +2116,10 @@ function App() {
 
             {/* Column 3: Worker Managers + Cost Summary */}
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <PanelBox title={`Worker Managers (${workerManagers.length})`} style={{ gap: 8, padding: "16px 22px" }}>
+              <PanelBox
+                title={`Worker Managers (${workerManagers.length})`}
+                style={{ gap: 8, padding: "16px 22px" }}
+              >
                 <div
                   style={{
                     display: "flex",
@@ -1877,8 +2147,14 @@ function App() {
                         style={{
                           display: "flex",
                           alignItems: "stretch",
-                          background: selectedWmId === wm.id ? "rgba(0,200,224,0.1)" : "transparent",
-                          borderLeft: selectedWmId === wm.id ? "2px solid var(--tab-active)" : "2px solid transparent",
+                          background:
+                            selectedWmId === wm.id
+                              ? "rgba(0,200,224,0.1)"
+                              : "transparent",
+                          borderLeft:
+                            selectedWmId === wm.id
+                              ? "2px solid var(--tab-active)"
+                              : "2px solid transparent",
                           borderBottom: "1px solid rgba(255,255,255,0.04)",
                           transition: "background 0.12s",
                         }}
@@ -1890,7 +2166,10 @@ function App() {
                             flex: 1,
                             background: "transparent",
                             border: "none",
-                            color: selectedWmId === wm.id ? "var(--text-accent)" : "var(--text-muted)",
+                            color:
+                              selectedWmId === wm.id
+                                ? "var(--text-accent)"
+                                : "var(--text-muted)",
                             fontFamily: "inherit",
                             fontSize: 10,
                             padding: "10px 6px 10px 10px",
@@ -1926,26 +2205,40 @@ function App() {
                               transition: "color 0.12s",
                             }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.color = "var(--text-danger)";
-                              e.currentTarget.querySelector("span").style.borderColor = "var(--border-danger)";
-                              e.currentTarget.querySelector("span").style.background = "rgba(229,72,77,0.08)";
+                              e.currentTarget.style.color =
+                                "var(--text-danger)";
+                              e.currentTarget.querySelector(
+                                "span",
+                              ).style.borderColor = "var(--border-danger)";
+                              e.currentTarget.querySelector(
+                                "span",
+                              ).style.background = "rgba(229,72,77,0.08)";
                             }}
                             onMouseLeave={(e) => {
                               e.currentTarget.style.color = "var(--text-muted)";
-                              e.currentTarget.querySelector("span").style.borderColor = "var(--border-accent)";
-                              e.currentTarget.querySelector("span").style.background = "transparent";
+                              e.currentTarget.querySelector(
+                                "span",
+                              ).style.borderColor = "var(--border-accent)";
+                              e.currentTarget.querySelector(
+                                "span",
+                              ).style.background = "transparent";
                             }}
                           >
-                            <span style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              width: 14,
-                              height: 14,
-                              border: "1px solid var(--border-accent)",
-                              borderRadius: 2,
-                              transition: "border-color 0.12s, background 0.12s",
-                            }}>✕</span>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                width: 14,
+                                height: 14,
+                                border: "1px solid var(--border-accent)",
+                                borderRadius: 2,
+                                transition:
+                                  "border-color 0.12s, background 0.12s",
+                              }}
+                            >
+                              ✕
+                            </span>
                           </button>
                         )}
                       </div>
@@ -1953,7 +2246,8 @@ function App() {
                     <button
                       onClick={addWorkerManager}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "rgba(0,200,224,0.08)";
+                        e.currentTarget.style.background =
+                          "rgba(0,200,224,0.08)";
                         e.currentTarget.style.color = "var(--text-accent)";
                       }}
                       onMouseLeave={(e) => {
@@ -1987,7 +2281,8 @@ function App() {
                           key={wm._uid}
                           wm={wm}
                           onChange={(updated) => {
-                            if (updated.id !== wm.id) setSelectedWmId(updated.id);
+                            if (updated.id !== wm.id)
+                              setSelectedWmId(updated.id);
                             updateWorkerManager(wm.id, updated);
                           }}
                           onRemove={() => removeWorkerManager(wm.id)}
@@ -2032,11 +2327,16 @@ function App() {
                         </span>
                       </div>
                     );
-                  const inst = allInstances.find((i) => i.type === wm.instanceType) || { price: 0 };
+                  const inst = allInstances.find(
+                    (i) => i.type === wm.instanceType,
+                  ) || { price: 0 };
                   const count =
                     wm.capMode === "instances"
                       ? Math.max(0, wm.instanceCap || 0)
-                      : Math.max(0, Math.floor((wm.budgetCap || 0) / (inst.price || 1)));
+                      : Math.max(
+                          0,
+                          Math.floor((wm.budgetCap || 0) / (inst.price || 1)),
+                        );
                   return (
                     <div
                       key={wm._uid}
@@ -2054,7 +2354,9 @@ function App() {
                       >
                         {label} · {count}× {wm.instanceType}
                       </span>
-                      <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                      <span
+                        style={{ fontSize: 12, color: "var(--text-secondary)" }}
+                      >
                         USD {(count * inst.price).toFixed(2)}/h
                       </span>
                     </div>
@@ -2075,7 +2377,9 @@ function App() {
                   >
                     Scheduler · {schedulerType}
                   </span>
-                  <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                  <span
+                    style={{ fontSize: 12, color: "var(--text-secondary)" }}
+                  >
                     USD {schedulerInst.price.toFixed(2)}/h
                   </span>
                 </div>
@@ -2156,7 +2460,12 @@ function App() {
           }}
         >
           {/* Left: terminal only */}
-          <LiveTerminal lines={log} isRunning={isRunning} bare style={{ minHeight: 0 }} />
+          <LiveTerminal
+            lines={log}
+            isRunning={isRunning}
+            bare
+            style={{ minHeight: 0 }}
+          />
           {/* Right: active deployment card */}
           <div
             style={{
@@ -2193,12 +2502,18 @@ function App() {
                 <DeploymentCard
                   state={provState}
                   onDownload={() =>
-                    downloadText("scaler-state-" + provState.name_suffix + ".json", JSON.stringify(provState, null, 2))
+                    downloadText(
+                      "scaler-state-" + provState.name_suffix + ".json",
+                      JSON.stringify(provState, null, 2),
+                    )
                   }
                   isRunning={isRunning}
                   keyMaterial={keyMaterial}
                 />
-                <GettingStartedCard schedulerAddress={provState.scheduler_address} ready={phase === "ready"} />
+                <GettingStartedCard
+                  schedulerAddress={provState.scheduler_address}
+                  ready={phase === "ready"}
+                />
               </div>
             )}
             {phase === "error" && (
@@ -2241,7 +2556,9 @@ function App() {
           }}
         >
           {!provState?.instance_id ? (
-            <div style={{ color: "var(--text-muted)", fontSize: 12 }}>No instance deployed yet.</div>
+            <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
+              No instance deployed yet.
+            </div>
           ) : (
             <SchedulerLogTerminal
               instanceId={provState.instance_id}
@@ -2285,7 +2602,9 @@ function App() {
                 flexShrink: 0,
               }}
             >
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{provState.gui_address}</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                {provState.gui_address}
+              </span>
               <a
                 href={provState.gui_address}
                 target="_blank"
@@ -2302,9 +2621,13 @@ function App() {
                 Open in new tab
               </a>
               {guiReady ? (
-                <span style={{ fontSize: 10, color: "var(--text-success)" }}>server ready</span>
+                <span style={{ fontSize: 10, color: "var(--text-success)" }}>
+                  server ready
+                </span>
               ) : (
-                <span style={{ fontSize: 10, color: "var(--text-dim)" }}>waiting for server… {guiElapsed}s</span>
+                <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
+                  waiting for server… {guiElapsed}s
+                </span>
               )}
             </div>
             {guiReady ? (
@@ -2329,8 +2652,12 @@ function App() {
                   color: "var(--text-muted)",
                 }}
               >
-                <div style={{ fontSize: 13 }}>Waiting for GUI server to start</div>
-                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{guiElapsed}s elapsed · retrying every 5s</div>
+                <div style={{ fontSize: 13 }}>
+                  Waiting for GUI server to start
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                  {guiElapsed}s elapsed · retrying every 5s
+                </div>
               </div>
             )}
           </>

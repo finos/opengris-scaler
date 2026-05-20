@@ -65,7 +65,9 @@ function RegionSelect({ value, onChange }) {
   const [dropdownStyle, setDropdownStyle] = useState({});
 
   const filtered = regions.filter(
-    (r) => r.value.toLowerCase().includes(search.toLowerCase()) || r.label.toLowerCase().includes(search.toLowerCase()),
+    (r) =>
+      r.value.toLowerCase().includes(search.toLowerCase()) ||
+      r.label.toLowerCase().includes(search.toLowerCase()),
   );
 
   useEffect(() => {
@@ -122,7 +124,9 @@ function RegionSelect({ value, onChange }) {
         }}
       >
         <span style={{ flex: 1 }}>
-          <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{value}</span>
+          <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>
+            {value}
+          </span>
           {selected && (
             <span
               style={{
@@ -135,7 +139,19 @@ function RegionSelect({ value, onChange }) {
             </span>
           )}
         </span>
-        <span style={{ display: "inline-block", width: 7, height: 7, borderRight: "1.5px solid var(--text-muted)", borderBottom: "1.5px solid var(--text-muted)", transform: open ? "rotate(225deg)" : "rotate(45deg)", position: "relative", top: open ? "2px" : "-2px", flexShrink: 0 }} />
+        <span
+          style={{
+            display: "inline-block",
+            width: 7,
+            height: 7,
+            borderRight: "1.5px solid var(--text-muted)",
+            borderBottom: "1.5px solid var(--text-muted)",
+            transform: open ? "rotate(225deg)" : "rotate(45deg)",
+            position: "relative",
+            top: open ? "2px" : "-2px",
+            flexShrink: 0,
+          }}
+        />
       </button>
       {open &&
         ReactDOM.createPortal(
@@ -190,27 +206,37 @@ function RegionSelect({ value, onChange }) {
                     display: "flex",
                     alignItems: "baseline",
                     gap: 10,
-                    background: r.value === value ? "rgba(0,200,224,0.08)" : "transparent",
+                    background:
+                      r.value === value
+                        ? "rgba(0,200,224,0.08)"
+                        : "transparent",
                     borderBottom: "1px solid rgba(255,255,255,0.03)",
                   }}
                   onMouseEnter={(e) => {
-                    if (r.value !== value) e.currentTarget.style.background = "var(--bg-surface)";
+                    if (r.value !== value)
+                      e.currentTarget.style.background = "var(--bg-surface)";
                   }}
                   onMouseLeave={(e) => {
-                    if (r.value !== value) e.currentTarget.style.background = "transparent";
+                    if (r.value !== value)
+                      e.currentTarget.style.background = "transparent";
                   }}
                 >
                   <span
                     style={{
                       fontSize: 12,
                       fontWeight: 600,
-                      color: r.value === value ? "var(--text-success)" : "var(--text-primary)",
+                      color:
+                        r.value === value
+                          ? "var(--text-success)"
+                          : "var(--text-primary)",
                       flexShrink: 0,
                     }}
                   >
                     {r.value}
                   </span>
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{r.label}</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    {r.label}
+                  </span>
                 </div>
               ))}
               {filtered.length === 0 && (
@@ -262,7 +288,8 @@ function InstancePicker({ value, onChange, defaultCat = "gpu" }) {
   const instances = window.SCALER_INSTANCES || [];
 
   const filtered = instances.filter((i) => {
-    if (search && !i.type.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !i.type.toLowerCase().includes(search.toLowerCase()))
+      return false;
     if (filterCat !== "all" && i.cat !== filterCat) return false;
     if (filterGpu && i.gpu === 0) return false;
     if (minVcpu && i.vcpu < parseInt(minVcpu)) return false;
@@ -435,10 +462,15 @@ function InstancePicker({ value, onChange, defaultCat = "gpu" }) {
             onClick={() => setFilterCat(cat)}
             style={{
               flex: 1,
-              background: filterCat === cat ? "rgba(0,200,224,0.1)" : "transparent",
+              background:
+                filterCat === cat ? "rgba(0,200,224,0.1)" : "transparent",
               border: "none",
-              borderBottom: filterCat === cat ? "2px solid var(--tab-active)" : "2px solid transparent",
-              color: filterCat === cat ? "var(--tab-active)" : "var(--text-muted)",
+              borderBottom:
+                filterCat === cat
+                  ? "2px solid var(--tab-active)"
+                  : "2px solid transparent",
+              color:
+                filterCat === cat ? "var(--tab-active)" : "var(--text-muted)",
               fontFamily: "inherit",
               fontSize: "10px",
               padding: "7px 4px",
@@ -469,24 +501,28 @@ function InstancePicker({ value, onChange, defaultCat = "gpu" }) {
             No instances match
           </div>
         )}
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+        <table
+          style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}
+        >
           <thead>
             <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              {["Instance", "vCPU", "Mem (GB)", "GPU", "Network", "USD/h"].map((h) => (
-                <th
-                  key={h}
-                  style={{
-                    padding: "6px 10px",
-                    color: "var(--text-dim)",
-                    fontWeight: 500,
-                    textAlign: "left",
-                    fontSize: 10,
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  {h}
-                </th>
-              ))}
+              {["Instance", "vCPU", "Mem (GB)", "GPU", "Network", "USD/h"].map(
+                (h) => (
+                  <th
+                    key={h}
+                    style={{
+                      padding: "6px 10px",
+                      color: "var(--text-dim)",
+                      fontWeight: 500,
+                      textAlign: "left",
+                      fontSize: 10,
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    {h}
+                  </th>
+                ),
+              )}
             </tr>
           </thead>
           <tbody>
@@ -501,22 +537,32 @@ function InstancePicker({ value, onChange, defaultCat = "gpu" }) {
                   borderBottom: "1px solid rgba(255,255,255,0.03)",
                   cursor: "pointer",
                   background:
-                    i.type === value ? "rgba(0,200,224,0.08)" : i.featured ? "rgba(255,255,255,0.06)" : "transparent",
+                    i.type === value
+                      ? "rgba(0,200,224,0.08)"
+                      : i.featured
+                        ? "rgba(255,255,255,0.06)"
+                        : "transparent",
                   transition: "background 0.1s",
                 }}
                 onMouseEnter={(e) => {
-                  if (i.type !== value) e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+                  if (i.type !== value)
+                    e.currentTarget.style.background = "rgba(255,255,255,0.08)";
                 }}
                 onMouseLeave={(e) => {
                   if (i.type !== value)
-                    e.currentTarget.style.background = i.featured ? "rgba(255,255,255,0.06)" : "transparent";
+                    e.currentTarget.style.background = i.featured
+                      ? "rgba(255,255,255,0.06)"
+                      : "transparent";
                 }}
               >
                 <td
                   style={{
                     padding: "7px 10px",
                     fontWeight: 600,
-                    color: i.type === value ? "var(--text-success)" : "var(--text-primary)",
+                    color:
+                      i.type === value
+                        ? "var(--text-success)"
+                        : "var(--text-primary)",
                   }}
                 >
                   <span
@@ -551,7 +597,8 @@ function InstancePicker({ value, onChange, defaultCat = "gpu" }) {
                 <td
                   style={{
                     padding: "7px 10px",
-                    color: i.gpu > 0 ? "var(--text-warning)" : "var(--text-dim)",
+                    color:
+                      i.gpu > 0 ? "var(--text-warning)" : "var(--text-dim)",
                   }}
                 >
                   {i.gpu > 0 ? `${i.gpu}× ${i.gpuType} (${i.gpuMem}GB)` : "—"}
@@ -606,7 +653,9 @@ function InstancePicker({ value, onChange, defaultCat = "gpu" }) {
         <span style={{ flex: 1 }}>
           {value ? (
             <span>
-              <span style={{ color: "var(--text-success)", fontWeight: 600 }}>{value}</span>
+              <span style={{ color: "var(--text-success)", fontWeight: 600 }}>
+                {value}
+              </span>
               {selected && (
                 <span
                   style={{
@@ -616,7 +665,9 @@ function InstancePicker({ value, onChange, defaultCat = "gpu" }) {
                   }}
                 >
                   {selected.vcpu} vCPU · {selected.mem} GB
-                  {selected.gpu > 0 ? ` · ${selected.gpu}× ${selected.gpuType}` : ""}
+                  {selected.gpu > 0
+                    ? ` · ${selected.gpu}× ${selected.gpuType}`
+                    : ""}
                 </span>
               )}
             </span>
@@ -635,7 +686,19 @@ function InstancePicker({ value, onChange, defaultCat = "gpu" }) {
             USD {selected.price.toFixed(2)}/h
           </span>
         )}
-        <span style={{ display: "inline-block", width: 7, height: 7, borderRight: "1.5px solid var(--text-muted)", borderBottom: "1.5px solid var(--text-muted)", transform: open ? "rotate(225deg)" : "rotate(45deg)", position: "relative", top: open ? "2px" : "-2px", flexShrink: 0 }} />
+        <span
+          style={{
+            display: "inline-block",
+            width: 7,
+            height: 7,
+            borderRight: "1.5px solid var(--text-muted)",
+            borderBottom: "1.5px solid var(--text-muted)",
+            transform: open ? "rotate(225deg)" : "rotate(45deg)",
+            position: "relative",
+            top: open ? "2px" : "-2px",
+            flexShrink: 0,
+          }}
+        />
       </button>
       {open && ReactDOM.createPortal(dropdown, document.body)}
     </div>
@@ -837,7 +900,10 @@ function DeployDetails({ visible, style }) {
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {fields.map(({ label, value, href }) => (
-          <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div
+            key={label}
+            style={{ display: "flex", alignItems: "center", gap: 12 }}
+          >
             <span
               style={{
                 fontSize: 11,
@@ -862,8 +928,12 @@ function DeployDetails({ visible, style }) {
                   textDecoration: "none",
                   borderBottom: "1px solid var(--border-accent)",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
-                onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-accent)")}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.color = "var(--text-primary)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.color = "var(--text-accent)")
+                }
               >
                 {value}
               </a>
@@ -900,7 +970,8 @@ function HelpTip({ text }) {
   useEffect(() => {
     if (!open) return;
     function handleClick(e) {
-      if (btnRef.current && !btnRef.current.contains(e.target)) setBtnRect(null);
+      if (btnRef.current && !btnRef.current.contains(e.target))
+        setBtnRect(null);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -1112,7 +1183,11 @@ function LiveTerminal({ lines, isRunning, title, style, bare }) {
   );
 
   if (bare) {
-    return <div style={{ display: "flex", flexDirection: "column", ...style }}>{content}</div>;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", ...style }}>
+        {content}
+      </div>
+    );
   }
 
   return (
@@ -1183,8 +1258,8 @@ function LiveTerminal({ lines, isRunning, title, style, bare }) {
 const POLL_INTERVALS = [
   { label: "15s", value: 15000 },
   { label: "30s", value: 30000 },
-  { label: "1m",  value: 60000 },
-  { label: "5m",  value: 300000 },
+  { label: "1m", value: 60000 },
+  { label: "5m", value: 300000 },
 ];
 
 function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
@@ -1198,13 +1273,18 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
   const pollRef = useRef(null);
   const triggerRef = useRef(null);
   const intervalMsRef = useRef(intervalMs);
-  useEffect(() => { intervalMsRef.current = intervalMs; }, [intervalMs]);
+  useEffect(() => {
+    intervalMsRef.current = intervalMs;
+  }, [intervalMs]);
 
   const fetchLogs = useCallback(async () => {
     try {
       const ssm = new AWS.SSM({
         region,
-        credentials: new AWS.Credentials(credentials.accessKeyId, credentials.secretKey),
+        credentials: new AWS.Credentials(
+          credentials.accessKeyId,
+          credentials.secretKey,
+        ),
       });
       let commandId;
       try {
@@ -1213,7 +1293,9 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
             InstanceIds: [instanceId],
             DocumentName: "AWS-RunShellScript",
             Parameters: {
-              commands: ["tail -n 150 /var/log/scaler.log 2>/dev/null || echo '(log not yet available)'"],
+              commands: [
+                "tail -n 150 /var/log/scaler.log 2>/dev/null || echo '(log not yet available)'",
+              ],
             },
             TimeoutSeconds: 30,
           })
@@ -1221,13 +1303,26 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
         commandId = r.Command.CommandId;
       } catch (err) {
         if (err.code === "InvalidInstanceId") {
-          setLines([{ text: "Instance not yet registered with SSM — retrying…", cls: "warn" }]);
+          setLines([
+            {
+              text: "Instance not yet registered with SSM — retrying…",
+              cls: "warn",
+            },
+          ]);
         } else if (err.code === "AccessDeniedException") {
           setStatus("error");
-          setError("Permission denied. Your IAM user needs ssm:SendCommand and ssm:GetCommandInvocation.");
-        } else if (err.code === "InvalidClientTokenId" || err.code === "AuthFailure" || /invalid.*token/i.test(err.message)) {
+          setError(
+            "Permission denied. Your IAM user needs ssm:SendCommand and ssm:GetCommandInvocation.",
+          );
+        } else if (
+          err.code === "InvalidClientTokenId" ||
+          err.code === "AuthFailure" ||
+          /invalid.*token/i.test(err.message)
+        ) {
           setStatus("error");
-          setError("Invalid AWS credentials. Re-enter your Access Key ID and Secret Access Key in the Configuration tab.");
+          setError(
+            "Invalid AWS credentials. Re-enter your Access Key ID and Secret Access Key in the Configuration tab.",
+          );
         } else {
           setStatus("error");
           setError("SSM error: " + err.message);
@@ -1244,7 +1339,11 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
             })
             .promise();
           if (inv.Status === "Success" || inv.Status === "Failed") {
-            setLines((inv.StandardOutputContent || "").split("\n").map((text) => ({ text, cls: "info" })));
+            setLines(
+              (inv.StandardOutputContent || "")
+                .split("\n")
+                .map((text) => ({ text, cls: "info" })),
+            );
             break;
           }
         } catch (_) {
@@ -1289,7 +1388,10 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
   }, [isActive, instanceId, hasCredentials, fetchLogs, intervalMs]);
 
   useEffect(() => {
-    if (!nextFetchAt) { setCountdown(null); return; }
+    if (!nextFetchAt) {
+      setCountdown(null);
+      return;
+    }
     const tick = setInterval(() => {
       setCountdown(Math.max(0, Math.round((nextFetchAt - Date.now()) / 1000)));
     }, 1000);
@@ -1298,17 +1400,32 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
 
   if (!hasCredentials)
     return (
-      <div style={{ padding: 24, color: "var(--text-secondary)", fontSize: 12 }}>
-        Re-enter your AWS credentials in the Configuration tab to view scheduler logs.
+      <div
+        style={{ padding: 24, color: "var(--text-secondary)", fontSize: 12 }}
+      >
+        Re-enter your AWS credentials in the Configuration tab to view scheduler
+        logs.
       </div>
     );
   if (status === "error")
-    return <div style={{ padding: 24, color: "var(--text-danger)", fontSize: 12 }}>{errorMsg}</div>;
+    return (
+      <div style={{ padding: 24, color: "var(--text-danger)", fontSize: 12 }}>
+        {errorMsg}
+      </div>
+    );
 
-  const labelMs = POLL_INTERVALS.find((o) => o.value === intervalMs)?.label ?? "15s";
+  const labelMs =
+    POLL_INTERVALS.find((o) => o.value === intervalMs)?.label ?? "15s";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        minHeight: 0,
+      }}
+    >
       <div
         style={{
           display: "flex",
@@ -1318,11 +1435,25 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+        <span
+          style={{
+            fontSize: 11,
+            color: "var(--text-muted)",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
           /var/log/scaler.log
         </span>
         <span style={{ fontSize: 11, color: "var(--text-dim)" }}>·</span>
-        <span style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
+        <span
+          style={{
+            fontSize: 11,
+            color: "var(--text-muted)",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
           refresh every
           <select
             value={intervalMs}
@@ -1338,7 +1469,9 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
             }}
           >
             {POLL_INTERVALS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
             ))}
           </select>
         </span>
@@ -1507,7 +1640,19 @@ function WorkerManagerTypeSelect({ value, onChange }) {
             {selected ? selected.label : "Select type…"}
           </span>
         </span>
-        <span style={{ display: "inline-block", width: 7, height: 7, borderRight: "1.5px solid var(--text-muted)", borderBottom: "1.5px solid var(--text-muted)", transform: open ? "rotate(225deg)" : "rotate(45deg)", position: "relative", top: open ? "2px" : "-2px", flexShrink: 0 }} />
+        <span
+          style={{
+            display: "inline-block",
+            width: 7,
+            height: 7,
+            borderRight: "1.5px solid var(--text-muted)",
+            borderBottom: "1.5px solid var(--text-muted)",
+            transform: open ? "rotate(225deg)" : "rotate(45deg)",
+            position: "relative",
+            top: open ? "2px" : "-2px",
+            flexShrink: 0,
+          }}
+        />
       </button>
       {open &&
         ReactDOM.createPortal(
@@ -1539,14 +1684,17 @@ function WorkerManagerTypeSelect({ value, onChange }) {
                   alignItems: "center",
                   gap: 10,
                   opacity: t.disabled ? 0.4 : 1,
-                  background: t.value === value ? "rgba(0,200,224,0.08)" : "transparent",
+                  background:
+                    t.value === value ? "rgba(0,200,224,0.08)" : "transparent",
                   borderBottom: "1px solid rgba(255,255,255,0.04)",
                 }}
                 onMouseEnter={(e) => {
-                  if (!t.disabled && t.value !== value) e.currentTarget.style.background = "var(--bg-surface)";
+                  if (!t.disabled && t.value !== value)
+                    e.currentTarget.style.background = "var(--bg-surface)";
                 }}
                 onMouseLeave={(e) => {
-                  if (!t.disabled && t.value !== value) e.currentTarget.style.background = "transparent";
+                  if (!t.disabled && t.value !== value)
+                    e.currentTarget.style.background = "transparent";
                 }}
               >
                 <span
@@ -1554,8 +1702,14 @@ function WorkerManagerTypeSelect({ value, onChange }) {
                     fontSize: 9,
                     fontWeight: 700,
                     letterSpacing: "0.06em",
-                    color: t.value === value ? "var(--text-success)" : "var(--text-accent)",
-                    background: t.value === value ? "rgba(0,255,136,0.1)" : "rgba(0,200,224,0.1)",
+                    color:
+                      t.value === value
+                        ? "var(--text-success)"
+                        : "var(--text-accent)",
+                    background:
+                      t.value === value
+                        ? "rgba(0,255,136,0.1)"
+                        : "rgba(0,200,224,0.1)",
                     border: `1px solid ${t.value === value ? "rgba(0,255,136,0.2)" : "rgba(0,200,224,0.18)"}`,
                     borderRadius: 2,
                     padding: "1px 5px",
@@ -1571,7 +1725,10 @@ function WorkerManagerTypeSelect({ value, onChange }) {
                     style={{
                       display: "block",
                       fontSize: 12,
-                      color: t.value === value ? "var(--text-success)" : "var(--text-primary)",
+                      color:
+                        t.value === value
+                          ? "var(--text-success)"
+                          : "var(--text-primary)",
                       fontWeight: 600,
                     }}
                   >
