@@ -74,25 +74,25 @@ TEST_F(WebSocketUtilsTest, Base64EncodeEmpty)
 
 TEST_F(WebSocketUtilsTest, Base64EncodePadTwo)
 {
-    // "citi" → 4 bytes (4 mod 3 = 1) → two padding chars
+    // "citi" -> 4 bytes (4 mod 3 = 1) -> two padding chars
     EXPECT_EQ(encodeStr("citi"), "Y2l0aQ==");
 }
 
 TEST_F(WebSocketUtilsTest, Base64EncodePadOne)
 {
-    // "citibank" → 8 bytes (8 mod 3 = 2) → one padding char
+    // "citibank" -> 8 bytes (8 mod 3 = 2) -> one padding char
     EXPECT_EQ(encodeStr("citibank"), "Y2l0aWJhbms=");
 }
 
 TEST_F(WebSocketUtilsTest, Base64EncodeNoPad)
 {
-    // "scaler" → 6 bytes (multiple of 3) → no padding
+    // "scaler" -> 6 bytes (multiple of 3) -> no padding
     EXPECT_EQ(encodeStr("scaler"), "c2NhbGVy");
 }
 
 TEST_F(WebSocketUtilsTest, Base64EncodeMultipleGroups)
 {
-    // "opengris" → 8 bytes across multiple encoding groups
+    // "opengris" -> 8 bytes across multiple encoding groups
     EXPECT_EQ(encodeStr("opengris"), "b3BlbmdyaXM=");
 }
 
@@ -102,7 +102,7 @@ TEST_F(WebSocketUtilsTest, Base64EncodeMultipleGroups)
 
 TEST_F(WebSocketUtilsTest, ComputeWebSocketAcceptRFC6455Example)
 {
-    // RFC 6455 §1.3 example: key "dGhlIHNhbXBsZSBub25jZQ==" → "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+    // RFC 6455 section 1.3 example: key "dGhlIHNhbXBsZSBub25jZQ==" -> "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
     EXPECT_EQ(
         scaler::ymq::internal::computeWebSocketAccept("dGhlIHNhbXBsZSBub25jZQ=="), "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
 }

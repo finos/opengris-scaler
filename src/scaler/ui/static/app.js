@@ -1,7 +1,7 @@
 /* Scaler Web GUI - Client-side application */
 "use strict";
 
-// ── State ──
+// -- State --
 var ws = null;
 var reconnectDelay = 500;
 var workerRows = {};       // worker_id -> <tr> element
@@ -24,7 +24,7 @@ var streamWindow = 300;    // seconds
 var streamNeedsRedraw = false;
 var memoryNeedsRedraw = false;
 
-// ── DOM refs ──
+// -- DOM refs --
 var $ = function(id) { return document.getElementById(id); };
 var connStatus = $("conn-status");
 var schedAddress = $("sched-address");
@@ -46,7 +46,7 @@ var memoryCtx = memoryCanvas.getContext("2d");
 var processorsContainer = $("processors-container");
 var tooltip = $("tooltip");
 
-// ── Tabs ──
+// -- Tabs --
 var tabs = document.querySelectorAll(".tab");
 var panels = document.querySelectorAll(".tab-panel");
 
@@ -70,7 +70,7 @@ for (var i = 0; i < tabs.length; i++) {
     })(tabs[i]));
 }
 
-// ── Fit Page Toggle ──
+// -- Fit Page Toggle --
 var fitPageBtn = $("fit-page-btn");
 var fitPageActive = false;
 
@@ -89,7 +89,7 @@ fitPageBtn.addEventListener("click", function() {
     memoryNeedsRedraw = true;
 });
 
-// ── Settings ──
+// -- Settings --
 function setupToggle(groupId, callback) {
     var group = $(groupId);
     if (!group) return;
@@ -121,7 +121,7 @@ function sendSettings(settings) {
     }
 }
 
-// ── WebSocket ──
+// -- WebSocket --
 function connect() {
     var proto = location.protocol === "https:" ? "wss:" : "ws:";
     ws = new WebSocket(proto + "//" + location.host + "/ws");
@@ -220,7 +220,7 @@ function applySettings(settings) {
     }
 }
 
-// ── Live Tab: Scheduler ──
+// -- Live Tab: Scheduler --
 function updateScheduler(sched) {
     schedAddress.textContent = sched.monitor_address || "—";
     schedCpu.textContent = sched.cpu || "—";
@@ -229,7 +229,7 @@ function updateScheduler(sched) {
     schedLastSeen.textContent = sched.last_seen || "—";
 }
 
-// ── Live Tab: Worker Managers ──
+// -- Live Tab: Worker Managers --
 function updateWorkerManagers(managers) {
     managersBody.innerHTML = "";
     if (!managers || managers.length === 0) {
@@ -299,7 +299,7 @@ function updateWorkerManagers(managers) {
     }
 }
 
-// ── Live Tab: Workers ──
+// -- Live Tab: Workers --
 var WORKER_FIELDS = ["name", "manager_id", "agt_cpu", "agt_rss", "proc_cpu", "proc_rss",
                      "free", "sent", "queued", "suspended", "lag", "itl", "last_seen", "capabilities"];
 var WORKER_NUMERIC_FIELDS = {"agt_cpu":1, "agt_rss":1, "proc_cpu":1, "proc_rss":1,
@@ -446,7 +446,7 @@ function handleWorkerEvents(events) {
     }
 }
 
-// ── Task Log ──
+// -- Task Log --
 function formatTime(epoch) {
     if (!epoch) return "";
     var d = new Date(epoch * 1000);
@@ -566,7 +566,7 @@ function addTaskLogEntries(entries, append) {
     tasklogCount.textContent = Math.min(taskLogCount, TASK_LOG_MAX_SIZE);
 }
 
-// ── Task Stream (Canvas) ──
+// -- Task Stream (Canvas) --
 var STREAM_LABEL_WIDTH = 120;
 var STREAM_ROW_HEIGHT = 24;
 var STREAM_PADDING_TOP = 4;
@@ -724,7 +724,7 @@ function drawTaskStream() {
 
     // Draw bars in 3 passes for correct layering:
     //   Pass 1: Running bars (bottom layer)
-    //   Pass 2: Completed bars — newest first, oldest on top
+    //   Pass 2: Completed bars - newest first, oldest on top
     //   Pass 3: Cancelled bars on top so they're always visible
 
     // Pass 1: Running bars (fill + outline, bottom layer)
@@ -740,7 +740,7 @@ function drawTaskStream() {
         }
     }
 
-    // Pass 2: Non-cancelled completed bars — newest first (behind), oldest last (on top)
+    // Pass 2: Non-cancelled completed bars - newest first (behind), oldest last (on top)
     var completedBars = [];
     for (var j = 0; j < streamBars.length; j++) {
         var bar = streamBars[j];
@@ -867,7 +867,7 @@ streamCanvas.addEventListener("mouseleave", function() {
     tooltip.classList.remove("visible");
 });
 
-// ── Memory Chart (Canvas) ──
+// -- Memory Chart (Canvas) --
 var MEM_LABEL_WIDTH = 80;
 var MEM_PADDING = { top: 20, right: 20, bottom: 30, left: MEM_LABEL_WIDTH };
 
@@ -1021,7 +1021,7 @@ memoryCanvas.addEventListener("mouseleave", function() {
     tooltip.classList.remove("visible");
 });
 
-// ── Worker Processors ──
+// -- Worker Processors --
 var processorsCollapsed = {};  // track collapsed state by worker name
 var managerCollapsed = {};    // track collapsed state by manager id
 
@@ -1150,7 +1150,7 @@ function boolIndicator(val) {
     return '<span class="bool-indicator ' + (val ? "bool-true" : "bool-false") + '"></span>';
 }
 
-// ── Utilities ──
+// -- Utilities --
 function escapeHTML(str) {
     var div = document.createElement("div");
     div.textContent = str;
@@ -1171,7 +1171,7 @@ function formatBytes(bytes) {
     return bytes.toFixed(1) + "T";
 }
 
-// ── Animation Loop ──
+// -- Animation Loop --
 function renderLoop() {
     if (streamNeedsRedraw) {
         streamNeedsRedraw = false;
@@ -1184,12 +1184,12 @@ function renderLoop() {
     requestAnimationFrame(renderLoop);
 }
 
-// ── Resize handling ──
+// -- Resize handling --
 window.addEventListener("resize", function() {
     streamNeedsRedraw = true;
     memoryNeedsRedraw = true;
 });
 
-// ── Start ──
+// -- Start --
 connect();
 requestAnimationFrame(renderLoop);

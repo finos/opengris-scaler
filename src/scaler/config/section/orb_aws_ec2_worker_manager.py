@@ -9,8 +9,8 @@ from scaler.config.types.network_backend import NetworkBackendType
 
 
 @dataclasses.dataclass
-class ORBAWSEC2WorkerAdapterConfig(ConfigClass):
-    """Configuration for the ORB AWS EC2 worker adapter."""
+class ORBAWSEC2WorkerManagerConfig(ConfigClass):
+    """Configuration for the ORB AWS EC2 worker manager."""
 
     _tag: ClassVar[str] = "orb_aws_ec2"
 

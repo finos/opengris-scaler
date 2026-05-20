@@ -1385,7 +1385,7 @@ const WM_TYPE_DEFS = [
     value: "orb_aws_ec2",
     label: "ORB / AWS EC2",
     badge: "EC2",
-    desc: "Managed EC2 instances via ORB adapter",
+    desc: "Managed EC2 instances via ORB worker manager",
   },
   {
     value: "aws_raw_ecs",

@@ -1,6 +1,5 @@
 import logging
 import time
-from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
 from scaler.config.defaults import DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
@@ -8,8 +7,6 @@ from scaler.io.mixins import AsyncBinder
 from scaler.protocol.capnp import (
     ScalingManagerStatus,
     WorkerManagerCommand,
-    WorkerManagerCommandResponse,
-    WorkerManagerCommandType,
     WorkerManagerHeartbeat,
     WorkerManagerHeartbeatEcho,
 )
@@ -35,19 +32,12 @@ class WorkerManagerController(Looper, Reporter):
         # Track worker manager heartbeats: source -> (last_seen_time, heartbeat)
         self._manager_alive_since: Dict[bytes, Tuple[float, WorkerManagerHeartbeat]] = {}
 
-        # Track last command sent to each source
-        self._pending_commands: Dict[bytes, WorkerManagerCommand] = {}
-
-        # Track capabilities per manager: source -> capabilities dict
-        self._manager_capabilities: Dict[bytes, Dict[str, int]] = defaultdict(dict)
-
         # Reverse map: worker_manager_id -> source (for duplicate detection)
         self._manager_id_to_source: Dict[bytes, bytes] = {}
 
-        # Pending worker tracking: workers launched (StartWorkers success) but not yet connected.
-        # _pending_worker_count[source] is decremented as workers appear in the worker controller.
-        self._pending_worker_count: Dict[bytes, int] = {}
-        self._last_worker_count: Dict[bytes, int] = {}
+        # Per-manager total desired worker count from the latest setDesiredTaskConcurrency command.
+        # Used to report pendingWorkers = max(0, last_desired - connected_count) to the monitor.
+        self._last_desired_total: Dict[bytes, int] = {}
 
     def register(self, binder: AsyncBinder, task_controller: TaskController, worker_controller: WorkerController):
         self._binder = binder
@@ -74,55 +64,17 @@ class WorkerManagerController(Looper, Reporter):
         await self._binder.send(source, WorkerManagerHeartbeatEcho())
 
         information_snapshot = self._build_snapshot()
-
-        # Get managed worker IDs from worker controller (heartbeat-based live truth)
         managed_worker_ids = self._worker_controller.get_workers_by_manager_id(heartbeat.workerManagerID)
-
-        # Update pending worker count: decrement for each worker that newly connected.
-        worker_count = len(managed_worker_ids)
-        prev_count = self._last_worker_count.get(source, 0)
-        newly_connected = max(0, worker_count - prev_count)
-        if newly_connected > 0:
-            self._pending_worker_count[source] = max(0, self._pending_worker_count.get(source, 0) - newly_connected)
-        self._last_worker_count[source] = worker_count
-
-        managed_worker_capabilities = self._manager_capabilities[source]
-
-        # Build cross-manager snapshots from all known managers
         worker_manager_snapshots = self._build_manager_snapshots()
 
-        # Wait for the previous command to complete before sending another.
-        # Worker managers can take a long time to fulfill commands (e.g. ORB polls for instance IDs),
-        # so sending a new command before the response arrives causes duplicate work and errors.
-        if source in self._pending_commands:
-            return
-
         commands = self._policy_controller.get_scaling_commands(
-            information_snapshot, heartbeat, managed_worker_ids, managed_worker_capabilities, worker_manager_snapshots
+            information_snapshot, heartbeat, managed_worker_ids, worker_manager_snapshots
         )
 
         for command in commands:
             await self._send_command(source, command)
 
-    async def on_command_response(self, source: bytes, response: WorkerManagerCommandResponse):
-        """Called by scheduler event loop when WorkerManagerCommandResponse is received."""
-        response_capabilities = capabilities_to_dict(getattr(response, "capabilities", {}))
-        pending = self._pending_commands.pop(source, None)
-        if pending is None:
-            logging.warning(f"Received response from {source!r} but no pending command found")
-
-        if response.command == WorkerManagerCommandType.startWorkers:
-            if response.status == WorkerManagerCommandResponse.Status.success:
-                if response_capabilities:
-                    self._manager_capabilities[source] = response_capabilities
-                new_workers = len(response.workerIDs)
-                self._pending_worker_count[source] = self._pending_worker_count.get(source, 0) + new_workers
-            else:
-                logging.warning(f"StartWorkers failed: {response.status.name}")
-
-        elif response.command == WorkerManagerCommandType.shutdownWorkers:
-            if response.status != WorkerManagerCommandResponse.Status.success:
-                logging.warning(f"ShutdownWorkers failed: {response.status.name}")
+        self._last_desired_total[source] = _sum_desired_for_manager(commands, heartbeat.capabilities)
 
     async def routine(self):
         await self._clean_managers()
@@ -135,6 +87,8 @@ class WorkerManagerController(Looper, Reporter):
         for source, (last_seen, heartbeat) in self._manager_alive_since.items():
             caps = heartbeat.capabilities
             caps_str = " ".join(sorted(capabilities_to_dict(caps).keys())) if caps else ""
+            connected = len(self._worker_controller.get_workers_by_manager_id(heartbeat.workerManagerID))
+            pending = max(0, self._last_desired_total.get(source, 0) - connected)
             details.append(
                 {
                     "worker_manager_id": heartbeat.workerManagerID,
@@ -142,7 +96,7 @@ class WorkerManagerController(Looper, Reporter):
                     "last_seen_s": min(int(now - last_seen), 255),
                     "max_task_concurrency": heartbeat.maxTaskConcurrency,
                     "capabilities": caps_str,
-                    "pending_workers": self._pending_worker_count.get(source, 0),
+                    "pending_workers": pending,
                 }
             )
 
@@ -157,11 +111,6 @@ class WorkerManagerController(Looper, Reporter):
         return result
 
     async def _send_command(self, source: bytes, command: WorkerManagerCommand):
-        # setDesiredTaskConcurrency is declarative and worker managers may silently ignore it
-        # during the transition. No response is guaranteed, so it must bypass the single-
-        # in-flight gate; otherwise the gate would wedge and block all subsequent scaling.
-        if command.command != WorkerManagerCommandType.setDesiredTaskConcurrency:
-            self._pending_commands[source] = command
         await self._binder.send(source, command)
 
     def _build_manager_snapshots(self) -> Dict[bytes, WorkerManagerSnapshot]:
@@ -174,7 +123,6 @@ class WorkerManagerController(Looper, Reporter):
                 worker_manager_id=manager_id,
                 max_task_concurrency=heartbeat.maxTaskConcurrency,
                 worker_count=worker_count,
-                pending_worker_count=self._pending_worker_count.get(source, 0),
                 last_seen_s=last_seen,
                 capabilities=heartbeat.capabilities,
             )
@@ -213,7 +161,20 @@ class WorkerManagerController(Looper, Reporter):
 
         logging.info(f"WorkerManager {source!r} disconnected")
         self._manager_alive_since.pop(source)
-        self._pending_commands.pop(source, None)
-        self._manager_capabilities.pop(source, None)
-        self._pending_worker_count.pop(source, None)
-        self._last_worker_count.pop(source, None)
+        self._last_desired_total.pop(source, None)
+
+
+def _sum_desired_for_manager(commands: List[WorkerManagerCommand], manager_capabilities: Dict[str, int]) -> int:
+    """Sum taskConcurrency across requests whose capability set is a subset of the manager's capabilities.
+
+    Mirrors the rule the worker manager itself applies to translate the declarative command into a
+    concrete worker count. An empty capability set on a request acts as a wildcard.
+    """
+    manager_items = manager_capabilities.items()
+    total = 0
+    for command in commands:
+        for request in getattr(command, "setDesiredTaskConcurrencyRequests", ()):
+            req_caps = capabilities_to_dict(request.capabilities)
+            if req_caps.items() <= manager_items:
+                total += request.taskConcurrency
+    return total

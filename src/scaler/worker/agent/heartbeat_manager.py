@@ -73,7 +73,11 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
             return
 
         for processor_holder in processors:
-            status = processor_holder.process().status()
+            try:
+                status = processor_holder.process().status()
+            except psutil.NoSuchProcess:
+                # The OS process has already exited; treat as dead so it gets cleaned up.
+                status = psutil.STATUS_DEAD
             if status in {psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD}:
                 await self._processor_manager.on_failing_processor(processor_holder.processor_id(), status)
 
@@ -107,8 +111,8 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
 
         try:
             resource = Resource(cpu=int(process.cpu_percent() * 10), rss=process.memory_info().rss)
-        except psutil.ZombieProcess:
-            # Assumes dead processes do not use any resources
+        except (psutil.ZombieProcess, psutil.NoSuchProcess):
+            # Assumes dead/missing processes do not use any resources.
             resource = Resource(cpu=0, rss=0)
 
         return ProcessorStatus(

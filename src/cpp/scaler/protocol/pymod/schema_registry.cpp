@@ -55,9 +55,7 @@ bool SchemaRegistry::init()
     registerCompiledSchema<scaler::protocol::WorkerHeartbeatEcho>("message", "WorkerHeartbeatEcho");
     registerCompiledSchema<scaler::protocol::WorkerManagerHeartbeat>("message", "WorkerManagerHeartbeat");
     registerCompiledSchema<scaler::protocol::WorkerManagerHeartbeatEcho>("message", "WorkerManagerHeartbeatEcho");
-    registerCompiledSchema<scaler::protocol::WorkerManagerCommandType>("message", "WorkerManagerCommandType");
     registerCompiledSchema<scaler::protocol::WorkerManagerCommand>("message", "WorkerManagerCommand");
-    registerCompiledSchema<scaler::protocol::WorkerManagerCommandResponse>("message", "WorkerManagerCommandResponse");
     registerCompiledSchema<scaler::protocol::ObjectInstruction>("message", "ObjectInstruction");
     registerCompiledSchema<scaler::protocol::DisconnectRequest>("message", "DisconnectRequest");
     registerCompiledSchema<scaler::protocol::DisconnectResponse>("message", "DisconnectResponse");

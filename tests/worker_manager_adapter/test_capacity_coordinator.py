@@ -76,7 +76,7 @@ class TestCapacityCoordinator(unittest.IsolatedAsyncioTestCase):
     async def test_set_desired_unit_count_noop_when_count_unchanged(self) -> None:
         loop, _, _ = _make_coordinator(units=[])
         with unittest.mock.patch.object(loop, "_reconcile", new_callable=AsyncMock) as reconcile_mock:
-            await loop.set_desired_unit_count(0)  # already 0 — no change
+            await loop.set_desired_unit_count(0)  # already 0 - no change
             await asyncio.sleep(0)
         reconcile_mock.assert_not_called()
 

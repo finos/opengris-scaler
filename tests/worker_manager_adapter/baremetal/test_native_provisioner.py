@@ -42,6 +42,6 @@ class TestNativeWorkerProvisionerStopUnits(unittest.IsolatedAsyncioTestCase):
         workers = [_make_worker(pid=3000 + i) for i in range(2)]
         with patch.object(provisioner, "_create_worker", side_effect=workers):
             await provisioner.start_units(2)
-        with patch("os.kill"):
+        with patch("os.kill"), patch("psutil.Process"):
             await provisioner.stop_units(5)
         self.assertEqual(provisioner._workers, [])

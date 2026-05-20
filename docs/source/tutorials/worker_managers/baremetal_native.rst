@@ -186,7 +186,7 @@ Or use a TOML configuration file:
 How It Works
 ------------
 
-**Dynamic mode:** The worker manager connects to the scheduler and waits for scaling commands. When the scheduler's scaling policy determines that more workers are needed, it sends a ``StartWorkerGroup`` command. The worker manager spawns a new worker subprocess. When the scheduler wants to scale down, it sends a ``ShutdownWorkerGroup`` command and the worker manager terminates the worker. Each worker group contains exactly one worker process.
+**Dynamic mode:** The worker manager connects to the scheduler and waits for scaling commands. On every heartbeat the scheduler sends a ``setDesiredTaskConcurrency`` command that declares the desired worker count per capability set. The worker manager spawns or terminates worker subprocesses to converge toward that target. Each worker group contains exactly one worker process.
 
 **Fixed mode** (``scaler_worker_manager baremetal_native --mode fixed``): A fixed number of worker subprocesses are spawned immediately at startup and connect to the scheduler. Workers are not dynamically scaled. If a worker terminates, it is **not** automatically restarted.
 

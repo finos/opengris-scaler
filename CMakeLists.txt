@@ -57,6 +57,12 @@ if(WIN32)
     add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX)
     add_compile_options("/EHsc")
 
+    # Python.org's python313.dll links the release CRT (msvcr / ucrt). Python C extensions and any
+    # static library they consume must match, otherwise Debug builds fail to link with unresolved
+    # symbols like __imp__calloc_dbg. Force every target to MultiThreadedDLL so Debug and Release
+    # both link the release CRT. Source-level debugging still works (PDBs are emitted).
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+
 elseif(APPLE)
     if(CMAKE_OSX_ARCHITECTURES MATCHES "arm64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
         # Mac Arm

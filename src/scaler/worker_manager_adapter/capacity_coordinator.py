@@ -44,7 +44,7 @@ class CapacityCoordinator:
         """Set the desired number of units and signal the reconcile task."""
         if count == self._desired_unit_count:
             return
-        logging.info(f"Desired unit count changed: {self._desired_unit_count} → {count}")
+        logging.info(f"Desired unit count changed: {self._desired_unit_count} -> {count}")
         self._desired_unit_count = count
         self._reconcile_needed.set()
         if self._active_reconcile_task is None:

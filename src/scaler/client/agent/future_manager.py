@@ -34,7 +34,19 @@ class ClientFutureManager(FutureManager):
 
         logging.info(f"canceling {len(futures_to_cancel)} task(s)")
         for future in futures_to_cancel:
-            future.cancel()
+            try:
+                future.cancel()
+            except Exception:
+                logging.exception("failed to cancel future during disconnect")
+
+            # The network-driven cancel above may not transition the future to CANCELLED if the
+            # agent thread races to set an exception/result on it during the cancel-confirm
+            # round-trip (e.g. set_all_futures_with_exception runs while we are waiting on the
+            # cancel confirm, leaving the future FINISHED instead of CANCELLED). The client is
+            # disconnecting; the original outcome is no longer reachable to user code, so
+            # collapse to CANCELLED so callers observing the future see a consistent state.
+            if not future.cancelled():
+                future.force_set_canceled()
 
     def set_all_futures_with_exception(self, exception: Exception):
         with self._lock:

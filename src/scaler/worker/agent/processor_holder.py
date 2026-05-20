@@ -2,6 +2,7 @@ import logging
 import multiprocessing
 import os
 import signal
+import sys
 from typing import Optional, Tuple
 
 import psutil
@@ -10,7 +11,7 @@ from scaler.config.defaults import DEFAULT_PROCESSOR_KILL_DELAY_SECONDS
 from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import Task
 from scaler.utility.identifiers import ProcessorID
-from scaler.worker.agent.processor.processor import SUSPEND_SIGNAL, Processor
+from scaler.worker.agent.processor.processor import Processor
 
 
 class ProcessorHolder:
@@ -32,6 +33,7 @@ class ProcessorHolder:
         self._suspended = False
 
         self._hard_suspend = hard_suspend
+        self._suspend_trigger = None
         if hard_suspend:
             self._resume_event = None
             self._resumed_event = None
@@ -39,6 +41,9 @@ class ProcessorHolder:
             context = multiprocessing.get_context("spawn")
             self._resume_event = context.Event()
             self._resumed_event = context.Event()
+            if sys.platform == "win32":
+                # Windows has no SIGUSR1; the processor uses Py_AddPendingCall driven by this event.
+                self._suspend_trigger = context.Event()
 
         self._processor = Processor(
             event_loop=event_loop,
@@ -48,6 +53,7 @@ class ProcessorHolder:
             preload=preload,
             resume_event=self._resume_event,
             resumed_event=self._resumed_event,
+            suspend_trigger=self._suspend_trigger,
             garbage_collect_interval_seconds=garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=trim_memory_threshold_bytes,
             logging_paths=logging_paths,
@@ -89,7 +95,7 @@ class ProcessorHolder:
         assert self.initialized()
 
         if self._hard_suspend:
-            self.__send_signal("SIGSTOP")
+            self._process.suspend()
         else:
             # If we do not want to hardly suspend the processor's process (e.g. to keep network links alive), we request
             # the process to wait on a synchronization event. That will stop the main thread while allowing the helper
@@ -102,7 +108,11 @@ class ProcessorHolder:
             self._resume_event.clear()
             self._resumed_event.clear()
 
-            self.__send_signal(SUSPEND_SIGNAL)
+            if sys.platform == "win32":
+                assert self._suspend_trigger is not None
+                self._suspend_trigger.set()
+            else:
+                os.kill(self.pid(), signal.SIGUSR1)
 
         self._suspended = True
 
@@ -111,21 +121,36 @@ class ProcessorHolder:
         assert self._suspended is True
 
         if self._hard_suspend:
-            self.__send_signal("SIGCONT")
+            self._process.resume()
         else:
             assert self._resume_event is not None
             assert self._resumed_event is not None
 
             self._resume_event.set()
 
-            # Waits until the processor resumes processing. This avoids any future call to `suspend()` while the
-            # processor hasn't returned from the `_resumed_event.wait()` call yet (causes a re-entrant error on Linux).
-            self._resumed_event.wait()
+            if sys.platform != "win32":
+                # POSIX uses a SIGUSR1 handler that runs synchronously at the next safe point. Waiting for the
+                # processor to acknowledge resume avoids re-entering the signal handler while the previous
+                # invocation is still in `_resume_event.wait()`.
+                self._resumed_event.wait()
+            # On Windows the suspend handler is dispatched via Py_AddPendingCall, which is queued (not signal-
+            # delivered) and therefore re-entrancy-safe. Waiting here would block the worker agent's asyncio loop
+            # because the pending call cannot fire while the processor's main thread is inside a blocking C call
+            # (e.g. an inner `future.result()` waiting on a sub-task) -- it only fires once the main thread next
+            # reaches a bytecode boundary, which can be much later than the agent's heartbeat deadline.
 
         self._suspended = False
 
     def kill(self):
-        self.__send_signal("SIGTERM")
+        # On POSIX this maps to SIGTERM and gives the processor a chance to run its __interrupt handler
+        # (which destroys connectors to break blocking ZMQ reads). On Windows psutil.terminate() is
+        # TerminateProcess and is unconditional; the SIGKILL fallback below is unnecessary but harmless.
+        try:
+            self._process.terminate()
+        except psutil.NoSuchProcess:
+            self.set_task(None)
+            return
+
         self._processor.join(DEFAULT_PROCESSOR_KILL_DELAY_SECONDS)
 
         if self._processor.exitcode is None:
@@ -133,14 +158,10 @@ class ProcessorHolder:
             # these blocking calls instead of sending a SIGKILL signal.
 
             logging.warning(f"Processor[{self.pid()}] does not terminate in time, send SIGKILL.")
-            self.__send_signal("SIGKILL")
+            try:
+                self._process.kill()
+            except psutil.NoSuchProcess:
+                pass
             self._processor.join()
 
         self.set_task(None)
-
-    def __send_signal(self, signal_name: str):
-        signal_instance = getattr(signal, signal_name, None)
-        if signal_instance is None:
-            raise RuntimeError(f"unsupported platform, signal not available: {signal_name}.")
-
-        os.kill(self.pid(), signal_instance)

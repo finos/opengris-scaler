@@ -383,7 +383,7 @@ void MessageConnection::processSendOperation(SendOperation operation) noexcept
     // uv_write() normally delivers errors asynchronously via the callback, but returns UV_ENOTCONN synchronously
     // (without invoking the callback) if the socket is already torn down at call time. This can happen in a narrow
     // accept-then-write race: onConnect() drains the pending send queue immediately after a peer is accepted, but
-    // the peer may have disconnected between accept() and this write(). Tolerate UV_ENOTCONN silently here —
+    // the peer may have disconnected between accept() and this write(). Tolerate UV_ENOTCONN silently here -
     // onRead() will detect and propagate the disconnect through the normal disconnect path.
 
     if (totalSize <= maxWriteBufferSize) {

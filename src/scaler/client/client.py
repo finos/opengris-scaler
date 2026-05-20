@@ -18,6 +18,7 @@ from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEART
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import ConnectorRemoteType, NetworkBackend, SyncConnector, SyncObjectStorageConnector
 from scaler.io.network_backends import get_network_backend_from_env
+from scaler.io.ymq import YMQException
 from scaler.protocol.capnp import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
 from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
@@ -464,14 +465,29 @@ class Client:
 
         self._future_manager.cancel_all_futures()
 
-        self._connector_agent.send(ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.disconnect))
+        try:
+            self._connector_agent.send(ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.disconnect))
+        except YMQException:
+            # Race: between the _stop_event.is_set() check above and this send, the agent
+            # thread can observe the scheduler going away, exit __get_loops, and destroy its
+            # internal binder. The send then fails with ConnectorSocketClosedByRemoteEnd. The
+            # agent has already torn itself down, so just fall through to __destroy().
+            pass
 
         self.__destroy()
 
     def __receive_shutdown_response(self):
         message: Optional[ClientShutdownResponse] = None
-        while not isinstance(message, ClientShutdownResponse):
-            message = self._connector_agent.receive()
+        try:
+            while not isinstance(message, ClientShutdownResponse):
+                message = self._connector_agent.receive()
+        except YMQException:
+            # The scheduler may close its end of the socket immediately after raising
+            # ClientShutdownException, before YMQ has flushed the ClientShutdownResponse on the wire.
+            # The client agent then sees the remote-end close and tears down its connectors, which
+            # surfaces here as a YMQException. Treat this as a successful shutdown -- the scheduler
+            # acknowledged the request before quitting.
+            return
 
         if not message.accepted:
             raise ValueError("Scheduler is in protected mode. Can't shutdown")

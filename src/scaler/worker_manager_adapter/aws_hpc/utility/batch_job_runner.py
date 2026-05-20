@@ -202,7 +202,7 @@ def main():
                 raise
         else:
             # Reference mode - need object storage access
-            # This requires the adapter to embed the actual function/args
+            # This requires the worker manager to embed the actual function/args
             raise ValueError("Task data missing 'function' and 'arguments' - reference mode not yet supported")
 
         # Serialize and store result

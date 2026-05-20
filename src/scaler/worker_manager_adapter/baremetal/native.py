@@ -3,8 +3,11 @@ from __future__ import annotations
 import logging
 import os
 import signal
+import sys
 import uuid
 from typing import TYPE_CHECKING, Dict, List
+
+import psutil
 
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.utility.identifiers import WorkerID
@@ -117,7 +120,13 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
         if len(to_stop) < count:
             logging.warning(f"Requested to stop {count} worker(s) but only {len(to_stop)} available.")
         for worker in to_stop:
-            os.kill(worker.pid, signal.SIGINT)
+            if sys.platform == "win32":
+                # Windows os.kill with SIGINT only works for processes attached to the same console.
+                # TerminateProcess is forceful: the worker's __destroy/__graceful_shutdown handlers
+                # do not run, so the scheduler will time out the worker on its own.
+                psutil.Process(worker.pid).terminate()
+            else:
+                os.kill(worker.pid, signal.SIGINT)
             self._workers.pop(0)
             logging.info(f"Stopped native worker {worker.identity!r}")
 

@@ -1,4 +1,5 @@
 add_subdirectory(wrapper/uv)
+add_subdirectory(wrapper/openssl)
 
 add_subdirectory(ymq)
 

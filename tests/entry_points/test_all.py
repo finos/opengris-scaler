@@ -234,7 +234,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
         self.assertEqual(config.worker_managers[0].mode, NativeWorkerManagerMode.FIXED)
 
     def test_orb_aws_ec2_worker_manager_parsed_from_toml(self) -> None:
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
         toml = {
             "worker_manager": {
@@ -247,7 +247,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
         }
         config = self._parse(toml)
         self.assertEqual(len(config.worker_managers), 1)
-        self.assertIsInstance(config.worker_managers[0], ORBAWSEC2WorkerAdapterConfig)
+        self.assertIsInstance(config.worker_managers[0], ORBAWSEC2WorkerManagerConfig)
 
     def test_orb_aws_ec2_fields_from_toml(self) -> None:
         toml = {
@@ -267,7 +267,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
 
     def test_mixed_native_and_orb_aws_ec2_worker_managers(self) -> None:
         from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 
         toml = {
             "worker_manager": [
@@ -284,7 +284,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
         config = self._parse(toml)
         self.assertEqual(len(config.worker_managers), 2)
         self.assertIsInstance(config.worker_managers[0], NativeWorkerManagerConfig)
-        self.assertIsInstance(config.worker_managers[1], ORBAWSEC2WorkerAdapterConfig)
+        self.assertIsInstance(config.worker_managers[1], ORBAWSEC2WorkerManagerConfig)
 
 
 class TestRunWorkerManager(unittest.TestCase):
@@ -340,13 +340,13 @@ class TestRunWorkerManager(unittest.TestCase):
         from scaler.config.common.logging import LoggingConfig
         from scaler.config.common.worker import WorkerConfig
         from scaler.config.common.worker_manager import WorkerManagerConfig
-        from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+        from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
         from scaler.config.types.address import AddressConfig
 
         wmc = WorkerManagerConfig(
             scheduler_address=AddressConfig.from_string("tcp://localhost:6378"), worker_manager_id="wm-test"
         )
-        return ORBAWSEC2WorkerAdapterConfig(
+        return ORBAWSEC2WorkerManagerConfig(
             worker_manager_config=wmc,
             image_id="ami-0528819f94f4f5fa5",
             aws_region="us-east-1",
@@ -362,7 +362,7 @@ class TestRunWorkerManager(unittest.TestCase):
         with (
             patch("scaler.entry_points.scaler.setup_logger"),
             patch("scaler.entry_points.scaler.register_event_loop"),
-            patch("scaler.worker_manager_adapter.orb_aws_ec2.worker_manager.ORBAWSEC2WorkerAdapter") as mock_orb,
+            patch("scaler.worker_manager_adapter.orb_aws_ec2.worker_manager.ORBAWSEC2WorkerManager") as mock_orb,
         ):
             mock_orb.return_value.run.return_value = None
             _run_worker_manager(config)
@@ -378,7 +378,7 @@ class TestRunWorkerManager(unittest.TestCase):
         with (
             patch("scaler.entry_points.scaler.register_event_loop") as mock_reg,
             patch("scaler.entry_points.scaler.setup_logger"),
-            patch("scaler.worker_manager_adapter.orb_aws_ec2.worker_manager.ORBAWSEC2WorkerAdapter") as mock_orb,
+            patch("scaler.worker_manager_adapter.orb_aws_ec2.worker_manager.ORBAWSEC2WorkerManager") as mock_orb,
         ):
             mock_orb.return_value.run.return_value = None
             _run_worker_manager(config)
