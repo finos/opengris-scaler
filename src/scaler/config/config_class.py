@@ -58,7 +58,7 @@ class ConfigClass:
 
     ```
     [my_section]
-    logging_level = "DEBUG"   # correct — matches long name --logging-level
+    logging_level = "DEBUG"   # correct - matches long name --logging-level
     level = "DEBUG"           # will NOT be recognised
     ```
 
@@ -320,7 +320,7 @@ class ConfigClass:
             if action.required and action.dest in injected_dests:
                 action.required = False
 
-        # Pass 2: full parse — CLI wins.
+        # Pass 2: full parse - CLI wins.
         kwargs = vars(parser.parse_args())
         if not disable_config_flag:
             kwargs.pop("config", None)
@@ -337,7 +337,7 @@ class ConfigClass:
     ) -> T:
         """Parse CLI args using section_data as pre-loaded TOML defaults.
 
-        Unlike parse(), this method does not load any config file — the caller
+        Unlike parse(), this method does not load any config file - the caller
         is responsible for pre-loading the relevant TOML section and passing it
         as section_data.  argv defaults to sys.argv[1:] when None.
 
@@ -414,7 +414,7 @@ def _build_subparser_tree(
             injected_dests.update(toml_defs)
 
         # Inject TOML defaults for parent-class ConfigClass fields (e.g. logging) from
-        # sections named after the field — e.g. [logging] → LoggingConfig defaults.
+        # sections named after the field - e.g. [logging] -> LoggingConfig defaults.
         for parent_field in dataclasses.fields(parent_cls):  # type: ignore[arg-type]
             if "subcommand" in parent_field.metadata or "section" in parent_field.metadata:
                 continue

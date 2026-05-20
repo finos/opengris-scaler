@@ -44,15 +44,10 @@ class VanillaPolicyController(PolicyController):
         information_snapshot: InformationSnapshot,
         worker_manager_heartbeat: WorkerManagerHeartbeat,
         managed_worker_ids: List[WorkerID],
-        managed_worker_capabilities: Dict[str, int],
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         return self._policy.get_scaling_commands(
-            information_snapshot,
-            worker_manager_heartbeat,
-            managed_worker_ids,
-            managed_worker_capabilities,
-            worker_manager_snapshots,
+            information_snapshot, worker_manager_heartbeat, managed_worker_ids, worker_manager_snapshots
         )
 
     def get_scaling_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:

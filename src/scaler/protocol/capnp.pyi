@@ -236,32 +236,12 @@ class WorkerManagerHeartbeat(BaseMessage):
 
 class WorkerManagerHeartbeatEcho(BaseMessage): ...
 
-class WorkerManagerCommandType(IntEnum):
-    startWorkers = 0
-    shutdownWorkers = 1
-    setDesiredTaskConcurrency = 2
-
 class WorkerManagerCommand(BaseMessage):
-    workerIDs: Any
-    command: WorkerManagerCommandType
-    capabilities: Any
     setDesiredTaskConcurrencyRequests: Any
 
     class DesiredTaskConcurrencyRequest(CapnpStruct):
         taskConcurrency: int
         capabilities: Any
-
-class WorkerManagerCommandResponse(BaseMessage):
-    command: WorkerManagerCommandType
-    status: "WorkerManagerCommandResponse.Status"
-    workerIDs: Any
-    capabilities: Any
-
-    class Status(IntEnum):
-        tooManyWorkers = 0
-        unknownAction = 1
-        workerNotFound = 2
-        success = 3
 
 class ObjectInstruction(BaseMessage):
     instructionType: "ObjectInstruction.ObjectInstructionType"
@@ -366,7 +346,6 @@ class Message(CapnpUnionStruct):
     workerManagerHeartbeat: WorkerManagerHeartbeat
     workerManagerHeartbeatEcho: WorkerManagerHeartbeatEcho
     workerManagerCommand: WorkerManagerCommand
-    workerManagerCommandResponse: WorkerManagerCommandResponse
 
 class ObjectRequestHeader(CapnpStruct):
     MESSAGE_LENGTH: ClassVar[int]

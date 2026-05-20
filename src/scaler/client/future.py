@@ -102,6 +102,30 @@ class ScalerFuture(concurrent.futures.Future):
 
         self._invoke_callbacks()  # type: ignore[attr-defined]
 
+    def force_set_canceled(self):
+        """Mark the future as cancelled regardless of its current state.
+
+        Unlike `set_canceled`, this also overrides FINISHED states (set_result_ready /
+        set_exception). Intended for `Client.disconnect`, where the network-driven cancel
+        round-trip can race with the agent thread setting an exception/result on the same
+        future; once the client is disconnecting, the original outcome is no longer reachable
+        to user code, so we collapse to CANCELLED for a consistent observable state.
+        """
+        with self._condition:
+            if self.cancelled():
+                return
+
+            self._state = "CANCELLED_AND_NOTIFIED"
+            self._result_received = True
+            self._cancel_requested = True
+
+            for waiter in self._waiters:
+                waiter.add_cancelled(self)
+
+            self._condition.notify_all()  # type: ignore[attr-defined]
+
+        self._invoke_callbacks()  # type: ignore[attr-defined]
+
     def _set_result_or_exception(
         self,
         result: Optional[Any] = None,
@@ -234,7 +258,7 @@ class ScalerFuture(concurrent.futures.Future):
             if self._result_object_id is None or self.cancelled() or self._result_received:
                 return
 
-            object_bytes = self._connector_storage.get_object(self._result_object_id)
+            object_bytes = bytes(self._connector_storage.get_object(self._result_object_id))
 
             if self._is_simple_task():
                 # immediately delete non graph result objects

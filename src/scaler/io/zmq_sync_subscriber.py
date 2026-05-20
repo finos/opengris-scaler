@@ -24,7 +24,7 @@ class ZMQSyncSubscriber(SyncSubscriber):
 
         self._stop_event = threading.Event()
 
-        self._context: zmq.Context = context
+        self._zmq_context: zmq.Context = context
         self._identity = identity
         self._address = address
         self._callback = callback
@@ -48,7 +48,7 @@ class ZMQSyncSubscriber(SyncSubscriber):
         self.__close()
 
     def __initialize(self):
-        self._socket = self._context.socket(zmq.SUB)
+        self._socket = self._zmq_context.socket(zmq.SUB)
         self._socket.setsockopt(zmq.RCVHWM, 0)
 
         if self._timeout is None:

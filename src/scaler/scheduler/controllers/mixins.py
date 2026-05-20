@@ -259,10 +259,9 @@ class PolicyController(metaclass=abc.ABCMeta):
         information_snapshot: InformationSnapshot,
         worker_manager_heartbeat: WorkerManagerHeartbeat,
         managed_worker_ids: List[WorkerID],
-        managed_worker_capabilities: Dict[str, int],
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
-        """Pure function: state in, commands out. Commands are either all start or all shutdown, never mixed."""
+        """Pure function: state in, commands out (a single declarative setDesiredTaskConcurrency)."""
         raise NotImplementedError()
 
     @abc.abstractmethod

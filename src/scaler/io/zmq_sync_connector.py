@@ -14,11 +14,11 @@ class ZMQSyncConnector(SyncConnector):
     def __init__(
         self, context: zmq.Context, identity: bytes, address: AddressConfig, connector_remote_type: ConnectorRemoteType
     ):
-        self._context = context
+        self._zmq_context = context
         self._identity = identity
         self._address = address
 
-        self._socket = self._context.socket(self.__to_zmq_socket_type(connector_remote_type))
+        self._socket = self._zmq_context.socket(self.__to_zmq_socket_type(connector_remote_type))
 
         # set socket option
         self._socket.setsockopt(zmq.IDENTITY, self._identity)

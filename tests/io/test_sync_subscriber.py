@@ -22,8 +22,8 @@ from scaler.utility.identifiers import WorkerID
 _BIND_ADDRESS = AddressConfig.from_string("tcp://127.0.0.1:0")
 # Time budget for the message to be delivered after publish.
 _RECEIVE_TIMEOUT_SECONDS = 5.0
-# Pub/Sub is best-effort — messages published before the SUB socket has finished
-# subscribing are dropped — so warm up briefly between subscriber start and publish.
+# Pub/Sub is best-effort - messages published before the SUB socket has finished
+# subscribing are dropped - so warm up briefly between subscriber start and publish.
 _SUBSCRIPTION_WARMUP_SECONDS = 0.3
 # Per-recv timeout so we can interrupt the polling loop without tearing down the
 # context mid-recv (which crashes libzmq).

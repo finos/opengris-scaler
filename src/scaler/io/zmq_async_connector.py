@@ -14,7 +14,7 @@ class ZMQAsyncConnector(AsyncConnector):
     def __init__(
         self, context: zmq.asyncio.Context, identity: bytes, callback: Callable[[BaseMessage], Awaitable[None]]
     ):
-        self._context = context
+        self._zmq_context = context
         self._identity = identity
         self._address: Optional[AddressConfig] = None
         self._socket: Optional[zmq.asyncio.Socket] = None
@@ -71,7 +71,7 @@ class ZMQAsyncConnector(AsyncConnector):
         await self._callback(message)
 
     async def receive(self) -> Optional[BaseMessage]:
-        if self._context.closed:
+        if self._zmq_context.closed:
             return None
 
         if self._socket is None:
@@ -104,7 +104,7 @@ class ZMQAsyncConnector(AsyncConnector):
         else:
             raise ValueError(f"unsupported remote_type={remote_type}")
 
-        self._socket = self._context.socket(socket_type)
+        self._socket = self._zmq_context.socket(socket_type)
         assert self._socket is not None
 
         self._socket.setsockopt(zmq.IDENTITY, self._identity)

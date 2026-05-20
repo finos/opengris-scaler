@@ -11,7 +11,7 @@ from scaler.protocol.capnp import BaseMessage
 
 class ZMQAsyncPublisher(AsyncPublisher):
     def __init__(self, context: zmq.asyncio.Context, identity: bytes):
-        self._context = context
+        self._zmq_context = context
         self._identity = identity
         self._address: Optional[AddressConfig] = None
         self._socket: Optional[zmq.asyncio.Socket] = None
@@ -19,7 +19,7 @@ class ZMQAsyncPublisher(AsyncPublisher):
     async def bind(self, address: AddressConfig) -> None:
         assert self._socket is None
 
-        self._socket = self._context.socket(zmq.PUB)
+        self._socket = self._zmq_context.socket(zmq.PUB)
         assert self._socket is not None
 
         self._socket.setsockopt(zmq.SNDHWM, 0)

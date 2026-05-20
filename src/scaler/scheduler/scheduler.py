@@ -22,7 +22,6 @@ from scaler.protocol.capnp import (
     TaskLog,
     TaskResult,
     WorkerHeartbeat,
-    WorkerManagerCommandResponse,
     WorkerManagerHeartbeat,
 )
 from scaler.scheduler.controllers.balance_controller import VanillaBalanceController
@@ -235,10 +234,6 @@ class Scheduler:
         # worker manager controller
         if isinstance(message, WorkerManagerHeartbeat):
             await self._worker_manager_controller.on_heartbeat(source, message)
-            return
-
-        if isinstance(message, WorkerManagerCommandResponse):
-            await self._worker_manager_controller.on_command_response(source, message)
             return
 
         logging.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")

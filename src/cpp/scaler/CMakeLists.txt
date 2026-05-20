@@ -1,4 +1,5 @@
 add_subdirectory(wrapper/uv)
+add_subdirectory(wrapper/openssl)
 
 if(NOT EMSCRIPTEN)
   # ymq currently requires std::jthread / threading which Emscripten does not

@@ -7,7 +7,7 @@ No EC2, no S3, and no remote packaging are required.
 
 ## Prerequisites
 
-Ray does not yet publish wheels for Python 3.14, so use a Python ≤3.13 environment.
+Ray does not yet publish wheels for Python 3.14, so use a Python <=3.13 environment.
 
 ```bash
 # One-time environment setup (Python 3.13 example)
@@ -85,7 +85,7 @@ class LocalDataAccess(DataAccess):
         return result
 
     def list_files_asynch(self, path: str, parallel_discovery_threshold: int = 20) -> List[Tuple[str, float]]:
-        """Local filesystem discovery — no parallelism needed."""
+        """Local filesystem discovery - no parallelism needed."""
         return self.list_files(path)
 
     def discover_files_asynch(
@@ -298,7 +298,7 @@ diff --git a/samples/order_flow_ray/src/pipeline/pipeline.py b/samples/order_flo
 ### `src/scripts/convert_bmll_sample.py` (new file)
 
 Converts the bundled BMLL CSV samples into the `repartitioned_v3` parquet layout expected
-by the pipeline. See the schema notes in the module docstring — in particular:
+by the pipeline. See the schema notes in the module docstring - in particular:
 
 - `ISOExchangeCode` is missing from the CSV and is derived from `MIC`.
 - `ExchangeTicker` is derived as `Ticker + "_" + MIC`.
@@ -313,7 +313,7 @@ by the pipeline. See the schema notes in the module docstring — in particular:
 """Convert the BMLL CSV sample files into the repartitioned_v3 parquet structure
 expected by the feature engineering pipeline.
 
-The output path layout mirrors what the normalization → repartition pipeline produces:
+The output path layout mirrors what the normalization -> repartition pipeline produces:
 
     <BASE>/repartitioned_v3/
         2025/01/16/trades/AMERICAS/A/XNAS-20250116.parquet
@@ -601,16 +601,16 @@ Discovered 6 files from ~/data/order_flow/repartitioned_v3
 Grouped into 4 file groups
 
 Feature_Engineering FINAL SUMMARY:
-Total successful: 6/6  ✓
+Total successful: 6/6  OK
 Total failed:     0/6
 
-18,000 input rows → 5,642 feature rows
-  trades/AMERICAS/A  1,000 →   550 rows
-  trades/AMERICAS/C  1,000 →   569 rows
-  trades/AMERICAS/S  1,000 →   332 rows
-  level2q/AMERICAS/A 5,000 → 1,444 rows  (207 features, 7 sections)
-  level2q/AMERICAS/C 5,000 → 2,221 rows
-  level2q/AMERICAS/S 5,000 →   526 rows
+18,000 input rows -> 5,642 feature rows
+  trades/AMERICAS/A  1,000 ->   550 rows
+  trades/AMERICAS/C  1,000 ->   569 rows
+  trades/AMERICAS/S  1,000 ->   332 rows
+  level2q/AMERICAS/A 5,000 -> 1,444 rows  (207 features, 7 sections)
+  level2q/AMERICAS/C 5,000 -> 2,221 rows
+  level2q/AMERICAS/S 5,000 ->   526 rows
 ```
 
 Scaler starts local subprocess workers (one per CPU by default), distributes the task

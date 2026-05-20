@@ -78,9 +78,7 @@ bool SchemaRegistry::init()
     REG_STRUCT(kModMessage, WorkerHeartbeatEcho);
     REG_STRUCT(kModMessage, WorkerManagerHeartbeat);
     REG_STRUCT(kModMessage, WorkerManagerHeartbeatEcho);
-    REG_STRUCT(kModMessage, WorkerManagerCommandType);
     REG_STRUCT(kModMessage, WorkerManagerCommand);
-    REG_STRUCT(kModMessage, WorkerManagerCommandResponse);
     REG_STRUCT(kModMessage, ObjectInstruction);
     REG_STRUCT(kModMessage, DisconnectRequest);
     REG_STRUCT(kModMessage, DisconnectResponse);

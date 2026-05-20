@@ -16,11 +16,11 @@ class ZMQAsyncBinder(AsyncBinder):
     def __init__(
         self, context: zmq.asyncio.Context, identity: bytes, callback: Callable[[bytes, BaseMessage], Awaitable[None]]
     ):
-        self._context = context
+        self._zmq_context = context
         self._identity = identity
         self._address: Optional[AddressConfig] = None
 
-        self._socket = self._context.socket(zmq.ROUTER)
+        self._socket = self._zmq_context.socket(zmq.ROUTER)
 
         self._callback: Callable[[bytes, BaseMessage], Awaitable[None]] = callback
 

@@ -73,7 +73,7 @@ public:
         auto result = socket.recvMessage();
         ASSERT_TRUE(result.has_value());
 
-        memcpy(buf.begin(), result->payload.data(), CAPNP_HEADER_SIZE);
+        memcpy(buf.data(), result->payload.data(), CAPNP_HEADER_SIZE);
         ASSERT_EQ(result->payload.size(), CAPNP_HEADER_SIZE);
         header = ObjectResponseHeader::fromBuffer(buf);
 
@@ -576,7 +576,7 @@ TEST_F(ObjectStorageServerTest, TestMalformedHeader)
         malformedHeader.fill(0xAA);
 
         Message message;
-        message.payload = Bytes((char*)malformedHeader.begin(), malformedHeader.size());
+        message.payload = Bytes((char*)malformedHeader.data(), malformedHeader.size());
         client->writeYMQMessage(std::move(message));
 
         // Server should disconnect before or while we are reading the response

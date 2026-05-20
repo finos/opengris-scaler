@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>openGRIS Scaler — Launchpad</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+    />
+    <script
+      src="https://unpkg.com/react@18.3.1/umd/react.development.js"
+      integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"
+      integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"
+      integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y"
+      crossorigin="anonymous"
+    ></script>
+    <!-- AWS SDK v2 for browser — pin this version for production -->
+    <script src="https://unpkg.com/aws-sdk@2.1692.0/dist/aws-sdk.min.js"></script>
+    <script src="data.js"></script>
+    <script type="text/babel" src="components.jsx"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body,
+      #root {
+        height: 100%;
+        background: var(--bg-page);
+      }
+      body {
+        font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+      }
+
+      :root {
+        --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      :root,
+      [data-theme="dark"] {
+        --bg-page: #111113;
+        --bg-panel: #18191b;
+        --bg-surface: rgba(255, 255, 255, 0.04);
+        --bg-elevated: #212225;
+        --bg-popup: #272a2d;
+        --border-accent: rgba(110, 86, 207, 0.2);
+        --border-strong: rgba(110, 86, 207, 0.35);
+        --border-success: rgba(48, 164, 108, 0.2);
+        --border-danger: rgba(229, 72, 77, 0.3);
+        --text-primary: #eeeeee;
+        --text-secondary: #b4b4b4;
+        --text-muted: #7b7b7b;
+        --text-dim: #6e6e6e;
+        --text-accent: #baa7ff;
+        --text-success: #3dd68c;
+        --text-warning: #ffca16;
+        --text-danger: #ff9592;
+        --text-label: #baa7ff;
+        --accent-cyan: #6e56cf;
+        --term-bg: #0d0e11;
+        --term-border: rgba(48, 164, 108, 0.18);
+        --term-titlebar: rgba(48, 164, 108, 0.06);
+        --tab-active: #7d66d9;
+        --scrollbar-thumb: rgba(110, 86, 207, 0.25);
+      }
+      [data-theme="light"] {
+        --bg-page: #fcfcfc;
+        --bg-panel: #f9f9f9;
+        --bg-surface: rgba(0, 0, 0, 0.04);
+        --bg-elevated: #f0f0f0;
+        --bg-popup: #e8e8e8;
+        --border-accent: rgba(110, 86, 207, 0.18);
+        --border-strong: rgba(110, 86, 207, 0.32);
+        --border-success: rgba(48, 164, 108, 0.22);
+        --border-danger: rgba(229, 72, 77, 0.25);
+        --text-primary: #202020;
+        --text-secondary: #646464;
+        --text-muted: #838383;
+        --text-dim: #8d8d8d;
+        --text-accent: #6550b9;
+        --text-success: #218358;
+        --text-warning: #ab6400;
+        --text-danger: #ce2c31;
+        --text-label: #6550b9;
+        --accent-cyan: #6e56cf;
+        --term-bg: #f9f9f9;
+        --term-border: rgba(48, 164, 108, 0.22);
+        --term-titlebar: rgba(48, 164, 108, 0.07);
+        --tab-active: #6e56cf;
+        --scrollbar-thumb: rgba(110, 86, 207, 0.2);
+      }
+      [data-theme="zenburn"] {
+        --bg-page: #3f3f3f;
+        --bg-panel: #4a4a4a;
+        --bg-surface: rgba(255, 255, 255, 0.06);
+        --bg-elevated: #383838;
+        --bg-popup: #383838;
+        --border-accent: rgba(240, 223, 175, 0.2);
+        --border-strong: rgba(240, 223, 175, 0.35);
+        --border-success: rgba(127, 159, 127, 0.3);
+        --border-danger: rgba(204, 147, 147, 0.35);
+        --text-primary: #dcdccc;
+        --text-secondary: #e3ceab;
+        --text-muted: #9f9f9f;
+        --text-dim: #7f7f7f;
+        --text-accent: #f0dfaf;
+        --text-success: #7f9f7f;
+        --text-warning: #e3ceab;
+        --text-danger: #cc9393;
+        --text-label: #dfaf8f;
+        --accent-cyan: #f0dfaf;
+        --term-bg: #383838;
+        --term-border: rgba(127, 159, 127, 0.3);
+        --term-titlebar: rgba(127, 159, 127, 0.08);
+        --tab-active: #f0dfaf;
+        --scrollbar-thumb: rgba(240, 223, 175, 0.2);
+      }
+
+      @keyframes blink {
+        50% {
+          opacity: 0;
+        }
+      }
+      @keyframes fadeSlideIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+input[type="number"] {
+        -moz-appearance: textfield;
+      }
+      input[type="number"]::-webkit-inner-spin-button,
+      input[type="number"]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      ::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--scrollbar-thumb);
+        border-radius: 2px;
+      }
+      select option {
+        background: var(--bg-elevated);
+        color: var(--text-primary);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!-- ─── AWS EC2 Provisioning Logic (plain JS, no Babel needed) ─── -->
+    <script src="provisioner.js"></script>
+
+    <!-- ─── React Application ─── -->
+    <script type="text/babel" src="app.jsx"></script>
+  </body>
+</html>

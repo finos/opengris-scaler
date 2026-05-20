@@ -11,8 +11,8 @@ class ScalingPolicy:
     """
     Stateless scaling policy interface.
 
-    All state (managed workers, capabilities) is owned by WorkerManagerController and passed in as parameters.
-    Policies return commands rather than mutating internal state.
+    All state (managed workers) is owned by WorkerManagerController and passed in as parameters.
+    Policies return a single declarative setDesiredTaskConcurrency command.
     """
 
     @abc.abstractmethod
@@ -21,14 +21,9 @@ class ScalingPolicy:
         information_snapshot: InformationSnapshot,
         worker_manager_heartbeat: WorkerManagerHeartbeat,
         managed_worker_ids: List[WorkerID],
-        managed_worker_capabilities: Dict[str, int],
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
-        """
-        Pure function: state in, commands out.
-
-        Returns a list of WorkerManagerCommands. Commands are either all start or all shutdown, never mixed.
-        """
+        """Pure function: state in, declarative scaling command out."""
         raise NotImplementedError()
 
     @abc.abstractmethod

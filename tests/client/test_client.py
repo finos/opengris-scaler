@@ -1,4 +1,5 @@
 import functools
+import logging
 import multiprocessing
 import os
 import random
@@ -445,14 +446,17 @@ class TestClientPreload(unittest.TestCase):
                 preload_process.terminate()
                 preload_process.join()
         finally:
-            # Clean up log files
+            # Clean up log files. On Windows the logging handlers may still hold an open
+            # handle on the log files even after preload_process.join(), which makes
+            # os.unlink raise PermissionError (WinError 32, sharing violation). Skip the
+            # cleanup in that case; OS will reap the temp files later.
             try:
                 os.unlink(log_path)
                 for file in os.listdir(log_dir):
                     if file.startswith(log_basename + "-") and file != log_basename:
                         os.unlink(os.path.join(log_dir, file))
-            except FileNotFoundError:
-                pass
+            except OSError as exc:
+                logging.warning(f"could not clean up preload log files: {exc}")
 
     def test_parse_preload_spec_error(self):
         # Test that _parse_preload_spec raises PreloadSpecError for invalid specs

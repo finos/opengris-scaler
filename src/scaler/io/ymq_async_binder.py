@@ -11,11 +11,11 @@ from scaler.protocol.capnp import BaseMessage, BinderStatus
 
 class YMQAsyncBinder(AsyncBinder):
     def __init__(self, context: IOContext, identity: bytes, callback: Callable[[bytes, BaseMessage], Awaitable[None]]):
-        self._context = context
+        self._ymq_context = context
         self._identity = identity
         self._address: Optional[AddressConfig] = None
 
-        self._socket: Optional[BinderSocket] = BinderSocket(self._context, self._identity.decode())
+        self._socket: Optional[BinderSocket] = BinderSocket(self._ymq_context, self._identity.decode())
 
         self._callback: Callable[[bytes, BaseMessage], Awaitable[None]] = callback
 
@@ -45,7 +45,7 @@ class YMQAsyncBinder(AsyncBinder):
         self._socket.shutdown()
 
         self._socket = None
-        self._context = None
+        self._ymq_context = None
 
     async def routine(self):
         assert self._socket is not None

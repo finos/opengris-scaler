@@ -9,10 +9,10 @@ from scaler.protocol.capnp import BaseMessage
 
 class YMQAsyncPublisher(AsyncPublisher):
     def __init__(self, context: IOContext, identity: bytes):
-        self._context = context
+        self._ymq_context = context
         self._identity = identity
         self._address: Optional[AddressConfig] = None
-        self._socket: Optional[BinderSocket] = BinderSocket(self._context, self._identity.decode())
+        self._socket: Optional[BinderSocket] = BinderSocket(self._ymq_context, self._identity.decode())
 
     async def bind(self, address: AddressConfig) -> None:
         assert self._socket is not None
@@ -30,7 +30,7 @@ class YMQAsyncPublisher(AsyncPublisher):
         self._socket.shutdown()
 
         self._socket = None
-        self._context = None
+        self._ymq_context = None
 
     @property
     def identity(self) -> bytes:

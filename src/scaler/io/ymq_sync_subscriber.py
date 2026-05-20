@@ -23,13 +23,13 @@ class YMQSyncSubscriber(SyncSubscriber):
 
         self._stop_event = threading.Event()
 
-        self._context = context
+        self._ymq_context = context
         self._identity = identity
         self._address = address
         self._callback = callback
         self._timeout = timeout
 
-        self._socket = ConnectorSocket.connect(self._context, self._identity.decode(), repr(self._address))
+        self._socket = ConnectorSocket.connect(self._ymq_context, self._identity.decode(), repr(self._address))
 
     def __close(self):
         self._socket.shutdown()

@@ -50,7 +50,7 @@ aws = [
     "botocore[crt]",
 ]
 orb = [
-    "orb-py~=1.5.1; python_version >= '3.10'",
+    "orb-py~=1.6.0; python_version >= '3.10'",
     "boto3",
     "packaging",
     "botocore[crt]",
@@ -116,6 +116,7 @@ build.targets = [
     "py_stable_priority_queue",
     "py_many_to_many_dict",
     "py_indexed_queue",
+    "py_pending_call",
     "py_capnp",
 ]
 

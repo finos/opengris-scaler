@@ -2,7 +2,7 @@
 AWS Batch and S3 Provisioner.
 
 Simple provisioning for AWS Batch compute environment, job queue,
-job definition, and S3 bucket required for the Scaler AWS Batch adapter.
+job definition, and S3 bucket required for the Scaler AWS Batch worker manager.
 """
 
 import json
@@ -38,7 +38,7 @@ IAM_POLICY_EC2_CONTAINER_SERVICE = "arn:aws:iam::aws:policy/service-role/AmazonE
 
 class AWSBatchProvisioner:
     """
-    Provisions AWS resources for Scaler AWS Batch adapter.
+    Provisions AWS resources for Scaler AWS Batch worker manager.
 
     Creates:
         - S3 bucket for task payloads and results

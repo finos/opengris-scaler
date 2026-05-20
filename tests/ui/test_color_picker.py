@@ -43,12 +43,12 @@ class TestFindBestHue(unittest.TestCase):
         self.assertAlmostEqual(_find_best_hue(120, []), 120)
 
     def test_far_enough_returns_preferred(self) -> None:
-        # 120° is far from 0° and 240°
+        # 120 deg is far from 0 deg and 240 deg
         self.assertAlmostEqual(_find_best_hue(120, [0, 240]), 120)
 
     def test_too_close_uses_largest_gap(self) -> None:
         # existing: [0, 10], preferred 5 is too close to both
-        # largest gap is 10→0 (wrapping) = 350°, midpoint = (10 + 175) % 360 = 185
+        # largest gap is 10->0 (wrapping) = 350 deg, midpoint = (10 + 175) % 360 = 185
         result = _find_best_hue(5, [0, 10])
         self.assertGreaterEqual(_hue_distance(result, 0), _MIN_HUE_DISTANCE)
         self.assertGreaterEqual(_hue_distance(result, 10), _MIN_HUE_DISTANCE)
@@ -101,8 +101,8 @@ class TestCapabilitiesColor(unittest.TestCase):
                 self.assertGreaterEqual(
                     _hue_distance(hues[i], hues[j]),
                     _MIN_HUE_DISTANCE,
-                    f"Hues {hues[i]:.0f}° and {hues[j]:.0f}° are too close "
-                    f"(distance {_hue_distance(hues[i], hues[j]):.1f}°)",
+                    f"Hues {hues[i]:.0f} deg and {hues[j]:.0f} deg are too close "
+                    f"(distance {_hue_distance(hues[i], hues[j]):.1f} deg)",
                 )
 
     def test_manager_and_capability_maps_independent(self) -> None:

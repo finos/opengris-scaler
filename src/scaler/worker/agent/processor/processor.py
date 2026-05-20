@@ -3,6 +3,8 @@ import logging
 import multiprocessing
 import os
 import signal
+import sys
+import threading
 from contextlib import redirect_stderr, redirect_stdout
 from contextvars import ContextVar, Token
 from multiprocessing.synchronize import Event as EventType
@@ -49,6 +51,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         preload: Optional[str],
         resume_event: Optional[EventType],
         resumed_event: Optional[EventType],
+        suspend_trigger: Optional[EventType],
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
         logging_paths: Tuple[str, ...],
@@ -67,6 +70,12 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self._resume_event = resume_event
         self._resumed_event = resumed_event
+        self._suspend_trigger = suspend_trigger
+
+        # _listener_shutdown is created in __initialize (the child process) because threading.Event
+        # cannot be pickled across the spawn boundary on Windows.
+        self._suspend_listener: Optional[threading.Thread] = None
+        self._listener_shutdown: Optional[threading.Event] = None
 
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
@@ -94,6 +103,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         return self._current_task
 
     def __initialize(self):
+        self._listener_shutdown = threading.Event()
+
         # modify the logging path and add process id to the path
         logging_paths = [f"{path}-{os.getpid()}" for path in self._logging_paths if path != "/dev/stdout"]
         if "/dev/stdout" in self._logging_paths:
@@ -132,9 +143,21 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 ) from e
 
     def __register_signals(self):
-        self.__register_signal("SIGTERM", self.__interrupt)
+        if sys.platform != "win32":
+            # Windows signal.signal() accepts SIGTERM but the OS does not deliver it from external commands,
+            # so the handler would never run. Skip registration to keep the Windows code path honest.
+            self.__register_signal("SIGTERM", self.__interrupt)
 
-        if self._resume_event is not None:
+        if self._resume_event is None:
+            return
+
+        if sys.platform == "win32":
+            assert self._suspend_trigger is not None
+            self._suspend_listener = threading.Thread(
+                target=self.__suspend_listener_main, name="ProcessorSuspendListener", daemon=True
+            )
+            self._suspend_listener.start()
+        else:
             self.__register_signal(SUSPEND_SIGNAL, self.__suspend)
 
     def __interrupt(self, *args):
@@ -150,6 +173,25 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         # Ensures the processor agent knows we stopped waiting on `_resume_event`, as to avoid re-entrant wait on the
         # event.
         self._resumed_event.set()
+
+    def __suspend_listener_main(self):
+        # Bridges suspend requests from the parent (worker agent) into a Py_AddPendingCall scheduled on the
+        # main interpreter thread. This is the Windows substitute for SIGUSR1: it dispatches `__suspend` at
+        # the next CPython eval-breaker check, with the same safe-point semantics as a Python signal handler.
+        from scaler.utility import pending_call
+
+        assert self._suspend_trigger is not None
+        assert self._listener_shutdown is not None
+        while not self._listener_shutdown.is_set():
+            if not self._suspend_trigger.wait(timeout=0.1):
+                continue
+            self._suspend_trigger.clear()
+            if self._listener_shutdown.is_set():
+                break
+            try:
+                pending_call.schedule(self.__suspend)
+            except RuntimeError:
+                logging.exception(f"Processor[{self.pid}]: failed to schedule suspend pending call")
 
     def __run_forever(self):
         try:
@@ -177,6 +219,15 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             logging.exception(f"Processor[{self.pid}]: failed with unhandled exception:\n{e}")
 
         finally:
+            # Wake the suspend listener (if running on Windows) and let it exit before the connectors go away,
+            # so it never tries to schedule into a torn-down processor.
+            if self._listener_shutdown is not None:
+                self._listener_shutdown.set()
+            if self._suspend_trigger is not None:
+                self._suspend_trigger.set()
+            if self._suspend_listener is not None:
+                self._suspend_listener.join(timeout=1.0)
+
             self._object_cache.destroy()
             self._connector_agent.destroy()
 
@@ -217,7 +268,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 continue
 
             object_content = self._connector_storage.get_object(object_id)
-            self._object_cache.add_object(task.source, object_id, object_content)
+            self._object_cache.add_object(task.source, object_id, bytes(object_content))
 
     @staticmethod
     def __get_required_object_ids_for_task(task: Task) -> List[ObjectID]:

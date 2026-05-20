@@ -2,7 +2,6 @@ import asyncio
 import logging
 import multiprocessing
 import pathlib
-import signal
 import uuid
 from typing import Dict, Optional, Tuple
 
@@ -34,6 +33,7 @@ from scaler.utility.event_loop import create_async_loop_routine, register_event_
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ProcessorID, WorkerID
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.signal_handler import install_async_shutdown_handler
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
 from scaler.worker.agent.processor_manager import VanillaProcessorManager
 from scaler.worker.agent.profiling_manager import VanillaProfilingManager
@@ -279,18 +279,19 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._binder_internal.destroy()
         self._connector_storage.destroy()
 
-        if self._address_internal.type == SocketType.ipc:
+        if self._address_internal.type == SocketType.ipc and not self._address_internal.host.startswith(
+            "\\\\.\\pipe\\"
+        ):
+            # Windows named pipes have no filesystem entry to remove; only unlink Unix-domain-socket paths.
             pathlib.Path(self._address_internal.host).unlink(missing_ok=True)
 
         logging.info(f"{self.identity!r}: quit")
 
     def __register_signal(self):
         if isinstance(self._backend, ZMQNetworkBackend):
-            self._loop.add_signal_handler(signal.SIGINT, self.__destroy)
-            self._loop.add_signal_handler(signal.SIGTERM, self.__destroy)
+            install_async_shutdown_handler(self._loop, self.__destroy)
         elif isinstance(self._backend, YMQNetworkBackend):
-            self._loop.add_signal_handler(signal.SIGINT, lambda: asyncio.ensure_future(self.__graceful_shutdown()))
-            self._loop.add_signal_handler(signal.SIGTERM, lambda: asyncio.ensure_future(self.__graceful_shutdown()))
+            install_async_shutdown_handler(self._loop, lambda: asyncio.ensure_future(self.__graceful_shutdown()))
 
     async def __graceful_shutdown(self):
         try:

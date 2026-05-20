@@ -1,20 +1,23 @@
+from __future__ import annotations
+
 import logging
 import os
 import signal
-from typing import Dict, List, Tuple
+from typing import TYPE_CHECKING, List
 
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
-from scaler.protocol.capnp import WorkerManagerCommandResponse
-from scaler.utility.identifiers import WorkerID
-from scaler.worker_manager_adapter.mixins import ImperativeWorkerProvisioner
+from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
+from scaler.worker_manager_adapter.common import extract_desired_count
+from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager_adapter.symphony.worker import create_symphony_worker
 from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRunner
 from scaler.worker_manager_adapter.worker_process import WorkerProcess
 
-Status = WorkerManagerCommandResponse.Status
+if TYPE_CHECKING:
+    from scaler.protocol.capnp import WorkerManagerCommand
 
 
-class SymphonyWorkerProvisioner(ImperativeWorkerProvisioner):
+class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
     def __init__(self, config: SymphonyWorkerManagerConfig) -> None:
         self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
@@ -28,12 +31,24 @@ class SymphonyWorkerProvisioner(ImperativeWorkerProvisioner):
         self._event_loop = config.worker_config.event_loop
         self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
 
-        self._workers: Dict[WorkerID, WorkerProcess] = {}
+        self._workers: List[WorkerProcess] = []
+        self._capacity_coordinator = CapacityCoordinator(
+            start_units=self.start_units,
+            stop_units=self.stop_units,
+            active_unit_count=self.active_unit_count,
+            max_unit_count=self._max_task_concurrency,
+        )
 
-    async def start_worker(self) -> Tuple[List[WorkerID], Status]:
-        if self._max_task_concurrency != -1 and len(self._workers) >= self._max_task_concurrency:
-            return [], Status.tooManyWorkers
+    def active_unit_count(self) -> int:
+        return len(self._workers)
 
+    async def set_desired_task_concurrency(
+        self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
+    ) -> None:
+        task_concurrency = extract_desired_count(requests, self._capabilities)
+        await self._capacity_coordinator.set_desired_unit_count(task_concurrency)
+
+    def _start_unit(self) -> None:
         worker = create_symphony_worker(
             address=self._worker_scheduler_address,
             object_storage_address=self._object_storage_address,
@@ -47,26 +62,26 @@ class SymphonyWorkerProvisioner(ImperativeWorkerProvisioner):
             event_loop=self._event_loop,
             worker_manager_id=self._worker_manager_id,
         )
-
         worker.start()
-        self._workers[worker.identity] = worker
-        return [worker.identity], Status.success
+        self._workers.append(worker)
+        logging.info(f"Started Symphony worker {worker.identity!r}")
 
-    async def shutdown_workers(self, worker_ids: List[WorkerID]) -> Tuple[List[WorkerID], Status]:
-        if not worker_ids:
-            return [], Status.workerNotFound
+    async def start_units(self, count: int) -> None:
+        for _ in range(count):
+            self._start_unit()
 
-        for wid in worker_ids:
-            if wid not in self._workers:
-                logging.warning(f"Worker with ID {wid!r} does not exist.")
-                return [], Status.workerNotFound
-
-        for wid in worker_ids:
-            worker = self._workers.pop(wid)
+    async def stop_units(self, count: int) -> None:
+        to_stop = self._workers[:count]
+        if len(to_stop) < count:
+            logging.warning(f"Requested to stop {count} worker(s) but only {len(to_stop)} available.")
+        for worker in to_stop:
             os.kill(worker.pid, signal.SIGINT)
-            worker.join()
+            self._workers.pop(0)
+            logging.info(f"Stopped Symphony worker {worker.identity!r}")
 
-        return list(worker_ids), Status.success
+    async def terminate(self) -> None:
+        self._capacity_coordinator.cancel()
+        await self.stop_units(len(self._workers))
 
 
 class SymphonyWorkerManager:

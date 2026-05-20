@@ -1,7 +1,7 @@
-import signal
+import logging
 import unittest
 from typing import Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from scaler.protocol.capnp import (
     ClientDisconnect,
@@ -12,37 +12,29 @@ from scaler.protocol.capnp import (
     TaskCancel,
     WorkerHeartbeatEcho,
     WorkerManagerCommand,
-    WorkerManagerCommandResponse,
-    WorkerManagerCommandType,
 )
-from scaler.protocol.helpers import capabilities_to_dict
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import TaskFlags
-from scaler.worker_manager_adapter.baremetal.native import NativeWorkerProvisioner
-from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner, ImperativeWorkerProvisioner
+from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRunner
 from scaler.worker_manager_adapter.worker_process import WorkerProcess
 from tests.utility.utility import logging_test_name
-
-Status = WorkerManagerCommandResponse.Status
 
 
 class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
-        self.capabilities = {"cpu": 4}
-        self.provisioner = MagicMock(spec=ImperativeWorkerProvisioner)
-        self.provisioner.start_worker = AsyncMock()
-        self.provisioner.shutdown_workers = AsyncMock()
+        self.provisioner = MagicMock(spec=DeclarativeWorkerProvisioner)
+        self.provisioner.set_desired_task_concurrency = AsyncMock()
         self.send_mock = AsyncMock()
         self.runner = WorkerManagerRunner(
             address=MagicMock(),
             name="test_runner",
             heartbeat_interval_seconds=5,
-            capabilities=self.capabilities,
+            capabilities={"cpu": 4},
             max_provisioner_units=4,
             worker_manager_id=b"mgr",
             worker_provisioner=self.provisioner,
@@ -51,111 +43,38 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
         connector.send = self.send_mock
         self.runner._connector_external = connector
 
-    def _sent_response(self) -> WorkerManagerCommandResponse:
-        self.send_mock.assert_called_once()
-        return self.send_mock.call_args[0][0]
-
-    async def test_start_workers_success_populates_capabilities_and_worker_ids(self) -> None:
-        worker_id = bytes(WorkerID.generate_worker_id("w0"))
-        self.provisioner.start_worker.return_value = ([worker_id], Status.success)
-
-        cmd = MagicMock(spec=WorkerManagerCommand)
-        cmd.command = WorkerManagerCommandType.startWorkers
-        await self.runner._handle_command(cmd)
-
-        response = self._sent_response()
-        self.assertIsInstance(response, WorkerManagerCommandResponse)
-        self.assertEqual(response.status, Status.success)
-        self.assertEqual(list(response.workerIDs), [worker_id])
-        self.assertEqual(capabilities_to_dict(response.capabilities), self.capabilities)
-
-    async def test_start_workers_failure_returns_empty_capabilities_and_ids(self) -> None:
-        self.provisioner.start_worker.return_value = ([], Status.tooManyWorkers)
-
-        cmd = MagicMock(spec=WorkerManagerCommand)
-        cmd.command = WorkerManagerCommandType.startWorkers
-        await self.runner._handle_command(cmd)
-
-        response = self._sent_response()
-        self.assertEqual(response.status, Status.tooManyWorkers)
-        self.assertEqual(list(response.workerIDs), [])
-        self.assertEqual(dict(response.capabilities), {})
-
-    async def test_shutdown_workers_echoes_ids_with_empty_capabilities(self) -> None:
-        worker_ids = [bytes(WorkerID.generate_worker_id(f"w{i}")) for i in range(2)]
-        self.provisioner.shutdown_workers.return_value = (worker_ids, Status.success)
-
-        cmd = MagicMock(spec=WorkerManagerCommand)
-        cmd.command = WorkerManagerCommandType.shutdownWorkers
-        cmd.workerIDs = worker_ids
-        await self.runner._handle_command(cmd)
-
-        response = self._sent_response()
-        self.assertEqual(response.status, Status.success)
-        self.assertEqual(list(response.workerIDs), worker_ids)
-        self.assertEqual(dict(response.capabilities), {})
-        self.provisioner.shutdown_workers.assert_called_once_with(worker_ids)
-
-    async def test_unknown_command_type_is_silently_ignored(self) -> None:
-        cmd = MagicMock(spec=WorkerManagerCommand)
-        cmd.command = object()
-
-        await self.runner._handle_command(cmd)
-
-        self.send_mock.assert_not_called()
-
-    async def test_set_desired_task_concurrency_is_silently_ignored(self) -> None:
-        cmd = MagicMock(spec=WorkerManagerCommand)
-        cmd.command = WorkerManagerCommandType.setDesiredTaskConcurrency
-
-        await self.runner._handle_command(cmd)
-
-        self.send_mock.assert_not_called()
-        self.provisioner.start_worker.assert_not_called()
-        self.provisioner.shutdown_workers.assert_not_called()
-
     async def test_set_desired_task_concurrency_calls_declarative_provisioner(self) -> None:
-        declarative_provisioner = MagicMock(spec=DeclarativeWorkerProvisioner)
-        declarative_provisioner.set_desired_task_concurrency = AsyncMock()
-        self.runner._worker_provisioner = declarative_provisioner
-
-        cmd = MagicMock(spec=WorkerManagerCommand)
-        cmd.command = WorkerManagerCommandType.setDesiredTaskConcurrency
         requests = [MagicMock()]
+        cmd = MagicMock(spec=WorkerManagerCommand)
         cmd.setDesiredTaskConcurrencyRequests = requests
 
         await self.runner._handle_command(cmd)
 
-        declarative_provisioner.set_desired_task_concurrency.assert_called_once_with(requests)
+        self.provisioner.set_desired_task_concurrency.assert_called_once_with(requests)
         self.send_mock.assert_not_called()
 
-    async def test_start_workers_sends_noop_success_for_declarative_provisioner(self) -> None:
-        declarative_provisioner = MagicMock(spec=DeclarativeWorkerProvisioner)
-        self.runner._worker_provisioner = declarative_provisioner
-
+    async def test_unknown_command_payload_logs_warning_without_crashing(self) -> None:
         cmd = MagicMock(spec=WorkerManagerCommand)
-        cmd.command = WorkerManagerCommandType.startWorkers
-        await self.runner._handle_command(cmd)
+        # Remove the only recognized payload field to simulate an unknown variant from a
+        # newer scheduler (or a remote worker manager) that this runner does not understand.
+        del cmd.setDesiredTaskConcurrencyRequests
 
-        response = self._sent_response()
-        self.assertIsInstance(response, WorkerManagerCommandResponse)
-        self.assertEqual(response.status, Status.success)
-        self.assertEqual(list(response.workerIDs), [])
-        self.assertEqual(dict(response.capabilities), {})
+        with self.assertLogs(level=logging.WARNING) as captured:
+            await self.runner._handle_command(cmd)
 
-    async def test_shutdown_workers_sends_noop_success_for_declarative_provisioner(self) -> None:
-        declarative_provisioner = MagicMock(spec=DeclarativeWorkerProvisioner)
-        self.runner._worker_provisioner = declarative_provisioner
+        self.assertTrue(any("Unknown action" in m for m in captured.output))
+        self.provisioner.set_desired_task_concurrency.assert_not_called()
+        self.send_mock.assert_not_called()
 
-        cmd = MagicMock(spec=WorkerManagerCommand)
-        cmd.command = WorkerManagerCommandType.shutdownWorkers
-        await self.runner._handle_command(cmd)
+    async def test_unknown_message_type_logs_warning_without_crashing(self) -> None:
+        class _Unknown:
+            pass
 
-        response = self._sent_response()
-        self.assertIsInstance(response, WorkerManagerCommandResponse)
-        self.assertEqual(response.status, Status.success)
-        self.assertEqual(list(response.workerIDs), [])
-        self.assertEqual(dict(response.capabilities), {})
+        with self.assertLogs(level=logging.WARNING) as captured:
+            await self.runner._on_receive_external(_Unknown())  # type: ignore[arg-type]
+
+        self.assertTrue(any("Unknown action" in m or "unrecognized" in m for m in captured.output))
+        self.send_mock.assert_not_called()
 
 
 class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
@@ -263,60 +182,6 @@ class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
             await self._dispatch(_Unknown())
 
 
-class TestNativeWorkerProvisioner(unittest.IsolatedAsyncioTestCase):
-    def setUp(self) -> None:
-        setup_logger()
-        logging_test_name(self)
-
-    async def test_start_worker_at_capacity_returns_too_many_workers(self) -> None:
-        provisioner = _make_native_provisioner(max_workers=1)
-        provisioner._workers[WorkerID.generate_worker_id("existing")] = MagicMock()
-
-        ids, status = await provisioner.start_worker()
-
-        self.assertEqual(ids, [])
-        self.assertEqual(status, Status.tooManyWorkers)
-
-    async def test_start_worker_success_starts_and_registers_worker(self) -> None:
-        provisioner = _make_native_provisioner(max_workers=2)
-        mock_worker = MagicMock()
-        mock_worker.identity = WorkerID.generate_worker_id("w0")
-
-        with patch.object(provisioner, "_create_worker", return_value=mock_worker):
-            ids, status = await provisioner.start_worker()
-
-        mock_worker.start.assert_called_once()
-        self.assertEqual(status, Status.success)
-        self.assertEqual(ids, [bytes(mock_worker.identity)])
-        self.assertIn(mock_worker.identity, provisioner._workers)
-
-    async def test_shutdown_workers_unknown_id_returns_worker_not_found(self) -> None:
-        provisioner = _make_native_provisioner()
-        unknown_bytes = bytes(WorkerID.generate_worker_id("ghost"))
-
-        ids, status = await provisioner.shutdown_workers([WorkerID(unknown_bytes)])
-
-        self.assertEqual(ids, [])
-        self.assertEqual(status, Status.workerNotFound)
-
-    async def test_shutdown_workers_kills_joins_and_returns_id(self) -> None:
-        provisioner = _make_native_provisioner()
-        worker_id = WorkerID.generate_worker_id("w0")
-        mock_worker = MagicMock()
-        mock_worker.pid = 99999
-        provisioner._workers[worker_id] = mock_worker
-        worker_id_bytes = bytes(worker_id)
-
-        with patch("os.kill") as mock_kill:
-            ids, status = await provisioner.shutdown_workers([WorkerID(worker_id_bytes)])
-
-        mock_kill.assert_called_once_with(99999, signal.SIGINT)
-        mock_worker.join.assert_called_once()
-        self.assertEqual(ids, [worker_id_bytes])
-        self.assertEqual(status, Status.success)
-        self.assertNotIn(worker_id, provisioner._workers)
-
-
 def _make_task(source: Optional[ClientID] = None) -> Task:
     source = source or ClientID.generate_client_id()
     return Task(
@@ -342,11 +207,3 @@ def _make_object_instruction() -> ObjectInstruction:
             objectIds=(ObjectID.generate_object_id(client_id),), objectTypes=(), objectNames=()
         ),
     )
-
-
-def _make_native_provisioner(max_workers: int = 2) -> NativeWorkerProvisioner:
-    config = MagicMock()
-    config.worker_manager_config.max_task_concurrency = max_workers
-    config.worker_manager_config.worker_manager_id.encode.return_value = b"mgr"
-    config.worker_type = "NAT"
-    return NativeWorkerProvisioner(config)

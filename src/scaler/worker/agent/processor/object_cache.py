@@ -3,6 +3,7 @@ import gc
 import logging
 import multiprocessing
 import platform
+import sys
 import threading
 import time
 from typing import Any, Dict, Optional
@@ -29,7 +30,13 @@ class ObjectCache(threading.Thread):
         self._cached_objects: Dict[ObjectID, Any] = {}
         self._cached_objects_alive_since: Dict[ObjectID, float] = dict()
         self._process = psutil.Process(multiprocessing.current_process().pid)
-        self._libc = ctypes.cdll.LoadLibrary("libc.{}".format("so.6" if platform.uname()[0] != "Darwin" else "dylib"))
+        # Windows has no libc-style malloc_trim; skip the optional RSS-trim hook there.
+        if sys.platform == "win32":
+            self._libc: Optional[ctypes.CDLL] = None
+        else:
+            self._libc = ctypes.cdll.LoadLibrary(
+                "libc.{}".format("so.6" if platform.uname()[0] != "Darwin" else "dylib")
+            )
 
         self._stop_event = threading.Event()
 
@@ -107,7 +114,8 @@ class ObjectCache(threading.Thread):
         if self._process.memory_info().rss < self._trim_memory_threshold_bytes:
             return
 
-        self._libc.malloc_trim(0)
+        if self._libc is not None:
+            self._libc.malloc_trim(0)
 
     def __clear(self) -> None:
         self._cached_objects.clear()

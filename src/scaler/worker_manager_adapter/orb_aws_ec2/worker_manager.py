@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 import asyncio
+import dataclasses
+import json
 import logging
 import math
 import os
@@ -11,15 +15,14 @@ try:
 except ModuleNotFoundError as exc:
     raise ModuleNotFoundError('execute "pip install opengris-scaler[orb]" to use ORB AWS EC2 worker Manager') from exc
 
-from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
-from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerCommandResponse
+from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
+from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.logging.utility import setup_logger
+from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager_adapter.common import extract_desired_count, format_capabilities
 from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRunner
-
-Status = WorkerManagerCommandResponse.Status
 
 ORB_AWS_EC2_POLLING_INTERVAL_SECONDS = 5
 ORB_AWS_EC2_MAX_POLLING_ATTEMPTS = 60
@@ -28,7 +31,7 @@ ORB_AWS_EC2_MAX_POLLING_ATTEMPTS = 60
 class ORBWorkerProvisioner(DeclarativeWorkerProvisioner):
     def __init__(
         self,
-        config: ORBAWSEC2WorkerAdapterConfig,
+        config: ORBAWSEC2WorkerManagerConfig,
         max_instances: int,
         sdk: Any,
         template_id: str,
@@ -40,57 +43,24 @@ class ORBWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._template_id = template_id
         self._workers_per_instance = workers_per_instance
         self._units: List[str] = []  # EC2 instance IDs of active units
-        self._desired_count: int = 0
-        self._reconcile_lock: asyncio.Lock = asyncio.Lock()
+        self._capacity_coordinator = CapacityCoordinator(
+            start_units=self.start_units,
+            stop_units=self.stop_units,
+            active_unit_count=self.active_unit_count,
+            max_unit_count=max_instances,
+        )
 
-        # keeps a strong reference to the running task
-        self._active_reconcile_task: Optional[asyncio.Task] = None
-        self._pending_reconcile_task: Optional[asyncio.Task] = None
+    def active_unit_count(self) -> int:
+        return len(self._units)
 
     async def set_desired_task_concurrency(
         self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
     ) -> None:
         own_capabilities = self._config.worker_config.per_worker_capabilities.capabilities
         task_concurrency = extract_desired_count(requests, own_capabilities)
-        new_desired = math.ceil(task_concurrency / self._workers_per_instance)
-        if new_desired != self._desired_count:
-            logging.info(
-                f"Desired instance count changed: {self._desired_count} → {new_desired} "
-                f"(task_concurrency={task_concurrency}, workers_per_instance={self._workers_per_instance})"
-            )
-        self._desired_count = new_desired
-
-        # reconciling the ec2 instances can take some time
-        # so we launch a task to handle it in the background
-        # `_reconcile_lock` ensures only one runs at a time
-        if self._pending_reconcile_task is None:
-            self._pending_reconcile_task = asyncio.create_task(self._reconcile())
-
-    async def _reconcile(self) -> None:
-        async with self._reconcile_lock:
-            self._active_reconcile_task = asyncio.current_task()
-            self._pending_reconcile_task = None
-            try:
-                current = len(self._units)
-                delta = self._desired_count - current
-                if self._max_instances != -1:
-                    delta = min(delta, self._max_instances - current)
-                capped = self._max_instances != -1 and delta != self._desired_count - current
-                msg = f"Reconcile: desired={self._desired_count}, current={current}, delta={delta:+d}" + (
-                    f" (capped by max_instances={self._max_instances})" if capped else ""
-                )
-                if delta != 0:
-                    logging.info(msg)
-                else:
-                    logging.debug(msg)
-                if delta > 0:
-                    await self.start_units(delta)
-                elif delta < 0:
-                    await self.stop_units(abs(delta))
-            except Exception as exc:
-                logging.exception(f"Reconcile failed: {exc}")
-            finally:
-                self._active_reconcile_task = None
+        await self._capacity_coordinator.set_desired_unit_count(
+            math.ceil(task_concurrency / self._workers_per_instance)
+        )
 
     async def start_units(self, count: int) -> None:
         logging.info(f"Submitting ORB batch machine request for template {self._template_id} (count={count})...")
@@ -145,7 +115,8 @@ class ORBWorkerProvisioner(DeclarativeWorkerProvisioner):
         del self._units[:count]
         logging.info(f"Successfully stopped {count} unit(s): instances {unit_ids}")
 
-    async def terminate_all_workers(self) -> None:
+    async def terminate(self) -> None:
+        self._capacity_coordinator.cancel()
         if not self._units:
             return
         logging.info(f"Terminating {len(self._units)} unit(s)...")
@@ -157,8 +128,8 @@ class ORBWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._units.clear()
 
 
-class ORBAWSEC2WorkerAdapter:
-    def __init__(self, config: ORBAWSEC2WorkerAdapterConfig) -> None:
+class ORBAWSEC2WorkerManager:
+    def __init__(self, config: ORBAWSEC2WorkerManagerConfig) -> None:
         self._config = config
         self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._event_loop = config.worker_config.event_loop
@@ -185,23 +156,18 @@ class ORBAWSEC2WorkerAdapter:
             "provider": {
                 "selection_policy": "FIRST_AVAILABLE",
                 "providers": [
-                    {"name": "aws-default", "type": "aws", "enabled": True, "priority": 1, "config": {"region": region}}
-                ],
-                # ORB skips loading strategy defaults (aws_defaults.json) when config_dict is
-                # provided, so provider_defaults must be included explicitly here. Without it,
-                # get_effective_handlers() returns {} and RunInstances is not in supported_apis.
-                # This may be fixed in a more recent version of the ORB SDK.
-                "provider_defaults": {
-                    "aws": {
-                        "handlers": {
-                            "RunInstances": {
-                                "handler_class": "RunInstancesHandler",
-                                "supports_spot": False,
-                                "supports_ondemand": True,
-                            }
-                        }
+                    {
+                        "name": "aws-default",
+                        "type": "aws",
+                        "enabled": True,
+                        "priority": 1,
+                        # profile must be set explicitly: ORB's config pipeline starts from
+                        # aws_defaults.json (which has profile="default") and deep-merges our dict
+                        # on top. Omitting profile here lets "default" leak through, which breaks
+                        # environments that rely on the EC2 instance role credential chain.
+                        "config": {"region": region, "profile": self._config.aws_profile},
                     }
-                },
+                ],
             },
             "storage": {"type": "json"},
         }
@@ -216,7 +182,7 @@ class ORBAWSEC2WorkerAdapter:
         max_instances = math.ceil(mtc / workers_per_instance) if mtc != -1 else -1
         logging.info(
             f"ORB instance type {self._config.instance_type!r}: {workers_per_instance} vCPUs/instance, "
-            f"max_task_concurrency={mtc} → max_instances={max_instances}"
+            f"max_task_concurrency={mtc} -> max_instances={max_instances}"
         )
 
         template_id = os.urandom(8).hex()
@@ -253,7 +219,7 @@ class ORBAWSEC2WorkerAdapter:
             workers_per_provisioner_unit=workers_per_instance,
         )
 
-        create_result = await sdk.create_template(
+        template_kwargs = dict(
             template_id=template_id,
             name=f"opengris-orb-{template_id}",
             image_id=image_id,
@@ -266,7 +232,12 @@ class ORBAWSEC2WorkerAdapter:
             security_group_ids=security_group_ids,
             key_name=key_name,
             user_data=user_data,
+            tags=self._config.instance_tags,
         )
+        if self._config.debug_dump_path is not None:
+            self._dump_debug_state(template_id, template_kwargs)
+
+        create_result = await sdk.create_template(**template_kwargs)
         logging.info(f"create_template result: {create_result}")
 
         validate_result = await sdk.validate_template(template_id=template_id)
@@ -295,8 +266,6 @@ class ORBAWSEC2WorkerAdapter:
                 await self._runner.run_in_loop(self._loop)
             except asyncio.CancelledError:
                 pass
-            finally:
-                await self._orb_pool.terminate_all_workers()
 
     def _cleanup(self) -> None:
         if self._cleaned_up:
@@ -327,9 +296,19 @@ class ORBAWSEC2WorkerAdapter:
     def __del__(self) -> None:
         self._cleanup()
 
+    def _dump_debug_state(self, template_id: str, template_kwargs: dict) -> None:
+        dump_dir = self._config.debug_dump_path
+        config_path = os.path.join(dump_dir, f"orb_debug_config_{template_id}.json")
+        template_path = os.path.join(dump_dir, f"orb_debug_template_{template_id}.json")
+        with open(config_path, "w") as f:
+            json.dump(dataclasses.asdict(self._config), f, indent=2, default=str)
+        with open(template_path, "w") as f:
+            json.dump(template_kwargs, f, indent=2, default=str)
+        logging.info(f"[DEBUG] Dumped config to {config_path} and template to {template_path}")
+
     def _create_user_data(self) -> str:
         worker_config = self._config.worker_config
-        adapter_config = self._config.worker_manager_config
+        worker_manager_config = self._config.worker_manager_config
 
         script = "#!/bin/bash\n"
 
@@ -357,8 +336,9 @@ set +e
 
         # --max-task-concurrency is not passed: scaler_worker_manager defaults to cpu_count - 1 workers,
         # where cpu_count is determined by the machine type the user configured in the ORB template.
+        backend_prefix = f"SCALER_NETWORK_BACKEND={self._config.network_backend.name} "
         script += f"""INSTANCE_ID=$(ec2-metadata --instance-id --quiet)
-nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} \\
+{backend_prefix}nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} \\
     --mode fixed \\
     --worker-type ORB \\
     --worker-manager-id "${{INSTANCE_ID}}" \\
@@ -374,8 +354,8 @@ nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} 
         if worker_config.hard_processor_suspend:
             script += " \\\n    --hard-processor-suspend"
 
-        if adapter_config.object_storage_address:
-            script += f" \\\n    --object-storage-address {adapter_config.object_storage_address!r}"
+        if worker_manager_config.object_storage_address:
+            script += f" \\\n    --object-storage-address {worker_manager_config.object_storage_address!r}"
 
         capabilities = worker_config.per_worker_capabilities.capabilities
         if capabilities:
@@ -431,7 +411,7 @@ nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} 
 
         group_name = f"opengris-orb-sg-{template_id}"
         sg_response = self._ec2.create_security_group(
-            Description="Temporary security group created for OpenGRIS ORB worker adapter",
+            Description="Temporary security group created for OpenGRIS ORB worker manager",
             GroupName=group_name,
             VpcId=vpc_id,
         )

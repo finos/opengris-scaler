@@ -3,18 +3,18 @@
 There are two distinct data sources that a ConfigClass can be built from, each
 handled by a separate function family:
 
-  TOML dict  →  _from_toml(cls, dict)
-  argparse   →  _from_args(cls, kwargs)          (no subcommands)
+  TOML dict  ->  _from_toml(cls, dict)
+  argparse   ->  _from_args(cls, kwargs)          (no subcommands)
                _from_args_with_subcommands(cls, kwargs, dest)   (with subcommands)
 
 Call-graph summary
 ------------------
 ConfigClass.from_args()
-  └─ _from_args_with_subcommands()   # if class has subcommand fields
-       ├─ _from_args_with_subcommands()   # recurse for nested subcommands
-       └─ _from_args()              # for non-subcommand fields at each level
-  └─ _from_args()                  # no subcommands — direct path
-       └─ _from_toml()             # for every field that carries section= metadata
+  +- _from_args_with_subcommands()   # if class has subcommand fields
+       +- _from_args_with_subcommands()   # recurse for nested subcommands
+       +- _from_args()              # for non-subcommand fields at each level
+  +- _from_args()                  # no subcommands - direct path
+       +- _from_toml()             # for every field that carries section= metadata
 
 _from_toml() only calls itself (for nested ConfigClass fields inside a TOML
 section).  It never calls _from_args or _from_args_with_subcommands.
@@ -53,7 +53,7 @@ def _from_toml(config_cls: Type[T], data: Dict[str, Any]) -> T:
     * Long-name lookup: when a field has an explicit ``long`` name that
       differs from the field name (e.g. ``long="--logging-level"`` for a
       field named ``level``), only the normalised long name (``logging_level``)
-      is accepted as a TOML key — not the field name.  This matches the
+      is accepted as a TOML key - not the field name.  This matches the
       behaviour of ``_toml_section_defaults`` so both entry points accept
       identical TOML keys.
 
@@ -66,7 +66,7 @@ def _from_toml(config_cls: Type[T], data: Dict[str, Any]) -> T:
           class pulls its own fields from it.  This lets multiple composed
           classes share a single flat TOML section.
 
-    * Type coercion: the same precedence as ``_from_args`` is used — the
+    * Type coercion: the same precedence as ``_from_args`` is used - the
       field's explicit ``type`` metadata (if any) is tried first, then the
       type derived from the field's Python type annotation.  This ensures
       e.g. enum fields with a value-based constructor (``mode = "fixed"``) and
@@ -93,7 +93,7 @@ def _from_toml(config_cls: Type[T], data: Dict[str, Any]) -> T:
             # accepts the long CLI name as a TOML key.
             long_key = field.metadata.get("long", f"--{field.name.replace('_', '-')}").lstrip("-").replace("-", "_")
             if long_key not in normalized:
-                # Field not present in this TOML section — leave it out so the
+                # Field not present in this TOML section - leave it out so the
                 # dataclass default is used when config_cls(**result_kwargs) is called.
                 continue
             value = normalized[long_key]
@@ -111,7 +111,7 @@ def _from_args(config_cls: Type[T], kwargs: Dict[str, Any], toml_data: Optional[
     """Build a ConfigClass instance from a flat argparse-kwargs dict.
 
     This is the CLI reconstruction path, used for configs without subcommands
-    (or for the non-subcommand fields within a subcommand wrapper — see
+    (or for the non-subcommand fields within a subcommand wrapper - see
     _from_args_with_subcommands).
 
     ``kwargs`` is the mutable dict produced by ``vars(parser.parse_args())``.
@@ -130,7 +130,7 @@ def _from_args(config_cls: Type[T], kwargs: Dict[str, Any], toml_data: Optional[
     --------------
     For each field in config_cls the function picks one of three paths:
 
-    1. ``section=`` metadata — value comes from TOML, not from argparse.
+    1. ``section=`` metadata - value comes from TOML, not from argparse.
        The raw TOML section is located by name and reconstructed via
        _from_toml().  Handles three TOML shapes:
          a. Discriminated union list: each item has a ``type`` key (or
@@ -140,11 +140,11 @@ def _from_args(config_cls: Type[T], kwargs: Dict[str, Any], toml_data: Optional[
          c. List of dicts (``[[section]]`` array-of-tables): each item
             reconstructed independently.
 
-    2. Nested ConfigClass (no ``section=``) — recurse into _from_args(),
+    2. Nested ConfigClass (no ``section=``) - recurse into _from_args(),
        sharing the same mutable ``kwargs`` dict so the nested class consumes
        its own entries.
 
-    3. Plain field — pop the value from ``kwargs`` and use it directly.
+    3. Plain field - pop the value from ``kwargs`` and use it directly.
     """
     result_kwargs: Dict[str, Any] = {}
     for field in dataclasses.fields(config_cls):  # type: ignore[arg-type]
@@ -183,10 +183,10 @@ def _from_args(config_cls: Type[T], kwargs: Dict[str, Any], toml_data: Optional[
                 # If the field expects a list, wrap the single instance.
                 instance: Any = _from_toml(inner_type, raw)  # type: ignore[arg-type]
                 result_kwargs[field.name] = [instance] if is_list(field.type) else instance
-            else:  # list of dicts — TOML [[array of tables]]
+            else:  # list of dicts - TOML [[array of tables]]
                 result_kwargs[field.name] = [_from_toml(inner_type, item) for item in raw]  # type: ignore[arg-type]
         elif is_config_class(field.type):
-            # Nested ConfigClass with no section= — recurse, sharing the same
+            # Nested ConfigClass with no section= - recurse, sharing the same
             # mutable kwargs so the nested class pops its own fields out.
             result_kwargs[field.name] = _from_args(field.type, kwargs)  # type: ignore[arg-type]
         elif field.name in kwargs:
@@ -234,12 +234,12 @@ def _from_args_with_subcommands(cls: Type[T], kwargs: Dict[str, Any], dest: str)
        the selected one is set to the reconstructed sub-config.  Non-subcommand
        fields on the wrapper class are reconstructed via _from_args().
 
-    As in _from_args(), ``kwargs`` is mutated throughout — each level pops the
+    As in _from_args(), ``kwargs`` is mutated throughout - each level pops the
     fields it owns, leaving the rest for sibling or parent calls.
     """
     subcommand_fields = [f for f in dataclasses.fields(cls) if "subcommand" in f.metadata]  # type: ignore[arg-type]
 
-    # Base case: no subcommands at this level — plain CLI config.
+    # Base case: no subcommands at this level - plain CLI config.
     if not subcommand_fields:
         return _from_args(cls, kwargs)
 

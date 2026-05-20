@@ -10,7 +10,7 @@ from scaler.config.loading import _load_toml
 from scaler.config.section.aws_hpc_worker_manager import AWSBatchWorkerManagerConfig
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
-from scaler.config.section.orb_aws_ec2_worker_adapter import ORBAWSEC2WorkerAdapterConfig
+from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
 from scaler.utility.event_loop import register_event_loop
 from scaler.utility.logging.utility import setup_logger
@@ -20,7 +20,7 @@ _AnyWorkerManagerConfig = Union[
     SymphonyWorkerManagerConfig,
     ECSWorkerManagerConfig,
     AWSBatchWorkerManagerConfig,
-    ORBAWSEC2WorkerAdapterConfig,
+    ORBAWSEC2WorkerManagerConfig,
 ]
 
 _TYPE_MAP: Dict[str, Type[ConfigClass]] = {
@@ -28,7 +28,7 @@ _TYPE_MAP: Dict[str, Type[ConfigClass]] = {
     SymphonyWorkerManagerConfig._tag: SymphonyWorkerManagerConfig,
     ECSWorkerManagerConfig._tag: ECSWorkerManagerConfig,
     AWSBatchWorkerManagerConfig._tag: AWSBatchWorkerManagerConfig,
-    ORBAWSEC2WorkerAdapterConfig._tag: ORBAWSEC2WorkerAdapterConfig,
+    ORBAWSEC2WorkerManagerConfig._tag: ORBAWSEC2WorkerManagerConfig,
 }
 
 
@@ -103,10 +103,10 @@ def main() -> None:
         from scaler.worker_manager_adapter.aws_hpc.worker_manager import AWSHPCWorkerManager
 
         AWSHPCWorkerManager(wm_config).run()
-    elif isinstance(wm_config, ORBAWSEC2WorkerAdapterConfig):
-        from scaler.worker_manager_adapter.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerAdapter
+    elif isinstance(wm_config, ORBAWSEC2WorkerManagerConfig):
+        from scaler.worker_manager_adapter.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerManager
 
-        ORBAWSEC2WorkerAdapter(wm_config).run()
+        ORBAWSEC2WorkerManager(wm_config).run()
 
 
 if __name__ == "__main__":

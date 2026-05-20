@@ -274,11 +274,10 @@ How It Works
 ------------
 
 1. The AWS Raw ECS worker manager connects to the Scaler scheduler and sends periodic heartbeats.
-2. When the scheduler's scaling policy requests more workers, it sends a ``StartWorkerGroup`` command.
-3. The worker manager calls ``ecs:RunTask`` to launch a Fargate task running the Scaler worker container.
+2. On each heartbeat, the scheduler responds with a ``setDesiredTaskConcurrency`` command declaring the target worker count per capability set.
+3. The worker manager converges by calling ``ecs:RunTask`` to launch Fargate tasks running the Scaler worker container when the target exceeds the current count, or by stopping Fargate tasks when the target is below it.
 4. Each Fargate task runs ``scaler_cluster`` inside the container, spawning one or more worker processes (controlled by ``--ecs-task-cpu``).
 5. Workers connect back to the scheduler and process tasks like local workers.
-6. When the scheduler wants to scale down, it sends a ``ShutdownWorkerGroup`` command and the worker manager stops the Fargate task.
 
 Configuration Reference
 ------------------------
@@ -311,7 +310,7 @@ Architecture
 .. code-block:: text
 
    ┌─────────┐     ┌───────────┐     ┌──────────────────┐     ┌─────────────────────┐
-   │  Client │────>│ Scheduler │<───>│ ECS WorkerAdapter│────>│ AWS ECS (Fargate)   │
+   │  Client │────>│ Scheduler │<───>│ ECS WorkerManager│────>│ AWS ECS (Fargate)   │
    └─────────┘     └─────┬─────┘     └──────────────────┘     └──────────┬──────────┘
                          │                                               │
                          │            ┌──────────────────┐               │
@@ -320,7 +319,7 @@ Architecture
                                                                   runs inside each
                                                                   Fargate task)
 
-1. The scheduler sends scaling commands (``StartWorkerGroup`` / ``ShutdownWorkerGroup``) to the ECS worker manager.
+1. The scheduler sends a ``setDesiredTaskConcurrency`` command to the ECS worker manager on each heartbeat, declaring the desired worker count per capability set.
 2. The worker manager calls ``ecs:RunTask`` to launch Fargate tasks running ``scaler_cluster``.
 3. Workers inside each Fargate task connect back to the scheduler and process tasks like local workers.
 4. The worker manager auto-creates the ECS cluster and task definition on first run if they don't exist.

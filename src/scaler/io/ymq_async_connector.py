@@ -10,7 +10,7 @@ from scaler.protocol.capnp import BaseMessage
 
 class YMQAsyncConnector(AsyncConnector):
     def __init__(self, context: IOContext, identity: bytes, callback: Callable[[BaseMessage], Awaitable[None]]):
-        self._context = context
+        self._ymq_context = context
         self._identity = identity
         self._address: Optional[AddressConfig] = None
 
@@ -21,19 +21,19 @@ class YMQAsyncConnector(AsyncConnector):
         self.destroy()
 
     async def connect(self, address: AddressConfig, remote_type: ConnectorRemoteType) -> None:
-        assert self._context is not None
+        assert self._ymq_context is not None
 
         if remote_type not in {ConnectorRemoteType.Binder, ConnectorRemoteType.Connector}:
             raise ValueError(f"unsupported remote_type={remote_type}")
 
         self._address = address
-        self._socket = ConnectorSocket.connect(self._context, self._identity.decode(), repr(self._address))
+        self._socket = ConnectorSocket.connect(self._ymq_context, self._identity.decode(), repr(self._address))
 
     async def bind(self, address: AddressConfig) -> None:
-        assert self._context is not None
+        assert self._ymq_context is not None
 
         self._address = address
-        self._socket = ConnectorSocket.bind(self._context, self._identity.decode(), repr(self._address))
+        self._socket = ConnectorSocket.bind(self._ymq_context, self._identity.decode(), repr(self._address))
 
     def destroy(self):
         if self._socket is None:
@@ -42,7 +42,7 @@ class YMQAsyncConnector(AsyncConnector):
         self._socket.shutdown()
 
         self._socket = None
-        self._context = None
+        self._ymq_context = None
 
     @property
     def identity(self) -> bytes:
@@ -60,7 +60,7 @@ class YMQAsyncConnector(AsyncConnector):
         await self._callback(message)
 
     async def receive(self) -> Optional[BaseMessage]:
-        if self._context is None:
+        if self._ymq_context is None:
             return None
 
         if self._socket is None:

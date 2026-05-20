@@ -17,7 +17,7 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
     """A synchronous connector that uses YMQ to connect to a Scaler's object storage instance."""
 
     def __init__(self, context: IOContext, identity: bytes, address: AddressConfig):
-        self._context = context
+        self._ymq_context = context
         self._identity = identity
         self._address = address
 
@@ -26,7 +26,7 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         self._socket_lock = Lock()
         self._socket: Optional[ConnectorSocket] = None
 
-        self._socket = ConnectorSocket.connect(self._context, self._identity.decode(), repr(self._address))
+        self._socket = ConnectorSocket.connect(self._ymq_context, self._identity.decode(), repr(self._address))
 
     def __del__(self):
         self.destroy()
@@ -39,7 +39,7 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
             self._socket.shutdown()
 
             self._socket = None
-            self._context = None
+            self._ymq_context = None
 
     @property
     def address(self) -> AddressConfig:
