@@ -151,7 +151,7 @@ Both C++ and Python code share these standards:
 
 ### Setting Up Development Environment
 
-The devcontainer (`.devcontainer/`) comes with all C++ dependencies pre-installed (CMake, GCC, Cap'n Proto, Boost,
+The devcontainer (`.devcontainer/`) comes with all C++ dependencies pre-installed (CMake, GCC, Cap'n Proto,
 libuv) as well as `uv`. You can detect the devcontainer via the `REMOTE_CONTAINERS=true` environment variable.
 When running in the devcontainer, skip the C++ dependency setup steps below.
 
@@ -170,6 +170,9 @@ uv pip install -e .
 ./scripts/library_tool.sh capnp download
 ./scripts/library_tool.sh capnp compile
 ./scripts/library_tool.sh capnp install
+./scripts/library_tool.sh libuv download
+./scripts/library_tool.sh libuv compile
+./scripts/library_tool.sh libuv install
 
 # Building C++ components standalone (only if needed outside of pip install)
 ./scripts/build.sh
