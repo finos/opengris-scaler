@@ -57,7 +57,20 @@ class VanillaScalingPolicy(ScalingPolicy):
             if task_ratio > self._upper_task_ratio:
                 desired = current + 1
             elif task_ratio < self._lower_task_ratio:
-                desired = 0 if task_count == 0 else max(1, ceil(task_count / self._upper_task_ratio))
+                if task_count == 0:
+                    # Never tear down a running worker just because the
+                    # scheduler-visible task queue is momentarily empty.
+                    # Long-running parent tasks (e.g. parfun driver functions
+                    # that spend minutes in pure-Python pre-/post-processing
+                    # between bursts of sub-task submissions) leave the
+                    # scheduler queue at task_count==0 even though the
+                    # worker is actively executing them. Tearing the worker
+                    # down here hangs the client forever. Let the
+                    # worker_timeout_seconds setting reap genuinely idle
+                    # workers instead.
+                    desired = current
+                else:
+                    desired = max(1, ceil(task_count / self._upper_task_ratio))
             else:
                 desired = current
 
