@@ -589,7 +589,7 @@ function DeploymentCard({ state, onDownload, keyMaterial, isRunning }) {
     { label: "Scheduler", value: state.scheduler_address },
     { label: "Object storage", value: state.object_storage_address },
     { label: "Monitor", value: state.monitor_address },
-    { label: "GUI", value: state.gui_address, href: state.gui_address },
+    { label: "Worker Monitor", value: state.gui_address, href: state.gui_address },
     {
       label: "SSH",
       value: state.public_ip
@@ -947,10 +947,10 @@ function TopNav({
     { id: "config", label: "Config" },
     { id: "deployment", label: "Deployment", postLaunch: true },
     { id: "logs", label: "Scheduler Logs", postLaunch: true },
-    // { id: "gui", label: "GUI", postLaunch: true },
+    // { id: "gui", label: "Worker Monitor", postLaunch: true },
     {
       id: "gui",
-      label: "GUI",
+      label: "Worker Monitor",
       postLaunch: true,
       isLink: true,
       href: guiAddress,
@@ -2590,7 +2590,7 @@ function App() {
               fontSize: 12,
             }}
           >
-            GUI address not yet available.
+            Worker Monitor address not yet available.
           </div>
         ) : (
           <>
@@ -2641,7 +2641,7 @@ function App() {
                   border: "none",
                   background: "var(--bg-page)",
                 }}
-                title="Scaler GUI"
+                title="Scaler Worker Monitor"
               />
             ) : (
               <div
@@ -2656,7 +2656,7 @@ function App() {
                 }}
               >
                 <div style={{ fontSize: 13 }}>
-                  Waiting for GUI server to start
+                  Waiting for Worker Monitor server to start
                 </div>
                 <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
                   {guiElapsed}s elapsed · retrying every 5s

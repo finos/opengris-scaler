@@ -698,7 +698,7 @@ async function provision(
             IpRanges: [
               {
                 CidrIp: myIp + "/32",
-                Description: "Scaler web GUI from local machine",
+                Description: "Scaler Worker Monitor from local machine",
               },
             ],
           },
