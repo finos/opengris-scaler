@@ -773,7 +773,7 @@ async function provision(
   partial.private_ip = privateIp;
   partial.vpc_id = vpcId;
   partial.subnet_id = subnetId;
-  partial.gui_address = "http://" + publicIp + ":50001";
+  partial.worker_monitor_address = "http://" + publicIp + ":50001";
   addLog("  ✓ Instance running", "ok");
   addLog("  → Public IP:  " + publicIp, "info");
   addLog("  → Private IP: " + privateIp, "info");
@@ -839,7 +839,7 @@ async function provision(
       ":" +
       (cfg.schedulerPort + 2) +
       addrSlash,
-    gui_address: "http://" + publicIp + ":50001",
+    worker_monitor_address: "http://" + publicIp + ":50001",
     iam: iamState,
     worker_name: "scaler-worker-" + suffix,
   };

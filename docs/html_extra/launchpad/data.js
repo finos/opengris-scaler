@@ -687,6 +687,6 @@ window.FAKE_TERMINAL_LINES = [
   { t: 15800, cls: "done", text: "  DEPLOYMENT COMPLETE  [38.2s]" },
   { t: 16000, cls: "dim", text: "─".repeat(52) },
   { t: 16200, cls: "addr", text: "  scheduler:   54.211.148.92:8080" },
-  { t: 16400, cls: "addr", text: "  gui:         http://54.211.148.92:3000" },
+  { t: 16400, cls: "addr", text: "  worker-monitor: http://54.211.148.92:3000" },
   { t: 16600, cls: "dim", text: "─".repeat(52) },
 ];

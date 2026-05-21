@@ -589,7 +589,7 @@ function DeploymentCard({ state, onDownload, keyMaterial, isRunning }) {
     { label: "Scheduler", value: state.scheduler_address },
     { label: "Object storage", value: state.object_storage_address },
     { label: "Monitor", value: state.monitor_address },
-    { label: "Worker Monitor", value: state.gui_address, href: state.gui_address },
+    { label: "Worker Monitor", value: state.worker_monitor_address, href: state.worker_monitor_address },
     {
       label: "SSH",
       value: state.public_ip
@@ -941,19 +941,19 @@ function TopNav({
   setTheme,
   showPostLaunch,
   launchControl,
-  guiAddress,
+  workerMonitorAddress,
 }) {
   const tabs = [
     { id: "config", label: "Config" },
     { id: "deployment", label: "Deployment", postLaunch: true },
     { id: "logs", label: "Scheduler Logs", postLaunch: true },
-    // { id: "gui", label: "Worker Monitor", postLaunch: true },
+    // { id: "worker-monitor", label: "Worker Monitor", postLaunch: true },
     {
-      id: "gui",
+      id: "worker-monitor",
       label: "Worker Monitor",
       postLaunch: true,
       isLink: true,
-      href: guiAddress,
+      href: workerMonitorAddress,
     },
   ];
   return (
@@ -1128,22 +1128,22 @@ function App() {
   const [keyMaterial, setKeyMaterial] = useState(null);
   const abortRef = useRef(null);
 
-  const [guiReady, setGuiReady] = useState(false);
-  const [guiElapsed, setGuiElapsed] = useState(0);
+  const [workerMonitorReady, setWorkerMonitorReady] = useState(false);
+  const [workerMonitorElapsed, setWorkerMonitorElapsed] = useState(0);
 
   useEffect(() => {
-    const addr = provState?.gui_address;
+    const addr = provState?.worker_monitor_address;
     if (!addr) {
-      setGuiReady(false);
-      setGuiElapsed(0);
+      setWorkerMonitorReady(false);
+      setWorkerMonitorElapsed(0);
       return;
     }
-    setGuiReady(false);
-    setGuiElapsed(0);
+    setWorkerMonitorReady(false);
+    setWorkerMonitorElapsed(0);
     let cancelled = false;
     const start = Date.now();
     const ticker = setInterval(() => {
-      if (!cancelled) setGuiElapsed(Math.floor((Date.now() - start) / 1000));
+      if (!cancelled) setWorkerMonitorElapsed(Math.floor((Date.now() - start) / 1000));
     }, 1000);
     const poll = async () => {
       if (cancelled) return;
@@ -1157,7 +1157,7 @@ function App() {
         });
         clearTimeout(timeout);
         if (!cancelled) {
-          setGuiReady(true);
+          setWorkerMonitorReady(true);
           clearInterval(ticker);
         }
       } catch {
@@ -1170,7 +1170,7 @@ function App() {
       cancelled = true;
       clearInterval(ticker);
     };
-  }, [provState?.gui_address]);
+  }, [provState?.worker_monitor_address]);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -1253,7 +1253,7 @@ function App() {
     accessKeyId.trim().length > 0 && secretKey.trim().length > 0;
 
   const monitorPort = schedulerPort + 2;
-  const GUI_PORT = 50001;
+  const WORKER_MONITOR_PORT = 50001;
   const portConflicts = [];
   if (schedulerPort === objectStoragePort)
     portConflicts.push("Scheduler port and object storage port must differ.");
@@ -1261,17 +1261,17 @@ function App() {
     portConflicts.push(
       `Object storage port conflicts with the monitor port (scheduler + 2 = ${monitorPort}).`,
     );
-  if (schedulerPort === GUI_PORT)
+  if (schedulerPort === WORKER_MONITOR_PORT)
     portConflicts.push(
-      `Scheduler port conflicts with the GUI port (${GUI_PORT}).`,
+      `Scheduler port conflicts with the Worker Monitor port (${WORKER_MONITOR_PORT}).`,
     );
-  if (objectStoragePort === GUI_PORT)
+  if (objectStoragePort === WORKER_MONITOR_PORT)
     portConflicts.push(
-      `Object storage port conflicts with the GUI port (${GUI_PORT}).`,
+      `Object storage port conflicts with the Worker Monitor port (${WORKER_MONITOR_PORT}).`,
     );
-  if (monitorPort === GUI_PORT)
+  if (monitorPort === WORKER_MONITOR_PORT)
     portConflicts.push(
-      `Monitor port (scheduler + 2 = ${monitorPort}) conflicts with the GUI port (${GUI_PORT}).`,
+      `Monitor port (scheduler + 2 = ${monitorPort}) conflicts with the Worker Monitor port (${WORKER_MONITOR_PORT}).`,
     );
 
   const checks = [
@@ -1708,10 +1708,10 @@ function App() {
         theme={theme}
         setTheme={setTheme}
         showPostLaunch={
-          phase !== "idle" || ["deployment", "logs", "gui"].includes(activeTab)
+          phase !== "idle" || ["deployment", "logs", "worker-monitor"].includes(activeTab)
         }
         launchControl={launchControl}
-        guiAddress={phase === "ready" ? provState?.gui_address : undefined}
+        workerMonitorAddress={phase === "ready" ? provState?.worker_monitor_address : undefined}
       />
 
       {/* ── Config Tab ── */}
@@ -2573,16 +2573,16 @@ function App() {
         </div>
       </div>
 
-      {/* ── GUI Tab ── */}
+      {/* ── Worker Monitor Tab ── */}
       <div
         style={{
-          display: activeTab === "gui" ? "flex" : "none",
+          display: activeTab === "worker-monitor" ? "flex" : "none",
           flex: 1,
           flexDirection: "column",
           minHeight: 0,
         }}
       >
-        {!provState?.gui_address ? (
+        {!provState?.worker_monitor_address ? (
           <div
             style={{
               padding: "20px 28px",
@@ -2606,10 +2606,10 @@ function App() {
               }}
             >
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                {provState.gui_address}
+                {provState.worker_monitor_address}
               </span>
               <a
-                href={provState.gui_address}
+                href={provState.worker_monitor_address}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
@@ -2623,19 +2623,19 @@ function App() {
               >
                 Open in new tab
               </a>
-              {guiReady ? (
+              {workerMonitorReady ? (
                 <span style={{ fontSize: 10, color: "var(--text-success)" }}>
                   server ready
                 </span>
               ) : (
                 <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
-                  waiting for server… {guiElapsed}s
+                  waiting for server… {workerMonitorElapsed}s
                 </span>
               )}
             </div>
-            {guiReady ? (
+            {workerMonitorReady ? (
               <iframe
-                src={provState.gui_address}
+                src={provState.worker_monitor_address}
                 style={{
                   flex: 1,
                   border: "none",
@@ -2659,7 +2659,7 @@ function App() {
                   Waiting for Worker Monitor server to start
                 </div>
                 <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                  {guiElapsed}s elapsed · retrying every 5s
+                  {workerMonitorElapsed}s elapsed · retrying every 5s
                 </div>
               </div>
             )}
