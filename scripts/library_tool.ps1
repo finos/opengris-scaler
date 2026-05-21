@@ -1,5 +1,4 @@
 # Constants
-$BOOST_VERSION = "1.88.0"
 $CAPNP_VERSION = "1.1.0"
 $UV_VERSION = "1.51.0"
 
@@ -11,7 +10,7 @@ $THIRD_PARTY_COMPILED = "$THIRD_PARTY_DIRECTORY\compiled"
 $PREFIX = "C:\Program Files"
 
 function showHelp {
-    Write-Host "Usage: .\library_tool.ps1 [boost|capnp|libuv] [download|compile|install] [--prefix=DIR]"
+    Write-Host "Usage: .\library_tool.ps1 [capnp|libuv] [download|compile|install] [--prefix=DIR]"
     exit 1
 }
 
@@ -41,38 +40,8 @@ if ($args.Count -lt 2)
 $dependency = $args[0]
 $action = $args[1]
 
-# Download, compile, or install Boost
-if ($dependency -eq "boost")
-{
-    $BOOST_FOLDER_NAME = "boost_" + $BOOST_VERSION -replace '\.', '_'
-
-    if ($action -eq "download")
-    {
-        mkdir "$THIRD_PARTY_DOWNLOADED" -Force
-        $url = "https://archives.boost.org/release/$BOOST_VERSION/source/$BOOST_FOLDER_NAME.tar.gz"
-        curl.exe --retry 100 --retry-max-time 3600 -L $url -o "$THIRD_PARTY_DOWNLOADED\$BOOST_FOLDER_NAME.tar.gz"
-        Write-Host "Downloaded Boost into $THIRD_PARTY_DOWNLOADED\$BOOST_FOLDER_NAME.tar.gz"
-    }
-    elseif ($action -eq "compile")
-    {
-        mkdir "$THIRD_PARTY_COMPILED" -Force
-        tar -xzvf "$THIRD_PARTY_DOWNLOADED\$BOOST_FOLDER_NAME.tar.gz" -C "$THIRD_PARTY_COMPILED"
-        Write-Host "Compiled Boost into $THIRD_PARTY_COMPILED\$BOOST_FOLDER_NAME"
-    }
-    elseif ($action -eq "install")
-    {
-        Copy-Item -Recurse -Path "$THIRD_PARTY_COMPILED\$BOOST_FOLDER_NAME\boost" -Destination "$PREFIX\include\boost"
-        Write-Host "Installed Boost into $PREFIX\include\boost"
-    }
-    else
-    {
-        Write-Host "Argument needs to be download or compile or install"
-        showHelp
-    }
-}
-
 # Download, compile, or install Cap'n Proto
-elseif ($dependency -eq "capnp")
+if ($dependency -eq "capnp")
 {
     $CAPNP_FOLDER_NAME = "capnproto-c++-$CAPNP_VERSION"
 
