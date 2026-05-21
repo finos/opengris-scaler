@@ -1,14 +1,17 @@
+import multiprocessing
 import time
 import unittest
 from concurrent.futures import CancelledError
 
-from scaler import Client, Cluster, SchedulerClusterCombo
+from scaler import Client, SchedulerClusterCombo
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
+from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.defaults import DEFAULT_LOGGING_PATHS
-from scaler.config.section.cluster import ClusterConfig
-from scaler.config.types.worker import WorkerCapabilities, WorkerNames
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
+from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
+from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
 
@@ -29,39 +32,45 @@ class TestClusterDisconnect(unittest.TestCase):
         pass
 
     def test_cluster_disconnect(self):
-        base_cluster = self.combo._cluster
-        dying_cluster = Cluster(
-            config=ClusterConfig(
-                scheduler_address=self.combo._address,
-                object_storage_address=self.combo._object_storage_address,
-                preload=None,
-                worker_names=WorkerNames(["dying_worker"]),  # Just one worker would suffice
-                num_of_workers=1,
-                event_loop=base_cluster._event_loop,
-                worker_io_threads=base_cluster._worker_io_threads,
+        base_config = self.combo._worker_manager.config
+        base_worker_config = base_config.worker_config
+        base_logging_config = base_config.logging_config
+        dying_manager = NativeWorkerManager(
+            NativeWorkerManagerConfig(
+                worker_manager_config=WorkerManagerConfig(
+                    scheduler_address=self.combo._address,
+                    worker_manager_id="test_manager",
+                    object_storage_address=self.combo._object_storage_address,
+                    max_task_concurrency=1,
+                ),
+                mode=NativeWorkerManagerMode.FIXED,
                 worker_config=WorkerConfig(
                     per_worker_capabilities=WorkerCapabilities({}),
-                    per_worker_task_queue_size=base_cluster._per_worker_task_queue_size,
-                    heartbeat_interval_seconds=base_cluster._heartbeat_interval_seconds,
-                    task_timeout_seconds=base_cluster._task_timeout_seconds,
-                    death_timeout_seconds=base_cluster._death_timeout_seconds,
-                    garbage_collect_interval_seconds=base_cluster._garbage_collect_interval_seconds,
-                    trim_memory_threshold_bytes=base_cluster._trim_memory_threshold_bytes,
-                    hard_processor_suspend=base_cluster._hard_processor_suspend,
+                    per_worker_task_queue_size=base_worker_config.per_worker_task_queue_size,
+                    heartbeat_interval_seconds=base_worker_config.heartbeat_interval_seconds,
+                    task_timeout_seconds=base_worker_config.task_timeout_seconds,
+                    death_timeout_seconds=base_worker_config.death_timeout_seconds,
+                    garbage_collect_interval_seconds=base_worker_config.garbage_collect_interval_seconds,
+                    trim_memory_threshold_bytes=base_worker_config.trim_memory_threshold_bytes,
+                    hard_processor_suspend=base_worker_config.hard_processor_suspend,
+                    io_threads=base_worker_config.io_threads,
+                    event_loop=base_worker_config.event_loop,
                 ),
                 logging_config=LoggingConfig(
                     paths=DEFAULT_LOGGING_PATHS,
-                    level=base_cluster._logging_level,
-                    config_file=base_cluster._logging_config_file,
+                    level=base_logging_config.level,
+                    config_file=base_logging_config.config_file,
                 ),
             )
         )
-        dying_cluster.start()
+        dying_process = multiprocessing.get_context("spawn").Process(target=dying_manager.run)
+        dying_process.start()
 
         client = Client(self.address)
         future_result = client.submit(noop_sleep, 5)
         time.sleep(2)
-        dying_cluster.shutdown()
+        dying_process.terminate()
+        dying_process.join()
 
         with self.assertRaises(CancelledError):
             client.clear()

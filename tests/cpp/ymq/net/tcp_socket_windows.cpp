@@ -8,23 +8,20 @@
 #include <thread>
 #include <vector>
 
-#include "scaler/ymq/internal/network_utils.h"
-#include "scaler/ymq/internal/socket_address.h"
+#include "scaler/ymq/address.h"
 #include "tests/cpp/ymq/common/utils.h"
 #include "tests/cpp/ymq/net/tcp_socket.h"
-
-using scaler::ymq::SocketAddress;
 
 TCPSocket::TCPSocket(bool nodelay): _fd(-1), _nodelay(nodelay)
 {
     this->_fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (this->_fd == SOCKET_ERROR)
-        raise_socket_error("failed to create socket");
+        raiseSocketError("failed to create socket");
 
     char on = 1;
     if (this->_nodelay)
         if (::setsockopt((SOCKET)this->_fd, IPPROTO_TCP, TCP_NODELAY, (const char*)&on, sizeof(on)) == SOCKET_ERROR)
-            raise_socket_error("failed to set nodelay");
+            raiseSocketError("failed to set nodelay");
 }
 
 TCPSocket::TCPSocket(bool nodelay, long long fd): _fd(fd), _nodelay(nodelay)
@@ -32,7 +29,7 @@ TCPSocket::TCPSocket(bool nodelay, long long fd): _fd(fd), _nodelay(nodelay)
     char on = 1;
     if (this->_nodelay)
         if (::setsockopt((SOCKET)this->_fd, IPPROTO_TCP, TCP_NODELAY, (const char*)&on, sizeof(on)) == SOCKET_ERROR)
-            raise_socket_error("failed to set nodelay");
+            raiseSocketError("failed to set nodelay");
 }
 
 TCPSocket::~TCPSocket()
@@ -55,17 +52,16 @@ TCPSocket& TCPSocket::operator=(TCPSocket&& other) noexcept
     return *this;
 }
 
-void TCPSocket::tryConnect(const std::string& address_str, int tries) const
+void TCPSocket::tryConnect(const scaler::ymq::Address& address, int tries) const
 {
-    auto address = scaler::ymq::stringToSocketAddress(address_str);
-    if (address.nativeHandleType() != SocketAddress::Type::TCP) {
-        throw std::runtime_error(std::format("Unsupported protocol for TCPSocket: {}", address.nativeHandleType()));
+    if (address.type() != scaler::ymq::Address::Type::TCP) {
+        throw std::runtime_error("Unsupported protocol for TCPSocket: expected TCP");
     }
 
-    sockaddr_in addr = *(sockaddr_in*)address.nativeHandle();
+    const sockaddr* addr = address.asTCP().toSockAddr();
 
     for (int i = 0; i < tries; i++) {
-        auto code = ::connect((SOCKET)this->_fd, (sockaddr*)&addr, sizeof(addr));
+        auto code = ::connect((SOCKET)this->_fd, addr, sizeof(sockaddr_in));
 
         if (code == SOCKET_ERROR) {
             if (WSAGetLastError() == WSAECONNREFUSED) {
@@ -73,37 +69,40 @@ void TCPSocket::tryConnect(const std::string& address_str, int tries) const
                 continue;
             }
 
-            raise_socket_error("failed to connect");
+            raiseSocketError("failed to connect");
         }
 
         break;  // success
     }
 }
 
-void TCPSocket::bind(const std::string& address_str) const
+void TCPSocket::bind(const scaler::ymq::Address& address) const
 {
-    auto address = scaler::ymq::stringToSocketAddress(address_str);
-    if (address.nativeHandleType() != SocketAddress::Type::TCP) {
-        throw std::runtime_error(std::format("Unsupported protocol for TCPSocket: {}", address.nativeHandleType()));
+    if (address.type() != scaler::ymq::Address::Type::TCP) {
+        throw std::runtime_error("Unsupported protocol for TCPSocket: expected TCP");
     }
 
-    sockaddr_in addr = *(sockaddr_in*)address.nativeHandle();
+    int optval = 1;
+    if (::setsockopt((SOCKET)this->_fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&optval, sizeof(optval)) == SOCKET_ERROR)
+        raiseSocketError("failed to set SO_REUSEADDR");
 
-    if (::bind((SOCKET)this->_fd, (sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR)
-        raise_socket_error("failed to bind");
+    const sockaddr* addr = address.asTCP().toSockAddr();
+
+    if (::bind((SOCKET)this->_fd, addr, sizeof(sockaddr_in)) == SOCKET_ERROR)
+        raiseSocketError("failed to bind");
 }
 
 void TCPSocket::listen(int backlog) const
 {
     if (::listen((SOCKET)this->_fd, backlog) == SOCKET_ERROR)
-        raise_socket_error("failed to listen");
+        raiseSocketError("failed to listen");
 }
 
 std::unique_ptr<Socket> TCPSocket::accept() const
 {
     long long fd = ::accept((SOCKET)this->_fd, nullptr, nullptr);
     if (fd == SOCKET_ERROR)
-        raise_socket_error("failed to accept");
+        raiseSocketError("failed to accept");
 
     return std::make_unique<TCPSocket>(this->_nodelay, fd);
 }
@@ -112,7 +111,7 @@ int TCPSocket::write(const void* buffer, size_t size) const
 {
     auto n = ::send((SOCKET)this->_fd, static_cast<const char*>(buffer), (int)size, 0);
     if (n == SOCKET_ERROR)
-        raise_socket_error("failed to send data");
+        raiseSocketError("failed to send data");
     return n;
 }
 
@@ -139,7 +138,7 @@ int TCPSocket::read(void* buffer, size_t size) const
 {
     auto n = ::recv((SOCKET)this->_fd, static_cast<char*>(buffer), (int)size, 0);
     if (n == SOCKET_ERROR)
-        raise_socket_error("failed to receive data");
+        raiseSocketError("failed to receive data");
     return n;
 }
 

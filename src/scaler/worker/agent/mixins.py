@@ -1,8 +1,8 @@
 import abc
 from typing import List, Optional
 
-from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
-from scaler.protocol.python.message import (
+from scaler.config.types.address import AddressConfig
+from scaler.protocol.capnp import (
     ObjectInstruction,
     ProcessorInitialized,
     Task,
@@ -21,7 +21,7 @@ class HeartbeatManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_object_storage_address(self) -> ObjectStorageAddressConfig:
+    def get_object_storage_address(self) -> AddressConfig:
         raise NotImplementedError()
 
 

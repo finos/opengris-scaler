@@ -5,21 +5,32 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <cstring>
 #include <stdexcept>
 #include <thread>
 #include <vector>
 
-#include "scaler/ymq/internal/network_utils.h"
-#include "scaler/ymq/internal/socket_address.h"
+#include "scaler/ymq/address.h"
 #include "tests/cpp/ymq/common/utils.h"
 
-using scaler::ymq::SocketAddress;
+static sockaddr_un createUnixAddress(const scaler::ymq::Address& address)
+{
+    if (address.type() != scaler::ymq::Address::Type::IPC) {
+        throw std::runtime_error("Unsupported protocol for UDSSocket: expected IPC");
+    }
+
+    const std::string& path = address.asIPC();
+    sockaddr_un addr {};
+    addr.sun_family = AF_UNIX;
+    std::strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
+    return addr;
+}
 
 UDSSocket::UDSSocket(): _fd(-1)
 {
     this->_fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
     if (this->_fd < 0)
-        raise_socket_error("failed to create socket");
+        raiseSocketError("failed to create socket");
 }
 
 UDSSocket::UDSSocket(long long fd): _fd(fd)
@@ -44,14 +55,9 @@ UDSSocket& UDSSocket::operator=(UDSSocket&& other) noexcept
     return *this;
 }
 
-void UDSSocket::tryConnect(const std::string& address_str, int tries) const
+void UDSSocket::tryConnect(const scaler::ymq::Address& address, int tries) const
 {
-    auto address = scaler::ymq::stringToSocketAddress(address_str);
-    if (address.nativeHandleType() != SocketAddress::Type::IPC) {
-        throw std::runtime_error(std::format("Unsupported protocol for UDSSocket: {}", address.nativeHandleType()));
-    }
-
-    sockaddr_un addr = *(sockaddr_un*)address.nativeHandle();
+    sockaddr_un addr = createUnixAddress(address);
 
     for (int i = 0; i < tries; i++) {
         auto code = ::connect(this->_fd, (sockaddr*)&addr, sizeof(addr));
@@ -62,38 +68,33 @@ void UDSSocket::tryConnect(const std::string& address_str, int tries) const
                 continue;
             }
 
-            raise_socket_error("failed to connect");
+            raiseSocketError("failed to connect");
         }
 
         break;  // success
     }
 }
 
-void UDSSocket::bind(const std::string& address_str) const
+void UDSSocket::bind(const scaler::ymq::Address& address) const
 {
-    auto address = scaler::ymq::stringToSocketAddress(address_str);
-    if (address.nativeHandleType() != SocketAddress::Type::IPC) {
-        throw std::runtime_error(std::format("Unsupported protocol for UDSSocket: {}", address.nativeHandleType()));
-    }
-
-    sockaddr_un addr = *(sockaddr_un*)address.nativeHandle();
+    sockaddr_un addr = createUnixAddress(address);
 
     ::unlink(addr.sun_path);
     if (::bind(this->_fd, (sockaddr*)&addr, sizeof(addr)) < 0)
-        raise_socket_error("failed to bind");
+        raiseSocketError("failed to bind");
 }
 
 void UDSSocket::listen(int backlog) const
 {
     if (::listen(this->_fd, backlog) < 0)
-        raise_socket_error("failed to listen");
+        raiseSocketError("failed to listen");
 }
 
 std::unique_ptr<Socket> UDSSocket::accept() const
 {
     long long fd = ::accept(this->_fd, nullptr, nullptr);
     if (fd < 0)
-        raise_socket_error("failed to accept");
+        raiseSocketError("failed to accept");
 
     return std::make_unique<UDSSocket>(fd);
 }
@@ -102,7 +103,7 @@ int UDSSocket::write(const void* buffer, size_t size) const
 {
     int n = ::write(this->_fd, buffer, size);
     if (n < 0)
-        raise_socket_error("failed to send");
+        raiseSocketError("failed to send");
     return n;
 }
 
@@ -129,7 +130,7 @@ int UDSSocket::read(void* buffer, size_t size) const
 {
     int n = ::read(this->_fd, buffer, size);
     if (n < 0)
-        raise_socket_error("failed to recv");
+        raiseSocketError("failed to recv");
     return n;
 }
 

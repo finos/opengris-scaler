@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 180" width="100%" height="100%" style="background-color: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e" />
+    </marker>
+    <marker id="arrow-dash" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e" opacity="0.5" />
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000000" flood-opacity="0.4" />
+    </filter>
+  </defs>
+
+  <!-- Step 1: Install -->
+  <rect x="20" y="25" width="230" height="130" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="2" filter="url(#shadow)" />
+  <text x="135" y="58" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="bold" letter-spacing="0.5">STEP 1</text>
+  <text x="135" y="82" text-anchor="middle" fill="#c9d1d9" font-size="16" font-weight="bold">Install Scaler</text>
+  <text x="135" y="105" text-anchor="middle" fill="#8b949e" font-size="11">uv pip install 'opengris-scaler[all]'</text>
+  <rect x="80" y="115" width="110" height="24" rx="12" fill="#58a6ff" opacity="0.15" />
+  <text x="135" y="132" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="bold">~ 2 min</text>
+
+  <!-- Arrow 1-2 -->
+  <line x1="260" y1="90" x2="310" y2="90" stroke="#8b949e" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#arrow-dash)" />
+
+  <!-- Step 2: Configure Platform (optional — dashed border) -->
+  <rect x="320" y="25" width="230" height="130" rx="10" fill="#161b22" stroke="#bc8cff" stroke-width="2" stroke-dasharray="8,4" filter="url(#shadow)" />
+  <text x="435" y="48" text-anchor="middle" fill="#bc8cff" font-size="13" font-weight="bold" letter-spacing="0.5">STEP 2 (OPTIONAL)</text>
+  <text x="435" y="72" text-anchor="middle" fill="#c9d1d9" font-size="16" font-weight="bold">Configure Platform</text>
+  <text x="435" y="95" text-anchor="middle" fill="#8b949e" font-size="11">Cloud credentials, networking,</text>
+  <text x="435" y="110" text-anchor="middle" fill="#8b949e" font-size="11">resource provisioning</text>
+  <rect x="380" y="120" width="110" height="24" rx="12" fill="#bc8cff" opacity="0.15" />
+  <text x="435" y="137" text-anchor="middle" fill="#bc8cff" font-size="13" font-weight="bold">~ 15 min</text>
+
+  <!-- Arrow 2-3 -->
+  <line x1="560" y1="90" x2="610" y2="90" stroke="#8b949e" stroke-width="2" marker-end="url(#arrow)" />
+
+  <!-- Step 3: Start Services -->
+  <rect x="620" y="25" width="230" height="130" rx="10" fill="#161b22" stroke="#3fb950" stroke-width="2" filter="url(#shadow)" />
+  <text x="735" y="58" text-anchor="middle" fill="#3fb950" font-size="13" font-weight="bold" letter-spacing="0.5">STEP 3</text>
+  <text x="735" y="82" text-anchor="middle" fill="#c9d1d9" font-size="16" font-weight="bold">Start Services</text>
+  <text x="735" y="105" text-anchor="middle" fill="#8b949e" font-size="11">scaler config.toml</text>
+  <rect x="680" y="115" width="110" height="24" rx="12" fill="#3fb950" opacity="0.15" />
+  <text x="735" y="132" text-anchor="middle" fill="#3fb950" font-size="13" font-weight="bold">~ 1 min</text>
+
+  <!-- Arrow 3-4 -->
+  <line x1="860" y1="90" x2="910" y2="90" stroke="#8b949e" stroke-width="2" marker-end="url(#arrow)" />
+
+  <!-- Step 4: Start Compute Tasks -->
+  <rect x="920" y="25" width="260" height="130" rx="10" fill="#161b22" stroke="#d29922" stroke-width="2" filter="url(#shadow)" />
+  <text x="1050" y="58" text-anchor="middle" fill="#d29922" font-size="13" font-weight="bold" letter-spacing="0.5">STEP 4</text>
+  <text x="1050" y="82" text-anchor="middle" fill="#c9d1d9" font-size="16" font-weight="bold">Start Compute Tasks</text>
+  <text x="1050" y="105" text-anchor="middle" fill="#8b949e" font-size="11">Run Parfun / Pargraph examples</text>
+  <rect x="995" y="115" width="110" height="24" rx="12" fill="#d29922" opacity="0.15" />
+  <text x="1050" y="132" text-anchor="middle" fill="#d29922" font-size="13" font-weight="bold">~ 5 min</text>
+</svg>

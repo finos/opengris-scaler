@@ -1,11 +1,11 @@
 [build-system]
-requires = ["scikit-build-core>=0.5.0", "setuptools-scm", "mypy", "black", "flake8", "pyproject-flake8"]
+requires = ["scikit-build-core>=0.5.0", "setuptools-scm"]
 build-backend = "scikit_build_core.build"
 
 [project]
 name = "opengris-scaler"
 description = "OpenGRIS Scaler Distribution Framework"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { text = "Apache 2.0" }
 authors = [{ name = "Citi", email = "opensource@citi.com" }]
@@ -18,60 +18,61 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
+    "argcomplete",
     "bidict",
-    "configargparse",
-    "toml", # required by configargparse
     "cloudpickle",
     "psutil==7.2.2",
-    "pycapnp==2.2.2",
-    "pyzmq",
     "sortedcontainers==2.4.0",
     "tblib",
-    "aiohttp",
-    "graphlib-backport; python_version < '3.9'",
-    "typing-extensions>=4.0; python_version < '3.10'",
-    "tomli; python_version < '3.11'",
+    "typing-extensions",
+    "tomli>=2.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
+zmq = [
+    "pyzmq<27; python_version < '3.9'",
+    "pyzmq; python_version >= '3.9'",
+]
 uvloop = [
     "uvloop; platform_system != 'Windows'",
 ]
 gui = [
-    "nicegui[plotly]==2.24.2; python_version == '3.8'",
-    "nicegui[plotly]==3.6.1; python_version >= '3.9'",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "websockets>=12.0",
 ]
 graphblas = [
-    "python-graphblas==2023.7.0; python_version == '3.8'",
-    "python-graphblas==2024.2.0; python_version == '3.9'",
-    "python-graphblas==2024.2.0; python_version >= '3.10'",
-    "numpy==1.24.4; python_version == '3.8'",
-    "numpy==2.0.2; python_version == '3.9'",
-    "numpy==2.2.6; python_version >= '3.10'",
+    "python-graphblas==2025.2.0",
+    "numpy==2.2.6",
 ]
 aws = [
     "boto3",
+    "botocore[crt]",
+]
+orb = [
+    "orb-py~=1.6.0; python_version >= '3.10'",
+    "boto3",
+    "packaging",
+    "botocore[crt]",
 ]
 all = [
-    "nicegui[plotly]==2.24.2; python_version == '3.8'",
-    "nicegui[plotly]==3.6.1; python_version >= '3.9'",
-    "python-graphblas==2023.7.0; python_version == '3.8'",
-    "python-graphblas==2024.2.0; python_version == '3.9'",
-    "python-graphblas==2024.2.0; python_version >= '3.10'",
-    "numpy==1.24.4; python_version == '3.8'",
-    "numpy==2.0.2; python_version == '3.9'",
-    "numpy==2.2.6; python_version >= '3.10'",
-    "uvloop; platform_system != 'Windows'",
-    "boto3",
+    "opengris-scaler[aws]",
+    # graphblas need compile on 3.14, and this python condition prevents up from building 3.14 wheel, comment it out for now
+    # "opengris-scaler[graphblas]; python_version <= '3.13'",
+    "opengris-scaler[gui]",
+    "opengris-scaler[orb]",
+    "opengris-scaler[uvloop]",
 ]
 
 [dependency-groups]
 dev = [
-    "black>=24.8.0",
+    "black>=24.8.0; python_version >= '3.10'",
+    "isort>=7.0.0; python_version >= '3.10'",
     "flake8>=5.0.4",
     "flake8-pyproject>=1.2.3",
     "mypy>=1.14.1",
     "sphinx>=7.1.2",
+    "websockets>=12.0",
 ]
 
 [tool.scikit-build.metadata.version]
@@ -80,7 +81,7 @@ regex = '(?P<value>\d+\.\d+\.\d+(\.[1-9]\d*)?)'
 input = "./src/scaler/version.txt"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -90,19 +91,25 @@ Home = "https://github.com/finos/opengris-scaler"
 
 [project.scripts]
 scaler_scheduler = "scaler.entry_points.scheduler:main"
-scaler_cluster = "scaler.entry_points.cluster:main"
 scaler_top = "scaler.entry_points.top:main"
-scaler_ui = "scaler.entry_points.webui:main"
+scaler_gui = "scaler.entry_points.webgui:main"
 scaler_object_storage_server = "scaler.entry_points.object_storage_server:main"
-scaler_worker_adapter_native = "scaler.entry_points.worker_adapter_native:main"
-scaler_worker_adapter_fixed_native = "scaler.entry_points.worker_adapter_fixed_native:main"
-scaler_worker_adapter_symphony = "scaler.entry_points.worker_adapter_symphony:main"
-scaler_worker_adapter_ecs = "scaler.entry_points.worker_adapter_ecs:main"
+scaler_worker_manager = "scaler.entry_points.worker_manager:main"
+scaler = "scaler.entry_points.scaler:main"
 
 [tool.scikit-build]
 cmake.source-dir = "."
 wheel.packages = ["src/scaler"]
-build.targets = ["py_ymq", "py_object_storage_server", "py_one_to_many_dict", "py_stable_priority_queue", "py_many_to_many_dict", "py_indexed_queue"]
+build.targets = [
+    "py_ymq",
+    "py_object_storage_server",
+    "py_one_to_many_dict",
+    "py_stable_priority_queue",
+    "py_many_to_many_dict",
+    "py_indexed_queue",
+    "py_pending_call",
+    "py_capnp",
+]
 
 [tool.scikit-build.cmake.define]
 CMAKE_C_COMPILER = { env = "CMAKE_C_COMPILER", default = "gcc" }
@@ -145,17 +152,36 @@ exclude = [
 [tool.black]
 line-length = 120
 skip-magic-trailing-comma = true
+extend-exclude = '''
+(
+    ^/thirdparties
+    | ^/build_.*
+    | ^/capnproto.*
+    | ^/boost.*
+    | ^/scripts
+    | ^/venv.*
+)
+'''
 
 [tool.isort]
 profile = "black"
 line_length = 120
+extend_skip_glob = [
+    "thirdparties/*",
+    "build_*",
+    "capnproto*",
+    "boost*",
+    "scripts/*",
+    "venv*",
+]
 
 [tool.cibuildwheel]
-skip = "pp* cp39-*"
+skip = "cp38-* cp39-*"
 
 [tool.cibuildwheel.linux]
-archs = ["x86_64"]
+archs = ["x86_64", "aarch64"]
 manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
 before-all = """
 yum install -y cmake gcc-toolset-14-gcc gcc-toolset-14-gcc-c++; \
 source /opt/rh/gcc-toolset-14/enable; \
@@ -183,12 +209,20 @@ apk add cmake g++ make; \
 ldconfig /usr/local/lib;
 """
 
-#[tool.cibuildwheel.macos]
-#archs = ["x86_64", "arm64"]
-#before-all = """
-#yum install -y sudo; \
-#sudo ./scripts/library_tool.sh capnp compile; \
-#sudo ./scripts/library_tool.sh capnp install;
-#"""
+[tool.cibuildwheel.macos]
+archs = ["native"]
+environment = { MACOSX_DEPLOYMENT_TARGET = "15.0" }
+before-all = """
+set -ex && \
+./scripts/library_tool.sh capnp download; \
+./scripts/library_tool.sh capnp compile --prefix="$CMAKE_PREFIX_PATH"; \
+./scripts/library_tool.sh capnp install --prefix="$CMAKE_PREFIX_PATH"; \
+./scripts/library_tool.sh libuv download; \
+./scripts/library_tool.sh libuv compile --prefix="$CMAKE_PREFIX_PATH"; \
+./scripts/library_tool.sh libuv install --prefix="$CMAKE_PREFIX_PATH"; \
+"""
 
-
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
+before-all = "pwsh -File ./scripts/cibuildwheel_before_all_windows.ps1"
+environment = { CMAKE_C_COMPILER = "cl", CMAKE_CXX_COMPILER = "cl", CMAKE_GENERATOR = "Visual Studio 17 2022", CMAKE_GENERATOR_PLATFORM = "x64", CMAKE_CONFIGURATION_TYPES = "Release", CMAKE_PREFIX_PATH = "$TEMP/opengris-thirdparties" }

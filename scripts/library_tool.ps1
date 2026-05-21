@@ -85,14 +85,14 @@ elseif ($dependency -eq "capnp")
     }
     elseif ($action -eq "compile")
     {
-        Remove-Item -Path "$THIRD_PARTY_DOWNLOADED\$CAPNP_FOLDER_NAME" -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME" -Recurse -Force -ErrorAction SilentlyContinue
         mkdir "$THIRD_PARTY_COMPILED" -Force
         tar -xzvf "$THIRD_PARTY_DOWNLOADED\$CAPNP_FOLDER_NAME.tar.gz" -C "$THIRD_PARTY_COMPILED"
 
         # Configure and build with Visual Studio using CMake
         $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
-        cmake -G "Visual Studio 17 2022" -B build
+        cmake -G "Visual Studio 17 2022" -B build -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_TESTING=OFF
         cmake --build build --config Release
         Write-Host "Compiled capnp into $THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
         Set-Location $oldDir
@@ -102,6 +102,17 @@ elseif ($dependency -eq "capnp")
         $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
         cmake --install build --config Release --prefix $PREFIX
+
+        $capnpConfigDirectory = Join-Path $PREFIX "lib\cmake\CapnProto"
+        $capnpBuildConfigDirectory = Join-Path (Get-Location) "build\cmake"
+
+        if (-not (Test-Path (Join-Path $capnpConfigDirectory "CapnProtoConfig.cmake")))
+        {
+            mkdir $capnpConfigDirectory -Force | Out-Null
+            Copy-Item "$capnpBuildConfigDirectory\CapnProto*.cmake" -Destination $capnpConfigDirectory -Force
+            Write-Host "Copied Cap'n Proto CMake package files into $capnpConfigDirectory"
+        }
+
         Write-Host "Installed capnp into $PREFIX"
         Set-Location $oldDir
     }
@@ -156,4 +167,3 @@ elseif ($dependency -eq "libuv")
 else {
     showHelp
 }
-

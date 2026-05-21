@@ -1,12 +1,10 @@
 import dataclasses
-from typing import Optional, Tuple
-from urllib.parse import urlparse
+from typing import Optional
 
 from scaler.config import defaults
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.config_class import ConfigClass
-from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
-from scaler.config.types.zmq import ZMQConfig
+from scaler.config.types.address import AddressConfig
 from scaler.utility.event_loop import EventLoopType
 
 
@@ -17,37 +15,34 @@ class PolicyConfig(ConfigClass):
     )
 
     policy_content: str = dataclasses.field(
-        default="allocate=even_load; scaling=no",
+        default="allocate=even_load; scaling=vanilla",
         metadata=dict(short="-pc", help="Policy string: 'allocate=VAL; scaling=VAL'"),
-    )
-
-    adapter_webhook_urls: Tuple[str, ...] = dataclasses.field(
-        default=(),
-        metadata=dict(
-            short="-awu",
-            type=str,
-            nargs="*",
-            help="specify the adapter webhook urls for the scaling controller to send scaling events to",
-        ),
     )
 
 
 @dataclasses.dataclass
 class SchedulerConfig(ConfigClass):
-    scheduler_address: ZMQConfig = dataclasses.field(
-        metadata=dict(positional=True, help="scheduler address to connect to, e.g.: `tcp://localhost:6378`")
+    bind_address: AddressConfig = dataclasses.field(
+        metadata=dict(positional=True, required=True, help="scheduler address to bind to, e.g.: `tcp://0.0.0.0:6378`")
     )
-    object_storage_address: Optional[ObjectStorageAddressConfig] = dataclasses.field(
-        default=None,
+    object_storage_address: AddressConfig = dataclasses.field(
         metadata=dict(
             short="-osa",
-            help="specify the object storage server address, if not specified, "
-            "the address is scheduler address with port number plus 1, "
-            "e.g.: if scheduler address is tcp://localhost:2345, "
-            "then object storage address is tcp://localhost:2346",
+            required=True,
+            help="specify the object storage server address for scheduler to connect to, e.g.: tcp://127.0.0.1:6379",
+        )
+    )
+    advertised_object_storage_address: Optional[AddressConfig] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            short="-aosa",
+            help=(
+                "advertised object storage address forwarded to clients/workers; defaults to object_storage_address. "
+                "Use this when scheduler is local/private but clients/workers connect via public IP/port."
+            ),
         ),
     )
-    monitor_address: Optional[ZMQConfig] = dataclasses.field(
+    monitor_address: Optional[AddressConfig] = dataclasses.field(
         default=None,
         metadata=dict(
             short="-ma",
@@ -94,9 +89,9 @@ class SchedulerConfig(ConfigClass):
         metadata=dict(short="-el", choices=EventLoopType.allowed_types(), help="select the event loop type"),
     )
 
-    worker_io_threads: int = dataclasses.field(
+    io_threads: int = dataclasses.field(
         default=defaults.DEFAULT_IO_THREADS,
-        metadata=dict(short="-wit", help="set the number of io threads for io backend per worker"),
+        metadata=dict(short="-it", help="set the number of io threads for io backend"),
     )
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
 
@@ -114,9 +109,3 @@ class SchedulerConfig(ConfigClass):
             raise ValueError("All timeout/retention/balance second values must be positive.")
         if self.load_balance_trigger_times <= 0:
             raise ValueError("load_balance_trigger_times must be a positive integer.")
-        for adapter_webhook_url in self.policy.adapter_webhook_urls:
-            parsed_url = urlparse(adapter_webhook_url)
-            if not all([parsed_url.scheme, parsed_url.netloc]):
-                raise ValueError(f"adapter_webhook_urls contains url '{adapter_webhook_url}' which is not a valid URL.")
-        if self.worker_io_threads <= 0:
-            raise ValueError("worker_io_threads must be a positive integer.")

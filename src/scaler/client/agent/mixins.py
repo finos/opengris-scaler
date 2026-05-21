@@ -1,7 +1,7 @@
 import abc
 from concurrent.futures import Future
 
-from scaler.protocol.python.message import (
+from scaler.protocol.capnp import (
     ClientDisconnect,
     ClientHeartbeatEcho,
     ClientShutdownResponse,

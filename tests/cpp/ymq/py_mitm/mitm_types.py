@@ -52,7 +52,7 @@ class TCPConnection:
         )
 
 
-class AbstractMITMInterface(ABC):
+class MITMInterface(ABC):
     @abstractmethod
     def recv(self) -> Packet: ...
 
@@ -60,11 +60,11 @@ class AbstractMITMInterface(ABC):
     def send(self, pkt: Packet) -> None: ...
 
 
-class AbstractMITM(ABC):
+class MITM(ABC):
     @abstractmethod
     def proxy(
         self,
-        interface: AbstractMITMInterface,
+        interface: MITMInterface,
         pkt: IP,
         sender: TCPConnection,
         client_conn: Optional[TCPConnection],

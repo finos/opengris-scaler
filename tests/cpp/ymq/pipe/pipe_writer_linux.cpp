@@ -31,7 +31,7 @@ int PipeWriter::write(const void* buffer, size_t size)
 {
     ssize_t n = ::write(this->_fd, buffer, size);
     if (n < 0)
-        raise_system_error("write");
+        raiseSystemError("write");
     return n;
 }
 

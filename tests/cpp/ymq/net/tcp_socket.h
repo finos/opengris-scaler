@@ -16,8 +16,8 @@ public:
     TCPSocket(const TCPSocket&)            = delete;
     TCPSocket& operator=(const TCPSocket&) = delete;
 
-    void tryConnect(const std::string& address, int tries = 10) const override;
-    void bind(const std::string& address) const override;
+    void tryConnect(const scaler::ymq::Address& address, int tries = 10) const override;
+    void bind(const scaler::ymq::Address& address) const override;
     void listen(int backlog = 5) const override;
     std::unique_ptr<Socket> accept() const override;
 

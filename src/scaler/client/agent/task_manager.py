@@ -3,7 +3,7 @@ from typing import Optional, Set
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.agent.mixins import ObjectManager, TaskManager
 from scaler.io.mixins import AsyncConnector
-from scaler.protocol.python.message import GraphTask, Task, TaskCancel, TaskCancelConfirm, TaskResult
+from scaler.protocol.capnp import GraphTask, Task, TaskCancel, TaskCancelConfirm, TaskResult
 
 
 class ClientTaskManager(TaskManager):
@@ -22,7 +22,7 @@ class ClientTaskManager(TaskManager):
         self._future_manager = future_manager
 
     async def on_new_task(self, task: Task):
-        self._task_ids.add(task.task_id)
+        self._task_ids.add(task.taskId)
         await self._connector_external.send(task)
 
     async def on_cancel_task(self, task_cancel: TaskCancel):
@@ -33,13 +33,13 @@ class ClientTaskManager(TaskManager):
         # - The client agent processes the TaskCancel message (that was already queued before processing the
         #   TaskResult), and fails on self._task_ids.remove() as the task_id no longer exists.
 
-        if task_cancel.task_id not in self._task_ids:
+        if task_cancel.taskId not in self._task_ids:
             return
 
         await self._connector_external.send(task_cancel)
 
     async def on_new_graph_task(self, task: GraphTask):
-        self._task_ids.add(task.task_id)
+        self._task_ids.add(task.taskId)
         self._task_ids.update(set(task.targets))
         await self._connector_external.send(task)
 
@@ -49,16 +49,16 @@ class ClientTaskManager(TaskManager):
         # them.
         self._object_manager.on_task_result(result)
 
-        if result.task_id not in self._task_ids:
+        if result.taskId not in self._task_ids:
             return
 
-        self._task_ids.remove(result.task_id)
+        self._task_ids.remove(result.taskId)
 
         self._future_manager.on_task_result(result)
 
     async def on_task_cancel_confirm(self, task_cancel_confirm: TaskCancelConfirm):
-        if task_cancel_confirm.task_id not in self._task_ids:
+        if task_cancel_confirm.taskId not in self._task_ids:
             return
 
-        self._task_ids.remove(task_cancel_confirm.task_id)
+        self._task_ids.remove(task_cancel_confirm.taskId)
         self._future_manager.on_task_cancel_confirm(task_cancel_confirm)

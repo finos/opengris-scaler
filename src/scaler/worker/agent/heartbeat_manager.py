@@ -3,10 +3,10 @@ from typing import Dict, Optional
 
 import psutil
 
-from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
+from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
-from scaler.protocol.python.message import Resource, WorkerHeartbeat, WorkerHeartbeatEcho
-from scaler.protocol.python.status import ProcessorStatus
+from scaler.protocol.capnp import ProcessorStatus, Resource, WorkerHeartbeat, WorkerHeartbeatEcho
+from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.mixins import Looper
 from scaler.worker.agent.mixins import HeartbeatManager, ProcessorManager, TaskManager, TimeoutManager
 from scaler.worker.agent.processor_holder import ProcessorHolder
@@ -15,13 +15,15 @@ from scaler.worker.agent.processor_holder import ProcessorHolder
 class VanillaHeartbeatManager(Looper, HeartbeatManager):
     def __init__(
         self,
-        object_storage_address: Optional[ObjectStorageAddressConfig],
+        object_storage_address: Optional[AddressConfig],
         capabilities: Dict[str, int],
         task_queue_size: int,
+        worker_manager_id: bytes,
     ):
         self._agent_process = psutil.Process()
         self._capabilities = capabilities
         self._task_queue_size = task_queue_size
+        self._worker_manager_id = worker_manager_id
 
         self._connector_external: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
@@ -32,7 +34,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
         self._start_timestamp_ns = 0
         self._latency_us = 0
 
-        self._object_storage_address: Optional[ObjectStorageAddressConfig] = object_storage_address
+        self._object_storage_address: Optional[AddressConfig] = object_storage_address
 
     def register(
         self,
@@ -58,9 +60,10 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
         self._timeout_manager.update_last_seen_time()
 
         if self._object_storage_address is None:
-            address_message = heartbeat.object_storage_address()
-            self._object_storage_address = ObjectStorageAddressConfig(address_message.host, address_message.port)
-            await self._connector_storage.connect(self._object_storage_address.host, self._object_storage_address.port)
+            address_message = heartbeat.objectStorageAddress
+            scheme = SocketType(address_message.scheme)
+            self._object_storage_address = AddressConfig(scheme, address_message.host, address_message.port)
+            await self._connector_storage.connect(self._object_storage_address)
 
     async def routine(self):
         processors = self._processor_manager.processors()
@@ -70,7 +73,11 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
             return
 
         for processor_holder in processors:
-            status = processor_holder.process().status()
+            try:
+                status = processor_holder.process().status()
+            except psutil.NoSuchProcess:
+                # The OS process has already exited; treat as dead so it gets cleaned up.
+                status = psutil.STATUS_DEAD
             if status in {psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD}:
                 await self._processor_manager.on_failing_processor(processor_holder.processor_id(), status)
 
@@ -79,20 +86,23 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
 
         # TODO: add task queue size to WorkerHeartbeat
         await self._connector_external.send(
-            WorkerHeartbeat.new_msg(
-                Resource.new_msg(int(self._agent_process.cpu_percent() * 10), self._agent_process.memory_info().rss),
-                psutil.virtual_memory().available,
-                self._task_queue_size,
-                self._worker_task_manager.get_queued_size() - num_suspended_processors,
-                self._latency_us,
-                self._processor_manager.can_accept_task(),
-                [self.__get_processor_status_from_holder(processor) for processor in processors],
-                self._capabilities,
+            WorkerHeartbeat(
+                agent=Resource(
+                    cpu=int(self._agent_process.cpu_percent() * 10), rss=self._agent_process.memory_info().rss
+                ),
+                rssFree=psutil.virtual_memory().available,
+                queueSize=self._task_queue_size,
+                queuedTasks=self._worker_task_manager.get_queued_size() - num_suspended_processors,
+                latencyUS=self._latency_us,
+                taskLock=self._processor_manager.can_accept_task(),
+                processors=[self.__get_processor_status_from_holder(processor) for processor in processors],
+                capabilities=dict_to_capabilities(self._capabilities),
+                workerManagerID=self._worker_manager_id,
             )
         )
         self._start_timestamp_ns = time.time_ns()
 
-    def get_object_storage_address(self) -> Optional[ObjectStorageAddressConfig]:
+    def get_object_storage_address(self) -> Optional[AddressConfig]:
         return self._object_storage_address
 
     @staticmethod
@@ -100,11 +110,15 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
         process = processor.process()
 
         try:
-            resource = Resource.new_msg(int(process.cpu_percent() * 10), process.memory_info().rss)
-        except psutil.ZombieProcess:
-            # Assumes dead processes do not use any resources
-            resource = Resource.new_msg(0, 0)
+            resource = Resource(cpu=int(process.cpu_percent() * 10), rss=process.memory_info().rss)
+        except (psutil.ZombieProcess, psutil.NoSuchProcess):
+            # Assumes dead/missing processes do not use any resources.
+            resource = Resource(cpu=0, rss=0)
 
-        return ProcessorStatus.new_msg(
-            processor.pid(), processor.initialized(), processor.task() is not None, processor.suspended(), resource
+        return ProcessorStatus(
+            pid=processor.pid(),
+            initialized=processor.initialized(),
+            hasTask=processor.task() is not None,
+            suspended=processor.suspended(),
+            resource=resource,
         )

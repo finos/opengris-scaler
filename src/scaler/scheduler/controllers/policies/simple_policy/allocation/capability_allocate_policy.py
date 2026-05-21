@@ -7,7 +7,7 @@ from typing import Dict, Iterable, List, Optional, Set
 
 from sortedcontainers import SortedList
 
-from scaler.protocol.python.message import Task
+from scaler.protocol.capnp import Task
 from scaler.scheduler.controllers.policies.simple_policy.allocation.mixins import TaskAllocatePolicy
 from scaler.utility.identifiers import TaskID, WorkerID
 
@@ -238,9 +238,9 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         # free queue task slots, but that might needlessly idle workers that have a smaller queue.
 
         min_loaded_worker = min(available_workers, key=lambda worker: worker.n_tasks())
-        min_loaded_worker.task_id_to_task[task.task_id] = _TaskHolder(task.task_id, set(task.capabilities.keys()))
+        min_loaded_worker.task_id_to_task[task.taskId] = _TaskHolder(task.taskId, set(task.capabilities.keys()))
 
-        self._task_id_to_worker_id[task.task_id] = min_loaded_worker.worker_id
+        self._task_id_to_worker_id[task.taskId] = min_loaded_worker.worker_id
 
         return min_loaded_worker.worker_id
 

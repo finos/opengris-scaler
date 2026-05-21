@@ -1,17 +1,10 @@
 add_subdirectory(wrapper/uv)
+add_subdirectory(wrapper/openssl)
 
-if(LINUX OR APPLE)
-  add_subdirectory(object_storage)
-else()
-  message(WARNING "Not building OSS and its Python Interface, as it's not supported on this system currently!")
-endif()
-
-if(LINUX OR WIN32)
-  add_subdirectory(ymq)
-else()
-  message(WARNING "Not building YMQ, as it's not supported on this system currently!")
-endif()
-
-add_subdirectory(uv_ymq)
+add_subdirectory(ymq)
 
 add_subdirectory(utility)
+
+add_subdirectory(protocol)
+
+add_subdirectory(object_storage)

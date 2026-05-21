@@ -2,8 +2,10 @@
 
 #include <uv.h>
 
+#include <cassert>
 #include <cstdint>
 #include <expected>
+#include <limits>
 #include <memory>
 #include <span>
 #include <vector>
@@ -20,9 +22,15 @@ namespace uv {
 template <typename NativeHandleType>
 class Stream {
 public:
-    constexpr Handle<NativeHandleType, ReadCallback>& handle() noexcept { return _handle; }
+    constexpr Handle<NativeHandleType, ReadCallback>& handle() noexcept
+    {
+        return _handle;
+    }
 
-    constexpr const Handle<NativeHandleType, ReadCallback>& handle() const noexcept { return _handle; }
+    constexpr const Handle<NativeHandleType, ReadCallback>& handle() const noexcept
+    {
+        return _handle;
+    }
 
     // See uv_read_start
     std::expected<void, Error> readStart(ReadCallback callback) noexcept
@@ -57,6 +65,8 @@ public:
         nativeBuffers.reserve(buffers.size());
 
         for (auto const& buffer: buffers) {
+            assert(buffer.size() <= std::numeric_limits<unsigned int>::max());
+
             const uv_buf_t nativeBuffer = uv_buf_init(
                 const_cast<char*>(reinterpret_cast<const char*>(buffer.data())),
                 static_cast<unsigned int>(buffer.size()));
@@ -118,7 +128,8 @@ public:
 private:
     Handle<NativeHandleType, ReadCallback> _handle;
 
-    static void onAllocateCallback(uv_handle_t* handle, size_t suggestedSize, uv_buf_t* nativeBuffer) noexcept
+    static void onAllocateCallback(
+        [[maybe_unused]] uv_handle_t* handle, size_t suggestedSize, uv_buf_t* nativeBuffer) noexcept
     {
         *nativeBuffer = uv_buf_init(new char[suggestedSize], suggestedSize);
     }
@@ -141,9 +152,15 @@ private:
 template <typename NativeHandleType, typename ConnectionType>
 class StreamServer {
 public:
-    constexpr Handle<NativeHandleType, ConnectionCallback>& handle() noexcept { return _handle; }
+    constexpr Handle<NativeHandleType, ConnectionCallback>& handle() noexcept
+    {
+        return _handle;
+    }
 
-    constexpr const Handle<NativeHandleType, ConnectionCallback>& handle() const noexcept { return _handle; }
+    constexpr const Handle<NativeHandleType, ConnectionCallback>& handle() const noexcept
+    {
+        return _handle;
+    }
 
     // See uv_listen
     std::expected<void, Error> listen(int backlog, ConnectionCallback callback) noexcept

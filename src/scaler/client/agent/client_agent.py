@@ -5,21 +5,17 @@ import threading
 from concurrent.futures import Future
 from typing import Optional
 
-import zmq.asyncio
-
 from scaler.client.agent.disconnect_manager import ClientDisconnectManager
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.agent.heartbeat_manager import ClientHeartbeatManager
 from scaler.client.agent.object_manager import ClientObjectManager
 from scaler.client.agent.task_manager import ClientTaskManager
 from scaler.client.serializer.mixins import Serializer
-from scaler.config.types.zmq import ZMQConfig
-from scaler.io.async_connector import ZMQAsyncConnector
-from scaler.io.mixins import AsyncConnector
-from scaler.io.utility import create_async_connector
-from scaler.io.ymq.ymq import YMQException
-from scaler.protocol.python.common import ObjectStorageAddress
-from scaler.protocol.python.message import (
+from scaler.config.types.address import AddressConfig
+from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend
+from scaler.io.ymq import YMQException
+from scaler.protocol.capnp import (
+    BaseMessage,
     ClientDisconnect,
     ClientHeartbeatEcho,
     ClientShutdownResponse,
@@ -31,7 +27,6 @@ from scaler.protocol.python.message import (
     TaskLog,
     TaskResult,
 )
-from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
 from scaler.utility.exceptions import ClientCancelledException, ClientQuitException, ClientShutdownException
 from scaler.utility.identifiers import ClientID
@@ -41,9 +36,9 @@ class ClientAgent(threading.Thread):
     def __init__(
         self,
         identity: ClientID,
-        client_agent_address: ZMQConfig,
-        scheduler_address: ZMQConfig,
-        context: zmq.Context,
+        client_agent_address: AddressConfig,
+        scheduler_address: AddressConfig,
+        network_backend: NetworkBackend,
         future_manager: ClientFutureManager,
         stop_event: threading.Event,
         timeout_seconds: int,
@@ -61,34 +56,21 @@ class ClientAgent(threading.Thread):
         self._identity = identity
         self._client_agent_address = client_agent_address
         self._scheduler_address = scheduler_address
-        self._io_context = context
-        self._object_storage_address: Future[ObjectStorageAddress] = Future()
+        self._network_backend = network_backend
+        self._object_storage_address: Future[AddressConfig] = Future()
         if object_storage_address is not None:
-            manual_config = ZMQConfig.from_string(object_storage_address)
-            self._object_storage_address_override = ObjectStorageAddress.new_msg(manual_config.host, manual_config.port)
+            self._object_storage_address_override = AddressConfig.from_string(object_storage_address)
         else:
             self._object_storage_address_override = None
 
         self._future_manager = future_manager
 
-        self._connector_internal: AsyncConnector = ZMQAsyncConnector(
-            context=zmq.asyncio.Context.shadow(self._io_context),
-            name="client_agent_internal",
-            socket_type=zmq.PAIR,
-            bind_or_connect="bind",
-            address=self._client_agent_address,
-            callback=self.__on_receive_from_client,
-            identity=None,
+        self._connector_internal: AsyncConnector = self._network_backend.create_async_connector(
+            identity=self._identity, callback=self.__on_receive_from_client
         )
 
-        self._connector_external: AsyncConnector = create_async_connector(
-            zmq.asyncio.Context.shadow(self._io_context),
-            name="client_agent_external",
-            socket_type=zmq.DEALER,
-            address=self._scheduler_address,
-            bind_or_connect="connect",
-            callback=self.__on_receive_from_scheduler,
-            identity=self._identity,
+        self._connector_external: AsyncConnector = self._network_backend.create_async_connector(
+            identity=self._identity, callback=self.__on_receive_from_scheduler
         )
 
         self._disconnect_manager: Optional[ClientDisconnectManager] = None
@@ -125,13 +107,13 @@ class ClientAgent(threading.Thread):
         self.__initialize()
         await self.__get_loops()
 
-    def get_object_storage_address(self) -> ObjectStorageAddress:
+    def get_object_storage_address(self) -> AddressConfig:
         """Returns the object storage address, or block until it receives it."""
         if self._object_storage_address_override is not None:
             return self._object_storage_address_override
         return self._object_storage_address.result()
 
-    async def __on_receive_from_client(self, message: Message):
+    async def __on_receive_from_client(self, message: BaseMessage):
         if isinstance(message, ClientDisconnect):
             await self._disconnect_manager.on_client_disconnect(message)
             return
@@ -154,7 +136,7 @@ class ClientAgent(threading.Thread):
 
         raise TypeError(f"Unknown {message=}")
 
-    async def __on_receive_from_scheduler(self, message: Message):
+    async def __on_receive_from_scheduler(self, message: BaseMessage):
         if isinstance(message, ClientShutdownResponse):
             await self._disconnect_manager.on_client_shutdown_response(message)
             return
@@ -164,7 +146,7 @@ class ClientAgent(threading.Thread):
             return
 
         if isinstance(message, TaskLog):
-            log_type = sys.stdout if message.log_type == TaskLog.LogType.Stdout else sys.stderr
+            log_type = sys.stdout if message.logType == TaskLog.LogType.stdout else sys.stderr
             print(message.content, file=log_type, end="")
             return
 
@@ -179,16 +161,19 @@ class ClientAgent(threading.Thread):
         raise TypeError(f"Unknown {message=}")
 
     async def __get_loops(self):
-        await self._heartbeat_manager.send_heartbeat()
-
-        loops = [
-            create_async_loop_routine(self._connector_external.routine, 0),
-            create_async_loop_routine(self._connector_internal.routine, 0),
-            create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
-        ]
-
         exception = None
         try:
+            await self._connector_internal.bind(self._client_agent_address)
+            await self._connector_external.connect(self._scheduler_address, ConnectorRemoteType.Binder)
+
+            await self._heartbeat_manager.send_heartbeat()
+
+            loops = [
+                create_async_loop_routine(self._connector_external.routine, 0),
+                create_async_loop_routine(self._connector_internal.routine, 0),
+                create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
+            ]
+
             await asyncio.gather(*loops)
         except BaseException as e:
             exception = e
@@ -207,17 +192,31 @@ class ClientAgent(threading.Thread):
         if exception is None:
             return
 
-        if not self._object_storage_address.done():
-            self._object_storage_address.set_exception(exception)
-
+        public_exception: BaseException
         if isinstance(exception, asyncio.CancelledError):
+            # asyncio.CancelledError is a BaseException (not Exception) in Python 3.8+, so it
+            # cannot go into set_all_futures_with_exception directly. Translate to the
+            # public-facing ClientCancelledException.
             logging.error("ClientAgent: async. loop cancelled")
-            self._future_manager.set_all_futures_with_exception(ClientCancelledException("client cancelled"))
+            cancelled = ClientCancelledException("client cancelled")
+            self._future_manager.set_all_futures_with_exception(cancelled)
+            public_exception = cancelled
         elif isinstance(exception, (ClientQuitException, ClientShutdownException)):
             logging.info("ClientAgent: client quitting")
             self._future_manager.set_all_futures_with_exception(exception)
+            public_exception = exception
         elif isinstance(exception, (TimeoutError, YMQException)):
-            logging.error(f"ClientAgent: client timeout when connecting to {self._scheduler_address.to_address()}")
+            logging.error(f"ClientAgent: client timeout when connecting to {self._scheduler_address!r}")
             self._future_manager.set_all_futures_with_exception(TimeoutError())
+            public_exception = exception
         else:
+            public_exception = exception
+
+        if not self._object_storage_address.done():
+            self._object_storage_address.set_exception(public_exception)
+
+        if not isinstance(
+            exception,
+            (asyncio.CancelledError, ClientQuitException, ClientShutdownException, TimeoutError, YMQException),
+        ):
             raise exception

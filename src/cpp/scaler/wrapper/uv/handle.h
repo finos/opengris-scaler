@@ -53,7 +53,10 @@ public:
     // Releases the ownership of the native handle.
     //
     // The caller is responsible for freeing the native handle by calling free().
-    NativeHandleType* release() noexcept { return _native.release(); }
+    NativeHandleType* release() noexcept
+    {
+        return _native.release();
+    }
 
     // Callback for uv_close() that cleans up the handle data and deletes the native handle.
     static void free(uv_handle_t* handle) noexcept

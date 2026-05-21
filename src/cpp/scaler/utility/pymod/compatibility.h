@@ -1,6 +1,5 @@
 #pragma once
-// NOTE: This file is needed because of we support backward compatibility to
-// Python 3.8. This file will be removed once we drop the support to Python 3.8.
+
 #define PY_SSIZE_T_CLEAN
 
 // if on Windows and in debug mode, undefine _DEBUG before including Python.h
@@ -18,69 +17,6 @@
 #include "scaler/error/error.h"
 #include "scaler/utility/pymod/gil.h"
 
-#if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 10
-#define Py_TPFLAGS_IMMUTABLETYPE          (0)
-#define Py_TPFLAGS_DISALLOW_INSTANTIATION (0)
-
-static inline PyObject* Py_NewRef(PyObject* obj)
-{
-    Py_INCREF(obj);
-    return obj;
-}
-
-static inline PyObject* Py_XNewRef(PyObject* obj)
-{
-    Py_XINCREF(obj);
-    return obj;
-}
-
-static inline int PyModule_AddObjectRef(PyObject* mod, const char* name, PyObject* value)
-{
-    Py_INCREF(value);  // Since PyModule_AddObject steals a ref, we balance it
-    return PyModule_AddObject(mod, name, value);
-}
-#endif  // <3.10
-
-#if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 9
-// This is a very dirty hack, we basically place the raw pointer to this dict when init,
-// see scaler/utility/pymod_ymq/ymq.h for more detail
-PyObject* PyType_GetModule(PyTypeObject* type)
-{
-    return PyObject_GetAttrString((PyObject*)(type), "__module_object__");
-}
-
-PyObject* PyType_GetModuleState(PyTypeObject* type)
-{
-    PyObject* module = PyObject_GetAttrString((PyObject*)(type), "__module_object__");
-    if (!module)
-        return nullptr;
-    void* state = PyModule_GetState(module);
-    Py_DECREF(module);
-    return (PyObject*)state;
-}
-
-static inline PyObject* PyObject_CallNoArgs(PyObject* callable)
-{
-    return PyObject_Call(callable, PyTuple_New(0), nullptr);
-}
-
-static inline PyObject* PyType_FromModuleAndSpec(PyObject* pymodule, PyType_Spec* spec, PyObject* bases)
-{
-    (void)pymodule;
-    if (!bases) {
-        bases = PyTuple_Pack(1, (PyObject*)&PyBaseObject_Type);
-        if (bases) {
-            PyObject* res = PyType_FromSpecWithBases(spec, bases);
-            Py_DECREF(bases);  // avoid leak
-            return res;
-        }
-        PyObject* res = PyType_FromSpecWithBases(spec, bases);
-        return res;
-    }
-    return PyType_FromSpecWithBases(spec, bases);
-}
-#endif  // <3.9
-
 namespace scaler {
 namespace utility {
 namespace pymod {
@@ -89,13 +25,23 @@ namespace pymod {
 template <typename T = PyObject>
 class OwnedPyObject {
 public:
-    OwnedPyObject(): _ptr(nullptr) {}
+    OwnedPyObject(): _ptr(nullptr)
+    {
+    }
 
     // steals a reference
-    OwnedPyObject(T* ptr): _ptr(ptr) {}
+    OwnedPyObject(T* ptr): _ptr(ptr)
+    {
+    }
 
-    OwnedPyObject(const OwnedPyObject& other) { this->_ptr = (T*)Py_XNewRef((PyObject*)other._ptr); }
-    OwnedPyObject(OwnedPyObject&& other) noexcept: _ptr(other._ptr) { other._ptr = nullptr; }
+    OwnedPyObject(const OwnedPyObject& other)
+    {
+        this->_ptr = (T*)Py_XNewRef((PyObject*)other._ptr);
+    }
+    OwnedPyObject(OwnedPyObject&& other) noexcept: _ptr(other._ptr)
+    {
+        other._ptr = nullptr;
+    }
     OwnedPyObject& operator=(const OwnedPyObject& other)
     {
         if (this == &other)
@@ -116,7 +62,10 @@ public:
         return *this;
     }
 
-    ~OwnedPyObject() { this->free(); }
+    ~OwnedPyObject()
+    {
+        this->free();
+    }
 
     inline friend bool operator==(const OwnedPyObject<T>& x, const OwnedPyObject<T>& y)
     {
@@ -124,12 +73,21 @@ public:
     }
 
     // creates a new OwnedPyObject from a borrowed reference
-    static OwnedPyObject fromBorrowed(T* ptr) { return OwnedPyObject((T*)Py_XNewRef((PyObject*)ptr)); }
+    static OwnedPyObject fromBorrowed(T* ptr)
+    {
+        return OwnedPyObject((T*)Py_XNewRef((PyObject*)ptr));
+    }
 
     // convenience method for creating an OwnedPyObject that holds Py_None
-    static OwnedPyObject none() { return OwnedPyObject((T*)Py_NewRef(Py_None)); }
+    static OwnedPyObject none()
+    {
+        return OwnedPyObject((T*)Py_NewRef(Py_None));
+    }
 
-    bool is_none() const { return (PyObject*)_ptr == Py_None; }
+    bool is_none() const
+    {
+        return (PyObject*)_ptr == Py_None;
+    }
 
     // takes the pointer out of the OwnedPyObject
     // without decrementing the reference count
@@ -141,16 +99,35 @@ public:
         return ptr;
     }
 
-    void forget() { this->_ptr = nullptr; }
+    void forget()
+    {
+        this->_ptr = nullptr;
+    }
 
     // operator T*() const { return _ptr; }
-    explicit operator bool() const { return _ptr != nullptr; }
-    bool operator!() const { return _ptr == nullptr; }
+    explicit operator bool() const
+    {
+        return _ptr != nullptr;
+    }
+    bool operator!() const
+    {
+        return _ptr == nullptr;
+    }
 
-    T* operator->() const { return _ptr; }
-    T* operator*() const { return _ptr; }
+    T* operator->() const
+    {
+        return _ptr;
+    }
+    T* operator*() const = delete;
+    T* get() const
+    {
+        return _ptr;
+    }
 
-    Py_hash_t hash() const { return PyObject_Hash(_ptr); }
+    Py_hash_t hash() const
+    {
+        return PyObject_Hash(_ptr);
+    }
 
 private:
     T* _ptr;
@@ -170,17 +147,6 @@ private:
 }  // namespace pymod
 }  // namespace utility
 }  // namespace scaler
-
-#if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION == 8
-static inline PyObject* PyObject_CallOneArg(PyObject* callable, PyObject* arg)
-{
-    scaler::utility::pymod::OwnedPyObject<> args = PyTuple_Pack(1, arg);
-    if (!args)
-        return nullptr;
-    PyObject* result = PyObject_Call(callable, *args, nullptr);
-    return result;
-}
-#endif
 
 template <>
 struct std::hash<scaler::utility::pymod::OwnedPyObject<PyObject>> {

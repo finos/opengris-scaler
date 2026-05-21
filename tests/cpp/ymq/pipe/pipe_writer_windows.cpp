@@ -31,7 +31,7 @@ int PipeWriter::write(const void* buffer, size_t size)
 {
     DWORD bytes_written = 0;
     if (!WriteFile((HANDLE)this->_fd, buffer, (DWORD)size, &bytes_written, nullptr))
-        raise_system_error("failed to write to pipe");
+        raiseSystemError("failed to write to pipe");
     return bytes_written;
 }
 

@@ -5,10 +5,9 @@ from typing import Optional
 import psutil
 
 from scaler.client.agent.mixins import HeartbeatManager, ObjectManager
+from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.mixins import AsyncConnector
-from scaler.protocol.python.common import ObjectStorageAddress
-from scaler.protocol.python.message import ClientHeartbeat, ClientHeartbeatEcho
-from scaler.protocol.python.status import Resource
+from scaler.protocol.capnp import ClientHeartbeat, ClientHeartbeatEcho, Resource
 from scaler.utility.mixins import Looper
 
 
@@ -32,9 +31,9 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
 
     async def send_heartbeat(self):
         await self._connector_external.send(
-            ClientHeartbeat.new_msg(
-                Resource.new_msg(int(self._process.cpu_percent() * 10), self._process.memory_info().rss),
-                self._latency_us,
+            ClientHeartbeat(
+                resource=Resource(cpu=int(self._process.cpu_percent() * 10), rss=self._process.memory_info().rss),
+                latencyUS=self._latency_us,
             )
         )
 
@@ -53,7 +52,11 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         if self._object_storage_address.done():
             return
 
-        self._object_storage_address.set_result(heartbeat.object_storage_address())
+        object_storage_address_message = heartbeat.objectStorageAddress
+        scheme = SocketType(object_storage_address_message.scheme)
+        self._object_storage_address.set_result(
+            AddressConfig(scheme, object_storage_address_message.host, object_storage_address_message.port)
+        )
 
     async def routine(self):
         if time.time() - self._last_scheduler_contact > self._death_timeout_seconds:
@@ -69,6 +72,6 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         await self.send_heartbeat()
         self._start_timestamp_ns = time.time_ns()
 
-    def get_object_storage_address(self) -> ObjectStorageAddress:
+    def get_object_storage_address(self) -> AddressConfig:
         """Returns the object storage configuration, or block until it receives it."""
         return self._object_storage_address.result()

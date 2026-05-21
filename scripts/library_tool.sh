@@ -2,7 +2,7 @@
 # This script builds and installs the required 3rd party C++ libraries.
 #
 # Usage:
-#    	./scripts/library_tool.sh [boost|capnp|uv] [compile|install] [--prefix=PREFIX]
+#    	./scripts/library_tool.sh [boost|capnp|libuv] [compile|install] [--prefix=PREFIX]
 
 # Remember:
 #	Update the usage string when you are add/remove dependency
@@ -22,7 +22,7 @@ PREFIX="/usr/local"
 # Parse the optional --prefix= argument
 for arg in "$@"; do
 	if [[ "$arg" == --prefix=* ]]; then
-			PREFIX="${arg#--prefix=}"
+		PREFIX="${arg#--prefix=}"
 	fi
 done
 
@@ -34,8 +34,7 @@ else
     NUM_CORES=1
 fi
 
-PREFIX=$(readlink -f "${PREFIX}")
-mkdir -p "${PREFIX}/include/"
+PREFIX=$(mkdir -p "${PREFIX}" && cd "${PREFIX}" && pwd)
 
 show_help() {
     echo "Usage: ./library_tool.sh [boost|capnp|libuv] [download|compile|install] [--prefix=DIR]"
@@ -109,7 +108,7 @@ elif [ "$1" == "libuv" ]; then
         tar -xzf "${THIRD_PARTY_DOWNLOADED}/${UV_FOLDER_NAME}.tar.gz" -C "${THIRD_PARTY_COMPILED}"
 
         cd "${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}"
-        cmake -B build -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DBUILD_TESTING=OFF
+        cmake -B build -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DBUILD_TESTING=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON
         cmake --build build --config Release
         echo "Compiled libuv to ${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}"
 

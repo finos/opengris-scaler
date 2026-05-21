@@ -1,23 +1,59 @@
 import unittest
 
+from scaler.config.types.address import AddressConfig
+from scaler.config.types.http import HTTPConfig
 from scaler.config.types.worker import WorkerCapabilities, WorkerNames
-from scaler.config.types.zmq import ZMQConfig
 
 
 class TestConfigTypes(unittest.TestCase):
     """Tests for individual ConfigType helper classes."""
 
-    def test_zmq_config_validation(self):
-        """Test ZMQConfig.from_string raises ValueError for malformed strings."""
-        with self.assertRaises(ValueError):
-            ZMQConfig.from_string("this-is-not-a-valid-address")
-        with self.assertRaises(ValueError):
-            ZMQConfig.from_string("tcp://127.0.0.1")
-        with self.assertRaises(ValueError):
-            ZMQConfig.from_string("badprotocol://127.0.0.1:1234")
+    def test_http_config_from_string(self):
+        """Test HTTPConfig.from_string parses host:port correctly."""
+        cfg = HTTPConfig.from_string("0.0.0.0:50001")
+        self.assertEqual(cfg.host, "0.0.0.0")
+        self.assertEqual(cfg.port, 50001)
+        self.assertEqual(str(cfg), "0.0.0.0:50001")
 
-        cfg = ZMQConfig.from_string("ipc://a-valid-path")
+    def test_http_config_ipv6(self):
+        """Test HTTPConfig.from_string handles IPv6 addresses via rpartition."""
+        cfg = HTTPConfig.from_string("::1:8080")
+        self.assertEqual(cfg.port, 8080)
+
+    def test_http_config_validation(self):
+        """Test HTTPConfig.from_string raises ValueError for malformed strings."""
+        with self.assertRaises(ValueError):
+            HTTPConfig.from_string("no-port-here")
+        with self.assertRaises(ValueError):
+            HTTPConfig.from_string("0.0.0.0:notanumber")
+
+    def test_address_config_validation(self):
+        """Test AddressConfig.from_string raises ValueError for malformed strings."""
+        with self.assertRaises(ValueError):
+            AddressConfig.from_string("this-is-not-a-valid-address")
+        with self.assertRaises(ValueError):
+            AddressConfig.from_string("tcp://127.0.0.1")
+        with self.assertRaises(ValueError):
+            AddressConfig.from_string("badprotocol://127.0.0.1:1234")
+
+        cfg = AddressConfig.from_string("ipc://a-valid-path")
         self.assertEqual(cfg.host, "a-valid-path")
+
+    def test_address_config_ws(self):
+        cfg = AddressConfig.from_string("ws://127.0.0.1:8765/")
+        self.assertEqual(cfg.host, "127.0.0.1")
+        self.assertEqual(cfg.port, 8765)
+        self.assertEqual(cfg.path, "/")
+        self.assertEqual(str(cfg), "ws://127.0.0.1:8765/")
+
+    def test_address_config_ws_with_path(self):
+        cfg = AddressConfig.from_string("ws://127.0.0.1:9000/ymq/v1")
+        self.assertEqual(cfg.path, "/ymq/v1")
+        self.assertEqual(str(cfg), "ws://127.0.0.1:9000/ymq/v1")
+
+    def test_address_config_ws_invalid(self):
+        with self.assertRaises(ValueError):
+            AddressConfig.from_string("ws://127.0.0.1")
 
     def test_worker_names_config_value(self):
         """Test the WorkerNames ConfigType class."""

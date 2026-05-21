@@ -1,95 +1,67 @@
-import logging
-import math
-from typing import Dict, List
+from math import ceil
+from typing import Dict, List, Tuple
 
-import aiohttp
-from aiohttp import web
-
-from scaler.protocol.python.message import InformationSnapshot
-from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingController
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupID
+from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
+from scaler.scheduler.controllers.worker_manager_utilties import (
+    build_scaling_manager_status,
+    build_set_desired_command,
+    effective_desired_for_manager,
+)
 from scaler.utility.identifiers import WorkerID
+from scaler.utility.snapshot import InformationSnapshot
 
 
-class VanillaScalingController(ScalingController):
-    def __init__(self, adapter_webhook_url: str):
-        self._adapter_webhook_url = adapter_webhook_url
+class VanillaScalingPolicy(ScalingPolicy):
+    """
+    Stateless scaling policy that scales workers based on task-to-worker ratio.
+    """
+
+    def __init__(self):
         self._lower_task_ratio = 1
         self._upper_task_ratio = 10
 
-        self._worker_groups: Dict[WorkerGroupID, List[WorkerID]] = {}
+    def get_scaling_commands(
+        self,
+        information_snapshot: InformationSnapshot,
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
+        managed_worker_ids: List[WorkerID],
+        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
+    ) -> List[WorkerManagerCommand]:
+        desired = self._compute_desired_worker_count(information_snapshot, worker_manager_heartbeat, managed_worker_ids)
+        desired_per_capset: List[Tuple[Dict[str, int], int]] = [({}, desired)]
+        effective = effective_desired_for_manager(desired_per_capset, worker_manager_heartbeat.capabilities)
+        if effective == len(managed_worker_ids):
+            return []
+        return [build_set_desired_command(desired_per_capset)]
 
-    def get_status(self):
-        return ScalingManagerStatus.new_msg(worker_groups=self._worker_groups)
+    def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
+        return build_scaling_manager_status(managed_workers)
 
-    async def on_snapshot(self, information_snapshot: InformationSnapshot):
-        if not information_snapshot.workers:
-            if information_snapshot.tasks:
-                await self._start_worker_group()
-            return
+    def _compute_desired_worker_count(
+        self,
+        information_snapshot: InformationSnapshot,
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
+        managed_worker_ids: List[WorkerID],
+    ) -> int:
+        """Compute the target worker count for this manager from current task and worker observations."""
+        current = len(managed_worker_ids)
+        task_count = len(information_snapshot.tasks)
+        worker_count = len(information_snapshot.workers)
 
-        task_ratio = len(information_snapshot.tasks) / len(information_snapshot.workers)
-        if task_ratio > self._upper_task_ratio:
-            await self._start_worker_group()
-        elif task_ratio < self._lower_task_ratio:
-            worker_group_task_counts = {
-                worker_group_id: sum(
-                    information_snapshot.workers[worker_id].queued_tasks
-                    for worker_id in worker_ids
-                    if worker_id in information_snapshot.workers
-                )
-                for worker_group_id, worker_ids in self._worker_groups.items()
-            }
-            if not worker_group_task_counts:
-                logging.warning(
-                    "No worker groups available to shut down. There might be statically provisioned workers."
-                )
-                return
+        if worker_count == 0:
+            desired = current + 1 if task_count > 0 else current
+        else:
+            task_ratio = task_count / worker_count
+            if task_ratio > self._upper_task_ratio:
+                desired = current + 1
+            elif task_ratio < self._lower_task_ratio:
+                desired = 0 if task_count == 0 else max(1, ceil(task_count / self._upper_task_ratio))
+            else:
+                desired = current
 
-            worker_group_id = min(worker_group_task_counts, key=worker_group_task_counts.get)
-            await self._shutdown_worker_group(worker_group_id)
-
-    async def _start_worker_group(self):
-        response, status = await self._make_request({"action": "get_worker_adapter_info"})
-        if status != web.HTTPOk.status_code:
-            logging.warning("Failed to get worker adapter info.")
-            return
-
-        if len(self._worker_groups) >= response.get("max_worker_groups", math.inf):
-            return
-
-        response, status = await self._make_request({"action": "start_worker_group"})
-        if status == web.HTTPTooManyRequests.status_code:
-            logging.warning("Capacity exceeded, cannot start new worker group.")
-            return
-        if status == web.HTTPInternalServerError.status_code:
-            logging.error(f"Failed to start worker group: {response.get('error', 'Unknown error')}")
-            return
-
-        worker_group_id = response["worker_group_id"].encode()
-        self._worker_groups[worker_group_id] = [WorkerID(worker_id.encode()) for worker_id in response["worker_ids"]]
-        logging.info(f"Started worker group: {worker_group_id.decode()}")
-
-    async def _shutdown_worker_group(self, worker_group_id: WorkerGroupID):
-        if worker_group_id not in self._worker_groups:
-            logging.error(f"Worker group with ID {worker_group_id.decode()} does not exist.")
-            return
-
-        response, status = await self._make_request(
-            {"action": "shutdown_worker_group", "worker_group_id": worker_group_id.decode()}
-        )
-        if status == web.HTTPNotFound.status_code:
-            logging.error(f"Worker group with ID {worker_group_id.decode()} not found in adapter.")
-            return
-        if status == web.HTTPInternalServerError.status_code:
-            logging.error(f"Failed to shutdown worker group: {response.get('error', 'Unknown error')}")
-            return
-
-        self._worker_groups.pop(worker_group_id)
-        logging.info(f"Shutdown worker group: {worker_group_id.decode()}")
-
-    async def _make_request(self, payload):
-        async with aiohttp.ClientSession() as session:
-            async with session.post(self._adapter_webhook_url, json=payload) as response:
-                return await response.json(), response.status
+        max_concurrency = worker_manager_heartbeat.maxTaskConcurrency
+        if max_concurrency != -1:
+            desired = min(desired, max_concurrency)
+        return max(0, desired)

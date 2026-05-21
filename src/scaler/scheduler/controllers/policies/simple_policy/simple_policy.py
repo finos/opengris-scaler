@@ -1,24 +1,34 @@
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
-from scaler.protocol.python.message import InformationSnapshot, Task
+from scaler.protocol.capnp import ScalingManagerStatus, Task, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.scheduler.controllers.policies.mixins import ScalerPolicy
+from scaler.scheduler.controllers.policies.simple_policy.allocation.mixins import TaskAllocatePolicy
 from scaler.scheduler.controllers.policies.simple_policy.allocation.types import AllocatePolicyStrategy
 from scaler.scheduler.controllers.policies.simple_policy.allocation.utility import create_allocate_policy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import ScalingControllerStrategy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.utility import create_scaling_controller
+from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
+    ScalingPolicyStrategy,
+    WorkerManagerSnapshot,
+)
+from scaler.scheduler.controllers.policies.simple_policy.scaling.utility import create_scaling_policy
 from scaler.utility.identifiers import TaskID, WorkerID
+from scaler.utility.snapshot import InformationSnapshot
 
 
 class SimplePolicy(ScalerPolicy):
-    def __init__(self, policy_kv: Dict[str, str], adapter_webhook_urls: Tuple[str, ...]):
-        allocate = "allocate"
-        scaling = "scaling"
-        if policy_kv.keys() != set([allocate, scaling]):
-            raise ValueError(f"SimplePolicy only supports {allocate} and {scaling}, got {policy_kv.keys()}")
-        self._allocation_policy = create_allocate_policy(AllocatePolicyStrategy(policy_kv[allocate]))
-        self._scaling_policy = create_scaling_controller(
-            ScalingControllerStrategy(policy_kv[scaling]), adapter_webhook_urls
+    def __init__(self, policy_content: str):
+        policy_kv = {
+            k.strip(): v.strip() for item in policy_content.split(";") if "=" in item for k, v in [item.split("=", 1)]
+        }
+
+        required_keys = {"allocate", "scaling"}
+        if policy_kv.keys() != required_keys:
+            raise ValueError(f"simple policy_content requires keys {required_keys}, got {set(policy_kv.keys())}")
+
+        self._allocation_policy: TaskAllocatePolicy = create_allocate_policy(
+            AllocatePolicyStrategy(policy_kv["allocate"])
         )
+        self._scaling_policy: ScalingPolicy = create_scaling_policy(ScalingPolicyStrategy(policy_kv["scaling"]))
 
     def add_worker(self, worker: WorkerID, capabilities: Dict[str, int], queue_size: int) -> bool:
         return self._allocation_policy.add_worker(worker, capabilities, queue_size)
@@ -47,8 +57,16 @@ class SimplePolicy(ScalerPolicy):
     def statistics(self) -> Dict:
         return self._allocation_policy.statistics()
 
-    async def on_snapshot(self, snapshot: InformationSnapshot):
-        await self._scaling_policy.on_snapshot(snapshot)
+    def get_scaling_commands(
+        self,
+        information_snapshot: InformationSnapshot,
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
+        managed_worker_ids: List[WorkerID],
+        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
+    ) -> List[WorkerManagerCommand]:
+        return self._scaling_policy.get_scaling_commands(
+            information_snapshot, worker_manager_heartbeat, managed_worker_ids, worker_manager_snapshots
+        )
 
-    def get_status(self):
-        return self._scaling_policy.get_status()
+    def get_scaling_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
+        return self._scaling_policy.get_status(managed_workers)

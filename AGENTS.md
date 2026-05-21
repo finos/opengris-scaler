@@ -35,7 +35,7 @@ scaler/
 │   │   ├── entry_points/    # CLI entry points
 │   │   ├── protocol/        # Protocol definitions (Cap'n Proto)
 │   │   ├── utility/
-│   │   ├── worker_adapter/
+│   │   ├── worker_manager_adapter/
 │   │   └── .../
 │   └── cpp/scaler/          # C++ components
 │       ├── object_storage/
@@ -60,10 +60,16 @@ Both C++ and Python code share these standards:
 - Maximum line length is 120 characters
 - Traditional OOP inheritance is highly discouraged, composition is preferred. Prefer interfaces, abstract classes
   and/or mixins
+- Abstract classes must not contain any non-abstract methods
+- Inheriting concrete methods is prohibited; shared logic must use composition (e.g. standalone functions or
+  injected collaborators)
 - Explicit naming is preferred. Avoid abbreviations unless widely understood (e.g., `msg`)
 - Avoid single letter variables (e.g. `c`), except for `i`, `j` and `n` when used as iteration variables/boundaries
 - Avoid magic numbers, prefer constants
 - Matching of naming of files, tests, namespaces/modules and directories is highly encouraged
+- When renaming a class, also check for subclasses, variables, parameters, and fields that derive their name from
+  the old class name and rename those too
+- Code, and in-code comment should not contain non-ascii characters. Non-ascii characters enclosed as a string is fine. Logging output should not contain non-ascii characters.
 
 ### Python Code
 
@@ -126,7 +132,9 @@ Both C++ and Python code share these standards:
 5. **Modern C++**:
    - Use C++20 features supported by Clang++, MSVSC++ and GCC
    - Use RAII
-   - Prefer smart pointers
+      - Use smart pointers
+      - Avoid the use of custom copy/move/assignment constructors and operators with the use of smart pointers
+      - Always prefer type-safety, especially for resources management
    - Prefer the {}-initializer syntax, avoid () initialization
    - Prefer `std::optional` over null pointers
    - Prefer `std::expected` over exceptions
@@ -143,16 +151,27 @@ Both C++ and Python code share these standards:
 
 ### Setting Up Development Environment
 
+The devcontainer (`.devcontainer/`) comes with all C++ dependencies pre-installed (CMake, GCC, Cap'n Proto, Boost,
+libuv) as well as `uv`. You can detect the devcontainer via the `REMOTE_CONTAINERS=true` environment variable.
+When running in the devcontainer, skip the C++ dependency setup steps below.
+
+The C++ components are built automatically by `uv pip install -e .` via `scikit-build-core`, so a separate
+`./scripts/build.sh` step is only needed for standalone C++ development or testing.
+
 ```bash
-# Setup C++ dependencies
+# Create and activate a virtual environment
+uv venv .venv
+source .venv/bin/activate
+
+# Install Python package in development mode (also builds C++ components)
+uv pip install -e .
+
+# Setup C++ dependencies (skip in devcontainer — already installed)
 ./scripts/library_tool.sh capnp download
 ./scripts/library_tool.sh capnp compile
 ./scripts/library_tool.sh capnp install
 
-# Install Python package in development mode
-pip install -e .
-
-# Building C++ components
+# Building C++ components standalone (only if needed outside of pip install)
 ./scripts/build.sh
 ```
 
@@ -164,3 +183,11 @@ python -m unittest discover  # Python
 ```
 
 When writing tests, try to match the directory and module/namespace structure of the code under test.
+
+### Per-User Configuration
+
+Developer-specific preferences (e.g. build parallelism limits, preferred tools) should go in a `.agents-local.md`
+file in the project root. This file is gitignored and will not be committed.
+
+**IMPORTANT:** Agents **MUST** read `.agents-local.md` before performing any build, install, or terminal command.
+Its contents are mandatory overrides to this file and must always be followed.

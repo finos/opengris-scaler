@@ -1,21 +1,17 @@
 import asyncio
-import functools
 import logging
-
-import zmq.asyncio
 
 from scaler.config.defaults import CLEANUP_INTERVAL_SECONDS, STATUS_REPORT_INTERVAL_SECONDS
 from scaler.config.section.scheduler import SchedulerConfig
-from scaler.config.types.zmq import ZMQConfig, ZMQType
-from scaler.io.async_connector import ZMQAsyncConnector
-from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
-from scaler.io.utility import create_async_binder, create_async_object_storage_connector
-from scaler.io.ymq.ymq import YMQException
-from scaler.protocol.python.common import ObjectStorageAddress
-from scaler.protocol.python.message import (
+from scaler.config.types.address import AddressConfig
+from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher
+from scaler.io.network_backends import get_network_backend_from_env
+from scaler.io.utility import generate_identity_from_name
+from scaler.io.ymq import YMQException
+from scaler.protocol.capnp import (
+    BaseMessage,
     ClientDisconnect,
     ClientHeartbeat,
-    DisconnectRequest,
     GraphTask,
     InformationRequest,
     ObjectInstruction,
@@ -26,18 +22,18 @@ from scaler.protocol.python.message import (
     TaskResult,
     WorkerDisconnectNotification,
     WorkerHeartbeat,
+    WorkerManagerHeartbeat,
 )
-from scaler.protocol.python.mixins import Message
 from scaler.scheduler.controllers.balance_controller import VanillaBalanceController
 from scaler.scheduler.controllers.client_controller import VanillaClientController
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.graph_controller import VanillaGraphTaskController
 from scaler.scheduler.controllers.information_controller import VanillaInformationController
 from scaler.scheduler.controllers.object_controller import VanillaObjectController
-from scaler.scheduler.controllers.policies.mixins import ScalerPolicy
-from scaler.scheduler.controllers.policies.utility import create_scaler_policy
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
+from scaler.scheduler.controllers.vanilla_policy_controller import VanillaPolicyController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
+from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ClientID, WorkerID
@@ -47,54 +43,21 @@ class Scheduler:
     def __init__(self, config: SchedulerConfig):
         self._config_controller = VanillaConfigController(config)
 
-        if config.scheduler_address.type != ZMQType.tcp:
-            raise TypeError(
-                f"{self.__class__.__name__}: scheduler address must be tcp type: \
-                    {config.scheduler_address.to_address()}"
-            )
+        self._identity = generate_identity_from_name("scheduler")
+        self._backend = get_network_backend_from_env(io_threads=config.io_threads)
 
-        if config.object_storage_address is None:
-            object_storage_address = ObjectStorageAddress.new_msg(
-                host=config.scheduler_address.host, port=config.scheduler_address.port + 1
-            )
-        else:
-            object_storage_address = ObjectStorageAddress.new_msg(
-                host=config.object_storage_address.host, port=config.object_storage_address.port
-            )
-        self._config_controller.update_config("object_storage_address", object_storage_address)
+        self._address = config.bind_address
 
-        if config.monitor_address is None:
-            monitor_address = ZMQConfig(
-                type=ZMQType.tcp, host=config.scheduler_address.host, port=config.scheduler_address.port + 2
-            )
-        else:
-            monitor_address = config.monitor_address
-        self._config_controller.update_config("monitor_address", monitor_address)
-
-        self._context = zmq.asyncio.Context(io_threads=config.worker_io_threads)
-
-        self._binder: AsyncBinder = create_async_binder(
-            self._context, name="scheduler", address=config.scheduler_address
+        self._binder: AsyncBinder = self._backend.create_async_binder(
+            identity=self._identity, callback=self.on_receive_message
         )
-
-        logging.info(f"{self.__class__.__name__}: listen to scheduler address {config.scheduler_address}")
-
-        self._connector_storage: AsyncObjectStorageConnector = create_async_object_storage_connector()
-        logging.info(f"{self.__class__.__name__}: connect to object storage server {object_storage_address!r}")
-
-        self._binder_monitor: AsyncConnector = ZMQAsyncConnector(
-            context=self._context,
-            name="scheduler_monitor",
-            socket_type=zmq.PUB,
-            address=monitor_address,
-            bind_or_connect="bind",
-            callback=None,
-            identity=None,
+        self._connector_storage: AsyncObjectStorageConnector = self._backend.create_async_object_storage_connector(
+            identity=self._identity
         )
-        logging.info(f"{self.__class__.__name__}: listen to scheduler monitor address {monitor_address.to_address()}")
+        self._binder_monitor: AsyncPublisher = self._backend.create_async_publisher(identity=self._identity)
 
-        self._scaler_policy: ScalerPolicy = create_scaler_policy(
-            config.policy.policy_engine_type, config.policy.policy_content, config.policy.adapter_webhook_urls
+        self._policy_controller = VanillaPolicyController(
+            config.policy.policy_engine_type, config.policy.policy_content
         )
 
         self._client_manager = VanillaClientController(config_controller=self._config_controller)
@@ -102,15 +65,16 @@ class Scheduler:
         self._graph_controller = VanillaGraphTaskController(config_controller=self._config_controller)
         self._task_controller = VanillaTaskController(config_controller=self._config_controller)
         self._worker_controller = VanillaWorkerController(
-            config_controller=self._config_controller, scaler_policy=self._scaler_policy
+            config_controller=self._config_controller, policy_controller=self._policy_controller
         )
         self._balance_controller = VanillaBalanceController(
-            config_controller=self._config_controller, scaler_policy=self._scaler_policy
+            config_controller=self._config_controller, policy_controller=self._policy_controller
         )
         self._information_controller = VanillaInformationController(config_controller=self._config_controller)
+        self._worker_manager_controller = WorkerManagerController(
+            config_controller=self._config_controller, policy_controller=self._policy_controller
+        )
 
-        # register
-        self._binder.register(self.on_receive_message)
         self._client_manager.register(
             self._binder, self._binder_monitor, self._object_controller, self._task_controller, self._worker_controller
         )
@@ -135,6 +99,7 @@ class Scheduler:
         )
         self._worker_controller.register(self._binder, self._binder_monitor, self._task_controller)
         self._balance_controller.register(self._binder, self._binder_monitor, self._task_controller)
+        self._worker_manager_controller.register(self._binder, self._task_controller, self._worker_controller)
 
         self._information_controller.register_managers(
             self._binder_monitor,
@@ -143,14 +108,62 @@ class Scheduler:
             self._object_controller,
             self._task_controller,
             self._worker_controller,
-            self._scaler_policy,
+            self._worker_manager_controller,
         )
 
-    async def connect_to_storage(self):
-        object_storage_address = self._config_controller.get_config("object_storage_address")
-        await self._connector_storage.connect(object_storage_address.host, object_storage_address.port)
+    @property
+    def address(self) -> AddressConfig:
+        assert self._address is not None
+        return self._address
 
-    async def on_receive_message(self, source: bytes, message: Message):
+    async def __initialize_network(self) -> None:
+        # Scheduler's binder
+        assert self._address is not None
+
+        await self._binder.bind(self._address)
+
+        self._address = self._binder.address
+        assert self._address is not None
+        self._config_controller.update_config("bind_address", self._address)
+
+        logging.info(f"{self.__class__.__name__}: listen to scheduler address {self._address}")
+
+        # Object storage
+
+        await self._connector_storage.connect(self._config_controller.get_config("object_storage_address"))
+        object_storage_address = self._connector_storage.address
+
+        logging.info(f"{self.__class__.__name__}: connected to object storage server {object_storage_address!r}")
+
+        advertised_object_storage_address = (
+            self._config_controller.get_config("advertised_object_storage_address") or object_storage_address
+        )
+
+        logging.info(
+            f"{self.__class__.__name__}: advertise object storage address {advertised_object_storage_address!r}"
+        )
+
+        self._config_controller.update_config("object_storage_address", object_storage_address)
+        self._config_controller.update_config("advertised_object_storage_address", advertised_object_storage_address)
+
+        # Monitor
+
+        address = self._address
+        assert address.port is not None, "scheduler bind address must have a port"
+
+        default_monitor = AddressConfig(type=address.type, host=address.host, port=address.port + 2, path=address.path)
+
+        monitor_address = self._config_controller.get_config("monitor_address") or default_monitor
+
+        await self._binder_monitor.bind(monitor_address)
+
+        monitor_address = self._binder_monitor.address
+        assert monitor_address is not None
+        self._config_controller.update_config("monitor_address", monitor_address)
+
+        logging.info(f"{self.__class__.__name__}: listen to scheduler monitor address {monitor_address!r}")
+
+    async def on_receive_message(self, source: bytes, message: BaseMessage):
         # =====================================================================================
         # client manager
         if isinstance(message, ClientHeartbeat):
@@ -175,7 +188,7 @@ class Scheduler:
             return
 
         if isinstance(message, TaskCancel):
-            if self._graph_controller.is_graph_subtask(message.task_id):
+            if self._graph_controller.is_graph_subtask(message.taskId):
                 await self._graph_controller.on_graph_task_cancel(message)
             else:
                 await self._task_controller.on_task_cancel(ClientID(source), message)
@@ -190,7 +203,7 @@ class Scheduler:
             return
 
         if isinstance(message, TaskLog):
-            client = self._client_manager.get_client_id(message.task_id)
+            client = self._client_manager.get_client_id(message.taskId)
             if client is not None:
                 await self._binder.send(client, message)
             return
@@ -199,11 +212,6 @@ class Scheduler:
         # worker manager
         if isinstance(message, WorkerHeartbeat):
             await self._worker_controller.on_heartbeat(WorkerID(source), message)
-            return
-
-        # scheduler receives worker disconnect request from downstream
-        if isinstance(message, DisconnectRequest):
-            await self._worker_controller.on_disconnect(WorkerID(source), message)
             return
 
         if isinstance(message, WorkerDisconnectNotification):
@@ -221,10 +229,16 @@ class Scheduler:
         if isinstance(message, InformationRequest):
             await self._information_controller.on_request(message)
 
+        # =====================================================================================
+        # worker manager controller
+        if isinstance(message, WorkerManagerHeartbeat):
+            await self._worker_manager_controller.on_heartbeat(source, message)
+            return
+
         logging.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")
 
     async def get_loops(self):
-        await self.connect_to_storage()
+        await self.__initialize_network()
 
         loops = [
             create_async_loop_routine(self._binder.routine, 0),
@@ -236,6 +250,7 @@ class Scheduler:
             create_async_loop_routine(self._client_manager.routine, CLEANUP_INTERVAL_SECONDS),
             create_async_loop_routine(self._object_controller.routine, CLEANUP_INTERVAL_SECONDS),
             create_async_loop_routine(self._worker_controller.routine, CLEANUP_INTERVAL_SECONDS),
+            create_async_loop_routine(self._worker_manager_controller.routine, CLEANUP_INTERVAL_SECONDS),
             create_async_loop_routine(self._information_controller.routine, STATUS_REPORT_INTERVAL_SECONDS),
         ]
 
@@ -254,9 +269,3 @@ class Scheduler:
         self._binder.destroy()
         self._binder_monitor.destroy()
         self._connector_storage.destroy()
-
-
-@functools.wraps(Scheduler)
-async def scheduler_main(*args, **kwargs):
-    scheduler = Scheduler(*args, **kwargs)
-    await scheduler.get_loops()

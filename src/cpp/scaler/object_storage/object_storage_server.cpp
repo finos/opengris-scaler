@@ -8,9 +8,6 @@
 
 #include "scaler/error/error.h"
 #include "scaler/object_storage/message.h"
-#include "scaler/ymq/configuration.h"
-#include "scaler/ymq/simple_interface.h"
-#include "scaler/ymq/typedefs.h"
 
 namespace scaler {
 namespace object_storage {
@@ -19,7 +16,7 @@ namespace object_storage {
 static std::atomic<bool> sigRequestStop {false};
 
 // Signal handler for SIGTERM
-extern "C" void handleSigTerm(int signum)
+extern "C" void handleSigTerm([[maybe_unused]] int signum)
 {
     sigRequestStop = true;
 }
@@ -27,14 +24,7 @@ extern "C" void handleSigTerm(int signum)
 // Function to install the signal handler
 void setupSignalHandling()
 {
-    struct sigaction sa {};
-    sa.sa_handler = handleSigTerm;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-
-    if (sigaction(SIGTERM, &sa, nullptr) == -1) {
-        perror("sigaction");
-    }
+    std::signal(SIGTERM, handleSigTerm);
 }
 
 ObjectStorageServer::ObjectStorageServer()
@@ -49,8 +39,7 @@ ObjectStorageServer::~ObjectStorageServer()
 }
 
 void ObjectStorageServer::run(
-    std::string name,
-    std::string port,
+    std::string address,
     ObjectStorageServer::Identity identity,
     std::string log_level,
     std::string log_format,
@@ -60,19 +49,19 @@ void ObjectStorageServer::run(
     _logger = scaler::ymq::Logger(log_format, std::move(log_paths), scaler::ymq::Logger::stringToLogLevel(log_level));
 
     try {
-        // NOTE: Setup IOSocket synchronously here because it is a one-time thing.
-        const auto socketType {ymq::IOSocketType::Binder};
-        _ioSocket = ymq::syncCreateSocket(_ioContext, socketType, std::move(identity));
-        const std::string networkAddress {"tcp://" + name + ':' + port};
-        ymq::syncBindSocket(_ioSocket, std::move(networkAddress));
+        _socket = std::make_unique<scaler::ymq::future::BinderSocket>(_ioContext, std::move(identity));
+        const std::string networkAddress {std::move(address)};
+
+        std::expected<scaler::ymq::Address, scaler::ymq::Error> bindResult = _socket->bindTo(networkAddress).get();
+        if (!bindResult) {
+            throw bindResult.error();
+        }
 
         setServerReadyFd();
 
         _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: started");
 
         processRequests(running);
-
-        _ioContext.removeIOSocket(_ioSocket);
     } catch (const std::exception& e) {
         _logger.log(
             scaler::ymq::Logger::LoggingLevel::error,
@@ -83,64 +72,39 @@ void ObjectStorageServer::run(
 
 void ObjectStorageServer::waitUntilReady()
 {
-    uint64_t value;
-    ssize_t ret = read(onServerReadyReader, &value, sizeof(uint64_t));
-
-    if (ret != sizeof(uint64_t)) {
-        _logger.log(
-            scaler::ymq::Logger::LoggingLevel::error,
-            "ObjectStorageServer: read from onServerReadyReader failed, errno=",
-            errno);
-        std::terminate();
-    }
+    std::unique_lock<std::mutex> lock {this->_serverReadyMutex};
+    this->_serverReadyConditionVariable.wait(lock, [this] { return this->_isServerReady; });
 }
 
 void ObjectStorageServer::shutdown()
 {
-    _ioContext.requestIOSocketStop(_ioSocket);
+    if (_socket) {
+        _socket.reset();
+    }
 }
 
 void ObjectStorageServer::initServerReadyFds()
 {
-    int pipeFds[2] {};
-    int ret = pipe(pipeFds);
-
-    if (ret != 0) {
-        _logger.log(
-            scaler::ymq::Logger::LoggingLevel::error,
-            "ObjectStorageServer: create on server ready FDs failed, errno=",
-            errno);
-        std::terminate();
-    }
-
-    onServerReadyReader = pipeFds[0];
-    onServerReadyWriter = pipeFds[1];
+    std::lock_guard<std::mutex> guard {this->_serverReadyMutex};
+    this->_isServerReady = false;
 }
 
 void ObjectStorageServer::setServerReadyFd()
 {
-    uint64_t value = 1;
-    ssize_t ret    = write(onServerReadyWriter, &value, sizeof(uint64_t));
-
-    if (ret != sizeof(uint64_t)) {
-        _logger.log(
-            scaler::ymq::Logger::LoggingLevel::error,
-            "ObjectStorageServer: write to onServerReadyWriter failed, errno=",
-            errno);
-        std::terminate();
+    {
+        std::lock_guard<std::mutex> guard {this->_serverReadyMutex};
+        this->_isServerReady = true;
     }
+    this->_serverReadyConditionVariable.notify_all();
 }
 
 void ObjectStorageServer::closeServerReadyFds()
 {
-    const std::array<int, 2> fds {onServerReadyReader, onServerReadyWriter};
-
-    for (const int fd: fds) {
-        if (close(fd) != 0) {
-            _logger.log(scaler::ymq::Logger::LoggingLevel::error, "ObjectStorageServer: close failed, errno=", errno);
-            std::terminate();
-        }
+    {
+        std::lock_guard<std::mutex> guard {this->_serverReadyMutex};
+        this->_isServerReady = true;
     }
+    this->_serverReadyConditionVariable.notify_all();
 }
 
 void ObjectStorageServer::processRequests(std::function<bool()> running)
@@ -152,14 +116,20 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
             auto invalids = std::ranges::remove_if(_pendingSendMessageFuts, [](const auto& x) { return !x.valid(); });
             _pendingSendMessageFuts.erase(invalids.begin(), invalids.end());
 
-            std::ranges::for_each(_pendingSendMessageFuts, [](auto& fut) {
+            for (auto& fut: _pendingSendMessageFuts) {
                 if (fut.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-                    auto error = fut.get();
-                    assert(!error);
+                    auto result = fut.get();
+                    if (!result.has_value() &&
+                        result.error()._errorCode != scaler::ymq::Error::ErrorCode::SocketStopRequested) {
+                        _logger.log(
+                            scaler::ymq::Logger::LoggingLevel::error,
+                            "ObjectStorageServer: send message failed: ",
+                            result.error().what());
+                    }
                 }
-            });
+            }
 
-            auto maybeMessageFuture = ymq::futureRecvMessage(_ioSocket);
+            auto maybeMessageFuture = _socket->recvMessage();
             while (maybeMessageFuture.wait_for(std::chrono::milliseconds(100)) == std::future_status::timeout) {
                 if (!running() || sigRequestStop) {
                     _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: stopped by user");
@@ -171,7 +141,7 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
 
             if (!maybeMessage) {
                 auto error = maybeMessage.error();
-                if (error._errorCode == ymq::Error::ErrorCode::IOSocketStopRequested) {
+                if (error._errorCode == ymq::Error::ErrorCode::SocketStopRequested) {
                     auto n = std::ranges::count_if(_pendingSendMessageFuts, [](auto& x) {
                         return x.valid() && x.wait_for(std::chrono::seconds(0)) == std::future_status::timeout;
                     });
@@ -218,7 +188,7 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
 
             auto request = std::move(identityToFullRequest[identity]);
             identityToFullRequest.erase(identity);
-            auto client = std::make_shared<Client>(_ioSocket, identity);
+            auto client = std::make_shared<Client>(identity);
 
             switch (request.first.requestType) {
                 case ObjectRequestType::SET_OBJECT: {
@@ -243,7 +213,7 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
                 }
             }
         } catch (const kj::Exception& e) {
-            _ioSocket->closeConnection(std::move(lastMessageIdentity));
+            _socket->closeConnection(std::move(lastMessageIdentity));
             _logger.log(
                 scaler::ymq::Logger::LoggingLevel::error,
                 "ObjectStorageServer: Malformed capnp message. Connection closed, details: ",

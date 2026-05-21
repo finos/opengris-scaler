@@ -15,14 +15,16 @@ struct PyStablePriorityQueue {
     scaler::utility::StablePriorityQueue<OwnedPyObject<PyObject>> queue;
 };
 
-static PyObject* PyStablePriorityQueueNew(PyTypeObject* type, PyObject* args, PyObject* kwds)
+static PyObject* PyStablePriorityQueueNew(
+    PyTypeObject* type, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwds)
 {
     PyStablePriorityQueue* self {};
     self = (PyStablePriorityQueue*)type->tp_alloc(type, 0);
     return (PyObject*)self;
 }
 
-static int PyStablePriorityQueueInit(PyStablePriorityQueue* self, PyObject* args, PyObject* kwds)
+static int PyStablePriorityQueueInit(
+    PyStablePriorityQueue* self, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwds)
 {
     new (&((PyStablePriorityQueue*)self)->queue) scaler::utility::StablePriorityQueue<OwnedPyObject<PyObject>>();
     return 0;
@@ -124,12 +126,17 @@ static PyMethodDef PyStablePriorityQueueMethods[] = {
      (PyCFunction)PyStablePriorityQueueMaxPriorityItem,
      METH_VARARGS,
      "Return priority-item list with the highest priority in the queue"},
-    {nullptr},
+    {nullptr, nullptr, 0, nullptr},
 };
 
 static Py_ssize_t PyStablePriorityQueueSize(PyObject* self)
 {
     return ((PyStablePriorityQueue*)self)->queue.size();
+}
+
+static int PyStablePriorityQueueContains(PyObject* self, PyObject* item)
+{
+    return ((PyStablePriorityQueue*)self)->queue._locator.count(OwnedPyObject<>::fromBorrowed(item)) > 0;
 }
 
 static PyType_Slot PyStablePriorityQueueSlots[] = {
@@ -138,6 +145,7 @@ static PyType_Slot PyStablePriorityQueueSlots[] = {
     {Py_tp_dealloc, (void*)PyStablePriorityQueueDealloc},
     {Py_tp_methods, (void*)PyStablePriorityQueueMethods},
     {Py_sq_length, (void*)PyStablePriorityQueueSize},
+    {Py_sq_contains, (void*)PyStablePriorityQueueContains},
     {Py_tp_doc, (void*)"StablePriorityQueue"},
     {0, nullptr},
 };
@@ -151,12 +159,15 @@ static PyType_Spec PyStablePriorityQueueSpec = {
 };
 
 static PyModuleDef stable_priority_queue_module = {
-    .m_base  = PyModuleDef_HEAD_INIT,
-    .m_name  = "stable_priority_queue",
-    .m_doc   = PyDoc_STR("A module that wraps a C++ StablePriorityQueue class"),
-    .m_size  = 0,
-    .m_slots = nullptr,
-    .m_free  = nullptr,
+    .m_base     = PyModuleDef_HEAD_INIT,
+    .m_name     = "stable_priority_queue",
+    .m_doc      = PyDoc_STR("A module that wraps a C++ StablePriorityQueue class"),
+    .m_size     = 0,
+    .m_methods  = nullptr,
+    .m_slots    = nullptr,
+    .m_traverse = nullptr,
+    .m_clear    = nullptr,
+    .m_free     = nullptr,
 };
 }
 }  // namespace pymod

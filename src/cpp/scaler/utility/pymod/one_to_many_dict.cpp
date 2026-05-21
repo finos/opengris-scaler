@@ -28,12 +28,13 @@ struct PyOneToManyDictIterator {
     scaler::utility::OneToManyDict<OwnedPyObject<>, OwnedPyObject<>>::BucketCountType bucketCount;
 };
 
-static PyObject* PyOneToManyDictNew(PyTypeObject* type, PyObject* args, PyObject* kwds)
+static PyObject* PyOneToManyDictNew(
+    PyTypeObject* type, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwds)
 {
     return type->tp_alloc(type, 0);
 }
 
-static int PyOneToManyDictInit(PyOneToManyDict* self, PyObject* args, PyObject* kwds)
+static int PyOneToManyDictInit(PyOneToManyDict* self, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* kwds)
 {
     new (&(self->dict)) scaler::utility::OneToManyDict<OwnedPyObject<>, OwnedPyObject<>>();
     return 0;
@@ -125,7 +126,7 @@ static PyObject* PyOneToManyDictGetValues(PyOneToManyDict* self, PyObject* args)
     }
 
     for (const auto& value: *values) {
-        if (PySet_Add(*valueSet, *value) == -1) {
+        if (PySet_Add(valueSet.get(), value.get()) == -1) {
             return nullptr;
         }
     }
@@ -152,7 +153,7 @@ static PyObject* PyOneToManyDictRemoveKey(PyOneToManyDict* self, PyObject* args)
     }
 
     for (const auto& value: result.first) {
-        if (PySet_Add(*valueSet, *value) == -1) {
+        if (PySet_Add(valueSet.get(), value.get()) == -1) {
             return nullptr;
         }
     }
@@ -176,7 +177,7 @@ static PyObject* PyOneToManyDictRemoveValue(PyOneToManyDict* self, PyObject* arg
     return result.first.take();
 }
 
-static PyObject* PyOneToManyDictKeys(PyOneToManyDict* self, PyObject* args)
+static PyObject* PyOneToManyDictKeys(PyOneToManyDict* self, [[maybe_unused]] PyObject* args)
 {
     OwnedPyObject<> keySet = PySet_New(nullptr);
     if (!keySet) {
@@ -184,7 +185,7 @@ static PyObject* PyOneToManyDictKeys(PyOneToManyDict* self, PyObject* args)
     }
 
     for (const auto& entry: self->dict.keys()) {
-        if (PySet_Add(*keySet, *entry.first) == -1) {
+        if (PySet_Add(keySet.get(), entry.first.get()) == -1) {
             return nullptr;
         }
     }
@@ -193,7 +194,7 @@ static PyObject* PyOneToManyDictKeys(PyOneToManyDict* self, PyObject* args)
 }
 
 // C++ function to return all values (which are keys in the C++ map)
-static PyObject* PyOneToManyDictValues(PyOneToManyDict* self, PyObject* args)
+static PyObject* PyOneToManyDictValues(PyOneToManyDict* self, [[maybe_unused]] PyObject* args)
 {
     const auto& keyToValue = self->dict.keys();
 
@@ -211,11 +212,11 @@ static PyObject* PyOneToManyDictValues(PyOneToManyDict* self, PyObject* args)
         }
 
         for (const auto& v: vs) {
-            if (PySet_Add(*pySet, *v) == -1) {
+            if (PySet_Add(pySet.get(), v.get()) == -1) {
                 return nullptr;
             }
         }
-        if (PyList_Append(*resultList, *pySet) == -1) {
+        if (PyList_Append(resultList.get(), pySet.get()) == -1) {
             return nullptr;
         }
     }
@@ -223,7 +224,7 @@ static PyObject* PyOneToManyDictValues(PyOneToManyDict* self, PyObject* args)
     return resultList.take();
 }
 
-static PyObject* PyOneToManyDictItems(PyOneToManyDict* self, PyObject* args)
+static PyObject* PyOneToManyDictItems(PyOneToManyDict* self, [[maybe_unused]] PyObject* args)
 {
     OwnedPyObject<> itemList = PyList_New(0);
     if (!itemList) {
@@ -237,17 +238,17 @@ static PyObject* PyOneToManyDictItems(PyOneToManyDict* self, PyObject* args)
         }
 
         for (const auto& value: values) {
-            if (PySet_Add(*valueSet, *value) == -1) {
+            if (PySet_Add(valueSet.get(), value.get()) == -1) {
                 return nullptr;
             }
         }
 
-        OwnedPyObject<> itemTuple = PyTuple_Pack(2, *key, *valueSet);
+        OwnedPyObject<> itemTuple = PyTuple_Pack(2, key.get(), valueSet.get());
         if (!itemTuple) {
             return nullptr;
         }
 
-        if (PyList_Append(*itemList, *itemTuple) == -1) {
+        if (PyList_Append(itemList.get(), itemTuple.get()) == -1) {
             return nullptr;
         }
     }
@@ -255,24 +256,13 @@ static PyObject* PyOneToManyDictItems(PyOneToManyDict* self, PyObject* args)
     return itemList.take();
 }
 
-// called when using the 'in' operator (__contains__)
-static PyObject* PyOneToManyDictContains(PyOneToManyDict* self, PyObject* args)
+static int PyOneToManyDictContains(PyObject* self, PyObject* key)
 {
-    PyObject* key {};
-    if (!PyArg_ParseTuple(args, "O", &key)) {
-        return nullptr;  // Invalid arguments
-    }
-
-    if (self->dict.hasKey(OwnedPyObject<>::fromBorrowed(key))) {
-        Py_RETURN_TRUE;
-    } else {
-        Py_RETURN_FALSE;
-    }
+    return ((PyOneToManyDict*)self)->dict.hasKey(OwnedPyObject<>::fromBorrowed(key));
 }
 
 // Define the methods for the OneToManyDict Python class
 static PyMethodDef PyOneToManyDictMethods[] = {
-    {"__contains__", (PyCFunction)PyOneToManyDictContains, METH_VARARGS, "__contains__ method"},
     {"keys", (PyCFunction)PyOneToManyDictKeys, METH_VARARGS, "Get Keys from the dictionary"},
     {"values", (PyCFunction)PyOneToManyDictValues, METH_VARARGS, "Get Values from the dictionary"},
     {"items", (PyCFunction)PyOneToManyDictItems, METH_VARARGS, "Get Items from the dictionary"},
@@ -289,7 +279,7 @@ static PyMethodDef PyOneToManyDictMethods[] = {
      (PyCFunction)PyOneToManyDictRemoveValue,
      METH_VARARGS,
      "Remove value from the dictionary and return the associated key"},
-    {nullptr},
+    {nullptr, nullptr, 0, nullptr},
 };
 
 static PyObject* PyOneToManyDictIteratorIter(PyObject* self);
@@ -310,21 +300,26 @@ static PyType_Slot PyOneToManyDictSlots[] = {
     {Py_tp_new, (void*)PyOneToManyDictNew},
     {Py_tp_methods, PyOneToManyDictMethods},
     {Py_tp_iter, (void*)PyOneToManyDictIteratorIter},
+    {Py_sq_contains, (void*)PyOneToManyDictContains},
     {0, nullptr},
 };
 
 static PyModuleDef one_to_many_dict_module = {
-    .m_base  = PyModuleDef_HEAD_INIT,
-    .m_name  = "one_to_many_dict",
-    .m_doc   = PyDoc_STR("A module that wraps the C++ OneToManyDict class"),
-    .m_size  = 0,
-    .m_slots = nullptr,
-    .m_free  = nullptr,
+    .m_base     = PyModuleDef_HEAD_INIT,
+    .m_name     = "one_to_many_dict",
+    .m_doc      = PyDoc_STR("A module that wraps the C++ OneToManyDict class"),
+    .m_size     = 0,
+    .m_methods  = nullptr,
+    .m_slots    = nullptr,
+    .m_traverse = nullptr,
+    .m_clear    = nullptr,
+    .m_free     = nullptr,
 };
 
 static PyType_Spec PyOneToManyDictSpec = {
     .name      = "one_to_many_dict.OneToManyDict",
     .basicsize = sizeof(PyOneToManyDict),
+    .itemsize  = 0,
     .flags     = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
     .slots     = PyOneToManyDictSlots,
 };

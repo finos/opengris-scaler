@@ -6,8 +6,7 @@ import cloudpickle
 
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
-from scaler.protocol.python.common import ObjectMetadata
-from scaler.protocol.python.message import ObjectInstruction
+from scaler.protocol.capnp import ObjectInstruction, ObjectMetadata
 from scaler.utility.identifiers import ClientID, ObjectID
 
 
@@ -53,10 +52,14 @@ class ObjectBuffer:
         ]
 
         self._connector_agent.send(
-            ObjectInstruction.new_msg(
-                ObjectInstruction.ObjectInstructionType.Create,
-                self._identity,
-                ObjectMetadata.new_msg(*zip(*object_instructions_to_send)),
+            ObjectInstruction(
+                instructionType=ObjectInstruction.ObjectInstructionType.create,
+                objectUser=self._identity,
+                objectMetadata=ObjectMetadata(
+                    objectIds=[object_id for object_id, _, _ in object_instructions_to_send],
+                    objectTypes=[object_type for _, object_type, _ in object_instructions_to_send],
+                    objectNames=[object_name for _, _, object_name in object_instructions_to_send],
+                ),
             )
         )
 
@@ -77,8 +80,10 @@ class ObjectBuffer:
         self._valid_object_ids.add(self._serializer_object_id)
 
         self._connector_agent.send(
-            ObjectInstruction.new_msg(
-                ObjectInstruction.ObjectInstructionType.Clear, self._identity, ObjectMetadata.new_msg(tuple())
+            ObjectInstruction(
+                instructionType=ObjectInstruction.ObjectInstructionType.clear,
+                objectUser=self._identity,
+                objectMetadata=ObjectMetadata(objectIds=()),
             )
         )
 
@@ -89,7 +94,7 @@ class ObjectBuffer:
         serializer_payload = cloudpickle.dumps(self._serializer, protocol=pickle.HIGHEST_PROTOCOL)
         object_id = ObjectID.generate_serializer_object_id(self._identity)
         serializer_cache = ObjectCache(
-            object_id, ObjectMetadata.ObjectContentType.Serializer, b"serializer", serializer_payload
+            object_id, ObjectMetadata.ObjectContentType.serializer, b"serializer", serializer_payload
         )
 
         return serializer_cache
@@ -99,7 +104,7 @@ class ObjectBuffer:
         object_id = ObjectID.generate_object_id(self._identity)
         function_cache = ObjectCache(
             object_id,
-            ObjectMetadata.ObjectContentType.Object,
+            ObjectMetadata.ObjectContentType.object,
             getattr(fn, "__name__", f"<func {repr(object_id)}>").encode(),
             function_payload,
         )
@@ -110,7 +115,7 @@ class ObjectBuffer:
         object_payload = self._serializer.serialize(obj)
         object_id = ObjectID.generate_object_id(self._identity)
         name_bytes = name.encode() if name else f"<obj {repr(object_id)}>".encode()
-        object_cache = ObjectCache(object_id, ObjectMetadata.ObjectContentType.Object, name_bytes, object_payload)
+        object_cache = ObjectCache(object_id, ObjectMetadata.ObjectContentType.object, name_bytes, object_payload)
 
         return object_cache
 

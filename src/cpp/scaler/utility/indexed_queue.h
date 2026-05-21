@@ -12,8 +12,14 @@ struct IndexedQueue {
     std::list<T> _list;
     std::unordered_map<T, iterator> _map;
 
-    bool contains(const T& item) noexcept { return _map.find(item) != _map.end(); }
-    size_t size() noexcept { return _map.size(); }
+    bool contains(const T& item) noexcept
+    {
+        return _map.find(item) != _map.end();
+    }
+    size_t size() noexcept
+    {
+        return _map.size();
+    }
 
     bool put(T item) noexcept
     {

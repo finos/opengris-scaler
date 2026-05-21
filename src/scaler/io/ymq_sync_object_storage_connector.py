@@ -1,12 +1,11 @@
-import socket
-import uuid
 from threading import Lock
 from typing import Iterable, Optional
 
+from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import SyncObjectStorageConnector
-from scaler.io.ymq.ymq import IOContext, IOSocket, IOSocketType, Message, YMQException
-from scaler.protocol.capnp._python import _object_storage  # noqa
-from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader, to_capnp_object_id
+from scaler.io.ymq import Bytes, ConnectorSocket, IOContext, YMQException
+from scaler.protocol.capnp import ObjectRequestHeader, ObjectResponseHeader
+from scaler.protocol.helpers import to_capnp_object_id
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ObjectID
 
@@ -14,34 +13,37 @@ from scaler.utility.identifiers import ObjectID
 MAX_CHUNK_SIZE = 128 * 1024 * 1024
 
 
-class PyYMQSyncObjectStorageConnector(SyncObjectStorageConnector):
-    """An synchronous connector that uses an raw TCP socket to connect to a Scaler's object storage instance."""
+class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
+    """A synchronous connector that uses YMQ to connect to a Scaler's object storage instance."""
 
-    def __init__(self, host: str, port: int):
-        self._host = host
-        self._port = port
+    def __init__(self, context: IOContext, identity: bytes, address: AddressConfig):
+        self._ymq_context = context
+        self._identity = identity
+        self._address = address
 
         self._next_request_id = 0
 
         self._socket_lock = Lock()
+        self._socket: Optional[ConnectorSocket] = None
 
-        self._identity: str = f"{self.__class__.__name__}|{socket.gethostname().split('.')[0]}|{uuid.uuid4()}"
-        self._io_context = IOContext()
-        self._io_socket: IOSocket = self._io_context.createIOSocket_sync(self._identity, IOSocketType.Connector)
-        self._io_socket.connect_sync(self.address)
+        self._socket = ConnectorSocket.connect(self._ymq_context, self._identity.decode(), repr(self._address))
 
     def __del__(self):
         self.destroy()
 
     def destroy(self):
         with self._socket_lock:
-            if self._io_socket is not None:
-                self._io_socket = None
-                self._io_context = None
+            if self._socket is None:
+                return
+
+            self._socket.shutdown()
+
+            self._socket = None
+            self._ymq_context = None
 
     @property
-    def address(self) -> str:
-        return f"tcp://{self._host}:{self._port}"
+    def address(self) -> AddressConfig:
+        return self._address
 
     def set_object(self, object_id: ObjectID, payload: bytes):
         """
@@ -49,13 +51,13 @@ class PyYMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         """
 
         with self._socket_lock:
-            self.__send_request(object_id, len(payload), ObjectRequestHeader.ObjectRequestType.SetObject, payload)
+            self.__send_request(object_id, len(payload), ObjectRequestHeader.ObjectRequestType.setObject, payload)
             response_header, response_payload = self.__receive_response()
 
-        self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.SetOK])
+        self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.setOK])
         self.__ensure_empty_payload(response_payload)
 
-    def get_object(self, object_id: ObjectID, max_payload_length: int = 2**64 - 1) -> bytearray:
+    def get_object(self, object_id: ObjectID, max_payload_length: int = 2**64 - 1) -> bytes:
         """
         Returns the object's payload from the object storage server.
 
@@ -63,31 +65,31 @@ class PyYMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         """
 
         with self._socket_lock:
-            self.__send_request(object_id, max_payload_length, ObjectRequestHeader.ObjectRequestType.GetObject)
+            self.__send_request(object_id, max_payload_length, ObjectRequestHeader.ObjectRequestType.getObject)
             response_header, response_payload = self.__receive_response()
 
-        self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.GetOK])
+        self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.getOK])
 
-        return response_payload
+        return bytes(response_payload)
 
     def delete_object(self, object_id: ObjectID) -> bool:
         """
         Removes the object from the object storage server.
 
-        Returns `False` if the object wasn't found in the server. Otherwise returns `True`.
+        Returns `False` if the object wasn't found in the server. Otherwise, returns `True`.
         """
 
         with self._socket_lock:
-            self.__send_request(object_id, 0, ObjectRequestHeader.ObjectRequestType.DeleteObject)
+            self.__send_request(object_id, 0, ObjectRequestHeader.ObjectRequestType.deleteObject)
             response_header, response_payload = self.__receive_response()
 
         self.__ensure_response_type(
             response_header,
-            [ObjectResponseHeader.ObjectResponseType.DelOK, ObjectResponseHeader.ObjectResponseType.DelNotExists],
+            [ObjectResponseHeader.ObjectResponseType.delOK, ObjectResponseHeader.ObjectResponseType.delNotExists],
         )
         self.__ensure_empty_payload(response_payload)
 
-        return response_header.response_type == ObjectResponseHeader.ObjectResponseType.DelOK
+        return response_header.responseType == ObjectResponseHeader.ObjectResponseType.delOK
 
     def duplicate_object_id(self, object_id: ObjectID, new_object_id: ObjectID) -> None:
         """
@@ -100,25 +102,27 @@ class PyYMQSyncObjectStorageConnector(SyncObjectStorageConnector):
             self.__send_request(
                 new_object_id,
                 len(object_id_payload),
-                ObjectRequestHeader.ObjectRequestType.DuplicateObjectID,
+                ObjectRequestHeader.ObjectRequestType.duplicateObjectID,
                 object_id_payload,
             )
             response_header, response_payload = self.__receive_response()
 
-        self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.DuplicateOK])
+        self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.duplicateOK])
         self.__ensure_empty_payload(response_payload)
 
     def __ensure_is_connected(self):
-        if self._io_socket is None:
+        if self._socket is None:
             raise ObjectStorageException("connector is closed.")
 
+    @staticmethod
     def __ensure_response_type(
-        self, header: ObjectResponseHeader, valid_response_types: Iterable[ObjectResponseHeader.ObjectResponseType]
+        header: ObjectResponseHeader, valid_response_types: Iterable[ObjectResponseHeader.ObjectResponseType]
     ):
-        if header.response_type not in valid_response_types:
-            raise RuntimeError(f"unexpected object storage response_type={header.response_type}.")
+        if header.responseType not in valid_response_types:
+            raise RuntimeError(f"unexpected object storage response_type={header.responseType}.")
 
-    def __ensure_empty_payload(self, payload: bytearray):
+    @staticmethod
+    def __ensure_empty_payload(payload: bytearray):
         if len(payload) != 0:
             raise RuntimeError(f"unexpected response payload_length={len(payload)}, expected 0.")
 
@@ -130,23 +134,28 @@ class PyYMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         payload: Optional[bytes] = None,
     ):
         self.__ensure_is_connected()
-        assert self._io_socket is not None
+        assert self._socket is not None
 
         request_id = self._next_request_id
         self._next_request_id += 1
         self._next_request_id %= 2**64 - 1  # UINT64_MAX
 
-        header = ObjectRequestHeader.new_msg(object_id, payload_length, request_id, request_type)
-        header_bytes = header.get_message().to_bytes()
+        header = ObjectRequestHeader(
+            objectID=to_capnp_object_id(object_id),
+            payloadLength=payload_length,
+            requestID=request_id,
+            requestType=request_type,
+        )
+        header_bytes = header.to_bytes()
 
         if payload is not None:
-            self._io_socket.send_sync(Message(address=None, payload=header_bytes))
-            self._io_socket.send_sync(Message(address=None, payload=payload))
+            self._socket.send_message_sync(Bytes(header_bytes))
+            self._socket.send_message_sync(Bytes(payload))
         else:
-            self._io_socket.send_sync(Message(address=None, payload=header_bytes))
+            self._socket.send_message_sync(Bytes(header_bytes))
 
     def __receive_response(self):
-        assert self._io_socket is not None
+        assert self._socket is not None
 
         try:
             header = self.__read_response_header()
@@ -156,26 +165,21 @@ class PyYMQSyncObjectStorageConnector(SyncObjectStorageConnector):
             self.__raise_connection_failure()
 
     def __read_response_header(self) -> ObjectResponseHeader:
-        assert self._io_socket is not None
+        assert self._socket is not None
 
-        header_bytes = self._io_socket.recv_sync().payload.data
+        header_bytes = self._socket.recv_message_sync().payload.data
         if header_bytes is None:
             self.__raise_connection_failure()
 
-        # pycapnp does not like to read from a bytearray object. This look like an not-yet-resolved issue.
-        # That's is annoying because it leads to an unnecessary copy of the header's buffer.
-        # See https://github.com/capnproto/pycapnp/issues/153
-        # header_bytes = bytes(header_bytearray)
-
-        with _object_storage.ObjectResponseHeader.from_bytes(header_bytes) as header_message:
-            return ObjectResponseHeader(header_message)
+        return ObjectResponseHeader.from_bytes(header_bytes)
 
     def __read_response_payload(self, header: ObjectResponseHeader) -> bytearray:
-        if header.payload_length > 0:
-            res = self._io_socket.recv_sync().payload.data
+        if header.payloadLength > 0:
+            payload_msg = self._socket.recv_message_sync()
+            res = payload_msg.payload.data
             if res is None:
                 self.__raise_connection_failure()
-            assert len(res) == header.payload_length
+            assert len(res) == header.payloadLength
             return bytearray(res)
         else:
             return bytearray()

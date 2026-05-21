@@ -3,7 +3,7 @@
 #include "tests/cpp/ymq/common/utils.h"
 #include "tests/cpp/ymq/pipe/pipe.h"
 
-std::pair<long long, long long> create_pipe()
+std::pair<long long, long long> createPipe()
 {
     SECURITY_ATTRIBUTES sa {};
     sa.nLength        = sizeof(sa);
@@ -13,7 +13,7 @@ std::pair<long long, long long> create_pipe()
     HANDLE writer = INVALID_HANDLE_VALUE;
 
     if (!CreatePipe(&reader, &writer, &sa, 0))
-        raise_system_error("failed to create pipe");
+        raiseSystemError("failed to create pipe");
 
     return std::make_pair((long long)reader, (long long)writer);
 }
