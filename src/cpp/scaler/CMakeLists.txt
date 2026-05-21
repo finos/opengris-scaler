@@ -1,7 +1,10 @@
 add_subdirectory(wrapper/uv)
-add_subdirectory(wrapper/openssl)
 
 if(NOT EMSCRIPTEN)
+  # OpenSSL is unavailable in the Pyodide/Emscripten sysroot, and the only
+  # consumers (ymq and the C++ tests) are themselves skipped on wasm.
+  add_subdirectory(wrapper/openssl)
+
   # ymq currently requires std::jthread / threading which Emscripten does not
   # support; skip it until ymq gains a single-threaded / websocket backend for wasm.
   add_subdirectory(ymq)
