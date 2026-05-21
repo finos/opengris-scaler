@@ -60,7 +60,16 @@ class VanillaClientController(ClientController, Looper, Reporter):
     def on_task_begin(self, client_id: ClientID, task_id: TaskID):
         self._client_to_task_ids.add(client_id, task_id)
 
-    def on_task_finish(self, task_id: TaskID) -> ClientID:
+    def on_task_finish(self, task_id: TaskID) -> Optional[ClientID]:
+        # Returns ``None`` when the task is not currently associated with any
+        # tracked client. This happens when the client was disconnected (e.g.
+        # client_timeout_seconds elapsed without a heartbeat) while the task
+        # was still running on a worker: the in-flight task arrives back at
+        # the scheduler after the client mapping has been torn down. Callers
+        # must handle ``None`` by skipping the client-bound send while still
+        # cleaning up scheduler-side state for the task.
+        if not self._client_to_task_ids.has_value(task_id):
+            return None
         return self._client_to_task_ids.remove_value(task_id)
 
     async def on_heartbeat(self, client_id: ClientID, info: ClientHeartbeat):

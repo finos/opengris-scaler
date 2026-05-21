@@ -23,6 +23,7 @@ import asyncio
 import concurrent.futures
 import sys
 import threading
+import time
 import uuid
 from typing import Any, Awaitable, Callable, Iterable, Iterator, Optional
 
@@ -172,6 +173,77 @@ def _run_sync(coro: Awaitable[Any]) -> Any:
     from pyodide.ffi import run_sync  # type: ignore[import-not-found]
 
     return run_sync(coro)
+
+
+# Periodic-yield hook for the browser bridge.
+#
+# Even with the ``concurrent.futures`` JSPI patch below, user code can still
+# starve the agent task in two cases:
+#
+#   * pure-Python compute that never blocks on a scaler/concurrent future
+#     (e.g. graph construction, large numpy preparations, pandas pipelines
+#     in the gallery scaler notebooks before any submit() is called);
+#
+#   * any third-party library that doesn't go through concurrent.futures.
+#
+# Without yielding, the asyncio loop never runs, the agent can't send
+# heartbeats, the scheduler hits ``client_timeout_seconds`` (default 60s)
+# and disconnects the client mid-computation. The scheduler then sees late
+# results / object writes from "unknown" clients and the user's submitted
+# futures hang or fail.
+#
+# Install a ``sys.setprofile`` hook on emscripten that pumps the asyncio
+# loop via ``_run_sync(asyncio.sleep(0))`` at most once every
+# ``_YIELD_MIN_INTERVAL_SECONDS``. ``setprofile`` only fires on Python
+# function call/return events, so the overhead is bounded (one wall-clock
+# check per call) and it covers realistic numpy/pandas/user-function
+# workloads. Pure-arithmetic tight loops with no function calls bypass the
+# hook; users with those need to insert an explicit yield.
+#
+# This complements (does not replace) the ``concurrent.futures.wait``
+# JSPI-aware patch below: the patch handles the case where user code blocks
+# inside ``threading.Event.wait`` (pargraph), the setprofile hook handles
+# the case where user code is busy in Python without blocking.
+
+_YIELD_MIN_INTERVAL_SECONDS: float = 1.0
+_yield_state: dict = {"last": 0.0, "in_progress": False, "previous_profile": None, "installed": False}
+
+
+def _yield_profile_hook(frame: Any, event: str, arg: Any) -> None:
+    if _yield_state["in_progress"]:
+        return
+    if event not in ("call", "c_call"):
+        return
+    now = time.monotonic()
+    if now - _yield_state["last"] < _YIELD_MIN_INTERVAL_SECONDS:
+        return
+    _yield_state["last"] = now
+    _yield_state["in_progress"] = True
+    try:
+        _run_sync(asyncio.sleep(0))
+    except BaseException:
+        # Never raise out of a profile hook — that would corrupt the
+        # interpreter's profiling state and could kill the user's notebook.
+        pass
+    finally:
+        _yield_state["in_progress"] = False
+
+
+def _install_yield_hook() -> None:
+    if _yield_state["installed"]:
+        return
+    _yield_state["previous_profile"] = sys.getprofile()
+    _yield_state["last"] = time.monotonic()
+    _yield_state["installed"] = True
+    sys.setprofile(_yield_profile_hook)
+
+
+def _uninstall_yield_hook() -> None:
+    if not _yield_state["installed"]:
+        return
+    sys.setprofile(_yield_state["previous_profile"])
+    _yield_state["previous_profile"] = None
+    _yield_state["installed"] = False
 
 
 # JSPI-aware patches for ``concurrent.futures.wait`` / ``as_completed``.
@@ -498,6 +570,7 @@ class InProcessAgentBridge(ClientAgentBridge):
         # requires JSPI.
         if sys.platform == "emscripten":
             _install_concurrent_futures_jspi_patch()
+            _install_yield_hook()
 
     def get_object_storage_address(self) -> AddressConfig:
         # ClientAgent resolves ``_object_storage_address`` early during its
@@ -536,6 +609,7 @@ class InProcessAgentBridge(ClientAgentBridge):
             return
         self._running = False
         if sys.platform == "emscripten":
+            _uninstall_yield_hook()
             _uninstall_concurrent_futures_jspi_patch()
 
         async def _await_task() -> None:
