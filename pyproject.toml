@@ -203,7 +203,7 @@ archs = ["x86_64", "aarch64"]
 manylinux-x86_64-image = "manylinux_2_28"
 manylinux-aarch64-image = "manylinux_2_28"
 before-all = """
-yum install -y cmake gcc-toolset-14-gcc gcc-toolset-14-gcc-c++; \
+yum install -y cmake gcc-toolset-14-gcc gcc-toolset-14-gcc-c++ openssl-devel; \
 source /opt/rh/gcc-toolset-14/enable; \
 ./scripts/library_tool.sh capnp download; \
 ./scripts/library_tool.sh capnp compile; \
@@ -219,7 +219,7 @@ environment = { PATH = "/opt/rh/gcc-toolset-14/root/usr/bin:$PATH", LD_LIBRARY_P
 [[tool.cibuildwheel.overrides]]
 select = "*-musllinux*"
 before-all = """
-apk add cmake g++ make; \
+apk add cmake g++ make openssl-dev; \
 ./scripts/library_tool.sh capnp download; \
 ./scripts/library_tool.sh capnp compile; \
 ./scripts/library_tool.sh capnp install; \
