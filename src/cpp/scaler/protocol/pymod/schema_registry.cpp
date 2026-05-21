@@ -71,6 +71,7 @@ bool SchemaRegistry::init()
     registerCompiledSchema<scaler::protocol::ProcessorInitialized>("message", "ProcessorInitialized");
     registerCompiledSchema<scaler::protocol::InformationRequest>("message", "InformationRequest");
     registerCompiledSchema<scaler::protocol::InformationResponse>("message", "InformationResponse");
+    registerCompiledSchema<scaler::protocol::WorkerDisconnectNotification>("message", "WorkerDisconnectNotification");
     registerCompiledSchema<scaler::protocol::Message>("message", "Message");
 
     registerCompiledSchema<scaler::protocol::ObjectRequestHeader>("object_storage", "ObjectRequestHeader");
