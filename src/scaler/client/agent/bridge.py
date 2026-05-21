@@ -205,22 +205,67 @@ def _run_sync(coro: Awaitable[Any]) -> Any:
 # inside ``threading.Event.wait`` (pargraph), the setprofile hook handles
 # the case where user code is busy in Python without blocking.
 
-_YIELD_MIN_INTERVAL_SECONDS: float = 1.0
-_yield_state: dict = {"last": 0.0, "in_progress": False, "previous_profile": None, "installed": False}
+# Send a heartbeat at most every ``_YIELD_MIN_INTERVAL_SECONDS`` from the
+# profile hook. 5s is well under the default 60s ``client_timeout_seconds``
+# so even a single hook firing per interval keeps the scheduler happy.
+_YIELD_MIN_INTERVAL_SECONDS: float = 5.0
+_yield_state: dict = {
+    "last": 0.0,
+    "in_progress": False,
+    "previous_profile": None,
+    "installed": False,
+    # Optional reference to the ClientAgent so the hook can send heartbeats
+    # directly via ``_run_sync(heartbeat_manager.send_heartbeat())`` rather
+    # than relying on the asyncio loop to tick the heartbeat task on its
+    # own schedule.
+    "agent": None,
+    # Diagnostic counters — exposed for debugging from the notebook via
+    # ``from scaler.client.agent import bridge; print(bridge._yield_state)``.
+    "fire_count": 0,
+    "hb_ok": 0,
+    "hb_err": 0,
+    "last_error": None,
+}
+
+
+async def _emit_heartbeat(agent: Any) -> None:
+    hb = getattr(agent, "_heartbeat_manager", None) if agent is not None else None
+    if hb is not None and getattr(hb, "_connector_external", None) is not None:
+        await hb.send_heartbeat()
+    # Always also tick the loop once so any other pending agent work
+    # (object storage acks, future completions) gets a chance to run.
+    await asyncio.sleep(0)
 
 
 def _yield_profile_hook(frame: Any, event: str, arg: Any) -> None:
     if _yield_state["in_progress"]:
         return
-    if event not in ("call", "c_call"):
+    # Fire on both call AND return events to maximize coverage. The
+    # throttle below bounds the actual work to once per
+    # ``_YIELD_MIN_INTERVAL_SECONDS``.
+    if event not in ("call", "c_call", "return", "c_return"):
         return
     now = time.monotonic()
     if now - _yield_state["last"] < _YIELD_MIN_INTERVAL_SECONDS:
         return
     _yield_state["last"] = now
+    _yield_state["fire_count"] += 1
     _yield_state["in_progress"] = True
     try:
-        _run_sync(asyncio.sleep(0))
+        agent = _yield_state.get("agent")
+        try:
+            _run_sync(_emit_heartbeat(agent))
+            _yield_state["hb_ok"] += 1
+        except BaseException as exc:
+            _yield_state["hb_err"] += 1
+            _yield_state["last_error"] = repr(exc)
+            # Fall back to a bare loop tick — some run_sync failures
+            # (e.g. transient JSPI re-entry guards) may still let the
+            # simpler sleep(0) succeed.
+            try:
+                _run_sync(asyncio.sleep(0))
+            except BaseException:
+                pass
     except BaseException:
         # Never raise out of a profile hook — that would corrupt the
         # interpreter's profiling state and could kill the user's notebook.
@@ -229,11 +274,22 @@ def _yield_profile_hook(frame: Any, event: str, arg: Any) -> None:
         _yield_state["in_progress"] = False
 
 
-def _install_yield_hook() -> None:
+def _install_yield_hook(agent: Any = None) -> None:
     if _yield_state["installed"]:
+        # Refresh agent reference in case it was installed before the agent
+        # was fully constructed.
+        if agent is not None:
+            _yield_state["agent"] = agent
+        # Re-assert the profile hook — IPython / pyodide-kernel may reset
+        # ``sys.setprofile`` between cells, in which case we'd silently
+        # stop firing. Re-installing here is cheap and idempotent.
+        if sys.getprofile() is not _yield_profile_hook:
+            _yield_state["previous_profile"] = sys.getprofile()
+            sys.setprofile(_yield_profile_hook)
         return
     _yield_state["previous_profile"] = sys.getprofile()
     _yield_state["last"] = time.monotonic()
+    _yield_state["agent"] = agent
     _yield_state["installed"] = True
     sys.setprofile(_yield_profile_hook)
 
@@ -243,6 +299,7 @@ def _uninstall_yield_hook() -> None:
         return
     sys.setprofile(_yield_state["previous_profile"])
     _yield_state["previous_profile"] = None
+    _yield_state["agent"] = None
     _yield_state["installed"] = False
 
 
@@ -570,7 +627,7 @@ class InProcessAgentBridge(ClientAgentBridge):
         # requires JSPI.
         if sys.platform == "emscripten":
             _install_concurrent_futures_jspi_patch()
-            _install_yield_hook()
+            _install_yield_hook(self._agent)
 
     def get_object_storage_address(self) -> AddressConfig:
         # ClientAgent resolves ``_object_storage_address`` early during its
