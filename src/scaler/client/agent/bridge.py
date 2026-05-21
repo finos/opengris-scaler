@@ -205,36 +205,39 @@ def _run_sync(coro: Awaitable[Any]) -> Any:
 # inside ``threading.Event.wait`` (pargraph), the setprofile hook handles
 # the case where user code is busy in Python without blocking.
 
-# Send a heartbeat at most every ``_YIELD_MIN_INTERVAL_SECONDS`` from the
-# profile hook. 5s is well under the default 60s ``client_timeout_seconds``
-# so even a single hook firing per interval keeps the scheduler happy.
-_YIELD_MIN_INTERVAL_SECONDS: float = 5.0
+# Fire the loop-pump at most once every ``_YIELD_MIN_INTERVAL_SECONDS``.
+# Set well under the default 60s ``client_timeout_seconds`` so even worst-case
+# scheduling latency leaves multiple opportunities per timeout window for a
+# heartbeat to make a round trip.
+_YIELD_MIN_INTERVAL_SECONDS: float = 1.0
 _yield_state: dict = {
     "last": 0.0,
     "in_progress": False,
     "previous_profile": None,
     "installed": False,
-    # Optional reference to the ClientAgent so the hook can send heartbeats
-    # directly via ``_run_sync(heartbeat_manager.send_heartbeat())`` rather
-    # than relying on the asyncio loop to tick the heartbeat task on its
-    # own schedule.
-    "agent": None,
     # Diagnostic counters — exposed for debugging from the notebook via
     # ``from scaler.client.agent import bridge; print(bridge._yield_state)``.
     "fire_count": 0,
-    "hb_ok": 0,
-    "hb_err": 0,
+    "pump_ok": 0,
+    "pump_err": 0,
     "last_error": None,
 }
 
 
-async def _emit_heartbeat(agent: Any) -> None:
-    hb = getattr(agent, "_heartbeat_manager", None) if agent is not None else None
-    if hb is not None and getattr(hb, "_connector_external", None) is not None:
-        await hb.send_heartbeat()
-    # Always also tick the loop once so any other pending agent work
-    # (object storage acks, future completions) gets a chance to run.
-    await asyncio.sleep(0)
+def _pump_loop_once() -> None:
+    # ``_run_sync(asyncio.sleep(0))`` returns control to the asyncio loop
+    # for exactly one iteration. That is enough for any ready callbacks
+    # (notably the heartbeat ``Looper`` that has been blocked on
+    # ``asyncio.sleep(heartbeat_interval_seconds)``) to fire and write
+    # their outgoing WebSocket message. We deliberately do NOT call
+    # ``heartbeat_manager.send_heartbeat()`` directly here: invoking a
+    # JSPI ``run_sync`` re-entrantly with an awaitable that itself does
+    # ``await connector.send(...)`` from within a ``sys.setprofile`` event
+    # is fragile in Pyodide (the profile event fires deep inside the
+    # CPython interpreter loop and re-entering JSPI from there can hang
+    # or silently fail). Letting the existing heartbeat task ride the
+    # natural asyncio scheduling is much more reliable.
+    _run_sync(asyncio.sleep(0))
 
 
 def _yield_profile_hook(frame: Any, event: str, arg: Any) -> None:
@@ -252,20 +255,12 @@ def _yield_profile_hook(frame: Any, event: str, arg: Any) -> None:
     _yield_state["fire_count"] += 1
     _yield_state["in_progress"] = True
     try:
-        agent = _yield_state.get("agent")
         try:
-            _run_sync(_emit_heartbeat(agent))
-            _yield_state["hb_ok"] += 1
+            _pump_loop_once()
+            _yield_state["pump_ok"] += 1
         except BaseException as exc:
-            _yield_state["hb_err"] += 1
+            _yield_state["pump_err"] += 1
             _yield_state["last_error"] = repr(exc)
-            # Fall back to a bare loop tick — some run_sync failures
-            # (e.g. transient JSPI re-entry guards) may still let the
-            # simpler sleep(0) succeed.
-            try:
-                _run_sync(asyncio.sleep(0))
-            except BaseException:
-                pass
     except BaseException:
         # Never raise out of a profile hook — that would corrupt the
         # interpreter's profiling state and could kill the user's notebook.
@@ -275,11 +270,10 @@ def _yield_profile_hook(frame: Any, event: str, arg: Any) -> None:
 
 
 def _install_yield_hook(agent: Any = None) -> None:
+    # ``agent`` parameter is kept for backwards compatibility with callers
+    # but unused now that the hook only pumps the asyncio loop.
+    del agent
     if _yield_state["installed"]:
-        # Refresh agent reference in case it was installed before the agent
-        # was fully constructed.
-        if agent is not None:
-            _yield_state["agent"] = agent
         # Re-assert the profile hook — IPython / pyodide-kernel may reset
         # ``sys.setprofile`` between cells, in which case we'd silently
         # stop firing. Re-installing here is cheap and idempotent.
@@ -289,7 +283,6 @@ def _install_yield_hook(agent: Any = None) -> None:
         return
     _yield_state["previous_profile"] = sys.getprofile()
     _yield_state["last"] = time.monotonic()
-    _yield_state["agent"] = agent
     _yield_state["installed"] = True
     sys.setprofile(_yield_profile_hook)
 
@@ -299,8 +292,49 @@ def _uninstall_yield_hook() -> None:
         return
     sys.setprofile(_yield_state["previous_profile"])
     _yield_state["previous_profile"] = None
-    _yield_state["agent"] = None
     _yield_state["installed"] = False
+
+
+# Patch ``time.sleep`` so a synchronous sleep in user code (or in a library
+# polling for results) hands control back to the asyncio loop instead of
+# freezing the whole tab. Without this, ``time.sleep(N)`` blocks the only
+# thread for N seconds with no heartbeats; with the patch, the wasm stack
+# is suspended via JSPI and the loop continues to drive the agent.
+
+_time_sleep_patched: bool = False
+_original_time_sleep: Optional[Callable[[float], None]] = None
+
+
+def _jspi_time_sleep(secs: float) -> None:
+    try:
+        if secs is None or secs <= 0:
+            _run_sync(asyncio.sleep(0))
+            return
+        _run_sync(asyncio.sleep(float(secs)))
+    except BaseException:
+        # If JSPI fails for any reason fall back to the original blocking
+        # sleep so callers always observe at least the requested delay.
+        if _original_time_sleep is not None:
+            _original_time_sleep(secs)
+
+
+def _install_time_sleep_jspi_patch() -> None:
+    global _time_sleep_patched, _original_time_sleep
+    if _time_sleep_patched:
+        return
+    _original_time_sleep = time.sleep
+    time.sleep = _jspi_time_sleep  # type: ignore[assignment]
+    _time_sleep_patched = True
+
+
+def _uninstall_time_sleep_jspi_patch() -> None:
+    global _time_sleep_patched, _original_time_sleep
+    if not _time_sleep_patched:
+        return
+    if _original_time_sleep is not None:
+        time.sleep = _original_time_sleep  # type: ignore[assignment]
+    _original_time_sleep = None
+    _time_sleep_patched = False
 
 
 # JSPI-aware patches for ``concurrent.futures.wait`` / ``as_completed``.
@@ -627,6 +661,7 @@ class InProcessAgentBridge(ClientAgentBridge):
         # requires JSPI.
         if sys.platform == "emscripten":
             _install_concurrent_futures_jspi_patch()
+            _install_time_sleep_jspi_patch()
             _install_yield_hook(self._agent)
 
     def get_object_storage_address(self) -> AddressConfig:
@@ -667,6 +702,7 @@ class InProcessAgentBridge(ClientAgentBridge):
         self._running = False
         if sys.platform == "emscripten":
             _uninstall_yield_hook()
+            _uninstall_time_sleep_jspi_patch()
             _uninstall_concurrent_futures_jspi_patch()
 
         async def _await_task() -> None:
