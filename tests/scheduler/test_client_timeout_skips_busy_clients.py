@@ -6,6 +6,7 @@ be disconnected. This is the exact failure mode hit by browser / Pyodide
 clients whose single asyncio event loop is starved by long synchronous user
 code and therefore can't send heartbeats while a workload runs.
 """
+
 import asyncio
 import time
 import unittest
