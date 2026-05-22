@@ -12,17 +12,12 @@ import time
 import unittest
 from typing import Any
 
+from scaler.config.section.scheduler import SchedulerConfig
+from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import ClientHeartbeat, Resource
 from scaler.scheduler.controllers.client_controller import VanillaClientController
+from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.utility.identifiers import ClientID, TaskID
-
-
-class _StubConfigController:
-    def __init__(self, client_timeout_seconds: int):
-        self._values = {"client_timeout_seconds": client_timeout_seconds}
-
-    def get_config(self, path: str) -> Any:
-        return self._values[path]
 
 
 class _StubObjectController:
@@ -42,7 +37,12 @@ class _StubTaskController:
 
 
 def _make_controller(timeout_seconds: int) -> VanillaClientController:
-    controller = VanillaClientController(_StubConfigController(timeout_seconds))
+    config = SchedulerConfig(
+        bind_address=AddressConfig.from_string("tcp://127.0.0.1:6378"),
+        object_storage_address=AddressConfig.from_string("tcp://127.0.0.1:6379"),
+        client_timeout_seconds=timeout_seconds,
+    )
+    controller = VanillaClientController(VanillaConfigController(config))
     # The cleanup path may walk into disconnect → cancel-all-tasks → object
     # cleanup. Stub just enough of those collaborators that the negative
     # case (no in-flight tasks) cleanly exercises a full disconnect, and
