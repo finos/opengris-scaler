@@ -57,20 +57,17 @@ class VanillaScalingPolicy(ScalingPolicy):
             if task_ratio > self._upper_task_ratio:
                 desired = current + 1
             elif task_ratio < self._lower_task_ratio:
-                if task_count == 0:
-                    # Never tear down a running worker just because the
-                    # scheduler-visible task queue is momentarily empty.
-                    # Long-running parent tasks (e.g. parfun driver functions
-                    # that spend minutes in pure-Python pre-/post-processing
-                    # between bursts of sub-task submissions) leave the
-                    # scheduler queue at task_count==0 even though the
-                    # worker is actively executing them. Tearing the worker
-                    # down here hangs the client forever. Let the
-                    # worker_timeout_seconds setting reap genuinely idle
-                    # workers instead.
+                if task_count > 0:
+                    # Native worker managers only receive a target concurrency,
+                    # not which concrete worker is safe to stop. If we scale
+                    # down while tasks are still in flight, the provisioner may
+                    # tear down an arbitrary active worker and force task
+                    # failure/retry churn mid-computation. Keep the current
+                    # pool size until the scheduler-visible task set is empty,
+                    # then let worker_timeout_seconds reap truly idle workers.
                     desired = current
                 else:
-                    desired = max(1, ceil(task_count / self._upper_task_ratio))
+                    desired = current
             else:
                 desired = current
 

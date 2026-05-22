@@ -21,6 +21,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import concurrent.futures
+import os
 import sys
 import threading
 import time
@@ -177,6 +178,13 @@ def _run_sync(coro: Awaitable[Any]) -> Any:
 
 # Periodic-yield hook for the browser bridge.
 #
+# This hook is opt-in. Re-entering JSPI from a ``sys.setprofile`` callback can
+# overflow Pyodide's JS/wasm stack on heavy notebook graphs, while the
+# ``concurrent.futures`` and ``time.sleep`` JSPI patches below are enough for
+# the browser gallery notebooks to complete. Keep the hook available for users
+# who need heartbeat protection during long local pure-Python sections, but do
+# not enable it by default.
+#
 # Even with the ``concurrent.futures`` JSPI patch below, user code can still
 # starve the agent task in two cases:
 #
@@ -204,6 +212,16 @@ def _run_sync(coro: Awaitable[Any]) -> Any:
 # JSPI-aware patch below: the patch handles the case where user code blocks
 # inside ``threading.Event.wait`` (pargraph), the setprofile hook handles
 # the case where user code is busy in Python without blocking.
+
+_ENABLE_BROWSER_YIELD_HOOK_ENV = "SCALER_ENABLE_BROWSER_YIELD_HOOK"
+_TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
+
+
+def _should_install_browser_yield_hook() -> bool:
+    value = os.environ.get(_ENABLE_BROWSER_YIELD_HOOK_ENV)
+    if value is None:
+        return False
+    return value.strip().lower() in _TRUTHY_ENV_VALUES
 
 # Fire the loop-pump at most once every ``_YIELD_MIN_INTERVAL_SECONDS``.
 # Set well under the default 60s ``client_timeout_seconds`` so even worst-case
@@ -662,7 +680,8 @@ class InProcessAgentBridge(ClientAgentBridge):
         if sys.platform == "emscripten":
             _install_concurrent_futures_jspi_patch()
             _install_time_sleep_jspi_patch()
-            _install_yield_hook(self._agent)
+            if _should_install_browser_yield_hook():
+                _install_yield_hook(self._agent)
 
     def get_object_storage_address(self) -> AddressConfig:
         # ClientAgent resolves ``_object_storage_address`` early during its

@@ -10,7 +10,7 @@ import asyncio
 import threading
 import unittest
 from typing import Any, List
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from scaler.client.agent import bridge as bridge_module
 from scaler.client.agent.bridge import (
@@ -193,6 +193,86 @@ class BridgeSurfaceParityTest(unittest.TestCase):
     def test_both_bridges_are_client_agent_bridges(self) -> None:
         self.assertTrue(issubclass(IPCAgentBridge, ClientAgentBridge))
         self.assertTrue(issubclass(InProcessAgentBridge, ClientAgentBridge))
+
+
+class BrowserYieldHookConfigTest(unittest.TestCase):
+    def test_browser_yield_hook_is_disabled_by_default(self) -> None:
+        with patch.dict(bridge_module.os.environ, {}, clear=True):
+            self.assertFalse(bridge_module._should_install_browser_yield_hook())
+
+    def test_browser_yield_hook_accepts_truthy_env_values(self) -> None:
+        for value in ("1", "true", "YES", "On"):
+            with self.subTest(value=value):
+                with patch.dict(
+                    bridge_module.os.environ,
+                    {bridge_module._ENABLE_BROWSER_YIELD_HOOK_ENV: value},
+                    clear=True,
+                ):
+                    self.assertTrue(bridge_module._should_install_browser_yield_hook())
+
+    def test_browser_yield_hook_rejects_falsey_env_values(self) -> None:
+        for value in ("0", "false", "no", "off", ""):
+            with self.subTest(value=value):
+                with patch.dict(
+                    bridge_module.os.environ,
+                    {bridge_module._ENABLE_BROWSER_YIELD_HOOK_ENV: value},
+                    clear=True,
+                ):
+                    self.assertFalse(bridge_module._should_install_browser_yield_hook())
+
+
+class InProcessAgentBridgeStartTest(unittest.TestCase):
+    def _make_bridge(self) -> InProcessAgentBridge:
+        with patch.object(bridge_module, "ClientAgent") as mock_agent_cls:
+            agent = Mock()
+            agent._run.return_value = "fake-coro"
+            mock_agent_cls.return_value = agent
+            return InProcessAgentBridge(
+                identity=ClientID.generate_client_id(),
+                scheduler_address=AddressConfig(SocketType.ws, "host", 1),
+                network_backend=object(),  # type: ignore[arg-type]
+                future_manager=object(),  # type: ignore[arg-type]
+                stop_event=threading.Event(),
+                timeout_seconds=10,
+                heartbeat_interval_seconds=1,
+                serializer=object(),  # type: ignore[arg-type]
+            )
+
+    def test_start_skips_profile_yield_hook_by_default(self) -> None:
+        bridge = self._make_bridge()
+        loop = Mock()
+        loop.create_task.return_value = object()
+
+        with patch.object(bridge_module.sys, "platform", "emscripten"):
+            with patch.object(bridge_module.asyncio, "get_event_loop", return_value=loop):
+                with patch.object(bridge_module, "_install_concurrent_futures_jspi_patch") as install_wait:
+                    with patch.object(bridge_module, "_install_time_sleep_jspi_patch") as install_sleep:
+                        with patch.object(bridge_module, "_install_yield_hook") as install_yield:
+                            with patch.object(
+                                bridge_module, "_should_install_browser_yield_hook", return_value=False
+                            ):
+                                bridge.start()
+
+        install_wait.assert_called_once()
+        install_sleep.assert_called_once()
+        install_yield.assert_not_called()
+
+    def test_start_installs_profile_yield_hook_when_enabled(self) -> None:
+        bridge = self._make_bridge()
+        loop = Mock()
+        loop.create_task.return_value = object()
+
+        with patch.object(bridge_module.sys, "platform", "emscripten"):
+            with patch.object(bridge_module.asyncio, "get_event_loop", return_value=loop):
+                with patch.object(bridge_module, "_install_concurrent_futures_jspi_patch"):
+                    with patch.object(bridge_module, "_install_time_sleep_jspi_patch"):
+                        with patch.object(bridge_module, "_install_yield_hook") as install_yield:
+                            with patch.object(
+                                bridge_module, "_should_install_browser_yield_hook", return_value=True
+                            ):
+                                bridge.start()
+
+        install_yield.assert_called_once_with(bridge._agent)
 
 
 class CheckBrowserRuntimeTest(unittest.TestCase):
