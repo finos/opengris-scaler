@@ -131,11 +131,25 @@ class VanillaClientController(ClientController, Looper, Reporter):
 
     async def __routine_cleanup_clients(self):
         now = time.time()
-        dead_clients = {
-            client
-            for client, (last_seen, info) in self._client_last_seen.items()
-            if now - last_seen > self._config_controller.get_config("client_timeout_seconds")
-        }
+        timeout = self._config_controller.get_config("client_timeout_seconds")
+        dead_clients = set()
+        for client, (last_seen, info) in self._client_last_seen.items():
+            if now - last_seen <= timeout:
+                continue
+            # Don't time out clients that still have tasks in flight. The
+            # heartbeat-based timeout is meant to detect clients whose
+            # network/process has gone away, but a client that is busy
+            # synchronously processing results (common in browser /
+            # emscripten clients running heavy Python user code) may
+            # legitimately fail to send heartbeats for extended periods
+            # while still being very much alive. The underlying transport
+            # (WebSocket / TCP) will report an actual connection close
+            # promptly, so it's safe to keep the client registered as long
+            # as it has outstanding work — the scheduler will see network
+            # close via the binder if the client really went away.
+            if self._client_to_task_ids.has_key(client) and len(self._client_to_task_ids.get_values(client)) > 0:
+                continue
+            dead_clients.add(client)
 
         for client in dead_clients:
             await self.__on_client_disconnect(client)
