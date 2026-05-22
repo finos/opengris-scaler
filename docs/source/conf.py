@@ -62,7 +62,7 @@ templates_path = ["_templates"]
 # ``debug_*.ipynb`` are local debug notebooks (e.g. for the wasm/JupyterLite
 # harness in scripts/test_jupyterlite.sh) -- they are still served by JupyterLite via
 # ``jupyterlite_contents`` below but should not appear in the published docs.
-exclude_patterns = ["gallery/debug_*.ipynb"]
+exclude_patterns = ["gallery/debug_*.ipynb", "gallery/*_scaler_only.ipynb"]
 
 
 # -- Options for HTML output -------------------------------------------------
@@ -111,9 +111,13 @@ jupyterlite_contents = [
     "gallery/parallel_sqrt.ipynb",
     "gallery/send_heavy_object.ipynb",
     "gallery/AlphaResearch.ipynb",
+    "gallery/AlphaResearch_scaler_only.ipynb",
     "gallery/VolSurface.ipynb",
+    "gallery/VolSurface_scaler_only.ipynb",
     "gallery/SwapCVA.ipynb",
+    "gallery/SwapCVA_scaler_only.ipynb",
     "gallery/XVA.ipynb",
+    "gallery/XVA_scaler_only.ipynb",
 ]
 
 # Bundle the scaler wasm wheel + cloudpickle + tblib into the lite kernel's
