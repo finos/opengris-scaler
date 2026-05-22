@@ -11,10 +11,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 # Absolute path so the bake (CWD=/) and dev-shell invocations (CWD=/workspaces/scaler) agree on the same staging tree.
 ENV THIRD_PARTY_DIR=/opt/scaler
 COPY scripts /tmp/scaler-scripts
-RUN /tmp/scaler-scripts/library_tool.sh boost download \
-    && /tmp/scaler-scripts/library_tool.sh boost compile \
-    && /tmp/scaler-scripts/library_tool.sh boost install \
-    && /tmp/scaler-scripts/library_tool.sh capnp download \
+RUN /tmp/scaler-scripts/library_tool.sh capnp download \
     && /tmp/scaler-scripts/library_tool.sh capnp compile \
     && /tmp/scaler-scripts/library_tool.sh capnp install \
     && /tmp/scaler-scripts/library_tool.sh libuv download \

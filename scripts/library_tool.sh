@@ -2,7 +2,7 @@
 # This script builds and installs the required 3rd party C++ libraries.
 #
 # Usage:
-#       ./scripts/library_tool.sh [boost|capnp|libuv|emsdk|pyodide] [download|compile|install] [--prefix=PREFIX] [--target=native|wasm]
+#       ./scripts/library_tool.sh [capnp|libuv|emsdk|pyodide] [download|compile|install] [--prefix=PREFIX] [--target=native|wasm]
 #
 # --target=wasm cross-compiles capnp/libuv against the Emscripten toolchain.
 # It expects emcc/emcmake on PATH (source thirdparties/emsdk/emsdk_env.sh first)
@@ -19,7 +19,6 @@
 #       Update the usage string when you add/remove a dependency or target.
 #       Bump versions through variables, not hard coded strings.
 
-BOOST_VERSION="1.88.0"
 CAPNP_VERSION="1.1.0"
 UV_VERSION="1.51.0"
 # emsdk version must match the Pyodide xbuildenv/kernel used for the wasm wheel build
@@ -72,7 +71,7 @@ fi
 PREFIX=$(mkdir -p "${PREFIX}" && cd "${PREFIX}" && pwd)
 
 show_help() {
-    echo "Usage: ./library_tool.sh [boost|capnp|libuv|emsdk] [download|compile|install] [--prefix=DIR] [--target=native|wasm]"
+    echo "Usage: ./library_tool.sh [capnp|libuv|emsdk] [download|compile|install] [--prefix=DIR] [--target=native|wasm]"
     exit 1
 }
 
@@ -112,35 +111,7 @@ apply_patch_if_present() {
     patch -d "${src_dir}" -p1 < "${patch_file}"
 }
 
-if [ "$1" == "boost" ]; then
-    if [[ "$TARGET" == "wasm" ]]; then
-        echo "boost is not used by the wasm client build; nothing to do."
-        exit 0
-    fi
-
-    BOOST_FOLDER_NAME="boost_$(echo $BOOST_VERSION | tr '.' '_')"
-
-    if [ "$2" == "download" ]; then
-        mkdir -p ${THIRD_PARTY_DOWNLOADED}
-        curl --retry 100 --retry-max-time 3600 \
-          -L "https://archives.boost.io/release/${BOOST_VERSION}/source/${BOOST_FOLDER_NAME}.tar.gz" \
-          -o "${THIRD_PARTY_DOWNLOADED}/${BOOST_FOLDER_NAME}.tar.gz"
-        echo "Downloaded Boost to ${THIRD_PARTY_DOWNLOADED}/${BOOST_FOLDER_NAME}.tar.gz"
-
-    elif [ "$2" == "compile" ]; then
-        mkdir -p ${THIRD_PARTY_COMPILED}
-        tar -xzvf "${THIRD_PARTY_DOWNLOADED}/${BOOST_FOLDER_NAME}.tar.gz" -C "${THIRD_PARTY_COMPILED}"
-        echo "Compiled Boost to ${THIRD_PARTY_COMPILED}/${BOOST_FOLDER_NAME}"
-
-    elif [ "$2" == "install" ]; then
-        cp -r "${THIRD_PARTY_COMPILED}/${BOOST_FOLDER_NAME}/boost" "${PREFIX}/include/."
-        echo "Installed Boost into ${PREFIX}/include/boost"
-
-    else
-        show_help
-    fi
-
-elif [ "$1" == "capnp" ]; then
+if [ "$1" == "capnp" ]; then
     CAPNP_FOLDER_NAME="capnproto-c++-$(echo $CAPNP_VERSION)"
 
     if [ "$2" == "download" ]; then
