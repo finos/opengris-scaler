@@ -16,7 +16,7 @@ import signal
 
 from scapy.all import IP, TCP  # type: ignore
 
-from tests.cpp.ymq.py_mitm import passthrough, randomly_drop_packets, send_rst_to_client
+from tests.cpp.ymq.py_mitm import passthrough, randomly_drop_packets, send_rst_after_server_identity, send_rst_to_client
 from tests.cpp.ymq.py_mitm.mitm_types import MITM, MITMInterface, TCPConnection
 
 
@@ -156,6 +156,7 @@ TESTCASES = {
     "passthrough": passthrough.PassthroughMITM,
     "randomly_drop_packets": randomly_drop_packets.RandomlyDropPacketsMITM,
     "send_rst_to_client": send_rst_to_client.SendRSTToClientMITM,
+    "send_rst_after_server_identity": send_rst_after_server_identity.SendRSTAfterServerIdentityMITM,
 }
 
 if __name__ == "__main__":

@@ -18,15 +18,23 @@
 #endif  // _WIN32
 
 #include <chrono>
+#include <filesystem>
 #include <format>
 #include <string>
+#include <thread>
 
+#include "scaler/object_storage/message.h"
+#include "scaler/object_storage/object_storage_server.h"
 #include "scaler/ymq/bytes.h"
 #include "scaler/ymq/future/connector_socket.h"
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/sync/binder_socket.h"
 #include "tests/cpp/ymq/common/testing.h"
 #include "tests/cpp/ymq/common/utils.h"
+
+using scaler::object_storage::ObjectRequestHeader;
+using scaler::object_storage::ObjectStorageServer;
+using ObjectRequestType = scaler::protocol::ObjectRequestHeader::ObjectRequestType;
 
 // Helper client/server functions defined in test_sockets.cpp
 TestResult basicClientYmq(std::string address);
@@ -101,9 +109,11 @@ TestResult reconnectClientMain(std::string address)
     // the mitm will send a RST after the first "sync"
     // the "sync" message will be lost, but ymq should automatically reconnect
     // therefore the next "sync" message should succeed
+    // note: the send on the first iteration may fail with an error when the RST fires mid-write;
+    // this is expected and the loop retries on timeout
     for (size_t i = 0; i < retryTimes; i++) {
-        auto sendFuture = socket.sendMessage(scaler::ymq::Bytes {"sync"});
-        RETURN_FAILURE_IF_FALSE(sendFuture.get().has_value());
+        auto sendFuture                  = socket.sendMessage(scaler::ymq::Bytes {"sync"});
+        [[maybe_unused]] auto sendResult = sendFuture.get();
 
         auto result = future.wait_for(retryDelay);
         if (result == std::future_status::ready) {
@@ -186,6 +196,124 @@ TEST_F(YMQMitmTest, Reconnect)
          [=] { return reconnectClientMain(std::format("tcp://{}:{}", mitm_ip, mitm_port)); }},
         true);
 
+    EXPECT_EQ(result, TestResult::Success);
+}
+
+// Regression test for issue #787.
+//
+// Root cause: MessageConnection::onWriteDone calls callback({}) (silent success) when
+// UV_ECONNRESET fires, so the caller believes the write succeeded even though the
+// connection was reset.
+//
+// Without the fix: the ObjectRequestHeader send resolves as success. The client queues
+// the payload in _sendPending while the connection is resetting. After reconnect,
+// _sendPending is flushed — the server receives the payload as the first application
+// message from this identity and calls ObjectRequestHeader::fromBuffer() on raw payload
+// bytes, which throws kj::Exception ("Malformed capnp message").
+//
+// The MITM (send_rst_after_server_identity) injects RST immediately after forwarding
+// the server's identity packet. The RST and the identity are written to the TUN device
+// in immediate succession, so libuv processes both in the same uv__read loop before
+// returning to epoll_wait. By the time the test thread's sendMessage call is dispatched,
+// the socket is already in the reset state, so write() returns UV_ECONNRESET and
+// onWriteDone fires with the error.
+//
+// On unfixed code: onWriteDone calls callback({}) — headerSendResult is success → test fails.
+// On fixed code:   onWriteDone calls callback(error) — headerSendResult is error → test passes.
+TestResult setObjectHeaderDroppedServerMain(std::string address, std::filesystem::path stopServerPath)
+{
+    ObjectStorageServer server;
+
+    std::thread serverThread([&server, address = std::move(address), stopServerPath]() mutable {
+        server.run(std::move(address), "oss-test", "INFO", "%(levelname)s: %(message)s", {}, [stopServerPath] {
+            return !std::filesystem::exists(stopServerPath);
+        });
+    });
+
+    server.waitUntilReady();
+    serverThread.join();
+
+    return TestResult::Success;
+}
+
+TestResult setObjectHeaderDroppedClientMain(
+    std::string address, std::filesystem::path stopServerPath, std::filesystem::path rendezvousPath)
+{
+    scaler::ymq::IOContext context {};
+
+    auto socketResult = scaler::ymq::future::ConnectorSocket::connect(context, "oss-mitm-client", address);
+    RETURN_FAILURE_IF_FALSE(socketResult.has_value());
+    auto socket = std::move(socketResult.value());
+
+    ObjectRequestHeader requestHeader {
+        .objectID      = {1, 2, 3, 4},
+        .payloadLength = 5,
+        .requestID     = 42,
+        .requestType   = ObjectRequestType::SET_OBJECT,
+    };
+    auto headerBuf   = requestHeader.toBuffer();
+    auto headerBytes = scaler::ymq::Bytes {(char*)headerBuf.asBytes().begin(), headerBuf.asBytes().size()};
+
+    // Wait for the MITM to signal that the RST has been injected. By the time the sentinel
+    // file appears, the RST is already in this socket's kernel receive buffer, so the
+    // subsequent sendMessage() will deterministically get UV_ECONNRESET.
+    while (!std::filesystem::exists(rendezvousPath))
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    auto headerSendResult = socket.sendMessage(std::move(headerBytes)).get();
+
+    if (headerSendResult.has_value()) {
+        // Header appeared to succeed: the bug is present. Send the payload — YMQ will deliver
+        // it to the server as the first application message after reconnect. The server calls
+        // ObjectRequestHeader::fromBuffer() on raw payload bytes and logs "Malformed capnp message".
+        [[maybe_unused]] auto payloadResult = socket.sendMessage(scaler::ymq::Bytes {"hello"}).get();
+        // Give the server time to receive and process the payload before we signal it to stop.
+        // Without this, the server may not have processed the payload before the stop file appears.
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    // Signal the server subprocess to stop via a file sentinel — stopServer is not shared
+    // across fork() boundaries, so a shared_ptr<atomic<bool>> would not work here.
+    std::ofstream stopFile {stopServerPath};
+
+    RETURN_FAILURE_IF_FALSE(!headerSendResult.has_value());
+    return TestResult::Success;
+}
+
+TEST_F(YMQMitmTest, SetObjectHeaderDropped)
+{
+    auto [mitm_ip, remote_ip] = getMitmIPs();
+    auto mitm_port            = 23583;
+    auto remote_port          = 23575;
+
+    auto rendezvousPath = std::filesystem::temp_directory_path() / "ymq_mitm_rst_rendezvous";
+    auto stopServerPath = std::filesystem::temp_directory_path() / "ymq_mitm_stop_server";
+    std::filesystem::remove(rendezvousPath);
+    std::filesystem::remove(stopServerPath);
+
+    auto result = test(
+        30,
+        {[=] {
+             return runMitm(
+                 "send_rst_after_server_identity",
+                 mitm_ip,
+                 mitm_port,
+                 remote_ip,
+                 remote_port,
+                 {rendezvousPath.string()});
+         },
+         [=] {
+             return setObjectHeaderDroppedServerMain(
+                 std::format("tcp://{}:{}", remote_ip, remote_port), stopServerPath);
+         },
+         [=] {
+             return setObjectHeaderDroppedClientMain(
+                 std::format("tcp://{}:{}", mitm_ip, mitm_port), stopServerPath, rendezvousPath);
+         }},
+        true);
+
+    std::filesystem::remove(rendezvousPath);
+    std::filesystem::remove(stopServerPath);
     EXPECT_EQ(result, TestResult::Success);
 }
 
