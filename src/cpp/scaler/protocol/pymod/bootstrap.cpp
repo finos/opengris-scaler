@@ -16,6 +16,28 @@ namespace scaler::protocol::pymod {
 
 namespace {
 
+// Wasm-relocator-safe attribute and key names. See the equivalent block at the
+// top of utility.cpp and the long comment in initialize_runtime_modules() for
+// why bare ``"foo"`` literals are unsafe in this translation unit when built
+// for Pyodide / Emscripten SIDE_MODULE.
+static const char DESC_KIND[]                 = "kind";
+static const char DESC_NAME[]                 = "name";
+static const char DESC_ID[]                   = "id";
+static const char DESC_MEMBERS[]              = "members";
+static const char DESC_ENUM_FIELDS[]          = "enum_fields";
+static const char DESC_LIST_ENUM_FIELDS[]     = "list_enum_fields";
+static const char DESC_UNION_FIELDS[]         = "union_fields";
+static const char DESC_CHILDREN[]             = "children";
+static const char ATTR_MODULE_DUNDER[]        = "__module__";
+static const char ATTR_SCHEMA_NODE_ID[]       = "_schema_node_id";
+static const char ATTR_ENUM_FIELDS[]          = "_enum_fields";
+static const char ATTR_LIST_ENUM_FIELDS[]     = "_list_enum_fields";
+static const char ATTR_UNION_FIELDS[]         = "_union_fields";
+static const char ATTR_RUNTIME_INITIALIZED[]  = "_runtime_initialized";
+static const char ATTR_FROM_BYTES[]           = "from_bytes";
+static const char ATTR_ALL_DUNDER[]           = "__all__";
+static const char SCALER_PROTOCOL_CAPNP[]     = "scaler.protocol.capnp";
+
 OwnedPyObject<> build_schema_descriptor(capnp::Schema schema)
 {
     auto proto = schema.getProto();
@@ -28,10 +50,10 @@ OwnedPyObject<> build_schema_descriptor(capnp::Schema schema)
     static const char KIND_ENUM[]   = {'e','n','u','m','\0'};
     static const char KIND_STRUCT[] = {'s','t','r','u','c','t','\0'};
     const char* kind = proto.isEnum() ? KIND_ENUM : KIND_STRUCT;
-    PyDict_SetItemString(descriptor.get(), "kind", OwnedPyObject<>(PyUnicode_FromString(kind)).get());
+    PyDict_SetItemString(descriptor.get(), DESC_KIND, OwnedPyObject<>(PyUnicode_FromString(kind)).get());
     auto unqualified = schema.getUnqualifiedName();
-    PyDict_SetItemString(descriptor.get(), "name", OwnedPyObject<>(PyUnicode_FromString(unqualified.cStr())).get());
-    PyDict_SetItemString(descriptor.get(), "id", OwnedPyObject<>(PyLong_FromUnsignedLongLong(proto.getId())).get());
+    PyDict_SetItemString(descriptor.get(), DESC_NAME, OwnedPyObject<>(PyUnicode_FromString(unqualified.cStr())).get());
+    PyDict_SetItemString(descriptor.get(), DESC_ID, OwnedPyObject<>(PyLong_FromUnsignedLongLong(proto.getId())).get());
 
     if (proto.isEnum()) {
         auto enum_schema = schema.asEnum();
@@ -52,7 +74,7 @@ OwnedPyObject<> build_schema_descriptor(capnp::Schema schema)
             }
         }
 
-        PyDict_SetItemString(descriptor.get(), "members", members.get());
+        PyDict_SetItemString(descriptor.get(), DESC_MEMBERS, members.get());
         return descriptor;
     }
 
@@ -108,10 +130,10 @@ OwnedPyObject<> build_schema_descriptor(capnp::Schema schema)
         }
     }
 
-    PyDict_SetItemString(descriptor.get(), "enum_fields", enum_fields.get());
-    PyDict_SetItemString(descriptor.get(), "list_enum_fields", list_enum_fields.get());
-    PyDict_SetItemString(descriptor.get(), "union_fields", union_fields.get());
-    PyDict_SetItemString(descriptor.get(), "children", children.get());
+    PyDict_SetItemString(descriptor.get(), DESC_ENUM_FIELDS, enum_fields.get());
+    PyDict_SetItemString(descriptor.get(), DESC_LIST_ENUM_FIELDS, list_enum_fields.get());
+    PyDict_SetItemString(descriptor.get(), DESC_UNION_FIELDS, union_fields.get());
+    PyDict_SetItemString(descriptor.get(), DESC_CHILDREN, children.get());
     return descriptor;
 }
 
@@ -241,9 +263,9 @@ static PyMethodDef CAPNP_UNION_FROM_BYTES_DEF = {
 
 OwnedPyObject<> create_enum_type(PyObject* descriptor, const char* module_name)
 {
-    OwnedPyObject<> name {Py_NewRef(PyDict_GetItemString(descriptor, "name"))};
-    OwnedPyObject<> members_list {Py_NewRef(PyDict_GetItemString(descriptor, "members"))};
-    OwnedPyObject<> schema_id_obj {Py_NewRef(PyDict_GetItemString(descriptor, "id"))};
+    OwnedPyObject<> name {Py_NewRef(PyDict_GetItemString(descriptor, DESC_NAME))};
+    OwnedPyObject<> members_list {Py_NewRef(PyDict_GetItemString(descriptor, DESC_MEMBERS))};
+    OwnedPyObject<> schema_id_obj {Py_NewRef(PyDict_GetItemString(descriptor, DESC_ID))};
     if (!name || !members_list || !schema_id_obj) {
         return nullptr;
     }
@@ -284,8 +306,8 @@ OwnedPyObject<> create_enum_type(PyObject* descriptor, const char* module_name)
     if (!enum_type) {
         return nullptr;
     }
-    if (PyObject_SetAttrString(enum_type.get(), "__module__", module_name_obj.get()) < 0 ||
-        PyObject_SetAttrString(enum_type.get(), "_schema_node_id", schema_id_obj.get()) < 0) {
+    if (PyObject_SetAttrString(enum_type.get(), ATTR_MODULE_DUNDER, module_name_obj.get()) < 0 ||
+        PyObject_SetAttrString(enum_type.get(), ATTR_SCHEMA_NODE_ID, schema_id_obj.get()) < 0) {
         return nullptr;
     }
     state->enum_registry[PyLong_AsUnsignedLongLong(schema_id_obj.get())] =
@@ -299,10 +321,10 @@ OwnedPyObject<> build_node_from_descriptor(
 OwnedPyObject<> create_struct_type(
     PyObject* descriptor, const char* module_name, std::vector<std::pair<OwnedPyObject<>, OwnedPyObject<>>>& pending)
 {
-    OwnedPyObject<> name {Py_NewRef(PyDict_GetItemString(descriptor, "name"))};
-    OwnedPyObject<> schema_id_obj {Py_NewRef(PyDict_GetItemString(descriptor, "id"))};
-    OwnedPyObject<> union_fields {Py_NewRef(PyDict_GetItemString(descriptor, "union_fields"))};
-    OwnedPyObject<> children {Py_NewRef(PyDict_GetItemString(descriptor, "children"))};
+    OwnedPyObject<> name {Py_NewRef(PyDict_GetItemString(descriptor, DESC_NAME))};
+    OwnedPyObject<> schema_id_obj {Py_NewRef(PyDict_GetItemString(descriptor, DESC_ID))};
+    OwnedPyObject<> union_fields {Py_NewRef(PyDict_GetItemString(descriptor, DESC_UNION_FIELDS))};
+    OwnedPyObject<> children {Py_NewRef(PyDict_GetItemString(descriptor, DESC_CHILDREN))};
     if (!name || !schema_id_obj || !union_fields || !children) {
         return nullptr;
     }
@@ -322,11 +344,11 @@ OwnedPyObject<> create_struct_type(
     if (!bases || !dict || !module_name_obj || !enum_fields || !list_enum_fields || !union_field_set) {
         return nullptr;
     }
-    PyDict_SetItemString(dict.get(), "__module__", module_name_obj.get());
-    PyDict_SetItemString(dict.get(), "_schema_node_id", schema_id_obj.get());
-    PyDict_SetItemString(dict.get(), "_enum_fields", enum_fields.get());
-    PyDict_SetItemString(dict.get(), "_list_enum_fields", list_enum_fields.get());
-    PyDict_SetItemString(dict.get(), "_union_fields", union_field_set.get());
+    PyDict_SetItemString(dict.get(), ATTR_MODULE_DUNDER, module_name_obj.get());
+    PyDict_SetItemString(dict.get(), ATTR_SCHEMA_NODE_ID, schema_id_obj.get());
+    PyDict_SetItemString(dict.get(), ATTR_ENUM_FIELDS, enum_fields.get());
+    PyDict_SetItemString(dict.get(), ATTR_LIST_ENUM_FIELDS, list_enum_fields.get());
+    PyDict_SetItemString(dict.get(), ATTR_UNION_FIELDS, union_field_set.get());
     OwnedPyObject<> type {create_python_class(PyUnicode_AsUTF8(name.get()), bases.get(), dict.get())};
     if (!type) {
         return nullptr;
@@ -338,7 +360,7 @@ OwnedPyObject<> create_struct_type(
         OwnedPyObject<> child {build_node_from_descriptor(child_descriptor, module_name, pending)};
         if (!child ||
             PyObject_SetAttrString(
-                type.get(), PyUnicode_AsUTF8(PyDict_GetItemString(child_descriptor, "name")), child.get()) < 0) {
+                type.get(), PyUnicode_AsUTF8(PyDict_GetItemString(child_descriptor, DESC_NAME)), child.get()) < 0) {
             return nullptr;
         }
     }
@@ -349,7 +371,7 @@ OwnedPyObject<> create_struct_type(
 OwnedPyObject<> build_node_from_descriptor(
     PyObject* descriptor, const char* module_name, std::vector<std::pair<OwnedPyObject<>, OwnedPyObject<>>>& pending)
 {
-    PyObject* kind = PyDict_GetItemString(descriptor, "kind");
+    PyObject* kind = PyDict_GetItemString(descriptor, DESC_KIND);
     if (!kind) {
         return nullptr;
     }
@@ -367,15 +389,15 @@ bool finalize_pending_types(const std::vector<std::pair<OwnedPyObject<>, OwnedPy
     for (const auto& item: pending) {
         PyObject* type       = item.first.get();
         PyObject* descriptor = item.second.get();
-        OwnedPyObject<> enum_fields {PyObject_GetAttrString(type, "_enum_fields")};
-        OwnedPyObject<> list_enum_fields {PyObject_GetAttrString(type, "_list_enum_fields")};
+        OwnedPyObject<> enum_fields {PyObject_GetAttrString(type, ATTR_ENUM_FIELDS)};
+        OwnedPyObject<> list_enum_fields {PyObject_GetAttrString(type, ATTR_LIST_ENUM_FIELDS)};
         if (!enum_fields || !list_enum_fields) {
             return false;
         }
         PyObject* key                    = nullptr;
         PyObject* value                  = nullptr;
         Py_ssize_t position              = 0;
-        PyObject* descriptor_enum_fields = PyDict_GetItemString(descriptor, "enum_fields");
+        PyObject* descriptor_enum_fields = PyDict_GetItemString(descriptor, DESC_ENUM_FIELDS);
         while (PyDict_Next(descriptor_enum_fields, &position, &key, &value)) {
             auto* state = get_module_state();
             if (!state) {
@@ -387,7 +409,7 @@ bool finalize_pending_types(const std::vector<std::pair<OwnedPyObject<>, OwnedPy
             }
         }
         position                              = 0;
-        PyObject* descriptor_list_enum_fields = PyDict_GetItemString(descriptor, "list_enum_fields");
+        PyObject* descriptor_list_enum_fields = PyDict_GetItemString(descriptor, DESC_LIST_ENUM_FIELDS);
         while (PyDict_Next(descriptor_list_enum_fields, &position, &key, &value)) {
             auto* state = get_module_state();
             if (!state) {
@@ -475,7 +497,7 @@ bool initialize_runtime_modules(PyObject* module)
         return false;
     }
 
-    OwnedPyObject<> runtime_initialized {PyObject_GetAttrString(module, "_runtime_initialized")};
+    OwnedPyObject<> runtime_initialized {PyObject_GetAttrString(module, ATTR_RUNTIME_INITIALIZED)};
     if (runtime_initialized && PyObject_IsTrue(runtime_initialized.get()) == 1) {
         return true;
     }
@@ -505,11 +527,15 @@ bool initialize_runtime_modules(PyObject* module)
     }
 
     PyDict_SetItemString(
-        capnp_struct_dict.get(), "__module__", OwnedPyObject<>(PyUnicode_FromString("scaler.protocol.capnp")).get());
-    PyDict_SetItemString(capnp_struct_dict.get(), "_enum_fields", OwnedPyObject<>(PyDict_New()).get());
-    PyDict_SetItemString(capnp_struct_dict.get(), "_list_enum_fields", OwnedPyObject<>(PyDict_New()).get());
+        capnp_struct_dict.get(),
+        ATTR_MODULE_DUNDER,
+        OwnedPyObject<>(PyUnicode_FromString(SCALER_PROTOCOL_CAPNP)).get());
+    PyDict_SetItemString(capnp_struct_dict.get(), ATTR_ENUM_FIELDS, OwnedPyObject<>(PyDict_New()).get());
+    PyDict_SetItemString(capnp_struct_dict.get(), ATTR_LIST_ENUM_FIELDS, OwnedPyObject<>(PyDict_New()).get());
     PyDict_SetItemString(
-        capnp_struct_dict.get(), "from_bytes", OwnedPyObject<>(make_class_method(&CAPNP_STRUCT_FROM_BYTES_DEF)).get());
+        capnp_struct_dict.get(),
+        ATTR_FROM_BYTES,
+        OwnedPyObject<>(make_class_method(&CAPNP_STRUCT_FROM_BYTES_DEF)).get());
     OwnedPyObject<> capnp_struct_type {create_python_class("CapnpStruct", empty_bases.get(), capnp_struct_dict.get())};
     if (!capnp_struct_type) {
         return false;
@@ -540,12 +566,12 @@ bool initialize_runtime_modules(PyObject* module)
     OwnedPyObject<> union_bases {PyTuple_Pack(1, capnp_struct_type.get())};
     PyDict_SetItemString(
         capnp_union_struct_dict.get(),
-        "__module__",
-        OwnedPyObject<>(PyUnicode_FromString("scaler.protocol.capnp")).get());
-    PyDict_SetItemString(capnp_union_struct_dict.get(), "_union_fields", OwnedPyObject<>(PySet_New(nullptr)).get());
+        ATTR_MODULE_DUNDER,
+        OwnedPyObject<>(PyUnicode_FromString(SCALER_PROTOCOL_CAPNP)).get());
+    PyDict_SetItemString(capnp_union_struct_dict.get(), ATTR_UNION_FIELDS, OwnedPyObject<>(PySet_New(nullptr)).get());
     PyDict_SetItemString(
         capnp_union_struct_dict.get(),
-        "from_bytes",
+        ATTR_FROM_BYTES,
         OwnedPyObject<>(make_class_method(&CAPNP_UNION_FROM_BYTES_DEF)).get());
     OwnedPyObject<> capnp_union_struct_type {
         create_python_class("CapnpUnionStruct", union_bases.get(), capnp_union_struct_dict.get())};
@@ -617,7 +643,7 @@ bool initialize_runtime_modules(PyObject* module)
             if (!object) {
                 return false;
             }
-            PyObject* name = PyDict_GetItemString(descriptor, "name");
+            PyObject* name = PyDict_GetItemString(descriptor, DESC_NAME);
             if (PyObject_SetAttr(generated_module.get(), name, object.get()) < 0 ||
                 PyList_Append(all_list.get(), name) < 0) {
                 return false;
@@ -629,12 +655,12 @@ bool initialize_runtime_modules(PyObject* module)
         if (!finalize_pending_types(pending)) {
             return false;
         }
-        if (PyObject_SetAttrString(generated_module.get(), "__all__", all_list.get()) < 0) {
+        if (PyObject_SetAttrString(generated_module.get(), ATTR_ALL_DUNDER, all_list.get()) < 0) {
             return false;
         }
     }
 
-    return PyObject_SetAttrString(module, "_runtime_initialized", Py_True) == 0;
+    return PyObject_SetAttrString(module, ATTR_RUNTIME_INITIALIZED, Py_True) == 0;
 }
 
 }  // namespace scaler::protocol::pymod
