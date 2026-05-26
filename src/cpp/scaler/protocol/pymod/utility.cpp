@@ -35,18 +35,18 @@ using scaler::utility::pymod::OwnedPyObject;
 // same pattern for utility.cpp.
 //
 // Keep the contents in lockstep with the names referenced below.
-static const char KEY_ENUM_FIELDS[]                = "_enum_fields";
-static const char KEY_LIST_ENUM_FIELDS[]           = "_list_enum_fields";
-static const char KEY_UNION_FIELDS[]               = "_union_fields";
-static const char KEY_VARIANT_NAME[]               = "_variant_name";
-static const char KEY_CAPNP_SOURCE[]               = "_capnp_source";
-static const char KEY_CAPNP_TRAVERSAL_LIMIT[]      = "_capnp_traversal_limit_in_words";
-static const char KEY_CAPNP_ROOT_SCHEMA_NODE_ID[]  = "_capnp_root_schema_node_id";
-static const char KEY_CAPNP_PATH[]                 = "_capnp_path";
-static const char KW_DATA[]                        = "data";
-static const char KW_TRAVERSAL_LIMIT_IN_WORDS[]    = "traversal_limit_in_words";
-static const char FMT_STRING[]                     = "s";
-static const char FMT_OBJECT_OR_LIMIT[]            = "O|K";
+static const char KEY_ENUM_FIELDS[]               = "_enum_fields";
+static const char KEY_LIST_ENUM_FIELDS[]          = "_list_enum_fields";
+static const char KEY_UNION_FIELDS[]              = "_union_fields";
+static const char KEY_VARIANT_NAME[]              = "_variant_name";
+static const char KEY_CAPNP_SOURCE[]              = "_capnp_source";
+static const char KEY_CAPNP_TRAVERSAL_LIMIT[]     = "_capnp_traversal_limit_in_words";
+static const char KEY_CAPNP_ROOT_SCHEMA_NODE_ID[] = "_capnp_root_schema_node_id";
+static const char KEY_CAPNP_PATH[]                = "_capnp_path";
+static const char KW_DATA[]                       = "data";
+static const char KW_TRAVERSAL_LIMIT_IN_WORDS[]   = "traversal_limit_in_words";
+static const char FMT_STRING[]                    = "s";
+static const char FMT_OBJECT_OR_LIMIT[]           = "O|K";
 
 OwnedPyObject<> get_attr(PyObject* obj, const char* name)
 {
@@ -252,7 +252,7 @@ static OwnedPyObject<> get_instance_attr_borrowed(PyObject* self, const char* na
         return {};
     }
     Py_INCREF(value);
-    return OwnedPyObject<>{value};
+    return OwnedPyObject<> {value};
 }
 
 bool load_lazy_struct_metadata(

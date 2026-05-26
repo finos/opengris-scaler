@@ -287,8 +287,7 @@ def _install_js_heartbeat_timer(socket: Any) -> None:
         # have detached typed-array buffers in the past, and a silent
         # detachment is the failure mode that motivated this hardening. The
         # cost is one tiny per-tick allocation.
-        make_timer = run_js(
-            """
+        make_timer = run_js("""
             (ws, srcBytes, intervalMs, state) => {
                 const srcArr = Array.from(srcBytes);
                 const timerId = setInterval(() => {
@@ -312,8 +311,7 @@ def _install_js_heartbeat_timer(socket: Any) -> None:
                 state.install_ms = Date.now();
                 return timerId;
             }
-            """
-        )
+            """)
 
         # Plain JS object that the timer mutates. Created via ``js.Object.new``
         # so the JsProxy round-trips correctly (a Python dict here would be

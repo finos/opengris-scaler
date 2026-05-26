@@ -20,23 +20,23 @@ namespace {
 // top of utility.cpp and the long comment in initialize_runtime_modules() for
 // why bare ``"foo"`` literals are unsafe in this translation unit when built
 // for Pyodide / Emscripten SIDE_MODULE.
-static const char DESC_KIND[]                 = "kind";
-static const char DESC_NAME[]                 = "name";
-static const char DESC_ID[]                   = "id";
-static const char DESC_MEMBERS[]              = "members";
-static const char DESC_ENUM_FIELDS[]          = "enum_fields";
-static const char DESC_LIST_ENUM_FIELDS[]     = "list_enum_fields";
-static const char DESC_UNION_FIELDS[]         = "union_fields";
-static const char DESC_CHILDREN[]             = "children";
-static const char ATTR_MODULE_DUNDER[]        = "__module__";
-static const char ATTR_SCHEMA_NODE_ID[]       = "_schema_node_id";
-static const char ATTR_ENUM_FIELDS[]          = "_enum_fields";
-static const char ATTR_LIST_ENUM_FIELDS[]     = "_list_enum_fields";
-static const char ATTR_UNION_FIELDS[]         = "_union_fields";
-static const char ATTR_RUNTIME_INITIALIZED[]  = "_runtime_initialized";
-static const char ATTR_FROM_BYTES[]           = "from_bytes";
-static const char ATTR_ALL_DUNDER[]           = "__all__";
-static const char SCALER_PROTOCOL_CAPNP[]     = "scaler.protocol.capnp";
+static const char DESC_KIND[]                = "kind";
+static const char DESC_NAME[]                = "name";
+static const char DESC_ID[]                  = "id";
+static const char DESC_MEMBERS[]             = "members";
+static const char DESC_ENUM_FIELDS[]         = "enum_fields";
+static const char DESC_LIST_ENUM_FIELDS[]    = "list_enum_fields";
+static const char DESC_UNION_FIELDS[]        = "union_fields";
+static const char DESC_CHILDREN[]            = "children";
+static const char ATTR_MODULE_DUNDER[]       = "__module__";
+static const char ATTR_SCHEMA_NODE_ID[]      = "_schema_node_id";
+static const char ATTR_ENUM_FIELDS[]         = "_enum_fields";
+static const char ATTR_LIST_ENUM_FIELDS[]    = "_list_enum_fields";
+static const char ATTR_UNION_FIELDS[]        = "_union_fields";
+static const char ATTR_RUNTIME_INITIALIZED[] = "_runtime_initialized";
+static const char ATTR_FROM_BYTES[]          = "from_bytes";
+static const char ATTR_ALL_DUNDER[]          = "__all__";
+static const char SCALER_PROTOCOL_CAPNP[]    = "scaler.protocol.capnp";
 
 OwnedPyObject<> build_schema_descriptor(capnp::Schema schema)
 {
@@ -47,9 +47,9 @@ OwnedPyObject<> build_schema_descriptor(capnp::Schema schema)
         return nullptr;
     }
 
-    static const char KIND_ENUM[]   = {'e','n','u','m','\0'};
-    static const char KIND_STRUCT[] = {'s','t','r','u','c','t','\0'};
-    const char* kind = proto.isEnum() ? KIND_ENUM : KIND_STRUCT;
+    static const char KIND_ENUM[]   = {'e', 'n', 'u', 'm', '\0'};
+    static const char KIND_STRUCT[] = {'s', 't', 'r', 'u', 'c', 't', '\0'};
+    const char* kind                = proto.isEnum() ? KIND_ENUM : KIND_STRUCT;
     PyDict_SetItemString(descriptor.get(), DESC_KIND, OwnedPyObject<>(PyUnicode_FromString(kind)).get());
     auto unqualified = schema.getUnqualifiedName();
     PyDict_SetItemString(descriptor.get(), DESC_NAME, OwnedPyObject<>(PyUnicode_FromString(unqualified.cStr())).get());
@@ -244,7 +244,7 @@ static const char NAME_FROM_BYTES[] = {'f', 'r', 'o', 'm', '_', 'b', 'y', 't', '
 static const char NAME_WHICH[]      = {'w', 'h', 'i', 'c', 'h', '\0'};
 static const char NAME_GETATTR[]    = {'_', '_', 'g', 'e', 't', 'a', 't', 't', 'r', '_', '_', '\0'};
 
-static PyMethodDef CAPNP_STRUCT_INIT_DEF     = {
+static PyMethodDef CAPNP_STRUCT_INIT_DEF = {
     NAME_INIT, (PyCFunction)(void (*)(void))py_capnp_struct_init_method, METH_VARARGS | METH_KEYWORDS, nullptr};
 static PyMethodDef CAPNP_STRUCT_GETATTR_DEF = {
     NAME_GETATTR, (PyCFunction)py_capnp_struct_get_attr, METH_VARARGS, nullptr};
@@ -257,7 +257,8 @@ static PyMethodDef CAPNP_UNION_INIT_DEF = {
 static PyMethodDef CAPNP_UNION_WHICH_DEF   = {NAME_WHICH, (PyCFunction)py_capnp_union_which, METH_NOARGS, nullptr};
 static PyMethodDef CAPNP_UNION_GETATTR_DEF = {
     NAME_GETATTR, (PyCFunction)py_capnp_union_get_attr, METH_VARARGS, nullptr};
-static PyMethodDef CAPNP_UNION_TO_BYTES_DEF = {NAME_TO_BYTES, (PyCFunction)py_capnp_union_to_bytes, METH_NOARGS, nullptr};
+static PyMethodDef CAPNP_UNION_TO_BYTES_DEF = {
+    NAME_TO_BYTES, (PyCFunction)py_capnp_union_to_bytes, METH_NOARGS, nullptr};
 static PyMethodDef CAPNP_UNION_FROM_BYTES_DEF = {
     NAME_FROM_BYTES, (PyCFunction)(void (*)(void))py_capnp_union_from_bytes, METH_VARARGS | METH_KEYWORDS, nullptr};
 
@@ -294,7 +295,7 @@ OwnedPyObject<> create_enum_type(PyObject* descriptor, const char* module_name)
     // caller is a C extension and, on Python 3.13+, ends up triggering an
     // empty-name __import__("") that raises ValueError("Empty module name")).
     OwnedPyObject<> kwargs {PyDict_New()};
-    static const char MODULE_KW[] = {'m','o','d','u','l','e','\0'};
+    static const char MODULE_KW[] = {'m', 'o', 'd', 'u', 'l', 'e', '\0'};
     if (!kwargs || PyDict_SetItemString(kwargs.get(), MODULE_KW, module_name_obj.get()) < 0) {
         return nullptr;
     }
@@ -375,8 +376,8 @@ OwnedPyObject<> build_node_from_descriptor(
     if (!kind) {
         return nullptr;
     }
-    static const char ENUM_KIND[] = {'e','n','u','m','\0'};
-    int is_enum = PyUnicode_CompareWithASCIIString(kind, ENUM_KIND);
+    static const char ENUM_KIND[] = {'e', 'n', 'u', 'm', '\0'};
+    int is_enum                   = PyUnicode_CompareWithASCIIString(kind, ENUM_KIND);
     if (is_enum == 0) {
         return create_enum_type(descriptor, module_name);
     }

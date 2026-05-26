@@ -254,11 +254,7 @@ class HeartbeatDiagnosticTest(unittest.TestCase):
     """
 
     def test_returns_plain_dict_when_no_js_state(self) -> None:
-        with patch.object(
-            bridge_module,
-            "_js_heartbeat_state",
-            dict(bridge_module._js_heartbeat_state, js_state=None),
-        ):
+        with patch.object(bridge_module, "_js_heartbeat_state", dict(bridge_module._js_heartbeat_state, js_state=None)):
             snap = bridge_module.heartbeat_diagnostic()
         self.assertIsInstance(snap, dict)
         self.assertIsNone(snap["js"])
@@ -280,9 +276,7 @@ class HeartbeatDiagnosticTest(unittest.TestCase):
             timer_id = 42
 
         with patch.object(
-            bridge_module,
-            "_js_heartbeat_state",
-            dict(bridge_module._js_heartbeat_state, js_state=_FakeJsState()),
+            bridge_module, "_js_heartbeat_state", dict(bridge_module._js_heartbeat_state, js_state=_FakeJsState())
         ):
             snap = bridge_module.heartbeat_diagnostic()
         self.assertEqual(snap["js"]["fire_count"], 7)
