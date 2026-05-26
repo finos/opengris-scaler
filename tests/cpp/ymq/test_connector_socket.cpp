@@ -9,6 +9,7 @@
 #include "scaler/wrapper/uv/loop.h"
 #include "scaler/wrapper/uv/tcp.h"
 #include "scaler/ymq/address.h"
+#include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/bytes.h"
 #include "scaler/ymq/connector_socket.h"
 #include "scaler/ymq/internal/message_connection.h"
@@ -127,9 +128,9 @@ TEST_F(YMQConnectorSocketTest, SendMessage)
 
     ConnectorServerPair connections(
         // Server callbacks
-        []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
-        [](auto) { FAIL() << "Unexpected disconnect on server"; },  // onRemoteDisconnect
-        [&]([[maybe_unused]] scaler::ymq::Bytes receivedPayload) {  // onMessage
+        []([[maybe_unused]] auto identity) {},                                       // onRemoteIdentity
+        [](auto) { FAIL() << "Unexpected disconnect on server"; },                   // onRemoteDisconnect
+        [&]([[maybe_unused]] std::unique_ptr<scaler::ymq::Bytes> receivedPayload) {  // onMessage
             serverMessagesReceived++;
         },
 
@@ -151,7 +152,7 @@ TEST_F(YMQConnectorSocketTest, SendMessage)
     };
 
     // Send message BEFORE connection completes
-    connector.sendMessage(scaler::ymq::Bytes(messagePayload), onMessageSent);
+    connector.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(messagePayload), onMessageSent);
 
     // Wait for connection to complete
     connectCalled.get_future().get();
@@ -161,7 +162,7 @@ TEST_F(YMQConnectorSocketTest, SendMessage)
 
     // Send message DURING connection
     sendCallbackCalled = {};
-    connector.sendMessage(scaler::ymq::Bytes(messagePayload), onMessageSent);
+    connector.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(messagePayload), onMessageSent);
 
     // Wait for second message to be sent
     ASSERT_EQ(sendCallbackCalled.get_future().wait_for(std::chrono::seconds {5}), std::future_status::ready);
@@ -187,7 +188,7 @@ TEST_F(YMQConnectorSocketTest, SendMessage)
         sendErrorReceived.set_value(result.error());
     };
 
-    connector.sendMessage(scaler::ymq::Bytes(messagePayload), onMessageSentError);
+    connector.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(messagePayload), onMessageSentError);
 
     // Wait for send to fail
     scaler::ymq::Error error = sendErrorReceived.get_future().get();
@@ -220,7 +221,7 @@ TEST_F(YMQConnectorSocketTest, RecvMessage)
 
     auto onConnectorRecvMessage = [&](std::expected<scaler::ymq::Message, scaler::ymq::Error> result) {
         ASSERT_TRUE(result.has_value());
-        recvCalled.set_value(result.value());
+        recvCalled.set_value(std::move(*result));
     };
 
     // Register receive callback BEFORE connection completes
@@ -241,7 +242,7 @@ TEST_F(YMQConnectorSocketTest, RecvMessage)
         sendCalled = true;
     };
 
-    server.sendMessage(scaler::ymq::Bytes(messagePayload), onMessageSent);
+    server.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(messagePayload), onMessageSent);
 
     // Wait for message to be sent
     while (!sendCalled) {
@@ -250,8 +251,8 @@ TEST_F(YMQConnectorSocketTest, RecvMessage)
 
     // Wait for first message to be received
     scaler::ymq::Message message = recvCalled.get_future().get();
-    ASSERT_EQ(message.address.as_string(), ConnectorServerPair::serverIdentity);
-    ASSERT_EQ(message.payload.as_string(), messagePayload);
+    ASSERT_EQ(scaler::ymq::as_string(*message.address), ConnectorServerPair::serverIdentity);
+    ASSERT_EQ(scaler::ymq::as_string(*message.payload), messagePayload);
 
     // Register receive callback AFTER connection is established
     recvCalled = {};
@@ -259,7 +260,7 @@ TEST_F(YMQConnectorSocketTest, RecvMessage)
 
     // Send second message from server
     sendCalled = false;
-    server.sendMessage(scaler::ymq::Bytes(messagePayload), onMessageSent);
+    server.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(messagePayload), onMessageSent);
 
     // Wait for message to be sent
     while (!sendCalled) {
@@ -345,7 +346,7 @@ TEST_F(YMQConnectorSocketTest, Reconnect)
     connector.recvMessage(onConnectorRecvMessage);
 
     bool sendCalled = false;
-    server.sendMessage(scaler::ymq::Bytes(messagePayload), [&](auto) { sendCalled = true; });
+    server.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(messagePayload), [&](auto) { sendCalled = true; });
 
     while (!sendCalled) {
         loop.run(UV_RUN_ONCE);
@@ -388,22 +389,22 @@ TEST_F(YMQConnectorSocketTest, Bind)
     auto connectorSocket = std::move(connectorResult.value());
 
     // Send a message from the connecting connector
-    auto sendResult1 = connectorSocket.sendMessage(scaler::ymq::Bytes(messagePayload));
+    auto sendResult1 = connectorSocket.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(messagePayload));
     ASSERT_TRUE(sendResult1.has_value());
 
     // Receive the message on binding connector
     auto recvResult1 = binderSocket.recvMessage();
     ASSERT_TRUE(recvResult1.has_value());
-    ASSERT_EQ(recvResult1.value().address.as_string(), connectorIdentity);
-    ASSERT_EQ(recvResult1.value().payload.as_string(), messagePayload);
+    ASSERT_EQ(scaler::ymq::as_string(*recvResult1.value().address), connectorIdentity);
+    ASSERT_EQ(scaler::ymq::as_string(*recvResult1.value().payload), messagePayload);
 
     // Send a message from the binding connector
-    auto sendResult2 = binderSocket.sendMessage(scaler::ymq::Bytes(messagePayload));
+    auto sendResult2 = binderSocket.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(messagePayload));
     ASSERT_TRUE(sendResult2.has_value());
 
     // Receive the message on the connecting connector
     auto recvResult2 = connectorSocket.recvMessage();
     ASSERT_TRUE(recvResult2.has_value());
-    ASSERT_EQ(recvResult2.value().address.as_string(), binderIdentity);
-    ASSERT_EQ(recvResult2.value().payload.as_string(), messagePayload);
+    ASSERT_EQ(scaler::ymq::as_string(*recvResult2.value().address), binderIdentity);
+    ASSERT_EQ(scaler::ymq::as_string(*recvResult2.value().payload), messagePayload);
 }

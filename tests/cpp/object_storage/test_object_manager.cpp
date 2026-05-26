@@ -2,8 +2,14 @@
 
 #include "scaler/object_storage/defs.h"
 #include "scaler/object_storage/object_manager.h"
+#include "scaler/ymq/buffered_bytes.h"
 
-const scaler::object_storage::ObjectPayload payload {std::string("Hello")};
+static const std::string payloadContent {"Hello"};
+
+static std::unique_ptr<scaler::object_storage::ObjectPayload> makePayload()
+{
+    return std::make_unique<scaler::ymq::BufferedBytes>(payloadContent);
+}
 
 TEST(ObjectManagerTestSuite, TestSetObject)
 {
@@ -15,7 +21,7 @@ TEST(ObjectManagerTestSuite, TestSetObject)
     EXPECT_EQ(objectManager.size(), 0);
     EXPECT_EQ(objectManager.sizeUnique(), 0);
 
-    objectManager.setObject(objectID1, scaler::object_storage::ObjectPayload(payload));
+    objectManager.setObject(objectID1, makePayload());
 
     EXPECT_TRUE(objectManager.hasObject(objectID1));
     EXPECT_EQ(objectManager.size(), 1);
@@ -23,7 +29,7 @@ TEST(ObjectManagerTestSuite, TestSetObject)
 
     scaler::object_storage::ObjectID objectID2 {3, 2, 1, 0};
 
-    objectManager.setObject(objectID2, scaler::object_storage::ObjectPayload(payload));
+    objectManager.setObject(objectID2, makePayload());
 
     EXPECT_TRUE(objectManager.hasObject(objectID2));
     EXPECT_EQ(objectManager.size(), 2);
@@ -40,11 +46,11 @@ TEST(ObjectManagerTestSuite, TestGetObject)
 
     EXPECT_EQ(payloadPtr, nullptr);  // not yet existing object
 
-    objectManager.setObject(objectID1, scaler::object_storage::ObjectPayload(payload));
+    objectManager.setObject(objectID1, makePayload());
 
     payloadPtr = objectManager.getObject(objectID1);
 
-    EXPECT_EQ(*payloadPtr, payload);
+    EXPECT_EQ(scaler::ymq::as_string(*payloadPtr), payloadContent);
 }
 
 TEST(ObjectManagerTestSuite, TestDeleteObject)
@@ -53,7 +59,7 @@ TEST(ObjectManagerTestSuite, TestDeleteObject)
 
     scaler::object_storage::ObjectID objectID1 {0, 1, 2, 3};
 
-    objectManager.setObject(objectID1, scaler::object_storage::ObjectPayload(payload));
+    objectManager.setObject(objectID1, makePayload());
 
     bool deleted = objectManager.deleteObject(objectID1);
     EXPECT_TRUE(deleted);
@@ -77,11 +83,11 @@ TEST(ObjectManagerTestSuite, TestDuplicateObject)
     auto duplicatedObject = objectManager.duplicateObject(objectID1, objectID2);
     EXPECT_EQ(duplicatedObject, nullptr);
 
-    objectManager.setObject(objectID1, scaler::object_storage::ObjectPayload(payload));
+    objectManager.setObject(objectID1, makePayload());
 
     duplicatedObject = objectManager.duplicateObject(objectID1, objectID2);
     EXPECT_NE(duplicatedObject, nullptr);
-    EXPECT_EQ(*duplicatedObject, payload);
+    EXPECT_EQ(scaler::ymq::as_string(*duplicatedObject), payloadContent);
 
     // Deleting the first object does not remove the duplicated one.
     objectManager.deleteObject(objectID1);
@@ -95,10 +101,10 @@ TEST(ObjectManagerTestSuite, TestReferenceCountObject)
     scaler::object_storage::ObjectManager objectManager;
 
     scaler::object_storage::ObjectID objectID1 {11, 0, 0, 0};
-    objectManager.setObject(objectID1, scaler::object_storage::ObjectPayload(payload));
+    objectManager.setObject(objectID1, makePayload());
 
     scaler::object_storage::ObjectID objectID2 {12, 0, 0, 0};
-    objectManager.setObject(objectID2, scaler::object_storage::ObjectPayload(payload));
+    objectManager.setObject(objectID2, makePayload());
 
     EXPECT_EQ(objectManager.size(), 2);
     EXPECT_EQ(objectManager.sizeUnique(), 1);

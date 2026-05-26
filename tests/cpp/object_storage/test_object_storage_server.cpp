@@ -3,10 +3,12 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <span>
 #include <string>
 #include <thread>
 
 #include "scaler/object_storage/object_storage_server.h"
+#include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/sync/connector_socket.h"
 
@@ -14,18 +16,18 @@ using scaler::object_storage::CAPNP_HEADER_SIZE;
 using scaler::object_storage::CAPNP_WORD_SIZE;
 using scaler::object_storage::getAvailableTCPPort;
 using scaler::object_storage::ObjectID;
-using scaler::object_storage::ObjectPayload;
 using scaler::object_storage::ObjectRequestHeader;
 using scaler::object_storage::ObjectResponseHeader;
 using scaler::object_storage::ObjectStorageServer;
-
-using scaler::ymq::Bytes;
+using scaler::ymq::BufferedBytes;
 using scaler::ymq::Error;
 using scaler::ymq::IOContext;
 using scaler::ymq::Message;
 
 using ObjectRequestType  = scaler::protocol::ObjectRequestHeader::ObjectRequestType;
 using ObjectResponseType = scaler::protocol::ObjectResponseHeader::ObjectResponseType;
+
+using ReceivedPayload = std::shared_ptr<const scaler::ymq::Bytes>;
 
 // This client class is used to connect to and interact with the server.
 class ObjectStorageClient {
@@ -41,9 +43,9 @@ public:
     ObjectStorageClient(const ObjectStorageClient&)            = delete;
     ObjectStorageClient& operator=(const ObjectStorageClient&) = delete;
 
-    void writeYMQMessage(Message message)
+    void writeYMQMessage(std::unique_ptr<scaler::ymq::Bytes> payload)
     {
-        auto result = socket.sendMessage(std::move(message.payload));
+        auto result = socket.sendMessage(std::move(payload));
         ASSERT_TRUE(result.has_value());
     }
 
@@ -52,35 +54,33 @@ public:
         return socket.recvMessage();
     }
 
-    void writeRequest(const ObjectRequestHeader& header, const std::optional<ObjectPayload>& payload)
+    void writeRequest(const ObjectRequestHeader& header, std::optional<std::span<const uint8_t>> payload = std::nullopt)
     {
         auto buf = header.toBuffer();
-
-        Message ymqHeader {};
-        ymqHeader.payload = Bytes((char*)buf.asBytes().begin(), buf.asBytes().size());
-        writeYMQMessage(std::move(ymqHeader));
+        writeYMQMessage(
+            std::make_unique<BufferedBytes>(
+                reinterpret_cast<const char*>(buf.asBytes().begin()), buf.asBytes().size()));
 
         if (payload) {
-            Message ymqPayload {};
-            ymqPayload.payload = *payload;
-            writeYMQMessage(std::move(ymqPayload));
+            writeYMQMessage(
+                std::make_unique<BufferedBytes>(reinterpret_cast<const char*>(payload->data()), payload->size()));
         }
     }
 
-    void readResponse(ObjectResponseHeader& header, std::optional<ObjectPayload>& payload)
+    void readResponse(ObjectResponseHeader& header, std::optional<ReceivedPayload>& payload)
     {
         std::array<uint64_t, CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE> buf {};
         auto result = socket.recvMessage();
         ASSERT_TRUE(result.has_value());
 
-        memcpy(buf.data(), result->payload.data(), CAPNP_HEADER_SIZE);
-        ASSERT_EQ(result->payload.size(), CAPNP_HEADER_SIZE);
+        memcpy(buf.data(), result->payload->data(), CAPNP_HEADER_SIZE);
+        ASSERT_EQ(result->payload->size(), CAPNP_HEADER_SIZE);
         header = ObjectResponseHeader::fromBuffer(buf);
 
         if (header.payloadLength > 0) {
             auto result2 = socket.recvMessage();
             ASSERT_TRUE(result2.has_value());
-            payload.emplace(result2->payload);
+            payload.emplace(ReceivedPayload(std::move(result2->payload)));
         } else {
             payload.reset();
         }
@@ -158,23 +158,25 @@ protected:
     }
 };
 
-const ObjectPayload payload {std::string("Hello")};
+const std::string payloadContent {"Hello"};
+const std::span<const uint8_t> payloadSpan {
+    reinterpret_cast<const uint8_t*>(payloadContent.data()), payloadContent.size()};
 
 TEST_F(ObjectStorageServerTest, TestSetObject)
 {
     ObjectResponseHeader responseHeader;
-    std::optional<ObjectPayload> responsePayload;
+    std::optional<ReceivedPayload> responsePayload;
 
     auto client = getClient();
 
     ObjectRequestHeader requestHeader {
         .objectID      = {0, 1, 2, 3},
-        .payloadLength = payload.size(),
+        .payloadLength = payloadContent.size(),
         .requestID     = 42,
         .requestType   = ObjectRequestType::SET_OBJECT,
     };
 
-    client->writeRequest(requestHeader, {payload});
+    client->writeRequest(requestHeader, payloadSpan);
     client->readResponse(responseHeader, responsePayload);
 
     EXPECT_EQ(responseHeader.objectID, requestHeader.objectID);
@@ -186,7 +188,7 @@ TEST_F(ObjectStorageServerTest, TestSetObject)
 TEST_F(ObjectStorageServerTest, TestGetObject)
 {
     ObjectResponseHeader responseHeader;
-    std::optional<ObjectPayload> responsePayload;
+    std::optional<ReceivedPayload> responsePayload;
     uint64_t requestID = 12;
 
     auto client = getClient();
@@ -195,12 +197,12 @@ TEST_F(ObjectStorageServerTest, TestGetObject)
     {
         ObjectRequestHeader requestHeader {
             .objectID      = {0, 1, 2, 3},
-            .payloadLength = payload.size(),
+            .payloadLength = payloadContent.size(),
             .requestID     = requestID++,
             .requestType   = ObjectRequestType::SET_OBJECT,
         };
 
-        client->writeRequest(requestHeader, {payload});
+        client->writeRequest(requestHeader, payloadSpan);
 
         client->readResponse(responseHeader, responsePayload);
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::SET_O_K);
@@ -216,16 +218,13 @@ TEST_F(ObjectStorageServerTest, TestGetObject)
             .requestType   = ObjectRequestType::GET_OBJECT,
         };
 
-        requestHeader.payloadLength = UINT64_MAX;
-        requestHeader.requestType   = ObjectRequestType::GET_OBJECT;
-
         client->writeRequest(requestHeader, std::nullopt);
         client->readResponse(responseHeader, responsePayload);
 
         EXPECT_EQ(responseHeader.objectID, requestHeader.objectID);
-        EXPECT_EQ(responseHeader.payloadLength, payload.size());
+        EXPECT_EQ(responseHeader.payloadLength, payloadContent.size());
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::GET_O_K);
-        EXPECT_EQ(*responsePayload, payload);
+        EXPECT_EQ(scaler::ymq::as_string(**responsePayload), payloadContent);
     }
 
     // Get the first byte of the object
@@ -241,15 +240,15 @@ TEST_F(ObjectStorageServerTest, TestGetObject)
         client->readResponse(responseHeader, responsePayload);
 
         EXPECT_EQ(responseHeader.payloadLength, 1);
-        EXPECT_EQ(responsePayload->size(), 1);
-        EXPECT_EQ(*responsePayload->data(), *payload.data());
+        EXPECT_EQ((*responsePayload)->size(), 1);
+        EXPECT_EQ(*(*responsePayload)->data(), payloadContent[0]);
     }
 }
 
 TEST_F(ObjectStorageServerTest, TestDeleteObject)
 {
     ObjectResponseHeader responseHeader;
-    std::optional<ObjectPayload> responsePayload;
+    std::optional<ReceivedPayload> responsePayload;
     uint64_t requestID = 16;
 
     auto client = getClient();
@@ -278,12 +277,12 @@ TEST_F(ObjectStorageServerTest, TestDeleteObject)
     {
         ObjectRequestHeader requestHeader {
             .objectID      = {0, 1, 2, 3},
-            .payloadLength = payload.size(),
+            .payloadLength = payloadContent.size(),
             .requestID     = requestID++,
             .requestType   = ObjectRequestType::SET_OBJECT,
         };
 
-        client->writeRequest(requestHeader, {payload});
+        client->writeRequest(requestHeader, payloadSpan);
         client->readResponse(responseHeader, responsePayload);
 
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::SET_O_K);
@@ -318,10 +317,15 @@ TEST_F(ObjectStorageServerTest, TestDeleteObject)
     }
 }
 
+static std::span<const uint8_t> objectIDToSpan(const kj::Array<const capnp::word>& buffer)
+{
+    return {reinterpret_cast<const uint8_t*>(buffer.asBytes().begin()), buffer.asBytes().size()};
+}
+
 TEST_F(ObjectStorageServerTest, TestDuplicateObject)
 {
     ObjectResponseHeader responseHeader;
-    std::optional<ObjectPayload> responsePayload;
+    std::optional<ReceivedPayload> responsePayload;
     uint64_t requestID = 655;
 
     auto client = getClient();
@@ -333,12 +337,12 @@ TEST_F(ObjectStorageServerTest, TestDuplicateObject)
     {
         ObjectRequestHeader requestHeader {
             .objectID      = originalObjectID,
-            .payloadLength = payload.size(),
+            .payloadLength = payloadContent.size(),
             .requestID     = requestID++,
             .requestType   = ObjectRequestType::SET_OBJECT,
         };
 
-        client->writeRequest(requestHeader, {payload});
+        client->writeRequest(requestHeader, payloadSpan);
 
         client->readResponse(responseHeader, responsePayload);
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::SET_O_K);
@@ -354,11 +358,7 @@ TEST_F(ObjectStorageServerTest, TestDuplicateObject)
         };
 
         auto originalObjectIDBuffer = originalObjectID.toBuffer();
-        ObjectPayload originalObjectIDPayload {
-            reinterpret_cast<char*>(const_cast<unsigned char*>(originalObjectIDBuffer.asBytes().begin())),
-            originalObjectIDBuffer.asBytes().size()};
-
-        client->writeRequest(requestHeader, {originalObjectIDPayload});
+        client->writeRequest(requestHeader, objectIDToSpan(originalObjectIDBuffer));
 
         client->readResponse(responseHeader, responsePayload);
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::DUPLICATE_O_K);
@@ -373,20 +373,20 @@ TEST_F(ObjectStorageServerTest, TestDuplicateObject)
             .requestType   = ObjectRequestType::GET_OBJECT,
         };
 
-        client->writeRequest(requestHeader, {});
+        client->writeRequest(requestHeader, std::nullopt);
 
         client->readResponse(responseHeader, responsePayload);
 
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::GET_O_K);
         EXPECT_TRUE(responsePayload.has_value());
-        EXPECT_EQ(*responsePayload, payload);
+        EXPECT_EQ(scaler::ymq::as_string(**responsePayload), payloadContent);
     }
 }
 
 TEST_F(ObjectStorageServerTest, TestEmptyObject)
 {
     ObjectResponseHeader responseHeader;
-    std::optional<ObjectPayload> responsePayload;
+    std::optional<ReceivedPayload> responsePayload;
     uint64_t requestID = 265;
 
     auto client = getClient();
@@ -400,9 +400,7 @@ TEST_F(ObjectStorageServerTest, TestEmptyObject)
             .requestType   = ObjectRequestType::SET_OBJECT,
         };
 
-        ObjectPayload emptyPayload {};
-
-        client->writeRequest(requestHeader, {emptyPayload});
+        client->writeRequest(requestHeader, std::span<const uint8_t> {});
         client->readResponse(responseHeader, responsePayload);
 
         EXPECT_EQ(responseHeader.objectID, requestHeader.objectID);
@@ -430,7 +428,7 @@ TEST_F(ObjectStorageServerTest, TestEmptyObject)
 TEST_F(ObjectStorageServerTest, TestRequestBlocking)
 {
     ObjectResponseHeader responseHeader;
-    std::optional<ObjectPayload> responsePayload;
+    std::optional<ReceivedPayload> responsePayload;
     uint64_t requestID = 42;
 
     auto client1 = getClient();
@@ -449,7 +447,7 @@ TEST_F(ObjectStorageServerTest, TestRequestBlocking)
             .requestType   = ObjectRequestType::GET_OBJECT,
         };
 
-        client1->writeRequest(requestHeader, {});
+        client1->writeRequest(requestHeader, std::nullopt);
     }
 
     // Client 3 duplicates the not yet submitted original object's data
@@ -462,23 +460,19 @@ TEST_F(ObjectStorageServerTest, TestRequestBlocking)
         };
 
         auto objectIDBuffer = originalObjectID.toBuffer();
-        ObjectPayload objectIDPayload {
-            reinterpret_cast<char*>(const_cast<unsigned char*>(objectIDBuffer.asBytes().begin())),
-            objectIDBuffer.asBytes().size()};
-
-        client3->writeRequest(requestHeader, {objectIDPayload});
+        client3->writeRequest(requestHeader, objectIDToSpan(objectIDBuffer));
     }
 
     // Client 2 sends the original object's data
     {
         ObjectRequestHeader requestHeader {
             .objectID      = originalObjectID,
-            .payloadLength = payload.size(),
+            .payloadLength = payloadContent.size(),
             .requestID     = requestID++,
             .requestType   = ObjectRequestType::SET_OBJECT,
         };
 
-        client2->writeRequest(requestHeader, {payload});
+        client2->writeRequest(requestHeader, payloadSpan);
         client2->readResponse(responseHeader, responsePayload);
 
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::SET_O_K);
@@ -496,14 +490,14 @@ TEST_F(ObjectStorageServerTest, TestRequestBlocking)
         client1->readResponse(responseHeader, responsePayload);
 
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::GET_O_K);
-        EXPECT_EQ(*responsePayload, payload);
+        EXPECT_EQ(scaler::ymq::as_string(**responsePayload), payloadContent);
     }
 }
 
 TEST_F(ObjectStorageServerTest, TestClientDisconnect)
 {
     ObjectResponseHeader responseHeader;
-    std::optional<ObjectPayload> responsePayload;
+    std::optional<ReceivedPayload> responsePayload;
     uint64_t requestID = 100;
 
     auto client1 = getClient();
@@ -543,12 +537,12 @@ TEST_F(ObjectStorageServerTest, TestClientDisconnect)
     {
         ObjectRequestHeader requestHeader {
             .objectID      = objectID,
-            .payloadLength = payload.size(),
+            .payloadLength = payloadContent.size(),
             .requestID     = requestID++,
             .requestType   = ObjectRequestType::SET_OBJECT,
         };
 
-        client3->writeRequest(requestHeader, {payload});
+        client3->writeRequest(requestHeader, payloadSpan);
         client3->readResponse(responseHeader, responsePayload);
 
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::SET_O_K);
@@ -559,14 +553,14 @@ TEST_F(ObjectStorageServerTest, TestClientDisconnect)
         client2->readResponse(responseHeader, responsePayload);
 
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::GET_O_K);
-        EXPECT_EQ(*responsePayload, payload);
+        EXPECT_EQ(scaler::ymq::as_string(**responsePayload), payloadContent);
     }
 }
 
 TEST_F(ObjectStorageServerTest, TestMalformedHeader)
 {
     ObjectResponseHeader responseHeader;
-    std::optional<ObjectPayload> responsePayload;
+    std::optional<ReceivedPayload> responsePayload;
 
     // Server should disconnect when it receives a garbage header
     {
@@ -575,9 +569,9 @@ TEST_F(ObjectStorageServerTest, TestMalformedHeader)
         std::array<uint8_t, CAPNP_HEADER_SIZE> malformedHeader;
         malformedHeader.fill(0xAA);
 
-        Message message;
-        message.payload = Bytes((char*)malformedHeader.data(), malformedHeader.size());
-        client->writeYMQMessage(std::move(message));
+        client->writeYMQMessage(
+            std::make_unique<BufferedBytes>(
+                reinterpret_cast<const char*>(malformedHeader.data()), malformedHeader.size()));
 
         // Server should disconnect before or while we are reading the response
         auto result = client->readYMQMessage();
@@ -591,12 +585,12 @@ TEST_F(ObjectStorageServerTest, TestMalformedHeader)
 
         ObjectRequestHeader requestHeader {
             .objectID      = {0, 1, 2, 3},
-            .payloadLength = payload.size(),
+            .payloadLength = payloadContent.size(),
             .requestID     = 42,
             .requestType   = ObjectRequestType::SET_OBJECT,
         };
 
-        client->writeRequest(requestHeader, {payload});
+        client->writeRequest(requestHeader, payloadSpan);
         client->readResponse(responseHeader, responsePayload);
 
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::SET_O_K);
@@ -607,13 +601,13 @@ TEST_F(ObjectStorageServerTest, TestInfoGetTotalRequest)
 {
     uint64_t requestID = 999;
     ObjectResponseHeader responseHeader;
-    std::optional<ObjectPayload> responsePayload;
+    std::optional<ReceivedPayload> responsePayload;
     auto client = getClient();
 
     const uint64_t numOfFields   = 3;
     const uint64_t payloadLength = numOfFields * sizeof(uint64_t);
 
-    auto deserialize = [](const Bytes& bytes) -> std::tuple<uint64_t, uint64_t, uint64_t> {
+    auto deserialize = [](const scaler::ymq::Bytes& bytes) -> std::tuple<uint64_t, uint64_t, uint64_t> {
         uint64_t numIDs {};
         uint64_t numObjs {};
         uint64_t numBytes {};
@@ -638,9 +632,9 @@ TEST_F(ObjectStorageServerTest, TestInfoGetTotalRequest)
         EXPECT_EQ(responseHeader.payloadLength, payloadLength);
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::INFO_GET_TOTAL_O_K);
         EXPECT_TRUE(responsePayload.has_value());
-        EXPECT_EQ(responsePayload.value().size(), payloadLength);
+        EXPECT_EQ((*responsePayload)->size(), payloadLength);
 
-        auto [numIDs, numObjs, numBytes] = deserialize(responsePayload.value());
+        auto [numIDs, numObjs, numBytes] = deserialize(**responsePayload);
         EXPECT_EQ(numIDs, expectedNumIDs);
         EXPECT_EQ(numObjs, expectedNumObjs);
         EXPECT_EQ(numBytes, expectedNumBytes);
@@ -652,16 +646,16 @@ TEST_F(ObjectStorageServerTest, TestInfoGetTotalRequest)
     {
         ObjectRequestHeader requestHeader {
             .objectID      = {0, 1, 2, 3},
-            .payloadLength = payload.size(),
+            .payloadLength = payloadContent.size(),
             .requestID     = requestID++,
             .requestType   = ObjectRequestType::SET_OBJECT,
         };
 
-        client->writeRequest(requestHeader, {payload});
+        client->writeRequest(requestHeader, payloadSpan);
         client->readResponse(responseHeader, responsePayload);
     }
 
-    testInfoGetTotalRequest(1, 1, payload.size());
+    testInfoGetTotalRequest(1, 1, payloadContent.size());
 
     // Duplicate the object, we should see numID increases but not the other two
     {
@@ -673,18 +667,13 @@ TEST_F(ObjectStorageServerTest, TestInfoGetTotalRequest)
         };
 
         ObjectID originalObjectID {0, 1, 2, 3};
-
         auto originalObjectIDBuffer = originalObjectID.toBuffer();
-        ObjectPayload originalObjectIDPayload {
-            reinterpret_cast<char*>(const_cast<unsigned char*>(originalObjectIDBuffer.asBytes().begin())),
-            originalObjectIDBuffer.asBytes().size()};
-
-        client->writeRequest(requestHeader, {originalObjectIDPayload});
+        client->writeRequest(requestHeader, objectIDToSpan(originalObjectIDBuffer));
 
         client->readResponse(responseHeader, responsePayload);
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::DUPLICATE_O_K);
     }
-    testInfoGetTotalRequest(2, 1, payload.size());
+    testInfoGetTotalRequest(2, 1, payloadContent.size());
 
     // Delete the object represented by this objectID, notice that the actual object is
     // still in the system because there is another ID tied to it (2, 3, 4, 5).
@@ -700,7 +689,7 @@ TEST_F(ObjectStorageServerTest, TestInfoGetTotalRequest)
         client->readResponse(responseHeader, responsePayload);
     }
 
-    testInfoGetTotalRequest(1, 1, payload.size());
+    testInfoGetTotalRequest(1, 1, payloadContent.size());
 
     // Actually delete the object
     {

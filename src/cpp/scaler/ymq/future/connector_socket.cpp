@@ -66,7 +66,8 @@ const Identity& ConnectorSocket::identity() const noexcept
     return _socket.identity();
 }
 
-std::future<std::expected<void, scaler::ymq::Error>> ConnectorSocket::sendMessage(scaler::ymq::Bytes messagePayload)
+std::future<std::expected<void, scaler::ymq::Error>> ConnectorSocket::sendMessage(
+    std::unique_ptr<scaler::ymq::Bytes> messagePayload)
 {
     std::promise<std::expected<void, scaler::ymq::Error>> promise {};
     auto future = promise.get_future();

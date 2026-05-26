@@ -10,6 +10,7 @@
 #include "scaler/wrapper/uv/loop.h"
 #include "scaler/wrapper/uv/tcp.h"
 #include "scaler/ymq/address.h"
+#include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/bytes.h"
 #include "scaler/ymq/internal/message_connection.h"
 
@@ -135,8 +136,8 @@ TEST_F(YMQMessageConnectionTest, MessageExchange)
         // Server callbacks
         []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on server"; },  // onRemoteDisconnect
-        [&](scaler::ymq::Bytes messagePayload) {                    // onMessage
-            auto payload = messagePayload.as_string();
+        [&](std::unique_ptr<scaler::ymq::Bytes> messagePayload) {   // onMessage
+            auto payload = scaler::ymq::as_string(*messagePayload);
             ASSERT_TRUE(payload.has_value());
             ASSERT_EQ(payload.value(), clientMessagePayload);
             serverMessageReceived = true;
@@ -145,8 +146,8 @@ TEST_F(YMQMessageConnectionTest, MessageExchange)
         // Client callbacks
         []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on client"; },  // onRemoteDisconnect
-        [&](scaler::ymq::Bytes messagePayload) {                    // onMessage
-            auto payload = messagePayload.as_string();
+        [&](std::unique_ptr<scaler::ymq::Bytes> messagePayload) {   // onMessage
+            auto payload = scaler::ymq::as_string(*messagePayload);
             ASSERT_TRUE(payload.has_value());
             ASSERT_EQ(payload.value(), serverMessagePayload);
             clientMessageReceived = true;
@@ -157,8 +158,9 @@ TEST_F(YMQMessageConnectionTest, MessageExchange)
     scaler::wrapper::uv::Loop& loop                  = connections.loop();
 
     // Send a message before the identity exchange
-    scaler::ymq::Bytes messagePayload = scaler::ymq::Bytes(serverMessagePayload);
-    server.sendMessage(std::move(messagePayload), [](auto result) { ASSERT_TRUE(result.has_value()); });
+    server.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(serverMessagePayload), [](auto result) {
+        ASSERT_TRUE(result.has_value());
+    });
 
     // Wait for identity exchange
     while (!server.established() || !client.established()) {
@@ -166,8 +168,9 @@ TEST_F(YMQMessageConnectionTest, MessageExchange)
     }
 
     // Send a message after the identity exchange
-    messagePayload = scaler::ymq::Bytes(clientMessagePayload);
-    client.sendMessage(std::move(messagePayload), [](auto result) { ASSERT_TRUE(result.has_value()); });
+    client.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(clientMessagePayload), [](auto result) {
+        ASSERT_TRUE(result.has_value());
+    });
 
     // Wait for the messages
     while (!serverMessageReceived || !clientMessageReceived) {
@@ -274,8 +277,8 @@ TEST_F(YMQMessageConnectionTest, EmptyMessage)
         // Server callbacks
         []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on server"; },  // onRemoteDisconnect
-        [&](scaler::ymq::Bytes messagePayload) {                    // onMessage
-            ASSERT_EQ(messagePayload.as_string(), "");
+        [&](std::unique_ptr<scaler::ymq::Bytes> messagePayload) {   // onMessage
+            ASSERT_EQ(scaler::ymq::as_string(*messagePayload), "");
             serverMessageReceived = true;
         },
 
@@ -295,8 +298,8 @@ TEST_F(YMQMessageConnectionTest, EmptyMessage)
     }
 
     // Send an empty message
-    scaler::ymq::Bytes messagePayload = scaler::ymq::Bytes("");
-    client.sendMessage(std::move(messagePayload), [](auto result) { ASSERT_TRUE(result.has_value()); });
+    client.sendMessage(
+        std::make_unique<scaler::ymq::BufferedBytes>(""), [](auto result) { ASSERT_TRUE(result.has_value()); });
 
     // Wait for the message
     while (!serverMessageReceived) {

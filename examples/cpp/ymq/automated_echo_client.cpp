@@ -1,10 +1,10 @@
 #include <iostream>
 #include <string>
 
+#include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/sync/connector_socket.h"
 
-using scaler::ymq::Bytes;
 using scaler::ymq::IOContext;
 using scaler::ymq::sync::ConnectorSocket;
 
@@ -28,7 +28,7 @@ int main()
     constexpr size_t msgCnt = 100'000;
 
     for (size_t cnt = 0; cnt < msgCnt; ++cnt) {
-        auto sendResult = socket.sendMessage(Bytes {longStr});
+        auto sendResult = socket.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(longStr));
         if (!sendResult.has_value()) {
             std::cerr << "Failed to send message: " << sendResult.error().what() << std::endl;
             return 1;
@@ -41,8 +41,9 @@ int main()
         }
 
         auto msg = std::move(recvResult.value());
-        if (msg.payload.as_string() != longStr) {
-            std::cerr << "Received message mismatch, got " << msg.payload.as_string().value_or("") << std::endl;
+        if (scaler::ymq::as_string(*msg.payload) != longStr) {
+            std::cerr << "Received message mismatch, got " << scaler::ymq::as_string(*msg.payload).value_or("")
+                      << std::endl;
             return 1;
         }
     }

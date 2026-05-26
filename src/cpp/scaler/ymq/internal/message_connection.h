@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <span>
@@ -47,7 +48,7 @@ public:
 
     using SendMessageCallback = scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
 
-    using RecvMessageCallback = scaler::utility::MoveOnlyFunction<void(Bytes)>;
+    using RecvMessageCallback = scaler::utility::MoveOnlyFunction<void(std::unique_ptr<Bytes>)>;
 
     MessageConnection(
         Identity localIdentity,
@@ -91,14 +92,14 @@ public:
     // If the connection is not established yet, the message is queued and sent once the connection is established.
     //
     // If the connection disconnects, the message will be queued again until the connection is re-established.
-    void sendMessage(Bytes messagePayload, SendMessageCallback onMessageSent) noexcept;
+    void sendMessage(std::unique_ptr<Bytes> messagePayload, SendMessageCallback onMessageSent) noexcept;
 
 private:
     using Header = uint64_t;
 
     using SendCallback = scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
 
-    using RecvCallback = scaler::utility::MoveOnlyFunction<void(Bytes)>;
+    using RecvCallback = scaler::utility::MoveOnlyFunction<void(std::unique_ptr<Bytes>)>;
 
     struct SendOperation {
         std::vector<std::span<const uint8_t>> _buffers;
@@ -107,7 +108,7 @@ private:
     };
 
     struct RecvOperation {
-        Bytes _buffer {};
+        std::unique_ptr<Bytes> _buffer {};
         size_t _cursor {0};
 
         RecvCallback _onRecvDone {};
@@ -155,7 +156,7 @@ private:
 
     void onRead(std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) noexcept;
 
-    void onRemoteIdentity(Bytes payload) noexcept;
+    void onRemoteIdentity(std::unique_ptr<Bytes> payload) noexcept;
 
     void onRemoteDisconnect(DisconnectReason reason) noexcept;
 

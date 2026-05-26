@@ -1,10 +1,10 @@
 #include <iostream>
 #include <string>
 
+#include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/sync/binder_socket.h"
 
-using scaler::ymq::Bytes;
 using scaler::ymq::IOContext;
 using scaler::ymq::Message;
 using scaler::ymq::sync::BinderSocket;
@@ -32,7 +32,8 @@ int main()
 
         Message receivedMsg = std::move(recvResult.value());
 
-        auto sendResult = socket.sendMessage(receivedMsg.address.as_string().value(), std::move(receivedMsg.payload));
+        auto sendResult =
+            socket.sendMessage(scaler::ymq::as_string(*receivedMsg.address).value(), std::move(receivedMsg.payload));
         if (!sendResult.has_value()) {
             std::cerr << "Failed to send message: " << sendResult.error().what() << std::endl;
         }

@@ -4,6 +4,8 @@
 #include <functional>
 #include <utility>
 
+#include "scaler/ymq/buffered_bytes.h"
+
 namespace scaler {
 namespace ymq {
 
@@ -80,7 +82,7 @@ void BinderSocket::bindTo(std::string address, BindCallback onBindCallback) noex
 }
 
 void BinderSocket::sendMessage(
-    Identity remoteIdentity, Bytes messagePayload, SendMessageCallback onMessageSent) noexcept
+    Identity remoteIdentity, std::unique_ptr<Bytes> messagePayload, SendMessageCallback onMessageSent) noexcept
 {
     _state->_thread.executeThreadSafe([state          = _state,
                                        remoteIdentity = std::move(remoteIdentity),
@@ -99,7 +101,8 @@ void BinderSocket::sendMessage(
     });
 }
 
-void BinderSocket::sendMulticastMessage(Bytes messagePayload, std::optional<Identity> remotePrefix) noexcept
+void BinderSocket::sendMulticastMessage(
+    std::unique_ptr<Bytes> messagePayload, std::optional<Identity> remotePrefix) noexcept
 {
     _state->_thread.executeThreadSafe(
         [state = _state, messagePayload = std::move(messagePayload), remotePrefix = std::move(remotePrefix)]() mutable {
@@ -112,7 +115,9 @@ void BinderSocket::sendMulticastMessage(Bytes messagePayload, std::optional<Iden
                 }
 
                 connectionPtr->sendMessage(
-                    messagePayload, []([[maybe_unused]] std::expected<void, Error> result) noexcept {});
+                    std::make_unique<BufferedBytes>(
+                        reinterpret_cast<const char*>(messagePayload->data()), messagePayload->size()),
+                    []([[maybe_unused]] std::expected<void, Error> result) noexcept {});
             }
         });
 }
@@ -188,13 +193,14 @@ void BinderSocket::onRemoteDisconnect(
     }
 }
 
-void BinderSocket::onMessage(std::shared_ptr<State> state, ConnectionID connectionId, Bytes messagePayload) noexcept
+void BinderSocket::onMessage(
+    std::shared_ptr<State> state, ConnectionID connectionId, std::unique_ptr<Bytes> messagePayload) noexcept
 {
     internal::MessageConnection& connection = *state->_connections.at(connectionId);
     assert(connection.remoteIdentity().has_value());
 
     Message message;
-    message.address = Bytes {connection.remoteIdentity().value()};
+    message.address = std::make_unique<BufferedBytes>(connection.remoteIdentity().value());
     message.payload = std::move(messagePayload);
 
     if (state->_pendingRecvCallbacks.empty()) {

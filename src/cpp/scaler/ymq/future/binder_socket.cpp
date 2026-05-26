@@ -28,7 +28,8 @@ std::future<std::expected<Address, Error>> BinderSocket::bindTo(std::string addr
     return future;
 }
 
-std::future<std::expected<void, Error>> BinderSocket::sendMessage(Identity remoteIdentity, Bytes messagePayload)
+std::future<std::expected<void, Error>> BinderSocket::sendMessage(
+    Identity remoteIdentity, std::unique_ptr<Bytes> messagePayload)
 {
     std::promise<std::expected<void, Error>> promise {};
     auto future = promise.get_future();
@@ -43,7 +44,8 @@ std::future<std::expected<void, Error>> BinderSocket::sendMessage(Identity remot
     return future;
 }
 
-void BinderSocket::sendMulticastMessage(Bytes messagePayload, std::optional<Identity> remotePrefix) noexcept
+void BinderSocket::sendMulticastMessage(
+    std::unique_ptr<Bytes> messagePayload, std::optional<Identity> remotePrefix) noexcept
 {
     _socket.sendMulticastMessage(std::move(messagePayload), std::move(remotePrefix));
 }

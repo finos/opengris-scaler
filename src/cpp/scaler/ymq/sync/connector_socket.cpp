@@ -41,7 +41,7 @@ const Identity& ConnectorSocket::identity() const noexcept
     return _socket.identity();
 }
 
-std::expected<void, Error> ConnectorSocket::sendMessage(Bytes messagePayload) noexcept
+std::expected<void, Error> ConnectorSocket::sendMessage(std::unique_ptr<Bytes> messagePayload) noexcept
 {
     return _socket.sendMessage(std::move(messagePayload)).get();
 }
