@@ -22,6 +22,7 @@ import abc
 import asyncio
 import concurrent.futures
 import os
+import struct
 import sys
 import threading
 import time
@@ -33,7 +34,8 @@ from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.serializer.mixins import Serializer
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend, SyncConnector
-from scaler.protocol.capnp import BaseMessage
+from scaler.io.utility import serialize as _capnp_serialize
+from scaler.protocol.capnp import BaseMessage, ClientHeartbeat, Resource
 from scaler.utility.identifiers import ClientID
 
 
@@ -178,62 +180,73 @@ def _run_sync(coro: Awaitable[Any]) -> Any:
 
 # Periodic-yield hook for the browser bridge.
 #
-# This hook is opt-in. Re-entering JSPI from a ``sys.setprofile`` callback can
-# overflow Pyodide's JS/wasm stack on heavy notebook graphs, while the
-# ``concurrent.futures`` and ``time.sleep`` JSPI patches below are enough for
-# the browser gallery notebooks to complete. Keep the hook available for users
-# who need heartbeat protection during long local pure-Python sections, but do
-# not enable it by default.
-#
-# Even with the ``concurrent.futures`` JSPI patch below, user code can still
-# starve the agent task in two cases:
-#
-#   * pure-Python compute that never blocks on a scaler/concurrent future
-#     (e.g. graph construction, large numpy preparations, pandas pipelines
-#     in the gallery scaler notebooks before any submit() is called);
-#
-#   * any third-party library that doesn't go through concurrent.futures.
-#
-# Without yielding, the asyncio loop never runs, the agent can't send
-# heartbeats, the scheduler hits ``client_timeout_seconds`` (default 60s)
+# Background. In the browser, the agent's heartbeat coroutine shares the
+# single asyncio loop with the user's notebook code. Long synchronous pure-
+# Python work (cloudpickle of large constants, pargraph graph construction,
+# numpy result hand-off) blocks the loop entirely, the heartbeat task never
+# runs, and the scheduler's ``client_timeout_seconds`` (default 60s) trips
 # and disconnects the client mid-computation. The scheduler then sees late
-# results / object writes from "unknown" clients and the user's submitted
+# results / object writes from an "unknown" client and the user's submitted
 # futures hang or fail.
 #
-# Install a ``sys.setprofile`` hook on emscripten that pumps the asyncio
-# loop via ``_run_sync(asyncio.sleep(0))`` at most once every
-# ``_YIELD_MIN_INTERVAL_SECONDS``. ``setprofile`` only fires on Python
-# function call/return events, so the overhead is bounded (one wall-clock
-# check per call) and it covers realistic numpy/pandas/user-function
-# workloads. Pure-arithmetic tight loops with no function calls bypass the
-# hook; users with those need to insert an explicit yield.
+# Earlier strategies (re-entering asyncio via ``_run_sync(asyncio.sleep(0))``
+# from ``sys.setprofile``) ran into Pyodide JSPI re-entrancy fragility on
+# heavy graphs (wasm stack overflow on deep call/return chains). This
+# implementation instead emits a heartbeat directly to the WebSocket from
+# ``sys.setprofile`` -- ``js.WebSocket.send`` is fire-and-forget into the
+# browser network stack and does NOT re-enter Python or asyncio, so it is
+# safe to call from a profile event no matter how deep we are. We do NOT
+# wait for the heartbeat echo here; the regular agent loop handles echos
+# once it gets a chance to run.
 #
-# This complements (does not replace) the ``concurrent.futures.wait``
-# JSPI-aware patch below: the patch handles the case where user code blocks
-# inside ``threading.Event.wait`` (pargraph), the setprofile hook handles
-# the case where user code is busy in Python without blocking.
+# The hook is throttled to once every ``_YIELD_MIN_INTERVAL_SECONDS`` and is
+# safe to leave on by default. The complementary scheduler-side change
+# (treating ANY inbound message from a tracked client as a liveness refresh)
+# covers the typical busy-but-talking case; this hook covers the cold
+# pre-submission window when the client is producing zero scheduler traffic.
 
 _ENABLE_BROWSER_YIELD_HOOK_ENV = "SCALER_ENABLE_BROWSER_YIELD_HOOK"
+_DISABLE_BROWSER_YIELD_HOOK_ENV = "SCALER_DISABLE_BROWSER_YIELD_HOOK"
 _TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
 
 
 def _should_install_browser_yield_hook() -> bool:
-    value = os.environ.get(_ENABLE_BROWSER_YIELD_HOOK_ENV)
-    if value is None:
+    # On by default; opt-out via env. Kept env-overridable so a notebook can
+    # disable the hook without code changes if a particular workload trips
+    # on it.
+    disable = os.environ.get(_DISABLE_BROWSER_YIELD_HOOK_ENV)
+    if disable is not None and disable.strip().lower() in _TRUTHY_ENV_VALUES:
         return False
-    return value.strip().lower() in _TRUTHY_ENV_VALUES
+    return True
 
-# Fire the loop-pump at most once every ``_YIELD_MIN_INTERVAL_SECONDS``.
+
+# Fire the heartbeat pump at most once every ``_YIELD_MIN_INTERVAL_SECONDS``.
 # Set well under the default 60s ``client_timeout_seconds`` so even worst-case
 # scheduling latency leaves multiple opportunities per timeout window for a
-# heartbeat to make a round trip.
-_YIELD_MIN_INTERVAL_SECONDS: float = 1.0
+# heartbeat to reach the scheduler.
+_YIELD_MIN_INTERVAL_SECONDS: float = 5.0
+
+# YMQ wire framing for the heartbeat payload: 8-byte little-endian length
+# prefix. Mirror of _HEADER_FORMAT in scaler/io/ymq/_ymq_wasm.py; we don't
+# import from there to avoid importing the wasm backend at module load time
+# on native CPython where it isn't present.
+_YMQ_HEADER_FORMAT: str = "<Q"
+
 _yield_state: dict = {
     "last": 0.0,
     "in_progress": False,
     "previous_profile": None,
     "installed": False,
-    # Diagnostic counters — exposed for debugging from the notebook via
+    # Cached YMQ-framed ClientHeartbeat payload. Built once on first fire
+    # after the external connector socket is open. The contents (cpu/rss/0
+    # latency) don't matter for the scheduler's liveness bookkeeping -- only
+    # the arrival of the message does.
+    "framed_heartbeat": None,
+    # Weak reference to the ``ConnectorSocket`` instance that owns the
+    # WebSocket to the scheduler. Captured at hook install time from the
+    # agent; cleared when the socket goes away.
+    "external_socket": None,
+    # Diagnostic counters -- exposed for debugging from the notebook via
     # ``from scaler.client.agent import bridge; print(bridge._yield_state)``.
     "fire_count": 0,
     "pump_ok": 0,
@@ -242,20 +255,38 @@ _yield_state: dict = {
 }
 
 
+def _build_framed_heartbeat() -> bytes:
+    # Heartbeat content is irrelevant for liveness; use zeros to avoid
+    # depending on psutil (which is absent on emscripten anyway).
+    payload = _capnp_serialize(ClientHeartbeat(resource=Resource(cpu=0, rss=0), latencyUS=0))
+    return struct.pack(_YMQ_HEADER_FORMAT, len(payload)) + payload
+
+
 def _pump_loop_once() -> None:
-    # ``_run_sync(asyncio.sleep(0))`` returns control to the asyncio loop
-    # for exactly one iteration. That is enough for any ready callbacks
-    # (notably the heartbeat ``Looper`` that has been blocked on
-    # ``asyncio.sleep(heartbeat_interval_seconds)``) to fire and write
-    # their outgoing WebSocket message. We deliberately do NOT call
-    # ``heartbeat_manager.send_heartbeat()`` directly here: invoking a
-    # JSPI ``run_sync`` re-entrantly with an awaitable that itself does
-    # ``await connector.send(...)`` from within a ``sys.setprofile`` event
-    # is fragile in Pyodide (the profile event fires deep inside the
-    # CPython interpreter loop and re-entering JSPI from there can hang
-    # or silently fail). Letting the existing heartbeat task ride the
-    # natural asyncio scheduling is much more reliable.
-    _run_sync(asyncio.sleep(0))
+    # Direct heartbeat send via the underlying WebSocket. This intentionally
+    # bypasses asyncio / JSPI: ``js.WebSocket.send`` only queues bytes into
+    # the browser network stack and returns immediately, with no Python
+    # re-entry. Safe to call from a ``sys.setprofile`` event.
+    _refresh_external_socket()
+    socket = _yield_state.get("external_socket")
+    if socket is None:
+        return
+    # ``ConnectorSocket`` from _ymq_wasm.py: it must be open (handshake
+    # complete) and not closed before we can shove raw bytes at the JS
+    # WebSocket. Anything else is just dropped this tick; the throttle will
+    # try again later, and the real heartbeat task will catch up once the
+    # loop gets to run.
+    if not getattr(socket, "_open", False):
+        return
+    if getattr(socket, "_closed", False):
+        return
+    framed = _yield_state.get("framed_heartbeat")
+    if framed is None:
+        framed = _build_framed_heartbeat()
+        _yield_state["framed_heartbeat"] = framed
+    # ``_raw_send(data, None)`` is synchronous and never re-enters Python
+    # callbacks: it just calls ``js.WebSocket.send(buf)``.
+    socket._raw_send(framed, None)  # noqa: SLF001
 
 
 def _yield_profile_hook(frame: Any, event: str, arg: Any) -> None:
@@ -280,19 +311,26 @@ def _yield_profile_hook(frame: Any, event: str, arg: Any) -> None:
             _yield_state["pump_err"] += 1
             _yield_state["last_error"] = repr(exc)
     except BaseException:
-        # Never raise out of a profile hook — that would corrupt the
+        # Never raise out of a profile hook -- that would corrupt the
         # interpreter's profiling state and could kill the user's notebook.
         pass
     finally:
         _yield_state["in_progress"] = False
 
 
-def _install_yield_hook(agent: Any = None) -> None:
-    # ``agent`` parameter is kept for backwards compatibility with callers
-    # but unused now that the hook only pumps the asyncio loop.
-    del agent
+def _install_yield_hook(agent: Any) -> None:
+    # Stash the agent's external connector socket so the hook can call
+    # ``_raw_send`` directly. The socket itself may not exist yet (the agent
+    # creates it during its async bring-up); ``_pump_loop_once`` re-reads
+    # the attribute each tick so a late-bound socket is picked up
+    # automatically.
+    connector_external = getattr(agent, "_connector_external", None)
+    _yield_state["external_socket"] = getattr(connector_external, "_socket", None) if connector_external else None
+    # Re-snapshot just before each fire too, in case the agent rebuilds its
+    # connector on reconnect.
+    _yield_state["_agent_ref"] = agent
     if _yield_state["installed"]:
-        # Re-assert the profile hook — IPython / pyodide-kernel may reset
+        # Re-assert the profile hook -- IPython / pyodide-kernel may reset
         # ``sys.setprofile`` between cells, in which case we'd silently
         # stop firing. Re-installing here is cheap and idempotent.
         if sys.getprofile() is not _yield_profile_hook:
@@ -305,12 +343,29 @@ def _install_yield_hook(agent: Any = None) -> None:
     sys.setprofile(_yield_profile_hook)
 
 
+def _refresh_external_socket() -> None:
+    # Hook may have been installed before the agent's connector socket
+    # existed. Re-snapshot it on demand.
+    if _yield_state.get("external_socket") is not None:
+        return
+    agent = _yield_state.get("_agent_ref")
+    if agent is None:
+        return
+    connector_external = getattr(agent, "_connector_external", None)
+    if connector_external is None:
+        return
+    _yield_state["external_socket"] = getattr(connector_external, "_socket", None)
+
+
 def _uninstall_yield_hook() -> None:
     if not _yield_state["installed"]:
         return
     sys.setprofile(_yield_state["previous_profile"])
     _yield_state["previous_profile"] = None
     _yield_state["installed"] = False
+    _yield_state["external_socket"] = None
+    _yield_state["framed_heartbeat"] = None
+    _yield_state["_agent_ref"] = None
 
 
 # Patch ``time.sleep`` so a synchronous sleep in user code (or in a library

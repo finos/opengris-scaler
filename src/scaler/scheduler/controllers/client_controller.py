@@ -90,6 +90,16 @@ class VanillaClientController(ClientController, Looper, Reporter):
 
         self._client_last_seen[client_id] = (time.time(), info)
 
+    def notice_client_activity(self, client_id: ClientID):
+        # Any inbound message from a tracked client counts as liveness for
+        # the heartbeat-based timeout. We deliberately don't register new
+        # clients here -- a client must complete the proper ClientHeartbeat
+        # handshake before it shows up in ``_client_last_seen``.
+        existing = self._client_last_seen.get(client_id)
+        if existing is None:
+            return
+        self._client_last_seen[client_id] = (time.time(), existing[1])
+
     async def on_client_disconnect(self, client_id: ClientID, request: ClientDisconnect):
         if request.disconnectType == ClientDisconnect.DisconnectType.disconnect:
             await self.__on_client_disconnect(client_id)
