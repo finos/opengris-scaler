@@ -22,11 +22,14 @@ listen for inbound TCP/WebSocket connections).
 
 from __future__ import annotations
 
+import logging
 import struct
 import sys
 from collections import deque
 from enum import IntEnum
 from typing import Any, Callable, Deque, List, Optional, Union
+
+logger = logging.getLogger(__name__)
 
 # Match the values exposed by the native module and documented in _ymq.pyi.
 DEFAULT_MAX_RETRY_TIMES: int = 8
@@ -528,6 +531,15 @@ class ConnectorSocket:
     # ------------------------------------------------------------------
     # Internal: WebSocket event handlers
 
+    # Class-level hook fired (with the socket instance) after a successful
+    # WebSocket open + YMQ handshake send + pending-send drain. Allows
+    # higher layers (e.g. ``scaler.client.agent.bridge``) to install a
+    # JS-side ``setInterval`` heartbeat on the underlying ``self._ws``
+    # without coupling the wasm IO backend to the agent. Filtering by
+    # socket-instance identity is the hook's responsibility -- this class
+    # fires it for every socket that opens.
+    _post_open_hook: Optional[Callable[["ConnectorSocket"], None]] = None
+
     def _on_open(self, _event: Any) -> None:
         if self._closed:
             return
@@ -537,6 +549,12 @@ class ConnectorSocket:
         pending, self._pending_sends = self._pending_sends, []
         for framed, cb in pending:
             self._raw_send(framed, cb)
+        hook = type(self)._post_open_hook
+        if hook is not None:
+            try:
+                hook(self)
+            except Exception:  # noqa: BLE001
+                logger.exception("post_open_hook raised; continuing")
 
     def _on_message(self, event: Any) -> None:
         if self._closed:

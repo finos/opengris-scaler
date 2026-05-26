@@ -21,7 +21,6 @@ from __future__ import annotations
 import abc
 import asyncio
 import concurrent.futures
-import os
 import struct
 import sys
 import threading
@@ -178,194 +177,174 @@ def _run_sync(coro: Awaitable[Any]) -> Any:
     return run_sync(coro)
 
 
-# Periodic-yield hook for the browser bridge.
+# Browser-side heartbeat to the scheduler.
 #
 # Background. In the browser, the agent's heartbeat coroutine shares the
 # single asyncio loop with the user's notebook code. Long synchronous pure-
 # Python work (cloudpickle of large constants, pargraph graph construction,
 # numpy result hand-off) blocks the loop entirely, the heartbeat task never
 # runs, and the scheduler's ``client_timeout_seconds`` (default 60s) trips
-# and disconnects the client mid-computation. The scheduler then sees late
-# results / object writes from an "unknown" client and the user's submitted
-# futures hang or fail.
+# and disconnects the client mid-computation.
 #
-# Earlier strategies (re-entering asyncio via ``_run_sync(asyncio.sleep(0))``
-# from ``sys.setprofile``) ran into Pyodide JSPI re-entrancy fragility on
-# heavy graphs (wasm stack overflow on deep call/return chains). This
-# implementation instead emits a heartbeat directly to the WebSocket from
-# ``sys.setprofile`` -- ``js.WebSocket.send`` is fire-and-forget into the
-# browser network stack and does NOT re-enter Python or asyncio, so it is
-# safe to call from a profile event no matter how deep we are. We do NOT
-# wait for the heartbeat echo here; the regular agent loop handles echos
-# once it gets a chance to run.
+# A previous attempt drove the heartbeat from ``sys.setprofile``. That works
+# for pure-Python heavy code (e.g. cloudpickle has many call/return events),
+# but breaks down when the wasm stack is JSPI-suspended inside a single
+# ``run_sync`` call (e.g. the Client's initial scheduler handshake waiting
+# on ``get_object_storage_address``): the user's Python stack has no frames
+# executing while suspended, so the profile callback never fires.
 #
-# The hook is throttled to once every ``_YIELD_MIN_INTERVAL_SECONDS`` and is
-# safe to leave on by default. The complementary scheduler-side change
-# (treating ANY inbound message from a tracked client as a liveness refresh)
-# covers the typical busy-but-talking case; this hook covers the cold
-# pre-submission window when the client is producing zero scheduler traffic.
+# This implementation uses a JavaScript ``setInterval`` instead. The timer
+# fires from the browser's event loop, which runs even while wasm is
+# JSPI-suspended. The timer callback is pure JS (a closure that captures
+# the WebSocket and a pre-built ``Uint8Array``) so it never re-enters wasm
+# or Python -- it just calls ``ws.send(buf)``. The buf contains a YMQ-framed
+# ``ClientHeartbeat`` capnp message with zeros for cpu/rss/latency: the
+# scheduler only cares about the arrival, not the contents.
+#
+# The timer is installed via a class-level ``post_open_hook`` on
+# ``ConnectorSocket`` that fires when the WebSocket completes its YMQ
+# handshake. The hook is set in ``InProcessAgentBridge.start()`` and
+# filters by socket-instance identity so only the agent's scheduler
+# connector gets a heartbeat timer (not the object-storage connector or
+# any other ConnectorSockets the user may create).
 
-_ENABLE_BROWSER_YIELD_HOOK_ENV = "SCALER_ENABLE_BROWSER_YIELD_HOOK"
-_DISABLE_BROWSER_YIELD_HOOK_ENV = "SCALER_DISABLE_BROWSER_YIELD_HOOK"
-_TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
-
-
-def _should_install_browser_yield_hook() -> bool:
-    # On by default; opt-out via env. Kept env-overridable so a notebook can
-    # disable the hook without code changes if a particular workload trips
-    # on it.
-    disable = os.environ.get(_DISABLE_BROWSER_YIELD_HOOK_ENV)
-    if disable is not None and disable.strip().lower() in _TRUTHY_ENV_VALUES:
-        return False
-    return True
-
-
-# Fire the heartbeat pump at most once every ``_YIELD_MIN_INTERVAL_SECONDS``.
-# Set well under the default 60s ``client_timeout_seconds`` so even worst-case
-# scheduling latency leaves multiple opportunities per timeout window for a
-# heartbeat to reach the scheduler.
-_YIELD_MIN_INTERVAL_SECONDS: float = 5.0
-
-# YMQ wire framing for the heartbeat payload: 8-byte little-endian length
-# prefix. Mirror of _HEADER_FORMAT in scaler/io/ymq/_ymq_wasm.py; we don't
-# import from there to avoid importing the wasm backend at module load time
-# on native CPython where it isn't present.
+# YMQ wire framing: 8-byte little-endian length prefix. Mirror of
+# ``_HEADER_FORMAT`` in scaler/io/ymq/_ymq_wasm.py; not imported from there
+# to keep the wasm backend off the import path on native CPython.
 _YMQ_HEADER_FORMAT: str = "<Q"
 
-_yield_state: dict = {
-    "last": 0.0,
-    "in_progress": False,
-    "previous_profile": None,
-    "installed": False,
-    # Cached YMQ-framed ClientHeartbeat payload. Built once on first fire
-    # after the external connector socket is open. The contents (cpu/rss/0
-    # latency) don't matter for the scheduler's liveness bookkeeping -- only
-    # the arrival of the message does.
-    "framed_heartbeat": None,
-    # Weak reference to the ``ConnectorSocket`` instance that owns the
-    # WebSocket to the scheduler. Captured at hook install time from the
-    # agent; cleared when the socket goes away.
-    "external_socket": None,
-    # Diagnostic counters -- exposed for debugging from the notebook via
-    # ``from scaler.client.agent import bridge; print(bridge._yield_state)``.
-    "fire_count": 0,
-    "pump_ok": 0,
-    "pump_err": 0,
-    "last_error": None,
+# Heartbeat tick interval, in milliseconds. Set well under the default 60s
+# ``client_timeout_seconds`` so a few missed ticks don't trip eviction.
+_HEARTBEAT_INTERVAL_MS: int = 5000
+
+_js_heartbeat_state: dict = {
+    # JS ``setInterval`` handle, returned by the install factory.
+    "timer_id": None,
+    # The ``ConnectorSocket`` instance the timer is attached to. Held so
+    # we can release its WebSocket reference on teardown.
+    "socket": None,
+    # The agent whose scheduler connector we are protecting. Used by the
+    # ``post_open_hook`` closure to filter sockets.
+    "agent": None,
+    # Diagnostics -- read from a notebook with
+    # ``from scaler.client.agent import bridge; print(bridge._js_heartbeat_state)``.
+    "hook_install_count": 0,
+    "timer_install_count": 0,
+    "last_install_error": None,
+    "last_install_time": None,
 }
 
 
 def _build_framed_heartbeat() -> bytes:
-    # Heartbeat content is irrelevant for liveness; use zeros to avoid
-    # depending on psutil (which is absent on emscripten anyway).
     payload = _capnp_serialize(ClientHeartbeat(resource=Resource(cpu=0, rss=0), latencyUS=0))
     return struct.pack(_YMQ_HEADER_FORMAT, len(payload)) + payload
 
 
-def _pump_loop_once() -> None:
-    # Direct heartbeat send via the underlying WebSocket. This intentionally
-    # bypasses asyncio / JSPI: ``js.WebSocket.send`` only queues bytes into
-    # the browser network stack and returns immediately, with no Python
-    # re-entry. Safe to call from a ``sys.setprofile`` event.
-    _refresh_external_socket()
-    socket = _yield_state.get("external_socket")
-    if socket is None:
-        return
-    # ``ConnectorSocket`` from _ymq_wasm.py: it must be open (handshake
-    # complete) and not closed before we can shove raw bytes at the JS
-    # WebSocket. Anything else is just dropped this tick; the throttle will
-    # try again later, and the real heartbeat task will catch up once the
-    # loop gets to run.
-    if not getattr(socket, "_open", False):
-        return
-    if getattr(socket, "_closed", False):
-        return
-    framed = _yield_state.get("framed_heartbeat")
-    if framed is None:
-        framed = _build_framed_heartbeat()
-        _yield_state["framed_heartbeat"] = framed
-    # ``_raw_send(data, None)`` is synchronous and never re-enters Python
-    # callbacks: it just calls ``js.WebSocket.send(buf)``.
-    socket._raw_send(framed, None)  # noqa: SLF001
+def _install_js_heartbeat_timer(socket: Any) -> None:
+    """Attach a pure-JS ``setInterval`` to ``socket._ws`` that sends a
+    framed ClientHeartbeat every ``_HEARTBEAT_INTERVAL_MS`` ms.
 
+    Idempotent: a no-op if a timer is already installed on ``socket``.
+    """
+    if _js_heartbeat_state.get("timer_id") is not None and _js_heartbeat_state.get("socket") is socket:
+        return
+    # Tear down any prior timer first (e.g. socket was rebuilt on reconnect).
+    _uninstall_js_heartbeat_timer()
 
-def _yield_profile_hook(frame: Any, event: str, arg: Any) -> None:
-    if _yield_state["in_progress"]:
-        return
-    # Fire on both call AND return events to maximize coverage. The
-    # throttle below bounds the actual work to once per
-    # ``_YIELD_MIN_INTERVAL_SECONDS``.
-    if event not in ("call", "c_call", "return", "c_return"):
-        return
-    now = time.monotonic()
-    if now - _yield_state["last"] < _YIELD_MIN_INTERVAL_SECONDS:
-        return
-    _yield_state["last"] = now
-    _yield_state["fire_count"] += 1
-    _yield_state["in_progress"] = True
     try:
-        try:
-            _pump_loop_once()
-            _yield_state["pump_ok"] += 1
-        except BaseException as exc:
-            _yield_state["pump_err"] += 1
-            _yield_state["last_error"] = repr(exc)
-    except BaseException:
-        # Never raise out of a profile hook -- that would corrupt the
-        # interpreter's profiling state and could kill the user's notebook.
+        import js  # type: ignore[import-not-found]
+        from pyodide.code import run_js  # type: ignore[import-not-found]
+
+        framed = _build_framed_heartbeat()
+        js_buf = js.Uint8Array.new(len(framed))
+        js_buf.assign(memoryview(framed))
+
+        # Build a JS factory ONCE that closes over the WebSocket and the
+        # buffer. The timer callback is pure JS -- no Python or wasm
+        # re-entry -- so it fires even when the wasm stack is JSPI-
+        # suspended inside a long-running ``run_sync`` call. ``readyState
+        # === 1`` is WebSocket.OPEN; sending on a non-open socket would
+        # throw in JS and the exception would surface in the browser
+        # console but not crash anything.
+        make_timer = run_js(
+            "(ws, buf, intervalMs) => setInterval(() => { "
+            "if (ws && ws.readyState === 1) { try { ws.send(buf); } catch (e) {} } "
+            "}, intervalMs)"
+        )
+        timer_id = make_timer(socket._ws, js_buf, _HEARTBEAT_INTERVAL_MS)  # noqa: SLF001
+
+        _js_heartbeat_state["timer_id"] = timer_id
+        _js_heartbeat_state["socket"] = socket
+        _js_heartbeat_state["timer_install_count"] += 1
+        _js_heartbeat_state["last_install_time"] = time.time()
+    except BaseException as exc:
+        _js_heartbeat_state["last_install_error"] = repr(exc)
+
+
+def _uninstall_js_heartbeat_timer() -> None:
+    timer_id = _js_heartbeat_state.get("timer_id")
+    if timer_id is None:
+        return
+    try:
+        import js  # type: ignore[import-not-found]
+
+        js.clearInterval(timer_id)
+    except BaseException as exc:
+        _js_heartbeat_state["last_install_error"] = f"clearInterval: {exc!r}"
+    _js_heartbeat_state["timer_id"] = None
+    _js_heartbeat_state["socket"] = None
+
+
+def _setup_browser_websocket_heartbeat(agent: Any) -> None:
+    """Register a class-level ``post_open_hook`` on ``ConnectorSocket`` that
+    installs a JS heartbeat timer when ``agent``'s scheduler connector's
+    WebSocket finishes its YMQ handshake.
+
+    Safe to call multiple times -- replaces the prior hook.
+    """
+    try:
+        from scaler.io.ymq._ymq_wasm import ConnectorSocket  # type: ignore[import-not-found]
+    except ImportError:
+        # Not running on emscripten; nothing to do.
+        return
+
+    _js_heartbeat_state["agent"] = agent
+    _js_heartbeat_state["hook_install_count"] += 1
+
+    def post_open_hook(socket: Any) -> None:
+        # Filter: only the agent's external (scheduler) connector should
+        # get a heartbeat. Other ConnectorSockets (object storage, user-
+        # created) must not, otherwise the remote peer will receive an
+        # unexpected ClientHeartbeat frame.
+        held_agent = _js_heartbeat_state.get("agent")
+        if held_agent is None:
+            return
+        connector_external = getattr(held_agent, "_connector_external", None)
+        if connector_external is None:
+            return
+        if getattr(connector_external, "_socket", None) is not socket:
+            return
+        _install_js_heartbeat_timer(socket)
+
+    ConnectorSocket._post_open_hook = staticmethod(post_open_hook)  # type: ignore[attr-defined]
+
+    # If the socket is already open by the time we install (e.g. very fast
+    # local loopback), fire the hook synchronously so we don't miss it.
+    connector_external = getattr(agent, "_connector_external", None)
+    socket = getattr(connector_external, "_socket", None) if connector_external else None
+    if socket is not None and getattr(socket, "_open", False) and not getattr(socket, "_closed", False):
+        _install_js_heartbeat_timer(socket)
+
+
+def _teardown_browser_websocket_heartbeat() -> None:
+    _uninstall_js_heartbeat_timer()
+    _js_heartbeat_state["agent"] = None
+    try:
+        from scaler.io.ymq._ymq_wasm import ConnectorSocket  # type: ignore[import-not-found]
+
+        ConnectorSocket._post_open_hook = None  # type: ignore[attr-defined]
+    except ImportError:
         pass
-    finally:
-        _yield_state["in_progress"] = False
-
-
-def _install_yield_hook(agent: Any) -> None:
-    # Stash the agent's external connector socket so the hook can call
-    # ``_raw_send`` directly. The socket itself may not exist yet (the agent
-    # creates it during its async bring-up); ``_pump_loop_once`` re-reads
-    # the attribute each tick so a late-bound socket is picked up
-    # automatically.
-    connector_external = getattr(agent, "_connector_external", None)
-    _yield_state["external_socket"] = getattr(connector_external, "_socket", None) if connector_external else None
-    # Re-snapshot just before each fire too, in case the agent rebuilds its
-    # connector on reconnect.
-    _yield_state["_agent_ref"] = agent
-    if _yield_state["installed"]:
-        # Re-assert the profile hook -- IPython / pyodide-kernel may reset
-        # ``sys.setprofile`` between cells, in which case we'd silently
-        # stop firing. Re-installing here is cheap and idempotent.
-        if sys.getprofile() is not _yield_profile_hook:
-            _yield_state["previous_profile"] = sys.getprofile()
-            sys.setprofile(_yield_profile_hook)
-        return
-    _yield_state["previous_profile"] = sys.getprofile()
-    _yield_state["last"] = time.monotonic()
-    _yield_state["installed"] = True
-    sys.setprofile(_yield_profile_hook)
-
-
-def _refresh_external_socket() -> None:
-    # Hook may have been installed before the agent's connector socket
-    # existed. Re-snapshot it on demand.
-    if _yield_state.get("external_socket") is not None:
-        return
-    agent = _yield_state.get("_agent_ref")
-    if agent is None:
-        return
-    connector_external = getattr(agent, "_connector_external", None)
-    if connector_external is None:
-        return
-    _yield_state["external_socket"] = getattr(connector_external, "_socket", None)
-
-
-def _uninstall_yield_hook() -> None:
-    if not _yield_state["installed"]:
-        return
-    sys.setprofile(_yield_state["previous_profile"])
-    _yield_state["previous_profile"] = None
-    _yield_state["installed"] = False
-    _yield_state["external_socket"] = None
-    _yield_state["framed_heartbeat"] = None
-    _yield_state["_agent_ref"] = None
 
 
 # Patch ``time.sleep`` so a synchronous sleep in user code (or in a library
@@ -735,8 +714,7 @@ class InProcessAgentBridge(ClientAgentBridge):
         if sys.platform == "emscripten":
             _install_concurrent_futures_jspi_patch()
             _install_time_sleep_jspi_patch()
-            if _should_install_browser_yield_hook():
-                _install_yield_hook(self._agent)
+            _setup_browser_websocket_heartbeat(self._agent)
 
     def get_object_storage_address(self) -> AddressConfig:
         # ClientAgent resolves ``_object_storage_address`` early during its
@@ -775,7 +753,7 @@ class InProcessAgentBridge(ClientAgentBridge):
             return
         self._running = False
         if sys.platform == "emscripten":
-            _uninstall_yield_hook()
+            _teardown_browser_websocket_heartbeat()
             _uninstall_time_sleep_jspi_patch()
             _uninstall_concurrent_futures_jspi_patch()
 
