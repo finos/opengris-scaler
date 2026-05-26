@@ -195,32 +195,6 @@ class BridgeSurfaceParityTest(unittest.TestCase):
         self.assertTrue(issubclass(InProcessAgentBridge, ClientAgentBridge))
 
 
-class BrowserYieldHookConfigTest(unittest.TestCase):
-    def test_browser_yield_hook_is_disabled_by_default(self) -> None:
-        with patch.dict(bridge_module.os.environ, {}, clear=True):
-            self.assertFalse(bridge_module._should_install_browser_yield_hook())
-
-    def test_browser_yield_hook_accepts_truthy_env_values(self) -> None:
-        for value in ("1", "true", "YES", "On"):
-            with self.subTest(value=value):
-                with patch.dict(
-                    bridge_module.os.environ,
-                    {bridge_module._ENABLE_BROWSER_YIELD_HOOK_ENV: value},
-                    clear=True,
-                ):
-                    self.assertTrue(bridge_module._should_install_browser_yield_hook())
-
-    def test_browser_yield_hook_rejects_falsey_env_values(self) -> None:
-        for value in ("0", "false", "no", "off", ""):
-            with self.subTest(value=value):
-                with patch.dict(
-                    bridge_module.os.environ,
-                    {bridge_module._ENABLE_BROWSER_YIELD_HOOK_ENV: value},
-                    clear=True,
-                ):
-                    self.assertFalse(bridge_module._should_install_browser_yield_hook())
-
-
 class InProcessAgentBridgeStartTest(unittest.TestCase):
     def _make_bridge(self) -> InProcessAgentBridge:
         with patch.object(bridge_module, "ClientAgent") as mock_agent_cls:
@@ -238,7 +212,23 @@ class InProcessAgentBridgeStartTest(unittest.TestCase):
                 serializer=object(),  # type: ignore[arg-type]
             )
 
-    def test_start_skips_profile_yield_hook_by_default(self) -> None:
+    def test_start_skips_browser_setup_off_emscripten(self) -> None:
+        bridge = self._make_bridge()
+        loop = Mock()
+        loop.create_task.return_value = object()
+
+        with patch.object(bridge_module.sys, "platform", "linux"):
+            with patch.object(bridge_module.asyncio, "get_event_loop", return_value=loop):
+                with patch.object(bridge_module, "_install_concurrent_futures_jspi_patch") as install_wait:
+                    with patch.object(bridge_module, "_install_time_sleep_jspi_patch") as install_sleep:
+                        with patch.object(bridge_module, "_setup_browser_websocket_heartbeat") as setup_hb:
+                            bridge.start()
+
+        install_wait.assert_not_called()
+        install_sleep.assert_not_called()
+        setup_hb.assert_not_called()
+
+    def test_start_installs_browser_setup_on_emscripten(self) -> None:
         bridge = self._make_bridge()
         loop = Mock()
         loop.create_task.return_value = object()
@@ -247,32 +237,59 @@ class InProcessAgentBridgeStartTest(unittest.TestCase):
             with patch.object(bridge_module.asyncio, "get_event_loop", return_value=loop):
                 with patch.object(bridge_module, "_install_concurrent_futures_jspi_patch") as install_wait:
                     with patch.object(bridge_module, "_install_time_sleep_jspi_patch") as install_sleep:
-                        with patch.object(bridge_module, "_install_yield_hook") as install_yield:
-                            with patch.object(
-                                bridge_module, "_should_install_browser_yield_hook", return_value=False
-                            ):
-                                bridge.start()
+                        with patch.object(bridge_module, "_setup_browser_websocket_heartbeat") as setup_hb:
+                            bridge.start()
 
         install_wait.assert_called_once()
         install_sleep.assert_called_once()
-        install_yield.assert_not_called()
+        setup_hb.assert_called_once_with(bridge._agent)
 
-    def test_start_installs_profile_yield_hook_when_enabled(self) -> None:
-        bridge = self._make_bridge()
-        loop = Mock()
-        loop.create_task.return_value = object()
 
-        with patch.object(bridge_module.sys, "platform", "emscripten"):
-            with patch.object(bridge_module.asyncio, "get_event_loop", return_value=loop):
-                with patch.object(bridge_module, "_install_concurrent_futures_jspi_patch"):
-                    with patch.object(bridge_module, "_install_time_sleep_jspi_patch"):
-                        with patch.object(bridge_module, "_install_yield_hook") as install_yield:
-                            with patch.object(
-                                bridge_module, "_should_install_browser_yield_hook", return_value=True
-                            ):
-                                bridge.start()
+class HeartbeatDiagnosticTest(unittest.TestCase):
+    """``heartbeat_diagnostic()`` must be safe to call from any environment.
 
-        install_yield.assert_called_once_with(bridge._agent)
+    Notebooks call it on native CPython for debugging too, where ``js_state``
+    is ``None``. It must return a plain dict (no JsProxy references) and
+    never raise.
+    """
+
+    def test_returns_plain_dict_when_no_js_state(self) -> None:
+        with patch.object(
+            bridge_module,
+            "_js_heartbeat_state",
+            dict(bridge_module._js_heartbeat_state, js_state=None),
+        ):
+            snap = bridge_module.heartbeat_diagnostic()
+        self.assertIsInstance(snap, dict)
+        self.assertIsNone(snap["js"])
+        self.assertNotIn("js_state", snap)  # raw JsProxy must not leak
+
+    def test_reads_counters_off_js_state_object(self) -> None:
+        # Stand-in for a Pyodide JsProxy: any object with the named
+        # attributes works because the helper uses ``getattr`` with a
+        # graceful per-field fallback.
+        class _FakeJsState:
+            fire_count = 7
+            send_count = 5
+            send_error_count = 2
+            last_send_error = "boom"
+            last_ws_state = 1
+            last_fire_ms = 1234
+            last_send_ms = 1230
+            install_ms = 1000
+            timer_id = 42
+
+        with patch.object(
+            bridge_module,
+            "_js_heartbeat_state",
+            dict(bridge_module._js_heartbeat_state, js_state=_FakeJsState()),
+        ):
+            snap = bridge_module.heartbeat_diagnostic()
+        self.assertEqual(snap["js"]["fire_count"], 7)
+        self.assertEqual(snap["js"]["send_count"], 5)
+        self.assertEqual(snap["js"]["send_error_count"], 2)
+        self.assertEqual(snap["js"]["last_send_error"], "boom")
+        self.assertEqual(snap["js"]["last_ws_state"], 1)
 
 
 class CheckBrowserRuntimeTest(unittest.TestCase):

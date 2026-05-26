@@ -226,12 +226,20 @@ _js_heartbeat_state: dict = {
     # The agent whose scheduler connector we are protecting. Used by the
     # ``post_open_hook`` closure to filter sockets.
     "agent": None,
+    # JsProxy of the JS-side telemetry object. Exposes ``fire_count``,
+    # ``send_count``, ``send_error_count``, ``last_send_error``,
+    # ``last_ws_state``, ``last_fire_ms``, ``last_send_ms`` so the diagnostic
+    # cell can inspect what the timer actually did. Kept on the Python side
+    # so its lifetime matches the timer.
+    "js_state": None,
     # Diagnostics -- read from a notebook with
-    # ``from scaler.client.agent import bridge; print(bridge._js_heartbeat_state)``.
+    # ``from scaler.client.agent import bridge; bridge.heartbeat_diagnostic()``
+    # or by inspecting ``bridge._js_heartbeat_state`` directly.
     "hook_install_count": 0,
     "timer_install_count": 0,
     "last_install_error": None,
     "last_install_time": None,
+    "framed_heartbeat_size": None,
 }
 
 
@@ -245,6 +253,9 @@ def _install_js_heartbeat_timer(socket: Any) -> None:
     framed ClientHeartbeat every ``_HEARTBEAT_INTERVAL_MS`` ms.
 
     Idempotent: a no-op if a timer is already installed on ``socket``.
+
+    On failure the reason lands in ``_js_heartbeat_state['last_install_error']``
+    instead of propagating, so a broken heartbeat never tears down the agent.
     """
     if _js_heartbeat_state.get("timer_id") is not None and _js_heartbeat_state.get("socket") is socket:
         return
@@ -256,27 +267,78 @@ def _install_js_heartbeat_timer(socket: Any) -> None:
         from pyodide.code import run_js  # type: ignore[import-not-found]
 
         framed = _build_framed_heartbeat()
+        _js_heartbeat_state["framed_heartbeat_size"] = len(framed)
         js_buf = js.Uint8Array.new(len(framed))
         js_buf.assign(memoryview(framed))
 
-        # Build a JS factory ONCE that closes over the WebSocket and the
-        # buffer. The timer callback is pure JS -- no Python or wasm
-        # re-entry -- so it fires even when the wasm stack is JSPI-
-        # suspended inside a long-running ``run_sync`` call. ``readyState
-        # === 1`` is WebSocket.OPEN; sending on a non-open socket would
-        # throw in JS and the exception would surface in the browser
-        # console but not crash anything.
+        # Build a JS factory ONCE that closes over:
+        #   * the WebSocket
+        #   * the pre-encoded heartbeat bytes (held as a JS Array of numbers
+        #     so it cannot be transferred / detached by ws.send)
+        #   * a state object whose mutable fields the JS timer can update so
+        #     Python can read them later
+        #
+        # The timer callback is pure JS -- no Python or wasm re-entry -- so
+        # it fires even when the wasm stack is JSPI-suspended inside a long-
+        # running ``run_sync`` call.
+        #
+        # A fresh Uint8Array is built per tick: although WebSocket.send is
+        # spec'd to copy binary payloads synchronously, some implementations
+        # have detached typed-array buffers in the past, and a silent
+        # detachment is the failure mode that motivated this hardening. The
+        # cost is one tiny per-tick allocation.
         make_timer = run_js(
-            "(ws, buf, intervalMs) => setInterval(() => { "
-            "if (ws && ws.readyState === 1) { try { ws.send(buf); } catch (e) {} } "
-            "}, intervalMs)"
+            """
+            (ws, srcBytes, intervalMs, state) => {
+                const srcArr = Array.from(srcBytes);
+                const timerId = setInterval(() => {
+                    state.fire_count = (state.fire_count || 0) + 1;
+                    state.last_fire_ms = Date.now();
+                    state.last_ws_state = ws ? ws.readyState : -1;
+                    if (!ws || ws.readyState !== 1) {
+                        return;
+                    }
+                    try {
+                        const fresh = new Uint8Array(srcArr);
+                        ws.send(fresh);
+                        state.send_count = (state.send_count || 0) + 1;
+                        state.last_send_ms = Date.now();
+                    } catch (e) {
+                        state.send_error_count = (state.send_error_count || 0) + 1;
+                        state.last_send_error = String(e && e.message ? e.message : e);
+                    }
+                }, intervalMs);
+                state.timer_id = timerId;
+                state.install_ms = Date.now();
+                return timerId;
+            }
+            """
         )
-        timer_id = make_timer(socket._ws, js_buf, _HEARTBEAT_INTERVAL_MS)  # noqa: SLF001
+
+        # Plain JS object that the timer mutates. Created via ``js.Object.new``
+        # so the JsProxy round-trips correctly (a Python dict here would be
+        # converted to a Map, whose properties aren't accessible via
+        # ``state.fire_count`` from JS).
+        js_state = js.Object.new()
+        # Pre-seed counter fields so a "never fired" timer is visibly distinct
+        # from a "fired N times" timer when inspected from Python.
+        js_state.fire_count = 0
+        js_state.send_count = 0
+        js_state.send_error_count = 0
+        js_state.last_send_error = None
+        js_state.last_ws_state = -1
+        js_state.last_fire_ms = 0
+        js_state.last_send_ms = 0
+        js_state.install_ms = 0
+
+        timer_id = make_timer(socket._ws, js_buf, _HEARTBEAT_INTERVAL_MS, js_state)  # noqa: SLF001
 
         _js_heartbeat_state["timer_id"] = timer_id
         _js_heartbeat_state["socket"] = socket
+        _js_heartbeat_state["js_state"] = js_state
         _js_heartbeat_state["timer_install_count"] += 1
         _js_heartbeat_state["last_install_time"] = time.time()
+        _js_heartbeat_state["last_install_error"] = None
     except BaseException as exc:
         _js_heartbeat_state["last_install_error"] = repr(exc)
 
@@ -293,6 +355,44 @@ def _uninstall_js_heartbeat_timer() -> None:
         _js_heartbeat_state["last_install_error"] = f"clearInterval: {exc!r}"
     _js_heartbeat_state["timer_id"] = None
     _js_heartbeat_state["socket"] = None
+    _js_heartbeat_state["js_state"] = None
+
+
+def heartbeat_diagnostic() -> dict:
+    """Snapshot Python + JS heartbeat counters as a plain dict.
+
+    Safe to call from any environment (returns just the Python state when
+    no JS state is attached). Intended for notebook cells:
+
+        from scaler.client.agent import bridge
+        bridge.heartbeat_diagnostic()
+    """
+    snapshot = {k: v for k, v in _js_heartbeat_state.items() if k != "js_state"}
+    js_state = _js_heartbeat_state.get("js_state")
+    if js_state is None:
+        snapshot["js"] = None
+        return snapshot
+    # Read every counter via attribute access. Any None or missing field
+    # comes back as ``None`` rather than raising, so the snapshot is always
+    # printable.
+    js_view: dict = {}
+    for name in (
+        "fire_count",
+        "send_count",
+        "send_error_count",
+        "last_send_error",
+        "last_ws_state",
+        "last_fire_ms",
+        "last_send_ms",
+        "install_ms",
+        "timer_id",
+    ):
+        try:
+            js_view[name] = getattr(js_state, name)
+        except Exception as exc:  # noqa: BLE001
+            js_view[name] = f"<read error: {exc!r}>"
+    snapshot["js"] = js_view
+    return snapshot
 
 
 def _setup_browser_websocket_heartbeat(agent: Any) -> None:
