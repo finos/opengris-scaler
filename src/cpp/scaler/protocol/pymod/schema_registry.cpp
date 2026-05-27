@@ -24,9 +24,9 @@ void SchemaRegistry::registerCompiledSchema(const char* moduleName, const char* 
 // in dedicated `static const char[]` arrays forces the linker to allocate
 // them in non-mergeable storage so the addresses remain valid.
 namespace {
-static const char kModCommon[]         = "common";
-static const char kModStatus[]         = "status";
-static const char kModMessage[]        = "message";
+static const char kModCommon[]        = "common";
+static const char kModStatus[]        = "status";
+static const char kModMessage[]       = "message";
 static const char kModObjectStorage[] = "object_storage";
 }  // namespace
 
@@ -35,9 +35,9 @@ static const char kModObjectStorage[] = "object_storage";
 // tail-merged into longer literals in `.rodata.str1.1` and resolve to wrong
 // bytes after wasm relocation. Forcing each name into its own
 // function-scoped `static const char[]` storage prevents the merge.
-#define REG_STRUCT(MOD, T)                                       \
-    do {                                                          \
-        static const char kName_##T[] = #T;                       \
+#define REG_STRUCT(MOD, T)                                           \
+    do {                                                             \
+        static const char kName_##T[] = #T;                          \
         registerCompiledSchema<scaler::protocol::T>(MOD, kName_##T); \
     } while (0)
 
@@ -133,7 +133,8 @@ capnp::StructSchema SchemaRegistry::getStructByName(const std::string& typeName)
 
     auto separator = typeName.rfind('.');
     if (separator == std::string::npos) {
-        throw std::out_of_range("unknown Cap'n Proto struct type");
+        static const char ERR[] = "unknown Cap'n Proto struct type";
+        throw std::out_of_range(ERR);
     }
 
     return getStructById(_topLevelTypeIds.at(typeName.substr(separator + 1)));

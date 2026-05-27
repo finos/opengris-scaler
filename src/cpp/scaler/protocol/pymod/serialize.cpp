@@ -17,6 +17,17 @@
 
 namespace scaler::protocol::pymod {
 
+// Wasm-relocator-safe string literals (see utility.cpp / bootstrap.cpp headers
+// for the full rationale). Every bare ``"..."`` passed to the CPython C API
+// must be stored as a named ``static const char[]`` array so the Pyodide
+// SIDE_MODULE loader does not corrupt it via rodata section merging.
+static const char ERR_MODULE_STATE[]    = "capnp module state is unavailable";
+static const char ERR_NOT_ALIGNED[]     = "Cap'n Proto input buffer must be word-aligned for zero-copy reads";
+static const char ERR_UNKNOWN_STRUCT[]  = "unknown Cap'n Proto struct type: %s";
+static const char ERR_FROM_BYTES_DATA[] = "from_bytes requires data argument";
+static const char ERR_NO_SUCH_VARIANT[] = "no such Message variant: %s";
+static const char ERR_SERIALIZE[]       = "Cap'n Proto serialization failed";
+
 namespace {
 
 using scaler::utility::pymod::OwnedPyObject;
@@ -70,17 +81,34 @@ OwnedPyObject<> message_to_bytes(const char* variant_name, PyObject* inner)
 {
     auto* state = get_module_state();
     if (!state || !state->schema_registry.init()) {
-        PyErr_SetString(PyExc_RuntimeError, "capnp module state is unavailable");
+        PyErr_SetString(PyExc_RuntimeError, ERR_MODULE_STATE);
         return {};
     }
-    auto message_schema = capnp::Schema::from<scaler::protocol::Message>().asStruct();
-    capnp::MallocMessageBuilder builder;
-    auto root  = builder.initRoot<capnp::DynamicStruct>(message_schema);
-    auto field = message_schema.getFieldByName(variant_name);
-    if (!set_dynamic_field(root, field, inner)) {
-        return nullptr;
+    try {
+        auto message_schema = capnp::Schema::from<scaler::protocol::Message>().asStruct();
+        auto maybe_field    = message_schema.findFieldByName(variant_name);
+        KJ_IF_MAYBE (field_ptr, maybe_field) {
+            capnp::MallocMessageBuilder builder;
+            auto root = builder.initRoot<capnp::DynamicStruct>(message_schema);
+            if (!set_dynamic_field(root, *field_ptr, inner)) {
+                return nullptr;
+            }
+            return builder_to_bytes(builder);
+        } else {
+            PyErr_Format(PyExc_KeyError, ERR_NO_SUCH_VARIANT, variant_name ? variant_name : "<null>");
+            return {};
+        }
+    } catch (const kj::Exception&) {
+        if (!PyErr_Occurred()) {
+            PyErr_SetString(PyExc_RuntimeError, ERR_SERIALIZE);
+        }
+        return {};
+    } catch (const std::exception&) {
+        if (!PyErr_Occurred()) {
+            PyErr_SetString(PyExc_RuntimeError, ERR_SERIALIZE);
+        }
+        return {};
     }
-    return builder_to_bytes(builder);
 }
 
 OwnedPyObject<> message_from_bytes(PyObject* data, unsigned long long traversal_limit)
@@ -93,12 +121,12 @@ OwnedPyObject<> message_from_bytes(PyObject* data, unsigned long long traversal_
     auto* state = get_module_state();
     if (!state || !state->schema_registry.init()) {
         PyBuffer_Release(&buffer);
-        PyErr_SetString(PyExc_RuntimeError, "capnp module state is unavailable");
+        PyErr_SetString(PyExc_RuntimeError, ERR_MODULE_STATE);
         return {};
     }
     if (!check_word_alignment(buffer)) {
         PyBuffer_Release(&buffer);
-        PyErr_SetString(PyExc_ValueError, "Cap'n Proto input buffer must be word-aligned for zero-copy reads");
+        PyErr_SetString(PyExc_ValueError, ERR_NOT_ALIGNED);
         return {};
     }
 
@@ -110,23 +138,35 @@ OwnedPyObject<> struct_to_bytes(const char* type_name, PyObject* obj)
 {
     auto* state = get_module_state();
     if (!state || !state->schema_registry.init()) {
-        PyErr_SetString(PyExc_RuntimeError, "capnp module state is unavailable");
+        PyErr_SetString(PyExc_RuntimeError, ERR_MODULE_STATE);
         return {};
     }
     capnp::StructSchema schema;
     try {
         schema = state->schema_registry.getStructByName(type_name);
     } catch (const std::out_of_range&) {
-        PyErr_Format(PyExc_KeyError, "unknown Cap'n Proto struct type: %s", type_name ? type_name : "<null>");
+        PyErr_Format(PyExc_KeyError, ERR_UNKNOWN_STRUCT, type_name ? type_name : "<null>");
         return {};
     }
 
-    capnp::MallocMessageBuilder builder;
-    auto root = builder.initRoot<capnp::DynamicStruct>(schema);
-    if (!set_dynamic_struct(root, obj)) {
-        return nullptr;
+    try {
+        capnp::MallocMessageBuilder builder;
+        auto root = builder.initRoot<capnp::DynamicStruct>(schema);
+        if (!set_dynamic_struct(root, obj)) {
+            return nullptr;
+        }
+        return builder_to_bytes(builder);
+    } catch (const kj::Exception&) {
+        if (!PyErr_Occurred()) {
+            PyErr_SetString(PyExc_RuntimeError, ERR_SERIALIZE);
+        }
+        return {};
+    } catch (const std::exception&) {
+        if (!PyErr_Occurred()) {
+            PyErr_SetString(PyExc_RuntimeError, ERR_SERIALIZE);
+        }
+        return {};
     }
-    return builder_to_bytes(builder);
 }
 
 OwnedPyObject<> struct_from_bytes(const char* type_name, PyObject* data, unsigned long long traversal_limit)
@@ -139,7 +179,7 @@ OwnedPyObject<> struct_from_bytes(const char* type_name, PyObject* data, unsigne
     auto* state = get_module_state();
     if (!state || !state->schema_registry.init()) {
         PyBuffer_Release(&buffer);
-        PyErr_SetString(PyExc_RuntimeError, "capnp module state is unavailable");
+        PyErr_SetString(PyExc_RuntimeError, ERR_MODULE_STATE);
         return {};
     }
     capnp::StructSchema schema;
@@ -147,13 +187,13 @@ OwnedPyObject<> struct_from_bytes(const char* type_name, PyObject* data, unsigne
         schema = state->schema_registry.getStructByName(type_name);
     } catch (const std::out_of_range&) {
         PyBuffer_Release(&buffer);
-        PyErr_Format(PyExc_KeyError, "unknown Cap'n Proto struct type: %s", type_name ? type_name : "<null>");
+        PyErr_Format(PyExc_KeyError, ERR_UNKNOWN_STRUCT, type_name ? type_name : "<null>");
         return {};
     }
 
     if (!check_word_alignment(buffer)) {
         PyBuffer_Release(&buffer);
-        PyErr_SetString(PyExc_ValueError, "Cap'n Proto input buffer must be word-aligned for zero-copy reads");
+        PyErr_SetString(PyExc_ValueError, ERR_NOT_ALIGNED);
         return {};
     }
 

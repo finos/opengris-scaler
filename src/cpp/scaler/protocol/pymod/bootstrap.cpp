@@ -37,6 +37,12 @@ static const char ATTR_RUNTIME_INITIALIZED[] = "_runtime_initialized";
 static const char ATTR_FROM_BYTES[]          = "from_bytes";
 static const char ATTR_ALL_DUNDER[]          = "__all__";
 static const char SCALER_PROTOCOL_CAPNP[]    = "scaler.protocol.capnp";
+static const char ERR_MODULE_STATE[]         = "capnp module state is unavailable";
+static const char ERR_ENUM_STATE[]           = "capnp enum class state is unavailable";
+static const char ERR_BASE_TYPE_STATE[]      = "capnp base type state is unavailable";
+static const char ERR_UNKNOWN_STRUCT_ID[]    = "unknown protocol struct schema id";
+static const char ERR_UNKNOWN_ENUM_ID[]      = "unknown protocol enum schema id";
+static const char ERR_UNKNOWN_MODULE[]       = "unknown protocol schema module";
 
 OwnedPyObject<> build_schema_descriptor(capnp::Schema schema)
 {
@@ -120,7 +126,7 @@ OwnedPyObject<> build_schema_descriptor(capnp::Schema schema)
     for (decltype(nested_nodes.size()) index = 0; index < nested_nodes.size(); ++index) {
         auto* state = get_module_state();
         if (!state) {
-            PyErr_SetString(PyExc_RuntimeError, "capnp module state is unavailable");
+            PyErr_SetString(PyExc_RuntimeError, ERR_MODULE_STATE);
             return nullptr;
         }
         auto nested_schema = state->schema_registry.getSchemaById(nested_nodes[index].getId());
@@ -283,7 +289,7 @@ OwnedPyObject<> create_enum_type(PyObject* descriptor, const char* module_name)
     }
     auto* state = get_module_state();
     if (!state || !state->enum_class) {
-        PyErr_SetString(PyExc_RuntimeError, "capnp enum class state is unavailable");
+        PyErr_SetString(PyExc_RuntimeError, ERR_ENUM_STATE);
         return {};
     }
     OwnedPyObject<> module_name_obj {PyUnicode_FromString(module_name)};
@@ -331,7 +337,7 @@ OwnedPyObject<> create_struct_type(
     }
     auto* state = get_module_state();
     if (!state || !state->capnp_struct_type || !state->capnp_union_struct_type) {
-        PyErr_SetString(PyExc_RuntimeError, "capnp base type state is unavailable");
+        PyErr_SetString(PyExc_RuntimeError, ERR_BASE_TYPE_STATE);
         return nullptr;
     }
     OwnedPyObject<> bases {PyTuple_Pack(
@@ -431,12 +437,12 @@ OwnedPyObject<> get_type_by_schema_id(uint64_t schema_id)
 {
     auto* state = get_module_state();
     if (!state) {
-        PyErr_SetString(PyExc_RuntimeError, "capnp module state is unavailable");
+        PyErr_SetString(PyExc_RuntimeError, ERR_MODULE_STATE);
         return {};
     }
     auto it = state->type_registry.find(schema_id);
     if (it == state->type_registry.end()) {
-        PyErr_SetString(PyExc_KeyError, "unknown protocol struct schema id");
+        PyErr_SetString(PyExc_KeyError, ERR_UNKNOWN_STRUCT_ID);
         return {};
     }
     return it->second;
@@ -446,12 +452,12 @@ OwnedPyObject<> get_enum_by_schema_id(uint64_t schema_id)
 {
     auto* state = get_module_state();
     if (!state) {
-        PyErr_SetString(PyExc_RuntimeError, "capnp module state is unavailable");
+        PyErr_SetString(PyExc_RuntimeError, ERR_MODULE_STATE);
         return {};
     }
     auto it = state->enum_registry.find(schema_id);
     if (it == state->enum_registry.end()) {
-        PyErr_SetString(PyExc_KeyError, "unknown protocol enum schema id");
+        PyErr_SetString(PyExc_KeyError, ERR_UNKNOWN_ENUM_ID);
         return {};
     }
     return it->second;
@@ -465,7 +471,7 @@ OwnedPyObject<> get_module_descriptor(const char* module_name)
     }
     auto schemas = state->schema_registry.getModuleSchemas(module_name);
     if (!schemas) {
-        PyErr_SetString(PyExc_KeyError, "unknown protocol schema module");
+        PyErr_SetString(PyExc_KeyError, ERR_UNKNOWN_MODULE);
         return {};
     }
     OwnedPyObject<> result {PyList_New(0)};
@@ -494,7 +500,7 @@ bool initialize_runtime_modules(PyObject* module)
 
     auto* state = get_module_state(module);
     if (!state) {
-        PyErr_SetString(PyExc_RuntimeError, "capnp module state is unavailable");
+        PyErr_SetString(PyExc_RuntimeError, ERR_MODULE_STATE);
         return false;
     }
 
@@ -515,8 +521,9 @@ bool initialize_runtime_modules(PyObject* module)
         return false;
     }
 
-    OwnedPyObject<> base_module {PyModule_New("scaler.protocol._base")};
-    if (!base_module || !register_module(base_module.get(), "scaler.protocol._base")) {
+    static const char BASE_MODULE_NAME[] = "scaler.protocol._base";
+    OwnedPyObject<> base_module {PyModule_New(BASE_MODULE_NAME)};
+    if (!base_module || !register_module(base_module.get(), BASE_MODULE_NAME)) {
         return false;
     }
 
@@ -537,7 +544,9 @@ bool initialize_runtime_modules(PyObject* module)
         capnp_struct_dict.get(),
         ATTR_FROM_BYTES,
         OwnedPyObject<>(make_class_method(&CAPNP_STRUCT_FROM_BYTES_DEF)).get());
-    OwnedPyObject<> capnp_struct_type {create_python_class("CapnpStruct", empty_bases.get(), capnp_struct_dict.get())};
+    static const char CAPNP_STRUCT_NAME[] = "CapnpStruct";
+    OwnedPyObject<> capnp_struct_type {
+        create_python_class(CAPNP_STRUCT_NAME, empty_bases.get(), capnp_struct_dict.get())};
     if (!capnp_struct_type) {
         return false;
     }
@@ -574,8 +583,9 @@ bool initialize_runtime_modules(PyObject* module)
         capnp_union_struct_dict.get(),
         ATTR_FROM_BYTES,
         OwnedPyObject<>(make_class_method(&CAPNP_UNION_FROM_BYTES_DEF)).get());
+    static const char CAPNP_UNION_STRUCT_NAME[] = "CapnpUnionStruct";
     OwnedPyObject<> capnp_union_struct_type {
-        create_python_class("CapnpUnionStruct", union_bases.get(), capnp_union_struct_dict.get())};
+        create_python_class(CAPNP_UNION_STRUCT_NAME, union_bases.get(), capnp_union_struct_dict.get())};
     if (!capnp_union_struct_type) {
         return false;
     }
