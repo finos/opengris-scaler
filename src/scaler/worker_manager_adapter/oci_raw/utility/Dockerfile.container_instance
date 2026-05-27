@@ -1,0 +1,15 @@
+FROM python:3.12-slim
+
+# Install OCI SDK and pip-install helper (used by entrypoint to install user requirements)
+RUN pip install --no-cache-dir oci
+
+# Copy the entrypoint script into the image
+COPY scaler/worker_manager_adapter/oci_raw/utility/entrypoint.sh /app/entrypoint.sh
+
+RUN chmod +x /app/entrypoint.sh
+
+WORKDIR /app
+
+# The entrypoint reads PYTHON_REQUIREMENTS, PYTHON_VERSION and COMMAND from env vars,
+# installs any extra packages, then executes COMMAND (e.g. scaler_cluster ...).
+ENTRYPOINT ["/app/entrypoint.sh"]
