@@ -22,7 +22,7 @@ runs:
       if: inputs.os == 'Linux'
       run: |
         sudo apt update -y
-        sudo apt install -y build-essential tzdata cmake clang curl pkg-config g++-14
+        sudo apt install -y build-essential tzdata cmake clang curl pkg-config g++-14 libssl-dev
         wget https://apt.llvm.org/llvm.sh
         chmod +x llvm.sh
         sudo ./llvm.sh 21

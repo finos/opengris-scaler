@@ -1,3 +1,11 @@
+find_package(PkgConfig QUIET)
+if(PKG_CONFIG_FOUND AND NOT OPENSSL_ROOT_DIR)
+    pkg_get_variable(_OPENSSL_PREFIX openssl prefix)
+    if(_OPENSSL_PREFIX)
+        set(OPENSSL_ROOT_DIR "${_OPENSSL_PREFIX}")
+    endif()
+endif()
+
 find_package(OpenSSL REQUIRED)
 
 add_library(scaler_wrapper_openssl STATIC
