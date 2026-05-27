@@ -6,7 +6,12 @@ if(PKG_CONFIG_FOUND AND NOT OPENSSL_ROOT_DIR)
     endif()
 endif()
 
-find_package(OpenSSL REQUIRED)
+find_package(OpenSSL QUIET)
+
+if(NOT OpenSSL_FOUND)
+    message(STATUS "OpenSSL not found -- skipping scaler_wrapper_openssl (not needed for py_capnp wheel)")
+    return()
+endif()
 
 add_library(scaler_wrapper_openssl STATIC
     secure_server.h
