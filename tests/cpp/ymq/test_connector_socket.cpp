@@ -146,7 +146,8 @@ TEST_F(YMQConnectorSocketTest, SendMessage)
 
     std::promise<void> sendCallbackCalled {};
 
-    auto onMessageSent = [&](std::expected<void, scaler::ymq::Error> result) {
+    auto onMessageSent = [&](std::expected<void, scaler::ymq::Error> result,
+                             [[maybe_unused]] std::unique_ptr<scaler::ymq::Bytes>) {
         ASSERT_TRUE(result.has_value());
         sendCallbackCalled.set_value();
     };
@@ -183,7 +184,8 @@ TEST_F(YMQConnectorSocketTest, SendMessage)
     // Try to send a message AFTER disconnection
     std::promise<scaler::ymq::Error> sendErrorReceived {};
 
-    auto onMessageSentError = [&](std::expected<void, scaler::ymq::Error> result) {
+    auto onMessageSentError = [&](std::expected<void, scaler::ymq::Error> result,
+                                  [[maybe_unused]] std::unique_ptr<scaler::ymq::Bytes>) {
         ASSERT_FALSE(result.has_value());
         sendErrorReceived.set_value(result.error());
     };
@@ -237,7 +239,8 @@ TEST_F(YMQConnectorSocketTest, RecvMessage)
 
     // Send first message from server
     bool sendCalled    = false;
-    auto onMessageSent = [&](std::expected<void, scaler::ymq::Error> result) {
+    auto onMessageSent = [&](std::expected<void, scaler::ymq::Error> result,
+                             [[maybe_unused]] std::unique_ptr<scaler::ymq::Bytes>) {
         ASSERT_TRUE(result.has_value());
         sendCalled = true;
     };
@@ -346,7 +349,8 @@ TEST_F(YMQConnectorSocketTest, Reconnect)
     connector.recvMessage(onConnectorRecvMessage);
 
     bool sendCalled = false;
-    server.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(messagePayload), [&](auto) { sendCalled = true; });
+    server.sendMessage(
+        std::make_unique<scaler::ymq::BufferedBytes>(messagePayload), [&](auto, auto) { sendCalled = true; });
 
     while (!sendCalled) {
         loop.run(UV_RUN_ONCE);

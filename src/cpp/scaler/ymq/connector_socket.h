@@ -36,7 +36,8 @@ public:
 
     using ShutdownCallback = scaler::utility::MoveOnlyFunction<void()>;
 
-    using SendMessageCallback = scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
+    using SendMessageCallback =
+        scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>, std::unique_ptr<Bytes>)>;
 
     using RecvMessageCallback = scaler::utility::MoveOnlyFunction<void(std::expected<Message, Error>)>;
 

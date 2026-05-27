@@ -46,7 +46,8 @@ public:
 
     using RemoteDisconnectCallback = scaler::utility::MoveOnlyFunction<void(DisconnectReason)>;
 
-    using SendMessageCallback = scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
+    using SendMessageCallback =
+        scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>, std::unique_ptr<Bytes>)>;
 
     using RecvMessageCallback = scaler::utility::MoveOnlyFunction<void(std::unique_ptr<Bytes>)>;
 
@@ -151,8 +152,7 @@ private:
 
     void recvMessage() noexcept;
 
-    static void onWriteDone(
-        SendMessageCallback callback, std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
+    static void onWriteDone(SendCallback callback, std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
 
     void onRead(std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) noexcept;
 

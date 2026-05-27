@@ -74,7 +74,9 @@ std::future<std::expected<void, scaler::ymq::Error>> ConnectorSocket::sendMessag
 
     _socket.sendMessage(
         std::move(messagePayload),
-        [promise = std::move(promise)](std::expected<void, scaler::ymq::Error> result) mutable {
+        [promise = std::move(promise)](
+            std::expected<void, scaler::ymq::Error> result,
+            [[maybe_unused]] std::unique_ptr<scaler::ymq::Bytes> payload) mutable {
             promise.set_value(std::move(result));
         });
 

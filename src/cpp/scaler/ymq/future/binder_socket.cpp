@@ -37,7 +37,8 @@ std::future<std::expected<void, Error>> BinderSocket::sendMessage(
     _socket.sendMessage(
         std::move(remoteIdentity),
         std::move(messagePayload),
-        [promise = std::move(promise)](std::expected<void, Error> result) mutable {
+        [promise = std::move(promise)](
+            std::expected<void, Error> result, [[maybe_unused]] std::unique_ptr<Bytes> payload) mutable {
             promise.set_value(std::move(result));
         });
 

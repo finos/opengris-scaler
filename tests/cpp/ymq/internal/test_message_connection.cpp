@@ -158,7 +158,7 @@ TEST_F(YMQMessageConnectionTest, MessageExchange)
     scaler::wrapper::uv::Loop& loop                  = connections.loop();
 
     // Send a message before the identity exchange
-    server.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(serverMessagePayload), [](auto result) {
+    server.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(serverMessagePayload), [](auto result, auto) {
         ASSERT_TRUE(result.has_value());
     });
 
@@ -168,7 +168,7 @@ TEST_F(YMQMessageConnectionTest, MessageExchange)
     }
 
     // Send a message after the identity exchange
-    client.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(clientMessagePayload), [](auto result) {
+    client.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(clientMessagePayload), [](auto result, auto) {
         ASSERT_TRUE(result.has_value());
     });
 
@@ -299,7 +299,7 @@ TEST_F(YMQMessageConnectionTest, EmptyMessage)
 
     // Send an empty message
     client.sendMessage(
-        std::make_unique<scaler::ymq::BufferedBytes>(""), [](auto result) { ASSERT_TRUE(result.has_value()); });
+        std::make_unique<scaler::ymq::BufferedBytes>(""), [](auto result, auto) { ASSERT_TRUE(result.has_value()); });
 
     // Wait for the message
     while (!serverMessageReceived) {

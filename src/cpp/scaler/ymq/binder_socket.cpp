@@ -45,7 +45,9 @@ void BinderSocket::shutdown(ShutdownCallback onShutdownCallback) noexcept
         // Fail all pending send callbacks
         for (auto& [_, pendingMessages]: state->_pendingSendMessages) {
             for (auto& pendingMessage: pendingMessages) {
-                pendingMessage.onMessageSent(std::unexpected {Error {Error::ErrorCode::SocketStopRequested}});
+                pendingMessage.onMessageSent(
+                    std::unexpected {Error {Error::ErrorCode::SocketStopRequested}},
+                    std::move(pendingMessage.messagePayload));
             }
         }
         state->_pendingSendMessages.clear();
@@ -117,7 +119,8 @@ void BinderSocket::sendMulticastMessage(
                 connectionPtr->sendMessage(
                     std::make_unique<BufferedBytes>(
                         reinterpret_cast<const char*>(messagePayload->data()), messagePayload->size()),
-                    []([[maybe_unused]] std::expected<void, Error> result) noexcept {});
+                    []([[maybe_unused]] std::expected<void, Error> result,
+                       [[maybe_unused]] std::unique_ptr<Bytes>) noexcept {});
             }
         });
 }

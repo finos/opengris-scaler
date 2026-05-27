@@ -108,7 +108,8 @@ void ConnectorSocket::sendMessage(std::unique_ptr<Bytes> messagePayload, SendMes
                                        messagePayload = std::move(messagePayload),
                                        onMessageSent  = std::move(onMessageSent)]() mutable {
         if (state->_disconnected) {
-            onMessageSent(std::unexpected {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd});
+            onMessageSent(
+                std::unexpected {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd}, std::move(messagePayload));
             return;
         }
         state->_connection->sendMessage(std::move(messagePayload), std::move(onMessageSent));

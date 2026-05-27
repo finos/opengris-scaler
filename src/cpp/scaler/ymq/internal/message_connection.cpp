@@ -114,7 +114,7 @@ void MessageConnection::sendMessage(std::unique_ptr<Bytes> messagePayload, SendM
         [header         = std::move(header),
          messagePayload = std::move(messagePayload),
          onMessageSent  = std::move(onMessageSent)](std::expected<void, Error> result) mutable {
-            onMessageSent(std::move(result));
+            onMessageSent(std::move(result), std::move(messagePayload));
         });
 }
 
@@ -199,7 +199,9 @@ void MessageConnection::sendHandshake() noexcept
 
     // Identity
     auto identityBytes = std::make_unique<BufferedBytes>(_localIdentity.data(), _localIdentity.size());
-    sendMessage(std::move(identityBytes), []([[maybe_unused]] std::expected<void, Error> result) {});
+    sendMessage(
+        std::move(identityBytes),
+        []([[maybe_unused]] std::expected<void, Error> result, [[maybe_unused]] std::unique_ptr<Bytes>) {});
 }
 
 void MessageConnection::recvMagicNumber() noexcept
@@ -244,7 +246,7 @@ void MessageConnection::recvMessage() noexcept
 }
 
 void MessageConnection::onWriteDone(
-    SendMessageCallback callback, std::expected<void, scaler::wrapper::uv::Error> result) noexcept
+    SendCallback callback, std::expected<void, scaler::wrapper::uv::Error> result) noexcept
 {
     if (!result.has_value()) {
         switch (result.error().code()) {
