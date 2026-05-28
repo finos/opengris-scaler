@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, List, Optional
 
 from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager_adapter.common import extract_desired_count, format_capabilities
+from scaler.worker_manager_adapter.common import extract_desired_count, format_capabilities, load_requirements_content
 from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRunner
 
@@ -100,6 +100,7 @@ class OCIContainerInstanceProvisioner(DeclarativeWorkerProvisioner):
         num_workers = max(1, int(config.instance_ocpus))
         worker_config = config.worker_config
         scheduler_address = str(config.worker_manager_config.effective_worker_scheduler_address)
+        requirements_content = load_requirements_content(config.python_worker_environment.requirements_txt)
 
         worker_names = [f"OCI_RAW|{uuid.uuid4().hex}" for _ in range(num_workers)]
         command = (
@@ -139,12 +140,7 @@ class OCIContainerInstanceProvisioner(DeclarativeWorkerProvisioner):
                 oci.container_instances.models.CreateContainerDetails(
                     image_url=container_instance_config.container_image,
                     display_name="scaler-container",
-                    environment_variables={
-                        "COMMAND": command,
-                        "PYTHON_REQUIREMENTS": config.python_requirements,
-                        "PYTHON_VERSION": config.python_version,
-                        "SCALER_PACKAGE": config.scaler_package,
-                    },
+                    environment_variables={"COMMAND": command, "PYTHON_REQUIREMENTS": requirements_content},
                 )
             ],
             vnics=[

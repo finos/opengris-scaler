@@ -284,8 +284,8 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
         )
         self.assertIsInstance(config, ORBAWSEC2WorkerManagerConfig)
         self.assertEqual(config.image_id, "ami-0528819f94f4f5fa5")
-        self.assertIsNone(config.python_version)
-        self.assertIsNone(config.requirements_txt)
+        self.assertIsNone(config.python_worker_environment.python_version)
+        self.assertIsNone(config.python_worker_environment.requirements_txt)
 
     def test_orb_aws_ec2_auto_install_mode_parsed(self) -> None:
         from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
@@ -294,8 +294,8 @@ class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
             "scaler_worker_manager", {}, argv=_ORB_AWS_EC2_AUTO_ARGV
         )
         self.assertIsNone(config.image_id)
-        self.assertEqual(config.python_version, "3.13")
-        self.assertEqual(config.requirements_txt, "opengris-scaler>=1.26.6")
+        self.assertEqual(config.python_worker_environment.python_version, "3.13")
+        self.assertEqual(config.python_worker_environment.requirements_txt, "opengris-scaler>=1.26.6")
 
     def test_orb_aws_ec2_defaults(self) -> None:
         from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
@@ -462,6 +462,7 @@ def _make_orb_config(
     aws_region: str = "us-east-1",
 ):
     from scaler.config.common.logging import LoggingConfig
+    from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
     from scaler.config.common.worker import WorkerConfig
     from scaler.config.common.worker_manager import WorkerManagerConfig
     from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
@@ -473,8 +474,9 @@ def _make_orb_config(
     return ORBAWSEC2WorkerManagerConfig(
         worker_manager_config=wmc,
         image_id=image_id,
-        python_version=python_version,
-        requirements_txt=requirements_txt,
+        python_worker_environment=PythonWorkerEnvironmentConfig(
+            python_version=python_version, requirements_txt=requirements_txt
+        ),
         aws_region=aws_region,
         worker_config=WorkerConfig(),
         logging_config=LoggingConfig(),

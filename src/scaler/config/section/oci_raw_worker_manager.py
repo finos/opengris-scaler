@@ -2,6 +2,7 @@ import dataclasses
 
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.oci_container_instance import OCIContainerInstanceConfig
+from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.config_class import ConfigClass
@@ -16,19 +17,8 @@ class OCIRawWorkerManagerConfig(ConfigClass):
         default_factory=OCIContainerInstanceConfig
     )
 
-    python_requirements: str = dataclasses.field(
-        default="tomli;pargraph;parfun;pandas",
-        metadata=dict(help="Python requirements string passed to the container instance"),
-    )
-    python_version: str = dataclasses.field(
-        default="3.12.11", metadata=dict(help="Python version for the container instance")
-    )
-    scaler_package: str = dataclasses.field(
-        default="opengris-scaler[oci]",
-        metadata=dict(
-            env_var="SCALER_PACKAGE",
-            help="Scaler package spec installed in the worker container (e.g. opengris-scaler[oci] or a wheel URL)",
-        ),
+    python_worker_environment: PythonWorkerEnvironmentConfig = dataclasses.field(
+        default_factory=PythonWorkerEnvironmentConfig
     )
 
     # Container instance sizing
@@ -44,3 +34,5 @@ class OCIRawWorkerManagerConfig(ConfigClass):
             raise ValueError("instance_ocpus must be a positive number.")
         if self.instance_memory_gb <= 0:
             raise ValueError("instance_memory_gb must be a positive number.")
+        if not self.python_worker_environment.requirements_txt:
+            raise ValueError("--requirements-txt must be provided")
