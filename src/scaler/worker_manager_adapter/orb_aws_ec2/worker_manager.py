@@ -20,7 +20,7 @@ from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager_adapter.common import extract_desired_count, format_capabilities
+from scaler.worker_manager_adapter.common import extract_desired_count, format_capabilities, load_requirements_content
 from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
 from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRunner
 
@@ -147,7 +147,7 @@ class ORBAWSEC2WorkerManager:
         self._subnet_id: Optional[str] = None
 
         if config.image_id is None:
-            requirements_content = self._load_requirements_content(config.requirements_txt)
+            requirements_content = load_requirements_content(config.python_worker_environment.requirements_txt)
             self._validate_requirements(requirements_content)
 
     def _build_app_config(self) -> dict:
@@ -313,10 +313,8 @@ class ORBAWSEC2WorkerManager:
         script = "#!/bin/bash\n"
 
         if self._config.image_id is None:
-            python_version = self._config.python_version
-            requirements_txt = self._config.requirements_txt
-
-            requirements_content = self._load_requirements_content(requirements_txt)
+            python_version = self._config.python_worker_environment.python_version
+            requirements_content = load_requirements_content(self._config.python_worker_environment.requirements_txt)
 
             # User data runs as root so no sudo is needed.
             # set -e ensures any install failure aborts the script rather than launching a broken worker.
@@ -423,13 +421,6 @@ set +e
         self._ec2.create_key_pair(KeyName=key_name)
         self._created_key_name = key_name
         logging.info(f"Created key pair: {key_name}")
-
-    @staticmethod
-    def _load_requirements_content(requirements_txt: str) -> str:
-        if os.path.isfile(requirements_txt):
-            with open(requirements_txt) as f:
-                return f.read()
-        return requirements_txt
 
     @staticmethod
     def _validate_requirements(requirements_content: str) -> None:
