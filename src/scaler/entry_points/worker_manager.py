@@ -114,9 +114,9 @@ def main() -> None:
 
         ORBAWSEC2WorkerManager(wm_config).run()
     elif isinstance(wm_config, OCIRawWorkerManagerConfig):
-        from scaler.worker_manager_adapter.oci_raw.container_instance import OCIContainerInstanceWorkerManager
+        from scaler.worker_manager_adapter.oci_raw.worker_manager import OCIRawWorkerManager
 
-        OCIContainerInstanceWorkerManager(wm_config).run()
+        OCIRawWorkerManager(wm_config).run()
     elif isinstance(wm_config, OCIHPCWorkerManagerConfig):
         from scaler.worker_manager_adapter.oci_hpc.worker_manager import OCIHPCWorkerManager
 

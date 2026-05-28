@@ -1,14 +1,3 @@
-"""
-OCI Raw Worker Manager — Container Instance backend.
-
-Manages Scaler worker processes as OCI Container Instances. Each unit maps to a
-single Container Instance running ``scaler_worker_manager baremetal_native`` with
-multiple workers inside. Supports both config-file and instance-principal authentication.
-
-All blocking OCI SDK calls are offloaded to a thread executor so the asyncio
-event loop is never blocked.
-"""
-
 import asyncio
 import functools
 import logging
@@ -34,7 +23,7 @@ class _InstanceInfo:
     instance_id: str
 
 
-class OCIContainerInstanceProvisioner(DeclarativeWorkerProvisioner):
+class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
     def __init__(self, config: OCIRawWorkerManagerConfig, max_instances: int) -> None:
         self._config = config
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
@@ -183,17 +172,13 @@ class OCIContainerInstanceProvisioner(DeclarativeWorkerProvisioner):
             logging.error(f"Failed to stop OCI Container Instance {instance_id[-20:]}: {exc}")
 
 
-class OCIContainerInstanceWorkerManager:
+class OCIRawWorkerManager:
     def __init__(self, config: OCIRawWorkerManagerConfig) -> None:
-        self._config = config
-
-    def run(self) -> None:
-        config = self._config
         workers_per_instance = max(1, int(config.instance_ocpus))
         mtc = config.worker_manager_config.max_task_concurrency
         max_instances = math.ceil(mtc / workers_per_instance) if mtc != -1 else -1
-        provisioner = OCIContainerInstanceProvisioner(config, max_instances)
-        runner = WorkerManagerRunner(
+        provisioner = OCIRawWorkerProvisioner(config, max_instances)
+        self._runner = WorkerManagerRunner(
             address=config.worker_manager_config.scheduler_address,
             name="worker_manager_oci_raw",
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
@@ -204,4 +189,6 @@ class OCIContainerInstanceWorkerManager:
             io_threads=config.worker_config.io_threads,
             workers_per_provisioner_unit=workers_per_instance,
         )
-        runner.run()
+
+    def run(self) -> None:
+        self._runner.run()
