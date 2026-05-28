@@ -1,3 +1,3 @@
-from scaler.worker_manager_adapter.oci_raw.container_instance import OCIContainerInstanceWorkerAdapter
+from scaler.worker_manager_adapter.oci_raw.container_instance import OCIContainerInstanceWorkerManager
 
-__all__ = ["OCIContainerInstanceWorkerAdapter"]
+__all__ = ["OCIContainerInstanceWorkerManager"]
