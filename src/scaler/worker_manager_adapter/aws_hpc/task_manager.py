@@ -9,13 +9,13 @@ import asyncio
 import logging
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Any, Awaitable, Callable, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 import cloudpickle
 
 from scaler.protocol.capnp import Task, TaskCancel
 from scaler.utility.identifiers import TaskID
-from scaler.worker_manager_adapter.mixins import ExecutionBackend, TaskInputLoader
+from scaler.worker_manager_adapter.mixins import ExecutionBackend, TaskDeserializer, TaskInputLoader
 
 ARRAY_JOB_BATCH_WINDOW_SECONDS: float = 0.5
 ARRAY_JOB_MIN_BATCH_SIZE: int = 2
@@ -23,7 +23,7 @@ ARRAY_JOB_MAX_BATCH_SIZE: int = 10000
 
 
 class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
-    _loader: Callable[[Task], Awaitable[Tuple[Any, List[Any]]]]
+    _loader: TaskDeserializer
 
     def __init__(
         self,
@@ -51,7 +51,7 @@ class AWSBatchExecutionBackend(TaskInputLoader, ExecutionBackend):
         self._batch_pending: List[Tuple[Task, Any, List[Any], Future]] = []
         self._batch_window_start: float = 0.0
 
-    def register(self, load_task_inputs: Callable[[Task], Awaitable[Tuple[Any, List[Any]]]]) -> None:
+    def register(self, load_task_inputs: TaskDeserializer) -> None:
         self._loader = load_task_inputs
         self._initialize_aws_clients()
 

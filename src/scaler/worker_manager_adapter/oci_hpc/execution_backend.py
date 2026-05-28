@@ -2,14 +2,14 @@ import asyncio
 import functools
 import logging
 from concurrent.futures import Future
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import cloudpickle
 
 from scaler.config.types.oci_auth_type import OCIAuthType
 from scaler.protocol.capnp import Task, TaskCancel
 from scaler.utility.identifiers import TaskID
-from scaler.worker_manager_adapter.mixins import ExecutionBackend, TaskInputLoader
+from scaler.worker_manager_adapter.mixins import ExecutionBackend, TaskDeserializer, TaskInputLoader
 from scaler.worker_manager_adapter.oci_hpc.container_instance_lifecycle_state import ContainerInstanceLifecycleState
 
 _INSTANCE_STATE_RUNNING = {ContainerInstanceLifecycleState.CREATING, ContainerInstanceLifecycleState.ACTIVE}
@@ -22,7 +22,7 @@ _POLL_INTERVAL_SECONDS = 2.0
 
 
 class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
-    _loader: Callable[[Task], Awaitable[Tuple[Any, List[Any]]]]
+    _loader: TaskDeserializer
 
     def __init__(
         self,
@@ -64,7 +64,7 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
         self._object_storage_client: Any = None
         self._log_search_client: Any = None
 
-    def register(self, load_task_inputs: Callable[[Task], Awaitable[Tuple[Any, List[Any]]]]) -> None:
+    def register(self, load_task_inputs: TaskDeserializer) -> None:
         self._loader = load_task_inputs
         self._initialize_oci_clients()
 
