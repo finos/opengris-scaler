@@ -99,6 +99,16 @@ class OCIHPCWorkerManager:
 
     def run(self) -> None:
         config = self._config
+        logging.info(
+            f"Starting OCI HPC Worker Manager\n"
+            f"  Scheduler: {config.worker_manager_config.scheduler_address}\n"
+            f"  Compartment: {config.container_instance_config.compartment_id}\n"
+            f"  Region: {config.container_instance_config.oci_region}\n"
+            f"  Object Storage: oci://{config.object_storage_bucket}/{config.object_storage_prefix}\n"
+            f"  Container Image: {config.container_instance_config.container_image}\n"
+            f"  Max Concurrent Jobs: {config.base_concurrency}\n"
+            f"  Job Timeout: {config.job_timeout_seconds}s"
+        )
         provisioner = OCIHPCWorkerProvisioner(config)
         runner = WorkerManagerRunner(
             address=config.worker_manager_config.scheduler_address,

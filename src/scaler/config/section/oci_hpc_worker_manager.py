@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Optional
+from typing import ClassVar, Optional
 
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.oci_container_instance import OCIContainerInstanceConfig
@@ -14,6 +14,8 @@ DEFAULT_OCI_HPC_JOB_TIMEOUT_SECONDS = 3600
 
 @dataclasses.dataclass
 class OCIHPCWorkerManagerConfig(ConfigClass):
+    _tag: ClassVar[str] = "oci_hpc"
+
     worker_manager_config: WorkerManagerConfig
     worker_config: WorkerConfig = dataclasses.field(default_factory=WorkerConfig)
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
