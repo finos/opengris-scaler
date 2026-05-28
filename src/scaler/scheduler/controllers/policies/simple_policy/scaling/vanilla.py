@@ -1,3 +1,4 @@
+from math import ceil
 from typing import Dict, List, Tuple
 
 from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
@@ -56,17 +57,7 @@ class VanillaScalingPolicy(ScalingPolicy):
             if task_ratio > self._upper_task_ratio:
                 desired = current + 1
             elif task_ratio < self._lower_task_ratio:
-                if task_count > 0:
-                    # Native worker managers only receive a target concurrency,
-                    # not which concrete worker is safe to stop. If we scale
-                    # down while tasks are still in flight, the provisioner may
-                    # tear down an arbitrary active worker and force task
-                    # failure/retry churn mid-computation. Keep the current
-                    # pool size until the scheduler-visible task set is empty,
-                    # then let worker_timeout_seconds reap truly idle workers.
-                    desired = current
-                else:
-                    desired = current
+                desired = 0 if task_count == 0 else max(1, ceil(task_count / self._upper_task_ratio))
             else:
                 desired = current
 

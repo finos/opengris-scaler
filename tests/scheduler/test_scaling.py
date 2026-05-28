@@ -206,10 +206,8 @@ class TestVanillaScalingPolicy(unittest.TestCase):
 
         self.assertEqual(request.taskConcurrency, 2)
 
-    def test_no_tasks_with_workers_preserves_workers(self):
-        """No tasks but managers exist: policy preserves current worker count so that
-        long-running drivers whose task queue is momentarily empty are not scaled away.
-        Idle workers are reaped by worker_timeout_seconds instead."""
+    def test_no_tasks_with_workers_targets_zero(self):
+        """No tasks but managers exist: desired drains to 0."""
         workers = {
             WorkerID(b"w0"): _create_mock_worker_heartbeat({}, queued_tasks=0),
             WorkerID(b"w1"): _create_mock_worker_heartbeat({}, queued_tasks=1),
@@ -219,21 +217,22 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         snapshot = InformationSnapshot(tasks={}, workers=workers)
         heartbeat = _create_worker_manager_heartbeat(b"mgr")
 
-        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})
+        request = self._single_request(snapshot, heartbeat, managed)
 
-        self.assertEqual(commands, [])
+        self.assertEqual(request.taskConcurrency, 0)
 
-    def test_few_tasks_with_many_workers_preserves_pool_while_tasks_exist(self):
-        """Low task ratio does not shrink an active pool while scheduler-visible tasks still exist."""
+    def test_few_tasks_with_many_workers_targets_min_keep(self):
+        """Low task ratio shrinks toward ceil(tasks / upper_task_ratio) min_keep."""
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(5)}
         workers = {WorkerID(f"w{i}".encode()): _create_mock_worker_heartbeat({}, queued_tasks=i) for i in range(10)}
         managed = list(workers.keys())
         snapshot = InformationSnapshot(tasks=tasks, workers=workers)
         heartbeat = _create_worker_manager_heartbeat(b"mgr")
 
-        commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})
+        request = self._single_request(snapshot, heartbeat, managed)
 
-        self.assertEqual(commands, [])
+        # ceil(5 / 10) = 1 minimum to keep
+        self.assertEqual(request.taskConcurrency, 1)
 
     def test_balanced_ratio_skips_when_desired_equals_current(self):
         """Task ratio in band keeps desired == current managed count -> no-op skip."""
@@ -479,10 +478,8 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         self.policy = VanillaScalingPolicy()
 
     def test_drain_all_when_idle(self):
-        """With workers connected and no tasks, the policy preserves the current worker
-        count (does not scale to zero) so long-running drivers whose task queue is
-        momentarily empty keep their workers; reaping is delegated to
-        worker_timeout_seconds."""
+        """With workers connected and no tasks, the policy targets desired=0 and emits
+        setDesired(0) so the manager can drain its workers."""
         workers = {WorkerID(f"w{i}".encode()): _create_mock_worker_heartbeat({}, queued_tasks=0) for i in range(4)}
         managed = list(workers.keys())
         snapshot = InformationSnapshot(tasks={}, workers=workers)
@@ -490,11 +487,14 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})
 
-        self.assertEqual(commands, [])
+        self.assertEqual(len(commands), 1)
+        requests = list(commands[0].setDesiredTaskConcurrencyRequests)
+        self.assertEqual(requests[0].taskConcurrency, 0)
 
-    def test_no_shrink_to_ratio_floor_while_tasks_exist(self):
-        """With few tasks relative to workers, the policy keeps the current pool until tasks drain."""
-        # 5 tasks, 10 connected workers -> ratio 0.5 < 1, but active work prevents scale-down.
+    def test_shrink_to_ratio_floor(self):
+        """With few tasks relative to workers (ratio below lower threshold), the policy
+        targets ceil(tasks/upper_task_ratio) and emits setDesired with that smaller count."""
+        # 5 tasks, 10 connected workers -> ratio 0.5 < 1; floor = max(1, ceil(5/10)) = 1.
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(5)}
         workers = {WorkerID(f"w{i}".encode()): _create_mock_worker_heartbeat({}, queued_tasks=i) for i in range(10)}
         managed = list(workers.keys())
@@ -503,7 +503,9 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})
 
-        self.assertEqual(commands, [])
+        self.assertEqual(len(commands), 1)
+        requests = list(commands[0].setDesiredTaskConcurrencyRequests)
+        self.assertEqual(requests[0].taskConcurrency, 1)
 
     def test_no_action_when_ratio_is_in_band(self):
         """With the task/worker ratio inside [lower, upper], the policy targets the current
