@@ -139,6 +139,31 @@ s3_prefix = "${wm.s3Prefix || "scaler-tasks"}"
 max_concurrent_jobs = ${wm.maxConcurrentJobs || 100}
 job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
 `;
+      } else if (wm.type === "oci_raw") {
+        block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
+compartment_id = "${wm.ociCompartmentId || ""}"
+availability_domain = "${wm.ociAvailabilityDomain || ""}"
+subnet_id = "${wm.ociSubnetId || ""}"
+container_image = "${wm.ociContainerImage || ""}"
+instance_ocpus = ${wm.ociOcpus || 4}
+instance_memory_gb = ${wm.ociMemoryGb || 30}
+`;
+        if (wm.requirements)
+          block += `requirements_txt = "${wm.requirements}"\n`;
+      } else if (wm.type === "oci_hpc") {
+        block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
+compartment_id = "${wm.ociCompartmentId || ""}"
+availability_domain = "${wm.ociAvailabilityDomain || ""}"
+subnet_id = "${wm.ociSubnetId || ""}"
+container_image = "${wm.ociContainerImage || ""}"
+object_storage_namespace = "${wm.ociObjectStorageNamespace || ""}"
+object_storage_bucket = "${wm.ociObjectStorageBucket || ""}"
+object_storage_prefix = "${wm.ociObjectStoragePrefix || "scaler-tasks"}"
+instance_ocpus = ${wm.ociOcpus || 1}
+instance_memory_gb = ${wm.ociMemoryGb || 6}
+base_concurrency = ${wm.ociMaxConcurrentJobs || 100}
+job_timeout_seconds = ${(wm.ociJobTimeoutMinutes || 60) * 60}
+`;
       } else if (wm.type === "baremetal_native") {
         block += `mode = "${wm.mode || "fixed"}"
 object_storage_address = "${proto}://127.0.0.1:${op}${wsSlash}"
@@ -267,6 +292,31 @@ s3_bucket = "${wm.s3Bucket || ""}"
 s3_prefix = "${wm.s3Prefix || "scaler-tasks"}"
 max_concurrent_jobs = ${wm.maxConcurrentJobs || 100}
 job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
+`;
+      } else if (wm.type === "oci_raw") {
+        block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
+compartment_id = "${wm.ociCompartmentId || ""}"
+availability_domain = "${wm.ociAvailabilityDomain || ""}"
+subnet_id = "${wm.ociSubnetId || ""}"
+container_image = "${wm.ociContainerImage || ""}"
+instance_ocpus = ${wm.ociOcpus || 4}
+instance_memory_gb = ${wm.ociMemoryGb || 30}
+`;
+        if (wm.requirements)
+          block += `requirements_txt = "${wm.requirements}"\n`;
+      } else if (wm.type === "oci_hpc") {
+        block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
+compartment_id = "${wm.ociCompartmentId || ""}"
+availability_domain = "${wm.ociAvailabilityDomain || ""}"
+subnet_id = "${wm.ociSubnetId || ""}"
+container_image = "${wm.ociContainerImage || ""}"
+object_storage_namespace = "${wm.ociObjectStorageNamespace || ""}"
+object_storage_bucket = "${wm.ociObjectStorageBucket || ""}"
+object_storage_prefix = "${wm.ociObjectStoragePrefix || "scaler-tasks"}"
+instance_ocpus = ${wm.ociOcpus || 1}
+instance_memory_gb = ${wm.ociMemoryGb || 6}
+base_concurrency = ${wm.ociMaxConcurrentJobs || 100}
+job_timeout_seconds = ${(wm.ociJobTimeoutMinutes || 60) * 60}
 `;
       } else if (wm.type === "baremetal_native") {
         block += `mode = "${wm.mode || "fixed"}"

@@ -1541,10 +1541,17 @@ const WM_TYPE_DEFS = [
     desc: "IBM Spectrum Symphony grid via soamapi",
   },
   {
-    value: "oci",
-    label: "OCI Compute",
+    value: "oci_raw",
+    label: "OCI Container Instance",
     badge: "OCI",
-    desc: "Oracle Cloud Infrastructure — coming soon",
+    desc: "Oracle Cloud Infrastructure — container instances via OCIR",
+    disabled: true,
+  },
+  {
+    value: "oci_hpc",
+    label: "OCI HPC",
+    badge: "OCI",
+    desc: "Oracle Cloud Infrastructure — per-task container instance jobs",
     disabled: true,
   },
 ];
