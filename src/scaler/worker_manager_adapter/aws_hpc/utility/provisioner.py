@@ -167,11 +167,10 @@ class AWSBatchProvisioner:
     @staticmethod
     def print_export_commands(config: Dict[str, object]) -> None:
         """Print shell export commands for config values."""
-        print(f'''\
-export SCALER_AWS_REGION="{config["aws_region"]}"
-export SCALER_S3_BUCKET="{config["s3_bucket"]}"
-export SCALER_JOB_QUEUE="{config["job_queue_name"]}"
-export SCALER_JOB_DEFINITION="{config["job_definition_name"]}"''')
+        print(f"export SCALER_AWS_REGION=\"{config['aws_region']}\"")
+        print(f"export SCALER_S3_BUCKET=\"{config['s3_bucket']}\"")
+        print(f"export SCALER_JOB_QUEUE=\"{config['job_queue_name']}\"")
+        print(f"export SCALER_JOB_DEFINITION=\"{config['job_definition_name']}\"")
 
     @staticmethod
     def save_env_file(config: Dict[str, object], env_file: str = ".scaler_aws_hpc.env") -> None:
@@ -179,12 +178,10 @@ export SCALER_JOB_DEFINITION="{config["job_definition_name"]}"''')
         path = Path(env_file)
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
-            f.write(f"""\
-export SCALER_AWS_REGION="{config["aws_region"]}"
-export SCALER_S3_BUCKET="{config["s3_bucket"]}"
-export SCALER_JOB_QUEUE="{config["job_queue_name"]}"
-export SCALER_JOB_DEFINITION="{config["job_definition_name"]}"
-""")
+            f.write(f"export SCALER_AWS_REGION=\"{config['aws_region']}\"\n")
+            f.write(f"export SCALER_S3_BUCKET=\"{config['s3_bucket']}\"\n")
+            f.write(f"export SCALER_JOB_QUEUE=\"{config['job_queue_name']}\"\n")
+            f.write(f"export SCALER_JOB_DEFINITION=\"{config['job_definition_name']}\"\n")
         logging.info(f"Env file saved: {path.absolute()}")
         logging.info(f"Run: source {env_file}")
 
