@@ -17,6 +17,8 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, List, Optional
 
+import oci
+
 from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager_adapter.common import extract_desired_count, format_capabilities, load_requirements_content
@@ -47,8 +49,6 @@ class OCIContainerInstanceProvisioner(DeclarativeWorkerProvisioner):
         self._initialize_oci_client()
 
     def _initialize_oci_client(self) -> None:
-        import oci
-
         container_instance_config = self._config.container_instance_config
         if container_instance_config.auth_type == "instance_principal":
             signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
@@ -93,8 +93,6 @@ class OCIContainerInstanceProvisioner(DeclarativeWorkerProvisioner):
         self._instances.clear()
 
     async def _start_instance(self) -> Optional[str]:
-        import oci
-
         config = self._config
         container_instance_config = config.container_instance_config
         num_workers = max(1, int(config.instance_ocpus))
@@ -167,8 +165,6 @@ class OCIContainerInstanceProvisioner(DeclarativeWorkerProvisioner):
             return None
 
     async def _stop_instance(self, instance_id: str) -> None:
-        import oci
-
         try:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(

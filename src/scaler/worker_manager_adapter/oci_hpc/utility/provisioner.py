@@ -26,6 +26,7 @@ OCI Resource Identifiers:
     The compartment OCID is required for all resource creation calls.
 """
 
+import argparse
 import json
 import logging
 import subprocess
@@ -488,8 +489,6 @@ export SCALER_OCI_AVAILABILITY_DOMAIN="{config["availability_domain"]}"
 
 def main() -> None:
     """CLI for provisioning OCI resources."""
-    import argparse
-
     parser = argparse.ArgumentParser(description="Provision OCI resources for Scaler OCI HPC adapter")
     parser.add_argument(
         "action", choices=["provision", "cleanup", "show", "build-image", "list-ads"], help="Action to perform"

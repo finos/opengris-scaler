@@ -3,7 +3,13 @@ import unittest
 from typing import Optional
 from unittest.mock import mock_open, patch
 
+from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
+from scaler.config.common.worker import WorkerConfig
+from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.config_class import ConfigClass
+from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
+from scaler.config.types.address import AddressConfig
 
 
 @dataclasses.dataclass
@@ -461,13 +467,6 @@ def _make_orb_config(
     requirements_txt: Optional[str] = None,
     aws_region: str = "us-east-1",
 ):
-    from scaler.config.common.logging import LoggingConfig
-    from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
-    from scaler.config.common.worker import WorkerConfig
-    from scaler.config.common.worker_manager import WorkerManagerConfig
-    from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
-    from scaler.config.types.address import AddressConfig
-
     wmc = WorkerManagerConfig(
         scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:6378"), worker_manager_id="wm-test"
     )
