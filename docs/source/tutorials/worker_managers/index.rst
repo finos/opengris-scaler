@@ -61,6 +61,14 @@ Worker Managers Overview
      - Offloads tasks to IBM Spectrum Symphony via the SOAM API.
      - Concurrency-limited
      - IBM Symphony
+   * - :doc:`OCI Raw <oci_raw>`
+     - Provisions full Scaler worker processes as OCI Container Instances.
+     - Dynamic (scheduler-driven)
+     - OCI Container Instances
+   * - :doc:`OCI HPC <oci_hpc>`
+     - Runs each task as a dedicated OCI Container Instance job.
+     - Concurrency-limited
+     - OCI Container Instances + Object Storage
 
 Although worker managers target different infrastructures, many configuration options are shared.
 See :doc:`Common Worker Manager Parameters <common_parameters>` for these shared settings.
@@ -80,4 +88,6 @@ The :ref:`scaler <cmd-scaler>` command boots the full stack from a single TOML c
     aws_raw_ecs
     baremetal_native
     symphony
+    oci_raw
+    oci_hpc
     common_parameters
