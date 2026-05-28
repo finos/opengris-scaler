@@ -29,6 +29,10 @@ import os
 import signal
 import sys
 import traceback
+import typing
+
+import cloudpickle
+import oci
 
 COMPRESSION_THRESHOLD_BYTES: int = 4096
 
@@ -52,11 +56,17 @@ def setup_logging() -> None:
     signal.signal(signal.SIGINT, signal_handler)
 
 
-def get_env(key: str, default: str = "") -> str:
-    """Read an environment variable, treating the literal string "none" as empty."""
-    value = os.environ.get(key, default)
-    if value.lower() == "none":
-        return ""
+def read_env(key: str) -> typing.Optional[str]:
+    value = os.environ.get(key)
+    if value is None or value.lower() == "none":
+        return None
+    return value
+
+
+def require_env(key: str) -> str:
+    value = read_env(key)
+    if value is None:
+        raise RuntimeError(f"Required environment variable {key!r} is not set")
     return value
 
 
@@ -68,8 +78,6 @@ def build_oci_object_storage_client():
     with a suitably configured Dynamic Group). Falls back to the OCI config
     file (``~/.oci/config``) for local development and testing.
     """
-    import oci
-
     try:
         signer = oci.auth.signers.get_resource_principals_signer()
         return oci.object_storage.ObjectStorageClient(config={}, signer=signer)
@@ -80,7 +88,12 @@ def build_oci_object_storage_client():
 
 
 def get_payload(
-    object_storage_client, namespace: str, bucket: str, object_key: str, payload_b64: str, compressed: bool
+    object_storage_client,
+    namespace: str,
+    bucket: str,
+    object_key: typing.Optional[str],
+    payload_b64: typing.Optional[str],
+    compressed: bool,
 ) -> bytes:
     """
     Fetch the task payload.
@@ -139,13 +152,13 @@ def store_result(
 def main() -> None:
     setup_logging()
 
-    task_id = get_env("TASK_ID", "unknown")
-    namespace = get_env("OCI_NAMESPACE")
-    bucket = get_env("OCI_BUCKET")
-    prefix = get_env("OCI_PREFIX", "scaler-tasks")
-    object_key = get_env("OCI_OBJECT_KEY")
-    payload_b64 = get_env("PAYLOAD_B64")
-    compressed = get_env("COMPRESSED", "0") == "1"
+    task_id = read_env("TASK_ID") or "unknown"
+    namespace = require_env("OCI_NAMESPACE")
+    bucket = require_env("OCI_BUCKET")
+    prefix = read_env("OCI_PREFIX") or "scaler-tasks"
+    object_key = read_env("OCI_OBJECT_KEY")
+    payload_b64 = read_env("PAYLOAD_B64")
+    compressed = (read_env("COMPRESSED") or "0") == "1"
 
     logging.info(f"Starting task {task_id[:8]}...")
     logging.info(f"namespace={namespace}, bucket={bucket}, prefix={prefix}")
@@ -153,8 +166,6 @@ def main() -> None:
     object_storage_client = build_oci_object_storage_client()
 
     try:
-        import cloudpickle
-
         payload_bytes = get_payload(
             object_storage_client=object_storage_client,
             namespace=namespace,
@@ -200,8 +211,6 @@ def main() -> None:
 
         # Store the error so the adapter can surface it as a failed future
         try:
-            import cloudpickle
-
             error_data = {"error": str(exc), "traceback": traceback.format_exc()}
             error_bytes = cloudpickle.dumps(error_data)
             store_result(
