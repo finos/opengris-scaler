@@ -8,7 +8,7 @@ with optional gzip compression.
 This is a standalone script that does not depend on the full scaler package.
 Runtime dependencies: cloudpickle, oci
 
-Configuration is provided via environment variables set by OCIHPCTaskManager:
+Configuration is provided via environment variables set by OCIHPCExecutionBackend:
     TASK_ID        - Scaler task ID (hex string)
     OCI_NAMESPACE  - OCI Object Storage tenancy namespace
     OCI_BUCKET     - OCI Object Storage bucket name

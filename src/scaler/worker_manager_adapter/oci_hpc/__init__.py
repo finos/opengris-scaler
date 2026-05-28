@@ -1,22 +1,15 @@
 """
-OCI HPC Worker Adapter for OpenGRIS Scaler.
+OCI HPC Worker Manager for OpenGRIS Scaler.
 
-Supports OCI HPC backends:
-- OCI Container Instances: Receives tasks from scheduler and submits as on-demand container instances
+Submits each Scaler task as an on-demand OCI Container Instance and reports
+results back to the scheduler via the WorkerProcess pattern.
 
-Architecture (TaskManager pattern):
-    Scheduler Stream → OCIContainerInstanceWorker → OCIHPCTaskManager → OCI Container Instances
-                                        ↓
-                                Heartbeats to Scheduler
-                                        ↓
-                            Poll Results → TaskResult to Scheduler
-
-Components:
-    - OCIContainerInstanceWorker: Process connecting to scheduler stream
-    - OCIHPCTaskManager: Handles task queuing, priority, and OCI Container Instance submission
-    - OCIContainerInstanceHeartbeatManager: Sends heartbeats to scheduler
-    - ContainerInstanceJobCallback: Tracks task→instance mappings
-    - container_instance_job_runner: Script running inside OCI Container Instances
+Architecture:
+    Scheduler → WorkerManagerRunner → OCIHPCWorkerProvisioner → WorkerProcess
+                                                                      ↓
+                                                          OCIHPCExecutionBackend
+                                                                      ↓
+                                                          OCI Container Instances
 
 Service Mapping (AWS → OCI):
     - AWS Batch          → OCI Container Instances
@@ -26,14 +19,15 @@ Service Mapping (AWS → OCI):
     - AWS IAM Role       → OCI Dynamic Group + IAM Policies
 """
 
-from scaler.worker_manager_adapter.oci_hpc.callback import ContainerInstanceJobCallback
-from scaler.worker_manager_adapter.oci_hpc.heartbeat_manager import OCIContainerInstanceHeartbeatManager
-from scaler.worker_manager_adapter.oci_hpc.task_manager import OCIHPCTaskManager
-from scaler.worker_manager_adapter.oci_hpc.worker import OCIContainerInstanceWorker
+from scaler.worker_manager_adapter.oci_hpc.execution_backend import OCIHPCExecutionBackend
+from scaler.worker_manager_adapter.oci_hpc.processor_status import OCIProcessorStatusProvider
+from scaler.worker_manager_adapter.oci_hpc.worker import create_oci_hpc_worker
+from scaler.worker_manager_adapter.oci_hpc.worker_manager import OCIHPCWorkerManager, OCIHPCWorkerProvisioner
 
 __all__ = [
-    "OCIContainerInstanceWorker",
-    "OCIHPCTaskManager",
-    "OCIContainerInstanceHeartbeatManager",
-    "ContainerInstanceJobCallback",
+    "OCIHPCExecutionBackend",
+    "OCIHPCWorkerManager",
+    "OCIHPCWorkerProvisioner",
+    "OCIProcessorStatusProvider",
+    "create_oci_hpc_worker",
 ]

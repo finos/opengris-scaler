@@ -1,17 +1,15 @@
-from scaler.config.section.oci_raw_worker_adapter import OCIRawWorkerAdapterConfig
+from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_manager_adapter.oci_raw.container_instance import OCIContainerInstanceWorkerAdapter
+from scaler.worker_manager_adapter.oci_raw.container_instance import OCIContainerInstanceWorkerManager
 
 
 def main():
-    config = OCIRawWorkerAdapterConfig.parse(
-        "Scaler OCI Container Instance Worker Adapter", "oci_raw_worker_adapter"
-    )
+    config = OCIRawWorkerManagerConfig.parse("Scaler OCI Container Instance Worker Manager", "oci_raw_worker_manager")
 
     setup_logger(config.logging_config.paths, config.logging_config.config_file, config.logging_config.level)
 
-    adapter = OCIContainerInstanceWorkerAdapter(config)
-    adapter.run()
+    manager = OCIContainerInstanceWorkerManager(config)
+    manager.run()
 
 
 if __name__ == "__main__":

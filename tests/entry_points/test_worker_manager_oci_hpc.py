@@ -10,46 +10,53 @@ class WorkerManagerOCIHPCEntryPointTest(unittest.TestCase):
     def _create_config() -> SimpleNamespace:
         return SimpleNamespace(
             logging_config=SimpleNamespace(paths=[], config_file="", level="INFO"),
-            worker_adapter_config=SimpleNamespace(
-                scheduler_address="tcp://127.0.0.1:2345", object_storage_address=None
+            worker_manager_config=SimpleNamespace(
+                scheduler_address="tcp://127.0.0.1:2345",
+                object_storage_address=None,
+                worker_manager_id="test-manager",
+                max_task_concurrency=-1,
+                effective_worker_scheduler_address="tcp://127.0.0.1:2345",
             ),
-            compartment_id="ocid1.compartment.oc1..example",
-            availability_domain="Uocm:PHX-AD-1",
-            subnet_id="ocid1.subnet.oc1.phx.example",
-            container_image="phx.ocir.io/namespace/scaler:latest",
-            oci_region="us-ashburn-1",
+            worker_config=SimpleNamespace(
+                heartbeat_interval_seconds=1,
+                death_timeout_seconds=30,
+                per_worker_task_queue_size=100,
+                io_threads=2,
+                event_loop="builtin",
+                per_worker_capabilities=SimpleNamespace(capabilities={}),
+            ),
+            container_instance_config=SimpleNamespace(
+                compartment_id="ocid1.compartment.oc1..example",
+                availability_domain="Uocm:PHX-AD-1",
+                subnet_id="ocid1.subnet.oc1.phx.example",
+                container_image="phx.ocir.io/namespace/scaler:latest",
+                oci_region="us-ashburn-1",
+                instance_shape="CI.Standard.E4.Flex",
+                oci_profile="DEFAULT",
+                auth_type="instance_principal",
+            ),
             object_storage_namespace="namespace",
             object_storage_bucket="bucket",
             object_storage_prefix="scaler-tasks",
-            instance_shape="CI.Standard.E4.Flex",
             instance_ocpus=1.0,
             instance_memory_gb=6.0,
             base_concurrency=2,
-            heartbeat_interval_seconds=1,
-            death_timeout_seconds=30,
-            task_queue_size=100,
-            worker_io_threads=2,
-            event_loop="builtin",
             job_timeout_seconds=600,
-            oci_config_profile="DEFAULT",
-            oci_auth_type="instance_principal",
         )
 
-    def test_main_wires_oci_auth_type_to_worker(self) -> None:
+    def test_main_creates_and_runs_worker_manager(self) -> None:
         config = self._create_config()
-        mock_worker = MagicMock()
-        mock_worker_instance = MagicMock()
-        mock_worker.return_value = mock_worker_instance
+        mock_manager = MagicMock()
 
-        with patch("scaler.entry_points.worker_manager_oci_hpc.OCIHPCWorkerAdapterConfig.parse", return_value=config):
+        with patch("scaler.entry_points.worker_manager_oci_hpc.OCIHPCWorkerManagerConfig.parse", return_value=config):
             with patch("scaler.entry_points.worker_manager_oci_hpc.setup_logger"):
-                with patch("scaler.entry_points.worker_manager_oci_hpc.OCIContainerInstanceWorker", mock_worker):
+                with patch(
+                    "scaler.entry_points.worker_manager_oci_hpc.OCIHPCWorkerManager", return_value=mock_manager
+                ) as mock_class:
                     main()
 
-        self.assertEqual(mock_worker.call_count, 1)
-        self.assertEqual(mock_worker.call_args.kwargs["oci_auth_type"], "instance_principal")
-        mock_worker_instance.start.assert_called_once()
-        mock_worker_instance.join.assert_called_once()
+        mock_class.assert_called_once_with(config)
+        mock_manager.run.assert_called_once()
 
 
 if __name__ == "__main__":

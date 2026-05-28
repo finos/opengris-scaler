@@ -219,38 +219,25 @@ def check_object_storage(profile: str, compartment_id: str) -> bool:
         os_client.create_bucket(
             namespace_name=namespace,
             create_bucket_details=oci.object_storage.models.CreateBucketDetails(
-                name=bucket_name,
-                compartment_id=compartment_id,
-                public_access_type="NoPublicAccess",
+                name=bucket_name, compartment_id=compartment_id, public_access_type="NoPublicAccess"
             ),
         )
         print(f"  Created bucket: {bucket_name}")
 
         # Put object
         os_client.put_object(
-            namespace_name=namespace,
-            bucket_name=bucket_name,
-            object_name=object_name,
-            put_object_body=test_payload,
+            namespace_name=namespace, bucket_name=bucket_name, object_name=object_name, put_object_body=test_payload
         )
         print(f"  Put object: {object_name} ({len(test_payload)} bytes)")
 
         # Get object
-        response = os_client.get_object(
-            namespace_name=namespace,
-            bucket_name=bucket_name,
-            object_name=object_name,
-        )
+        response = os_client.get_object(namespace_name=namespace, bucket_name=bucket_name, object_name=object_name)
         read_back = response.data.content
         match = read_back == test_payload
         print(f"  Get object: {len(read_back)} bytes, match={match}")
 
         # Cleanup
-        os_client.delete_object(
-            namespace_name=namespace,
-            bucket_name=bucket_name,
-            object_name=object_name,
-        )
+        os_client.delete_object(namespace_name=namespace, bucket_name=bucket_name, object_name=object_name)
         os_client.delete_bucket(namespace_name=namespace, bucket_name=bucket_name)
         print(f"  Cleaned up bucket: {bucket_name}")
 
@@ -297,8 +284,7 @@ def check_container_instance_lifecycle(
                 availability_domain=availability_domain,
                 shape=instance_shape,
                 shape_config=oci.container_instances.models.CreateContainerInstanceShapeConfigDetails(
-                    ocpus=instance_ocpus,
-                    memory_in_gbs=instance_memory_gb,
+                    ocpus=instance_ocpus, memory_in_gbs=instance_memory_gb
                 ),
                 containers=[
                     oci.container_instances.models.CreateContainerDetails(
@@ -308,11 +294,7 @@ def check_container_instance_lifecycle(
                         arguments=["-c", "echo scaler-harness-ok && sleep 2"],
                     )
                 ],
-                vnics=[
-                    oci.container_instances.models.CreateContainerVnicDetails(
-                        subnet_id=subnet_id,
-                    )
-                ],
+                vnics=[oci.container_instances.models.CreateContainerVnicDetails(subnet_id=subnet_id)],
                 display_name=display_name,
                 container_restart_policy="NEVER",
             )
@@ -343,8 +325,10 @@ def check_container_instance_lifecycle(
                     c_state = getattr(c, "lifecycle_state", "?")
                     c_detail = getattr(c, "lifecycle_details", "")
                     c_exit = getattr(c, "exit_code", None)
-                    print(f"  Container '{getattr(c, 'display_name', '?')}': "
-                          f"state={c_state}, detail={c_detail}, exit_code={c_exit}")
+                    print(
+                        f"  Container '{getattr(c, 'display_name', '?')}': "
+                        f"state={c_state}, detail={c_detail}, exit_code={c_exit}"
+                    )
                 # Fetch container instance events if available
                 try:
                     faults = getattr(status_response.data, "faults", None)
@@ -360,7 +344,7 @@ def check_container_instance_lifecycle(
         # Cleanup
         try:
             ci_client.delete_container_instance(container_instance_id=instance_id)
-            print(f"  Deleted container instance")
+            print("  Deleted container instance")
         except oci.exceptions.ServiceError as del_exc:
             if del_exc.status != 404:
                 print(f"  Warning: delete failed: {del_exc.message}")
@@ -454,12 +438,7 @@ def run_compute_test(client: Any, timeout: int) -> bool:
         return False
 
 
-SCHEDULER_TESTS = {
-    "sqrt": run_sqrt_test,
-    "simple": run_simple_test,
-    "map": run_map_test,
-    "compute": run_compute_test,
-}
+SCHEDULER_TESTS = {"sqrt": run_sqrt_test, "simple": run_simple_test, "map": run_map_test, "compute": run_compute_test}
 
 
 # ---------------------------------------------------------------------------
@@ -484,8 +463,7 @@ def load_config_file(config_path: str) -> Dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="OCI HPC Worker Adapter Test Harness",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="OCI HPC Worker Adapter Test Harness", formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
     # OCI resource arguments
