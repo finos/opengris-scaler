@@ -35,11 +35,11 @@ address. Three ways to get one:
 
 .. note::
 
-   The in-browser kernel is **CPython 3.13** (Pyodide-bundled). The scheduler
-   and workers it talks to must also run CPython 3.13 -- the ``capnp``
-   protocol bindings need a matching ABI. The demo notebooks only import
-   ``numpy`` (pin to ``<2.3`` to match Pyodide) and ``scikit-learn`` on the
-   worker side, on top of the standard library.
+   The in-browser kernel is **CPython 3.13** (Pyodide-bundled). Workers must
+   run the same major/minor Python version so the ``capnp`` ABI matches
+   (patch version does not matter). The demo notebooks only need ``numpy``
+   (pin ``<2.3`` to match Pyodide) and ``scikit-learn`` on the worker side,
+   on top of the standard library.
 
 Demo notebooks
 --------------
@@ -87,8 +87,8 @@ batch of independent tasks while the actual CPU work happens on the workers.
           <a class="try-in-browser" href="../lite/lab/index.html?path=sklearn_grid_search.ipynb" target="_blank" rel="noopener">Open</a>
 
 For heavier real-world gallery notebooks (parfun, pargraph, XVA, ...) see
-:doc:`examples` -- those are best run against a native cluster from a native
-Python install.
+:doc:`examples` -- those are too heavy for a browser kernel and are best
+run from a native Python client.
 
 .. toctree::
    :hidden:
