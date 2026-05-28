@@ -2,8 +2,8 @@
 OCI Raw Worker Manager — Container Instance backend.
 
 Manages Scaler worker processes as OCI Container Instances. Each unit maps to a
-single Container Instance running ``scaler_cluster`` with multiple workers inside.
-Supports both config-file and instance-principal authentication.
+single Container Instance running ``scaler_worker_manager baremetal_native`` with
+multiple workers inside. Supports both config-file and instance-principal authentication.
 
 All blocking OCI SDK calls are offloaded to a thread executor so the asyncio
 event loop is never blocked.
@@ -102,20 +102,19 @@ class OCIContainerInstanceProvisioner(DeclarativeWorkerProvisioner):
         scheduler_address = str(config.worker_manager_config.effective_worker_scheduler_address)
         requirements_content = load_requirements_content(config.python_worker_environment.requirements_txt)
 
-        worker_names = [f"OCI_RAW|{uuid.uuid4().hex}" for _ in range(num_workers)]
-        command = (
-            f"scaler_cluster {scheduler_address} "
-            f"--num-of-workers {num_workers} "
-            f"--worker-names \"{','.join(worker_names)}\" "
-            f"--per-worker-task-queue-size {worker_config.per_worker_task_queue_size} "
-            f"--heartbeat-interval-seconds {worker_config.heartbeat_interval_seconds} "
-            f"--task-timeout-seconds {worker_config.task_timeout_seconds} "
-            f"--garbage-collect-interval-seconds {worker_config.garbage_collect_interval_seconds} "
-            f"--death-timeout-seconds {worker_config.death_timeout_seconds} "
-            f"--trim-memory-threshold-bytes {worker_config.trim_memory_threshold_bytes} "
-            f"--event-loop {worker_config.event_loop} "
-            f"--worker-io-threads {worker_config.io_threads}"
-        )
+        command = f"""scaler_worker_manager baremetal_native {scheduler_address!r} \
+--mode fixed \
+--worker-type OCI_RAW \
+--max-task-concurrency {num_workers} \
+--worker-manager-id {config.worker_manager_config.worker_manager_id} \
+--per-worker-task-queue-size {worker_config.per_worker_task_queue_size} \
+--heartbeat-interval-seconds {worker_config.heartbeat_interval_seconds} \
+--task-timeout-seconds {worker_config.task_timeout_seconds} \
+--garbage-collect-interval-seconds {worker_config.garbage_collect_interval_seconds} \
+--death-timeout-seconds {worker_config.death_timeout_seconds} \
+--trim-memory-threshold-bytes {worker_config.trim_memory_threshold_bytes} \
+--event-loop {worker_config.event_loop} \
+--worker-io-threads {worker_config.io_threads}"""
 
         if worker_config.hard_processor_suspend:
             command += " --hard-processor-suspend"
@@ -140,7 +139,11 @@ class OCIContainerInstanceProvisioner(DeclarativeWorkerProvisioner):
                 oci.container_instances.models.CreateContainerDetails(
                     image_url=container_instance_config.container_image,
                     display_name="scaler-container",
-                    environment_variables={"COMMAND": command, "PYTHON_REQUIREMENTS": requirements_content},
+                    environment_variables={
+                        "COMMAND": command,
+                        "PYTHON_REQUIREMENTS": requirements_content,
+                        "PYTHON_VERSION": config.python_worker_environment.python_version,
+                    },
                 )
             ],
             vnics=[
