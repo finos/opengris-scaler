@@ -32,6 +32,8 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List
 
+import oci
+
 DEFAULT_PREFIX = "scaler-oci"
 DEFAULT_CONFIG_FILE = ".scaler_oci_config.json"
 DEFAULT_ENV_FILE = ".scaler_oci_hpc.env"
@@ -68,8 +70,6 @@ class OCIProvisioner:
         prefix: str = DEFAULT_PREFIX,
         oci_config_profile: str = "DEFAULT",
     ) -> None:
-        import oci
-
         self._compartment_id = compartment_id
         self._region = oci_region
         self._prefix = prefix
@@ -157,8 +157,6 @@ class OCIProvisioner:
         Returns:
             The bucket name.
         """
-        import oci
-
         bucket_name = f"{self._prefix}-{self._namespace}-{self._region}"
 
         try:
@@ -212,8 +210,6 @@ class OCIProvisioner:
         Returns:
             The Dynamic Group OCID.
         """
-        import oci
-
         dg_name = f"{self._prefix}-dg"
         matching_rule = (
             f"ALL {{resource.type='computecontainerinstance', " f"resource.compartment.id='{self._compartment_id}'}}"
@@ -248,8 +244,6 @@ class OCIProvisioner:
         Returns:
             The IAM Policy OCID.
         """
-        import oci
-
         dg_name = f"{self._prefix}-dg"
         policy_name = f"{self._prefix}-policy"
 
@@ -293,8 +287,6 @@ class OCIProvisioner:
         Returns:
             The full OCIR image URI.
         """
-        import oci
-
         config = oci.config.from_file(profile_name=self._oci_config_profile)
         artifacts_client = oci.artifacts.ArtifactsClient(config)
 
@@ -403,8 +395,6 @@ export SCALER_OCI_AVAILABILITY_DOMAIN="{config["availability_domain"]}"
 
     def cleanup(self) -> None:
         """Delete all provisioned OCI resources."""
-        import oci
-
         logging.info("Cleaning up OCI resources...")
 
         bucket_name = f"{self._prefix}-{self._namespace}-{self._region}"
@@ -462,8 +452,9 @@ export SCALER_OCI_AVAILABILITY_DOMAIN="{config["availability_domain"]}"
 
         # Delete OCIR repository
         try:
-            config = oci.config.from_file(profile_name=self._oci_config_profile)
-            artifacts_client = oci.artifacts.ArtifactsClient(config)
+            artifacts_client = oci.artifacts.ArtifactsClient(
+                oci.config.from_file(profile_name=self._oci_config_profile)
+            )
             repos = artifacts_client.list_repositories(compartment_id=self._compartment_id).data.items
             repo_name = f"{self._prefix}-worker"
             for repo in repos:

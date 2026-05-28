@@ -2,6 +2,7 @@ from functools import partial
 from typing import Dict, Optional
 
 from scaler.config.types.address import AddressConfig
+from scaler.config.types.oci_auth_type import OCIAuthType
 from scaler.worker_manager_adapter.oci_hpc.execution_backend import OCIHPCExecutionBackend
 from scaler.worker_manager_adapter.oci_hpc.processor_status import OCIProcessorStatusProvider
 from scaler.worker_manager_adapter.worker_process import WorkerProcess
@@ -32,7 +33,7 @@ def create_oci_hpc_worker(
     event_loop: str = "builtin",
     job_timeout_seconds: int = 3600,
     oci_profile: str = "DEFAULT",
-    auth_type: str = "config_file",
+    auth_type: OCIAuthType = OCIAuthType.config_file,
 ) -> WorkerProcess:
     return WorkerProcess(
         name=name,
