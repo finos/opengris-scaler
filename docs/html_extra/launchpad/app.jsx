@@ -536,6 +536,216 @@ function WorkerManagerCard({
           </div>
         </>
       )}
+
+      {/* oci_raw */}
+      {wm.type === "oci_raw" && (
+        <>
+          <div>
+            <Label help="OCI Compartment OCID where container instances are launched.">Compartment ID</Label>
+            <input
+              value={wm.ociCompartmentId || ""}
+              onChange={(e) => set("ociCompartmentId", e.target.value)}
+              style={inp}
+              placeholder="ocid1.compartment.oc1..aaa..."
+            />
+          </div>
+          <div>
+            <Label help="OCI Availability Domain (e.g. AD-1 or Uocm:PHX-AD-1).">Availability Domain</Label>
+            <input
+              value={wm.ociAvailabilityDomain || ""}
+              onChange={(e) => set("ociAvailabilityDomain", e.target.value)}
+              style={inp}
+              placeholder="AD-1"
+            />
+          </div>
+          <div>
+            <Label help="OCI Subnet OCID for container instance network interfaces.">Subnet ID</Label>
+            <input
+              value={wm.ociSubnetId || ""}
+              onChange={(e) => set("ociSubnetId", e.target.value)}
+              style={inp}
+              placeholder="ocid1.subnet.oc1..aaa..."
+            />
+          </div>
+          <div>
+            <Label help="OCIR image URI (e.g. &lt;region&gt;.ocir.io/&lt;ns&gt;/&lt;repo&gt;:latest).">Container Image</Label>
+            <input
+              value={wm.ociContainerImage || ""}
+              onChange={(e) => set("ociContainerImage", e.target.value)}
+              style={inp}
+              placeholder="us-ashburn-1.ocir.io/myns/scaler:latest"
+            />
+          </div>
+          <div>
+            <Label help="OCI region identifier.">Region</Label>
+            <input
+              value={wm.ociRegion || "us-ashburn-1"}
+              onChange={(e) => set("ociRegion", e.target.value)}
+              style={inp}
+              placeholder="us-ashburn-1"
+            />
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <Label help="Number of OCPUs per container instance (also determines worker count).">OCPUs</Label>
+              <NumericStepper
+                value={wm.ociOcpus || 4}
+                onChange={(v) => set("ociOcpus", v)}
+                min={1}
+                max={64}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Label>Memory (GB)</Label>
+              <NumericStepper
+                value={wm.ociMemoryGb || 30}
+                onChange={(v) => set("ociMemoryGb", v)}
+                min={1}
+                max={512}
+              />
+            </div>
+          </div>
+          <div>
+            <Label help="- Installed inside the container instance\n- opengris-scaler must be included">requirements.txt</Label>
+            <textarea
+              value={wm.requirements || ""}
+              onChange={(e) => set("requirements", e.target.value)}
+              style={{
+                width: "100%",
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-accent)",
+                borderRadius: 3,
+                padding: "7px 10px",
+                color: "var(--text-primary)",
+                fontFamily: "inherit",
+                fontSize: 11,
+                outline: "none",
+                resize: "vertical",
+                minHeight: 72,
+                lineHeight: 1.6,
+              }}
+            />
+          </div>
+        </>
+      )}
+
+      {/* oci_hpc */}
+      {wm.type === "oci_hpc" && (
+        <>
+          <div>
+            <Label help="OCI Compartment OCID where container instances are launched.">Compartment ID</Label>
+            <input
+              value={wm.ociCompartmentId || ""}
+              onChange={(e) => set("ociCompartmentId", e.target.value)}
+              style={inp}
+              placeholder="ocid1.compartment.oc1..aaa..."
+            />
+          </div>
+          <div>
+            <Label help="OCI Availability Domain (e.g. AD-1 or Uocm:PHX-AD-1).">Availability Domain</Label>
+            <input
+              value={wm.ociAvailabilityDomain || ""}
+              onChange={(e) => set("ociAvailabilityDomain", e.target.value)}
+              style={inp}
+              placeholder="AD-1"
+            />
+          </div>
+          <div>
+            <Label help="OCI Subnet OCID for container instance network interfaces.">Subnet ID</Label>
+            <input
+              value={wm.ociSubnetId || ""}
+              onChange={(e) => set("ociSubnetId", e.target.value)}
+              style={inp}
+              placeholder="ocid1.subnet.oc1..aaa..."
+            />
+          </div>
+          <div>
+            <Label help="OCIR image URI (e.g. &lt;region&gt;.ocir.io/&lt;ns&gt;/&lt;repo&gt;:latest).">Container Image</Label>
+            <input
+              value={wm.ociContainerImage || ""}
+              onChange={(e) => set("ociContainerImage", e.target.value)}
+              style={inp}
+              placeholder="us-ashburn-1.ocir.io/myns/scaler:latest"
+            />
+          </div>
+          <div>
+            <Label help="OCI region identifier.">Region</Label>
+            <input
+              value={wm.ociRegion || "us-ashburn-1"}
+              onChange={(e) => set("ociRegion", e.target.value)}
+              style={inp}
+              placeholder="us-ashburn-1"
+            />
+          </div>
+          <div>
+            <Label help="OCI Object Storage tenancy namespace.">Object Storage Namespace</Label>
+            <input
+              value={wm.ociObjectStorageNamespace || ""}
+              onChange={(e) => set("ociObjectStorageNamespace", e.target.value)}
+              style={inp}
+              placeholder="mytenancy"
+            />
+          </div>
+          <div>
+            <Label>Object Storage Bucket</Label>
+            <input
+              value={wm.ociObjectStorageBucket || ""}
+              onChange={(e) => set("ociObjectStorageBucket", e.target.value)}
+              style={inp}
+              placeholder="scaler-tasks-bucket"
+            />
+          </div>
+          <div>
+            <Label help="Key prefix for task inputs and results in Object Storage.">Object Storage Prefix</Label>
+            <input
+              value={wm.ociObjectStoragePrefix || "scaler-tasks"}
+              onChange={(e) => set("ociObjectStoragePrefix", e.target.value)}
+              style={inp}
+              placeholder="scaler-tasks"
+            />
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <Label>OCPUs per Job</Label>
+              <NumericStepper
+                value={wm.ociOcpus || 1}
+                onChange={(v) => set("ociOcpus", v)}
+                min={1}
+                max={64}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Label>Memory (GB)</Label>
+              <NumericStepper
+                value={wm.ociMemoryGb || 6}
+                onChange={(v) => set("ociMemoryGb", v)}
+                min={1}
+                max={512}
+              />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <Label help="Maximum number of concurrently running container instances.">Max Concurrent Jobs</Label>
+              <NumericStepper
+                value={wm.ociMaxConcurrentJobs || 100}
+                onChange={(v) => set("ociMaxConcurrentJobs", v)}
+                min={1}
+                max={10000}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Label>Timeout (min)</Label>
+              <NumericStepper
+                value={wm.ociJobTimeoutMinutes || 60}
+                onChange={(v) => set("ociJobTimeoutMinutes", v)}
+                min={1}
+                max={1440}
+              />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
