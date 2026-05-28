@@ -55,39 +55,62 @@ Validate all phases with the test harness:
    python tests/worker_manager_adapter/oci_hpc/oci_hpc_test_harness.py \
        --config .scaler_oci_config.json
 
-Start scheduler and worker manager from one TOML file:
+Start all services:
 
-.. code-block:: toml
-   :caption: config.toml
+.. tabs::
 
-   [object_storage_server]
-   bind_address = "tcp://127.0.0.1:8517"
+   .. group-tab:: config.toml
 
-   [scheduler]
-   bind_address = "tcp://127.0.0.1:8516"
-   object_storage_address = "tcp://127.0.0.1:8517"
+      .. code-block:: toml
+         :caption: config.toml
 
-   [[worker_manager]]
-   type = "oci_hpc"
-   scheduler_address = "tcp://127.0.0.1:8516"
-   object_storage_address = "tcp://127.0.0.1:8517"
-   worker_manager_id = "wm-oci-hpc"
-   object_storage_namespace = "<tenancy-namespace>"
-   object_storage_bucket = "scaler-tasks"
+         [object_storage_server]
+         bind_address = "tcp://127.0.0.1:8517"
 
-   [worker_manager.container_instance_config]
-   oci_region = "us-ashburn-1"
-   compartment_id = "ocid1.compartment.oc1..example"
-   availability_domain = "AD-1"
-   subnet_id = "ocid1.subnet.oc1..example"
-   container_image = "us-ashburn-1.ocir.io/<namespace>/<repo>:latest"
+         [scheduler]
+         bind_address = "tcp://127.0.0.1:8516"
+         object_storage_address = "tcp://127.0.0.1:8517"
 
-   base_concurrency = 100
-   job_timeout_seconds = 3600
+         [[worker_manager]]
+         type = "oci_hpc"
+         scheduler_address = "tcp://127.0.0.1:8516"
+         object_storage_address = "tcp://127.0.0.1:8517"
+         worker_manager_id = "wm-oci-hpc"
+         object_storage_namespace = "<tenancy-namespace>"
+         object_storage_bucket = "scaler-tasks"
+         oci_region = "us-ashburn-1"
+         compartment_id = "ocid1.compartment.oc1..example"
+         availability_domain = "AD-1"
+         subnet_id = "ocid1.subnet.oc1..example"
+         container_image = "us-ashburn-1.ocir.io/<namespace>/<repo>:latest"
+         base_concurrency = 100
+         job_timeout_seconds = 3600
 
-.. code-block:: bash
+      Run command:
 
-   scaler config.toml
+      .. code-block:: bash
+
+         scaler config.toml
+
+   .. group-tab:: command line
+
+      .. code-block:: bash
+
+         scaler_object_storage_server tcp://127.0.0.1:8517
+         scaler_scheduler tcp://0.0.0.0:8516 \
+             --object-storage-address tcp://127.0.0.1:8517
+         scaler_worker_manager oci_hpc tcp://127.0.0.1:8516 \
+             --worker-manager-id wm-oci-hpc \
+             --object-storage-address tcp://127.0.0.1:8517 \
+             --object-storage-namespace "<tenancy-namespace>" \
+             --object-storage-bucket scaler-tasks \
+             --oci-region us-ashburn-1 \
+             --compartment-id ocid1.compartment.oc1..example \
+             --availability-domain AD-1 \
+             --subnet-id ocid1.subnet.oc1..example \
+             --container-image us-ashburn-1.ocir.io/<namespace>/<repo>:latest \
+             --base-concurrency 100 \
+             --job-timeout-seconds 3600
 
 .. code-block:: python
    :caption: my_client.py (Terminal 2)
@@ -101,36 +124,8 @@ Start scheduler and worker manager from one TOML file:
        futures = client.map(heavy_computation, range(50))
        print([f.result() for f in futures])
 
-Detailed Setup
---------------
-
-Step 1: Provision OCI Resources
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. warning::
-   The provisioner creates resources for quick testing and development only.
-   For production deployments, use your organization's infrastructure-as-code tools
-   (Terraform, Resource Manager) with proper security configurations.
-
-Scaler includes a provisioner that creates all required OCI infrastructure:
-
-.. code-block:: bash
-
-   python -m scaler.worker_manager_adapter.oci_hpc.utility.provisioner provision \
-       --compartment-id ocid1.compartment.oc1..example \
-       --region us-ashburn-1 \
-       --availability-domain AD-1 \
-       --subnet-id ocid1.subnet.oc1..example
-
-This will:
-
-1. Create an Object Storage bucket for task payloads and results
-2. Create a Dynamic Group and IAM policies for container instances
-3. Create an OCIR repository for the job runner image
-4. Save configuration to ``.scaler_oci_config.json``
-
 Using Existing Infrastructure
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+-----------------------------
 
 If you already have OCI resources, skip the provisioner and set environment variables directly:
 
@@ -143,89 +138,6 @@ If you already have OCI resources, skip the provisioner and set environment vari
    export OCI_CONTAINER_IMAGE="us-ashburn-1.ocir.io/<namespace>/<repo>:latest"
    export OCI_OBJECT_STORAGE_NAMESPACE="<tenancy-namespace>"
    export OCI_OBJECT_STORAGE_BUCKET="scaler-tasks"
-
-Step 2: Build the Job Runner Image
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The OCI HPC worker manager requires a pre-built container image containing the job runner script. A ``Dockerfile`` is provided at ``src/scaler/worker_manager_adapter/oci_hpc/utility/Dockerfile.container_instance``.
-
-Build and push using the provisioner:
-
-.. code-block:: bash
-
-   python -m scaler.worker_manager_adapter.oci_hpc.utility.provisioner \
-       build-image --config .scaler_oci_config.json
-
-Or build and push manually:
-
-.. code-block:: bash
-
-   # Authenticate with OCIR
-   docker login us-ashburn-1.ocir.io -u <tenancy-namespace>/<username>
-
-   # Build and push
-   docker build \
-       -f src/scaler/worker_manager_adapter/oci_hpc/utility/Dockerfile.container_instance \
-       -t us-ashburn-1.ocir.io/<namespace>/<repo>:latest .
-   docker push us-ashburn-1.ocir.io/<namespace>/<repo>:latest
-
-.. note::
-   The job runner image requires ``cloudpickle`` and ``oci`` (the OCI Python SDK). It does not need the full ``opengris-scaler`` package. The container authenticates via OCI Resource Principals — no credentials need to be embedded in the image.
-
-Step 3: Run the Test Harness
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Before running real workloads, validate all phases:
-
-.. code-block:: bash
-
-   python tests/worker_manager_adapter/oci_hpc/oci_hpc_test_harness.py \
-       --config .scaler_oci_config.json
-
-The harness runs four sequential checks:
-
-1. **OCI Connectivity** — verifies SDK auth and compartment access
-2. **Object Storage** — put/get/delete a test object in the bucket
-3. **Container Instance lifecycle** — launches a test container, waits for it to reach INACTIVE state
-4. **Scheduler integration** *(optional)* — submits a real task through a running scheduler
-
-All four phases must pass before using the worker manager in production.
-
-Step 4: Start All Processes
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Use a single TOML configuration file:
-
-.. code-block:: bash
-
-   scaler config.toml
-
-Or start each process separately:
-
-.. code-block:: bash
-
-   scaler_object_storage_server tcp://127.0.0.1:8517 &
-   scaler_scheduler tcp://0.0.0.0:8516 --object-storage-address tcp://127.0.0.1:8517 &
-   scaler_worker_manager oci_hpc tcp://127.0.0.1:8516 \
-       --worker-manager-id wm-oci-hpc \
-       --object-storage-address tcp://127.0.0.1:8517 \
-       --object-storage-namespace "<tenancy-namespace>" \
-       --object-storage-bucket scaler-tasks \
-       --oci-region us-ashburn-1 \
-       --compartment-id ocid1.compartment.oc1..example \
-       --availability-domain AD-1 \
-       --subnet-id ocid1.subnet.oc1..example \
-       --container-image us-ashburn-1.ocir.io/<namespace>/<repo>:latest &
-
-Cleanup
-~~~~~~~
-
-To tear down all provisioned OCI resources:
-
-.. code-block:: bash
-
-   python -m scaler.worker_manager_adapter.oci_hpc.utility.provisioner \
-       cleanup --config .scaler_oci_config.json
 
 How It Works
 ------------
@@ -253,8 +165,8 @@ OCI HPC Parameters
 * ``--base-concurrency`` (``-bc``): Maximum number of concurrently running container instances (default: ``100``).
 * ``--job-timeout-seconds``: Maximum runtime in seconds for a single container instance (default: ``3600``).
 
-Container Instance Config (``[worker_manager.container_instance_config]``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Container Instance Config
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 * ``--oci-region``: OCI region identifier (default: ``us-ashburn-1``).
 * ``--compartment-id`` (required): OCI Compartment OCID where container instances are launched.

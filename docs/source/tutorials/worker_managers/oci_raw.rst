@@ -126,16 +126,9 @@ After services are up, use a client to submit tasks to OCI-provisioned workers.
 Build the Worker Image
 ----------------------
 
-The OCI Raw worker manager requires a container image with Bash and a Python-capable environment. The Scaler package is installed inside the container at startup via ``requirements_txt``, so the base image only needs a minimal OS with Bash.
+A ``Dockerfile`` is provided at ``src/scaler/worker_manager_adapter/oci_raw/utility/Dockerfile.container_instance``. It uses a minimal Debian base with ``uv`` for fast, wheel-based installs. The Scaler package and your task dependencies are installed at container startup via ``requirements_txt``, so the base image only needs ``uv`` and Bash.
 
-.. code-block:: dockerfile
-   :caption: Dockerfile
-
-   FROM python:3.12-slim
-   RUN apt-get update && apt-get install -y --no-install-recommends gcc && rm -rf /var/lib/apt/lists/*
-   CMD ["bash"]
-
-Build and push to your OCIR repository:
+Build and push to your OCIR repository from the repository root:
 
 .. code-block:: bash
 
@@ -143,11 +136,20 @@ Build and push to your OCIR repository:
    docker login us-ashburn-1.ocir.io -u <tenancy-namespace>/<username>
 
    # Build and push
-   docker build -t us-ashburn-1.ocir.io/<namespace>/<repo>:latest .
+   docker build \
+       -f src/scaler/worker_manager_adapter/oci_raw/utility/Dockerfile.container_instance \
+       -t us-ashburn-1.ocir.io/<namespace>/<repo>:latest .
    docker push us-ashburn-1.ocir.io/<namespace>/<repo>:latest
 
 .. note::
    The ``requirements_txt`` field in the worker manager config controls what Python packages are installed in the container when it starts. Include ``opengris-scaler[oci]`` and any packages your tasks depend on.
+
+.. note::
+   ``uv`` installs pre-built wheels by default, so no compiler is needed for most packages. If your dependencies include packages that must be compiled from source, add the required build tools to the Dockerfile (e.g. ``gcc``, ``g++``, or other system libraries your packages need):
+
+   .. code-block:: dockerfile
+
+      RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ ... && rm -rf /var/lib/apt/lists/*
 
 How It Works
 ------------
