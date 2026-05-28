@@ -11,7 +11,7 @@ from scaler.config.config_class import ConfigClass
 
 @dataclasses.dataclass
 class OCIRawWorkerManagerConfig(ConfigClass):
-    _tag: ClassVar[str] = "oci_raw_container_instance"
+    _tag: ClassVar[str] = "oci_raw"
     worker_manager_config: WorkerManagerConfig
     worker_config: WorkerConfig = dataclasses.field(default_factory=WorkerConfig)
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)

@@ -140,6 +140,7 @@ max_concurrent_jobs = ${wm.maxConcurrentJobs || 100}
 job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
 `;
       } else if (wm.type === "oci_raw") {
+        var ociRawReq = (wm.requirements || "").trim();
         block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
 compartment_id = "${wm.ociCompartmentId || ""}"
 availability_domain = "${wm.ociAvailabilityDomain || ""}"
@@ -147,9 +148,11 @@ subnet_id = "${wm.ociSubnetId || ""}"
 container_image = "${wm.ociContainerImage || ""}"
 instance_ocpus = ${wm.ociOcpus || 4}
 instance_memory_gb = ${wm.ociMemoryGb || 30}
+python_version = "${cfg.pythonVersion}"
+requirements_txt = """
+${ociRawReq}
+"""
 `;
-        if (wm.requirements)
-          block += `requirements_txt = "${wm.requirements}"\n`;
       } else if (wm.type === "oci_hpc") {
         block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
 compartment_id = "${wm.ociCompartmentId || ""}"
@@ -294,6 +297,7 @@ max_concurrent_jobs = ${wm.maxConcurrentJobs || 100}
 job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
 `;
       } else if (wm.type === "oci_raw") {
+        var ociRawReq = (wm.requirements || "").trim();
         block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
 compartment_id = "${wm.ociCompartmentId || ""}"
 availability_domain = "${wm.ociAvailabilityDomain || ""}"
@@ -301,9 +305,11 @@ subnet_id = "${wm.ociSubnetId || ""}"
 container_image = "${wm.ociContainerImage || ""}"
 instance_ocpus = ${wm.ociOcpus || 4}
 instance_memory_gb = ${wm.ociMemoryGb || 30}
+python_version = "${cfg.pythonVersion}"
+requirements_txt = """
+${ociRawReq}
+"""
 `;
-        if (wm.requirements)
-          block += `requirements_txt = "${wm.requirements}"\n`;
       } else if (wm.type === "oci_hpc") {
         block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
 compartment_id = "${wm.ociCompartmentId || ""}"
