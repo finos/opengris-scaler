@@ -35,7 +35,7 @@ class _InstanceInfo:
 
 
 class OCIContainerInstanceProvisioner(DeclarativeWorkerProvisioner):
-    def __init__(self, config: OCIRawWorkerManagerConfig) -> None:
+    def __init__(self, config: OCIRawWorkerManagerConfig, max_instances: int) -> None:
         self._config = config
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
         self._instances: List[_InstanceInfo] = []
@@ -44,7 +44,7 @@ class OCIContainerInstanceProvisioner(DeclarativeWorkerProvisioner):
             start_units=self.start_units,
             stop_units=self.stop_units,
             active_unit_count=self.active_unit_count,
-            max_unit_count=-1,
+            max_unit_count=max_instances,
         )
         self._initialize_oci_client()
 
@@ -189,14 +189,16 @@ class OCIContainerInstanceWorkerManager:
 
     def run(self) -> None:
         config = self._config
-        provisioner = OCIContainerInstanceProvisioner(config)
         workers_per_instance = max(1, int(config.instance_ocpus))
+        mtc = config.worker_manager_config.max_task_concurrency
+        max_instances = math.ceil(mtc / workers_per_instance) if mtc != -1 else -1
+        provisioner = OCIContainerInstanceProvisioner(config, max_instances)
         runner = WorkerManagerRunner(
             address=config.worker_manager_config.scheduler_address,
             name="worker_manager_oci_raw",
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
-            max_provisioner_units=config.worker_manager_config.max_task_concurrency,
+            max_provisioner_units=max_instances,
             worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
             worker_provisioner=provisioner,
             io_threads=config.worker_config.io_threads,
