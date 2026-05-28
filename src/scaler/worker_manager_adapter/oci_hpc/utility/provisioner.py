@@ -370,13 +370,14 @@ class OCIProvisioner:
     @staticmethod
     def print_export_commands(config: Dict[str, object]) -> None:
         """Print shell export commands for the most commonly needed config values."""
-        print(f"export SCALER_OCI_REGION=\"{config['oci_region']}\"")
-        print(f"export SCALER_OCI_COMPARTMENT_ID=\"{config['compartment_id']}\"")
-        print(f"export SCALER_OCI_NAMESPACE=\"{config['object_storage_namespace']}\"")
-        print(f"export SCALER_OCI_BUCKET=\"{config['object_storage_bucket']}\"")
-        print(f"export SCALER_OCI_CONTAINER_IMAGE=\"{config['container_image']}\"")
-        print(f"export SCALER_OCI_SUBNET_ID=\"{config['subnet_id']}\"")
-        print(f"export SCALER_OCI_AVAILABILITY_DOMAIN=\"{config['availability_domain']}\"")
+        print(f'''\
+export SCALER_OCI_REGION="{config["oci_region"]}"
+export SCALER_OCI_COMPARTMENT_ID="{config["compartment_id"]}"
+export SCALER_OCI_NAMESPACE="{config["object_storage_namespace"]}"
+export SCALER_OCI_BUCKET="{config["object_storage_bucket"]}"
+export SCALER_OCI_CONTAINER_IMAGE="{config["container_image"]}"
+export SCALER_OCI_SUBNET_ID="{config["subnet_id"]}"
+export SCALER_OCI_AVAILABILITY_DOMAIN="{config["availability_domain"]}"''')
 
     @staticmethod
     def save_env_file(config: Dict[str, object], env_file: str = DEFAULT_ENV_FILE) -> None:
@@ -384,13 +385,15 @@ class OCIProvisioner:
         path = Path(env_file)
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as fp:
-            fp.write(f"export SCALER_OCI_REGION=\"{config['oci_region']}\"\n")
-            fp.write(f"export SCALER_OCI_COMPARTMENT_ID=\"{config['compartment_id']}\"\n")
-            fp.write(f"export SCALER_OCI_NAMESPACE=\"{config['object_storage_namespace']}\"\n")
-            fp.write(f"export SCALER_OCI_BUCKET=\"{config['object_storage_bucket']}\"\n")
-            fp.write(f"export SCALER_OCI_CONTAINER_IMAGE=\"{config['container_image']}\"\n")
-            fp.write(f"export SCALER_OCI_SUBNET_ID=\"{config['subnet_id']}\"\n")
-            fp.write(f"export SCALER_OCI_AVAILABILITY_DOMAIN=\"{config['availability_domain']}\"\n")
+            fp.write(f"""\
+export SCALER_OCI_REGION="{config["oci_region"]}"
+export SCALER_OCI_COMPARTMENT_ID="{config["compartment_id"]}"
+export SCALER_OCI_NAMESPACE="{config["object_storage_namespace"]}"
+export SCALER_OCI_BUCKET="{config["object_storage_bucket"]}"
+export SCALER_OCI_CONTAINER_IMAGE="{config["container_image"]}"
+export SCALER_OCI_SUBNET_ID="{config["subnet_id"]}"
+export SCALER_OCI_AVAILABILITY_DOMAIN="{config["availability_domain"]}"
+""")
         logging.info(f"Env file saved: {path.absolute()}")
         logging.info(f"Run: source {env_file}")
 
