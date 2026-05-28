@@ -1,31 +1,10 @@
 """Minimal psutil shim for the JupyterLite/Pyodide site.
 
-Pyodide 0.29 does not bundle psutil and the upstream package has no
-pure-Python wheel (the C extension is the implementation), so it cannot
-be installed in the in-browser kernel.
-
-Three groups of code touch psutil under wasm:
-
-1. parfun (and a couple of its transitive deps) imports psutil at module
-   load only to read ``cpu_count`` for default arguments.
-2. ``scaler.client.agent.heartbeat_manager`` calls ``psutil.Process()``
-   at construction and then ``cpu_percent`` / ``memory_info`` every
-   heartbeat. This is the path that actually runs in the browser.
-3. Worker-side modules (``scaler.worker.agent.profiling_manager``,
-   ``scaler.worker.agent.heartbeat_manager``,
-   ``scaler.worker_manager_adapter.heartbeat_manager``) import psutil
-   unconditionally and reference a few exception classes / status
-   constants. They never execute in the browser, but transitive imports
-   may pull them in, so the names need to exist on the module.
-
-This shim provides just enough of that surface for all three cases:
-``Process`` reports zero CPU/RSS, ``virtual_memory`` reports zero free
-RAM, exception classes and status constants are present, and any other
-API access raises ``AttributeError`` so it is obvious if a notebook
-accidentally relies on a metric that cannot be measured in wasm.
-
-The shim advertises the latest upstream psutil version so the version
-pin parfun puts on its psutil dep (``psutil>=7.0.0``) is satisfied.
+Pyodide 0.29 cannot install upstream psutil (C extension, no pure-Python wheel).
+This shim covers the surface scaler's client/worker code touches: ``Process``
+reports zero CPU/RSS, ``virtual_memory`` reports zeros, exception classes and
+status constants are present. The advertised version satisfies parfun's
+``psutil>=7.0.0`` pin.
 """
 
 from __future__ import annotations

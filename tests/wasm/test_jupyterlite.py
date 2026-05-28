@@ -86,12 +86,18 @@ class JupyterLiteTests(unittest.TestCase):
         cls.server_thread.join(timeout=5)
 
     def test_parallel_sqrt_runs(self) -> None:
+        self._run_notebook("parallel_sqrt.ipynb")
+
+    def test_monte_carlo_pi_runs(self) -> None:
+        self._run_notebook("monte_carlo_pi.ipynb")
+
+    def _run_notebook(self, notebook: str) -> None:
         try:
             from playwright.sync_api import sync_playwright  # type: ignore[import-not-found]
         except ImportError:
             self.skipTest("playwright not installed; pip install playwright && playwright install chromium")
 
-        url = f"http://127.0.0.1:{self.port}/lite/lab/index.html?path=parallel_sqrt.ipynb"
+        url = f"http://127.0.0.1:{self.port}/lite/lab/index.html?path={notebook}"
 
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)

@@ -158,7 +158,7 @@ class ObjectBuffer:
         """Return a previously cached ObjectCache for ``obj`` if it is still valid.
 
         We key on ``id(obj)`` and confirm via a weakref that the same object
-        is still alive — ``id`` values are recycled once an object is GC'd, so
+        is still alive -- ``id`` values are recycled once an object is GC'd, so
         the weakref check prevents a stale entry from being mis-served.
         """
         key = id(obj)
@@ -166,7 +166,7 @@ class ObjectBuffer:
         if cached is None:
             return None
         # Defensively drop stale entries if the server has forgotten the object
-        # (e.g. after ``clear()`` — though clear() also wipes the cache, this
+        # (e.g. after ``clear()`` -- though clear() also wipes the cache, this
         # protects against future code paths that invalidate ``_valid_object_ids``
         # without going through clear()).
         if cached.object_id not in self._valid_object_ids:

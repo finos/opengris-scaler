@@ -459,7 +459,7 @@ class ConnectorSocket:
         try:
             if self._ws is not None:
                 self._ws.close()
-        except Exception:  # noqa: BLE001 — close on a closed socket can throw in JS
+        except Exception:  # noqa: BLE001 -- close on a closed socket can throw in JS
             pass
         # Drain any waiting receivers with a stop-requested error.
         err = _make_exception(ErrorCode.SocketStopRequested, "Socket has been shut down")
@@ -520,7 +520,7 @@ class ConnectorSocket:
             buf = js.Uint8Array.new(len(data))
             buf.assign(memoryview(data))
             self._ws.send(buf)
-        except Exception as exc:  # noqa: BLE001 — surface JS errors to the caller
+        except Exception as exc:  # noqa: BLE001 -- surface JS errors to the caller
             if callback is not None:
                 self._invoke(callback, _make_exception(ErrorCode.SysCallError, str(exc)))
             return
@@ -562,7 +562,7 @@ class ConnectorSocket:
         try:
             data = event.data
             # data is a JsProxy of an ArrayBuffer (binaryType="arraybuffer").
-            # ``to_bytes()`` is the canonical Pyodide JsBuffer → bytes copy and
+            # ``to_bytes()`` is the canonical Pyodide JsBuffer -> bytes copy and
             # works for both raw ArrayBuffers and typed-array views. ``to_py()``
             # on a raw ArrayBuffer does NOT return a byte-shaped memoryview, so
             # ``bytes(data.to_py())`` would silently produce garbage.
@@ -660,7 +660,7 @@ class ConnectorSocket:
     def _invoke(callback: Callable[[Any], None], arg: Any) -> None:
         try:
             callback(arg)
-        except Exception:  # noqa: BLE001 — never let a user callback abort the IO loop
+        except Exception:  # noqa: BLE001 -- never let a user callback abort the IO loop
             sys.excepthook(*sys.exc_info())  # type: ignore[misc]
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test_jupyterlite.sh — manual JupyterLite + wasm client debug harness.
+# test_jupyterlite.sh -- manual JupyterLite + wasm client debug harness.
 #
 # Starts a full Scaler cluster (object storage, scheduler on ws://, monitor,
 # one worker) plus the docs HTTP server that serves the JupyterLite site and
@@ -30,7 +30,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SESSION="scaler-jl"
 VENV="$REPO_ROOT/.venv/bin/activate"
 
-# Ports — match the SCHEDULER_ADDRESS = "ws://127.0.0.1:2345" placeholder
+# Ports -- match the SCHEDULER_ADDRESS = "ws://127.0.0.1:2345" placeholder
 # in the gallery notebooks
 SCHEDULER_WS_PORT=2345    # workers + browser wasm client both use this
 OBJECT_STORAGE_PORT=2346
@@ -61,7 +61,7 @@ tmux send-keys -t "$SESSION:object_storage" \
 
 sleep 1
 
-# 2. Scheduler — ws:// so both native workers and browser wasm client can connect.
+# 2. Scheduler -- ws:// so both native workers and browser wasm client can connect.
 #
 # -ct / -wt bumped to 30 minutes for the gallery notebooks. The browser kernel
 # runs the scaler client agent on the same single-threaded asyncio loop as the
@@ -85,14 +85,14 @@ tmux send-keys -t "$SESSION:ui" \
 
 sleep 2
 
-# 4. One worker — also connects via ws://
+# 4. One worker -- also connects via ws://
 tmux new-window -t "$SESSION" -n worker
 tmux send-keys -t "$SESSION:worker" \
     "source $VENV && scaler_worker_manager baremetal_native $SCHEDULER_WS_CLIENT_ADDR --worker-manager-id jl_worker --max-task-concurrency 4" Enter
 
 sleep 2
 
-# 5. Docs HTTP server — serves JupyterLite + wasm wheel
+# 5. Docs HTTP server -- serves JupyterLite + wasm wheel
 tmux new-window -t "$SESSION" -n docs_server
 tmux send-keys -t "$SESSION:docs_server" \
     "source $VENV && cd $REPO_ROOT/docs/build/html && python -m http.server $DOCS_PORT" Enter

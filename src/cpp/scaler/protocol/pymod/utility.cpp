@@ -22,7 +22,7 @@ using scaler::utility::pymod::OwnedPyObject;
 // ``.rodata.str*`` sections; short string literals (attribute names, format
 // strings, keyword names) end up pointing into the middle of unrelated longer
 // strings at load time. ``-fno-merge-all-constants`` (set in CMakeLists.txt)
-// is not always sufficient — observed corruptions include:
+// is not always sufficient -- observed corruptions include:
 //   * ``"_variant_name"`` being read as ``"mber.name"``
 //   * ``"_list_enum_fields"`` being read as ``"ist_enum_fields"``
 //   * ``"s"`` PyArg_ParseTuple format being read as a 28-char garbage string,
@@ -31,7 +31,7 @@ using scaler::utility::pymod::OwnedPyObject;
 //
 // Emitting each string as its own named ``static const char[]`` array forces
 // the compiler to give it a unique symbol that survives the wasm relocator.
-// ``bootstrap.cpp`` already does this for its own literals — these match the
+// ``bootstrap.cpp`` already does this for its own literals -- these match the
 // same pattern for utility.cpp.
 //
 // Keep the contents in lockstep with the names referenced below.
@@ -231,7 +231,7 @@ OwnedPyObject<> create_lazy_struct_object(
 // through the type's ``__getattribute__`` / ``__getattr__``. The lazy reader
 // path needs this because the CapnpUnionStruct ``__getattr__`` we install
 // falls back to ``load_struct_field``, which calls back into the lazy reader
-// — using the normal lookup here would infinite-recurse on shells that never
+// -- using the normal lookup here would infinite-recurse on shells that never
 // had ``_capnp_*`` attributes set (i.e. instances created via
 // ``Type(field=value)`` rather than ``Type.from_bytes(...)``).
 //

@@ -1,24 +1,15 @@
 #!/usr/bin/env bash
-# build_wasm.sh — build the wasm wheel and deploy it to the docs site.
+# build_wasm.sh -- build the wasm wheel and deploy it to the docs site.
 #
-# Run from the workspace root:
-#   ./scripts/build_wasm.sh
+# Run from the workspace root: ./scripts/build_wasm.sh
 #
-# This script intentionally uses a dedicated Python 3.13 virtual environment
-# under the user's cache directory instead of the project's main .venv. The
-# normal dev venv stays on Python 3.12 for editing, linting, and docs builds;
-# the wasm build needs the same Python version CI uses so pyodide-build
-# resolves the matching xbuildenv / Emscripten toolchain.
+# Uses a dedicated Python 3.13 venv under the user's cache dir (the main dev
+# venv stays on 3.12). Pyodide pins CPython 3.13, so the scheduler and worker
+# the wasm client connects to MUST also run CPython 3.13 -- mismatched ABI
+# makes capnp struct decoding fail with opaque errors.
 #
-# THIRD_PARTY_DIR controls where the wasm toolchain lives (emsdk, wasm-target
-# capnp/libuv). Defaults to ./thirdparties; the devcontainer sets it to
-# /opt/scaler via the Dockerfile ENV.
-#
-# CPython 3.13 cross-component constraint: the produced wheel embeds the
-# CPython 3.13 ABI of bootstrap.cpp's capnp glue. The scheduler and worker(s)
-# the wasm client connects to MUST also be running CPython 3.13, otherwise
-# capnp struct decoding will fail with opaque errors. Only the wasm client is
-# pinned to 3.13 by Pyodide; native scheduler/worker venvs need to match.
+# THIRD_PARTY_DIR controls where the wasm toolchain lives. Defaults to
+# ./thirdparties; the devcontainer sets it to /opt/scaler via Dockerfile ENV.
 
 set -euo pipefail
 
@@ -75,7 +66,7 @@ python -m wheel tags \
 
 # 7. Deploy to the docs source tree. The lite build (jupyterlite-sphinx) runs
 #    during ``make html`` and reads piplite_urls from
-#    docs/source/jupyter_lite_config.json — those URLs are resolved relative to
+#    docs/source/jupyter_lite_config.json -- those URLs are resolved relative to
 #    the config file, so the wheel(s) MUST live under docs/source/ before docs
 #    build. Sphinx then copies _static/ into docs/build/html/_static/ as usual.
 #    Wipe any prior wheels first to avoid the JupyterLite kernel
@@ -86,23 +77,11 @@ rm -f "${WASM_STATIC}"/opengris_scaler-*wasm32.whl
 cp dist_wasm/opengris_scaler-*emscripten_4_0_9*wasm32.whl "${WASM_STATIC}/"
 
 # 8. Vendor / build the runtime deps the JupyterLite kernel pulls at boot.
-#    Wheels are split into three groups:
-#      a) Real pure-Python wheels from PyPI (cloudpickle, tblib>=3.2.0,
-#         opengris-parfun, pargraph, bidict, pydot). cloudpickle/tblib are
-#         vendored even though Pyodide bundles older copies because the
-#         scaler worker pickles exceptions via tblib 3.2.0+ APIs.
-#      b) Stub wheels built from scripts/wasm_stubs/ (psutil, loky). Pyodide
-#         0.29 does not bundle psutil and the upstream package has no
-#         pure-Python wheel; loky imports multiprocessing.synchronize at
-#         module load which needs the _multiprocessing C extension Pyodide
-#         lacks. The stubs satisfy the imports parfun/pargraph perform at
-#         module load (psutil.cpu_count, loky.get_reusable_executor) so the
-#         gallery notebooks can ``import parfun`` and ``import pargraph``.
-#      c) Pyodide-bundled deps (attrs, jsonschema, msgpack, scikit-learn).
-#         These are NOT vendored: piplite.install resolves them from
-#         Pyodide's own pyodide-lock.json at boot. We list them in PACKAGES
-#         (in patch_jupyterlite_kernel.py) so the resolution happens
-#         explicitly before parfun/pargraph import them.
+#    Three groups: (a) pure-Python wheels from PyPI (cloudpickle, tblib>=3.2.0,
+#    opengris-parfun, pargraph, bidict, pydot); (b) stub wheels built from
+#    scripts/wasm_stubs/ (psutil, loky) -- both upstream packages need C
+#    extensions Pyodide lacks; (c) Pyodide-bundled deps resolved at boot from
+#    pyodide-lock.json (attrs, jsonschema, msgpack, scikit-learn).
 rm -f "${WASM_STATIC}"/cloudpickle-*.whl "${WASM_STATIC}"/tblib-*.whl \
       "${WASM_STATIC}"/opengris_parfun-*.whl "${WASM_STATIC}"/pargraph-*.whl \
       "${WASM_STATIC}"/bidict-*.whl "${WASM_STATIC}"/pydot-*.whl \
@@ -116,10 +95,9 @@ for stub in psutil loky; do
 done
 
 # 8b. Smoke-test that the vendored + stub wheels are importable inside a
-#     Pyodide virtualenv. This catches the most common breakage class --
-#     a transitive dep that imports a missing C extension at module load --
-#     before the wheels reach end users in the browser. Skipped if the
-#     pyodide CLI is unavailable (e.g. the dedicated wasm venv was wiped).
+#     Pyodide virtualenv. Catches the most common breakage: a transitive dep
+#     that imports a missing C extension at module load. Skipped if the pyodide
+#     CLI is unavailable.
 if command -v pyodide >/dev/null 2>&1; then
     SMOKE_PARENT="$(mktemp -d)"
     SMOKE_VENV="${SMOKE_PARENT}/pyo-smoke"

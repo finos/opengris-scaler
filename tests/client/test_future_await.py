@@ -1,4 +1,4 @@
-"""Tests for ``ScalerFuture.__await__`` — the async-await entrypoint used by
+"""Tests for ``ScalerFuture.__await__`` -- the async-await entrypoint used by
 browser notebooks that prefer ``await client.submit(...)`` over the
 synchronous ``.result()`` path.
 
@@ -170,7 +170,7 @@ class ScalerFutureEmscriptenResultTest(unittest.TestCase):
         """Regression: under emscripten, ``cancel()`` calls
         ``_wait_result_ready`` to wait for the cancel confirmation. Once the
         future transitions to cancelled, ``asyncio.wrap_future`` raises
-        ``CancelledError`` — but the native ``Condition.wait`` path returns
+        ``CancelledError`` -- but the native ``Condition.wait`` path returns
         silently in that case, so callers like ``Client.disconnect()`` ->
         ``cancel_all_futures()`` must not see the exception bubble up."""
         import threading

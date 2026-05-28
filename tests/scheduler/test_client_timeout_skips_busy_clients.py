@@ -43,7 +43,7 @@ def _make_controller(timeout_seconds: int) -> VanillaClientController:
         client_timeout_seconds=timeout_seconds,
     )
     controller = VanillaClientController(VanillaConfigController(config))
-    # The cleanup path may walk into disconnect → cancel-all-tasks → object
+    # The cleanup path may walk into disconnect -> cancel-all-tasks -> object
     # cleanup. Stub just enough of those collaborators that the negative
     # case (no in-flight tasks) cleanly exercises a full disconnect, and
     # that a regression in the busy-client case surfaces as a clean
@@ -65,7 +65,7 @@ class TestClientTimeoutSkipsBusyClients(unittest.TestCase):
         client = ClientID.generate_client_id("busy")
         task = TaskID.generate_task_id()
 
-        # Heartbeat was a long time ago — well past client_timeout_seconds.
+        # Heartbeat was a long time ago -- well past client_timeout_seconds.
         controller._client_last_seen[client] = (time.time() - (timeout + 10), _heartbeat())
         controller.on_task_begin(client, task)
 

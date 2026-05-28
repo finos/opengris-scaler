@@ -3,7 +3,7 @@ both ``tcp://`` and ``ws://`` C++ ``ObjectStorageServer`` instances.
 
 The wasm shim is exercised separately (``test_ymq_wasm.py`` /
 ``test_ymq_parity.py``); this test confirms that the C++ object storage
-server's ``ws://`` bind path (added by the websockets→wasm merge) accepts
+server's ``ws://`` bind path (added by the websockets->wasm merge) accepts
 the same wire protocol the native YMQ transport uses, and that the public
 ``YMQSyncObjectStorageConnector`` produces byte-equal results across both
 transports.

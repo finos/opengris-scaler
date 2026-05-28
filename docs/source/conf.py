@@ -106,18 +106,20 @@ nbsphinx_codecell_lexer = "python"
 
 # -- JupyterLite (Try in your browser) --------------------------------------
 # jupyterlite-sphinx builds a JupyterLite (Pyodide) site under build/html/lite
-# during ``make html`` and exposes the listed notebooks inside it.
+# during ``make html`` and exposes the listed notebooks inside it. Only the
+# notebooks listed here ship inside the in-browser environment; the heavier
+# parfun/pargraph gallery notebooks are intentionally excluded because the
+# in-browser client cannot yet keep its heartbeat alive across their long
+# pure-Python compute sections.
 jupyterlite_contents = [
     "gallery/parallel_sqrt.ipynb",
     "gallery/send_heavy_object.ipynb",
-    "gallery/AlphaResearch.ipynb",
-    "gallery/AlphaResearch_scaler_only.ipynb",
-    "gallery/VolSurface.ipynb",
-    "gallery/VolSurface_scaler_only.ipynb",
-    "gallery/SwapCVA.ipynb",
-    "gallery/SwapCVA_scaler_only.ipynb",
-    "gallery/XVA.ipynb",
-    "gallery/XVA_scaler_only.ipynb",
+    "gallery/monte_carlo_pi.ipynb",
+    "gallery/mandelbrot_tiles.ipynb",
+    "gallery/prime_sieve.ipynb",
+    "gallery/word_count_mapreduce.ipynb",
+    "gallery/image_batch_filter.ipynb",
+    "gallery/sklearn_grid_search.ipynb",
 ]
 
 # Bundle the scaler wasm wheel + cloudpickle + tblib into the lite kernel's
@@ -157,22 +159,27 @@ def _regen_jupyterlite_config():
 
 _regen_jupyterlite_config()
 
-# Inject a styled "Try in your browser" banner at the top of every rendered
-# notebook so users landing directly on a notebook page see the option.
-nbsphinx_prolog = r"""
-{% set notebook = env.doc2path(env.docname, base=None).split('/')[-1] %}
-
-.. raw:: html
-
-    <div class="try-in-browser-banner">
-      <a class="try-in-browser"
-         href="../lite/lab/index.html?path={{ notebook }}"
-         target="_blank"
-         rel="noopener">
-        ▶ Try this notebook in your browser (no install)
-      </a>
-    </div>
-"""
+# Inject a styled "Try in your browser" banner at the top of every notebook
+# that we actually ship into JupyterLite. ``jupyterlite_contents`` is the
+# single source of truth: notebooks not listed there (e.g. the parfun /
+# pargraph gallery) do not get a button so we never advertise a broken link.
+nbsphinx_browser_notebooks = sorted({entry.rsplit("/", 1)[-1] for entry in jupyterlite_contents})
+nbsphinx_prolog = (
+    "{%% set notebook = env.doc2path(env.docname, base=None).split('/')[-1] %%}\n"
+    "{%% if notebook in %r %%}\n"
+    "\n"
+    ".. raw:: html\n"
+    "\n"
+    '    <div class="try-in-browser-banner">\n'
+    '      <a class="try-in-browser"\n'
+    '         href="../lite/lab/index.html?path={{ notebook }}"\n'
+    '         target="_blank"\n'
+    '         rel="noopener">\n'
+    "        \u25b6 Try this notebook in your browser (no install)\n"
+    "      </a>\n"
+    "    </div>\n"
+    "{%% endif %%}\n"
+) % (nbsphinx_browser_notebooks,)
 
 
 # -- Auto-install opengris-scaler in the JupyterLite kernel ------------------

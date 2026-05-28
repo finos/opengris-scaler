@@ -1,4 +1,3 @@
-from math import ceil
 from typing import Dict, List, Tuple
 
 from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat

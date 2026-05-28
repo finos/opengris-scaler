@@ -161,7 +161,7 @@ class IPCAgentBridge(ClientAgentBridge):
 # The sync half of the connector pair blocks via ``pyodide.ffi.run_sync``
 # (JSPI), which suspends the current WebAssembly stack while the asyncio loop
 # continues to drive the coroutine. JSPI is required; see ``Client`` for the
-# preflight check. The queues exchange ``BaseMessage`` objects directly — no
+# preflight check. The queues exchange ``BaseMessage`` objects directly -- no
 # serialization round-trip is performed between client and agent.
 
 
@@ -493,9 +493,9 @@ def _uninstall_time_sleep_jspi_patch() -> None:
 # user's notebook code in the browser. ``ScalerFuture._wait_result_ready``
 # already suspends the wasm stack via JSPI when ``.result()`` is called, so
 # the loop keeps running and the agent keeps sending heartbeats. But code
-# that blocks on multiple futures via the standard library — most notably
+# that blocks on multiple futures via the standard library -- most notably
 # ``pargraph.GraphEngine.get`` which calls
-# ``concurrent.futures.wait(..., return_when=FIRST_COMPLETED)`` — uses
+# ``concurrent.futures.wait(..., return_when=FIRST_COMPLETED)`` -- uses
 # ``threading.Event.wait`` internally, which blocks the only thread without
 # letting the loop run. The agent never gets to send heartbeats, the
 # scheduler trips ``client_timeout_seconds`` (60s default), and the client
@@ -826,7 +826,7 @@ class InProcessAgentBridge(ClientAgentBridge):
             fut = self._agent._object_storage_address  # noqa: SLF001
             # ``fut`` is a ``concurrent.futures.Future``. ``asyncio.wrap_future``
             # adapts it to an awaitable on the current loop without any
-            # polling — the agent task signals completion in the same loop, so
+            # polling -- the agent task signals completion in the same loop, so
             # awaiting the wrapped future yields back to asyncio exactly once
             # and resumes when the future is set. A previous version used
             # ``while not fut.done(): await asyncio.sleep(0.01)``, which under
@@ -883,8 +883,8 @@ def create_default_bridge(
 ) -> ClientAgentBridge:
     """Pick the bridge implementation appropriate for the current platform.
 
-    Native CPython → ``IPCAgentBridge`` (threaded, IPC).
-    Pyodide / Emscripten → ``InProcessAgentBridge`` (single-loop, JSPI).
+    Native CPython -> ``IPCAgentBridge`` (threaded, IPC).
+    Pyodide / Emscripten -> ``InProcessAgentBridge`` (single-loop, JSPI).
     """
     bridge_cls: type[ClientAgentBridge]
     if sys.platform == "emscripten":

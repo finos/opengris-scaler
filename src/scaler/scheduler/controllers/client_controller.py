@@ -155,7 +155,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
             # while still being very much alive. The underlying transport
             # (WebSocket / TCP) will report an actual connection close
             # promptly, so it's safe to keep the client registered as long
-            # as it has outstanding work — the scheduler will see network
+            # as it has outstanding work -- the scheduler will see network
             # close via the binder if the client really went away.
             if self._client_to_task_ids.has_key(client) and len(self._client_to_task_ids.get_values(client)) > 0:
                 continue

@@ -32,7 +32,7 @@ class WireProtocolParityTest(unittest.TestCase):
 
     If any of these assertions fail, the C++ wire protocol has drifted from
     the Python shim. Either update the shim to match, or revert the C++
-    change and reconsider — native and browser peers must interoperate.
+    change and reconsider -- native and browser peers must interoperate.
     """
 
     def test_configuration_header_exists(self) -> None:
