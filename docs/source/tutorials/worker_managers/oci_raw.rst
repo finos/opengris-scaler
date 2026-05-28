@@ -65,18 +65,17 @@ Copy ``config.toml`` below, replace the placeholder values, then start services:
          worker_scheduler_address = "tcp://<PUBLIC_IP>:8516"
          object_storage_address = "tcp://<PUBLIC_IP>:8517"
          worker_manager_id = "wm-oci-raw"
-
-         [worker_manager.container_instance_config]
          oci_region = "us-ashburn-1"
          compartment_id = "ocid1.compartment.oc1..example"
          availability_domain = "AD-1"
          subnet_id = "ocid1.subnet.oc1..example"
          container_image = "us-ashburn-1.ocir.io/<namespace>/<repo>:latest"
-
-         [worker_manager.python_worker_environment]
          python_version = "3.12"
-         requirements_txt = "opengris-scaler[oci]\ntomli\npargraph"
-
+         requirements_txt = """
+         opengris-scaler[oci]
+         tomli
+         pargraph
+         """
          instance_ocpus = 4.0
          instance_memory_gb = 30.0
 
@@ -127,7 +126,7 @@ After services are up, use a client to submit tasks to OCI-provisioned workers.
 Build the Worker Image
 ----------------------
 
-The OCI Raw worker manager requires a container image that can run ``scaler_cluster``. Since the Scaler package is installed inside the container at startup from ``requirements_txt``, the base image only needs Python and standard OS packages.
+The OCI Raw worker manager requires a container image with Bash and a Python-capable environment. The Scaler package is installed inside the container at startup via ``requirements_txt``, so the base image only needs a minimal OS with Bash.
 
 .. code-block:: dockerfile
    :caption: Dockerfile
@@ -222,19 +221,19 @@ Step 4: Start the OCI Raw Worker Manager
          worker_scheduler_address = "tcp://<OCI_VM_IP>:8516"
          object_storage_address = "tcp://<OCI_VM_IP>:8517"
          worker_manager_id = "wm-oci-raw"
-
-         [worker_manager.container_instance_config]
          oci_region = "us-ashburn-1"
          compartment_id = "ocid1.compartment.oc1..example"
          availability_domain = "Uocm:US-ASHBURN-AD-1"
          subnet_id = "ocid1.subnet.oc1..example"
          container_image = "us-ashburn-1.ocir.io/<namespace>/<repo>:latest"
          instance_shape = "CI.Standard.E4.Flex"
-
-         [worker_manager.python_worker_environment]
          python_version = "3.12"
-         requirements_txt = "opengris-scaler[oci]\ntomli\npargraph\npandas"
-
+         requirements_txt = """
+         opengris-scaler[oci]
+         tomli
+         pargraph
+         pandas
+         """
          instance_ocpus = 4.0
          instance_memory_gb = 30.0
 
@@ -283,7 +282,7 @@ How It Works
 1. The OCI Raw worker manager connects to the Scaler scheduler and sends periodic heartbeats.
 2. On each heartbeat, the scheduler responds with a ``setDesiredTaskConcurrency`` command declaring the target worker count per capability set.
 3. The worker manager converges by calling the OCI Container Instances API to launch or stop container instances.
-4. Each container instance installs the packages from ``requirements_txt`` at startup, then runs ``scaler_cluster`` to spawn one or more worker processes. The number of workers per instance is determined by ``instance_ocpus``.
+4. Each container instance installs the packages from ``requirements_txt`` at startup, then runs ``scaler_worker_manager baremetal_native`` to spawn one or more worker processes. The number of workers per instance is determined by ``instance_ocpus``.
 5. Workers connect back to the scheduler (via ``worker_scheduler_address``) and process tasks like local workers.
 
 Configuration Reference
@@ -297,23 +296,23 @@ OCI Raw Parameters
 * ``--worker-scheduler-address``: Scheduler address used by workers inside container instances. Must be reachable from OCI (default: same as ``scheduler_address``).
 * ``--object-storage-address``: Object storage address used by workers. Must be reachable from OCI.
 
-Container Instance Config (``[worker_manager.container_instance_config]``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Container Instance Config
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* ``--oci-region``: OCI region identifier (default: ``us-ashburn-1``).
-* ``--compartment-id`` (required): OCI Compartment OCID where container instances are launched.
-* ``--availability-domain`` (required): OCI Availability Domain (e.g. ``AD-1`` or ``Uocm:US-ASHBURN-AD-1``).
-* ``--subnet-id`` (required): Subnet OCID for container instance network interfaces.
-* ``--container-image`` (required): OCIR image URI (e.g. ``us-ashburn-1.ocir.io/<ns>/<repo>:latest``).
-* ``--instance-shape``: Container instance shape (default: ``CI.Standard.E4.Flex``).
-* ``--auth-type``: OCI authentication mode — ``config_file`` (default) or ``instance_principal``.
-* ``--oci-profile``: OCI config file profile name (default: ``DEFAULT``).
+* ``--oci-region`` (``oci_region``): OCI region identifier (default: ``us-ashburn-1``).
+* ``--compartment-id`` (``compartment_id``, required): OCI Compartment OCID where container instances are launched.
+* ``--availability-domain`` (``availability_domain``, required): OCI Availability Domain (e.g. ``AD-1`` or ``Uocm:US-ASHBURN-AD-1``).
+* ``--subnet-id`` (``subnet_id``, required): Subnet OCID for container instance network interfaces.
+* ``--container-image`` (``container_image``, required): OCIR image URI (e.g. ``us-ashburn-1.ocir.io/<ns>/<repo>:latest``).
+* ``--instance-shape`` (``instance_shape``): Container instance shape (default: ``CI.Standard.E4.Flex``).
+* ``--auth-type`` (``auth_type``): OCI authentication mode — ``config_file`` (default) or ``instance_principal``.
+* ``--oci-profile`` (``oci_profile``): OCI config file profile name (default: ``DEFAULT``).
 
-Python Worker Environment (``[worker_manager.python_worker_environment]``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Python Worker Environment
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* ``--python-version`` (required): Python version for workers (e.g. ``3.12``).
-* ``--requirements-txt`` (required): Packages to install in the container at startup. Must include ``opengris-scaler[oci]``. Can be an inline newline-separated string or a path to a file.
+* ``--python-version`` (``python_version``, required): Python version for workers (e.g. ``3.12``).
+* ``--requirements-txt`` (``requirements_txt``, required): Packages to install in the container at startup. Must include ``opengris-scaler[oci]``. Can be an inline newline-separated string or a path to a file.
 
 Sizing Parameters
 ~~~~~~~~~~~~~~~~~
@@ -337,12 +336,12 @@ Architecture
                          │                                                      │
                          │            ┌──────────────────┐                     │
                          └───────────>│  Object Storage  │<────────────────────┘
-                                      └──────────────────┘       (scaler_cluster
-                                                                  runs inside each
-                                                                  container instance)
+                                      └──────────────────┘       (scaler_worker_manager
+                                                                  baremetal_native runs
+                                                                  inside each instance)
 
 1. The scheduler sends a ``setDesiredTaskConcurrency`` command to the worker manager on each heartbeat.
-2. The worker manager calls the OCI Container Instances API to launch instances running ``scaler_cluster``.
+2. The worker manager calls the OCI Container Instances API to launch instances running ``scaler_worker_manager baremetal_native``.
 3. Workers inside each instance connect back to the scheduler and process tasks.
 4. When workers are no longer needed, the worker manager stops the corresponding container instances.
 
@@ -355,7 +354,7 @@ Container Instances run inside OCI's network. Ensure ``worker_scheduler_address`
 **Container instances fail to start:**
 Check OCI Console → Container Instances for error messages. Common causes: invalid subnet or compartment OCID, missing OCIR pull secret, or insufficient IAM permissions. Ensure your user/Dynamic Group has ``manage container-instances`` and ``read virtual-network-family`` policies in the compartment.
 
-**``scaler_cluster`` not found in container:**
+**``scaler_worker_manager`` not found in container:**
 Ensure ``requirements_txt`` includes ``opengris-scaler[oci]``. The entrypoint installs it at container startup before launching workers.
 
 **Image pull errors:**
