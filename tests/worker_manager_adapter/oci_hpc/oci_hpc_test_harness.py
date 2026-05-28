@@ -50,6 +50,8 @@ except ImportError:
     print("Install it with:  pip install oci")
     sys.exit(1)
 
+from scaler import Client
+
 # ---------------------------------------------------------------------------
 # OCI poll settings
 # ---------------------------------------------------------------------------
@@ -120,8 +122,6 @@ def check_oci_auth(profile: str) -> bool:
     """Verify OCI SDK authentication and print tenancy info."""
     print("\n--- Check: OCI Authentication ---")
     try:
-        import oci
-
         config = oci.config.from_file(profile_name=profile)
         identity = oci.identity.IdentityClient(config)
         tenancy = identity.get_tenancy(tenancy_id=config["tenancy"]).data
@@ -139,8 +139,6 @@ def check_compartment(profile: str, compartment_id: str) -> bool:
     """Verify the compartment exists and is active."""
     print("\n--- Check: Compartment ---")
     try:
-        import oci
-
         config = oci.config.from_file(profile_name=profile)
         identity = oci.identity.IdentityClient(config)
         compartment = identity.get_compartment(compartment_id=compartment_id).data
@@ -158,8 +156,6 @@ def check_subnet(profile: str, subnet_id: str) -> bool:
     """Verify the subnet exists and is available."""
     print("\n--- Check: Subnet ---")
     try:
-        import oci
-
         config = oci.config.from_file(profile_name=profile)
         vn_client = oci.core.VirtualNetworkClient(config)
         subnet = vn_client.get_subnet(subnet_id=subnet_id).data
@@ -178,8 +174,6 @@ def check_availability_domain(profile: str, compartment_id: str, ad_name: str) -
     """Verify the availability domain exists."""
     print("\n--- Check: Availability Domain ---")
     try:
-        import oci
-
         config = oci.config.from_file(profile_name=profile)
         identity = oci.identity.IdentityClient(config)
         ads = identity.list_availability_domains(compartment_id=config["tenancy"]).data
@@ -204,8 +198,6 @@ def check_object_storage(profile: str, compartment_id: str) -> bool:
     """Write, read, and delete a test object in a temporary bucket."""
     print("\n--- Check: Object Storage Read/Write ---")
     try:
-        import oci
-
         config = oci.config.from_file(profile_name=profile)
         os_client = oci.object_storage.ObjectStorageClient(config)
         namespace = os_client.get_namespace().data
@@ -267,8 +259,6 @@ def check_container_instance_lifecycle(
     print("\n--- Check: Container Instance Lifecycle ---")
     instance_id: Optional[str] = None
     try:
-        import oci
-
         config = oci.config.from_file(profile_name=profile)
         ci_client = oci.container_instances.ContainerInstanceClient(config)
 
@@ -357,8 +347,6 @@ def check_container_instance_lifecycle(
         # Best-effort cleanup
         if instance_id:
             try:
-                import oci
-
                 config = oci.config.from_file(profile_name=profile)
                 ci_client = oci.container_instances.ContainerInstanceClient(config)
                 ci_client.delete_container_instance(container_instance_id=instance_id)
@@ -594,8 +582,6 @@ def main() -> None:
         _print_header("Phase 4: Scheduler Task Tests")
 
         try:
-            from scaler import Client
-
             with Client(address=args.scheduler) as client:
                 print("  Connected to scheduler")
 

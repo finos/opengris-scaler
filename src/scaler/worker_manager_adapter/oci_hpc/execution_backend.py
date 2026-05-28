@@ -1,10 +1,14 @@
 import asyncio
+import base64
 import functools
+import gzip
 import logging
+import re
 from concurrent.futures import Future
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import cloudpickle
+import oci
 
 from scaler.config.types.oci_auth_type import OCIAuthType
 from scaler.protocol.capnp import Task, TaskCancel
@@ -72,8 +76,6 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
         return await self._loader(task)
 
     def _build_oci_signer(self) -> Tuple[Dict[str, Any], Any]:
-        import oci
-
         if self._auth_type == OCIAuthType.instance_principal:
             signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
             return {"region": self._oci_region}, signer
@@ -83,8 +85,6 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
         return config, None
 
     def _initialize_oci_clients(self) -> None:
-        import oci
-
         config, signer = self._build_oci_signer()
         kwargs: Dict[str, Any] = {"config": config}
         if signer is not None:
@@ -141,12 +141,6 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
     async def _create_container_instance(
         self, task: Task, function: Any, arguments: List[Any]
     ) -> Tuple[str, Optional[str]]:
-        import base64
-        import gzip
-        import re
-
-        import oci
-
         task_id_hex = task.taskId.hex()
         func_name = getattr(function, "__name__", "unknown")
 
@@ -222,10 +216,6 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
         return response.data.id, input_key
 
     async def _monitor_container_instance(self, instance_id: str, future: Future, task_id: TaskID) -> None:
-        import gzip
-
-        import oci
-
         loop = asyncio.get_running_loop()
         start_time = loop.time()
 
@@ -347,8 +337,6 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
 
     async def _fetch_instance_logs(self, instance_id: str) -> str:
         try:
-            import oci
-
             search_details = oci.loggingsearch.models.SearchLogsDetails(
                 time_start=None,
                 time_end=None,
