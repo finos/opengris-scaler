@@ -2,6 +2,7 @@ import dataclasses
 from typing import Optional
 
 from scaler.config.config_class import ConfigClass
+from scaler.config.types.oci_auth_type import OCIAuthType
 
 DEFAULT_OCI_REGION = "us-ashburn-1"
 DEFAULT_OCI_INSTANCE_SHAPE = "CI.Standard.E4.Flex"
@@ -10,11 +11,10 @@ DEFAULT_OCI_INSTANCE_SHAPE = "CI.Standard.E4.Flex"
 @dataclasses.dataclass
 class OCIContainerInstanceConfig(ConfigClass):
     # OCI authentication
-    auth_type: str = dataclasses.field(
-        default="config_file",
+    auth_type: OCIAuthType = dataclasses.field(
+        default=OCIAuthType.config_file,
         metadata=dict(
             env_var="OCI_AUTH_TYPE",
-            choices=["config_file", "instance_principal"],
             help="OCI authentication type: 'config_file' (uses ~/.oci/config) or 'instance_principal' (VM identity)",
         ),
     )

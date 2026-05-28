@@ -6,13 +6,13 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, Tuple
 
 import cloudpickle
 
+from scaler.config.types.oci_auth_type import OCIAuthType
 from scaler.protocol.capnp import Task, TaskCancel
 from scaler.utility.identifiers import TaskID
 from scaler.worker_manager_adapter.mixins import ExecutionBackend, TaskInputLoader
+from scaler.worker_manager_adapter.oci_hpc.container_instance_lifecycle_state import ContainerInstanceLifecycleState
 
-_INSTANCE_STATE_RUNNING = {"CREATING", "ACTIVE"}
-_INSTANCE_STATE_DONE = "INACTIVE"
-_INSTANCE_STATE_FAILED = "FAILED"
+_INSTANCE_STATE_RUNNING = {ContainerInstanceLifecycleState.CREATING, ContainerInstanceLifecycleState.ACTIVE}
 
 _KEY_INPUTS = "inputs"
 _KEY_RESULTS = "results"
@@ -39,11 +39,8 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
         instance_memory_gb: float = 6.0,
         job_timeout_seconds: int = 3600,
         oci_profile: str = "DEFAULT",
-        auth_type: str = "config_file",
+        auth_type: OCIAuthType = OCIAuthType.config_file,
     ) -> None:
-        if auth_type not in ("config_file", "instance_principal"):
-            raise ValueError(f"auth_type must be 'config_file' or 'instance_principal', got {auth_type!r}")
-
         self._compartment_id = compartment_id
         self._availability_domain = availability_domain
         self._subnet_id = subnet_id
@@ -77,7 +74,7 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
     def _build_oci_signer(self) -> Tuple[Dict[str, Any], Any]:
         import oci
 
-        if self._auth_type == "instance_principal":
+        if self._auth_type == OCIAuthType.instance_principal:
             signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
             return {"region": self._oci_region}, signer
 
@@ -252,7 +249,7 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
                 )
                 state = response.data.lifecycle_state
 
-                if state == _INSTANCE_STATE_DONE:
+                if state == ContainerInstanceLifecycleState.INACTIVE:
                     task_id_hex = task_id.hex()
                     result_key = f"{self._object_storage_prefix}/{_KEY_RESULTS}/{task_id_hex}.pkl"
 
@@ -293,7 +290,7 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
                     await self._delete_container_instance(instance_id)
                     return
 
-                elif state == _INSTANCE_STATE_FAILED:
+                elif state == ContainerInstanceLifecycleState.FAILED:
                     reason = getattr(response.data, "lifecycle_details", "unknown failure")
                     logs = await self._fetch_instance_logs(instance_id)
                     error_msg = f"Container Instance failed: {reason}"
