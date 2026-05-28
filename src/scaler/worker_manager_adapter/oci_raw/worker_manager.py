@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, List, Optional
 import oci
 
 from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+from scaler.config.types.oci_auth_type import OCIAuthType
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager_adapter.common import extract_desired_count, format_capabilities, load_requirements_content
 from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
@@ -39,7 +40,7 @@ class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
 
     def _initialize_oci_client(self) -> None:
         container_instance_config = self._config.container_instance_config
-        if container_instance_config.auth_type == "instance_principal":
+        if container_instance_config.auth_type == OCIAuthType.instance_principal:
             signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
             self._container_instances_client = oci.container_instances.ContainerInstanceClient(
                 config={"region": container_instance_config.oci_region}, signer=signer
@@ -69,11 +70,11 @@ class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
 
     async def stop_units(self, count: int) -> None:
         to_stop = self._instances[:count]
+        self._instances = self._instances[count:]
         if len(to_stop) < count:
             logging.warning(f"Requested to stop {count} Container Instance(s) but only {len(to_stop)} available.")
         for info in to_stop:
             await self._stop_instance(info.instance_id)
-            self._instances.pop(0)
 
     async def terminate(self) -> None:
         self._capacity_coordinator.cancel()

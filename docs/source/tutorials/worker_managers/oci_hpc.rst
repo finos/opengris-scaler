@@ -347,13 +347,13 @@ Payload Handling
 Task payloads are serialized with ``cloudpickle`` and uploaded to OCI Object Storage. The container instance job runner downloads the payload, executes the task, and writes the result back to Object Storage. The worker manager fetches the result and returns it to the scheduler.
 
 .. note::
-   Set the Object Storage bucket lifecycle to at least as long as ``job_timeout_seconds`` (default: 1 hour). Objects that expire before the worker manager fetches the result will cause the task to fail silently. A 7-day lifecycle policy is recommended for production workloads.
+   The provisioner sets a 7-day lifecycle policy on the Object Storage bucket. Ensure this is at least as long as ``job_timeout_seconds`` (default: 1 hour). Objects that expire before the worker manager fetches the result will cause the task to fail silently.
 
 Troubleshooting
 ---------------
 
 **Container instances created but result never returns:**
-Check the Object Storage bucket lifecycle — if set to 1 day, results from long-running tasks may expire before they are fetched. Increase the bucket lifecycle to at least 7 days. Check container logs in OCI Console → Container Instances → your instance → Logs.
+Check container logs in OCI Console → Container Instances → your instance → Logs. Verify that the Object Storage bucket lifecycle is at least as long as ``job_timeout_seconds``.
 
 **Permission errors when launching container instances:**
 Ensure your IAM user or Dynamic Group has ``manage container-instances`` and ``manage virtual-network-family`` policies in the compartment. The provisioner creates these automatically.

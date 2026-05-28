@@ -211,7 +211,7 @@ def main() -> None:
 
         # Store the error so the adapter can surface it as a failed future
         try:
-            error_data = {"error": str(exc), "traceback": traceback.format_exc()}
+            error_data = {"_scaler_container_error": True, "error": str(exc), "traceback": traceback.format_exc()}
             error_bytes = cloudpickle.dumps(error_data)
             store_result(
                 object_storage_client=object_storage_client,

@@ -488,6 +488,271 @@ class TestOCIHPCWorkerManagerConfig(unittest.TestCase):
         self.assertEqual(config.base_concurrency, 5)
 
 
+_OCI_RAW_BASE_ARGV = [
+    "tcp://127.0.0.1:6378",
+    "--worker-manager-id",
+    "wm-test",
+    "--compartment-id",
+    "ocid1.compartment.oc1..example",
+    "--availability-domain",
+    "AD-1",
+    "--subnet-id",
+    "ocid1.subnet.oc1.phx.example",
+    "--container-image",
+    "phx.ocir.io/namespace/scaler:latest",
+    "--python-version",
+    "3.12",
+    "--requirements-txt",
+    "opengris-scaler>=1.26.6",
+]
+
+
+class TestOCIRawWorkerManagerConfig(unittest.TestCase):
+    """Tests that OCIRawWorkerManagerConfig correctly parses fields from CLI and TOML."""
+
+    def test_required_fields_parsed(self) -> None:
+        from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+
+        config = OCIRawWorkerManagerConfig.parse_with_section("scaler_worker_manager", {}, argv=_OCI_RAW_BASE_ARGV)
+        self.assertIsInstance(config, OCIRawWorkerManagerConfig)
+        self.assertEqual(config.container_instance_config.compartment_id, "ocid1.compartment.oc1..example")
+        self.assertEqual(config.container_instance_config.availability_domain, "AD-1")
+        self.assertEqual(config.container_instance_config.subnet_id, "ocid1.subnet.oc1.phx.example")
+        self.assertEqual(config.container_instance_config.container_image, "phx.ocir.io/namespace/scaler:latest")
+        self.assertEqual(config.python_worker_environment.python_version, "3.12")
+        self.assertEqual(config.python_worker_environment.requirements_txt, "opengris-scaler>=1.26.6")
+
+    def test_defaults(self) -> None:
+        from scaler.config.common.oci_container_instance import DEFAULT_OCI_INSTANCE_SHAPE, DEFAULT_OCI_REGION
+        from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+        from scaler.config.types.oci_auth_type import OCIAuthType
+
+        config = OCIRawWorkerManagerConfig.parse_with_section("scaler_worker_manager", {}, argv=_OCI_RAW_BASE_ARGV)
+        self.assertEqual(config.instance_ocpus, 4.0)
+        self.assertEqual(config.instance_memory_gb, 30.0)
+        self.assertEqual(config.container_instance_config.instance_shape, DEFAULT_OCI_INSTANCE_SHAPE)
+        self.assertEqual(config.container_instance_config.oci_region, DEFAULT_OCI_REGION)
+        self.assertEqual(config.container_instance_config.auth_type, OCIAuthType.config_file)
+
+    def test_optional_cli_fields(self) -> None:
+        from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+
+        config = OCIRawWorkerManagerConfig.parse_with_section(
+            "scaler_worker_manager",
+            {},
+            argv=[
+                *_OCI_RAW_BASE_ARGV,
+                "--instance-ocpus",
+                "8.0",
+                "--instance-memory-gb",
+                "64.0",
+                "--oci-region",
+                "eu-frankfurt-1",
+            ],
+        )
+        self.assertEqual(config.instance_ocpus, 8.0)
+        self.assertEqual(config.instance_memory_gb, 64.0)
+        self.assertEqual(config.container_instance_config.oci_region, "eu-frankfurt-1")
+
+    def test_logging_level_from_cli(self) -> None:
+        from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+
+        config = OCIRawWorkerManagerConfig.parse_with_section(
+            "scaler_worker_manager", {}, argv=[*_OCI_RAW_BASE_ARGV, "--logging-level", "DEBUG"]
+        )
+        self.assertEqual(config.logging_config.level, "DEBUG")
+
+    def test_missing_compartment_id_raises(self) -> None:
+        from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+
+        argv = [
+            "tcp://127.0.0.1:6378",
+            "--worker-manager-id",
+            "wm-test",
+            "--availability-domain",
+            "AD-1",
+            "--subnet-id",
+            "ocid1.subnet.oc1.phx.example",
+            "--container-image",
+            "phx.ocir.io/namespace/scaler:latest",
+            "--python-version",
+            "3.12",
+            "--requirements-txt",
+            "opengris-scaler>=1.26.6",
+        ]
+        with self.assertRaises(SystemExit):
+            OCIRawWorkerManagerConfig.parse_with_section("scaler_worker_manager", {}, argv=argv)
+
+    def test_missing_availability_domain_raises(self) -> None:
+        from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+
+        argv = [
+            "tcp://127.0.0.1:6378",
+            "--worker-manager-id",
+            "wm-test",
+            "--compartment-id",
+            "ocid1.compartment.oc1..example",
+            "--subnet-id",
+            "ocid1.subnet.oc1.phx.example",
+            "--container-image",
+            "phx.ocir.io/namespace/scaler:latest",
+            "--python-version",
+            "3.12",
+            "--requirements-txt",
+            "opengris-scaler>=1.26.6",
+        ]
+        with self.assertRaises(SystemExit):
+            OCIRawWorkerManagerConfig.parse_with_section("scaler_worker_manager", {}, argv=argv)
+
+    def test_missing_subnet_id_raises(self) -> None:
+        from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+
+        argv = [
+            "tcp://127.0.0.1:6378",
+            "--worker-manager-id",
+            "wm-test",
+            "--compartment-id",
+            "ocid1.compartment.oc1..example",
+            "--availability-domain",
+            "AD-1",
+            "--container-image",
+            "phx.ocir.io/namespace/scaler:latest",
+            "--python-version",
+            "3.12",
+            "--requirements-txt",
+            "opengris-scaler>=1.26.6",
+        ]
+        with self.assertRaises(SystemExit):
+            OCIRawWorkerManagerConfig.parse_with_section("scaler_worker_manager", {}, argv=argv)
+
+    def test_missing_container_image_raises(self) -> None:
+        from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+
+        argv = [
+            "tcp://127.0.0.1:6378",
+            "--worker-manager-id",
+            "wm-test",
+            "--compartment-id",
+            "ocid1.compartment.oc1..example",
+            "--availability-domain",
+            "AD-1",
+            "--subnet-id",
+            "ocid1.subnet.oc1.phx.example",
+            "--python-version",
+            "3.12",
+            "--requirements-txt",
+            "opengris-scaler>=1.26.6",
+        ]
+        with self.assertRaises(SystemExit):
+            OCIRawWorkerManagerConfig.parse_with_section("scaler_worker_manager", {}, argv=argv)
+
+    def test_missing_python_version_raises(self) -> None:
+        from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+
+        argv = [
+            "tcp://127.0.0.1:6378",
+            "--worker-manager-id",
+            "wm-test",
+            "--compartment-id",
+            "ocid1.compartment.oc1..example",
+            "--availability-domain",
+            "AD-1",
+            "--subnet-id",
+            "ocid1.subnet.oc1.phx.example",
+            "--container-image",
+            "phx.ocir.io/namespace/scaler:latest",
+            "--requirements-txt",
+            "opengris-scaler>=1.26.6",
+        ]
+        with self.assertRaises(ValueError):
+            OCIRawWorkerManagerConfig.parse_with_section("scaler_worker_manager", {}, argv=argv)
+
+    def test_missing_requirements_txt_raises(self) -> None:
+        from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+
+        argv = [
+            "tcp://127.0.0.1:6378",
+            "--worker-manager-id",
+            "wm-test",
+            "--compartment-id",
+            "ocid1.compartment.oc1..example",
+            "--availability-domain",
+            "AD-1",
+            "--subnet-id",
+            "ocid1.subnet.oc1.phx.example",
+            "--container-image",
+            "phx.ocir.io/namespace/scaler:latest",
+            "--python-version",
+            "3.12",
+        ]
+        with self.assertRaises(ValueError):
+            OCIRawWorkerManagerConfig.parse_with_section("scaler_worker_manager", {}, argv=argv)
+
+    def test_invalid_instance_ocpus_raises(self) -> None:
+        from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+
+        with self.assertRaises(ValueError):
+            OCIRawWorkerManagerConfig.parse_with_section(
+                "scaler_worker_manager", {}, argv=[*_OCI_RAW_BASE_ARGV, "--instance-ocpus", "0"]
+            )
+
+    def test_from_toml(self) -> None:
+        from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+
+        section_data = {
+            "type": "oci_raw",
+            "scheduler_address": "tcp://127.0.0.1:6378",
+            "worker_manager_id": "wm-test",
+            "compartment_id": "ocid1.compartment.oc1..example",
+            "availability_domain": "AD-1",
+            "subnet_id": "ocid1.subnet.oc1.phx.example",
+            "container_image": "phx.ocir.io/namespace/scaler:latest",
+            "python_version": "3.12",
+            "requirements_txt": "opengris-scaler>=1.26.6",
+            "instance_ocpus": 8.0,
+            "instance_memory_gb": 64.0,
+        }
+        config = OCIRawWorkerManagerConfig.parse_with_section("scaler_worker_manager", section_data, argv=[])
+        self.assertEqual(config.instance_ocpus, 8.0)
+        self.assertEqual(config.instance_memory_gb, 64.0)
+
+    def test_cli_overrides_toml(self) -> None:
+        from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+
+        section_data = {
+            "type": "oci_raw",
+            "scheduler_address": "tcp://127.0.0.1:6378",
+            "worker_manager_id": "wm-test",
+            "compartment_id": "ocid1.compartment.oc1..example",
+            "availability_domain": "AD-1",
+            "subnet_id": "ocid1.subnet.oc1.phx.example",
+            "container_image": "phx.ocir.io/namespace/scaler:latest",
+            "python_version": "3.12",
+            "requirements_txt": "opengris-scaler>=1.26.6",
+            "instance_ocpus": 8.0,
+        }
+        config = OCIRawWorkerManagerConfig.parse_with_section(
+            "scaler_worker_manager", section_data, argv=["--instance-ocpus", "2.0"]
+        )
+        self.assertEqual(config.instance_ocpus, 2.0)
+
+    @unittest.skipUnless(importlib.util.find_spec("oci") is not None, "oci SDK not installed")
+    def test_oci_raw_subcommand_dispatches_worker_manager(self) -> None:
+        with (
+            patch("sys.argv", ["scaler_worker_manager", "oci_raw", *_OCI_RAW_BASE_ARGV]),
+            patch("scaler.entry_points.worker_manager.setup_logger"),
+            patch("scaler.entry_points.worker_manager.register_event_loop"),
+            patch("scaler.worker_manager_adapter.oci_raw.worker_manager.OCIRawWorkerManager") as mock_mgr,
+        ):
+            mock_mgr.return_value.run.return_value = None
+            from scaler.entry_points.worker_manager import main
+
+            main()
+
+        mock_mgr.assert_called_once()
+        mock_mgr.return_value.run.assert_called_once()
+
+
 class TestORBAWSEC2WorkerManagerSubcommand(unittest.TestCase):
     """Tests that ORBAWSEC2WorkerManagerConfig is correctly parsed via parse_with_section."""
 
