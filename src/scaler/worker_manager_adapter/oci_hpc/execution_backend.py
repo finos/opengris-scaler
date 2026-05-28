@@ -24,6 +24,7 @@ _KEY_RESULTS = "results"
 
 _MAX_INLINE_PAYLOAD_BYTES = 28 * 1024
 _POLL_INTERVAL_SECONDS = 2.0
+_MAX_UNEXPECTED_STATE_COUNT = 5
 
 
 class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
@@ -219,6 +220,7 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
     async def _monitor_container_instance(self, instance_id: str, future: Future, task_id: TaskID) -> None:
         loop = asyncio.get_running_loop()
         start_time = loop.time()
+        unexpected_state_count = 0
 
         while True:
             await asyncio.sleep(_POLL_INTERVAL_SECONDS)
@@ -302,7 +304,19 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
                 elif state in _INSTANCE_STATE_RUNNING:
                     continue
                 else:
-                    logging.warning(f"Unexpected Container Instance state: {state} for {instance_id[-20:]}")
+                    unexpected_state_count += 1
+                    logging.warning(
+                        f"Unexpected Container Instance state: {state} for {instance_id[-20:]} "
+                        f"({unexpected_state_count}/{_MAX_UNEXPECTED_STATE_COUNT})"
+                    )
+                    if unexpected_state_count >= _MAX_UNEXPECTED_STATE_COUNT:
+                        future.set_exception(
+                            RuntimeError(
+                                f"Container Instance {instance_id[-20:]} stuck in unexpected state: {state}"
+                            )
+                        )
+                        await self._delete_container_instance(instance_id)
+                        return
 
             except oci.exceptions.ServiceError as svc_exc:
                 if svc_exc.status == 404:

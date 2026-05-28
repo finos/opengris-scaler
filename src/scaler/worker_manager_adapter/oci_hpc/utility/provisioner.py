@@ -153,7 +153,7 @@ class OCIProvisioner:
         Create an OCI Object Storage bucket for task data.
 
         Sets a lifecycle rule to auto-delete objects under the task prefix
-        after one day (same behaviour as the AWS S3 adapter).
+        after ``OCI_BUCKET_LIFECYCLE_DAYS`` days.
 
         Returns:
             The bucket name.
@@ -504,12 +504,8 @@ def main() -> None:
     parser.add_argument("--instance-ocpus", type=float, default=1.0, help="OCPUs per container instance")
     parser.add_argument("--instance-memory-gb", type=float, default=6.0, help="Memory (GB) per container instance")
     parser.add_argument("--job-timeout", type=int, default=60, help="Job timeout in minutes (default: 60)")
-    parser.add_argument(
-        "--config", default=f"tests/worker_manager_adapter/oci_hpc/{DEFAULT_CONFIG_FILE}", help="Config file path"
-    )
-    parser.add_argument(
-        "--env-file", default=f"tests/worker_manager_adapter/oci_hpc/{DEFAULT_ENV_FILE}", help="Env file path"
-    )
+    parser.add_argument("--config", default=DEFAULT_CONFIG_FILE, help="Config file path")
+    parser.add_argument("--env-file", default=DEFAULT_ENV_FILE, help="Env file path")
 
     args = parser.parse_args()
 
