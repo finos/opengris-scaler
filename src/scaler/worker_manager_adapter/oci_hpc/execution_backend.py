@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import datetime
 import functools
 import gzip
 import logging
@@ -124,7 +125,7 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
         return asyncio.wrap_future(future)
 
     async def on_cancel(self, task_cancel: TaskCancel) -> None:
-        instance_id = self._task_id_to_instance_id.get(task_cancel.taskId)
+        instance_id = self._task_id_to_instance_id.pop(task_cancel.taskId, None)
         if instance_id is not None:
             await self._delete_container_instance(instance_id)
         input_key = self._task_id_to_input_key.pop(task_cancel.taskId, None)
@@ -259,7 +260,15 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
                             result_bytes = gzip.decompress(result_bytes)
 
                         result = cloudpickle.loads(result_bytes)
-                        future.set_result(result)
+                        if isinstance(result, dict) and result.get("_scaler_container_error"):
+                            future.set_exception(
+                                RuntimeError(
+                                    f"Task failed in container: {result.get('error', 'unknown')}\n"
+                                    f"{result.get('traceback', '')}"
+                                )
+                            )
+                        else:
+                            future.set_result(result)
 
                         try:
                             await loop.run_in_executor(
@@ -337,9 +346,11 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
 
     async def _fetch_instance_logs(self, instance_id: str) -> str:
         try:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            time_start = now - datetime.timedelta(hours=2)
             search_details = oci.loggingsearch.models.SearchLogsDetails(
-                time_start=None,
-                time_end=None,
+                time_start=time_start,
+                time_end=now,
                 search_query=(
                     f'search "{self._compartment_id}" | '
                     f'where subject = "{instance_id}" | '

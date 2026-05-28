@@ -40,7 +40,7 @@ DEFAULT_CONFIG_FILE = ".scaler_oci_config.json"
 DEFAULT_ENV_FILE = ".scaler_oci_hpc.env"
 
 OCI_TASK_PREFIX = "scaler-tasks"
-OCI_BUCKET_LIFECYCLE_DAYS = 1
+OCI_BUCKET_LIFECYCLE_DAYS = 7
 
 # OCI Container Instance shapes (x86_64)
 DEFAULT_INSTANCE_SHAPE = "CI.Standard.E4.Flex"
