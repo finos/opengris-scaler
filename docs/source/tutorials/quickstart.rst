@@ -6,6 +6,13 @@ Quickstart
 
 Interested? Try it out yourself, step by step.
 
+.. admonition:: Try it in your browser
+   :class: tip
+
+   Prefer to skip the install for now? You can run a handful of small demo
+   notebooks against your own cluster directly from the browser via
+   JupyterLite -- see :doc:`try_in_browser`.
+
 Quick Installation
 ------------------
 

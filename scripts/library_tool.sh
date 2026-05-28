@@ -197,10 +197,14 @@ elif [ "$1" == "libuv" ]; then
                 "${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}" \
                 "${PATCHES_DIRECTORY}/libuv-${UV_VERSION}-emscripten.patch"
             cd "${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}"
+            # LIBUV_BUILD_SHARED=OFF: under Emscripten libuv's "shared" target
+            # still emits libuv.a (no real .so on wasm), which races with the
+            # static uv_a target writing the same file under parallel builds.
             emcmake cmake -B build \
                 -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DBUILD_TESTING=OFF \
+                -DLIBUV_BUILD_SHARED=OFF \
                 -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
                 -DCMAKE_C_FLAGS="-fPIC -fwasm-exceptions -sSUPPORT_LONGJMP -fno-merge-all-constants" \
                 -DCMAKE_CXX_FLAGS="-fPIC -fwasm-exceptions -sSUPPORT_LONGJMP -fno-merge-all-constants"
