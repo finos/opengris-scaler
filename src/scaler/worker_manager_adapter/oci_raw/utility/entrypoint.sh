@@ -1,11 +1,13 @@
 #!/bin/bash
 set -e
 
-if [ -n "${PYTHON_REQUIREMENTS}" ]; then
-    echo "Installing Python requirements..."
-    printf '%s\n' "${PYTHON_REQUIREMENTS}" > /tmp/requirements.txt
-    pip install --no-cache-dir -q -r /tmp/requirements.txt
-fi
+uv python install "${PYTHON_VERSION}"
+uv venv --python "${PYTHON_VERSION}" /opt/opengris-scaler
+
+printf '%s\n' "${PYTHON_REQUIREMENTS}" > /tmp/requirements.txt
+uv pip install --no-cache -q --venv /opt/opengris-scaler -r /tmp/requirements.txt
+
+ln -sf /opt/opengris-scaler/bin/scaler_* /usr/local/bin/
 
 if [ -z "${COMMAND}" ]; then
     echo "ERROR: COMMAND environment variable is not set." >&2

@@ -36,3 +36,5 @@ class OCIRawWorkerManagerConfig(ConfigClass):
             raise ValueError("instance_memory_gb must be a positive number.")
         if not self.python_worker_environment.requirements_txt:
             raise ValueError("--requirements-txt must be provided")
+        if not self.python_worker_environment.python_version:
+            raise ValueError("--python-version must be provided")

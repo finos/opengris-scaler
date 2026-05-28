@@ -1,15 +1,12 @@
-FROM python:3.12-slim
+FROM ghcr.io/astral-sh/uv:latest AS uv
+FROM debian:bookworm-slim
 
-# Install OCI SDK and pip-install helper (used by entrypoint to install user requirements)
-RUN pip install --no-cache-dir oci
+COPY --from=uv /uv /usr/local/bin/uv
 
-# Copy the entrypoint script into the image
 COPY scaler/worker_manager_adapter/oci_raw/utility/entrypoint.sh /app/entrypoint.sh
-
 RUN chmod +x /app/entrypoint.sh
 
 WORKDIR /app
 
-# The entrypoint reads PYTHON_REQUIREMENTS and COMMAND from env vars,
-# installs requirements (including opengris-scaler), then executes COMMAND (e.g. scaler_cluster ...).
+# entrypoint reads PYTHON_VERSION, PYTHON_REQUIREMENTS, and COMMAND from env vars
 ENTRYPOINT ["/app/entrypoint.sh"]
