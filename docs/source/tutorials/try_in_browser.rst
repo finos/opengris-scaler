@@ -1,7 +1,7 @@
-Try Scaler in your browser
-==========================
+Try in your browser
+===================
 
-The Scaler client runs inside your browser via a
+Here the Scaler client runs inside your browser via a
 `JupyterLite <https://jupyterlite.readthedocs.io/>`_ kernel hosted with these
 docs. The notebooks below open in a Pyodide kernel that already has the
 Scaler client installed -- no local setup required to run the client.
@@ -22,11 +22,10 @@ Running a cluster for the browser client
 You need a scheduler and at least one worker listening on a WebSocket
 address. Three ways to get one:
 
-* **Local laptop / VM**: spin up a small cluster yourself --
-  see :doc:`installation` and :doc:`quickstart` for the install steps and
-  ``scaler_cluster`` invocation. Use ``ws://0.0.0.0:2345`` so the browser can
-  connect.
-* **One-click EC2**: the `Launchpad </launchpad/>`_ provisions a scheduler
+* **Native machine**: spin up a small cluster yourself --
+  see :doc:`installation` and :doc:`quickstart` for the install steps.
+  Use ``ws://0.0.0.0:2345`` so the browser can connect.
+* **One-click EC2**: the `Launchpad </scaler/launchpad/>`_ provisions a scheduler
   and a pool of workers on AWS EC2 for you. Hit *Launch*, paste the resulting
   ``ws://`` address into a notebook, and run.
 * **Bring your own**: any cluster fronted by a worker manager
