@@ -174,6 +174,8 @@ class OCIContainerInstanceWorkerAdapter:
             oci_config["region"] = self._oci_region
             self._container_instances_client = oci.container_instances.ContainerInstanceClient(oci_config)
 
+        self._reconcile_existing_instances()
+
         self._context = create_async_simple_context()
         self._connector_external = create_async_connector(
             self._context,
@@ -184,6 +186,38 @@ class OCIContainerInstanceWorkerAdapter:
             callback=self.__on_receive_external,
             identity=self._ident,
         )
+
+    def _reconcile_existing_instances(self) -> None:
+        """Repopulate _worker_groups from live OCI state on startup.
+
+        Without this, each restart clears in-memory state and the max_instances
+        cap is ineffective — the adapter would keep creating new instances while
+        old ones are still running.
+        """
+        import oci
+
+        try:
+            response = self._container_instances_client.list_container_instances(
+                compartment_id=self._compartment_id,
+                lifecycle_state="ACTIVE",
+            )
+        except oci.exceptions.ServiceError as exc:
+            logging.warning(f"Could not reconcile existing container instances: {exc}")
+            return
+
+        recovered = 0
+        for item in response.data.items:
+            if not item.display_name.startswith("scaler-worker-"):
+                continue
+            group_key = f"oci-raw-recovered-{item.id[-8:]}".encode()
+            self._worker_groups[group_key] = WorkerGroupInfo(
+                worker_ids=set(),
+                instance_id=item.id,
+            )
+            recovered += 1
+
+        if recovered:
+            logging.info(f"Reconciled {recovered} existing container instance(s) from OCI — counted against max limit")
 
     async def _run(self) -> None:
         self.__initialize()

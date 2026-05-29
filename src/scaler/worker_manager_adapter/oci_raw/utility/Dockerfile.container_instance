@@ -1,7 +1,11 @@
 FROM python:3.12-slim
 
-# Install OCI SDK and pip-install helper (used by entrypoint to install user requirements)
-RUN pip install --no-cache-dir oci
+# Build deps needed to compile scaler's C++ extensions (Cap'n Proto, ZMQ)
+RUN apt-get update && apt-get install -y --no-install-recommends cmake g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+# Pre-install scaler so containers start workers immediately without a runtime pip install
+RUN pip install --no-cache-dir "opengris-scaler[oci]"
 
 # Copy the entrypoint script into the image
 COPY scaler/worker_manager_adapter/oci_raw/utility/entrypoint.sh /app/entrypoint.sh

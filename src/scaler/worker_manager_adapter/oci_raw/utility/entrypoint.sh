@@ -11,8 +11,8 @@ if [ -n "${PYTHON_REQUIREMENTS}" ]; then
     echo "${PYTHON_REQUIREMENTS}" | tr ';' '\n' | xargs pip install --no-cache-dir -q
 fi
 
-# Install the scaler package itself so that scaler_cluster is available on PATH.
-if [ -n "${SCALER_PACKAGE}" ]; then
+# Install the scaler package only if not already present in the image.
+if [ -n "${SCALER_PACKAGE}" ] && ! command -v scaler_cluster &>/dev/null; then
     pip install --no-cache-dir -q "${SCALER_PACKAGE}"
 fi
 
