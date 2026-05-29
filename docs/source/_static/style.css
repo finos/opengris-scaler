@@ -80,8 +80,10 @@ div.hidden-page-title > h1:first-child {
 
 /* JupyterLite "Try in your browser" banner button (top of each example page).
    Built on the theme accent (Shibuya's --accent-*), so it matches the site in
-   both light and dark. Hover changes only the background color -- no transform
-   and no shadow growth -- so the button never shifts. */
+   both light and dark. The theme gives content links a border-bottom underline
+   that grows 1px -> 2px on hover (.yue a:hover), which on a button bumps its box
+   height and nudges the page down -- so we drop the border entirely. Hover then
+   changes only the background color: no geometry change, no shift. */
 .try-in-browser {
     display: inline-block;
     padding: 0.5em 1em;
@@ -89,6 +91,7 @@ div.hidden-page-title > h1:first-child {
     background: var(--accent-9);
     color: var(--accent-contrast, #fff) !important;
     font-weight: 600;
+    border: none !important;
     border-radius: 0.5rem;
     text-decoration: none !important;
 }

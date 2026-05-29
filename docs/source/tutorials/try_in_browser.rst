@@ -12,7 +12,9 @@ it gives you into a notebook's ``SCHEDULER_ADDRESS`` and run all cells.
 
 .. note::
 
-   Workers must run Python 3.13 to match the in-browser (Pyodide) kernel.
+   Workers must run Python 3.13 to match the in-browser (Pyodide) kernel, with
+   ``numpy`` (pinned ``<2.3`` to match Pyodide) and ``scikit-learn`` installed
+   on the worker side.
 
 Demo notebooks
 --------------
@@ -68,8 +70,8 @@ JupyterLite notebook:
      </li>
    </ul>
 
-For heavier real-world gallery notebooks (parfun, pargraph, XVA, ...) see
-:doc:`examples` -- those are too heavy for a browser kernel and are best
+For heavier real-world notebooks see :doc:`examples` -- 
+these are too heavy for a browser kernel and are best
 run from a native Python client.
 
 .. toctree::
