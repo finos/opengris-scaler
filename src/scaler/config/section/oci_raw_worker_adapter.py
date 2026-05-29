@@ -6,7 +6,6 @@ from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_adapter import WorkerAdapterConfig
 from scaler.config.config_class import ConfigClass
-from scaler.utility.event_loop import EventLoopType
 
 
 @dataclasses.dataclass
@@ -14,10 +13,6 @@ class OCIRawWorkerAdapterConfig(ConfigClass):
     worker_adapter_config: WorkerAdapterConfig
     worker_config: WorkerConfig = dataclasses.field(default_factory=WorkerConfig)
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
-    event_loop: str = dataclasses.field(
-        default="builtin",
-        metadata=dict(short="-el", choices=EventLoopType.allowed_types(), help="select the event loop type"),
-    )
 
     worker_io_threads: int = dataclasses.field(
         default=defaults.DEFAULT_IO_THREADS,

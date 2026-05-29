@@ -20,23 +20,22 @@ from typing import Dict, List, Set, Tuple
 import zmq
 
 from scaler.config.section.oci_raw_worker_adapter import OCIRawWorkerAdapterConfig
-from scaler.io import uv_ymq
-from scaler.io.utility import create_async_connector, create_async_simple_context
 from scaler.io import ymq
+from scaler.io.utility import create_async_connector, create_async_simple_context
 from scaler.protocol.python.message import (
     Message,
-    WorkerAdapterCommand,
-    WorkerAdapterCommandResponse,
-    WorkerAdapterCommandType,
-    WorkerAdapterHeartbeat,
-    WorkerAdapterHeartbeatEcho,
+    WorkerManagerCommand,
+    WorkerManagerCommandResponse,
+    WorkerManagerCommandType,
+    WorkerManagerHeartbeat,
+    WorkerManagerHeartbeatEcho,
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.logging.utility import setup_logger
-from scaler.worker_manager_adapter.common import WorkerGroupID, format_capabilities
+from scaler.worker_manager_adapter.common import format_capabilities
 
-Status = WorkerAdapterCommandResponse.Status
+Status = WorkerManagerCommandResponse.Status
 
 
 @dataclass
@@ -73,7 +72,7 @@ class OCIContainerInstanceWorkerAdapter:
         self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
         self._hard_processor_suspend = config.worker_config.hard_processor_suspend
-        self._event_loop = config.event_loop
+        self._event_loop = config.worker_config.event_loop
         self._logging_paths = config.logging_config.paths
         self._logging_level = config.logging_config.level
         self._logging_config_file = config.logging_config.config_file
@@ -92,7 +91,7 @@ class OCIContainerInstanceWorkerAdapter:
         self._instance_ocpus = config.instance_ocpus
         self._instance_memory_gb = config.instance_memory_gb
 
-        self._worker_groups: Dict[WorkerGroupID, WorkerGroupInfo] = {}
+        self._worker_groups: Dict[bytes, WorkerGroupInfo] = {}
 
         self._name = "worker_adapter_oci_container_instance"
         self._ident = f"{self._name}|{uuid.uuid4().bytes.hex()}".encode()
@@ -103,40 +102,31 @@ class OCIContainerInstanceWorkerAdapter:
         self._connector_external = None
 
     async def __on_receive_external(self, message: Message):
-        if isinstance(message, WorkerAdapterCommand):
+        if isinstance(message, WorkerManagerCommand):
             await self._handle_command(message)
-        elif isinstance(message, WorkerAdapterHeartbeatEcho):
+        elif isinstance(message, WorkerManagerHeartbeatEcho):
             pass
         else:
             logging.warning(f"Received unknown message type: {type(message)}")
 
-    async def _handle_command(self, command: WorkerAdapterCommand):
+    async def _handle_command(self, command: WorkerManagerCommand):
         cmd_type = command.command
-        worker_group_id = command.worker_group_id
         response_status = Status.Success
         worker_ids: List[bytes] = []
         capabilities: Dict[str, int] = {}
 
-        cmd_res = WorkerAdapterCommandType.StartWorkerGroup
-        if cmd_type == WorkerAdapterCommandType.StartWorkerGroup:
-            cmd_res = WorkerAdapterCommandType.StartWorkerGroup
-            worker_group_id, response_status = await self.start_worker_group()
+        if cmd_type == WorkerManagerCommandType.StartWorkers:
+            worker_ids, response_status = await self.start_worker_group()
             if response_status == Status.Success:
-                # Don't report individual worker IDs — workers inside the container
-                # self-register with the scheduler using their own generated IDs.
-                # Reporting IDs here would create a mismatch since WorkerID.generate_worker_id()
-                # appends a random UUID that differs between adapter and container.
                 capabilities = self._capabilities
-        elif cmd_type == WorkerAdapterCommandType.ShutdownWorkerGroup:
-            cmd_res = WorkerAdapterCommandType.ShutdownWorkerGroup
-            response_status = await self.shutdown_worker_group(worker_group_id)
+        elif cmd_type == WorkerManagerCommandType.ShutdownWorkers:
+            worker_ids, response_status = await self.shutdown_worker_group(command.worker_ids)
         else:
             raise ValueError("Unknown Command")
 
         await self._connector_external.send(
-            WorkerAdapterCommandResponse.new_msg(
-                worker_group_id=worker_group_id,
-                command=cmd_res,
+            WorkerManagerCommandResponse.new_msg(
+                command=cmd_type,
                 status=response_status,
                 worker_ids=worker_ids,
                 capabilities=capabilities,
@@ -145,10 +135,10 @@ class OCIContainerInstanceWorkerAdapter:
 
     async def __send_heartbeat(self):
         await self._connector_external.send(
-            WorkerAdapterHeartbeat.new_msg(
-                max_worker_groups=self._max_instances,
-                workers_per_group=int(self._instance_ocpus),
+            WorkerManagerHeartbeat.new_msg(
+                max_task_concurrency=self._max_instances * int(self._instance_ocpus),
                 capabilities=self._capabilities,
+                worker_manager_id=self._ident,
             )
         )
 
@@ -211,16 +201,13 @@ class OCIContainerInstanceWorkerAdapter:
             await asyncio.gather(*loops)
         except asyncio.CancelledError:
             pass
-        except (ymq.YMQException, uv_ymq.UVYMQException) as e:
-            if e.code in {
-                ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd,
-                uv_ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd,
-            }:
+        except ymq.YMQException as e:
+            if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
                 pass
             else:
                 logging.exception(f"{self._ident!r}: failed with unhandled exception:\n{e}")
 
-    async def start_worker_group(self) -> Tuple[WorkerGroupID, Status]:
+    async def start_worker_group(self) -> Tuple[List[bytes], Status]:
         if len(self._worker_groups) >= self._max_instances != -1:
             return b"", Status.WorkerGroupTooMuch
 
@@ -286,44 +273,47 @@ class OCIContainerInstanceWorkerAdapter:
             )
         except oci.exceptions.ServiceError as exc:
             logging.error(f"OCI create_container_instance failed: {exc}")
-            return b"", Status.UnknownAction
+            return [], Status.UnknownAction
 
         instance_id = response.data.id
         worker_group_id = f"oci-raw-{uuid.uuid4().hex}".encode()
+        group_worker_ids = {WorkerID.generate_worker_id(worker_name) for worker_name in worker_names}
         self._worker_groups[worker_group_id] = WorkerGroupInfo(
-            worker_ids={WorkerID.generate_worker_id(worker_name) for worker_name in worker_names},
+            worker_ids=group_worker_ids,
             instance_id=instance_id,
         )
-        return worker_group_id, Status.Success
+        return [bytes(wid) for wid in group_worker_ids], Status.Success
 
-    async def shutdown_worker_group(self, worker_group_id: WorkerGroupID) -> Status:
-        if not worker_group_id:
-            return Status.WorkerGroupIDNotSpecified
+    async def shutdown_worker_group(self, requested_worker_ids: List[bytes]) -> Tuple[List[bytes], Status]:
+        requested_set = set(requested_worker_ids)
+        group_key = next(
+            (key for key, info in self._worker_groups.items() if info.worker_ids & requested_set),
+            None,
+        )
 
-        if worker_group_id not in self._worker_groups:
-            logging.warning(f"Worker group with ID {bytes(worker_group_id).decode()} does not exist.")
-            return Status.WorkerGroupIDNotFound
+        if group_key is None:
+            logging.warning(f"No worker group found containing worker IDs: {requested_worker_ids}")
+            return [], Status.WorkerNotFound
 
         import oci
 
+        group_info = self._worker_groups[group_key]
         try:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None,
                 functools.partial(
                     self._container_instances_client.delete_container_instance,
-                    container_instance_id=self._worker_groups[worker_group_id].instance_id,
+                    container_instance_id=group_info.instance_id,
                 ),
             )
         except oci.exceptions.ServiceError as exc:
             if exc.status == 404:
-                logging.warning(
-                    f"OCI Container Instance not found (already deleted?): "
-                    f"{self._worker_groups[worker_group_id].instance_id}"
-                )
+                logging.warning(f"OCI Container Instance not found (already deleted?): {group_info.instance_id}")
             else:
                 logging.error(f"OCI delete_container_instance failed: {exc}")
-                return Status.UnknownAction
+                return [], Status.UnknownAction
 
-        self._worker_groups.pop(worker_group_id)
-        return Status.Success
+        affected_ids = [bytes(wid) for wid in group_info.worker_ids]
+        self._worker_groups.pop(group_key)
+        return affected_ids, Status.Success
