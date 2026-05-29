@@ -15,6 +15,7 @@ runs:
       run: |
         sudo ./scripts/library_tool.sh capnp install
         sudo ./scripts/library_tool.sh libuv install
+        sudo ./scripts/library_tool.sh openssl install
 
     - name: Install Libraries (Windows)
       shell: pwsh
@@ -22,3 +23,4 @@ runs:
       run: |
         ./scripts/library_tool.ps1 capnp install
         ./scripts/library_tool.ps1 libuv install
+        ./scripts/library_tool.ps1 openssl install
