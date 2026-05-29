@@ -6,9 +6,9 @@ The Scaler client runs in your browser on a `JupyterLite
 client installed. The scheduler and worker managers still run natively, and the
 browser can only reach them over a ``ws://`` address.
 
-The quickest way to get a scheduler and worker managers listening on ``ws://``
-is the `Launchpad </scaler/launchpad/>`_: hit *Launch*, then paste the address
-it gives you into a notebook's ``SCHEDULER_ADDRESS`` and run all cells.
+The quickest way to get a scheduler and worker manager(s) running
+is the `Launchpad </scaler/launchpad/>`_: hit *Launch*, then paste the ``ws://``
+address it gives you into a notebook's ``SCHEDULER_ADDRESS`` and run all cells.
 
 .. note::
 
@@ -71,8 +71,8 @@ JupyterLite notebook:
    </ul>
 
 For heavier real-world notebooks see :doc:`examples` -- 
-these are too heavy for a browser kernel and are best
-run from a native Python client.
+these are too heavy for a browser kernel to orchestrate
+and are best run from a native Python client.
 
 .. toctree::
    :hidden:
