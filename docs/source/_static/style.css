@@ -89,12 +89,66 @@ div.hidden-page-title > h1:first-child {
     border-radius: 0.4em;
     text-decoration: none !important;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
-    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    transition: box-shadow 0.1s ease;
 }
 .try-in-browser:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    /* Paint-only hover: brighten the shadow without moving the box. The old
+       rule used "transform: translateY(-1px)", which shifted layout on hover
+       (the source of the demo-table jitter). */
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
 }
 .try-in-browser-banner {
     margin: 0.5em 0 1.2em 0;
+}
+
+/* ------------------------------------------------------------------------ */
+/* "Demo notebooks" list on the Try-in-your-browser tutorial page.          */
+/*                                                                          */
+/* This replaces the old two-column list-table whose right cell held a      */
+/* ".try-in-browser" gradient pill button. That layout jittered on hover    */
+/* because the button changed its box (transform + larger box-shadow),      */
+/* nudging the surrounding table cells. The list below is just text links:  */
+/* the ONLY thing that changes on hover is color and text-decoration, both  */
+/* paint-only and drawn inside the existing line box, so no element ever    */
+/* resizes or moves and nothing can jitter.                                 */
+/* ------------------------------------------------------------------------ */
+ul.lite-demos {
+    margin: 1em 0;
+    padding-left: 1.2em;
+}
+ul.lite-demos li {
+    margin: 0.45em 0;
+    line-height: 1.6;
+}
+
+/* Muted em-dash separating the example link from the "open in browser" link.
+   rgba grey reads on both light and dark themes; static, never hovered. */
+.lite-sep {
+    margin: 0 0.5em;
+    color: rgba(128, 128, 128, 0.6);
+}
+
+/* "open in browser" link. Brand green (#0a8a6b, from the banner gradient).
+   No transform / padding / border / box-shadow, so its geometry is fixed and
+   the row cannot shift on hover. white-space:nowrap keeps the label and its
+   arrow on one line. */
+.lite-open {
+    color: #0a8a6b;
+    text-decoration: none;
+    white-space: nowrap;
+}
+/* Hover changes ONLY paint (color + underline) -- no reflow, no jitter. */
+.lite-open:hover {
+    color: #0c7a5f;
+    text-decoration: underline;
+}
+
+/* Dark mode (Shibuya toggles html.dark): the banner green is too dark on a
+   dark background, so use lighter greens. Still color-only. Mirrors the
+   existing html.dark override pattern above. */
+html.dark .lite-open {
+    color: #3fcf9a;
+}
+html.dark .lite-open:hover {
+    color: #5fe0b0;
 }

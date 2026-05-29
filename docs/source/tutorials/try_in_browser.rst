@@ -46,44 +46,53 @@ Demo notebooks
 Each demo is **worker-heavy and client-light**: the browser orchestrates a
 batch of independent tasks while the actual CPU work happens on the workers.
 
-.. list-table::
-   :widths: 60 40
-   :header-rows: 1
+Read the write-up for any example, or launch it straight into the in-browser
+JupyterLite notebook:
 
-   * - Notebook
-     - Open in browser
-   * - :doc:`Parallel square roots (warm-up) <../gallery/parallel_sqrt>`
-     - .. raw:: html
+.. raw:: html
 
-          <a class="try-in-browser" href="../lite/lab/index.html?path=parallel_sqrt.ipynb" target="_blank" rel="noopener">Open</a>
-   * - :doc:`Heavy object reuse with send_object <../gallery/send_heavy_object>`
-     - .. raw:: html
-
-          <a class="try-in-browser" href="../lite/lab/index.html?path=send_heavy_object.ipynb" target="_blank" rel="noopener">Open</a>
-   * - :doc:`Monte Carlo estimation of pi <../gallery/monte_carlo_pi>`
-     - .. raw:: html
-
-          <a class="try-in-browser" href="../lite/lab/index.html?path=monte_carlo_pi.ipynb" target="_blank" rel="noopener">Open</a>
-   * - :doc:`Mandelbrot tile rendering <../gallery/mandelbrot_tiles>`
-     - .. raw:: html
-
-          <a class="try-in-browser" href="../lite/lab/index.html?path=mandelbrot_tiles.ipynb" target="_blank" rel="noopener">Open</a>
-   * - :doc:`Segmented prime sieve <../gallery/prime_sieve>`
-     - .. raw:: html
-
-          <a class="try-in-browser" href="../lite/lab/index.html?path=prime_sieve.ipynb" target="_blank" rel="noopener">Open</a>
-   * - :doc:`Word-count map-reduce <../gallery/word_count_mapreduce>`
-     - .. raw:: html
-
-          <a class="try-in-browser" href="../lite/lab/index.html?path=word_count_mapreduce.ipynb" target="_blank" rel="noopener">Open</a>
-   * - :doc:`Image batch filter <../gallery/image_batch_filter>`
-     - .. raw:: html
-
-          <a class="try-in-browser" href="../lite/lab/index.html?path=image_batch_filter.ipynb" target="_blank" rel="noopener">Open</a>
-   * - :doc:`Hyperparameter grid search (sklearn) <../gallery/sklearn_grid_search>`
-     - .. raw:: html
-
-          <a class="try-in-browser" href="../lite/lab/index.html?path=sklearn_grid_search.ipynb" target="_blank" rel="noopener">Open</a>
+   <ul class="lite-demos">
+     <li>
+       <a class="lite-demo" href="../gallery/parallel_sqrt.html">Parallel square roots (warm-up)</a>
+       <span class="lite-sep">&mdash;</span>
+       <a class="lite-open" href="../lite/lab/index.html?path=parallel_sqrt.ipynb" target="_blank" rel="noopener">open in browser &#8594;</a>
+     </li>
+     <li>
+       <a class="lite-demo" href="../gallery/send_heavy_object.html">Heavy object reuse with send_object</a>
+       <span class="lite-sep">&mdash;</span>
+       <a class="lite-open" href="../lite/lab/index.html?path=send_heavy_object.ipynb" target="_blank" rel="noopener">open in browser &#8594;</a>
+     </li>
+     <li>
+       <a class="lite-demo" href="../gallery/monte_carlo_pi.html">Monte Carlo estimation of pi</a>
+       <span class="lite-sep">&mdash;</span>
+       <a class="lite-open" href="../lite/lab/index.html?path=monte_carlo_pi.ipynb" target="_blank" rel="noopener">open in browser &#8594;</a>
+     </li>
+     <li>
+       <a class="lite-demo" href="../gallery/mandelbrot_tiles.html">Mandelbrot tile rendering</a>
+       <span class="lite-sep">&mdash;</span>
+       <a class="lite-open" href="../lite/lab/index.html?path=mandelbrot_tiles.ipynb" target="_blank" rel="noopener">open in browser &#8594;</a>
+     </li>
+     <li>
+       <a class="lite-demo" href="../gallery/prime_sieve.html">Segmented prime sieve</a>
+       <span class="lite-sep">&mdash;</span>
+       <a class="lite-open" href="../lite/lab/index.html?path=prime_sieve.ipynb" target="_blank" rel="noopener">open in browser &#8594;</a>
+     </li>
+     <li>
+       <a class="lite-demo" href="../gallery/word_count_mapreduce.html">Word-count map-reduce</a>
+       <span class="lite-sep">&mdash;</span>
+       <a class="lite-open" href="../lite/lab/index.html?path=word_count_mapreduce.ipynb" target="_blank" rel="noopener">open in browser &#8594;</a>
+     </li>
+     <li>
+       <a class="lite-demo" href="../gallery/image_batch_filter.html">Image batch filter</a>
+       <span class="lite-sep">&mdash;</span>
+       <a class="lite-open" href="../lite/lab/index.html?path=image_batch_filter.ipynb" target="_blank" rel="noopener">open in browser &#8594;</a>
+     </li>
+     <li>
+       <a class="lite-demo" href="../gallery/sklearn_grid_search.html">Hyperparameter grid search (sklearn)</a>
+       <span class="lite-sep">&mdash;</span>
+       <a class="lite-open" href="../lite/lab/index.html?path=sklearn_grid_search.ipynb" target="_blank" rel="noopener">open in browser &#8594;</a>
+     </li>
+   </ul>
 
 For heavier real-world gallery notebooks (parfun, pargraph, XVA, ...) see
 :doc:`examples` -- those are too heavy for a browser kernel and are best
