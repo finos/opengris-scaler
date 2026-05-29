@@ -78,40 +78,30 @@ div.hidden-page-title > h1:first-child {
     display: none;
 }
 
-/* JupyterLite "Try in your browser" button. Banner above each notebook page. */
+/* JupyterLite "Try in your browser" banner button (top of each example page).
+   Built on the theme accent (Shibuya's --accent-*), so it matches the site in
+   both light and dark. Hover changes only the background color -- no transform
+   and no shadow growth -- so the button never shifts. */
 .try-in-browser {
     display: inline-block;
-    padding: 0.4em 0.9em;
+    padding: 0.5em 1em;
     margin: 0.2em 0;
-    background: linear-gradient(135deg, #0a8a6b, #0a6f8a);
-    color: #ffffff !important;
+    background: var(--accent-9);
+    color: var(--accent-contrast, #fff) !important;
     font-weight: 600;
-    border-radius: 0.4em;
+    border-radius: 0.5rem;
     text-decoration: none !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
-    transition: box-shadow 0.1s ease;
 }
 .try-in-browser:hover {
-    /* Paint-only hover: brighten the shadow without moving the box. The old
-       rule used "transform: translateY(-1px)", which shifted layout on hover
-       (the source of the demo-table jitter). */
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+    background: var(--accent-10);
 }
 .try-in-browser-banner {
     margin: 0.5em 0 1.2em 0;
 }
 
-/* ------------------------------------------------------------------------ */
-/* "Demo notebooks" list on the Try-in-your-browser tutorial page.          */
-/*                                                                          */
-/* This replaces the old two-column list-table whose right cell held a      */
-/* ".try-in-browser" gradient pill button. That layout jittered on hover    */
-/* because the button changed its box (transform + larger box-shadow),      */
-/* nudging the surrounding table cells. The list below is just text links:  */
-/* the ONLY thing that changes on hover is color and text-decoration, both  */
-/* paint-only and drawn inside the existing line box, so no element ever    */
-/* resizes or moves and nothing can jitter.                                 */
-/* ------------------------------------------------------------------------ */
+/* "Demo notebooks" list on the Try-in-your-browser page (replaces the old
+   button table that jittered on hover). Plain theme links in a simple list --
+   nothing changes size on hover, so nothing jitters. */
 ul.lite-demos {
     margin: 1em 0;
     padding-left: 1.2em;
@@ -120,35 +110,12 @@ ul.lite-demos li {
     margin: 0.45em 0;
     line-height: 1.6;
 }
-
-/* Muted em-dash separating the example link from the "open in browser" link.
-   rgba grey reads on both light and dark themes; static, never hovered. */
+/* Muted separator between the example link and the "open in browser" link. */
 .lite-sep {
     margin: 0 0.5em;
-    color: rgba(128, 128, 128, 0.6);
+    color: var(--sy-c-light);
 }
-
-/* "open in browser" link. Brand green (#0a8a6b, from the banner gradient).
-   No transform / padding / border / box-shadow, so its geometry is fixed and
-   the row cannot shift on hover. white-space:nowrap keeps the label and its
-   arrow on one line. */
+/* Inherit the theme link color/hover; just keep the label on one line. */
 .lite-open {
-    color: #0a8a6b;
-    text-decoration: none;
     white-space: nowrap;
-}
-/* Hover changes ONLY paint (color + underline) -- no reflow, no jitter. */
-.lite-open:hover {
-    color: #0c7a5f;
-    text-decoration: underline;
-}
-
-/* Dark mode (Shibuya toggles html.dark): the banner green is too dark on a
-   dark background, so use lighter greens. Still color-only. Mirrors the
-   existing html.dark override pattern above. */
-html.dark .lite-open {
-    color: #3fcf9a;
-}
-html.dark .lite-open:hover {
-    color: #5fe0b0;
 }

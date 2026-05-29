@@ -1,44 +1,18 @@
 Try in your browser
 ===================
 
-Here the Scaler client runs inside your browser via a
-`JupyterLite <https://jupyterlite.readthedocs.io/>`_ kernel hosted with these
-docs. The notebooks below open in a Pyodide kernel that already has the
-Scaler client installed -- no local setup required to run the client.
+The Scaler client runs in your browser on a `JupyterLite
+<https://jupyterlite.readthedocs.io/>`_ (Pyodide) kernel that already has the
+client installed. The scheduler and worker managers still run natively, and the
+browser can only reach them over a ``ws://`` address.
 
-The scheduler and worker(s) still run natively. Point each notebook at your
-own cluster by editing the two constants near the top:
-
-.. code-block:: python
-
-    SCHEDULER_ADDRESS = "ws://127.0.0.1:2345"
-    OBJECT_STORAGE_ADDRESS = None  # let the scheduler advertise it
-
-Only ``ws://`` addresses are reachable from the browser.
-
-Running a cluster for the browser client
-----------------------------------------
-
-You need a scheduler and at least one worker listening on a WebSocket
-address. Three ways to get one:
-
-* **Native machine**: spin up a small cluster yourself --
-  see :doc:`installation` and :doc:`quickstart` for the install steps.
-  Use ``ws://0.0.0.0:2345`` so the browser can connect.
-* **One-click EC2**: the `Launchpad </scaler/launchpad/>`_ provisions a scheduler
-  and a pool of workers on AWS EC2 for you. Hit *Launch*, paste the resulting
-  ``ws://`` address into a notebook, and run.
-* **Bring your own**: any cluster fronted by a worker manager
-  (see :doc:`worker_managers/index`) works, as long as the scheduler is
-  reachable over ``ws://``.
+The quickest way to get a scheduler and worker managers listening on ``ws://``
+is the `Launchpad </scaler/launchpad/>`_: hit *Launch*, then paste the address
+it gives you into a notebook's ``SCHEDULER_ADDRESS`` and run all cells.
 
 .. note::
 
-   The in-browser kernel is **CPython 3.13** (Pyodide-bundled). Workers must
-   run the same major/minor Python version so the ``capnp`` ABI matches
-   (patch version does not matter). The demo notebooks only need ``numpy``
-   (pin ``<2.3`` to match Pyodide) and ``scikit-learn`` on the worker side,
-   on top of the standard library.
+   Workers must run Python 3.13 to match the in-browser (Pyodide) kernel.
 
 Demo notebooks
 --------------
