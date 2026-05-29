@@ -47,6 +47,12 @@ runs:
         echo "LDFLAGS=-L${llvm_prefix}/lib/c++ ${LDFLAGS:-}" >> "$GITHUB_ENV"
         echo "CMAKE_PREFIX_PATH=./thirdparties/" >> "$GITHUB_ENV"
 
+    - name: Setup MSVC Developer Environment (Windows)
+      if: inputs.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: amd64
+
     - name: Install Python Base Packages
       shell: bash
       run: |
