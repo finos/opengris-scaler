@@ -23,6 +23,7 @@ runs:
       run: |
         ./scripts/library_tool.sh capnp download
         ./scripts/library_tool.sh libuv download
+        ./scripts/library_tool.sh openssl download
 
     - name: Download Libraries (macOS)
       shell: bash
@@ -30,6 +31,7 @@ runs:
       run: |
         ./scripts/library_tool.sh capnp download
         ./scripts/library_tool.sh libuv download
+        ./scripts/library_tool.sh openssl download
 
     - name: Download Libraries (Windows)
       shell: pwsh
@@ -37,3 +39,4 @@ runs:
       run: |
         ./scripts/library_tool.ps1 capnp download
         ./scripts/library_tool.ps1 libuv download
+        ./scripts/library_tool.ps1 openssl download

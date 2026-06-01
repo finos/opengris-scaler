@@ -20,3 +20,9 @@ target_sources(ymq_objs PRIVATE
     websocket_stream.h
     websocket_stream.cpp
 )
+
+if(WIN32)
+    target_sources(ymq_objs PRIVATE event_loop_thread_windows.cpp)
+else()
+    target_sources(ymq_objs PRIVATE event_loop_thread_unix.cpp)
+endif()

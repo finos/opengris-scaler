@@ -44,6 +44,8 @@ void EventLoopThread::executeThreadSafe(Callback callback) noexcept
 
 void EventLoopThread::run() noexcept
 {
+    initialize();
+
     _loop.run(UV_RUN_DEFAULT);
 }
 

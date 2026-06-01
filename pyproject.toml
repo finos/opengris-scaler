@@ -187,7 +187,7 @@ archs = ["x86_64", "aarch64"]
 manylinux-x86_64-image = "manylinux_2_28"
 manylinux-aarch64-image = "manylinux_2_28"
 before-all = """
-yum install -y cmake gcc-toolset-14-gcc gcc-toolset-14-gcc-c++; \
+yum install -y cmake gcc-toolset-14-gcc gcc-toolset-14-gcc-c++ perl; \
 source /opt/rh/gcc-toolset-14/enable; \
 ./scripts/library_tool.sh capnp download; \
 ./scripts/library_tool.sh capnp compile; \
@@ -195,6 +195,9 @@ source /opt/rh/gcc-toolset-14/enable; \
 ./scripts/library_tool.sh libuv download; \
 ./scripts/library_tool.sh libuv compile; \
 ./scripts/library_tool.sh libuv install; \
+./scripts/library_tool.sh openssl download; \
+./scripts/library_tool.sh openssl compile; \
+./scripts/library_tool.sh openssl install; \
 echo "/usr/local/lib" > /etc/ld.so.conf.d/local.conf; \
 ldconfig;
 """
@@ -203,13 +206,16 @@ environment = { PATH = "/opt/rh/gcc-toolset-14/root/usr/bin:$PATH", LD_LIBRARY_P
 [[tool.cibuildwheel.overrides]]
 select = "*-musllinux*"
 before-all = """
-apk add cmake g++ make; \
+apk add cmake g++ make perl; \
 ./scripts/library_tool.sh capnp download; \
 ./scripts/library_tool.sh capnp compile; \
 ./scripts/library_tool.sh capnp install; \
 ./scripts/library_tool.sh libuv download; \
 ./scripts/library_tool.sh libuv compile; \
 ./scripts/library_tool.sh libuv install; \
+./scripts/library_tool.sh openssl download; \
+./scripts/library_tool.sh openssl compile; \
+./scripts/library_tool.sh openssl install; \
 ldconfig /usr/local/lib;
 """
 
@@ -224,6 +230,9 @@ set -ex && \
 ./scripts/library_tool.sh libuv download; \
 ./scripts/library_tool.sh libuv compile --prefix="$CMAKE_PREFIX_PATH"; \
 ./scripts/library_tool.sh libuv install --prefix="$CMAKE_PREFIX_PATH"; \
+./scripts/library_tool.sh openssl download; \
+./scripts/library_tool.sh openssl compile --prefix="$CMAKE_PREFIX_PATH"; \
+./scripts/library_tool.sh openssl install --prefix="$CMAKE_PREFIX_PATH"; \
 """
 
 [tool.cibuildwheel.windows]
