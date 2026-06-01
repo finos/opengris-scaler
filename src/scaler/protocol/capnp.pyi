@@ -257,12 +257,6 @@ class ObjectInstruction(BaseMessage):
         delete = 1
         clear = 2
 
-class DisconnectRequest(BaseMessage):
-    worker: WorkerID
-
-class DisconnectResponse(BaseMessage):
-    worker: WorkerID
-
 class WorkerDisconnectNotification(BaseMessage):
     worker: WorkerID
 
@@ -336,8 +330,6 @@ class Message(CapnpUnionStruct):
     clientHeartbeatEcho: ClientHeartbeatEcho
     workerHeartbeat: WorkerHeartbeat
     workerHeartbeatEcho: WorkerHeartbeatEcho
-    disconnectRequest: DisconnectRequest
-    disconnectResponse: DisconnectResponse
     stateClient: StateClient
     stateObject: StateObject
     stateBalanceAdvice: StateBalanceAdvice
