@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 from scaler.protocol.capnp import (
     ClientDisconnect,
-    DisconnectResponse,
     ObjectInstruction,
     ObjectMetadata,
     Task,
@@ -165,12 +164,6 @@ class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
         msg = ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.shutdown)
         with self.assertRaises(ClientShutdownException):
             await self._dispatch(msg)
-
-    async def test_disconnect_response_cancels_task(self) -> None:
-        self.wp._heartbeat_received = True
-        msg = DisconnectResponse(worker=WorkerID(b""))
-        await self._dispatch(msg)
-        self.task_cancel.cancel.assert_called_once()
 
     async def test_unknown_message_type_raises_type_error(self) -> None:
         self.wp._heartbeat_received = True

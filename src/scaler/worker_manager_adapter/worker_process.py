@@ -1,28 +1,27 @@
 import asyncio
 import logging
 import multiprocessing
-import signal
 from collections import deque
 from typing import Callable, Dict, Optional
 
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector, ConnectorRemoteType, NetworkBackend
-from scaler.io.network_backends import YMQNetworkBackend, ZMQNetworkBackend, get_network_backend_from_env
+from scaler.io.network_backends import get_network_backend_from_env
 from scaler.protocol.capnp import (
     BaseMessage,
     ClientDisconnect,
-    DisconnectRequest,
-    DisconnectResponse,
     ObjectInstruction,
     Task,
     TaskCancel,
+    WorkerDisconnectNotification,
     WorkerHeartbeatEcho,
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.signal_handler import install_async_shutdown_handler
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 from scaler.worker_manager_adapter.heartbeat_manager import HeartbeatManager
 from scaler.worker_manager_adapter.mixins import ExecutionBackend, ProcessorStatusProvider
@@ -177,11 +176,6 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             logging.error(f"Worker received invalid ClientDisconnect type, ignoring {message=}")
             return
 
-        if isinstance(message, DisconnectResponse):
-            logging.error("Worker initiated DisconnectRequest got replied")
-            self._task.cancel()
-            return
-
         raise TypeError(f"Unknown {message=}")
 
     async def __get_loops(self) -> None:
@@ -207,24 +201,16 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         except Exception as e:
             logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
-        if isinstance(self._backend, ZMQNetworkBackend):
-            await self.__graceful_shutdown()
+        try:
+            await self._connector_external.send(WorkerDisconnectNotification(worker=self.identity))
+        except ymq.YMQException as e:
+            if e.code != ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
+                raise
 
         logging.info(f"{self.identity!r}: quit")
 
     def __register_signal(self) -> None:
-        if isinstance(self._backend, ZMQNetworkBackend):
-            self._loop.add_signal_handler(signal.SIGINT, self.__destroy)
-            self._loop.add_signal_handler(signal.SIGTERM, self.__destroy)
-        elif isinstance(self._backend, YMQNetworkBackend):
-            self._loop.add_signal_handler(signal.SIGINT, lambda: asyncio.ensure_future(self.__graceful_shutdown()))
-            self._loop.add_signal_handler(signal.SIGTERM, lambda: asyncio.ensure_future(self.__graceful_shutdown()))
-
-    async def __graceful_shutdown(self) -> None:
-        try:
-            await self._connector_external.send(DisconnectRequest(worker=self.identity))
-        except ymq.YMQException:
-            pass
+        install_async_shutdown_handler(self._loop, self.__destroy)
 
     def __destroy(self) -> None:
         self._task.cancel()
