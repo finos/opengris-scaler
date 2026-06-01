@@ -311,9 +311,7 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
                     )
                     if unexpected_state_count >= _MAX_UNEXPECTED_STATE_COUNT:
                         future.set_exception(
-                            RuntimeError(
-                                f"Container Instance {instance_id[-20:]} stuck in unexpected state: {state}"
-                            )
+                            RuntimeError(f"Container Instance {instance_id[-20:]} stuck in unexpected state: {state}")
                         )
                         await self._delete_container_instance(instance_id)
                         return
