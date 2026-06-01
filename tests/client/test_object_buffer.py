@@ -99,11 +99,8 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertEqual(len(storage.calls), 1)
 
     def test_non_weakreffable_arg_deduped_within_batch(self) -> None:
-        """Dedup keys on ``id(obj)`` with a plain dict, so non-weakreffable
-        built-ins (``list`` / ``dict`` / ``tuple`` / ...) dedup within a batch
-        too -- they're kept alive by the caller for the whole burst, so id reuse
-        cannot happen.  Across a commit, dedup resets like everything else.
-        """
+        """Non-weakreffable args (list / dict / tuple) dedup within a batch too,
+        and reset across a commit like everything else."""
         buf, _agent, storage = _make_buffer()
 
         shared_list = list(range(1000))
@@ -123,12 +120,8 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertEqual(len(storage.calls), 2)
 
     def test_dedup_does_not_survive_commit(self) -> None:
-        """Dedup is scoped to a single commit cycle: re-buffering the same
-        object after a commit re-serializes and re-uploads it.  This is what
-        keeps the cache from ever serving a snapshot taken before user code
-        (which could have mutated the object) ran -- see
-        ``test_mutation_after_commit_is_resent``.
-        """
+        """Dedup is scoped to one commit cycle: re-buffering the same object
+        after a commit re-serializes and re-uploads it."""
         buf, _agent, storage = _make_buffer()
 
         shared = np.zeros(1024, dtype=np.uint8)
@@ -145,11 +138,8 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertEqual(len(storage.calls), 2)
 
     def test_mutation_after_commit_is_resent(self) -> None:
-        """The fix for the in-place-mutation footgun: mutating an object after
-        it has been committed and re-buffering it must upload the NEW contents,
-        not a stale snapshot.  (On the un-scoped cache this returned the old
-        object_id with the old bytes.)
-        """
+        """Mutating an object after its commit and re-buffering it uploads the
+        new contents, not a stale snapshot (the in-place-mutation footgun)."""
         buf, _agent, storage = _make_buffer()
 
         class _Box:
@@ -170,11 +160,8 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertEqual(len(storage.calls), 2)
 
     def test_send_object_path_does_not_dedup(self) -> None:
-        """The standalone send_object() path (dedup=False) never dedups, even
-        within a batch -- it buffers without committing and returns control to
-        the user, so a lingering entry could serve a stale snapshot to a later
-        submit().  The user reuses the upload via the returned ObjectReference.
-        """
+        """The send_object() path (dedup=False) never dedups, even within a
+        batch -- it returns to the user before committing."""
         buf, _agent, storage = _make_buffer()
 
         class _Box:
@@ -209,10 +196,8 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertEqual(len(storage.calls), 2)
 
     def test_id_recycled_after_gc_does_not_serve_stale_cache(self) -> None:
-        """If the original object is GC'd after its commit and another object
-        later lands on the same id, the dedup lookup must miss.  The commit
-        already dropped the cache, so the recycled id finds nothing.
-        """
+        """An object GC'd after its commit, whose id is later reused, must miss:
+        the commit already dropped the cache."""
         buf, _agent, storage = _make_buffer()
 
         class _Box:

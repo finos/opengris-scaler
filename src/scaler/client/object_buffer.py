@@ -35,19 +35,11 @@ class ObjectBuffer:
         self._valid_object_ids: Set[ObjectID] = set()
         self._pending_objects: List[ObjectCache] = list()
 
-        # Identity-based dedup cache, scoped to a single commit cycle (one
-        # submit() / map() / graph() worth of buffering).  Avoids re-serializing
-        # and re-uploading the same Python object that one operation passes to
-        # many tasks (e.g. a shared DataFrame / numpy array in map / parfun /
-        # graph).  Keyed by ``id(obj)``.  ``commit_send_objects`` and ``clear``
-        # drop it, so an entry never spans a point where user code could regain
-        # control and mutate the object -- the cache only ever serves a snapshot
-        # identical to what re-serializing right now would produce, which keeps
-        # this strictly equivalent-or-better than re-serializing every call.
-        # Every object buffered within a cycle is kept alive by its caller, so
-        # ``id`` cannot be recycled while an entry lives; a plain dict (no
-        # weakref) is therefore both sufficient and safe, and it lets us dedup
-        # non-weakreffable args (list / dict / tuple / ...) too.
+        # Dedup an object that one operation (submit / map / graph) hands to
+        # many tasks: serialize and upload it once, not once per task. Keyed by
+        # id(obj) and cleared on every commit, so an entry never outlives its
+        # buffering burst and can't serve a stale snapshot if the object is
+        # later mutated.
         self._dedup_cache: Dict[int, ObjectCache] = {}
 
         self._serializer_object_id = self.__send_serializer()
@@ -61,11 +53,8 @@ class ObjectBuffer:
         return cache
 
     def buffer_send_object(self, obj: Any, name: Optional[str] = None, dedup: bool = True) -> ObjectCache:
-        # ``dedup`` is opt-out for the standalone send_object() path: that call
-        # buffers without committing and then hands control back to the user, so
-        # leaving an entry behind could serve a stale snapshot to a later submit
-        # if the object is mutated in between.  Task buffering (submit / map /
-        # graph) happens in one uninterrupted burst, where dedup is always safe.
+        # dedup=False skips the cache entirely; used by send_object() (see its
+        # call site), which buffers without committing.
         if dedup:
             cached = self._dedup_cache.get(id(obj))
             if cached is not None:
@@ -100,9 +89,7 @@ class ObjectBuffer:
 
         self._pending_objects.clear()
 
-        # Scope dedup to a single commit cycle: once these objects are uploaded
-        # the user regains control and may mutate them, so the next cycle must
-        # re-serialize rather than risk serving a stale snapshot.
+        # Drop the dedup cache so a later cycle can't reuse a pre-mutation snapshot.
         self._dedup_cache.clear()
 
     def clear(self):
@@ -116,9 +103,8 @@ class ObjectBuffer:
         self._valid_object_ids.clear()
         self._valid_object_ids.add(self._serializer_object_id)
 
-        # Drop the dedup cache too: the server side has discarded the objects,
-        # so reusing a previously-cached ObjectCache would refer to an
-        # object_id the server no longer knows about.
+        # Drop the dedup cache too: the server discarded these objects, so a
+        # cached entry would name an object_id it no longer knows about.
         self._dedup_cache.clear()
 
         self._connector_agent.send(

@@ -433,10 +433,8 @@ class Client:
 
         self.__assert_client_not_stopped()
 
-        # dedup=False: send_object() buffers without committing and returns to
-        # the user, who may mutate `obj` before the next submit(); a lingering
-        # dedup entry could then hand that submit a stale snapshot.  The user
-        # already gets an ObjectReference to reuse this upload explicitly.
+        # dedup=False: send_object() returns to the user before the next commit,
+        # so a kept dedup entry could serve a later submit() a stale snapshot.
         cache = self._object_buffer.buffer_send_object(obj, name, dedup=False)
         return ObjectReference(cache.object_name, len(cache.object_payload), cache.object_id)
 
