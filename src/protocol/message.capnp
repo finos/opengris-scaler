@@ -214,26 +214,26 @@ struct Message {
         workerHeartbeat @9 :WorkerHeartbeat;
         workerHeartbeatEcho @10 :WorkerHeartbeatEcho;
 
-        stateClient @13 :StateClient;
-        stateObject @14 :StateObject;
-        stateBalanceAdvice @15 :StateBalanceAdvice;
-        stateScheduler @16 :StateScheduler;
-        stateWorker @17 :StateWorker;
-        stateTask @18 :StateTask;
-        stateGraphTask @19 :StateGraphTask;
+        stateClient @11 :StateClient;
+        stateObject @12 :StateObject;
+        stateBalanceAdvice @13 :StateBalanceAdvice;
+        stateScheduler @14 :StateScheduler;
+        stateWorker @15 :StateWorker;
+        stateTask @16 :StateTask;
+        stateGraphTask @17 :StateGraphTask;
 
-        clientDisconnect @20 :ClientDisconnect;
-        clientShutdownResponse @21 :ClientShutdownResponse;
+        clientDisconnect @18 :ClientDisconnect;
+        clientShutdownResponse @19 :ClientShutdownResponse;
 
-        processorInitialized @22 :ProcessorInitialized;
+        processorInitialized @20 :ProcessorInitialized;
 
-        informationRequest @23 :InformationRequest;
-        informationResponse @24 :InformationResponse;
+        informationRequest @21 :InformationRequest;
+        informationResponse @22 :InformationResponse;
 
-        workerManagerHeartbeat @25 :WorkerManagerHeartbeat;
-        workerManagerHeartbeatEcho @26 :WorkerManagerHeartbeatEcho;
-        workerManagerCommand @27 :WorkerManagerCommand;
+        workerManagerHeartbeat @23 :WorkerManagerHeartbeat;
+        workerManagerHeartbeatEcho @24 :WorkerManagerHeartbeatEcho;
+        workerManagerCommand @25 :WorkerManagerCommand;
 
-        workerDisconnectNotification @28 :WorkerDisconnectNotification;
+        workerDisconnectNotification @26 :WorkerDisconnectNotification;
     }
 }
