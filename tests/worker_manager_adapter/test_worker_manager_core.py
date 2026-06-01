@@ -13,7 +13,7 @@ from scaler.protocol.capnp import (
     WorkerManagerCommand,
 )
 from scaler.utility.exceptions import ClientShutdownException
-from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
+from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import TaskFlags
 from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner

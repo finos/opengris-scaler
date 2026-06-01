@@ -93,9 +93,7 @@ class TestGracefulWorkerShutdown(unittest.TestCase):
         setup_logger()
         logging_test_name(self)
         self.combo = SchedulerClusterCombo(
-            n_workers=0,
-            event_loop="builtin",
-            worker_timeout_seconds=_HEARTBEAT_TIMEOUT_SECONDS,
+            n_workers=0, event_loop="builtin", worker_timeout_seconds=_HEARTBEAT_TIMEOUT_SECONDS
         )
         self.address = self.combo.get_address()
         self.client = Client(self.address)
@@ -141,7 +139,9 @@ class TestGracefulWorkerShutdown(unittest.TestCase):
                 ),
             )
         )
-        proc = multiprocessing.get_context("spawn").Process(target=manager.run)
+        proc: multiprocessing.Process = multiprocessing.get_context("spawn").Process(  # type: ignore[assignment]
+            target=manager.run
+        )
         proc.start()
         self._manager_processes.append(proc)
         return proc
