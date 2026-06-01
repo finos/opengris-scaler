@@ -876,7 +876,7 @@ function DeployDetails({ visible, style }) {
   const fields = [
     { label: "Scheduler Address", value: "54.211.148.92:8080", href: null },
     {
-      label: "GUI Address",
+      label: "Worker Monitor Address",
       value: "http://54.211.148.92:3000",
       href: "http://54.211.148.92:3000",
     },

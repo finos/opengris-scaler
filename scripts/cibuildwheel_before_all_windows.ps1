@@ -19,6 +19,10 @@ try {
     & (Join-Path $PSScriptRoot "library_tool.ps1") libuv compile --prefix=$prefix
     & (Join-Path $PSScriptRoot "library_tool.ps1") libuv install --prefix=$prefix
 
+    & (Join-Path $PSScriptRoot "library_tool.ps1") openssl download --prefix=$prefix
+    & (Join-Path $PSScriptRoot "library_tool.ps1") openssl compile --prefix=$prefix
+    & (Join-Path $PSScriptRoot "library_tool.ps1") openssl install --prefix=$prefix
+
     if (-not (Test-Path $capnpConfigPath)) {
         Get-ChildItem $prefix -Recurse
         throw "CapnProtoConfig.cmake not installed at $capnpConfigPath"

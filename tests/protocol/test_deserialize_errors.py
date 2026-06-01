@@ -1,7 +1,7 @@
 """Coverage for issue #761: unrecognised enum ordinals on the wire surface as a
-Python exception (CapnpDeserializationError), not a process abort, and the
-existing receive-path asymmetry (scheduler catches via AsyncBinder, others
-fail-fast via AsyncConnector) is preserved."""
+Python ValueError, not a process abort. With lazy deserialization the error is
+deferred to first field access rather than raised at from_bytes / deserialize
+time, but is still guaranteed to surface before the bad value can be used."""
 
 import unittest
 
@@ -42,27 +42,30 @@ class TestDeserializeUnknownEnumOrdinal(unittest.TestCase):
         self.assertEqual(decoded.state, TaskState.success)
 
     def test_struct_from_bytes_unknown_ordinal_raises(self):
-        # Patching a single ordinal byte in a top-level struct payload exercises
-        # the same C++ ENUM-decode path the Message dispatcher uses.
+        # Deserialization succeeds (lazy); the ValueError is raised on first
+        # access of the invalid enum field, before the value can be used.
         bad_payload = _state_task_bytes_with_state_ordinal(99)
+        st = StateTask.from_bytes(bad_payload)
         with self.assertRaises(ValueError):
-            StateTask.from_bytes(bad_payload)
+            _ = st.state
 
-    def test_deserialize_translates_to_capnp_error(self):
+    def test_deserialize_unknown_ordinal_raises_on_field_access(self):
         # Wrap StateTask in a Message envelope, then patch the inner state ordinal.
+        # deserialize() itself succeeds (lazy); the ValueError surfaces when the
+        # caller first reads the invalid enum field.
         from scaler.io.utility import serialize
 
         good = serialize(StateTask(state=TaskState.inactive, taskId=b"t", functionName=b"f", worker=b"w"))
         baseline = serialize(StateTask(state=TaskState.success, taskId=b"t", functionName=b"f", worker=b"w"))
         diff_indices = [i for i in range(min(len(good), len(baseline))) if good[i] != baseline[i]]
-        # Multiple diffs are tolerated for the wrapped-in-Message form: pick the
-        # last one since the inner-struct state byte is well into the payload.
         if not diff_indices:
             self.skipTest("could not locate enum ordinal byte in Message envelope")
         bad = bytearray(good)
         bad[diff_indices[-1]] = 99
-        with self.assertRaises(CapnpDeserializationError):
-            deserialize(bytes(bad))
+        result = deserialize(bytes(bad))
+        assert isinstance(result, StateTask)
+        with self.assertRaises(ValueError):
+            _ = result.state
 
     def test_deserialize_translates_malformed_buffer(self):
         # Random garbage triggers kj::Exception inside FlatArrayMessageReader,
