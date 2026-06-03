@@ -368,7 +368,6 @@ class ConfigClass:
         return _from_args(cls, kwargs)
 
 
-<<<<<<< HEAD
 class UnderscoreTomlConfigParser(TomlConfigParser):
     """A TOML config parser that converts underscores to hyphens in key names"""
 
@@ -381,13 +380,11 @@ class UnderscoreTomlConfigParser(TomlConfigParser):
 
 def parse_bool(s: str) -> bool:
     """parse a bool from a conventional string representation"""
-
     lower = s.lower()
     if lower == "true":
         return True
     if lower == "false":
         return False
-
     raise ArgumentTypeError(f"'{s}' is not a valid bool")
 
 
@@ -399,27 +396,22 @@ def parse_enum(s: str, enumm: Type[enum.Enum]) -> Any:
 
 
 def is_optional(ty: Any) -> bool:
-    """determines if `ty` is typing.Optional"""
     return typing.get_origin(ty) is typing.Union and typing.get_args(ty)[1] is type(None)
 
 
 def get_optional_type(ty: Any) -> type:
-    """get the `T` from a typing.Optional[T]"""
     return typing.get_args(ty)[0]
 
 
 def is_list(ty: Any) -> bool:
-    """determines if `ty` is typing.List or list"""
     return typing.get_origin(ty) is list or ty is list
 
 
 def get_list_type(ty: Any) -> type:
-    """get the generic type of a typing.List[T] or list[T]"""
     return typing.get_args(ty)[0]
 
 
 def is_config_type(ty: Any) -> bool:
-    """determines if ty is a subclass of ConfigType"""
     try:
         return issubclass(ty, ConfigType)
     except TypeError:
@@ -427,7 +419,6 @@ def is_config_type(ty: Any) -> bool:
 
 
 def is_config_class(ty: Any) -> bool:
-    """determines if ty is a subclass of ConfigClass"""
     try:
         return issubclass(ty, ConfigClass)
     except TypeError:
@@ -435,15 +426,12 @@ def is_config_class(ty: Any) -> bool:
 
 
 def is_enum(ty: Any):
-    """determines if ty is a subclass of Enum"""
     try:
         return issubclass(ty, enum.Enum)
     except TypeError:
         return False
 
 
-def get_type_args(ty: Any) -> Dict[str, Any]:
-=======
 def _build_subparser_tree(
     cls: type,
     parser: argparse.ArgumentParser,
@@ -452,18 +440,7 @@ def _build_subparser_tree(
     dest: str,
     toml_data: Dict[str, Any],
 ) -> None:
-    """Recursively add subparsers to *parser* for every subcommand field in *cls*.
-
-    Args:
-        cls:        The config class whose subcommand fields are being registered.
-        parser:     The (sub)parser to attach the new subparsers to.
-        parent_cls: The config class that owns *parser*; its non-subcommand fields
-                    are registered on each subparser so they are available at every level.
-        sections:   Accumulated TOML section names from all ancestor levels.
-        dest:       Unique argparse dest name for this level's chosen subcommand.
-        toml_data:  Full parsed TOML dict loaded from --config (may be empty).
->>>>>>> upstream/main
-    """
+    """Recursively add subparsers to *parser* for every subcommand field in *cls*."""
     subcommand_fields = [f for f in dataclasses.fields(cls) if "subcommand" in f.metadata]  # type: ignore[arg-type]
     if not subcommand_fields:
         return
@@ -477,10 +454,9 @@ def _build_subparser_tree(
 
         subparser = subparsers.add_parser(field.name, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         subparser.add_argument("--config", "-c", metavar="FILE", help="Path to the TOML configuration file.")
-        parent_cls.configure_parser(subparser)  # type: ignore[attr-defined]  # parent-level fields
-        config_cls.configure_parser(subparser)  # type: ignore[union-attr]  # this sub-command's own fields
+        parent_cls.configure_parser(subparser)  # type: ignore[attr-defined]
+        config_cls.configure_parser(subparser)  # type: ignore[union-attr]
 
-        # Inject TOML defaults: merge all ancestor sections + this sub-command's section.
         combined: Dict[str, Any] = {}
         for s in level_sections:
             combined.update(toml_data.get(s, {}))
@@ -490,8 +466,6 @@ def _build_subparser_tree(
             subparser.set_defaults(**toml_defs)
             injected_dests.update(toml_defs)
 
-        # Inject TOML defaults for parent-class ConfigClass fields (e.g. logging) from
-        # sections named after the field - e.g. [logging] -> LoggingConfig defaults.
         for parent_field in dataclasses.fields(parent_cls):  # type: ignore[arg-type]
             if "subcommand" in parent_field.metadata or "section" in parent_field.metadata:
                 continue
@@ -505,15 +479,11 @@ def _build_subparser_tree(
                         subparser.set_defaults(**parent_section_defs)
                         injected_dests.update(parent_section_defs)
 
-        # Env-var defaults override TOML.
         env_defs = _env_defaults(config_cls)  # type: ignore[arg-type]
         if env_defs:
             subparser.set_defaults(**env_defs)
             injected_dests.update(env_defs)
 
-        # argparse does not consider set_defaults() values as satisfying required=True.
-        # Relax the required flag for any optional argument whose value was provided by
-        # TOML or an env var so that those sources count as valid.
         for action in subparser._actions:
             if action.required and action.dest in injected_dests:
                 action.required = False
