@@ -17,6 +17,9 @@ RUN /tmp/scaler-scripts/library_tool.sh capnp download \
     && /tmp/scaler-scripts/library_tool.sh libuv download \
     && /tmp/scaler-scripts/library_tool.sh libuv compile \
     && /tmp/scaler-scripts/library_tool.sh libuv install \
+    && /tmp/scaler-scripts/library_tool.sh openssl download \
+    && /tmp/scaler-scripts/library_tool.sh openssl compile \
+    && /tmp/scaler-scripts/library_tool.sh openssl install \
     && /tmp/scaler-scripts/library_tool.sh emsdk download \
     && /tmp/scaler-scripts/library_tool.sh emsdk compile \
     && /tmp/scaler-scripts/library_tool.sh emsdk install \

@@ -1,9 +1,4 @@
-find_package(OpenSSL QUIET)
-
-if(NOT OpenSSL_FOUND)
-    message(STATUS "OpenSSL not found -- skipping scaler_wrapper_openssl (not needed for py_capnp wheel)")
-    return()
-endif()
+find_package(OpenSSL CONFIG REQUIRED)
 
 add_library(scaler_wrapper_openssl STATIC
     secure_server.h

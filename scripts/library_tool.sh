@@ -2,12 +2,15 @@
 # This script builds and installs the required 3rd party C++ libraries.
 #
 # Usage:
-#       ./scripts/library_tool.sh [capnp|libuv|emsdk|pyodide] [download|compile|install] [--prefix=PREFIX] [--target=native|wasm]
+#       ./scripts/library_tool.sh [capnp|libuv|openssl|emsdk] [download|compile|install] [--prefix=PREFIX] [--target=native|wasm]
 #
 # --target=wasm cross-compiles capnp/libuv against the Emscripten toolchain.
 # It expects emcc/emcmake on PATH (source thirdparties/emsdk/emsdk_env.sh first)
 # and that the host `capnp` tool is already installed (capnp code generation
 # can't run inside wasm). Output defaults to ./thirdparties/wasm/install.
+#
+# OpenSSL is built natively only; --target=wasm is rejected for it. A wasm
+# OpenSSL (needed later for wss:// in the browser) is future work.
 #
 # emsdk is always installed at $THIRD_PARTY_DIR/emsdk; --prefix and --target are ignored for it.
 #
@@ -21,6 +24,7 @@
 
 CAPNP_VERSION="1.1.0"
 UV_VERSION="1.51.0"
+OPENSSL_VERSION="4.0.0"
 # emsdk version must match the Pyodide xbuildenv/kernel used for the wasm wheel build
 # (currently 4.0.9 -> Pyodide 0.29.3 -> CPython 3.13).
 EMSDK_VERSION="4.0.9"
@@ -71,8 +75,27 @@ fi
 PREFIX=$(mkdir -p "${PREFIX}" && cd "${PREFIX}" && pwd)
 
 show_help() {
-    echo "Usage: ./library_tool.sh [capnp|libuv|emsdk] [download|compile|install] [--prefix=DIR] [--target=native|wasm]"
+    echo "Usage: ./library_tool.sh [capnp|libuv|openssl|emsdk] [download|compile|install] [--prefix=DIR] [--target=native|wasm]"
     exit 1
+}
+
+# Usage: download_tar_gz <url> <folder_name>
+download_tar_gz() {
+    local url="$1"
+    local folder_name="$2"
+
+    curl --retry 100 --retry-max-time 3600 \
+        -L "${url}" \
+        -o "${THIRD_PARTY_DOWNLOADED}/${folder_name}.tar.gz"
+    echo "Downloaded ${folder_name} into ${THIRD_PARTY_DOWNLOADED}/${folder_name}.tar.gz"
+}
+
+# Usage: extract_tar_gz <folder_name>
+extract_tar_gz() {
+    local folder_name="$1"
+
+    rm -rf "${THIRD_PARTY_COMPILED}/${folder_name}"
+    tar -xzf "${THIRD_PARTY_DOWNLOADED}/${folder_name}.tar.gz" -C "${THIRD_PARTY_COMPILED}"
 }
 
 require_emscripten() {
@@ -111,20 +134,21 @@ apply_patch_if_present() {
     patch -d "${src_dir}" -p1 < "${patch_file}"
 }
 
+if [ "$2" == "download" ]; then
+    mkdir -p "${THIRD_PARTY_DOWNLOADED}"
+elif [ "$2" == "compile" ]; then
+    mkdir -p "${THIRD_PARTY_COMPILED}"
+fi
+
 if [ "$1" == "capnp" ]; then
-    CAPNP_FOLDER_NAME="capnproto-c++-$(echo $CAPNP_VERSION)"
+    CAPNP_FOLDER_NAME="capnproto-c++-${CAPNP_VERSION}"
+    CAPNP_URL="https://capnproto.org/${CAPNP_FOLDER_NAME}.tar.gz"
 
     if [ "$2" == "download" ]; then
-        mkdir -p "${THIRD_PARTY_DOWNLOADED}"
-        curl --retry 100 --retry-max-time 3600 \
-            -L "https://capnproto.org/${CAPNP_FOLDER_NAME}.tar.gz" \
-            -o "${THIRD_PARTY_DOWNLOADED}/${CAPNP_FOLDER_NAME}.tar.gz"
-        echo "Downloaded capnp into ${THIRD_PARTY_DOWNLOADED}/${CAPNP_FOLDER_NAME}.tar.gz"
+        download_tar_gz "${CAPNP_URL}" "${CAPNP_FOLDER_NAME}"
 
     elif [ "$2" == "compile" ]; then
-        mkdir -p "${THIRD_PARTY_COMPILED}"
-        rm -rf "${THIRD_PARTY_COMPILED}/${CAPNP_FOLDER_NAME}"
-        tar -xzf "${THIRD_PARTY_DOWNLOADED}/${CAPNP_FOLDER_NAME}.tar.gz" -C "${THIRD_PARTY_COMPILED}"
+        extract_tar_gz "${CAPNP_FOLDER_NAME}"
 
         if [[ "$TARGET" == "wasm" ]]; then
             require_emscripten
@@ -178,18 +202,13 @@ if [ "$1" == "capnp" ]; then
     fi
 elif [ "$1" == "libuv" ]; then
     UV_FOLDER_NAME="libuv-${UV_VERSION}"
+    UV_URL="https://github.com/libuv/libuv/archive/refs/tags/v${UV_VERSION}.tar.gz"
 
     if [ "$2" == "download" ]; then
-        mkdir -p "${THIRD_PARTY_DOWNLOADED}"
-        curl --retry 100 --retry-max-time 3600 \
-            -L "https://github.com/libuv/libuv/archive/refs/tags/v${UV_VERSION}.tar.gz" \
-            -o "${THIRD_PARTY_DOWNLOADED}/${UV_FOLDER_NAME}.tar.gz"
-        echo "Downloaded libuv into ${THIRD_PARTY_DOWNLOADED}/${UV_FOLDER_NAME}.tar.gz"
+        download_tar_gz "${UV_URL}" "${UV_FOLDER_NAME}"
 
     elif [ "$2" == "compile" ]; then
-        mkdir -p "${THIRD_PARTY_COMPILED}"
-        rm -rf "${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}"
-        tar -xzf "${THIRD_PARTY_DOWNLOADED}/${UV_FOLDER_NAME}.tar.gz" -C "${THIRD_PARTY_COMPILED}"
+        extract_tar_gz "${UV_FOLDER_NAME}"
 
         if [[ "$TARGET" == "wasm" ]]; then
             require_emscripten
@@ -219,6 +238,34 @@ elif [ "$1" == "libuv" ]; then
         cd "${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}"
         cmake --install build
         echo "Installed libuv into ${PREFIX}"
+
+    else
+        show_help
+    fi
+elif [ "$1" == "openssl" ]; then
+    if [[ "$TARGET" == "wasm" ]]; then
+        echo "openssl --target=wasm is not supported yet; OpenSSL is built natively only."
+        exit 1
+    fi
+
+    OPENSSL_FOLDER_NAME="openssl-${OPENSSL_VERSION}"
+    OPENSSL_URL="https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/${OPENSSL_FOLDER_NAME}.tar.gz"
+
+    if [ "$2" == "download" ]; then
+        download_tar_gz "${OPENSSL_URL}" "${OPENSSL_FOLDER_NAME}"
+
+    elif [ "$2" == "compile" ]; then
+        extract_tar_gz "${OPENSSL_FOLDER_NAME}"
+
+        cd "${THIRD_PARTY_COMPILED}/${OPENSSL_FOLDER_NAME}"
+        ./config --prefix="${PREFIX}" --libdir=lib no-tests
+        make -j "${NUM_CORES}"
+        echo "Compiled OpenSSL to ${THIRD_PARTY_COMPILED}/${OPENSSL_FOLDER_NAME}"
+
+    elif [ "$2" == "install" ]; then
+        cd "${THIRD_PARTY_COMPILED}/${OPENSSL_FOLDER_NAME}"
+        make install_sw
+        echo "Installed OpenSSL into ${PREFIX}"
 
     else
         show_help
