@@ -42,7 +42,8 @@
       "displayName": "Windows x64 (MSVC)",
       "generator": "Visual Studio 17 2022",
       "cacheVariables": {
-        "CMAKE_INSTALL_PREFIX": "${sourceDir}/src"
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/src",
+        "CMAKE_PREFIX_PATH": "C:/Program Files"
       },
       "architecture": {
         "value": "x64",
