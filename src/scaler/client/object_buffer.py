@@ -1,6 +1,5 @@
 import dataclasses
 import pickle
-import weakref
 from typing import Any, Callable, Dict, List, Optional, Set
 
 import cloudpickle
@@ -36,33 +35,33 @@ class ObjectBuffer:
         self._valid_object_ids: Set[ObjectID] = set()
         self._pending_objects: List[ObjectCache] = list()
 
-        # Identity-based dedup cache.  Avoids re-serializing and re-uploading
-        # the same Python object across multiple submit() / send_object() calls
-        # (e.g. parfun / map / graph patterns that pass a shared DataFrame to
-        # every task).  Keyed by ``id(obj)``; ``_dedup_alive`` keeps a weakref
-        # so we can detect ``id`` reuse after GC.  Non-weakreffable objects
-        # (built-in ``int``, ``str``, ``tuple``, ``list``, ``dict``, ...) fall
-        # through to the un-deduplicated path; that's harmless because those
-        # serialize cheaply.
-        self._dedup_alive: "weakref.WeakValueDictionary[int, Any]" = weakref.WeakValueDictionary()
+        # Dedup an object that one operation (submit / map / graph) hands to
+        # many tasks: serialize and upload it once, not once per task. Keyed by
+        # id(obj) and cleared on every commit, so an entry never outlives its
+        # buffering burst and can't serve a stale snapshot if the object is
+        # later mutated.
         self._dedup_cache: Dict[int, ObjectCache] = {}
 
         self._serializer_object_id = self.__send_serializer()
 
     def buffer_send_function(self, fn: Callable) -> ObjectCache:
-        cached = self.__lookup_dedup(fn)
+        cached = self._dedup_cache.get(id(fn))
         if cached is not None:
             return cached
         cache = self.__buffer_send_serialized_object(self.__construct_function(fn))
-        self.__remember_dedup(fn, cache)
+        self._dedup_cache[id(fn)] = cache
         return cache
 
-    def buffer_send_object(self, obj: Any, name: Optional[str] = None) -> ObjectCache:
-        cached = self.__lookup_dedup(obj)
-        if cached is not None:
-            return cached
+    def buffer_send_object(self, obj: Any, name: Optional[str] = None, dedup: bool = True) -> ObjectCache:
+        # dedup=False skips the cache entirely; used by send_object() (see its
+        # call site), which buffers without committing.
+        if dedup:
+            cached = self._dedup_cache.get(id(obj))
+            if cached is not None:
+                return cached
         cache = self.__buffer_send_serialized_object(self.__construct_object(obj, name))
-        self.__remember_dedup(obj, cache)
+        if dedup:
+            self._dedup_cache[id(obj)] = cache
         return cache
 
     def commit_send_objects(self):
@@ -90,6 +89,9 @@ class ObjectBuffer:
 
         self._pending_objects.clear()
 
+        # Drop the dedup cache so a later cycle can't reuse a pre-mutation snapshot.
+        self._dedup_cache.clear()
+
     def clear(self):
         """
         remove all committed and pending objects.
@@ -101,10 +103,8 @@ class ObjectBuffer:
         self._valid_object_ids.clear()
         self._valid_object_ids.add(self._serializer_object_id)
 
-        # Drop the dedup cache too: the server side has discarded the objects,
-        # so reusing a previously-cached ObjectCache would refer to an
-        # object_id the server no longer knows about.
-        self._dedup_alive = weakref.WeakValueDictionary()
+        # Drop the dedup cache too: the server discarded these objects, so a
+        # cached entry would name an object_id it no longer knows about.
         self._dedup_cache.clear()
 
         self._connector_agent.send(

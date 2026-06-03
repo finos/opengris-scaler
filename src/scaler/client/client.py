@@ -430,7 +430,9 @@ class Client:
 
         self.__assert_client_not_stopped()
 
-        cache = self._object_buffer.buffer_send_object(obj, name)
+        # dedup=False: send_object() returns to the user before the next commit,
+        # so a kept dedup entry could serve a later submit() a stale snapshot.
+        cache = self._object_buffer.buffer_send_object(obj, name, dedup=False)
         return ObjectReference(cache.object_name, len(cache.object_payload), cache.object_id)
 
     def clear(self):

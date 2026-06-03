@@ -53,8 +53,8 @@ def _make_buffer() -> Tuple[ObjectBuffer, _FakeAgentConnector, _FakeStorageConne
 
 
 class TestObjectBufferDedup(unittest.TestCase):
-    def test_same_object_uploaded_only_once_across_submits(self) -> None:
-        """Buffer + commit the same Python object N times -> 1 upload."""
+    def test_same_object_uploaded_only_once_within_batch(self) -> None:
+        """Buffer the same Python object N times in one cycle, commit once -> 1 upload."""
         buf, _agent, storage = _make_buffer()
 
         shared = np.zeros(10_000, dtype=np.float64)  # weakreffable, non-trivial payload
@@ -98,11 +98,9 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertEqual(c1.object_id, c2.object_id)
         self.assertEqual(len(storage.calls), 1)
 
-    def test_non_weakreffable_arg_falls_through_to_per_call_upload(self) -> None:
-        """Built-in types like ``list`` / ``tuple`` / ``bytes`` cannot be
-        weakref'd; we degrade gracefully (no dedup, no crash).  These are
-        typically small and cheap to re-serialize so per-call upload is fine.
-        """
+    def test_non_weakreffable_arg_deduped_within_batch(self) -> None:
+        """Non-weakreffable args (list / dict / tuple) dedup within a batch too,
+        and reset across a commit like everything else."""
         buf, _agent, storage = _make_buffer()
 
         shared_list = list(range(1000))
@@ -111,15 +109,22 @@ class TestObjectBufferDedup(unittest.TestCase):
         c2 = buf.buffer_send_object(shared_list)
         buf.commit_send_objects()
 
-        # Distinct uploads because lists cannot be tracked via weakref.
-        self.assertNotEqual(c1.object_id, c2.object_id)
+        # One upload within the batch.
+        self.assertEqual(c1.object_id, c2.object_id)
+        self.assertEqual(len(storage.calls), 1)
+
+        # After the commit the cache is dropped, so the next buffer re-uploads.
+        c3 = buf.buffer_send_object(shared_list)
+        buf.commit_send_objects()
+        self.assertNotEqual(c1.object_id, c3.object_id)
         self.assertEqual(len(storage.calls), 2)
 
-    def test_dedup_survives_intermediate_commit(self) -> None:
-        """Re-buffering the same object after a commit must not re-upload it."""
+    def test_dedup_does_not_survive_commit(self) -> None:
+        """Dedup is scoped to one commit cycle: re-buffering the same object
+        after a commit re-serializes and re-uploads it."""
         buf, _agent, storage = _make_buffer()
 
-        shared = np.zeros(1024, dtype=np.uint8)  # weakreffable
+        shared = np.zeros(1024, dtype=np.uint8)
 
         c1 = buf.buffer_send_object(shared)
         buf.commit_send_objects()
@@ -128,9 +133,48 @@ class TestObjectBufferDedup(unittest.TestCase):
         c2 = buf.buffer_send_object(shared)
         buf.commit_send_objects()
 
-        self.assertEqual(c1.object_id, c2.object_id)
-        # Still only one upload total.
-        self.assertEqual(len(storage.calls), 1)
+        # Distinct upload after the intervening commit.
+        self.assertNotEqual(c1.object_id, c2.object_id)
+        self.assertEqual(len(storage.calls), 2)
+
+    def test_mutation_after_commit_is_resent(self) -> None:
+        """Mutating an object after its commit and re-buffering it uploads the
+        new contents, not a stale snapshot (the in-place-mutation footgun)."""
+        buf, _agent, storage = _make_buffer()
+
+        class _Box:
+            def __init__(self, v):
+                self.v = v
+
+        obj = _Box([1, 2, 3])
+        c1 = buf.buffer_send_object(obj)
+        buf.commit_send_objects()
+
+        obj.v.append(4)  # in-place mutation after the upload
+        c2 = buf.buffer_send_object(obj)
+        buf.commit_send_objects()
+
+        self.assertNotEqual(c1.object_id, c2.object_id)
+        # The second payload reflects the mutation (it was re-serialized).
+        self.assertNotEqual(c1.object_payload, c2.object_payload)
+        self.assertEqual(len(storage.calls), 2)
+
+    def test_send_object_path_does_not_dedup(self) -> None:
+        """The send_object() path (dedup=False) never dedups, even within a
+        batch -- it returns to the user before committing."""
+        buf, _agent, storage = _make_buffer()
+
+        class _Box:
+            def __init__(self, v):
+                self.v = v
+
+        obj = _Box(b"data")
+        c1 = buf.buffer_send_object(obj, dedup=False)
+        c2 = buf.buffer_send_object(obj, dedup=False)
+        buf.commit_send_objects()
+
+        self.assertNotEqual(c1.object_id, c2.object_id)
+        self.assertEqual(len(storage.calls), 2)
 
     def test_clear_invalidates_dedup_cache(self) -> None:
         """After clear(), the same object must be re-serialized + re-uploaded
@@ -152,12 +196,10 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertEqual(len(storage.calls), 2)
 
     def test_id_recycled_after_gc_does_not_serve_stale_cache(self) -> None:
-        """If the original object is GC'd and another object happens to land on
-        the same id, the dedup lookup must miss (the weakref guard catches it).
-        """
+        """An object GC'd after its commit, whose id is later reused, must miss:
+        the commit already dropped the cache."""
         buf, _agent, storage = _make_buffer()
 
-        # Use a class instance which supports weakref.
         class _Box:
             def __init__(self, v):
                 self.v = v
