@@ -1,35 +1,32 @@
 import abc
-from typing import List
+from typing import Dict, List
 
-from scaler.protocol.python.message import InformationSnapshot, WorkerAdapterCommand, WorkerAdapterHeartbeat
-from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerGroupCapabilities, WorkerGroupState
+from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
+from scaler.utility.identifiers import WorkerID
+from scaler.utility.snapshot import InformationSnapshot
 
 
-class ScalingController:
+class ScalingPolicy:
     """
-    Stateless scaling controller interface.
+    Stateless scaling policy interface.
 
-    All state (worker groups, capabilities) is owned by WorkerAdapterController and passed in as parameters.
-    Controllers return commands rather than mutating internal state.
+    All state (managed workers) is owned by WorkerManagerController and passed in as parameters.
+    Policies return a single declarative setDesiredTaskConcurrency command.
     """
 
     @abc.abstractmethod
     def get_scaling_commands(
         self,
         information_snapshot: InformationSnapshot,
-        adapter_heartbeat: WorkerAdapterHeartbeat,
-        worker_groups: WorkerGroupState,
-        worker_group_capabilities: WorkerGroupCapabilities,
-    ) -> List[WorkerAdapterCommand]:
-        """
-        Pure function: state in, commands out.
-
-        Returns a list of WorkerAdapterCommands. Commands are either all start or all shutdown, never mixed.
-        """
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
+        managed_worker_ids: List[WorkerID],
+        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
+    ) -> List[WorkerManagerCommand]:
+        """Pure function: state in, declarative scaling command out."""
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_status(self, worker_groups: WorkerGroupState) -> ScalingManagerStatus:
+    def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
         """Pure function: state in, status out."""
         raise NotImplementedError()

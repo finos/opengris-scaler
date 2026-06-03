@@ -60,10 +60,16 @@ Both C++ and Python code share these standards:
 - Maximum line length is 120 characters
 - Traditional OOP inheritance is highly discouraged, composition is preferred. Prefer interfaces, abstract classes
   and/or mixins
+- Abstract classes must not contain any non-abstract methods
+- Inheriting concrete methods is prohibited; shared logic must use composition (e.g. standalone functions or
+  injected collaborators)
 - Explicit naming is preferred. Avoid abbreviations unless widely understood (e.g., `msg`)
 - Avoid single letter variables (e.g. `c`), except for `i`, `j` and `n` when used as iteration variables/boundaries
 - Avoid magic numbers, prefer constants
 - Matching of naming of files, tests, namespaces/modules and directories is highly encouraged
+- When renaming a class, also check for subclasses, variables, parameters, and fields that derive their name from
+  the old class name and rename those too
+- Code, and in-code comment should not contain non-ascii characters. Non-ascii characters enclosed as a string is fine. Logging output should not contain non-ascii characters.
 
 ### Python Code
 
@@ -126,7 +132,9 @@ Both C++ and Python code share these standards:
 5. **Modern C++**:
    - Use C++20 features supported by Clang++, MSVSC++ and GCC
    - Use RAII
-   - Prefer smart pointers
+      - Use smart pointers
+      - Avoid the use of custom copy/move/assignment constructors and operators with the use of smart pointers
+      - Always prefer type-safety, especially for resources management
    - Prefer the {}-initializer syntax, avoid () initialization
    - Prefer `std::optional` over null pointers
    - Prefer `std::expected` over exceptions
@@ -143,7 +151,7 @@ Both C++ and Python code share these standards:
 
 ### Setting Up Development Environment
 
-The devcontainer (`.devcontainer/`) comes with all C++ dependencies pre-installed (CMake, GCC, Cap'n Proto, Boost,
+The devcontainer (`.devcontainer/`) comes with all C++ dependencies pre-installed (CMake, GCC, Cap'n Proto,
 libuv) as well as `uv`. You can detect the devcontainer via the `REMOTE_CONTAINERS=true` environment variable.
 When running in the devcontainer, skip the C++ dependency setup steps below.
 
@@ -162,6 +170,9 @@ uv pip install -e .
 ./scripts/library_tool.sh capnp download
 ./scripts/library_tool.sh capnp compile
 ./scripts/library_tool.sh capnp install
+./scripts/library_tool.sh libuv download
+./scripts/library_tool.sh libuv compile
+./scripts/library_tool.sh libuv install
 
 # Building C++ components standalone (only if needed outside of pip install)
 ./scripts/build.sh

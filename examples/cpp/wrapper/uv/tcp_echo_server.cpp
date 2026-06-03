@@ -1,4 +1,4 @@
-// TCP echo server using scaler::uv
+// TCP echo server using scaler::wrapper::uv
 //
 // This is the C++ equivalent of libuv's tcp-echo-server example:
 // https://github.com/libuv/libuv/blob/v1.x/docs/code/tcp-echo-server/main.c
@@ -25,13 +25,16 @@ public:
         UV_EXIT_ON_ERROR(_server.listen(defaultBacklog, std::bind_front(&TCPEchoServer::onNewConnection, this)));
     }
 
-    scaler::wrapper::uv::SocketAddress address() { return UV_EXIT_ON_ERROR(_server.getSockName()); }
+    scaler::wrapper::uv::SocketAddress address()
+    {
+        return UV_EXIT_ON_ERROR(_server.getSockName());
+    }
 
 private:
     scaler::wrapper::uv::Loop& _loop;
     scaler::wrapper::uv::TCPServer _server;
 
-    void onNewConnection(std::expected<void, scaler::wrapper::uv::Error> result)
+    void onNewConnection([[maybe_unused]] std::expected<void, scaler::wrapper::uv::Error> result)
     {
         auto client = std::make_shared<scaler::wrapper::uv::TCPSocket>(
             UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(_loop)));
@@ -53,7 +56,7 @@ private:
 
         // Copies the received buffer into a std::vector that will be shared with the write callback, to
         // ensure the written bytes will not be freed until the write completes.
-        auto buffer = std::make_shared<const std::vector<uint8_t>>(readBuffer.cbegin(), readBuffer.cend());
+        auto buffer = std::make_shared<const std::vector<uint8_t>>(readBuffer.begin(), readBuffer.end());
 
         UV_EXIT_ON_ERROR(client->write(*buffer, [buffer](std::expected<void, scaler::wrapper::uv::Error> writeResult) {
             UV_EXIT_ON_ERROR(std::move(writeResult));

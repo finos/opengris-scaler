@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 300" font-family="sans-serif" font-size="13">
+
+  <!-- Background -->
+  <rect width="820" height="300" fill="#f8f9fa" rx="8"/>
+
+  <!-- Local Machine box -->
+  <rect x="20" y="80" width="160" height="140" rx="8" fill="#fff" stroke="#4a90d9" stroke-width="2"/>
+  <rect x="20" y="80" width="160" height="32" rx="8" fill="#4a90d9"/>
+  <rect x="20" y="96" width="160" height="16" fill="#4a90d9"/>
+  <text x="100" y="101" text-anchor="middle" fill="#fff" font-weight="bold" font-size="13">Local Machine</text>
+  <text x="100" y="135" text-anchor="middle" fill="#555" font-size="12">Scaler Client</text>
+  <rect x="50" y="145" width="100" height="28" rx="4" fill="#e8f0fe" stroke="#4a90d9" stroke-width="1"/>
+  <text x="100" y="164" text-anchor="middle" fill="#333" font-size="11">scaler</text>
+
+  <!-- Arrow local → scheduler -->
+  <line x1="182" y1="150" x2="278" y2="150" stroke="#666" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="230" y="131" text-anchor="middle" fill="#555" font-size="10">TCP 6788/6789</text>
+  <text x="230" y="142" text-anchor="middle" fill="#555" font-size="10">(public IP)</text>
+
+  <!-- Scheduler EC2 Instance box -->
+  <rect x="280" y="30" width="240" height="240" rx="8" fill="#fff" stroke="#e67e22" stroke-width="2"/>
+  <rect x="280" y="30" width="240" height="32" rx="8" fill="#e67e22"/>
+  <rect x="280" y="46" width="240" height="16" fill="#e67e22"/>
+  <text x="400" y="51" text-anchor="middle" fill="#fff" font-weight="bold" font-size="13">Scheduler EC2 Instance</text>
+
+  <!-- Services inside scheduler box -->
+  <rect x="300" y="78" width="200" height="36" rx="4" fill="#fef9e7" stroke="#e67e22" stroke-width="1"/>
+  <text x="400" y="96" text-anchor="middle" fill="#333" font-size="11" font-weight="bold">Scheduler</text>
+  <text x="400" y="109" text-anchor="middle" fill="#777" font-size="10">tcp://0.0.0.0:6788</text>
+
+  <rect x="300" y="124" width="200" height="36" rx="4" fill="#fef9e7" stroke="#e67e22" stroke-width="1"/>
+  <text x="400" y="142" text-anchor="middle" fill="#333" font-size="11" font-weight="bold">Object Storage Server</text>
+  <text x="400" y="155" text-anchor="middle" fill="#777" font-size="10">tcp://0.0.0.0:6789</text>
+
+  <rect x="300" y="170" width="200" height="36" rx="4" fill="#fef9e7" stroke="#e67e22" stroke-width="1"/>
+  <text x="400" y="188" text-anchor="middle" fill="#333" font-size="11" font-weight="bold">ORB Worker Manager</text>
+  <text x="400" y="201" text-anchor="middle" fill="#777" font-size="10">orb_aws_ec2</text>
+
+  <text x="400" y="248" text-anchor="middle" fill="#aaa" font-size="10">provisions workers via AWS API</text>
+
+  <!-- Arrow scheduler → workers -->
+  <line x1="522" y1="150" x2="598" y2="150" stroke="#666" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="560" y="131" text-anchor="middle" fill="#555" font-size="10">TCP 6788/6789</text>
+  <text x="560" y="142" text-anchor="middle" fill="#555" font-size="10">(private VPC IP)</text>
+
+  <!-- Worker EC2 Instances (stacked) -->
+  <rect x="602" y="55" width="185" height="60" rx="8" fill="#fff" stroke="#27ae60" stroke-width="2"/>
+  <rect x="602" y="55" width="185" height="28" rx="8" fill="#27ae60"/>
+  <rect x="602" y="69" width="185" height="14" fill="#27ae60"/>
+  <text x="694" y="73" text-anchor="middle" fill="#fff" font-weight="bold" font-size="12">Worker EC2 Instance</text>
+  <text x="694" y="103" text-anchor="middle" fill="#555" font-size="11">Scaler Worker Processes</text>
+
+  <rect x="602" y="123" width="185" height="60" rx="8" fill="#fff" stroke="#27ae60" stroke-width="2"/>
+  <rect x="602" y="123" width="185" height="28" rx="8" fill="#27ae60"/>
+  <rect x="602" y="137" width="185" height="14" fill="#27ae60"/>
+  <text x="694" y="141" text-anchor="middle" fill="#fff" font-weight="bold" font-size="12">Worker EC2 Instance</text>
+  <text x="694" y="171" text-anchor="middle" fill="#555" font-size="11">Scaler Worker Processes</text>
+
+  <rect x="602" y="191" width="185" height="60" rx="8" fill="#fff" stroke="#27ae60" stroke-width="2"/>
+  <rect x="602" y="191" width="185" height="28" rx="8" fill="#27ae60"/>
+  <rect x="602" y="205" width="185" height="14" fill="#27ae60"/>
+  <text x="694" y="209" text-anchor="middle" fill="#fff" font-weight="bold" font-size="12">Worker EC2 Instance</text>
+  <text x="694" y="239" text-anchor="middle" fill="#555" font-size="11">Scaler Worker Processes</text>
+
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#666"/>
+    </marker>
+  </defs>
+
+</svg>

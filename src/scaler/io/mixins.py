@@ -1,16 +1,89 @@
 import abc
+import threading
+from datetime import timedelta
+from enum import Enum
 from typing import Awaitable, Callable, Optional
 
-from scaler.protocol.python.mixins import Message
-from scaler.protocol.python.status import BinderStatus
+from scaler.config.types.address import AddressConfig
+from scaler.protocol.capnp import BaseMessage, BinderStatus
 from scaler.utility.identifiers import ObjectID
 from scaler.utility.mixins import Looper, Reporter
 
 
+class ConnectorRemoteType(Enum):
+    # Connector connects to a binder
+    Binder = "binder"
+
+    # Connector connects to another connector
+    Connector = "connector"
+
+
+class NetworkBackend(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def destroy(self):
+        raise NotImplementedError()
+
+    @staticmethod
+    @abc.abstractmethod
+    def create_internal_address(name: str, same_process: bool) -> AddressConfig:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def create_async_binder(
+        self, identity: bytes, callback: Callable[[bytes, BaseMessage], Awaitable[None]]
+    ) -> "AsyncBinder":
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def create_async_connector(
+        self, identity: bytes, callback: Callable[[BaseMessage], Awaitable[None]]
+    ) -> "AsyncConnector":
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def create_async_publisher(self, identity: bytes) -> "AsyncPublisher":
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def create_sync_connector(
+        self, identity: bytes, connector_remote_type: ConnectorRemoteType, address: AddressConfig
+    ) -> "SyncConnector":
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def create_async_object_storage_connector(self, identity: bytes) -> "AsyncObjectStorageConnector":
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def create_sync_object_storage_connector(
+        self, identity: bytes, address: AddressConfig
+    ) -> "SyncObjectStorageConnector":
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def create_sync_subscriber(
+        self,
+        identity: bytes,
+        address: AddressConfig,
+        callback: Callable[[BaseMessage], None],
+        timeout: Optional[timedelta],
+    ) -> "SyncSubscriber":
+        raise NotImplementedError()
+
+
 class AsyncBinder(Looper, Reporter, metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    async def bind(self, address: AddressConfig) -> None:
+        raise NotImplementedError()
+
     @property
     @abc.abstractmethod
-    def identity(self):
+    def identity(self) -> bytes:
+        raise NotImplementedError()
+
+    @property
+    @abc.abstractmethod
+    def address(self) -> Optional[AddressConfig]:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -18,11 +91,7 @@ class AsyncBinder(Looper, Reporter, metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def register(self, callback: Callable[[bytes, Message], Awaitable[None]]):
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    async def send(self, to: bytes, message: Message):
+    async def send(self, to: bytes, message: BaseMessage):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -31,6 +100,14 @@ class AsyncBinder(Looper, Reporter, metaclass=abc.ABCMeta):
 
 
 class AsyncConnector(Looper, metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    async def connect(self, address: AddressConfig, remote_type: ConnectorRemoteType) -> None:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def bind(self, address: AddressConfig) -> None:
+        raise NotImplementedError()
+
     @abc.abstractmethod
     def destroy(self):
         raise NotImplementedError()
@@ -42,15 +119,39 @@ class AsyncConnector(Looper, metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def address(self) -> str:
+    def address(self) -> Optional[AddressConfig]:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def send(self, message: Message):
+    async def send(self, message: BaseMessage):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def receive(self) -> Optional[Message]:
+    async def receive(self) -> Optional[BaseMessage]:
+        raise NotImplementedError()
+
+
+class AsyncPublisher(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    async def bind(self, address: AddressConfig) -> None:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def destroy(self):
+        raise NotImplementedError()
+
+    @property
+    @abc.abstractmethod
+    def identity(self) -> bytes:
+        raise NotImplementedError()
+
+    @property
+    @abc.abstractmethod
+    def address(self) -> Optional[AddressConfig]:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def send(self, message: BaseMessage):
         raise NotImplementedError()
 
 
@@ -66,21 +167,21 @@ class SyncConnector(metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def address(self) -> str:
+    def address(self) -> AddressConfig:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def send(self, message: Message):
+    def send(self, message: BaseMessage):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def receive(self) -> Optional[Message]:
+    def receive(self) -> Optional[BaseMessage]:
         raise NotImplementedError()
 
 
 class AsyncObjectStorageConnector(Looper, metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def connect(self, host: str, port: int):
+    async def connect(self, address: AddressConfig):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -97,7 +198,7 @@ class AsyncObjectStorageConnector(Looper, metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def address(self) -> str:
+    def address(self) -> Optional[AddressConfig]:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -124,7 +225,7 @@ class SyncObjectStorageConnector(metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def address(self) -> str:
+    def address(self) -> AddressConfig:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -132,7 +233,7 @@ class SyncObjectStorageConnector(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_object(self, object_id: ObjectID, max_payload_length: int = 2**64 - 1) -> bytearray:
+    def get_object(self, object_id: ObjectID, max_payload_length: int = 2**64 - 1) -> bytes:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -144,7 +245,7 @@ class SyncObjectStorageConnector(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
 
-class SyncSubscriber(metaclass=abc.ABCMeta):
+class SyncSubscriber(threading.Thread, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def destroy(self):
         raise NotImplementedError()

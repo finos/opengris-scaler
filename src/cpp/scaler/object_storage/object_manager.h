@@ -36,7 +36,10 @@ public:
     // Returns the total number of unique objects stored (i.e. only count duplicate payloads once).
     size_t sizeUnique() const noexcept;
 
-    size_t totalObjectsSize() const noexcept { return totalObjectsBytes; };
+    size_t totalObjectsSize() const noexcept
+    {
+        return totalObjectsBytes;
+    };
 
 private:
     using ObjectHash = std::size_t;

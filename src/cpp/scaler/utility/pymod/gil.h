@@ -9,8 +9,13 @@ namespace pymod {
 
 class AcquireGIL {
 public:
-    AcquireGIL(): _state(PyGILState_Ensure()) {}
-    ~AcquireGIL() { PyGILState_Release(_state); }
+    AcquireGIL(): _state(PyGILState_Ensure())
+    {
+    }
+    ~AcquireGIL()
+    {
+        PyGILState_Release(_state);
+    }
 
     AcquireGIL(const AcquireGIL&)            = delete;
     AcquireGIL& operator=(const AcquireGIL&) = delete;

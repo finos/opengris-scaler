@@ -1,23 +1,26 @@
 import asyncio
 import multiprocessing
-import signal
 from asyncio import AbstractEventLoop, Task
-from typing import Any, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Optional, Tuple
 
 from scaler.config.section.scheduler import PolicyConfig, SchedulerConfig
-from scaler.config.types.object_storage_server import ObjectStorageAddressConfig
-from scaler.config.types.zmq import ZMQConfig
-from scaler.scheduler.scheduler import Scheduler, scheduler_main
+from scaler.config.types.address import AddressConfig
+from scaler.scheduler.scheduler import Scheduler
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.signal_handler import install_async_shutdown_handler
+
+if TYPE_CHECKING:
+    from multiprocessing.synchronize import Event as EventType
 
 
 class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
     def __init__(
         self,
-        address: ZMQConfig,
-        object_storage_address: Optional[ObjectStorageAddressConfig],
-        monitor_address: Optional[ZMQConfig],
+        bind_address: AddressConfig,
+        object_storage_address: AddressConfig,
+        advertised_object_storage_address: Optional[AddressConfig],
+        monitor_address: Optional[AddressConfig],
         io_threads: int,
         max_number_of_tasks_waiting: int,
         client_timeout_seconds: int,
@@ -31,11 +34,13 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         logging_paths: Tuple[str, ...],
         logging_config_file: Optional[str],
         logging_level: str,
+        shutdown_event: Optional["EventType"] = None,
     ):
-        multiprocessing.Process.__init__(self, name="Scheduler")
+        super().__init__(name="Scheduler")
         self._scheduler_config = SchedulerConfig(
-            scheduler_address=address,
+            bind_address=bind_address,
             object_storage_address=object_storage_address,
+            advertised_object_storage_address=advertised_object_storage_address,
             monitor_address=monitor_address,
             protected=protected,
             max_number_of_tasks_waiting=max_number_of_tasks_waiting,
@@ -45,13 +50,15 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
             load_balance_seconds=load_balance_seconds,
             load_balance_trigger_times=load_balance_trigger_times,
             event_loop=event_loop,
-            worker_io_threads=io_threads,
+            io_threads=io_threads,
             policy=policy,
         )
 
         self._logging_paths = logging_paths
         self._logging_config_file = logging_config_file
         self._logging_level = logging_level
+
+        self._shutdown_event = shutdown_event
 
         self._scheduler: Optional[Scheduler] = None
         self._loop: Optional[AbstractEventLoop] = None
@@ -64,7 +71,8 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
     async def _run(self) -> None:
         self.__initialize()
 
-        self._task = self._loop.create_task(scheduler_main(self._scheduler_config))
+        scheduler = Scheduler(self._scheduler_config)
+        self._task = self._loop.create_task(scheduler.get_loops())
         self.__register_signal()
         await self._task
 
@@ -73,8 +81,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         register_event_loop(self._scheduler_config.event_loop)
 
     def __register_signal(self):
-        self._loop.add_signal_handler(signal.SIGINT, self.__handle_signal)
-        self._loop.add_signal_handler(signal.SIGTERM, self.__handle_signal)
+        install_async_shutdown_handler(self._loop, self.__handle_signal, self._shutdown_event)
 
     def __handle_signal(self):
         self._loop.call_soon_threadsafe(self._task.cancel)

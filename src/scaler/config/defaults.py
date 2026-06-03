@@ -1,6 +1,6 @@
 import os
 
-from scaler.config.types.network_backend import NetworkBackend
+from scaler.config.types.network_backend import NetworkBackendType
 
 # ==============
 # SYSTEM OPTIONS
@@ -23,6 +23,7 @@ CAPNP_MESSAGE_SIZE_LIMIT = 2**64 - 1
 # ==========================
 # SCHEDULER SPECIFIC OPTIONS
 
+
 # number of threads for zmq socket to handle
 DEFAULT_IO_THREADS = 1
 
@@ -38,8 +39,8 @@ DEFAULT_WORKER_TIMEOUT_SECONDS = 60
 # tasks for this client
 DEFAULT_CLIENT_TIMEOUT_SECONDS = 60
 
-# if didn't receive heartbeat for following seconds, then scheduler will treat worker adapter as dead and disconnect it
-DEFAULT_WORKER_ADAPTER_TIMEOUT_SECONDS = 10
+# if didn't receive heartbeat for following seconds, then scheduler will treat worker manager as dead and disconnect it
+DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS = 10
 
 # number of seconds for load balance, if value is -1 means disable load balance
 DEFAULT_LOAD_BALANCE_SECONDS = 1
@@ -55,7 +56,7 @@ DEFAULT_PER_WORKER_QUEUE_SIZE = 1000
 # WORKER SPECIFIC OPTIONS
 
 # number of workers, echo worker use 1 process
-DEFAULT_NUMBER_OF_WORKER = os.cpu_count() - 1
+DEFAULT_MAX_TASK_CONCURRENCY = os.cpu_count()
 
 # number of seconds that worker agent send heartbeat to scheduler
 DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 2
@@ -94,4 +95,4 @@ DEFAULT_LOGGING_PATHS = ("/dev/stdout",)
 # =======================
 # SCALER NETWORK BACKEND SPECIFIC OPTIONS
 
-SCALER_NETWORK_BACKEND = NetworkBackend.tcp_zmq
+SCALER_NETWORK_BACKEND = NetworkBackendType.ymq

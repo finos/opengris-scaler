@@ -1,27 +1,22 @@
 import dataclasses
 import enum
-from typing import Dict, List
-
-from scaler.utility.identifiers import WorkerID
-
-WorkerGroupID = bytes
+from typing import Dict
 
 
-@dataclasses.dataclass
-class WorkerGroupInfo:
-    worker_ids: List[WorkerID]
-    capabilities: Dict[str, int]
+@dataclasses.dataclass(frozen=True)
+class WorkerManagerSnapshot:
+    """Immutable snapshot of a worker manager's state, passed to stateless scaling policies."""
+
+    worker_manager_id: bytes
+    max_task_concurrency: int
+    worker_count: int
+    last_seen_s: float  # time.time() epoch seconds of last heartbeat
+    capabilities: Dict[str, int] = dataclasses.field(default_factory=dict)
 
 
-# Type aliases for state owned by WorkerAdapterController
-WorkerGroupState = Dict[WorkerGroupID, List[WorkerID]]
-WorkerGroupCapabilities = Dict[WorkerGroupID, Dict[str, int]]
-
-
-class ScalingControllerStrategy(enum.Enum):
+class ScalingPolicyStrategy(enum.Enum):
     NO = "no"
     VANILLA = "vanilla"
-    FIXED_ELASTIC = "fixed_elastic"
     CAPABILITY = "capability"
 
     def __str__(self):

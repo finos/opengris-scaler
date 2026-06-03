@@ -1,14 +1,7 @@
 import asyncio
 import unittest
 
-from scaler.io.uv_ymq import (
-    BinderSocket,
-    Bytes,
-    ConnectorSocket,
-    ErrorCode,
-    IOContext,
-)
-from scaler.io.uv_ymq import _uv_ymq
+from scaler.io.ymq import BinderSocket, Bytes, ConnectorSocket, ErrorCode, InvalidAddressFormatError, IOContext
 
 
 class TestSockets(unittest.IsolatedAsyncioTestCase):
@@ -32,7 +25,7 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_address(self):
         ctx = IOContext()
 
-        with self.assertRaises(_uv_ymq.InvalidAddressFormatError) as exc:
+        with self.assertRaises(InvalidAddressFormatError) as exc:
             await BinderSocket(ctx, "binder").bind_to("invalid_address")
         self.assertEqual(exc.exception.code, ErrorCode.InvalidAddressFormat)
 
@@ -122,3 +115,39 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
             assert msg.address is not None
             self.assertEqual(msg.address.data, b"connector")
             self.assertEqual(msg.payload.data, b"." * 500_000_000)
+
+    async def test_multicast(self):
+        ctx = IOContext()
+        binder = BinderSocket(ctx, "binder")
+
+        address = await binder.bind_to("tcp://127.0.0.1:0")
+
+        connector1 = ConnectorSocket.connect(ctx, "connector1", repr(address))
+        connector2 = ConnectorSocket.connect(ctx, "connector2", repr(address))
+
+        # make sure all connectors are connected
+
+        await connector1.send_message(Bytes(b"ready1"))
+        await connector2.send_message(Bytes(b"ready2"))
+
+        await binder.recv_message()
+        await binder.recv_message()
+
+        # send a broadcast message
+
+        binder.send_multicast_message(Bytes(b"all"))
+
+        msg1 = await connector1.recv_message()
+        msg2 = await connector2.recv_message()
+        self.assertEqual(msg1.payload.data, b"all")
+        self.assertEqual(msg2.payload.data, b"all")
+
+        # send a multicast message only matching connector 1
+
+        binder.send_multicast_message(Bytes(b"filtered"), "connector1")
+
+        msg1 = await connector1.recv_message()
+        self.assertEqual(msg1.payload.data, b"filtered")
+
+        with self.assertRaises(asyncio.TimeoutError):
+            await asyncio.wait_for(connector2.recv_message(), timeout=0.2)  # connector2 should not receive anything

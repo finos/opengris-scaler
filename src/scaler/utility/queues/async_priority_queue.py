@@ -16,7 +16,7 @@ class AsyncPriorityQueue(Queue):
         return len(self._queue)
 
     def _init(self, maxsize):
-        self._queue = StablePriorityQueue()
+        self._queue: StablePriorityQueue[PriorityType, Any] = StablePriorityQueue()
 
     def _put(self, item):
         if not isinstance(item, list):

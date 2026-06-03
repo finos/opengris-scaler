@@ -1,18 +1,16 @@
-if(WIN32)
-    find_package(libuv REQUIRED)
-    set(LIBUV_TARGET libuv::uv)
+find_package(libuv QUIET)
+if(libuv_FOUND)
+    # Prefer the static archive on every platform so dependents (.pyd, executables) have no
+    # runtime libuv DLL/.so dependency. The Win32 system libraries libuv needs (psapi, ws2_32,
+    # ...) are propagated via INTERFACE_LINK_LIBRARIES on the imported target.
+    set(LIBUV_TARGET libuv::uv_a)
 else()
-    find_package(libuv QUIET)
-    if(libuv_FOUND)
-        set(LIBUV_TARGET libuv::uv_a)
-    else()
-        find_package(PkgConfig REQUIRED)
-        pkg_check_modules(libuv REQUIRED IMPORTED_TARGET libuv)
-        set(LIBUV_TARGET PkgConfig::libuv)
-    endif()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(libuv REQUIRED IMPORTED_TARGET libuv)
+    set(LIBUV_TARGET PkgConfig::libuv)
 endif()
 
-add_library(scaler_wrapper_uv OBJECT
+add_library(scaler_wrapper_uv STATIC
     async.h
     async.cpp
 

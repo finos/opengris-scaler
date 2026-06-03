@@ -3,8 +3,7 @@ from typing import Any, Callable, Optional
 
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
-from scaler.protocol.python.common import TaskState
-from scaler.protocol.python.message import Task, TaskCancel
+from scaler.protocol.capnp import Task, TaskCancel, TaskState
 from scaler.utility.event_list import EventList
 from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
@@ -38,7 +37,7 @@ class ScalerFuture(concurrent.futures.Future):
         self._waiters = EventList(self._waiters)  # type: ignore[assignment]
         self._waiters.add_update_callback(self._on_waiters_updated)  # type: ignore[attr-defined]
 
-        self._task_id: TaskID = task.task_id
+        self._task_id: TaskID = task.taskId
         self._is_delayed: bool = is_delayed
         self._group_task_id: Optional[TaskID] = group_task_id
         self._serializer: Serializer = serializer
@@ -88,6 +87,30 @@ class ScalerFuture(concurrent.futures.Future):
     def set_canceled(self):
         with self._condition:
             if self.done():
+                return
+
+            self._state = "CANCELLED_AND_NOTIFIED"
+            self._result_received = True
+            self._cancel_requested = True
+
+            for waiter in self._waiters:
+                waiter.add_cancelled(self)
+
+            self._condition.notify_all()  # type: ignore[attr-defined]
+
+        self._invoke_callbacks()  # type: ignore[attr-defined]
+
+    def force_set_canceled(self):
+        """Mark the future as cancelled regardless of its current state.
+
+        Unlike `set_canceled`, this also overrides FINISHED states (set_result_ready /
+        set_exception). Intended for `Client.disconnect`, where the network-driven cancel
+        round-trip can race with the agent thread setting an exception/result on the same
+        future; once the client is disconnecting, the original outcome is no longer reachable
+        to user code, so we collapse to CANCELLED for a consistent observable state.
+        """
+        with self._condition:
+            if self.cancelled():
                 return
 
             self._state = "CANCELLED_AND_NOTIFIED"
@@ -176,9 +199,9 @@ class ScalerFuture(concurrent.futures.Future):
                 cancel_flags = TaskCancel.TaskCancelFlags(force=True)
 
                 if self._group_task_id is not None:
-                    self._connector_agent.send(TaskCancel.new_msg(self._group_task_id, flags=cancel_flags))
+                    self._connector_agent.send(TaskCancel(taskId=self._group_task_id, flags=cancel_flags))
                 else:
-                    self._connector_agent.send(TaskCancel.new_msg(self._task_id, flags=cancel_flags))
+                    self._connector_agent.send(TaskCancel(taskId=self._task_id, flags=cancel_flags))
 
                 self._cancel_requested = True
 
@@ -216,16 +239,16 @@ class ScalerFuture(concurrent.futures.Future):
             if self._result_object_id is None or self.cancelled() or self._result_received:
                 return
 
-            object_bytes = self._connector_storage.get_object(self._result_object_id)
+            object_bytes = bytes(self._connector_storage.get_object(self._result_object_id))
 
             if self._is_simple_task():
                 # immediately delete non graph result objects
                 # TODO: graph task results could also be deleted if these are not required by another task of the graph.
                 self._connector_storage.delete_object(self._result_object_id)
 
-            if self._task_state == TaskState.Success:
+            if self._task_state == TaskState.success:
                 self.set_result(self._serializer.deserialize(object_bytes))
-            elif self._task_state == TaskState.Failed:
+            elif self._task_state == TaskState.failed:
                 self.set_exception(deserialize_failure(object_bytes))
             else:
                 raise ValueError(f"unexpected task status: {self._task_state}")

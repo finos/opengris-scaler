@@ -2,9 +2,8 @@ from typing import Optional
 
 import psutil
 
-from scaler.io.mixins import AsyncBinder, AsyncConnector
-from scaler.protocol.python.message import InformationRequest, StateScheduler
-from scaler.protocol.python.status import Resource
+from scaler.io.mixins import AsyncBinder, AsyncPublisher
+from scaler.protocol.capnp import InformationRequest, Resource, StateScheduler
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import (
     ClientController,
@@ -13,7 +12,7 @@ from scaler.scheduler.controllers.mixins import (
     TaskController,
     WorkerController,
 )
-from scaler.scheduler.controllers.worker_adapter_controller import WorkerAdapterController
+from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
 from scaler.utility.mixins import Looper
 
 
@@ -23,23 +22,23 @@ class VanillaInformationController(InformationController, Looper):
 
         self._process = psutil.Process()
 
-        self._monitor_binder: Optional[AsyncConnector] = None
+        self._monitor_binder: Optional[AsyncPublisher] = None
         self._binder: Optional[AsyncBinder] = None
         self._client_controller: Optional[ClientController] = None
         self._object_controller: Optional[ObjectController] = None
         self._task_controller: Optional[TaskController] = None
         self._worker_controller: Optional[WorkerController] = None
-        self._worker_adapter_controller: Optional[WorkerAdapterController] = None
+        self._worker_manager_controller: Optional[WorkerManagerController] = None
 
     def register_managers(
         self,
-        monitor_binder: AsyncConnector,
+        monitor_binder: AsyncPublisher,
         binder: AsyncBinder,
         client_controller: ClientController,
         object_controller: ObjectController,
         task_controller: TaskController,
         worker_controller: WorkerController,
-        worker_adapter_controller: WorkerAdapterController,
+        worker_manager_controller: WorkerManagerController,
     ):
         self._monitor_binder = monitor_binder
         self._binder = binder
@@ -47,7 +46,7 @@ class VanillaInformationController(InformationController, Looper):
         self._object_controller = object_controller
         self._task_controller = task_controller
         self._worker_controller = worker_controller
-        self._worker_adapter_controller = worker_adapter_controller
+        self._worker_manager_controller = worker_manager_controller
 
     async def on_request(self, request: InformationRequest):
         # TODO: implement commands
@@ -55,14 +54,14 @@ class VanillaInformationController(InformationController, Looper):
 
     async def routine(self):
         await self._monitor_binder.send(
-            StateScheduler.new_msg(
+            StateScheduler(
                 binder=self._binder.get_status(),
-                scheduler=Resource.new_msg(int(self._process.cpu_percent() * 10), self._process.memory_info().rss),
-                rss_free=psutil.virtual_memory().available,
-                client_manager=self._client_controller.get_status(),
-                object_manager=self._object_controller.get_status(),
-                task_manager=self._task_controller.get_status(),
-                worker_manager=self._worker_controller.get_status(),
-                scaling_manager=self._worker_adapter_controller.get_status(),
+                scheduler=Resource(cpu=int(self._process.cpu_percent() * 10), rss=self._process.memory_info().rss),
+                rssFree=psutil.virtual_memory().available,
+                clientManager=self._client_controller.get_status(),
+                objectManager=self._object_controller.get_status(),
+                taskManager=self._task_controller.get_status(),
+                workerManager=self._worker_controller.get_status(),
+                scalingManager=self._worker_manager_controller.get_status(),
             )
         )

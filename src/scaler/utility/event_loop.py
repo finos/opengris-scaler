@@ -72,6 +72,12 @@ def run_task_forever(
     try:
         loop.run_until_complete(task)
     finally:
+        pending = asyncio.all_tasks(loop)
+        for pending_task in pending:
+            pending_task.cancel()
+        if pending:
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+
         if cleanup_callback is not None:
             cleanup_callback()
 

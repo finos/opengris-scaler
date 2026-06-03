@@ -1,4 +1,4 @@
-__pychace__/
+__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -36,6 +36,9 @@ CMakeFiles/
 src/scaler/protocol/capnp/*.c++
 src/scaler/protocol/capnp/*.h
 
+orb/logs/
+orb/metrics/
+
 # AWS HPC test-generated files
 .scaler_aws_batch_config.json
 .scaler_aws_hpc.env
@@ -46,3 +49,6 @@ tests/worker_manager_adapter/oci_hpc/.scaler_oci_hpc.env
 
 # Per-user agent preferences (not committed)
 .agents-local.md
+
+.ipynb_checkpoints/
+.claude/

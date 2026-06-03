@@ -1,114 +1,68 @@
-import asyncio
+from __future__ import annotations
+
 import logging
 import os
 import signal
+import sys
 import uuid
-from typing import Dict, Tuple
+from typing import TYPE_CHECKING, Dict, List
 
-import zmq
+import psutil
 
-from scaler.config.section.native_worker_adapter import NativeWorkerAdapterConfig
-from scaler.io import uv_ymq
-from scaler.io.utility import create_async_connector, create_async_simple_context
-from scaler.io.ymq import ymq
-from scaler.protocol.python.message import (
-    Message,
-    WorkerAdapterCommand,
-    WorkerAdapterCommandResponse,
-    WorkerAdapterCommandType,
-    WorkerAdapterHeartbeat,
-    WorkerAdapterHeartbeatEcho,
-)
-from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
+from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.utility.identifiers import WorkerID
-from scaler.utility.logging.utility import setup_logger
 from scaler.worker.worker import Worker
-from scaler.worker_manager_adapter.common import WorkerGroupID
+from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
+from scaler.worker_manager_adapter.common import extract_desired_count
+from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
+from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRunner
 
-Status = WorkerAdapterCommandResponse.Status
+if TYPE_CHECKING:
+    from scaler.protocol.capnp import WorkerManagerCommand
 
 
-class NativeWorkerAdapter:
-    def __init__(self, config: NativeWorkerAdapterConfig):
-        self._address = config.worker_adapter_config.scheduler_address
-        self._object_storage_address = config.worker_adapter_config.object_storage_address
+class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
+    def __init__(self, config: NativeWorkerManagerConfig) -> None:
+        self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
+        self._object_storage_address = config.worker_manager_config.object_storage_address
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
-        self._io_threads = config.worker_io_threads
+        self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
+        self._io_threads = config.worker_config.io_threads
         self._task_queue_size = config.worker_config.per_worker_task_queue_size
-        self._max_workers = config.worker_adapter_config.max_workers
+        self._max_task_concurrency = config.worker_manager_config.max_task_concurrency
         self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
         self._task_timeout_seconds = config.worker_config.task_timeout_seconds
         self._death_timeout_seconds = config.worker_config.death_timeout_seconds
         self._garbage_collect_interval_seconds = config.worker_config.garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = config.worker_config.trim_memory_threshold_bytes
         self._hard_processor_suspend = config.worker_config.hard_processor_suspend
-        self._event_loop = config.event_loop
+        self._event_loop = config.worker_config.event_loop
+        self._preload = config.worker_config.preload
         self._logging_paths = config.logging_config.paths
         self._logging_level = config.logging_config.level
         self._logging_config_file = config.logging_config.config_file
-        self._preload = config.preload
-        self._workers_per_group = 1
 
-        self._context = create_async_simple_context()
-        self._name = "worker_adapter_native"
+        if config.worker_type is not None:
+            self._worker_prefix = config.worker_type
+        elif config.mode == NativeWorkerManagerMode.FIXED:
+            self._worker_prefix = "FIX"
+        elif config.mode == NativeWorkerManagerMode.DYNAMIC:
+            self._worker_prefix = "NAT"
+        else:
+            raise ValueError(f"worker_type is not set and mode is unrecognised: {config.mode!r}")
 
-        self._ident = f"{self._name}|{uuid.uuid4().bytes.hex()}".encode()
-        self._connector_external = create_async_connector(
-            self._context,
-            name="worker_adapter_native",
-            socket_type=zmq.DEALER,
-            address=self._address,
-            bind_or_connect="connect",
-            callback=self.__on_receive_external,
-            identity=self._ident,
+        self._workers: List[Worker] = []
+        self._capacity_coordinator = CapacityCoordinator(
+            start_units=self.start_units,
+            stop_units=self.stop_units,
+            active_unit_count=self.active_unit_count,
+            max_unit_count=self._max_task_concurrency,
         )
 
-        """
-        Although a worker group can contain multiple workers, in this native adapter implementation,
-        each worker group will only contain one worker.
-        """
-        self._worker_groups: Dict[WorkerGroupID, Dict[WorkerID, Worker]] = {}
-
-    async def __on_receive_external(self, message: Message):
-        if isinstance(message, WorkerAdapterCommand):
-            await self._handle_command(message)
-
-        elif isinstance(message, WorkerAdapterHeartbeatEcho):
-            pass
-
-        else:
-            print(f"Received unknown message type: {type(message)}")
-
-    async def _handle_command(self, command: WorkerAdapterCommand):
-        cmd_type = command.command
-        worker_group_id = command.worker_group_id
-        response_status = Status.Success
-
-        cmd_res = WorkerAdapterCommandType.StartWorkerGroup
-        if cmd_type == WorkerAdapterCommandType.StartWorkerGroup:
-            cmd_res = WorkerAdapterCommandType.StartWorkerGroup
-            worker_group_id, response_status = await self.start_worker_group()
-        elif cmd_type == WorkerAdapterCommandType.ShutdownWorkerGroup:
-            cmd_res = WorkerAdapterCommandType.ShutdownWorkerGroup
-            response_status = await self.shutdown_worker_group(worker_group_id)
-        else:
-            raise ValueError("Unknown WorkerAdapterCommand")
-
-        await self._connector_external.send(
-            WorkerAdapterCommandResponse.new_msg(
-                worker_group_id=worker_group_id, command=cmd_res, status=response_status
-            )
-        )
-        return
-
-    async def start_worker_group(self) -> Tuple[WorkerGroupID, Status]:
-        num_of_workers = sum(len(workers) for workers in self._worker_groups.values())
-        if num_of_workers >= self._max_workers != -1:
-            return b"", Status.WorkerGroupTooMuch
-
-        worker = Worker(
-            name=f"NAT|{uuid.uuid4().hex}",
-            address=self._address,
+    def _create_worker(self) -> Worker:
+        return Worker(
+            name=f"{self._worker_prefix}|{uuid.uuid4().hex}",
+            address=self._worker_scheduler_address,
             object_storage_address=self._object_storage_address,
             preload=self._preload,
             capabilities=self._capabilities,
@@ -123,77 +77,87 @@ class NativeWorkerAdapter:
             event_loop=self._event_loop,
             logging_paths=self._logging_paths,
             logging_level=self._logging_level,
+            worker_manager_id=self._worker_manager_id,
         )
 
-        worker.start()
-        worker_group_id = f"native-{uuid.uuid4().hex}".encode()
-        self._worker_groups[worker_group_id] = {worker.identity: worker}
-        print(f"Start worker group, {self._ident!r}")
-        return worker_group_id, Status.Success
+    def run_fixed(self) -> None:
+        fixed_workers: Dict[WorkerID, Worker] = {}
+        for _ in range(self._max_task_concurrency):
+            worker = self._create_worker()
+            worker.start()
+            fixed_workers[worker.identity] = worker
 
-    async def shutdown_worker_group(self, worker_group_id: WorkerGroupID) -> Status:
-        if not worker_group_id:
-            return Status.WorkerGroupIDNotSpecified
+        def _on_signal(sig: int, frame: object) -> None:
+            logging.info("NativeWorkerProvisioner (FIXED): received signal %d, terminating workers", sig)
+            for worker in fixed_workers.values():
+                if worker.is_alive():
+                    worker.terminate()
 
-        if worker_group_id not in self._worker_groups:
-            logging.warning(f"Worker group with ID {bytes(worker_group_id).decode()} does not exist.")
-            return Status.WorkerGroupIDNotFound
+        signal.signal(signal.SIGTERM, _on_signal)
+        signal.signal(signal.SIGINT, _on_signal)
 
-        for worker in self._worker_groups[worker_group_id].values():
-            os.kill(worker.pid, signal.SIGINT)
+        for worker in fixed_workers.values():
             worker.join()
 
-        self._worker_groups.pop(worker_group_id)
-        return Status.Success
+    async def set_desired_task_concurrency(
+        self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
+    ) -> None:
+        task_concurrency = extract_desired_count(requests, self._capabilities)
+        await self._capacity_coordinator.set_desired_unit_count(task_concurrency)
+
+    def active_unit_count(self) -> int:
+        return len(self._workers)
+
+    async def start_units(self, count: int) -> None:
+        for _ in range(count):
+            worker = self._create_worker()
+            worker.start()
+            self._workers.append(worker)
+            logging.info(f"Started native worker {worker.identity!r}")
+
+    async def stop_units(self, count: int) -> None:
+        to_stop = self._workers[:count]
+        if len(to_stop) < count:
+            logging.warning(f"Requested to stop {count} worker(s) but only {len(to_stop)} available.")
+        for worker in to_stop:
+            if sys.platform == "win32":
+                # Windows os.kill with SIGINT only works for processes attached to the same console.
+                # TerminateProcess is forceful: the worker's __destroy/__graceful_shutdown handlers
+                # do not run, so the scheduler will time out the worker on its own.
+                psutil.Process(worker.pid).terminate()
+            else:
+                os.kill(worker.pid, signal.SIGINT)
+            self._workers.pop(0)
+            logging.info(f"Stopped native worker {worker.identity!r}")
+
+    async def terminate(self) -> None:
+        self._capacity_coordinator.cancel()
+        await self.stop_units(len(self._workers))
+
+
+class NativeWorkerManager:
+    def __init__(self, config: NativeWorkerManagerConfig) -> None:
+        self._config = config
+
+    @property
+    def config(self) -> NativeWorkerManagerConfig:
+        return self._config
 
     def run(self) -> None:
-        self._loop = asyncio.new_event_loop()
-        run_task_forever(self._loop, self._run(), cleanup_callback=self._cleanup)
+        provisioner = NativeWorkerProvisioner(self._config)
 
-    def _cleanup(self):
-        if self._connector_external is not None:
-            self._connector_external.destroy()
+        if self._config.mode == NativeWorkerManagerMode.FIXED:
+            provisioner.run_fixed()
+            return
 
-    def __destroy(self):
-        print(f"Worker adapter {self._ident!r} received signal, shutting down")
-        self._task.cancel()
-
-    def __register_signal(self):
-        self._loop.add_signal_handler(signal.SIGINT, self.__destroy)
-        self._loop.add_signal_handler(signal.SIGTERM, self.__destroy)
-
-    async def _run(self) -> None:
-        register_event_loop(self._event_loop)
-        setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
-
-        self._task = self._loop.create_task(self.__get_loops())
-        self.__register_signal()
-        await self._task
-
-    async def __send_heartbeat(self):
-        await self._connector_external.send(
-            WorkerAdapterHeartbeat.new_msg(
-                max_worker_groups=self._max_workers,
-                workers_per_group=self._workers_per_group,
-                capabilities=self._capabilities,
-            )
+        runner = WorkerManagerRunner(
+            address=self._config.worker_manager_config.scheduler_address,
+            name="worker_manager_native",
+            heartbeat_interval_seconds=self._config.worker_config.heartbeat_interval_seconds,
+            capabilities=self._config.worker_config.per_worker_capabilities.capabilities,
+            max_provisioner_units=self._config.worker_manager_config.max_task_concurrency,
+            worker_manager_id=self._config.worker_manager_config.worker_manager_id.encode(),
+            worker_provisioner=provisioner,
+            io_threads=self._config.worker_config.io_threads,
         )
-
-    async def __get_loops(self):
-        loops = [
-            create_async_loop_routine(self._connector_external.routine, 0),
-            create_async_loop_routine(self.__send_heartbeat, self._heartbeat_interval_seconds),
-        ]
-
-        try:
-            await asyncio.gather(*loops)
-        except asyncio.CancelledError:
-            pass
-        except (ymq.YMQException, uv_ymq.UVYMQException) as e:
-            if e.code in {
-                ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd,
-                uv_ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd,
-            }:
-                pass
-            else:
-                logging.exception(f"{self._ident!r}: failed with unhandled exception:\n{e}")
+        runner.run()

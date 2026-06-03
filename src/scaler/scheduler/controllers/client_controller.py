@@ -2,15 +2,16 @@ import logging
 import time
 from typing import Dict, Optional, Set, Tuple
 
-from scaler.io.mixins import AsyncBinder, AsyncConnector
-from scaler.protocol.python.message import (
+from scaler.io.mixins import AsyncBinder, AsyncPublisher
+from scaler.protocol.capnp import (
     ClientDisconnect,
     ClientHeartbeat,
     ClientHeartbeatEcho,
+    ClientManagerStatus,
     ClientShutdownResponse,
+    ObjectStorageAddress,
     TaskCancel,
 )
-from scaler.protocol.python.status import ClientManagerStatus
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import ClientController, ObjectController, TaskController, WorkerController
 from scaler.utility.exceptions import ClientShutdownException
@@ -26,7 +27,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
         self._client_to_task_ids: OneToManyDict[ClientID, TaskID] = OneToManyDict()
 
         self._binder: Optional[AsyncBinder] = None
-        self._binder_monitor: Optional[AsyncConnector] = None
+        self._binder_monitor: Optional[AsyncPublisher] = None
         self._object_controller: Optional[ObjectController] = None
         self._task_controller: Optional[TaskController] = None
         self._worker_controller: Optional[WorkerController] = None
@@ -36,7 +37,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
     def register(
         self,
         binder: AsyncBinder,
-        binder_monitor: AsyncConnector,
+        binder_monitor: AsyncPublisher,
         object_controller: ObjectController,
         task_controller: TaskController,
         worker_controller: WorkerController,
@@ -63,10 +64,16 @@ class VanillaClientController(ClientController, Looper, Reporter):
         return self._client_to_task_ids.remove_value(task_id)
 
     async def on_heartbeat(self, client_id: ClientID, info: ClientHeartbeat):
+        object_storage_address = self._config_controller.get_config("advertised_object_storage_address")
+
         await self._binder.send(
             client_id,
-            ClientHeartbeatEcho.new_msg(
-                object_storage_address=self._config_controller.get_config("object_storage_address")
+            ClientHeartbeatEcho(
+                objectStorageAddress=ObjectStorageAddress(
+                    host=object_storage_address.host,
+                    port=object_storage_address.port,
+                    scheme=object_storage_address.type.value,
+                )
             ),
         )
         if client_id not in self._client_last_seen:
@@ -75,7 +82,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
         self._client_last_seen[client_id] = (time.time(), info)
 
     async def on_client_disconnect(self, client_id: ClientID, request: ClientDisconnect):
-        if request.disconnect_type == ClientDisconnect.DisconnectType.Disconnect:
+        if request.disconnectType == ClientDisconnect.DisconnectType.disconnect:
             await self.__on_client_disconnect(client_id)
             return
 
@@ -86,7 +93,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
             logging.info(f"shutdown scheduler and all clusters as received signal from {client_id!r}")
             accepted = True
 
-        await self._binder.send(client_id, ClientShutdownResponse.new_msg(accepted=accepted))
+        await self._binder.send(client_id, ClientShutdownResponse(accepted=accepted))
 
         if self._config_controller.get_config("protected"):
             return
@@ -99,8 +106,18 @@ class VanillaClientController(ClientController, Looper, Reporter):
         await self.__routine_cleanup_clients()
 
     def get_status(self) -> ClientManagerStatus:
-        return ClientManagerStatus.new_msg(
-            {client: len(task_ids) for client, task_ids in self._client_to_task_ids.items()}
+        return ClientManagerStatus(
+            clientToNumOfTask=[
+                ClientManagerStatus.Pair(
+                    client=client,
+                    numTask=(
+                        len(self._client_to_task_ids.get_values(client))
+                        if self._client_to_task_ids.has_key(client)
+                        else 0
+                    ),
+                )
+                for client in self._client_last_seen.keys()
+            ]
         )
 
     async def __routine_cleanup_clients(self):
@@ -128,4 +145,4 @@ class VanillaClientController(ClientController, Looper, Reporter):
 
         tasks = self._client_to_task_ids.get_values(client_id).copy()
         for task in tasks:
-            await self._task_controller.on_task_cancel(client_id, TaskCancel.new_msg(task))
+            await self._task_controller.on_task_cancel(client_id, TaskCancel(taskId=task))

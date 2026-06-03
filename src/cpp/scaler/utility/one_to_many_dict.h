@@ -13,10 +13,19 @@ struct OneToManyDict {
     using IterType        = decltype(_keyToValues)::iterator;
     using BucketCountType = decltype(_keyToValues)::size_type;
 
-    bool contains(const K& key) { return _keyToValues.contains(key); }
+    bool contains(const K& key)
+    {
+        return _keyToValues.contains(key);
+    }
 
-    const std::unordered_map<K, std::unordered_set<V>>& keys() { return _keyToValues; }
-    const std::unordered_map<V, K>& values() { return _valueToKey; }
+    const std::unordered_map<K, std::unordered_set<V>>& keys()
+    {
+        return _keyToValues;
+    }
+    const std::unordered_map<V, K>& values()
+    {
+        return _valueToKey;
+    }
 
     bool add(const K& key, const V& value)
     {
@@ -29,8 +38,14 @@ struct OneToManyDict {
         return true;
     }
 
-    bool hasKey(const K& key) { return _keyToValues.contains(key); }
-    bool hasValue(const V& value) { return _valueToKey.contains(value); }
+    bool hasKey(const K& key)
+    {
+        return _keyToValues.contains(key);
+    }
+    bool hasValue(const V& value)
+    {
+        return _valueToKey.contains(value);
+    }
 
     const K* getKey(const V& value)
     {

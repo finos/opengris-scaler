@@ -33,9 +33,15 @@ public:
     // See uv_loop_init, uv_loop_configure
     static std::expected<Loop, Error> init(std::initializer_list<LoopOption> options = {}) noexcept;
 
-    constexpr uv_loop_t& native() noexcept { return *_native; };
+    constexpr uv_loop_t& native() noexcept
+    {
+        return *_native;
+    };
 
-    constexpr const uv_loop_t& native() const noexcept { return *_native; };
+    constexpr const uv_loop_t& native() const noexcept
+    {
+        return *_native;
+    };
 
     // See uv_run
     int run(uv_run_mode mode = UV_RUN_DEFAULT) noexcept;

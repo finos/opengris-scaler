@@ -33,14 +33,13 @@ static void PyObjectStorageServerDealloc(PyObject* self)
 static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
 {
     const char* addr;
-    int port;
     const char* identity;
     const char* log_level;
     const char* log_format;
     PyObject* logging_paths_tuple = nullptr;
 
     if (!PyArg_ParseTuple(
-            args, "sisssO!", &addr, &port, &identity, &log_level, &log_format, &PyTuple_Type, &logging_paths_tuple))
+            args, "ssssO!", &addr, &identity, &log_level, &log_format, &PyTuple_Type, &logging_paths_tuple))
         return nullptr;
 
     std::vector<std::string> logging_paths;
@@ -64,20 +63,18 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
 
     // we have to copy this memory before releasing the GIL
     // because it's owned by Python
-    std::string s_addr(addr);
-    std::string s_port = std::to_string(port);
-    std::string s_identity(identity);
-    std::string s_log_level(log_level);
-    std::string s_log_format(log_format);
+    std::string addressString(addr);
+    std::string identityString(identity);
+    std::string logLevelString(log_level);
+    std::string logFormatString(log_format);
 
     Py_BEGIN_ALLOW_THREADS;
     ((PyObjectStorageServer*)self)
         ->server.run(
-            std::move(s_addr),
-            std::move(s_port),
-            std::move(s_identity),
-            std::move(s_log_level),
-            std::move(s_log_format),
+            std::move(addressString),
+            std::move(identityString),
+            std::move(logLevelString),
+            std::move(logFormatString),
             std::move(logging_paths),
             std::move(running));
     Py_END_ALLOW_THREADS;
@@ -103,35 +100,54 @@ static PyMethodDef PyObjectStorageServerMethods[] = {
     {nullptr, nullptr, 0, nullptr},
 };
 
-static PyTypeObject PyObjectStorageServerType = {
-    .tp_name      = "object_storage_server.ObjectStorageServer",
-    .tp_basicsize = sizeof(PyObjectStorageServer),
-    .tp_dealloc   = (destructor)PyObjectStorageServerDealloc,
-    .tp_flags     = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-    .tp_doc       = "ObjectStorageServer",
-    .tp_methods   = PyObjectStorageServerMethods,
-    .tp_init      = (initproc)PyObjectStorageServerInit,
-    .tp_new       = PyObjectStorageServerNew,
+static PyType_Slot PyObjectStorageServerSlots[] = {
+    {Py_tp_new, (void*)PyObjectStorageServerNew},
+    {Py_tp_init, (void*)PyObjectStorageServerInit},
+    {Py_tp_dealloc, (void*)PyObjectStorageServerDealloc},
+    {Py_tp_methods, (void*)PyObjectStorageServerMethods},
+    {Py_tp_doc, (void*)"ObjectStorageServer"},
+    {0, nullptr},
+};
+
+static PyType_Spec PyObjectStorageServerSpec = {
+    .name      = "object_storage_server.ObjectStorageServer",
+    .basicsize = sizeof(PyObjectStorageServer),
+    .itemsize  = 0,
+    .flags     = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .slots     = PyObjectStorageServerSlots,
 };
 
 static PyModuleDef PyObjectStorageServerModule = {
-    .m_base = PyModuleDef_HEAD_INIT,
-    .m_name = "object_storage_server",
-    .m_size = -1,
+    .m_base     = PyModuleDef_HEAD_INIT,
+    .m_name     = "object_storage_server",
+    .m_doc      = nullptr,
+    .m_size     = -1,
+    .m_methods  = nullptr,
+    .m_slots    = nullptr,
+    .m_traverse = nullptr,
+    .m_clear    = nullptr,
+    .m_free     = nullptr,
 };
 
 PyMODINIT_FUNC PyInit_object_storage_server(void)
 {
-    PyObject* m;
-    if (PyType_Ready(&PyObjectStorageServerType) < 0)
+    PyObject* m = PyModule_Create(&PyObjectStorageServerModule);
+    if (!m) {
         return nullptr;
+    }
 
-    m = PyModule_Create(&PyObjectStorageServerModule);
-    if (m == nullptr)
+    PyObject* type = PyType_FromSpec(&PyObjectStorageServerSpec);
+    if (!type) {
+        Py_DECREF(m);
         return nullptr;
+    }
 
-    Py_INCREF(&PyObjectStorageServerType);
-    PyModule_AddObject(m, "ObjectStorageServer", (PyObject*)&PyObjectStorageServerType);
+    if (PyModule_AddObject(m, "ObjectStorageServer", type) < 0) {
+        Py_DECREF(type);
+        Py_DECREF(m);
+        return nullptr;
+    }
+
     return m;
 }
 }

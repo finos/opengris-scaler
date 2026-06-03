@@ -21,7 +21,7 @@ class AsyncIndexedQueue(Queue, Generic[ItemType]):
         return self._queue.__len__()
 
     def _init(self, maxsize):
-        self._queue = IndexedQueue()
+        self._queue: IndexedQueue[ItemType] = IndexedQueue()
 
     def _put(self, item: ItemType):
         self._queue.put(item)

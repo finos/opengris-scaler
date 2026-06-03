@@ -14,7 +14,9 @@ namespace uv {
 
 struct Error {
     // See UV_xxx error codes.
-    constexpr Error(int code) noexcept: _code(code) {}
+    constexpr Error(int code) noexcept: _code(code)
+    {
+    }
 
     int code() const noexcept;
 
@@ -40,16 +42,16 @@ private:
 //
 //     Loop loop = UV_EXIT_ON_ERROR(Loop::init(loopFlags));
 //
-#define UV_EXIT_ON_ERROR(expr) scaler::wrapper::uv::_exitOnError(#expr, std::move(expr))
+#define UV_EXIT_ON_ERROR(expr) scaler::wrapper::uv::_exitOnError(#expr, std::forward<decltype(expr)>(expr))
 
 template <typename T>
-T _exitOnError(std::string_view functionName, std::expected<T, Error>&& result)
+T _exitOnError(std::string_view functionName, std::expected<T, Error> result)
 {
     if (!result.has_value()) {
         uv::Error uvError = result.error();
 
         unrecoverableError({
-            ymq::Error::ErrorCode::UVError,
+            ymq::Error::ErrorCode::SysCallError,
             "Originated from",
             std::string {functionName},
             "Error code",

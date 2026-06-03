@@ -3,37 +3,43 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to Scaler's documentation!
-==================================
+.. title:: OpenGris Scaler
 
-Scaler is a lightweight distributed computing Python framework that lets you easily distribute tasks across multiple machines or parallelize on a single machine.
+OpenGris Scaler
+===============
 
-Scaler is designed to be a drop-in replacement for Dask requiring minimal code changes. Scaler's design focuses on performance, simplicity, reduced overhead, debuggable errors.
+Scaler is a lightweight distributed computing Python framework that lets you easily distribute tasks across one or more local machines, or across multiple clouds.
 
-Key features include:
+.. image:: tutorials/images/client_usage_framework.svg
+   :alt: Scaler architecture
+   :width: 1000px
 
-    * Python's ``multiprocessing`` module like API - e.g. ``client.map()`` and ``client.submit()``
-    * Graph Tasks - submit DAG tasks with complex interdependence
-    * Monitoring Dashboard - monitor utilization of workers and task completion in real time
-    * Task Profiling - profile and trace execution of tasks
+Performance
+-----------
 
+Scaler is efficient at scaling short tasks over a high number of CPUs with very low overhead and minimal latency.
+
+The following benchmark shows the scaling performance of Scaler when running
+`this parallel task <https://github.com/finos/opengris-parfun/blob/main/examples/count_bigrams/main.py>`_:
+
+.. image:: tutorials/images/benchmark_count_bigrams.svg
+   :alt: Scaler scaling benchmark using parfun
+   :width: 1000px
 
 Content
-=======
+-------
 
 .. toctree::
    :maxdepth: 2
 
    tutorials/quickstart
-   tutorials/features
-   tutorials/scaling
-   tutorials/worker_adapters/index
-   tutorials/worker_adapters/native
-   tutorials/worker_adapters/fixed_native
-   tutorials/worker_adapters/aws_hpc/index
-   tutorials/worker_adapters/common_parameters
-   tutorials/compatibility/ray
-   tutorials/configuration
+   tutorials/installation
+   tutorials/overview
+   tutorials/commands
+   tutorials/scaler_client
+   tutorials/compatibility
+   tutorials/policy_engine
+   tutorials/worker_managers/index
+   tutorials/additional_features
    tutorials/examples
-   tutorials/development/devcontainer
-   tutorials/development/guidelines
+   tutorials/development

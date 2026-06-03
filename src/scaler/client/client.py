@@ -3,12 +3,9 @@ import functools
 import logging
 import threading
 import uuid
-import warnings
 from collections import Counter
 from inspect import signature
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union, overload
-
-import zmq
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 from scaler.client.agent.client_agent import ClientAgent
 from scaler.client.agent.future_manager import ClientFutureManager
@@ -18,11 +15,12 @@ from scaler.client.object_reference import ObjectReference
 from scaler.client.serializer.default import DefaultSerializer
 from scaler.client.serializer.mixins import Serializer
 from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
-from scaler.config.types.zmq import ZMQConfig, ZMQType
-from scaler.io.mixins import SyncConnector, SyncObjectStorageConnector
-from scaler.io.sync_connector import ZMQSyncConnector
-from scaler.io.utility import create_sync_object_storage_connector
-from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
+from scaler.config.types.address import AddressConfig
+from scaler.io.mixins import ConnectorRemoteType, NetworkBackend, SyncConnector, SyncObjectStorageConnector
+from scaler.io.network_backends import get_network_backend_from_env
+from scaler.io.ymq import YMQException
+from scaler.protocol.capnp import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
+from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
 from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.graph.topological_sorter import TopologicalSorter
@@ -80,7 +78,6 @@ class Client:
                                        If None, will use address received from scheduler.
         :type object_storage_address: Optional[str]
         """
-        address = self._resolve_scheduler_address(address)
         self.__initialize__(
             address,
             profiling,
@@ -93,7 +90,7 @@ class Client:
 
     def __initialize__(
         self,
-        address: str,
+        address: Optional[str],
         profiling: bool,
         timeout_seconds: int,
         heartbeat_interval_seconds: int,
@@ -107,23 +104,24 @@ class Client:
         self._stream_output = stream_output
         self._identity = ClientID.generate_client_id()
 
-        self._client_agent_address = ZMQConfig(ZMQType.inproc, host=f"scaler_client_{uuid.uuid4().hex}")
-        self._scheduler_address = ZMQConfig.from_string(address)
+        self._backend: NetworkBackend = get_network_backend_from_env()
+
+        self._client_agent_address = self._backend.create_internal_address(
+            f"scaler_client_{uuid.uuid4().hex}", same_process=True
+        )
+
+        self._scheduler_address = self.__resolve_scheduler_address(address)
         self._timeout_seconds = timeout_seconds
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
 
         self._stop_event = threading.Event()
-        self._context = zmq.Context()
-        self._connector_agent: SyncConnector = ZMQSyncConnector(
-            context=self._context, socket_type=zmq.PAIR, address=self._client_agent_address, identity=self._identity
-        )
 
         self._future_manager = ClientFutureManager(self._serializer)
         self._agent = ClientAgent(
             identity=self._identity,
             client_agent_address=self._client_agent_address,
-            scheduler_address=ZMQConfig.from_string(address),
-            context=self._context,
+            scheduler_address=self._scheduler_address,
+            network_backend=self._backend,
             future_manager=self._future_manager,
             stop_event=self._stop_event,
             timeout_seconds=self._timeout_seconds,
@@ -138,9 +136,15 @@ class Client:
         # Blocks until the agent receives the object storage address
         self._object_storage_address = self._agent.get_object_storage_address()
 
+        self._connector_agent: SyncConnector = self._backend.create_sync_connector(
+            identity=self._identity,
+            connector_remote_type=ConnectorRemoteType.Connector,
+            address=self._client_agent_address,
+        )
+
         logging.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
-        self._connector_storage: SyncObjectStorageConnector = create_sync_object_storage_connector(
-            self._object_storage_address.host, self._object_storage_address.port
+        self._connector_storage: SyncObjectStorageConnector = self._backend.create_sync_object_storage_connector(
+            identity=self._identity, address=self._object_storage_address
         )
 
         self._object_buffer = ObjectBuffer(
@@ -195,7 +199,7 @@ class Client:
         """
 
         return {
-            "address": self._scheduler_address.to_address(),
+            "address": repr(self._scheduler_address),
             "profiling": self._profiling,
             "stream_output": self._stream_output,
             "timeout_seconds": self._timeout_seconds,
@@ -256,21 +260,6 @@ class Client:
         self._connector_agent.send(task)
         return future
 
-    @overload
-    def map(
-        self,
-        fn: Callable[..., _T],
-        iterable: Iterable[Tuple[Any, ...]],
-        /,
-        *,
-        capabilities: Optional[Dict[str, int]] = None,
-    ) -> List[_T]: ...  # Deprecated: starmap-style usage with single iterable of tuples
-
-    @overload
-    def map(
-        self, fn: Callable[..., _T], /, *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None
-    ) -> List[_T]: ...  # New: map-style usage with one or more iterables
-
     def map(
         self, fn: Callable[..., _T], *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None
     ) -> List[_T]:
@@ -285,9 +274,6 @@ class Client:
             >>> client.map(add, [1, 2, 3], [4, 5, 6])
             [5, 7, 9]
 
-        For backwards compatibility, if a single iterable of tuples is provided (the old starmap-like behavior),
-        a deprecation warning will be shown and the arguments will be unpacked. Use `starmap()` instead for this case.
-
         :param fn: function to be executed remotely
         :type fn: Callable[..., _T]
         :param iterables: one or more iterables, each providing one argument to the function
@@ -300,25 +286,7 @@ class Client:
         if len(iterables) == 0:
             raise TypeError("map() requires at least one iterable")
 
-        if len(iterables) == 1:
-            # Check if this looks like old starmap-style usage (iterable of tuples/lists)
-            iterable_list = list(iterables[0])
-            if len(iterable_list) > 0 and all(isinstance(args, (tuple, list)) for args in iterable_list):
-                warnings.warn(
-                    "Passing an iterable of tuples to map() is deprecated. "
-                    "Use starmap() for unpacking argument tuples, or pass separate iterables to map(). "
-                    "For example, use client.map(fn, [1, 2, 3]) instead of client.map(fn, [(1,), (2,), (3,)]).",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-                return self.starmap(fn, iterable_list, capabilities=capabilities)
-            # Single iterable with non-tuple elements - pack each as a single-element tuple
-            args_iterable = [(arg,) for arg in iterable_list]
-        else:
-            # Multiple iterables - zip them together
-            args_iterable = list(zip(*iterables))
-
-        return self.starmap(fn, args_iterable, capabilities=capabilities)
+        return self.starmap(fn, zip(*iterables), capabilities=capabilities)
 
     def starmap(
         self, fn: Callable[..., _T], iterable: Iterable[Iterable[Any]], capabilities: Optional[Dict[str, int]] = None
@@ -414,16 +382,16 @@ class Client:
 
         self._future_manager.add_future(
             self._future_factory(
-                task=Task.new_msg(
-                    task_id=graph_task.task_id,
+                task=Task(
+                    taskId=graph_task.taskId,
                     source=self._identity,
                     metadata=b"",
-                    func_object_id=None,
-                    function_args=[],
-                    capabilities=capabilities,
+                    funcObjectId=b"",
+                    functionArgs=[],
+                    capabilities=dict_to_capabilities(capabilities),
                 ),
                 is_delayed=not block,
-                group_task_id=graph_task.task_id,
+                group_task_id=graph_task.taskId,
             )
         )
         for future in compute_futures.values():
@@ -493,18 +461,33 @@ class Client:
             self.__destroy()
             return
 
-        logging.info(f"ScalerClient: disconnect from {self._scheduler_address.to_address()}")
+        logging.info(f"ScalerClient: disconnect from {self._scheduler_address!r}")
 
         self._future_manager.cancel_all_futures()
 
-        self._connector_agent.send(ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Disconnect))
+        try:
+            self._connector_agent.send(ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.disconnect))
+        except YMQException:
+            # Race: between the _stop_event.is_set() check above and this send, the agent
+            # thread can observe the scheduler going away, exit __get_loops, and destroy its
+            # internal binder. The send then fails with ConnectorSocketClosedByRemoteEnd. The
+            # agent has already torn itself down, so just fall through to __destroy().
+            pass
 
         self.__destroy()
 
     def __receive_shutdown_response(self):
         message: Optional[ClientShutdownResponse] = None
-        while not isinstance(message, ClientShutdownResponse):
-            message = self._connector_agent.receive()
+        try:
+            while not isinstance(message, ClientShutdownResponse):
+                message = self._connector_agent.receive()
+        except YMQException:
+            # The scheduler may close its end of the socket immediately after raising
+            # ClientShutdownException, before YMQ has flushed the ClientShutdownResponse on the wire.
+            # The client agent then sees the remote-end close and tears down its connectors, which
+            # surfaces here as a YMQException. Treat this as a successful shutdown -- the scheduler
+            # acknowledged the request before quitting.
+            return
 
         if not message.accepted:
             raise ValueError("Scheduler is in protected mode. Can't shutdown")
@@ -520,11 +503,11 @@ class Client:
             self.__destroy()
             return
 
-        logging.info(f"ScalerClient: request shutdown for {self._scheduler_address.to_address()}")
+        logging.info(f"ScalerClient: request shutdown for {self._scheduler_address!r}")
 
         self._future_manager.cancel_all_futures()
 
-        self._connector_agent.send(ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Shutdown))
+        self._connector_agent.send(ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.shutdown))
         try:
             self.__receive_shutdown_response()
         finally:
@@ -553,13 +536,15 @@ class Client:
 
         task_flags_bytes = self.__get_task_flags().serialize()
 
-        task = Task.new_msg(
-            task_id=task_id,
+        task = Task(
+            taskId=task_id,
             source=self._identity,
             metadata=task_flags_bytes,
-            func_object_id=function_object_id,
-            function_args=function_args,
-            capabilities=capabilities,
+            funcObjectId=function_object_id,
+            functionArgs=[
+                Task.Argument(type=Task.Argument.ArgumentType.objectID, data=argument) for argument in function_args
+            ],
+            capabilities=dict_to_capabilities(capabilities),
         )
 
         future = self._future_factory(task=task, is_delayed=delayed, group_task_id=None)
@@ -669,17 +654,29 @@ class Client:
                 else:
                     raise ValueError("Not possible")
 
-            task_id_to_tasks[task_id] = Task.new_msg(
-                task_id=task_id,
+            task_id_to_tasks[task_id] = Task(
+                taskId=task_id,
                 source=self._identity,
                 metadata=task_flags_bytes,
-                func_object_id=function_cache.object_id,
-                function_args=arguments,
-                capabilities=capabilities,
+                funcObjectId=function_cache.object_id,
+                functionArgs=[
+                    Task.Argument(
+                        type=(
+                            Task.Argument.ArgumentType.task
+                            if isinstance(argument, TaskID)
+                            else Task.Argument.ArgumentType.objectID
+                        ),
+                        data=argument,
+                    )
+                    for argument in arguments
+                ],
+                capabilities=dict_to_capabilities(capabilities),
             )
 
         result_task_ids = [node_name_to_task_id[key] for key in keys if key in call_graph]
-        graph_task = GraphTask.new_msg(graph_task_id, self._identity, result_task_ids, list(task_id_to_tasks.values()))
+        graph_task = GraphTask(
+            taskId=graph_task_id, source=self._identity, targets=result_task_ids, graph=list(task_id_to_tasks.values())
+        )
 
         compute_futures = {}
         ready_futures = {}
@@ -692,13 +689,13 @@ class Client:
             elif key in node_name_to_arguments:
                 argument, data = node_name_to_arguments[key]
                 future: ScalerFuture = self._future_factory(
-                    task=Task.new_msg(
-                        task_id=TaskID.generate_task_id(),
+                    task=Task(
+                        taskId=TaskID.generate_task_id(),
                         source=self._identity,
                         metadata=b"",
-                        func_object_id=None,
-                        function_args=[],
-                        capabilities={},
+                        funcObjectId=b"",
+                        functionArgs=[],
+                        capabilities=[],
                     ),
                     is_delayed=False,
                     group_task_id=graph_task_id,
@@ -727,7 +724,9 @@ class Client:
 
     def __destroy(self):
         self._agent.join()
-        self._context.destroy(linger=1)
+
+        self._connector_agent.destroy()
+        self._connector_storage.destroy()
 
     @staticmethod
     def __get_parent_task_priority() -> Optional[int]:
@@ -743,11 +742,11 @@ class Client:
 
         return retrieve_task_flags_from_task(current_task).priority
 
-    def _resolve_scheduler_address(self, address: Optional[str]) -> str:
+    def __resolve_scheduler_address(self, address: Optional[str]) -> AddressConfig:
         """Resolve the scheduler address based on the provided address and worker context."""
         # Provided address always takes precedence
         if address is not None:
-            return address
+            return AddressConfig.from_string(address)
 
         # No address provided, check if we're running inside a worker context
         current_processor = Processor.get_current_processor()
@@ -758,4 +757,4 @@ class Client:
             )
 
         # Return the scheduler address from the current processor
-        return current_processor.scheduler_address().to_address()
+        return current_processor.scheduler_address()

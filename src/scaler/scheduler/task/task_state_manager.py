@@ -1,16 +1,30 @@
 import logging
 from typing import Dict, Optional
 
-from scaler.protocol.python.common import TaskState, TaskTransition
+from scaler.protocol.capnp import TaskState, TaskTransition
 from scaler.scheduler.task.task_state_machine import TaskStateMachine
 from scaler.utility.identifiers import TaskID
 
 
 class TaskStateManager:
+    TASK_STATES = (
+        TaskState.inactive,
+        TaskState.running,
+        TaskState.canceling,
+        TaskState.balanceCanceling,
+        TaskState.success,
+        TaskState.failed,
+        TaskState.failedWorkerDied,
+        TaskState.canceled,
+        TaskState.canceledNotFound,
+        TaskState.balanceCanceled,
+        TaskState.workerDisconnecting,
+    )
+
     def __init__(self, debug: bool):
         self._debug = debug
         self._task_id_to_state_machine: Dict[TaskID, TaskStateMachine] = dict()
-        self._statistics: Dict[TaskState, int] = {state: 0 for state in TaskState}
+        self._statistics: Dict[TaskState, int] = {state: 0 for state in self.TASK_STATES}
 
     def add_state_machine(self, task_id: TaskID) -> TaskStateMachine:
         """Create new task state machine, return True if success, False otherwise"""

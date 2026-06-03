@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-AWS HPC Worker Adapter Test Harness.
+AWS HPC Worker Manager Test Harness.
 
-Validates the AWS Batch worker adapter by submitting tasks to a running scheduler.
+Validates the AWS Batch worker manager by submitting tasks to a running scheduler.
 
 Usage:
     python tests/aws_hpc_test_harness.py --scheduler tcp://127.0.0.1:2345 --test all
@@ -93,18 +93,53 @@ def run_compute_test(client: Client, timeout: int) -> bool:
         return False
 
 
-TESTS = {"sqrt": run_sqrt_test, "simple": run_simple_test, "map": run_map_test, "compute": run_compute_test}
+def square(value: int) -> int:
+    return value * value
+
+
+def run_map_100_test(client: Client, timeout: int) -> bool:
+    """Test client.map with 100 tasks using array jobs"""
+    count = 100
+    print("\n--- Test: map_100 ---")
+    print(f"  Submitting: client.map(square, range({count}))")
+    try:
+        import time
+
+        start = time.time()
+        results = client.map(square, list(range(count)))
+        elapsed = time.time() - start
+        expected = [i * i for i in range(count)]
+        passed = results == expected
+        avg = elapsed / count
+        print(f"  Results: {len(results)} values, first 5: {results[:5]}")
+        print(f"  Total time: {elapsed:.1f}s, avg: {avg:.2f}s/task")
+        if avg > 2.0:
+            print("  WARNING: avg > 2s/task, array jobs may not be working")
+        print(f"  {'PASSED' if passed else 'FAILED: results mismatch'}")
+        return passed
+    except Exception as e:
+        print(f"  FAILED: {e}")
+        return False
+
+
+TESTS = {
+    "sqrt": run_sqrt_test,
+    "simple": run_simple_test,
+    "map": run_map_test,
+    "compute": run_compute_test,
+    "map_100": run_map_100_test,
+}
 
 
 def main():
-    parser = argparse.ArgumentParser(description="AWS HPC Worker Adapter Test Harness")
+    parser = argparse.ArgumentParser(description="AWS HPC Worker Manager Test Harness")
     parser.add_argument("--scheduler", default="tcp://127.0.0.1:2345", help="Scheduler address")
     parser.add_argument("--test", default="all", choices=["all"] + list(TESTS.keys()), help="Test to run")
     parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT, help="Timeout per task (seconds)")
     args = parser.parse_args()
 
     print("=" * 50)
-    print("AWS HPC Worker Adapter Test Harness")
+    print("AWS HPC Worker Manager Test Harness")
     print("=" * 50)
     print(f"Scheduler: {args.scheduler}")
 

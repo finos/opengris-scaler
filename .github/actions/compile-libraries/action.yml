@@ -9,13 +9,13 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Build C++ Components (Linux)
-      if: inputs.os == 'Linux'
+    - name: Build C++ Components (Linux/macOS)
+      if: inputs.os != 'Windows'
       shell: bash
       run: |
         ./scripts/build.sh
 
-    - name: Build and test C++ Components (Windows)
+    - name: Build C++ Components (Windows)
       if: inputs.os == 'Windows'
       shell: pwsh
       run: |

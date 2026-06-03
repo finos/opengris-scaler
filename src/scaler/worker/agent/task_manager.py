@@ -1,8 +1,7 @@
 from typing import Dict, Optional, Set
 
 from scaler.io.mixins import AsyncConnector
-from scaler.protocol.python.common import TaskCancelConfirmType
-from scaler.protocol.python.message import Task, TaskCancel, TaskCancelConfirm, TaskResult
+from scaler.protocol.capnp import Task, TaskCancel, TaskCancelConfirm, TaskCancelConfirmType, TaskResult
 from scaler.utility.identifiers import TaskID
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper
@@ -44,49 +43,45 @@ class VanillaTaskManager(Looper, TaskManager):
 
     async def on_cancel_task(self, task_cancel: TaskCancel):
         task_not_found = (
-            task_cancel.task_id not in self._processing_task_ids
-            and task_cancel.task_id not in self._queued_task_id_to_task
+            task_cancel.taskId not in self._processing_task_ids
+            and task_cancel.taskId not in self._queued_task_id_to_task
         )
         if task_not_found:
             await self._connector_external.send(
-                TaskCancelConfirm.new_msg(
-                    task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.CancelNotFound
-                )
+                TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelNotFound)
             )
             return
 
-        if task_cancel.task_id in self._processing_task_ids and not task_cancel.flags.force:
+        if task_cancel.taskId in self._processing_task_ids and not task_cancel.flags.force:
             # ignore cancel task while in processing if is not force cancel
             await self._connector_external.send(
-                TaskCancelConfirm.new_msg(
-                    task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.CancelFailed
-                )
+                TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.cancelFailed)
             )
             return
 
         # A suspended task will be both processing AND queued
 
-        if task_cancel.task_id in self._processing_task_ids:
+        if task_cancel.taskId in self._processing_task_ids:
             # if task is in processing
-            self._processing_task_ids.remove(task_cancel.task_id)
-            _ = await self._processor_manager.on_cancel_task(task_cancel.task_id)
+            self._processing_task_ids.remove(task_cancel.taskId)
+            _ = await self._processor_manager.on_cancel_task(task_cancel.taskId)
         else:
             # if task is queued
-            assert task_cancel.task_id in self._queued_task_id_to_task
-            self._queued_task_ids.remove(task_cancel.task_id)
-            _ = self._queued_task_id_to_task.pop(task_cancel.task_id)
+            assert task_cancel.taskId in self._queued_task_id_to_task
+            self._queued_task_ids.remove(task_cancel.taskId)
+            _ = self._queued_task_id_to_task.pop(task_cancel.taskId)
 
         await self._connector_external.send(
-            TaskCancelConfirm.new_msg(task_id=task_cancel.task_id, cancel_confirm_type=TaskCancelConfirmType.Canceled)
+            TaskCancelConfirm(taskId=task_cancel.taskId, cancelConfirmType=TaskCancelConfirmType.canceled)
         )
 
     async def on_task_result(self, result: TaskResult):
-        if result.task_id in self._queued_task_id_to_task:
+        if result.taskId in self._queued_task_id_to_task:
             # Finishing a queued task might happen if a task ended during the suspension process.
-            self._queued_task_id_to_task.pop(result.task_id)
-            self._queued_task_ids.remove(result.task_id)
+            self._queued_task_id_to_task.pop(result.taskId)
+            self._queued_task_ids.remove(result.taskId)
 
-        self._processing_task_ids.remove(result.task_id)
+        self._processing_task_ids.remove(result.taskId)
 
         await self._connector_external.send(result)
 
@@ -122,7 +117,7 @@ class VanillaTaskManager(Looper, TaskManager):
 
         self.__enqueue_task(current_task, is_suspended=True)
 
-        await self._processor_manager.on_suspend_task(current_task.task_id)
+        await self._processor_manager.on_suspend_task(current_task.taskId)
 
     def __enqueue_task(self, task: Task, is_suspended: bool):
         task_priority = self.__get_task_priority(task)
@@ -142,8 +137,8 @@ class VanillaTaskManager(Looper, TaskManager):
         # whether a task is suspended.
         queue_priority = -(task_priority * 10 + int(is_suspended))
 
-        self._queued_task_ids.put_nowait((queue_priority, task.task_id))
-        self._queued_task_id_to_task[task.task_id] = task
+        self._queued_task_ids.put_nowait((queue_priority, task.taskId))
+        self._queued_task_id_to_task[task.taskId] = task
 
     @staticmethod
     def __get_task_priority(task: Task) -> int:

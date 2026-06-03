@@ -6,11 +6,16 @@ including remote function execution, object referencing, and waiting for task co
 
 import concurrent.futures
 import inspect
+import sys
 from typing import Any, Callable, Dict, Generic, Iterator, List, Optional, Tuple, TypeVar, Union, cast
 from unittest.mock import Mock, patch
 
 import psutil
-from typing_extensions import ParamSpec
+
+if sys.version_info >= (3, 10):
+    from typing import ParamSpec
+else:
+    from typing_extensions import ParamSpec
 
 from scaler.client.client import Client
 from scaler.client.future import ScalerFuture
@@ -211,7 +216,11 @@ patch("ray.is_initialized", new=is_initialized).start()
 def ensure_init():
     """
     This is an internal function that ensures the Scaler client is initialized, calling `init()` with
-    default parameters if it is not.
+    default parameters if it is not already initialized.
+
+    Called lazily at `.remote()` invocation time so that callers who need a custom configuration (via
+    `scaler_init()`) can apply decorators at module import time and still call `scaler_init()` before
+    submitting any tasks.
     """
     if not is_initialized():
         scaler_init()
@@ -348,8 +357,7 @@ class RayRemote(Generic[P, T]):
             A RayObjectReference that can be used to retrieve the result,
             or a list of RayObjectReferences if num_returns > 1.
         """
-        if not is_initialized():
-            raise RuntimeError("Scaler is not initialized")
+        ensure_init()
 
         # Ray supports passing object references into other remote functions
         # so we must take special care to get their values
@@ -400,6 +408,7 @@ def put(obj: Any) -> ObjectReference:
     Returns:
         An ObjectReference that can be used to retrieve the object.
     """
+    ensure_init()
     return client.send_object(obj)
 
 
@@ -419,7 +428,6 @@ def remote(*args, **kwargs) -> Union[RayRemote, Callable]:
         A RayRemote instance that can be called with `.remote()`, or a decorator
         that produces a RayRemote instance.
     """
-    ensure_init()
 
     def _decorator(fn: Callable) -> RayRemote:
         if isinstance(fn, type):  # Check if 'fn' is a class

@@ -13,7 +13,12 @@
 import os
 import sys
 
+from pygments.lexers.python import PythonLexer
+from sphinx.highlighting import lexers
+
 sys.path.insert(0, os.path.abspath(os.path.join("..", "..", "src")))
+
+lexers["ipython3"] = PythonLexer()
 
 
 # -- Project information -----------------------------------------------------
@@ -42,6 +47,9 @@ extensions = [
     "sphinx_substitution_extensions",
     "sphinx.ext.napoleon",
     "sphinx.ext.autosectionlabel",
+    "sphinx_copybutton",
+    "sphinx_tabs.tabs",
+    "nbsphinx",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -60,12 +68,22 @@ exclude_patterns = []
 #
 # html_theme = "alabaster"
 
-html_theme = "sphinx_rtd_theme"
+html_theme = "shibuya"
+html_title = f"{project} {version}"
+
+html_theme_options = {
+    "nav_links": [
+        {"title": "Release Notes", "url": "release_notes"},
+        {"title": "Example Gallery", "url": "gallery/index"},
+        {"title": "Launchpad", "url": "launchpad/", "resource": True},
+    ]
+}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
+html_extra_path = ["../html_extra"]
 html_css_files = ["style.css"]
 
 # html_static_path = []
@@ -75,3 +93,9 @@ html_css_files = ["style.css"]
 # -- Extension configuration -------------------------------------------------
 
 autosectionlabel_prefix_document = True
+
+copybutton_prompt_text = r"\$ "
+copybutton_prompt_is_regexp = True
+
+nbsphinx_execute = "never"
+nbsphinx_codecell_lexer = "python"

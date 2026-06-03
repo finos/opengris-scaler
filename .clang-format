@@ -10,7 +10,6 @@ AlignOperands: 'true'
 AlignTrailingComments: 'true'
 AllowAllArgumentsOnNextLine: 'true'
 AllowAllConstructorInitializersOnNextLine: 'true'
-AllowShortBlocksOnASingleLine: 'true'
 AllowShortCaseLabelsOnASingleLine: 'true'
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLambdasOnASingleLine: All
@@ -56,7 +55,8 @@ TabWidth: '4'
 UseTab: Never
 
 # control function declaration/definition
-AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortFunctionsOnASingleLine: None
+AllowShortBlocksOnASingleLine: Never
 AllowAllParametersOfDeclarationOnNextLine: true
 BinPackParameters: OnePerLine
 

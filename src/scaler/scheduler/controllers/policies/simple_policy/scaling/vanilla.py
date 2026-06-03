@@ -1,24 +1,21 @@
-import logging
-from typing import Dict, List
+from math import ceil
+from typing import Dict, List, Tuple
 
-from scaler.protocol.python.message import (
-    InformationSnapshot,
-    WorkerAdapterCommand,
-    WorkerAdapterCommandType,
-    WorkerAdapterHeartbeat,
+from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
+from scaler.scheduler.controllers.worker_manager_utilties import (
+    build_scaling_manager_status,
+    build_set_desired_command,
+    effective_desired_for_manager,
 )
-from scaler.protocol.python.status import ScalingManagerStatus
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingController
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import (
-    WorkerGroupCapabilities,
-    WorkerGroupID,
-    WorkerGroupState,
-)
+from scaler.utility.identifiers import WorkerID
+from scaler.utility.snapshot import InformationSnapshot
 
 
-class VanillaScalingController(ScalingController):
+class VanillaScalingPolicy(ScalingPolicy):
     """
-    Stateless scaling controller that scales worker groups based on task-to-worker ratio.
+    Stateless scaling policy that scales workers based on task-to-worker ratio.
     """
 
     def __init__(self):
@@ -28,52 +25,43 @@ class VanillaScalingController(ScalingController):
     def get_scaling_commands(
         self,
         information_snapshot: InformationSnapshot,
-        adapter_heartbeat: WorkerAdapterHeartbeat,
-        worker_groups: WorkerGroupState,
-        worker_group_capabilities: WorkerGroupCapabilities,
-    ) -> List[WorkerAdapterCommand]:
-        if not information_snapshot.workers:
-            if information_snapshot.tasks:
-                return self._create_start_commands(worker_groups, adapter_heartbeat)
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
+        managed_worker_ids: List[WorkerID],
+        worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
+    ) -> List[WorkerManagerCommand]:
+        desired = self._compute_desired_worker_count(information_snapshot, worker_manager_heartbeat, managed_worker_ids)
+        desired_per_capset: List[Tuple[Dict[str, int], int]] = [({}, desired)]
+        effective = effective_desired_for_manager(desired_per_capset, worker_manager_heartbeat.capabilities)
+        if effective == len(managed_worker_ids):
             return []
+        return [build_set_desired_command(desired_per_capset)]
 
-        task_ratio = len(information_snapshot.tasks) / len(information_snapshot.workers)
-        if task_ratio > self._upper_task_ratio:
-            return self._create_start_commands(worker_groups, adapter_heartbeat)
-        elif task_ratio < self._lower_task_ratio:
-            return self._create_shutdown_commands(information_snapshot, worker_groups)
+    def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
+        return build_scaling_manager_status(managed_workers)
 
-        return []
+    def _compute_desired_worker_count(
+        self,
+        information_snapshot: InformationSnapshot,
+        worker_manager_heartbeat: WorkerManagerHeartbeat,
+        managed_worker_ids: List[WorkerID],
+    ) -> int:
+        """Compute the target worker count for this manager from current task and worker observations."""
+        current = len(managed_worker_ids)
+        task_count = len(information_snapshot.tasks)
+        worker_count = len(information_snapshot.workers)
 
-    def get_status(self, worker_groups: WorkerGroupState) -> ScalingManagerStatus:
-        return ScalingManagerStatus.new_msg(worker_groups=worker_groups)
+        if worker_count == 0:
+            desired = current + 1 if task_count > 0 else current
+        else:
+            task_ratio = task_count / worker_count
+            if task_ratio > self._upper_task_ratio:
+                desired = current + 1
+            elif task_ratio < self._lower_task_ratio:
+                desired = 0 if task_count == 0 else max(1, ceil(task_count / self._upper_task_ratio))
+            else:
+                desired = current
 
-    def _create_start_commands(
-        self, worker_groups: WorkerGroupState, adapter_heartbeat: WorkerAdapterHeartbeat
-    ) -> List[WorkerAdapterCommand]:
-        if len(worker_groups) >= adapter_heartbeat.max_worker_groups:
-            return []
-        return [WorkerAdapterCommand.new_msg(worker_group_id=b"", command=WorkerAdapterCommandType.StartWorkerGroup)]
-
-    def _create_shutdown_commands(
-        self, information_snapshot: InformationSnapshot, worker_groups: WorkerGroupState
-    ) -> List[WorkerAdapterCommand]:
-        worker_group_task_counts: Dict[WorkerGroupID, int] = {}
-        for worker_group_id, worker_ids in worker_groups.items():
-            total_queued = sum(
-                information_snapshot.workers[worker_id].queued_tasks
-                for worker_id in worker_ids
-                if worker_id in information_snapshot.workers
-            )
-            worker_group_task_counts[worker_group_id] = total_queued
-
-        if not worker_group_task_counts:
-            logging.warning("No worker groups available to shut down. There might be statically provisioned workers.")
-            return []
-
-        worker_group_id = min(worker_group_task_counts, key=worker_group_task_counts.get)
-        return [
-            WorkerAdapterCommand.new_msg(
-                worker_group_id=worker_group_id, command=WorkerAdapterCommandType.ShutdownWorkerGroup
-            )
-        ]
+        max_concurrency = worker_manager_heartbeat.maxTaskConcurrency
+        if max_concurrency != -1:
+            desired = min(desired, max_concurrency)
+        return max(0, desired)

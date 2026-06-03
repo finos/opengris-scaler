@@ -82,9 +82,7 @@ def main():
     cluster = SchedulerClusterCombo(n_workers=n_workers)
 
     with Client(address=cluster.get_address()) as client:
-        results = client.map(
-            get_option_close_prices_with_strike, [(strike,) for strike in range(strike_start, strike_end)]
-        )
+        results = client.map(get_option_close_prices_with_strike, range(strike_start, strike_end))
 
     cluster.shutdown()
 

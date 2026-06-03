@@ -1,7 +1,7 @@
 import unittest
 from typing import Dict, Set
 
-from scaler.protocol.python.message import Task
+from scaler.protocol.capnp import Task
 from scaler.scheduler.controllers.policies.simple_policy.allocation.capability_allocate_policy import (
     CapabilityAllocatePolicy,
 )
@@ -72,16 +72,16 @@ class TestCapabilityAllocatePolicy(unittest.TestCase):
 
         # Removing a non-assigned task returns an invalid Worker ID
 
-        self.assertFalse(allocator.remove_task(task.task_id).is_valid())
+        self.assertFalse(allocator.remove_task(task.taskId).is_valid())
 
         # Removing an assigned task returns the assigned worker
 
         assigned_worker = allocator.assign_task(task)
-        self.assertTrue(assigned_worker, allocator.remove_task(task.task_id).is_valid())
+        self.assertTrue(assigned_worker, allocator.remove_task(task.taskId).is_valid())
 
         # Removing it again returns an invalid worker ID
 
-        self.assertFalse(allocator.remove_task(task.task_id).is_valid())
+        self.assertFalse(allocator.remove_task(task.taskId).is_valid())
 
     def test_remove_worker(self):
         N_TASKS = MAX_TASKS_PER_WORKER + 3
@@ -101,7 +101,7 @@ class TestCapabilityAllocatePolicy(unittest.TestCase):
             assigned_worker = allocator.assign_task(task)
             self.assertTrue(assigned_worker.is_valid())
 
-            worker_id_to_tasks[assigned_worker].add(task.task_id)
+            worker_id_to_tasks[assigned_worker].add(task.taskId)
 
         # Tasks should be balanced between the two workers
 
@@ -173,4 +173,11 @@ class TestCapabilityAllocatePolicy(unittest.TestCase):
 
     @staticmethod
     def __create_task(task_id: TaskID, capabilities: Dict[str, int]) -> Task:
-        return Task.new_msg(task_id, ClientID(b"client_id"), b"", None, [], capabilities)
+        return Task(
+            taskId=task_id,
+            source=ClientID(b"client_id"),
+            metadata=b"",
+            funcObjectId=b"",
+            functionArgs=[],
+            capabilities=capabilities,
+        )
