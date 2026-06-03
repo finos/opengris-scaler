@@ -154,42 +154,6 @@ class ObjectBuffer:
 
         return object_cache
 
-    def __lookup_dedup(self, obj: Any) -> Optional[ObjectCache]:
-        """Return a previously cached ObjectCache for ``obj`` if it is still valid.
-
-        We key on ``id(obj)`` and confirm via a weakref that the same object
-        is still alive -- ``id`` values are recycled once an object is GC'd, so
-        the weakref check prevents a stale entry from being mis-served.
-        """
-        key = id(obj)
-        cached = self._dedup_cache.get(key)
-        if cached is None:
-            return None
-        # Defensively drop stale entries if the server has forgotten the object
-        # (e.g. after ``clear()`` -- though clear() also wipes the cache, this
-        # protects against future code paths that invalidate ``_valid_object_ids``
-        # without going through clear()).
-        if cached.object_id not in self._valid_object_ids:
-            self._dedup_cache.pop(key, None)
-            return None
-        alive = self._dedup_alive.get(key)
-        if alive is not obj:
-            # Either the original object was GC'd and ``key`` was recycled, or
-            # ``obj`` is not weakreffable and was never registered.  Either way
-            # we cannot safely reuse the cache entry.
-            self._dedup_cache.pop(key, None)
-            return None
-        return cached
-
-    def __remember_dedup(self, obj: Any, cache: ObjectCache) -> None:
-        try:
-            self._dedup_alive[id(obj)] = obj
-        except TypeError:
-            # Non-weakreffable (built-in int/str/tuple/list/dict/...): skip
-            # dedup.  These are typically small and cheap to re-serialize.
-            return
-        self._dedup_cache[id(obj)] = cache
-
     def __send_serializer(self) -> ObjectID:
         serialized_serializer = self.__construct_serializer()
         self.__buffer_send_serialized_object(serialized_serializer)
