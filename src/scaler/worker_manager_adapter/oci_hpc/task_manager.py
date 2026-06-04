@@ -93,9 +93,7 @@ class OCIHPCTaskManager(Looper, TaskManager):
             raise ValueError(f"base_concurrency must be a positive integer, got {base_concurrency}")
 
         if oci_auth_type not in ("config_file", "instance_principal"):
-            raise ValueError(
-                f"oci_auth_type must be 'config_file' or 'instance_principal', got {oci_auth_type!r}"
-            )
+            raise ValueError(f"oci_auth_type must be 'config_file' or 'instance_principal', got {oci_auth_type!r}")
 
         self._base_concurrency = base_concurrency
         self._compartment_id = compartment_id
@@ -533,9 +531,7 @@ class OCIHPCTaskManager(Looper, TaskManager):
             ),
             containers=[
                 oci.container_instances.models.CreateContainerDetails(
-                    image_url=self._container_image,
-                    display_name=display_name,
-                    environment_variables=env_vars,
+                    image_url=self._container_image, display_name=display_name, environment_variables=env_vars
                 )
             ],
             vnics=[oci.container_instances.models.CreateContainerVnicDetails(subnet_id=self._subnet_id)],

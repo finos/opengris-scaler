@@ -24,8 +24,7 @@ class OCIHPCWorkerAdapterConfig(ConfigClass):
         metadata=dict(short="-el", choices=EventLoopType.allowed_types(), help="select the event loop type"),
     )
     worker_io_threads: int = dataclasses.field(
-        default=defaults.DEFAULT_IO_THREADS,
-        metadata=dict(short="-wit", help="number of IO threads for the worker"),
+        default=defaults.DEFAULT_IO_THREADS, metadata=dict(short="-wit", help="number of IO threads for the worker")
     )
 
     # OCI authentication
@@ -69,9 +68,7 @@ class OCIHPCWorkerAdapterConfig(ConfigClass):
     subnet_id: Optional[str] = dataclasses.field(
         default=None,
         metadata=dict(
-            env_var="OCI_SUBNET_ID",
-            required=True,
-            help="OCI Subnet OCID for container instance network interfaces",
+            env_var="OCI_SUBNET_ID", required=True, help="OCI Subnet OCID for container instance network interfaces"
         ),
     )
 
@@ -89,9 +86,7 @@ class OCIHPCWorkerAdapterConfig(ConfigClass):
     object_storage_namespace: Optional[str] = dataclasses.field(
         default=None,
         metadata=dict(
-            env_var="OCI_OBJECT_STORAGE_NAMESPACE",
-            required=True,
-            help="OCI Object Storage tenancy namespace",
+            env_var="OCI_OBJECT_STORAGE_NAMESPACE", required=True, help="OCI Object Storage tenancy namespace"
         ),
     )
     object_storage_bucket: Optional[str] = dataclasses.field(
@@ -104,24 +99,16 @@ class OCIHPCWorkerAdapterConfig(ConfigClass):
     )
     object_storage_prefix: str = dataclasses.field(
         default=DEFAULT_OCI_OBJECT_STORAGE_PREFIX,
-        metadata=dict(
-            env_var="OCI_OBJECT_STORAGE_PREFIX",
-            help="Object key prefix for task inputs and results",
-        ),
+        metadata=dict(env_var="OCI_OBJECT_STORAGE_PREFIX", help="Object key prefix for task inputs and results"),
     )
 
     # Container instance sizing
     instance_shape: str = dataclasses.field(
-        default=DEFAULT_OCI_INSTANCE_SHAPE,
-        metadata=dict(help="OCI Container Instance shape"),
+        default=DEFAULT_OCI_INSTANCE_SHAPE, metadata=dict(help="OCI Container Instance shape")
     )
-    instance_ocpus: float = dataclasses.field(
-        default=1.0,
-        metadata=dict(help="Number of OCPUs per container instance"),
-    )
+    instance_ocpus: float = dataclasses.field(default=1.0, metadata=dict(help="Number of OCPUs per container instance"))
     instance_memory_gb: float = dataclasses.field(
-        default=6.0,
-        metadata=dict(help="Memory in GB per container instance"),
+        default=6.0, metadata=dict(help="Memory in GB per container instance")
     )
 
     # Concurrency and timeouts
@@ -138,8 +125,7 @@ class OCIHPCWorkerAdapterConfig(ConfigClass):
         metadata=dict(short="-his", help="heartbeat interval in seconds"),
     )
     death_timeout_seconds: int = dataclasses.field(
-        default=defaults.DEFAULT_WORKER_DEATH_TIMEOUT,
-        metadata=dict(short="-dts", help="death timeout in seconds"),
+        default=defaults.DEFAULT_WORKER_DEATH_TIMEOUT, metadata=dict(short="-dts", help="death timeout in seconds")
     )
     task_queue_size: int = dataclasses.field(
         default=defaults.DEFAULT_PER_WORKER_QUEUE_SIZE,
