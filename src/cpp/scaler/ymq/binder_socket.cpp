@@ -99,7 +99,9 @@ void BinderSocket::sendMessage(
             // is a send-before-first-connect case (used by some tests and the warm-up path);
             // queue until the peer eventually identifies itself.
             if (state->_disconnectedIdentities.count(remoteIdentity) > 0) {
-                callback(std::unexpected {Error {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd}});
+                callback(
+                    std::unexpected {Error {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd}},
+                    std::move(messagePayload));
                 return;
             }
 
@@ -244,7 +246,9 @@ void BinderSocket::onRemoteDisconnect(
     auto pendingIt = state->_pendingSendMessages.find(remoteIdentity);
     if (pendingIt != state->_pendingSendMessages.end()) {
         for (auto& pending: pendingIt->second) {
-            pending.onMessageSent(std::unexpected {Error {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd}});
+            pending.onMessageSent(
+                std::unexpected {Error {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd}},
+                std::move(pending.messagePayload));
         }
         state->_pendingSendMessages.erase(pendingIt);
     }

@@ -355,7 +355,7 @@ TEST_F(YMQBinderSocketTest, SendToClosedIdentityFailsFast)
     // reason unrelated to the bug under test.)
 
     bool clientDisconnected  = false;
-    auto onClientRecvMessage = [](scaler::ymq::Bytes) { FAIL() << "Unexpected message on client"; };
+    auto onClientRecvMessage = [](std::unique_ptr<scaler::ymq::Bytes>) { FAIL() << "Unexpected message on client"; };
     auto onClientDisconnect  = [&](scaler::ymq::internal::MessageConnection::DisconnectReason reason) {
         ASSERT_EQ(reason, scaler::ymq::internal::MessageConnection::DisconnectReason::Disconnected);
         clientDisconnected = true;
@@ -372,13 +372,14 @@ TEST_F(YMQBinderSocketTest, SendToClosedIdentityFailsFast)
     std::promise<scaler::ymq::Message> binderRecvCalled;
     binder.recvMessage([&](std::expected<scaler::ymq::Message, scaler::ymq::Error> result) {
         ASSERT_TRUE(result.has_value());
-        binderRecvCalled.set_value(result.value());
+        binderRecvCalled.set_value(std::move(result.value()));
     });
 
     bool clientSendCalled = false;
     client.sendMessage(
-        scaler::ymq::Bytes(messagePayload),
-        [&]([[maybe_unused]] std::expected<void, scaler::ymq::Error> result) { clientSendCalled = true; });
+        std::make_unique<scaler::ymq::BufferedBytes>(messagePayload),
+        [&]([[maybe_unused]] std::expected<void, scaler::ymq::Error> result,
+            [[maybe_unused]] std::unique_ptr<scaler::ymq::Bytes>) { clientSendCalled = true; });
 
     while (!clientSendCalled) {
         loop.run(UV_RUN_NOWAIT);
@@ -405,8 +406,10 @@ TEST_F(YMQBinderSocketTest, SendToClosedIdentityFailsFast)
     auto sendResult = std::make_shared<std::promise<std::expected<void, scaler::ymq::Error>>>();
     binder.sendMessage(
         BinderClientPair::clientIdentity,
-        scaler::ymq::Bytes(messagePayload),
-        [sendResult](std::expected<void, scaler::ymq::Error> result) noexcept {
+        std::make_unique<scaler::ymq::BufferedBytes>(messagePayload),
+        [sendResult](
+            std::expected<void, scaler::ymq::Error> result,
+            [[maybe_unused]] std::unique_ptr<scaler::ymq::Bytes>) noexcept {
             try {
                 sendResult->set_value(std::move(result));
             } catch (...) {
