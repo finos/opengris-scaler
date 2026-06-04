@@ -344,7 +344,7 @@ def check_container_instance_lifecycle(
         # Cleanup
         try:
             ci_client.delete_container_instance(container_instance_id=instance_id)
-            print(f"  Deleted container instance")
+            print("  Deleted container instance")
         except oci.exceptions.ServiceError as del_exc:
             if del_exc.status != 404:
                 print(f"  Warning: delete failed: {del_exc.message}")

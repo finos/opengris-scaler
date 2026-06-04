@@ -368,16 +368,6 @@ class ConfigClass:
         return _from_args(cls, kwargs)
 
 
-class UnderscoreTomlConfigParser(TomlConfigParser):
-    """A TOML config parser that converts underscores to hyphens in key names"""
-
-    def __call__(self):
-        return self
-
-    def parse(self, stream) -> OrderedDict[str, Any]:
-        return OrderedDict((k.replace("_", "-"), v) for k, v in super().parse(stream).items())
-
-
 def parse_bool(s: str) -> bool:
     """parse a bool from a conventional string representation"""
     lower = s.lower()
@@ -395,14 +385,6 @@ def parse_enum(s: str, enumm: Type[enum.Enum]) -> Any:
         raise ArgumentTypeError(f"'{s}' is not a valid {enumm.__name__}") from e
 
 
-def is_optional(ty: Any) -> bool:
-    return typing.get_origin(ty) is typing.Union and typing.get_args(ty)[1] is type(None)
-
-
-def get_optional_type(ty: Any) -> type:
-    return typing.get_args(ty)[0]
-
-
 def is_list(ty: Any) -> bool:
     return typing.get_origin(ty) is list or ty is list
 
@@ -414,13 +396,6 @@ def get_list_type(ty: Any) -> type:
 def is_config_type(ty: Any) -> bool:
     try:
         return issubclass(ty, ConfigType)
-    except TypeError:
-        return False
-
-
-def is_config_class(ty: Any) -> bool:
-    try:
-        return issubclass(ty, ConfigClass)
     except TypeError:
         return False
 
