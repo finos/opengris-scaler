@@ -1612,7 +1612,7 @@ function App() {
           flexShrink: 0,
         }}
       >
-        Launch Cluster
+        Launch Scheduler
       </button>
     );
   } else if (phase === "ready") {
