@@ -20,6 +20,17 @@ OwnedPyObject<> get_attr(PyObject* obj, const char* name)
     return OwnedPyObject<> {PyObject_GetAttrString(obj, name)};
 }
 
+bool has_dict_attr(PyObject* obj, const char* name)
+{
+    PyObject* dict = PyObject_GenericGetDict(obj, nullptr);
+    if (!dict) {
+        PyErr_Clear();
+        return false;
+    }
+    OwnedPyObject<> owned_dict {dict};
+    return PyDict_GetItemString(dict, name) != nullptr;
+}
+
 bool read_enum_raw(PyObject* obj, uint16_t& out)
 {
     // IntEnum members satisfy PyLong_Check, as do plain ints. That covers every
@@ -197,12 +208,14 @@ bool load_lazy_struct_metadata(
     uint64_t& root_schema_id,
     OwnedPyObject<>& path)
 {
-    source = get_attr(self, CAPNP_SOURCE_ATTR);
-    if (!source) {
-        PyErr_Clear();
+    // We cannot call get_attr() until we are sure CAPNP_SOURCE_ATTR is defined, or else we will trigger a recursive
+    // call to load_lazy_struct_metadata().
+    if (!has_dict_attr(self, CAPNP_SOURCE_ATTR)) {
         PyErr_Format(PyExc_AttributeError, "%s not found: object is not a lazy Cap'n Proto struct", CAPNP_SOURCE_ATTR);
         return false;
     }
+
+    source = get_attr(self, CAPNP_SOURCE_ATTR);
     OwnedPyObject<> traversal_limit_obj {get_attr(self, CAPNP_TRAVERSAL_LIMIT_ATTR)};
     OwnedPyObject<> root_schema_id_obj {get_attr(self, CAPNP_ROOT_SCHEMA_ID_ATTR)};
     path = get_attr(self, CAPNP_PATH_ATTR);

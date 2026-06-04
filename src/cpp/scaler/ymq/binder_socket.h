@@ -1,12 +1,15 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
+#include <deque>
 #include <expected>
 #include <map>
 #include <memory>
 #include <optional>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "scaler/error/error.h"
@@ -99,6 +102,20 @@ private:
 
         std::map<ConnectionID, std::unique_ptr<internal::MessageConnection>> _connections {};
         std::map<Identity, ConnectionID> _identityToConnectionID {};
+
+        // Identities that completed identity exchange and then disconnected, mapped to the time
+        // of the most recent disconnect. Sends to these are failed immediately (instead of
+        // queued in _pendingSendMessages) to avoid a hang when the peer has gracefully gone
+        // away. Cleared on reconnect or by TTL expiry.
+        //
+        // The TTL only needs to bracket the worst-case lag between libuv processing the disconnect
+        // (which adds the entry) and the Python layer catching up on messages libuv buffered from
+        // that peer (which may try to reply). That lag is millisecond-scale in practice; we keep a
+        // generous 60s window. _disconnectedIdentityInsertions holds entries in insertion order so
+        // the expiry sweep is O(expired) and not O(size); each entry stores its own timestamp so a
+        // peer that re-disconnects (mapped to a fresh time) is not evicted by an older deque entry.
+        std::map<Identity, std::chrono::steady_clock::time_point> _disconnectedIdentities {};
+        std::deque<std::pair<std::chrono::steady_clock::time_point, Identity>> _disconnectedIdentityInsertions {};
 
         std::map<Identity, std::vector<PendingSendMessage>> _pendingSendMessages {};
 
