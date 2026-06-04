@@ -1,8 +1,11 @@
 #include "scaler/ymq/binder_socket.h"
 
 #include <cassert>
+#include <chrono>
 #include <functional>
 #include <utility>
+
+#include "scaler/ymq/configuration.h"
 
 namespace scaler {
 namespace ymq {
@@ -215,19 +218,8 @@ void BinderSocket::onRemoteDisconnect(
     // queueing forever in _pendingSendMessages and hanging the asyncio loop. The set is
     // bounded by a TTL purge driven from here (insert-time) so it cannot grow without bound
     // even under workloads that churn many short-lived peers (e.g. nested-task clients).
-    constexpr auto kDisconnectedIdentityTTL = std::chrono::seconds {60};
-    const auto now                          = std::chrono::steady_clock::now();
-    while (!state->_disconnectedIdentityInsertions.empty() &&
-           now - state->_disconnectedIdentityInsertions.front().first > kDisconnectedIdentityTTL) {
-        const auto& [expiredTs, expiredId] = state->_disconnectedIdentityInsertions.front();
-        // Only drop the map entry if its timestamp matches; otherwise the peer re-disconnected
-        // and the current entry is fresher than this expired deque slot.
-        if (auto it = state->_disconnectedIdentities.find(expiredId);
-            it != state->_disconnectedIdentities.end() && it->second == expiredTs) {
-            state->_disconnectedIdentities.erase(it);
-        }
-        state->_disconnectedIdentityInsertions.pop_front();
-    }
+    const auto now = std::chrono::steady_clock::now();
+    purgeExpiredDisconnectedIdentities(*state, now);
     state->_disconnectedIdentities[remoteIdentity] = now;
     state->_disconnectedIdentityInsertions.emplace_back(now, remoteIdentity);
 
@@ -277,6 +269,21 @@ internal::MessageConnection& BinderSocket::createConnection(
     auto [it, inserted] = state->_connections.emplace(connectionId, std::move(connection));
 
     return *it->second;
+}
+
+void BinderSocket::purgeExpiredDisconnectedIdentities(State& state, std::chrono::steady_clock::time_point now) noexcept
+{
+    while (!state._disconnectedIdentityInsertions.empty() &&
+           now - state._disconnectedIdentityInsertions.front().first > disconnectedIdentityTTL) {
+        const auto& [expiredTs, expiredId] = state._disconnectedIdentityInsertions.front();
+        // Only drop the map entry if its timestamp matches; otherwise the peer re-disconnected
+        // since this deque slot was written and the map holds a fresher entry that we must keep.
+        if (auto it = state._disconnectedIdentities.find(expiredId);
+            it != state._disconnectedIdentities.end() && it->second == expiredTs) {
+            state._disconnectedIdentities.erase(it);
+        }
+        state._disconnectedIdentityInsertions.pop_front();
+    }
 }
 
 }  // namespace ymq
