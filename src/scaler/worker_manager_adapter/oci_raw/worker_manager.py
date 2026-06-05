@@ -105,7 +105,7 @@ class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
 --death-timeout-seconds {worker_config.death_timeout_seconds} \
 --trim-memory-threshold-bytes {worker_config.trim_memory_threshold_bytes} \
 --event-loop {worker_config.event_loop} \
---worker-io-threads {worker_config.io_threads}"""
+--io-threads {worker_config.io_threads}"""
 
         if worker_config.hard_processor_suspend:
             command += " --hard-processor-suspend"

@@ -1,5 +1,5 @@
 FROM ghcr.io/astral-sh/uv:latest AS uv
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
 
 COPY --from=uv /uv /usr/local/bin/uv
 
