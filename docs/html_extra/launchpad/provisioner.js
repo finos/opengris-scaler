@@ -142,7 +142,8 @@ job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
       } else if (wm.type === "oci_raw") {
         var ociRawReq = (wm.requirements || "").trim();
         var ociRawAuth = wm.ociAuthType || "config_file";
-        block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
+        block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
+oci_region = "${wm.ociRegion || "us-ashburn-1"}"
 auth_type = "${ociRawAuth}"
 `;
         if (ociRawAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
@@ -162,7 +163,8 @@ ${ociRawReq}
 `;
       } else if (wm.type === "oci_hpc") {
         var ociHpcAuth = wm.ociAuthType || "config_file";
-        block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
+        block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
+oci_region = "${wm.ociRegion || "us-ashburn-1"}"
 auth_type = "${ociHpcAuth}"
 `;
         if (ociHpcAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
@@ -310,7 +312,8 @@ job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
       } else if (wm.type === "oci_raw") {
         var ociRawReq = (wm.requirements || "").trim();
         var ociRawAuth = wm.ociAuthType || "config_file";
-        block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
+        block += `worker_scheduler_address = "${proto}://<PUBLIC_IP>:${sp}${wsSlash}"
+oci_region = "${wm.ociRegion || "us-ashburn-1"}"
 auth_type = "${ociRawAuth}"
 `;
         if (ociRawAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
@@ -330,7 +333,8 @@ ${ociRawReq}
 `;
       } else if (wm.type === "oci_hpc") {
         var ociHpcAuth = wm.ociAuthType || "config_file";
-        block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
+        block += `worker_scheduler_address = "${proto}://<PUBLIC_IP>:${sp}${wsSlash}"
+oci_region = "${wm.ociRegion || "us-ashburn-1"}"
 auth_type = "${ociHpcAuth}"
 `;
         if (ociHpcAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
