@@ -79,10 +79,7 @@ class OCIContainerInstanceConfig(ConfigClass):
     )
     image_pull_password: Optional[str] = dataclasses.field(
         default=None,
-        metadata=dict(
-            env_var="OCI_IMAGE_PULL_PASSWORD",
-            help="OCIR auth token for pulling private images",
-        ),
+        metadata=dict(env_var="OCI_IMAGE_PULL_PASSWORD", help="OCIR auth token for pulling private images"),
     )
 
     def __post_init__(self) -> None:
