@@ -1,9 +1,4 @@
-"""
-This example shows how to use the Client.map() method.
-Client.map() allows the user to invoke a callable many times with different values.
-For more information on the map operation, refer to
-https://en.wikipedia.org/wiki/Map_(higher-order_function)
-"""
+"""Basic Client.map and Client.starmap example with a local cluster."""
 
 import math
 
@@ -11,20 +6,22 @@ from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
 
+def add(x, y):
+    return x + y
+
+
 def main():
-    # For an explanation on how SchedulerClusterCombo and Client work, please see simple_client.py
     cluster = SchedulerClusterCombo(n_workers=10)
 
     with Client(address=cluster.get_address()) as client:
-        # map each integer in [0, 100) through math.sqrt()
-        # the first parameter is the function to call, and the second is a list of argument tuples
-        # (x,) denotes a tuple of length one
-        results = client.map(math.sqrt, [(x,) for x in range(100)])
+        results = client.map(math.sqrt, range(100))
+        print(sum(results))
 
-        # Collect the results and sums them
-        result = sum(results)
+        results = client.map(add, [1, 2, 3], [10, 20, 30])
+        print(results)
 
-        print(result)
+        results = client.starmap(add, [(1, 10), (2, 20), (3, 30)])
+        print(results)
 
     cluster.shutdown()
 

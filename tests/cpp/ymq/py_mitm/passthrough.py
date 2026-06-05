@@ -7,13 +7,13 @@ and they should behave as if the MITM is not present
 
 from typing import Optional
 
-from tests.cpp.ymq.py_mitm.types import IP, AbstractMITM, TCPConnection, TunTapInterface
+from tests.cpp.ymq.py_mitm.mitm_types import IP, MITM, MITMInterface, TCPConnection
 
 
-class MITM(AbstractMITM):
+class PassthroughMITM(MITM):
     def proxy(
         self,
-        tuntap: TunTapInterface,
+        tuntap: MITMInterface,
         pkt: IP,
         sender: TCPConnection,
         client_conn: Optional[TCPConnection],

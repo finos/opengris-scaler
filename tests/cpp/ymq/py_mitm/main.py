@@ -4,81 +4,49 @@
 This script provides a framework for running MITM test cases
 """
 
+from scapy.config import conf
+
+# only load the scapy layers that we need
+conf.load_layers = ["inet"]
+
 import argparse
 import os
+import platform
 import signal
-import subprocess
-from typing import List
 
-from scapy.all import IP, TCP, TunTapInterface  # type: ignore
+from scapy.all import IP, TCP  # type: ignore
 
 from tests.cpp.ymq.py_mitm import passthrough, randomly_drop_packets, send_rst_to_client
-from tests.cpp.ymq.py_mitm.types import AbstractMITM, TCPConnection
+from tests.cpp.ymq.py_mitm.mitm_types import MITM, MITMInterface, TCPConnection
 
 
-def echo_call(cmd: List[str]):
-    print(f"+ {' '.join(cmd)}")
-    subprocess.check_call(cmd)
-
-
-def create_tuntap_interface(iface_name: str, mitm_ip: str, remote_ip: str) -> TunTapInterface:
-    """
-    Creates a TUNTAP interface and sets brings it up and adds ips using the `ip` program
-
-    Args:
-        iface_name: The name of the TUNTAP interface, usually like `tun0`, `tun1`, etc.
-        mitm_ip: The desired ip address of the mitm. This is the ip that clients can use to connect to the mitm
-        remote_ip: The ip that routes to/from the tuntap interface.
-        packets sent to `mitm_ip` will appear to come from `remote_ip`,\
-        and conversely the tuntap interface can connect/send packets
-        to `remote_ip`, making it a suitable ip for binding a server
-
-    Returns:
-        The TUNTAP interface
-    """
-    iface = TunTapInterface(iface_name, mode="tun")
-
-    try:
-        echo_call(["sudo", "ip", "link", "set", iface_name, "up"])
-        echo_call(["sudo", "ip", "addr", "add", remote_ip, "peer", mitm_ip, "dev", iface_name])
-        print(f"[+] Interface {iface_name} up with IP {mitm_ip}")
-    except subprocess.CalledProcessError:
-        print("[!] Could not bring up interface. Run as root or set manually.")
-        raise
-
-    return iface
-
-
-def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: int, mitm: AbstractMITM):
+def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: int, mitm: MITM) -> None:
     """
     This function serves as a framework for man in the middle implementations
     A client connects to the MITM, then the MITM connects to a remote server
     The MITM sits inbetween the client and the server, manipulating the packets sent depending on the test case
     This function:
-        1. creates a TUNTAP interface and prepares it for MITM
+        1. creates an interface and prepares it for MITM
         2. handles connecting clients and handling connection closes
         3. delegates additional logic to a pluggable callable, `mitm`
-        4. returns when both connections have terminated (via )
+        4. returns when both connections have terminated
 
     Args:
         pid: this is the pid of the test process, used for signaling readiness \
         we send SIGUSR1 to this process when the mitm is ready
-        mitm_ip: The desired ip address of the mitm server
+        mitm_ip: The desired ip address of the mitm server \
+        Windows: This parameter is ignored
         mitm_port: The desired port of the mitm server. \
-        This is the port used to connect to the server, but the client is free to connect on any port
-        remote_ip: The desired remote ip for the TUNTAP interface. This is the only ip address \
-        reachable by the interface and is thus the src ip for clients, and the ip that the remote server \
-        must be bound to
+        Linux: This is the port used to connect to the server, but the client is free to connect on any port \
+        Windows: This parameter is ignored
+        remote_ip: The remote ip for the that the remote server is bound to
         server_port: The port that the remote server is bound to
         mitm: The core logic for a MITM test case. This callable may maintain its own state and is responsible \
-        for sending packets over the TUNTAP interface (if it doesn't, nothing will happen)
+        for sending packets over the interface (if it doesn't, nothing will happen)
     """
+    interface = get_interface(mitm_ip, mitm_port, remote_ip, server_port)
 
-    tuntap = create_tuntap_interface("tun0", mitm_ip, remote_ip)
-
-    # signal the caller that the tuntap interface has been created
-    if pid > 0:
-        os.kill(pid, signal.SIGUSR1)
+    signal_ready(pid)
 
     # these track information about our connections
     # we already know what to expect for the server connection, we are the connector
@@ -86,19 +54,23 @@ def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: in
 
     # the port that the mitm uses to connect to the server
     # we increment the port for each new connection to avoid collisions
-    mitm_server_port = mitm_port
-    server_conn = TCPConnection(mitm_ip, mitm_server_port, remote_ip, server_port)
+    next_server_port = mitm_port
+    server_conn = TCPConnection(mitm_ip, next_server_port, remote_ip, server_port)
 
     # tracks the state of each connection
-    client_sent_fin_ack = False
     client_closed = False
-    server_sent_fin_ack = False
     server_closed = False
 
     while True:
-        pkt = tuntap.recv()
+        pkt = interface.recv()
+
         if not pkt.haslayer(IP) or not pkt.haslayer(TCP):
             continue
+
+        active_ports = {mitm_port, server_conn.local_port}
+        if pkt.sport not in active_ports and pkt.dport not in active_ports:
+            continue
+
         ip = pkt[IP]
         tcp = pkt[TCP]
 
@@ -106,9 +78,27 @@ def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: in
         # and the source ip and port will be the remote ip and port
         sender = TCPConnection(pkt.dst, pkt.dport, pkt.src, pkt.sport)
 
+        if tcp.flags.S and not tcp.flags.A:  # SYN from client
+            if sender != client_conn or client_conn is None:
+                print(f"[*] Client {ip.src}:{tcp.sport} connecting to {ip.dst}:{tcp.dport}")
+                client_conn = sender
+
+                next_server_port += 1
+                server_conn = TCPConnection(mitm_ip, next_server_port, remote_ip, server_port)
+
+        if tcp.flags.S and tcp.flags.A:  # SYN-ACK from server
+            if sender == server_conn:
+                print(f"[*] Server {ip.src}:{tcp.sport} accepted connection from {ip.dst}:{tcp.dport}")
+
+        if tcp.flags.R or tcp.flags.F:  # RST or FIN
+            if sender == client_conn:
+                client_closed = True
+            if sender == server_conn:
+                server_closed = True
+
         pretty = f"[{tcp.flags}]{(': ' + str(bytes(tcp.payload))) if tcp.payload else ''}"
 
-        if not mitm.proxy(tuntap, pkt, sender, client_conn, server_conn):
+        if not mitm.proxy(interface, pkt, sender, client_conn, server_conn):
             if sender == client_conn:
                 print(f"[DROPPED]: -> {pretty}")
             elif sender == server_conn:
@@ -122,43 +112,50 @@ def main(pid: int, mitm_ip: str, mitm_port: int, remote_ip: str, server_port: in
             print(f"-> {pretty}")
         elif sender == server_conn:
             print(f"<- {pretty}")
-
-        if tcp.flags == "S":  # SYN from client
-            print("-> [S]")
-            if sender != client_conn or client_conn is None:
-                print(f"[*] New connection from {ip.src}:{tcp.sport} to {ip.dst}:{tcp.dport}")
-                client_conn = sender
-
-                server_conn = TCPConnection(mitm_ip, mitm_server_port, remote_ip, server_port)
-
-                # increment the port so that the next client connection (if there is one) uses a different port
-                mitm_server_port += 1
-
-        if tcp.flags == "SA":  # SYN-ACK from server
-            if sender == server_conn:
-                print(f"[*] Connection to server established: {ip.src}:{tcp.sport} to {ip.dst}:{tcp.dport}")
-
-        if tcp.flags.F and tcp.flags.A:  # FIN-ACK
-            if sender == client_conn:
-                client_sent_fin_ack = True
-            if sender == server_conn:
-                server_sent_fin_ack = True
-
-        if tcp.flags.A:  # ACK
-            if sender == client_conn and server_sent_fin_ack:
-                server_closed = True
-            if sender == server_conn and client_sent_fin_ack:
-                client_closed = True
+        else:
+            print(f"?? {pretty}")
 
         if client_closed and server_closed:
             print("[*] Both connections closed")
             return
 
 
+def get_interface(mitm_ip: str, mitm_port: int, remote_ip: str, server_port: int) -> MITMInterface:
+    """get the platform-specific mitm interface"""
+
+    system = platform.system()
+    if system == "Windows":
+        from tests.cpp.ymq.py_mitm.windivert import WindivertMITMInterface
+
+        return WindivertMITMInterface(mitm_ip, mitm_port, remote_ip, server_port)
+    elif system in ("Linux", "Darwin"):
+        from tests.cpp.ymq.py_mitm.tuntap import create_tuntap_interface
+
+        return create_tuntap_interface("tun0", mitm_ip, remote_ip)
+
+    raise RuntimeError("unsupported platform")
+
+
+def signal_ready(pid: int) -> None:
+    """signal to the caller that the mitm is ready"""
+
+    system = platform.system()
+    if system == "Windows":
+        import win32api
+        import win32event
+
+        handle = win32event.OpenEvent(win32event.EVENT_MODIFY_STATE, False, "Global\\PythonSignal")
+        win32event.SetEvent(handle)
+        win32api.CloseHandle(handle)
+    elif system in ("Linux", "Darwin"):
+        if pid > 0:
+            os.kill(pid, signal.SIGUSR1)  # type: ignore[attr-defined]
+
+
 TESTCASES = {
-    "passthrough": passthrough,
-    "randomly_drop_packets": randomly_drop_packets,
-    "send_rst_to_client": send_rst_to_client,
+    "passthrough": passthrough.PassthroughMITM,
+    "randomly_drop_packets": randomly_drop_packets.RandomlyDropPacketsMITM,
+    "send_rst_to_client": send_rst_to_client.SendRSTToClientMITM,
 }
 
 if __name__ == "__main__":
@@ -170,8 +167,8 @@ if __name__ == "__main__":
     parser.add_argument("remote_ip", type=str, help="The desired remote ip for the TUNTAP interface")
     parser.add_argument("server_port", type=int, help="The port that the remote server is bound to")
 
-    args, unknown = parser.parse_known_args()
+    args, extra = parser.parse_known_args()
 
-    module = TESTCASES[args.testcase]
+    mitm = TESTCASES[args.testcase]
 
-    main(args.pid, args.mitm_ip, args.mitm_port, args.remote_ip, args.server_port, module.MITM(*unknown))
+    main(args.pid, args.mitm_ip, args.mitm_port, args.remote_ip, args.server_port, mitm(*extra))

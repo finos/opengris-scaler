@@ -34,7 +34,7 @@ def main():
                 self.client = client
 
             def map(self, func, *iterables):
-                return self.client.map(func, [args for args in zip(*iterables)])
+                return self.client.starmap(func, list(zip(*iterables)))
 
         # non-parallelized cross-validation
         start = timer()

@@ -1,0 +1,93 @@
+#pragma once
+
+#include <chrono>
+#include <expected>
+#include <memory>
+#include <string>
+#include <variant>
+
+#include "scaler/logging/logging.h"
+#include "scaler/wrapper/uv/loop.h"
+#include "scaler/wrapper/uv/timer.h"
+#include "scaler/ymq/address.h"
+#include "scaler/ymq/configuration.h"
+#include "scaler/ymq/internal/client.h"
+#include "scaler/ymq/internal/event_loop_thread.h"
+
+namespace scaler {
+namespace ymq {
+namespace internal {
+
+// A not yet established client to a remote server.
+//
+// Tries to connect to the address up to maxRetryTimes, calling the callback on success or failure.
+class ConnectClient {
+public:
+    using ConnectCallback = scaler::utility::MoveOnlyFunction<void(std::expected<Client, scaler::ymq::Error>)>;
+
+    ConnectClient(
+        scaler::wrapper::uv::Loop& loop,
+        Address address,
+        ConnectCallback onConnectCallback,
+        size_t maxRetryTimes                     = defaultClientMaxRetryTimes,
+        std::chrono::milliseconds initRetryDelay = defaultClientInitRetryDelay) noexcept;
+
+    ~ConnectClient() noexcept;
+
+    ConnectClient(const ConnectClient&)            = delete;
+    ConnectClient& operator=(const ConnectClient&) = delete;
+
+    ConnectClient(ConnectClient&&) noexcept            = default;
+    ConnectClient& operator=(ConnectClient&&) noexcept = default;
+
+    void disconnect() noexcept;
+
+private:
+    // State is heap-allocated to provide a stable memory for callbacks if the client is std::move'd or freed.
+
+    struct State {
+        scaler::ymq::Logger _logger {};
+
+        scaler::wrapper::uv::Loop& _loop;
+
+        Address _address;
+
+        ConnectCallback _onConnectCallback;
+
+        std::optional<Client> _client {};
+        std::optional<scaler::wrapper::uv::ConnectRequest> _connectRequest {};
+
+        // Holds the TCP socket during the WebSocket upgrade phase (after TCP connect, before upgrade done).
+        std::optional<scaler::wrapper::uv::TCPSocket> _upgradeSocket {};
+
+        size_t _maxRetryTimes;
+        size_t _retryTimes {0};
+        std::chrono::milliseconds _initRetryDelay;
+        std::optional<scaler::wrapper::uv::Timer> _retryTimer {};
+
+        State(
+            scaler::wrapper::uv::Loop& loop,
+            Address address,
+            ConnectCallback onConnectCallback,
+            size_t maxRetryTimes,
+            std::chrono::milliseconds initRetryDelay) noexcept;
+    };
+
+    std::shared_ptr<State> _state;
+
+    static void tryConnect(std::shared_ptr<State> state) noexcept;
+
+    static void onConnect(
+        std::shared_ptr<State> state, std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
+
+    // Called when the underlying TCP connection for a WebSocket address is established.
+    // Kicks off the HTTP upgrade handshake.
+    static void onConnectWS(
+        std::shared_ptr<State> state, std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
+
+    static void retry(std::shared_ptr<State> state) noexcept;
+};
+
+}  // namespace internal
+}  // namespace ymq
+}  // namespace scaler

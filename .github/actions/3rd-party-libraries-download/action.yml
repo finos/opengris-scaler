@@ -14,7 +14,7 @@ runs:
       id: download-libraries
       with:
         path: |
-          downloaded
+          thirdparties/downloaded
         key: download-libraries-${{ inputs.os }}-${{ hashFiles('scripts/library_tool.*') }}
 
     - name: Download Libraries (Linux)
@@ -22,9 +22,21 @@ runs:
       if: (inputs.os == 'Linux') && (steps.download-libraries.outputs.cache-hit != 'true')
       run: |
         ./scripts/library_tool.sh capnp download
+        ./scripts/library_tool.sh libuv download
+        ./scripts/library_tool.sh openssl download
+
+    - name: Download Libraries (macOS)
+      shell: bash
+      if: (inputs.os == 'macOS') && (steps.download-libraries.outputs.cache-hit != 'true')
+      run: |
+        ./scripts/library_tool.sh capnp download
+        ./scripts/library_tool.sh libuv download
+        ./scripts/library_tool.sh openssl download
 
     - name: Download Libraries (Windows)
       shell: pwsh
       if: (inputs.os == 'Windows') && (steps.download-libraries.outputs.cache-hit != 'true')
       run: |
         ./scripts/library_tool.ps1 capnp download
+        ./scripts/library_tool.ps1 libuv download
+        ./scripts/library_tool.ps1 openssl download

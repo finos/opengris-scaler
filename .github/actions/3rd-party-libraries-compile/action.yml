@@ -14,7 +14,7 @@ runs:
       id: compiled-libraries
       with:
         path: |
-          capnproto-*
+          thirdparties/compiled
         key: compiled-libraries-${{ inputs.os }}-${{ hashFiles('scripts/library_tool.*') }}
 
     - name: Compile Libraries (Linux)
@@ -22,9 +22,21 @@ runs:
       if: (inputs.os == 'Linux') && (steps.compiled-libraries.outputs.cache-hit != 'true')
       run: |
         ./scripts/library_tool.sh capnp compile
+        ./scripts/library_tool.sh libuv compile
+        ./scripts/library_tool.sh openssl compile
+
+    - name: Compile Libraries (macOS)
+      shell: bash
+      if: (inputs.os == 'macOS') && (steps.download-libraries.outputs.cache-hit != 'true')
+      run: |
+        ./scripts/library_tool.sh capnp compile
+        ./scripts/library_tool.sh libuv compile
+        ./scripts/library_tool.sh openssl compile
 
     - name: Compile Libraries (Windows)
       shell: pwsh
       if: (inputs.os == 'Windows') && (steps.compiled-libraries.outputs.cache-hit != 'true')
       run: |
         ./scripts/library_tool.ps1 capnp compile
+        ./scripts/library_tool.ps1 libuv compile
+        ./scripts/library_tool.ps1 openssl compile

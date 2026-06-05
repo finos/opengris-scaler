@@ -1,0 +1,1 @@
+add_test_executable(test_logging test_logging.cpp)

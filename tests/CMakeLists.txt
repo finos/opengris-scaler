@@ -13,6 +13,11 @@ FetchContent_MakeAvailable(googletest)
 
 find_package(Python3 COMPONENTS Development REQUIRED)
 
+# This find_package brings in Python3::Python and may reset Python3::Module's imported properties,
+# so re-patch both targets via the shared helper from cmake/ScalerPythonModule.cmake.
+scaler_patch_python_imported_target(Python3::Module)
+scaler_patch_python_imported_target(Python3::Python)
+
 # This function compiles, links, and adds a C++ test executable using Google Test.
 # It is shared by all test subdirectories.
 function(add_test_executable test_name source_file)
@@ -21,8 +26,9 @@ function(add_test_executable test_name source_file)
     target_include_directories(${test_name} PRIVATE ${CMAKE_BINARY_DIR})
 
     target_link_libraries(${test_name} PRIVATE
-        $<$<NOT:$<PLATFORM_ID:Windows>>:object_storage_server_objs>
+        object_storage_server_objs
         ymq_objs
+        scaler_wrapper_uv
         CapnProto::capnp
         CapnProto::kj
         GTest::gtest_main
@@ -45,4 +51,3 @@ endfunction()
 
 # Add the directory for the C++ tests.
 add_subdirectory(cpp)
-

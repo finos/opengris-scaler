@@ -1,4 +1,4 @@
-__pychace__/
+__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -17,9 +17,12 @@ eggs/
 .venv/
 venv*/
 .vscode/
+.kiro/
 
 dask-worker-space/*
 .pre-commit-config.yaml
+
+thirdparties/*
 
 .DS_Store
 
@@ -30,5 +33,18 @@ build*/
 CMakeUserPresets.json
 CMakeFiles/
 .vs/
-scaler/protocol/capnp/*.c++
-scaler/protocol/capnp/*.h
+src/scaler/protocol/capnp/*.c++
+src/scaler/protocol/capnp/*.h
+
+orb/logs/
+orb/metrics/
+
+# AWS HPC test-generated files
+.scaler_aws_batch_config.json
+.scaler_aws_hpc.env
+
+# Per-user agent preferences (not committed)
+.agents-local.md
+
+.ipynb_checkpoints/
+.claude/
