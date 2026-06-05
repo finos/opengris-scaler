@@ -233,7 +233,7 @@ function buildUserData(cfg, creds) {
       : `git clone --depth 1 ${cloneUrl} /opt/scaler-src`;
 
     gitBuildLines = `# C++ build deps: GCC 14 (required for C++23 <expected>) + Cap'n Proto toolchain
-dnf install -y git gcc14 gcc14-c++ gcc14-libstdc++-devel autoconf automake libtool libuv-devel
+dnf install -y git gcc14 gcc14-c++ gcc14-libstdc++-devel autoconf automake libtool libuv-devel openssl-devel
 
 # Clone repo to access build scripts
 ${cloneCmd}
