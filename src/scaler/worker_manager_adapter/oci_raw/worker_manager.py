@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import functools
 import logging
 import math
@@ -117,6 +118,17 @@ class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
         if capabilities_str:
             command += f" --per-worker-capabilities {capabilities_str}"
 
+        image_pull_secrets = None
+        if container_instance_config.image_pull_username and container_instance_config.image_pull_password:
+            registry_endpoint = container_instance_config.container_image.split("/")[0]
+            image_pull_secrets = [
+                oci.container_instances.models.CreateBasicImagePullSecretDetails(
+                    registry_endpoint=registry_endpoint,
+                    username=base64.b64encode(container_instance_config.image_pull_username.encode()).decode(),
+                    password=base64.b64encode(container_instance_config.image_pull_password.encode()).decode(),
+                )
+            ]
+
         display_name = f"scaler-worker-{uuid.uuid4().hex[:8]}"
         create_details = oci.container_instances.models.CreateContainerInstanceDetails(
             compartment_id=container_instance_config.compartment_id,
@@ -139,6 +151,7 @@ class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
             vnics=[
                 oci.container_instances.models.CreateContainerVnicDetails(subnet_id=container_instance_config.subnet_id)
             ],
+            image_pull_secrets=image_pull_secrets,
             display_name=display_name,
         )
 

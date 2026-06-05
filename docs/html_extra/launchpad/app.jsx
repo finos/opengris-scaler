@@ -541,6 +541,28 @@ function WorkerManagerCard({
       {wm.type === "oci_raw" && (
         <>
           <div>
+            <Label help="OCI authentication method: 'config_file' uses ~/.oci/config; 'instance_principal' uses VM identity.">Auth Type</Label>
+            <select
+              value={wm.ociAuthType || "config_file"}
+              onChange={(e) => set("ociAuthType", e.target.value)}
+              style={inp}
+            >
+              <option value="config_file">Config File (~/.oci/config)</option>
+              <option value="instance_principal">Instance Principal</option>
+            </select>
+          </div>
+          {(wm.ociAuthType || "config_file") === "config_file" && (
+            <div>
+              <Label help="OCI config file profile name (only used with config_file auth).">OCI Profile</Label>
+              <input
+                value={wm.ociProfile || "DEFAULT"}
+                onChange={(e) => set("ociProfile", e.target.value)}
+                style={inp}
+                placeholder="DEFAULT"
+              />
+            </div>
+          )}
+          <div>
             <Label help="OCI Compartment OCID where container instances are launched.">Compartment ID</Label>
             <input
               value={wm.ociCompartmentId || ""}
@@ -574,6 +596,25 @@ function WorkerManagerCard({
               onChange={(e) => set("ociContainerImage", e.target.value)}
               style={inp}
               placeholder="us-ashburn-1.ocir.io/myns/scaler:latest"
+            />
+          </div>
+          <div>
+            <Label help="OCIR username for pulling private images (e.g. &lt;namespace&gt;/&lt;email&gt;).">Image Pull Username</Label>
+            <input
+              value={wm.ociImagePullUsername || ""}
+              onChange={(e) => set("ociImagePullUsername", e.target.value)}
+              style={inp}
+              placeholder="mynamespace/user@example.com"
+            />
+          </div>
+          <div>
+            <Label help="OCIR auth token for pulling private images.">Image Pull Password</Label>
+            <input
+              type="password"
+              value={wm.ociImagePullPassword || ""}
+              onChange={(e) => set("ociImagePullPassword", e.target.value)}
+              style={inp}
+              placeholder="Auth token"
             />
           </div>
           <div>
@@ -632,6 +673,28 @@ function WorkerManagerCard({
       {/* oci_hpc */}
       {wm.type === "oci_hpc" && (
         <>
+          <div>
+            <Label help="OCI authentication method: 'config_file' uses ~/.oci/config; 'instance_principal' uses VM identity.">Auth Type</Label>
+            <select
+              value={wm.ociAuthType || "config_file"}
+              onChange={(e) => set("ociAuthType", e.target.value)}
+              style={inp}
+            >
+              <option value="config_file">Config File (~/.oci/config)</option>
+              <option value="instance_principal">Instance Principal</option>
+            </select>
+          </div>
+          {(wm.ociAuthType || "config_file") === "config_file" && (
+            <div>
+              <Label help="OCI config file profile name (only used with config_file auth).">OCI Profile</Label>
+              <input
+                value={wm.ociProfile || "DEFAULT"}
+                onChange={(e) => set("ociProfile", e.target.value)}
+                style={inp}
+                placeholder="DEFAULT"
+              />
+            </div>
+          )}
           <div>
             <Label help="OCI Compartment OCID where container instances are launched.">Compartment ID</Label>
             <input
@@ -1278,6 +1341,11 @@ function App() {
   const [region, setRegion] = useState("us-east-1");
   const [accessKeyId, setAKI] = useState("");
   const [secretKey, setSK] = useState("");
+  const [credTab, setCredTab] = useState("aws");
+  const [ociUserId, setOciUserId] = useState("");
+  const [ociTenancyId, setOciTenancyId] = useState("");
+  const [ociFingerprint, setOciFingerprint] = useState("");
+  const [ociPrivateKey, setOciPrivateKey] = useState("");
   const [transport, setTransport] = useState("ws");
   const [networkBackend, setNetBack] = useState("ymq");
   const [pythonVersion, setPyVer] = useState("3.14");
@@ -1542,7 +1610,7 @@ function App() {
     try {
       const state = await provision(
         cfg,
-        { accessKeyId, secretKey },
+        { accessKeyId, secretKey, ociUserId, ociTenancyId, ociFingerprint, ociPrivateKey },
         addLog,
         savePartial,
         (name, mat) => setKeyMaterial({ name, mat }),
@@ -1610,7 +1678,7 @@ function App() {
     try {
       await teardown(
         provState,
-        { accessKeyId, secretKey },
+        { accessKeyId, secretKey, ociUserId, ociTenancyId, ociFingerprint, ociPrivateKey },
         addLog,
         controller.signal,
       );
@@ -1968,12 +2036,13 @@ function App() {
                     ["ibm", "IBM"],
                     ["oci", "OCI"],
                   ].map(([id, lbl]) => {
-                    const active = id === "aws";
-                    const disabled = id !== "aws";
+                    const active = id === credTab;
+                    const disabled = id === "ibm";
                     return (
                       <button
                         key={id}
                         disabled={disabled}
+                        onClick={() => !disabled && setCredTab(id)}
                         style={{
                           padding: "5px 12px",
                           fontFamily: "inherit",
@@ -1998,109 +2067,174 @@ function App() {
                     );
                   })}
                 </div>
-                <div>
-                  <Label help="The AWS region where your cluster will be deployed.">
-                    AWS Region
-                  </Label>
-                  <RegionSelect value={region} onChange={setRegion} />
-                </div>
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: 6 }}
-                >
-                  <div
-                    style={{
-                      background: "var(--bg-surface)",
-                      border: "1px solid var(--border-accent)",
-                      borderRadius: 3,
-                      padding: "8px 10px",
-                      display: "flex",
-                      alignItems: "center",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 10,
-                        color: "var(--text-muted)",
-                        marginRight: 8,
-                        flexShrink: 0,
-                      }}
+                {credTab === "aws" && (
+                  <>
+                    <div>
+                      <Label help="The AWS region where your cluster will be deployed.">
+                        AWS Region
+                      </Label>
+                      <RegionSelect value={region} onChange={setRegion} />
+                    </div>
+                    <div
+                      style={{ display: "flex", flexDirection: "column", gap: 6 }}
                     >
-                      KEY_ID
-                    </span>
-                    <SecretInput
-                      value={accessKeyId}
-                      onChange={setAKI}
-                      placeholder="AKIA…"
-                      style={{
-                        flex: 1,
-                        fontSize: 12,
-                        color: "var(--text-primary)",
-                      }}
-                    />
-                  </div>
-                  <div
-                    style={{
-                      background: "var(--bg-surface)",
-                      border: "1px solid var(--border-accent)",
-                      borderRadius: 3,
-                      padding: "8px 10px",
-                      display: "flex",
-                      alignItems: "center",
-                    }}
-                  >
+                      <div
+                        style={{
+                          background: "var(--bg-surface)",
+                          border: "1px solid var(--border-accent)",
+                          borderRadius: 3,
+                          padding: "8px 10px",
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 10,
+                            color: "var(--text-muted)",
+                            marginRight: 8,
+                            flexShrink: 0,
+                          }}
+                        >
+                          KEY_ID
+                        </span>
+                        <SecretInput
+                          value={accessKeyId}
+                          onChange={setAKI}
+                          placeholder="AKIA…"
+                          style={{
+                            flex: 1,
+                            fontSize: 12,
+                            color: "var(--text-primary)",
+                          }}
+                        />
+                      </div>
+                      <div
+                        style={{
+                          background: "var(--bg-surface)",
+                          border: "1px solid var(--border-accent)",
+                          borderRadius: 3,
+                          padding: "8px 10px",
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 10,
+                            color: "var(--text-muted)",
+                            marginRight: 8,
+                            flexShrink: 0,
+                          }}
+                        >
+                          SECRET
+                        </span>
+                        <SecretInput
+                          value={secretKey}
+                          onChange={setSK}
+                          placeholder="wJalr…"
+                          style={{
+                            flex: 1,
+                            fontSize: 12,
+                            color: "var(--text-primary)",
+                          }}
+                        />
+                      </div>
+                      <a
+                        href="https://console.aws.amazon.com/iam/home#/security_credentials"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          fontSize: 10,
+                          color: "var(--text-muted)",
+                          textDecoration: "none",
+                          alignSelf: "flex-end",
+                        }}
+                        onMouseOver={(e) =>
+                          (e.currentTarget.style.color = "var(--text-accent)")
+                        }
+                        onMouseOut={(e) =>
+                          (e.currentTarget.style.color = "var(--text-muted)")
+                        }
+                      >
+                        Generate access keys in AWS Console ↗
+                      </a>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          color: "var(--text-dim)",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        Your credentials are used from this browser to provision AWS
+                        resources and are made available to the scheduler instance
+                        for worker management. They are not stored by this
+                        application.
+                      </span>
+                    </div>
+                  </>
+                )}
+                {credTab === "oci" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div>
+                      <Label help="OCI user OCID — found in OCI Console under Profile.">User OCID</Label>
+                      <div style={{ ...inp, display: "flex", alignItems: "center" }}>
+                        <SecretInput
+                          value={ociUserId}
+                          onChange={setOciUserId}
+                          placeholder="ocid1.user.oc1..aaa..."
+                          style={{ flex: 1, fontSize: 12, color: "var(--text-primary)" }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label help="OCI tenancy OCID — found in Administration > Tenancy Details.">Tenancy OCID</Label>
+                      <div style={{ ...inp, display: "flex", alignItems: "center" }}>
+                        <SecretInput
+                          value={ociTenancyId}
+                          onChange={setOciTenancyId}
+                          placeholder="ocid1.tenancy.oc1..aaa..."
+                          style={{ flex: 1, fontSize: 12, color: "var(--text-primary)" }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label help="Fingerprint of the API key pair registered in OCI Console.">Fingerprint</Label>
+                      <div style={{ ...inp, display: "flex", alignItems: "center" }}>
+                        <SecretInput
+                          value={ociFingerprint}
+                          onChange={setOciFingerprint}
+                          placeholder="aa:bb:cc:dd:ee:ff"
+                          style={{ flex: 1, fontSize: 12, color: "var(--text-primary)" }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label help="Paste the contents of your OCI API private key PEM file.">Private Key (PEM)</Label>
+                      <textarea
+                        value={ociPrivateKey}
+                        onChange={(e) => setOciPrivateKey(e.target.value)}
+                        placeholder={"-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"}
+                        style={{
+                          ...inp,
+                          fontFamily: "monospace",
+                          fontSize: 10,
+                          resize: "vertical",
+                          minHeight: 80,
+                          lineHeight: 1.5,
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    </div>
                     <span
-                      style={{
-                        fontSize: 10,
-                        color: "var(--text-muted)",
-                        marginRight: 8,
-                        flexShrink: 0,
-                      }}
+                      style={{ fontSize: 10, color: "var(--text-dim)", lineHeight: 1.5 }}
                     >
-                      SECRET
+                      OCI credentials are written to ~/.oci/config on the scheduler
+                      instance so the worker manager can authenticate with OCI.
+                      They are not stored by this application.
                     </span>
-                    <SecretInput
-                      value={secretKey}
-                      onChange={setSK}
-                      placeholder="wJalr…"
-                      style={{
-                        flex: 1,
-                        fontSize: 12,
-                        color: "var(--text-primary)",
-                      }}
-                    />
                   </div>
-                  <a
-                    href="https://console.aws.amazon.com/iam/home#/security_credentials"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      fontSize: 10,
-                      color: "var(--text-muted)",
-                      textDecoration: "none",
-                      alignSelf: "flex-end",
-                    }}
-                    onMouseOver={(e) =>
-                      (e.currentTarget.style.color = "var(--text-accent)")
-                    }
-                    onMouseOut={(e) =>
-                      (e.currentTarget.style.color = "var(--text-muted)")
-                    }
-                  >
-                    Generate access keys in AWS Console ↗
-                  </a>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: "var(--text-dim)",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    Your credentials are used from this browser to provision AWS
-                    resources and are made available to the scheduler instance
-                    for worker management. They are not stored by this
-                    application.
-                  </span>
-                </div>
+                )}
               </PanelBox>
 
               <PanelBox title="General Options">

@@ -141,12 +141,19 @@ job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
 `;
       } else if (wm.type === "oci_raw") {
         var ociRawReq = (wm.requirements || "").trim();
+        var ociRawAuth = wm.ociAuthType || "config_file";
         block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-compartment_id = "${wm.ociCompartmentId || ""}"
+auth_type = "${ociRawAuth}"
+`;
+        if (ociRawAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
+        block += `compartment_id = "${wm.ociCompartmentId || ""}"
 availability_domain = "${wm.ociAvailabilityDomain || ""}"
 subnet_id = "${wm.ociSubnetId || ""}"
 container_image = "${wm.ociContainerImage || ""}"
-instance_ocpus = ${wm.ociOcpus || 4}
+`;
+        if (wm.ociImagePullUsername) block += `image_pull_username = "${wm.ociImagePullUsername}"\n`;
+        if (wm.ociImagePullPassword) block += `image_pull_password = "${wm.ociImagePullPassword}"\n`;
+        block += `instance_ocpus = ${wm.ociOcpus || 4}
 instance_memory_gb = ${wm.ociMemoryGb || 30}
 python_version = "${cfg.pythonVersion}"
 requirements_txt = """
@@ -154,8 +161,12 @@ ${ociRawReq}
 """
 `;
       } else if (wm.type === "oci_hpc") {
+        var ociHpcAuth = wm.ociAuthType || "config_file";
         block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-compartment_id = "${wm.ociCompartmentId || ""}"
+auth_type = "${ociHpcAuth}"
+`;
+        if (ociHpcAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
+        block += `compartment_id = "${wm.ociCompartmentId || ""}"
 availability_domain = "${wm.ociAvailabilityDomain || ""}"
 subnet_id = "${wm.ociSubnetId || ""}"
 container_image = "${wm.ociContainerImage || ""}"
@@ -298,12 +309,19 @@ job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
 `;
       } else if (wm.type === "oci_raw") {
         var ociRawReq = (wm.requirements || "").trim();
+        var ociRawAuth = wm.ociAuthType || "config_file";
         block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-compartment_id = "${wm.ociCompartmentId || ""}"
+auth_type = "${ociRawAuth}"
+`;
+        if (ociRawAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
+        block += `compartment_id = "${wm.ociCompartmentId || ""}"
 availability_domain = "${wm.ociAvailabilityDomain || ""}"
 subnet_id = "${wm.ociSubnetId || ""}"
 container_image = "${wm.ociContainerImage || ""}"
-instance_ocpus = ${wm.ociOcpus || 4}
+`;
+        if (wm.ociImagePullUsername) block += `image_pull_username = "${wm.ociImagePullUsername}"\n`;
+        if (wm.ociImagePullPassword) block += `image_pull_password = "${wm.ociImagePullPassword}"\n`;
+        block += `instance_ocpus = ${wm.ociOcpus || 4}
 instance_memory_gb = ${wm.ociMemoryGb || 30}
 python_version = "${cfg.pythonVersion}"
 requirements_txt = """
@@ -311,8 +329,12 @@ ${ociRawReq}
 """
 `;
       } else if (wm.type === "oci_hpc") {
+        var ociHpcAuth = wm.ociAuthType || "config_file";
         block += `oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-compartment_id = "${wm.ociCompartmentId || ""}"
+auth_type = "${ociHpcAuth}"
+`;
+        if (ociHpcAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
+        block += `compartment_id = "${wm.ociCompartmentId || ""}"
 availability_domain = "${wm.ociAvailabilityDomain || ""}"
 subnet_id = "${wm.ociSubnetId || ""}"
 container_image = "${wm.ociContainerImage || ""}"
@@ -338,6 +360,26 @@ object_storage_address = "${proto}://127.0.0.1:${op}${wsSlash}"
       return block;
     })
     .join("\n");
+
+  var ociConfigBlock = "";
+  if (creds.ociUserId && creds.ociTenancyId && creds.ociFingerprint && creds.ociPrivateKey) {
+    ociConfigBlock = `
+mkdir -p /root/.oci
+cat > /root/.oci/oci_api_key.pem << OCI_KEY_EOF
+${creds.ociPrivateKey.trim()}
+OCI_KEY_EOF
+chmod 600 /root/.oci/oci_api_key.pem
+
+cat > /root/.oci/config << OCI_CFG_EOF
+[DEFAULT]
+user=${creds.ociUserId}
+fingerprint=${creds.ociFingerprint}
+tenancy=${creds.ociTenancyId}
+key_file=/root/.oci/oci_api_key.pem
+OCI_CFG_EOF
+chmod 600 /root/.oci/config
+`;
+  }
 
   // $IMDS_TOKEN / $PUBLIC_IP / $PRIVATE_IP / $SUBNET_ID / $MAC / $! are bash variables expanded
   // at runtime on the EC2 instance — JS template literals only interpolate ${...}, not $name.
@@ -368,7 +410,7 @@ aws_secret_access_key = ${creds.secretKey}
 region = ${cfg.region}
 AWS_EOF
 chmod 600 /root/.aws/config
-
+${ociConfigBlock}
 mkdir -p /opt/scaler
 
 cat > /opt/scaler/config.toml << CONFIG_EOF

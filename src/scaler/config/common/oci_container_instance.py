@@ -69,6 +69,22 @@ class OCIContainerInstanceConfig(ConfigClass):
         default=DEFAULT_OCI_INSTANCE_SHAPE, metadata=dict(help="OCI Container Instance shape")
     )
 
+    # Image pull credentials (required for private OCIR repositories)
+    image_pull_username: Optional[str] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            env_var="OCI_IMAGE_PULL_USERNAME",
+            help="OCIR username for pulling private images (e.g. <namespace>/<email>)",
+        ),
+    )
+    image_pull_password: Optional[str] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            env_var="OCI_IMAGE_PULL_PASSWORD",
+            help="OCIR auth token for pulling private images",
+        ),
+    )
+
     def __post_init__(self) -> None:
         if not self.compartment_id:
             raise ValueError("compartment_id cannot be empty.")

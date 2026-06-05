@@ -1545,14 +1545,12 @@ const WM_TYPE_DEFS = [
     label: "OCI Container Instance",
     badge: "OCI",
     desc: "Oracle Cloud Infrastructure — container instances via OCIR",
-    disabled: true,
   },
   {
     value: "oci_hpc",
     label: "OCI HPC",
     badge: "OCI",
     desc: "Oracle Cloud Infrastructure — per-task container instance jobs",
-    disabled: true,
   },
 ];
 
