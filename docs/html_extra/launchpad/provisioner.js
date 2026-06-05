@@ -909,6 +909,36 @@ async function provision(
     "  → VPC: " + vpcId + "  CIDR: " + vpcCidr + "  subnet: " + subnetId,
     "info",
   );
+
+  // OCI workers connect over the public internet — open scheduler and object storage ports.
+  var hasOci = (cfg.workerManagers || []).some(function (wm) {
+    return wm.type === "oci_raw" || wm.type === "oci_hpc";
+  });
+  if (hasOci) {
+    await withAbort(
+      ec2
+        .authorizeSecurityGroupIngress({
+          GroupId: sgId,
+          IpPermissions: [
+            {
+              IpProtocol: "tcp",
+              FromPort: cfg.schedulerPort,
+              ToPort: cfg.schedulerPort,
+              IpRanges: [{ CidrIp: "0.0.0.0/0", Description: "Scheduler (OCI workers)" }],
+            },
+            {
+              IpProtocol: "tcp",
+              FromPort: cfg.objectStoragePort,
+              ToPort: cfg.objectStoragePort,
+              IpRanges: [{ CidrIp: "0.0.0.0/0", Description: "Object storage (OCI workers)" }],
+            },
+          ],
+        })
+        .promise(),
+      signal,
+    );
+    addLog("  → Opened scheduler + object storage ports to 0.0.0.0/0 for OCI workers", "info");
+  }
   onPartialState(partial);
 
   // 7. Build addresses and persist complete state
