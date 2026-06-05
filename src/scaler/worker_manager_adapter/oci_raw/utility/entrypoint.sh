@@ -11,7 +11,7 @@ printf '%s\n' "${PYTHON_REQUIREMENTS}" > /tmp/requirements.txt
 if grep -qE 'git\+|@ git\+' /tmp/requirements.txt; then
     apt-get update -qq
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        git cmake gcc g++ pkg-config \
+        ca-certificates git cmake gcc g++ pkg-config \
         libcapnp-dev capnproto \
         libuv1-dev libssl-dev
     rm -rf /var/lib/apt/lists/*
