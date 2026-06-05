@@ -92,7 +92,8 @@ class TestCapnp(unittest.TestCase):
         # live references to the string are the instance dict and the temporary
         # created for the getrefcount() call, so a correct implementation reads 2.
         msg = Message(stateTask=StateTask(state=TaskState.success, taskId=b"t", functionName=b"f", worker=b"w"))
-        self.assertEqual(sys.getrefcount(msg._variant_name), 2)
+        # _variant_name is an internal runtime attribute (not in the type stub).
+        self.assertEqual(sys.getrefcount(getattr(msg, "_variant_name")), 2)
 
 
 if __name__ == "__main__":
