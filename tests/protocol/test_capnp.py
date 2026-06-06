@@ -2,6 +2,7 @@
 semantics, union variant resolution, and error paths."""
 
 import gc
+import sys
 import unittest
 
 from scaler.io.utility import deserialize, serialize
@@ -81,6 +82,18 @@ class TestCapnp(unittest.TestCase):
         msg = Message.from_bytes(serialize(original))
         self.assertEqual(msg.stateTask.taskId, b"task")
         self.assertEqual(msg.stateTask.functionName, b"func")
+
+    def test_union_init_does_not_leak_variant_name(self):
+        # Constructing a union struct stamps _variant_name on the instance. The
+        # string returned by PyUnicode_FromString must be handed to SetAttrString
+        # without an extra reference: SetAttrString increfs (it does not steal), so
+        # passing the freshly-created reference straight in leaks one ref of the
+        # variant name on every construction (i.e. on every serialize()). The only
+        # live references to the string are the instance dict and the temporary
+        # created for the getrefcount() call, so a correct implementation reads 2.
+        msg = Message(stateTask=StateTask(state=TaskState.success, taskId=b"t", functionName=b"f", worker=b"w"))
+        # _variant_name is an internal runtime attribute (not in the type stub).
+        self.assertEqual(sys.getrefcount(getattr(msg, "_variant_name")), 2)
 
 
 if __name__ == "__main__":
