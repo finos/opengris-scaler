@@ -626,6 +626,17 @@ function WorkerManagerCard({
               placeholder="us-ashburn-1"
             />
           </div>
+          <div>
+            <Label help="OCI Container Instance shape. Use A1.Flex (ARM) if E4.Flex quota is exhausted.">Instance Shape</Label>
+            <select
+              value={wm.ociShape || "CI.Standard.E4.Flex"}
+              onChange={(e) => set("ociShape", e.target.value)}
+              style={{ ...inp, cursor: "pointer" }}
+            >
+              <option value="CI.Standard.E4.Flex">CI.Standard.E4.Flex (x86)</option>
+              <option value="CI.Standard.A1.Flex">CI.Standard.A1.Flex (ARM)</option>
+            </select>
+          </div>
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 1 }}>
               <Label help="Number of OCPUs per container instance (also determines worker count).">OCPUs</Label>
