@@ -16,9 +16,8 @@ jobs:
         include:
           - os: ubuntu-latest
             cibw_archs: x86_64
-          # TODO: re-enable after fixing QEMU exec format error
-          # - os: ubuntu-latest
-          #   cibw_archs: aarch64
+          - os: ubuntu-latest
+            cibw_archs: aarch64
           - os: windows-latest
             cibw_archs: AMD64
           - os: macos-latest
@@ -48,6 +47,7 @@ jobs:
       - uses: ./.github/actions/create-artifacts
         with:
           os: ${{ runner.os }}
+          cibw-archs: ${{ matrix.cibw_archs }}
         env:
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
           CIBW_CONTAINER_ENGINE: "${{ matrix.cibw_archs == 'aarch64' && 'docker; create_args: --platform linux/arm64/v8' || 'docker' }}"

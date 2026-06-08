@@ -95,6 +95,12 @@ class TestCapnp(unittest.TestCase):
         # _variant_name is an internal runtime attribute (not in the type stub).
         self.assertEqual(sys.getrefcount(getattr(msg, "_variant_name")), 2)
 
+    def test_getattribute(self):
+        task = StateTask(state=TaskState.success, taskId=b"task", functionName=b"func", worker=b"w")
+        self.assertTrue(callable(task.__getattribute__("to_bytes")))
+        with self.assertRaises(AttributeError):
+            task.__getattribute__("_capnp_source")  # _capnp_source is undefined on Python constructed messages
+
 
 if __name__ == "__main__":
     unittest.main()
