@@ -107,7 +107,7 @@ async function retrying(addLog, signal, fn, maxAttempts) {
         "  → Retrying in " +
           Math.round(delayMs / 1000) +
           "s… (attempt " +
-          attempt +
+          (attempt + 1) +
           " of " +
           maxAttempts +
           ")",
