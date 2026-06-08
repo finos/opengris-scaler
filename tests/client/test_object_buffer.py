@@ -72,11 +72,11 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertEqual(len(storage.calls), 1)
         self.assertEqual(storage.calls[0][0], first_id)
 
-    def test_distinct_objects_get_distinct_uploads(self) -> None:
+    def test_distinct_content_gets_distinct_uploads(self) -> None:
         buf, _agent, storage = _make_buffer()
 
         a = np.zeros(100, dtype=np.float64)
-        b = np.zeros(100, dtype=np.float64)  # equal contents but different identity
+        b = np.ones(100, dtype=np.float64)  # different content
 
         ca = buf.buffer_send_object(a)
         cb = buf.buffer_send_object(b)
@@ -84,6 +84,38 @@ class TestObjectBufferDedup(unittest.TestCase):
 
         self.assertNotEqual(ca.object_id, cb.object_id)
         self.assertEqual(len(storage.calls), 2)
+
+    def test_equal_content_distinct_objects_share_one_upload(self) -> None:
+        """Object IDs are content-addressed, so two *distinct* Python objects with
+        identical serialized bytes map to the same ID and upload only once -- a win
+        the identity cache (keyed on id(obj)) cannot capture on its own."""
+        buf, _agent, storage = _make_buffer()
+
+        a = np.zeros(100, dtype=np.float64)
+        b = np.zeros(100, dtype=np.float64)  # equal contents, different identity
+
+        ca = buf.buffer_send_object(a)
+        cb = buf.buffer_send_object(b)
+        buf.commit_send_objects()
+
+        self.assertEqual(ca.object_id, cb.object_id)
+        self.assertEqual(len(storage.calls), 1)
+
+    def test_object_id_is_content_addressed(self) -> None:
+        """Same payload -> same ID; changed payload -> different ID. (Hold references
+        like real callers do, so temporaries can't be GC'd and id-recycled.)"""
+        buf, _agent, _storage = _make_buffer()
+
+        a1 = np.zeros(64, dtype=np.uint8)
+        a2 = np.zeros(64, dtype=np.uint8)
+        b = np.ones(64, dtype=np.uint8)
+
+        c_a1 = buf.buffer_send_object(a1)
+        c_a2 = buf.buffer_send_object(a2)
+        c_b = buf.buffer_send_object(b)
+
+        self.assertEqual(c_a1.object_id, c_a2.object_id)
+        self.assertNotEqual(c_a1.object_id, c_b.object_id)
 
     def test_function_dedup(self) -> None:
         buf, _agent, storage = _make_buffer()
@@ -99,8 +131,10 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertEqual(len(storage.calls), 1)
 
     def test_non_weakreffable_arg_deduped_within_batch(self) -> None:
-        """Non-weakreffable args (list / dict / tuple) dedup within a batch too,
-        and reset across a commit like everything else."""
+        """Non-weakreffable args (list / dict / tuple) dedup within a batch via the
+        per-cycle cache. The per-cycle serialize-cache resets on commit, but the
+        upload stays deduped across the commit because the ID is content-addressed
+        and the server still holds the bytes."""
         buf, _agent, storage = _make_buffer()
 
         shared_list = list(range(1000))
@@ -113,15 +147,17 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertEqual(c1.object_id, c2.object_id)
         self.assertEqual(len(storage.calls), 1)
 
-        # After the commit the cache is dropped, so the next buffer re-uploads.
+        # After the commit the per-cycle cache is dropped (so the list is
+        # re-serialized), but the content-addressed ID is unchanged and already
+        # known to the server, so no second upload happens.
         c3 = buf.buffer_send_object(shared_list)
         buf.commit_send_objects()
-        self.assertNotEqual(c1.object_id, c3.object_id)
-        self.assertEqual(len(storage.calls), 2)
+        self.assertEqual(c1.object_id, c3.object_id)
+        self.assertEqual(len(storage.calls), 1)
 
-    def test_dedup_does_not_survive_commit(self) -> None:
-        """Dedup is scoped to one commit cycle: re-buffering the same object
-        after a commit re-serializes and re-uploads it."""
+    def test_dedup_survives_commit(self) -> None:
+        """A weakref-able object reused across separate commit cycles is uploaded
+        only once: the persistent identity cache is not dropped on commit."""
         buf, _agent, storage = _make_buffer()
 
         shared = np.zeros(1024, dtype=np.uint8)
@@ -133,13 +169,14 @@ class TestObjectBufferDedup(unittest.TestCase):
         c2 = buf.buffer_send_object(shared)
         buf.commit_send_objects()
 
-        # Distinct upload after the intervening commit.
-        self.assertNotEqual(c1.object_id, c2.object_id)
-        self.assertEqual(len(storage.calls), 2)
+        # Same cached upload reused across the intervening commit.
+        self.assertEqual(c1.object_id, c2.object_id)
+        self.assertEqual(len(storage.calls), 1)
 
-    def test_mutation_after_commit_is_resent(self) -> None:
-        """Mutating an object after its commit and re-buffering it uploads the
-        new contents, not a stale snapshot (the in-place-mutation footgun)."""
+    def test_mutation_without_reserialize_serves_cached_snapshot(self) -> None:
+        """By default the persistent cache is reused across commits, so mutating
+        an object in place and re-buffering it returns the cached pre-mutation
+        snapshot. Callers who mutate must pass reserialize=True (see below)."""
         buf, _agent, storage = _make_buffer()
 
         class _Box:
@@ -154,14 +191,92 @@ class TestObjectBufferDedup(unittest.TestCase):
         c2 = buf.buffer_send_object(obj)
         buf.commit_send_objects()
 
+        # Cache hit: same object_id, no second upload, stale snapshot served.
+        self.assertEqual(c1.object_id, c2.object_id)
+        self.assertEqual(len(storage.calls), 1)
+
+    def test_reserialize_reuploads_mutated_object_and_refreshes_cache(self) -> None:
+        """reserialize=True re-serializes a mutated object, uploads the new
+        contents, and refreshes the persistent cache so a later default call
+        reuses the new snapshot (not the original)."""
+        buf, _agent, storage = _make_buffer()
+
+        class _Box:
+            def __init__(self, v):
+                self.v = v
+
+        obj = _Box([1, 2, 3])
+        c1 = buf.buffer_send_object(obj)
+        buf.commit_send_objects()
+        self.assertEqual(len(storage.calls), 1)
+
+        obj.v.append(4)  # in-place mutation after the upload
+        c2 = buf.buffer_send_object(obj, reserialize=True)
+        buf.commit_send_objects()
+
+        # Re-uploaded with the mutated contents.
         self.assertNotEqual(c1.object_id, c2.object_id)
-        # The second payload reflects the mutation (it was re-serialized).
         self.assertNotEqual(c1.object_payload, c2.object_payload)
         self.assertEqual(len(storage.calls), 2)
 
-    def test_send_object_path_does_not_dedup(self) -> None:
-        """The send_object() path (dedup=False) never dedups, even within a
-        batch -- it returns to the user before committing."""
+        # The cache now holds the refreshed snapshot: a later default call hits
+        # c2, not c1, and does not re-upload.
+        c3 = buf.buffer_send_object(obj)
+        buf.commit_send_objects()
+        self.assertEqual(c3.object_id, c2.object_id)
+        self.assertEqual(len(storage.calls), 2)
+
+    def test_reserialize_dedups_repeats_within_one_cycle(self) -> None:
+        """A shared, mutated object passed many times in one reserialize call is
+        re-serialized and re-uploaded once, then deduped within that commit cycle
+        -- not re-uploaded per task."""
+        buf, _agent, storage = _make_buffer()
+
+        shared = np.zeros(10_000, dtype=np.float64)
+
+        # Prime the persistent cache in an earlier cycle.
+        buf.buffer_send_object(shared)
+        buf.commit_send_objects()
+        self.assertEqual(len(storage.calls), 1)
+
+        shared[0] = 1.0  # mutate so the refresh has genuinely new content
+
+        # Now reserialize the same object across five tasks in one cycle.
+        caches = [buf.buffer_send_object(shared, reserialize=True) for _ in range(5)]
+        buf.commit_send_objects()
+
+        # Exactly one extra upload (the refresh), all five share it.
+        first_id = caches[0].object_id
+        for cache in caches[1:]:
+            self.assertEqual(cache.object_id, first_id)
+        self.assertNotEqual(first_id, storage.calls[0][0])  # different from the pre-mutation upload
+        self.assertEqual(len(storage.calls), 2)
+
+    def test_reserialize_unchanged_content_skips_reupload(self) -> None:
+        """The content-addressing payoff: reserialize=True on an object that turns
+        out not to have changed re-serializes it but does NOT re-upload, because the
+        content-addressed ID already matches what the server holds."""
+        buf, _agent, storage = _make_buffer()
+
+        shared = np.zeros(10_000, dtype=np.float64)
+
+        c1 = buf.buffer_send_object(shared)
+        buf.commit_send_objects()
+        self.assertEqual(len(storage.calls), 1)
+
+        # No mutation; force a re-serialize anyway.
+        c2 = buf.buffer_send_object(shared, reserialize=True)
+        buf.commit_send_objects()
+
+        # Same content -> same content-addressed ID -> no second upload.
+        self.assertEqual(c1.object_id, c2.object_id)
+        self.assertEqual(len(storage.calls), 1)
+
+    def test_send_object_path_bypasses_identity_cache(self) -> None:
+        """The send_object() path (dedup=False) opts out of the identity cache: it
+        never records the object, so it can't serialize-dedup against earlier calls
+        and can't serve a stale snapshot to a later submit(). The upload itself is
+        still content-addressed, so identical bytes upload only once."""
         buf, _agent, storage = _make_buffer()
 
         class _Box:
@@ -173,12 +288,18 @@ class TestObjectBufferDedup(unittest.TestCase):
         c2 = buf.buffer_send_object(obj, dedup=False)
         buf.commit_send_objects()
 
-        self.assertNotEqual(c1.object_id, c2.object_id)
-        self.assertEqual(len(storage.calls), 2)
+        # Opted out of the identity cache: nothing remembered under id(obj).
+        self.assertNotIn(id(obj), buf._dedup_cache)
+        self.assertNotIn(id(obj), buf._cycle_dedup_cache)
+
+        # But the upload is content-addressed, so the identical bytes upload once.
+        self.assertEqual(c1.object_id, c2.object_id)
+        self.assertEqual(len(storage.calls), 1)
 
     def test_clear_invalidates_dedup_cache(self) -> None:
-        """After clear(), the same object must be re-serialized + re-uploaded
-        because the server has discarded its prior copy."""
+        """After clear(), the same object must be re-uploaded because the server has
+        discarded its prior copy. The content-addressed ID is unchanged (same bytes),
+        but clear() drops valid_object_ids so the upload is no longer suppressed."""
         buf, _agent, storage = _make_buffer()
 
         shared = np.ones(1024, dtype=np.uint8)
@@ -192,12 +313,15 @@ class TestObjectBufferDedup(unittest.TestCase):
         c2 = buf.buffer_send_object(shared)
         buf.commit_send_objects()
 
-        self.assertNotEqual(c1.object_id, c2.object_id)
+        # Same content -> same ID, but it was genuinely re-uploaded after clear().
+        self.assertEqual(c1.object_id, c2.object_id)
         self.assertEqual(len(storage.calls), 2)
 
     def test_id_recycled_after_gc_does_not_serve_stale_cache(self) -> None:
-        """An object GC'd after its commit, whose id is later reused, must miss:
-        the commit already dropped the cache."""
+        """An object GC'd after its commit, whose id is later reused by a
+        different object, must miss: the persistent cache survives the commit,
+        but the parallel weakref guard detects that id() now names a different
+        object and drops the stale entry."""
         buf, _agent, storage = _make_buffer()
 
         class _Box:
@@ -228,6 +352,34 @@ class TestObjectBufferDedup(unittest.TestCase):
 
         # Must NOT have returned the stale cache entry.
         self.assertNotEqual(c1.object_id, c2.object_id)
+        self.assertEqual(len(storage.calls), 2)
+
+    def test_weakref_guard_rejects_recycled_id(self) -> None:
+        """Deterministic counterpart to the id-recycling test: when id(obj) collides
+        with a stale persistent entry left by a different, now-collected object, the
+        weakref guard rejects the stale cache so the new object is serialized under
+        its own content-addressed ID instead of being served the other's snapshot."""
+        buf, _agent, storage = _make_buffer()
+
+        first = np.zeros(1024, dtype=np.uint8)
+        c1 = buf.buffer_send_object(first)
+        buf.commit_send_objects()
+        self.assertEqual(len(storage.calls), 1)
+
+        # Simulate id recycling: a different object `second` (different content)
+        # whose id() matches the still-cached entry for `first`, while the weakref
+        # for that id no longer resolves to a live object.
+        second = np.ones(1024, dtype=np.uint8)
+        stale_key = id(second)
+        buf._dedup_cache[stale_key] = c1  # stale entry -> first's cache
+        buf._dedup_alive.pop(stale_key, None)  # weakref does not resolve to `second`
+
+        c2 = buf.buffer_send_object(second)
+        buf.commit_send_objects()
+
+        # Guard rejected the stale entry: `second` got its own content-addressed ID
+        # and a real upload, NOT first's snapshot.
+        self.assertNotEqual(c2.object_id, c1.object_id)
         self.assertEqual(len(storage.calls), 2)
 
 
