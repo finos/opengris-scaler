@@ -98,6 +98,11 @@ class Client:
         stream_output: bool = False,
         object_storage_address: Optional[str] = None,
     ):
+        self._future_manager: Optional[ClientFutureManager] = None
+        self._agent: Optional[ClientAgent] = None
+        self._connector_agent: Optional[SyncConnector] = None
+        self._connector_storage: Optional[SyncObjectStorageConnector] = None
+
         self._serializer = serializer
 
         self._profiling = profiling
@@ -136,14 +141,14 @@ class Client:
         # Blocks until the agent receives the object storage address
         self._object_storage_address = self._agent.get_object_storage_address()
 
-        self._connector_agent: SyncConnector = self._backend.create_sync_connector(
+        self._connector_agent = self._backend.create_sync_connector(
             identity=self._identity,
             connector_remote_type=ConnectorRemoteType.Connector,
             address=self._client_agent_address,
         )
 
         logging.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
-        self._connector_storage: SyncObjectStorageConnector = self._backend.create_sync_object_storage_connector(
+        self._connector_storage = self._backend.create_sync_object_storage_connector(
             identity=self._identity, address=self._object_storage_address
         )
 
@@ -453,8 +458,15 @@ class Client:
         disconnect from connected scheduler, this will not shut down the scheduler
         """
 
-        # Handle case where client wasn't fully initialized
+        # Handle case where the object exists but __initialize__ never ran (e.g. built by __new__
+        # during a failed unpickling), so none of the attributes below exist yet.
         if not hasattr(self, "_stop_event"):
+            return
+
+        # Initialization was interrupted before the connector was created (e.g. Ctrl-C while waiting
+        # for an unreachable scheduler); there is nothing to disconnect. The agent, if it was
+        # started, is a daemon thread that stops on its own.
+        if self._connector_agent is None:
             return
 
         if self._stop_event.is_set():
@@ -723,10 +735,14 @@ class Client:
             raise ClientQuitException("client is already stopped.")
 
     def __destroy(self):
-        self._agent.join()
+        if self._agent is not None:
+            self._agent.join()
 
-        self._connector_agent.destroy()
-        self._connector_storage.destroy()
+        if self._connector_agent is not None:
+            self._connector_agent.destroy()
+
+        if self._connector_storage is not None:
+            self._connector_storage.destroy()
 
     @staticmethod
     def __get_parent_task_priority() -> Optional[int]:
