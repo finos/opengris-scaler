@@ -754,7 +754,10 @@ OwnedPyObject<> capnp_union_init_method(PyObject* self, PyObject* args, PyObject
         PyErr_SetString(PyExc_ValueError, "requires exactly one active union field");
         return {};
     }
-    if (PyObject_SetAttrString(self, KEY_VARIANT_NAME, PyUnicode_FromString(active_field)) < 0)
+    OwnedPyObject<> variant_name {PyUnicode_FromString(active_field)};
+    if (!variant_name)
+        return {};
+    if (PyObject_SetAttrString(self, KEY_VARIANT_NAME, variant_name.get()) < 0)
         return {};
     if (capnp_struct_init(self, args, kwargs) < 0)
         return {};
