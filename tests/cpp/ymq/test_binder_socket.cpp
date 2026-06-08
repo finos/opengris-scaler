@@ -324,6 +324,90 @@ TEST_F(YMQBinderSocketTest, CloseConnection)
     ASSERT_FALSE(client.connected());
 }
 
+TEST_F(YMQBinderSocketTest, SendToClosedIdentityFailsFast)
+{
+    // Regression test: after the binder has terminated a peer connection (either via an
+    // explicit closeConnection() or by observing the peer's graceful FIN), a subsequent
+    // sendMessage to that identity must resolve its callback with
+    // ConnectorSocketClosedByRemoteEnd rather than queue the callback in
+    // _pendingSendMessages forever. The latter was the scheduler hang reproduced by
+    // examples/graphtask_nested_client.py.
+    //
+    // We use closeConnection() here because it is the deterministic path that exercises the
+    // same _disconnectedIdentities/drain branch on every platform. (Driving the test via the
+    // client's graceful disconnect would, on macOS in particular, sometimes get reported to
+    // the binder as Aborted rather than Disconnected -- which is correctly NOT terminal per
+    // YMQ's Aborted-means-reconnect-expected semantic, so the assertion would fail for a
+    // reason unrelated to the bug under test.)
+
+    bool clientDisconnected  = false;
+    auto onClientRecvMessage = [](scaler::ymq::Bytes) { FAIL() << "Unexpected message on client"; };
+    auto onClientDisconnect  = [&](scaler::ymq::internal::MessageConnection::DisconnectReason reason) {
+        ASSERT_EQ(reason, scaler::ymq::internal::MessageConnection::DisconnectReason::Disconnected);
+        clientDisconnected = true;
+    };
+
+    BinderClientPair connections(std::move(onClientRecvMessage), std::move(onClientDisconnect));
+
+    scaler::ymq::BinderSocket& binder                = connections.binder();
+    scaler::ymq::internal::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop                  = connections.loop();
+
+    // Establish the connection by exchanging a message (forces identity exchange).
+
+    std::promise<scaler::ymq::Message> binderRecvCalled;
+    binder.recvMessage([&](std::expected<scaler::ymq::Message, scaler::ymq::Error> result) {
+        ASSERT_TRUE(result.has_value());
+        binderRecvCalled.set_value(result.value());
+    });
+
+    bool clientSendCalled = false;
+    client.sendMessage(
+        scaler::ymq::Bytes(messagePayload),
+        [&]([[maybe_unused]] std::expected<void, scaler::ymq::Error> result) { clientSendCalled = true; });
+
+    while (!clientSendCalled) {
+        loop.run(UV_RUN_NOWAIT);
+    }
+    ASSERT_EQ(binderRecvCalled.get_future().wait_for(std::chrono::seconds {1}), std::future_status::ready);
+
+    // Explicitly close the connection on the binder side, and drive the loop until the
+    // client has observed the resulting disconnect. After this point the binder thread has
+    // definitely processed closeConnection (the client wouldn't have been notified otherwise).
+
+    binder.closeConnection(BinderClientPair::clientIdentity);
+    while (!clientDisconnected) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    // Pre-fix: this send lands in _pendingSendMessages[clientIdentity] and stays there
+    // forever -- the callback never fires and the test hits the 5s wait_for timeout.
+    // Post-fix: closeConnection has populated _disconnectedIdentities, so the callback fires
+    // immediately with ConnectorSocketClosedByRemoteEnd.
+    //
+    // The result holder is kept alive via shared_ptr so a late callback after this test
+    // function returns can't deref a destroyed promise.
+
+    auto sendResult = std::make_shared<std::promise<std::expected<void, scaler::ymq::Error>>>();
+    binder.sendMessage(
+        BinderClientPair::clientIdentity,
+        scaler::ymq::Bytes(messagePayload),
+        [sendResult](std::expected<void, scaler::ymq::Error> result) noexcept {
+            try {
+                sendResult->set_value(std::move(result));
+            } catch (...) {
+            }
+        });
+
+    auto sendFuture = sendResult->get_future();
+    ASSERT_EQ(sendFuture.wait_for(std::chrono::seconds {5}), std::future_status::ready)
+        << "send callback did not fire: regression of the binder hang for closed peers";
+
+    auto result = sendFuture.get();
+    ASSERT_FALSE(result.has_value());
+    ASSERT_EQ(result.error()._errorCode, scaler::ymq::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
+}
+
 TEST_F(YMQBinderSocketTest, StopRequested)
 {
     scaler::ymq::IOContext context {};
