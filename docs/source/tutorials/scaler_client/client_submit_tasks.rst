@@ -56,6 +56,14 @@ Why this is slow:
 * Every ``submit`` can trigger repeated serialization and network transfer.
 * Serialization and I/O overhead can dominate task runtime.
 
+.. note::
+
+   Scaler uploads a reused object only once (see `Reusing the same object across tasks`_ below), so
+   passing the *same* ``big_func`` to every task no longer re-uploads its captured payload. The
+   pattern below still helps when each task gets a *distinct* large object, or when the heavy
+   payload is a non-weakref-able built-in (``bytes``, ``str``, ``list``, ``dict``, ``tuple``), which
+   only deduplicates within a single batch.
+
 Better pattern: send heavy object once
 --------------------------------------
 
@@ -100,6 +108,32 @@ Notes for :py:func:`~Client.send_object()`:
 * The object is uploaded once and reused by many tasks.
 * The returned reference must be passed as a positional function argument.
 * Do not nest object references inside other containers (for example lists or dicts).
+
+Reusing the same object across tasks
+------------------------------------
+
+When the same Python object is passed to several tasks, Scaler serializes and uploads it only once
+and reuses that upload for every task that references it -- whether the tasks come from a single
+:py:func:`~Client.map()` / :py:func:`~Client.get()` call or from many separate
+:py:func:`~Client.submit()` calls. This happens automatically; no code change is required.
+
+The cache is keyed by object identity (``id(obj)``), so the snapshot is reused only while that exact
+object is alive. There is one caveat: if you **mutate an object in place** and submit it again, the
+cached snapshot is reused and the task receives the pre-mutation bytes. Pass ``reserialize=True`` to
+re-serialize that call's arguments and refresh the cache with the new contents:
+
+.. code:: python
+
+    data = load_dataframe()
+    client.submit_verbose(train, (data,), {})                    # uploaded and cached
+
+    data.drop(columns=["unused"], inplace=True)                  # mutated in place
+    client.submit_verbose(train, (data,), {}, reserialize=True)  # re-uploaded; cache refreshed
+
+``reserialize`` is available on :py:func:`~Client.submit_verbose()`, :py:func:`~Client.map()`,
+:py:func:`~Client.starmap()` and :py:func:`~Client.get()`. :py:func:`~Client.submit()` forwards its
+keyword arguments to your function, so use :py:func:`~Client.submit_verbose()` when you need the
+flag. It re-serializes only the objects in that one call; every other cached object is untouched.
 
 Task profiling
 --------------
