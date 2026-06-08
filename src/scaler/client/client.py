@@ -250,10 +250,11 @@ class Client:
         :param kwargs: keyword arguments will be passed to function
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
-        :param reserialize: If True, re-serialize and re-upload this task's argument objects even when an identical
-                            object was already cached from an earlier call, refreshing the cache with the new snapshot.
-                            Use this after mutating an argument in place. Defaults to False, where an object reused
-                            across calls is uploaded only once.
+        :param reserialize: If True, re-serialize this task's argument objects instead of reusing a cached snapshot,
+                            and refresh the cache. Because objects are content-addressed, the re-serialized bytes are
+                            re-uploaded only if the content actually changed, so this is cheap when nothing changed. Use
+                            this after mutating an argument in place. Defaults to False, where a reused object is
+                            serialized and uploaded once.
         :type reserialize: bool
         :return: future of the submitted task
         :rtype: ScalerFuture
@@ -296,10 +297,11 @@ class Client:
         :type iterables: Iterable[Any]
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
-        :param reserialize: If True, re-serialize and re-upload the argument objects even when an identical object was
-                            already cached from an earlier call, refreshing the cache with the new snapshot. Use this
-                            after mutating an argument in place. Defaults to False, where an object reused across calls
-                            is uploaded only once.
+        :param reserialize: If True, re-serialize the argument objects instead of reusing a cached snapshot, and refresh
+                            the cache. Because objects are content-addressed, the re-serialized bytes are re-uploaded
+                            only if the content actually changed, so this is cheap when nothing changed. Use this after
+                            mutating an argument in place. Defaults to False, where a reused object is serialized and
+                            uploaded once.
         :type reserialize: bool
         :return: list of results, where each result is the return value of fn
         :rtype: List[_T]
@@ -333,10 +335,11 @@ class Client:
         :type iterable: Iterable[Iterable[Any]]
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
-        :param reserialize: If True, re-serialize and re-upload the argument objects even when an identical object was
-                            already cached from an earlier call, refreshing the cache with the new snapshot. Use this
-                            after mutating an argument in place. Defaults to False, where an object reused across calls
-                            is uploaded only once.
+        :param reserialize: If True, re-serialize the argument objects instead of reusing a cached snapshot, and refresh
+                            the cache. Because objects are content-addressed, the re-serialized bytes are re-uploaded
+                            only if the content actually changed, so this is cheap when nothing changed. Use this after
+                            mutating an argument in place. Defaults to False, where a reused object is serialized and
+                            uploaded once.
         :type reserialize: bool
         :return: list of results, where each result is the return value of fn
         :rtype: List[_T]
@@ -395,10 +398,11 @@ class Client:
         :return: dictionary of mapping keys to futures, or map to results if block=True is specified
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
-        :param reserialize: If True, re-serialize and re-upload the graph's data nodes even when an identical object was
-                            already cached from an earlier call, refreshing the cache with the new snapshot. Use this
-                            after mutating a data node in place. Defaults to False, where an object reused across calls
-                            is uploaded only once.
+        :param reserialize: If True, re-serialize the graph's data nodes instead of reusing a cached snapshot, and
+                            refresh the cache. Because objects are content-addressed, the re-serialized bytes are
+                            re-uploaded only if the content actually changed, so this is cheap when nothing changed. Use
+                            this after mutating a data node in place. Defaults to False, where a reused object is
+                            serialized and uploaded once.
         :type reserialize: bool
         :rtype: Dict[ScalerFuture]
         """

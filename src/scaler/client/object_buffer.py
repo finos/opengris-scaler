@@ -38,7 +38,10 @@ class ObjectBuffer:
 
         # Identity-based dedup so the same Python object handed to many tasks --
         # across separate submit() / map() / get() calls, not just one batch --
-        # is serialized and uploaded once. Keyed by id(obj).
+        # is serialized once. Keyed by id(obj). (Uploads are deduplicated
+        # separately and by content: object IDs are content-addressed, so
+        # __buffer_send_serialized_object skips re-uploading bytes the server
+        # already has -- this cache's job is to also skip the re-serialization.)
         #
         # _dedup_cache persists across commit cycles; _dedup_alive holds a
         # parallel weakref so an id() recycled after its object was garbage
@@ -154,7 +157,7 @@ class ObjectBuffer:
 
     def __construct_function(self, fn: Callable) -> ObjectCache:
         function_payload = self._serializer.serialize(fn)
-        object_id = ObjectID.generate_object_id(self._identity)
+        object_id = ObjectID.generate_object_id_from_payload(self._identity, function_payload)
         function_cache = ObjectCache(
             object_id,
             ObjectMetadata.ObjectContentType.object,
@@ -166,13 +169,32 @@ class ObjectBuffer:
 
     def __construct_object(self, obj: Any, name: Optional[str] = None) -> ObjectCache:
         object_payload = self._serializer.serialize(obj)
-        object_id = ObjectID.generate_object_id(self._identity)
+        object_id = ObjectID.generate_object_id_from_payload(self._identity, object_payload)
         name_bytes = name.encode() if name else f"<obj {repr(object_id)}>".encode()
         object_cache = ObjectCache(object_id, ObjectMetadata.ObjectContentType.object, name_bytes, object_payload)
 
         return object_cache
 
     def __buffer_send_serialized_object(self, object_cache: ObjectCache) -> ObjectCache:
+        # Skip the upload if we already sent this object_id this session. Because
+        # IDs are content-addressed, this dedups by content (not just same object)
+        # and skips re-uploading bytes the server already holds.
+        #
+        # Correctness rests on _valid_object_ids reflecting server state: an ID we
+        # recorded is assumed still present on the server. That holds because the
+        # client only ever sends 'create'/'clear' (never per-object delete), and a
+        # client-created object keeps a scheduler-side block until the client
+        # clear()s or disconnects -- at which point _valid_object_ids is reset too.
+        # The one gap: if the scheduler wrongly declares a still-alive client dead
+        # (clean_client deletes its objects) and the client then resumes and reuses
+        # an equal-content object, this skip would reference a deleted object and
+        # the task stalls (a liveness failure, never wrong data). The client's own
+        # symmetric heartbeat timeout makes a genuinely partitioned client die
+        # rather than resume, so the window only opens under scheduler-side
+        # heartbeat jitter, or a scheduler client_timeout_seconds set below the
+        # client's timeout_seconds. TODO: close it for good with a lightweight
+        # server "hasObject" check before skipping (needs an object-storage
+        # protocol addition; hasObject already exists in the C++ ObjectManager).
         if object_cache.object_id not in self._valid_object_ids:
             self._pending_objects.append(object_cache)
             self._valid_object_ids.add(object_cache.object_id)

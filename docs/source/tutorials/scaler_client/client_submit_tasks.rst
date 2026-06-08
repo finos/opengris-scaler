@@ -117,23 +117,30 @@ and reuses that upload for every task that references it -- whether the tasks co
 :py:func:`~Client.map()` / :py:func:`~Client.get()` call or from many separate
 :py:func:`~Client.submit()` calls. This happens automatically; no code change is required.
 
-The cache is keyed by object identity (``id(obj)``), so the snapshot is reused only while that exact
-object is alive. There is one caveat: if you **mutate an object in place** and submit it again, the
-cached snapshot is reused and the task receives the pre-mutation bytes. Pass ``reserialize=True`` to
-re-serialize that call's arguments and refresh the cache with the new contents:
+Two layers cooperate here. A client-side cache keyed by object identity (``id(obj)``) avoids
+re-serializing the same object, and object IDs are *content-addressed* (derived from the serialized
+bytes), so the upload itself is skipped whenever the server already holds identical content.
+
+There is one caveat: if you **mutate an object in place** and submit it again, the identity cache
+returns the pre-mutation snapshot and the task receives the stale bytes. Pass ``reserialize=True`` to
+re-serialize that call's arguments and refresh the cache:
 
 .. code:: python
 
     data = load_dataframe()
-    client.submit_verbose(train, (data,), {})                    # uploaded and cached
+    client.submit_verbose(train, (data,), {})                    # serialized, uploaded, cached
 
     data.drop(columns=["unused"], inplace=True)                  # mutated in place
-    client.submit_verbose(train, (data,), {}, reserialize=True)  # re-uploaded; cache refreshed
+    client.submit_verbose(train, (data,), {}, reserialize=True)  # re-serialized and re-uploaded
+
+Because IDs are content-addressed, ``reserialize`` re-serializes the call's arguments but only
+re-uploads the ones whose content actually changed -- passing it for an object that turned out not to
+have changed costs a re-serialization, not a re-upload.
 
 ``reserialize`` is available on :py:func:`~Client.submit_verbose()`, :py:func:`~Client.map()`,
 :py:func:`~Client.starmap()` and :py:func:`~Client.get()`. :py:func:`~Client.submit()` forwards its
 keyword arguments to your function, so use :py:func:`~Client.submit_verbose()` when you need the
-flag. It re-serializes only the objects in that one call; every other cached object is untouched.
+flag. It affects only the objects in that one call; every other cached object is untouched.
 
 Task profiling
 --------------
