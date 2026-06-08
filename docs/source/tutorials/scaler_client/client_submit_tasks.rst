@@ -16,99 +16,6 @@ What the example does:
 
 Use ``submit`` when you need one-off calls or per-task argument differences.
 
-Heavy argument anti-pattern
----------------------------
-
-If many tasks share the same large payload, repeated :py:func:`~Client.submit()` calls can be slow.
-Each call may resend and reserialize that payload.
-
-.. testcode:: python
-
-    import functools
-    import random
-
-    from scaler import Client, SchedulerClusterCombo
-
-    def lookup(heavy_map: bytes, index: int):
-        return index * 1
-
-
-    def main():
-        address = "tcp://127.0.0.1:2345"
-        cluster = SchedulerClusterCombo(address=address, n_workers=3)
-        big_func = functools.partial(lookup, b"1" * 10_000_000)
-        arguments = [random.randint(0, 100) for _ in range(100)]
-
-        with Client(address=address) as client:
-            futures = [client.submit(big_func, i) for i in arguments]
-            print([fut.result() for fut in futures])
-
-        cluster.shutdown()
-
-
-    if __name__ == "__main__":
-        main()
-
-
-Why this is slow:
-
-* ``big_func`` captures a large object.
-* Every ``submit`` can trigger repeated serialization and network transfer.
-* Serialization and I/O overhead can dominate task runtime.
-
-.. note::
-
-   Scaler uploads a reused object only once (see `Reusing the same object across tasks`_ below), so
-   passing the *same* ``big_func`` to every task no longer re-uploads its captured payload. The
-   pattern below still helps when each task gets a *distinct* large object, or when the heavy
-   payload is a non-weakref-able built-in (``bytes``, ``str``, ``list``, ``dict``, ``tuple``), which
-   only deduplicates within a single batch.
-
-Better pattern: send heavy object once
---------------------------------------
-
-Send the heavy object once with :py:func:`~Client.send_object()`, then submit tasks with its reference.
-
-.. testcode:: python
-
-    import random
-
-    from scaler import Client, SchedulerClusterCombo
-
-
-    def lookup(heavy_map_ref, index: int):
-        return heavy_map_ref[index]
-
-
-    def main():
-        address = "tcp://127.0.0.1:2345"
-        cluster = SchedulerClusterCombo(address=address, n_workers=3)
-        heavy_map = b"1" * 10_000_000
-        arguments = [random.randint(0, 100) for _ in range(100)]
-
-        with Client(address=address) as client:
-            heavy_map_ref = client.send_object(heavy_map, name="heavy_map")
-            futures = [client.submit(lookup, heavy_map_ref, i) for i in arguments]
-            print([future.result() for future in futures])
-
-        cluster.shutdown()
-
-
-    if __name__ == "__main__":
-        main()
-
-Why this is better:
-
-* The large payload is transferred once.
-* Each task carries only a small reference + lightweight args.
-* Lower serialization and network I/O typically improves throughput and latency.
-
-Notes for :py:func:`~Client.send_object()`:
-
-* The object is uploaded once and reused by many tasks.
-* The returned reference must be passed as a positional function argument.
-* Do not nest object references inside other containers (for example lists or dicts).
-
 Reusing the same object across tasks
 ------------------------------------
 
@@ -141,6 +48,51 @@ have changed costs a re-serialization, not a re-upload.
 :py:func:`~Client.starmap()` and :py:func:`~Client.get()`. :py:func:`~Client.submit()` forwards its
 keyword arguments to your function, so use :py:func:`~Client.submit_verbose()` when you need the
 flag. It affects only the objects in that one call; every other cached object is untouched.
+
+Sending a heavy object explicitly
+---------------------------------
+
+Because reuse is deduplicated automatically (above), you rarely need to send objects by hand.
+:py:func:`~Client.send_object()` still helps in one case: it serializes a large payload **once** and
+returns a lightweight reference, avoiding the per-call re-serialization that the automatic cache
+cannot skip for non-weakref-able built-ins (``bytes``, ``str``, ``list``, ``dict``, ``tuple``) reused
+across many separate :py:func:`~Client.submit()` calls. It is also an explicit handle you can pass
+wherever a positional argument is expected.
+
+.. testcode:: python
+
+    import random
+
+    from scaler import Client, SchedulerClusterCombo
+
+
+    def lookup(heavy_map_ref, index: int):
+        return heavy_map_ref[index]
+
+
+    def main():
+        address = "tcp://127.0.0.1:2345"
+        cluster = SchedulerClusterCombo(address=address, n_workers=3)
+        heavy_map = b"1" * 10_000_000
+        arguments = [random.randint(0, 100) for _ in range(100)]
+
+        with Client(address=address) as client:
+            heavy_map_ref = client.send_object(heavy_map, name="heavy_map")
+            futures = [client.submit(lookup, heavy_map_ref, i) for i in arguments]
+            print([future.result() for future in futures])
+
+        cluster.shutdown()
+
+
+    if __name__ == "__main__":
+        main()
+
+Notes for :py:func:`~Client.send_object()`:
+
+* The payload is serialized and uploaded once; each task then carries only a small reference.
+* Unlike passing the object directly, the reference is not re-serialized per task.
+* The returned reference must be passed as a positional function argument.
+* Do not nest object references inside other containers (for example lists or dicts).
 
 Task profiling
 --------------
