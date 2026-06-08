@@ -139,6 +139,48 @@ s3_prefix = "${wm.s3Prefix || "scaler-tasks"}"
 max_concurrent_jobs = ${wm.maxConcurrentJobs || 100}
 job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
 `;
+      } else if (wm.type === "oci_raw") {
+        var ociRawReq = (wm.requirements || "").trim();
+        var ociRawAuth = wm.ociAuthType || "config_file";
+        block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
+oci_region = "${wm.ociRegion || "us-ashburn-1"}"
+auth_type = "${ociRawAuth}"
+`;
+        if (ociRawAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
+        block += `compartment_id = "${wm.ociCompartmentId || ""}"
+availability_domain = "${wm.ociAvailabilityDomain || ""}"
+subnet_id = "${wm.ociSubnetId || ""}"
+container_image = "${wm.ociContainerImage || ""}"
+`;
+        if (wm.ociImagePullUsername) block += `image_pull_username = "${wm.ociImagePullUsername}"\n`;
+        if (wm.ociImagePullPassword) block += `image_pull_password = "${wm.ociImagePullPassword}"\n`;
+        block += `instance_shape = "${wm.ociShape || "CI.Standard.E4.Flex"}"
+instance_ocpus = ${wm.ociOcpus || 4}
+instance_memory_gb = ${wm.ociMemoryGb || 30}
+python_version = "${cfg.pythonVersion}"
+requirements_txt = """
+${ociRawReq}
+"""
+`;
+      } else if (wm.type === "oci_hpc") {
+        var ociHpcAuth = wm.ociAuthType || "config_file";
+        block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
+oci_region = "${wm.ociRegion || "us-ashburn-1"}"
+auth_type = "${ociHpcAuth}"
+`;
+        if (ociHpcAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
+        block += `compartment_id = "${wm.ociCompartmentId || ""}"
+availability_domain = "${wm.ociAvailabilityDomain || ""}"
+subnet_id = "${wm.ociSubnetId || ""}"
+container_image = "${wm.ociContainerImage || ""}"
+object_storage_namespace = "${wm.ociObjectStorageNamespace || ""}"
+object_storage_bucket = "${wm.ociObjectStorageBucket || ""}"
+object_storage_prefix = "${wm.ociObjectStoragePrefix || "scaler-tasks"}"
+instance_ocpus = ${wm.ociOcpus || 1}
+instance_memory_gb = ${wm.ociMemoryGb || 6}
+base_concurrency = ${wm.ociMaxConcurrentJobs || 100}
+job_timeout_seconds = ${(wm.ociJobTimeoutMinutes || 60) * 60}
+`;
       } else if (wm.type === "baremetal_native") {
         block += `mode = "${wm.mode || "fixed"}"
 object_storage_address = "${proto}://127.0.0.1:${op}${wsSlash}"
@@ -194,7 +236,7 @@ function buildUserData(cfg, creds) {
       : `git clone --depth 1 ${cloneUrl} /opt/scaler-src`;
 
     gitBuildLines = `# C++ build deps: GCC 14 (required for C++23 <expected>) + Cap'n Proto toolchain
-dnf install -y git gcc14 gcc14-c++ gcc14-libstdc++-devel autoconf automake libtool libuv-devel
+dnf install -y git gcc14 gcc14-c++ gcc14-libstdc++-devel autoconf automake libtool libuv-devel openssl-devel
 
 # Clone repo to access build scripts
 ${cloneCmd}
@@ -268,6 +310,48 @@ s3_prefix = "${wm.s3Prefix || "scaler-tasks"}"
 max_concurrent_jobs = ${wm.maxConcurrentJobs || 100}
 job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
 `;
+      } else if (wm.type === "oci_raw") {
+        var ociRawReq = (wm.requirements || "").trim();
+        var ociRawAuth = wm.ociAuthType || "config_file";
+        block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
+oci_region = "${wm.ociRegion || "us-ashburn-1"}"
+auth_type = "${ociRawAuth}"
+`;
+        if (ociRawAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
+        block += `compartment_id = "${wm.ociCompartmentId || ""}"
+availability_domain = "${wm.ociAvailabilityDomain || ""}"
+subnet_id = "${wm.ociSubnetId || ""}"
+container_image = "${wm.ociContainerImage || ""}"
+`;
+        if (wm.ociImagePullUsername) block += `image_pull_username = "${wm.ociImagePullUsername}"\n`;
+        if (wm.ociImagePullPassword) block += `image_pull_password = "${wm.ociImagePullPassword}"\n`;
+        block += `instance_shape = "${wm.ociShape || "CI.Standard.E4.Flex"}"
+instance_ocpus = ${wm.ociOcpus || 4}
+instance_memory_gb = ${wm.ociMemoryGb || 30}
+python_version = "${cfg.pythonVersion}"
+requirements_txt = """
+${ociRawReq}
+"""
+`;
+      } else if (wm.type === "oci_hpc") {
+        var ociHpcAuth = wm.ociAuthType || "config_file";
+        block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
+oci_region = "${wm.ociRegion || "us-ashburn-1"}"
+auth_type = "${ociHpcAuth}"
+`;
+        if (ociHpcAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
+        block += `compartment_id = "${wm.ociCompartmentId || ""}"
+availability_domain = "${wm.ociAvailabilityDomain || ""}"
+subnet_id = "${wm.ociSubnetId || ""}"
+container_image = "${wm.ociContainerImage || ""}"
+object_storage_namespace = "${wm.ociObjectStorageNamespace || ""}"
+object_storage_bucket = "${wm.ociObjectStorageBucket || ""}"
+object_storage_prefix = "${wm.ociObjectStoragePrefix || "scaler-tasks"}"
+instance_ocpus = ${wm.ociOcpus || 1}
+instance_memory_gb = ${wm.ociMemoryGb || 6}
+base_concurrency = ${wm.ociMaxConcurrentJobs || 100}
+job_timeout_seconds = ${(wm.ociJobTimeoutMinutes || 60) * 60}
+`;
       } else if (wm.type === "baremetal_native") {
         block += `mode = "${wm.mode || "fixed"}"
 object_storage_address = "${proto}://127.0.0.1:${op}${wsSlash}"
@@ -282,6 +366,26 @@ object_storage_address = "${proto}://127.0.0.1:${op}${wsSlash}"
       return block;
     })
     .join("\n");
+
+  var ociConfigBlock = "";
+  if (creds.ociUserId && creds.ociTenancyId && creds.ociFingerprint && creds.ociPrivateKey) {
+    ociConfigBlock = `
+mkdir -p /root/.oci
+cat > /root/.oci/oci_api_key.pem << OCI_KEY_EOF
+${creds.ociPrivateKey.trim()}
+OCI_KEY_EOF
+chmod 600 /root/.oci/oci_api_key.pem
+
+cat > /root/.oci/config << OCI_CFG_EOF
+[DEFAULT]
+user=${creds.ociUserId}
+fingerprint=${creds.ociFingerprint}
+tenancy=${creds.ociTenancyId}
+key_file=/root/.oci/oci_api_key.pem
+OCI_CFG_EOF
+chmod 600 /root/.oci/config
+`;
+  }
 
   // $IMDS_TOKEN / $PUBLIC_IP / $PRIVATE_IP / $SUBNET_ID / $MAC / $! are bash variables expanded
   // at runtime on the EC2 instance — JS template literals only interpolate ${...}, not $name.
@@ -312,7 +416,7 @@ aws_secret_access_key = ${creds.secretKey}
 region = ${cfg.region}
 AWS_EOF
 chmod 600 /root/.aws/config
-
+${ociConfigBlock}
 mkdir -p /opt/scaler
 
 cat > /opt/scaler/config.toml << CONFIG_EOF
@@ -807,6 +911,36 @@ async function provision(
     "  → VPC: " + vpcId + "  CIDR: " + vpcCidr + "  subnet: " + subnetId,
     "info",
   );
+
+  // OCI workers connect over the public internet — open scheduler and object storage ports.
+  var hasOci = (cfg.workerManagers || []).some(function (wm) {
+    return wm.type === "oci_raw" || wm.type === "oci_hpc";
+  });
+  if (hasOci) {
+    await withAbort(
+      ec2
+        .authorizeSecurityGroupIngress({
+          GroupId: sgId,
+          IpPermissions: [
+            {
+              IpProtocol: "tcp",
+              FromPort: cfg.schedulerPort,
+              ToPort: cfg.schedulerPort,
+              IpRanges: [{ CidrIp: "0.0.0.0/0", Description: "Scheduler (OCI workers)" }],
+            },
+            {
+              IpProtocol: "tcp",
+              FromPort: cfg.objectStoragePort,
+              ToPort: cfg.objectStoragePort,
+              IpRanges: [{ CidrIp: "0.0.0.0/0", Description: "Object storage (OCI workers)" }],
+            },
+          ],
+        })
+        .promise(),
+      signal,
+    );
+    addLog("  → Opened scheduler + object storage ports to 0.0.0.0/0 for OCI workers", "info");
+  }
   onPartialState(partial);
 
   // 7. Build addresses and persist complete state

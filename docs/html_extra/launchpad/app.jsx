@@ -536,6 +536,290 @@ function WorkerManagerCard({
           </div>
         </>
       )}
+
+      {/* oci_raw */}
+      {wm.type === "oci_raw" && (
+        <>
+          <div>
+            <Label help="OCI authentication method: 'config_file' uses ~/.oci/config; 'instance_principal' uses VM identity.">Auth Type</Label>
+            <select
+              value={wm.ociAuthType || "config_file"}
+              onChange={(e) => set("ociAuthType", e.target.value)}
+              style={inp}
+            >
+              <option value="config_file">Config File (~/.oci/config)</option>
+              <option value="instance_principal">Instance Principal</option>
+            </select>
+          </div>
+          {(wm.ociAuthType || "config_file") === "config_file" && (
+            <div>
+              <Label help="OCI config file profile name (only used with config_file auth).">OCI Profile</Label>
+              <input
+                value={wm.ociProfile || "DEFAULT"}
+                onChange={(e) => set("ociProfile", e.target.value)}
+                style={inp}
+                placeholder="DEFAULT"
+              />
+            </div>
+          )}
+          <div>
+            <Label help="OCI Compartment OCID where container instances are launched.">Compartment ID</Label>
+            <input
+              value={wm.ociCompartmentId || ""}
+              onChange={(e) => set("ociCompartmentId", e.target.value)}
+              style={inp}
+              placeholder="ocid1.compartment.oc1..aaa..."
+            />
+          </div>
+          <div>
+            <Label help="OCI Availability Domain (e.g. AD-1 or Uocm:PHX-AD-1).">Availability Domain</Label>
+            <input
+              value={wm.ociAvailabilityDomain || ""}
+              onChange={(e) => set("ociAvailabilityDomain", e.target.value)}
+              style={inp}
+              placeholder="AD-1"
+            />
+          </div>
+          <div>
+            <Label help="OCI Subnet OCID for container instance network interfaces.">Subnet ID</Label>
+            <input
+              value={wm.ociSubnetId || ""}
+              onChange={(e) => set("ociSubnetId", e.target.value)}
+              style={inp}
+              placeholder="ocid1.subnet.oc1..aaa..."
+            />
+          </div>
+          <div>
+            <Label help="OCIR image URI (e.g. &lt;region&gt;.ocir.io/&lt;ns&gt;/&lt;repo&gt;:latest).">Container Image</Label>
+            <input
+              value={wm.ociContainerImage || ""}
+              onChange={(e) => set("ociContainerImage", e.target.value)}
+              style={inp}
+              placeholder="us-ashburn-1.ocir.io/myns/scaler:latest"
+            />
+          </div>
+          <div>
+            <Label help="OCIR username for pulling private images (e.g. &lt;namespace&gt;/&lt;email&gt;).">Image Pull Username</Label>
+            <input
+              value={wm.ociImagePullUsername || ""}
+              onChange={(e) => set("ociImagePullUsername", e.target.value)}
+              style={inp}
+              placeholder="mynamespace/user@example.com"
+            />
+          </div>
+          <div>
+            <Label help="OCIR auth token for pulling private images.">Image Pull Password</Label>
+            <input
+              type="password"
+              value={wm.ociImagePullPassword || ""}
+              onChange={(e) => set("ociImagePullPassword", e.target.value)}
+              style={inp}
+              placeholder="Auth token"
+            />
+          </div>
+          <div>
+            <Label help="OCI region identifier.">Region</Label>
+            <input
+              value={wm.ociRegion || "us-ashburn-1"}
+              onChange={(e) => set("ociRegion", e.target.value)}
+              style={inp}
+              placeholder="us-ashburn-1"
+            />
+          </div>
+          <div>
+            <Label help="OCI Container Instance shape. Use A1.Flex (ARM) if E4.Flex quota is exhausted.">Instance Shape</Label>
+            <select
+              value={wm.ociShape || "CI.Standard.E4.Flex"}
+              onChange={(e) => set("ociShape", e.target.value)}
+              style={{ ...inp, cursor: "pointer" }}
+            >
+              <option value="CI.Standard.E4.Flex">CI.Standard.E4.Flex (x86)</option>
+              <option value="CI.Standard.A1.Flex">CI.Standard.A1.Flex (ARM)</option>
+            </select>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <Label help="Number of OCPUs per container instance (also determines worker count).">OCPUs</Label>
+              <NumericStepper
+                value={wm.ociOcpus || 4}
+                onChange={(v) => set("ociOcpus", v)}
+                min={1}
+                max={64}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Label>Memory (GB)</Label>
+              <NumericStepper
+                value={wm.ociMemoryGb || 30}
+                onChange={(v) => set("ociMemoryGb", v)}
+                min={1}
+                max={512}
+              />
+            </div>
+          </div>
+          <div>
+            <Label help="- Installed inside the container instance\n- opengris-scaler must be included">requirements.txt</Label>
+            <textarea
+              value={wm.requirements || ""}
+              onChange={(e) => set("requirements", e.target.value)}
+              style={{
+                width: "100%",
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-accent)",
+                borderRadius: 3,
+                padding: "7px 10px",
+                color: "var(--text-primary)",
+                fontFamily: "inherit",
+                fontSize: 11,
+                outline: "none",
+                resize: "vertical",
+                minHeight: 72,
+                lineHeight: 1.6,
+              }}
+            />
+          </div>
+        </>
+      )}
+
+      {/* oci_hpc */}
+      {wm.type === "oci_hpc" && (
+        <>
+          <div>
+            <Label help="OCI authentication method: 'config_file' uses ~/.oci/config; 'instance_principal' uses VM identity.">Auth Type</Label>
+            <select
+              value={wm.ociAuthType || "config_file"}
+              onChange={(e) => set("ociAuthType", e.target.value)}
+              style={inp}
+            >
+              <option value="config_file">Config File (~/.oci/config)</option>
+              <option value="instance_principal">Instance Principal</option>
+            </select>
+          </div>
+          {(wm.ociAuthType || "config_file") === "config_file" && (
+            <div>
+              <Label help="OCI config file profile name (only used with config_file auth).">OCI Profile</Label>
+              <input
+                value={wm.ociProfile || "DEFAULT"}
+                onChange={(e) => set("ociProfile", e.target.value)}
+                style={inp}
+                placeholder="DEFAULT"
+              />
+            </div>
+          )}
+          <div>
+            <Label help="OCI Compartment OCID where container instances are launched.">Compartment ID</Label>
+            <input
+              value={wm.ociCompartmentId || ""}
+              onChange={(e) => set("ociCompartmentId", e.target.value)}
+              style={inp}
+              placeholder="ocid1.compartment.oc1..aaa..."
+            />
+          </div>
+          <div>
+            <Label help="OCI Availability Domain (e.g. AD-1 or Uocm:PHX-AD-1).">Availability Domain</Label>
+            <input
+              value={wm.ociAvailabilityDomain || ""}
+              onChange={(e) => set("ociAvailabilityDomain", e.target.value)}
+              style={inp}
+              placeholder="AD-1"
+            />
+          </div>
+          <div>
+            <Label help="OCI Subnet OCID for container instance network interfaces.">Subnet ID</Label>
+            <input
+              value={wm.ociSubnetId || ""}
+              onChange={(e) => set("ociSubnetId", e.target.value)}
+              style={inp}
+              placeholder="ocid1.subnet.oc1..aaa..."
+            />
+          </div>
+          <div>
+            <Label help="OCIR image URI (e.g. &lt;region&gt;.ocir.io/&lt;ns&gt;/&lt;repo&gt;:latest).">Container Image</Label>
+            <input
+              value={wm.ociContainerImage || ""}
+              onChange={(e) => set("ociContainerImage", e.target.value)}
+              style={inp}
+              placeholder="us-ashburn-1.ocir.io/myns/scaler:latest"
+            />
+          </div>
+          <div>
+            <Label help="OCI region identifier.">Region</Label>
+            <input
+              value={wm.ociRegion || "us-ashburn-1"}
+              onChange={(e) => set("ociRegion", e.target.value)}
+              style={inp}
+              placeholder="us-ashburn-1"
+            />
+          </div>
+          <div>
+            <Label help="OCI Object Storage tenancy namespace.">Object Storage Namespace</Label>
+            <input
+              value={wm.ociObjectStorageNamespace || ""}
+              onChange={(e) => set("ociObjectStorageNamespace", e.target.value)}
+              style={inp}
+              placeholder="mytenancy"
+            />
+          </div>
+          <div>
+            <Label>Object Storage Bucket</Label>
+            <input
+              value={wm.ociObjectStorageBucket || ""}
+              onChange={(e) => set("ociObjectStorageBucket", e.target.value)}
+              style={inp}
+              placeholder="scaler-tasks-bucket"
+            />
+          </div>
+          <div>
+            <Label help="Key prefix for task inputs and results in Object Storage.">Object Storage Prefix</Label>
+            <input
+              value={wm.ociObjectStoragePrefix || "scaler-tasks"}
+              onChange={(e) => set("ociObjectStoragePrefix", e.target.value)}
+              style={inp}
+              placeholder="scaler-tasks"
+            />
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <Label>OCPUs per Job</Label>
+              <NumericStepper
+                value={wm.ociOcpus || 1}
+                onChange={(v) => set("ociOcpus", v)}
+                min={1}
+                max={64}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Label>Memory (GB)</Label>
+              <NumericStepper
+                value={wm.ociMemoryGb || 6}
+                onChange={(v) => set("ociMemoryGb", v)}
+                min={1}
+                max={512}
+              />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <Label help="Maximum number of concurrently running container instances.">Max Concurrent Jobs</Label>
+              <NumericStepper
+                value={wm.ociMaxConcurrentJobs || 100}
+                onChange={(v) => set("ociMaxConcurrentJobs", v)}
+                min={1}
+                max={10000}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Label>Timeout (min)</Label>
+              <NumericStepper
+                value={wm.ociJobTimeoutMinutes || 60}
+                onChange={(v) => set("ociJobTimeoutMinutes", v)}
+                min={1}
+                max={1440}
+              />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1068,6 +1352,11 @@ function App() {
   const [region, setRegion] = useState("us-east-1");
   const [accessKeyId, setAKI] = useState("");
   const [secretKey, setSK] = useState("");
+  const [credTab, setCredTab] = useState("aws");
+  const [ociUserId, setOciUserId] = useState("");
+  const [ociTenancyId, setOciTenancyId] = useState("");
+  const [ociFingerprint, setOciFingerprint] = useState("");
+  const [ociPrivateKey, setOciPrivateKey] = useState("");
   const [transport, setTransport] = useState("ws");
   const [networkBackend, setNetBack] = useState("ymq");
   const [pythonVersion, setPyVer] = useState("3.14");
@@ -1332,7 +1621,7 @@ function App() {
     try {
       const state = await provision(
         cfg,
-        { accessKeyId, secretKey },
+        { accessKeyId, secretKey, ociUserId, ociTenancyId, ociFingerprint, ociPrivateKey },
         addLog,
         savePartial,
         (name, mat) => setKeyMaterial({ name, mat }),
@@ -1400,7 +1689,7 @@ function App() {
     try {
       await teardown(
         provState,
-        { accessKeyId, secretKey },
+        { accessKeyId, secretKey, ociUserId, ociTenancyId, ociFingerprint, ociPrivateKey },
         addLog,
         controller.signal,
       );
@@ -1758,12 +2047,13 @@ function App() {
                     ["ibm", "IBM"],
                     ["oci", "OCI"],
                   ].map(([id, lbl]) => {
-                    const active = id === "aws";
-                    const disabled = id !== "aws";
+                    const active = id === credTab;
+                    const disabled = id === "ibm";
                     return (
                       <button
                         key={id}
                         disabled={disabled}
+                        onClick={() => !disabled && setCredTab(id)}
                         style={{
                           padding: "5px 12px",
                           fontFamily: "inherit",
@@ -1788,109 +2078,174 @@ function App() {
                     );
                   })}
                 </div>
-                <div>
-                  <Label help="The AWS region where your cluster will be deployed.">
-                    AWS Region
-                  </Label>
-                  <RegionSelect value={region} onChange={setRegion} />
-                </div>
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: 6 }}
-                >
-                  <div
-                    style={{
-                      background: "var(--bg-surface)",
-                      border: "1px solid var(--border-accent)",
-                      borderRadius: 3,
-                      padding: "8px 10px",
-                      display: "flex",
-                      alignItems: "center",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 10,
-                        color: "var(--text-muted)",
-                        marginRight: 8,
-                        flexShrink: 0,
-                      }}
+                {credTab === "aws" && (
+                  <>
+                    <div>
+                      <Label help="The AWS region where your cluster will be deployed.">
+                        AWS Region
+                      </Label>
+                      <RegionSelect value={region} onChange={setRegion} />
+                    </div>
+                    <div
+                      style={{ display: "flex", flexDirection: "column", gap: 6 }}
                     >
-                      KEY_ID
-                    </span>
-                    <SecretInput
-                      value={accessKeyId}
-                      onChange={setAKI}
-                      placeholder="AKIA…"
-                      style={{
-                        flex: 1,
-                        fontSize: 12,
-                        color: "var(--text-primary)",
-                      }}
-                    />
-                  </div>
-                  <div
-                    style={{
-                      background: "var(--bg-surface)",
-                      border: "1px solid var(--border-accent)",
-                      borderRadius: 3,
-                      padding: "8px 10px",
-                      display: "flex",
-                      alignItems: "center",
-                    }}
-                  >
+                      <div
+                        style={{
+                          background: "var(--bg-surface)",
+                          border: "1px solid var(--border-accent)",
+                          borderRadius: 3,
+                          padding: "8px 10px",
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 10,
+                            color: "var(--text-muted)",
+                            marginRight: 8,
+                            flexShrink: 0,
+                          }}
+                        >
+                          KEY_ID
+                        </span>
+                        <SecretInput
+                          value={accessKeyId}
+                          onChange={setAKI}
+                          placeholder="AKIA…"
+                          style={{
+                            flex: 1,
+                            fontSize: 12,
+                            color: "var(--text-primary)",
+                          }}
+                        />
+                      </div>
+                      <div
+                        style={{
+                          background: "var(--bg-surface)",
+                          border: "1px solid var(--border-accent)",
+                          borderRadius: 3,
+                          padding: "8px 10px",
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 10,
+                            color: "var(--text-muted)",
+                            marginRight: 8,
+                            flexShrink: 0,
+                          }}
+                        >
+                          SECRET
+                        </span>
+                        <SecretInput
+                          value={secretKey}
+                          onChange={setSK}
+                          placeholder="wJalr…"
+                          style={{
+                            flex: 1,
+                            fontSize: 12,
+                            color: "var(--text-primary)",
+                          }}
+                        />
+                      </div>
+                      <a
+                        href="https://console.aws.amazon.com/iam/home#/security_credentials"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          fontSize: 10,
+                          color: "var(--text-muted)",
+                          textDecoration: "none",
+                          alignSelf: "flex-end",
+                        }}
+                        onMouseOver={(e) =>
+                          (e.currentTarget.style.color = "var(--text-accent)")
+                        }
+                        onMouseOut={(e) =>
+                          (e.currentTarget.style.color = "var(--text-muted)")
+                        }
+                      >
+                        Generate access keys in AWS Console ↗
+                      </a>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          color: "var(--text-dim)",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        Your credentials are used from this browser to provision AWS
+                        resources and are made available to the scheduler instance
+                        for worker management. They are not stored by this
+                        application.
+                      </span>
+                    </div>
+                  </>
+                )}
+                {credTab === "oci" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div>
+                      <Label help="OCI user OCID — found in OCI Console under Profile.">User OCID</Label>
+                      <div style={{ ...inp, display: "flex", alignItems: "center" }}>
+                        <SecretInput
+                          value={ociUserId}
+                          onChange={setOciUserId}
+                          placeholder="ocid1.user.oc1..aaa..."
+                          style={{ flex: 1, fontSize: 12, color: "var(--text-primary)" }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label help="OCI tenancy OCID — found in Administration > Tenancy Details.">Tenancy OCID</Label>
+                      <div style={{ ...inp, display: "flex", alignItems: "center" }}>
+                        <SecretInput
+                          value={ociTenancyId}
+                          onChange={setOciTenancyId}
+                          placeholder="ocid1.tenancy.oc1..aaa..."
+                          style={{ flex: 1, fontSize: 12, color: "var(--text-primary)" }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label help="Fingerprint of the API key pair registered in OCI Console.">Fingerprint</Label>
+                      <div style={{ ...inp, display: "flex", alignItems: "center" }}>
+                        <SecretInput
+                          value={ociFingerprint}
+                          onChange={setOciFingerprint}
+                          placeholder="aa:bb:cc:dd:ee:ff"
+                          style={{ flex: 1, fontSize: 12, color: "var(--text-primary)" }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label help="Paste the contents of your OCI API private key PEM file.">Private Key (PEM)</Label>
+                      <textarea
+                        value={ociPrivateKey}
+                        onChange={(e) => setOciPrivateKey(e.target.value)}
+                        placeholder={"-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"}
+                        style={{
+                          ...inp,
+                          fontFamily: "monospace",
+                          fontSize: 10,
+                          resize: "vertical",
+                          minHeight: 80,
+                          lineHeight: 1.5,
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    </div>
                     <span
-                      style={{
-                        fontSize: 10,
-                        color: "var(--text-muted)",
-                        marginRight: 8,
-                        flexShrink: 0,
-                      }}
+                      style={{ fontSize: 10, color: "var(--text-dim)", lineHeight: 1.5 }}
                     >
-                      SECRET
+                      OCI credentials are written to ~/.oci/config on the scheduler
+                      instance so the worker manager can authenticate with OCI.
+                      They are not stored by this application.
                     </span>
-                    <SecretInput
-                      value={secretKey}
-                      onChange={setSK}
-                      placeholder="wJalr…"
-                      style={{
-                        flex: 1,
-                        fontSize: 12,
-                        color: "var(--text-primary)",
-                      }}
-                    />
                   </div>
-                  <a
-                    href="https://console.aws.amazon.com/iam/home#/security_credentials"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      fontSize: 10,
-                      color: "var(--text-muted)",
-                      textDecoration: "none",
-                      alignSelf: "flex-end",
-                    }}
-                    onMouseOver={(e) =>
-                      (e.currentTarget.style.color = "var(--text-accent)")
-                    }
-                    onMouseOut={(e) =>
-                      (e.currentTarget.style.color = "var(--text-muted)")
-                    }
-                  >
-                    Generate access keys in AWS Console ↗
-                  </a>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: "var(--text-dim)",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    Your credentials are used from this browser to provision AWS
-                    resources and are made available to the scheduler instance
-                    for worker management. They are not stored by this
-                    application.
-                  </span>
-                </div>
+                )}
               </PanelBox>
 
               <PanelBox title="General Options">
