@@ -59,8 +59,9 @@ static PyObject* PyStablePriorityQueueGet(PyStablePriorityQueue* self, PyObject*
         return nullptr;
     }
 
-    auto [priority, data] = std::move(priorityAndData);
-    OwnedPyObject<> res   = PyTuple_Pack(2, PyLong_FromLongLong(priority), data.take());
+    auto [priority, data]       = std::move(priorityAndData);
+    OwnedPyObject<> priorityObj = PyLong_FromLongLong(priority);
+    OwnedPyObject<> res         = PyTuple_Pack(2, priorityObj.get(), data.get());
     if (!res) {
         return nullptr;
     }
@@ -101,8 +102,9 @@ static PyObject* PyStablePriorityQueueMaxPriorityItem(PyStablePriorityQueue* sel
         return nullptr;
     }
 
-    auto [priority, data] = std::move(priorityAndData);
-    OwnedPyObject<> res   = PyTuple_Pack(2, PyLong_FromLongLong(priority), data.take());
+    auto [priority, data]       = std::move(priorityAndData);
+    OwnedPyObject<> priorityObj = PyLong_FromLongLong(priority);
+    OwnedPyObject<> res         = PyTuple_Pack(2, priorityObj.get(), data.get());
     if (!res) {
         return nullptr;
     }

@@ -115,7 +115,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
             f"--death-timeout-seconds {self._death_timeout_seconds} "
             f"--trim-memory-threshold-bytes {self._trim_memory_threshold_bytes} "
             f"--event-loop {self._event_loop} "
-            f"--worker-io-threads {self._io_threads}"
+            f"--io-threads {self._io_threads}"
         )
 
         if self._hard_processor_suspend:

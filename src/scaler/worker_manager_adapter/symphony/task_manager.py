@@ -1,13 +1,13 @@
 import asyncio
 import logging
 from concurrent.futures import Future
-from typing import Any, Awaitable, Callable, List, Tuple
+from typing import Any, List, Tuple
 
 import cloudpickle
 
 from scaler.protocol.capnp import Task, TaskCancel
 from scaler.utility.identifiers import TaskID
-from scaler.worker_manager_adapter.mixins import ExecutionBackend, TaskInputLoader
+from scaler.worker_manager_adapter.mixins import ExecutionBackend, TaskDeserializer, TaskInputLoader
 from scaler.worker_manager_adapter.symphony.callback import SessionCallback
 from scaler.worker_manager_adapter.symphony.message import SoamMessage
 
@@ -18,7 +18,7 @@ except ImportError:
 
 
 class SymphonyExecutionBackend(TaskInputLoader, ExecutionBackend):
-    _loader: Callable[[Task], Awaitable[Tuple[Any, List[Any]]]]
+    _loader: TaskDeserializer
 
     def __init__(self, service_name: str):
         self._service_name = service_name
@@ -40,7 +40,7 @@ class SymphonyExecutionBackend(TaskInputLoader, ExecutionBackend):
         self._ibm_soam_session = self._ibm_soam_connection.create_session(ibm_soam_session_attr)
         logging.info(f"established IBM Spectrum Symphony session {self._ibm_soam_session.get_id()}")
 
-    def register(self, load_task_inputs: Callable[[Task], Awaitable[Tuple[Any, List[Any]]]]) -> None:
+    def register(self, load_task_inputs: TaskDeserializer) -> None:
         self._loader = load_task_inputs
 
     async def load_task_inputs(self, task: Task) -> Tuple[Any, List[Any]]:
