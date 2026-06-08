@@ -11,7 +11,6 @@ jobs:
   build:
     name: Build wheels (${{ matrix.os }}, ${{ matrix.cibw_archs }})
     runs-on: ${{ matrix.os }}
-    environment: release
     strategy:
       matrix:
         include:
@@ -63,6 +62,7 @@ jobs:
     name: Publish to PyPI
     needs: build
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       id-token: write
     steps:
