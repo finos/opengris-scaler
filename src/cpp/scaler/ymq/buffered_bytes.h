@@ -19,7 +19,8 @@ public:
 
     BufferedBytes(const char* src, size_t size): _data(std::make_unique<uint8_t[]>(size)), _size(size)
     {
-        std::memcpy(_data.get(), src, size);
+        if (size > 0)
+            std::memcpy(_data.get(), src, size);
     }
 
     explicit BufferedBytes(const char* src): BufferedBytes(src, src ? std::strlen(src) : 0)
@@ -44,11 +45,6 @@ public:
     size_t size() const noexcept override
     {
         return _size;
-    }
-
-    bool is_null() const noexcept
-    {
-        return _data == nullptr;
     }
 
 private:

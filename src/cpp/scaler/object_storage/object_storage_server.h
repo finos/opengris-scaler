@@ -95,6 +95,7 @@ private:
     template <ObjectStorageMessage T>
     void writeMessage(std::shared_ptr<Client> client, T& message, std::span<const unsigned char> payload)
     {
+        // Send OSS header
         auto messageBuffer = message.toBuffer();
         auto headerPayload = std::make_unique<scaler::ymq::BufferedBytes>(
             reinterpret_cast<const char*>(messageBuffer.asBytes().begin()), messageBuffer.asBytes().size());

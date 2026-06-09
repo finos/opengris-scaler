@@ -25,7 +25,7 @@ public:
 
 inline Bytes::~Bytes() noexcept = default;
 
-inline std::optional<std::string> asString(const Bytes& b) noexcept
+inline std::optional<std::string> asString(const Bytes& b)
 {
     if (!b.data())
         return std::nullopt;
