@@ -52,3 +52,4 @@ tests/worker_manager_adapter/oci_hpc/.scaler_oci_hpc.env
 
 .ipynb_checkpoints/
 .claude/
+.envrc
