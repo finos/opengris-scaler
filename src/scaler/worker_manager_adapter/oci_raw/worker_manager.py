@@ -21,6 +21,9 @@ from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRun
 if TYPE_CHECKING:
     from scaler.protocol.capnp import WorkerManagerCommand
 
+_OCI_POLL_INTERVAL_SECONDS = 10
+_OCI_MAX_POLL_ATTEMPTS = 30  # 5 minutes total
+
 
 @dataclass
 class _InstanceInfo:
@@ -69,7 +72,6 @@ class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
             instance_id = await self._start_instance()
             if instance_id is not None:
                 self._instances.append(_InstanceInfo(instance_id=instance_id))
-                logging.info(f"Started OCI Container Instance {instance_id[-20:]}")
 
     async def stop_units(self, count: int) -> None:
         to_stop = self._instances[:count]
@@ -155,8 +157,8 @@ class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
             display_name=display_name,
         )
 
+        loop = asyncio.get_running_loop()
         try:
-            loop = asyncio.get_running_loop()
             response = await loop.run_in_executor(
                 None,
                 functools.partial(
@@ -164,28 +166,71 @@ class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
                     create_container_instance_details=create_details,
                 ),
             )
-            return response.data.id
         except oci.exceptions.ServiceError as exc:
             logging.error(f"OCI create_container_instance failed: {exc}")
             return None
 
-    async def _stop_instance(self, instance_id: str) -> None:
+        instance_id = response.data.id
+        logging.info(f"OCI Container Instance {instance_id[-20:]} ({display_name}) created, waiting for ACTIVE...")
+
+        for _ in range(_OCI_MAX_POLL_ATTEMPTS):
+            await asyncio.sleep(_OCI_POLL_INTERVAL_SECONDS)
+            try:
+                poll_response = await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        self._container_instances_client.get_container_instance, container_instance_id=instance_id
+                    ),
+                )
+            except oci.exceptions.ServiceError as exc:
+                logging.error(f"OCI get_container_instance failed for {instance_id[-20:]}: {exc}")
+                await self._delete_instance(instance_id)
+                return None
+
+            instance = poll_response.data
+            if instance.lifecycle_state == "ACTIVE":
+                logging.info(f"OCI Container Instance {instance_id[-20:]} ({display_name}) is ACTIVE")
+                return instance_id
+            if instance.lifecycle_state == "FAILED":
+                details = instance.lifecycle_details or "no details provided"
+                logging.error(
+                    f"OCI Container Instance {instance_id[-20:]} ({display_name}) failed to provision: {details}"
+                )
+                await self._delete_instance(instance_id)
+                return None
+
+        timeout_seconds = _OCI_MAX_POLL_ATTEMPTS * _OCI_POLL_INTERVAL_SECONDS
+        logging.warning(
+            f"OCI Container Instance {instance_id[-20:]} ({display_name}) timed out after "
+            f"{timeout_seconds}s waiting for ACTIVE, deleting"
+        )
+        await self._delete_instance(instance_id)
+        return None
+
+    async def _delete_instance(self, instance_id: str) -> bool:
+        loop = asyncio.get_running_loop()
         try:
-            loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None,
                 functools.partial(
                     self._container_instances_client.delete_container_instance, container_instance_id=instance_id
                 ),
             )
-            logging.info(f"Stopped OCI Container Instance {instance_id[-20:]}")
+            return True
         except oci.exceptions.ServiceError as exc:
             if exc.status == 404:
-                logging.warning(f"OCI Container Instance not found (already deleted?): {instance_id}")
+                logging.warning(f"OCI Container Instance {instance_id[-20:]} not found during delete (already gone?)")
             else:
-                logging.error(f"OCI delete_container_instance failed: {exc}")
+                logging.error(f"OCI delete_container_instance failed for {instance_id[-20:]}: {exc}")
         except Exception as exc:
-            logging.error(f"Failed to stop OCI Container Instance {instance_id[-20:]}: {exc}")
+            logging.error(f"Failed to delete OCI Container Instance {instance_id[-20:]}: {exc}")
+        return False
+
+    async def _stop_instance(self, instance_id: str) -> None:
+        if await self._delete_instance(instance_id):
+            logging.info(f"Stopped OCI Container Instance {instance_id[-20:]}")
+        else:
+            logging.error(f"Failed to stop OCI Container Instance {instance_id[-20:]}")
 
 
 class OCIRawWorkerManager:
