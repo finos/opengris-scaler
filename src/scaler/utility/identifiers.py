@@ -71,9 +71,8 @@ class ObjectID(bytes):
     Object IDs are built from 2x16-bytes parts:
 
     - the first 16-bytes identify the owner of the object (the Scaler client's hash);
-    - the second 16-bytes identify the object instance: a hash of its serialized content for
-      content-addressed client objects (see ``generate_object_id_from_payload``), or a random
-      unique tag otherwise (see ``generate_object_id``), or a fixed tag for the serializer.
+    - the second 16-bytes are a random unique tag (see ``generate_object_id``), or a fixed tag
+      for the serializer (see ``generate_serializer_object_id``).
     """
 
     def __new__(cls, value: bytes):
@@ -87,22 +86,6 @@ class ObjectID(bytes):
         owner_hash = hashlib.md5(owner).digest()
         unique_object_tag = uuid.uuid4().bytes
         return ObjectID(owner_hash + unique_object_tag)
-
-    @staticmethod
-    def generate_object_id_from_payload(owner: ClientID, payload: bytes) -> "ObjectID":
-        """Content-addressed object ID: the same payload from the same owner always maps to the same
-        ID, so the client can skip re-uploading (and re-instructing) an object whose serialized
-        content has not changed -- the object storage server is keyed by object ID.
-
-        The content tag is an md5 digest of the payload. md5 is not collision-resistant against a
-        deliberately crafted adversary, but (a) accidental collisions between distinct real payloads
-        are negligible (~2**-64 by the birthday bound over 128 bits), and (b) the owner-hash prefix
-        namespaces IDs per client, so even a crafted collision could only affect the crafting
-        client's own objects.
-        """
-        owner_hash = hashlib.md5(owner).digest()
-        content_tag = hashlib.md5(payload).digest()
-        return ObjectID(owner_hash + content_tag)
 
     @staticmethod
     def generate_serializer_object_id(owner: ClientID) -> "ObjectID":

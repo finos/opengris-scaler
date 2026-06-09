@@ -253,7 +253,7 @@ class Client:
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
         :param reserialize: If True, re-serialize this task's argument objects instead of reusing a cached snapshot,
-                            and refresh the cache. Because objects are content-addressed, the re-serialized bytes are
+                            and refresh the cache. Because identical content uploads once, the re-serialized bytes are
                             re-uploaded only if the content actually changed, so this is cheap when nothing changed. Use
                             this after mutating an argument in place. Defaults to False, where a reused object is
                             serialized and uploaded once.
@@ -300,7 +300,7 @@ class Client:
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
         :param reserialize: If True, re-serialize the argument objects instead of reusing a cached snapshot, and refresh
-                            the cache. Because objects are content-addressed, the re-serialized bytes are re-uploaded
+                            the cache. Because identical content uploads once, the re-serialized bytes are re-uploaded
                             only if the content actually changed, so this is cheap when nothing changed. Use this after
                             mutating an argument in place. Defaults to False, where a reused object is serialized and
                             uploaded once.
@@ -338,7 +338,7 @@ class Client:
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
         :param reserialize: If True, re-serialize the argument objects instead of reusing a cached snapshot, and refresh
-                            the cache. Because objects are content-addressed, the re-serialized bytes are re-uploaded
+                            the cache. Because identical content uploads once, the re-serialized bytes are re-uploaded
                             only if the content actually changed, so this is cheap when nothing changed. Use this after
                             mutating an argument in place. Defaults to False, where a reused object is serialized and
                             uploaded once.
@@ -401,7 +401,7 @@ class Client:
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
         :param reserialize: If True, re-serialize the graph's data nodes instead of reusing a cached snapshot, and
-                            refresh the cache. Because objects are content-addressed, the re-serialized bytes are
+                            refresh the cache. Because identical content uploads once, the re-serialized bytes are
                             re-uploaded only if the content actually changed, so this is cheap when nothing changed. Use
                             this after mutating a data node in place. Defaults to False, where a reused object is
                             serialized and uploaded once.
@@ -479,7 +479,7 @@ class Client:
 
         # dedup=False: send_object() returns to the user before the next commit,
         # so a kept dedup entry could serve a later submit() a stale snapshot.
-        cache = self._object_buffer.buffer_send_object(obj, name, dedup=False)
+        cache = self._object_buffer.buffer_send_object(obj, name, reserialize=False, dedup=False)
         return ObjectReference(cache.object_name, len(cache.object_payload), cache.object_id)
 
     def clear(self):
@@ -571,8 +571,8 @@ class Client:
         function_object_id: ObjectID,
         args: Tuple[Any, ...],
         delayed: bool,
-        capabilities: Optional[Dict[str, int]] = None,
-        reserialize: bool = False,
+        capabilities: Optional[Dict[str, int]],
+        reserialize: bool,
     ) -> Tuple[Task, ScalerFuture]:
         task_id = TaskID.generate_task_id()
 
@@ -586,7 +586,9 @@ class Client:
 
                 function_args.append(arg.object_id)
             else:
-                function_args.append(self._object_buffer.buffer_send_object(arg, reserialize=reserialize).object_id)
+                function_args.append(
+                    self._object_buffer.buffer_send_object(arg, None, reserialize=reserialize, dedup=True).object_id
+                )
 
         task_flags_bytes = self.__get_task_flags().serialize()
 
@@ -633,7 +635,7 @@ class Client:
         return tuple(args_list)
 
     def __split_data_and_graph(
-        self, graph: Dict[str, Union[Any, Tuple[Union[Callable, str], ...]]], reserialize: bool = False
+        self, graph: Dict[str, Union[Any, Tuple[Union[Callable, str], ...]]], reserialize: bool
     ) -> Tuple[Dict[str, Tuple[ObjectID, Any]], Dict[str, _CallNode]]:
         call_graph = {}
         node_name_to_argument: Dict[str, Tuple[ObjectID, Union[Any, Tuple[Union[Callable, Any], ...]]]] = dict()
@@ -647,7 +649,7 @@ class Client:
                 object_id = node.object_id
             else:
                 object_id = self._object_buffer.buffer_send_object(
-                    node, name=node_name, reserialize=reserialize
+                    node, name=node_name, reserialize=reserialize, dedup=True
                 ).object_id
 
             node_name_to_argument[node_name] = (object_id, node)
