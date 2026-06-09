@@ -1,6 +1,6 @@
 import asyncio
 import unittest
-from typing import Any, Awaitable, Callable, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 from unittest.mock import AsyncMock, MagicMock
 
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
@@ -17,7 +17,7 @@ from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import TaskFlags
 from scaler.worker.agent.mixins import HeartbeatManager
-from scaler.worker_manager_adapter.mixins import ExecutionBackend, TaskInputLoader
+from scaler.worker_manager_adapter.mixins import ExecutionBackend, TaskDeserializer, TaskInputLoader
 from scaler.worker_manager_adapter.task_manager import TaskManager
 from tests.utility.utility import logging_test_name
 
@@ -456,9 +456,9 @@ class TestExecutionBackendSentinel(unittest.IsolatedAsyncioTestCase):
             return None, []
 
         class _ConcreteBackend(TaskInputLoader, ExecutionBackend):
-            _loader: Callable[[Task], Awaitable[Tuple[Any, List[Any]]]]
+            _loader: TaskDeserializer
 
-            def register(self, load_task_inputs: Callable[[Task], Awaitable[Tuple[Any, List[Any]]]]) -> None:
+            def register(self, load_task_inputs: TaskDeserializer) -> None:
                 self._loader = load_task_inputs
 
             async def load_task_inputs(self, task: Task) -> Tuple[Any, List[Any]]:

@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, List, Tuple
 from scaler.protocol.capnp import ProcessorStatus, Task, TaskCancel
 from scaler.utility.identifiers import TaskID
 
+TaskDeserializer = Callable[[Task], Awaitable[Tuple[Any, List[Any]]]]
+
 if TYPE_CHECKING:
     from scaler.protocol.capnp import WorkerManagerCommand
     from scaler.worker_manager_adapter.task_manager import TaskManager
@@ -25,7 +27,7 @@ class TaskInputLoader(ABC):
     async def load_task_inputs(self, task: Task) -> Tuple[Any, List[Any]]: ...
 
     @abstractmethod
-    def register(self, load_task_inputs: Callable[[Task], Awaitable[Tuple[Any, List[Any]]]]) -> None: ...
+    def register(self, load_task_inputs: TaskDeserializer) -> None: ...
 
 
 class ExecutionBackend(ABC):
@@ -42,7 +44,7 @@ class ExecutionBackend(ABC):
     async def routine(self) -> None: ...
 
     @abstractmethod
-    def register(self, load_task_inputs: Callable[[Task], Awaitable[Tuple[Any, List[Any]]]]) -> None: ...
+    def register(self, load_task_inputs: TaskDeserializer) -> None: ...
 
 
 class DeclarativeWorkerProvisioner(ABC):

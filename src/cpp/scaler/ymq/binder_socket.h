@@ -143,6 +143,12 @@ private:
     static void onMessage(
         std::shared_ptr<State> state, ConnectionID connectionId, std::unique_ptr<Bytes> messagePayload) noexcept;
 
+    // Drop any _disconnectedIdentities entries older than disconnectedIdentityTTL. Called from
+    // onRemoteDisconnect so the work amortises against new disconnect activity rather than a
+    // periodic timer. O(expired); skips deque entries whose timestamp no longer matches the
+    // map entry (peer re-disconnected and the deque slot is stale).
+    static void purgeExpiredDisconnectedIdentities(State& state, std::chrono::steady_clock::time_point now) noexcept;
+
     static internal::MessageConnection& createConnection(
         std::shared_ptr<State> state, std::optional<Identity> remoteIdentity) noexcept;
 };

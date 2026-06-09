@@ -5,6 +5,9 @@ inputs:
   os:
     description: "operating system"
     required: true
+  cibw-archs:
+    description: "cibuildwheel architectures to build"
+    required: true
 
 runs:
   using: "composite"
@@ -25,8 +28,13 @@ runs:
           Remove-Item -Recurse -Force dist
         }
 
+    - name: Verify ARM64 manylinux container
+      if: inputs.cibw-archs == 'aarch64'
+      shell: bash
+      run: docker run --rm quay.io/pypa/manylinux_2_28_aarch64 uname -m
+
     - name: Build Sdist (Linux)
-      if: inputs.os == 'Linux'
+      if: inputs.os == 'Linux' && inputs.cibw-archs == 'x86_64'
       shell: bash
       run: |
         python -m build --sdist

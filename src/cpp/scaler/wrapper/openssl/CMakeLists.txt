@@ -1,4 +1,4 @@
-find_package(OpenSSL CONFIG REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 add_library(scaler_wrapper_openssl STATIC
     secure_server.h
