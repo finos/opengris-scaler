@@ -68,10 +68,11 @@ class ObjectID(bytes):
     """
     Scaler 32-bytes object IDs.
 
-    Object ID are built from 2x16-bytes parts:
+    Object IDs are built from 2x16-bytes parts:
 
-    - the first 16-bytes uniquely identify the owner of the object (i.e. the Scaler client's hash);
-    - the second 16-bytes uniquely identify the object's content.
+    - the first 16-bytes identify the owner of the object (the Scaler client's hash);
+    - the second 16-bytes are a random unique tag (see ``generate_object_id``), or a fixed tag
+      for the serializer (see ``generate_serializer_object_id``).
     """
 
     def __new__(cls, value: bytes):
