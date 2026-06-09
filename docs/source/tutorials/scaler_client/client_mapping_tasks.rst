@@ -21,3 +21,11 @@ When to choose each API:
 
 * Use :py:func:`~Client.map()` when arguments come from one or more parallel iterables.
 * Use :py:func:`~Client.starmap()` when each task input is a prebuilt argument tuple.
+
+Re-sending a mutated argument
+-----------------------------
+
+An object shared across the mapped tasks is serialized and uploaded once. If you mutate such an
+object in place between calls, pass ``reserialize=True`` to :py:func:`~Client.map()` or
+:py:func:`~Client.starmap()` to re-serialize that call's arguments and refresh the cache. See
+:doc:`client_submit_tasks` for details on object caching and ``reserialize``.
