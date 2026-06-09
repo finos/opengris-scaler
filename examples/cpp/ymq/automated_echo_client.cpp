@@ -41,8 +41,8 @@ int main()
         }
 
         auto msg = std::move(recvResult.value());
-        if (scaler::ymq::as_string(*msg.payload) != longStr) {
-            std::cerr << "Received message mismatch, got " << scaler::ymq::as_string(*msg.payload).value_or("")
+        if (scaler::ymq::asString(*msg.payload) != longStr) {
+            std::cerr << "Received message mismatch, got " << scaler::ymq::asString(*msg.payload).value_or("")
                       << std::endl;
             return 1;
         }

@@ -97,7 +97,7 @@ private:
     {
         auto messageBuffer = message.toBuffer();
         auto headerPayload = std::make_unique<scaler::ymq::BufferedBytes>(
-            (char*)messageBuffer.asBytes().begin(), messageBuffer.asBytes().size());
+            reinterpret_cast<const char*>(messageBuffer.asBytes().begin()), messageBuffer.asBytes().size());
         auto sendHeaderFuture = _socket->sendMessage(client->_identity, std::move(headerPayload));
 
         _pendingSendMessageFuts.emplace_back(std::move(sendHeaderFuture));
@@ -106,7 +106,8 @@ private:
             return;
         }
 
-        auto payloadBytes      = std::make_unique<scaler::ymq::BufferedBytes>((char*)payload.data(), payload.size());
+        auto payloadBytes =
+            std::make_unique<scaler::ymq::BufferedBytes>(reinterpret_cast<const char*>(payload.data()), payload.size());
         auto sendPayloadFuture = _socket->sendMessage(client->_identity, std::move(payloadBytes));
 
         _pendingSendMessageFuts.emplace_back(std::move(sendPayloadFuture));

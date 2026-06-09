@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
-#include <optional>
 #include <string>
 
 #include "scaler/ymq/bytes.h"
@@ -52,24 +51,10 @@ public:
         return _data == nullptr;
     }
 
-    std::optional<std::string> as_string() const
-    {
-        if (is_null())
-            return std::nullopt;
-        return std::string(reinterpret_cast<const char*>(_data.get()), _size);
-    }
-
 private:
     std::unique_ptr<uint8_t[]> _data;
     size_t _size {0};
 };
-
-inline std::optional<std::string> as_string(const Bytes& b) noexcept
-{
-    if (!b.data())
-        return std::nullopt;
-    return std::string(reinterpret_cast<const char*>(b.data()), b.size());
-}
 
 }  // namespace ymq
 }  // namespace scaler

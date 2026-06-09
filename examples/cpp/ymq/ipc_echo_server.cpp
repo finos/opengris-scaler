@@ -33,7 +33,7 @@ int main()
         Message receivedMsg = std::move(recvResult.value());
 
         auto sendResult =
-            socket.sendMessage(scaler::ymq::as_string(*receivedMsg.address).value(), std::move(receivedMsg.payload));
+            socket.sendMessage(scaler::ymq::asString(*receivedMsg.address).value(), std::move(receivedMsg.payload));
         if (!sendResult.has_value()) {
             std::cerr << "Failed to send message: " << sendResult.error().what() << std::endl;
         }

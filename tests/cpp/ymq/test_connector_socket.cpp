@@ -254,8 +254,8 @@ TEST_F(YMQConnectorSocketTest, RecvMessage)
 
     // Wait for first message to be received
     scaler::ymq::Message message = recvCalled.get_future().get();
-    ASSERT_EQ(scaler::ymq::as_string(*message.address), ConnectorServerPair::serverIdentity);
-    ASSERT_EQ(scaler::ymq::as_string(*message.payload), messagePayload);
+    ASSERT_EQ(scaler::ymq::asString(*message.address), ConnectorServerPair::serverIdentity);
+    ASSERT_EQ(scaler::ymq::asString(*message.payload), messagePayload);
 
     // Register receive callback AFTER connection is established
     recvCalled = {};
@@ -399,8 +399,8 @@ TEST_F(YMQConnectorSocketTest, Bind)
     // Receive the message on binding connector
     auto recvResult1 = binderSocket.recvMessage();
     ASSERT_TRUE(recvResult1.has_value());
-    ASSERT_EQ(scaler::ymq::as_string(*recvResult1.value().address), connectorIdentity);
-    ASSERT_EQ(scaler::ymq::as_string(*recvResult1.value().payload), messagePayload);
+    ASSERT_EQ(scaler::ymq::asString(*recvResult1.value().address), connectorIdentity);
+    ASSERT_EQ(scaler::ymq::asString(*recvResult1.value().payload), messagePayload);
 
     // Send a message from the binding connector
     auto sendResult2 = binderSocket.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(messagePayload));
@@ -409,6 +409,6 @@ TEST_F(YMQConnectorSocketTest, Bind)
     // Receive the message on the connecting connector
     auto recvResult2 = connectorSocket.recvMessage();
     ASSERT_TRUE(recvResult2.has_value());
-    ASSERT_EQ(scaler::ymq::as_string(*recvResult2.value().address), binderIdentity);
-    ASSERT_EQ(scaler::ymq::as_string(*recvResult2.value().payload), messagePayload);
+    ASSERT_EQ(scaler::ymq::asString(*recvResult2.value().address), binderIdentity);
+    ASSERT_EQ(scaler::ymq::asString(*recvResult2.value().payload), messagePayload);
 }

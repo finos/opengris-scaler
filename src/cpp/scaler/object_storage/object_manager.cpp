@@ -37,7 +37,10 @@ std::shared_ptr<const ObjectPayload> ObjectManager::setObject(
                            hash,
                            ManagedObject {
                                .useCount = 1,
-                               .payload  = std::shared_ptr<const ObjectPayload>(std::move(payload)),
+                               // Converts unique_ptr -> shared_ptr, keeping the Bytes subtype intact.
+                               // Two allocations (object + separate control block); use
+                               // make_shared<BufferedBytes> if this ever becomes a hot path.
+                               .payload = std::shared_ptr<const ObjectPayload>(std::move(payload)),
                            })
                        .first;
         totalObjectsBytes += objectIt->second.payload->size();

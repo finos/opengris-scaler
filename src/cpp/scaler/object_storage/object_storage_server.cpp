@@ -168,7 +168,7 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
                 }
             }
 
-            const auto identity  = scaler::ymq::as_string(*maybeMessage->address).value();
+            const auto identity  = scaler::ymq::asString(*maybeMessage->address).value();
             lastMessageIdentity  = identity;
             auto headerOrPayload = std::move(maybeMessage->payload);
 

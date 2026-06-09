@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <string>
 
 namespace scaler {
 namespace ymq {
@@ -22,6 +24,13 @@ public:
 };
 
 inline Bytes::~Bytes() noexcept = default;
+
+inline std::optional<std::string> asString(const Bytes& b) noexcept
+{
+    if (!b.data())
+        return std::nullopt;
+    return std::string(reinterpret_cast<const char*>(b.data()), b.size());
+}
 
 }  // namespace ymq
 }  // namespace scaler

@@ -113,7 +113,7 @@ TEST_F(YMQBinderSocketTest, SendMessage)
     bool clientMessageReceived = false;
 
     auto onClientRecvMessage = [&](std::unique_ptr<scaler::ymq::Bytes> receivedPayload) {
-        ASSERT_EQ(scaler::ymq::as_string(*receivedPayload), messagePayload);
+        ASSERT_EQ(scaler::ymq::asString(*receivedPayload), messagePayload);
         clientMessageReceived = true;
     };
 
@@ -174,7 +174,7 @@ TEST_F(YMQBinderSocketTest, SendMulticastMessage)
 
     auto onClientRecvMessage = [&](std::unique_ptr<scaler::ymq::Bytes> receivedPayload) {
         ASSERT_FALSE(clientMessageReceived);
-        ASSERT_EQ(scaler::ymq::as_string(*receivedPayload), messagePayload);
+        ASSERT_EQ(scaler::ymq::asString(*receivedPayload), messagePayload);
         clientMessageReceived = true;
     };
 
@@ -262,8 +262,8 @@ TEST_F(YMQBinderSocketTest, RecvMessage)
     // Validate the message on the binder
 
     scaler::ymq::Message message = recvCalled.get_future().get();
-    ASSERT_EQ(scaler::ymq::as_string(*message.address), BinderClientPair::clientIdentity);
-    ASSERT_EQ(scaler::ymq::as_string(*message.payload), messagePayload);
+    ASSERT_EQ(scaler::ymq::asString(*message.address), BinderClientPair::clientIdentity);
+    ASSERT_EQ(scaler::ymq::asString(*message.payload), messagePayload);
 
     // Register a 2nd receive callback, AFTER the client connected
 
@@ -282,8 +282,8 @@ TEST_F(YMQBinderSocketTest, RecvMessage)
     // Validate the binder receives the 2nd message
 
     message = recvCalled.get_future().get();
-    ASSERT_EQ(scaler::ymq::as_string(*message.address), BinderClientPair::clientIdentity);
-    ASSERT_EQ(scaler::ymq::as_string(*message.payload), messagePayload);
+    ASSERT_EQ(scaler::ymq::asString(*message.address), BinderClientPair::clientIdentity);
+    ASSERT_EQ(scaler::ymq::asString(*message.payload), messagePayload);
 }
 
 TEST_F(YMQBinderSocketTest, CloseConnection)

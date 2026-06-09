@@ -52,8 +52,8 @@ TEST_F(YMQSyncTest, BasicMessageExchange)
         auto recvResult = connector.recvMessage();
         ASSERT_TRUE(recvResult.has_value());
 
-        ASSERT_EQ(scaler::ymq::as_string(*recvResult.value().address), binderIdentity);
-        ASSERT_EQ(scaler::ymq::as_string(*recvResult.value().payload), messagePayload);
+        ASSERT_EQ(scaler::ymq::asString(*recvResult.value().address), binderIdentity);
+        ASSERT_EQ(scaler::ymq::asString(*recvResult.value().payload), messagePayload);
 
         // Binder should've closed the connection by now
         recvResult = connector.recvMessage();
@@ -66,8 +66,8 @@ TEST_F(YMQSyncTest, BasicMessageExchange)
     ASSERT_TRUE(recvResult.has_value());
 
     scaler::ymq::Message message = std::move(recvResult.value());
-    ASSERT_EQ(scaler::ymq::as_string(*message.address), connectorIdentity);
-    ASSERT_EQ(scaler::ymq::as_string(*message.payload), messagePayload);
+    ASSERT_EQ(scaler::ymq::asString(*message.address), connectorIdentity);
+    ASSERT_EQ(scaler::ymq::asString(*message.payload), messagePayload);
 
     // Send response back to connector
     auto sendResult =

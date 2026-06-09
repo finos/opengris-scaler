@@ -50,7 +50,7 @@ TEST(ObjectManagerTestSuite, TestGetObject)
 
     payloadPtr = objectManager.getObject(objectID1);
 
-    EXPECT_EQ(scaler::ymq::as_string(*payloadPtr), payloadContent);
+    EXPECT_EQ(scaler::ymq::asString(*payloadPtr), payloadContent);
 }
 
 TEST(ObjectManagerTestSuite, TestDeleteObject)
@@ -87,7 +87,7 @@ TEST(ObjectManagerTestSuite, TestDuplicateObject)
 
     duplicatedObject = objectManager.duplicateObject(objectID1, objectID2);
     EXPECT_NE(duplicatedObject, nullptr);
-    EXPECT_EQ(scaler::ymq::as_string(*duplicatedObject), payloadContent);
+    EXPECT_EQ(scaler::ymq::asString(*duplicatedObject), payloadContent);
 
     // Deleting the first object does not remove the duplicated one.
     objectManager.deleteObject(objectID1);
