@@ -24,7 +24,7 @@ std::shared_ptr<const ObjectPayload> ObjectManager::setObject(
         deleteObject(objectID);
     }
 
-    ObjectHash hash = computePayloadHash(*payload);
+    const ObjectHash hash = computePayloadHash(*payload);
 
     objectIDToHash[objectID] = hash;
 

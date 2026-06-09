@@ -291,7 +291,7 @@ void ObjectStorageServer::processDuplicateRequest(
             "payload length should be size_of(ObjectID)=" + std::to_string(ObjectID::bufferSize()));
     }
 
-    ObjectID originalObjectID = ObjectID::fromBuffer(*payload);
+    const ObjectID originalObjectID = ObjectID::fromBuffer(*payload);
 
     auto objectPtr = objectManager.duplicateObject(originalObjectID, requestHeader.objectID);
 
