@@ -541,28 +541,6 @@ function WorkerManagerCard({
       {wm.type === "oci_raw" && (
         <>
           <div>
-            <Label help="OCI authentication method: 'config_file' uses ~/.oci/config; 'instance_principal' uses VM identity.">Auth Type</Label>
-            <select
-              value={wm.ociAuthType || "config_file"}
-              onChange={(e) => set("ociAuthType", e.target.value)}
-              style={inp}
-            >
-              <option value="config_file">Config File (~/.oci/config)</option>
-              <option value="instance_principal">Instance Principal</option>
-            </select>
-          </div>
-          {(wm.ociAuthType || "config_file") === "config_file" && (
-            <div>
-              <Label help="OCI config file profile name (only used with config_file auth).">OCI Profile</Label>
-              <input
-                value={wm.ociProfile || "DEFAULT"}
-                onChange={(e) => set("ociProfile", e.target.value)}
-                style={inp}
-                placeholder="DEFAULT"
-              />
-            </div>
-          )}
-          <div>
             <Label help="OCI Compartment OCID where container instances are launched.">Compartment ID</Label>
             <input
               value={wm.ociCompartmentId || ""}
@@ -665,28 +643,6 @@ function WorkerManagerCard({
       {/* oci_hpc */}
       {wm.type === "oci_hpc" && (
         <>
-          <div>
-            <Label help="OCI authentication method: 'config_file' uses ~/.oci/config; 'instance_principal' uses VM identity.">Auth Type</Label>
-            <select
-              value={wm.ociAuthType || "config_file"}
-              onChange={(e) => set("ociAuthType", e.target.value)}
-              style={inp}
-            >
-              <option value="config_file">Config File (~/.oci/config)</option>
-              <option value="instance_principal">Instance Principal</option>
-            </select>
-          </div>
-          {(wm.ociAuthType || "config_file") === "config_file" && (
-            <div>
-              <Label help="OCI config file profile name (only used with config_file auth).">OCI Profile</Label>
-              <input
-                value={wm.ociProfile || "DEFAULT"}
-                onChange={(e) => set("ociProfile", e.target.value)}
-                style={inp}
-                placeholder="DEFAULT"
-              />
-            </div>
-          )}
           <div>
             <Label help="OCI Compartment OCID where container instances are launched.">Compartment ID</Label>
             <input
