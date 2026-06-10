@@ -59,14 +59,15 @@ ConnectorSocket ConnectorSocket::bind(
             auto acceptServer = internal::AcceptServer::init(
                 state->_thread.loop(), state->_address, std::bind_front(&ConnectorSocket::onClientAccepted, state));
             if (!acceptServer.has_value()) {
-                onBindCallback(std::unexpected {Error {
-                    Error::ErrorCode::SysCallError,
-                    "Originated from",
-                    "AcceptServer::init",
-                    "Error code",
-                    acceptServer.error().name(),
-                    acceptServer.error().message(),
-                }});
+                onBindCallback(
+                    std::unexpected {Error {
+                        Error::ErrorCode::SysCallError,
+                        "Originated from",
+                        "AcceptServer::init",
+                        "Error code",
+                        acceptServer.error().name(),
+                        acceptServer.error().message(),
+                    }});
                 return;
             }
 

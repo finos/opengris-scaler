@@ -5,6 +5,7 @@ import sys
 import tempfile
 import time
 import unittest
+from typing import List, Optional, Set, Tuple
 
 import psutil
 
@@ -17,7 +18,7 @@ SHUTDOWN_TIMEOUT_SECONDS = 30
 DESCENDANT_EXIT_TIMEOUT_SECONDS = 15
 
 
-def _pick_cluster_ports() -> tuple:
+def _pick_cluster_ports() -> Tuple[int, int, int]:
     """Pick a scheduler, monitor and object storage port that do not collide with each other.
 
     The monitor port is set explicitly because the scheduler otherwise binds scheduler port + 2
@@ -30,7 +31,7 @@ def _pick_cluster_ports() -> tuple:
             return scheduler_port, monitor_port, object_storage_port
 
 
-def _ports_listening(ports) -> set:
+def _ports_listening(ports: Set[int]) -> Set[int]:
     listening = set()
     for connection in psutil.net_connections(kind="tcp"):
         if connection.status == psutil.CONN_LISTEN and connection.laddr.port in ports:
@@ -75,14 +76,14 @@ max_task_concurrency = 1
 """)
 
         self._log_path = os.path.join(self._temp_dir.name, "scaler.log")
-        self._process = None
+        self._process: Optional[subprocess.Popen] = None
 
     def tearDown(self) -> None:
         if self._process is not None:
-            self._kill_process_tree()
+            self._kill_process_tree(self._process)
         self._temp_dir.cleanup()
 
-    def _start_scaler(self) -> None:
+    def _start_scaler(self) -> subprocess.Popen:
         with open(self._log_path, "wb") as log_file:
             self._process = subprocess.Popen(
                 [sys.executable, "-m", "scaler.entry_points.scaler", self._config_path],
@@ -90,14 +91,15 @@ max_task_concurrency = 1
                 stderr=subprocess.STDOUT,
                 start_new_session=True,  # own process group: signals to the main process only
             )
+        return self._process
 
-    def _kill_process_tree(self) -> None:
+    def _kill_process_tree(self, process: subprocess.Popen) -> None:
         try:
-            descendants = psutil.Process(self._process.pid).children(recursive=True)
+            descendants = psutil.Process(process.pid).children(recursive=True)
         except psutil.NoSuchProcess:
             descendants = []
         try:
-            os.killpg(os.getpgid(self._process.pid), signal.SIGKILL)
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             pass
         for descendant in descendants:
@@ -105,29 +107,29 @@ max_task_concurrency = 1
                 descendant.kill()
             except psutil.NoSuchProcess:
                 pass
-        self._process.wait(timeout=10)
+        process.wait(timeout=10)
 
-    def _wait_for_startup(self) -> None:
+    def _wait_for_startup(self, process: subprocess.Popen) -> None:
         deadline = time.monotonic() + STARTUP_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
-            if self._process.poll() is not None:
+            if process.poll() is not None:
                 with open(self._log_path) as log_file:
-                    self.fail(f"scaler exited during startup (code {self._process.returncode}):\n{log_file.read()}")
+                    self.fail(f"scaler exited during startup (code {process.returncode}):\n{log_file.read()}")
             if _ports_listening(self._ports) == self._ports:
                 return
             time.sleep(0.25)
         listening = _ports_listening(self._ports)
         self.fail(f"cluster did not start within {STARTUP_TIMEOUT_SECONDS}s; listening: {listening}")
 
-    def _descendants(self):
+    def _descendants(self, process: subprocess.Popen) -> List[psutil.Process]:
         try:
-            return psutil.Process(self._process.pid).children(recursive=True)
+            return psutil.Process(process.pid).children(recursive=True)
         except psutil.NoSuchProcess:
             return []
 
-    def _assert_clean_exit(self, descendants) -> None:
+    def _assert_clean_exit(self, process: subprocess.Popen, descendants: List[psutil.Process]) -> None:
         try:
-            self._process.wait(timeout=SHUTDOWN_TIMEOUT_SECONDS)
+            process.wait(timeout=SHUTDOWN_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             with open(self._log_path) as log_file:
                 log_content = log_file.read()
@@ -144,28 +146,28 @@ max_task_concurrency = 1
         self.assertEqual(set(), _ports_listening(self._ports), "ports still bound after shutdown")
 
     def test_sigterm_terminates_whole_cluster(self) -> None:
-        self._start_scaler()
-        self._wait_for_startup()
-        descendants = self._descendants()
+        process = self._start_scaler()
+        self._wait_for_startup(process)
+        descendants = self._descendants(process)
         self.assertGreater(len(descendants), 0)
 
-        self._process.send_signal(signal.SIGTERM)
-        self._assert_clean_exit(descendants)
+        process.send_signal(signal.SIGTERM)
+        self._assert_clean_exit(process, descendants)
 
     def test_sigint_terminates_whole_cluster(self) -> None:
-        self._start_scaler()
-        self._wait_for_startup()
-        descendants = self._descendants()
+        process = self._start_scaler()
+        self._wait_for_startup(process)
+        descendants = self._descendants(process)
         self.assertGreater(len(descendants), 0)
 
-        self._process.send_signal(signal.SIGINT)
-        self._assert_clean_exit(descendants)
+        process.send_signal(signal.SIGINT)
+        self._assert_clean_exit(process, descendants)
 
     def test_sigint_during_startup_does_not_hang(self) -> None:
-        self._start_scaler()
+        process = self._start_scaler()
         time.sleep(0.5)  # somewhere in the middle of process spawning
-        descendants = self._descendants()
+        descendants = self._descendants(process)
 
-        if self._process.poll() is None:
-            self._process.send_signal(signal.SIGINT)
-        self._assert_clean_exit(descendants)
+        if process.poll() is None:
+            process.send_signal(signal.SIGINT)
+        self._assert_clean_exit(process, descendants)

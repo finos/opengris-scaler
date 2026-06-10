@@ -31,7 +31,11 @@ def run_scheduler(
 
         scheduler = Scheduler(scheduler_config)
         task = loop.create_task(scheduler.get_loops())
-        install_async_shutdown_handler(loop, lambda: loop.call_soon_threadsafe(task.cancel), shutdown_event)
+
+        def _cancel_scheduler_task() -> None:
+            loop.call_soon_threadsafe(task.cancel)
+
+        install_async_shutdown_handler(loop, _cancel_scheduler_task, shutdown_event)
         await task
 
     run_task_forever(loop, _run())

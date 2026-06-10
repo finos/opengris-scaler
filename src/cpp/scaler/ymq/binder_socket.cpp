@@ -76,14 +76,15 @@ void BinderSocket::bindTo(std::string address, BindCallback onBindCallback) noex
             auto server = internal::AcceptServer::init(
                 state->_thread.loop(), parsedAddress.value(), std::bind_front(&BinderSocket::onClientConnect, state));
             if (!server.has_value()) {
-                callback(std::unexpected {Error {
-                    Error::ErrorCode::SysCallError,
-                    "Originated from",
-                    "AcceptServer::init",
-                    "Error code",
-                    server.error().name(),
-                    server.error().message(),
-                }});
+                callback(
+                    std::unexpected {Error {
+                        Error::ErrorCode::SysCallError,
+                        "Originated from",
+                        "AcceptServer::init",
+                        "Error code",
+                        server.error().name(),
+                        server.error().message(),
+                    }});
                 return;
             }
 
