@@ -599,25 +599,6 @@ function WorkerManagerCard({
             />
           </div>
           <div>
-            <Label help="OCIR username for pulling private images (e.g. &lt;namespace&gt;/&lt;email&gt;).">Image Pull Username</Label>
-            <input
-              value={wm.ociImagePullUsername || ""}
-              onChange={(e) => set("ociImagePullUsername", e.target.value)}
-              style={inp}
-              placeholder="mynamespace/user@example.com"
-            />
-          </div>
-          <div>
-            <Label help="OCIR auth token for pulling private images.">Image Pull Password</Label>
-            <input
-              type="password"
-              value={wm.ociImagePullPassword || ""}
-              onChange={(e) => set("ociImagePullPassword", e.target.value)}
-              style={inp}
-              placeholder="Auth token"
-            />
-          </div>
-          <div>
             <Label help="OCI region identifier.">Region</Label>
             <input
               value={wm.ociRegion || "us-ashburn-1"}

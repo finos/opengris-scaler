@@ -197,8 +197,6 @@ availability_domain = "${wm.ociAvailabilityDomain || ""}"
 subnet_id = "${wm.ociSubnetId || ""}"
 container_image = "${wm.ociContainerImage || ""}"
 `;
-        if (wm.ociImagePullUsername) block += `image_pull_username = "${wm.ociImagePullUsername}"\n`;
-        if (wm.ociImagePullPassword) block += `image_pull_password = "${wm.ociImagePullPassword}"\n`;
         block += `instance_shape = "${wm.ociShape || "CI.Standard.E4.Flex"}"
 instance_ocpus = ${wm.ociOcpus || 4}
 instance_memory_gb = ${wm.ociMemoryGb || 30}
@@ -368,8 +366,6 @@ availability_domain = "${wm.ociAvailabilityDomain || ""}"
 subnet_id = "${wm.ociSubnetId || ""}"
 container_image = "${wm.ociContainerImage || ""}"
 `;
-        if (wm.ociImagePullUsername) block += `image_pull_username = "${wm.ociImagePullUsername}"\n`;
-        if (wm.ociImagePullPassword) block += `image_pull_password = "${wm.ociImagePullPassword}"\n`;
         block += `instance_shape = "${wm.ociShape || "CI.Standard.E4.Flex"}"
 instance_ocpus = ${wm.ociOcpus || 4}
 instance_memory_gb = ${wm.ociMemoryGb || 30}
