@@ -553,7 +553,7 @@ function WorkerManagerCard({
             <div>
               <Label help="OCI region identifier.">Region</Label>
               <input
-                value={wm.ociRegion || "us-ashburn-1"}
+                value={wm.ociRegion || ""}
                 onChange={(e) => set("ociRegion", e.target.value)}
                 style={inp}
                 placeholder="us-ashburn-1"
@@ -1527,26 +1527,26 @@ function App() {
     .filter((wm) => wm.type === "oci_raw")
     .flatMap((wm) => {
       const errs = [];
-      if (!wm.ociCompartmentId?.trim()) errs.push(`${wm.id}: Compartment ID required`);
-      if (!wm.ociAvailabilityDomain?.trim()) errs.push(`${wm.id}: Availability Domain required`);
-      if (!wm.ociSubnetId?.trim()) errs.push(`${wm.id}: Subnet ID required`);
+      if (!wm.ociCompartmentId?.trim()) errs.push(`OCI worker manager '${wm.id}' requires a Compartment ID`);
+      if (!wm.ociAvailabilityDomain?.trim()) errs.push(`OCI worker manager '${wm.id}' requires an Availability Domain`);
+      if (!wm.ociSubnetId?.trim()) errs.push(`OCI worker manager '${wm.id}' requires a Subnet ID`);
       return errs;
     });
 
   const checks = [
     {
       key: "aki",
-      label: "Access Key ID required",
+      label: "AWS Access Key ID is required",
       ok: accessKeyId.trim().length > 0,
     },
     {
       key: "sk",
-      label: "Secret Access Key required",
+      label: "AWS Secret Access Key is required",
       ok: secretKey.trim().length > 0,
     },
     {
       key: "wm",
-      label: "At least one worker manager required",
+      label: "At least one worker manager must be configured",
       ok: workerManagers.length > 0,
     },
     {
@@ -1558,7 +1558,7 @@ function App() {
       ? [
           {
             key: "oci_creds",
-            label: "OCI credentials required (User OCID, Tenancy OCID, Fingerprint, Private Key)",
+            label: "An OCI worker manager is configured but OCI credentials have not been provided",
             ok: hasOciCredentials,
           },
           ...ociWmErrors.map((msg, i) => ({ key: `oci_wm_${i}`, label: msg, ok: false })),
@@ -1943,29 +1943,31 @@ function App() {
     );
   } else if (phase === "idle" || phase === "error") {
     launchControl = (
-      <button
-        onClick={handleLaunch}
-        disabled={!formReady}
-        style={{
-          padding: "8px 20px",
-          background: !formReady
-            ? "var(--bg-surface)"
-            : "linear-gradient(135deg, oklch(0.38 0.16 155) 0%, oklch(0.32 0.14 200) 100%)",
-          border:
-            "1px solid " +
-            (!formReady ? "var(--border-accent)" : "oklch(0.55 0.16 155)"),
-          borderRadius: 4,
-          color: !formReady ? "var(--text-muted)" : "oklch(0.92 0.1 155)",
-          fontFamily: "inherit",
-          fontSize: 11,
-          fontWeight: 700,
-          cursor: !formReady ? "default" : "pointer",
-          transition: "all 0.2s",
-          flexShrink: 0,
-        }}
-      >
-        Launch Scheduler
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+        <button
+          onClick={handleLaunch}
+          disabled={!formReady}
+          style={{
+            padding: "8px 20px",
+            background: !formReady
+              ? "var(--bg-surface)"
+              : "linear-gradient(135deg, oklch(0.38 0.16 155) 0%, oklch(0.32 0.14 200) 100%)",
+            border:
+              "1px solid " +
+              (!formReady ? "var(--border-accent)" : "oklch(0.55 0.16 155)"),
+            borderRadius: 4,
+            color: !formReady ? "var(--text-muted)" : "oklch(0.92 0.1 155)",
+            fontFamily: "inherit",
+            fontSize: 11,
+            fontWeight: 700,
+            cursor: !formReady ? "default" : "pointer",
+            transition: "all 0.2s",
+          }}
+        >
+          Launch Scheduler
+        </button>
+        {!formReady && <HelpTip text={blocking.map((c) => "- " + c.label).join("\n")} />}
+      </div>
     );
   } else if (phase === "ready") {
     launchControl = (
@@ -2680,19 +2682,20 @@ function App() {
                     {workerManagers
                       .filter((wm) => wm.id === selectedWmId)
                       .map((wm) => (
-                        <WorkerManagerCard
-                          key={wm._uid}
-                          wm={wm}
-                          onChange={(updated) => {
-                            if (updated.id !== wm.id)
-                              setSelectedWmId(updated.id);
-                            updateWorkerManager(wm.id, updated);
-                          }}
-                          onRemove={() => removeWorkerManager(wm.id)}
-                          allInstances={allInstances}
-                          canRemove={workerManagers.length > 1}
-                          fullWidth={true}
-                        />
+                        <React.Fragment key={wm._uid}>
+                          <WorkerManagerCard
+                            wm={wm}
+                            onChange={(updated) => {
+                              if (updated.id !== wm.id)
+                                setSelectedWmId(updated.id);
+                              updateWorkerManager(wm.id, updated);
+                            }}
+                            onRemove={() => removeWorkerManager(wm.id)}
+                            allInstances={allInstances}
+                            canRemove={workerManagers.length > 1}
+                            fullWidth={true}
+                          />
+                        </React.Fragment>
                       ))}
                   </div>
                 </div>
@@ -2795,7 +2798,7 @@ function App() {
           </div>
 
           {phase === "idle" && (
-            <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
               <button
                 onClick={handleDownloadConfig}
                 style={{
@@ -2813,11 +2816,6 @@ function App() {
               >
                 Download config.toml
               </button>
-              {blocking.filter((c) => c.label).map((c) => (
-                <span key={c.key} style={{ fontSize: 10, color: "var(--text-danger)" }}>
-                  {c.label}
-                </span>
-              ))}
             </div>
           )}
         </div>
