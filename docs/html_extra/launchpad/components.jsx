@@ -3,6 +3,11 @@
 
 const { useState, useEffect, useRef, useCallback } = React;
 
+const OCI_SHAPE_PRICING = {
+  "CI.Standard.A1.Flex": { ocpuPrice: 0.013106, memPrice: 0.0019659 },
+  "CI.Standard.E4.Flex": { ocpuPrice: 0.032765, memPrice: 0.0019659 },
+};
+
 /* ── SecretInput ── */
 function SecretInput({ value, onChange, placeholder, style }) {
   const [visible, setVisible] = useState(false);
@@ -255,6 +260,135 @@ function RegionSelect({ value, onChange }) {
           </div>,
           document.body,
         )}
+    </div>
+  );
+}
+
+/* ── OciShapeSelect ── */
+const OCI_SHAPES = [
+  { value: "CI.Standard.A1.Flex", label: "ARM - Ampere A1", arch: "ARM" },
+  { value: "CI.Standard.E4.Flex", label: "x86 - Standard E4", arch: "x86" },
+];
+
+function OciShapeSelect({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef(null);
+  const dropdownRef = useRef(null);
+  const [dropdownStyle, setDropdownStyle] = useState({});
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target) &&
+        dropdownRef.current && !dropdownRef.current.contains(e.target)
+      ) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const openDropdown = () => {
+    if (!triggerRef.current) return;
+    const r = triggerRef.current.getBoundingClientRect();
+    setDropdownStyle({ position: "fixed", top: r.bottom + 4, left: r.left, width: r.width });
+    setOpen(true);
+  };
+
+  const selected = OCI_SHAPES.find((s) => s.value === value) || OCI_SHAPES[0];
+
+  return (
+    <div ref={triggerRef} style={{ position: "relative" }}>
+      <button
+        onClick={() => (open ? setOpen(false) : openDropdown())}
+        style={{
+          width: "100%",
+          background: "var(--bg-surface)",
+          border: "1px solid var(--border-accent)",
+          borderRadius: 3,
+          padding: "8px 10px",
+          color: "var(--text-primary)",
+          fontFamily: "inherit",
+          fontSize: 12,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          textAlign: "left",
+          outline: "none",
+        }}
+      >
+        <span style={{ flex: 1, color: "var(--text-secondary)", fontWeight: 600 }}>{selected.label}</span>
+        <span
+          style={{
+            display: "inline-block",
+            width: 7,
+            height: 7,
+            borderRight: "1.5px solid var(--text-muted)",
+            borderBottom: "1.5px solid var(--text-muted)",
+            transform: open ? "rotate(225deg)" : "rotate(45deg)",
+            position: "relative",
+            top: open ? "2px" : "-2px",
+            flexShrink: 0,
+          }}
+        />
+      </button>
+      {open && ReactDOM.createPortal(
+        <div
+          ref={dropdownRef}
+          style={{
+            ...dropdownStyle,
+            background: "var(--bg-elevated)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: 4,
+            zIndex: 9999,
+            boxShadow: "0 16px 48px rgba(0,0,0,0.7)",
+            overflow: "hidden",
+          }}
+        >
+          {OCI_SHAPES.map((s) => (
+            <div
+              key={s.value}
+              onClick={() => { onChange(s.value); setOpen(false); }}
+              style={{
+                padding: "10px 12px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                background: s.value === (value || OCI_SHAPES[0].value) ? "rgba(0,200,224,0.08)" : "transparent",
+                borderBottom: "1px solid rgba(255,255,255,0.04)",
+              }}
+              onMouseEnter={(e) => {
+                if (s.value !== (value || OCI_SHAPES[0].value))
+                  e.currentTarget.style.background = "var(--bg-surface)";
+              }}
+              onMouseLeave={(e) => {
+                if (s.value !== (value || OCI_SHAPES[0].value))
+                  e.currentTarget.style.background = "transparent";
+              }}
+            >
+              <span style={{ flex: 1 }}>
+                <span style={{
+                  display: "block",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: s.value === (value || OCI_SHAPES[0].value) ? "var(--text-success)" : "var(--text-primary)",
+                }}>
+                  {s.label}
+                </span>
+                <span style={{ display: "block", fontSize: 10, color: "var(--text-dim)", marginTop: 1 }}>
+                  ${OCI_SHAPE_PRICING[s.value].ocpuPrice.toFixed(2)}/OCPU/h · ${OCI_SHAPE_PRICING[s.value].memPrice.toFixed(3)}/GB/h
+                </span>
+              </span>
+              {s.value === (value || OCI_SHAPES[0].value) && (
+                <span style={{ color: "var(--text-success)", fontSize: 10, flexShrink: 0 }}>✓</span>
+              )}
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -1527,18 +1661,21 @@ const WM_TYPE_DEFS = [
     label: "AWS ECS",
     badge: "AWS",
     desc: "Container tasks on Elastic Container Service",
+    disabled: true,
   },
   {
     value: "aws_hpc",
     label: "AWS Batch",
     badge: "AWS",
     desc: "High-performance compute via AWS Batch",
+    disabled: true,
   },
   {
     value: "symphony",
     label: "IBM Spectrum Symphony",
     badge: "IBM",
     desc: "IBM Spectrum Symphony grid via soamapi",
+    disabled: true,
   },
   {
     value: "oci_raw",
@@ -1551,6 +1688,7 @@ const WM_TYPE_DEFS = [
     label: "OCI HPC",
     badge: "OCI",
     desc: "Oracle Cloud Infrastructure — per-task container instance jobs",
+    disabled: true,
   },
 ];
 
@@ -1787,6 +1925,7 @@ function WorkerManagerTypeSelect({ value, onChange }) {
 Object.assign(window, {
   SecretInput,
   RegionSelect,
+  OciShapeSelect,
   InstancePicker,
   TerminalWindow,
   DeployDetails,

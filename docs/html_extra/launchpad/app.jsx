@@ -1,5 +1,12 @@
 const { useState, useEffect, useCallback, useRef } = React;
 
+const IS_ADVANCED = new URLSearchParams(window.location.search).has('advanced');
+
+const OCI_SHAPE_PRICING = {
+  "CI.Standard.A1.Flex": { ocpuPrice: 0.013106, memPrice: 0.0019659 },
+  "CI.Standard.E4.Flex": { ocpuPrice: 0.032765, memPrice: 0.0019659 },
+};
+
 /* ── NumericStepper ── */
 function NumericStepper({
   value,
@@ -136,7 +143,6 @@ function WorkerManagerCard({
   fullWidth,
 }) {
   const [localId, setLocalId] = useState(wm.id);
-  const [showAdv, setShowAdv] = useState(false);
   useEffect(() => {
     setLocalId(wm.id);
   }, [wm.id]);
@@ -230,7 +236,13 @@ function WorkerManagerCard({
           <Label>Type</Label>
           <WorkerManagerTypeSelect
             value={wm.type}
-            onChange={(v) => set("type", v)}
+            onChange={(v) => {
+              if (v === "oci_raw") {
+                onChange({ ...wm, type: v, ociShape: "CI.Standard.A1.Flex", ociContainerImage: "ghcr.io/finos/scaler:latest-arm64" });
+              } else {
+                set("type", v);
+              }
+            }}
           />
         </div>
         <div
@@ -311,66 +323,33 @@ function WorkerManagerCard({
               </select>
             </div>
           </div>
-          <button
-            onClick={() => setShowAdv((v) => !v)}
-            style={{
-              background: "none",
-              border: "1px solid var(--border-accent)",
-              borderRadius: 3,
-              padding: "6px 10px",
-              color: "var(--text-muted)",
-              fontFamily: "inherit",
-              fontSize: 11,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              width: "100%",
-            }}
-          >
-            <span>Advanced</span>
-            <span
+          <div>
+            <Label
+              help={
+                "- Installed on each worker instance\n- opengris-scaler must be included"
+              }
+            >
+              requirements.txt
+            </Label>
+            <textarea
+              value={wm.requirements}
+              onChange={(e) => set("requirements", e.target.value)}
               style={{
-                display: "inline-block",
-                width: 7,
-                height: 7,
-                borderRight: "1.5px solid var(--text-muted)",
-                borderBottom: "1.5px solid var(--text-muted)",
-                transform: showAdv ? "rotate(225deg)" : "rotate(45deg)",
-                position: "relative",
-                top: showAdv ? "2px" : "-2px",
+                width: "100%",
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-accent)",
+                borderRadius: 3,
+                padding: "7px 10px",
+                color: "var(--text-primary)",
+                fontFamily: "inherit",
+                fontSize: 11,
+                outline: "none",
+                resize: "vertical",
+                minHeight: 72,
+                lineHeight: 1.6,
               }}
             />
-          </button>
-          {showAdv && (
-            <div>
-              <Label
-                help={
-                  "- Installed on each worker instance\n- opengris-scaler must be included"
-                }
-              >
-                requirements.txt
-              </Label>
-              <textarea
-                value={wm.requirements}
-                onChange={(e) => set("requirements", e.target.value)}
-                style={{
-                  width: "100%",
-                  background: "var(--bg-surface)",
-                  border: "1px solid var(--border-accent)",
-                  borderRadius: 3,
-                  padding: "7px 10px",
-                  color: "var(--text-primary)",
-                  fontFamily: "inherit",
-                  fontSize: 11,
-                  outline: "none",
-                  resize: "vertical",
-                  minHeight: 72,
-                  lineHeight: 1.6,
-                }}
-              />
-            </div>
-          )}
+          </div>
           <div
             style={{
               padding: "8px 10px",
@@ -538,107 +517,138 @@ function WorkerManagerCard({
       )}
 
       {/* oci_raw */}
-      {wm.type === "oci_raw" && (
-        <>
-          <div>
-            <Label help="OCI Compartment OCID where container instances are launched.">Compartment ID</Label>
-            <input
-              value={wm.ociCompartmentId || ""}
-              onChange={(e) => set("ociCompartmentId", e.target.value)}
-              style={inp}
-              placeholder="ocid1.compartment.oc1..aaa..."
-            />
-          </div>
-          <div>
-            <Label help="OCI Availability Domain (e.g. AD-1 or Uocm:PHX-AD-1).">Availability Domain</Label>
-            <input
-              value={wm.ociAvailabilityDomain || ""}
-              onChange={(e) => set("ociAvailabilityDomain", e.target.value)}
-              style={inp}
-              placeholder="AD-1"
-            />
-          </div>
-          <div>
-            <Label help="OCI Subnet OCID for container instance network interfaces.">Subnet ID</Label>
-            <input
-              value={wm.ociSubnetId || ""}
-              onChange={(e) => set("ociSubnetId", e.target.value)}
-              style={inp}
-              placeholder="ocid1.subnet.oc1..aaa..."
-            />
-          </div>
-          <div>
-            <Label help="OCIR image URI (e.g. &lt;region&gt;.ocir.io/&lt;ns&gt;/&lt;repo&gt;:latest).">Container Image</Label>
-            <input
-              value={wm.ociContainerImage || ""}
-              onChange={(e) => set("ociContainerImage", e.target.value)}
-              style={inp}
-              placeholder="us-ashburn-1.ocir.io/myns/scaler:latest"
-            />
-          </div>
-          <div>
-            <Label help="OCI region identifier.">Region</Label>
-            <input
-              value={wm.ociRegion || "us-ashburn-1"}
-              onChange={(e) => set("ociRegion", e.target.value)}
-              style={inp}
-              placeholder="us-ashburn-1"
-            />
-          </div>
-          <div>
-            <Label help="OCI Container Instance shape. Use A1.Flex (ARM) if E4.Flex quota is exhausted.">Instance Shape</Label>
-            <select
-              value={wm.ociShape || "CI.Standard.E4.Flex"}
-              onChange={(e) => set("ociShape", e.target.value)}
-              style={{ ...inp, cursor: "pointer" }}
-            >
-              <option value="CI.Standard.E4.Flex">CI.Standard.E4.Flex (x86)</option>
-              <option value="CI.Standard.A1.Flex">CI.Standard.A1.Flex (ARM)</option>
-            </select>
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <div style={{ flex: 1 }}>
-              <Label help="Number of OCPUs per container instance (also determines worker count).">OCPUs</Label>
-              <NumericStepper
-                value={wm.ociOcpus || 4}
-                onChange={(v) => set("ociOcpus", v)}
-                min={1}
-                max={64}
+      {wm.type === "oci_raw" && (() => {
+        const ociShape = wm.ociShape || "CI.Standard.A1.Flex";
+        const ociPricing = OCI_SHAPE_PRICING[ociShape] || OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
+        const ociCostPerHr = ociPricing.ocpuPrice * (wm.ociOcpus || 4) + ociPricing.memPrice * (wm.ociMemoryGb || 30);
+        return (
+          <>
+            <div>
+              <Label help="OCI Compartment OCID where container instances are launched.">Compartment ID</Label>
+              <input
+                value={wm.ociCompartmentId || ""}
+                onChange={(e) => set("ociCompartmentId", e.target.value)}
+                style={inp}
+                placeholder="ocid1.compartment.oc1..aaa..."
               />
             </div>
-            <div style={{ flex: 1 }}>
-              <Label>Memory (GB)</Label>
-              <NumericStepper
-                value={wm.ociMemoryGb || 30}
-                onChange={(v) => set("ociMemoryGb", v)}
-                min={1}
-                max={512}
+            <div>
+              <Label help="OCI Availability Domain (e.g. AD-1 or Uocm:PHX-AD-1).">Availability Domain</Label>
+              <input
+                value={wm.ociAvailabilityDomain || ""}
+                onChange={(e) => set("ociAvailabilityDomain", e.target.value)}
+                style={inp}
+                placeholder="AD-1"
               />
             </div>
-          </div>
-          <div>
-            <Label help="- Installed inside the container instance\n- opengris-scaler must be included">requirements.txt</Label>
-            <textarea
-              value={wm.requirements || ""}
-              onChange={(e) => set("requirements", e.target.value)}
+            <div>
+              <Label help="OCI Subnet OCID for container instance network interfaces.">Subnet ID</Label>
+              <input
+                value={wm.ociSubnetId || ""}
+                onChange={(e) => set("ociSubnetId", e.target.value)}
+                style={inp}
+                placeholder="ocid1.subnet.oc1..aaa..."
+              />
+            </div>
+            <div>
+              <Label help="OCI region identifier.">Region</Label>
+              <input
+                value={wm.ociRegion || "us-ashburn-1"}
+                onChange={(e) => set("ociRegion", e.target.value)}
+                style={inp}
+                placeholder="us-ashburn-1"
+              />
+            </div>
+            <div>
+              <Label help="Instance shape determines the CPU architecture and pricing.">Instance Shape</Label>
+              <OciShapeSelect
+                value={ociShape}
+                onChange={(v) => {
+                  const image = v === "CI.Standard.A1.Flex"
+                    ? "ghcr.io/finos/scaler:latest-arm64"
+                    : "ghcr.io/finos/scaler:latest-amd64";
+                  onChange({ ...wm, ociShape: v, ociContainerImage: image });
+                }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <Label help="Number of OCPUs per container instance (also determines worker count).">OCPUs</Label>
+                <NumericStepper
+                  value={wm.ociOcpus || 4}
+                  onChange={(v) => set("ociOcpus", v)}
+                  min={1}
+                  max={64}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <Label>Memory (GB)</Label>
+                <NumericStepper
+                  value={wm.ociMemoryGb || 30}
+                  onChange={(v) => set("ociMemoryGb", v)}
+                  min={1}
+                  max={512}
+                />
+              </div>
+            </div>
+            <div>
+              <Label help="- Installed inside the container instance\n- opengris-scaler must be included">requirements.txt</Label>
+              <textarea
+                value={wm.requirements || ""}
+                onChange={(e) => set("requirements", e.target.value)}
+                style={{
+                  width: "100%",
+                  background: "var(--bg-surface)",
+                  border: "1px solid var(--border-accent)",
+                  borderRadius: 3,
+                  padding: "7px 10px",
+                  color: "var(--text-primary)",
+                  fontFamily: "inherit",
+                  fontSize: 11,
+                  outline: "none",
+                  resize: "vertical",
+                  minHeight: 72,
+                  lineHeight: 1.6,
+                }}
+              />
+            </div>
+            <div
               style={{
-                width: "100%",
-                background: "var(--bg-surface)",
-                border: "1px solid var(--border-accent)",
+                padding: "8px 10px",
+                background: "rgba(0,255,136,0.04)",
+                border: "1px solid var(--border-success)",
                 borderRadius: 3,
-                padding: "7px 10px",
-                color: "var(--text-primary)",
-                fontFamily: "inherit",
-                fontSize: 11,
-                outline: "none",
-                resize: "vertical",
-                minHeight: 72,
-                lineHeight: 1.6,
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
               }}
-            />
-          </div>
-        </>
-      )}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
+                  {wm.ociOcpus || 4} OCPU × ${ociPricing.ocpuPrice.toFixed(2)}/h
+                </span>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  ${(ociPricing.ocpuPrice * (wm.ociOcpus || 4)).toFixed(2)}/h
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
+                  {wm.ociMemoryGb || 30} GB × ${ociPricing.memPrice.toFixed(3)}/h
+                </span>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  ${(ociPricing.memPrice * (wm.ociMemoryGb || 30)).toFixed(2)}/h
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderTop: "1px solid var(--border-success)", paddingTop: 4, marginTop: 2 }}>
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Total</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-success)" }}>
+                  USD {ociCostPerHr.toFixed(2)}/h
+                </span>
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
       {/* oci_hpc */}
       {wm.type === "oci_hpc" && (
@@ -1303,7 +1313,6 @@ function App() {
   const [schedulerType, setSchedulerType] = useState("c5.xlarge");
   const [schedulerPort, setSchedPort] = useState(6788);
   const [objectStoragePort, setObjPort] = useState(6789);
-  const [showSchedAdv, setShowSchedAdv] = useState(false);
   const [activeTab, setActiveTab] = useState("config");
   const [theme, setTheme] = useState(
     () =>
@@ -1431,15 +1440,20 @@ function App() {
     price: 0.17,
   };
   const wmCosts = workerManagers.map((wm) => {
-    if (wm.type !== "orb_aws_ec2") return 0;
-    const inst = allInstances.find((i) => i.type === wm.instanceType) || {
-      price: 0,
-    };
-    const count =
-      wm.capMode === "instances"
-        ? Math.max(0, wm.instanceCap || 0)
-        : Math.max(0, Math.floor((wm.budgetCap || 0) / (inst.price || 1)));
-    return count * inst.price;
+    if (wm.type === "orb_aws_ec2") {
+      const inst = allInstances.find((i) => i.type === wm.instanceType) || { price: 0 };
+      const count =
+        wm.capMode === "instances"
+          ? Math.max(0, wm.instanceCap || 0)
+          : Math.max(0, Math.floor((wm.budgetCap || 0) / (inst.price || 1)));
+      return count * inst.price;
+    }
+    if (wm.type === "oci_raw") {
+      const shape = wm.ociShape || "CI.Standard.A1.Flex";
+      const pricing = OCI_SHAPE_PRICING[shape] || OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
+      return pricing.ocpuPrice * (wm.ociOcpus || 4) + pricing.memPrice * (wm.ociMemoryGb || 30);
+    }
+    return 0;
   });
   const totalCostPerHr =
     schedulerInst.price + wmCosts.reduce((a, b) => a + b, 0);
@@ -1503,6 +1517,22 @@ function App() {
       `Monitor port (scheduler + 2 = ${monitorPort}) conflicts with the Worker Monitor port (${WORKER_MONITOR_PORT}).`,
     );
 
+  const hasOciWm = workerManagers.some((wm) => wm.type === "oci_raw");
+  const hasOciCredentials =
+    ociUserId.trim().length > 0 &&
+    ociTenancyId.trim().length > 0 &&
+    ociFingerprint.trim().length > 0 &&
+    ociPrivateKey.trim().length > 0;
+  const ociWmErrors = workerManagers
+    .filter((wm) => wm.type === "oci_raw")
+    .flatMap((wm) => {
+      const errs = [];
+      if (!wm.ociCompartmentId?.trim()) errs.push(`${wm.id}: Compartment ID required`);
+      if (!wm.ociAvailabilityDomain?.trim()) errs.push(`${wm.id}: Availability Domain required`);
+      if (!wm.ociSubnetId?.trim()) errs.push(`${wm.id}: Subnet ID required`);
+      return errs;
+    });
+
   const checks = [
     {
       key: "aki",
@@ -1524,6 +1554,16 @@ function App() {
       label: portConflicts.join(" "),
       ok: portConflicts.length === 0,
     },
+    ...(hasOciWm
+      ? [
+          {
+            key: "oci_creds",
+            label: "OCI credentials required (User OCID, Tenancy OCID, Fingerprint, Private Key)",
+            ok: hasOciCredentials,
+          },
+          ...ociWmErrors.map((msg, i) => ({ key: `oci_wm_${i}`, label: msg, ok: false })),
+        ]
+      : []),
   ];
   const blocking = checks.filter((c) => !c.ok);
   const formReady = blocking.length === 0;
@@ -1828,40 +1868,6 @@ function App() {
         </button>
       ))}
     </div>
-  );
-
-  const advBtn = (show, onToggle, label) => (
-    <button
-      onClick={onToggle}
-      style={{
-        background: "none",
-        border: "1px solid var(--border-accent)",
-        borderRadius: 3,
-        padding: "6px 10px",
-        color: "var(--text-muted)",
-        fontFamily: "inherit",
-        fontSize: 11,
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        width: "100%",
-      }}
-    >
-      <span>{label}</span>
-      <span
-        style={{
-          display: "inline-block",
-          width: 7,
-          height: 7,
-          borderRight: "1.5px solid var(--text-muted)",
-          borderBottom: "1.5px solid var(--text-muted)",
-          transform: show ? "rotate(225deg)" : "rotate(45deg)",
-          position: "relative",
-          top: show ? "2px" : "-2px",
-        }}
-      />
-    </button>
   );
 
   const _destroyBtnStyle = (disabled) => ({
@@ -2291,23 +2297,25 @@ function App() {
               </PanelBox>
 
               <PanelBox title="General Options">
-                <div>
-                  <Label
-                    help={
-                      "WebSocket — connect to your cluster from a browser or any WebSocket client.\n---\nTCP — direct socket connection; slightly lower overhead."
-                    }
-                  >
-                    Transport Protocol
-                  </Label>
-                  <TogglePair
-                    options={[
-                      ["ws", "WS"],
-                      ["tcp", "TCP"],
-                    ]}
-                    value={transport}
-                    onSelect={setTransport}
-                  />
-                </div>
+                {IS_ADVANCED && (
+                  <div>
+                    <Label
+                      help={
+                        "WebSocket — connect to your cluster from a browser or any WebSocket client.\n---\nTCP — direct socket connection; slightly lower overhead."
+                      }
+                    >
+                      Transport Protocol
+                    </Label>
+                    <TogglePair
+                      options={[
+                        ["ws", "WS"],
+                        ["tcp", "TCP"],
+                      ]}
+                      value={transport}
+                      onSelect={setTransport}
+                    />
+                  </div>
+                )}
                 <div>
                   <Label help="Python version installed via uv on the scheduler and all workers.">
                     Python Version
@@ -2364,12 +2372,7 @@ function App() {
                     USD {schedulerInst.price.toFixed(2)}/h
                   </span>
                 </div>
-                {advBtn(
-                  showSchedAdv,
-                  () => setShowSchedAdv((v) => !v),
-                  "Advanced",
-                )}
-                {showSchedAdv && (
+                {IS_ADVANCED && (
                   <div
                     style={{
                       display: "flex",
@@ -2410,35 +2413,35 @@ function App() {
                         ))}
                       </div>
                     )}
-                    <div>
-                      <Label
-                        help={
-                          "- Installed on the scheduler instance\n- Shared by native worker manager workers (same instance)\n- opengris-scaler must be included"
-                        }
-                      >
-                        requirements.txt
-                      </Label>
-                      <textarea
-                        value={schedulerRequirements}
-                        onChange={(e) => setSchedulerReqs(e.target.value)}
-                        style={{
-                          width: "100%",
-                          background: "var(--bg-surface)",
-                          border: "1px solid var(--border-accent)",
-                          borderRadius: 3,
-                          padding: "7px 10px",
-                          color: "var(--text-primary)",
-                          fontFamily: "inherit",
-                          fontSize: 11,
-                          outline: "none",
-                          resize: "vertical",
-                          minHeight: 72,
-                          lineHeight: 1.6,
-                        }}
-                      />
-                    </div>
                   </div>
                 )}
+                <div>
+                  <Label
+                    help={
+                      "- Installed on the scheduler instance\n- Shared by native worker manager workers (same instance)\n- opengris-scaler must be included"
+                    }
+                  >
+                    requirements.txt
+                  </Label>
+                  <textarea
+                    value={schedulerRequirements}
+                    onChange={(e) => setSchedulerReqs(e.target.value)}
+                    style={{
+                      width: "100%",
+                      background: "var(--bg-surface)",
+                      border: "1px solid var(--border-accent)",
+                      borderRadius: 3,
+                      padding: "7px 10px",
+                      color: "var(--text-primary)",
+                      fontFamily: "inherit",
+                      fontSize: 11,
+                      outline: "none",
+                      resize: "vertical",
+                      minHeight: 72,
+                      lineHeight: 1.6,
+                    }}
+                  />
+                </div>
               </PanelBox>
 
               {/* Policy panel — display only, not yet wired up */}
@@ -2698,67 +2701,43 @@ function App() {
               <PanelBox title="Cost Summary">
                 {workerManagers.map((wm, idx) => {
                   const label = wm.id || `(wm ${idx + 1})`;
-                  if (wm.type !== "orb_aws_ec2")
+                  if (wm.type === "orb_aws_ec2") {
+                    const inst = allInstances.find((i) => i.type === wm.instanceType) || { price: 0 };
+                    const count =
+                      wm.capMode === "instances"
+                        ? Math.max(0, wm.instanceCap || 0)
+                        : Math.max(0, Math.floor((wm.budgetCap || 0) / (inst.price || 1)));
                     return (
-                      <div
-                        key={wm._uid}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "baseline",
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 10,
-                            color: "var(--text-muted)",
-                          }}
-                        >
-                          {label}
+                      <div key={wm._uid} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                          {label} · {count}× {wm.instanceType}
                         </span>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color: "var(--text-dim)",
-                            fontStyle: "italic",
-                          }}
-                        >
-                          n/a
+                        <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                          USD {(count * inst.price).toFixed(2)}/h
                         </span>
                       </div>
                     );
-                  const inst = allInstances.find(
-                    (i) => i.type === wm.instanceType,
-                  ) || { price: 0 };
-                  const count =
-                    wm.capMode === "instances"
-                      ? Math.max(0, wm.instanceCap || 0)
-                      : Math.max(
-                          0,
-                          Math.floor((wm.budgetCap || 0) / (inst.price || 1)),
-                        );
+                  }
+                  if (wm.type === "oci_raw") {
+                    const shape = wm.ociShape || "CI.Standard.A1.Flex";
+                    const shapeName = shape === "CI.Standard.A1.Flex" ? "ARM - Ampere A1" : "x86 - Standard E4";
+                    const pricing = OCI_SHAPE_PRICING[shape] || OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
+                    const cost = pricing.ocpuPrice * (wm.ociOcpus || 4) + pricing.memPrice * (wm.ociMemoryGb || 30);
+                    return (
+                      <div key={wm._uid} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                          {label} · {shapeName} · {wm.ociOcpus || 4} OCPU · {wm.ociMemoryGb || 30}GB
+                        </span>
+                        <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                          USD {cost.toFixed(2)}/h
+                        </span>
+                      </div>
+                    );
+                  }
                   return (
-                    <div
-                      key={wm._uid}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "baseline",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 10,
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        {label} · {count}× {wm.instanceType}
-                      </span>
-                      <span
-                        style={{ fontSize: 12, color: "var(--text-secondary)" }}
-                      >
-                        USD {(count * inst.price).toFixed(2)}/h
-                      </span>
+                    <div key={wm._uid} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{label}</span>
+                      <span style={{ fontSize: 11, color: "var(--text-dim)", fontStyle: "italic" }}>n/a</span>
                     </div>
                   );
                 })}
@@ -2816,7 +2795,7 @@ function App() {
           </div>
 
           {phase === "idle" && (
-            <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
               <button
                 onClick={handleDownloadConfig}
                 style={{
@@ -2834,6 +2813,11 @@ function App() {
               >
                 Download config.toml
               </button>
+              {blocking.filter((c) => c.label).map((c) => (
+                <span key={c.key} style={{ fontSize: 10, color: "var(--text-danger)" }}>
+                  {c.label}
+                </span>
+              ))}
             </div>
           )}
         </div>
