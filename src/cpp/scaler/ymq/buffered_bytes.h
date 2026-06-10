@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "scaler/ymq/bytes.h"
@@ -45,6 +46,13 @@ public:
     size_t size() const noexcept override
     {
         return _size;
+    }
+
+    std::optional<std::string> asString() const override
+    {
+        if (!data())
+            return std::nullopt;
+        return std::string(reinterpret_cast<const char*>(data()), size());
     }
 
 private:

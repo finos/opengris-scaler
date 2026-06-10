@@ -1,6 +1,8 @@
 #pragma once
 
 #include <memory>
+#include <optional>
+#include <string>
 
 #include "scaler/utility/pymod/compatibility.h"
 #include "scaler/utility/pymod/gil.h"
@@ -40,6 +42,13 @@ public:
     size_t size() const noexcept override
     {
         return static_cast<size_t>(_view->len);
+    }
+
+    std::optional<std::string> asString() const override
+    {
+        if (!data())
+            return std::nullopt;
+        return std::string(reinterpret_cast<const char*>(data()), size());
     }
 
 private:

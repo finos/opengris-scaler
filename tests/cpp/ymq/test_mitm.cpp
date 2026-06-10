@@ -75,7 +75,7 @@ TestResult reconnectServerMain(std::string address)
     auto result = socket.recvMessage();
 
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(scaler::ymq::asString(*result->payload) == "sync");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "sync");
 
     auto error = socket.sendMessage("client", std::make_unique<scaler::ymq::BufferedBytes>("acknowledge"));
     RETURN_FAILURE_IF_FALSE(error.has_value());
@@ -110,7 +110,7 @@ TestResult reconnectClientMain(std::string address)
         if (result == std::future_status::ready) {
             auto msg = future.get();
             RETURN_FAILURE_IF_FALSE(msg.has_value());
-            RETURN_FAILURE_IF_FALSE(scaler::ymq::asString(*msg->payload) == "acknowledge");
+            RETURN_FAILURE_IF_FALSE(msg->payload->asString() == "acknowledge");
             return TestResult::Success;
         } else if (result == std::future_status::timeout) {
             // timeout, try again

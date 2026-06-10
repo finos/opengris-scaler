@@ -18,17 +18,11 @@ public:
     Bytes(const Bytes&)            = default;
     Bytes& operator=(const Bytes&) = default;
 
-    virtual const uint8_t* data() const noexcept = 0;
-    virtual uint8_t* data() noexcept             = 0;
-    virtual size_t size() const noexcept         = 0;
+    virtual const uint8_t* data() const noexcept        = 0;
+    virtual uint8_t* data() noexcept                    = 0;
+    virtual size_t size() const noexcept                = 0;
+    virtual std::optional<std::string> asString() const = 0;
 };
-
-inline std::optional<std::string> asString(const Bytes& b)
-{
-    if (!b.data())
-        return std::nullopt;
-    return std::string(reinterpret_cast<const char*>(b.data()), b.size());
-}
 
 }  // namespace ymq
 }  // namespace scaler

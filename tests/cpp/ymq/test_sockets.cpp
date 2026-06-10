@@ -87,7 +87,7 @@ TestResult basicServerYmq(std::string address)
     auto result = socket.recvMessage();
 
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(scaler::ymq::asString(*result->payload) == "yi er san si wu liu");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "yi er san si wu liu");
 
     return TestResult::Success;
 }
@@ -248,7 +248,7 @@ TestResult serverReceivesHugeHeader(std::string address)
     auto result = socket.recvMessage();
 
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(scaler::ymq::asString(*result->payload) == "yi er san si wu liu");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "yi er san si wu liu");
 
     return TestResult::Success;
 }
@@ -313,7 +313,7 @@ TestResult serverReceivesEmptyMessages(std::string address)
 
     auto result = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(scaler::ymq::asString(*result->payload) == "");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "");
 
     auto error = socket.sendMessage("client", std::make_unique<BufferedBytes>(""));
     RETURN_FAILURE_IF_FALSE(error.has_value());
@@ -335,7 +335,7 @@ TestResult clientSendsEmptyMessages(std::string address)
 
     auto result = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(scaler::ymq::asString(*result->payload) == "");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "");
 
     return TestResult::Success;
 }
@@ -354,11 +354,11 @@ TestResult multicastSubscriber(std::string address, Identity identity)
 
     auto msg = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(msg.has_value());
-    RETURN_FAILURE_IF_FALSE(scaler::ymq::asString(*msg->payload) == "valid multicast message");
+    RETURN_FAILURE_IF_FALSE(msg->payload->asString() == "valid multicast message");
 
     msg = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(msg.has_value());
-    RETURN_FAILURE_IF_FALSE(scaler::ymq::asString(*msg->payload) == "valid broadcast message");
+    RETURN_FAILURE_IF_FALSE(msg->payload->asString() == "valid broadcast message");
 
     return TestResult::Success;
 }
@@ -375,7 +375,7 @@ TestResult multicastPublisher(std::string address, Identity identityPrefix, int 
     for (int i = 0; i < nSubscribers; ++i) {
         auto msg = socket.recvMessage();
         RETURN_FAILURE_IF_FALSE(msg.has_value());
-        RETURN_FAILURE_IF_FALSE(scaler::ymq::asString(*msg->payload) == "ready");
+        RETURN_FAILURE_IF_FALSE(msg->payload->asString() == "ready");
     }
 
     // Send multicast message
@@ -404,7 +404,7 @@ TestResult clientCloseEstablishedConnectionClient(std::string address)
 
     auto result = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(scaler::ymq::asString(*result->payload) == "1");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "1");
 
     result = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(!result.has_value(), "expected recv message to fail");
@@ -426,7 +426,7 @@ TestResult clientCloseEstablishedConnectionServer(std::string address)
 
     auto result = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(scaler::ymq::asString(*result->payload) == "0");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "0");
 
     socket.closeConnection("client");
 
@@ -485,7 +485,7 @@ TestResult clientSocketStopBeforeCloseConnection(std::string address)
 
     auto result = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(scaler::ymq::asString(*result->payload) == "1");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "1");
 
     result = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(!result.has_value(), "expected recv message to fail");
@@ -508,7 +508,7 @@ TestResult serverSocketStopBeforeCloseConnection(std::string address)
 
         auto result = socket.recvMessage();
         RETURN_FAILURE_IF_FALSE(result.has_value());
-        RETURN_FAILURE_IF_FALSE(scaler::ymq::asString(*result->payload) == "0");
+        RETURN_FAILURE_IF_FALSE(result->payload->asString() == "0");
 
         // The socket will be stopped when it's destroyed
     }

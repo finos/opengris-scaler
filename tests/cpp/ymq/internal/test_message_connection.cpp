@@ -137,7 +137,7 @@ TEST_F(YMQMessageConnectionTest, MessageExchange)
         []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on server"; },  // onRemoteDisconnect
         [&](std::unique_ptr<scaler::ymq::Bytes> messagePayload) {   // onMessage
-            auto payload = scaler::ymq::asString(*messagePayload);
+            auto payload = messagePayload->asString();
             ASSERT_TRUE(payload.has_value());
             ASSERT_EQ(payload.value(), clientMessagePayload);
             serverMessageReceived = true;
@@ -147,7 +147,7 @@ TEST_F(YMQMessageConnectionTest, MessageExchange)
         []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on client"; },  // onRemoteDisconnect
         [&](std::unique_ptr<scaler::ymq::Bytes> messagePayload) {   // onMessage
-            auto payload = scaler::ymq::asString(*messagePayload);
+            auto payload = messagePayload->asString();
             ASSERT_TRUE(payload.has_value());
             ASSERT_EQ(payload.value(), serverMessagePayload);
             clientMessageReceived = true;
@@ -278,7 +278,7 @@ TEST_F(YMQMessageConnectionTest, EmptyMessage)
         []([[maybe_unused]] auto identity) {},                      // onRemoteIdentity
         [](auto) { FAIL() << "Unexpected disconnect on server"; },  // onRemoteDisconnect
         [&](std::unique_ptr<scaler::ymq::Bytes> messagePayload) {   // onMessage
-            ASSERT_EQ(scaler::ymq::asString(*messagePayload), "");
+            ASSERT_EQ(messagePayload->asString(), "");
             serverMessageReceived = true;
         },
 

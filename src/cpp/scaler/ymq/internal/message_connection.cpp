@@ -332,7 +332,7 @@ void MessageConnection::onRemoteIdentity(std::unique_ptr<Bytes> payload) noexcep
     assert(connected());
     assert(!established());
 
-    Identity receivedIdentity = std::string(reinterpret_cast<const char*>(payload->data()), payload->size());
+    Identity receivedIdentity = payload->asString().value_or("");
 
     if (_remoteIdentity.has_value() && *_remoteIdentity != receivedIdentity) {
         _logger.log(

@@ -224,7 +224,7 @@ TEST_F(ObjectStorageServerTest, TestGetObject)
         EXPECT_EQ(responseHeader.objectID, requestHeader.objectID);
         EXPECT_EQ(responseHeader.payloadLength, payloadContent.size());
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::GET_O_K);
-        EXPECT_EQ(scaler::ymq::asString(**responsePayload), payloadContent);
+        EXPECT_EQ((*responsePayload)->asString(), payloadContent);
     }
 
     // Get the first byte of the object
@@ -379,7 +379,7 @@ TEST_F(ObjectStorageServerTest, TestDuplicateObject)
 
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::GET_O_K);
         EXPECT_TRUE(responsePayload.has_value());
-        EXPECT_EQ(scaler::ymq::asString(**responsePayload), payloadContent);
+        EXPECT_EQ((*responsePayload)->asString(), payloadContent);
     }
 }
 
@@ -490,7 +490,7 @@ TEST_F(ObjectStorageServerTest, TestRequestBlocking)
         client1->readResponse(responseHeader, responsePayload);
 
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::GET_O_K);
-        EXPECT_EQ(scaler::ymq::asString(**responsePayload), payloadContent);
+        EXPECT_EQ((*responsePayload)->asString(), payloadContent);
     }
 }
 
@@ -553,7 +553,7 @@ TEST_F(ObjectStorageServerTest, TestClientDisconnect)
         client2->readResponse(responseHeader, responsePayload);
 
         EXPECT_EQ(responseHeader.responseType, ObjectResponseType::GET_O_K);
-        EXPECT_EQ(scaler::ymq::asString(**responsePayload), payloadContent);
+        EXPECT_EQ((*responsePayload)->asString(), payloadContent);
     }
 }
 

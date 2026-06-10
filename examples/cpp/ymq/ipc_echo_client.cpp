@@ -46,7 +46,7 @@ int main()
         }
 
         Message reply        = std::move(recvResult.value());
-        std::string replyStr = scaler::ymq::asString(*reply.payload).value_or("");
+        std::string replyStr = reply.payload->asString().value_or("");
         std::cout << "Received echo: '" << replyStr << "'.\n";
     }
 
