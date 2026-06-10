@@ -334,6 +334,7 @@ function WorkerManagerCard({
             <textarea
               value={wm.requirements}
               onChange={(e) => set("requirements", e.target.value)}
+              spellCheck={false}
               style={{
                 width: "100%",
                 background: "var(--bg-surface)",
@@ -596,6 +597,7 @@ function WorkerManagerCard({
               <textarea
                 value={wm.requirements || ""}
                 onChange={(e) => set("requirements", e.target.value)}
+                spellCheck={false}
                 style={{
                   width: "100%",
                   background: "var(--bg-surface)",
@@ -2428,6 +2430,7 @@ function App() {
                   <textarea
                     value={schedulerRequirements}
                     onChange={(e) => setSchedulerReqs(e.target.value)}
+                    spellCheck={false}
                     style={{
                       width: "100%",
                       background: "var(--bg-surface)",
