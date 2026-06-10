@@ -10,20 +10,18 @@ namespace ymq {
 
 class Bytes {
 public:
-    virtual ~Bytes() noexcept = 0;
+    virtual ~Bytes() noexcept = default;
 
     Bytes()                        = default;
-    Bytes(Bytes&&)                 = delete;
-    Bytes& operator=(Bytes&&)      = delete;
-    Bytes(const Bytes&)            = delete;
-    Bytes& operator=(const Bytes&) = delete;
+    Bytes(Bytes&&)                 = default;
+    Bytes& operator=(Bytes&&)      = default;
+    Bytes(const Bytes&)            = default;
+    Bytes& operator=(const Bytes&) = default;
 
     virtual const uint8_t* data() const noexcept = 0;
     virtual uint8_t* data() noexcept             = 0;
     virtual size_t size() const noexcept         = 0;
 };
-
-inline Bytes::~Bytes() noexcept = default;
 
 inline std::optional<std::string> asString(const Bytes& b)
 {
