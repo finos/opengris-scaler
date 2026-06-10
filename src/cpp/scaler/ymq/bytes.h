@@ -12,11 +12,11 @@ class Bytes {
 public:
     virtual ~Bytes() noexcept = 0;
 
-    Bytes()                            = default;
-    Bytes(Bytes&&) noexcept            = default;
-    Bytes& operator=(Bytes&&) noexcept = default;
-    Bytes(const Bytes&)                = delete;
-    Bytes& operator=(const Bytes&)     = delete;
+    Bytes()                        = default;
+    Bytes(Bytes&&)                 = delete;
+    Bytes& operator=(Bytes&&)      = delete;
+    Bytes(const Bytes&)            = delete;
+    Bytes& operator=(const Bytes&) = delete;
 
     virtual const uint8_t* data() const noexcept = 0;
     virtual uint8_t* data() noexcept             = 0;

@@ -31,8 +31,18 @@ public:
     {
     }
 
-    BufferedBytes(BufferedBytes&&) noexcept            = default;
-    BufferedBytes& operator=(BufferedBytes&&) noexcept = default;
+    BufferedBytes(BufferedBytes&& other) noexcept : _data(std::move(other._data)), _size(other._size)
+    {
+        other._size = 0;
+    }
+
+    BufferedBytes& operator=(BufferedBytes&& other) noexcept
+    {
+        _data       = std::move(other._data);
+        _size       = other._size;
+        other._size = 0;
+        return *this;
+    }
 
     const uint8_t* data() const noexcept override
     {

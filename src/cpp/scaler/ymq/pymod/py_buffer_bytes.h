@@ -24,8 +24,15 @@ public:
         }
     }
 
-    PyBufferBytes(PyBufferBytes&&) noexcept            = default;
-    PyBufferBytes& operator=(PyBufferBytes&&) noexcept = default;
+    PyBufferBytes(PyBufferBytes&& other) noexcept : _view(std::move(other._view))
+    {
+    }
+
+    PyBufferBytes& operator=(PyBufferBytes&& other) noexcept
+    {
+        _view = std::move(other._view);
+        return *this;
+    }
 
     const uint8_t* data() const noexcept override
     {
