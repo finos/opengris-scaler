@@ -442,6 +442,7 @@ MAC=$(curl -sf -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254
 SUBNET_ID=$(curl -sf -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" "http://169.254.169.254/latest/meta-data/network/interfaces/macs/$MAC/subnet-id")
 
 export HOME=/root
+dnf install -y gcc
 ${gitBuildLines}curl -LsSf https://astral.sh/uv/install.sh | sh
 source /root/.local/bin/env
 
