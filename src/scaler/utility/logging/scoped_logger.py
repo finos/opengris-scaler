@@ -3,6 +3,8 @@ import logging
 import time
 from typing import Optional
 
+logger = logging.getLogger(__name__)
+
 
 class ScopedLogger:
     def __init__(self, message: str, logging_level=logging.INFO):
@@ -23,11 +25,11 @@ class TimedLogger:
 
     def begin(self):
         self.timer = time.perf_counter_ns()
-        logging.log(self.logging_level, f"beginning {self.message}")
+        logger.log(self.logging_level, f"beginning {self.message}")
 
     def end(self):
         elapsed = time.perf_counter_ns() - self.timer
         offset = datetime.timedelta(
             seconds=int(elapsed / 1e9), milliseconds=int(elapsed % 1e9 / 1e6), microseconds=int(elapsed % 1e6 / 1e3)
         )
-        logging.log(self.logging_level, f"completed {self.message} in {offset}")
+        logger.log(self.logging_level, f"completed {self.message} in {offset}")

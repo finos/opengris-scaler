@@ -8,6 +8,8 @@ from scaler.config.types.address import AddressConfig
 from scaler.object_storage.object_storage_server import ObjectStorageServer
 from scaler.utility.logging.utility import get_logger_info, setup_logger
 
+logger = logging.getLogger(__name__)
+
 
 class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
     def __init__(
@@ -44,13 +46,15 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
         raise TimeoutError(f"ObjectStorageServer at {self._bind_address!r} failed to start within 30 seconds")
 
     def run(self) -> None:
-        setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
-        logging.info(f"ObjectStorageServer: start and listen to {self._bind_address!r}")
+        setup_logger(
+            self._logging_paths, self._logging_config_file, self._logging_level, process_name="object_storage_server"
+        )
+        logger.info(f"ObjectStorageServer: start and listen to {self._bind_address!r}")
 
-        log_format_str, log_level_str, logging_paths = get_logger_info(logging.getLogger())
+        log_format_str, log_level_str, logging_paths = get_logger_info(logging.getLogger("scaler"))
 
         self._server = ObjectStorageServer()
         try:
             self._server.run(repr(self._bind_address), self._ident, log_level_str, log_format_str, logging_paths)
         except KeyboardInterrupt:
-            logging.info("ObjectStorageServer: received KeyboardInterrupt, shutting down")
+            logger.info("ObjectStorageServer: received KeyboardInterrupt, shutting down")

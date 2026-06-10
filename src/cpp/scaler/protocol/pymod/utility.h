@@ -18,6 +18,7 @@ OwnedPyObject<> capnp_struct_init_method(PyObject* self, PyObject* args, PyObjec
 OwnedPyObject<> capnp_struct_get_attr(PyObject* self, PyObject* args);
 OwnedPyObject<> capnp_struct_to_bytes(PyObject* self);
 OwnedPyObject<> capnp_struct_from_bytes(PyObject* cls, PyObject* args, PyObject* kwargs);
+OwnedPyObject<> capnp_struct_repr(PyObject* self);
 OwnedPyObject<> capnp_union_init_method(PyObject* self, PyObject* args, PyObject* kwargs);
 OwnedPyObject<> capnp_union_which(PyObject* self);
 OwnedPyObject<> capnp_union_get_attr(PyObject* self, PyObject* args);
