@@ -1296,7 +1296,7 @@ function App() {
   const [ociPrivateKey, setOciPrivateKey] = useState("");
   const [transport, setTransport] = useState("ws");
   const [networkBackend, setNetBack] = useState("ymq");
-  const [pythonVersion, setPyVer] = useState("3.14");
+  const [pythonVersion, setPyVer] = useState("3.13");
   const [schedulerRequirements, setSchedulerReqs] = useState(
     "opengris-scaler[all]",
   );
