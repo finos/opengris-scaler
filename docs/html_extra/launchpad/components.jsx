@@ -1657,6 +1657,12 @@ const WM_TYPE_DEFS = [
     desc: "Managed EC2 instances via ORB worker manager",
   },
   {
+    value: "oci_raw",
+    label: "OCI Container Instance",
+    badge: "OCI",
+    desc: "Oracle Cloud Infrastructure — container instances via OCIR",
+  },
+  {
     value: "aws_raw_ecs",
     label: "AWS ECS",
     badge: "AWS",
@@ -1676,12 +1682,6 @@ const WM_TYPE_DEFS = [
     badge: "IBM",
     desc: "IBM Spectrum Symphony grid via soamapi",
     disabled: true,
-  },
-  {
-    value: "oci_raw",
-    label: "OCI Container Instance",
-    badge: "OCI",
-    desc: "Oracle Cloud Infrastructure — container instances via OCIR",
   },
   {
     value: "oci_hpc",
