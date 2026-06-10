@@ -98,10 +98,12 @@ max_task_concurrency = 1
             descendants = psutil.Process(process.pid).children(recursive=True)
         except psutil.NoSuchProcess:
             descendants = []
-        try:
-            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            pass
+        # The platform check is for mypy on Windows; the whole test class is POSIX-only.
+        if sys.platform != "win32":
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
         for descendant in descendants:
             try:
                 descendant.kill()
