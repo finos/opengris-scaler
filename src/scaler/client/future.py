@@ -1,4 +1,6 @@
+import asyncio
 import concurrent.futures
+import sys
 from typing import Any, Callable, Optional
 
 from scaler.client.serializer.mixins import Serializer
@@ -211,6 +213,23 @@ class ScalerFuture(concurrent.futures.Future):
 
         return self.cancelled()
 
+    def __await__(self):
+        """Allow ``await scaler_future`` from any asyncio context.
+
+        ``ScalerFuture`` is a :class:`concurrent.futures.Future` subclass, so
+        it is completed by the client agent (on a background thread natively,
+        or on the same asyncio loop under Pyodide). ``asyncio.wrap_future``
+        bridges the two worlds using thread-safe future completion, and
+        degrades to the same-loop case gracefully when both sides already
+        share a loop.
+
+        This enables notebook code such as ``result = await client.submit(...)``
+        to work identically in CPython and in the browser without requiring
+        the sync blocking ``.result()`` path (which in the browser depends on
+        JSPI).
+        """
+        return asyncio.wrap_future(self).__await__()
+
     def add_done_callback(self, fn: Callable[["ScalerFuture"], Any]) -> None:
         with self._condition:
             if self.done():
@@ -259,7 +278,46 @@ class ScalerFuture(concurrent.futures.Future):
 
         Raises a `TimeoutError` if it blocks more than `timeout` seconds.
         """
-        if not self.done() and not self._condition.wait(timeout):
+        if self.done():
+            return
+
+        if sys.platform == "emscripten":
+            # On Pyodide the agent task runs on the same single-threaded
+            # asyncio loop as this caller. ``threading.Condition.wait`` blocks
+            # the only thread, so the agent never gets a chance to run and
+            # signal completion -> deadlock. Instead, suspend the wasm stack
+            # via JSPI while the asyncio loop continues to drive the agent.
+            from pyodide.ffi import run_sync  # type: ignore[import-not-found]
+
+            async def _await_done() -> None:
+                fut: asyncio.Future = asyncio.wrap_future(self)
+                if timeout is None:
+                    await fut
+                else:
+                    await asyncio.wait_for(fut, timeout)
+
+            # ``self._condition`` is held by the caller; release it while we
+            # suspend so the agent (running on the same loop) can acquire it
+            # in ``set_result_ready`` to mark the future done.
+            self._condition.release()  # type: ignore[attr-defined]
+            try:
+                try:
+                    run_sync(_await_done())
+                except asyncio.TimeoutError as exc:
+                    raise concurrent.futures.TimeoutError() from exc
+                except (asyncio.CancelledError, concurrent.futures.CancelledError):
+                    # ``asyncio.wrap_future`` raises ``CancelledError`` once
+                    # the underlying ``ScalerFuture`` transitions to
+                    # cancelled. The native ``Condition.wait`` path also
+                    # returns silently in that case (it is just woken up by
+                    # ``notify_all``), so callers like ``cancel()`` only
+                    # care that the future has settled.
+                    pass
+            finally:
+                self._condition.acquire()  # type: ignore[attr-defined]
+            return
+
+        if not self._condition.wait(timeout):
             raise concurrent.futures.TimeoutError()
 
     def _is_simple_task(self):

@@ -1,0 +1,64 @@
+name: "Setup WASM Build Environment"
+description: "Install host capnp, pyodide-build and a pinned Emscripten SDK"
+
+# pyodide-build is pinned in pyproject.toml [dependency-groups] dev.
+# The emsdk version is pinned in scripts/library_tool.sh (EMSDK_VERSION).
+# They must stay in lockstep with the Pyodide kernel that ships in
+# jupyterlite-pyodide-kernel (see docs/requirements_docs.txt):
+#   pyodide-build 0.34.3 -> Pyodide 0.29.3 -> Emscripten 4.0.9 -> CPython 3.13
+# See https://pyodide.org/en/stable/development/building-and-testing-packages.html
+inputs:
+  python-version:
+    description: "Host Python used to run pyodide-build"
+    required: false
+    default: "3.13"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up host Python
+      uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+      with:
+        python-version: "${{ inputs.python-version }}"
+
+    - name: Build and install host capnp tools
+      shell: bash
+      run: |
+        # The Ubuntu runner's `capnproto` package lags upstream and produces
+        # generated C++ that is incompatible with libcapnp >=1.1.0 (the
+        # version we cross-compile for wasm). Build from source so the host
+        # capnp tool matches the wasm libcapnp ABI.
+        ./scripts/library_tool.sh capnp download
+        ./scripts/library_tool.sh capnp compile --target=native
+        sudo ./scripts/library_tool.sh capnp install --target=native
+        capnp --version
+
+    - name: Install pyodide-build
+      shell: bash
+      run: |
+        # Keep this version in lockstep with the pyodide-build pin in
+        # pyproject.toml's [dependency-groups] dev (and the EMSDK_VERSION
+        # pin in scripts/library_tool.sh). All three move together with the
+        # Pyodide kernel that JupyterLite ships.
+        pip install "pyodide-build==0.34.3"
+        # Let pyodide-build pick the compatible xbuildenv for the selected
+        # host Python (currently 3.13 in this action).
+        pyodide xbuildenv install
+
+    - name: Cache Emscripten SDK
+      id: cache-emsdk
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+      with:
+        path: thirdparties/emsdk
+        key: emsdk-${{ runner.os }}-${{ hashFiles('scripts/library_tool.sh') }}
+
+    - name: Install Emscripten SDK
+      if: steps.cache-emsdk.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        # Versions are pinned in scripts/library_tool.sh (EMSDK_VERSION).
+        # Override there if you need to bump them in lockstep with the
+        # Pyodide xbuildenv.
+        ./scripts/library_tool.sh emsdk download
+        ./scripts/library_tool.sh emsdk compile
+        ./scripts/library_tool.sh emsdk install

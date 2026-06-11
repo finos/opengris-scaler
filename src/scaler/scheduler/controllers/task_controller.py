@@ -329,7 +329,13 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     async def __send_task_result_to_client(self, task_result: TaskResult):
         await self._worker_controller.on_task_done(task_result.taskId)
         client = self._client_controller.on_task_finish(task_result.taskId)
-        await self._binder.send(client, task_result)
+        if client is None:
+            logging.warning(
+                f"{task_result.taskId!r}: dropping task result, owning client is no longer registered "
+                f"(likely disconnected via client_timeout_seconds while the task was running)"
+            )
+        else:
+            await self._binder.send(client, task_result)
 
         func_name = b""
         task = self._task_id_to_task.get(task_result.taskId)
@@ -347,7 +353,13 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
     async def __send_task_cancel_confirm_to_client(self, task_cancel_confirm: TaskCancelConfirm):
         client = self._client_controller.on_task_finish(task_cancel_confirm.taskId)
-        await self._binder.send(client, task_cancel_confirm)
+        if client is None:
+            logging.warning(
+                f"{task_cancel_confirm.taskId!r}: dropping task cancel confirm, owning client is no "
+                f"longer registered"
+            )
+        else:
+            await self._binder.send(client, task_cancel_confirm)
         await self.__send_monitor(task_cancel_confirm.taskId, b"")
         self._task_state_manager.remove_state_machine(task_cancel_confirm.taskId)
         self._task_id_to_task.pop(task_cancel_confirm.taskId)

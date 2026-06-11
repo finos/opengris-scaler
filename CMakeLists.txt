@@ -75,6 +75,33 @@ elseif(APPLE)
     add_compile_options(-Wall -Wextra)
     add_link_options(-Wl,-rpath,@loader_path)
 
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    message(STATUS "Emscripten")
+
+    # Emscripten controls libc++ and threading flags via emcc; do not override them.
+    add_compile_options(-Wall)
+
+    # Pyodide builds its libc++ with the wasm-eh exception ABI. Extensions must
+    # match or libc++ symbol mangling diverges (e.g. ``__ne190106`` inline
+    # namespace tags) and Pyodide's dynamic loader fails to resolve imports.
+    add_compile_options(-fwasm-exceptions -sSUPPORT_LONGJMP)
+    add_link_options(-fwasm-exceptions -sSUPPORT_LONGJMP)
+
+    # Pyodide's pywasmcross enforces ``-sSIDE_MODULE=2`` with an explicit
+    # ``EXPORTED_FUNCTIONS=PyInit_<mod>`` list. With default visibility the
+    # extension exports thousands of unrelated symbols, balloons the .so size,
+    # and confuses Pyodide's dynamic loader. Hide everything but ``PyInit_*``.
+    add_compile_options(-fvisibility=hidden -fvisibility-inlines-hidden)
+
+    # ``-fmerge-all-constants`` (clang default at -O2) lets the linker overlay
+    # short string literals onto the tail bytes of longer ones in mergeable
+    # ``.rodata.str*`` sections. Pyodide's wasm SIDE_MODULE relocator then
+    # mis-resolves offsets within those merged sections so short literals end
+    # up pointing into the middle of unrelated strings at load time (e.g.
+    # ``"module"`` is read as ``"ile"``). Force the compiler to emit each
+    # literal as its own non-mergeable symbol.
+    add_compile_options(-fno-merge-all-constants)
+
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         # Linux GCC
@@ -107,6 +134,20 @@ include(cmake/ScalerPythonModule.cmake)
 find_package(CapnProto CONFIG REQUIRED)
 get_target_property(CAPNP_INCLUDE_DIRS CapnProto::capnp INTERFACE_INCLUDE_DIRECTORIES)
 message(STATUS "Found Capnp includes in ${CAPNP_INCLUDE_DIRS}")
+
+if(EMSCRIPTEN)
+    # CapnProtoConfig.cmake hard-codes CAPNP_EXECUTABLE / CAPNPC_CXX_EXECUTABLE
+    # to $<TARGET_FILE:CapnProto::capnp_tool> etc., but those targets aren't
+    # built when cross-compiling to wasm. The wasm install layout exposes the
+    # host capnp tools as <prefix>/bin/<tool>.js (created by library_tool.sh
+    # capnp install --target=wasm); point the codegen variables at them.
+    find_program(_SCALER_CAPNP_HOST NAMES capnp.js capnp REQUIRED)
+    find_program(_SCALER_CAPNPC_CXX_HOST NAMES capnpc-c++.js capnpc-c++ REQUIRED)
+    set(CAPNP_EXECUTABLE "${_SCALER_CAPNP_HOST}" CACHE FILEPATH "Location of capnp executable" FORCE)
+    set(CAPNPC_CXX_EXECUTABLE "${_SCALER_CAPNPC_CXX_HOST}" CACHE FILEPATH "Location of capnpc-c++ executable" FORCE)
+    unset(_SCALER_CAPNP_HOST CACHE)
+    unset(_SCALER_CAPNPC_CXX_HOST CACHE)
+endif()
 
 # Make LSP happy
 include_directories(${CAPNP_INCLUDE_DIRS})

@@ -42,7 +42,7 @@ dl.class > dt:first-of-type {
     padding-right: 1.5rem !important;
 }
 
-/* Diff table colors — semi-transparent so they work on both light and dark themes */
+/* Diff table colors -- semi-transparent so they work on both light and dark themes */
 table.diff th {
     background-color: transparent !important;
 }
@@ -65,7 +65,7 @@ table.diff span.diff_sub {
     background-color: rgba(248, 81, 73, 0.5) !important;
 }
 
-/* Visible separator between diff chunks — high contrast for both themes */
+/* Visible separator between diff chunks -- high contrast for both themes */
 table.diff tbody + tbody {
     border-top: 3px solid #1a1a1a !important;
 }
@@ -76,4 +76,49 @@ html.dark table.diff tbody + tbody {
 section.hidden-page-title > h1:first-child,
 div.hidden-page-title > h1:first-child {
     display: none;
+}
+
+/* JupyterLite "Try in your browser" banner button (top of each example page).
+   Built on the theme accent (Shibuya's --accent-*), so it matches the site in
+   both light and dark. The theme gives content links a border-bottom underline
+   that grows 1px -> 2px on hover (.yue a:hover), which on a button bumps its box
+   height and nudges the page down -- so we drop the border entirely. Hover then
+   changes only the background color: no geometry change, no shift. */
+.try-in-browser {
+    display: inline-block;
+    padding: 0.5em 1em;
+    margin: 0.2em 0;
+    background: var(--accent-9);
+    color: var(--accent-contrast, #fff) !important;
+    font-weight: 600;
+    border: none !important;
+    border-radius: 0.5rem;
+    text-decoration: none !important;
+}
+.try-in-browser:hover {
+    background: var(--accent-10);
+}
+.try-in-browser-banner {
+    margin: 0.5em 0 1.2em 0;
+}
+
+/* "Demo notebooks" list on the Try-in-your-browser page (replaces the old
+   button table that jittered on hover). Plain theme links in a simple list --
+   nothing changes size on hover, so nothing jitters. */
+ul.lite-demos {
+    margin: 1em 0;
+    padding-left: 1.2em;
+}
+ul.lite-demos li {
+    margin: 0.45em 0;
+    line-height: 1.6;
+}
+/* Muted separator between the example link and the "open in browser" link. */
+.lite-sep {
+    margin: 0 0.5em;
+    color: var(--sy-c-light);
+}
+/* Inherit the theme link color/hover; just keep the label on one line. */
+.lite-open {
+    white-space: nowrap;
 }

@@ -4,3 +4,5 @@ sphinx-substitution-extensions
 sphinx-tabs
 sphinx-copybutton
 nbsphinx
+jupyterlite-sphinx
+jupyterlite-pyodide-kernel

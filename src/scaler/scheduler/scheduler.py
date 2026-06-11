@@ -164,6 +164,16 @@ class Scheduler:
         logging.info(f"{self.__class__.__name__}: listen to scheduler monitor address {monitor_address!r}")
 
     async def on_receive_message(self, source: bytes, message: BaseMessage):
+        # Any inbound message from a tracked client refreshes its liveness
+        # timestamp, not only ClientHeartbeat. This prevents heartbeat-based
+        # eviction of clients that are actively talking to the scheduler but
+        # whose user code monopolises the asyncio loop and starves the
+        # heartbeat coroutine (e.g. browser/emscripten clients running heavy
+        # synchronous Python like cloudpickle of large constants). The
+        # underlying transport will report a real connection close promptly.
+        if source.startswith(b"Client|"):
+            self._client_manager.notice_client_activity(ClientID(source))
+
         # =====================================================================================
         # client manager
         if isinstance(message, ClientHeartbeat):

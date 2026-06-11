@@ -236,14 +236,18 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         raise TypeError(f"Unknown message from {processor_id!r}: {message}")
 
     async def __get_loops(self):
-        await self._connector_external.connect(self._address, ConnectorRemoteType.Binder)
-        await self._binder_internal.bind(self._address_internal)
-
-        if self._object_storage_address is not None:
-            # With a manually set storage address, immediately connect to the object storage server.
-            await self._connector_storage.connect(self._object_storage_address)
-
         try:
+            # Connection setup lives inside the try so a connection-level failure here (e.g. the scheduler is
+            # never reachable, which surfaces as ConnectorSocketClosedByRemoteEnd once the connector exhausts its
+            # retries) is absorbed by the YMQException handler below and shuts the worker down cleanly, instead of
+            # escaping __get_loops as an unhandled exception that crashes the worker process.
+            await self._connector_external.connect(self._address, ConnectorRemoteType.Binder)
+            await self._binder_internal.bind(self._address_internal)
+
+            if self._object_storage_address is not None:
+                # With a manually set storage address, immediately connect to the object storage server.
+                await self._connector_storage.connect(self._object_storage_address)
+
             await asyncio.gather(
                 self._processor_manager.initialize(),
                 create_async_loop_routine(self._connector_external.routine, 0),
