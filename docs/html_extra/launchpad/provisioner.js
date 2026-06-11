@@ -186,19 +186,14 @@ job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
 `;
       } else if (wm.type === "oci_raw") {
         var ociRawReq = (wm.requirements || "").trim();
-        var ociRawAuth = wm.ociAuthType || "config_file";
         block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
 oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-auth_type = "${ociRawAuth}"
 `;
-        if (ociRawAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
         block += `compartment_id = "${wm.ociCompartmentId || ""}"
 availability_domain = "${wm.ociAvailabilityDomain || ""}"
 subnet_id = "${wm.ociSubnetId || ""}"
 container_image = "${wm.ociContainerImage || ""}"
 `;
-        if (wm.ociImagePullUsername) block += `image_pull_username = "${wm.ociImagePullUsername}"\n`;
-        if (wm.ociImagePullPassword) block += `image_pull_password = "${wm.ociImagePullPassword}"\n`;
         block += `instance_shape = "${wm.ociShape || "CI.Standard.E4.Flex"}"
 instance_ocpus = ${wm.ociOcpus || 4}
 instance_memory_gb = ${wm.ociMemoryGb || 30}
@@ -208,12 +203,9 @@ ${ociRawReq}
 """
 `;
       } else if (wm.type === "oci_hpc") {
-        var ociHpcAuth = wm.ociAuthType || "config_file";
         block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
 oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-auth_type = "${ociHpcAuth}"
 `;
-        if (ociHpcAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
         block += `compartment_id = "${wm.ociCompartmentId || ""}"
 availability_domain = "${wm.ociAvailabilityDomain || ""}"
 subnet_id = "${wm.ociSubnetId || ""}"
@@ -357,19 +349,14 @@ job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
 `;
       } else if (wm.type === "oci_raw") {
         var ociRawReq = (wm.requirements || "").trim();
-        var ociRawAuth = wm.ociAuthType || "config_file";
         block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
 oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-auth_type = "${ociRawAuth}"
 `;
-        if (ociRawAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
         block += `compartment_id = "${wm.ociCompartmentId || ""}"
 availability_domain = "${wm.ociAvailabilityDomain || ""}"
 subnet_id = "${wm.ociSubnetId || ""}"
 container_image = "${wm.ociContainerImage || ""}"
 `;
-        if (wm.ociImagePullUsername) block += `image_pull_username = "${wm.ociImagePullUsername}"\n`;
-        if (wm.ociImagePullPassword) block += `image_pull_password = "${wm.ociImagePullPassword}"\n`;
         block += `instance_shape = "${wm.ociShape || "CI.Standard.E4.Flex"}"
 instance_ocpus = ${wm.ociOcpus || 4}
 instance_memory_gb = ${wm.ociMemoryGb || 30}
@@ -379,12 +366,9 @@ ${ociRawReq}
 """
 `;
       } else if (wm.type === "oci_hpc") {
-        var ociHpcAuth = wm.ociAuthType || "config_file";
         block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
 oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-auth_type = "${ociHpcAuth}"
 `;
-        if (ociHpcAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
         block += `compartment_id = "${wm.ociCompartmentId || ""}"
 availability_domain = "${wm.ociAvailabilityDomain || ""}"
 subnet_id = "${wm.ociSubnetId || ""}"
