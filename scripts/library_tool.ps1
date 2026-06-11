@@ -1,4 +1,7 @@
+$ErrorActionPreference = "Stop"
+
 # Constants
+
 $CAPNP_VERSION = "1.1.0"
 $UV_VERSION = "1.51.0"
 $OPENSSL_VERSION = "4.0.0"
@@ -15,14 +18,22 @@ function showHelp {
     exit 1
 }
 
+function exitOnError {
+    param([scriptblock]$command)
+    & $command
+    if ($LASTEXITCODE -ne 0) {
+        throw "Command failed with exit code ${LASTEXITCODE}: $command"
+    }
+}
+
 function downloadTarGz($url, $folderName) {
-    curl.exe --retry 100 --retry-max-time 3600 -L $url -o "$THIRD_PARTY_DOWNLOADED\$folderName.tar.gz"
+    exitOnError { curl.exe --retry 100 --retry-max-time 3600 -L $url -o "$THIRD_PARTY_DOWNLOADED\$folderName.tar.gz" }
     Write-Host "Downloaded $folderName into $THIRD_PARTY_DOWNLOADED\$folderName.tar.gz"
 }
 
 function extractTarGz($folderName) {
     Remove-Item -Path "$THIRD_PARTY_COMPILED\$folderName" -Recurse -Force -ErrorAction SilentlyContinue
-    tar -xzvf "$THIRD_PARTY_DOWNLOADED\$folderName.tar.gz" -C "$THIRD_PARTY_COMPILED"
+    exitOnError { tar -xzvf "$THIRD_PARTY_DOWNLOADED\$folderName.tar.gz" -C "$THIRD_PARTY_COMPILED" }
 }
 
 # Parse optional --prefix argument from $args
@@ -77,8 +88,13 @@ if ($dependency -eq "capnp")
         # Configure and build with Visual Studio using CMake
         $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
-        cmake -G "Visual Studio 17 2022" -B build -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_TESTING=OFF
-        cmake --build build --config Release
+        exitOnError {
+            cmake -G "Visual Studio 17 2022" -B build `
+                -DCMAKE_INSTALL_PREFIX="$PREFIX" `
+                -DCMAKE_INSTALL_LIBDIR=lib `
+                -DBUILD_TESTING=OFF
+        }
+        exitOnError { cmake --build build --config Release }
         Write-Host "Compiled capnp into $THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
         Set-Location $oldDir
     }
@@ -86,7 +102,7 @@ if ($dependency -eq "capnp")
     {
         $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
-        cmake --install build --config Release --prefix $PREFIX
+        exitOnError { cmake --install build --config Release --prefix $PREFIX }
 
         $capnpConfigDirectory = Join-Path $PREFIX "lib\cmake\CapnProto"
         $capnpBuildConfigDirectory = Join-Path (Get-Location) "build\cmake"
@@ -125,8 +141,12 @@ elseif ($dependency -eq "libuv")
         # Configure and build with Visual Studio using CMake
         $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$UV_FOLDER_NAME"
-        cmake -G "Visual Studio 17 2022" -B build -DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_TESTING=OFF
-        cmake --build build --config Release
+        exitOnError {
+            cmake -G "Visual Studio 17 2022" -B build `
+                -DCMAKE_INSTALL_PREFIX="$PREFIX" `
+                -DBUILD_TESTING=OFF
+        }
+        exitOnError { cmake --build build --config Release }
         Write-Host "Compiled libuv into $THIRD_PARTY_COMPILED\$UV_FOLDER_NAME"
         Set-Location $oldDir
     }
@@ -134,7 +154,7 @@ elseif ($dependency -eq "libuv")
     {
         $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$UV_FOLDER_NAME"
-        cmake --install build --config Release
+        exitOnError { cmake --install build --config Release }
         Write-Host "Installed libuv into $PREFIX"
         Set-Location $oldDir
     }
@@ -161,8 +181,10 @@ elseif ($dependency -eq "openssl")
 
         $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$OPENSSL_FOLDER_NAME"
-        perl Configure VC-WIN64A --prefix="$PREFIX" --libdir=lib no-tests
-        nmake
+        exitOnError {
+            perl Configure VC-WIN64A --prefix="$PREFIX" --libdir=lib no-tests no-shared
+        }
+        exitOnError { nmake }
         Write-Host "Compiled OpenSSL into $THIRD_PARTY_COMPILED\$OPENSSL_FOLDER_NAME"
         Set-Location $oldDir
     }
@@ -170,7 +192,7 @@ elseif ($dependency -eq "openssl")
     {
         $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$OPENSSL_FOLDER_NAME"
-        nmake install_sw
+        exitOnError { nmake install_sw }
         Write-Host "Installed OpenSSL into $PREFIX"
         Set-Location $oldDir
     }
