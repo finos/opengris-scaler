@@ -593,7 +593,7 @@ function WorkerManagerCard({
               </div>
             </div>
             <div>
-              <Label help="- Installed inside the container instance\n- opengris-scaler must be included">requirements.txt</Label>
+              <Label help={"- Installed inside the container instance\n- opengris-scaler must be included"}>requirements.txt</Label>
               <textarea
                 value={wm.requirements || ""}
                 onChange={(e) => set("requirements", e.target.value)}
@@ -1944,32 +1944,49 @@ function App() {
       </button>
     );
   } else if (phase === "idle" || phase === "error") {
-    launchControl = (
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-        <button
-          onClick={handleLaunch}
-          disabled={!formReady}
-          style={{
-            padding: "8px 20px",
-            background: !formReady
-              ? "var(--bg-surface)"
-              : "linear-gradient(135deg, oklch(0.38 0.16 155) 0%, oklch(0.32 0.14 200) 100%)",
-            border:
-              "1px solid " +
-              (!formReady ? "var(--border-accent)" : "oklch(0.55 0.16 155)"),
-            borderRadius: 4,
-            color: !formReady ? "var(--text-muted)" : "oklch(0.92 0.1 155)",
-            fontFamily: "inherit",
-            fontSize: 11,
-            fontWeight: 700,
-            cursor: !formReady ? "default" : "pointer",
-            transition: "all 0.2s",
-          }}
-        >
-          Launch Scheduler
-        </button>
-        {!formReady && <HelpTip text={blocking.map((c) => "- " + c.label).join("\n")} />}
-      </div>
+    const launchBtn = (
+      <button
+        onClick={formReady ? handleLaunch : undefined}
+        disabled={!formReady}
+        style={{
+          padding: "8px 20px",
+          background: !formReady
+            ? "rgba(229,72,77,0.05)"
+            : "linear-gradient(135deg, oklch(0.38 0.16 155) 0%, oklch(0.32 0.14 200) 100%)",
+          border:
+            "1px solid " +
+            (!formReady ? "var(--border-danger)" : "oklch(0.55 0.16 155)"),
+          borderRadius: 4,
+          color: !formReady ? "var(--text-muted)" : "oklch(0.92 0.1 155)",
+          fontFamily: "inherit",
+          fontSize: 11,
+          fontWeight: 700,
+          cursor: !formReady ? "default" : "pointer",
+          transition: "all 0.2s",
+          display: "flex",
+          alignItems: "center",
+          gap: 7,
+          pointerEvents: !formReady ? "none" : undefined,
+        }}
+      >
+        {!formReady && (
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: "var(--text-danger)",
+              flexShrink: 0,
+            }}
+          />
+        )}
+        Launch Scheduler
+      </button>
+    );
+    launchControl = !formReady ? (
+      <HelpTip text={blocking.map((c) => "- " + c.label).join("\n")} width={520}>{launchBtn}</HelpTip>
+    ) : (
+      launchBtn
     );
   } else if (phase === "ready") {
     launchControl = (
@@ -2159,7 +2176,7 @@ function App() {
                             flexShrink: 0,
                           }}
                         >
-                          KEY_ID
+                          Key ID
                         </span>
                         <SecretInput
                           value={accessKeyId}
@@ -2190,7 +2207,7 @@ function App() {
                             flexShrink: 0,
                           }}
                         >
-                          SECRET
+                          Secret
                         </span>
                         <SecretInput
                           value={secretKey}
@@ -2240,7 +2257,7 @@ function App() {
                 {credTab === "oci" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     <div>
-                      <Label help="OCI user OCID — found in OCI Console under Profile.">User OCID</Label>
+                      <Label help="OCI user OCID - found in OCI Console under Profile.">User OCID</Label>
                       <div style={{ ...inp, display: "flex", alignItems: "center" }}>
                         <SecretInput
                           value={ociUserId}
@@ -2251,7 +2268,7 @@ function App() {
                       </div>
                     </div>
                     <div>
-                      <Label help="OCI tenancy OCID — found in Administration > Tenancy Details.">Tenancy OCID</Label>
+                      <Label help="OCI tenancy OCID - found in Administration > Tenancy Details.">Tenancy OCID</Label>
                       <div style={{ ...inp, display: "flex", alignItems: "center" }}>
                         <SecretInput
                           value={ociTenancyId}
@@ -2277,7 +2294,7 @@ function App() {
                       <textarea
                         value={ociPrivateKey}
                         onChange={(e) => setOciPrivateKey(e.target.value)}
-                        placeholder={"-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"}
+                        placeholder={"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"}
                         style={{
                           ...inp,
                           fontFamily: "monospace",
@@ -2305,7 +2322,7 @@ function App() {
                   <div>
                     <Label
                       help={
-                        "WebSocket — connect to your cluster from a browser or any WebSocket client.\n---\nTCP — direct socket connection; slightly lower overhead."
+                        "WebSocket - connect to your cluster from a browser or any WebSocket client.\n---\nTCP - direct socket connection; slightly lower overhead."
                       }
                     >
                       Transport Protocol

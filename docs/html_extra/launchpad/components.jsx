@@ -1094,12 +1094,12 @@ function DeployDetails({ visible, style }) {
 }
 
 /* ── HelpTip ── */
-function HelpTip({ text }) {
+function HelpTip({ text, children, width = 260 }) {
   const [btnRect, setBtnRect] = useState(null);
   const [placement, setPlacement] = useState(null);
   const btnRef = useRef(null);
   const popupRef = useRef(null);
-  const POPUP_WIDTH = 260;
+  const POPUP_WIDTH = width;
 
   const open = btnRect !== null;
 
@@ -1222,6 +1222,20 @@ function HelpTip({ text }) {
         document.body,
       );
     })();
+
+  if (children) {
+    return (
+      <span
+        ref={btnRef}
+        onMouseEnter={handleOpen}
+        onMouseLeave={() => setBtnRect(null)}
+        style={{ display: "inline-flex" }}
+      >
+        {children}
+        {popup}
+      </span>
+    );
+  }
 
   return (
     <span style={{ display: "inline-flex", alignItems: "center" }}>
@@ -1660,7 +1674,7 @@ const WM_TYPE_DEFS = [
     value: "oci_raw",
     label: "OCI Container Instance",
     badge: "OCI",
-    desc: "Oracle Cloud Infrastructure — container instances via OCIR",
+    desc: "Oracle Cloud Infrastructure - container instances via OCIR",
   },
   {
     value: "aws_raw_ecs",
@@ -1687,7 +1701,7 @@ const WM_TYPE_DEFS = [
     value: "oci_hpc",
     label: "OCI HPC",
     badge: "OCI",
-    desc: "Oracle Cloud Infrastructure — per-task container instance jobs",
+    desc: "Oracle Cloud Infrastructure - per-task container instance jobs",
     disabled: true,
   },
 ];
