@@ -65,9 +65,12 @@ class ObjectCache(threading.Thread):
             self.add_serializer(client, cloudpickle.loads(object_bytes))
         else:
             try:
-                deserialized = self.deserialize(client, object_bytes)
-            except Exception:  # noqa
+                deserialized: Any = self.deserialize(client, object_bytes)
+            except Exception as exc:  # noqa: BLE001
                 logging.exception(f"failed to deserialize received {object_id!r}, length={len(object_bytes)}")
+                deserialized = DeserializeObjectError(
+                    f"failed to deserialize {object_id!r}: {type(exc).__name__}: {exc}"
+                )
 
             self._cached_objects[object_id] = deserialized
             self._cached_objects_alive_since[object_id] = time.time()
@@ -86,6 +89,10 @@ class ObjectCache(threading.Thread):
         obj = self._cached_objects[object_id]
 
         self._cached_objects_alive_since[object_id] = time.time()
+
+        if isinstance(obj, DeserializeObjectError):
+            raise obj
+
         return obj
 
     def get_serializer(self, client: ClientID) -> Serializer:
