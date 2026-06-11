@@ -1,4 +1,4 @@
-name: Publish Python package to PyPI
+name: Publish artifacts
 
 on:
   release:
@@ -94,6 +94,65 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: ./dist/
+
+  publish-docker:
+    name: Publish Docker image to GHCR
+    needs: publish
+    runs-on: ${{ matrix.runner }}
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            arch_suffix: amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            arch_suffix: arm64
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
+      - name: 'Checkout Repository'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare Docker metadata
+        id: docker-metadata
+        run: |
+          namespace="$(printf '%s' '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          version="${GITHUB_REF_NAME#v}"
+          printf 'namespace=%s\n' "${namespace}" >> "${GITHUB_OUTPUT}"
+          printf 'owner=%s\n' '${{ github.repository_owner }}' >> "${GITHUB_OUTPUT}"
+          printf 'version=%s\n' "${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push Scaler image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: |
+            ghcr.io/${{ steps.docker-metadata.outputs.namespace }}/scaler:${{ steps.docker-metadata.outputs.version }}-${{ matrix.arch_suffix }}
+            ghcr.io/${{ steps.docker-metadata.outputs.namespace }}/scaler:latest-${{ matrix.arch_suffix }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.docker-metadata.outputs.version }}
 
   release-wasm:
     name: Attach WASM wheel to GitHub Release
