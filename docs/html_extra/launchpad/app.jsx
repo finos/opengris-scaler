@@ -1415,7 +1415,9 @@ function App() {
     }
   });
   const [keyMaterial, setKeyMaterial] = useState(null);
+  const [pausedOp, setPausedOp] = useState(null); // "deploy" | "teardown"
   const abortRef = useRef(null);
+  const partialRef = useRef(null); // latest partial state, readable synchronously in catch blocks
 
   const [workerMonitorReady, setWorkerMonitorReady] = useState(false);
   const [workerMonitorElapsed, setWorkerMonitorElapsed] = useState(0);
@@ -1480,6 +1482,7 @@ function App() {
     setLog((prev) => [...prev, { text, cls: cls || "info" }]);
   }, []);
   const savePartial = useCallback((partial) => {
+    partialRef.current = partial;
     setProvState(partial);
     try {
       localStorage.setItem("scaler_state", JSON.stringify(partial));
@@ -1588,17 +1591,23 @@ function App() {
   const blocking = checks.filter((c) => !c.ok);
   const formReady = blocking.length === 0;
   const isRunning = phase === "provisioning" || phase === "destroying";
+  const isPaused = phase === "paused";
 
   const handleLaunch = useCallback(async () => {
-    if (!formReady) return;
-    setLog([]);
-    try {
-      localStorage.removeItem("scaler_log");
-    } catch (_) {}
+    const isResume = phase === "paused" && pausedOp === "deploy";
+    if (!isResume && !formReady) return;
+    setLog((prev) => (isResume ? [...prev, { text: "", cls: "dim" }] : []));
+    if (!isResume) {
+      try {
+        localStorage.removeItem("scaler_log");
+      } catch (_) {}
+    }
     setPhase("provisioning");
+    setPausedOp(null);
+    const resumeState = isResume ? provState : null;
     const cfg = {
       region,
-      nameSuffix: randomSuffix(),
+      nameSuffix: resumeState ? resumeState.name_suffix : randomSuffix(),
       instanceType: schedulerType,
       amiId: null,
       transport,
@@ -1626,21 +1635,73 @@ function App() {
         savePartial,
         (name, mat) => setKeyMaterial({ name, mat }),
         controller.signal,
+        resumeState,
       );
       savePartial(state);
       setPhase("ready");
     } catch (err) {
-      addLog(
-        err.name === "AbortError"
-          ? "\nAborted. Any resources created so far are saved — use Destroy to clean them up."
-          : "\nError: " + err.message,
-        err.name === "AbortError" ? "warn" : "err",
-      );
-      setPhase("error");
+      if (err.name === "RetryPausedError") {
+        addLog(
+          "\nDeployment paused — retries exhausted: " + err.message +
+            "\nUse Resume to continue or switch to teardown.",
+          "warn",
+        );
+        setPausedOp("deploy");
+        setPhase("paused");
+      } else if (err.name === "AbortError") {
+        addLog(
+          "\nAborted. Any resources created so far are saved — use Destroy to clean them up.",
+          "warn",
+        );
+        setPhase("error");
+      } else {
+        const snapshot = partialRef.current;
+        if (snapshot) {
+          addLog("\nProvisioning failed: " + err.message, "err");
+          addLog("Auto-tearing down created resources…", "warn");
+          setPhase("destroying");
+          const tdController = new AbortController();
+          abortRef.current = tdController;
+          try {
+            await teardown(
+              snapshot,
+              { accessKeyId, secretKey, ociUserId, ociTenancyId, ociFingerprint, ociPrivateKey },
+              addLog,
+              tdController.signal,
+            );
+            try {
+              localStorage.removeItem("scaler_state");
+              localStorage.removeItem("scaler_log");
+            } catch (_) {}
+            setProvState(null);
+            partialRef.current = null;
+            setKeyMaterial(null);
+            setPhase("idle");
+          } catch (tdErr) {
+            if (tdErr.name === "RetryPausedError") {
+              addLog(
+                "\nAuto-teardown paused — retries exhausted. Use Resume Teardown.",
+                "warn",
+              );
+              setPausedOp("teardown");
+              setPhase("paused");
+            } else {
+              addLog("\nAuto-teardown failed: " + tdErr.message, "err");
+              setPhase("error");
+            }
+          }
+        } else {
+          addLog("\nError: " + err.message, "err");
+          setPhase("error");
+        }
+      }
     } finally {
       abortRef.current = null;
     }
   }, [
+    phase,
+    pausedOp,
+    provState,
     formReady,
     region,
     schedulerType,
@@ -1653,6 +1714,10 @@ function App() {
     workerManagers,
     accessKeyId,
     secretKey,
+    ociUserId,
+    ociTenancyId,
+    ociFingerprint,
+    ociPrivateKey,
     addLog,
     savePartial,
   ]);
@@ -1663,27 +1728,31 @@ function App() {
 
   const handleDestroy = useCallback(async () => {
     if (!provState || !hasCredentials) return;
-    if (
-      !window.confirm(
-        "Terminate all AWS resources in this deployment?\n\n" +
-          "• EC2 instance: " +
-          (provState.instance_id || "—") +
-          "\n" +
-          "• Security group: " +
-          (provState.security_group_id || "—") +
-          "\n" +
-          "• Key pair: " +
-          (provState.key_pair_name || "—") +
-          "\n" +
-          (provState.iam && provState.iam.created
-            ? "• IAM role & profile\n"
-            : "") +
-          "\nThis cannot be undone.",
+    const isResume = phase === "paused" && pausedOp === "teardown";
+    if (!isResume) {
+      if (
+        !window.confirm(
+          "Terminate all AWS resources in this deployment?\n\n" +
+            "• EC2 instance: " +
+            (provState.instance_id || "—") +
+            "\n" +
+            "• Security group: " +
+            (provState.security_group_id || "—") +
+            "\n" +
+            "• Key pair: " +
+            (provState.key_pair_name || "—") +
+            "\n" +
+            (provState.iam && provState.iam.created
+              ? "• IAM role & profile\n"
+              : "") +
+            "\nThis cannot be undone.",
+        )
       )
-    )
-      return;
+        return;
+    }
     setPhase("destroying");
-    setActiveTab("deployment");
+    setPausedOp(null);
+    if (!isResume) setActiveTab("deployment");
     const controller = new AbortController();
     abortRef.current = controller;
     try {
@@ -1701,24 +1770,31 @@ function App() {
       setKeyMaterial(null);
       setPhase("idle");
     } catch (err) {
-      if (err.name === "AbortError") {
+      if (err.name === "RetryPausedError") {
+        addLog(
+          "\nTeardown paused — retries exhausted: " + err.message +
+            "\nUse Resume Teardown to retry.",
+          "warn",
+        );
+        setPausedOp("teardown");
+        setPhase("paused");
+      } else if (err.name === "AbortError") {
         addLog(
           "\nTeardown aborted. Some resources may still exist — run Destroy again to retry.",
           "warn",
         );
+        setPhase("ready");
       } else {
         addLog(
-          "\nError during teardown: " +
-            err.message +
-            "\nFix the issue and run Destroy again to retry.",
+          "\nError during teardown: " + err.message + "\nFix the issue and run Destroy again to retry.",
           "err",
         );
+        setPhase("ready");
       }
-      setPhase("ready");
     } finally {
       abortRef.current = null;
     }
-  }, [provState, hasCredentials, accessKeyId, secretKey, addLog, setActiveTab]);
+  }, [phase, pausedOp, provState, hasCredentials, accessKeyId, secretKey, addLog, setActiveTab]);
 
   const handleDownloadConfig = useCallback(() => {
     const cfg = {
@@ -1851,29 +1927,73 @@ function App() {
     </button>
   );
 
+  const _destroyBtnStyle = (disabled) => ({
+    padding: "8px 20px",
+    background: disabled
+      ? "rgba(255,80,60,0.04)"
+      : "linear-gradient(135deg, oklch(0.32 0.18 15) 0%, oklch(0.26 0.14 30) 100%)",
+    border: "1px solid " + (disabled ? "var(--border-danger)" : "oklch(0.48 0.18 15)"),
+    borderRadius: 4,
+    color: disabled ? "var(--text-danger)" : "oklch(0.88 0.1 30)",
+    fontFamily: "inherit",
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: disabled ? "default" : "pointer",
+    transition: "all 0.2s",
+    flexShrink: 0,
+  });
+
   let launchControl;
-  if (phase === "error" && provState) {
+  if (isPaused) {
+    launchControl = (
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div
+          style={{
+            padding: "6px 12px",
+            background: "rgba(255,160,60,0.06)",
+            border: "1px solid rgba(255,160,60,0.35)",
+            borderRadius: 4,
+            color: "var(--text-warning)",
+            fontSize: 11,
+          }}
+        >
+          {pausedOp === "teardown" ? "Teardown paused" : "Deploy paused"}
+        </div>
+        {pausedOp === "deploy" && (
+          <button
+            onClick={handleLaunch}
+            style={{
+              padding: "6px 14px",
+              background: "linear-gradient(135deg, oklch(0.38 0.16 155) 0%, oklch(0.32 0.14 200) 100%)",
+              border: "1px solid oklch(0.55 0.16 155)",
+              borderRadius: 4,
+              color: "oklch(0.92 0.1 155)",
+              fontFamily: "inherit",
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            Resume Deploy
+          </button>
+        )}
+        <button
+          onClick={handleDestroy}
+          disabled={!hasCredentials}
+          style={_destroyBtnStyle(!hasCredentials)}
+        >
+          {pausedOp === "teardown" ? "Resume Teardown" : "Switch to Teardown"}
+          {!hasCredentials ? " (missing credentials)" : ""}
+        </button>
+      </div>
+    );
+  } else if (phase === "error" && provState) {
     launchControl = (
       <button
         onClick={handleDestroy}
         disabled={!hasCredentials}
-        style={{
-          padding: "8px 20px",
-          background: !hasCredentials
-            ? "rgba(255,80,60,0.04)"
-            : "linear-gradient(135deg, oklch(0.32 0.18 15) 0%, oklch(0.26 0.14 30) 100%)",
-          border:
-            "1px solid " +
-            (!hasCredentials ? "var(--border-danger)" : "oklch(0.48 0.18 15)"),
-          borderRadius: 4,
-          color: !hasCredentials ? "var(--text-danger)" : "oklch(0.88 0.1 30)",
-          fontFamily: "inherit",
-          fontSize: 11,
-          fontWeight: 700,
-          cursor: !hasCredentials ? "default" : "pointer",
-          transition: "all 0.2s",
-          flexShrink: 0,
-        }}
+        style={_destroyBtnStyle(!hasCredentials)}
       >
         Destroy Cluster{!hasCredentials ? " (missing credentials)" : ""}
       </button>
@@ -1909,23 +2029,7 @@ function App() {
       <button
         onClick={handleDestroy}
         disabled={!hasCredentials}
-        style={{
-          padding: "8px 20px",
-          background: !hasCredentials
-            ? "rgba(255,80,60,0.04)"
-            : "linear-gradient(135deg, oklch(0.32 0.18 15) 0%, oklch(0.26 0.14 30) 100%)",
-          border:
-            "1px solid " +
-            (!hasCredentials ? "var(--border-danger)" : "oklch(0.48 0.18 15)"),
-          borderRadius: 4,
-          color: !hasCredentials ? "var(--text-danger)" : "oklch(0.88 0.1 30)",
-          fontFamily: "inherit",
-          fontSize: 11,
-          fontWeight: 700,
-          cursor: !hasCredentials ? "default" : "pointer",
-          transition: "all 0.2s",
-          flexShrink: 0,
-        }}
+        style={_destroyBtnStyle(!hasCredentials)}
       >
         Destroy Cluster{!hasCredentials ? " (missing credentials)" : ""}
       </button>
@@ -1997,7 +2101,8 @@ function App() {
         theme={theme}
         setTheme={setTheme}
         showPostLaunch={
-          phase !== "idle" || ["deployment", "logs", "worker-monitor"].includes(activeTab)
+          (phase !== "idle" && phase !== "error") ||
+          ["deployment", "logs", "worker-monitor"].includes(activeTab)
         }
         launchControl={launchControl}
         workerMonitorAddress={phase === "ready" ? provState?.worker_monitor_address : undefined}
