@@ -1274,7 +1274,7 @@ function DeployDetails({ visible, style }) {
 }
 
 /* ── HelpTip ── */
-function HelpTip({ text, children, width = 260 }) {
+function HelpTip({ text, children, width = 320 }) {
   const [btnRect, setBtnRect] = useState(null);
   const [placement, setPlacement] = useState(null);
   const btnRef = useRef(null);
