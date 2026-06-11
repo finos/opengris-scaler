@@ -6,7 +6,7 @@ Quickstart
 
 Interested? Try it out yourself, step by step.
 
-.. admonition:: Try it in your browser
+.. admonition:: Try the client in your browser
    :class: tip
 
    Prefer to skip the install for now? You can run a handful of small demo
