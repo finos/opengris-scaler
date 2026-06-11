@@ -1274,7 +1274,7 @@ function DeployDetails({ visible, style }) {
 }
 
 /* ── HelpTip ── */
-function HelpTip({ text, children, width = 320 }) {
+function HelpTip({ text, children, width = 400 }) {
   const [btnRect, setBtnRect] = useState(null);
   const [measured, setMeasured] = useState(null); // null while measuring, then { above, width }
   const btnRef = useRef(null);
