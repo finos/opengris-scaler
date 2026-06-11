@@ -1,8 +1,14 @@
+import sys
 import time
 from concurrent.futures import Future
 from typing import Optional
 
-import psutil
+try:
+    import psutil
+except ModuleNotFoundError:
+    if sys.platform != "emscripten":
+        raise
+    psutil = None  # type: ignore[assignment]
 
 from scaler.client.agent.mixins import HeartbeatManager, ObjectManager
 from scaler.config.types.address import AddressConfig, SocketType
@@ -16,7 +22,7 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         self._death_timeout_seconds = death_timeout_seconds
         self._object_storage_address = storage_address_future
 
-        self._process = psutil.Process()
+        self._process = psutil.Process() if psutil is not None else None
 
         self._last_scheduler_contact = time.time()
         self._start_timestamp_ns = 0
@@ -30,11 +36,14 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         self._connector_external = connector_external
 
     async def send_heartbeat(self):
+        if self._process is not None:
+            cpu = int(self._process.cpu_percent() * 10)
+            rss = self._process.memory_info().rss
+        else:
+            cpu = 0
+            rss = 0
         await self._connector_external.send(
-            ClientHeartbeat(
-                resource=Resource(cpu=int(self._process.cpu_percent() * 10), rss=self._process.memory_info().rss),
-                latencyUS=self._latency_us,
-            )
+            ClientHeartbeat(resource=Resource(cpu=cpu, rss=rss), latencyUS=self._latency_us)
         )
 
     async def on_heartbeat_echo(self, heartbeat: ClientHeartbeatEcho):
@@ -59,11 +68,21 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         )
 
     async def routine(self):
-        if time.time() - self._last_scheduler_contact > self._death_timeout_seconds:
-            raise TimeoutError(
-                f"Timeout when connecting to scheduler {self._connector_external.address} "
-                f"in {self._death_timeout_seconds} seconds"
-            )
+        # On Pyodide the agent shares the single asyncio event loop with the
+        # user's notebook code. Any long synchronous block in user code (large
+        # cloudpickle (de)serialization, pargraph graph walking, big numpy
+        # result hand-off) freezes the loop, so this routine cannot run. By
+        # the time the loop is unblocked, ``time.time() - last_scheduler_contact``
+        # already exceeds the death timeout and this self-check would falsely
+        # raise, killing the agent mid-computation. The scheduler still runs
+        # its own dead-client cleanup over the WebSocket, and the user can
+        # interrupt the kernel manually, so skip the local check in browser.
+        if sys.platform != "emscripten":
+            if time.time() - self._last_scheduler_contact > self._death_timeout_seconds:
+                raise TimeoutError(
+                    f"Timeout when connecting to scheduler {self._connector_external.address} "
+                    f"in {self._death_timeout_seconds} seconds"
+                )
 
         if self._start_timestamp_ns != 0:
             # already sent heartbeat, expecting heartbeat echo, so not sending

@@ -1,13 +1,13 @@
 import dataclasses
 import functools
 import logging
+import sys
 import threading
-import uuid
 from collections import Counter
 from inspect import signature
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
-from scaler.client.agent.client_agent import ClientAgent
+from scaler.client.agent.bridge import ClientAgentBridge, check_browser_runtime, create_default_bridge
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.future import ScalerFuture
 from scaler.client.object_buffer import ObjectBuffer
@@ -16,7 +16,7 @@ from scaler.client.serializer.default import DefaultSerializer
 from scaler.client.serializer.mixins import Serializer
 from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
 from scaler.config.types.address import AddressConfig
-from scaler.io.mixins import ConnectorRemoteType, NetworkBackend, SyncConnector, SyncObjectStorageConnector
+from scaler.io.mixins import NetworkBackend, SyncConnector, SyncObjectStorageConnector
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.ymq import YMQException
 from scaler.protocol.capnp import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
@@ -27,7 +27,11 @@ from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
-from scaler.worker.agent.processor.processor import Processor
+
+if sys.platform != "emscripten":
+    from scaler.worker.agent.processor.processor import Processor
+else:
+    Processor = None  # type: ignore[assignment]
 
 _T = TypeVar("_T")
 
@@ -98,8 +102,10 @@ class Client:
         stream_output: bool = False,
         object_storage_address: Optional[str] = None,
     ):
+        check_browser_runtime()
+
         self._future_manager: Optional[ClientFutureManager] = None
-        self._agent: Optional[ClientAgent] = None
+        self._bridge: Optional[ClientAgentBridge] = None
         self._connector_agent: Optional[SyncConnector] = None
         self._connector_storage: Optional[SyncObjectStorageConnector] = None
 
@@ -111,10 +117,6 @@ class Client:
 
         self._backend: NetworkBackend = get_network_backend_from_env()
 
-        self._client_agent_address = self._backend.create_internal_address(
-            f"scaler_client_{uuid.uuid4().hex}", same_process=True
-        )
-
         self._scheduler_address = self.__resolve_scheduler_address(address)
         self._timeout_seconds = timeout_seconds
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
@@ -122,9 +124,8 @@ class Client:
         self._stop_event = threading.Event()
 
         self._future_manager = ClientFutureManager(self._serializer)
-        self._agent = ClientAgent(
+        self._bridge = create_default_bridge(
             identity=self._identity,
-            client_agent_address=self._client_agent_address,
             scheduler_address=self._scheduler_address,
             network_backend=self._backend,
             future_manager=self._future_manager,
@@ -134,18 +135,14 @@ class Client:
             serializer=self._serializer,
             object_storage_address=object_storage_address,
         )
-        self._agent.start()
+        self._bridge.start()
 
         logging.info(f"ScalerClient: connect to scheduler at {self._scheduler_address}")
 
         # Blocks until the agent receives the object storage address
-        self._object_storage_address = self._agent.get_object_storage_address()
+        self._object_storage_address = self._bridge.get_object_storage_address()
 
-        self._connector_agent = self._backend.create_sync_connector(
-            identity=self._identity,
-            connector_remote_type=ConnectorRemoteType.Connector,
-            address=self._client_agent_address,
-        )
+        self._connector_agent = self._bridge.connector
 
         logging.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
         self._connector_storage = self._backend.create_sync_object_storage_connector(
@@ -555,7 +552,7 @@ class Client:
         then it cannot shut down scheduler and the workers
         """
 
-        if not self._agent.is_alive():
+        if not self._bridge.is_alive():
             self.__destroy()
             return
 
@@ -784,8 +781,8 @@ class Client:
             raise ClientQuitException("client is already stopped.")
 
     def __destroy(self):
-        if self._agent is not None:
-            self._agent.join()
+        if self._bridge is not None:
+            self._bridge.join()
 
         if self._connector_agent is not None:
             self._connector_agent.destroy()
@@ -796,6 +793,8 @@ class Client:
     @staticmethod
     def __get_parent_task_priority() -> Optional[int]:
         """If the client is running inside a Scaler processor, returns the priority of the associated task."""
+        if Processor is None:
+            return None
 
         current_processor = Processor.get_current_processor()
 
@@ -814,7 +813,7 @@ class Client:
             return AddressConfig.from_string(address)
 
         # No address provided, check if we're running inside a worker context
-        current_processor = Processor.get_current_processor()
+        current_processor = Processor.get_current_processor() if Processor is not None else None
         if current_processor is None:
             raise ValueError(
                 "No scheduler address provided and not running inside a worker context. "

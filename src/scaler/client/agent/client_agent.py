@@ -3,7 +3,7 @@ import logging
 import sys
 import threading
 from concurrent.futures import Future
-from typing import Optional
+from typing import Callable, Optional
 
 from scaler.client.agent.disconnect_manager import ClientDisconnectManager
 from scaler.client.agent.future_manager import ClientFutureManager
@@ -45,6 +45,7 @@ class ClientAgent(threading.Thread):
         heartbeat_interval_seconds: int,
         serializer: Serializer,
         object_storage_address: Optional[str] = None,
+        internal_connector_factory: Optional["Callable[..., AsyncConnector]"] = None,
     ):
         threading.Thread.__init__(self, daemon=True)
 
@@ -65,7 +66,15 @@ class ClientAgent(threading.Thread):
 
         self._future_manager = future_manager
 
-        self._connector_internal: AsyncConnector = self._network_backend.create_async_connector(
+        # In the native path both connectors go through the network backend.
+        # The in-process bridge for browser clients supplies a factory for the
+        # *internal* connector so it can wire client<->agent message flow
+        # through an in-memory queue instead of a real IPC socket; the factory
+        # has the same signature as ``network_backend.create_async_connector``.
+        self._internal_connector_is_in_process = internal_connector_factory is not None
+        create_internal = internal_connector_factory or self._network_backend.create_async_connector
+
+        self._connector_internal: AsyncConnector = create_internal(
             identity=self._identity, callback=self.__on_receive_from_client
         )
 

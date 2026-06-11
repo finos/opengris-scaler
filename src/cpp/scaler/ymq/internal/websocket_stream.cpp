@@ -598,10 +598,23 @@ std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::readStart(
     state->_readCallback = std::move(callback);
     state->_readActive   = true;
 
-    return state->_socket.readStart(
+    auto startResult = state->_socket.readStart(
         [state](std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) mutable {
             onRead(state, std::move(result));
         });
+
+    if (!startResult.has_value()) {
+        return startResult;
+    }
+
+    // Drain any bytes already buffered from the WebSocket upgrade leftover.
+    // Without this, if the peer sent WebSocket frames coalesced into the same TCP segment as the
+    // HTTP upgrade response, those frames would sit in `_recvBuffer` until new data arrives.
+    if (!state->_recvBuffer.empty()) {
+        onRead(state, std::span<const uint8_t> {});
+    }
+
+    return startResult;
 }
 
 void WebSocketStream::readStop() noexcept

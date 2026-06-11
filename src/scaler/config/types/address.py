@@ -7,6 +7,7 @@ if sys.version_info >= (3, 11):
     from typing import Self
 else:
     from typing_extensions import Self
+
 from scaler.config.mixins import ConfigType
 
 
@@ -80,7 +81,7 @@ class AddressConfig(ConfigType):
 
     def __repr__(self) -> str:
         if self.type == SocketType.tcp:
-            return f"tcp://{self.host}:{self.port}"
+            return f"{self.type.value}://{self.host}:{self.port}"
 
         if self.type in _TYPES_WITHOUT_PORT:
             return f"{self.type.value}://{self.host}"

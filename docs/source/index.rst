@@ -42,4 +42,5 @@ Content
    tutorials/worker_managers/index
    tutorials/additional_features
    tutorials/examples
+   tutorials/try_in_browser
    tutorials/development

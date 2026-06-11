@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# This is a stub package only used inside the JupyterLite/Pyodide site.
+# It deliberately advertises the latest upstream psutil version so the
+# version pin parfun puts on its psutil dep (psutil>=7.0.0) is satisfied
+# without installing the real psutil C-extension (which has no wasm32 build).
+name = "psutil"
+version = "7.0.0"
+description = "JupyterLite/Pyodide stub for psutil"
+requires-python = ">=3.8"
+
+[tool.setuptools]
+py-modules = ["psutil"]
