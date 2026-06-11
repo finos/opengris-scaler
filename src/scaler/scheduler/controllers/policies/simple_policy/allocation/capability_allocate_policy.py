@@ -11,6 +11,8 @@ from scaler.protocol.capnp import Task
 from scaler.scheduler.controllers.policies.simple_policy.allocation.mixins import TaskAllocatePolicy
 from scaler.utility.identifiers import TaskID, WorkerID
 
+logger = logging.getLogger(__name__)
+
 
 @dataclasses.dataclass(frozen=True)
 class _TaskHolder:
@@ -52,7 +54,7 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
 
     def add_worker(self, worker: WorkerID, capabilities: Dict[str, int], queue_size: int) -> bool:
         if any(capability_value != -1 for capability_value in capabilities.values()):
-            logging.warning(f"allocate policy ignores non-infinite worker capabilities: {capabilities!r}.")
+            logger.warning(f"allocate policy ignores non-infinite worker capabilities: {capabilities!r}.")
 
         if worker in self._worker_id_to_worker:
             return False

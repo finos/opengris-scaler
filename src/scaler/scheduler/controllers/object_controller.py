@@ -11,6 +11,8 @@ from scaler.scheduler.object_usage.object_tracker import ObjectTracker, ObjectUs
 from scaler.utility.identifiers import ClientID, ObjectID
 from scaler.utility.mixins import Looper, Reporter
 
+logger = logging.getLogger(__name__)
+
 
 @dataclasses.dataclass
 class _ObjectCreation(ObjectUsage):
@@ -63,7 +65,7 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
             self.on_del_objects(instruction.objectUser, set(instruction.objectMetadata.objectIds))
             return
 
-        logging.error(f"received unknown object instruction_type={instruction.instructionType} from {source=}")
+        logger.error(f"received unknown object instruction_type={instruction.instructionType} from {source=}")
 
     def on_add_object(
         self,
@@ -73,7 +75,7 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
         object_name: bytes,
     ):
         creation = _ObjectCreation(object_id, client_id, object_type, object_name)
-        logging.debug(
+        logger.debug(
             f"add object cache "
             f"object_name={creation.object_name!r}, "
             f"object_type={creation.object_type}, "
@@ -130,7 +132,7 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
 
     def __on_object_create(self, source: bytes, instruction: ObjectInstruction):
         if not self._client_manager.has_client_id(instruction.objectUser):
-            logging.error(f"received object creation from {source!r} for unknown client {instruction.objectUser!r}")
+            logger.error(f"received object creation from {source!r} for unknown client {instruction.objectUser!r}")
             return
 
         for object_id, object_type, object_name in zip(
@@ -141,5 +143,5 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
             self.on_add_object(instruction.objectUser, object_id, object_type, object_name)
 
     def __finished_object_storage(self, creation: _ObjectCreation):
-        logging.debug(f"del object cache object_name={creation.object_name!r}, object_id={creation.object_id!r}")
+        logger.debug(f"del object cache object_name={creation.object_name!r}, object_id={creation.object_id!r}")
         self._queue_deleted_object_ids.put_nowait(creation.object_id)
