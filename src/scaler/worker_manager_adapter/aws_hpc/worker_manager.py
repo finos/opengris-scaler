@@ -84,13 +84,16 @@ class BatchWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._units.clear()
 
 
+logger = logging.getLogger(__name__)
+
+
 class AWSHPCWorkerManager:
     def __init__(self, config: AWSBatchWorkerManagerConfig) -> None:
         self._config = config
 
     def run(self) -> None:
         config = self._config
-        logging.info(f"Starting AWS HPC Worker Manager (backend: {config.backend.name})")
+        logger.info(f"Starting AWS HPC Worker Manager (backend: {config.backend.name})")
         if config.backend != AWSHPCBackend.batch:
             raise NotImplementedError(f"backend {config.backend.name!r} is not yet implemented")
 

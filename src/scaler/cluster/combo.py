@@ -35,6 +35,8 @@ from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 
+logger = logging.getLogger(__name__)
+
 SCHEDULER_GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS = 10
 
 
@@ -155,7 +157,7 @@ class SchedulerClusterCombo:
 
         self._scheduler.start()
         self._worker_manager_process.start()
-        logging.info(f"{self.__get_prefix()} started")
+        logger.info(f"{self.__get_prefix()} started")
 
     def __del__(self):
         if not self._shutdown_called:
@@ -164,7 +166,7 @@ class SchedulerClusterCombo:
     def shutdown(self):
         self._shutdown_called = True
 
-        logging.info(f"{self.__get_prefix()} shutdown")
+        logger.info(f"{self.__get_prefix()} shutdown")
         if self._worker_manager_process.is_alive():
             # On POSIX, multiprocessing.Process.terminate() sends SIGTERM and the worker manager's
             # signal handler iterates self._workers and terminates each child worker, which in turn

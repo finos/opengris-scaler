@@ -20,6 +20,8 @@ from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRun
 if TYPE_CHECKING:
     from scaler.protocol.capnp import WorkerManagerCommand
 
+logger = logging.getLogger(__name__)
+
 
 class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
     def __init__(self, config: NativeWorkerManagerConfig) -> None:
@@ -88,7 +90,7 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
             fixed_workers[worker.identity] = worker
 
         def _on_signal(sig: int, frame: object) -> None:
-            logging.info("NativeWorkerProvisioner (FIXED): received signal %d, terminating workers", sig)
+            logger.info("NativeWorkerProvisioner (FIXED): received signal %d, terminating workers", sig)
             for worker in fixed_workers.values():
                 if worker.is_alive():
                     worker.terminate()
@@ -113,12 +115,12 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
             worker = self._create_worker()
             worker.start()
             self._workers.append(worker)
-            logging.info(f"Started native worker {worker.identity!r}")
+            logger.info(f"Started native worker {worker.identity!r}")
 
     async def stop_units(self, count: int) -> None:
         to_stop = self._workers[:count]
         if len(to_stop) < count:
-            logging.warning(f"Requested to stop {count} worker(s) but only {len(to_stop)} available.")
+            logger.warning(f"Requested to stop {count} worker(s) but only {len(to_stop)} available.")
         for worker in to_stop:
             if sys.platform == "win32":
                 # Windows os.kill with SIGINT only works for processes attached to the same console.
@@ -128,7 +130,7 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
             else:
                 os.kill(worker.pid, signal.SIGINT)
             self._workers.pop(0)
-            logging.info(f"Stopped native worker {worker.identity!r}")
+            logger.info(f"Stopped native worker {worker.identity!r}")
 
     async def terminate(self) -> None:
         self._capacity_coordinator.cancel()

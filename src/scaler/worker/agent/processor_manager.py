@@ -22,6 +22,8 @@ from scaler.utility.serialization import serialize_failure
 from scaler.worker.agent.mixins import HeartbeatManager, ProcessorManager, ProfilingManager, TaskManager
 from scaler.worker.agent.processor_holder import ProcessorHolder
 
+logger = logging.getLogger(__name__)
+
 
 class VanillaProcessorManager(ProcessorManager):
     def __init__(
@@ -204,7 +206,7 @@ class VanillaProcessorManager(ProcessorManager):
         holder.suspend()
         self._suspended_holders_by_task_id[task_id] = holder
 
-        logging.info(f"{self._identity!r}: suspend Processor[{holder.pid()}]")
+        logger.info(f"{self._identity!r}: suspend Processor[{holder.pid()}]")
 
         self.__start_new_processor()
 
@@ -227,7 +229,7 @@ class VanillaProcessorManager(ProcessorManager):
         self._current_holder = suspended_holder
         suspended_holder.resume()
 
-        logging.info(f"{self._identity!r}: resume Processor[{self._current_holder.pid()}]")
+        logger.info(f"{self._identity!r}: resume Processor[{self._current_holder.pid()}]")
 
         return True
 
@@ -333,7 +335,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         self._profiling_manager.on_process_start(processor_pid)
 
-        logging.info(f"{self._identity!r}: start Processor[{processor_pid}]")
+        logger.info(f"{self._identity!r}: start Processor[{processor_pid}]")
 
     def __kill_processor(self, reason: str, holder: ProcessorHolder):
         processor_pid = holder.pid()
@@ -345,7 +347,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         holder.kill()
 
-        logging.info(f"{self._identity!r}: stop Processor[{processor_pid}], reason: {reason}")
+        logger.info(f"{self._identity!r}: stop Processor[{processor_pid}], reason: {reason}")
 
     def __restart_current_processor(self, reason: str):
         assert self._current_holder is not None
