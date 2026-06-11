@@ -53,8 +53,8 @@ OwnedPyObject<> build_schema_descriptor(capnp::Schema schema)
         return nullptr;
     }
 
-    static const char KIND_ENUM[]   = {'e', 'n', 'u', 'm', '\0'};
-    static const char KIND_STRUCT[] = {'s', 't', 'r', 'u', 'c', 't', '\0'};
+    static const char KIND_ENUM[]   = "enum";
+    static const char KIND_STRUCT[] = "struct";
     const char* kind                = proto.isEnum() ? KIND_ENUM : KIND_STRUCT;
     PyDict_SetItemString(descriptor.get(), DESC_KIND, OwnedPyObject<>(PyUnicode_FromString(kind)).get());
     auto unqualified = schema.getUnqualifiedName();
@@ -237,18 +237,22 @@ int capnp_union_init_slot(PyObject* self, PyObject* args, PyObject* kwargs)
 }
 
 // PyMethodDef::ml_name and the keys passed to PyObject_SetAttrString below are
-// stored as ``static const char[]`` arrays rather than inline string literals.
-// Pyodide's SIDE_MODULE wasm relocator can mis-resolve offsets within mergeable
-// .rodata.str sections, corrupting short literals like "__init__" so that the
-// resulting descriptor is registered under the wrong attribute name and
-// ``Resource(cpu=1, rss=2)`` falls through to ``object.__init__`` (which raises
-// ``TypeError: Resource() takes no arguments``). Named char arrays survive the
-// relocator. Keep them in lockstep with the keys used in setattr below.
-static const char NAME_INIT[]       = {'_', '_', 'i', 'n', 'i', 't', '_', '_', '\0'};
-static const char NAME_TO_BYTES[]   = {'t', 'o', '_', 'b', 'y', 't', 'e', 's', '\0'};
-static const char NAME_FROM_BYTES[] = {'f', 'r', 'o', 'm', '_', 'b', 'y', 't', 'e', 's', '\0'};
-static const char NAME_WHICH[]      = {'w', 'h', 'i', 'c', 'h', '\0'};
-static const char NAME_GETATTR[]    = {'_', '_', 'g', 'e', 't', 'a', 't', 't', 'r', '_', '_', '\0'};
+// bound to named ``static const char[]`` symbols rather than passed as inline
+// string literals. Pyodide's SIDE_MODULE wasm relocator can mis-resolve offsets
+// within mergeable .rodata.str sections, corrupting short literals like
+// "__init__" so that the resulting descriptor is registered under the wrong
+// attribute name and ``Resource(cpu=1, rss=2)`` falls through to
+// ``object.__init__`` (which raises ``TypeError: Resource() takes no
+// arguments``). A named static array gets its own non-mergeable symbol that
+// survives relocation; the initializer spelling (``= "..."`` vs a brace list of
+// chars) is irrelevant -- the two are equivalent and store the bytes in the
+// array. Keep these names in lockstep with the keys used in setattr below, and
+// do not inline them as bare literals at the call sites.
+static const char NAME_INIT[]       = "__init__";
+static const char NAME_TO_BYTES[]   = "to_bytes";
+static const char NAME_FROM_BYTES[] = "from_bytes";
+static const char NAME_WHICH[]      = "which";
+static const char NAME_GETATTR[]    = "__getattr__";
 
 static PyMethodDef CAPNP_STRUCT_INIT_DEF = {
     NAME_INIT, (PyCFunction)(void (*)(void))py_capnp_struct_init_method, METH_VARARGS | METH_KEYWORDS, nullptr};
@@ -301,7 +305,7 @@ OwnedPyObject<> create_enum_type(PyObject* descriptor, const char* module_name)
     // caller is a C extension and, on Python 3.13+, ends up triggering an
     // empty-name __import__("") that raises ValueError("Empty module name")).
     OwnedPyObject<> kwargs {PyDict_New()};
-    static const char MODULE_KW[] = {'m', 'o', 'd', 'u', 'l', 'e', '\0'};
+    static const char MODULE_KW[] = "module";
     if (!kwargs || PyDict_SetItemString(kwargs.get(), MODULE_KW, module_name_obj.get()) < 0) {
         return nullptr;
     }
@@ -382,7 +386,7 @@ OwnedPyObject<> build_node_from_descriptor(
     if (!kind) {
         return nullptr;
     }
-    static const char ENUM_KIND[] = {'e', 'n', 'u', 'm', '\0'};
+    static const char ENUM_KIND[] = "enum";
     int is_enum                   = PyUnicode_CompareWithASCIIString(kind, ENUM_KIND);
     if (is_enum == 0) {
         return create_enum_type(descriptor, module_name);
@@ -489,14 +493,16 @@ OwnedPyObject<> get_module_descriptor(const char* module_name)
 
 bool initialize_runtime_modules(PyObject* module)
 {
-    // NOTE: Many strings used as module names, attribute keys, etc. below are declared as
-    // `static const char NAME[]` arrays rather than inline string literals. This is required
-    // for Pyodide/Emscripten SIDE_MODULE builds: the wasm relocator can mis-resolve offsets
-    // within mergeable .rodata.str sections, which corrupts (truncates / misaligns) raw string
-    // literals passed to the CPython C API. Using named static char arrays forces the compiler
-    // to emit them as ordinary symbols that survive relocation. Build flags additionally pass
-    // -fno-merge-all-constants to discourage merging. Do not convert these back to bare string
-    // literals without testing the wasm wheel.
+    // NOTE: Many strings used as module names, attribute keys, etc. below are bound to named
+    // `static const char NAME[]` symbols rather than passed as inline string literals. This is
+    // required for Pyodide/Emscripten SIDE_MODULE builds: the wasm relocator can mis-resolve
+    // offsets within mergeable .rodata.str sections, which corrupts (truncates / misaligns) raw
+    // string literals passed to the CPython C API. Binding each string to its own named static
+    // array forces the compiler to emit it as an ordinary symbol that survives relocation; build
+    // flags additionally pass -fno-merge-all-constants to discourage merging. The load-bearing
+    // part is the named array, NOT the initializer spelling -- `= "enum"` and a brace list of
+    // chars are equivalent. Do not pass these as bare inline literals at the call sites without
+    // testing the wasm wheel.
 
     auto* state = get_module_state(module);
     if (!state) {
@@ -510,12 +516,12 @@ bool initialize_runtime_modules(PyObject* module)
     }
     PyErr_Clear();
 
-    static const char enum_name[] = {'e', 'n', 'u', 'm', '\0'};
+    static const char enum_name[] = "enum";
     OwnedPyObject<> enum_module {PyImport_ImportModule(enum_name)};
     if (!enum_module) {
         return false;
     }
-    static const char enum_attr_name[] = {'I', 'n', 't', 'E', 'n', 'u', 'm', '\0'};
+    static const char enum_attr_name[] = "IntEnum";
     state->enum_class                  = PyObject_GetAttrString(enum_module.get(), enum_attr_name);
     if (!state->enum_class) {
         return false;
