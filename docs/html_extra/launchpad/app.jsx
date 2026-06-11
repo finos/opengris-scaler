@@ -525,7 +525,7 @@ function WorkerManagerCard({
         return (
           <>
             <div>
-              <Label help="OCI Compartment OCID where container instances are launched.">Compartment ID</Label>
+              <Label help={"The OCID of the compartment where container instances will be launched. In the OCI Console, go to Identity & Security > Compartments, click your compartment, and copy the OCID."}>Compartment ID</Label>
               <input
                 value={wm.ociCompartmentId || ""}
                 onChange={(e) => set("ociCompartmentId", e.target.value)}
@@ -534,7 +534,7 @@ function WorkerManagerCard({
               />
             </div>
             <div>
-              <Label help="OCI Availability Domain (e.g. AD-1 or Uocm:PHX-AD-1).">Availability Domain</Label>
+              <Label help={"The availability domain where instances will run. In the OCI Console, navigate to Compute > Instances and check the AD column for the full name (e.g. Uocm:PHX-AD-1). Shortened forms like AD-1 also work in most regions."}>Availability Domain</Label>
               <input
                 value={wm.ociAvailabilityDomain || ""}
                 onChange={(e) => set("ociAvailabilityDomain", e.target.value)}
@@ -543,7 +543,7 @@ function WorkerManagerCard({
               />
             </div>
             <div>
-              <Label help="OCI Subnet OCID for container instance network interfaces.">Subnet ID</Label>
+              <Label help={"The OCID of the subnet for container network interfaces. In the OCI Console, go to Networking > Virtual Cloud Networks > [your VCN] > Subnets, then click a subnet and copy its OCID."}>Subnet ID</Label>
               <input
                 value={wm.ociSubnetId || ""}
                 onChange={(e) => set("ociSubnetId", e.target.value)}
@@ -552,7 +552,7 @@ function WorkerManagerCard({
               />
             </div>
             <div>
-              <Label help="OCI region identifier.">Region</Label>
+              <Label help={"The OCI region identifier where your resources are located (e.g. us-ashburn-1, eu-frankfurt-1, ap-sydney-1). The region is shown in the OCI Console URL and in the region selector at the top of the page."}>Region</Label>
               <input
                 value={wm.ociRegion || ""}
                 onChange={(e) => set("ociRegion", e.target.value)}
@@ -583,7 +583,7 @@ function WorkerManagerCard({
                 />
               </div>
               <div style={{ flex: 1 }}>
-                <Label>Memory (GB)</Label>
+                <Label help="Memory in GB for the container instance. Must satisfy OCI's minimum memory-per-OCPU ratio for your chosen shape.">Memory (GB)</Label>
                 <NumericStepper
                   value={wm.ociMemoryGb || 30}
                   onChange={(v) => set("ociMemoryGb", v)}
@@ -683,7 +683,7 @@ function WorkerManagerCard({
             />
           </div>
           <div>
-            <Label help="OCIR image URI (e.g. &lt;region&gt;.ocir.io/&lt;ns&gt;/&lt;repo&gt;:latest).">Container Image</Label>
+            <Label help={"The OCI Container Registry (OCIR) image URI for worker containers. In the OCI Console, go to Developer Services > Container Registry, select your repository, and copy the full path shown (format: <region>.ocir.io/<namespace>/<repo>:<tag>)."}>Container Image</Label>
             <input
               value={wm.ociContainerImage || ""}
               onChange={(e) => set("ociContainerImage", e.target.value)}
@@ -692,7 +692,7 @@ function WorkerManagerCard({
             />
           </div>
           <div>
-            <Label help="OCI region identifier.">Region</Label>
+            <Label help={"The OCI region identifier where your resources are located (e.g. us-ashburn-1, eu-frankfurt-1, ap-sydney-1). The region is shown in the OCI Console URL and in the region selector at the top of the page."}>Region</Label>
             <input
               value={wm.ociRegion || "us-ashburn-1"}
               onChange={(e) => set("ociRegion", e.target.value)}
@@ -701,7 +701,7 @@ function WorkerManagerCard({
             />
           </div>
           <div>
-            <Label help="OCI Object Storage tenancy namespace.">Object Storage Namespace</Label>
+            <Label help={"Your tenancy's Object Storage namespace (a short unique string). In the OCI Console, go to Storage > Object Storage & Archive Storage > Buckets — the namespace is shown at the top of the page, or under Governance & Administration > Tenancy Details."}>Object Storage Namespace</Label>
             <input
               value={wm.ociObjectStorageNamespace || ""}
               onChange={(e) => set("ociObjectStorageNamespace", e.target.value)}
@@ -710,7 +710,7 @@ function WorkerManagerCard({
             />
           </div>
           <div>
-            <Label>Object Storage Bucket</Label>
+            <Label help={"The OCI Object Storage bucket used to pass task inputs and results between the scheduler and workers. Create one in the OCI Console under Storage > Object Storage & Archive Storage > Buckets > Create Bucket."}>Object Storage Bucket</Label>
             <input
               value={wm.ociObjectStorageBucket || ""}
               onChange={(e) => set("ociObjectStorageBucket", e.target.value)}
@@ -729,7 +729,7 @@ function WorkerManagerCard({
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 1 }}>
-              <Label>OCPUs per Job</Label>
+              <Label help="Number of OCPUs allocated to each job container instance. Check OCI Container Instances documentation for the valid OCPU/memory combinations for your chosen shape.">OCPUs per Job</Label>
               <NumericStepper
                 value={wm.ociOcpus || 1}
                 onChange={(v) => set("ociOcpus", v)}
@@ -738,7 +738,7 @@ function WorkerManagerCard({
               />
             </div>
             <div style={{ flex: 1 }}>
-              <Label>Memory (GB)</Label>
+              <Label help="Memory in GB allocated to each job container instance. Must satisfy OCI's minimum memory-per-OCPU ratio for your shape.">Memory (GB)</Label>
               <NumericStepper
                 value={wm.ociMemoryGb || 6}
                 onChange={(v) => set("ociMemoryGb", v)}
@@ -758,7 +758,7 @@ function WorkerManagerCard({
               />
             </div>
             <div style={{ flex: 1 }}>
-              <Label>Timeout (min)</Label>
+              <Label help="Maximum time in minutes a job container instance may run before being forcibly terminated by OCI.">Timeout (min)</Label>
               <NumericStepper
                 value={wm.ociJobTimeoutMinutes || 60}
                 onChange={(v) => set("ociJobTimeoutMinutes", v)}
@@ -2273,7 +2273,7 @@ function App() {
                 {credTab === "oci" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     <div>
-                      <Label help="OCI user OCID - found in OCI Console under Profile.">User OCID</Label>
+                      <Label help={"Your OCI user OCID. In the OCI Console, click your profile avatar (top-right) > My Profile. The OCID is listed under User Information."}>User OCID</Label>
                       <div style={{ ...inp, display: "flex", alignItems: "center" }}>
                         <SecretInput
                           value={ociUserId}
@@ -2284,7 +2284,7 @@ function App() {
                       </div>
                     </div>
                     <div>
-                      <Label help="OCI tenancy OCID - found in Administration > Tenancy Details.">Tenancy OCID</Label>
+                      <Label help={"Your tenancy OCID. In the OCI Console, open the navigation menu > Governance & Administration > Tenancy Details. The OCID is listed at the top."}>Tenancy OCID</Label>
                       <div style={{ ...inp, display: "flex", alignItems: "center" }}>
                         <SecretInput
                           value={ociTenancyId}
@@ -2295,7 +2295,7 @@ function App() {
                       </div>
                     </div>
                     <div>
-                      <Label help="Fingerprint of the API key pair registered in OCI Console.">Fingerprint</Label>
+                      <Label help={"The fingerprint of your API signing key. In the OCI Console, go to My Profile > API Keys. The fingerprint (format: aa:bb:cc:...) is shown next to your key. If you don't have one, click Add API Key to generate a key pair."}>Fingerprint</Label>
                       <div style={{ ...inp, display: "flex", alignItems: "center" }}>
                         <SecretInput
                           value={ociFingerprint}
@@ -2306,7 +2306,7 @@ function App() {
                       </div>
                     </div>
                     <div>
-                      <Label help="Paste the contents of your OCI API private key PEM file.">Private Key (PEM)</Label>
+                      <Label help={"The private key that pairs with your API key fingerprint. In the OCI Console, go to My Profile > API Keys > Add API Key, then download the private key file. Paste the full contents of the .pem file here, including the BEGIN/END lines."}>Private Key (PEM)</Label>
                       <textarea
                         value={ociPrivateKey}
                         onChange={(e) => setOciPrivateKey(e.target.value)}
