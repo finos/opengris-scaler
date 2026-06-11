@@ -1,5 +1,6 @@
 import os
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -32,10 +33,18 @@ def _pick_cluster_ports() -> Tuple[int, int, int]:
 
 
 def _ports_listening(ports: Set[int]) -> Set[int]:
+    """Return the subset of loopback ports currently accepting TCP connections.
+
+    Probes with an actual connection (as ObjectStorageServerProcess.wait_until_ready does)
+    rather than psutil.net_connections(), which requires root privileges on macOS while the
+    Python test suite does not run as root."""
     listening = set()
-    for connection in psutil.net_connections(kind="tcp"):
-        if connection.status == psutil.CONN_LISTEN and connection.laddr.port in ports:
-            listening.add(connection.laddr.port)
+    for port in ports:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=2):
+                listening.add(port)
+        except OSError:
+            pass
     return listening
 
 
@@ -96,7 +105,7 @@ max_task_concurrency = 1
     def _kill_process_tree(self, process: subprocess.Popen) -> None:
         try:
             descendants = psutil.Process(process.pid).children(recursive=True)
-        except psutil.NoSuchProcess:
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
             descendants = []
         # The platform check is for mypy on Windows; the whole test class is POSIX-only.
         if sys.platform != "win32":
@@ -126,7 +135,7 @@ max_task_concurrency = 1
     def _descendants(self, process: subprocess.Popen) -> List[psutil.Process]:
         try:
             return psutil.Process(process.pid).children(recursive=True)
-        except psutil.NoSuchProcess:
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
             return []
 
     def _assert_clean_exit(self, process: subprocess.Popen, descendants: List[psutil.Process]) -> None:
@@ -138,9 +147,13 @@ max_task_concurrency = 1
             self.fail(f"scaler main process did not exit within {SHUTDOWN_TIMEOUT_SECONDS}s:\n{log_content}")
 
         _, alive = psutil.wait_procs(descendants, timeout=DESCENDANT_EXIT_TIMEOUT_SECONDS)
-        self.assertEqual(
-            [], [" ".join(process.cmdline()) for process in alive], "descendant processes survived shutdown"
-        )
+        survivors = []
+        for survivor in alive:
+            try:
+                survivors.append(" ".join(survivor.cmdline()))
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                survivors.append(f"pid={survivor.pid}")
+        self.assertEqual([], survivors, "descendant processes survived shutdown")
 
         deadline = time.monotonic() + DESCENDANT_EXIT_TIMEOUT_SECONDS
         while time.monotonic() < deadline and _ports_listening(self._ports):
