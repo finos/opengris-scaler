@@ -977,10 +977,23 @@ function TerminalWindow({ lines, config, style }) {
 function CopyButton({ value }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
-    navigator.clipboard.writeText(value).then(() => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(value).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      });
+    } else {
+      const el = document.createElement("textarea");
+      el.value = value;
+      el.style.position = "fixed";
+      el.style.opacity = "0";
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    });
+    }
   };
   return (
     <button

@@ -774,13 +774,29 @@ function WorkerManagerCard({
 }
 
 /* ── CopyBtn ── */
+function copyText(text, onSuccess) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(onSuccess);
+  } else {
+    const el = document.createElement("textarea");
+    el.value = text;
+    el.style.position = "fixed";
+    el.style.opacity = "0";
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand("copy");
+    document.body.removeChild(el);
+    onSuccess();
+  }
+}
+
 function CopyBtn({ value }) {
   const [copied, setCopied] = useState(false);
   const [hov, setHov] = useState(false);
   return (
     <button
       onClick={() =>
-        navigator.clipboard.writeText(value).then(() => {
+        copyText(value, () => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         })
