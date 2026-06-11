@@ -264,6 +264,173 @@ function RegionSelect({ value, onChange }) {
   );
 }
 
+/* ── OciRegionSelect ── */
+function OciRegionSelect({ value, onChange }) {
+  const regions = window.SCALER_OCI_REGIONS || [];
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const triggerRef = useRef(null);
+  const dropdownRef = useRef(null);
+  const [dropdownStyle, setDropdownStyle] = useState({});
+
+  const filtered = regions.filter(
+    (r) =>
+      r.value.toLowerCase().includes(search.toLowerCase()) ||
+      r.label.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (
+        triggerRef.current &&
+        !triggerRef.current.contains(e.target) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target)
+      ) {
+        setOpen(false);
+        setSearch("");
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const openDropdown = () => {
+    if (!triggerRef.current) return;
+    const r = triggerRef.current.getBoundingClientRect();
+    setDropdownStyle({
+      position: "fixed",
+      top: r.bottom + 4,
+      left: r.left,
+      width: r.width,
+    });
+    setSearch("");
+    setOpen(true);
+  };
+
+  const selected = regions.find((r) => r.value === value);
+
+  return (
+    <div ref={triggerRef} style={{ position: "relative" }}>
+      <button
+        onClick={() => (open ? setOpen(false) : openDropdown())}
+        style={{
+          width: "100%",
+          background: "var(--bg-surface)",
+          border: "1px solid var(--border-accent)",
+          borderRadius: 3,
+          padding: "8px 10px",
+          color: "var(--text-primary)",
+          fontFamily: "inherit",
+          fontSize: 12,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          textAlign: "left",
+          outline: "none",
+        }}
+      >
+        <span style={{ flex: 1 }}>
+          {value ? (
+            <>
+              <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>
+                {value}
+              </span>
+              {selected && (
+                <span style={{ color: "var(--text-muted)", marginLeft: 10, fontSize: 11 }}>
+                  {selected.label}
+                </span>
+              )}
+            </>
+          ) : (
+            <span style={{ color: "var(--text-dim)" }}>Select region…</span>
+          )}
+        </span>
+        <span
+          style={{
+            display: "inline-block",
+            width: 7,
+            height: 7,
+            borderRight: "1.5px solid var(--text-muted)",
+            borderBottom: "1.5px solid var(--text-muted)",
+            transform: open ? "rotate(225deg)" : "rotate(45deg)",
+            position: "relative",
+            top: open ? "2px" : "-2px",
+            flexShrink: 0,
+          }}
+        />
+      </button>
+      {open &&
+        ReactDOM.createPortal(
+          <div
+            ref={dropdownRef}
+            style={{
+              ...dropdownStyle,
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: 4,
+              zIndex: 9999,
+              boxShadow: "0 16px 48px rgba(0,0,0,0.7)",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ padding: "8px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <input
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search regions…"
+                style={{
+                  width: "100%",
+                  background: "var(--bg-surface)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: 3,
+                  padding: "6px 9px",
+                  color: "var(--text-primary)",
+                  fontFamily: "inherit",
+                  fontSize: 12,
+                  outline: "none",
+                }}
+              />
+            </div>
+            <div style={{ maxHeight: 260, overflowY: "auto" }}>
+              {filtered.map((r) => (
+                <div
+                  key={r.value}
+                  onClick={() => { onChange(r.value); setOpen(false); setSearch(""); }}
+                  style={{
+                    padding: "8px 12px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 10,
+                    background: r.value === value ? "rgba(0,200,224,0.08)" : "transparent",
+                    borderBottom: "1px solid rgba(255,255,255,0.03)",
+                  }}
+                  onMouseEnter={(e) => { if (r.value !== value) e.currentTarget.style.background = "var(--bg-surface)"; }}
+                  onMouseLeave={(e) => { if (r.value !== value) e.currentTarget.style.background = "transparent"; }}
+                >
+                  <span style={{ fontSize: 12, fontWeight: 600, color: r.value === value ? "var(--text-success)" : "var(--text-primary)", flexShrink: 0 }}>
+                    {r.value}
+                  </span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{r.label}</span>
+                </div>
+              ))}
+              {filtered.length === 0 && (
+                <div style={{ padding: 20, textAlign: "center", color: "var(--text-dim)", fontSize: 12 }}>
+                  No regions match
+                </div>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
 /* ── OciShapeSelect ── */
 const OCI_SHAPES = [
   { value: "CI.Standard.A1.Flex", label: "ARM - Ampere A1", arch: "ARM" },
@@ -1952,6 +2119,7 @@ function WorkerManagerTypeSelect({ value, onChange }) {
 Object.assign(window, {
   SecretInput,
   RegionSelect,
+  OciRegionSelect,
   OciShapeSelect,
   InstancePicker,
   TerminalWindow,

@@ -34,6 +34,46 @@ window.SCALER_REGIONS = [
   { value: "us-gov-west-1", label: "GovCloud (US-West)" },
 ];
 
+window.SCALER_OCI_REGIONS = [
+  { value: "us-ashburn-1",      label: "US East (Ashburn)" },
+  { value: "us-phoenix-1",      label: "US West (Phoenix)" },
+  { value: "us-sanjose-1",      label: "US West (San Jose)" },
+  { value: "us-chicago-1",      label: "US Midwest (Chicago)" },
+  { value: "us-seattle-1",      label: "US Northwest (Seattle)" },
+  { value: "ca-toronto-1",      label: "Canada Southeast (Toronto)" },
+  { value: "ca-montreal-1",     label: "Canada East (Montreal)" },
+  { value: "sa-saopaulo-1",     label: "Brazil East (Sao Paulo)" },
+  { value: "sa-vinhedo-1",      label: "Brazil Southeast (Vinhedo)" },
+  { value: "sa-santiago-1",     label: "Chile (Santiago)" },
+  { value: "sa-bogota-1",       label: "Colombia (Bogota)" },
+  { value: "eu-frankfurt-1",    label: "Germany Central (Frankfurt)" },
+  { value: "eu-amsterdam-1",    label: "Netherlands (Amsterdam)" },
+  { value: "eu-stockholm-1",    label: "Sweden (Stockholm)" },
+  { value: "eu-marseille-1",    label: "France South (Marseille)" },
+  { value: "eu-milan-1",        label: "Italy (Milan)" },
+  { value: "eu-paris-1",        label: "France (Paris)" },
+  { value: "eu-zurich-1",       label: "Switzerland (Zurich)" },
+  { value: "eu-madrid-1",       label: "Spain (Madrid)" },
+  { value: "uk-london-1",       label: "UK South (London)" },
+  { value: "uk-cardiff-1",      label: "UK West (Newport)" },
+  { value: "me-jeddah-1",       label: "Saudi Arabia West (Jeddah)" },
+  { value: "me-dubai-1",        label: "UAE East (Dubai)" },
+  { value: "me-abudhabi-1",     label: "UAE (Abu Dhabi)" },
+  { value: "il-jerusalem-1",    label: "Israel (Jerusalem)" },
+  { value: "af-johannesburg-1", label: "South Africa (Johannesburg)" },
+  { value: "ap-sydney-1",       label: "Australia East (Sydney)" },
+  { value: "ap-melbourne-1",    label: "Australia Southeast (Melbourne)" },
+  { value: "ap-osaka-1",        label: "Japan West (Osaka)" },
+  { value: "ap-tokyo-1",        label: "Japan East (Tokyo)" },
+  { value: "ap-mumbai-1",       label: "India West (Mumbai)" },
+  { value: "ap-hyderabad-1",    label: "India South (Hyderabad)" },
+  { value: "ap-singapore-1",    label: "Singapore" },
+  { value: "ap-singapore-2",    label: "Singapore (2)" },
+  { value: "ap-seoul-1",        label: "South Korea (Seoul)" },
+  { value: "ap-chuncheon-1",    label: "South Korea (Chuncheon)" },
+  { value: "ap-taipei-1",       label: "Taiwan (Taipei)" },
+];
+
 window.SCALER_INSTANCES = [
   // General Purpose
   {

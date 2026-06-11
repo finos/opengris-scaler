@@ -525,16 +525,16 @@ function WorkerManagerCard({
         return (
           <>
             <div>
-              <Label help={"The OCID of the compartment where container instances will be launched. In the OCI Console, go to Identity & Security > Compartments, click your compartment, and copy the OCID."}>Compartment ID</Label>
+              <Label help={"The OCID of the compartment where container instances will be launched. In the OCI Console, go to Identity & Security > Compartments, click your compartment, and copy the OCID. To use the root compartment, use your Tenancy OCID (ocid1.tenancy.oc1...) directly."}>Compartment ID</Label>
               <input
                 value={wm.ociCompartmentId || ""}
                 onChange={(e) => set("ociCompartmentId", e.target.value)}
                 style={inp}
-                placeholder="ocid1.compartment.oc1..aaa..."
+                placeholder="ocid1.compartment.oc1... or ocid1.tenancy.oc1..."
               />
             </div>
             <div>
-              <Label help={"The availability domain where instances will run. In the OCI Console, navigate to Compute > Instances and check the AD column for the full name (e.g. Uocm:PHX-AD-1). Shortened forms like AD-1 also work in most regions."}>Availability Domain</Label>
+              <Label help={"The availability domain where instances will run. In the OCI Console, go to Compute > Instances — the full AD name is in the AD column (e.g. Uocm:PHX-AD-1). If you have no instances yet, click Create Instance and check the Placement section to see the available ADs for your region."}>Availability Domain</Label>
               <input
                 value={wm.ociAvailabilityDomain || ""}
                 onChange={(e) => set("ociAvailabilityDomain", e.target.value)}
@@ -543,7 +543,7 @@ function WorkerManagerCard({
               />
             </div>
             <div>
-              <Label help={"The OCID of the subnet for container network interfaces. In the OCI Console, go to Networking > Virtual Cloud Networks > [your VCN] > Subnets, then click a subnet and copy its OCID."}>Subnet ID</Label>
+              <Label help={"The OCID of the subnet for container network interfaces. In the OCI Console, go to Networking > Virtual Cloud Networks > [your VCN] > Subnets, then click a subnet and copy its OCID.\n\nIf you don't have a VCN yet: go to Networking > Virtual Cloud Networks > Create VCN, and choose 'Create VCN with Internet Connectivity' to set up a VCN and public subnet automatically."}>Subnet ID</Label>
               <input
                 value={wm.ociSubnetId || ""}
                 onChange={(e) => set("ociSubnetId", e.target.value)}
@@ -552,12 +552,10 @@ function WorkerManagerCard({
               />
             </div>
             <div>
-              <Label help={"The OCI region identifier where your resources are located (e.g. us-ashburn-1, eu-frankfurt-1, ap-sydney-1). The region is shown in the OCI Console URL and in the region selector at the top of the page."}>Region</Label>
-              <input
+              <Label help={"The OCI region where your resources are located. To confirm the identifier in the OCI Console, click the region selector at the top of the page, then Manage Regions — identifiers are shown in the Region Identifier column."}>Region</Label>
+              <OciRegionSelect
                 value={wm.ociRegion || ""}
-                onChange={(e) => set("ociRegion", e.target.value)}
-                style={inp}
-                placeholder="us-ashburn-1"
+                onChange={(v) => set("ociRegion", v)}
               />
             </div>
             <div>
@@ -692,12 +690,10 @@ function WorkerManagerCard({
             />
           </div>
           <div>
-            <Label help={"The OCI region identifier where your resources are located (e.g. us-ashburn-1, eu-frankfurt-1, ap-sydney-1). The region is shown in the OCI Console URL and in the region selector at the top of the page."}>Region</Label>
-            <input
-              value={wm.ociRegion || "us-ashburn-1"}
-              onChange={(e) => set("ociRegion", e.target.value)}
-              style={inp}
-              placeholder="us-ashburn-1"
+            <Label help={"The OCI region where your resources are located. To confirm the identifier in the OCI Console, click the region selector at the top of the page, then Manage Regions — identifiers are shown in the Region Identifier column."}>Region</Label>
+            <OciRegionSelect
+              value={wm.ociRegion || ""}
+              onChange={(v) => set("ociRegion", v)}
             />
           </div>
           <div>
@@ -2273,7 +2269,7 @@ function App() {
                 {credTab === "oci" && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     <div>
-                      <Label help={"Your OCI user OCID. In the OCI Console, click your profile avatar (top-right) > My Profile. The OCID is listed under User Information."}>User OCID</Label>
+                      <Label help={"Your OCI user OCID. In the OCI Console, click your profile avatar (top-right) > User Settings. The OCID is listed under User Information."}>User OCID</Label>
                       <div style={{ ...inp, display: "flex", alignItems: "center" }}>
                         <SecretInput
                           value={ociUserId}
@@ -2295,7 +2291,7 @@ function App() {
                       </div>
                     </div>
                     <div>
-                      <Label help={"The fingerprint of your API signing key. In the OCI Console, go to My Profile > API Keys. The fingerprint (format: aa:bb:cc:...) is shown next to your key. If you don't have one, click Add API Key to generate a key pair."}>Fingerprint</Label>
+                      <Label help={"The fingerprint of your API signing key. In the OCI Console, go to User Settings > Tokens and Keys > API Keys. The fingerprint (format: aa:bb:cc:...) is shown next to your key. If you don't have one, click Add API Key to generate a key pair."}>Fingerprint</Label>
                       <div style={{ ...inp, display: "flex", alignItems: "center" }}>
                         <SecretInput
                           value={ociFingerprint}
@@ -2306,7 +2302,7 @@ function App() {
                       </div>
                     </div>
                     <div>
-                      <Label help={"The private key that pairs with your API key fingerprint. In the OCI Console, go to My Profile > API Keys > Add API Key, then download the private key file. Paste the full contents of the .pem file here, including the BEGIN/END lines."}>Private Key (PEM)</Label>
+                      <Label help={"The private key that pairs with your API key fingerprint. In the OCI Console, go to User Settings > Tokens and Keys > API Keys > Add API Key, then download the private key file. Paste the full contents of the .pem file here, including the BEGIN/END lines."}>Private Key (PEM)</Label>
                       <textarea
                         value={ociPrivateKey}
                         onChange={(e) => setOciPrivateKey(e.target.value)}
