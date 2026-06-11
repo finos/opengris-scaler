@@ -29,21 +29,6 @@ JupyterLite notebook:
 
    <ul class="lite-demos">
      <li>
-       <a class="lite-demo" href="../gallery/parallel_sqrt.html">Parallel square roots (warm-up)</a>
-       <span class="lite-sep">&mdash;</span>
-       <a class="lite-open" href="../lite/lab/index.html?path=parallel_sqrt.ipynb" target="_blank" rel="noopener">open in browser &#8594;</a>
-     </li>
-     <li>
-       <a class="lite-demo" href="../gallery/send_heavy_object.html">Heavy object reuse with send_object</a>
-       <span class="lite-sep">&mdash;</span>
-       <a class="lite-open" href="../lite/lab/index.html?path=send_heavy_object.ipynb" target="_blank" rel="noopener">open in browser &#8594;</a>
-     </li>
-     <li>
-       <a class="lite-demo" href="../gallery/monte_carlo_pi.html">Monte Carlo estimation of pi</a>
-       <span class="lite-sep">&mdash;</span>
-       <a class="lite-open" href="../lite/lab/index.html?path=monte_carlo_pi.ipynb" target="_blank" rel="noopener">open in browser &#8594;</a>
-     </li>
-     <li>
        <a class="lite-demo" href="../gallery/mandelbrot_tiles.html">Mandelbrot tile rendering</a>
        <span class="lite-sep">&mdash;</span>
        <a class="lite-open" href="../lite/lab/index.html?path=mandelbrot_tiles.ipynb" target="_blank" rel="noopener">open in browser &#8594;</a>
@@ -68,6 +53,16 @@ JupyterLite notebook:
        <span class="lite-sep">&mdash;</span>
        <a class="lite-open" href="../lite/lab/index.html?path=sklearn_grid_search.ipynb" target="_blank" rel="noopener">open in browser &#8594;</a>
      </li>
+     <li>
+       <a class="lite-demo" href="../gallery/monte_carlo_pi.html">Monte Carlo estimation of pi</a>
+       <span class="lite-sep">&mdash;</span>
+       <a class="lite-open" href="../lite/lab/index.html?path=monte_carlo_pi.ipynb" target="_blank" rel="noopener">open in browser &#8594;</a>
+     </li>
+     <li>
+       <a class="lite-demo" href="../gallery/parallel_sqrt.html">Parallel square roots</a>
+       <span class="lite-sep">&mdash;</span>
+       <a class="lite-open" href="../lite/lab/index.html?path=parallel_sqrt.ipynb" target="_blank" rel="noopener">open in browser &#8594;</a>
+     </li>
    </ul>
 
 For heavier real-world notebooks see :doc:`examples` -- 
@@ -77,11 +72,10 @@ and are best run from a native Python client.
 .. toctree::
    :hidden:
 
-   ../gallery/parallel_sqrt
-   ../gallery/send_heavy_object
-   ../gallery/monte_carlo_pi
    ../gallery/mandelbrot_tiles
    ../gallery/prime_sieve
    ../gallery/word_count_mapreduce
    ../gallery/image_batch_filter
    ../gallery/sklearn_grid_search
+   ../gallery/monte_carlo_pi
+   ../gallery/parallel_sqrt

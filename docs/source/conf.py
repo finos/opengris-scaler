@@ -112,14 +112,13 @@ nbsphinx_codecell_lexer = "python"
 # in-browser client cannot yet keep its heartbeat alive across their long
 # pure-Python compute sections.
 jupyterlite_contents = [
-    "gallery/parallel_sqrt.ipynb",
-    "gallery/send_heavy_object.ipynb",
-    "gallery/monte_carlo_pi.ipynb",
     "gallery/mandelbrot_tiles.ipynb",
     "gallery/prime_sieve.ipynb",
     "gallery/word_count_mapreduce.ipynb",
     "gallery/image_batch_filter.ipynb",
     "gallery/sklearn_grid_search.ipynb",
+    "gallery/monte_carlo_pi.ipynb",
+    "gallery/parallel_sqrt.ipynb",
 ]
 
 # Bundle the scaler wasm wheel + cloudpickle + tblib into the lite kernel's
