@@ -1276,10 +1276,10 @@ function DeployDetails({ visible, style }) {
 /* ── HelpTip ── */
 function HelpTip({ text, children, width = 320 }) {
   const [btnRect, setBtnRect] = useState(null);
-  const [placement, setPlacement] = useState(null);
+  const [measured, setMeasured] = useState(null); // null while measuring, then { above, width }
   const btnRef = useRef(null);
   const popupRef = useRef(null);
-  const POPUP_WIDTH = width;
+  const MAX_WIDTH = width;
 
   const open = btnRect !== null;
 
@@ -1294,15 +1294,16 @@ function HelpTip({ text, children, width = 320 }) {
   }, [open]);
 
   useEffect(() => {
-    if (!open || !popupRef.current || placement !== null) return;
+    if (!open || !popupRef.current || measured !== null) return;
     const h = popupRef.current.offsetHeight;
-    setPlacement(btnRect.top >= h + 16);
-  }, [open, btnRect, placement]);
+    const w = popupRef.current.offsetWidth;
+    setMeasured({ above: btnRect.top >= h + 16, width: w });
+  }, [open, btnRect, measured]);
 
   const handleOpen = () => {
     if (!btnRef.current) return;
     setBtnRect(btnRef.current.getBoundingClientRect());
-    setPlacement(null);
+    setMeasured(null);
   };
 
   const renderBlock = (block, key) => {
@@ -1344,13 +1345,14 @@ function HelpTip({ text, children, width = 320 }) {
   const popup =
     open &&
     (() => {
+      const actualWidth = measured?.width ?? MAX_WIDTH;
       const left = Math.min(
-        Math.max(8, btnRect.left + btnRect.width / 2 - POPUP_WIDTH / 2),
-        window.innerWidth - POPUP_WIDTH - 8,
+        Math.max(8, btnRect.left + btnRect.width / 2 - actualWidth / 2),
+        window.innerWidth - actualWidth - 8,
       );
-      const above = placement === true;
+      const above = measured?.above === true;
       const posStyle =
-        placement === null
+        measured === null
           ? { top: 0, visibility: "hidden" }
           : above
             ? { bottom: window.innerHeight - btnRect.top + 7 }
@@ -1367,7 +1369,8 @@ function HelpTip({ text, children, width = 320 }) {
             position: "fixed",
             left,
             ...posStyle,
-            width: POPUP_WIDTH,
+            width: "max-content",
+            maxWidth: MAX_WIDTH,
             background: "var(--bg-popup)",
             border: "1px solid var(--border-strong)",
             borderRadius: 4,
@@ -1384,7 +1387,7 @@ function HelpTip({ text, children, width = 320 }) {
           }}
         >
           {content}
-          {placement !== null && (
+          {measured !== null && (
             <div
               style={{
                 position: "absolute",
