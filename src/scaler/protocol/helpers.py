@@ -78,5 +78,10 @@ PROTOCOL: bidict.bidict[str, type] = bidict.bidict(
         "processorInitialized": capnp.ProcessorInitialized,
         "informationRequest": capnp.InformationRequest,
         "informationResponse": capnp.InformationResponse,
+        "actorCreate": capnp.ActorCreate,
+        "actorDestroy": capnp.ActorDestroy,
+        "actorStateUpdate": capnp.ActorStateUpdate,
+        "actorMessage": capnp.ActorMessage,
+        "stateActor": capnp.StateActor,
     }
 )

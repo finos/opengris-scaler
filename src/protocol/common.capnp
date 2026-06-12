@@ -70,3 +70,38 @@ struct ObjectStorageAddress {
     port   @1 :UInt16;
     scheme @2 :Text;
 }
+
+enum ActorState {
+    pending @0;     # accepted by the scheduler, no worker assigned yet
+    creating @1;    # actor process spawning / constructor running on the worker
+    alive @2;       # constructor finished, serving messages
+    stopping @3;    # graceful destroy in progress on the worker
+    dead @4;        # terminal; ActorStateUpdate.deathInfo carries the reason
+}
+
+struct ActorPayload {
+    type @0 :ActorPayloadType;
+    data @1 :Data;     # the serialized value itself (inline) or its object storage id (objectID)
+
+    enum ActorPayloadType {
+        inline @0;
+        objectID @1;
+    }
+}
+
+struct ActorArguments {
+    positional @0 :List(ActorPayload);
+    keyword @1 :List(KeywordArgument);
+
+    struct KeywordArgument {
+        name @0 :Text;
+        value @1 :ActorPayload;
+    }
+}
+
+struct ActorError {
+    errorType @0 :Text;     # fully qualified exception class name, e.g. "builtins.ValueError"
+    message @1 :Text;       # str(exception)
+    traceback @2 :Text;     # formatted traceback for display/logging
+    serialized @3 :Data;    # pickled exception object; empty if not picklable
+}
