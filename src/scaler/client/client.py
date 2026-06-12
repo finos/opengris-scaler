@@ -7,6 +7,8 @@ from collections import Counter
 from inspect import signature
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
+from scaler.client.actor import ActorHandle
+from scaler.client.agent.actor_manager import ClientActorManager
 from scaler.client.agent.bridge import ClientAgentBridge, check_browser_runtime, create_default_bridge
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.future import ScalerFuture
@@ -19,12 +21,20 @@ from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import NetworkBackend, SyncConnector, SyncObjectStorageConnector
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.ymq import YMQException
-from scaler.protocol.capnp import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
+from scaler.protocol.capnp import (
+    ActorArguments,
+    ActorCreate,
+    ActorPayload,
+    ClientDisconnect,
+    ClientShutdownResponse,
+    GraphTask,
+    Task,
+)
 from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.exceptions import ClientQuitException, MissingObjects
 from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.graph.topological_sorter import TopologicalSorter
-from scaler.utility.identifiers import ClientID, ObjectID, TaskID
+from scaler.utility.identifiers import ActorID, ClientID, ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
 
@@ -126,11 +136,13 @@ class Client:
         self._stop_event = threading.Event()
 
         self._future_manager = ClientFutureManager(self._serializer)
+        self._actor_manager = ClientActorManager()
         self._bridge = create_default_bridge(
             identity=self._identity,
             scheduler_address=self._scheduler_address,
             network_backend=self._backend,
             future_manager=self._future_manager,
+            actor_manager=self._actor_manager,
             stop_event=self._stop_event,
             timeout_seconds=self._timeout_seconds,
             heartbeat_interval_seconds=self._heartbeat_interval_seconds,
@@ -483,6 +495,74 @@ class Client:
         # so a kept dedup entry could serve a later submit() a stale snapshot.
         cache = self._object_buffer.buffer_send_object(obj, name, reserialize=False, dedup=False)
         return ObjectReference(cache.object_name, len(cache.object_payload), cache.object_id)
+
+    def create_actor(self, cls: type, *args, **kwargs) -> ActorHandle:
+        """
+        create a new actor instance on a remote worker, asynchronously: the returned handle is
+        available immediately, while the actor is created in the background. The handle's `state`
+        property reflects the creation progress (pending -> creating -> alive, or dead on failure).
+
+        Only lifecycle operations (creation and `ActorHandle.destroy()`) are supported for now.
+
+        :param cls: the class to instantiate as an actor
+        :type cls: type
+        :param args: positional arguments will be passed to the constructor
+        :param kwargs: keyword arguments will be passed to the constructor
+        :return: handle to the created actor
+        :rtype: ActorHandle
+        """
+
+        self.__assert_client_not_stopped()
+
+        if not isinstance(cls, type):
+            raise TypeError(f"create_actor() expects a class, got {cls!r}")
+
+        actor_id = ActorID.generate_actor_id()
+
+        class_object_id = self._object_buffer.buffer_send_function(cls).object_id
+        positional_arguments = [
+            ActorPayload(
+                type=ActorPayload.ActorPayloadType.objectID,
+                data=self._object_buffer.buffer_send_object(arg, None, reserialize=False, dedup=True).object_id,
+            )
+            for arg in args
+        ]
+        keyword_arguments = [
+            ActorArguments.KeywordArgument(
+                name=name,
+                value=ActorPayload(
+                    type=ActorPayload.ActorPayloadType.objectID,
+                    data=self._object_buffer.buffer_send_object(value, None, reserialize=False, dedup=True).object_id,
+                ),
+            )
+            for name, value in kwargs.items()
+        ]
+
+        actor_create = ActorCreate(
+            actorId=actor_id,
+            source=self._identity,
+            classObjectId=class_object_id,
+            constructorArguments=ActorArguments(positional=positional_arguments, keyword=keyword_arguments),
+            capabilities=[],
+        )
+
+        self._actor_manager.track_actor(actor_id)
+
+        # if the objects or the create message cannot be sent, drop the record we just tracked so
+        # a failed create does not leave a phantom actor behind
+        try:
+            self._object_buffer.commit_send_objects()
+            self._connector_agent.send(actor_create)
+        except Exception:
+            self._actor_manager.untrack_actor(actor_id)
+            raise
+
+        return ActorHandle(
+            actor_id=actor_id,
+            source=self._identity,
+            actor_manager=self._actor_manager,
+            connector_agent=self._connector_agent,
+        )
 
     def clear(self):
         """

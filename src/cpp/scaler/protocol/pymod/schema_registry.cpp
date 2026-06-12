@@ -55,6 +55,10 @@ bool SchemaRegistry::init()
     REG_STRUCT(kModCommon, TaskCapability);
     REG_STRUCT(kModCommon, ObjectMetadata);
     REG_STRUCT(kModCommon, ObjectStorageAddress);
+    REG_STRUCT(kModCommon, ActorState);
+    REG_STRUCT(kModCommon, ActorPayload);
+    REG_STRUCT(kModCommon, ActorArguments);
+    REG_STRUCT(kModCommon, ActorError);
 
     REG_STRUCT(kModStatus, Resource);
     REG_STRUCT(kModStatus, ObjectManagerStatus);
@@ -65,6 +69,7 @@ bool SchemaRegistry::init()
     REG_STRUCT(kModStatus, WorkerManagerStatus);
     REG_STRUCT(kModStatus, ScalingManagerStatus);
     REG_STRUCT(kModStatus, BinderStatus);
+    REG_STRUCT(kModStatus, ActorHostStatus);
 
     REG_STRUCT(kModMessage, Task);
     REG_STRUCT(kModMessage, TaskCancel);
@@ -94,6 +99,11 @@ bool SchemaRegistry::init()
     REG_STRUCT(kModMessage, ProcessorInitialized);
     REG_STRUCT(kModMessage, InformationRequest);
     REG_STRUCT(kModMessage, InformationResponse);
+    REG_STRUCT(kModMessage, ActorCreate);
+    REG_STRUCT(kModMessage, ActorDestroy);
+    REG_STRUCT(kModMessage, ActorStateUpdate);
+    REG_STRUCT(kModMessage, ActorMessage);
+    REG_STRUCT(kModMessage, StateActor);
     REG_STRUCT(kModMessage, Message);
 
     REG_STRUCT(kModObjectStorage, ObjectRequestHeader);

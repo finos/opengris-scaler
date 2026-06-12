@@ -157,6 +157,7 @@ class CreateDefaultBridgeTest(unittest.TestCase):
                     scheduler_address=AddressConfig(SocketType.tcp, "127.0.0.1", 1),
                     network_backend=object(),  # type: ignore[arg-type]
                     future_manager=object(),  # type: ignore[arg-type]
+                    actor_manager=object(),  # type: ignore[arg-type]
                     stop_event=threading.Event(),
                     timeout_seconds=10,
                     heartbeat_interval_seconds=1,
@@ -172,6 +173,7 @@ class CreateDefaultBridgeTest(unittest.TestCase):
                     scheduler_address=AddressConfig(SocketType.ws, "host", 1),
                     network_backend=object(),  # type: ignore[arg-type]
                     future_manager=object(),  # type: ignore[arg-type]
+                    actor_manager=object(),  # type: ignore[arg-type]
                     stop_event=threading.Event(),
                     timeout_seconds=10,
                     heartbeat_interval_seconds=1,
@@ -206,6 +208,7 @@ class InProcessAgentBridgeStartTest(unittest.TestCase):
                 scheduler_address=AddressConfig(SocketType.ws, "host", 1),
                 network_backend=object(),  # type: ignore[arg-type]
                 future_manager=object(),  # type: ignore[arg-type]
+                actor_manager=object(),  # type: ignore[arg-type]
                 stop_event=threading.Event(),
                 timeout_seconds=10,
                 heartbeat_interval_seconds=1,

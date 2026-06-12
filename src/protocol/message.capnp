@@ -67,6 +67,8 @@ struct GraphTask {
 struct ClientHeartbeat {
     resource @0 :Status.Resource;
     latencyUS @1 :UInt32;
+    actorIds @2 :List(Data);   # complete set of actors this client claims to own; always the
+                               # full set, never a diff
 }
 
 struct ClientHeartbeatEcho {
@@ -83,6 +85,7 @@ struct WorkerHeartbeat {
     processors @6 :List(Status.ProcessorStatus);
     capabilities @7 :List(CommonType.TaskCapability);
     workerManagerID @8 :Data;
+    actors @9 :List(Status.ActorHostStatus);
 }
 
 struct WorkerHeartbeatEcho {
@@ -200,6 +203,76 @@ struct InformationResponse {
     response @0 :Data;
 }
 
+# Convention for every actor message:
+#   actorId: client-generated, globally unique, never reused across incarnations
+#   source:  identity of the owning client; sender on client->worker messages, destination on
+#            worker->client messages
+
+# Declares "this actor should exist". Idempotent per actorId: re-sending is answered with the
+# actor's current ActorStateUpdate, never a duplicate actor.
+struct ActorCreate {
+    actorId @0 :Data;
+    source @1 :Data;
+    classObjectId @2 :Data;    # object id of the serialized actor class
+    constructorArguments @3 :CommonType.ActorArguments;
+    capabilities @4 :List(CommonType.TaskCapability);
+}
+
+# Declares "this actor should not exist". Idempotent and escalatable (graceful then kill).
+struct ActorDestroy {
+    actorId @0 :Data;
+    source @1 :Data;
+    mode @2 :Mode;
+
+    enum Mode {
+        graceful @0;   # let the actor wind down cooperatively, then exit
+        kill @1;       # terminate the actor process immediately
+    }
+}
+
+# Declares the full current state of one actor; sent on every transition and re-sendable at
+# any time. Receivers treat it as absolute truth, so it is safe to duplicate and safe to lose
+# (heartbeat reconciliation re-derives it).
+struct ActorStateUpdate {
+    actorId @0 :Data;
+    source @1 :Data;
+    workerId @2 :Data;                  # assigned worker; empty while pending
+    state @3 :CommonType.ActorState;
+    deathInfo @4 :DeathInfo;            # only meaningful when state == dead
+
+    struct DeathInfo {
+        reason @0 :Reason;
+        error @1 :CommonType.ActorError;   # populated for constructorFailed/actorCrashed
+
+        enum Reason {
+            destroyed @0;           # client-requested destroy completed
+            constructorFailed @1;   # actor constructor raised
+            actorCrashed @2;        # actor process exited unexpectedly
+            workerDied @3;          # hosting worker lost (heartbeat timeout)
+            clientDisconnected @4;  # owning client lost; scheduler reclaimed the actor
+            placementFailed @5;     # no worker satisfies the requested capabilities
+            unknownActor @6;        # actorId unknown to the scheduler
+        }
+    }
+}
+
+# The actor data plane. payload is opaque to the scheduler and the worker agent; it is routed
+# by actorId (client->worker) and source (worker->client).
+struct ActorMessage {
+    actorId @0 :Data;
+    source @1 :Data;
+    payload @2 :Data;
+}
+
+struct StateActor {
+    actorId @0 :Data;
+    source @1 :Data;
+    workerId @2 :Data;
+    className @3 :Data;
+    state @4 :CommonType.ActorState;
+    capabilities @5 :List(CommonType.TaskCapability);
+}
+
 struct Message {
     union {
         task @0 :Task;
@@ -240,5 +313,11 @@ struct Message {
         workerManagerHeartbeat @25 :WorkerManagerHeartbeat;
         workerManagerHeartbeatEcho @26 :WorkerManagerHeartbeatEcho;
         workerManagerCommand @27 :WorkerManagerCommand;
+
+        actorCreate @28 :ActorCreate;
+        actorDestroy @29 :ActorDestroy;
+        actorStateUpdate @30 :ActorStateUpdate;
+        actorMessage @31 :ActorMessage;
+        stateActor @32 :StateActor;
     }
 }

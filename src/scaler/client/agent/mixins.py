@@ -2,6 +2,10 @@ import abc
 from concurrent.futures import Future
 
 from scaler.protocol.capnp import (
+    ActorCreate,
+    ActorDestroy,
+    ActorMessage,
+    ActorStateUpdate,
     ClientDisconnect,
     ClientHeartbeatEcho,
     ClientShutdownResponse,
@@ -86,4 +90,30 @@ class DisconnectManager(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     async def on_client_shutdown_response(self, response: ClientShutdownResponse):
+        raise NotImplementedError()
+
+
+class ActorManager(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    async def on_create_actor(self, actor_create: ActorCreate):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_destroy_actor(self, actor_destroy: ActorDestroy):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_actor_state_update(self, actor_state_update: ActorStateUpdate):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_send_actor_message(self, actor_message: ActorMessage):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_actor_message(self, actor_message: ActorMessage):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def set_all_actors_dead(self):
         raise NotImplementedError()

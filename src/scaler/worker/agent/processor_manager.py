@@ -295,6 +295,14 @@ class VanillaProcessorManager(ProcessorManager):
     def current_processor_is_initialized(self) -> bool:
         return self._current_holder is not None and self._current_holder.initialized()
 
+    def current_processor_id(self) -> Optional[ProcessorID]:
+        if not self.current_processor_is_initialized():
+            return None
+        return self._current_holder.processor_id()
+
+    def restart_current_processor(self, reason: str):
+        self.__restart_current_processor(reason)
+
     def current_task(self) -> Optional[Task]:
         if self._current_holder is None:  # worker is not yet initialized
             return None

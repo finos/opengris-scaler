@@ -3,6 +3,8 @@
 using Cxx = import "/capnp/c++.capnp";
 $Cxx.namespace("scaler::protocol");
 
+using CommonType = import "common.capnp";
+
 struct Resource {
     cpu @0 :UInt16;   # 99.2% will be represented as 992 as integer
     rss @1 :UInt64;  # 32bit is capped to 4GB, so use 64bit to represent
@@ -85,4 +87,15 @@ struct BinderStatus {
         client @0 :Text;
         number @1 :UInt32;
     }
+}
+
+# Declared by the worker in every heartbeat, one entry per hosted actor.
+struct ActorHostStatus {
+    actorId @0 :Data;
+    source @1 :Data;                   # owning client; lets a restarted scheduler rebuild
+                                       # its actor routing table from heartbeats alone
+    state @2 :CommonType.ActorState;   # only the hosted states occur here: creating | alive |
+                                       # stopping (pending has no worker yet, dead is reported
+                                       # via ActorStateUpdate and removed from heartbeats)
+    processorPid @3 :UInt32;           # joins with ProcessorStatus for cpu/rss
 }

@@ -21,7 +21,7 @@ from scaler.protocol.capnp import (
 )
 from scaler.protocol.helpers import capabilities_to_dict, dict_to_capabilities
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
-from scaler.scheduler.controllers.mixins import PolicyController, TaskController, WorkerController
+from scaler.scheduler.controllers.mixins import ActorController, PolicyController, TaskController, WorkerController
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.mixins import Looper, Reporter
 
@@ -37,19 +37,45 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         self._binder: Optional[AsyncBinder] = None
         self._binder_monitor: Optional[AsyncPublisher] = None
         self._task_controller: Optional[TaskController] = None
+        self._actor_controller: Optional[ActorController] = None
 
         self._worker_alive_since: Dict[WorkerID, Tuple[float, WorkerHeartbeat]] = dict()
         self._worker_to_manager: Dict[WorkerID, bytes] = dict()
         self._manager_to_workers: Dict[bytes, Set[WorkerID]] = dict()
         self._policy_controller = policy_controller
 
-    def register(self, binder: AsyncBinder, binder_monitor: AsyncPublisher, task_controller: TaskController):
+    def register(
+        self,
+        binder: AsyncBinder,
+        binder_monitor: AsyncPublisher,
+        task_controller: TaskController,
+        actor_controller: Optional[ActorController] = None,
+    ):
         self._binder = binder
         self._binder_monitor = binder_monitor
         self._task_controller = task_controller
+        self._actor_controller = actor_controller
 
     def acquire_worker(self, task: Task) -> WorkerID:
         return self._policy_controller.assign_task(task)
+
+    async def acquire_worker_for_actor(self) -> Optional[WorkerID]:
+        statistics = self._policy_controller.statistics()
+
+        for worker_id in sorted(self._policy_controller.get_worker_ids()):
+            if statistics.get(worker_id, {}).get("sent", 0) > 0:
+                continue
+
+            # the statistics check and the removal run in the same synchronous block, so the
+            # worker cannot acquire tasks in between; the reroute below is defensive only
+            task_ids = self._policy_controller.remove_worker(worker_id)
+            for task_id in task_ids:
+                logging.error(f"worker {worker_id!r} was designated as an actor with task {task_id.hex()} assigned")
+                await self._task_controller.on_worker_disconnect(task_id, worker_id)
+
+            return worker_id
+
+        return None
 
     async def on_task_cancel(self, task_cancel: TaskCancel) -> WorkerID:
         worker = self._policy_controller.remove_task(task_cancel.taskId)
@@ -67,7 +93,12 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
     async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat):
         info.capabilities = capabilities_to_dict(info.capabilities)
-        if self._policy_controller.add_worker(worker_id, info.capabilities, info.queueSize):
+        # a worker designated as an actor stays out of the task pool: keep its liveness
+        # tracking and heartbeat echo, but skip the pool (re-)registration until the actor
+        # controller releases it
+        is_actor_worker = self._actor_controller is not None and self._actor_controller.is_actor_worker(worker_id)
+
+        if not is_actor_worker and self._policy_controller.add_worker(worker_id, info.capabilities, info.queueSize):
             logger.info(f"worker {worker_id!r} connected")
             await self._binder_monitor.send(
                 StateWorker(
@@ -111,7 +142,13 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         worker_to_task_numbers = self._policy_controller.statistics()
         return WorkerManagerStatus(
             workers=[
-                self.__worker_status_from_heartbeat(worker, worker_to_task_numbers[worker], last, info)
+                self.__worker_status_from_heartbeat(
+                    # workers designated as actors are absent from the task policy
+                    worker,
+                    worker_to_task_numbers.get(worker, {"free": 0, "sent": 0}),
+                    last,
+                    info,
+                )
                 for worker, (last, info) in self._worker_alive_since.items()
             ]
         )
@@ -184,6 +221,8 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             StateWorker(workerId=worker_id, state=WorkerState.disconnected, capabilities=[])
         )
         self._worker_alive_since.pop(worker_id)
+        if self._actor_controller is not None:
+            await self._actor_controller.on_worker_disconnect(worker_id)
         manager_id = self._worker_to_manager.pop(worker_id)
         workers_set = self._manager_to_workers[manager_id]
         workers_set.discard(worker_id)

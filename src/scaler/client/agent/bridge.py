@@ -28,6 +28,7 @@ import time
 import uuid
 from typing import Any, Awaitable, Callable, Iterable, Iterator, Optional
 
+from scaler.client.agent.actor_manager import ClientActorManager
 from scaler.client.agent.client_agent import ClientAgent
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.serializer.mixins import Serializer
@@ -96,6 +97,7 @@ class IPCAgentBridge(ClientAgentBridge):
         scheduler_address: AddressConfig,
         network_backend: NetworkBackend,
         future_manager: ClientFutureManager,
+        actor_manager: ClientActorManager,
         stop_event: threading.Event,
         timeout_seconds: int,
         heartbeat_interval_seconds: int,
@@ -115,6 +117,7 @@ class IPCAgentBridge(ClientAgentBridge):
             scheduler_address=scheduler_address,
             network_backend=network_backend,
             future_manager=future_manager,
+            actor_manager=actor_manager,
             stop_event=stop_event,
             timeout_seconds=timeout_seconds,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
@@ -752,6 +755,7 @@ class InProcessAgentBridge(ClientAgentBridge):
         scheduler_address: AddressConfig,
         network_backend: NetworkBackend,
         future_manager: ClientFutureManager,
+        actor_manager: ClientActorManager,
         stop_event: threading.Event,
         timeout_seconds: int,
         heartbeat_interval_seconds: int,
@@ -784,6 +788,7 @@ class InProcessAgentBridge(ClientAgentBridge):
             scheduler_address=scheduler_address,
             network_backend=network_backend,
             future_manager=future_manager,
+            actor_manager=actor_manager,
             stop_event=stop_event,
             timeout_seconds=timeout_seconds,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
@@ -875,6 +880,7 @@ def create_default_bridge(
     scheduler_address: AddressConfig,
     network_backend: NetworkBackend,
     future_manager: ClientFutureManager,
+    actor_manager: ClientActorManager,
     stop_event: threading.Event,
     timeout_seconds: int,
     heartbeat_interval_seconds: int,
@@ -897,6 +903,7 @@ def create_default_bridge(
         scheduler_address=scheduler_address,
         network_backend=network_backend,
         future_manager=future_manager,
+        actor_manager=actor_manager,
         stop_event=stop_event,
         timeout_seconds=timeout_seconds,
         heartbeat_interval_seconds=heartbeat_interval_seconds,

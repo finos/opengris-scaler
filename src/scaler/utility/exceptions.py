@@ -18,6 +18,14 @@ class ProcessorDiedError(Exception):
     pass
 
 
+class ActorDeadError(Exception):
+    pass
+
+
+class ActorNotFoundError(Exception):
+    pass
+
+
 class DeserializeObjectError(Exception):
     pass
 

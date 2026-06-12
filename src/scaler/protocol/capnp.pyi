@@ -62,6 +62,13 @@ class WorkerState(IntEnum):
     connected = 0
     disconnected = 1
 
+class ActorState(IntEnum):
+    pending = 0
+    creating = 1
+    alive = 2
+    stopping = 3
+    dead = 4
+
 class TaskCapability(CapnpStruct):
     name: str
     value: int
@@ -86,6 +93,26 @@ class ObjectStorageAddress(CapnpStruct):
     scheme: str
     @staticmethod
     def new_msg(host: str, port: int, scheme: str) -> "ObjectStorageAddress": ...
+
+class ActorPayload(CapnpStruct):
+    type: "ActorPayload.ActorPayloadType"
+    data: bytes
+
+    class ActorPayloadType(IntEnum):
+        inline = 0
+        objectID = 1
+
+class ActorArguments(CapnpStruct):
+    class KeywordArgument(CapnpStruct):
+        name: str
+        value: ActorPayload
+
+    positional: Any
+    keyword: Any
+
+class ActorError(CapnpStruct):
+    errorType: str
+    message: str
 
 class Resource(CapnpStruct):
     cpu: int
@@ -155,6 +182,12 @@ class BinderStatus(CapnpStruct):
     received: Any
     sent: Any
 
+class ActorHostStatus(CapnpStruct):
+    actorId: bytes
+    source: ClientID
+    state: ActorState
+    processorPid: int
+
 class Task(BaseMessage):
     taskId: TaskID
     source: ClientID
@@ -215,6 +248,7 @@ class GraphTask(BaseMessage):
 class ClientHeartbeat(BaseMessage):
     resource: Resource
     latencyUS: int
+    actorIds: Any
 
 class ClientHeartbeatEcho(BaseMessage):
     objectStorageAddress: ObjectStorageAddress
@@ -229,6 +263,7 @@ class WorkerHeartbeat(BaseMessage):
     processors: Any
     capabilities: Any
     workerManagerID: bytes
+    actors: Any
 
 class WorkerHeartbeatEcho(BaseMessage):
     objectStorageAddress: ObjectStorageAddress
@@ -321,6 +356,55 @@ class InformationRequest(BaseMessage):
 class InformationResponse(BaseMessage):
     response: bytes
 
+class ActorCreate(BaseMessage):
+    actorId: bytes
+    source: ClientID
+    classObjectId: ScalerObjectID
+    constructorArguments: ActorArguments
+    capabilities: Any
+
+class ActorDestroy(BaseMessage):
+    actorId: bytes
+    source: ClientID
+    mode: "ActorDestroy.Mode"
+
+    class Mode(IntEnum):
+        graceful = 0
+        kill = 1
+
+class ActorStateUpdate(BaseMessage):
+    actorId: bytes
+    source: ClientID
+    workerId: WorkerID
+    state: ActorState
+    deathInfo: "ActorStateUpdate.DeathInfo"
+
+    class DeathInfo(CapnpStruct):
+        reason: "ActorStateUpdate.DeathInfo.Reason"
+        error: ActorError
+
+        class Reason(IntEnum):
+            destroyed = 0
+            constructorFailed = 1
+            actorCrashed = 2
+            workerDied = 3
+            clientDisconnected = 4
+            placementFailed = 5
+            unknownActor = 6
+
+class ActorMessage(BaseMessage):
+    actorId: bytes
+    source: ClientID
+    payload: bytes
+
+class StateActor(BaseMessage):
+    actorId: bytes
+    source: ClientID
+    workerId: WorkerID
+    className: bytes
+    state: ActorState
+    capabilities: Any
+
 class Message(CapnpUnionStruct):
     task: Task
     taskCancel: TaskCancel
@@ -350,6 +434,11 @@ class Message(CapnpUnionStruct):
     workerManagerHeartbeat: WorkerManagerHeartbeat
     workerManagerHeartbeatEcho: WorkerManagerHeartbeatEcho
     workerManagerCommand: WorkerManagerCommand
+    actorCreate: ActorCreate
+    actorDestroy: ActorDestroy
+    actorStateUpdate: ActorStateUpdate
+    actorMessage: ActorMessage
+    stateActor: StateActor
 
 class ObjectRequestHeader(CapnpStruct):
     MESSAGE_LENGTH: ClassVar[int]
