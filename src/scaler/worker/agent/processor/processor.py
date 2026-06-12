@@ -5,6 +5,7 @@ import os
 import signal
 import sys
 import threading
+import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from contextvars import ContextVar, Token
 from multiprocessing.synchronize import Event as EventType
@@ -18,6 +19,12 @@ from scaler.io.mixins import ConnectorRemoteType, NetworkBackend, SyncConnector,
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.utility import generate_identity_from_name
 from scaler.protocol.capnp import (
+    ActorCreate,
+    ActorDestroy,
+    ActorError,
+    ActorPayload,
+    ActorState,
+    ActorStateUpdate,
     BaseMessage,
     ObjectInstruction,
     ObjectMetadata,
@@ -85,6 +92,12 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._object_cache: Optional[ObjectCache] = None
 
         self._current_task: Optional[Task] = None
+
+        # actor mode: set when the worker is designated as an actor and the constructor
+        # succeeded; the processor then responds to ActorMessage instead of Task
+        self._actor_create: Optional[ActorCreate] = None
+        self._actor_instance: Optional[object] = None
+        self._stop_requested = False
 
     def run(self) -> None:
         self.__initialize()
@@ -203,6 +216,9 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
                 self.__on_connector_receive(message)
 
+                if self._stop_requested:
+                    break
+
         except ymq.SocketStopRequestedError:
             pass
 
@@ -243,6 +259,14 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             self.__on_received_task(message)
             return
 
+        if isinstance(message, ActorCreate):
+            self.__on_received_actor_create(message)
+            return
+
+        if isinstance(message, ActorDestroy):
+            self.__on_received_actor_destroy(message)
+            return
+
         logging.error(f"unknown {message=}")
 
     def __on_receive_object_instruction(self, instruction: ObjectInstruction):
@@ -279,6 +303,104 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             *(ObjectID(argument.data) for argument in task.functionArgs),
         ]
         return object_ids
+
+    def __on_received_actor_create(self, actor_create: ActorCreate):
+        if self._actor_instance is not None:
+            logging.error(f"Processor[{self.pid}]: already hosts an actor, ignoring ActorCreate")
+            return
+
+        source = ClientID(bytes(actor_create.source))
+
+        try:
+            self.__cache_required_object_ids_for_actor(actor_create)
+
+            actor_class = self._object_cache.get_object(ObjectID(bytes(actor_create.classObjectId)))
+            arguments = actor_create.constructorArguments
+            args = [self.__resolve_actor_payload(source, payload) for payload in arguments.positional]
+            kwargs = {
+                keyword_argument.name: self.__resolve_actor_payload(source, keyword_argument.value)
+                for keyword_argument in arguments.keyword
+            }
+
+            with self.__processor_context():
+                actor_instance = actor_class(*args, **kwargs)
+
+        except Exception as e:
+            logging.exception(f"Processor[{self.pid}]: failed to construct actor:")
+            self.__send_actor_state_update(
+                actor_create,
+                ActorState.dead,
+                death_info=ActorStateUpdate.DeathInfo(
+                    reason=ActorStateUpdate.DeathInfo.Reason.constructorFailed,
+                    error=ActorError(
+                        errorType=f"{type(e).__module__}.{type(e).__qualname__}",
+                        message=str(e),
+                        traceback=traceback.format_exc(),
+                        serialized=self.__serialize_failure_safe(e),
+                    ),
+                ),
+            )
+            return
+
+        self._actor_create = actor_create
+        self._actor_instance = actor_instance
+        self.__send_actor_state_update(actor_create, ActorState.alive)
+
+    def __cache_required_object_ids_for_actor(self, actor_create: ActorCreate) -> None:
+        source = ClientID(bytes(actor_create.source))
+        arguments = actor_create.constructorArguments
+        payloads = list(arguments.positional) + [keyword_argument.value for keyword_argument in arguments.keyword]
+
+        object_ids = [ObjectID.generate_serializer_object_id(source), ObjectID(bytes(actor_create.classObjectId))]
+        object_ids.extend(
+            ObjectID(bytes(payload.data))
+            for payload in payloads
+            if payload.type == ActorPayload.ActorPayloadType.objectID
+        )
+
+        for object_id in object_ids:
+            if self._object_cache.has_object(object_id):
+                continue
+
+            object_content = self._connector_storage.get_object(object_id)
+            self._object_cache.add_object(source, object_id, bytes(object_content))
+
+    def __resolve_actor_payload(self, source: ClientID, payload: ActorPayload):
+        if payload.type == ActorPayload.ActorPayloadType.objectID:
+            return self._object_cache.get_object(ObjectID(bytes(payload.data)))
+
+        return self._object_cache.deserialize(source, bytes(payload.data))
+
+    def __on_received_actor_destroy(self, actor_destroy: ActorDestroy):
+        if self._actor_create is None or bytes(actor_destroy.actorId) != bytes(self._actor_create.actorId):
+            logging.error(f"Processor[{self.pid}]: received ActorDestroy for an actor it does not host, ignoring")
+            return
+
+        self.__send_actor_state_update(
+            self._actor_create,
+            ActorState.dead,
+            death_info=ActorStateUpdate.DeathInfo(reason=ActorStateUpdate.DeathInfo.Reason.destroyed),
+        )
+
+        # exiting the process is what actually releases the actor's resources; the agent
+        # detects the exit and starts a fresh processor
+        self._stop_requested = True
+
+    def __send_actor_state_update(
+        self, actor_create: ActorCreate, state: ActorState, death_info: Optional["ActorStateUpdate.DeathInfo"] = None
+    ):
+        fields = dict(actorId=bytes(actor_create.actorId), source=bytes(actor_create.source), workerId=b"", state=state)
+        if death_info is not None:
+            fields["deathInfo"] = death_info
+
+        self._connector_agent.send(ActorStateUpdate(**fields))
+
+    @staticmethod
+    def __serialize_failure_safe(exception: Exception) -> bytes:
+        try:
+            return serialize_failure(exception)
+        except Exception:  # the exception itself may not be picklable
+            return b""
 
     def __process_task(self, task: Task):
         task_flags = retrieve_task_flags_from_task(task)

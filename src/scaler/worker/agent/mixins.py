@@ -3,6 +3,9 @@ from typing import List, Optional
 
 from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import (
+    ActorCreate,
+    ActorDestroy,
+    ActorStateUpdate,
     ObjectInstruction,
     ProcessorInitialized,
     Task,
@@ -13,6 +16,24 @@ from scaler.protocol.capnp import (
 from scaler.utility.identifiers import ProcessorID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.worker.agent.processor_holder import ProcessorHolder
+
+
+class ActorManager(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    async def on_actor_create(self, actor_create: ActorCreate):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_actor_destroy(self, actor_destroy: ActorDestroy):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_actor_state_update(self, host_identity: bytes, actor_state_update: ActorStateUpdate):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def destroy(self, reason: str):
+        raise NotImplementedError()
 
 
 class HeartbeatManager(metaclass=abc.ABCMeta):
@@ -100,6 +121,14 @@ class ProcessorManager(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def current_processor_is_initialized(self) -> bool:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def current_processor_id(self) -> Optional[ProcessorID]:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def restart_current_processor(self, reason: str):
         raise NotImplementedError()
 
     @abc.abstractmethod

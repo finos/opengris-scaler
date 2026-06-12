@@ -13,7 +13,13 @@ from scaler.protocol.capnp import (
     TaskCancel,
 )
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
-from scaler.scheduler.controllers.mixins import ClientController, ObjectController, TaskController, WorkerController
+from scaler.scheduler.controllers.mixins import (
+    ActorController,
+    ClientController,
+    ObjectController,
+    TaskController,
+    WorkerController,
+)
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, TaskID
 from scaler.utility.mixins import Looper, Reporter
@@ -31,6 +37,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
         self._object_controller: Optional[ObjectController] = None
         self._task_controller: Optional[TaskController] = None
         self._worker_controller: Optional[WorkerController] = None
+        self._actor_controller: Optional[ActorController] = None
 
         self._client_last_seen: Dict[ClientID, Tuple[float, ClientHeartbeat]] = dict()
 
@@ -41,12 +48,14 @@ class VanillaClientController(ClientController, Looper, Reporter):
         object_controller: ObjectController,
         task_controller: TaskController,
         worker_controller: WorkerController,
+        actor_controller: Optional[ActorController] = None,
     ):
         self._binder = binder
         self._binder_monitor = binder_monitor
         self._object_controller = object_controller
         self._task_controller = task_controller
         self._worker_controller = worker_controller
+        self._actor_controller = actor_controller
 
     def get_client_task_ids(self, client_id: ClientID) -> Set[TaskID]:
         return self._client_to_task_ids.get_values(client_id)
@@ -156,6 +165,8 @@ class VanillaClientController(ClientController, Looper, Reporter):
             self._client_last_seen.pop(client_id)
 
         await self.__cancel_client_all_tasks(client_id)
+        if self._actor_controller is not None:
+            await self._actor_controller.on_client_disconnect(client_id)
         self._object_controller.clean_client(client_id)
 
     async def __cancel_client_all_tasks(self, client_id: ClientID):

@@ -62,6 +62,15 @@ class TaskID(Identifier):
         return TaskID(uuid.uuid4().bytes)
 
 
+class ActorID(Identifier):
+    def __repr__(self) -> str:
+        return f"ActorID({self.hex()})"
+
+    @staticmethod
+    def generate_actor_id() -> "ActorID":
+        return ActorID(uuid.uuid4().bytes)
+
+
 class ObjectID(bytes):
     SERIALIZER_TAG = hashlib.md5(b"serializer").digest()
 
