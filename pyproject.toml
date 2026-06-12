@@ -21,17 +21,17 @@ dependencies = [
     "argcomplete",
     "bidict",
     "cloudpickle",
-    "psutil==7.2.2",
+    "psutil==7.2.2; sys_platform != 'emscripten'",
     "sortedcontainers==2.4.0",
     "tblib",
-    "typing-extensions",
     "tomli>=2.0; python_version < '3.11'",
+    "typing-extensions",
 ]
 
 [project.optional-dependencies]
 zmq = [
-    "pyzmq<27; python_version < '3.9'",
-    "pyzmq; python_version >= '3.9'",
+    "pyzmq<27; python_version < '3.9' and sys_platform != 'emscripten'",
+    "pyzmq; python_version >= '3.9' and sys_platform != 'emscripten'",
 ]
 uvloop = [
     "uvloop; platform_system != 'Windows'",
@@ -71,10 +71,18 @@ all = [
 [dependency-groups]
 dev = [
     "black>=24.8.0; python_version >= '3.10'",
-    "isort>=7.0.0; python_version >= '3.10'",
-    "flake8>=5.0.4",
     "flake8-pyproject>=1.2.3",
+    "flake8>=5.0.4",
+    "isort>=7.0.0; python_version >= '3.10'",
+    "jupyterlite-pyodide-kernel",
+    "jupyterlite-sphinx",
     "mypy>=1.14.1",
+    "nbsphinx",
+    "pyodide-build==0.34.3; python_version >= '3.12'",
+    "shibuya",
+    "sphinx-copybutton",
+    "sphinx-substitution-extensions",
+    "sphinx-tabs",
     "sphinx>=7.1.2",
     "websockets>=12.0",
 ]
@@ -104,6 +112,7 @@ scaler = "scaler.entry_points.scaler:main"
 [tool.scikit-build]
 cmake.source-dir = "."
 wheel.packages = ["src/scaler"]
+wheel.exclude = ["**/*.capnp.c++", "**/*.capnp.h"]
 build.targets = [
     "py_ymq",
     "py_object_storage_server",
@@ -118,6 +127,17 @@ build.targets = [
 [tool.scikit-build.cmake.define]
 CMAKE_C_COMPILER = { env = "CMAKE_C_COMPILER", default = "gcc" }
 CMAKE_CXX_COMPILER = { env = "CMAKE_CXX_COMPILER", default = "g++" }
+
+# WASM/Pyodide builds only ship the client-facing extensions.
+# Skip the native compiler defaults so pyodide-build's emcc symlinks win.
+# CapnProto_DIR / CMAKE_PREFIX_PATH must be exported in the calling environment
+# (see .github/actions/build-wasm-client/action.yml). cmake's find_package picks
+# them up via the standard env-var lookup -- no scikit-build-core override needed.
+[[tool.scikit-build.overrides]]
+if.env.PYODIDE = true
+build.targets = ["py_capnp"]
+cmake.define.CMAKE_C_COMPILER = ""
+cmake.define.CMAKE_CXX_COMPILER = ""
 
 [tool.mypy]
 no_strict_optional = true

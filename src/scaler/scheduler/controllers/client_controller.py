@@ -60,7 +60,16 @@ class VanillaClientController(ClientController, Looper, Reporter):
     def on_task_begin(self, client_id: ClientID, task_id: TaskID):
         self._client_to_task_ids.add(client_id, task_id)
 
-    def on_task_finish(self, task_id: TaskID) -> ClientID:
+    def on_task_finish(self, task_id: TaskID) -> Optional[ClientID]:
+        # Returns ``None`` when the task is not currently associated with any
+        # tracked client. This happens when the client was disconnected (e.g.
+        # client_timeout_seconds elapsed without a heartbeat) while the task
+        # was still running on a worker: the in-flight task arrives back at
+        # the scheduler after the client mapping has been torn down. Callers
+        # must handle ``None`` by skipping the client-bound send while still
+        # cleaning up scheduler-side state for the task.
+        if not self._client_to_task_ids.has_value(task_id):
+            return None
         return self._client_to_task_ids.remove_value(task_id)
 
     async def on_heartbeat(self, client_id: ClientID, info: ClientHeartbeat):
@@ -80,6 +89,16 @@ class VanillaClientController(ClientController, Looper, Reporter):
             logging.info(f"{client_id!r} connected")
 
         self._client_last_seen[client_id] = (time.time(), info)
+
+    def notice_client_activity(self, client_id: ClientID):
+        # Any inbound message from a tracked client counts as liveness for
+        # the heartbeat-based timeout. We deliberately don't register new
+        # clients here -- a client must complete the proper ClientHeartbeat
+        # handshake before it shows up in ``_client_last_seen``.
+        existing = self._client_last_seen.get(client_id)
+        if existing is None:
+            return
+        self._client_last_seen[client_id] = (time.time(), existing[1])
 
     async def on_client_disconnect(self, client_id: ClientID, request: ClientDisconnect):
         if request.disconnectType == ClientDisconnect.DisconnectType.disconnect:

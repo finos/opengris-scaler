@@ -49,3 +49,20 @@ scaler_add_python_module(
         CapnProto::capnpc
         CapnProto::kj
 )
+
+if(EMSCRIPTEN)
+    # Pyodide's pywasmcross links the .so with ``-sSIDE_MODULE=2`` which leaves
+    # any unresolved symbol as a wasm import resolved against the main module.
+    # capnp/kj template instantiations come from the static archives via the
+    # standard "pull only .o files that satisfy current undefineds" rule, which
+    # leaves transitive template instantiations dangling. Force the entire
+    # capnp/kj archives in so all instantiations are defined locally and the
+    # .so does not import 200+ unresolvable C++ symbols.
+    target_link_options(py_capnp PRIVATE
+        "LINKER:--whole-archive"
+        "$<TARGET_FILE:CapnProto::capnp>"
+        "$<TARGET_FILE:CapnProto::capnpc>"
+        "$<TARGET_FILE:CapnProto::kj>"
+        "LINKER:--no-whole-archive"
+    )
+endif()

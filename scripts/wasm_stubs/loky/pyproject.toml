@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# Stub-only; matches an upstream loky version so any downstream pin is
+# satisfied while we substitute the import surface needed by pargraph.
+name = "loky"
+version = "3.5.6"
+description = "JupyterLite/Pyodide stub for loky"
+requires-python = ">=3.8"
+
+[tool.setuptools]
+py-modules = ["loky"]

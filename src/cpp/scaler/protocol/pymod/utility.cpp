@@ -15,20 +15,42 @@ namespace scaler::protocol::pymod {
 
 using scaler::utility::pymod::OwnedPyObject;
 
+// -----------------------------------------------------------------------------
+// String literal hardening for Pyodide / Emscripten SIDE_MODULE builds.
+//
+// Pyodide's wasm dynamic loader mis-resolves offsets into mergeable
+// ``.rodata.str*`` sections; short string literals (attribute names, format
+// strings, keyword names) end up pointing into the middle of unrelated longer
+// strings at load time. ``-fno-merge-all-constants`` (set in CMakeLists.txt)
+// is not always sufficient -- observed corruptions include:
+//   * ``"_variant_name"`` being read as ``"mber.name"``
+//   * ``"_list_enum_fields"`` being read as ``"ist_enum_fields"``
+//   * ``"s"`` PyArg_ParseTuple format being read as a 28-char garbage string,
+//     making ``capnp_union_get_attr`` raise
+//     ``TypeError: function takes exactly 28 arguments (1 given)``
+//
+// Emitting each string as its own named ``static const char[]`` array forces
+// the compiler to give it a unique symbol that survives the wasm relocator.
+// ``bootstrap.cpp`` already does this for its own literals -- these match the
+// same pattern for utility.cpp.
+//
+// Keep the contents in lockstep with the names referenced below.
+static const char KEY_ENUM_FIELDS[]               = "_enum_fields";
+static const char KEY_LIST_ENUM_FIELDS[]          = "_list_enum_fields";
+static const char KEY_UNION_FIELDS[]              = "_union_fields";
+static const char KEY_VARIANT_NAME[]              = "_variant_name";
+static const char KEY_CAPNP_SOURCE[]              = "_capnp_source";
+static const char KEY_CAPNP_TRAVERSAL_LIMIT[]     = "_capnp_traversal_limit_in_words";
+static const char KEY_CAPNP_ROOT_SCHEMA_NODE_ID[] = "_capnp_root_schema_node_id";
+static const char KEY_CAPNP_PATH[]                = "_capnp_path";
+static const char KW_DATA[]                       = "data";
+static const char KW_TRAVERSAL_LIMIT_IN_WORDS[]   = "traversal_limit_in_words";
+static const char FMT_STRING[]                    = "s";
+static const char FMT_OBJECT_OR_LIMIT[]           = "O|K";
+
 OwnedPyObject<> get_attr(PyObject* obj, const char* name)
 {
     return OwnedPyObject<> {PyObject_GetAttrString(obj, name)};
-}
-
-bool has_dict_attr(PyObject* obj, const char* name)
-{
-    PyObject* dict = PyObject_GenericGetDict(obj, nullptr);
-    if (!dict) {
-        PyErr_Clear();
-        return false;
-    }
-    OwnedPyObject<> owned_dict {dict};
-    return PyDict_GetItemString(dict, name) != nullptr;
 }
 
 bool read_enum_raw(PyObject* obj, uint16_t& out)
@@ -103,8 +125,8 @@ int capnp_struct_init(PyObject* self, PyObject* args, PyObject* kwargs)
     if (!kwargs) {
         return 0;
     }
-    OwnedPyObject<> enum_fields {get_attr((PyObject*)Py_TYPE(self), "_enum_fields")};
-    OwnedPyObject<> list_enum_fields {get_attr((PyObject*)Py_TYPE(self), "_list_enum_fields")};
+    OwnedPyObject<> enum_fields {get_attr((PyObject*)Py_TYPE(self), KEY_ENUM_FIELDS)};
+    OwnedPyObject<> list_enum_fields {get_attr((PyObject*)Py_TYPE(self), KEY_LIST_ENUM_FIELDS)};
     if (!enum_fields || !list_enum_fields) {
         return -1;
     }
@@ -158,10 +180,14 @@ OwnedPyObject<> build_enum_value(uint64_t enum_schema_id, uint16_t raw)
     return OwnedPyObject<> {PyObject_CallOneArg(enum_type.get(), raw_obj.get())};
 }
 
-constexpr const char* CAPNP_SOURCE_ATTR          = "_capnp_source";
-constexpr const char* CAPNP_TRAVERSAL_LIMIT_ATTR = "_capnp_traversal_limit_in_words";
-constexpr const char* CAPNP_ROOT_SCHEMA_ID_ATTR  = "_capnp_root_schema_node_id";
-constexpr const char* CAPNP_PATH_ATTR            = "_capnp_path";
+// Use the wasm-relocator-safe ``static const char[]`` arrays defined at the
+// top of the file. Previously these were ``constexpr const char*`` initialised
+// with bare string literals, which the Pyodide loader was free to corrupt
+// (e.g. ``"_capnp_source"`` getting relocated to a tail of another literal).
+constexpr const char* CAPNP_SOURCE_ATTR          = KEY_CAPNP_SOURCE;
+constexpr const char* CAPNP_TRAVERSAL_LIMIT_ATTR = KEY_CAPNP_TRAVERSAL_LIMIT;
+constexpr const char* CAPNP_ROOT_SCHEMA_ID_ATTR  = KEY_CAPNP_ROOT_SCHEMA_NODE_ID;
+constexpr const char* CAPNP_PATH_ATTR            = KEY_CAPNP_PATH;
 
 OwnedPyObject<> create_lazy_struct_object(
     PyObject* type_object,
@@ -201,6 +227,34 @@ OwnedPyObject<> create_lazy_struct_object(
     return result;
 }
 
+// Look up an attribute directly in the instance ``__dict__`` without going
+// through the type's ``__getattribute__`` / ``__getattr__``. The lazy reader
+// path needs this because the CapnpUnionStruct ``__getattr__`` we install
+// falls back to ``load_struct_field``, which calls back into the lazy reader
+// -- using the normal lookup here would infinite-recurse on shells that never
+// had ``_capnp_*`` attributes set (i.e. instances created via
+// ``Type(field=value)`` rather than ``Type.from_bytes(...)``).
+//
+// On miss we set an AttributeError and return null so the caller can either
+// surface it or fall back to a more informative message.
+static OwnedPyObject<> get_instance_attr_borrowed(PyObject* self, const char* name)
+{
+    PyObject** dict_ptr = _PyObject_GetDictPtr(self);
+    if (dict_ptr == nullptr || *dict_ptr == nullptr) {
+        PyErr_SetString(PyExc_AttributeError, name);
+        return {};
+    }
+    PyObject* value = PyDict_GetItemString(*dict_ptr, name);  // borrowed
+    if (value == nullptr) {
+        if (!PyErr_Occurred()) {
+            PyErr_SetString(PyExc_AttributeError, name);
+        }
+        return {};
+    }
+    Py_INCREF(value);
+    return OwnedPyObject<> {value};
+}
+
 bool load_lazy_struct_metadata(
     PyObject* self,
     OwnedPyObject<>& source,
@@ -208,17 +262,15 @@ bool load_lazy_struct_metadata(
     uint64_t& root_schema_id,
     OwnedPyObject<>& path)
 {
-    // We cannot call get_attr() until we are sure CAPNP_SOURCE_ATTR is defined, or else we will trigger a recursive
-    // call to load_lazy_struct_metadata().
-    if (!has_dict_attr(self, CAPNP_SOURCE_ATTR)) {
+    source = get_instance_attr_borrowed(self, CAPNP_SOURCE_ATTR);
+    if (!source) {
+        PyErr_Clear();
         PyErr_Format(PyExc_AttributeError, "%s not found: object is not a lazy Cap'n Proto struct", CAPNP_SOURCE_ATTR);
         return false;
     }
-
-    source = get_attr(self, CAPNP_SOURCE_ATTR);
-    OwnedPyObject<> traversal_limit_obj {get_attr(self, CAPNP_TRAVERSAL_LIMIT_ATTR)};
-    OwnedPyObject<> root_schema_id_obj {get_attr(self, CAPNP_ROOT_SCHEMA_ID_ATTR)};
-    path = get_attr(self, CAPNP_PATH_ATTR);
+    OwnedPyObject<> traversal_limit_obj {get_instance_attr_borrowed(self, CAPNP_TRAVERSAL_LIMIT_ATTR)};
+    OwnedPyObject<> root_schema_id_obj {get_instance_attr_borrowed(self, CAPNP_ROOT_SCHEMA_ID_ATTR)};
+    path = get_instance_attr_borrowed(self, CAPNP_PATH_ATTR);
     if (!traversal_limit_obj || !root_schema_id_obj || !path) {
         return false;
     }
@@ -256,86 +308,94 @@ OwnedPyObject<> with_lazy_struct_reader(PyObject* self, Handler&& handler)
         return {};
     }
 
+    static const char ERR_KJ_READ[]     = "Cap'n Proto read failed";
+    static const char ERR_BAD_PATH[]    = "invalid lazy Cap'n Proto path";
+    static const char ERR_BAD_FIELD[]   = "unknown Cap'n Proto field";
+    static const char ERR_BAD_INDEX[]   = "Cap'n Proto list index out of range";
+    static const char ERR_NOT_ALIGNED[] = "Cap'n Proto input buffer must be word-aligned for zero-copy reads";
+
     capnp::ReaderOptions options;
     options.traversalLimitInWords = traversal_limit;
 
-    auto root_schema = state->schema_registry.getStructById(root_schema_id);
-    auto words       = kj::arrayPtr(
-        reinterpret_cast<const capnp::word*>(buffer.buf), static_cast<size_t>(buffer.len) / sizeof(capnp::word));
-    capnp::FlatArrayMessageReader reader(words, options);
-    auto current = capnp::DynamicValue::Reader(reader.getRoot<capnp::DynamicStruct>(root_schema));
+    try {
+        auto root_schema = state->schema_registry.getStructById(root_schema_id);
+        auto words       = kj::arrayPtr(
+            reinterpret_cast<const capnp::word*>(buffer.buf), static_cast<size_t>(buffer.len) / sizeof(capnp::word));
+        capnp::FlatArrayMessageReader reader(words, options);
+        auto current = capnp::DynamicValue::Reader(reader.getRoot<capnp::DynamicStruct>(root_schema));
 
-    Py_ssize_t path_size = PyTuple_Size(path.get());
-    if (path_size < 0) {
+        Py_ssize_t path_size = PyTuple_Size(path.get());
+        if (path_size < 0) {
+            PyBuffer_Release(&buffer);
+            return {};
+        }
+
+        for (Py_ssize_t index = 0; index < path_size; ++index) {
+            PyObject* item = PyTuple_GetItem(path.get(), index);
+            if (!item) {
+                PyBuffer_Release(&buffer);
+                return {};
+            }
+
+            if (PyUnicode_Check(item)) {
+                if (current.getType() != capnp::DynamicValue::STRUCT) {
+                    PyBuffer_Release(&buffer);
+                    PyErr_SetString(PyExc_TypeError, ERR_BAD_PATH);
+                    return {};
+                }
+                auto current_struct    = current.as<capnp::DynamicStruct>();
+                const char* field_utf8 = PyUnicode_AsUTF8(item);
+                if (!field_utf8) {
+                    PyBuffer_Release(&buffer);
+                    return {};
+                }
+                KJ_IF_MAYBE (field, current_struct.getSchema().findFieldByName(field_utf8)) {
+                    current = current_struct.get(*field);
+                } else {
+                    PyBuffer_Release(&buffer);
+                    PyErr_SetString(PyExc_AttributeError, ERR_BAD_FIELD);
+                    return {};
+                }
+                continue;
+            }
+
+            if (!PyLong_Check(item) || current.getType() != capnp::DynamicValue::LIST) {
+                PyBuffer_Release(&buffer);
+                PyErr_SetString(PyExc_TypeError, ERR_BAD_PATH);
+                return {};
+            }
+
+            auto list_reader = current.as<capnp::DynamicList>();
+            auto item_index  = PyLong_AsSsize_t(item);
+            if (PyErr_Occurred()) {
+                PyBuffer_Release(&buffer);
+                return {};
+            }
+            if (item_index < 0 || item_index >= static_cast<Py_ssize_t>(list_reader.size())) {
+                PyBuffer_Release(&buffer);
+                PyErr_SetString(PyExc_IndexError, ERR_BAD_INDEX);
+                return {};
+            }
+            current = list_reader[static_cast<DynamicListIndex>(item_index)];
+        }
+
+        OwnedPyObject<> result {
+            handler(current.as<capnp::DynamicStruct>(), source.get(), traversal_limit, root_schema_id, path.get())};
         PyBuffer_Release(&buffer);
+        return result;
+    } catch (const kj::Exception&) {
+        PyBuffer_Release(&buffer);
+        if (!PyErr_Occurred()) {
+            PyErr_SetString(PyExc_RuntimeError, ERR_KJ_READ);
+        }
+        return {};
+    } catch (const std::exception&) {
+        PyBuffer_Release(&buffer);
+        if (!PyErr_Occurred()) {
+            PyErr_SetString(PyExc_RuntimeError, ERR_KJ_READ);
+        }
         return {};
     }
-
-    for (Py_ssize_t index = 0; index < path_size; ++index) {
-        PyObject* item = PyTuple_GetItem(path.get(), index);
-        if (!item) {
-            PyBuffer_Release(&buffer);
-            return {};
-        }
-
-        if (PyUnicode_Check(item)) {
-            if (current.getType() != capnp::DynamicValue::STRUCT) {
-                PyBuffer_Release(&buffer);
-                PyErr_SetString(PyExc_TypeError, "invalid lazy Cap'n Proto path");
-                return {};
-            }
-            auto current_struct    = current.as<capnp::DynamicStruct>();
-            const char* field_utf8 = PyUnicode_AsUTF8(item);
-            if (!field_utf8) {
-                PyBuffer_Release(&buffer);
-                return {};
-            }
-            capnp::StructSchema::Field field;
-            try {
-                field = current_struct.getSchema().getFieldByName(field_utf8);
-            } catch (const kj::Exception&) {
-                PyBuffer_Release(&buffer);
-                PyErr_SetString(PyExc_AttributeError, "unknown Cap'n Proto field");
-                return {};
-            } catch (const std::out_of_range&) {
-                PyBuffer_Release(&buffer);
-                PyErr_SetString(PyExc_AttributeError, "unknown Cap'n Proto field");
-                return {};
-            }
-            current = current_struct.get(field);
-            continue;
-        }
-
-        if (!PyLong_Check(item) || current.getType() != capnp::DynamicValue::LIST) {
-            PyBuffer_Release(&buffer);
-            PyErr_SetString(PyExc_TypeError, "invalid lazy Cap'n Proto path");
-            return {};
-        }
-
-        auto list_reader = current.as<capnp::DynamicList>();
-        auto item_index  = PyLong_AsSsize_t(item);
-        if (PyErr_Occurred()) {
-            PyBuffer_Release(&buffer);
-            return {};
-        }
-        if (item_index < 0 || item_index >= static_cast<Py_ssize_t>(list_reader.size())) {
-            PyBuffer_Release(&buffer);
-            PyErr_SetString(PyExc_IndexError, "Cap'n Proto list index out of range");
-            return {};
-        }
-        current = list_reader[static_cast<DynamicListIndex>(item_index)];
-    }
-
-    OwnedPyObject<> result;
-    try {
-        result = OwnedPyObject<> {
-            handler(current.as<capnp::DynamicStruct>(), source.get(), traversal_limit, root_schema_id, path.get())};
-    } catch (...) {
-        PyBuffer_Release(&buffer);
-        throw;
-    }
-    PyBuffer_Release(&buffer);
-    return result;
 }
 
 OwnedPyObject<> load_struct_field(PyObject* self, const char* name)
@@ -348,50 +408,46 @@ OwnedPyObject<> load_struct_field(PyObject* self, const char* name)
             unsigned long long traversal_limit,
             uint64_t root_schema_id,
             PyObject* path) -> PyObject* {
-            capnp::StructSchema::Field field;
-            try {
-                field = reader_struct.getSchema().getFieldByName(name);
-            } catch (const kj::Exception&) {
-                PyErr_SetString(PyExc_AttributeError, name);
-                return nullptr;
-            } catch (const std::out_of_range&) {
-                PyErr_SetString(PyExc_AttributeError, name);
-                return nullptr;
-            }
-            bool is_union_field = field.getProto().getDiscriminantValue() != capnp::schema::Field::NO_DISCRIMINANT;
-            if (is_union_field) {
-                auto active_field = reader_struct.which();
-                KJ_IF_MAYBE (active_field_ptr, active_field) {
-                    if (field != *active_field_ptr) {
+            KJ_IF_MAYBE (field_ptr, reader_struct.getSchema().findFieldByName(name)) {
+                auto field          = *field_ptr;
+                bool is_union_field = field.getProto().getDiscriminantValue() != capnp::schema::Field::NO_DISCRIMINANT;
+                if (is_union_field) {
+                    auto active_field = reader_struct.which();
+                    KJ_IF_MAYBE (active_field_ptr, active_field) {
+                        if (field != *active_field_ptr) {
+                            PyErr_SetString(PyExc_AttributeError, name);
+                            return nullptr;
+                        }
+                    } else {
                         PyErr_SetString(PyExc_AttributeError, name);
                         return nullptr;
                     }
-                } else {
-                    PyErr_SetString(PyExc_AttributeError, name);
+                }
+
+                OwnedPyObject<> field_item {PyUnicode_FromString(name)};
+                if (!field_item) {
                     return nullptr;
                 }
-            }
-
-            OwnedPyObject<> field_item {PyUnicode_FromString(name)};
-            if (!field_item) {
+                OwnedPyObject<> field_tail {PyTuple_Pack(1, field_item.get())};
+                if (!field_tail) {
+                    return nullptr;
+                }
+                OwnedPyObject<> field_path {PySequence_Concat(path, field_tail.get())};
+                if (!field_path) {
+                    return nullptr;
+                }
+                return dynamic_value_to_py_object(
+                           reader_struct.get(field),
+                           field.getType(),
+                           source,
+                           traversal_limit,
+                           root_schema_id,
+                           field_path.get())
+                    .take();
+            } else {
+                PyErr_SetString(PyExc_AttributeError, name);
                 return nullptr;
             }
-            OwnedPyObject<> field_tail {PyTuple_Pack(1, field_item.get())};
-            if (!field_tail) {
-                return nullptr;
-            }
-            OwnedPyObject<> field_path {PySequence_Concat(path, field_tail.get())};
-            if (!field_path) {
-                return nullptr;
-            }
-            return dynamic_value_to_py_object(
-                       reader_struct.get(field),
-                       field.getType(),
-                       source,
-                       traversal_limit,
-                       root_schema_id,
-                       field_path.get())
-                .take();
         });
 }
 
@@ -409,7 +465,7 @@ OwnedPyObject<> get_active_union_field_name(PyObject* self)
                 return PyUnicode_FromString(active_field_ptr->getProto().getName().cStr());
             }
 
-            PyErr_SetString(PyExc_AttributeError, "_variant_name");
+            PyErr_SetString(PyExc_AttributeError, KEY_VARIANT_NAME);
             return nullptr;
         });
 }
@@ -552,7 +608,7 @@ OwnedPyObject<> capnp_struct_init_method(PyObject* self, PyObject* args, PyObjec
 OwnedPyObject<> capnp_struct_get_attr(PyObject* self, PyObject* args)
 {
     const char* name = nullptr;
-    if (!PyArg_ParseTuple(args, "s", &name)) {
+    if (!PyArg_ParseTuple(args, FMT_STRING, &name)) {
         return {};
     }
 
@@ -589,8 +645,9 @@ OwnedPyObject<> capnp_struct_from_bytes(PyObject* cls, PyObject* args, PyObject*
                 return {};
         }
     } else {
-        static const char* keywords[] = {"data", "traversal_limit_in_words", nullptr};
-        if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|K", const_cast<char**>(keywords), &data, &traversal_limit)) {
+        static const char* keywords[] = {KW_DATA, KW_TRAVERSAL_LIMIT_IN_WORDS, nullptr};
+        if (!PyArg_ParseTupleAndKeywords(
+                args, kwargs, FMT_OBJECT_OR_LIMIT, const_cast<char**>(keywords), &data, &traversal_limit)) {
             return {};
         }
     }
@@ -599,7 +656,7 @@ OwnedPyObject<> capnp_struct_from_bytes(PyObject* cls, PyObject* args, PyObject*
 
 OwnedPyObject<> capnp_union_which(PyObject* self)
 {
-    OwnedPyObject<> variant_name {get_attr(self, "_variant_name")};
+    OwnedPyObject<> variant_name {get_attr(self, KEY_VARIANT_NAME)};
     if (variant_name) {
         return variant_name;
     }
@@ -609,7 +666,7 @@ OwnedPyObject<> capnp_union_which(PyObject* self)
     if (!variant_name) {
         return {};
     }
-    if (PyObject_SetAttrString(self, "_variant_name", variant_name.get()) < 0) {
+    if (PyObject_SetAttrString(self, KEY_VARIANT_NAME, variant_name.get()) < 0) {
         return {};
     }
     return variant_name;
@@ -618,7 +675,7 @@ OwnedPyObject<> capnp_union_which(PyObject* self)
 OwnedPyObject<> capnp_union_get_attr(PyObject* self, PyObject* args)
 {
     const char* name = nullptr;
-    if (!PyArg_ParseTuple(args, "s", &name))
+    if (!PyArg_ParseTuple(args, FMT_STRING, &name))
         return {};
     OwnedPyObject<> value {load_struct_field(self, name)};
     if (!value) {
@@ -657,8 +714,9 @@ OwnedPyObject<> capnp_union_from_bytes(PyObject* /*cls*/, PyObject* args, PyObje
                 return {};
         }
     } else {
-        static const char* keywords[] = {"data", "traversal_limit_in_words", nullptr};
-        if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|K", const_cast<char**>(keywords), &data, &traversal_limit)) {
+        static const char* keywords[] = {KW_DATA, KW_TRAVERSAL_LIMIT_IN_WORDS, nullptr};
+        if (!PyArg_ParseTupleAndKeywords(
+                args, kwargs, FMT_OBJECT_OR_LIMIT, const_cast<char**>(keywords), &data, &traversal_limit)) {
             return {};
         }
     }
@@ -675,7 +733,7 @@ OwnedPyObject<> capnp_union_init_method(PyObject* self, PyObject* args, PyObject
         PyErr_SetString(PyExc_ValueError, "requires exactly one active union field");
         return {};
     }
-    OwnedPyObject<> union_fields {get_attr((PyObject*)Py_TYPE(self), "_union_fields")};
+    OwnedPyObject<> union_fields {get_attr((PyObject*)Py_TYPE(self), KEY_UNION_FIELDS)};
     if (!union_fields)
         return {};
     PyObject* key            = nullptr;
@@ -699,7 +757,7 @@ OwnedPyObject<> capnp_union_init_method(PyObject* self, PyObject* args, PyObject
     OwnedPyObject<> variant_name {PyUnicode_FromString(active_field)};
     if (!variant_name)
         return {};
-    if (PyObject_SetAttrString(self, "_variant_name", variant_name.get()) < 0)
+    if (PyObject_SetAttrString(self, KEY_VARIANT_NAME, variant_name.get()) < 0)
         return {};
     if (capnp_struct_init(self, args, kwargs) < 0)
         return {};
