@@ -4,7 +4,7 @@ import logging
 from typing import Optional, Set
 
 from scaler.io.mixins import AsyncBinder, AsyncConnector
-from scaler.protocol.capnp import ActorCreate, ActorDestroy, ActorError, ActorState, ActorStateUpdate
+from scaler.protocol.capnp import ActorCreate, ActorDestroy, ActorError, ActorMessage, ActorState, ActorStateUpdate
 from scaler.utility.identifiers import ActorID, ProcessorID, WorkerID
 from scaler.utility.mixins import Looper
 from scaler.worker.agent.mixins import ActorManager, ProcessorManager
@@ -73,6 +73,24 @@ class VanillaActorManager(Looper, ActorManager):
                 self._designation = None  # the designation is released; heartbeats rejoin the pool
 
         await self._connector_external.send(self.__stamp_worker_id(actor_state_update))
+
+    async def on_actor_message(self, actor_message: ActorMessage):
+        designation = self._designation
+
+        if (
+            designation is None
+            or designation.actor_id != ActorID(bytes(actor_message.actorId))
+            or not designation.alive
+        ):
+            # dead, unknown or not-yet-alive actor: drop; the owner learns the actor fate from
+            # its state updates
+            logging.warning(f"{self.__class__.__name__}: dropping message for actor {bytes(actor_message.actorId)!r}")
+            return
+
+        await self._binder_internal.send(designation.processor_id, actor_message)
+
+    async def on_actor_message_from_host(self, actor_message: ActorMessage):
+        await self._connector_external.send(actor_message)
 
     async def routine(self):
         designation = self._designation

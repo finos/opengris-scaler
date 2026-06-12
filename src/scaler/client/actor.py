@@ -2,7 +2,7 @@ from typing import Optional
 
 from scaler.client.agent.actor_manager import ClientActorManager
 from scaler.io.mixins import SyncConnector
-from scaler.protocol.capnp import ActorDestroy, ActorState, ActorStateUpdate
+from scaler.protocol.capnp import ActorDestroy, ActorMessage, ActorState, ActorStateUpdate
 from scaler.utility.identifiers import ActorID, ClientID
 
 
@@ -12,8 +12,8 @@ class ActorHandle:
     Creation is asynchronous: the handle is returned before the actor is alive. The `state`
     property reflects the latest ActorStateUpdate received from the scheduler.
 
-    Only lifecycle operations are supported for now; RPC-style method calls and streaming are
-    not implemented yet.
+    Lifecycle operations and the raw message plane (`__send__`/`__receive__`) are supported;
+    RPC-style method calls and streaming are not implemented yet.
     """
 
     def __init__(
@@ -59,6 +59,27 @@ class ActorHandle:
         :raises TimeoutError: if the timeout expires first
         """
         return self._actor_manager.wait_for_actor_state(self._actor_id, state, timeout=timeout)
+
+    def __send__(self, payload: bytes) -> None:
+        """Send raw bytes to the actor (fire-and-forget).
+
+        The payload is opaque to the scheduler and the worker; the actor receives it through
+        its `__receive__(payload)` method. Application-layer serialization is the caller's
+        responsibility.
+
+        :param payload: serialized message bytes
+        """
+        self._connector_agent.send(ActorMessage(actorId=self._actor_id, source=self._source, payload=bytes(payload)))
+
+    def __receive__(self, timeout: Optional[float] = None) -> bytes:
+        """Receive raw bytes from the actor (blocking).
+
+        :param timeout: maximum seconds to wait; None blocks forever
+        :return: payload bytes pushed by the actor
+        :raises TimeoutError: if the timeout expires
+        :raises ActorDeadError: if the actor died (pending payloads remain consumable first)
+        """
+        return self._actor_manager.receive_actor_message(self._actor_id, timeout=timeout)
 
     def destroy(self, force: bool = False) -> None:
         """Destroy the actor and release its resources.

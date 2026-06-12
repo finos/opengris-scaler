@@ -5,6 +5,7 @@ from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import (
     ActorCreate,
     ActorDestroy,
+    ActorMessage,
     ActorStateUpdate,
     ObjectInstruction,
     ProcessorInitialized,
@@ -29,6 +30,14 @@ class ActorManager(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     async def on_actor_state_update(self, host_identity: bytes, actor_state_update: ActorStateUpdate):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_actor_message(self, actor_message: ActorMessage):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_actor_message_from_host(self, actor_message: ActorMessage):
         raise NotImplementedError()
 
     @abc.abstractmethod

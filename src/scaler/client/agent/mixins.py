@@ -4,6 +4,7 @@ from concurrent.futures import Future
 from scaler.protocol.capnp import (
     ActorCreate,
     ActorDestroy,
+    ActorMessage,
     ActorStateUpdate,
     ClientDisconnect,
     ClientHeartbeatEcho,
@@ -103,6 +104,14 @@ class ActorManager(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     async def on_actor_state_update(self, actor_state_update: ActorStateUpdate):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_send_actor_message(self, actor_message: ActorMessage):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_actor_message(self, actor_message: ActorMessage):
         raise NotImplementedError()
 
     @abc.abstractmethod

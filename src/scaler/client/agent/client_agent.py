@@ -18,6 +18,7 @@ from scaler.io.ymq import YMQException
 from scaler.protocol.capnp import (
     ActorCreate,
     ActorDestroy,
+    ActorMessage,
     ActorStateUpdate,
     BaseMessage,
     ClientDisconnect,
@@ -158,6 +159,10 @@ class ClientAgent(threading.Thread):
             await self._actor_manager.on_destroy_actor(message)
             return
 
+        if isinstance(message, ActorMessage):
+            await self._actor_manager.on_send_actor_message(message)
+            return
+
         raise TypeError(f"Unknown {message=}")
 
     async def __on_receive_from_scheduler(self, message: BaseMessage):
@@ -184,6 +189,10 @@ class ClientAgent(threading.Thread):
 
         if isinstance(message, ActorStateUpdate):
             await self._actor_manager.on_actor_state_update(message)
+            return
+
+        if isinstance(message, ActorMessage):
+            await self._actor_manager.on_actor_message(message)
             return
 
         raise TypeError(f"Unknown {message=}")

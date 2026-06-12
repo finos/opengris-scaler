@@ -1,11 +1,18 @@
 import dataclasses
+import logging
+import queue
 import threading
 from typing import Dict, Optional
 
 from scaler.client.agent.mixins import ActorManager
 from scaler.io.mixins import AsyncConnector
-from scaler.protocol.capnp import ActorCreate, ActorDestroy, ActorState, ActorStateUpdate
+from scaler.protocol.capnp import ActorCreate, ActorDestroy, ActorMessage, ActorState, ActorStateUpdate
+from scaler.utility.exceptions import ActorDeadError
 from scaler.utility.identifiers import ActorID
+
+# placed in an actor's inbox when it dies; re-put on consumption so that every pending and
+# future __receive__() call wakes up and raises ActorDeadError
+_DEATH_SENTINEL = object()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -26,6 +33,7 @@ class _ActorRecord:
         # of `lifecycle` never take it
         self.condition = threading.Condition()
         self.lifecycle = _Lifecycle(state=ActorState.pending, death_reason=None)
+        self.inbox: queue.Queue = queue.Queue()
 
 
 class ClientActorManager(ActorManager):
@@ -33,8 +41,8 @@ class ClientActorManager(ActorManager):
 
     Concurrency design: the records dict is the only structure guarded by the manager's lock,
     and every locked section is a single dict operation. Record values are safe to use outside
-    the lock by construction: lifecycle is an immutable snapshot, and blocking waits go through
-    the record's condition variable instead of polling.
+    the lock by construction: lifecycle is an immutable snapshot, the inbox is a synchronized
+    queue, and blocking waits go through the record's condition variable instead of polling.
     """
 
     def __init__(self):
@@ -79,12 +87,46 @@ class ClientActorManager(ActorManager):
                 raise TimeoutError(f"actor {actor_id!r} did not reach state {state.name} within {timeout} seconds")
             return record.lifecycle.state
 
+    def receive_actor_message(self, actor_id: ActorID, timeout: Optional[float] = None) -> bytes:
+        """Blocks the calling (user) thread until the actor pushes a payload.
+
+        Payloads that arrived before the actor died remain consumable; once drained, a dead
+        actor's inbox always raises ActorDeadError.
+        """
+        record = self.__get_record(actor_id)
+        if record is None:
+            raise ActorDeadError(f"unknown actor {actor_id!r}")
+
+        try:
+            item = record.inbox.get(timeout=timeout)
+        except queue.Empty:
+            raise TimeoutError(f"no message from actor {actor_id!r} within {timeout} seconds")
+
+        if item is _DEATH_SENTINEL:
+            record.inbox.put(item)
+            raise ActorDeadError(f"actor {actor_id!r} is dead: {record.lifecycle.death_reason}")
+
+        return item
+
     async def on_create_actor(self, actor_create: ActorCreate):
         self.track_actor(ActorID(bytes(actor_create.actorId)))
         await self._connector_external.send(actor_create)
 
     async def on_destroy_actor(self, actor_destroy: ActorDestroy):
         await self._connector_external.send(actor_destroy)
+
+    async def on_send_actor_message(self, actor_message: ActorMessage):
+        await self._connector_external.send(actor_message)
+
+    async def on_actor_message(self, actor_message: ActorMessage):
+        actor_id = ActorID(bytes(actor_message.actorId))
+
+        record = self.__get_record(actor_id)
+        if record is None:
+            logging.warning(f"{self.__class__.__name__}: dropping message for unknown actor {actor_id!r}")
+            return
+
+        record.inbox.put(bytes(actor_message.payload))
 
     async def on_actor_state_update(self, actor_state_update: ActorStateUpdate):
         record = self.__ensure_record(ActorID(bytes(actor_state_update.actorId)))
@@ -116,6 +158,9 @@ class ClientActorManager(ActorManager):
                 return
 
             record.lifecycle = _Lifecycle(state=new_state, death_reason=death_reason)
+
+            if new_state == ActorState.dead:
+                record.inbox.put(_DEATH_SENTINEL)
 
             record.condition.notify_all()
 

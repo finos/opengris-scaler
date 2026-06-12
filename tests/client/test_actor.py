@@ -3,6 +3,7 @@ import unittest
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.protocol.capnp import ActorState, ActorStateUpdate
+from scaler.utility.exceptions import ActorDeadError
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
 
@@ -18,6 +19,17 @@ class EchoActor:
 class FailingActor:
     def __init__(self):
         raise ValueError("constructor boom")
+
+
+class GreeterActor:
+    def __receive__(self, payload: bytes):
+        if payload == b"hello actor":
+            return b"hello client"
+        return None
+
+
+def echo_value(value: int) -> int:
+    return value
 
 
 def wait_for_state(handle, expected_state: ActorState, timeout_seconds: float = _WAIT_TIMEOUT_SECONDS):
@@ -115,6 +127,56 @@ class TestActor(unittest.TestCase):
             fourth.destroy()
             wait_for_state(second, ActorState.dead)
             wait_for_state(fourth, ActorState.dead)
+
+    def test_mixed_actors_and_tasks(self):
+        # an actor-designated worker leaves the task pool; normal clients keep the balancing
+        # behavior on the remaining workers, and get the full pool back after the destroy
+        with Client(address=self.address) as client:
+            actor = client.create_actor(GreeterActor)
+            wait_for_state(actor, ActorState.alive)
+
+            results = [client.submit(echo_value, i).result(timeout=_WAIT_TIMEOUT_SECONDS) for i in range(8)]
+            self.assertEqual(results, list(range(8)))
+
+            actor.__send__(b"hello actor")
+            self.assertEqual(actor.__receive__(timeout=_WAIT_TIMEOUT_SECONDS), b"hello client")
+
+            actor.destroy()
+            wait_for_state(actor, ActorState.dead)
+
+            self.assertEqual(client.submit(echo_value, 42).result(timeout=_WAIT_TIMEOUT_SECONDS), 42)
+
+    def test_actor_message_bidirectional(self):
+        with Client(address=self.address) as client:
+            actor = client.create_actor(GreeterActor)
+            wait_for_state(actor, ActorState.alive)
+
+            # client -> actor, then actor -> client
+            actor.__send__(b"hello actor")
+            self.assertEqual(actor.__receive__(timeout=_WAIT_TIMEOUT_SECONDS), b"hello client")
+
+            # the exchange is repeatable on the same actor
+            actor.__send__(b"hello actor")
+            self.assertEqual(actor.__receive__(timeout=_WAIT_TIMEOUT_SECONDS), b"hello client")
+
+            actor.destroy()
+            wait_for_state(actor, ActorState.dead)
+
+    def test_actor_message_receive_timeout_and_death(self):
+        with Client(address=self.address) as client:
+            actor = client.create_actor(GreeterActor)
+            wait_for_state(actor, ActorState.alive)
+
+            # a payload the actor does not reply to: __receive__ times out
+            actor.__send__(b"no reply expected")
+            with self.assertRaises(TimeoutError):
+                actor.__receive__(timeout=1)
+
+            # once the actor is dead, __receive__ raises instead of blocking forever
+            actor.destroy()
+            wait_for_state(actor, ActorState.dead)
+            with self.assertRaises(ActorDeadError):
+                actor.__receive__(timeout=_WAIT_TIMEOUT_SECONDS)
 
     def test_constructor_failure(self):
         with Client(address=self.address) as client:

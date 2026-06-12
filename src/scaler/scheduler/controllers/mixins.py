@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Set
 from scaler.protocol.capnp import (
     ActorCreate,
     ActorDestroy,
+    ActorMessage,
     ActorStateUpdate,
     ClientDisconnect,
     ClientHeartbeat,
@@ -176,6 +177,10 @@ class ActorController(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     async def on_actor_state_update(self, worker_id: WorkerID, actor_state_update: ActorStateUpdate):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_actor_message(self, source: bytes, actor_message: ActorMessage):
         raise NotImplementedError()
 
     @abc.abstractmethod

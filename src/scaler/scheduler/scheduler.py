@@ -11,6 +11,7 @@ from scaler.io.ymq import YMQException
 from scaler.protocol.capnp import (
     ActorCreate,
     ActorDestroy,
+    ActorMessage,
     ActorStateUpdate,
     BaseMessage,
     ClientDisconnect,
@@ -254,6 +255,10 @@ class Scheduler:
 
         if isinstance(message, ActorStateUpdate):
             await self._actor_controller.on_actor_state_update(WorkerID(source), message)
+            return
+
+        if isinstance(message, ActorMessage):
+            await self._actor_controller.on_actor_message(source, message)
             return
 
         # =====================================================================================

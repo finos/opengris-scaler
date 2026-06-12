@@ -19,6 +19,7 @@ from scaler.io.network_backends import YMQNetworkBackend, ZMQNetworkBackend, get
 from scaler.protocol.capnp import (
     ActorCreate,
     ActorDestroy,
+    ActorMessage,
     ActorStateUpdate,
     BaseMessage,
     ClientDisconnect,
@@ -221,6 +222,10 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             await self._actor_manager.on_actor_destroy(message)
             return
 
+        if isinstance(message, ActorMessage):
+            await self._actor_manager.on_actor_message(message)
+            return
+
         if isinstance(message, ClientDisconnect):
             if message.disconnectType == ClientDisconnect.DisconnectType.shutdown:
                 raise ClientShutdownException("received client shutdown, quitting")
@@ -237,6 +242,10 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
     async def __on_receive_internal(self, processor_id_bytes: bytes, message: BaseMessage):
         if isinstance(message, ActorStateUpdate):
             await self._actor_manager.on_actor_state_update(processor_id_bytes, message)
+            return
+
+        if isinstance(message, ActorMessage):
+            await self._actor_manager.on_actor_message_from_host(message)
             return
 
         processor_id = ProcessorID(processor_id_bytes)

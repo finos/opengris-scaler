@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Optional
 
 from scaler.io.mixins import AsyncBinder
-from scaler.protocol.capnp import ActorCreate, ActorDestroy, ActorError, ActorState, ActorStateUpdate
+from scaler.protocol.capnp import ActorCreate, ActorDestroy, ActorError, ActorMessage, ActorState, ActorStateUpdate
 from scaler.scheduler.controllers.mixins import ActorController, WorkerController
 from scaler.utility.identifiers import ActorID, ClientID, WorkerID
 from scaler.utility.one_to_many_dict import OneToManyDict
@@ -45,6 +45,12 @@ class VanillaActorController(ActorController):
             await self.__on_actor_state_update(worker_id, actor_state_update)
         except Exception:
             logging.exception(f"{self.__class__.__name__}: failed to handle ActorStateUpdate from {worker_id!r}:")
+
+    async def on_actor_message(self, source: bytes, actor_message: ActorMessage):
+        try:
+            await self.__on_actor_message(source, actor_message)
+        except Exception:
+            logging.exception(f"{self.__class__.__name__}: failed to handle ActorMessage from {source!r}:")
 
     async def on_client_disconnect(self, client_id: ClientID):
         try:
@@ -148,6 +154,46 @@ class VanillaActorController(ActorController):
             self.__forget_actor(actor_id)
 
         await self._binder.send(owner, actor_state_update)
+
+    async def __on_actor_message(self, source: bytes, actor_message: ActorMessage):
+        actor_id = ActorID(bytes(actor_message.actorId))
+        owner = bytes(actor_message.source)
+
+        if source.startswith(b"Client|"):
+            # client -> actor direction: only the owner may talk to its actor
+            if source != owner or (
+                self._client_to_actor_ids.has_value(actor_id)
+                and bytes(self._client_to_actor_ids.get_key(actor_id)) != source
+            ):
+                logging.error(
+                    f"{self.__class__.__name__}: client {source!r} sent a message for actor {actor_id!r} it "
+                    "does not own, dropping"
+                )
+                return
+
+            if not self._worker_to_actor_ids.has_value(actor_id):
+                # the actor is dead or unknown; the owner learns that from the actor's state
+                # updates, so the message is dropped silently by design
+                logging.warning(f"{self.__class__.__name__}: dropping message for unknown actor {actor_id!r}")
+                return
+
+            await self._binder.send(self._worker_to_actor_ids.get_key(actor_id), actor_message)
+            return
+
+        # worker -> client direction: route by the declared owner; verify the sender hosts the
+        # actor when it is still tracked (late messages of a forgotten actor pass through, the
+        # client-side inbox keeps them consumable after death)
+        if (
+            self._worker_to_actor_ids.has_value(actor_id)
+            and bytes(self._worker_to_actor_ids.get_key(actor_id)) != source
+        ):
+            logging.error(
+                f"{self.__class__.__name__}: worker {source!r} sent a message for actor {actor_id!r} it does "
+                "not host, dropping"
+            )
+            return
+
+        await self._binder.send(ClientID(owner), actor_message)
 
     async def __on_client_disconnect(self, client_id: ClientID):
         if client_id not in self._client_to_actor_ids.keys():

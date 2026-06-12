@@ -22,6 +22,7 @@ from scaler.protocol.capnp import (
     ActorCreate,
     ActorDestroy,
     ActorError,
+    ActorMessage,
     ActorPayload,
     ActorState,
     ActorStateUpdate,
@@ -263,6 +264,10 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             self.__on_received_actor_create(message)
             return
 
+        if isinstance(message, ActorMessage):
+            self.__on_received_actor_message(message)
+            return
+
         if isinstance(message, ActorDestroy):
             self.__on_received_actor_destroy(message)
             return
@@ -370,6 +375,46 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             return self._object_cache.get_object(ObjectID(bytes(payload.data)))
 
         return self._object_cache.deserialize(source, bytes(payload.data))
+
+    def __on_received_actor_message(self, actor_message: ActorMessage):
+        if self._actor_instance is None:
+            logging.error(f"Processor[{self.pid}]: received an ActorMessage but hosts no actor, dropping")
+            return
+
+        payload = bytes(actor_message.payload)
+
+        receive_method = getattr(self._actor_instance, "__receive__", None)
+        if receive_method is None:
+            logging.error(
+                f"Processor[{self.pid}]: actor {type(self._actor_instance).__name__} has no __receive__ "
+                "method, dropping message"
+            )
+            return
+
+        try:
+            with self.__processor_context():
+                reply = receive_method(payload)
+        except Exception:
+            # a failed delivery does not kill a stateful actor; the message plane is
+            # fire-and-forget, so log and keep serving
+            logging.exception(f"Processor[{self.pid}]: actor raised while handling a message:")
+            return
+
+        if reply is None:
+            return
+
+        if not isinstance(reply, (bytes, bytearray)):
+            logging.error(
+                f"Processor[{self.pid}]: __receive__ returned {type(reply).__name__}, expected bytes or "
+                "None, dropping reply"
+            )
+            return
+
+        self._connector_agent.send(
+            ActorMessage(
+                actorId=bytes(self._actor_create.actorId), source=bytes(self._actor_create.source), payload=bytes(reply)
+            )
+        )
 
     def __on_received_actor_destroy(self, actor_destroy: ActorDestroy):
         if self._actor_create is None or bytes(actor_destroy.actorId) != bytes(self._actor_create.actorId):
