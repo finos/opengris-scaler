@@ -26,6 +26,20 @@ function exitOnError {
     }
 }
 
+function getVisualStudioCMakeGenerator {
+    $visualStudioVersion = $env:VisualStudioVersion
+
+    if ($visualStudioVersion -match '^18\.') {
+        return "Visual Studio 18 2026"
+    }
+
+    if ($visualStudioVersion -match '^17\.') {
+        return "Visual Studio 17 2022"
+    }
+
+    return "Visual Studio 17 2022"
+}
+
 function downloadTarGz($url, $folderName) {
     exitOnError { curl.exe --retry 100 --retry-max-time 3600 -L $url -o "$THIRD_PARTY_DOWNLOADED\$folderName.tar.gz" }
     Write-Host "Downloaded $folderName into $THIRD_PARTY_DOWNLOADED\$folderName.tar.gz"
@@ -71,6 +85,9 @@ elseif ($action -eq "compile")
     mkdir "$THIRD_PARTY_COMPILED" -Force
 }
 
+$CMAKE_GENERATOR = getVisualStudioCMakeGenerator
+Write-Host "Using CMake generator: $CMAKE_GENERATOR"
+
 # Download, compile, or install Cap'n Proto
 if ($dependency -eq "capnp")
 {
@@ -89,7 +106,7 @@ if ($dependency -eq "capnp")
         $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
         exitOnError {
-            cmake -G "Visual Studio 17 2022" -B build `
+            cmake -G "$CMAKE_GENERATOR" -B build `
                 -DCMAKE_INSTALL_PREFIX="$PREFIX" `
                 -DCMAKE_INSTALL_LIBDIR=lib `
                 -DBUILD_TESTING=OFF
@@ -142,7 +159,7 @@ elseif ($dependency -eq "libuv")
         $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$UV_FOLDER_NAME"
         exitOnError {
-            cmake -G "Visual Studio 17 2022" -B build `
+            cmake -G "$CMAKE_GENERATOR" -B build `
                 -DCMAKE_INSTALL_PREFIX="$PREFIX" `
                 -DBUILD_TESTING=OFF
         }

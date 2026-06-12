@@ -258,7 +258,7 @@ elif [ "$1" == "openssl" ]; then
         extract_tar_gz "${OPENSSL_FOLDER_NAME}"
 
         cd "${THIRD_PARTY_COMPILED}/${OPENSSL_FOLDER_NAME}"
-        ./config --prefix="${PREFIX}" --libdir=lib no-tests
+        ./config --prefix="${PREFIX}" --libdir=lib no-tests no-shared
         make -j "${NUM_CORES}"
         echo "Compiled OpenSSL to ${THIRD_PARTY_COMPILED}/${OPENSSL_FOLDER_NAME}"
 
