@@ -11,9 +11,8 @@ from scaler.utility.one_to_many_dict import OneToManyDict
 class VanillaActorController(ActorController):
     """Routes actor lifecycle messages between owning clients and hosting workers.
 
-    The scheduler must never fail because of an actor message: every handler catches and logs
-    unexpected errors, and every client request is answered, possibly with a dead state, so that
-    no client is left blocked.
+    Every client request is answered, possibly with a dead state, so that no client is left
+    blocked.
     """
 
     def __init__(self):
@@ -28,46 +27,10 @@ class VanillaActorController(ActorController):
         self._binder = binder
         self._worker_controller = worker_controller
 
-    async def on_actor_create(self, client_id: ClientID, actor_create: ActorCreate):
-        try:
-            await self.__on_actor_create(client_id, actor_create)
-        except Exception:
-            logging.exception(f"{self.__class__.__name__}: failed to handle ActorCreate from {client_id!r}:")
-
-    async def on_actor_destroy(self, client_id: ClientID, actor_destroy: ActorDestroy):
-        try:
-            await self.__on_actor_destroy(client_id, actor_destroy)
-        except Exception:
-            logging.exception(f"{self.__class__.__name__}: failed to handle ActorDestroy from {client_id!r}:")
-
-    async def on_actor_state_update(self, worker_id: WorkerID, actor_state_update: ActorStateUpdate):
-        try:
-            await self.__on_actor_state_update(worker_id, actor_state_update)
-        except Exception:
-            logging.exception(f"{self.__class__.__name__}: failed to handle ActorStateUpdate from {worker_id!r}:")
-
-    async def on_actor_message(self, source: bytes, actor_message: ActorMessage):
-        try:
-            await self.__on_actor_message(source, actor_message)
-        except Exception:
-            logging.exception(f"{self.__class__.__name__}: failed to handle ActorMessage from {source!r}:")
-
-    async def on_client_disconnect(self, client_id: ClientID):
-        try:
-            await self.__on_client_disconnect(client_id)
-        except Exception:
-            logging.exception(f"{self.__class__.__name__}: failed to clean up actors of client {client_id!r}:")
-
-    async def on_worker_disconnect(self, worker_id: WorkerID):
-        try:
-            await self.__on_worker_disconnect(worker_id)
-        except Exception:
-            logging.exception(f"{self.__class__.__name__}: failed to clean up actors of worker {worker_id!r}:")
-
     def is_actor_worker(self, worker_id: WorkerID) -> bool:
         return self._worker_to_actor_ids.has_key(worker_id)
 
-    async def __on_actor_create(self, client_id: ClientID, actor_create: ActorCreate):
+    async def on_actor_create(self, client_id: ClientID, actor_create: ActorCreate):
         actor_id = ActorID(bytes(actor_create.actorId))
 
         if bytes(actor_create.source) != bytes(client_id):
@@ -117,7 +80,7 @@ class VanillaActorController(ActorController):
         await self.__send_state(client_id, actor_id, None, ActorState.pending)
         await self._binder.send(worker_id, actor_create)
 
-    async def __on_actor_destroy(self, client_id: ClientID, actor_destroy: ActorDestroy):
+    async def on_actor_destroy(self, client_id: ClientID, actor_destroy: ActorDestroy):
         actor_id = ActorID(bytes(actor_destroy.actorId))
 
         if actor_id not in self._actor_id_to_state:
@@ -138,7 +101,7 @@ class VanillaActorController(ActorController):
         worker_id = self._worker_to_actor_ids.get_key(actor_id)
         await self._binder.send(worker_id, actor_destroy)
 
-    async def __on_actor_state_update(self, worker_id: WorkerID, actor_state_update: ActorStateUpdate):
+    async def on_actor_state_update(self, worker_id: WorkerID, actor_state_update: ActorStateUpdate):
         actor_id = ActorID(bytes(actor_state_update.actorId))
         state = ActorState(actor_state_update.state.value)
 
@@ -155,7 +118,7 @@ class VanillaActorController(ActorController):
 
         await self._binder.send(owner, actor_state_update)
 
-    async def __on_actor_message(self, source: bytes, actor_message: ActorMessage):
+    async def on_actor_message(self, source: bytes, actor_message: ActorMessage):
         actor_id = ActorID(bytes(actor_message.actorId))
         owner = bytes(actor_message.source)
 
@@ -195,7 +158,7 @@ class VanillaActorController(ActorController):
 
         await self._binder.send(ClientID(owner), actor_message)
 
-    async def __on_client_disconnect(self, client_id: ClientID):
+    async def on_client_disconnect(self, client_id: ClientID):
         if client_id not in self._client_to_actor_ids.keys():
             return
 
@@ -208,7 +171,7 @@ class VanillaActorController(ActorController):
                 worker_id, ActorDestroy(actorId=actor_id, source=client_id, mode=ActorDestroy.Mode.kill)
             )
 
-    async def __on_worker_disconnect(self, worker_id: WorkerID):
+    async def on_worker_disconnect(self, worker_id: WorkerID):
         if worker_id not in self._worker_to_actor_ids.keys():
             return
 

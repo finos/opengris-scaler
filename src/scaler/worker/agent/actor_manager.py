@@ -49,18 +49,6 @@ class VanillaActorManager(Looper, ActorManager):
         self._binder_internal = binder_internal
         self._processor_manager = processor_manager
 
-    async def on_actor_create(self, actor_create: ActorCreate):
-        try:
-            await self.__on_actor_create(actor_create)
-        except Exception:
-            logging.exception(f"{self.__class__.__name__}: failed to handle ActorCreate:")
-
-    async def on_actor_destroy(self, actor_destroy: ActorDestroy):
-        try:
-            await self.__on_actor_destroy(actor_destroy)
-        except Exception:
-            logging.exception(f"{self.__class__.__name__}: failed to handle ActorDestroy:")
-
     async def on_actor_state_update(self, host_identity: bytes, actor_state_update: ActorStateUpdate):
         designation = self._designation
         actor_id = ActorID(bytes(actor_state_update.actorId))
@@ -120,7 +108,7 @@ class VanillaActorManager(Looper, ActorManager):
 
         self._designation = None
 
-    async def __on_actor_create(self, actor_create: ActorCreate):
+    async def on_actor_create(self, actor_create: ActorCreate):
         actor_id = ActorID(bytes(actor_create.actorId))
 
         designation = self._designation
@@ -149,6 +137,32 @@ class VanillaActorManager(Looper, ActorManager):
         task = asyncio.get_event_loop().create_task(self.__designate_when_processor_ready(actor_create.to_bytes()))
         self._pending_creates.add(task)
         task.add_done_callback(self._pending_creates.discard)
+
+    async def on_actor_destroy(self, actor_destroy: ActorDestroy):
+        actor_id = ActorID(bytes(actor_destroy.actorId))
+
+        designation = self._designation
+        if designation is None or designation.actor_id != actor_id:
+            # unknown or already released actor: answer so the destroy is idempotent and the
+            # owner never blocks
+            await self.__send_dead(
+                actor_id, bytes(actor_destroy.source), ActorStateUpdate.DeathInfo.Reason.unknownActor, ""
+            )
+            return
+
+        designation.destroy_requested = True
+
+        if actor_destroy.mode == ActorDestroy.Mode.kill:
+            # hard kill works without the actor cooperation (e.g. a wedged constructor); the
+            # processor manager restarts a fresh processor and the designation is released here
+            self._designation = None
+            self._processor_manager.restart_current_processor("actor destroyed (kill)")
+            await self.__send_dead(actor_id, designation.source, ActorStateUpdate.DeathInfo.Reason.destroyed, "")
+            return
+
+        # graceful: the processor reports dead(destroyed) itself and exits; the processor
+        # manager detects the exit and starts a fresh processor
+        await self._binder_internal.send(designation.processor_id, actor_destroy)
 
     async def __designate_when_processor_ready(self, actor_create_payload: bytes):
         actor_create = ActorCreate.from_bytes(actor_create_payload)
@@ -180,32 +194,6 @@ class VanillaActorManager(Looper, ActorManager):
 
         await self.__send_state(actor_id, source, ActorState.creating)
         await self._binder_internal.send(processor_id, actor_create)
-
-    async def __on_actor_destroy(self, actor_destroy: ActorDestroy):
-        actor_id = ActorID(bytes(actor_destroy.actorId))
-
-        designation = self._designation
-        if designation is None or designation.actor_id != actor_id:
-            # unknown or already released actor: answer so the destroy is idempotent and the
-            # owner never blocks
-            await self.__send_dead(
-                actor_id, bytes(actor_destroy.source), ActorStateUpdate.DeathInfo.Reason.unknownActor, ""
-            )
-            return
-
-        designation.destroy_requested = True
-
-        if actor_destroy.mode == ActorDestroy.Mode.kill:
-            # hard kill works without the actor cooperation (e.g. a wedged constructor); the
-            # processor manager restarts a fresh processor and the designation is released here
-            self._designation = None
-            self._processor_manager.restart_current_processor("actor destroyed (kill)")
-            await self.__send_dead(actor_id, designation.source, ActorStateUpdate.DeathInfo.Reason.destroyed, "")
-            return
-
-        # graceful: the processor reports dead(destroyed) itself and exits; the processor
-        # manager detects the exit and starts a fresh processor
-        await self._binder_internal.send(designation.processor_id, actor_destroy)
 
     def __stamp_worker_id(self, actor_state_update: ActorStateUpdate) -> ActorStateUpdate:
         death_info = actor_state_update.deathInfo
