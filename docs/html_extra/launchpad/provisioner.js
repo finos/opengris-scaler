@@ -147,6 +147,10 @@ worker_manager_id = "${wm.id}"
 
       if (wm.type === "orb_aws_ec2") {
         var req = (wm.requirements || "").trim();
+        var inst = (window.SCALER_INSTANCES || []).find(function(i) { return i.type === wm.instanceType; }) || { price: 0 };
+        var orbDerivedCount = wm.capMode === "instances"
+          ? Math.max(0, wm.instanceCap || 0)
+          : Math.max(0, Math.floor((wm.budgetCap || 0) / (inst.price || 1)));
         block += `worker_scheduler_address = "${proto}://<PRIVATE_IP>:${sp}${wsSlash}"
 object_storage_address = "${proto}://<PRIVATE_IP>:${op}${wsSlash}"
 python_version = "${cfg.pythonVersion}"
@@ -154,6 +158,7 @@ requirements_txt = """
 ${req}
 """
 instance_type = "${wm.instanceType}"
+max_task_concurrency = ${orbDerivedCount}
 aws_region = "${cfg.region}"
 key_name = "scaler-key-${suffix}"
 subnet_id = "<SUBNET_ID>"
