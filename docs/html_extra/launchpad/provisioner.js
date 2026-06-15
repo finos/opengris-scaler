@@ -305,7 +305,7 @@ function configFromToml(toml) {
       return Object.assign(base, {
         instanceType: wm.instance_type || "t3.medium",
         capMode: "instances",
-        instanceCap: 4,
+        instanceCap: wm.max_task_concurrency != null ? wm.max_task_concurrency : 4,
         budgetCap: 10,
         requirements: wm.requirements_txt || "opengris-scaler[all]",
       });
