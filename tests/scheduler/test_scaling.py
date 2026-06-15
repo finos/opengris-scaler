@@ -215,7 +215,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         }
         managed = list(workers.keys())
         snapshot = InformationSnapshot(tasks={}, workers=workers)
-        heartbeat = _create_worker_manager_heartbeat(b"mgr")
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", current_desired_workers=3)
 
         request = self._single_request(snapshot, heartbeat, managed)
 
@@ -235,12 +235,12 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         self.assertEqual(request.taskConcurrency, 1)
 
     def test_balanced_ratio_skips_when_desired_equals_current(self):
-        """Task ratio in band keeps desired == current managed count -> no-op skip."""
+        """Task ratio in band keeps effective desired == currentDesiredWorkers -> no-op skip."""
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(15)}
         workers = {WorkerID(f"w{i}".encode()): _create_mock_worker_heartbeat({}, queued_tasks=i) for i in range(5)}
         managed = list(workers.keys())
         snapshot = InformationSnapshot(tasks=tasks, workers=workers)
-        heartbeat = _create_worker_manager_heartbeat(b"mgr")
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", current_desired_workers=5)
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})
 
@@ -252,19 +252,19 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         managed = [WorkerID(b"w0"), WorkerID(b"w1")]
         workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=20) for wid in managed}
         snapshot = InformationSnapshot(tasks=tasks, workers=workers)
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=2)
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=2, current_desired_workers=2)
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})
 
-        # Ratio would say desired=3, cap clamps to 2, which equals current=2 -> skip.
+        # Ratio would say desired=3, cap clamps to 2, which equals currentDesiredWorkers=2 -> skip.
         self.assertEqual(commands, [])
 
 
 class TestNoOpSkip(unittest.TestCase):
-    """A command whose effective desired count matches the manager's current connected
-    worker count is a no-op for the worker manager. The scheduler skips emission for
-    such commands so it doesn't waste network traffic on commands that cannot change
-    anything (notably: when the manager is already at its config-given max)."""
+    """A command whose effective desired count matches the manager's currentDesiredWorkers
+    (as reported in the heartbeat) is a no-op. The scheduler skips emission so it doesn't
+    waste network traffic on commands that cannot change anything (notably: when the manager
+    is already at its config-given max)."""
 
     def setUp(self):
         setup_logger()
@@ -276,7 +276,7 @@ class TestNoOpSkip(unittest.TestCase):
         managed = [WorkerID(f"w{i}".encode()) for i in range(10)]
         workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=10) for wid in managed}
         snapshot = InformationSnapshot(tasks=tasks, workers=workers)
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=10)
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=10, current_desired_workers=10)
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, managed, {})
 
@@ -298,16 +298,18 @@ class TestNoOpSkip(unittest.TestCase):
         self.assertEqual(requests[0].taskConcurrency, 2)
 
     def test_capability_at_cap_skips(self):
-        """Capability: ratio's per-capset desired equals current connected -> skip emission."""
+        """Capability: ratio's per-capset desired equals currentDesiredWorkers -> skip emission."""
         policy = CapabilityScalingPolicy()
-        # ceil(50/5) = 10 desired for gpu capset; clamp at cap=10; current connected = 10 -> no-op.
+        # ceil(50/5) = 10 desired for gpu capset; clamp at cap=10; currentDesiredWorkers=10 -> no-op.
         tasks = {}
         for _ in range(50):
             tid = TaskID.generate_task_id()
             tasks[tid] = _create_mock_task(tid, {"gpu": 1})
         managed = [WorkerID(f"w{i}".encode()) for i in range(10)]
         snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=10, capabilities={"gpu": -1})
+        heartbeat = _create_worker_manager_heartbeat(
+            b"mgr", max_task_concurrency=10, capabilities={"gpu": -1}, current_desired_workers=10
+        )
 
         commands = policy.get_scaling_commands(snapshot, heartbeat, managed, {})
 
@@ -328,19 +330,19 @@ class TestNoOpSkip(unittest.TestCase):
         self.assertEqual(commands, [])
 
     def test_waterfall_at_cap_skips(self):
-        """Waterfall: when the manager is full per the priority chain and already has that
-        many workers connected, emission is skipped."""
+        """Waterfall: when the manager is full per the priority chain and its coordinator
+        already reflects that, emission is skipped."""
         from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
         from scaler.scheduler.controllers.policies.waterfall_v1.scaling.types import WaterfallRule
         from scaler.scheduler.controllers.policies.waterfall_v1.scaling.waterfall import WaterfallScalingPolicy
 
         rules = [WaterfallRule(priority=1, worker_manager_id=b"mgr", max_task_concurrency=10)]
         policy = WaterfallScalingPolicy(rules)
-        # ceil(100/10) = 10; cap=10; manager has 10 connected -> effective 10 == current 10 -> skip.
+        # ceil(100/10) = 10; cap=10; coordinator desired=10 -> effective 10 == currentDesiredWorkers=10 -> skip.
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(100)}
         managed = [WorkerID(f"w{i}".encode()) for i in range(10)]
         snapshot = InformationSnapshot(tasks=tasks, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=10)
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=10, current_desired_workers=10)
         manager_snapshots = {
             b"mgr": WorkerManagerSnapshot(
                 worker_manager_id=b"mgr", max_task_concurrency=10, worker_count=10, last_seen_s=0.0, capabilities={}
@@ -350,6 +352,23 @@ class TestNoOpSkip(unittest.TestCase):
         commands = policy.get_scaling_commands(snapshot, heartbeat, managed, manager_snapshots)
 
         self.assertEqual(commands, [])
+
+    def test_scale_down_not_suppressed_when_coordinator_desired_nonzero(self):
+        """Scale-down command must be emitted when the WM coordinator has desired>0 but
+        no workers have connected yet (e.g. EC2 instance still booting)."""
+        snapshot = InformationSnapshot(tasks={}, workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", current_desired_workers=2)
+
+        vanilla_policy = VanillaScalingPolicy()
+        commands = vanilla_policy.get_scaling_commands(snapshot, heartbeat, [], {})
+        self.assertEqual(len(commands), 1)
+        requests = list(commands[0].setDesiredTaskConcurrencyRequests)
+        self.assertEqual(requests[0].taskConcurrency, 0)
+
+        capability_policy = CapabilityScalingPolicy()
+        commands_cap = capability_policy.get_scaling_commands(snapshot, heartbeat, [], {})
+        self.assertEqual(len(commands_cap), 1)
+        self.assertEqual(list(commands_cap[0].setDesiredTaskConcurrencyRequests), [])
 
 
 class TestCapabilityScalingPolicy(unittest.TestCase):
@@ -483,7 +502,7 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         workers = {WorkerID(f"w{i}".encode()): _create_mock_worker_heartbeat({}, queued_tasks=0) for i in range(4)}
         managed = list(workers.keys())
         snapshot = InformationSnapshot(tasks={}, workers=workers)
-        heartbeat = _create_worker_manager_heartbeat(b"mgr")
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", current_desired_workers=4)
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})
 
@@ -515,7 +534,7 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         workers = {WorkerID(f"w{i}".encode()): _create_mock_worker_heartbeat({}, queued_tasks=i) for i in range(5)}
         managed = list(workers.keys())
         snapshot = InformationSnapshot(tasks=tasks, workers=workers)
-        heartbeat = _create_worker_manager_heartbeat(b"mgr")
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", current_desired_workers=5)
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})
 
@@ -539,11 +558,11 @@ class TestCapabilityDeclarativeEquivalents(unittest.TestCase):
 
     def test_drain_capset_when_no_tasks(self):
         """With 3 connected workers and no tasks, the policy emits setDesired with an
-        empty request list -- effective desired (0) differs from current (3) so the manager
-        is told to drain (via extract_desired_count returning 0 for the empty list)."""
+        empty request list -- effective desired (0) differs from currentDesiredWorkers (3) so
+        the manager is told to drain (via extract_desired_count returning 0 for the empty list)."""
         managed = [WorkerID(f"w{i}".encode()) for i in range(3)]
         snapshot = InformationSnapshot(tasks={}, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"mgr", capabilities={"gpu": -1})
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", capabilities={"gpu": -1}, current_desired_workers=3)
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})
 
@@ -663,10 +682,16 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> 
 
 
 def _create_worker_manager_heartbeat(
-    worker_manager_id: bytes, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
+    worker_manager_id: bytes,
+    max_task_concurrency: int = 10,
+    capabilities: Optional[Dict[str, int]] = None,
+    current_desired_workers: int = 0,
 ) -> WorkerManagerHeartbeat:
     return WorkerManagerHeartbeat(
-        maxTaskConcurrency=max_task_concurrency, capabilities=capabilities or {}, workerManagerID=worker_manager_id
+        maxTaskConcurrency=max_task_concurrency,
+        capabilities=capabilities or {},
+        workerManagerID=worker_manager_id,
+        currentDesiredWorkers=current_desired_workers,
     )
 
 

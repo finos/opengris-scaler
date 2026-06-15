@@ -108,6 +108,9 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
     def active_unit_count(self) -> int:
         return len(self._workers)
 
+    def desired_unit_count(self) -> int:
+        return self._capacity_coordinator.desired_unit_count
+
     async def start_units(self, count: int) -> None:
         for _ in range(count):
             worker = self._create_worker()

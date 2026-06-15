@@ -42,6 +42,9 @@ class SymphonyWorkerProvisioner(DeclarativeWorkerProvisioner):
     def active_unit_count(self) -> int:
         return len(self._workers)
 
+    def desired_unit_count(self) -> int:
+        return self._capacity_coordinator.desired_unit_count
+
     async def set_desired_task_concurrency(
         self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
     ) -> None:

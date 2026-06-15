@@ -173,14 +173,14 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
         # manager_b (lower priority) is told to drain to 0
         managed_b = [WorkerID(b"worker-3"), WorkerID(b"worker-4")]
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20, current_desired_workers=2)
         commands_b = policy.get_scaling_commands(snapshot, heartbeat_b, managed_b, manager_snapshots)
         self.assertEqual(len(commands_b), 1)
         self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
 
-        # manager_a (higher priority) is NOT told to drain yet -- desired matches its current count
+        # manager_a (higher priority) is NOT told to drain yet -- desired matches currentDesiredWorkers
         managed_a = [WorkerID(b"worker-0"), WorkerID(b"worker-1"), WorkerID(b"worker-2")]
-        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
+        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10, current_desired_workers=3)
         commands_a = policy.get_scaling_commands(snapshot, heartbeat_a, managed_a, manager_snapshots)
         self.assertEqual(commands_a, [])
 
@@ -198,7 +198,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         }
 
         managed_a = [WorkerID(b"worker-0"), WorkerID(b"worker-1"), WorkerID(b"worker-2")]
-        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
+        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10, current_desired_workers=3)
         commands_a = policy.get_scaling_commands(snapshot, heartbeat_a, managed_a, manager_snapshots)
 
         # No lower-priority manager to wait on -- emit setDesired(0) to drain.
@@ -304,13 +304,27 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         }
 
         managed_b = [WorkerID(b"w0"), WorkerID(b"w1")]
-        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20, current_desired_workers=2)
         commands_b = policy.get_scaling_commands(snapshot, heartbeat_b, managed_b, manager_snapshots)
 
         # 5 tasks -> total_desired=1, absorbed by manager_a entirely -> manager_b's share=0;
         # but manager_b has 2 connected workers, so the command is not a no-op.
         self.assertEqual(len(commands_b), 1)
         self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
+
+    def test_scale_down_not_suppressed_when_coordinator_desired_nonzero(self):
+        """Scale-down command must be emitted when the WM coordinator has desired>0 but
+        no workers have connected yet (e.g. EC2 instance still booting)."""
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10)]
+        policy = WaterfallScalingPolicy(rules)
+        snapshot = InformationSnapshot(tasks={}, workers={})
+        manager_snapshots = {b"manager_a": _create_manager_snapshot(b"manager_a")}
+        heartbeat = _create_worker_manager_heartbeat(b"manager_a", current_desired_workers=2)
+
+        commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
+
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(_generic_request(commands[0]).taskConcurrency, 0)
 
 
 class TestWaterfallCapabilities(unittest.TestCase):
@@ -670,10 +684,16 @@ def _create_mock_worker_heartbeat(
 
 
 def _create_worker_manager_heartbeat(
-    worker_manager_id: bytes, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
+    worker_manager_id: bytes,
+    max_task_concurrency: int = 10,
+    capabilities: Optional[Dict[str, int]] = None,
+    current_desired_workers: int = 0,
 ) -> WorkerManagerHeartbeat:
     return WorkerManagerHeartbeat(
-        maxTaskConcurrency=max_task_concurrency, capabilities=capabilities or {}, workerManagerID=worker_manager_id
+        maxTaskConcurrency=max_task_concurrency,
+        capabilities=capabilities or {},
+        workerManagerID=worker_manager_id,
+        currentDesiredWorkers=current_desired_workers,
     )
 
 
