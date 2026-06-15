@@ -186,7 +186,11 @@ class WaterfallScalingPolicy(ScalingPolicy):
         snap = self._find_matching_snapshot(rule, snapshots)
         if snap is None:
             return None
-        return min(rule.max_task_concurrency, snap.max_task_concurrency) if rule.max_task_concurrency is not None else snap.max_task_concurrency
+        return (
+            min(rule.max_task_concurrency, snap.max_task_concurrency)
+            if rule.max_task_concurrency is not None
+            else snap.max_task_concurrency
+        )
 
     def _tasks_by_capability(self, information_snapshot: InformationSnapshot) -> Dict[FrozenSet[str], Dict[str, int]]:
         """Group tasks with non-empty capabilities, mapping capset keys to a representative dict."""
