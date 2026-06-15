@@ -175,13 +175,18 @@ class WaterfallScalingPolicy(ScalingPolicy):
         current_heartbeat: WorkerManagerHeartbeat,
         snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> Optional[int]:
-        """Return min(rule cap, manager-reported max). Returns None if the manager is offline."""
+        """Return effective worker capacity for *rule*.
+
+        When the rule specifies a cap, returns min(cap, heartbeat max). When omitted, returns the
+        heartbeat-reported max directly. Returns None if the manager is offline.
+        """
         if rule.worker_manager_id == current_rule.worker_manager_id:
-            return min(rule.max_task_concurrency, current_heartbeat.maxTaskConcurrency)
+            reported = current_heartbeat.maxTaskConcurrency
+            return min(rule.max_task_concurrency, reported) if rule.max_task_concurrency is not None else reported
         snap = self._find_matching_snapshot(rule, snapshots)
         if snap is None:
             return None
-        return min(rule.max_task_concurrency, snap.max_task_concurrency)
+        return min(rule.max_task_concurrency, snap.max_task_concurrency) if rule.max_task_concurrency is not None else snap.max_task_concurrency
 
     def _tasks_by_capability(self, information_snapshot: InformationSnapshot) -> Dict[FrozenSet[str], Dict[str, int]]:
         """Group tasks with non-empty capabilities, mapping capset keys to a representative dict."""
