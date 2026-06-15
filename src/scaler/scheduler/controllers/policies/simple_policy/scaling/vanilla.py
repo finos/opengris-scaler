@@ -32,7 +32,7 @@ class VanillaScalingPolicy(ScalingPolicy):
         desired = self._compute_desired_worker_count(information_snapshot, worker_manager_heartbeat, managed_worker_ids)
         desired_per_capset: List[Tuple[Dict[str, int], int]] = [({}, desired)]
         effective = effective_desired_for_manager(desired_per_capset, worker_manager_heartbeat.capabilities)
-        if effective == len(managed_worker_ids):
+        if effective == worker_manager_heartbeat.currentDesiredWorkers:
             return []
         return [build_set_desired_command(desired_per_capset)]
 

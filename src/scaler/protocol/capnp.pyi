@@ -237,6 +237,7 @@ class WorkerManagerHeartbeat(BaseMessage):
     maxTaskConcurrency: int
     capabilities: Any
     workerManagerID: bytes
+    currentDesiredWorkers: int
 
 class WorkerManagerHeartbeatEcho(BaseMessage): ...
 

@@ -40,6 +40,10 @@ class CapacityCoordinator:
         self._reconcile_needed: asyncio.Event = asyncio.Event()
         self._stop: asyncio.Event = asyncio.Event()
 
+    @property
+    def desired_unit_count(self) -> int:
+        return self._desired_unit_count
+
     async def set_desired_unit_count(self, count: int) -> None:
         """Set the desired number of units and signal the reconcile task."""
         if count == self._desired_unit_count:

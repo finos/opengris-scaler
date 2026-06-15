@@ -36,7 +36,7 @@ class CapabilityScalingPolicy(ScalingPolicy):
         tasks_by_capability = self._group_tasks_by_capability(information_snapshot)
         desired_per_capset = self._compute_desired_per_capset(tasks_by_capability, worker_manager_heartbeat)
         effective = effective_desired_for_manager(desired_per_capset, worker_manager_heartbeat.capabilities)
-        if effective == len(managed_worker_ids):
+        if effective == worker_manager_heartbeat.currentDesiredWorkers:
             return []
         return [build_set_desired_command(desired_per_capset)]
 

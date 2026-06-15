@@ -77,6 +77,11 @@ class DeclarativeWorkerProvisioner(ABC):
         ...
 
     @abstractmethod
+    def desired_unit_count(self) -> int:
+        """Return the number of units currently desired by the coordinator."""
+        ...
+
+    @abstractmethod
     async def terminate(self) -> None:
         """Cancel the capacity coordinator and stop all running units."""
         ...
