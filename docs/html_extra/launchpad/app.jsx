@@ -1321,6 +1321,7 @@ function App() {
   const [transport, setTransport] = useState("ws");
   const [networkBackend, setNetBack] = useState("ymq");
   const [pythonVersion, setPyVer] = useState("3.13");
+  const [policy, setPolicy] = useState("simple");
   const [schedulerRequirements, setSchedulerReqs] = useState(
     "opengris-scaler[all]",
   );
@@ -1337,6 +1338,7 @@ function App() {
   );
 
   const wmCounterRef = useRef(1);
+  const loadConfigInputRef = useRef(null);
   const [workerManagers, setWorkerManagers] = useState([
     {
       _uid: 1,
@@ -1350,6 +1352,8 @@ function App() {
     },
   ]);
   const [selectedWmId, setSelectedWmId] = useState("wm-1");
+  const [draggedWmId, setDraggedWmId] = useState(null);
+  const [dragOverWmId, setDragOverWmId] = useState(null);
 
   const [phase, setPhase] = useState(() => {
     try {
@@ -1505,7 +1509,6 @@ function App() {
       ),
     [],
   );
-
   const hasCredentials =
     accessKeyId.trim().length > 0 && secretKey.trim().length > 0;
 
@@ -1795,6 +1798,7 @@ function App() {
       schedulerPort,
       objectStoragePort,
       pythonVersion,
+      policy,
       workerManagers: workerManagers.map((wm) => ({
         ...wm,
         requirements: wm.requirements,
@@ -1808,8 +1812,36 @@ function App() {
     schedulerPort,
     objectStoragePort,
     pythonVersion,
+    policy,
     workerManagers,
   ]);
+
+  const handleLoadConfig = useCallback((e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = "";
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const toml = parseConfigToml(ev.target.result);
+        const cfg = configFromToml(toml);
+        if (cfg.transport) setTransport(cfg.transport);
+        if (cfg.schedulerPort) setSchedPort(cfg.schedulerPort);
+        if (cfg.objectStoragePort) setObjPort(cfg.objectStoragePort);
+        if (cfg.pythonVersion) setPyVer(cfg.pythonVersion);
+        if (cfg.region) setRegion(cfg.region);
+        if (cfg.policy) setPolicy(cfg.policy);
+        if (cfg.workerManagers && cfg.workerManagers.length) {
+          setWorkerManagers(cfg.workerManagers);
+          wmCounterRef.current = cfg.workerManagers.length;
+          setSelectedWmId(cfg.workerManagers[0].id);
+        }
+      } catch (err) {
+        window.alert("Failed to load config.toml: " + err.message);
+      }
+    };
+    reader.readAsText(file);
+  }, []);
 
   const handleReset = useCallback(() => {
     setLog([]);
@@ -2365,7 +2397,7 @@ function App() {
 
             {/* Column 2: Scheduler EC2 + Policy */}
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <PanelBox title="Scheduler">
+              <PanelBox title="Scheduler (AWS-only)">
                 <div>
                   <Label help="EC2 instance type for the scheduler. Compute-optimized (c5/c6i) works well for most deployments.">
                     Instance Type
@@ -2478,77 +2510,26 @@ function App() {
                 </div>
               </PanelBox>
 
-              {/* Policy panel — display only, not yet wired up */}
-              <div
-                style={{
-                  opacity: 0.45,
-                  pointerEvents: "none",
-                  userSelect: "none",
-                }}
-              >
-                <PanelBox title="Policy">
-                  {[
-                    {
-                      label: "Engine",
-                      help: "Policy engine that controls task allocation and worker scaling.",
-                      options: ["simple", "waterfall_v1"],
-                    },
-                    {
-                      label: "Allocate",
-                      help: "How tasks are assigned to workers. even_load distributes work evenly; capability routes tasks to workers that advertise matching capabilities.",
-                      options: ["even_load", "capability"],
-                    },
-                    {
-                      label: "Scaling",
-                      help: "How the scheduler scales worker counts up or down. vanilla uses a task-to-worker ratio; capability scales per-capability group; no disables autoscaling.",
-                      options: ["vanilla", "no", "capability"],
-                    },
-                  ].map(({ label, help, options }) => (
-                    <div key={label}>
-                      <Label help={help}>{label}</Label>
-                      <div style={{ position: "relative" }}>
-                        <select
-                          disabled
-                          style={{
-                            width: "100%",
-                            background: "var(--bg-surface)",
-                            border: "1px solid var(--border-accent)",
-                            borderRadius: 3,
-                            padding: "7px 28px 7px 10px",
-                            color: "var(--text-primary)",
-                            fontFamily: "inherit",
-                            fontSize: 12,
-                            outline: "none",
-                            appearance: "none",
-                            WebkitAppearance: "none",
-                          }}
-                        >
-                          {options.map((o) => (
-                            <option key={o} value={o}>
-                              {o}
-                            </option>
-                          ))}
-                        </select>
-                        <span
-                          style={{
-                            position: "absolute",
-                            right: 10,
-                            top: "50%",
-                            display: "block",
-                            width: 7,
-                            height: 7,
-                            borderRight: "1.5px solid var(--text-muted)",
-                            borderBottom: "1.5px solid var(--text-muted)",
-                            transform: "rotate(45deg)",
-                            marginTop: "-5px",
-                            pointerEvents: "none",
-                          }}
-                        />
-                      </div>
+              <PanelBox title="Policy">
+                <div>
+                  <Label help="Policy engine that controls task allocation and worker scaling.">
+                    Engine
+                  </Label>
+                  <PolicyDropdown value={policy} onChange={setPolicy} />
+                  {policy === "waterfall_v1" && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        fontSize: 10,
+                        color: "var(--text-dim)",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Priority is based on ordering in the Worker Managers pane. Drag to reorder.
                     </div>
-                  ))}
-                </PanelBox>
-              </div>
+                  )}
+                </div>
+              </PanelBox>
             </div>
 
             {/* Column 3: Worker Managers + Cost Summary */}
@@ -2578,29 +2559,104 @@ function App() {
                       alignSelf: "flex-start",
                     }}
                   >
-                    {workerManagers.map((wm) => (
+                    {workerManagers.map((wm, wmIdx) => (
                       <div
                         key={wm.id}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          if (wm.id !== draggedWmId) setDragOverWmId(wm.id);
+                        }}
+                        onDragLeave={(e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget))
+                            setDragOverWmId(null);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (draggedWmId && wm.id !== draggedWmId) {
+                            setWorkerManagers((prev) => {
+                              const from = prev.findIndex((w) => w.id === draggedWmId);
+                              const to = prev.findIndex((w) => w.id === wm.id);
+                              if (from === -1 || to === -1) return prev;
+                              const next = [...prev];
+                              const [item] = next.splice(from, 1);
+                              next.splice(to, 0, item);
+                              return next;
+                            });
+                          }
+                          setDraggedWmId(null);
+                          setDragOverWmId(null);
+                        }}
+                        onDragEnd={() => {
+                          setDraggedWmId(null);
+                          setDragOverWmId(null);
+                        }}
                         style={{
                           display: "flex",
                           alignItems: "stretch",
                           background:
-                            selectedWmId === wm.id
-                              ? "rgba(0,200,224,0.1)"
-                              : "transparent",
+                            dragOverWmId === wm.id
+                              ? "rgba(0,200,224,0.18)"
+                              : selectedWmId === wm.id
+                                ? "rgba(0,200,224,0.1)"
+                                : "transparent",
                           borderLeft:
                             selectedWmId === wm.id
                               ? "2px solid var(--tab-active)"
                               : "2px solid transparent",
                           borderBottom: "1px solid rgba(255,255,255,0.04)",
-                          transition: "background 0.12s",
+                          transition: "background 0.1s",
+                          opacity: draggedWmId === wm.id ? 0.4 : 1,
                         }}
                       >
+                        {workerManagers.length > 1 && (
+                          <div
+                            draggable={true}
+                            onDragStart={(e) => {
+                              setDraggedWmId(wm.id);
+                              e.dataTransfer.effectAllowed = "move";
+                              e.dataTransfer.setData("text/plain", wm.id);
+                            }}
+                            style={{
+                              cursor: "grab",
+                              display: "flex",
+                              alignItems: "center",
+                              padding: "0 3px 0 7px",
+                              flexShrink: 0,
+                              color: "var(--text-dim)",
+                              userSelect: "none",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.color = "var(--text-muted)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.color = "var(--text-dim)";
+                            }}
+                          >
+                            <svg
+                              width="8"
+                              height="12"
+                              viewBox="0 0 8 12"
+                              fill="currentColor"
+                              style={{ display: "block" }}
+                            >
+                              <circle cx="2" cy="2" r="1.5" />
+                              <circle cx="6" cy="2" r="1.5" />
+                              <circle cx="2" cy="6" r="1.5" />
+                              <circle cx="6" cy="6" r="1.5" />
+                              <circle cx="2" cy="10" r="1.5" />
+                              <circle cx="6" cy="10" r="1.5" />
+                            </svg>
+                          </div>
+                        )}
                         <button
                           title={wm.id}
                           onClick={() => setSelectedWmId(wm.id)}
                           style={{
                             flex: 1,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
                             background: "transparent",
                             border: "none",
                             color:
@@ -2609,18 +2665,40 @@ function App() {
                                 : "var(--text-muted)",
                             fontFamily: "inherit",
                             fontSize: 10,
-                            padding: "10px 6px 10px 10px",
+                            padding: workerManagers.length > 1 ? "10px 4px 10px 4px" : "10px 4px 10px 10px",
                             textAlign: "left",
                             cursor: "pointer",
                             letterSpacing: "0.05em",
                             transition: "color 0.12s",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
                             minWidth: 0,
+                            overflow: "hidden",
                           }}
                         >
-                          {wm.id}
+                          {policy === "waterfall_v1" && (
+                            <span
+                              style={{
+                                fontSize: 8,
+                                fontWeight: 700,
+                                lineHeight: 1,
+                                color: "var(--accent-cyan)",
+                                background: "rgba(0,200,224,0.12)",
+                                borderRadius: 2,
+                                padding: "2px 3px",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {wmIdx + 1}
+                            </span>
+                          )}
+                          <span
+                            style={{
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {wm.id}
+                          </span>
                         </button>
                         {workerManagers.length > 1 && (
                           <button
@@ -2642,23 +2720,14 @@ function App() {
                               transition: "color 0.12s",
                             }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.color =
-                                "var(--text-danger)";
-                              e.currentTarget.querySelector(
-                                "span",
-                              ).style.borderColor = "var(--border-danger)";
-                              e.currentTarget.querySelector(
-                                "span",
-                              ).style.background = "rgba(229,72,77,0.08)";
+                              e.currentTarget.style.color = "var(--text-danger)";
+                              e.currentTarget.querySelector("span").style.borderColor = "var(--border-danger)";
+                              e.currentTarget.querySelector("span").style.background = "rgba(229,72,77,0.08)";
                             }}
                             onMouseLeave={(e) => {
                               e.currentTarget.style.color = "var(--text-muted)";
-                              e.currentTarget.querySelector(
-                                "span",
-                              ).style.borderColor = "var(--border-accent)";
-                              e.currentTarget.querySelector(
-                                "span",
-                              ).style.background = "transparent";
+                              e.currentTarget.querySelector("span").style.borderColor = "var(--border-accent)";
+                              e.currentTarget.querySelector("span").style.background = "transparent";
                             }}
                           >
                             <span
@@ -2670,8 +2739,7 @@ function App() {
                                 height: 14,
                                 border: "1px solid var(--border-accent)",
                                 borderRadius: 2,
-                                transition:
-                                  "border-color 0.12s, background 0.12s",
+                                transition: "border-color 0.12s, background 0.12s",
                               }}
                             >
                               ✕
@@ -2848,6 +2916,30 @@ function App() {
               >
                 Download config.toml
               </button>
+              <button
+                onClick={() => loadConfigInputRef.current && loadConfigInputRef.current.click()}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "var(--text-muted)",
+                  fontFamily: "inherit",
+                  fontSize: 10,
+                  padding: 0,
+                  letterSpacing: "0.06em",
+                  textDecoration: "underline",
+                  textDecorationColor: "var(--border-accent)",
+                }}
+              >
+                Load config.toml
+              </button>
+              <input
+                ref={loadConfigInputRef}
+                type="file"
+                accept=".toml"
+                style={{ display: "none" }}
+                onChange={handleLoadConfig}
+              />
             </div>
           )}
         </div>
