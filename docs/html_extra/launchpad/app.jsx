@@ -2946,8 +2946,7 @@ function App() {
             </div>
           </div>
 
-          {phase === "idle" && (
-            <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
               <button
                 onClick={handleDownloadConfig}
                 style={{
@@ -2990,7 +2989,6 @@ function App() {
                 onChange={handleLoadConfig}
               />
             </div>
-          )}
         </div>
       </div>
 
