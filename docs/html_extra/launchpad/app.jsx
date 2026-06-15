@@ -238,7 +238,7 @@ function WorkerManagerCard({
             value={wm.type}
             onChange={(v) => {
               if (v === "oci_raw") {
-                onChange({ ...wm, type: v, ociShape: "CI.Standard.A1.Flex", ociContainerImage: "ghcr.io/finos/scaler:latest-arm64" });
+                onChange({ ...wm, type: v, ociShape: "CI.Standard.A1.Flex", ociContainerImage: "ghcr.io/finos/scaler:latest-arm64", capMode: "instances", instanceCap: 4, budgetCap: 10 });
               } else {
                 set("type", v);
               }
@@ -522,6 +522,9 @@ function WorkerManagerCard({
         const ociShape = wm.ociShape || "CI.Standard.A1.Flex";
         const ociPricing = OCI_SHAPE_PRICING[ociShape] || OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
         const ociCostPerHr = ociPricing.ocpuPrice * (wm.ociOcpus || 4) + ociPricing.memPrice * (wm.ociMemoryGb || 30);
+        const derivedCount = wm.capMode === "instances"
+          ? Math.max(0, wm.instanceCap || 0)
+          : Math.max(0, Math.floor((wm.budgetCap || 0) / (ociCostPerHr || 1)));
         return (
           <>
             <div>
@@ -591,6 +594,45 @@ function WorkerManagerCard({
               </div>
             </div>
             <div>
+              <Label help="Maximum number of OCI container instances to run simultaneously. In budget mode, the cap is derived from your hourly USD budget divided by the per-instance cost.">Budget</Label>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {wm.capMode === "instances" ? (
+                  <NumericStepper
+                    value={wm.instanceCap || 1}
+                    onChange={(v) => set("instanceCap", v)}
+                    min={1}
+                    max={1000}
+                  />
+                ) : (
+                  <NumericStepper
+                    value={wm.budgetCap || 10}
+                    onChange={(v) => set("budgetCap", v)}
+                    min={0}
+                    step={0.5}
+                    width={64}
+                  />
+                )}
+                <select
+                  value={wm.capMode || "instances"}
+                  onChange={(e) => set("capMode", e.target.value)}
+                  style={{
+                    background: "var(--bg-surface)",
+                    border: "1px solid var(--border-accent)",
+                    borderRadius: 3,
+                    padding: "6px 8px",
+                    color: "var(--text-primary)",
+                    fontFamily: "inherit",
+                    fontSize: 11,
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="budget">USD/h cap</option>
+                  <option value="instances">instance cap</option>
+                </select>
+              </div>
+            </div>
+            <div>
               <Label help={"- Installed inside the container instance\n- opengris-scaler must be included"}>requirements.txt</Label>
               <textarea
                 value={wm.requirements || ""}
@@ -640,9 +682,9 @@ function WorkerManagerCard({
                 </span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderTop: "1px solid var(--border-success)", paddingTop: 4, marginTop: 2 }}>
-                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Total</span>
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Total ({derivedCount} instance{derivedCount !== 1 ? "s" : ""})</span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-success)" }}>
-                  USD {ociCostPerHr.toFixed(2)}/h
+                  USD {(derivedCount * ociCostPerHr).toFixed(2)}/h
                 </span>
               </div>
             </div>
@@ -1345,7 +1387,7 @@ function App() {
       id: "wm-1",
       type: "orb_aws_ec2",
       instanceType: "t3.medium",
-      capMode: "budget",
+      capMode: "instances",
       instanceCap: 4,
       budgetCap: 10,
       requirements: "opengris-scaler[all]",
@@ -1469,7 +1511,11 @@ function App() {
     if (wm.type === "oci_raw") {
       const shape = wm.ociShape || "CI.Standard.A1.Flex";
       const pricing = OCI_SHAPE_PRICING[shape] || OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
-      return pricing.ocpuPrice * (wm.ociOcpus || 4) + pricing.memPrice * (wm.ociMemoryGb || 30);
+      const costPerInstance = pricing.ocpuPrice * (wm.ociOcpus || 4) + pricing.memPrice * (wm.ociMemoryGb || 30);
+      const count = wm.capMode === "instances"
+        ? Math.max(0, wm.instanceCap || 0)
+        : Math.max(0, Math.floor((wm.budgetCap || 0) / (costPerInstance || 1)));
+      return count * costPerInstance;
     }
     return 0;
   });
@@ -1487,7 +1533,7 @@ function App() {
         id: newId,
         type: "orb_aws_ec2",
         instanceType: "t3.medium",
-        capMode: "budget",
+        capMode: "instances",
         instanceCap: 4,
         budgetCap: 10,
         requirements: "opengris-scaler[all]",
@@ -2825,14 +2871,17 @@ function App() {
                     const shape = wm.ociShape || "CI.Standard.A1.Flex";
                     const shapeName = shape === "CI.Standard.A1.Flex" ? "ARM - Ampere A1" : "x86 - Standard E4";
                     const pricing = OCI_SHAPE_PRICING[shape] || OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
-                    const cost = pricing.ocpuPrice * (wm.ociOcpus || 4) + pricing.memPrice * (wm.ociMemoryGb || 30);
+                    const costPerInstance = pricing.ocpuPrice * (wm.ociOcpus || 4) + pricing.memPrice * (wm.ociMemoryGb || 30);
+                    const count = wm.capMode === "instances"
+                      ? Math.max(0, wm.instanceCap || 0)
+                      : Math.max(0, Math.floor((wm.budgetCap || 0) / (costPerInstance || 1)));
                     return (
                       <div key={wm._uid} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                         <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                          {label} · {shapeName} · {wm.ociOcpus || 4} OCPU · {wm.ociMemoryGb || 30}GB
+                          {label} · {count}× {shapeName} · {wm.ociOcpus || 4} OCPU · {wm.ociMemoryGb || 30}GB
                         </span>
                         <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                          USD {cost.toFixed(2)}/h
+                          USD {(count * costPerInstance).toFixed(2)}/h
                         </span>
                       </div>
                     );
