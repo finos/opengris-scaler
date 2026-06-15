@@ -521,7 +521,7 @@ function WorkerManagerCard({
       {wm.type === "oci_raw" && (() => {
         const ociShape = wm.ociShape || "CI.Standard.A1.Flex";
         const ociPricing = OCI_SHAPE_PRICING[ociShape] || OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
-        const ociCostPerHr = ociPricing.ocpuPrice * (wm.ociOcpus || 4) + ociPricing.memPrice * (wm.ociMemoryGb || 30);
+        const ociCostPerHr = ociPricing.ocpuPrice * (wm.ociOcpus || 4) + ociPricing.memPrice * (wm.ociMemoryGb || 8);
         const derivedCount = wm.capMode === "instances"
           ? Math.max(0, wm.instanceCap || 0)
           : Math.max(0, Math.floor((wm.budgetCap || 0) / (ociCostPerHr || 1)));
@@ -586,7 +586,7 @@ function WorkerManagerCard({
               <div style={{ flex: 1 }}>
                 <Label help="Memory in GB for the container instance. Must satisfy OCI's minimum memory-per-OCPU ratio for your chosen shape.">Memory (GB)</Label>
                 <NumericStepper
-                  value={wm.ociMemoryGb || 30}
+                  value={wm.ociMemoryGb || 8}
                   onChange={(v) => set("ociMemoryGb", v)}
                   min={1}
                   max={512}
@@ -675,10 +675,10 @@ function WorkerManagerCard({
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
-                  {wm.ociMemoryGb || 30} GB × ${ociPricing.memPrice.toFixed(3)}/h
+                  {wm.ociMemoryGb || 8} GB × ${ociPricing.memPrice.toFixed(3)}/h
                 </span>
                 <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  ${(ociPricing.memPrice * (wm.ociMemoryGb || 30)).toFixed(2)}/h
+                  ${(ociPricing.memPrice * (wm.ociMemoryGb || 8)).toFixed(2)}/h
                 </span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderTop: "1px solid var(--border-success)", paddingTop: 4, marginTop: 2 }}>
@@ -1511,7 +1511,7 @@ function App() {
     if (wm.type === "oci_raw") {
       const shape = wm.ociShape || "CI.Standard.A1.Flex";
       const pricing = OCI_SHAPE_PRICING[shape] || OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
-      const costPerInstance = pricing.ocpuPrice * (wm.ociOcpus || 4) + pricing.memPrice * (wm.ociMemoryGb || 30);
+      const costPerInstance = pricing.ocpuPrice * (wm.ociOcpus || 4) + pricing.memPrice * (wm.ociMemoryGb || 8);
       const count = wm.capMode === "instances"
         ? Math.max(0, wm.instanceCap || 0)
         : Math.max(0, Math.floor((wm.budgetCap || 0) / (costPerInstance || 1)));
@@ -2871,14 +2871,14 @@ function App() {
                     const shape = wm.ociShape || "CI.Standard.A1.Flex";
                     const shapeName = shape === "CI.Standard.A1.Flex" ? "ARM - Ampere A1" : "x86 - Standard E4";
                     const pricing = OCI_SHAPE_PRICING[shape] || OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
-                    const costPerInstance = pricing.ocpuPrice * (wm.ociOcpus || 4) + pricing.memPrice * (wm.ociMemoryGb || 30);
+                    const costPerInstance = pricing.ocpuPrice * (wm.ociOcpus || 4) + pricing.memPrice * (wm.ociMemoryGb || 8);
                     const count = wm.capMode === "instances"
                       ? Math.max(0, wm.instanceCap || 0)
                       : Math.max(0, Math.floor((wm.budgetCap || 0) / (costPerInstance || 1)));
                     return (
                       <div key={wm._uid} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                         <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                          {label} · {count}× {shapeName} · {wm.ociOcpus || 4} OCPU · {wm.ociMemoryGb || 30}GB
+                          {label} · {count}× {shapeName} · {wm.ociOcpus || 4} OCPU · {wm.ociMemoryGb || 8}GB
                         </span>
                         <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
                           USD {(count * costPerInstance).toFixed(2)}/h
