@@ -2119,6 +2119,157 @@ function WorkerManagerTypeSelect({ value, onChange }) {
   );
 }
 
+/* ── PolicyDropdown ── */
+const POLICY_OPTIONS = [
+  {
+    value: "simple",
+    label: "Load Balancer",
+    desc: "Distributes tasks evenly across all configured worker managers.",
+  },
+  {
+    value: "waterfall_v1",
+    label: "Waterfall",
+    desc: "Fills worker managers in priority order, spilling to the next only when the current is saturated.",
+  },
+  {
+    value: null,
+    label: "Lowest Cost (greedy)",
+    desc: "Routes tasks to the cheapest available worker manager. Not yet implemented.",
+    disabled: true,
+  },
+];
+
+function PolicyDropdown({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef(null);
+  const dropdownRef = useRef(null);
+  const [dropdownStyle, setDropdownStyle] = useState({});
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target) &&
+        dropdownRef.current && !dropdownRef.current.contains(e.target)
+      ) setOpen(false);
+    }
+    function handleScroll() { setOpen(false); }
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("scroll", handleScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("scroll", handleScroll, true);
+    };
+  }, []);
+
+  const openDropdown = () => {
+    if (!triggerRef.current) return;
+    const r = triggerRef.current.getBoundingClientRect();
+    setDropdownStyle({ position: "fixed", top: r.bottom + 4, left: r.left, width: r.width });
+    setOpen(true);
+  };
+
+  const selected = POLICY_OPTIONS.find((o) => o.value === value) || POLICY_OPTIONS[0];
+
+  return (
+    <div ref={triggerRef} style={{ position: "relative" }}>
+      <button
+        onClick={() => (open ? setOpen(false) : openDropdown())}
+        style={{
+          width: "100%",
+          background: "var(--bg-surface)",
+          border: "1px solid var(--border-accent)",
+          borderRadius: 3,
+          padding: "8px 10px",
+          color: "var(--text-primary)",
+          fontFamily: "inherit",
+          fontSize: 12,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          textAlign: "left",
+          outline: "none",
+        }}
+      >
+        <span style={{ flex: 1, color: "var(--text-secondary)", fontWeight: 600 }}>
+          {selected.label}
+        </span>
+        <span
+          style={{
+            display: "inline-block",
+            width: 7,
+            height: 7,
+            borderRight: "1.5px solid var(--text-muted)",
+            borderBottom: "1.5px solid var(--text-muted)",
+            transform: open ? "rotate(225deg)" : "rotate(45deg)",
+            position: "relative",
+            top: open ? "2px" : "-2px",
+            flexShrink: 0,
+          }}
+        />
+      </button>
+      {open && ReactDOM.createPortal(
+        <div
+          ref={dropdownRef}
+          style={{
+            ...dropdownStyle,
+            background: "var(--bg-elevated)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: 4,
+            zIndex: 9999,
+            boxShadow: "0 16px 48px rgba(0,0,0,0.7)",
+            overflow: "hidden",
+          }}
+        >
+          {POLICY_OPTIONS.map((opt) => (
+            <div
+              key={opt.label}
+              onClick={() => {
+                if (!opt.disabled) { onChange(opt.value); setOpen(false); }
+              }}
+              style={{
+                padding: "10px 12px",
+                cursor: opt.disabled ? "not-allowed" : "pointer",
+                background: opt.value === value ? "rgba(0,200,224,0.08)" : "transparent",
+                borderBottom: "1px solid rgba(255,255,255,0.04)",
+                opacity: opt.disabled ? 0.45 : 1,
+              }}
+              onMouseEnter={(e) => {
+                if (!opt.disabled && opt.value !== value)
+                  e.currentTarget.style.background = "var(--bg-surface)";
+              }}
+              onMouseLeave={(e) => {
+                if (!opt.disabled && opt.value !== value)
+                  e.currentTarget.style.background = "transparent";
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: opt.value === value
+                    ? "var(--text-success)"
+                    : opt.disabled ? "var(--text-dim)" : "var(--text-primary)",
+                }}>
+                  {opt.label}
+                </span>
+                {opt.value === value && (
+                  <span style={{ color: "var(--text-success)", fontSize: 10, flexShrink: 0 }}>✓</span>
+                )}
+              </div>
+              <span style={{ display: "block", fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>
+                {opt.desc}
+              </span>
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
 Object.assign(window, {
   SecretInput,
   RegionSelect,
@@ -2131,4 +2282,5 @@ Object.assign(window, {
   LiveTerminal,
   SchedulerLogTerminal,
   WorkerManagerTypeSelect,
+  PolicyDropdown,
 });

@@ -238,6 +238,15 @@ object_storage_address = "${proto}://127.0.0.1:${op}${wsSlash}"
     })
     .join("\n");
 
+  var policyEngineType = cfg.policy || "simple";
+  var policyContentLine = "";
+  if (policyEngineType === "waterfall_v1" && cfg.workerManagers && cfg.workerManagers.length > 0) {
+    var policyLines = cfg.workerManagers.map(function(wm, idx) {
+      return (idx + 1) + "," + wm.id;
+    }).join("\n");
+    policyContentLine = `policy_content = """\n${policyLines}\n"""\n`;
+  }
+
   return `[object_storage_server]
 bind_address = "${proto}://0.0.0.0:${op}${wsSlash}"
 
@@ -246,11 +255,146 @@ bind_address = "${proto}://0.0.0.0:${sp}${wsSlash}"
 object_storage_address = "${proto}://127.0.0.1:${op}${wsSlash}"
 advertised_object_storage_address = "${proto}://<PUBLIC_IP>:${op}${wsSlash}"
 
+[scheduler.policy]
+policy_engine_type = "${policyEngineType}"
+${policyContentLine}
 ${wmToml}
 [gui]
 monitor_address = "${proto}://127.0.0.1:${sp + 2}${wsSlash}"
 gui_address = "0.0.0.0:50001"
 `;
+}
+
+function parseConfigToml(text) {
+  return TOML.parse(text, 1, "\n");
+}
+
+function configFromToml(toml) {
+  var scheduler = toml.scheduler || {};
+  var schedBind = scheduler.bind_address || "";
+  var objBind = (toml.object_storage_server || {}).bind_address || "";
+
+  function extractPort(addr) {
+    var m = addr.match(/:(\d+)/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  var proto = schedBind.slice(0, 3) === "tcp" ? "tcp" : "ws";
+  var schedulerPort = extractPort(schedBind) || 6788;
+  var objectStoragePort = extractPort(objBind) || 6789;
+
+  var rawWms = toml.worker_manager || [];
+  var workerManagers = rawWms.map(function(wm, idx) {
+    var base = {
+      _uid: idx + 1,
+      id: wm.worker_manager_id || ("wm-" + (idx + 1)),
+      type: wm.type || "orb_aws_ec2",
+    };
+    if (wm.type === "orb_aws_ec2") {
+      return Object.assign(base, {
+        instanceType: wm.instance_type || "t3.medium",
+        capMode: "budget",
+        instanceCap: 4,
+        budgetCap: 10,
+        requirements: wm.requirements_txt || "opengris-scaler[all]",
+      });
+    }
+    if (wm.type === "aws_raw_ecs") {
+      return Object.assign(base, {
+        ecsCluster: wm.ecs_cluster || "",
+        ecsTaskImage: wm.ecs_task_image || "",
+        ecsSubnets: wm.ecs_subnets || "",
+        ecsTaskDefinition: wm.ecs_task_definition || "",
+        ecsTaskCpu: wm.ecs_task_cpu || 4,
+        ecsTaskMemory: wm.ecs_task_memory || 30,
+      });
+    }
+    if (wm.type === "aws_hpc") {
+      return Object.assign(base, {
+        jobQueue: wm.job_queue || "",
+        jobDefinition: wm.job_definition || "",
+        s3Bucket: wm.s3_bucket || "",
+        s3Prefix: wm.s3_prefix || "scaler-tasks",
+        maxConcurrentJobs: wm.max_concurrent_jobs || 100,
+        jobTimeoutMinutes: wm.job_timeout_minutes || 60,
+      });
+    }
+    if (wm.type === "oci_raw") {
+      return Object.assign(base, {
+        ociShape: wm.instance_shape || "CI.Standard.A1.Flex",
+        ociOcpus: wm.instance_ocpus || 4,
+        ociMemoryGb: wm.instance_memory_gb || 30,
+        ociRegion: wm.oci_region || "",
+        ociCompartmentId: wm.compartment_id || "",
+        ociAvailabilityDomain: wm.availability_domain || "",
+        ociSubnetId: wm.subnet_id || "",
+        ociContainerImage: wm.container_image || "",
+        requirements: wm.requirements_txt || "",
+      });
+    }
+    if (wm.type === "oci_hpc") {
+      return Object.assign(base, {
+        ociRegion: wm.oci_region || "",
+        ociCompartmentId: wm.compartment_id || "",
+        ociAvailabilityDomain: wm.availability_domain || "",
+        ociSubnetId: wm.subnet_id || "",
+        ociContainerImage: wm.container_image || "",
+        ociObjectStorageNamespace: wm.object_storage_namespace || "",
+        ociObjectStorageBucket: wm.object_storage_bucket || "",
+        ociObjectStoragePrefix: wm.object_storage_prefix || "scaler-tasks",
+        ociOcpus: wm.instance_ocpus || 1,
+        ociMemoryGb: wm.instance_memory_gb || 6,
+        ociMaxConcurrentJobs: wm.base_concurrency || 100,
+        ociJobTimeoutMinutes: Math.round((wm.job_timeout_seconds || 3600) / 60),
+      });
+    }
+    if (wm.type === "symphony") {
+      return Object.assign(base, { serviceName: wm.service_name || "" });
+    }
+    return base;
+  });
+
+  var pyVer = "3.13";
+  for (var j = 0; j < rawWms.length; j++) {
+    if (rawWms[j].python_version) { pyVer = rawWms[j].python_version; break; }
+  }
+
+  var region = "us-east-1";
+  for (var k = 0; k < rawWms.length; k++) {
+    if (rawWms[k].aws_region) { region = rawWms[k].aws_region; break; }
+  }
+
+  var policySection = scheduler.policy || {};
+  var policy = policySection.policy_engine_type || "simple";
+  var policyContent = policySection.policy_content || "";
+
+  if (policy === "waterfall_v1" && policyContent) {
+    var priorityMap = {};
+    policyContent.split("\n").forEach(function(line) {
+      line = line.split("#")[0].trim();
+      if (!line) return;
+      var parts = line.split(",");
+      if (parts.length >= 2) {
+        var pri = parseInt(parts[0].trim(), 10);
+        var wmId = parts[1].trim();
+        if (!isNaN(pri) && wmId) priorityMap[wmId] = pri;
+      }
+    });
+    workerManagers.sort(function(a, b) {
+      return (priorityMap[a.id] !== undefined ? priorityMap[a.id] : 999) -
+             (priorityMap[b.id] !== undefined ? priorityMap[b.id] : 999);
+    });
+  }
+
+  return {
+    transport: proto,
+    schedulerPort: schedulerPort,
+    objectStoragePort: objectStoragePort,
+    pythonVersion: pyVer,
+    region: region,
+    workerManagers: workerManagers.length ? workerManagers : null,
+    policy: policy,
+  };
 }
 
 function buildUserData(cfg, creds) {
