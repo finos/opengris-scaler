@@ -1627,7 +1627,7 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
             DocumentName: "AWS-RunShellScript",
             Parameters: {
               commands: [
-                "tail -n 150 /var/log/scaler.log 2>/dev/null || echo '(log not yet available)'",
+                "cat /var/log/scaler.log 2>/dev/null || echo '(log not yet available)'",
               ],
             },
             TimeoutSeconds: 30,
