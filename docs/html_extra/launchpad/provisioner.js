@@ -29,6 +29,11 @@ const _ORB_INLINE_POLICY = JSON.stringify({
   ],
 });
 
+const _OCI_SHAPE_PRICING = {
+  "CI.Standard.A1.Flex": { ocpuPrice: 0.013106, memPrice: 0.0019659 },
+  "CI.Standard.E4.Flex": { ocpuPrice: 0.032765, memPrice: 0.0019659 },
+};
+
 function randomSuffix(n) {
   n = n || 8;
   var chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -186,6 +191,11 @@ job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
 `;
       } else if (wm.type === "oci_raw") {
         var ociRawReq = (wm.requirements || "").trim();
+        var ociRawPricing = _OCI_SHAPE_PRICING[wm.ociShape || "CI.Standard.A1.Flex"] || _OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
+        var ociRawCostPerInstance = ociRawPricing.ocpuPrice * (wm.ociOcpus || 4) + ociRawPricing.memPrice * (wm.ociMemoryGb || 30);
+        var ociRawDerivedCount = wm.capMode === "instances"
+          ? Math.max(0, wm.instanceCap || 0)
+          : Math.max(0, Math.floor((wm.budgetCap || 0) / (ociRawCostPerInstance || 1)));
         block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
 oci_region = "${wm.ociRegion || "us-ashburn-1"}"
 `;
@@ -197,6 +207,7 @@ container_image = "${wm.ociContainerImage || ""}"
         block += `instance_shape = "${wm.ociShape || "CI.Standard.E4.Flex"}"
 instance_ocpus = ${wm.ociOcpus || 4}
 instance_memory_gb = ${wm.ociMemoryGb || 30}
+max_task_concurrency = ${ociRawDerivedCount * (wm.ociOcpus || 4)}
 python_version = "${cfg.pythonVersion}"
 requirements_txt = """
 ${ociRawReq}
@@ -288,7 +299,7 @@ function configFromToml(toml) {
     if (wm.type === "orb_aws_ec2") {
       return Object.assign(base, {
         instanceType: wm.instance_type || "t3.medium",
-        capMode: "budget",
+        capMode: "instances",
         instanceCap: 4,
         budgetCap: 10,
         requirements: wm.requirements_txt || "opengris-scaler[all]",
@@ -315,9 +326,13 @@ function configFromToml(toml) {
       });
     }
     if (wm.type === "oci_raw") {
+      var ociOcpus = wm.instance_ocpus || 4;
+      var ociInstanceCap = wm.max_task_concurrency != null
+        ? Math.max(1, Math.round(wm.max_task_concurrency / ociOcpus))
+        : 4;
       return Object.assign(base, {
         ociShape: wm.instance_shape || "CI.Standard.A1.Flex",
-        ociOcpus: wm.instance_ocpus || 4,
+        ociOcpus: ociOcpus,
         ociMemoryGb: wm.instance_memory_gb || 30,
         ociRegion: wm.oci_region || "",
         ociCompartmentId: wm.compartment_id || "",
@@ -325,6 +340,9 @@ function configFromToml(toml) {
         ociSubnetId: wm.subnet_id || "",
         ociContainerImage: wm.container_image || "",
         requirements: wm.requirements_txt || "",
+        capMode: "instances",
+        instanceCap: ociInstanceCap,
+        budgetCap: 10,
       });
     }
     if (wm.type === "oci_hpc") {
@@ -493,6 +511,11 @@ job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
 `;
       } else if (wm.type === "oci_raw") {
         var ociRawReq = (wm.requirements || "").trim();
+        var ociRawPricing = _OCI_SHAPE_PRICING[wm.ociShape || "CI.Standard.A1.Flex"] || _OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
+        var ociRawCostPerInstance = ociRawPricing.ocpuPrice * (wm.ociOcpus || 4) + ociRawPricing.memPrice * (wm.ociMemoryGb || 30);
+        var ociRawDerivedCount = wm.capMode === "instances"
+          ? Math.max(0, wm.instanceCap || 0)
+          : Math.max(0, Math.floor((wm.budgetCap || 0) / (ociRawCostPerInstance || 1)));
         block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
 oci_region = "${wm.ociRegion || "us-ashburn-1"}"
 `;
@@ -504,6 +527,7 @@ container_image = "${wm.ociContainerImage || ""}"
         block += `instance_shape = "${wm.ociShape || "CI.Standard.E4.Flex"}"
 instance_ocpus = ${wm.ociOcpus || 4}
 instance_memory_gb = ${wm.ociMemoryGb || 30}
+max_task_concurrency = ${ociRawDerivedCount * (wm.ociOcpus || 4)}
 python_version = "${cfg.pythonVersion}"
 requirements_txt = """
 ${ociRawReq}
