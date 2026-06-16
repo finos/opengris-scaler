@@ -135,145 +135,167 @@ function downloadText(filename, content) {
   URL.revokeObjectURL(url);
 }
 
-function buildConfigToml(cfg) {
+// Builds one [[worker_manager]] TOML table. `ctx` carries the proto/port/address values that
+// differ between the download template (placeholder strings like <PRIVATE_IP>) and the actual
+// EC2 user-data script (bash variables like $PRIVATE_IP, resolved at instance boot).
+function buildWorkerManagerTable(wm, cfg, ctx) {
+  var table = {
+    type: wm.type,
+    scheduler_address: `${ctx.proto}://127.0.0.1:${ctx.sp}${ctx.wsSlash}`,
+    worker_manager_id: wm.id,
+  };
+
+  if (wm.type === "orb_aws_ec2") {
+    var req = (wm.requirements || "").trim();
+    var inst = (window.SCALER_INSTANCES || []).find(function (i) { return i.type === wm.instanceType; }) || { price: 0 };
+    var orbDerivedCount = wm.capMode === "instances"
+      ? Math.max(0, wm.instanceCap || 0)
+      : Math.max(0, Math.floor((wm.budgetCap || 0) / (inst.price || 1)));
+    Object.assign(table, {
+      worker_scheduler_address: `${ctx.proto}://${ctx.privateIp}:${ctx.sp}${ctx.wsSlash}`,
+      object_storage_address: `${ctx.proto}://${ctx.privateIp}:${ctx.op}${ctx.wsSlash}`,
+      python_version: cfg.pythonVersion,
+      requirements_txt: TOML.multiline.basic(req + "\n"),
+      instance_type: wm.instanceType,
+      max_task_concurrency: orbDerivedCount,
+      aws_region: cfg.region,
+      key_name: `scaler-key-${ctx.nameSuffix}`,
+      subnet_id: ctx.subnetId,
+      security_group_ids: TOML.inline([ctx.securityGroupId]),
+      logging_level: "INFO",
+      instance_tags: TOML.inline({ "scaler-deployment": ctx.nameSuffix }),
+    });
+    if (cfg.networkBackend !== "zmq") table.network_backend = cfg.networkBackend || "ymq";
+  } else if (wm.type === "aws_raw_ecs") {
+    Object.assign(table, {
+      aws_region: cfg.region,
+      ecs_cluster: wm.ecsCluster || "scaler-cluster",
+      ecs_task_image: wm.ecsTaskImage || "",
+      ecs_subnets: wm.ecsSubnets || "",
+      ecs_task_definition: wm.ecsTaskDefinition || "scaler-task-definition",
+      ecs_task_cpu: wm.ecsTaskCpu || 4,
+      ecs_task_memory: wm.ecsTaskMemory || 30,
+      ecs_python_version: cfg.pythonVersion,
+    });
+    if (wm.requirements) table.ecs_python_requirements = wm.requirements;
+  } else if (wm.type === "aws_hpc") {
+    Object.assign(table, {
+      aws_region: cfg.region,
+      job_queue: wm.jobQueue || "",
+      job_definition: wm.jobDefinition || "",
+      s3_bucket: wm.s3Bucket || "",
+      s3_prefix: wm.s3Prefix || "scaler-tasks",
+      max_concurrent_jobs: wm.maxConcurrentJobs || 100,
+      job_timeout_minutes: wm.jobTimeoutMinutes || 60,
+    });
+  } else if (wm.type === "oci_raw") {
+    var ociRawReq = (wm.requirements || "").trim();
+    var ociRawPricing = _OCI_SHAPE_PRICING[wm.ociShape || "CI.Standard.A1.Flex"] || _OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
+    var ociRawCostPerInstance = ociRawPricing.ocpuPrice * (wm.ociOcpus || 4) + ociRawPricing.memPrice * (wm.ociMemoryGb || 30);
+    var ociRawDerivedCount = wm.capMode === "instances"
+      ? Math.max(0, wm.instanceCap || 0)
+      : Math.max(0, Math.floor((wm.budgetCap || 0) / (ociRawCostPerInstance || 1)));
+    Object.assign(table, {
+      worker_scheduler_address: `${ctx.proto}://$PUBLIC_IP:${ctx.sp}${ctx.wsSlash}`,
+      oci_region: wm.ociRegion || "us-ashburn-1",
+      compartment_id: wm.ociCompartmentId || "",
+      availability_domain: wm.ociAvailabilityDomain || "",
+      subnet_id: wm.ociSubnetId || "",
+      container_image: wm.ociContainerImage || "",
+      instance_shape: wm.ociShape || "CI.Standard.E4.Flex",
+      instance_ocpus: wm.ociOcpus || 4,
+      instance_memory_gb: wm.ociMemoryGb || 30,
+      max_task_concurrency: ociRawDerivedCount * (wm.ociOcpus || 4),
+      python_version: cfg.pythonVersion,
+      requirements_txt: TOML.multiline.basic(ociRawReq + "\n"),
+    });
+  } else if (wm.type === "oci_hpc") {
+    Object.assign(table, {
+      worker_scheduler_address: `${ctx.proto}://$PUBLIC_IP:${ctx.sp}${ctx.wsSlash}`,
+      oci_region: wm.ociRegion || "us-ashburn-1",
+      compartment_id: wm.ociCompartmentId || "",
+      availability_domain: wm.ociAvailabilityDomain || "",
+      subnet_id: wm.ociSubnetId || "",
+      container_image: wm.ociContainerImage || "",
+      object_storage_namespace: wm.ociObjectStorageNamespace || "",
+      object_storage_bucket: wm.ociObjectStorageBucket || "",
+      object_storage_prefix: wm.ociObjectStoragePrefix || "scaler-tasks",
+      instance_ocpus: wm.ociOcpus || 1,
+      instance_memory_gb: wm.ociMemoryGb || 6,
+      base_concurrency: wm.ociMaxConcurrentJobs || 100,
+      job_timeout_seconds: (wm.ociJobTimeoutMinutes || 60) * 60,
+    });
+  } else if (wm.type === "baremetal_native") {
+    Object.assign(table, {
+      mode: wm.mode || "fixed",
+      object_storage_address: `${ctx.proto}://127.0.0.1:${ctx.op}${ctx.wsSlash}`,
+    });
+    if (wm.workerType) table.worker_type = wm.workerType;
+    if (wm.maxTaskConcurrency != null && wm.maxTaskConcurrency >= 0) table.max_task_concurrency = wm.maxTaskConcurrency;
+  } else if (wm.type === "symphony") {
+    table.service_name = wm.serviceName || "";
+  }
+
+  return TOML.Section(table);
+}
+
+// Builds the full scheduler config.toml as a string via @ltd/j-toml. `addr` supplies the
+// privateIp/publicIp/subnetId/securityGroupId/nameSuffix values, which differ between the
+// download template (placeholders) and the actual EC2 user-data script (bash variables).
+function buildSchedulerConfigToml(cfg, addr) {
   var proto = cfg.transport || "ws";
   var sp = cfg.schedulerPort;
   var op = cfg.objectStoragePort;
   var wsSlash = proto === "ws" ? "/" : "";
-  var suffix = cfg.nameSuffix || "<suffix>";
-
-  var wmToml = (cfg.workerManagers || [])
-    .map(function (wm) {
-      var block = `[[worker_manager]]
-type = "${wm.type}"
-scheduler_address = "${proto}://127.0.0.1:${sp}${wsSlash}"
-worker_manager_id = "${wm.id}"
-`;
-
-      if (wm.type === "orb_aws_ec2") {
-        var req = (wm.requirements || "").trim();
-        var inst = (window.SCALER_INSTANCES || []).find(function(i) { return i.type === wm.instanceType; }) || { price: 0 };
-        var orbDerivedCount = wm.capMode === "instances"
-          ? Math.max(0, wm.instanceCap || 0)
-          : Math.max(0, Math.floor((wm.budgetCap || 0) / (inst.price || 1)));
-        block += `worker_scheduler_address = "${proto}://<PRIVATE_IP>:${sp}${wsSlash}"
-object_storage_address = "${proto}://<PRIVATE_IP>:${op}${wsSlash}"
-python_version = "${cfg.pythonVersion}"
-requirements_txt = """
-${req}
-"""
-instance_type = "${wm.instanceType}"
-max_task_concurrency = ${orbDerivedCount}
-aws_region = "${cfg.region}"
-key_name = "scaler-key-${suffix}"
-subnet_id = "<SUBNET_ID>"
-security_group_ids = ["<SECURITY_GROUP_ID>"]
-logging_level = "INFO"
-instance_tags = {scaler-deployment = "${suffix}"}
-`;
-        if (cfg.networkBackend !== "zmq")
-          block += `network_backend = "${cfg.networkBackend || "ymq"}"\n`;
-      } else if (wm.type === "aws_raw_ecs") {
-        block += `aws_region = "${cfg.region}"
-ecs_cluster = "${wm.ecsCluster || "scaler-cluster"}"
-ecs_task_image = "${wm.ecsTaskImage || ""}"
-ecs_subnets = "${wm.ecsSubnets || ""}"
-ecs_task_definition = "${wm.ecsTaskDefinition || "scaler-task-definition"}"
-ecs_task_cpu = ${wm.ecsTaskCpu || 4}
-ecs_task_memory = ${wm.ecsTaskMemory || 30}
-ecs_python_version = "${cfg.pythonVersion}"
-`;
-        if (wm.requirements)
-          block += `ecs_python_requirements = "${wm.requirements}"\n`;
-      } else if (wm.type === "aws_hpc") {
-        block += `aws_region = "${cfg.region}"
-job_queue = "${wm.jobQueue || ""}"
-job_definition = "${wm.jobDefinition || ""}"
-s3_bucket = "${wm.s3Bucket || ""}"
-s3_prefix = "${wm.s3Prefix || "scaler-tasks"}"
-max_concurrent_jobs = ${wm.maxConcurrentJobs || 100}
-job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
-`;
-      } else if (wm.type === "oci_raw") {
-        var ociRawReq = (wm.requirements || "").trim();
-        var ociRawPricing = _OCI_SHAPE_PRICING[wm.ociShape || "CI.Standard.A1.Flex"] || _OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
-        var ociRawCostPerInstance = ociRawPricing.ocpuPrice * (wm.ociOcpus || 4) + ociRawPricing.memPrice * (wm.ociMemoryGb || 30);
-        var ociRawDerivedCount = wm.capMode === "instances"
-          ? Math.max(0, wm.instanceCap || 0)
-          : Math.max(0, Math.floor((wm.budgetCap || 0) / (ociRawCostPerInstance || 1)));
-        block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
-oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-`;
-        block += `compartment_id = "${wm.ociCompartmentId || ""}"
-availability_domain = "${wm.ociAvailabilityDomain || ""}"
-subnet_id = "${wm.ociSubnetId || ""}"
-container_image = "${wm.ociContainerImage || ""}"
-`;
-        block += `instance_shape = "${wm.ociShape || "CI.Standard.E4.Flex"}"
-instance_ocpus = ${wm.ociOcpus || 4}
-instance_memory_gb = ${wm.ociMemoryGb || 30}
-max_task_concurrency = ${ociRawDerivedCount * (wm.ociOcpus || 4)}
-python_version = "${cfg.pythonVersion}"
-requirements_txt = """
-${ociRawReq}
-"""
-`;
-      } else if (wm.type === "oci_hpc") {
-        block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
-oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-`;
-        block += `compartment_id = "${wm.ociCompartmentId || ""}"
-availability_domain = "${wm.ociAvailabilityDomain || ""}"
-subnet_id = "${wm.ociSubnetId || ""}"
-container_image = "${wm.ociContainerImage || ""}"
-object_storage_namespace = "${wm.ociObjectStorageNamespace || ""}"
-object_storage_bucket = "${wm.ociObjectStorageBucket || ""}"
-object_storage_prefix = "${wm.ociObjectStoragePrefix || "scaler-tasks"}"
-instance_ocpus = ${wm.ociOcpus || 1}
-instance_memory_gb = ${wm.ociMemoryGb || 6}
-base_concurrency = ${wm.ociMaxConcurrentJobs || 100}
-job_timeout_seconds = ${(wm.ociJobTimeoutMinutes || 60) * 60}
-`;
-      } else if (wm.type === "baremetal_native") {
-        block += `mode = "${wm.mode || "fixed"}"
-object_storage_address = "${proto}://127.0.0.1:${op}${wsSlash}"
-`;
-        if (wm.workerType) block += `worker_type = "${wm.workerType}"\n`;
-        if (wm.maxTaskConcurrency != null && wm.maxTaskConcurrency >= 0)
-          block += `max_task_concurrency = ${wm.maxTaskConcurrency}\n`;
-      } else if (wm.type === "symphony") {
-        block += `service_name = "${wm.serviceName || ""}"\n`;
-      }
-
-      return block;
-    })
-    .join("\n");
+  var ctx = Object.assign({ proto: proto, sp: sp, op: op, wsSlash: wsSlash }, addr);
 
   var policyEngineType = cfg.policy || "simple";
-  var policyContentLine = "";
+  var policySection = { policy_engine_type: policyEngineType };
   if (policyEngineType === "waterfall_v1" && cfg.workerManagers && cfg.workerManagers.length > 0) {
-    var policyLines = cfg.workerManagers.map(function(wm, idx) {
+    var policyLines = cfg.workerManagers.map(function (wm, idx) {
       return (idx + 1) + "," + wm.id;
     }).join("\n");
-    policyContentLine = `policy_content = """\n${policyLines}\n"""\n`;
+    policySection.policy_content = TOML.multiline.basic(policyLines + "\n");
   }
 
-  return `[object_storage_server]
-bind_address = "${proto}://0.0.0.0:${op}${wsSlash}"
+  var root = {
+    object_storage_server: TOML.Section({
+      bind_address: `${proto}://0.0.0.0:${op}${wsSlash}`,
+    }),
+    scheduler: TOML.Section({
+      bind_address: `${proto}://0.0.0.0:${sp}${wsSlash}`,
+      object_storage_address: `${proto}://127.0.0.1:${op}${wsSlash}`,
+      advertised_object_storage_address: `${proto}://${ctx.publicIp}:${op}${wsSlash}`,
+      policy: TOML.Section(policySection),
+    }),
+  };
 
-[scheduler]
-bind_address = "${proto}://0.0.0.0:${sp}${wsSlash}"
-object_storage_address = "${proto}://127.0.0.1:${op}${wsSlash}"
-advertised_object_storage_address = "${proto}://<PUBLIC_IP>:${op}${wsSlash}"
+  var workerManagers = (cfg.workerManagers || []).map(function (wm) {
+    return buildWorkerManagerTable(wm, cfg, ctx);
+  });
+  if (workerManagers.length > 0) root.worker_manager = workerManagers;
 
-[scheduler.policy]
-policy_engine_type = "${policyEngineType}"
-${policyContentLine}
-${wmToml}
-[gui]
-monitor_address = "${proto}://127.0.0.1:${sp + 2}${wsSlash}"
-gui_address = "0.0.0.0:50001"
-`;
+  root.gui = TOML.Section({
+    monitor_address: `${proto}://127.0.0.1:${sp + 2}${wsSlash}`,
+    gui_address: "0.0.0.0:50001",
+  });
+
+  return TOML.stringify(root, {
+    newline: "\n",
+    integer: Number.MAX_SAFE_INTEGER,
+    newlineAround: "section",
+    forceInlineArraySpacing: 0,
+  }).replace(/^\n+/, "");
+}
+
+function buildConfigToml(cfg) {
+  return buildSchedulerConfigToml(cfg, {
+    privateIp: "<PRIVATE_IP>",
+    publicIp: "<PUBLIC_IP>",
+    subnetId: "<SUBNET_ID>",
+    securityGroupId: "<SECURITY_GROUP_ID>",
+    nameSuffix: cfg.nameSuffix || "<suffix>",
+  });
 }
 
 function parseConfigToml(text) {
@@ -416,11 +438,6 @@ function configFromToml(toml) {
 }
 
 function buildUserData(cfg, creds) {
-  var proto = cfg.transport || "ws";
-  var sp = cfg.schedulerPort;
-  var op = cfg.objectStoragePort;
-  var wsSlash = proto === "ws" ? "/" : "";
-
   var isGitInstall = cfg.scalerPackage.indexOf("git+") >= 0;
 
   // When installing from a git repo, the C++ extension must be compiled from source.
@@ -466,108 +483,13 @@ CMAKE_ARGS='-DCMAKE_C_COMPILER=/usr/bin/gcc14-gcc -DCMAKE_CXX_COMPILER=/usr/bin/
 `;
   }
 
-  // Build one [[worker_manager]] TOML block per configured manager.
-  var wmToml = (cfg.workerManagers || [])
-    .map(function (wm) {
-      var block = `[[worker_manager]]
-type = "${wm.type}"
-scheduler_address = "${proto}://127.0.0.1:${sp}${wsSlash}"
-worker_manager_id = "${wm.id}"
-`;
-
-      if (wm.type === "orb_aws_ec2") {
-        var req = (wm.requirements || "").trim();
-        block += `worker_scheduler_address = "${proto}://$PRIVATE_IP:${sp}${wsSlash}"
-object_storage_address = "${proto}://$PRIVATE_IP:${op}${wsSlash}"
-python_version = "${cfg.pythonVersion}"
-requirements_txt = """
-${req}
-"""
-instance_type = "${wm.instanceType}"
-aws_region = "${cfg.region}"
-key_name = "scaler-key-${cfg.nameSuffix}"
-subnet_id = "$SUBNET_ID"
-security_group_ids = ["${cfg.securityGroupId}"]
-logging_level = "INFO"
-instance_tags = {scaler-deployment = "${cfg.nameSuffix}"}
-`;
-        if (cfg.networkBackend !== "zmq")
-          block += `network_backend = "${cfg.networkBackend || "ymq"}"\n`;
-      } else if (wm.type === "aws_raw_ecs") {
-        block += `aws_region = "${cfg.region}"
-ecs_cluster = "${wm.ecsCluster || "scaler-cluster"}"
-ecs_task_image = "${wm.ecsTaskImage || ""}"
-ecs_subnets = "${wm.ecsSubnets || ""}"
-ecs_task_definition = "${wm.ecsTaskDefinition || "scaler-task-definition"}"
-ecs_task_cpu = ${wm.ecsTaskCpu || 4}
-ecs_task_memory = ${wm.ecsTaskMemory || 30}
-ecs_python_version = "${cfg.pythonVersion}"
-`;
-        if (wm.requirements)
-          block += `ecs_python_requirements = "${wm.requirements}"\n`;
-      } else if (wm.type === "aws_hpc") {
-        block += `aws_region = "${cfg.region}"
-job_queue = "${wm.jobQueue || ""}"
-job_definition = "${wm.jobDefinition || ""}"
-s3_bucket = "${wm.s3Bucket || ""}"
-s3_prefix = "${wm.s3Prefix || "scaler-tasks"}"
-max_concurrent_jobs = ${wm.maxConcurrentJobs || 100}
-job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
-`;
-      } else if (wm.type === "oci_raw") {
-        var ociRawReq = (wm.requirements || "").trim();
-        var ociRawPricing = _OCI_SHAPE_PRICING[wm.ociShape || "CI.Standard.A1.Flex"] || _OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
-        var ociRawCostPerInstance = ociRawPricing.ocpuPrice * (wm.ociOcpus || 4) + ociRawPricing.memPrice * (wm.ociMemoryGb || 30);
-        var ociRawDerivedCount = wm.capMode === "instances"
-          ? Math.max(0, wm.instanceCap || 0)
-          : Math.max(0, Math.floor((wm.budgetCap || 0) / (ociRawCostPerInstance || 1)));
-        block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
-oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-`;
-        block += `compartment_id = "${wm.ociCompartmentId || ""}"
-availability_domain = "${wm.ociAvailabilityDomain || ""}"
-subnet_id = "${wm.ociSubnetId || ""}"
-container_image = "${wm.ociContainerImage || ""}"
-`;
-        block += `instance_shape = "${wm.ociShape || "CI.Standard.E4.Flex"}"
-instance_ocpus = ${wm.ociOcpus || 4}
-instance_memory_gb = ${wm.ociMemoryGb || 30}
-max_task_concurrency = ${ociRawDerivedCount * (wm.ociOcpus || 4)}
-python_version = "${cfg.pythonVersion}"
-requirements_txt = """
-${ociRawReq}
-"""
-`;
-      } else if (wm.type === "oci_hpc") {
-        block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
-oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-`;
-        block += `compartment_id = "${wm.ociCompartmentId || ""}"
-availability_domain = "${wm.ociAvailabilityDomain || ""}"
-subnet_id = "${wm.ociSubnetId || ""}"
-container_image = "${wm.ociContainerImage || ""}"
-object_storage_namespace = "${wm.ociObjectStorageNamespace || ""}"
-object_storage_bucket = "${wm.ociObjectStorageBucket || ""}"
-object_storage_prefix = "${wm.ociObjectStoragePrefix || "scaler-tasks"}"
-instance_ocpus = ${wm.ociOcpus || 1}
-instance_memory_gb = ${wm.ociMemoryGb || 6}
-base_concurrency = ${wm.ociMaxConcurrentJobs || 100}
-job_timeout_seconds = ${(wm.ociJobTimeoutMinutes || 60) * 60}
-`;
-      } else if (wm.type === "baremetal_native") {
-        block += `mode = "${wm.mode || "fixed"}"
-object_storage_address = "${proto}://127.0.0.1:${op}${wsSlash}"
-`;
-        if (wm.workerType) block += `worker_type = "${wm.workerType}"\n`;
-        if (wm.maxTaskConcurrency != null && wm.maxTaskConcurrency >= 0)
-          block += `max_task_concurrency = ${wm.maxTaskConcurrency}\n`;
-      } else if (wm.type === "symphony") {
-        block += `service_name = "${wm.serviceName || ""}"\n`;
-      }
-
-      return block;
-    })
-    .join("\n");
+  var configToml = buildSchedulerConfigToml(cfg, {
+    privateIp: "$PRIVATE_IP",
+    publicIp: "$PUBLIC_IP",
+    subnetId: "$SUBNET_ID",
+    securityGroupId: cfg.securityGroupId,
+    nameSuffix: cfg.nameSuffix,
+  });
 
   var ociConfigBlock = "";
   if (creds.ociUserId && creds.ociTenancyId && creds.ociFingerprint && creds.ociPrivateKey) {
@@ -622,19 +544,7 @@ ${ociConfigBlock}
 mkdir -p /opt/scaler
 
 cat > /opt/scaler/config.toml << CONFIG_EOF
-[object_storage_server]
-bind_address = "${proto}://0.0.0.0:${op}${wsSlash}"
-
-[scheduler]
-bind_address = "${proto}://0.0.0.0:${sp}${wsSlash}"
-object_storage_address = "${proto}://127.0.0.1:${op}${wsSlash}"
-advertised_object_storage_address = "${proto}://$PUBLIC_IP:${op}${wsSlash}"
-
-${wmToml}
-[gui]
-monitor_address = "${proto}://127.0.0.1:${sp + 2}${wsSlash}"
-gui_address = "0.0.0.0:50001"
-CONFIG_EOF
+${configToml}CONFIG_EOF
 
 ${cfg.networkBackend === "zmq" ? "SCALER_NETWORK_BACKEND=tcp_zmq " : ""}/opt/scaler-venv/bin/scaler /opt/scaler/config.toml >> /var/log/scaler.log 2>&1 &
 echo "Scaler started (PID=$!)"
