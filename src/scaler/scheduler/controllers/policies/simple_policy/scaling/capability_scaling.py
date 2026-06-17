@@ -5,10 +5,7 @@ from typing import Dict, FrozenSet, List, Tuple
 from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
-from scaler.scheduler.controllers.worker_manager_utilties import (
-    build_scaling_manager_status,
-    build_set_desired_command,
-)
+from scaler.scheduler.controllers.worker_manager_utilties import build_scaling_manager_status, build_set_desired_command
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot
 
