@@ -8,9 +8,11 @@ def parse_waterfall_rules(policy_content: str) -> List[WaterfallRule]:
 
     Expected format (one rule per line, ``#`` comments supported)::
 
-        #priority,worker_manager_id,max_task_concurrency
-        1,native,10
+        #priority,worker_manager_id[,max_task_concurrency]
+        1,native
         2,ecs,20
+
+    When ``max_task_concurrency`` is omitted, the manager's heartbeat-reported capacity is used.
 
     Raises ``ValueError`` on malformed input.
     """
@@ -22,13 +24,14 @@ def parse_waterfall_rules(policy_content: str) -> List[WaterfallRule]:
             continue
 
         parts = [p.strip() for p in line.split(",")]
-        if len(parts) != 3:
+        if len(parts) not in (2, 3):
             raise ValueError(
                 f"waterfall_v1 policy_content line {line_number}: "
-                f"expected 'priority,worker_manager_id,max_task_concurrency', got {raw_line.strip()!r}"
+                f"expected 'priority,worker_manager_id[,max_task_concurrency]', got {raw_line.strip()!r}"
             )
 
-        raw_priority, worker_manager_id, raw_max_task_concurrency = parts
+        raw_priority, worker_manager_id = parts[0], parts[1]
+        raw_max_task_concurrency = parts[2] if len(parts) == 3 else None
 
         if not worker_manager_id:
             raise ValueError(f"waterfall_v1 policy_content line {line_number}: worker_manager_id cannot be empty")
@@ -37,7 +40,7 @@ def parse_waterfall_rules(policy_content: str) -> List[WaterfallRule]:
             WaterfallRule(
                 priority=int(raw_priority),
                 worker_manager_id=worker_manager_id.encode(),
-                max_task_concurrency=int(raw_max_task_concurrency),
+                max_task_concurrency=int(raw_max_task_concurrency) if raw_max_task_concurrency is not None else None,
             )
         )
 
