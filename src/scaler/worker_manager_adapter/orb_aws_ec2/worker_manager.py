@@ -320,7 +320,7 @@ class ORBAWSEC2WorkerManager:
             # set -e ensures any install failure aborts the script rather than launching a broken worker.
             script += f"""set -e
 dnf update -y
-dnf install -y python{python_version} python{python_version}-pip openssl-devel
+dnf install -y python{python_version} python{python_version}-pip openssl-devel git
 python{python_version} -m venv /opt/opengris-scaler
 /opt/opengris-scaler/bin/python -m pip install --upgrade pip
 cat > /tmp/requirements.txt << 'REQUIREMENTS_EOF'
