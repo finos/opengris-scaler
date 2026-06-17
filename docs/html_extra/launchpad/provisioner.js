@@ -299,7 +299,7 @@ function buildConfigToml(cfg) {
 }
 
 function parseConfigToml(text) {
-  return TOML.parse(text, 1, "\n");
+  return TOML.parse(text, 1, "\n", false);
 }
 
 function configFromToml(toml) {
