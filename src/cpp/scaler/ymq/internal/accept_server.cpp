@@ -17,7 +17,7 @@ namespace scaler {
 namespace ymq {
 namespace internal {
 
-AcceptServer::AcceptServer(
+std::expected<AcceptServer, scaler::wrapper::uv::Error> AcceptServer::init(
     scaler::wrapper::uv::Loop& loop, Address address, ConnectionCallback onConnectionCallback) noexcept
 {
     std::optional<Server> server;
@@ -25,38 +25,65 @@ AcceptServer::AcceptServer(
 
     switch (address.type()) {
         case Address::Type::TCP: {
-            auto tcpServer = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPServer::init(loop));
-            UV_EXIT_ON_ERROR(tcpServer.bind(address.asTCP(), uv_tcp_flags(0)));
-            server = std::move(tcpServer);
+            auto tcpServer = scaler::wrapper::uv::TCPServer::init(loop);
+            if (!tcpServer.has_value()) {
+                return std::unexpected {tcpServer.error()};
+            }
+            if (auto bindResult = tcpServer->bind(address.asTCP(), uv_tcp_flags(0)); !bindResult.has_value()) {
+                return std::unexpected {bindResult.error()};
+            }
+            server = std::move(tcpServer.value());
             break;
         }
         case Address::Type::IPC: {
-            auto pipeServer = UV_EXIT_ON_ERROR(scaler::wrapper::uv::PipeServer::init(loop, false));
-            UV_EXIT_ON_ERROR(pipeServer.bind(address.asIPC()));
-            server = std::move(pipeServer);
+            auto pipeServer = scaler::wrapper::uv::PipeServer::init(loop, false);
+            if (!pipeServer.has_value()) {
+                return std::unexpected {pipeServer.error()};
+            }
+            if (auto bindResult = pipeServer->bind(address.asIPC()); !bindResult.has_value()) {
+                return std::unexpected {bindResult.error()};
+            }
+            server = std::move(pipeServer.value());
             break;
         }
         case Address::Type::WebSocket: {
             // WebSocket runs over TCP; bind a TCPServer to the resolved TCP address.
             webSocketAddress = address.asWebSocket();
-            auto tcpServer   = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPServer::init(loop));
-            UV_EXIT_ON_ERROR(tcpServer.bind(webSocketAddress->tcpAddress, uv_tcp_flags(0)));
-            server = std::move(tcpServer);
+            auto tcpServer   = scaler::wrapper::uv::TCPServer::init(loop);
+            if (!tcpServer.has_value()) {
+                return std::unexpected {tcpServer.error()};
+            }
+            if (auto bindResult = tcpServer->bind(webSocketAddress->tcpAddress, uv_tcp_flags(0));
+                !bindResult.has_value()) {
+                return std::unexpected {bindResult.error()};
+            }
+            server = std::move(tcpServer.value());
             break;
         }
         default: std::unreachable();
     }
 
-    _state = std::make_shared<State>(
+    AcceptServer acceptServer;
+    acceptServer._state = std::make_shared<State>(
         loop, std::move(onConnectionCallback), std::move(server.value()), std::move(webSocketAddress));
 
-    if (auto* tcpServer = std::get_if<scaler::wrapper::uv::TCPServer>(&_state->_server.value())) {
-        UV_EXIT_ON_ERROR(tcpServer->listen(serverListenBacklog, std::bind_front(&AcceptServer::onConnection, _state)));
-    } else if (auto* pipeServer = std::get_if<scaler::wrapper::uv::PipeServer>(&_state->_server.value())) {
-        UV_EXIT_ON_ERROR(pipeServer->listen(serverListenBacklog, std::bind_front(&AcceptServer::onConnection, _state)));
+    // On Linux, a bind() EADDRINUSE is delayed by libuv and only reported here, at listen().
+    std::expected<void, scaler::wrapper::uv::Error> listenResult;
+    if (auto* tcpServer = std::get_if<scaler::wrapper::uv::TCPServer>(&acceptServer._state->_server.value())) {
+        listenResult =
+            tcpServer->listen(serverListenBacklog, std::bind_front(&AcceptServer::onConnection, acceptServer._state));
+    } else if (auto* pipeServer = std::get_if<scaler::wrapper::uv::PipeServer>(&acceptServer._state->_server.value())) {
+        listenResult =
+            pipeServer->listen(serverListenBacklog, std::bind_front(&AcceptServer::onConnection, acceptServer._state));
     } else {
         std::unreachable();
     }
+
+    if (!listenResult.has_value()) {
+        return std::unexpected {listenResult.error()};
+    }
+
+    return acceptServer;
 }
 
 AcceptServer::State::State(

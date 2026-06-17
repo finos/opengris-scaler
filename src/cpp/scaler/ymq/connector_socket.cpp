@@ -56,8 +56,22 @@ ConnectorSocket ConnectorSocket::bind(
         [state = socket._state, onBindCallback = std::move(onBindCallback)]() mutable {
             emplaceMessageConnection(state);
 
-            state->_acceptServer.emplace(
+            auto acceptServer = internal::AcceptServer::init(
                 state->_thread.loop(), state->_address, std::bind_front(&ConnectorSocket::onClientAccepted, state));
+            if (!acceptServer.has_value()) {
+                onBindCallback(
+                    std::unexpected {Error {
+                        Error::ErrorCode::SysCallError,
+                        "Originated from",
+                        "AcceptServer::init",
+                        "Error code",
+                        acceptServer.error().name(),
+                        acceptServer.error().message(),
+                    }});
+                return;
+            }
+
+            state->_acceptServer.emplace(std::move(acceptServer.value()));
 
             Address boundAddress = state->_acceptServer->address();
             onBindCallback(boundAddress);
