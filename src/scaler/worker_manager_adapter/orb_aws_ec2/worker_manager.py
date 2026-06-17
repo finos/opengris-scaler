@@ -6,7 +6,7 @@ import json
 import logging
 import math
 import os
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 try:
     import boto3
@@ -26,6 +26,20 @@ from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRun
 
 ORB_AWS_EC2_POLLING_INTERVAL_SECONDS = 5
 ORB_AWS_EC2_MAX_POLLING_ATTEMPTS = 60
+
+
+def _extract_git_url_and_branch(requirements_content: str) -> Optional[Tuple[str, str]]:
+    """Return (clone_url, branch) for the first git+ line in a requirements file, or None."""
+    for line in requirements_content.splitlines():
+        idx = line.find("git+")
+        if idx < 0:
+            continue
+        raw_url = line[idx + 4:]
+        at_idx = raw_url.rfind("@")
+        if at_idx >= 0:
+            return raw_url[:at_idx], raw_url[at_idx + 1:]
+        return raw_url, ""
+    return None
 
 
 class ORBWorkerProvisioner(DeclarativeWorkerProvisioner):
@@ -318,15 +332,55 @@ class ORBAWSEC2WorkerManager:
 
             # User data runs as root so no sudo is needed.
             # set -e ensures any install failure aborts the script rather than launching a broken worker.
-            script += f"""set -e
+            git_info = _extract_git_url_and_branch(requirements_content)
+            if git_info is not None:
+                clone_url, clone_branch = git_info
+                clone_cmd = (
+                    f"git clone -b {clone_branch} --depth 1 {clone_url} /opt/scaler-src"
+                    if clone_branch
+                    else f"git clone --depth 1 {clone_url} /opt/scaler-src"
+                )
+                # AL2023 ships GCC 11 which lacks C++23 <expected>; gcc14 is required.
+                # Cap'n Proto is not in the AL2023 repos and must be built from source.
+                # Static libuv.a on AL2023 is not compiled with -fPIC, so we use the
+                # shared libuv from libuv-devel and disable CMake's find_package for it,
+                # letting pkg-config locate the shared library instead.
+                script += f"""set -e
 dnf update -y
-dnf install -y python{python_version} python{python_version}-pip openssl-devel git
-python{python_version} -m venv /opt/opengris-scaler
-/opt/opengris-scaler/bin/python -m pip install --upgrade pip
+dnf install -y git gcc14 gcc14-c++ gcc14-libstdc++-devel autoconf automake libtool libuv-devel openssl-devel
+{clone_cmd}
+cd /opt/scaler-src
+CC=/usr/bin/gcc14-gcc CXX=/usr/bin/gcc14-g++ bash scripts/library_tool.sh capnp download
+CC=/usr/bin/gcc14-gcc CXX=/usr/bin/gcc14-g++ bash scripts/library_tool.sh capnp compile
+bash scripts/library_tool.sh capnp install
+cd /
+echo '/usr/local/lib' > /etc/ld.so.conf.d/local.conf
+ldconfig
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source /root/.local/bin/env
+uv venv --python {python_version} /opt/opengris-scaler
+source /opt/opengris-scaler/bin/activate
 cat > /tmp/requirements.txt << 'REQUIREMENTS_EOF'
 {requirements_content}
 REQUIREMENTS_EOF
-/opt/opengris-scaler/bin/pip install -r /tmp/requirements.txt
+PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \\
+CMAKE_ARGS='-DCMAKE_C_COMPILER=/usr/bin/gcc14-gcc -DCMAKE_CXX_COMPILER=/usr/bin/gcc14-g++ -DCMAKE_DISABLE_FIND_PACKAGE_libuv=TRUE' \\
+  uv pip install -r /tmp/requirements.txt
+ln -sf /opt/opengris-scaler/bin/scaler_* /usr/local/bin/
+set +e
+
+"""
+            else:
+                script += f"""set -e
+dnf update -y
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source /root/.local/bin/env
+uv venv --python {python_version} /opt/opengris-scaler
+source /opt/opengris-scaler/bin/activate
+cat > /tmp/requirements.txt << 'REQUIREMENTS_EOF'
+{requirements_content}
+REQUIREMENTS_EOF
+uv pip install -r /tmp/requirements.txt
 ln -sf /opt/opengris-scaler/bin/scaler_* /usr/local/bin/
 set +e
 
