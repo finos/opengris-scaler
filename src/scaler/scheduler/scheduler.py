@@ -9,6 +9,10 @@ from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.utility import generate_identity_from_name
 from scaler.io.ymq import YMQException
 from scaler.protocol.capnp import (
+    ActorCreate,
+    ActorDestroy,
+    ActorMessage,
+    ActorStateUpdate,
     BaseMessage,
     ClientDisconnect,
     ClientHeartbeat,
@@ -24,6 +28,7 @@ from scaler.protocol.capnp import (
     WorkerHeartbeat,
     WorkerManagerHeartbeat,
 )
+from scaler.scheduler.controllers.actor_controller import VanillaActorController
 from scaler.scheduler.controllers.balance_controller import VanillaBalanceController
 from scaler.scheduler.controllers.client_controller import VanillaClientController
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
@@ -61,6 +66,7 @@ class Scheduler:
         )
 
         self._client_manager = VanillaClientController(config_controller=self._config_controller)
+        self._actor_controller = VanillaActorController()
         self._object_controller = VanillaObjectController(config_controller=self._config_controller)
         self._graph_controller = VanillaGraphTaskController(config_controller=self._config_controller)
         self._task_controller = VanillaTaskController(config_controller=self._config_controller)
@@ -76,7 +82,12 @@ class Scheduler:
         )
 
         self._client_manager.register(
-            self._binder, self._binder_monitor, self._object_controller, self._task_controller, self._worker_controller
+            self._binder,
+            self._binder_monitor,
+            self._object_controller,
+            self._task_controller,
+            self._worker_controller,
+            self._actor_controller,
         )
         self._object_controller.register(
             self._binder, self._binder_monitor, self._connector_storage, self._client_manager, self._worker_controller
@@ -97,7 +108,10 @@ class Scheduler:
             self._worker_controller,
             self._graph_controller,
         )
-        self._worker_controller.register(self._binder, self._binder_monitor, self._task_controller)
+        self._worker_controller.register(
+            self._binder, self._binder_monitor, self._task_controller, self._actor_controller
+        )
+        self._actor_controller.register(self._binder, self._worker_controller)
         self._balance_controller.register(self._binder, self._binder_monitor, self._task_controller)
         self._worker_manager_controller.register(self._binder, self._task_controller, self._worker_controller)
 
@@ -227,6 +241,24 @@ class Scheduler:
         # scheduler receives worker disconnect request from downstream
         if isinstance(message, DisconnectRequest):
             await self._worker_controller.on_disconnect(WorkerID(source), message)
+            return
+
+        # =====================================================================================
+        # actor manager
+        if isinstance(message, ActorCreate):
+            await self._actor_controller.on_actor_create(ClientID(source), message)
+            return
+
+        if isinstance(message, ActorDestroy):
+            await self._actor_controller.on_actor_destroy(ClientID(source), message)
+            return
+
+        if isinstance(message, ActorStateUpdate):
+            await self._actor_controller.on_actor_state_update(WorkerID(source), message)
+            return
+
+        if isinstance(message, ActorMessage):
+            await self._actor_controller.on_actor_message(source, message)
             return
 
         # =====================================================================================

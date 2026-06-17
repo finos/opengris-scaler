@@ -5,6 +5,7 @@ import threading
 from concurrent.futures import Future
 from typing import Callable, Optional
 
+from scaler.client.agent.actor_manager import ClientActorManager
 from scaler.client.agent.disconnect_manager import ClientDisconnectManager
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.agent.heartbeat_manager import ClientHeartbeatManager
@@ -15,6 +16,10 @@ from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend
 from scaler.io.ymq import YMQException
 from scaler.protocol.capnp import (
+    ActorCreate,
+    ActorDestroy,
+    ActorMessage,
+    ActorStateUpdate,
     BaseMessage,
     ClientDisconnect,
     ClientHeartbeatEcho,
@@ -40,6 +45,7 @@ class ClientAgent(threading.Thread):
         scheduler_address: AddressConfig,
         network_backend: NetworkBackend,
         future_manager: ClientFutureManager,
+        actor_manager: ClientActorManager,
         stop_event: threading.Event,
         timeout_seconds: int,
         heartbeat_interval_seconds: int,
@@ -65,6 +71,7 @@ class ClientAgent(threading.Thread):
             self._object_storage_address_override = None
 
         self._future_manager = future_manager
+        self._actor_manager = actor_manager
 
         # In the native path both connectors go through the network backend.
         # The in-process bridge for browser clients supplies a factory for the
@@ -107,6 +114,7 @@ class ClientAgent(threading.Thread):
             future_manager=self._future_manager,
         )
         self._heartbeat_manager.register(connector_external=self._connector_external)
+        self._actor_manager.register(connector_external=self._connector_external)
 
     def run(self):
         self._loop = asyncio.new_event_loop()
@@ -143,6 +151,18 @@ class ClientAgent(threading.Thread):
             await self._task_manager.on_new_graph_task(message)
             return
 
+        if isinstance(message, ActorCreate):
+            await self._actor_manager.on_create_actor(message)
+            return
+
+        if isinstance(message, ActorDestroy):
+            await self._actor_manager.on_destroy_actor(message)
+            return
+
+        if isinstance(message, ActorMessage):
+            await self._actor_manager.on_send_actor_message(message)
+            return
+
         raise TypeError(f"Unknown {message=}")
 
     async def __on_receive_from_scheduler(self, message: BaseMessage):
@@ -167,6 +187,14 @@ class ClientAgent(threading.Thread):
             await self._task_manager.on_task_cancel_confirm(message)
             return
 
+        if isinstance(message, ActorStateUpdate):
+            await self._actor_manager.on_actor_state_update(message)
+            return
+
+        if isinstance(message, ActorMessage):
+            await self._actor_manager.on_actor_message(message)
+            return
+
         raise TypeError(f"Unknown {message=}")
 
     async def __get_loops(self):
@@ -188,6 +216,10 @@ class ClientAgent(threading.Thread):
             exception = e
         finally:
             self._stop_event.set()  # always set the stop event before setting futures' exceptions
+
+            # unblock any user thread polling an ActorHandle: the client side of the actor
+            # channel is gone, so every actor owned by this client is as good as dead
+            self._actor_manager.set_all_actors_dead()
 
             if not isinstance(exception, YMQException):
                 try:

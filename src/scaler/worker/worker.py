@@ -17,6 +17,10 @@ from scaler.io.mixins import (
 )
 from scaler.io.network_backends import YMQNetworkBackend, ZMQNetworkBackend, get_network_backend_from_env
 from scaler.protocol.capnp import (
+    ActorCreate,
+    ActorDestroy,
+    ActorMessage,
+    ActorStateUpdate,
     BaseMessage,
     ClientDisconnect,
     DisconnectRequest,
@@ -34,6 +38,7 @@ from scaler.utility.exceptions import ClientShutdownException, ObjectStorageExce
 from scaler.utility.identifiers import ProcessorID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.signal_handler import install_async_shutdown_handler
+from scaler.worker.agent.actor_manager import VanillaActorManager
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
 from scaler.worker.agent.processor_manager import VanillaProcessorManager
 from scaler.worker.agent.profiling_manager import VanillaProfilingManager
@@ -101,6 +106,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._heartbeat_manager: Optional[VanillaHeartbeatManager] = None
         self._profiling_manager: Optional[VanillaProfilingManager] = None
         self._processor_manager: Optional[VanillaProcessorManager] = None
+        self._actor_manager: Optional[VanillaActorManager] = None
 
     @property
     def identity(self) -> WorkerID:
@@ -166,8 +172,15 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             logging_level=self._logging_level,
         )
 
+        self._actor_manager = VanillaActorManager(identity=self._ident)
+
         # register
         self._task_manager.register(connector=self._connector_external, processor_manager=self._processor_manager)
+        self._actor_manager.register(
+            connector_external=self._connector_external,
+            binder_internal=self._binder_internal,
+            processor_manager=self._processor_manager,
+        )
         self._heartbeat_manager.register(
             connector_external=self._connector_external,
             connector_storage=self._connector_storage,
@@ -201,6 +214,18 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             await self._processor_manager.on_external_object_instruction(message)
             return
 
+        if isinstance(message, ActorCreate):
+            await self._actor_manager.on_actor_create(message)
+            return
+
+        if isinstance(message, ActorDestroy):
+            await self._actor_manager.on_actor_destroy(message)
+            return
+
+        if isinstance(message, ActorMessage):
+            await self._actor_manager.on_actor_message(message)
+            return
+
         if isinstance(message, ClientDisconnect):
             if message.disconnectType == ClientDisconnect.DisconnectType.shutdown:
                 raise ClientShutdownException("received client shutdown, quitting")
@@ -215,6 +240,14 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         raise TypeError(f"Unknown {message=}")
 
     async def __on_receive_internal(self, processor_id_bytes: bytes, message: BaseMessage):
+        if isinstance(message, ActorStateUpdate):
+            await self._actor_manager.on_actor_state_update(processor_id_bytes, message)
+            return
+
+        if isinstance(message, ActorMessage):
+            await self._actor_manager.on_actor_message_from_host(message)
+            return
+
         processor_id = ProcessorID(processor_id_bytes)
 
         if isinstance(message, ProcessorInitialized):
@@ -256,6 +289,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
                 create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
                 create_async_loop_routine(self._timeout_manager.routine, 1),
                 create_async_loop_routine(self._task_manager.routine, 0),
+                create_async_loop_routine(self._actor_manager.routine, 1),
                 create_async_loop_routine(self._profiling_manager.routine, PROFILING_INTERVAL_SECONDS),
             )
         except asyncio.CancelledError:
@@ -280,6 +314,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self._connector_external.destroy()
         self._processor_manager.destroy("quit")
+        self._actor_manager.destroy("quit")
         self._binder_internal.destroy()
         self._connector_storage.destroy()
 

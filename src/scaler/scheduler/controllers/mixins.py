@@ -2,6 +2,10 @@ import abc
 from typing import Any, Dict, List, Optional, Set
 
 from scaler.protocol.capnp import (
+    ActorCreate,
+    ActorDestroy,
+    ActorMessage,
+    ActorStateUpdate,
     ClientDisconnect,
     ClientHeartbeat,
     DisconnectRequest,
@@ -162,6 +166,36 @@ class TaskController(Reporter):
         raise NotImplementedError()
 
 
+class ActorController(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    async def on_actor_create(self, client_id: ClientID, actor_create: ActorCreate):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_actor_destroy(self, client_id: ClientID, actor_destroy: ActorDestroy):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_actor_state_update(self, worker_id: WorkerID, actor_state_update: ActorStateUpdate):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_actor_message(self, source: bytes, actor_message: ActorMessage):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def is_actor_worker(self, worker_id: WorkerID) -> bool:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_client_disconnect(self, client_id: ClientID):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_worker_disconnect(self, worker_id: WorkerID):
+        raise NotImplementedError()
+
+
 class WorkerController(Reporter):
     @abc.abstractmethod
     def acquire_worker(self, task: Task) -> Optional[WorkerID]:
@@ -172,6 +206,13 @@ class WorkerController(Reporter):
         # TODO: 1. worker id as bytes if have capacity and able to assign to worker id
         # TODO: 2. capacity is full, and unable to add new task
         # TODO: 3. capacity is not full, but all the workers are busy right now, so tasks will be queued
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def acquire_worker_for_actor(self) -> Optional[WorkerID]:
+        """Designate an idle worker as an actor: it leaves the task pool, so task
+        assignment and balancing no longer see it, until the designation is released (its
+        heartbeats re-register it once the actor controller stops claiming it)."""
         raise NotImplementedError()
 
     @abc.abstractmethod
