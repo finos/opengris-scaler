@@ -1684,6 +1684,7 @@ function App() {
       schedulerPort,
       objectStoragePort,
       pythonVersion,
+      policy,
       scalerPackage: schedulerRequirements,
       instanceProfileName: null,
       pollTimeout: 600,
