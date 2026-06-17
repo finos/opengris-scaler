@@ -7,7 +7,6 @@ from scaler.scheduler.controllers.policies.simple_policy.scaling.types import Wo
 from scaler.scheduler.controllers.worker_manager_utilties import (
     build_scaling_manager_status,
     build_set_desired_command,
-    effective_desired_for_manager,
 )
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot
@@ -31,9 +30,6 @@ class VanillaScalingPolicy(ScalingPolicy):
     ) -> List[WorkerManagerCommand]:
         desired = self._compute_desired_worker_count(information_snapshot, worker_manager_heartbeat, managed_worker_ids)
         desired_per_capset: List[Tuple[Dict[str, int], int]] = [({}, desired)]
-        effective = effective_desired_for_manager(desired_per_capset, worker_manager_heartbeat.capabilities)
-        if effective == len(managed_worker_ids):
-            return []
         return [build_set_desired_command(desired_per_capset)]
 
     def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
