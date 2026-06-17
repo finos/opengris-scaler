@@ -70,9 +70,9 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
         heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
         commands_b = self.policy.get_scaling_commands(snapshot, heartbeat_b, [], manager_snapshots)
-        # Manager B's effective desired is 0 (chain consumes the whole 1 worker at manager_a), and its
-        # current connected count is also 0 -> no-op skip, no command emitted.
-        self.assertEqual(commands_b, [])
+        # Manager B's share is 0 (chain consumes the whole 1 worker at manager_a); emits setDesired(0).
+        self.assertEqual(len(commands_b), 1)
+        self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
 
     def test_overflow_to_lower_priority_when_higher_at_capacity(self):
         """When higher priority is at full capacity, the overflow lands on lower-priority desired."""
@@ -105,15 +105,16 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         # Higher-priority is offline (absent) so its capacity contributes 0; lower picks up all of it.
         self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 1)
 
-    def test_no_tasks_skips_emission(self):
-        """No tasks and no managed workers: effective desired (0) matches current (0) -> no-op skip."""
+    def test_no_tasks_emits_desired_zero(self):
+        """No tasks: desired is 0 -> policy unconditionally emits setDesired(0)."""
         snapshot = InformationSnapshot(tasks={}, workers={})
         manager_snapshots = {b"manager_a": _create_manager_snapshot(b"manager_a")}
         heartbeat = _create_worker_manager_heartbeat(b"manager_a")
 
         commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
 
-        self.assertEqual(commands, [])
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(_generic_request(commands[0]).taskConcurrency, 0)
 
     def test_max_task_concurrency_clamps_via_heartbeat(self):
         """The manager's heartbeat-reported maxTaskConcurrency clamps its allocation."""
@@ -154,8 +155,9 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=10)
         commands_b = policy.get_scaling_commands(snapshot, heartbeat_b, [], manager_snapshots)
         # First manager consumed all of its capacity; nothing left for the second at same priority.
-        # Effective desired (0) matches current (0) -> no-op skip.
-        self.assertEqual(commands_b, [])
+        # Desired is 0 -> emits setDesired(0).
+        self.assertEqual(len(commands_b), 1)
+        self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
 
     def test_lower_priority_drains_first(self):
         """When demand drops to zero, the lower-priority manager drains first;
@@ -178,11 +180,12 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(len(commands_b), 1)
         self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
 
-        # manager_a (higher priority) is NOT told to drain yet -- desired matches its current count
+        # manager_a (higher priority) holds its count (waiting for lower priority to drain) -> emits setDesired(3).
         managed_a = [WorkerID(b"worker-0"), WorkerID(b"worker-1"), WorkerID(b"worker-2")]
         heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
         commands_a = policy.get_scaling_commands(snapshot, heartbeat_a, managed_a, manager_snapshots)
-        self.assertEqual(commands_a, [])
+        self.assertEqual(len(commands_a), 1)
+        self.assertEqual(_generic_request(commands_a[0]).taskConcurrency, 3)
 
     def test_higher_priority_can_drain_when_lower_offline(self):
         """If the lower-priority manager is offline (not in snapshots), the higher-priority
@@ -240,10 +243,11 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         commands_nat = policy.get_scaling_commands(snapshot, heartbeat_nat, [], manager_snapshots)
         self.assertEqual(_generic_request(commands_nat[0]).taskConcurrency, 5)
 
-        # ECS manager gets nothing since NAT has absorbed everything; effective desired==current==0 -> skip.
+        # ECS manager gets nothing since NAT has absorbed everything; desired=0 -> emits setDesired(0).
         heartbeat_ecs = _create_worker_manager_heartbeat(b"ECS|67890", max_task_concurrency=20)
         commands_ecs = policy.get_scaling_commands(snapshot, heartbeat_ecs, [], manager_snapshots)
-        self.assertEqual(commands_ecs, [])
+        self.assertEqual(len(commands_ecs), 1)
+        self.assertEqual(_generic_request(commands_ecs[0]).taskConcurrency, 0)
 
     def test_blocked_when_any_higher_priority_has_room(self):
         """When multiple worker managers share the same higher priority, the lower-priority
@@ -266,8 +270,9 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         heartbeat_ecs = _create_worker_manager_heartbeat(b"ECS|333", max_task_concurrency=20)
         commands = policy.get_scaling_commands(snapshot, heartbeat_ecs, [], manager_snapshots)
 
-        # ECS allocation = 0 (higher-priority chain absorbs all demand); current = 0; no-op skip.
-        self.assertEqual(commands, [])
+        # ECS allocation = 0 (higher-priority chain absorbs all demand); emits setDesired(0).
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(_generic_request(commands[0]).taskConcurrency, 0)
 
     def test_greedy_shutdown_partial_with_tasks(self):
         """With a small task count and many workers, the policy targets the ratio-based
@@ -369,9 +374,10 @@ class TestWaterfallCapabilities(unittest.TestCase):
 
         heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", capabilities={"gpu": 4})
         commands_b = policy.get_scaling_commands(snapshot, heartbeat_b, [], manager_snapshots)
-        # Higher-priority A owns the gpu capset; B's effective desired (0) matches its
-        # current connected count (0) -> no-op skip.
-        self.assertEqual(commands_b, [])
+        # Higher-priority A owns the gpu capset; B's share is 0 -> emits setDesired(0) for generic capset.
+        self.assertEqual(len(commands_b), 1)
+        self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
+        self.assertEqual(_capability_requests(commands_b[0]), [])
 
     def test_capset_overflow_to_lower_priority_when_higher_full(self):
         """When the higher-priority capable manager is full for the capset, overflow goes to the next."""
@@ -568,9 +574,9 @@ class TestWaterfallV1Policy(unittest.TestCase):
 
         heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
         commands_b = policy.get_scaling_commands(snapshot, heartbeat_b, [], manager_snapshots)
-        # Higher-priority A absorbs all 1 desired worker; B's effective share (0) matches
-        # B's current connected count (0) -> no-op skip.
-        self.assertEqual(commands_b, [])
+        # Higher-priority A absorbs all 1 desired worker; B's share is 0 -> emits setDesired(0).
+        self.assertEqual(len(commands_b), 1)
+        self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
 
     def test_scaling_status(self):
         """get_scaling_status should return a ScalingManagerStatus."""
