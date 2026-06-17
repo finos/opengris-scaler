@@ -1,6 +1,7 @@
 const { useState, useEffect, useCallback, useRef } = React;
 
 const IS_ADVANCED = new URLSearchParams(window.location.search).has('advanced');
+const IS_DEV = new URLSearchParams(window.location.search).has('dev');
 
 const OCI_SHAPE_PRICING = {
   "CI.Standard.A1.Flex": { ocpuPrice: 0.013106, memPrice: 0.0019659 },
@@ -1316,6 +1317,24 @@ function TopNav({
         })}
       </div>
       {launchControl && <div style={{ marginRight: 16 }}>{launchControl}</div>}
+      {IS_DEV && (
+        <div
+          style={{
+            fontSize: 9,
+            fontWeight: 700,
+            letterSpacing: "0.1em",
+            color: "var(--text-warning)",
+            background: "rgba(255,202,22,0.08)",
+            border: "1px solid rgba(255,202,22,0.25)",
+            borderRadius: 3,
+            padding: "2px 7px",
+            marginRight: 12,
+            flexShrink: 0,
+          }}
+        >
+          DEV
+        </div>
+      )}
       <label
         style={{
           display: "flex",
@@ -1353,13 +1372,13 @@ function TopNav({
 /* ── App ── */
 function App() {
   const [region, setRegion] = useState("us-east-1");
-  const [accessKeyId, setAKI] = useState("");
-  const [secretKey, setSK] = useState("");
+  const [accessKeyId, setAKI] = useState(() => IS_DEV ? (sessionStorage.getItem('launchpad-dev-aki') || '') : '');
+  const [secretKey, setSK] = useState(() => IS_DEV ? (sessionStorage.getItem('launchpad-dev-sk') || '') : '');
   const [credTab, setCredTab] = useState("aws");
-  const [ociUserId, setOciUserId] = useState("");
-  const [ociTenancyId, setOciTenancyId] = useState("");
-  const [ociFingerprint, setOciFingerprint] = useState("");
-  const [ociPrivateKey, setOciPrivateKey] = useState("");
+  const [ociUserId, setOciUserId] = useState(() => IS_DEV ? (sessionStorage.getItem('launchpad-dev-oci-uid') || '') : '');
+  const [ociTenancyId, setOciTenancyId] = useState(() => IS_DEV ? (sessionStorage.getItem('launchpad-dev-oci-tid') || '') : '');
+  const [ociFingerprint, setOciFingerprint] = useState(() => IS_DEV ? (sessionStorage.getItem('launchpad-dev-oci-fp') || '') : '');
+  const [ociPrivateKey, setOciPrivateKey] = useState(() => IS_DEV ? (sessionStorage.getItem('launchpad-dev-oci-pk') || '') : '');
   const [transport, setTransport] = useState("ws");
   const [networkBackend, setNetBack] = useState("ymq");
   const [pythonVersion, setPyVer] = useState("3.13");
@@ -1473,6 +1492,16 @@ function App() {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("launchpad-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!IS_DEV) return;
+    sessionStorage.setItem('launchpad-dev-aki', accessKeyId);
+    sessionStorage.setItem('launchpad-dev-sk', secretKey);
+    sessionStorage.setItem('launchpad-dev-oci-uid', ociUserId);
+    sessionStorage.setItem('launchpad-dev-oci-tid', ociTenancyId);
+    sessionStorage.setItem('launchpad-dev-oci-fp', ociFingerprint);
+    sessionStorage.setItem('launchpad-dev-oci-pk', ociPrivateKey);
+  }, [accessKeyId, secretKey, ociUserId, ociTenancyId, ociFingerprint, ociPrivateKey]);
 
   useEffect(() => {
     try {
