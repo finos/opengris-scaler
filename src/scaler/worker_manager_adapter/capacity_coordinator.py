@@ -4,6 +4,8 @@ import asyncio
 import logging
 from typing import Awaitable, Callable, Optional
 
+logger = logging.getLogger(__name__)
+
 
 class CapacityCoordinator:
     """Manages async scale-up/down reconciliation for a pool of homogeneous units.
@@ -44,7 +46,7 @@ class CapacityCoordinator:
         """Set the desired number of units and signal the reconcile task."""
         if count == self._desired_unit_count:
             return
-        logging.info(f"Desired unit count changed: {self._desired_unit_count} -> {count}")
+        logger.info(f"Desired unit count changed: {self._desired_unit_count} -> {count}")
         self._desired_unit_count = count
         self._reconcile_needed.set()
         if self._active_reconcile_task is None:
@@ -78,15 +80,15 @@ class CapacityCoordinator:
                     f" (capped by max_unit_count={self._max_unit_count})" if capped else ""
                 )
                 if delta != 0:
-                    logging.info(msg)
+                    logger.info(msg)
                 else:
-                    logging.debug(msg)
+                    logger.debug(msg)
                 try:
                     if delta > 0:
                         await self._start_units(delta)
                     elif delta < 0:
                         await self._stop_units(abs(delta))
                 except Exception:
-                    logging.exception("Reconcile failed")
+                    logger.exception("Reconcile failed")
         finally:
             self._active_reconcile_task = None
