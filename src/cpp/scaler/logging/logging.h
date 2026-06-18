@@ -87,7 +87,9 @@ public:
                 } else if (part.content == "name") {
                     output_stream << _name;
                 } else if (part.content == "process") {
-                    uv_pid_t pid = uv_os_getpid();
+                    // The PID is constant for the lifetime of the process, so cache it instead of
+                    // issuing a uv_os_getpid() syscall on every log call.
+                    static const uv_pid_t pid = uv_os_getpid();
                     output_stream << pid;
                 } else if (part.content == "lineno") {
                     output_stream << "0";
