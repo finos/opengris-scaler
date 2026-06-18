@@ -39,7 +39,7 @@ public:
 
     const Identity& identity() const noexcept;
 
-    std::expected<void, Error> sendMessage(Bytes messagePayload) noexcept;
+    std::expected<void, Error> sendMessage(std::unique_ptr<Bytes> messagePayload) noexcept;
 
     std::expected<Message, Error> recvMessage() noexcept;
 

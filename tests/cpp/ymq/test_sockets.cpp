@@ -15,6 +15,7 @@
 
 #include "scaler/error/error.h"
 #include "scaler/ymq/address.h"
+#include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/bytes.h"
 #include "scaler/ymq/configuration.h"
 #include "scaler/ymq/future/binder_socket.h"
@@ -27,7 +28,7 @@
 #include "tests/cpp/ymq/net/socket_utils.h"
 
 using scaler::ymq::Address;
-using scaler::ymq::Bytes;
+using scaler::ymq::BufferedBytes;
 using scaler::ymq::Error;
 using scaler::ymq::Identity;
 using scaler::ymq::IOContext;
@@ -86,7 +87,7 @@ TestResult basicServerYmq(std::string address)
     auto result = socket.recvMessage();
 
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "yi er san si wu liu");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "yi er san si wu liu");
 
     return TestResult::Success;
 }
@@ -99,7 +100,7 @@ TestResult basicClientYmq(std::string address)
     RETURN_FAILURE_IF_FALSE(socketResult.has_value());
 
     auto socket     = std::move(socketResult.value());
-    auto sendResult = socket.sendMessage(Bytes {"yi er san si wu liu"});
+    auto sendResult = socket.sendMessage(std::make_unique<BufferedBytes>("yi er san si wu liu"));
     RETURN_FAILURE_IF_FALSE(sendResult.has_value());
 
     // Reading a message should fail as the server will immediately shutdown after receiving our message
@@ -155,7 +156,7 @@ TestResult serverReceivesBigMessage(std::string address)
     auto result = socket.recvMessage();
 
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(result->payload.len() == 500'000'000);
+    RETURN_FAILURE_IF_FALSE(result->payload->size() == 500'000'000);
 
     return TestResult::Success;
 }
@@ -247,7 +248,7 @@ TestResult serverReceivesHugeHeader(std::string address)
     auto result = socket.recvMessage();
 
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "yi er san si wu liu");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "yi er san si wu liu");
 
     return TestResult::Success;
 }
@@ -312,9 +313,9 @@ TestResult serverReceivesEmptyMessages(std::string address)
 
     auto result = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "");
 
-    auto error = socket.sendMessage("client", Bytes {""});
+    auto error = socket.sendMessage("client", std::make_unique<BufferedBytes>(""));
     RETURN_FAILURE_IF_FALSE(error.has_value());
 
     return TestResult::Success;
@@ -329,12 +330,12 @@ TestResult clientSendsEmptyMessages(std::string address)
 
     auto socket = std::move(socketResult.value());
 
-    auto error = socket.sendMessage(Bytes {""});
+    auto error = socket.sendMessage(std::make_unique<BufferedBytes>(""));
     RETURN_FAILURE_IF_FALSE(error.has_value());
 
     auto result = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "");
 
     return TestResult::Success;
 }
@@ -348,16 +349,16 @@ TestResult multicastSubscriber(std::string address, Identity identity)
 
     auto socket = std::move(socketResult.value());
 
-    auto error = socket.sendMessage(Bytes {"ready"});
+    auto error = socket.sendMessage(std::make_unique<BufferedBytes>("ready"));
     RETURN_FAILURE_IF_FALSE(error.has_value());
 
     auto msg = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(msg.has_value());
-    RETURN_FAILURE_IF_FALSE(msg->payload.as_string() == "valid multicast message");
+    RETURN_FAILURE_IF_FALSE(msg->payload->asString() == "valid multicast message");
 
     msg = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(msg.has_value());
-    RETURN_FAILURE_IF_FALSE(msg->payload.as_string() == "valid broadcast message");
+    RETURN_FAILURE_IF_FALSE(msg->payload->asString() == "valid broadcast message");
 
     return TestResult::Success;
 }
@@ -374,15 +375,15 @@ TestResult multicastPublisher(std::string address, Identity identityPrefix, int 
     for (int i = 0; i < nSubscribers; ++i) {
         auto msg = socket.recvMessage();
         RETURN_FAILURE_IF_FALSE(msg.has_value());
-        RETURN_FAILURE_IF_FALSE(msg->payload.as_string() == "ready");
+        RETURN_FAILURE_IF_FALSE(msg->payload->asString() == "ready");
     }
 
     // Send multicast message
-    socket.sendMulticastMessage(Bytes("invalid message"), "unknown-identity-prefix");
-    socket.sendMulticastMessage(Bytes("valid multicast message"), identityPrefix);
+    socket.sendMulticastMessage(std::make_unique<BufferedBytes>("invalid message"), "unknown-identity-prefix");
+    socket.sendMulticastMessage(std::make_unique<BufferedBytes>("valid multicast message"), identityPrefix);
 
     // Send broadcast message
-    socket.sendMulticastMessage(Bytes("valid broadcast message"));
+    socket.sendMulticastMessage(std::make_unique<BufferedBytes>("valid broadcast message"));
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));  // Wait for messages to be received
 
@@ -398,12 +399,12 @@ TestResult clientCloseEstablishedConnectionClient(std::string address)
 
     auto socket = std::move(socketResult.value());
 
-    auto error = socket.sendMessage(Bytes {"0"});
+    auto error = socket.sendMessage(std::make_unique<BufferedBytes>("0"));
     RETURN_FAILURE_IF_FALSE(error.has_value());
 
     auto result = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "1");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "1");
 
     result = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(!result.has_value(), "expected recv message to fail");
@@ -420,12 +421,12 @@ TestResult clientCloseEstablishedConnectionServer(std::string address)
     auto bindResult = socket.bindTo(address);
     RETURN_FAILURE_IF_FALSE(bindResult.has_value());
 
-    auto error = socket.sendMessage("client", Bytes {"1"});
+    auto error = socket.sendMessage("client", std::make_unique<BufferedBytes>("1"));
     RETURN_FAILURE_IF_FALSE(error.has_value());
 
     auto result = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "0");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "0");
 
     socket.closeConnection("client");
 
@@ -479,12 +480,12 @@ TestResult clientSocketStopBeforeCloseConnection(std::string address)
 
     auto socket = std::move(socketResult.value());
 
-    auto error = socket.sendMessage(Bytes {"0"});
+    auto error = socket.sendMessage(std::make_unique<BufferedBytes>("0"));
     RETURN_FAILURE_IF_FALSE(error.has_value());
 
     auto result = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "1");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "1");
 
     result = socket.recvMessage();
     RETURN_FAILURE_IF_FALSE(!result.has_value(), "expected recv message to fail");
@@ -502,12 +503,12 @@ TestResult serverSocketStopBeforeCloseConnection(std::string address)
         auto bindResult = socket.bindTo(address);
         RETURN_FAILURE_IF_FALSE(bindResult.has_value());
 
-        auto error = socket.sendMessage("client", Bytes {"1"});
+        auto error = socket.sendMessage("client", std::make_unique<BufferedBytes>("1"));
         RETURN_FAILURE_IF_FALSE(error.has_value());
 
         auto result = socket.recvMessage();
         RETURN_FAILURE_IF_FALSE(result.has_value());
-        RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "0");
+        RETURN_FAILURE_IF_FALSE(result->payload->asString() == "0");
 
         // The socket will be stopped when it's destroyed
     }
