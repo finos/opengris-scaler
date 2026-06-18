@@ -34,10 +34,10 @@ def _extract_git_url_and_branch(requirements_content: str) -> Optional[Tuple[str
         idx = line.find("git+")
         if idx < 0:
             continue
-        raw_url = line[idx + 4:]
+        raw_url = line[idx + 4 :]
         at_idx = raw_url.rfind("@")
         if at_idx >= 0:
-            return raw_url[:at_idx], raw_url[at_idx + 1:]
+            return raw_url[:at_idx], raw_url[at_idx + 1 :]
         return raw_url, ""
     return None
 
@@ -345,6 +345,11 @@ class ORBAWSEC2WorkerManager:
                 # Static libuv.a on AL2023 is not compiled with -fPIC, so we use the
                 # shared libuv from libuv-devel and disable CMake's find_package for it,
                 # letting pkg-config locate the shared library instead.
+                cmake_args = (
+                    "-DCMAKE_C_COMPILER=/usr/bin/gcc14-gcc"
+                    " -DCMAKE_CXX_COMPILER=/usr/bin/gcc14-g++"
+                    " -DCMAKE_DISABLE_FIND_PACKAGE_libuv=TRUE"
+                )
                 script += f"""set -e
 dnf update -y
 dnf install -y git gcc14 gcc14-c++ gcc14-libstdc++-devel autoconf automake libtool libuv-devel openssl-devel
@@ -364,7 +369,7 @@ cat > /tmp/requirements.txt << 'REQUIREMENTS_EOF'
 {requirements_content}
 REQUIREMENTS_EOF
 PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \\
-CMAKE_ARGS='-DCMAKE_C_COMPILER=/usr/bin/gcc14-gcc -DCMAKE_CXX_COMPILER=/usr/bin/gcc14-g++ -DCMAKE_DISABLE_FIND_PACKAGE_libuv=TRUE' \\
+CMAKE_ARGS='{cmake_args}' \\
   uv pip install -r /tmp/requirements.txt
 ln -sf /opt/opengris-scaler/bin/scaler_* /usr/local/bin/
 set +e
