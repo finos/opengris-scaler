@@ -2,6 +2,7 @@ import logging
 import sys
 
 logger = logging.getLogger(__name__)
+
 # python-graphblas's native Matrix.__del__ has been observed to corrupt the heap on Windows
 # (STATUS_HEAP_CORRUPTION 0xC0000374) when finalized during a GC cycle that fires on a
 # non-main thread (e.g. asyncio.gather scheduling inside ScalerClientAgent). Until that is

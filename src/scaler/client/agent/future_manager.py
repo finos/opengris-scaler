@@ -39,7 +39,7 @@ class ClientFutureManager(FutureManager):
             try:
                 future.cancel()
             except Exception:
-                logging.exception("failed to cancel future during disconnect")
+                logger.exception("failed to cancel future during disconnect")
 
             # The network-driven cancel above may not transition the future to CANCELLED if the
             # agent thread races to set an exception/result on it during the cancel-confirm

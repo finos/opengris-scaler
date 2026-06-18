@@ -15,6 +15,7 @@ from scaler.worker_manager_adapter.worker_process import WorkerProcess
 
 if TYPE_CHECKING:
     from scaler.protocol.capnp import WorkerManagerCommand
+
 logger = logging.getLogger(__name__)
 
 

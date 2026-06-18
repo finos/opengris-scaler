@@ -18,8 +18,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_WorkerGroupID = bytes
-
 
 class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
     def __init__(self, config: ECSWorkerManagerConfig) -> None:
@@ -179,7 +177,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
 
         task_arn = tasks[0]["taskArn"]
         self._units.append(task_arn)
-        logging.info(f"Started ECS task {task_arn!r}")
+        logger.info(f"Started ECS task {task_arn!r}")
 
     async def start_units(self, count: int) -> None:
         command = self._build_task_command()
@@ -189,7 +187,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
     async def stop_units(self, count: int) -> None:
         to_stop = self._units[:count]
         if len(to_stop) < count:
-            logging.warning(f"Requested to stop {count} ECS task(s) but only {len(to_stop)} available.")
+            logger.warning(f"Requested to stop {count} ECS task(s) but only {len(to_stop)} available.")
         for task_arn in to_stop:
             resp = self._ecs_client.stop_task(
                 cluster=self._ecs_cluster, task=task_arn, reason="Shutdown requested by ECS worker manager"

@@ -332,7 +332,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         await self._worker_controller.on_task_done(task_result.taskId)
         client = self._client_controller.on_task_finish(task_result.taskId)
         if client is None:
-            logging.warning(
+            logger.warning(
                 f"{task_result.taskId!r}: dropping task result, owning client is no longer registered "
                 f"(likely disconnected via client_timeout_seconds while the task was running)"
             )
@@ -356,7 +356,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     async def __send_task_cancel_confirm_to_client(self, task_cancel_confirm: TaskCancelConfirm):
         client = self._client_controller.on_task_finish(task_cancel_confirm.taskId)
         if client is None:
-            logging.warning(
+            logger.warning(
                 f"{task_cancel_confirm.taskId!r}: dropping task cancel confirm, owning client is no "
                 f"longer registered"
             )

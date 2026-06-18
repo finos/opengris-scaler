@@ -193,7 +193,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             try:
                 pending_call.schedule(self.__suspend)
             except RuntimeError:
-                logging.exception(f"Processor[{self.pid}]: failed to schedule suspend pending call")
+                logger.exception(f"Processor[{self.pid}]: failed to schedule suspend pending call")
 
     def __run_forever(self):
         try:
