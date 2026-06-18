@@ -4,6 +4,7 @@
 #include <string>
 #include <thread>
 
+#include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/bytes.h"
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/sync/binder_socket.h"
@@ -44,15 +45,15 @@ TEST_F(YMQSyncTest, BasicMessageExchange)
         scaler::ymq::sync::ConnectorSocket connector = std::move(connectorResult.value());
 
         // Send message from connector to binder
-        auto sendResult = connector.sendMessage(scaler::ymq::Bytes(messagePayload));
+        auto sendResult = connector.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(messagePayload));
         ASSERT_TRUE(sendResult.has_value());
 
         // Receive response from binder
         auto recvResult = connector.recvMessage();
         ASSERT_TRUE(recvResult.has_value());
 
-        ASSERT_EQ(recvResult.value().address.as_string(), binderIdentity);
-        ASSERT_EQ(recvResult.value().payload.as_string(), messagePayload);
+        ASSERT_EQ(recvResult.value().address->asString(), binderIdentity);
+        ASSERT_EQ(recvResult.value().payload->asString(), messagePayload);
 
         // Binder should've closed the connection by now
         recvResult = connector.recvMessage();
@@ -64,12 +65,13 @@ TEST_F(YMQSyncTest, BasicMessageExchange)
     auto recvResult = binder.recvMessage();
     ASSERT_TRUE(recvResult.has_value());
 
-    scaler::ymq::Message message = recvResult.value();
-    ASSERT_EQ(message.address.as_string(), connectorIdentity);
-    ASSERT_EQ(message.payload.as_string(), messagePayload);
+    scaler::ymq::Message message = std::move(recvResult.value());
+    ASSERT_EQ(message.address->asString(), connectorIdentity);
+    ASSERT_EQ(message.payload->asString(), messagePayload);
 
     // Send response back to connector
-    auto sendResult = binder.sendMessage(connectorIdentity, scaler::ymq::Bytes(messagePayload));
+    auto sendResult =
+        binder.sendMessage(connectorIdentity, std::make_unique<scaler::ymq::BufferedBytes>(messagePayload));
     ASSERT_TRUE(sendResult.has_value());
 
     // Request connector to disconnect

@@ -251,11 +251,12 @@ static PyObject* PyConnectorSocket_send_message(PyConnectorSocket* self, PyObjec
     try {
         self->socket->sendMessage(
             std::move(messagePayload->bytes),
-            [callback_ = OwnedPyObject<>::fromBorrowed(callback),
-             state](std::expected<void, scaler::ymq::Error> result) {
+            [callback_ = OwnedPyObject<>::fromBorrowed(callback), state](
+                std::expected<void, scaler::ymq::Error> result, std::unique_ptr<scaler::ymq::Bytes> payload) {
                 AcquireGIL _;
 
-                // Redefine the callback to ensure it is destroyed before the GIL is released.
+                // Move payload and callback into this scope so both are destroyed before the GIL is released.
+                auto payloadOwner      = std::move(payload);
                 OwnedPyObject callback = std::move(callback_);
 
                 if (!result) {
