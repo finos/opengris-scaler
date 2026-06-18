@@ -34,9 +34,10 @@ public:
 
     std::future<std::expected<Address, Error>> bindTo(std::string address);
 
-    std::future<std::expected<void, Error>> sendMessage(Identity remoteIdentity, Bytes messagePayload);
+    std::future<std::expected<void, Error>> sendMessage(Identity remoteIdentity, std::unique_ptr<Bytes> messagePayload);
 
-    void sendMulticastMessage(Bytes messagePayload, std::optional<Identity> remotePrefix = std::nullopt) noexcept;
+    void sendMulticastMessage(
+        std::unique_ptr<Bytes> messagePayload, std::optional<Identity> remotePrefix = std::nullopt) noexcept;
 
     std::future<std::expected<Message, Error>> recvMessage();
 

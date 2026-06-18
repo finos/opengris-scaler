@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/configuration.h"
 
 namespace scaler {
@@ -98,14 +99,14 @@ const std::optional<Identity>& MessageConnection::remoteIdentity() const noexcep
     return _remoteIdentity;
 }
 
-void MessageConnection::sendMessage(Bytes messagePayload, SendMessageCallback onMessageSent) noexcept
+void MessageConnection::sendMessage(std::unique_ptr<Bytes> messagePayload, SendMessageCallback onMessageSent) noexcept
 {
     // Heap allocate the header buffer until the send completes.
-    std::unique_ptr<Header> header = std::make_unique<Header>(messagePayload.size());
+    std::unique_ptr<Header> header = std::make_unique<Header>(messagePayload->size());
 
     const std::vector<std::span<const uint8_t>> buffers {
         std::span<const uint8_t> {reinterpret_cast<const uint8_t*>(header.get()), sizeof(Header)},  // header
-        std::span<const uint8_t> {messagePayload.data(), messagePayload.size()}                     // payload
+        std::span<const uint8_t> {messagePayload->data(), messagePayload->size()}                   // payload
     };
 
     send(
@@ -113,7 +114,7 @@ void MessageConnection::sendMessage(Bytes messagePayload, SendMessageCallback on
         [header         = std::move(header),
          messagePayload = std::move(messagePayload),
          onMessageSent  = std::move(onMessageSent)](std::expected<void, Error> result) mutable {
-            onMessageSent(std::move(result));
+            onMessageSent(std::move(result), std::move(messagePayload));
         });
 }
 
@@ -165,12 +166,14 @@ void MessageConnection::send(std::vector<std::span<const uint8_t>> buffers, Send
 
 void MessageConnection::recv(size_t size, RecvCallback callback) noexcept
 {
-    assert(_recvCurrent._cursor == _recvCurrent._buffer.size() && "previous recv() call not yet completed");
+    assert(
+        (!_recvCurrent._buffer || _recvCurrent._cursor == _recvCurrent._buffer->size()) &&
+        "previous recv() call not yet completed");
 
     _recvCurrent._cursor = 0;
 
     try {
-        _recvCurrent._buffer = Bytes::alloc(size);
+        _recvCurrent._buffer = std::make_unique<BufferedBytes>(size);
     } catch (const std::bad_alloc& e) {
         _logger.log(Logger::LoggingLevel::error, "Failed to allocate ", size, " bytes.");
         onRemoteDisconnect(DisconnectReason::Aborted);
@@ -195,17 +198,19 @@ void MessageConnection::sendHandshake() noexcept
     send(std::move(magicStringBuffer), []([[maybe_unused]] std::expected<void, Error> result) {});
 
     // Identity
-    const Bytes identityBytes {_localIdentity.data(), _localIdentity.size()};
-    sendMessage(std::move(identityBytes), []([[maybe_unused]] std::expected<void, Error> result) {});
+    auto identityBytes = std::make_unique<BufferedBytes>(_localIdentity.data(), _localIdentity.size());
+    sendMessage(
+        std::move(identityBytes),
+        []([[maybe_unused]] std::expected<void, Error> result, [[maybe_unused]] std::unique_ptr<Bytes>) {});
 }
 
 void MessageConnection::recvMagicNumber() noexcept
 {
-    recv(magicString.size(), [this](Bytes payload) {
+    recv(magicString.size(), [this](std::unique_ptr<Bytes> payload) {
         assert(connected());
-        assert(payload.size() == magicString.size());
+        assert(payload->size() == magicString.size());
 
-        const bool magicIsValid = std::memcmp(payload.data(), magicString.data(), magicString.size()) == 0;
+        const bool magicIsValid = std::memcmp(payload->data(), magicString.data(), magicString.size()) == 0;
 
         if (!magicIsValid) {
             _logger.log(Logger::LoggingLevel::error, "Invalid YMQ magic string received");
@@ -219,13 +224,13 @@ void MessageConnection::recvMagicNumber() noexcept
 
 void MessageConnection::recvMessage() noexcept
 {
-    recv(sizeof(Header), [this](Bytes headerPayload) {
+    recv(sizeof(Header), [this](std::unique_ptr<Bytes> headerPayload) {
         assert(connected());
 
         Header header;
-        std::memcpy(&header, headerPayload.data(), sizeof(Header));
+        std::memcpy(&header, headerPayload->data(), sizeof(Header));
 
-        recv(header, [this](Bytes messagePayload) {
+        recv(header, [this](std::unique_ptr<Bytes> messagePayload) {
             assert(connected());
 
             if (!established()) {
@@ -241,7 +246,7 @@ void MessageConnection::recvMessage() noexcept
 }
 
 void MessageConnection::onWriteDone(
-    SendMessageCallback callback, std::expected<void, scaler::wrapper::uv::Error> result) noexcept
+    SendCallback callback, std::expected<void, scaler::wrapper::uv::Error> result) noexcept
 {
     if (!result.has_value()) {
         switch (result.error().code()) {
@@ -303,10 +308,12 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
 
     while (offset < data.size() && connected()) {
         // Read into the current receive buffer
-        assert(_recvCurrent._cursor < _recvCurrent._buffer.size() && "no receive operation in progress");
+        assert(
+            _recvCurrent._buffer && _recvCurrent._cursor < _recvCurrent._buffer->size() &&
+            "no receive operation in progress");
 
-        const size_t readCount = std::min(_recvCurrent._buffer.size() - _recvCurrent._cursor, data.size() - offset);
-        uint8_t* readDest      = _recvCurrent._buffer.data() + _recvCurrent._cursor;
+        const size_t readCount = std::min(_recvCurrent._buffer->size() - _recvCurrent._cursor, data.size() - offset);
+        uint8_t* readDest      = _recvCurrent._buffer->data() + _recvCurrent._cursor;
 
         std::memcpy(readDest, data.subspan(offset).data(), readCount);
 
@@ -314,18 +321,18 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
         offset += readCount;
 
         // If the receive buffer is full, invoke the callback
-        if (_recvCurrent._cursor == _recvCurrent._buffer.size()) {
-            _recvCurrent._onRecvDone(_recvCurrent._buffer);
+        if (_recvCurrent._cursor == _recvCurrent._buffer->size()) {
+            _recvCurrent._onRecvDone(std::move(_recvCurrent._buffer));
         }
     }
 }
 
-void MessageConnection::onRemoteIdentity(Bytes payload) noexcept
+void MessageConnection::onRemoteIdentity(std::unique_ptr<Bytes> payload) noexcept
 {
     assert(connected());
     assert(!established());
 
-    Identity receivedIdentity = payload.as_string().value();
+    Identity receivedIdentity = payload->asString().value_or("");
 
     if (_remoteIdentity.has_value() && *_remoteIdentity != receivedIdentity) {
         _logger.log(

@@ -36,7 +36,8 @@ public:
 
     using ShutdownCallback = scaler::utility::MoveOnlyFunction<void()>;
 
-    using SendMessageCallback = scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
+    using SendMessageCallback =
+        scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>, std::unique_ptr<Bytes>)>;
 
     using RecvMessageCallback = scaler::utility::MoveOnlyFunction<void(std::expected<Message, Error>)>;
 
@@ -77,7 +78,7 @@ public:
     // Send a message to the connected remote peer.
     //
     // If not yet connected, the message will be queued and sent once the connection is established.
-    void sendMessage(Bytes messagePayload, SendMessageCallback onMessageSent) noexcept;
+    void sendMessage(std::unique_ptr<Bytes> messagePayload, SendMessageCallback onMessageSent) noexcept;
 
     // Receive a message from the connected remote peer.
     void recvMessage(RecvMessageCallback onRecvMessage) noexcept;
@@ -129,7 +130,7 @@ private:
     static void onRemoteDisconnect(
         std::shared_ptr<State> state, internal::MessageConnection::DisconnectReason reason) noexcept;
 
-    static void onMessage(std::shared_ptr<State> state, Bytes messagePayload) noexcept;
+    static void onMessage(std::shared_ptr<State> state, std::unique_ptr<Bytes> messagePayload) noexcept;
 
     static void emplaceMessageConnection(std::shared_ptr<State> state) noexcept;
 

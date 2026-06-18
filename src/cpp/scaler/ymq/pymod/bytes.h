@@ -3,8 +3,12 @@
 // Python
 #include "scaler/utility/pymod/compatibility.h"
 
+// C++
+#include <memory>
+
 // First-party
 #include "scaler/ymq/bytes.h"
+#include "scaler/ymq/pymod/py_buffer_bytes.h"
 
 namespace scaler {
 namespace ymq {
@@ -12,7 +16,7 @@ namespace pymod {
 
 struct PyBytes {
     PyObject_HEAD;
-    scaler::ymq::Bytes bytes;
+    std::unique_ptr<scaler::ymq::Bytes> bytes;
 };
 
 static int PyBytes_init(PyBytes* self, PyObject* args, PyObject* kwds)
@@ -21,30 +25,21 @@ static int PyBytes_init(PyBytes* self, PyObject* args, PyObject* kwds)
     view.buf               = nullptr;
     const char* keywords[] = {"bytes", nullptr};
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|y*", (char**)keywords, &view))
-        return -1;  // Error parsing arguments
+        return -1;
 
     if (!view.buf) {
-        // If no bytes were provided, initialize with an empty Bytes object
-        self->bytes = scaler::ymq::Bytes();
         return 0;
     }
 
-    // copy the data into the Bytes object
-    // it might be possible to make this zero-copy in the future
-    self->bytes = scaler::ymq::Bytes((char*)view.buf, view.len);
-
-    PyBuffer_Release(&view);
+    // Zero-copy: transfer Py_buffer ownership to PyBufferBytes.
+    // Do NOT call PyBuffer_Release here — PyBufferBytes owns it now.
+    self->bytes = std::make_unique<pymod::PyBufferBytes>(view);
     return 0;
 }
 
 static void PyBytes_dealloc(PyBytes* self)
 {
-    try {
-        self->bytes.~Bytes();  // Call the destructor to free the Bytes object
-    } catch (...) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to deallocate Bytes");
-        PyErr_WriteUnraisable((PyObject*)self);
-    }
+    self->bytes.reset();
 
     auto* tp = Py_TYPE(self);
     tp->tp_free(self);
@@ -53,34 +48,40 @@ static void PyBytes_dealloc(PyBytes* self)
 
 static PyObject* PyBytes_repr(PyBytes* self)
 {
-    if (self->bytes.is_null()) {
+    if (!self->bytes || !self->bytes->data()) {
         return PyUnicode_FromString("<Bytes: empty>");
     } else {
-        return PyUnicode_FromFormat("<Bytes: %db>", self->bytes.len());
+        return PyUnicode_FromFormat("<Bytes: %zdb>", self->bytes->size());
     }
 }
 
 static PyObject* PyBytes_data_getter(PyBytes* self, [[maybe_unused]] void* closure)
 {
-    if (self->bytes.is_null())
+    if (!self->bytes || !self->bytes->data())
         Py_RETURN_NONE;
 
-    return PyBytes_FromStringAndSize((const char*)self->bytes.data(), self->bytes.len());
+    return PyBytes_FromStringAndSize((const char*)self->bytes->data(), self->bytes->size());
 }
 
 static Py_ssize_t PyBytes_len(PyBytes* self)
 {
-    return self->bytes.len();
+    if (!self->bytes)
+        return 0;
+    return static_cast<Py_ssize_t>(self->bytes->size());
 }
 
 static PyObject* PyBytes_len_getter(PyBytes* self, [[maybe_unused]] void* closure)
 {
-    return PyLong_FromSize_t(self->bytes.len());
+    if (!self->bytes)
+        return PyLong_FromSize_t(0);
+    return PyLong_FromSize_t(self->bytes->size());
 }
 
 static int PyBytes_getbuffer(PyBytes* self, Py_buffer* view, int flags)
 {
-    return PyBuffer_FillInfo(view, (PyObject*)self, (void*)self->bytes.data(), self->bytes.len(), true, flags);
+    void* data     = self->bytes ? self->bytes->data() : nullptr;
+    Py_ssize_t len = self->bytes ? static_cast<Py_ssize_t>(self->bytes->size()) : 0;
+    return PyBuffer_FillInfo(view, (PyObject*)self, data, len, true, flags);
 }
 
 static void PyBytes_releasebuffer([[maybe_unused]] PyBytes* self, [[maybe_unused]] Py_buffer* view)

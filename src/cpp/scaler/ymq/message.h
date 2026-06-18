@@ -1,14 +1,16 @@
 
 #pragma once
 
+#include <memory>
+
 #include "scaler/ymq/bytes.h"
 
 namespace scaler {
 namespace ymq {
 
 struct Message {
-    Bytes address;  // Address of the message
-    Bytes payload;  // Payload of the message
+    std::unique_ptr<Bytes> address;
+    std::unique_ptr<Bytes> payload;
 };
 
 }  // namespace ymq

@@ -2,10 +2,10 @@
 #include <iostream>
 #include <string>
 
+#include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/sync/connector_socket.h"
 
-using scaler::ymq::Bytes;
 using scaler::ymq::IOContext;
 using scaler::ymq::sync::ConnectorSocket;
 
@@ -33,7 +33,7 @@ int main(int argc, char* argv[])
 
     std::chrono::time_point<std::chrono::system_clock> start = std::chrono::system_clock::now();
     for (size_t cnt = 0; cnt < msgCnt; ++cnt) {
-        auto sendResult = socket.sendMessage(Bytes {longStr});
+        auto sendResult = socket.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(longStr));
         if (!sendResult.has_value()) {
             std::cerr << "Failed to send message: " << sendResult.error().what() << std::endl;
             return 1;

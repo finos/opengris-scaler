@@ -2,31 +2,29 @@
 
 #include <algorithm>
 #include <cassert>
-
-template <>
-struct std::hash<scaler::object_storage::ObjectPayload> {
-    std::size_t operator()(const scaler::object_storage::ObjectPayload& payload) const noexcept
-    {
-        return std::hash<std::string_view> {}({reinterpret_cast<const char*>(payload.data()), payload.size()});
-    }
-};
+#include <string_view>
 
 namespace scaler {
 namespace object_storage {
+
+static std::size_t computePayloadHash(const scaler::ymq::Bytes& payload) noexcept
+{
+    return std::hash<std::string_view> {}({reinterpret_cast<const char*>(payload.data()), payload.size()});
+}
 
 ObjectManager::ObjectManager(): totalObjectsBytes {}
 {
 }
 
 std::shared_ptr<const ObjectPayload> ObjectManager::setObject(
-    const ObjectID& objectID, ObjectPayload&& payload) noexcept
+    const ObjectID& objectID, std::unique_ptr<ObjectPayload> payload) noexcept
 {
     if (hasObject(objectID)) {
         // Overriding object: delete old first
         deleteObject(objectID);
     }
 
-    ObjectHash hash = std::hash<ObjectPayload> {}(payload);
+    const ObjectHash hash = computePayloadHash(*payload);
 
     objectIDToHash[objectID] = hash;
 
@@ -39,7 +37,10 @@ std::shared_ptr<const ObjectPayload> ObjectManager::setObject(
                            hash,
                            ManagedObject {
                                .useCount = 1,
-                               .payload  = std::make_shared<const ObjectPayload>(std::move(payload)),
+                               // Converts unique_ptr -> shared_ptr, keeping the Bytes subtype intact.
+                               // Two allocations (object + separate control block); use
+                               // make_shared<BufferedBytes> if this ever becomes a hot path.
+                               .payload = std::shared_ptr<const ObjectPayload>(std::move(payload)),
                            })
                        .first;
         totalObjectsBytes += objectIt->second.payload->size();
