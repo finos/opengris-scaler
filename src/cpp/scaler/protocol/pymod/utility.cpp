@@ -302,17 +302,17 @@ OwnedPyObject<> with_lazy_struct_reader(PyObject* self, Handler&& handler)
         return {};
     }
 
+    static const char ERR_NOT_ALIGNED[] = "Cap'n Proto input buffer must be word-aligned for zero-copy reads";
     if (!check_word_alignment(buffer)) {
         PyBuffer_Release(&buffer);
-        PyErr_SetString(PyExc_ValueError, "Cap'n Proto input buffer must be word-aligned for zero-copy reads");
+        PyErr_SetString(PyExc_ValueError, ERR_NOT_ALIGNED);
         return {};
     }
 
-    static const char ERR_KJ_READ[]     = "Cap'n Proto read failed";
-    static const char ERR_BAD_PATH[]    = "invalid lazy Cap'n Proto path";
-    static const char ERR_BAD_FIELD[]   = "unknown Cap'n Proto field";
-    static const char ERR_BAD_INDEX[]   = "Cap'n Proto list index out of range";
-    static const char ERR_NOT_ALIGNED[] = "Cap'n Proto input buffer must be word-aligned for zero-copy reads";
+    static const char ERR_KJ_READ[]   = "Cap'n Proto read failed";
+    static const char ERR_BAD_PATH[]  = "invalid lazy Cap'n Proto path";
+    static const char ERR_BAD_FIELD[] = "unknown Cap'n Proto field";
+    static const char ERR_BAD_INDEX[] = "Cap'n Proto list index out of range";
 
     capnp::ReaderOptions options;
     options.traversalLimitInWords = traversal_limit;
