@@ -57,10 +57,7 @@ class VanillaScalingPolicy(ScalingPolicy):
             if task_ratio > self._upper_task_ratio:
                 desired = current + 1
             elif task_ratio < self._lower_task_ratio:
-                if task_count == 0 or current == 0:
-                    desired = 0
-                else:
-                    desired = max(1, ceil(task_count / self._upper_task_ratio))
+                desired = 0 if task_count == 0 else max(1, ceil(task_count / self._upper_task_ratio))
             else:
                 desired = current
 

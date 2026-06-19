@@ -234,20 +234,6 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         # ceil(5 / 10) = 1 minimum to keep
         self.assertEqual(request.taskConcurrency, 1)
 
-    def test_low_ratio_with_no_managed_workers_targets_zero(self):
-        """Low task/worker ratio and current=0: don't scale up via the low-ratio branch.
-        This prevents oscillation when another manager's workers cover the load but their
-        ratio momentarily drops below the lower threshold (e.g. one task left, two OCI workers)."""
-        tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(1)}
-        other_workers = {WorkerID(f"w{i}".encode()): _create_mock_worker_heartbeat({}) for i in range(2)}
-        snapshot = InformationSnapshot(tasks=tasks, workers=other_workers)
-        heartbeat = _create_worker_manager_heartbeat(b"mgr")
-
-        commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], {})
-
-        # task_ratio = 1/2 = 0.5 < lower_task_ratio=1, but current=0 -> desired=0, matches managed=0 -> skip
-        self.assertEqual(commands, [])
-
     def test_balanced_ratio_skips_when_desired_equals_current(self):
         """Task ratio in band keeps desired == current managed count -> no-op skip."""
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(15)}
