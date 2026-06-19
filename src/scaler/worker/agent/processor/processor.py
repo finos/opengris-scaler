@@ -36,6 +36,8 @@ from scaler.worker.agent.processor.object_cache import ObjectCache
 from scaler.worker.agent.processor.streaming_buffer import StreamingBuffer
 from scaler.worker.preload import execute_preload
 
+logger = logging.getLogger(__name__)
+
 SUSPEND_SIGNAL = "SIGUSR1"  # use str instead of a signal.Signal to not trigger an import error on unsupported systems.
 
 _current_processor: ContextVar[Optional["Processor"]] = ContextVar("_current_processor", default=None)
@@ -120,7 +122,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             identity=self._identity, connector_remote_type=ConnectorRemoteType.Binder, address=self._agent_address
         )
 
-        logging.info(f"Processor[{self.pid}] connecting to object storage at {self._object_storage_address}...")
+        logger.info(f"Processor[{self.pid}] connecting to object storage at {self._object_storage_address}...")
         self._connector_storage: SyncObjectStorageConnector = self._backend.create_sync_object_storage_connector(
             identity=self._identity, address=self._object_storage_address
         )
@@ -191,7 +193,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             try:
                 pending_call.schedule(self.__suspend)
             except RuntimeError:
-                logging.exception(f"Processor[{self.pid}]: failed to schedule suspend pending call")
+                logger.exception(f"Processor[{self.pid}]: failed to schedule suspend pending call")
 
     def __run_forever(self):
         try:
@@ -216,7 +218,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             if self.__is_closed_zmq_socket_exception(e):
                 return
 
-            logging.exception(f"Processor[{self.pid}]: failed with unhandled exception:\n{e}")
+            logger.exception(f"Processor[{self.pid}]: failed with unhandled exception:\n{e}")
 
         finally:
             # Wake the suspend listener (if running on Windows) and let it exit before the connectors go away,
@@ -243,7 +245,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             self.__on_received_task(message)
             return
 
-        logging.error(f"unknown {message=}")
+        logger.error(f"unknown {message=}")
 
     def __on_receive_object_instruction(self, instruction: ObjectInstruction):
         if instruction.instructionType == ObjectInstruction.ObjectInstructionType.delete:
@@ -251,7 +253,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 self._object_cache.del_object(object_id)
             return
 
-        logging.error(f"worker received unknown object instruction type {instruction=}")
+        logger.error(f"worker received unknown object instruction type {instruction=}")
 
     def __on_received_task(self, task: Task):
         self._current_task = task
@@ -305,7 +307,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             task_result_type = TaskResultType.success
 
         except Exception as e:
-            logging.exception(f"exception when processing task_id={task.taskId.hex()}:")
+            logger.exception(f"exception when processing task_id={task.taskId.hex()}:")
             task_result_type = TaskResultType.failed
             result_bytes = serialize_failure(e)
 

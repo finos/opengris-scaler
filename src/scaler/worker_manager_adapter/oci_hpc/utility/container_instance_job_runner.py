@@ -34,13 +34,15 @@ import typing
 import cloudpickle
 import oci
 
+logger = logging.getLogger(__name__)
+
 COMPRESSION_THRESHOLD_BYTES: int = 4096
 
 
 def signal_handler(signum, frame):
     """Log before exit on signal."""
     sig_name = signal.Signals(signum).name
-    logging.error(f"Received signal {sig_name} ({signum})")
+    logger.error(f"Received signal {sig_name} ({signum})")
     sys.stdout.flush()
     sys.exit(128 + signum)
 
@@ -82,7 +84,7 @@ def build_oci_object_storage_client():
         signer = oci.auth.signers.get_resource_principals_signer()
         return oci.object_storage.ObjectStorageClient(config={}, signer=signer)
     except Exception as rp_exc:
-        logging.warning(f"Resource Principal auth failed ({rp_exc}), falling back to config file")
+        logger.warning(f"Resource Principal auth failed ({rp_exc}), falling back to config file")
         config = oci.config.from_file()
         return oci.object_storage.ObjectStorageClient(config)
 
@@ -110,7 +112,7 @@ def get_payload(
     if not namespace or not bucket or not object_key:
         raise ValueError("No payload available: set PAYLOAD_B64 or provide OCI_NAMESPACE/OCI_BUCKET/OCI_OBJECT_KEY")
 
-    logging.info(f"Fetching payload from Object Storage: {bucket}/{object_key}")
+    logger.info(f"Fetching payload from Object Storage: {bucket}/{object_key}")
     response = object_storage_client.get_object(namespace_name=namespace, bucket_name=bucket, object_name=object_key)
     payload = response.data.content
 
@@ -121,7 +123,7 @@ def get_payload(
     try:
         object_storage_client.delete_object(namespace_name=namespace, bucket_name=bucket, object_name=object_key)
     except Exception as cleanup_exc:
-        logging.warning(f"Failed to clean up input object {object_key}: {cleanup_exc}")
+        logger.warning(f"Failed to clean up input object {object_key}: {cleanup_exc}")
 
     return payload
 
@@ -145,7 +147,7 @@ def store_result(
         namespace_name=namespace, bucket_name=bucket, object_name=result_key, put_object_body=result_bytes
     )
 
-    logging.info(f"Result stored: {bucket}/{result_key}")
+    logger.info(f"Result stored: {bucket}/{result_key}")
     return result_key
 
 
@@ -160,8 +162,8 @@ def main() -> None:
     payload_b64 = read_env("PAYLOAD_B64")
     compressed = (read_env("COMPRESSED") or "0") == "1"
 
-    logging.info(f"Starting task {task_id[:8]}...")
-    logging.info(f"namespace={namespace}, bucket={bucket}, prefix={prefix}")
+    logger.info(f"Starting task {task_id[:8]}...")
+    logger.info(f"namespace={namespace}, bucket={bucket}, prefix={prefix}")
 
     object_storage_client = build_oci_object_storage_client()
 
@@ -176,7 +178,7 @@ def main() -> None:
         )
         task_data = cloudpickle.loads(payload_bytes)
 
-        logging.info(f"Task data loaded, keys: {list(task_data.keys())}")
+        logger.info(f"Task data loaded, keys: {list(task_data.keys())}")
 
         if "function" not in task_data or "arguments" not in task_data:
             raise ValueError("Task data missing 'function' and 'arguments' — reference mode not yet supported")
@@ -184,15 +186,15 @@ def main() -> None:
         func = task_data["function"]
         arguments = task_data["arguments"]
 
-        logging.info(f"Executing function '{getattr(func, '__name__', 'unknown')}' with {len(arguments)} argument(s)")
+        logger.info(f"Executing function '{getattr(func, '__name__', 'unknown')}' with {len(arguments)} argument(s)")
         sys.stdout.flush()
 
         result = func(*arguments)
-        logging.info(f"Function completed, result type: {type(result).__name__}")
+        logger.info(f"Function completed, result type: {type(result).__name__}")
         sys.stdout.flush()
 
         result_bytes = cloudpickle.dumps(result)
-        logging.info(f"Result serialized ({len(result_bytes)} bytes), storing to Object Storage...")
+        logger.info(f"Result serialized ({len(result_bytes)} bytes), storing to Object Storage...")
 
         store_result(
             object_storage_client=object_storage_client,
@@ -203,10 +205,10 @@ def main() -> None:
             task_id=task_id,
         )
 
-        logging.info(f"Task {task_id[:8]} completed successfully")
+        logger.info(f"Task {task_id[:8]} completed successfully")
 
     except Exception as exc:
-        logging.error(f"Task {task_id[:8]} failed: {exc}")
+        logger.error(f"Task {task_id[:8]} failed: {exc}")
         traceback.print_exc()
 
         # Store the error so the adapter can surface it as a failed future
@@ -222,7 +224,7 @@ def main() -> None:
                 task_id=task_id,
             )
         except Exception as store_exc:
-            logging.error(f"Failed to store error result: {store_exc}")
+            logger.error(f"Failed to store error result: {store_exc}")
 
         sys.exit(1)
 

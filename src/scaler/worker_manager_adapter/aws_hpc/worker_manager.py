@@ -15,6 +15,8 @@ from scaler.worker_manager_adapter.worker_process import WorkerProcess
 if TYPE_CHECKING:
     from scaler.protocol.capnp import WorkerManagerCommand
 
+logger = logging.getLogger(__name__)
+
 
 class BatchWorkerProvisioner(DeclarativeWorkerProvisioner):
     def __init__(self, config: AWSBatchWorkerManagerConfig) -> None:
@@ -62,7 +64,7 @@ class BatchWorkerProvisioner(DeclarativeWorkerProvisioner):
         )
         worker.start()
         self._units.append(worker)
-        logging.info(f"Started Batch worker process {worker.name!r}")
+        logger.info(f"Started Batch worker process {worker.name!r}")
 
     async def start_units(self, count: int) -> None:
         for _ in range(count):
@@ -71,11 +73,11 @@ class BatchWorkerProvisioner(DeclarativeWorkerProvisioner):
     async def stop_units(self, count: int) -> None:
         to_stop = self._units[:count]
         if len(to_stop) < count:
-            logging.warning(f"Requested to stop {count} worker process(es) but only {len(to_stop)} available.")
+            logger.warning(f"Requested to stop {count} worker process(es) but only {len(to_stop)} available.")
         for worker in to_stop:
             worker.terminate()
             self._units.pop(0)
-            logging.info(f"Stopped Batch worker process {worker.name!r}")
+            logger.info(f"Stopped Batch worker process {worker.name!r}")
 
     async def terminate(self) -> None:
         self._capacity_coordinator.cancel()
@@ -90,7 +92,7 @@ class AWSHPCWorkerManager:
 
     def run(self) -> None:
         config = self._config
-        logging.info(f"Starting AWS HPC Worker Manager (backend: {config.backend.name})")
+        logger.info(f"Starting AWS HPC Worker Manager (backend: {config.backend.name})")
         if config.backend != AWSHPCBackend.batch:
             raise NotImplementedError(f"backend {config.backend.name!r} is not yet implemented")
 

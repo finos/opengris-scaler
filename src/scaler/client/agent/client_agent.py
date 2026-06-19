@@ -31,6 +31,8 @@ from scaler.utility.event_loop import create_async_loop_routine, run_task_foreve
 from scaler.utility.exceptions import ClientCancelledException, ClientQuitException, ClientShutdownException
 from scaler.utility.identifiers import ClientID
 
+logger = logging.getLogger(__name__)
+
 
 class ClientAgent(threading.Thread):
     def __init__(
@@ -206,16 +208,16 @@ class ClientAgent(threading.Thread):
             # asyncio.CancelledError is a BaseException (not Exception) in Python 3.8+, so it
             # cannot go into set_all_futures_with_exception directly. Translate to the
             # public-facing ClientCancelledException.
-            logging.error("ClientAgent: async. loop cancelled")
+            logger.error("ClientAgent: async. loop cancelled")
             cancelled = ClientCancelledException("client cancelled")
             self._future_manager.set_all_futures_with_exception(cancelled)
             public_exception = cancelled
         elif isinstance(exception, (ClientQuitException, ClientShutdownException)):
-            logging.info("ClientAgent: client quitting")
+            logger.info("ClientAgent: client quitting")
             self._future_manager.set_all_futures_with_exception(exception)
             public_exception = exception
         elif isinstance(exception, (TimeoutError, YMQException)):
-            logging.error(f"ClientAgent: client timeout when connecting to {self._scheduler_address!r}")
+            logger.error(f"ClientAgent: client timeout when connecting to {self._scheduler_address!r}")
             self._future_manager.set_all_futures_with_exception(TimeoutError())
             public_exception = exception
         else:
