@@ -283,6 +283,12 @@ bool load_lazy_struct_metadata(
 template <typename Handler>
 OwnedPyObject<> with_lazy_struct_reader(PyObject* self, Handler&& handler)
 {
+    static const char ERR_KJ_READ[]     = "Cap'n Proto read failed";
+    static const char ERR_BAD_PATH[]    = "invalid lazy Cap'n Proto path";
+    static const char ERR_BAD_FIELD[]   = "unknown Cap'n Proto field";
+    static const char ERR_BAD_INDEX[]   = "Cap'n Proto list index out of range";
+    static const char ERR_NOT_ALIGNED[] = "Cap'n Proto input buffer must be word-aligned for zero-copy reads";
+
     OwnedPyObject<> source;
     OwnedPyObject<> path;
     unsigned long long traversal_limit = 0;
@@ -304,15 +310,9 @@ OwnedPyObject<> with_lazy_struct_reader(PyObject* self, Handler&& handler)
 
     if (!check_word_alignment(buffer)) {
         PyBuffer_Release(&buffer);
-        PyErr_SetString(PyExc_ValueError, "Cap'n Proto input buffer must be word-aligned for zero-copy reads");
+        PyErr_SetString(PyExc_ValueError, ERR_NOT_ALIGNED);
         return {};
     }
-
-    static const char ERR_KJ_READ[]     = "Cap'n Proto read failed";
-    static const char ERR_BAD_PATH[]    = "invalid lazy Cap'n Proto path";
-    static const char ERR_BAD_FIELD[]   = "unknown Cap'n Proto field";
-    static const char ERR_BAD_INDEX[]   = "Cap'n Proto list index out of range";
-    static const char ERR_NOT_ALIGNED[] = "Cap'n Proto input buffer must be word-aligned for zero-copy reads";
 
     capnp::ReaderOptions options;
     options.traversalLimitInWords = traversal_limit;
@@ -652,6 +652,80 @@ OwnedPyObject<> capnp_struct_from_bytes(PyObject* cls, PyObject* args, PyObject*
         }
     }
     return struct_from_bytes(((PyTypeObject*)effective_class)->tp_name, data, traversal_limit);
+}
+
+OwnedPyObject<> capnp_struct_repr(PyObject* self)
+{
+    OwnedPyObject<> name_obj {get_attr((PyObject*)Py_TYPE(self), "__name__")};
+    if (!name_obj)
+        return {};
+
+    OwnedPyObject<> parts {PyList_New(0)};
+    if (!parts)
+        return {};
+
+    int has_variant = PyObject_HasAttrString(self, "_variant_name");
+    if (has_variant < 0)
+        return {};
+
+    if (has_variant) {
+        OwnedPyObject<> variant_name {get_attr(self, "_variant_name")};
+        if (!variant_name)
+            return {};
+        OwnedPyObject<> value {PyObject_GetAttr(self, variant_name.get())};
+        if (!value)
+            return {};
+        OwnedPyObject<> value_repr {PyObject_Repr(value.get())};
+        if (!value_repr)
+            return {};
+        OwnedPyObject<> part {PyUnicode_FromFormat("%U=%U", variant_name.get(), value_repr.get())};
+        if (!part || PyList_Append(parts.get(), part.get()) < 0)
+            return {};
+    } else {
+        auto* state = get_module_state();
+        if (!state || !state->schema_registry.init()) {
+            PyErr_SetString(PyExc_RuntimeError, "capnp module state is unavailable");
+            return {};
+        }
+        OwnedPyObject<> schema_id_obj {get_attr((PyObject*)Py_TYPE(self), "_schema_node_id")};
+        if (!schema_id_obj)
+            return {};
+        uint64_t schema_id = PyLong_AsUnsignedLongLong(schema_id_obj.get());
+        if (PyErr_Occurred())
+            return {};
+        capnp::StructSchema schema;
+        try {
+            schema = state->schema_registry.getStructById(schema_id);
+        } catch (const std::out_of_range&) {
+            PyErr_SetString(PyExc_KeyError, "unknown Cap'n Proto struct schema id");
+            return {};
+        }
+        for (auto field: schema.getFields()) {
+            const char* field_name = field.getProto().getName().cStr();
+            int has_attr           = PyObject_HasAttrString(self, field_name);
+            if (has_attr < 0)
+                return {};
+            if (has_attr == 0)
+                continue;
+            OwnedPyObject<> value {get_attr(self, field_name)};
+            if (!value)
+                return {};
+            OwnedPyObject<> value_repr {PyObject_Repr(value.get())};
+            if (!value_repr)
+                return {};
+            OwnedPyObject<> part {PyUnicode_FromFormat("%s=%U", field_name, value_repr.get())};
+            if (!part || PyList_Append(parts.get(), part.get()) < 0)
+                return {};
+        }
+    }
+
+    OwnedPyObject<> separator {PyUnicode_FromString(", ")};
+    if (!separator)
+        return {};
+    OwnedPyObject<> joined {PyUnicode_Join(separator.get(), parts.get())};
+    if (!joined)
+        return {};
+    return OwnedPyObject<> {PyUnicode_FromFormat("%U(%U)", name_obj.get(), joined.get())};
 }
 
 OwnedPyObject<> capnp_union_which(PyObject* self)

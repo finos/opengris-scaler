@@ -192,6 +192,11 @@ PyObject* py_capnp_struct_to_bytes(PyObject* self, PyObject* /*unused*/)
     return ::scaler::protocol::pymod::capnp_struct_to_bytes(self).take();
 }
 
+PyObject* py_capnp_struct_repr(PyObject* self, PyObject* /*unused*/)
+{
+    return ::scaler::protocol::pymod::capnp_struct_repr(self).take();
+}
+
 PyObject* py_capnp_struct_from_bytes(PyObject* cls, PyObject* args, PyObject* kwargs)
 {
     return ::scaler::protocol::pymod::capnp_struct_from_bytes(cls, args, kwargs).take();
@@ -236,6 +241,16 @@ int capnp_union_init_slot(PyObject* self, PyObject* args, PyObject* kwargs)
     return result ? 0 : -1;
 }
 
+// reprfunc adapter wired directly into tp_repr. tp_repr takes a single argument,
+// so it cannot reuse the METH_NOARGS adapter (py_capnp_struct_repr) above. Mirrors
+// the tp_init handling so repr() works and is inherited by every struct/union
+// subclass even when the Pyodide SIDE_MODULE relocator mishandles __repr__ slot
+// resync. Unions reuse this same repr via base-class slot inheritance.
+PyObject* capnp_struct_repr_slot(PyObject* self)
+{
+    return ::scaler::protocol::pymod::capnp_struct_repr(self).take();
+}
+
 // PyMethodDef::ml_name and the keys passed to PyObject_SetAttrString below are
 // bound to named ``static const char[]`` symbols rather than passed as inline
 // string literals. Pyodide's SIDE_MODULE wasm relocator can mis-resolve offsets
@@ -253,6 +268,7 @@ static const char NAME_TO_BYTES[]   = "to_bytes";
 static const char NAME_FROM_BYTES[] = "from_bytes";
 static const char NAME_WHICH[]      = "which";
 static const char NAME_GETATTR[]    = "__getattr__";
+static const char NAME_REPR[]       = "__repr__";
 
 static PyMethodDef CAPNP_STRUCT_INIT_DEF = {
     NAME_INIT, (PyCFunction)(void (*)(void))py_capnp_struct_init_method, METH_VARARGS | METH_KEYWORDS, nullptr};
@@ -260,6 +276,7 @@ static PyMethodDef CAPNP_STRUCT_GETATTR_DEF = {
     NAME_GETATTR, (PyCFunction)py_capnp_struct_get_attr, METH_VARARGS, nullptr};
 static PyMethodDef CAPNP_STRUCT_TO_BYTES_DEF = {
     NAME_TO_BYTES, (PyCFunction)py_capnp_struct_to_bytes, METH_NOARGS, nullptr};
+static PyMethodDef CAPNP_STRUCT_REPR_DEF       = {NAME_REPR, (PyCFunction)py_capnp_struct_repr, METH_NOARGS, nullptr};
 static PyMethodDef CAPNP_STRUCT_FROM_BYTES_DEF = {
     NAME_FROM_BYTES, (PyCFunction)(void (*)(void))py_capnp_struct_from_bytes, METH_VARARGS | METH_KEYWORDS, nullptr};
 static PyMethodDef CAPNP_UNION_INIT_DEF = {
@@ -570,6 +587,10 @@ bool initialize_runtime_modules(PyObject* module)
         capnp_struct_type.get(),
         NAME_TO_BYTES,
         OwnedPyObject<>(make_method_descriptor(capnp_struct_type.get(), &CAPNP_STRUCT_TO_BYTES_DEF)).get());
+    PyObject_SetAttrString(
+        capnp_struct_type.get(),
+        NAME_REPR,
+        OwnedPyObject<>(make_method_descriptor(capnp_struct_type.get(), &CAPNP_STRUCT_REPR_DEF)).get());
     // Belt-and-suspenders: also set the tp_init slot directly so that subclasses
     // created later via type(name, (CapnpStruct,), {}) inherit the C initproc
     // even if PyObject_SetAttrString's slot-resync logic misbehaves under the
@@ -577,6 +598,9 @@ bool initialize_runtime_modules(PyObject* module)
     // type-creation time via inherit_slots() in CPython's type_new, so this
     // must run before any struct subclasses are created.
     ((PyTypeObject*)capnp_struct_type.get())->tp_init = capnp_struct_init_slot;
+    // tp_repr is set on the base struct type before any union type or generated
+    // subclass is created, so they all inherit this repr via inherit_slots().
+    ((PyTypeObject*)capnp_struct_type.get())->tp_repr = capnp_struct_repr_slot;
     PyType_Modified((PyTypeObject*)capnp_struct_type.get());
 
     OwnedPyObject<> union_bases {PyTuple_Pack(1, capnp_struct_type.get())};
