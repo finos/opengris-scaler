@@ -8,3 +8,4 @@ This section covers contributor workflow, coding expectations, and local develop
 
    development/guidelines
    development/devcontainer
+   development/windows

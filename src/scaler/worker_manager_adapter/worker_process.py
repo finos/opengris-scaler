@@ -27,6 +27,8 @@ from scaler.worker_manager_adapter.heartbeat_manager import HeartbeatManager
 from scaler.worker_manager_adapter.mixins import ExecutionBackend, ProcessorStatusProvider
 from scaler.worker_manager_adapter.task_manager import TaskManager
 
+logger = logging.getLogger(__name__)
+
 _SpawnProcess = multiprocessing.get_context("spawn").Process
 
 
@@ -173,7 +175,7 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         if isinstance(message, ClientDisconnect):
             if message.disconnectType == ClientDisconnect.DisconnectType.shutdown:
                 raise ClientShutdownException("received client shutdown, quitting")
-            logging.error(f"Worker received invalid ClientDisconnect type, ignoring {message=}")
+            logger.error(f"Worker received invalid ClientDisconnect type, ignoring {message=}")
             return
 
         raise TypeError(f"Unknown {message=}")
@@ -197,9 +199,9 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         except asyncio.CancelledError:
             pass
         except (ClientShutdownException, TimeoutError) as e:
-            logging.info(f"{self.identity!r}: {str(e)}")
+            logger.info(f"{self.identity!r}: {str(e)}")
         except Exception as e:
-            logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
+            logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
         try:
             await self._connector_external.send(WorkerDisconnectNotification(worker=self.identity))
@@ -207,7 +209,7 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             if e.code != ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
                 raise
 
-        logging.info(f"{self.identity!r}: quit")
+        logger.info(f"{self.identity!r}: quit")
 
     def __register_signal(self) -> None:
         install_async_shutdown_handler(self._loop, self.__destroy)

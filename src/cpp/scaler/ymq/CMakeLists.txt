@@ -4,8 +4,6 @@ add_library(ymq_objs OBJECT
 
     bytes.h
 
-    common.h
-
     binder_socket.h
     binder_socket.cpp
 

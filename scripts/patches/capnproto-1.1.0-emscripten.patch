@@ -1,0 +1,52 @@
+Skip building capnp host tools and rpc/websocket/json libraries when targeting Emscripten.
+
+The capnp/capnpc-c++/capnpc-capnp executables can't run inside the wasm target
+environment, so they're useless to build there. They also fail to link against
+Emscripten's libc++ (no __cxa_get_globals, no fallocate). Skip the whole block
+when EMSCRIPTEN is set; the wasm Pyodide build uses the host capnp tools
+(symlinked under <prefix>/bin/<tool>.js) for code generation.
+
+Additionally, the capnp-rpc, capnp-json, and capnp-websocket libraries don't
+build with Emscripten 4.0.9's stricter libc++ (RpcConnectionState's hash maps
+hold non-copy-assignable values, which now triggers a defaulted-copy-assign
+diagnostic). The OpenGRIS Scaler wasm client only needs capnp serialization,
+not RPC, so those targets are gated out for the wasm build.
+
+--- a/src/capnp/CMakeLists.txt
++++ b/src/capnp/CMakeLists.txt
+@@ -104,7 +104,7 @@ set(capnp-rpc_schemas
+   rpc-twoparty.capnp
+   persistent.capnp
+ )
+-if(NOT CAPNP_LITE)
++if(NOT CAPNP_LITE AND NOT EMSCRIPTEN)
+   add_library(capnp-rpc ${capnp-rpc_sources})
+   add_library(CapnProto::capnp-rpc ALIAS capnp-rpc)
+   target_link_libraries(capnp-rpc PUBLIC capnp kj-async kj)
+@@ -125,7 +125,7 @@ set(capnp-json_headers
+ set(capnp-json_schemas
+   compat/json.capnp
+ )
+-if(NOT CAPNP_LITE)
++if(NOT CAPNP_LITE AND NOT EMSCRIPTEN)
+   add_library(capnp-json ${capnp-json_sources})
+   add_library(CapnProto::capnp-json ALIAS capnp-json)
+   target_link_libraries(capnp-json PUBLIC capnp kj-async kj)
+@@ -143,7 +143,7 @@ set(capnp-websocket_sources
+ set(capnp-websocket_headers
+   compat/websocket-rpc.h
+ )
+-if(NOT CAPNP_LITE)
++if(NOT CAPNP_LITE AND NOT EMSCRIPTEN)
+   add_library(capnp-websocket ${capnp-websocket_sources})
+   add_library(CapnProto::capnp-websocket ALIAS capnp-websocket)
+   target_link_libraries(capnp-websocket PUBLIC capnp capnp-rpc kj-http kj-async kj)
+@@ -178,7 +178,7 @@ if(NOT CAPNP_LITE)
+   install(FILES ${capnpc_headers} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/capnp")
+ endif()
+ 
+-if(NOT CAPNP_LITE)
++if(NOT CAPNP_LITE AND NOT EMSCRIPTEN)
+   add_executable(capnp_tool
+     compiler/module-loader.c++
+     compiler/capnp.c++

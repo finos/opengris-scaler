@@ -5,6 +5,7 @@
 #include <functional>
 #include <utility>
 
+#include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/configuration.h"
 
 namespace scaler {
@@ -46,7 +47,9 @@ void BinderSocket::shutdown(ShutdownCallback onShutdownCallback) noexcept
         // Fail all pending send callbacks
         for (auto& [_, pendingMessages]: state->_pendingSendMessages) {
             for (auto& pendingMessage: pendingMessages) {
-                pendingMessage.onMessageSent(std::unexpected {Error {Error::ErrorCode::SocketStopRequested}});
+                pendingMessage.onMessageSent(
+                    std::unexpected {Error {Error::ErrorCode::SocketStopRequested}},
+                    std::move(pendingMessage.messagePayload));
             }
         }
         state->_pendingSendMessages.clear();
@@ -73,8 +76,22 @@ void BinderSocket::bindTo(std::string address, BindCallback onBindCallback) noex
                 return;
             }
 
-            state->_servers.emplace_back(
+            auto server = internal::AcceptServer::init(
                 state->_thread.loop(), parsedAddress.value(), std::bind_front(&BinderSocket::onClientConnect, state));
+            if (!server.has_value()) {
+                callback(
+                    std::unexpected {Error {
+                        Error::ErrorCode::SysCallError,
+                        "Originated from",
+                        "AcceptServer::init",
+                        "Error code",
+                        server.error().name(),
+                        server.error().message(),
+                    }});
+                return;
+            }
+
+            state->_servers.push_back(std::move(server.value()));
 
             // Get the actual bound address (useful when binding to port 0)
             Address boundAddress = state->_servers.back().address();
@@ -83,7 +100,7 @@ void BinderSocket::bindTo(std::string address, BindCallback onBindCallback) noex
 }
 
 void BinderSocket::sendMessage(
-    Identity remoteIdentity, Bytes messagePayload, SendMessageCallback onMessageSent) noexcept
+    Identity remoteIdentity, std::unique_ptr<Bytes> messagePayload, SendMessageCallback onMessageSent) noexcept
 {
     _state->_thread.executeThreadSafe([state          = _state,
                                        remoteIdentity = std::move(remoteIdentity),
@@ -98,7 +115,9 @@ void BinderSocket::sendMessage(
             // is a send-before-first-connect case (used by some tests and the warm-up path);
             // queue until the peer eventually identifies itself.
             if (state->_disconnectedIdentities.count(remoteIdentity) > 0) {
-                callback(std::unexpected {Error {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd}});
+                callback(
+                    std::unexpected {Error {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd}},
+                    std::move(messagePayload));
                 return;
             }
 
@@ -112,7 +131,8 @@ void BinderSocket::sendMessage(
     });
 }
 
-void BinderSocket::sendMulticastMessage(Bytes messagePayload, std::optional<Identity> remotePrefix) noexcept
+void BinderSocket::sendMulticastMessage(
+    std::unique_ptr<Bytes> messagePayload, std::optional<Identity> remotePrefix) noexcept
 {
     _state->_thread.executeThreadSafe(
         [state = _state, messagePayload = std::move(messagePayload), remotePrefix = std::move(remotePrefix)]() mutable {
@@ -125,7 +145,10 @@ void BinderSocket::sendMulticastMessage(Bytes messagePayload, std::optional<Iden
                 }
 
                 connectionPtr->sendMessage(
-                    messagePayload, []([[maybe_unused]] std::expected<void, Error> result) noexcept {});
+                    std::make_unique<BufferedBytes>(
+                        reinterpret_cast<const char*>(messagePayload->data()), messagePayload->size()),
+                    []([[maybe_unused]] std::expected<void, Error> result,
+                       [[maybe_unused]] std::unique_ptr<Bytes>) noexcept {});
             }
         });
 }
@@ -228,19 +251,22 @@ void BinderSocket::onRemoteDisconnect(
     auto pendingIt = state->_pendingSendMessages.find(remoteIdentity);
     if (pendingIt != state->_pendingSendMessages.end()) {
         for (auto& pending: pendingIt->second) {
-            pending.onMessageSent(std::unexpected {Error {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd}});
+            pending.onMessageSent(
+                std::unexpected {Error {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd}},
+                std::move(pending.messagePayload));
         }
         state->_pendingSendMessages.erase(pendingIt);
     }
 }
 
-void BinderSocket::onMessage(std::shared_ptr<State> state, ConnectionID connectionId, Bytes messagePayload) noexcept
+void BinderSocket::onMessage(
+    std::shared_ptr<State> state, ConnectionID connectionId, std::unique_ptr<Bytes> messagePayload) noexcept
 {
     internal::MessageConnection& connection = *state->_connections.at(connectionId);
     assert(connection.remoteIdentity().has_value());
 
     Message message;
-    message.address = Bytes {connection.remoteIdentity().value()};
+    message.address = std::make_unique<BufferedBytes>(connection.remoteIdentity().value());
     message.payload = std::move(messagePayload);
 
     if (state->_pendingRecvCallbacks.empty()) {

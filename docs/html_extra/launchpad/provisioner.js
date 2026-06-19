@@ -73,6 +73,51 @@ function withAbort(promise, signal) {
   ]);
 }
 
+function _isPermanentError(err) {
+  var codes = [
+    "InvalidPermission.Duplicate",
+    "EntityAlreadyExists",
+    "InvalidKeyPair.Duplicate",
+    "InvalidGroup.Duplicate",
+  ];
+  return codes.indexOf(err.code) >= 0;
+}
+
+// Retry an AWS operation up to maxAttempts times with exponential back-off.
+// Throws a RetryPausedError (name = "RetryPausedError") after all attempts fail,
+// so callers can distinguish "paused waiting for user" from ordinary errors.
+async function retrying(addLog, signal, fn, maxAttempts) {
+  maxAttempts = maxAttempts || 3;
+  for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (signal && signal.aborted)
+      throw new DOMException("Aborted", "AbortError");
+    try {
+      return await withAbort(fn(), signal);
+    } catch (err) {
+      if (err.name === "AbortError") throw err;
+      if (_isPermanentError(err)) throw err;
+      if (attempt === maxAttempts) {
+        var paused = new Error(err.message);
+        paused.name = "RetryPausedError";
+        throw paused;
+      }
+      var delayMs = 2000 * Math.pow(2, attempt - 1);
+      addLog("  ! " + err.message, "warn");
+      addLog(
+        "  → Retrying in " +
+          Math.round(delayMs / 1000) +
+          "s… (attempt " +
+          (attempt + 1) +
+          " of " +
+          maxAttempts +
+          ")",
+        "dim",
+      );
+      await sleep(delayMs, signal);
+    }
+  }
+}
+
 function downloadText(filename, content) {
   var blob = new Blob([content], { type: "text/plain" });
   var url = URL.createObjectURL(blob);
@@ -141,19 +186,14 @@ job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
 `;
       } else if (wm.type === "oci_raw") {
         var ociRawReq = (wm.requirements || "").trim();
-        var ociRawAuth = wm.ociAuthType || "config_file";
         block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
 oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-auth_type = "${ociRawAuth}"
 `;
-        if (ociRawAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
         block += `compartment_id = "${wm.ociCompartmentId || ""}"
 availability_domain = "${wm.ociAvailabilityDomain || ""}"
 subnet_id = "${wm.ociSubnetId || ""}"
 container_image = "${wm.ociContainerImage || ""}"
 `;
-        if (wm.ociImagePullUsername) block += `image_pull_username = "${wm.ociImagePullUsername}"\n`;
-        if (wm.ociImagePullPassword) block += `image_pull_password = "${wm.ociImagePullPassword}"\n`;
         block += `instance_shape = "${wm.ociShape || "CI.Standard.E4.Flex"}"
 instance_ocpus = ${wm.ociOcpus || 4}
 instance_memory_gb = ${wm.ociMemoryGb || 30}
@@ -163,12 +203,9 @@ ${ociRawReq}
 """
 `;
       } else if (wm.type === "oci_hpc") {
-        var ociHpcAuth = wm.ociAuthType || "config_file";
         block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
 oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-auth_type = "${ociHpcAuth}"
 `;
-        if (ociHpcAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
         block += `compartment_id = "${wm.ociCompartmentId || ""}"
 availability_domain = "${wm.ociAvailabilityDomain || ""}"
 subnet_id = "${wm.ociSubnetId || ""}"
@@ -312,19 +349,14 @@ job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
 `;
       } else if (wm.type === "oci_raw") {
         var ociRawReq = (wm.requirements || "").trim();
-        var ociRawAuth = wm.ociAuthType || "config_file";
         block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
 oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-auth_type = "${ociRawAuth}"
 `;
-        if (ociRawAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
         block += `compartment_id = "${wm.ociCompartmentId || ""}"
 availability_domain = "${wm.ociAvailabilityDomain || ""}"
 subnet_id = "${wm.ociSubnetId || ""}"
 container_image = "${wm.ociContainerImage || ""}"
 `;
-        if (wm.ociImagePullUsername) block += `image_pull_username = "${wm.ociImagePullUsername}"\n`;
-        if (wm.ociImagePullPassword) block += `image_pull_password = "${wm.ociImagePullPassword}"\n`;
         block += `instance_shape = "${wm.ociShape || "CI.Standard.E4.Flex"}"
 instance_ocpus = ${wm.ociOcpus || 4}
 instance_memory_gb = ${wm.ociMemoryGb || 30}
@@ -334,12 +366,9 @@ ${ociRawReq}
 """
 `;
       } else if (wm.type === "oci_hpc") {
-        var ociHpcAuth = wm.ociAuthType || "config_file";
         block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
 oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-auth_type = "${ociHpcAuth}"
 `;
-        if (ociHpcAuth === "config_file") block += `oci_profile = "${wm.ociProfile || "DEFAULT"}"\n`;
         block += `compartment_id = "${wm.ociCompartmentId || ""}"
 availability_domain = "${wm.ociAvailabilityDomain || ""}"
 subnet_id = "${wm.ociSubnetId || ""}"
@@ -522,10 +551,15 @@ async function waitForWs(host, port, timeoutMs, intervalMs, signal) {
   return false;
 }
 
-async function ignoreNotFound(fn) {
+async function ignoreNotFound(fn, addLog, signal) {
   try {
-    await fn();
+    if (addLog && signal) {
+      await retrying(addLog, signal, fn);
+    } else {
+      await fn();
+    }
   } catch (e) {
+    if (e.name === "RetryPausedError" || e.name === "AbortError") throw e;
     if (e.code !== "NoSuchEntity" && e.code !== "NoSuchEntityException")
       throw e;
   }
@@ -536,7 +570,7 @@ async function createIamStack(iam, suffix, addLog, signal) {
   var profileName = "scaler-ec2-profile-" + suffix;
 
   addLog("Creating IAM role '" + roleName + "'...", "cmd");
-  await withAbort(
+  await retrying(addLog, signal, () =>
     iam
       .createRole({
         RoleName: roleName,
@@ -544,9 +578,8 @@ async function createIamStack(iam, suffix, addLog, signal) {
         Description: "OpenGRIS Scaler ORB worker manager role",
       })
       .promise(),
-    signal,
   );
-  await withAbort(
+  await retrying(addLog, signal, () =>
     iam
       .putRolePolicy({
         RoleName: roleName,
@@ -554,32 +587,28 @@ async function createIamStack(iam, suffix, addLog, signal) {
         PolicyDocument: _ORB_INLINE_POLICY,
       })
       .promise(),
-    signal,
   );
-  await withAbort(
+  await retrying(addLog, signal, () =>
     iam
       .attachRolePolicy({
         RoleName: roleName,
         PolicyArn: "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
       })
       .promise(),
-    signal,
   );
 
   addLog("Creating instance profile '" + profileName + "'...", "cmd");
   try {
-    await withAbort(
+    await retrying(addLog, signal, () =>
       iam.createInstanceProfile({ InstanceProfileName: profileName }).promise(),
-      signal,
     );
-    await withAbort(
+    await retrying(addLog, signal, () =>
       iam
         .addRoleToInstanceProfile({
           InstanceProfileName: profileName,
           RoleName: roleName,
         })
         .promise(),
-      signal,
     );
   } catch (err) {
     try {
@@ -598,54 +627,64 @@ async function createIamStack(iam, suffix, addLog, signal) {
   };
 }
 
-async function destroyIamStack(iam, iamState, addLog) {
+async function destroyIamStack(iam, iamState, addLog, signal) {
   if (!iamState || !iamState.created) return;
   var profileName = iamState.instance_profile_name;
   var roleName = iamState.role_name;
 
   addLog("Removing role from instance profile '" + profileName + "'...", "cmd");
-  await ignoreNotFound(function () {
-    return iam
-      .removeRoleFromInstanceProfile({
-        InstanceProfileName: profileName,
-        RoleName: roleName,
-      })
-      .promise();
-  });
+  await ignoreNotFound(
+    () =>
+      iam
+        .removeRoleFromInstanceProfile({
+          InstanceProfileName: profileName,
+          RoleName: roleName,
+        })
+        .promise(),
+    addLog,
+    signal,
+  );
 
   addLog("Deleting instance profile '" + profileName + "'...", "cmd");
-  await ignoreNotFound(function () {
-    return iam
-      .deleteInstanceProfile({ InstanceProfileName: profileName })
-      .promise();
-  });
+  await ignoreNotFound(
+    () => iam.deleteInstanceProfile({ InstanceProfileName: profileName }).promise(),
+    addLog,
+    signal,
+  );
 
   addLog("Deleting role '" + roleName + "'...", "cmd");
   try {
-    var attachedPolicies = await iam
-      .listAttachedRolePolicies({ RoleName: roleName })
-      .promise();
+    var attachedPolicies = await retrying(addLog, signal, () =>
+      iam.listAttachedRolePolicies({ RoleName: roleName }).promise(),
+    );
     for (var i = 0; i < attachedPolicies.AttachedPolicies.length; i++) {
-      await iam
-        .detachRolePolicy({
-          RoleName: roleName,
-          PolicyArn: attachedPolicies.AttachedPolicies[i].PolicyArn,
-        })
-        .promise();
+      await retrying(addLog, signal, () =>
+        iam
+          .detachRolePolicy({
+            RoleName: roleName,
+            PolicyArn: attachedPolicies.AttachedPolicies[i].PolicyArn,
+          })
+          .promise(),
+      );
     }
-    var inlinePolicies = await iam
-      .listRolePolicies({ RoleName: roleName })
-      .promise();
+    var inlinePolicies = await retrying(addLog, signal, () =>
+      iam.listRolePolicies({ RoleName: roleName }).promise(),
+    );
     for (var j = 0; j < inlinePolicies.PolicyNames.length; j++) {
-      await iam
-        .deleteRolePolicy({
-          RoleName: roleName,
-          PolicyName: inlinePolicies.PolicyNames[j],
-        })
-        .promise();
+      await retrying(addLog, signal, () =>
+        iam
+          .deleteRolePolicy({
+            RoleName: roleName,
+            PolicyName: inlinePolicies.PolicyNames[j],
+          })
+          .promise(),
+      );
     }
-    await iam.deleteRole({ RoleName: roleName }).promise();
+    await retrying(addLog, signal, () =>
+      iam.deleteRole({ RoleName: roleName }).promise(),
+    );
   } catch (e) {
+    if (e.name === "RetryPausedError" || e.name === "AbortError") throw e;
     if (e.code !== "NoSuchEntity" && e.code !== "NoSuchEntityException")
       throw e;
   }
@@ -658,13 +697,19 @@ async function provision(
   onPartialState,
   onKeyReady,
   signal,
+  resumeState,
 ) {
   var clients = makeAwsClients(cfg.region, creds);
   var ec2 = clients.ec2,
     iam = clients.iam;
-  var suffix = cfg.nameSuffix;
-  var partial = { region: cfg.region, name_suffix: suffix };
+  var suffix = resumeState ? resumeState.name_suffix : cfg.nameSuffix;
+  var partial = resumeState
+    ? Object.assign({}, resumeState)
+    : { region: cfg.region, name_suffix: suffix };
 
+  if (resumeState) {
+    addLog("Resuming deployment from checkpoint…", "dim");
+  }
   addLog("openGRIS Scaler — EC2 deployment", "dim");
   addLog("─".repeat(52), "dim");
 
@@ -675,21 +720,21 @@ async function provision(
       : "Discovering latest AL2023 x86_64 AMI...",
     "cmd",
   );
-  var amiId = cfg.amiId || (await withAbort(getLatestAl2023Ami(ec2), signal));
+  var amiId = cfg.amiId || (await retrying(addLog, signal, () => getLatestAl2023Ami(ec2)));
   addLog("  → " + amiId, "info");
 
   // 2. IAM
   var iamState;
-  if (cfg.instanceProfileName) {
+  if (partial.iam) {
+    iamState = partial.iam;
+    addLog("  → Checkpoint: IAM profile '" + iamState.instance_profile_name + "' already exists", "info");
+  } else if (cfg.instanceProfileName) {
     iamState = {
       instance_profile_name: cfg.instanceProfileName,
       role_name: "",
       created: false,
     };
-    addLog(
-      "  → Using existing instance profile: " + cfg.instanceProfileName,
-      "info",
-    );
+    addLog("  → Using existing instance profile: " + cfg.instanceProfileName, "info");
   } else {
     iamState = await createIamStack(iam, suffix, addLog, signal);
     addLog("  ✓ IAM role and profile created", "ok");
@@ -699,249 +744,264 @@ async function provision(
 
   // 3. Key pair
   var keyPairName = "scaler-key-" + suffix;
-  addLog("Creating key pair '" + keyPairName + "'...", "cmd");
-  var keyResp = await withAbort(
-    ec2
-      .createKeyPair({
-        KeyName: keyPairName,
-        TagSpecifications: [
-          {
-            ResourceType: "key-pair",
-            Tags: [{ Key: "scaler-deployment", Value: suffix }],
-          },
-        ],
-      })
-      .promise(),
-    signal,
-  );
-  onKeyReady(keyPairName, keyResp.KeyMaterial);
-  addLog("  ✓ Key pair ready — download via the deployment panel", "ok");
-  partial.key_pair_name = keyPairName;
-  partial.key_file = keyPairName + ".pem";
-  onPartialState(partial);
+  if (partial.key_pair_name) {
+    addLog("  → Checkpoint: key pair '" + keyPairName + "' already created", "info");
+  } else {
+    addLog("Creating key pair '" + keyPairName + "'...", "cmd");
+    var keyResp = await retrying(addLog, signal, () =>
+      ec2
+        .createKeyPair({
+          KeyName: keyPairName,
+          TagSpecifications: [
+            {
+              ResourceType: "key-pair",
+              Tags: [{ Key: "scaler-deployment", Value: suffix }],
+            },
+          ],
+        })
+        .promise(),
+    );
+    onKeyReady(keyPairName, keyResp.KeyMaterial);
+    addLog("  ✓ Key pair ready — download via the deployment panel", "ok");
+    partial.key_pair_name = keyPairName;
+    partial.key_file = keyPairName + ".pem";
+    onPartialState(partial);
+  }
 
   // 4. Security group
-  var myIp = await withAbort(getMyPublicIp(), signal);
-  var sgName = "scaler-sg-" + suffix;
-  addLog(
-    "Creating security group '" + sgName + "' (your IP: " + myIp + ")...",
-    "cmd",
-  );
-  var sgResp = await withAbort(
-    ec2
-      .createSecurityGroup({
-        GroupName: sgName,
-        Description: "OpenGRIS Scaler scheduler [" + suffix + "]",
-        TagSpecifications: [
-          {
-            ResourceType: "security-group",
-            Tags: [
-              { Key: "Name", Value: sgName },
-              { Key: "scaler-deployment", Value: suffix },
-            ],
-          },
-        ],
-      })
-      .promise(),
-    signal,
-  );
-  var sgId = sgResp.GroupId;
-  partial.security_group_id = sgId;
-  onPartialState(partial);
+  var sgId;
+  if (partial.security_group_id) {
+    sgId = partial.security_group_id;
+    addLog("  → Checkpoint: security group " + sgId + " already exists", "info");
+  } else {
+    var myIp = await retrying(addLog, signal, () => getMyPublicIp());
+    var sgName = "scaler-sg-" + suffix;
+    addLog(
+      "Creating security group '" + sgName + "' (your IP: " + myIp + ")...",
+      "cmd",
+    );
+    var sgResp = await retrying(addLog, signal, () =>
+      ec2
+        .createSecurityGroup({
+          GroupName: sgName,
+          Description: "OpenGRIS Scaler scheduler [" + suffix + "]",
+          TagSpecifications: [
+            {
+              ResourceType: "security-group",
+              Tags: [
+                { Key: "Name", Value: sgName },
+                { Key: "scaler-deployment", Value: suffix },
+              ],
+            },
+          ],
+        })
+        .promise(),
+    );
+    sgId = sgResp.GroupId;
+    partial.security_group_id = sgId;
+    onPartialState(partial);
 
-  await withAbort(
-    ec2
-      .authorizeSecurityGroupIngress({
-        GroupId: sgId,
-        IpPermissions: [
-          {
-            IpProtocol: "tcp",
-            FromPort: 22,
-            ToPort: 22,
-            IpRanges: [
-              { CidrIp: myIp + "/32", Description: "SSH from local machine" },
-            ],
-          },
-          {
-            IpProtocol: "tcp",
-            FromPort: cfg.schedulerPort,
-            ToPort: cfg.schedulerPort,
-            IpRanges: [
-              {
-                CidrIp: myIp + "/32",
-                Description: "Scaler scheduler from local machine",
-              },
-            ],
-          },
-          {
-            IpProtocol: "tcp",
-            FromPort: cfg.schedulerPort + 2,
-            ToPort: cfg.schedulerPort + 2,
-            IpRanges: [
-              {
-                CidrIp: myIp + "/32",
-                Description: "Scaler scheduler monitor from local machine",
-              },
-            ],
-          },
-          {
-            IpProtocol: "tcp",
-            FromPort: cfg.objectStoragePort,
-            ToPort: cfg.objectStoragePort,
-            IpRanges: [
-              {
-                CidrIp: myIp + "/32",
-                Description: "Scaler object storage from local machine",
-              },
-            ],
-          },
-          {
-            IpProtocol: "tcp",
-            FromPort: 50001,
-            ToPort: 50001,
-            IpRanges: [
-              {
-                CidrIp: myIp + "/32",
-                Description: "Scaler Worker Monitor from local machine",
-              },
-            ],
-          },
-        ],
-      })
-      .promise(),
-    signal,
-  );
-  addLog("  ✓ Security group created: " + sgId, "ok");
-
-  // 5. Launch instance
-  cfg = Object.assign({}, cfg, { securityGroupId: sgId });
-  var userData = buildUserData(cfg, creds);
-  addLog("Launching " + cfg.instanceType + " instance...", "cmd");
-  var runParams = {
-    ImageId: amiId,
-    InstanceType: cfg.instanceType,
-    KeyName: keyPairName,
-    SecurityGroupIds: [sgId],
-    IamInstanceProfile: { Name: iamState.instance_profile_name },
-    UserData: btoa(userData),
-    MinCount: 1,
-    MaxCount: 1,
-    TagSpecifications: [
-      {
-        ResourceType: "instance",
-        Tags: [
-          { Key: "Name", Value: "scaler-scheduler-" + suffix },
-          { Key: "scaler-deployment", Value: suffix },
-        ],
-      },
-    ],
-  };
-  var runResp;
-  var iamDeadline = Date.now() + 60000;
-  while (true) {
-    try {
-      runResp = await withAbort(ec2.runInstances(runParams).promise(), signal);
-      break;
-    } catch (err) {
-      var iamNotReady =
-        err.code === "InvalidParameterValue" &&
-        err.message &&
-        err.message.includes("Invalid IAM Instance Profile");
-      if (!iamNotReady || Date.now() >= iamDeadline) throw err;
-      addLog("  → IAM profile not yet visible to EC2, retrying in 5s…", "dim");
-      await sleep(5000, signal);
-    }
-  }
-  var instanceId = runResp.Instances[0].InstanceId;
-  partial.instance_id = instanceId;
-  onPartialState(partial);
-  addLog("  → Instance launched: " + instanceId, "info");
-
-  // 6. Wait for running state
-  addLog("Waiting for instance to reach running state...", "cmd");
-  await withAbort(
-    ec2.waitFor("instanceRunning", { InstanceIds: [instanceId] }).promise(),
-    signal,
-  );
-
-  var desc = await withAbort(
-    ec2.describeInstances({ InstanceIds: [instanceId] }).promise(),
-    signal,
-  );
-  var inst = desc.Reservations[0].Instances[0];
-  var publicIp = inst.PublicIpAddress;
-  var privateIp = inst.PrivateIpAddress;
-  var vpcId = inst.VpcId;
-  var subnetId = inst.SubnetId;
-  partial.public_ip = publicIp;
-  partial.private_ip = privateIp;
-  partial.vpc_id = vpcId;
-  partial.subnet_id = subnetId;
-  partial.worker_monitor_address = "http://" + publicIp + ":50001";
-  addLog("  ✓ Instance running", "ok");
-  addLog("  → Public IP:  " + publicIp, "info");
-  addLog("  → Private IP: " + privateIp, "info");
-
-  // Allow all inbound traffic from the VPC's CIDR so ORB workers can reach the scheduler.
-  var vpcDesc = await withAbort(
-    ec2.describeVpcs({ VpcIds: [vpcId] }).promise(),
-    signal,
-  );
-  var vpcCidr = vpcDesc.Vpcs[0].CidrBlock;
-  await withAbort(
-    ec2
-      .authorizeSecurityGroupIngress({
-        GroupId: sgId,
-        IpPermissions: [
-          {
-            IpProtocol: "-1",
-            IpRanges: [
-              {
-                CidrIp: vpcCidr,
-                Description: "All traffic from VPC (ORB workers)",
-              },
-            ],
-          },
-        ],
-      })
-      .promise(),
-    signal,
-  );
-  addLog(
-    "  → VPC: " + vpcId + "  CIDR: " + vpcCidr + "  subnet: " + subnetId,
-    "info",
-  );
-
-  // OCI workers connect over the public internet — open scheduler and object storage ports.
-  var hasOci = (cfg.workerManagers || []).some(function (wm) {
-    return wm.type === "oci_raw" || wm.type === "oci_hpc";
-  });
-  if (hasOci) {
-    await withAbort(
+    await retrying(addLog, signal, () =>
       ec2
         .authorizeSecurityGroupIngress({
           GroupId: sgId,
           IpPermissions: [
             {
               IpProtocol: "tcp",
+              FromPort: 22,
+              ToPort: 22,
+              IpRanges: [
+                { CidrIp: myIp + "/32", Description: "SSH from local machine" },
+              ],
+            },
+            {
+              IpProtocol: "tcp",
               FromPort: cfg.schedulerPort,
               ToPort: cfg.schedulerPort,
-              IpRanges: [{ CidrIp: "0.0.0.0/0", Description: "Scheduler (OCI workers)" }],
+              IpRanges: [
+                { CidrIp: myIp + "/32", Description: "Scaler scheduler from local machine" },
+              ],
+            },
+            {
+              IpProtocol: "tcp",
+              FromPort: cfg.schedulerPort + 2,
+              ToPort: cfg.schedulerPort + 2,
+              IpRanges: [
+                { CidrIp: myIp + "/32", Description: "Scaler scheduler monitor from local machine" },
+              ],
             },
             {
               IpProtocol: "tcp",
               FromPort: cfg.objectStoragePort,
               ToPort: cfg.objectStoragePort,
-              IpRanges: [{ CidrIp: "0.0.0.0/0", Description: "Object storage (OCI workers)" }],
+              IpRanges: [
+                { CidrIp: myIp + "/32", Description: "Scaler object storage from local machine" },
+              ],
+            },
+            {
+              IpProtocol: "tcp",
+              FromPort: 50001,
+              ToPort: 50001,
+              IpRanges: [
+                { CidrIp: myIp + "/32", Description: "Scaler Worker Monitor from local machine" },
+              ],
             },
           ],
         })
         .promise(),
-      signal,
     );
-    addLog("  → Opened scheduler + object storage ports to 0.0.0.0/0 for OCI workers", "info");
+    addLog("  ✓ Security group created: " + sgId, "ok");
   }
-  onPartialState(partial);
+
+  // 5. Launch instance
+  var instanceId;
+  if (partial.instance_id) {
+    instanceId = partial.instance_id;
+    addLog("  → Checkpoint: instance " + instanceId + " already launched", "info");
+  } else {
+    cfg = Object.assign({}, cfg, { securityGroupId: sgId });
+    var userData = buildUserData(cfg, creds);
+    addLog("Launching " + cfg.instanceType + " instance...", "cmd");
+    var runParams = {
+      ImageId: amiId,
+      InstanceType: cfg.instanceType,
+      KeyName: keyPairName,
+      SecurityGroupIds: [sgId],
+      IamInstanceProfile: { Name: iamState.instance_profile_name },
+      UserData: btoa(userData),
+      MinCount: 1,
+      MaxCount: 1,
+      TagSpecifications: [
+        {
+          ResourceType: "instance",
+          Tags: [
+            { Key: "Name", Value: "scaler-scheduler-" + suffix },
+            { Key: "scaler-deployment", Value: suffix },
+          ],
+        },
+      ],
+    };
+    var runResp;
+    var iamDeadline = Date.now() + 60000;
+    while (true) {
+      try {
+        runResp = await withAbort(ec2.runInstances(runParams).promise(), signal);
+        break;
+      } catch (err) {
+        var iamNotReady =
+          err.code === "InvalidParameterValue" &&
+          err.message &&
+          err.message.includes("Invalid IAM Instance Profile");
+        if (!iamNotReady || Date.now() >= iamDeadline) {
+          if (!iamNotReady) {
+            // Non-IAM error — use normal retry/pause logic
+            var paused = new Error(err.message);
+            paused.name = "RetryPausedError";
+            throw paused;
+          }
+          throw err;
+        }
+        addLog("  → IAM profile not yet visible to EC2, retrying in 5s…", "dim");
+        await sleep(5000, signal);
+      }
+    }
+    instanceId = runResp.Instances[0].InstanceId;
+    partial.instance_id = instanceId;
+    onPartialState(partial);
+    addLog("  → Instance launched: " + instanceId, "info");
+  }
+
+  // 6. Wait for running state + post-launch network rules
+  var publicIp, privateIp, vpcId, subnetId;
+  if (partial.public_ip) {
+    publicIp = partial.public_ip;
+    privateIp = partial.private_ip;
+    vpcId = partial.vpc_id;
+    subnetId = partial.subnet_id;
+    addLog("  → Checkpoint: instance running at " + publicIp, "info");
+  } else {
+    addLog("Waiting for instance to reach running state...", "cmd");
+    await retrying(addLog, signal, () =>
+      ec2.waitFor("instanceRunning", { InstanceIds: [instanceId] }).promise(),
+    );
+
+    var desc = await retrying(addLog, signal, () =>
+      ec2.describeInstances({ InstanceIds: [instanceId] }).promise(),
+    );
+    var inst = desc.Reservations[0].Instances[0];
+    publicIp = inst.PublicIpAddress;
+    privateIp = inst.PrivateIpAddress;
+    vpcId = inst.VpcId;
+    subnetId = inst.SubnetId;
+    partial.public_ip = publicIp;
+    partial.private_ip = privateIp;
+    partial.vpc_id = vpcId;
+    partial.subnet_id = subnetId;
+    partial.worker_monitor_address = "http://" + publicIp + ":50001";
+    addLog("  ✓ Instance running", "ok");
+    addLog("  → Public IP:  " + publicIp, "info");
+    addLog("  → Private IP: " + privateIp, "info");
+
+    // Allow all inbound traffic from the VPC's CIDR so ORB workers can reach the scheduler.
+    var vpcDesc = await retrying(addLog, signal, () =>
+      ec2.describeVpcs({ VpcIds: [vpcId] }).promise(),
+    );
+    var vpcCidr = vpcDesc.Vpcs[0].CidrBlock;
+    try {
+      await retrying(addLog, signal, () =>
+        ec2
+          .authorizeSecurityGroupIngress({
+            GroupId: sgId,
+            IpPermissions: [
+              {
+                IpProtocol: "-1",
+                IpRanges: [
+                  { CidrIp: vpcCidr, Description: "All traffic from VPC (ORB workers)" },
+                ],
+              },
+            ],
+          })
+          .promise(),
+      );
+    } catch (e) {
+      if (e.name === "RetryPausedError" || e.name === "AbortError") throw e;
+    }
+    addLog("  → VPC: " + vpcId + "  CIDR: " + vpcCidr + "  subnet: " + subnetId, "info");
+
+    // OCI workers connect over the public internet — open scheduler and object storage ports.
+    var hasOci = (cfg.workerManagers || []).some(function (wm) {
+      return wm.type === "oci_raw" || wm.type === "oci_hpc";
+    });
+    if (hasOci) {
+      try {
+        await retrying(addLog, signal, () =>
+          ec2
+            .authorizeSecurityGroupIngress({
+              GroupId: sgId,
+              IpPermissions: [
+                {
+                  IpProtocol: "tcp",
+                  FromPort: cfg.schedulerPort,
+                  ToPort: cfg.schedulerPort,
+                  IpRanges: [{ CidrIp: "0.0.0.0/0", Description: "Scheduler (OCI workers)" }],
+                },
+                {
+                  IpProtocol: "tcp",
+                  FromPort: cfg.objectStoragePort,
+                  ToPort: cfg.objectStoragePort,
+                  IpRanges: [{ CidrIp: "0.0.0.0/0", Description: "Object storage (OCI workers)" }],
+                },
+              ],
+            })
+            .promise(),
+        );
+      } catch (e) {
+        if (e.name === "RetryPausedError" || e.name === "AbortError") throw e;
+      }
+      addLog("  → Opened scheduler + object storage ports to 0.0.0.0/0 for OCI workers", "info");
+    }
+    onPartialState(partial);
+  }
 
   // 7. Build addresses and persist complete state
   var addrSlash = cfg.transport === "ws" ? "/" : "";
@@ -1024,7 +1084,7 @@ async function teardown(state, creds, addLog, signal) {
   );
   var instanceIdSet = {};
   if (state.name_suffix) {
-    var tagResp = await withAbort(
+    var tagResp = await retrying(addLog, signal, () =>
       ec2
         .describeInstances({
           Filters: [
@@ -1036,7 +1096,6 @@ async function teardown(state, creds, addLog, signal) {
           ],
         })
         .promise(),
-      signal,
     );
     tagResp.Reservations.forEach(function (r) {
       r.Instances.forEach(function (i) {
@@ -1054,56 +1113,37 @@ async function teardown(state, creds, addLog, signal) {
         allInstanceIds.join(", "),
       "info",
     );
-    try {
-      await withAbort(
-        ec2.terminateInstances({ InstanceIds: allInstanceIds }).promise(),
-        signal,
-      );
-      await withAbort(
-        ec2
-          .waitFor("instanceTerminated", { InstanceIds: allInstanceIds })
-          .promise(),
-        signal,
-      );
-      addLog("  ✓ All instances terminated", "ok");
-    } catch (e) {
-      if (e.name === "AbortError") throw e;
-      addLog("  ! Warning: " + e.message, "warn");
-    }
+    await retrying(addLog, signal, () =>
+      ec2.terminateInstances({ InstanceIds: allInstanceIds }).promise(),
+    );
+    await retrying(addLog, signal, () =>
+      ec2
+        .waitFor("instanceTerminated", { InstanceIds: allInstanceIds })
+        .promise(),
+    );
+    addLog("  ✓ All instances terminated", "ok");
   } else {
     addLog("  → No live instances found", "info");
   }
 
   if (state.security_group_id) {
     addLog("Deleting security group " + state.security_group_id + "...", "cmd");
-    try {
-      await withAbort(
-        ec2.deleteSecurityGroup({ GroupId: state.security_group_id }).promise(),
-        signal,
-      );
-      addLog("  ✓ Security group deleted", "ok");
-    } catch (e) {
-      if (e.name === "AbortError") throw e;
-      addLog("  ! Warning: " + e.message, "warn");
-    }
+    await retrying(addLog, signal, () =>
+      ec2.deleteSecurityGroup({ GroupId: state.security_group_id }).promise(),
+    );
+    addLog("  ✓ Security group deleted", "ok");
   }
 
   if (state.key_pair_name) {
     addLog("Deleting key pair '" + state.key_pair_name + "'...", "cmd");
-    try {
-      await withAbort(
-        ec2.deleteKeyPair({ KeyName: state.key_pair_name }).promise(),
-        signal,
-      );
-      addLog("  ✓ Key pair deleted", "ok");
-    } catch (e) {
-      if (e.name === "AbortError") throw e;
-      addLog("  ! Warning: " + e.message, "warn");
-    }
+    await retrying(addLog, signal, () =>
+      ec2.deleteKeyPair({ KeyName: state.key_pair_name }).promise(),
+    );
+    addLog("  ✓ Key pair deleted", "ok");
   }
 
   if (state.iam) {
-    await destroyIamStack(iam, state.iam, addLog);
+    await destroyIamStack(iam, state.iam, addLog, signal);
     addLog("  ✓ IAM resources cleaned up", "ok");
   }
 

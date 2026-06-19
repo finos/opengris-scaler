@@ -39,6 +39,8 @@ from scaler.worker.agent.profiling_manager import VanillaProfilingManager
 from scaler.worker.agent.task_manager import VanillaTaskManager
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 
+logger = logging.getLogger(__name__)
+
 
 class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __init__(
@@ -203,7 +205,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         if isinstance(message, ClientDisconnect):
             if message.disconnectType == ClientDisconnect.DisconnectType.shutdown:
                 raise ClientShutdownException("received client shutdown, quitting")
-            logging.error(f"Worker received invalid ClientDisconnect type, ignoring {message=}")
+            logger.error(f"Worker received invalid ClientDisconnect type, ignoring {message=}")
             return
 
         raise TypeError(f"Unknown {message=}")
@@ -230,14 +232,18 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         raise TypeError(f"Unknown message from {processor_id!r}: {message}")
 
     async def __get_loops(self):
-        await self._connector_external.connect(self._address, ConnectorRemoteType.Binder)
-        await self._binder_internal.bind(self._address_internal)
-
-        if self._object_storage_address is not None:
-            # With a manually set storage address, immediately connect to the object storage server.
-            await self._connector_storage.connect(self._object_storage_address)
-
         try:
+            # Connection setup lives inside the try so a connection-level failure here (e.g. the scheduler is
+            # never reachable, which surfaces as ConnectorSocketClosedByRemoteEnd once the connector exhausts its
+            # retries) is absorbed by the YMQException handler below and shuts the worker down cleanly, instead of
+            # escaping __get_loops as an unhandled exception that crashes the worker process.
+            await self._connector_external.connect(self._address, ConnectorRemoteType.Binder)
+            await self._binder_internal.bind(self._address_internal)
+
+            if self._object_storage_address is not None:
+                # With a manually set storage address, immediately connect to the object storage server.
+                await self._connector_storage.connect(self._object_storage_address)
+
             await asyncio.gather(
                 self._processor_manager.initialize(),
                 create_async_loop_routine(self._connector_external.routine, 0),
@@ -259,11 +265,11 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
                 pass
             else:
-                logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
+                logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
         except (ClientShutdownException, TimeoutError) as e:
-            logging.info(f"{self.identity!r}: {str(e)}")
+            logger.info(f"{self.identity!r}: {str(e)}")
         except Exception as e:
-            logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
+            logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
         try:
             await self._connector_external.send(WorkerDisconnectNotification(worker=self.identity))
@@ -282,7 +288,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             # Windows named pipes have no filesystem entry to remove; only unlink Unix-domain-socket paths.
             pathlib.Path(self._address_internal.host).unlink(missing_ok=True)
 
-        logging.info(f"{self.identity!r}: quit")
+        logger.info(f"{self.identity!r}: quit")
 
     def __register_signal(self):
         install_async_shutdown_handler(self._loop, self.__destroy)

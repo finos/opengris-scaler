@@ -58,7 +58,7 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
         # newer scheduler (or a remote worker manager) that this runner does not understand.
         del cmd.setDesiredTaskConcurrencyRequests
 
-        with self.assertLogs(level=logging.WARNING) as captured:
+        with self.assertLogs("scaler", level=logging.WARNING) as captured:
             await self.runner._handle_command(cmd)
 
         self.assertTrue(any("Unknown action" in m for m in captured.output))
@@ -69,7 +69,7 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
         class _Unknown:
             pass
 
-        with self.assertLogs(level=logging.WARNING) as captured:
+        with self.assertLogs("scaler", level=logging.WARNING) as captured:
             await self.runner._on_receive_external(_Unknown())  # type: ignore[arg-type]
 
         self.assertTrue(any("Unknown action" in m or "unrecognized" in m for m in captured.output))

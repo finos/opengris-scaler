@@ -17,6 +17,8 @@ from scaler.utility.identifiers import TaskID
 from scaler.worker_manager_adapter.mixins import ExecutionBackend, TaskDeserializer, TaskInputLoader
 from scaler.worker_manager_adapter.oci_hpc.container_instance_lifecycle_state import ContainerInstanceLifecycleState
 
+logger = logging.getLogger(__name__)
+
 _INSTANCE_STATE_RUNNING = {ContainerInstanceLifecycleState.CREATING, ContainerInstanceLifecycleState.ACTIVE}
 
 _KEY_INPUTS = "inputs"
@@ -96,7 +98,7 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
         self._object_storage_client = oci.object_storage.ObjectStorageClient(**kwargs)
         self._log_search_client = oci.loggingsearch.LogSearchClient(**kwargs)
 
-        logging.info(
+        logger.info(
             f"OCI HPC execution backend initialized: auth={self._auth_type}, "
             f"region={self._oci_region}, "
             f"compartment={self._compartment_id[:20]}..., "
@@ -114,13 +116,13 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
             self._task_id_to_instance_id[task.taskId] = instance_id
             if input_key:
                 self._task_id_to_input_key[task.taskId] = input_key
-            logging.info(f"Task {task.taskId.hex()[:8]} submitted as Container Instance {instance_id[-20:]}")
+            logger.info(f"Task {task.taskId.hex()[:8]} submitted as Container Instance {instance_id[-20:]}")
 
             monitor_task = asyncio.create_task(self._monitor_container_instance(instance_id, future, task.taskId))
             self._monitor_tasks.add(monitor_task)
             monitor_task.add_done_callback(self._monitor_tasks.discard)
         except Exception as exc:
-            logging.exception(f"Failed to submit task {task.taskId.hex()[:8]}: {exc}")
+            logger.exception(f"Failed to submit task {task.taskId.hex()[:8]}: {exc}")
             future.set_exception(exc)
 
         return asyncio.wrap_future(future)
@@ -154,7 +156,7 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
         if payload_size > 4 * 1024:
             payload = gzip.compress(payload)
             compressed = True
-            logging.debug(f"Compressed payload: {payload_size} -> {len(payload)} bytes")
+            logger.debug(f"Compressed payload: {payload_size} -> {len(payload)} bytes")
 
         safe_func_name = re.sub(r"[^a-zA-Z0-9_-]", "_", func_name)[:50]
         display_name = f"scaler-{safe_func_name}-{task_id_hex[:12]}"
@@ -283,7 +285,7 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
                                 ),
                             )
                         except Exception as cleanup_exc:
-                            logging.warning(f"Failed to clean up result object {result_key}: {cleanup_exc}")
+                            logger.warning(f"Failed to clean up result object {result_key}: {cleanup_exc}")
 
                     except Exception as fetch_exc:
                         future.set_exception(RuntimeError(f"Failed to fetch result from Object Storage: {fetch_exc}"))
@@ -305,7 +307,7 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
                     continue
                 else:
                     unexpected_state_count += 1
-                    logging.warning(
+                    logger.warning(
                         f"Unexpected Container Instance state: {state} for {instance_id[-20:]} "
                         f"({unexpected_state_count}/{_MAX_UNEXPECTED_STATE_COUNT})"
                     )
@@ -322,10 +324,10 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
                         RuntimeError(f"Container Instance {instance_id[-20:]} not found (deleted externally?)")
                     )
                     return
-                logging.exception(f"OCI service error polling Container Instance {instance_id[-20:]}: {svc_exc}")
+                logger.exception(f"OCI service error polling Container Instance {instance_id[-20:]}: {svc_exc}")
 
             except Exception as poll_exc:
-                logging.exception(f"Error polling Container Instance {instance_id[-20:]}: {poll_exc}")
+                logger.exception(f"Error polling Container Instance {instance_id[-20:]}: {poll_exc}")
 
     async def _delete_container_instance(self, instance_id: str) -> None:
         try:
@@ -336,9 +338,9 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
                     self._container_instances_client.delete_container_instance, container_instance_id=instance_id
                 ),
             )
-            logging.info(f"Deleted Container Instance {instance_id[-20:]}")
+            logger.info(f"Deleted Container Instance {instance_id[-20:]}")
         except Exception as exc:
-            logging.warning(f"Failed to delete Container Instance {instance_id[-20:]}: {exc}")
+            logger.warning(f"Failed to delete Container Instance {instance_id[-20:]}: {exc}")
 
     async def _delete_object_storage_object(self, object_key: str) -> None:
         try:
@@ -352,9 +354,9 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
                     object_name=object_key,
                 ),
             )
-            logging.info(f"Deleted input object {object_key}")
+            logger.info(f"Deleted input object {object_key}")
         except Exception as exc:
-            logging.warning(f"Failed to delete input object {object_key}: {exc}")
+            logger.warning(f"Failed to delete input object {object_key}: {exc}")
 
     async def _fetch_instance_logs(self, instance_id: str) -> str:
         try:
@@ -384,5 +386,5 @@ class OCIHPCExecutionBackend(TaskInputLoader, ExecutionBackend):
             return "Container Instance logs:\n" + "\n".join(lines)
 
         except Exception as exc:
-            logging.warning(f"Failed to fetch logs for instance {instance_id[-20:]}: {exc}")
+            logger.warning(f"Failed to fetch logs for instance {instance_id[-20:]}: {exc}")
             return f"(Failed to fetch logs: {exc})"

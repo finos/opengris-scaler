@@ -8,6 +8,7 @@ from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.controllers.policies.library.utility import create_policy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.controllers.policies.waterfall_v1.scaling.types import WaterfallRule
+from scaler.scheduler.controllers.policies.waterfall_v1.scaling.utility import parse_waterfall_rules
 from scaler.scheduler.controllers.policies.waterfall_v1.scaling.waterfall import WaterfallScalingPolicy
 from scaler.scheduler.controllers.policies.waterfall_v1.waterfall_v1_policy import WaterfallV1Policy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
@@ -497,7 +498,7 @@ class TestWaterfallV1Policy(unittest.TestCase):
         """Comments and blank lines should be ignored."""
         policy_content = "\n".join(
             [
-                "#priority,worker_manager_id,max_task_concurrency",
+                "#priority,worker_manager_id[,max_task_concurrency]",
                 "1,manager_a,10",
                 "",
                 "2,manager_b,20  # overflow tier",
@@ -505,6 +506,12 @@ class TestWaterfallV1Policy(unittest.TestCase):
         )
         policy = WaterfallV1Policy(policy_content)
         self.assertIsInstance(policy, WaterfallV1Policy)
+
+    def test_config_parsing_without_max_task_concurrency(self):
+        """max_task_concurrency may be omitted; the rule's field is then None."""
+        rules = parse_waterfall_rules("1,manager_a\n2,manager_b,20")
+        self.assertIsNone(rules[0].max_task_concurrency)
+        self.assertEqual(rules[1].max_task_concurrency, 20)
 
     def test_invalid_config_empty(self):
         """Empty policy content should raise ValueError."""
@@ -517,9 +524,11 @@ class TestWaterfallV1Policy(unittest.TestCase):
             WaterfallV1Policy("# just a comment\n# another comment")
 
     def test_invalid_config_wrong_field_count(self):
-        """Lines with wrong number of fields should raise ValueError."""
+        """Lines with too few or too many fields should raise ValueError."""
         with self.assertRaises(ValueError):
-            WaterfallV1Policy("1,manager_a")
+            WaterfallV1Policy("manager_a_only")
+        with self.assertRaises(ValueError):
+            WaterfallV1Policy("1,manager_a,10,extra")
 
     def test_invalid_config_non_integer_priority(self):
         """Non-integer priority should raise ValueError."""

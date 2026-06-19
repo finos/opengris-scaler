@@ -8,6 +8,7 @@
 
 #include "scaler/error/error.h"
 #include "scaler/object_storage/message.h"
+#include "scaler/ymq/buffered_bytes.h"
 
 namespace scaler {
 namespace object_storage {
@@ -110,7 +111,7 @@ void ObjectStorageServer::closeServerReadyFds()
 void ObjectStorageServer::processRequests(std::function<bool()> running)
 {
     Identity lastMessageIdentity;
-    std::map<Identity, std::pair<ObjectRequestHeader, Bytes>> identityToFullRequest;
+    std::map<Identity, std::pair<ObjectRequestHeader, std::unique_ptr<scaler::ymq::Bytes>>> identityToFullRequest;
     while (true) {
         try {
             auto invalids = std::ranges::remove_if(_pendingSendMessageFuts, [](const auto& x) { return !x.valid(); });
@@ -167,20 +168,20 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
                 }
             }
 
-            const auto identity        = *maybeMessage->address.as_string();
-            lastMessageIdentity        = identity;
-            const auto headerOrPayload = std::move(maybeMessage->payload);
+            const auto identity  = maybeMessage->address->asString().value();
+            lastMessageIdentity  = identity;
+            auto headerOrPayload = std::move(maybeMessage->payload);
 
             auto it = identityToFullRequest.find(identity);
             if (it == identityToFullRequest.end()) {
-                identityToFullRequest[identity].first = ObjectRequestHeader::fromBuffer(headerOrPayload);
+                identityToFullRequest[identity].first = ObjectRequestHeader::fromBuffer(*headerOrPayload);
                 const auto& requestType               = identityToFullRequest[identity].first.requestType;
                 if (requestType == ObjectRequestType::DUPLICATE_OBJECT_I_D ||
                     requestType == ObjectRequestType::SET_OBJECT) {
                     continue;
                 }
             } else {
-                assert(it->second.first.payloadLength == headerOrPayload.len());
+                assert(it->second.first.payloadLength == headerOrPayload->size());
                 (it->second).second = std::move(headerOrPayload);
             }
 
@@ -204,7 +205,7 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
                     break;
                 }
                 case ObjectRequestType::DUPLICATE_OBJECT_I_D: {
-                    processDuplicateRequest(client, request);
+                    processDuplicateRequest(client, std::move(request));
                     break;
                 }
                 case ObjectRequestType::INFO_GET_TOTAL: {
@@ -226,7 +227,7 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
 }
 
 void ObjectStorageServer::processSetRequest(
-    std::shared_ptr<Client> client, std::pair<ObjectRequestHeader, Bytes> request)
+    std::shared_ptr<Client> client, std::pair<ObjectRequestHeader, std::unique_ptr<scaler::ymq::Bytes>> request)
 {
     const auto requestHeader = std::move(request.first);
     auto requestPayload      = std::move(request.second);
@@ -281,7 +282,7 @@ void ObjectStorageServer::processDeleteRequest(std::shared_ptr<Client> client, O
 }
 
 void ObjectStorageServer::processDuplicateRequest(
-    std::shared_ptr<Client> client, std::pair<ObjectRequestHeader, Bytes> request)
+    std::shared_ptr<Client> client, std::pair<ObjectRequestHeader, std::unique_ptr<scaler::ymq::Bytes>> request)
 {
     auto requestHeader = std::move(request.first);
     auto payload       = std::move(request.second);
@@ -290,7 +291,7 @@ void ObjectStorageServer::processDuplicateRequest(
             "payload length should be size_of(ObjectID)=" + std::to_string(ObjectID::bufferSize()));
     }
 
-    ObjectID originalObjectID = ObjectID::fromBuffer(payload);
+    const ObjectID originalObjectID = ObjectID::fromBuffer(*payload);
 
     auto objectPtr = objectManager.duplicateObject(originalObjectID, requestHeader.objectID);
 

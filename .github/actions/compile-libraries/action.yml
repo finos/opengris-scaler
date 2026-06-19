@@ -19,4 +19,4 @@ runs:
       if: inputs.os == 'Windows'
       shell: pwsh
       run: |
-        ./scripts/build.ps1
+        ./scripts/build.ps1 "-DCMAKE_PREFIX_PATH=$env:SCALER_THIRDPARTY_PREFIX"

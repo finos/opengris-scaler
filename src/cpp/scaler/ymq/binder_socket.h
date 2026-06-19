@@ -34,7 +34,8 @@ public:
 
     using BindCallback = scaler::utility::MoveOnlyFunction<void(std::expected<Address, Error>)>;
 
-    using SendMessageCallback = scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>)>;
+    using SendMessageCallback =
+        scaler::utility::MoveOnlyFunction<void(std::expected<void, Error>, std::unique_ptr<Bytes>)>;
 
     using RecvMessageCallback = scaler::utility::MoveOnlyFunction<void(std::expected<Message, Error>)>;
 
@@ -59,14 +60,16 @@ public:
     void bindTo(std::string address, BindCallback onBindCallback) noexcept;
 
     // Send a message to a remote identity.
-    void sendMessage(Identity remoteIdentity, Bytes messagePayload, SendMessageCallback onMessageSent) noexcept;
+    void sendMessage(
+        Identity remoteIdentity, std::unique_ptr<Bytes> messagePayload, SendMessageCallback onMessageSent) noexcept;
 
     // Send a message to multiple currently connected peers.
     //
     // This method is "fire-and-forget" and always succeeds.
     //
     // If remotePrefix is provided, only peers whose identity starts with the prefix will receive the message.
-    void sendMulticastMessage(Bytes messagePayload, std::optional<Identity> remotePrefix = std::nullopt) noexcept;
+    void sendMulticastMessage(
+        std::unique_ptr<Bytes> messagePayload, std::optional<Identity> remotePrefix = std::nullopt) noexcept;
 
     // Receive a message from any remote identity.
     void recvMessage(RecvMessageCallback onRecvMessage) noexcept;
@@ -83,7 +86,7 @@ private:
     using ConnectionID = uint64_t;
 
     struct PendingSendMessage {
-        Bytes messagePayload;
+        std::unique_ptr<Bytes> messagePayload;
         SendMessageCallback onMessageSent;
     };
 
@@ -137,7 +140,8 @@ private:
         ConnectionID connectionId,
         internal::MessageConnection::DisconnectReason reason) noexcept;
 
-    static void onMessage(std::shared_ptr<State> state, ConnectionID connectionId, Bytes messagePayload) noexcept;
+    static void onMessage(
+        std::shared_ptr<State> state, ConnectionID connectionId, std::unique_ptr<Bytes> messagePayload) noexcept;
 
     // Drop any _disconnectedIdentities entries older than disconnectedIdentityTTL. Called from
     // onRemoteDisconnect so the work amortises against new disconnect activity rather than a

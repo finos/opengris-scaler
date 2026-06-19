@@ -3,10 +3,12 @@ import logging
 import time
 from typing import Optional
 
+_DEFAULT_LOGGER = logging.getLogger(__name__)
+
 
 class ScopedLogger:
-    def __init__(self, message: str, logging_level=logging.INFO):
-        self.timer = TimedLogger(message=message, logging_level=logging_level)
+    def __init__(self, message: str, logging_level=logging.INFO, logger: Optional[logging.Logger] = None):
+        self.timer = TimedLogger(message=message, logging_level=logging_level, logger=logger)
 
     def __enter__(self):
         self.timer.begin()
@@ -16,18 +18,19 @@ class ScopedLogger:
 
 
 class TimedLogger:
-    def __init__(self, message: str, logging_level=logging.INFO):
+    def __init__(self, message: str, logging_level=logging.INFO, logger: Optional[logging.Logger] = None):
         self.message = message
         self.logging_level = logging_level
+        self.logger = logger if logger is not None else _DEFAULT_LOGGER
         self.timer: Optional[int] = None
 
     def begin(self):
         self.timer = time.perf_counter_ns()
-        logging.log(self.logging_level, f"beginning {self.message}")
+        self.logger.log(self.logging_level, f"beginning {self.message}")
 
     def end(self):
         elapsed = time.perf_counter_ns() - self.timer
         offset = datetime.timedelta(
             seconds=int(elapsed / 1e9), milliseconds=int(elapsed % 1e9 / 1e6), microseconds=int(elapsed % 1e6 / 1e3)
         )
-        logging.log(self.logging_level, f"completed {self.message} in {offset}")
+        self.logger.log(self.logging_level, f"completed {self.message} in {offset}")

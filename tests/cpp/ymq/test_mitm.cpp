@@ -21,6 +21,7 @@
 #include <format>
 #include <string>
 
+#include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/bytes.h"
 #include "scaler/ymq/future/connector_socket.h"
 #include "scaler/ymq/io_context.h"
@@ -74,9 +75,9 @@ TestResult reconnectServerMain(std::string address)
     auto result = socket.recvMessage();
 
     RETURN_FAILURE_IF_FALSE(result.has_value());
-    RETURN_FAILURE_IF_FALSE(result->payload.as_string() == "sync");
+    RETURN_FAILURE_IF_FALSE(result->payload->asString() == "sync");
 
-    auto error = socket.sendMessage("client", scaler::ymq::Bytes {"acknowledge"});
+    auto error = socket.sendMessage("client", std::make_unique<scaler::ymq::BufferedBytes>("acknowledge"));
     RETURN_FAILURE_IF_FALSE(error.has_value());
 
     return TestResult::Success;
@@ -102,14 +103,14 @@ TestResult reconnectClientMain(std::string address)
     // the "sync" message will be lost, but ymq should automatically reconnect
     // therefore the next "sync" message should succeed
     for (size_t i = 0; i < retryTimes; i++) {
-        auto sendFuture = socket.sendMessage(scaler::ymq::Bytes {"sync"});
+        auto sendFuture = socket.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>("sync"));
         RETURN_FAILURE_IF_FALSE(sendFuture.get().has_value());
 
         auto result = future.wait_for(retryDelay);
         if (result == std::future_status::ready) {
             auto msg = future.get();
             RETURN_FAILURE_IF_FALSE(msg.has_value());
-            RETURN_FAILURE_IF_FALSE(msg->payload.as_string() == "acknowledge");
+            RETURN_FAILURE_IF_FALSE(msg->payload->asString() == "acknowledge");
             return TestResult::Success;
         } else if (result == std::future_status::timeout) {
             // timeout, try again

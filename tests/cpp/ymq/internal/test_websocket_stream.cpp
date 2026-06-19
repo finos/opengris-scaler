@@ -171,17 +171,18 @@ TEST_F(WebSocketStreamTest, ClientServerHandshake)
     // Keep the server-side client alive across the callback boundary.
     std::optional<scaler::ymq::internal::Client> serverClient {};
 
-    scaler::ymq::internal::AcceptServer server(loop, listenAddress, [&](scaler::ymq::internal::Client client) {
-        ASSERT_TRUE(client.isWebSocket());
-        serverClient.emplace(std::move(client));
-        UV_EXIT_ON_ERROR(
-            serverClient->readStart([&](std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) {
-                if (!result.has_value())
-                    return;
-                serverReceived.insert(serverReceived.end(), result->begin(), result->end());
-                messageReceived = true;
-            }));
-    });
+    scaler::ymq::internal::AcceptServer server = UV_EXIT_ON_ERROR(
+        scaler::ymq::internal::AcceptServer::init(loop, listenAddress, [&](scaler::ymq::internal::Client client) {
+            ASSERT_TRUE(client.isWebSocket());
+            serverClient.emplace(std::move(client));
+            UV_EXIT_ON_ERROR(serverClient->readStart(
+                [&](std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) {
+                    if (!result.has_value())
+                        return;
+                    serverReceived.insert(serverReceived.end(), result->begin(), result->end());
+                    messageReceived = true;
+                }));
+        }));
 
     const scaler::ymq::Address boundAddress = server.address();
     ASSERT_EQ(boundAddress.type(), scaler::ymq::Address::Type::WebSocket);

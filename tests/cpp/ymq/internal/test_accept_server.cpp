@@ -19,9 +19,10 @@ TEST_F(YMQAcceptServerTest, AcceptServer)
 
     scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
 
-    size_t nConnectionCount = 0;
-    scaler::ymq::internal::AcceptServer server(
-        loop, listenAddress, [&]([[maybe_unused]] scaler::ymq::internal::Client client) { ++nConnectionCount; });
+    size_t nConnectionCount                    = 0;
+    scaler::ymq::internal::AcceptServer server = UV_EXIT_ON_ERROR(
+        scaler::ymq::internal::AcceptServer::init(
+            loop, listenAddress, [&]([[maybe_unused]] scaler::ymq::internal::Client client) { ++nConnectionCount; }));
 
     // Get the actual bound address (since we used port 0)
     scaler::wrapper::uv::SocketAddress boundAddress = server.address().asTCP();

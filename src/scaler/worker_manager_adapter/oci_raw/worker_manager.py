@@ -21,6 +21,8 @@ from scaler.worker_manager_adapter.worker_manager_runner import WorkerManagerRun
 if TYPE_CHECKING:
     from scaler.protocol.capnp import WorkerManagerCommand
 
+logger = logging.getLogger(__name__)
+
 _OCI_POLL_INTERVAL_SECONDS = 10
 _OCI_MAX_POLL_ATTEMPTS = 30  # 5 minutes total
 
@@ -77,7 +79,7 @@ class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
         to_stop = self._instances[:count]
         self._instances = self._instances[count:]
         if len(to_stop) < count:
-            logging.warning(f"Requested to stop {count} Container Instance(s) but only {len(to_stop)} available.")
+            logger.warning(f"Requested to stop {count} Container Instance(s) but only {len(to_stop)} available.")
         for info in to_stop:
             await self._stop_instance(info.instance_id)
 
@@ -167,11 +169,11 @@ class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
                 ),
             )
         except oci.exceptions.ServiceError as exc:
-            logging.error(f"OCI create_container_instance failed: {exc}")
+            logger.error(f"OCI create_container_instance failed: {exc}")
             return None
 
         instance_id = response.data.id
-        logging.info(f"OCI Container Instance {instance_id[-20:]} ({display_name}) created, waiting for ACTIVE...")
+        logger.info(f"OCI Container Instance {instance_id[-20:]} ({display_name}) created, waiting for ACTIVE...")
 
         for _ in range(_OCI_MAX_POLL_ATTEMPTS):
             await asyncio.sleep(_OCI_POLL_INTERVAL_SECONDS)
@@ -183,24 +185,24 @@ class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
                     ),
                 )
             except oci.exceptions.ServiceError as exc:
-                logging.error(f"OCI get_container_instance failed for {instance_id[-20:]}: {exc}")
+                logger.error(f"OCI get_container_instance failed for {instance_id[-20:]}: {exc}")
                 await self._delete_instance(instance_id)
                 return None
 
             instance = poll_response.data
             if instance.lifecycle_state == "ACTIVE":
-                logging.info(f"OCI Container Instance {instance_id[-20:]} ({display_name}) is ACTIVE")
+                logger.info(f"OCI Container Instance {instance_id[-20:]} ({display_name}) is ACTIVE")
                 return instance_id
             if instance.lifecycle_state == "FAILED":
                 details = instance.lifecycle_details or "no details provided"
-                logging.error(
+                logger.error(
                     f"OCI Container Instance {instance_id[-20:]} ({display_name}) failed to provision: {details}"
                 )
                 await self._delete_instance(instance_id)
                 return None
 
         timeout_seconds = _OCI_MAX_POLL_ATTEMPTS * _OCI_POLL_INTERVAL_SECONDS
-        logging.warning(
+        logger.warning(
             f"OCI Container Instance {instance_id[-20:]} ({display_name}) timed out after "
             f"{timeout_seconds}s waiting for ACTIVE, deleting"
         )
@@ -219,18 +221,18 @@ class OCIRawWorkerProvisioner(DeclarativeWorkerProvisioner):
             return True
         except oci.exceptions.ServiceError as exc:
             if exc.status == 404:
-                logging.warning(f"OCI Container Instance {instance_id[-20:]} not found during delete (already gone?)")
+                logger.warning(f"OCI Container Instance {instance_id[-20:]} not found during delete (already gone?)")
             else:
-                logging.error(f"OCI delete_container_instance failed for {instance_id[-20:]}: {exc}")
+                logger.error(f"OCI delete_container_instance failed for {instance_id[-20:]}: {exc}")
         except Exception as exc:
-            logging.error(f"Failed to delete OCI Container Instance {instance_id[-20:]}: {exc}")
+            logger.error(f"Failed to delete OCI Container Instance {instance_id[-20:]}: {exc}")
         return False
 
     async def _stop_instance(self, instance_id: str) -> None:
         if await self._delete_instance(instance_id):
-            logging.info(f"Stopped OCI Container Instance {instance_id[-20:]}")
+            logger.info(f"Stopped OCI Container Instance {instance_id[-20:]}")
         else:
-            logging.error(f"Failed to stop OCI Container Instance {instance_id[-20:]}")
+            logger.error(f"Failed to stop OCI Container Instance {instance_id[-20:]}")
 
 
 class OCIRawWorkerManager:

@@ -84,11 +84,25 @@ class ClientController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_task_finish(self, task_id: TaskID) -> bytes:
+    def on_task_finish(self, task_id: TaskID) -> Optional[bytes]:
         raise NotImplementedError()
 
     @abc.abstractmethod
     async def on_heartbeat(self, client_id: ClientID, info: ClientHeartbeat):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def notice_client_activity(self, client_id: ClientID):
+        """Refresh the liveness timestamp of an already-tracked client.
+
+        Called for every inbound message from a known client so that the
+        heartbeat-based timeout treats any client-bound traffic as liveness,
+        not only ``ClientHeartbeat``. Browser / emscripten clients in
+        particular can stall their asyncio loop for tens of seconds during
+        heavy synchronous user code (cloudpickle of large constants, pargraph
+        graph construction, etc.) and would otherwise be wrongly evicted.
+        Must be a no-op for unknown clients.
+        """
         raise NotImplementedError()
 
     @abc.abstractmethod

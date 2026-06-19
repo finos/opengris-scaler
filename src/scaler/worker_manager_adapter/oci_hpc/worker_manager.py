@@ -15,6 +15,8 @@ from scaler.worker_manager_adapter.worker_process import WorkerProcess
 if TYPE_CHECKING:
     from scaler.protocol.capnp import WorkerManagerCommand
 
+logger = logging.getLogger(__name__)
+
 
 class OCIHPCWorkerProvisioner(DeclarativeWorkerProvisioner):
     def __init__(self, config: OCIHPCWorkerManagerConfig) -> None:
@@ -47,10 +49,10 @@ class OCIHPCWorkerProvisioner(DeclarativeWorkerProvisioner):
         to_stop = self._units[:count]
         self._units = self._units[count:]
         if len(to_stop) < count:
-            logging.warning(f"Requested to stop {count} worker process(es) but only {len(to_stop)} available.")
+            logger.warning(f"Requested to stop {count} worker process(es) but only {len(to_stop)} available.")
         for worker in to_stop:
             worker.terminate()
-            logging.info(f"Stopped OCI HPC worker process {worker.name!r}")
+            logger.info(f"Stopped OCI HPC worker process {worker.name!r}")
 
     async def terminate(self) -> None:
         self._capacity_coordinator.cancel()
@@ -90,7 +92,7 @@ class OCIHPCWorkerProvisioner(DeclarativeWorkerProvisioner):
         )
         worker.start()
         self._units.append(worker)
-        logging.info(f"Started OCI HPC worker process {worker.name!r}")
+        logger.info(f"Started OCI HPC worker process {worker.name!r}")
 
 
 class OCIHPCWorkerManager:
@@ -99,7 +101,7 @@ class OCIHPCWorkerManager:
 
     def run(self) -> None:
         config = self._config
-        logging.info(
+        logger.info(
             f"Starting OCI HPC Worker Manager\n"
             f"  Scheduler: {config.worker_manager_config.scheduler_address}\n"
             f"  Compartment: {config.container_instance_config.compartment_id}\n"

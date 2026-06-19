@@ -35,6 +35,8 @@ from typing import Dict, List
 
 import oci
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_PREFIX = "scaler-oci"
 DEFAULT_CONFIG_FILE = ".scaler_oci_config.json"
 DEFAULT_ENV_FILE = ".scaler_oci_hpc.env"
@@ -116,7 +118,7 @@ class OCIProvisioner:
             Dictionary of provisioned resource identifiers, suitable for
             saving with :meth:`save_config`.
         """
-        logging.info(f"Provisioning OCI resources with prefix '{self._prefix}'...")
+        logger.info(f"Provisioning OCI resources with prefix '{self._prefix}'...")
 
         bucket_name = self.provision_object_storage_bucket()
         self.provision_dynamic_group(bucket_name)
@@ -141,7 +143,7 @@ class OCIProvisioner:
             "iam_policy_name": f"{self._prefix}-policy",
         }
 
-        logging.info("Provisioning complete!")
+        logger.info("Provisioning complete!")
         return result
 
     # ------------------------------------------------------------------
@@ -167,10 +169,10 @@ class OCIProvisioner:
                     name=bucket_name, compartment_id=self._compartment_id, public_access_type="NoPublicAccess"
                 ),
             )
-            logging.info(f"Created Object Storage bucket: {bucket_name}")
+            logger.info(f"Created Object Storage bucket: {bucket_name}")
         except oci.exceptions.ServiceError as exc:
             if exc.status == 409:  # BucketAlreadyExists
-                logging.info(f"Object Storage bucket already exists: {bucket_name}")
+                logger.info(f"Object Storage bucket already exists: {bucket_name}")
             else:
                 raise
 
@@ -194,9 +196,9 @@ class OCIProvisioner:
                     ]
                 ),
             )
-            logging.info(f"Set Object Storage lifecycle rule: delete after {OCI_BUCKET_LIFECYCLE_DAYS} day(s)")
+            logger.info(f"Set Object Storage lifecycle rule: delete after {OCI_BUCKET_LIFECYCLE_DAYS} day(s)")
         except Exception as exc:
-            logging.warning(f"Failed to set lifecycle rule: {exc}")
+            logger.warning(f"Failed to set lifecycle rule: {exc}")
 
         return bucket_name
 
@@ -226,11 +228,11 @@ class OCIProvisioner:
                 )
             )
             dg_id = response.data.id
-            logging.info(f"Created Dynamic Group: {dg_name} ({dg_id})")
+            logger.info(f"Created Dynamic Group: {dg_name} ({dg_id})")
             return dg_id
         except oci.exceptions.ServiceError as exc:
             if exc.status == 409:  # EntityAlreadyExists
-                logging.info(f"Dynamic Group already exists: {dg_name}")
+                logger.info(f"Dynamic Group already exists: {dg_name}")
                 groups = self._identity.list_dynamic_groups(compartment_id=self._tenancy_id).data
                 for group in groups:
                     if group.name == dg_name:
@@ -265,11 +267,11 @@ class OCIProvisioner:
                 )
             )
             policy_id = response.data.id
-            logging.info(f"Created IAM Policy: {policy_name} ({policy_id})")
+            logger.info(f"Created IAM Policy: {policy_name} ({policy_id})")
             return policy_id
         except oci.exceptions.ServiceError as exc:
             if exc.status == 409:  # PolicyAlreadyExists
-                logging.info(f"IAM Policy already exists: {policy_name}")
+                logger.info(f"IAM Policy already exists: {policy_name}")
                 policies = self._identity.list_policies(compartment_id=self._compartment_id).data
                 for policy in policies:
                     if policy.name == policy_name:
@@ -301,10 +303,10 @@ class OCIProvisioner:
                     compartment_id=self._compartment_id, display_name=repo_name, is_public=False, readme=None
                 )
             )
-            logging.info(f"Created OCIR repository: {repo_name}")
+            logger.info(f"Created OCIR repository: {repo_name}")
         except oci.exceptions.ServiceError as exc:
             if exc.status == 409:  # RepositoryAlreadyExists
-                logging.info(f"OCIR repository already exists: {repo_name}")
+                logger.info(f"OCIR repository already exists: {repo_name}")
             else:
                 raise
 
@@ -325,17 +327,17 @@ class OCIProvisioner:
             image_uri,
             str(src_root),
         ]
-        logging.info(f"Building image for linux/amd64: {image_uri}")
+        logger.info(f"Building image for linux/amd64: {image_uri}")
         subprocess.run(build_cmd, check=True)
 
         # Push image to OCIR
         # NOTE: Docker must be logged in to the OCIR registry before pushing.
         # Use: docker login <region>.ocir.io -u <namespace>/<username> -p <auth_token>
         # Auth tokens are created in OCI Console → Identity → Users → Auth Tokens.
-        logging.info(f"Pushing image to OCIR: {image_uri}")
+        logger.info(f"Pushing image to OCIR: {image_uri}")
         subprocess.run(["docker", "push", image_uri], check=True)
 
-        logging.info(f"Image pushed: {image_uri}")
+        logger.info(f"Image pushed: {image_uri}")
         return image_uri
 
     # ------------------------------------------------------------------
@@ -349,7 +351,7 @@ class OCIProvisioner:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as fp:
             json.dump(config, fp, indent=2)
-        logging.info(f"Config saved to {path.absolute()}")
+        logger.info(f"Config saved to {path.absolute()}")
 
     @staticmethod
     def load_config(config_file: str = DEFAULT_CONFIG_FILE) -> Dict[str, object]:
@@ -387,8 +389,8 @@ export SCALER_OCI_CONTAINER_IMAGE="{config["container_image"]}"
 export SCALER_OCI_SUBNET_ID="{config["subnet_id"]}"
 export SCALER_OCI_AVAILABILITY_DOMAIN="{config["availability_domain"]}"
 """)
-        logging.info(f"Env file saved: {path.absolute()}")
-        logging.info(f"Run: source {env_file}")
+        logger.info(f"Env file saved: {path.absolute()}")
+        logger.info(f"Run: source {env_file}")
 
     # ------------------------------------------------------------------
     # Cleanup
@@ -396,7 +398,7 @@ export SCALER_OCI_AVAILABILITY_DOMAIN="{config["availability_domain"]}"
 
     def cleanup(self) -> None:
         """Delete all provisioned OCI resources."""
-        logging.info("Cleaning up OCI resources...")
+        logger.info("Cleaning up OCI resources...")
 
         bucket_name = f"{self._prefix}-{self._namespace}-{self._region}"
         dg_name = f"{self._prefix}-dg"
@@ -408,10 +410,10 @@ export SCALER_OCI_AVAILABILITY_DOMAIN="{config["availability_domain"]}"
             for policy in policies:
                 if policy.name == policy_name:
                     self._identity.delete_policy(policy_id=policy.id)
-                    logging.info(f"Deleted IAM Policy: {policy_name}")
+                    logger.info(f"Deleted IAM Policy: {policy_name}")
                     break
         except Exception as exc:
-            logging.warning(f"Failed to delete IAM Policy: {exc}")
+            logger.warning(f"Failed to delete IAM Policy: {exc}")
 
         # Delete Dynamic Group
         try:
@@ -419,10 +421,10 @@ export SCALER_OCI_AVAILABILITY_DOMAIN="{config["availability_domain"]}"
             for group in groups:
                 if group.name == dg_name:
                     self._identity.delete_dynamic_group(dynamic_group_id=group.id)
-                    logging.info(f"Deleted Dynamic Group: {dg_name}")
+                    logger.info(f"Deleted Dynamic Group: {dg_name}")
                     break
         except Exception as exc:
-            logging.warning(f"Failed to delete Dynamic Group: {exc}")
+            logger.warning(f"Failed to delete Dynamic Group: {exc}")
 
         # Empty and delete Object Storage bucket
         try:
@@ -444,12 +446,12 @@ export SCALER_OCI_AVAILABILITY_DOMAIN="{config["availability_domain"]}"
                     break
 
             self._object_storage.delete_bucket(namespace_name=self._namespace, bucket_name=bucket_name)
-            logging.info(f"Deleted Object Storage bucket: {bucket_name}")
+            logger.info(f"Deleted Object Storage bucket: {bucket_name}")
         except oci.exceptions.ServiceError as exc:
             if exc.status == 404:
-                logging.info(f"Object Storage bucket not found, skipping: {bucket_name}")
+                logger.info(f"Object Storage bucket not found, skipping: {bucket_name}")
             else:
-                logging.warning(f"Failed to delete Object Storage bucket: {exc}")
+                logger.warning(f"Failed to delete Object Storage bucket: {exc}")
 
         # Delete OCIR repository
         try:
@@ -461,12 +463,12 @@ export SCALER_OCI_AVAILABILITY_DOMAIN="{config["availability_domain"]}"
             for repo in repos:
                 if repo.display_name == repo_name:
                     artifacts_client.delete_repository(repository_id=repo.id)
-                    logging.info(f"Deleted OCIR repository: {repo_name}")
+                    logger.info(f"Deleted OCIR repository: {repo_name}")
                     break
         except Exception as exc:
-            logging.warning(f"Failed to delete OCIR repository: {exc}")
+            logger.warning(f"Failed to delete OCIR repository: {exc}")
 
-        logging.info("Cleanup complete!")
+        logger.info("Cleanup complete!")
 
     # ------------------------------------------------------------------
     # Helpers
@@ -549,7 +551,7 @@ def main() -> None:
 
         container_image = args.image
         if container_image is None:
-            logging.info("No --image specified, building and pushing to OCIR...")
+            logger.info("No --image specified, building and pushing to OCIR...")
             container_image = provisioner.build_and_push_image()
 
         result = provisioner.provision_all(

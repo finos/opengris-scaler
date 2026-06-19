@@ -14,7 +14,8 @@ public:
     ObjectManager();
 
     // Returns the pointer to the created (and moved) object.
-    std::shared_ptr<const ObjectPayload> setObject(const ObjectID& objectID, ObjectPayload&& payload) noexcept;
+    std::shared_ptr<const ObjectPayload> setObject(
+        const ObjectID& objectID, std::unique_ptr<ObjectPayload> payload) noexcept;
 
     // Returns `nullptr` if the object does not exist.
     std::shared_ptr<const ObjectPayload> getObject(const ObjectID& objectID) const noexcept;
