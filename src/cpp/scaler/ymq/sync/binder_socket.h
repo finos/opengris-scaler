@@ -33,9 +33,10 @@ public:
 
     std::expected<Address, Error> bindTo(std::string address) noexcept;
 
-    std::expected<void, Error> sendMessage(Identity remoteIdentity, Bytes messagePayload) noexcept;
+    std::expected<void, Error> sendMessage(Identity remoteIdentity, std::unique_ptr<Bytes> messagePayload) noexcept;
 
-    void sendMulticastMessage(Bytes messagePayload, std::optional<Identity> remotePrefix = std::nullopt) noexcept;
+    void sendMulticastMessage(
+        std::unique_ptr<Bytes> messagePayload, std::optional<Identity> remotePrefix = std::nullopt) noexcept;
 
     std::expected<Message, Error> recvMessage() noexcept;
 

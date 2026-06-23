@@ -48,6 +48,8 @@ private:
     std::queue<Callback> _executeQueue;
     scaler::wrapper::uv::Async _executeAsync;
 
+    void initialize() noexcept;
+
     void run() noexcept;
 
     void processExecuteCallbacks() noexcept;

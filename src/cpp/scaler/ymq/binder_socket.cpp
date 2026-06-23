@@ -1,8 +1,12 @@
 #include "scaler/ymq/binder_socket.h"
 
 #include <cassert>
+#include <chrono>
 #include <functional>
 #include <utility>
+
+#include "scaler/ymq/buffered_bytes.h"
+#include "scaler/ymq/configuration.h"
 
 namespace scaler {
 namespace ymq {
@@ -43,7 +47,9 @@ void BinderSocket::shutdown(ShutdownCallback onShutdownCallback) noexcept
         // Fail all pending send callbacks
         for (auto& [_, pendingMessages]: state->_pendingSendMessages) {
             for (auto& pendingMessage: pendingMessages) {
-                pendingMessage.onMessageSent(std::unexpected {Error {Error::ErrorCode::SocketStopRequested}});
+                pendingMessage.onMessageSent(
+                    std::unexpected {Error {Error::ErrorCode::SocketStopRequested}},
+                    std::move(pendingMessage.messagePayload));
             }
         }
         state->_pendingSendMessages.clear();
@@ -70,8 +76,22 @@ void BinderSocket::bindTo(std::string address, BindCallback onBindCallback) noex
                 return;
             }
 
-            state->_servers.emplace_back(
+            auto server = internal::AcceptServer::init(
                 state->_thread.loop(), parsedAddress.value(), std::bind_front(&BinderSocket::onClientConnect, state));
+            if (!server.has_value()) {
+                callback(
+                    std::unexpected {Error {
+                        Error::ErrorCode::SysCallError,
+                        "Originated from",
+                        "AcceptServer::init",
+                        "Error code",
+                        server.error().name(),
+                        server.error().message(),
+                    }});
+                return;
+            }
+
+            state->_servers.push_back(std::move(server.value()));
 
             // Get the actual bound address (useful when binding to port 0)
             Address boundAddress = state->_servers.back().address();
@@ -80,7 +100,7 @@ void BinderSocket::bindTo(std::string address, BindCallback onBindCallback) noex
 }
 
 void BinderSocket::sendMessage(
-    Identity remoteIdentity, Bytes messagePayload, SendMessageCallback onMessageSent) noexcept
+    Identity remoteIdentity, std::unique_ptr<Bytes> messagePayload, SendMessageCallback onMessageSent) noexcept
 {
     _state->_thread.executeThreadSafe([state          = _state,
                                        remoteIdentity = std::move(remoteIdentity),
@@ -88,7 +108,19 @@ void BinderSocket::sendMessage(
                                        callback       = std::move(onMessageSent)]() mutable {
         auto it = state->_identityToConnectionID.find(remoteIdentity);
         if (it == state->_identityToConnectionID.end()) {
-            // We don't know this identity yet, queue the message until the peer eventually connects
+            // The peer is not currently connected.
+            //
+            // If we have seen this identity complete an identity exchange and then disconnect,
+            // the peer is gone and won't be back; fail the callback immediately. Otherwise this
+            // is a send-before-first-connect case (used by some tests and the warm-up path);
+            // queue until the peer eventually identifies itself.
+            if (state->_disconnectedIdentities.count(remoteIdentity) > 0) {
+                callback(
+                    std::unexpected {Error {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd}},
+                    std::move(messagePayload));
+                return;
+            }
+
             state->_pendingSendMessages[remoteIdentity].emplace_back(
                 PendingSendMessage {std::move(messagePayload), std::move(callback)});
             return;
@@ -99,7 +131,8 @@ void BinderSocket::sendMessage(
     });
 }
 
-void BinderSocket::sendMulticastMessage(Bytes messagePayload, std::optional<Identity> remotePrefix) noexcept
+void BinderSocket::sendMulticastMessage(
+    std::unique_ptr<Bytes> messagePayload, std::optional<Identity> remotePrefix) noexcept
 {
     _state->_thread.executeThreadSafe(
         [state = _state, messagePayload = std::move(messagePayload), remotePrefix = std::move(remotePrefix)]() mutable {
@@ -112,7 +145,10 @@ void BinderSocket::sendMulticastMessage(Bytes messagePayload, std::optional<Iden
                 }
 
                 connectionPtr->sendMessage(
-                    messagePayload, []([[maybe_unused]] std::expected<void, Error> result) noexcept {});
+                    std::make_unique<BufferedBytes>(
+                        reinterpret_cast<const char*>(messagePayload->data()), messagePayload->size()),
+                    []([[maybe_unused]] std::expected<void, Error> result,
+                       [[maybe_unused]] std::unique_ptr<Bytes>) noexcept {});
             }
         });
 }
@@ -135,15 +171,17 @@ void BinderSocket::recvMessage(RecvMessageCallback onRecvMessage) noexcept
 
 void BinderSocket::closeConnection(Identity remoteIdentity) noexcept
 {
-    _state->_thread.executeThreadSafe([state = _state, remoteIdentity = std::move(remoteIdentity)]() {
-        auto node = state->_identityToConnectionID.extract(remoteIdentity);
-        if (node.empty()) {
+    _state->_thread.executeThreadSafe([state = _state, remoteIdentity = std::move(remoteIdentity)]() mutable {
+        auto it = state->_identityToConnectionID.find(remoteIdentity);
+        if (it == state->_identityToConnectionID.end()) {
             // Connection not found. Might have disconnected earlier.
             return;
         }
-        ConnectionID connectionID = node.mapped();
+        ConnectionID connectionID = it->second;
 
-        state->_connections.erase(connectionID);
+        // Reuse the disconnect path: it extracts the connection from _connections, erases the
+        // identity mapping, populates _disconnectedIdentities, and drains _pendingSendMessages.
+        onRemoteDisconnect(std::move(state), connectionID, internal::MessageConnection::DisconnectReason::Disconnected);
     });
 }
 
@@ -162,6 +200,7 @@ void BinderSocket::onRemoteIdentity(
     }
 
     state->_identityToConnectionID[remoteIdentity] = connectionId;
+    state->_disconnectedIdentities.erase(remoteIdentity);  // peer is back; allow sends to queue again
 
     // Send any pending messages previously queued for this identity
     auto pendingIt = state->_pendingSendMessages.find(remoteIdentity);
@@ -177,24 +216,57 @@ void BinderSocket::onRemoteIdentity(
 void BinderSocket::onRemoteDisconnect(
     std::shared_ptr<State> state,
     ConnectionID connectionId,
-    internal::MessageConnection::DisconnectReason /*reason*/) noexcept
+    internal::MessageConnection::DisconnectReason reason) noexcept
 {
     auto node = state->_connections.extract(connectionId);
     assert(!node.empty());
 
     internal::MessageConnection& connection = *node.mapped();
-    if (connection.remoteIdentity()) {
-        state->_identityToConnectionID.erase(connection.remoteIdentity().value());
+    if (!connection.remoteIdentity()) {
+        return;
+    }
+
+    const Identity& remoteIdentity = connection.remoteIdentity().value();
+    state->_identityToConnectionID.erase(remoteIdentity);
+
+    // For an aborted disconnect we expect the remote to reconnect, so keep _pendingSendMessages
+    // intact - onRemoteIdentity will drain them onto the new MessageConnection. Only graceful
+    // (Disconnected) disconnects are terminal.
+    if (reason != internal::MessageConnection::DisconnectReason::Disconnected) {
+        return;
+    }
+
+    // Remember the identity so any sendMessage call that lands *after* this disconnect (because
+    // Python is just catching up on messages libuv already buffered) fails fast instead of
+    // queueing forever in _pendingSendMessages and hanging the asyncio loop. The set is
+    // bounded by a TTL purge driven from here (insert-time) so it cannot grow without bound
+    // even under workloads that churn many short-lived peers (e.g. nested-task clients).
+    const auto now = std::chrono::steady_clock::now();
+    purgeExpiredDisconnectedIdentities(*state, now);
+    state->_disconnectedIdentities[remoteIdentity] = now;
+    state->_disconnectedIdentityInsertions.emplace_back(now, remoteIdentity);
+
+    // Drain any sends already queued for this identity (rare: covers the case where Python
+    // raced ahead of the disconnect).
+    auto pendingIt = state->_pendingSendMessages.find(remoteIdentity);
+    if (pendingIt != state->_pendingSendMessages.end()) {
+        for (auto& pending: pendingIt->second) {
+            pending.onMessageSent(
+                std::unexpected {Error {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd}},
+                std::move(pending.messagePayload));
+        }
+        state->_pendingSendMessages.erase(pendingIt);
     }
 }
 
-void BinderSocket::onMessage(std::shared_ptr<State> state, ConnectionID connectionId, Bytes messagePayload) noexcept
+void BinderSocket::onMessage(
+    std::shared_ptr<State> state, ConnectionID connectionId, std::unique_ptr<Bytes> messagePayload) noexcept
 {
     internal::MessageConnection& connection = *state->_connections.at(connectionId);
     assert(connection.remoteIdentity().has_value());
 
     Message message;
-    message.address = Bytes {connection.remoteIdentity().value()};
+    message.address = std::make_unique<BufferedBytes>(connection.remoteIdentity().value());
     message.payload = std::move(messagePayload);
 
     if (state->_pendingRecvCallbacks.empty()) {
@@ -223,6 +295,21 @@ internal::MessageConnection& BinderSocket::createConnection(
     auto [it, inserted] = state->_connections.emplace(connectionId, std::move(connection));
 
     return *it->second;
+}
+
+void BinderSocket::purgeExpiredDisconnectedIdentities(State& state, std::chrono::steady_clock::time_point now) noexcept
+{
+    while (!state._disconnectedIdentityInsertions.empty() &&
+           now - state._disconnectedIdentityInsertions.front().first > disconnectedIdentityTTL) {
+        const auto& [expiredTs, expiredId] = state._disconnectedIdentityInsertions.front();
+        // Only drop the map entry if its timestamp matches; otherwise the peer re-disconnected
+        // since this deque slot was written and the map holds a fresher entry that we must keep.
+        if (auto it = state._disconnectedIdentities.find(expiredId);
+            it != state._disconnectedIdentities.end() && it->second == expiredTs) {
+            state._disconnectedIdentities.erase(it);
+        }
+        state._disconnectedIdentityInsertions.pop_front();
+    }
 }
 
 }  // namespace ymq

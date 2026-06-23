@@ -1,13 +1,13 @@
 import dataclasses
 import functools
 import logging
+import sys
 import threading
-import uuid
 from collections import Counter
 from inspect import signature
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
-from scaler.client.agent.client_agent import ClientAgent
+from scaler.client.agent.bridge import ClientAgentBridge, check_browser_runtime, create_default_bridge
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.future import ScalerFuture
 from scaler.client.object_buffer import ObjectBuffer
@@ -16,7 +16,7 @@ from scaler.client.serializer.default import DefaultSerializer
 from scaler.client.serializer.mixins import Serializer
 from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
 from scaler.config.types.address import AddressConfig
-from scaler.io.mixins import ConnectorRemoteType, NetworkBackend, SyncConnector, SyncObjectStorageConnector
+from scaler.io.mixins import NetworkBackend, SyncConnector, SyncObjectStorageConnector
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.ymq import YMQException
 from scaler.protocol.capnp import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
@@ -27,7 +27,13 @@ from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
-from scaler.worker.agent.processor.processor import Processor
+
+if sys.platform != "emscripten":
+    from scaler.worker.agent.processor.processor import Processor
+else:
+    Processor = None  # type: ignore[assignment]
+
+logger = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
 
@@ -98,6 +104,13 @@ class Client:
         stream_output: bool = False,
         object_storage_address: Optional[str] = None,
     ):
+        check_browser_runtime()
+
+        self._future_manager: Optional[ClientFutureManager] = None
+        self._bridge: Optional[ClientAgentBridge] = None
+        self._connector_agent: Optional[SyncConnector] = None
+        self._connector_storage: Optional[SyncObjectStorageConnector] = None
+
         self._serializer = serializer
 
         self._profiling = profiling
@@ -106,10 +119,6 @@ class Client:
 
         self._backend: NetworkBackend = get_network_backend_from_env()
 
-        self._client_agent_address = self._backend.create_internal_address(
-            f"scaler_client_{uuid.uuid4().hex}", same_process=True
-        )
-
         self._scheduler_address = self.__resolve_scheduler_address(address)
         self._timeout_seconds = timeout_seconds
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
@@ -117,9 +126,8 @@ class Client:
         self._stop_event = threading.Event()
 
         self._future_manager = ClientFutureManager(self._serializer)
-        self._agent = ClientAgent(
+        self._bridge = create_default_bridge(
             identity=self._identity,
-            client_agent_address=self._client_agent_address,
             scheduler_address=self._scheduler_address,
             network_backend=self._backend,
             future_manager=self._future_manager,
@@ -129,21 +137,17 @@ class Client:
             serializer=self._serializer,
             object_storage_address=object_storage_address,
         )
-        self._agent.start()
+        self._bridge.start()
 
-        logging.info(f"ScalerClient: connect to scheduler at {self._scheduler_address}")
+        logger.info(f"ScalerClient: connect to scheduler at {self._scheduler_address}")
 
         # Blocks until the agent receives the object storage address
-        self._object_storage_address = self._agent.get_object_storage_address()
+        self._object_storage_address = self._bridge.get_object_storage_address()
 
-        self._connector_agent: SyncConnector = self._backend.create_sync_connector(
-            identity=self._identity,
-            connector_remote_type=ConnectorRemoteType.Connector,
-            address=self._client_agent_address,
-        )
+        self._connector_agent = self._bridge.connector
 
-        logging.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
-        self._connector_storage: SyncObjectStorageConnector = self._backend.create_sync_object_storage_connector(
+        logger.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
+        self._connector_storage = self._backend.create_sync_object_storage_connector(
             identity=self._identity, address=self._object_storage_address
         )
 
@@ -233,7 +237,12 @@ class Client:
         return self.submit_verbose(fn, args, kwargs)
 
     def submit_verbose(
-        self, fn: Callable, args: Tuple[Any, ...], kwargs: Dict[str, Any], capabilities: Optional[Dict[str, int]] = None
+        self,
+        fn: Callable,
+        args: Tuple[Any, ...],
+        kwargs: Dict[str, Any],
+        capabilities: Optional[Dict[str, int]] = None,
+        reserialize: bool = False,
     ) -> ScalerFuture:
         """
         Submit a single task (function with arguments) to the scheduler, and return a future. Possibly route the task to
@@ -245,6 +254,12 @@ class Client:
         :param kwargs: keyword arguments will be passed to function
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
+        :param reserialize: If True, re-serialize this task's argument objects instead of reusing a cached snapshot,
+                            and refresh the cache. Because identical content uploads once, the re-serialized bytes are
+                            re-uploaded only if the content actually changed, so this is cheap when nothing changed. Use
+                            this after mutating an argument in place. Defaults to False, where a reused object is
+                            serialized and uploaded once.
+        :type reserialize: bool
         :return: future of the submitted task
         :rtype: ScalerFuture
         """
@@ -254,14 +269,20 @@ class Client:
         function_object_id = self._object_buffer.buffer_send_function(fn).object_id
         all_args = Client.__convert_kwargs_to_args(fn, args, kwargs)
 
-        task, future = self.__submit(function_object_id, all_args, delayed=True, capabilities=capabilities)
+        task, future = self.__submit(
+            function_object_id, all_args, delayed=True, capabilities=capabilities, reserialize=reserialize
+        )
 
         self._object_buffer.commit_send_objects()
         self._connector_agent.send(task)
         return future
 
     def map(
-        self, fn: Callable[..., _T], *iterables: Iterable[Any], capabilities: Optional[Dict[str, int]] = None
+        self,
+        fn: Callable[..., _T],
+        *iterables: Iterable[Any],
+        capabilities: Optional[Dict[str, int]] = None,
+        reserialize: bool = False,
     ) -> List[_T]:
         """
         Apply function to every item of iterables, collecting the results in a list.
@@ -280,16 +301,26 @@ class Client:
         :type iterables: Iterable[Any]
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
+        :param reserialize: If True, re-serialize the argument objects instead of reusing a cached snapshot, and refresh
+                            the cache. Because identical content uploads once, the re-serialized bytes are re-uploaded
+                            only if the content actually changed, so this is cheap when nothing changed. Use this after
+                            mutating an argument in place. Defaults to False, where a reused object is serialized and
+                            uploaded once.
+        :type reserialize: bool
         :return: list of results, where each result is the return value of fn
         :rtype: List[_T]
         """
         if len(iterables) == 0:
             raise TypeError("map() requires at least one iterable")
 
-        return self.starmap(fn, zip(*iterables), capabilities=capabilities)
+        return self.starmap(fn, zip(*iterables), capabilities=capabilities, reserialize=reserialize)
 
     def starmap(
-        self, fn: Callable[..., _T], iterable: Iterable[Iterable[Any]], capabilities: Optional[Dict[str, int]] = None
+        self,
+        fn: Callable[..., _T],
+        iterable: Iterable[Iterable[Any]],
+        capabilities: Optional[Dict[str, int]] = None,
+        reserialize: bool = False,
     ) -> List[_T]:
         """
         Apply function to every item of iterable, where each item is an iterable of arguments to unpack.
@@ -308,6 +339,12 @@ class Client:
         :type iterable: Iterable[Iterable[Any]]
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
+        :param reserialize: If True, re-serialize the argument objects instead of reusing a cached snapshot, and refresh
+                            the cache. Because identical content uploads once, the re-serialized bytes are re-uploaded
+                            only if the content actually changed, so this is cheap when nothing changed. Use this after
+                            mutating an argument in place. Defaults to False, where a reused object is serialized and
+                            uploaded once.
+        :type reserialize: bool
         :return: list of results, where each result is the return value of fn
         :rtype: List[_T]
         """
@@ -318,7 +355,9 @@ class Client:
         function_object_id = self._object_buffer.buffer_send_function(fn).object_id
         tasks, futures = zip(
             *[
-                self.__submit(function_object_id, args, delayed=False, capabilities=capabilities)
+                self.__submit(
+                    function_object_id, args, delayed=False, capabilities=capabilities, reserialize=reserialize
+                )
                 for args in iterable_list
             ]
         )
@@ -330,7 +369,7 @@ class Client:
         try:
             results = [fut.result() for fut in futures]
         except Exception as e:
-            logging.exception(f"Error occured during scaler client.starmap:\n{e}")
+            logger.exception(f"Error occured during scaler client.starmap:\n{e}")
             self.disconnect()
             raise e
 
@@ -342,6 +381,7 @@ class Client:
         keys: List[str],
         block: bool = True,
         capabilities: Optional[Dict[str, int]] = None,
+        reserialize: bool = False,
     ) -> Dict[str, Union[Any, ScalerFuture]]:
         """
         .. code-block:: python
@@ -362,6 +402,12 @@ class Client:
         :return: dictionary of mapping keys to futures, or map to results if block=True is specified
         :param capabilities: capabilities used for routing the tasks, e.g. `{"gpu": 2, "memory": 1_000_000_000}`.
         :type capabilities: Optional[Dict[str, int]]
+        :param reserialize: If True, re-serialize the graph's data nodes instead of reusing a cached snapshot, and
+                            refresh the cache. Because identical content uploads once, the re-serialized bytes are
+                            re-uploaded only if the content actually changed, so this is cheap when nothing changed. Use
+                            this after mutating a data node in place. Defaults to False, where a reused object is
+                            serialized and uploaded once.
+        :type reserialize: bool
         :rtype: Dict[ScalerFuture]
         """
 
@@ -371,7 +417,7 @@ class Client:
 
         graph = cull_graph(graph, keys)
 
-        node_name_to_argument, call_graph = self.__split_data_and_graph(graph)
+        node_name_to_argument, call_graph = self.__split_data_and_graph(graph, reserialize=reserialize)
         self.__check_graph(node_name_to_argument, call_graph, keys)
 
         graph_task, compute_futures, finished_futures = self.__construct_graph(
@@ -412,7 +458,7 @@ class Client:
         try:
             results = {k: v.result() for k, v in futures.items()}
         except Exception as e:
-            logging.exception(f"error happened when do scaler client.get:\n{e}")
+            logger.exception(f"error happened when do scaler client.get:\n{e}")
             self.disconnect()
             raise e
 
@@ -433,7 +479,9 @@ class Client:
 
         self.__assert_client_not_stopped()
 
-        cache = self._object_buffer.buffer_send_object(obj, name)
+        # dedup=False: send_object() returns to the user before the next commit,
+        # so a kept dedup entry could serve a later submit() a stale snapshot.
+        cache = self._object_buffer.buffer_send_object(obj, name, reserialize=False, dedup=False)
         return ObjectReference(cache.object_name, len(cache.object_payload), cache.object_id)
 
     def clear(self):
@@ -453,15 +501,22 @@ class Client:
         disconnect from connected scheduler, this will not shut down the scheduler
         """
 
-        # Handle case where client wasn't fully initialized
+        # Handle case where the object exists but __initialize__ never ran (e.g. built by __new__
+        # during a failed unpickling), so none of the attributes below exist yet.
         if not hasattr(self, "_stop_event"):
+            return
+
+        # Initialization was interrupted before the connector was created (e.g. Ctrl-C while waiting
+        # for an unreachable scheduler); there is nothing to disconnect. The agent, if it was
+        # started, is a daemon thread that stops on its own.
+        if self._connector_agent is None:
             return
 
         if self._stop_event.is_set():
             self.__destroy()
             return
 
-        logging.info(f"ScalerClient: disconnect from {self._scheduler_address!r}")
+        logger.info(f"ScalerClient: disconnect from {self._scheduler_address!r}")
 
         self._future_manager.cancel_all_futures()
 
@@ -499,11 +554,11 @@ class Client:
         then it cannot shut down scheduler and the workers
         """
 
-        if not self._agent.is_alive():
+        if not self._bridge.is_alive():
             self.__destroy()
             return
 
-        logging.info(f"ScalerClient: request shutdown for {self._scheduler_address!r}")
+        logger.info(f"ScalerClient: request shutdown for {self._scheduler_address!r}")
 
         self._future_manager.cancel_all_futures()
 
@@ -518,7 +573,8 @@ class Client:
         function_object_id: ObjectID,
         args: Tuple[Any, ...],
         delayed: bool,
-        capabilities: Optional[Dict[str, int]] = None,
+        capabilities: Optional[Dict[str, int]],
+        reserialize: bool,
     ) -> Tuple[Task, ScalerFuture]:
         task_id = TaskID.generate_task_id()
 
@@ -532,7 +588,9 @@ class Client:
 
                 function_args.append(arg.object_id)
             else:
-                function_args.append(self._object_buffer.buffer_send_object(arg).object_id)
+                function_args.append(
+                    self._object_buffer.buffer_send_object(arg, None, reserialize=reserialize, dedup=True).object_id
+                )
 
         task_flags_bytes = self.__get_task_flags().serialize()
 
@@ -579,7 +637,7 @@ class Client:
         return tuple(args_list)
 
     def __split_data_and_graph(
-        self, graph: Dict[str, Union[Any, Tuple[Union[Callable, str], ...]]]
+        self, graph: Dict[str, Union[Any, Tuple[Union[Callable, str], ...]]], reserialize: bool
     ) -> Tuple[Dict[str, Tuple[ObjectID, Any]], Dict[str, _CallNode]]:
         call_graph = {}
         node_name_to_argument: Dict[str, Tuple[ObjectID, Union[Any, Tuple[Union[Callable, Any], ...]]]] = dict()
@@ -592,7 +650,9 @@ class Client:
             if isinstance(node, ObjectReference):
                 object_id = node.object_id
             else:
-                object_id = self._object_buffer.buffer_send_object(node, name=node_name).object_id
+                object_id = self._object_buffer.buffer_send_object(
+                    node, name=node_name, reserialize=reserialize, dedup=True
+                ).object_id
 
             node_name_to_argument[node_name] = (object_id, node)
 
@@ -723,14 +783,20 @@ class Client:
             raise ClientQuitException("client is already stopped.")
 
     def __destroy(self):
-        self._agent.join()
+        if self._bridge is not None:
+            self._bridge.join()
 
-        self._connector_agent.destroy()
-        self._connector_storage.destroy()
+        if self._connector_agent is not None:
+            self._connector_agent.destroy()
+
+        if self._connector_storage is not None:
+            self._connector_storage.destroy()
 
     @staticmethod
     def __get_parent_task_priority() -> Optional[int]:
         """If the client is running inside a Scaler processor, returns the priority of the associated task."""
+        if Processor is None:
+            return None
 
         current_processor = Processor.get_current_processor()
 
@@ -749,7 +815,7 @@ class Client:
             return AddressConfig.from_string(address)
 
         # No address provided, check if we're running inside a worker context
-        current_processor = Processor.get_current_processor()
+        current_processor = Processor.get_current_processor() if Processor is not None else None
         if current_processor is None:
             raise ValueError(
                 "No scheduler address provided and not running inside a worker context. "

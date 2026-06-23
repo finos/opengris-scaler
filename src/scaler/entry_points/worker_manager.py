@@ -10,6 +10,8 @@ from scaler.config.loading import _load_toml
 from scaler.config.section.aws_hpc_worker_manager import AWSBatchWorkerManagerConfig
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
+from scaler.config.section.oci_hpc_worker_manager import OCIHPCWorkerManagerConfig
+from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
 from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
 from scaler.utility.event_loop import register_event_loop
@@ -21,6 +23,8 @@ _AnyWorkerManagerConfig = Union[
     ECSWorkerManagerConfig,
     AWSBatchWorkerManagerConfig,
     ORBAWSEC2WorkerManagerConfig,
+    OCIRawWorkerManagerConfig,
+    OCIHPCWorkerManagerConfig,
 ]
 
 _TYPE_MAP: Dict[str, Type[ConfigClass]] = {
@@ -29,6 +33,8 @@ _TYPE_MAP: Dict[str, Type[ConfigClass]] = {
     ECSWorkerManagerConfig._tag: ECSWorkerManagerConfig,
     AWSBatchWorkerManagerConfig._tag: AWSBatchWorkerManagerConfig,
     ORBAWSEC2WorkerManagerConfig._tag: ORBAWSEC2WorkerManagerConfig,
+    OCIRawWorkerManagerConfig._tag: OCIRawWorkerManagerConfig,
+    OCIHPCWorkerManagerConfig._tag: OCIHPCWorkerManagerConfig,
 }
 
 
@@ -84,7 +90,12 @@ def main() -> None:
         config_cls.parse_with_section("scaler_worker_manager", section_data, argv=remaining_argv),
     )
 
-    setup_logger(wm_config.logging_config.paths, wm_config.logging_config.config_file, wm_config.logging_config.level)
+    setup_logger(
+        wm_config.logging_config.paths,
+        wm_config.logging_config.config_file,
+        wm_config.logging_config.level,
+        process_name=wm_type,
+    )
     register_event_loop(wm_config.worker_config.event_loop)
 
     if isinstance(wm_config, NativeWorkerManagerConfig):
@@ -107,6 +118,14 @@ def main() -> None:
         from scaler.worker_manager_adapter.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerManager
 
         ORBAWSEC2WorkerManager(wm_config).run()
+    elif isinstance(wm_config, OCIRawWorkerManagerConfig):
+        from scaler.worker_manager_adapter.oci_raw.worker_manager import OCIRawWorkerManager
+
+        OCIRawWorkerManager(wm_config).run()
+    elif isinstance(wm_config, OCIHPCWorkerManagerConfig):
+        from scaler.worker_manager_adapter.oci_hpc.worker_manager import OCIHPCWorkerManager
+
+        OCIHPCWorkerManager(wm_config).run()
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ import dataclasses
 from typing import ClassVar, Dict, List, Optional
 
 from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.python_worker_environment import PythonWorkerEnvironmentConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.config_class import ConfigClass
@@ -27,32 +28,23 @@ class ORBAWSEC2WorkerManagerConfig(ConfigClass):
             help="AMI ID for the worker instances. If not provided, the latest AL2023 AMI is discovered automatically."
         ),
     )
-    python_version: Optional[str] = dataclasses.field(
-        default=None,
-        metadata=dict(
-            help=(
-                "Python version to install on the worker instance (e.g. '3.13'). "
-                "Required when --image-id is not provided."
-            )
-        ),
-    )
-    requirements_txt: Optional[str] = dataclasses.field(
-        default=None,
-        metadata=dict(
-            help=(
-                "Requirements to install on each worker instance. "
-                "Can be a path to a requirements.txt file or a string literal. "
-                "Must include opengris-scaler. Required when --image-id is not provided."
-            )
-        ),
+
+    python_worker_environment: PythonWorkerEnvironmentConfig = dataclasses.field(
+        default_factory=PythonWorkerEnvironmentConfig
     )
 
     def __post_init__(self) -> None:
         if self.image_id is not None:
-            if self.python_version is not None or self.requirements_txt is not None:
+            if (
+                self.python_worker_environment.python_version is not None
+                or self.python_worker_environment.requirements_txt is not None
+            ):
                 raise ValueError("--image-id is mutually exclusive with --python-version and --requirements-txt")
         else:
-            if self.python_version is None or self.requirements_txt is None:
+            if (
+                self.python_worker_environment.python_version is None
+                or self.python_worker_environment.requirements_txt is None
+            ):
                 raise ValueError(
                     "Both --python-version and --requirements-txt must be provided when --image-id is not specified"
                 )

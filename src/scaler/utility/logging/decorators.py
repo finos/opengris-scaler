@@ -11,7 +11,9 @@ def log_function(level_number: int = 2, logging_level: int = logging.INFO) -> ty
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             with ScopedLogger(
-                f"execute {func.__name__} at {get_caller_location(level_number)}", logging_level=logging_level
+                f"execute {func.__name__} at {get_caller_location(level_number)}",
+                logging_level=logging_level,
+                logger=logging.getLogger(func.__module__),
             ):
                 return func(*args, **kwargs)
 

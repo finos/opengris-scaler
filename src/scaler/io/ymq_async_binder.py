@@ -5,8 +5,10 @@ from typing import Awaitable, Callable, Dict, Optional
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncBinder
 from scaler.io.utility import deserialize, serialize
-from scaler.io.ymq import BinderSocket, Bytes, IOContext
+from scaler.io.ymq import BinderSocket, Bytes, ConnectorSocketClosedByRemoteEndError, IOContext
 from scaler.protocol.capnp import BaseMessage, BinderStatus
+
+logger = logging.getLogger(__name__)
 
 
 class YMQAsyncBinder(AsyncBinder):
@@ -53,13 +55,25 @@ class YMQAsyncBinder(AsyncBinder):
 
         message: Optional[BaseMessage] = deserialize(ymq_msg.payload.data)
         if message is None:
-            logging.error(f"received unknown message from {ymq_msg.address.data!r}: {ymq_msg.payload.data!r}")
+            logger.error(f"received unknown message from {ymq_msg.address.data!r}: {ymq_msg.payload.data!r}")
             return
 
         self.__count_received(message.__class__.__name__)
-        await self._callback(ymq_msg.address.data, message)
+        try:
+            await self._callback(ymq_msg.address.data, message)
+        except ConnectorSocketClosedByRemoteEndError:
+            # The callback (e.g. on_heartbeat -> binder.send echo) tried to reply to a peer that
+            # had already disconnected by the time Python caught up on libuv-buffered messages.
+            # Treat as a no-op: peer-gone is a routine event handled by the scheduler controllers'
+            # own timeout/cleanup paths. Re-raising would bubble up through asyncio.gather and
+            # tear down the whole scheduler for what is a normal peer departure.
+            pass
 
     async def send(self, to: bytes, message: BaseMessage):
+        # Errors (including ConnectorSocketClosedByRemoteEndError when the peer is gone) propagate
+        # up to whoever drove this send - the AsyncBinder send/recv API maps 1:1 to the underlying
+        # C++ BinderSocket. The scheduler-side swallow lives in routine() above, which is the loop
+        # that actually has to stay alive across peer departures.
         assert self._socket is not None
         self.__count_sent(message.__class__.__name__)
         await self._socket.send_message(to.decode(), Bytes(serialize(message)))

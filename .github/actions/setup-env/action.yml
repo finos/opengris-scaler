@@ -17,6 +17,32 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
+    # Setup a temporary directory to install 3rd party libraries.
+    # Using a temporary directory instead of a system location (e.g. /usr/local or C:/Program Files) avoids colliding
+    # with the runner's preinstalled packages.
+
+    - name: Set Third-Party Prefix (Linux/macOS)
+      if: inputs.os == 'Linux' || inputs.os == 'macOS'
+      shell: bash
+      run: |
+        prefix="${RUNNER_TEMP}/opengris-thirdparties"
+        echo "SCALER_THIRDPARTY_PREFIX=${prefix}" >> "$GITHUB_ENV"
+
+        echo "CMAKE_PREFIX_PATH=${prefix}" >> "$GITHUB_ENV"
+        echo "OPENSSL_ROOT_DIR=${prefix}" >> "$GITHUB_ENV"
+        echo "LD_LIBRARY_PATH=${prefix}/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+        echo "DYLD_LIBRARY_PATH=${prefix}/lib:${DYLD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+
+    - name: Set Third-Party Prefix (Windows)
+      if: inputs.os == 'Windows'
+      shell: pwsh
+      run: |
+        $prefix = (Join-Path $env:RUNNER_TEMP "opengris-thirdparties") -replace '\\', '/'
+        "SCALER_THIRDPARTY_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+        "CMAKE_PREFIX_PATH=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        "OPENSSL_ROOT_DIR=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
     - name: Setup system and dependencies (Linux)
       shell: bash
       if: inputs.os == 'Linux'
@@ -45,7 +71,12 @@ runs:
         echo "CXX=${llvm_prefix}/bin/clang++" >> "$GITHUB_ENV"
         echo "CMAKE_CXX_COMPILER=${llvm_prefix}/bin/clang++" >> "$GITHUB_ENV"
         echo "LDFLAGS=-L${llvm_prefix}/lib/c++ ${LDFLAGS:-}" >> "$GITHUB_ENV"
-        echo "CMAKE_PREFIX_PATH=./thirdparties/" >> "$GITHUB_ENV"
+
+    - name: Setup MSVC Developer Environment (Windows)
+      if: inputs.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: amd64
 
     - name: Install Python Base Packages
       shell: bash

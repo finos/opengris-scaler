@@ -26,6 +26,8 @@ from scaler.worker.agent.mixins import HeartbeatManager
 from scaler.worker.agent.mixins import TaskManager as TaskManagerMixin
 from scaler.worker_manager_adapter.mixins import ExecutionBackend
 
+logger = logging.getLogger(__name__)
+
 
 class TaskManager(Looper, TaskManagerMixin):
     def __init__(
@@ -73,7 +75,7 @@ class TaskManager(Looper, TaskManagerMixin):
                 self._serializers.pop(object_id, None)
             return
 
-        logging.error(f"worker received unknown object instruction type {instruction=}")
+        logger.error(f"worker received unknown object instruction type {instruction=}")
 
     async def on_task_new(self, task: Task) -> None:
         task_priority = self._get_task_priority(task)
@@ -159,7 +161,7 @@ class TaskManager(Looper, TaskManagerMixin):
             task = self._task_id_to_task.get(task_id)
 
             if task is None:
-                logging.warning(f"Cannot find task in worker queue: task_id={task_id.hex()}")
+                logger.warning(f"Cannot find task in worker queue: task_id={task_id.hex()}")
                 continue
 
             if task_id in self._processing_task_ids:

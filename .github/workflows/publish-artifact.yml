@@ -1,4 +1,4 @@
-name: Publish Python package to PyPI
+name: Publish artifacts
 
 on:
   release:
@@ -16,9 +16,8 @@ jobs:
         include:
           - os: ubuntu-latest
             cibw_archs: x86_64
-          # TODO: re-enable after fixing QEMU exec format error
-          # - os: ubuntu-latest
-          #   cibw_archs: aarch64
+          - os: ubuntu-24.04-arm
+            cibw_archs: aarch64
           - os: windows-latest
             cibw_archs: AMD64
           - os: macos-latest
@@ -34,12 +33,6 @@ jobs:
       - name: 'Checkout Repository'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up QEMU
-        if: matrix.cibw_archs == 'aarch64'
-        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
-        with:
-          platforms: arm64
-
       - uses: ./.github/actions/setup-env
         with:
           os: ${{ runner.os }}
@@ -48,15 +41,39 @@ jobs:
       - uses: ./.github/actions/create-artifacts
         with:
           os: ${{ runner.os }}
+          cibw-archs: ${{ matrix.cibw_archs }}
         env:
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
-          CIBW_CONTAINER_ENGINE: "${{ matrix.cibw_archs == 'aarch64' && 'docker; create_args: --platform linux/arm64/v8' || 'docker' }}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist-${{ matrix.os }}-${{ matrix.cibw_archs }}
           path: ./dist/
+
+  build-wasm-client:
+    name: Build WASM Client (Pyodide)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
+      - name: 'Checkout Repository'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: ./.github/actions/setup-wasm-env
+
+      - uses: ./.github/actions/build-wasm-client
+
+      - name: Upload wasm wheel
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          # NOTE: must NOT match the `dist-*` pattern used by the publish job;
+          # the wasm wheel is for browser distribution (micropip URLs), not PyPI.
+          name: wasm-client-wheel
+          path: ./dist_wasm/*.whl
 
   publish:
     name: Publish to PyPI
@@ -77,3 +94,137 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: ./dist/
+
+  publish-docker:
+    name: Publish Docker image to GHCR
+    needs: publish
+    runs-on: ${{ matrix.runner }}
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            arch_suffix: amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            arch_suffix: arm64
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
+      - name: 'Checkout Repository'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare Docker metadata
+        id: docker-metadata
+        run: |
+          namespace="$(printf '%s' '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          version="${GITHUB_REF_NAME#v}"
+          printf 'namespace=%s\n' "${namespace}" >> "${GITHUB_OUTPUT}"
+          printf 'owner=%s\n' '${{ github.repository_owner }}' >> "${GITHUB_OUTPUT}"
+          printf 'version=%s\n' "${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push Scaler image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: |
+            ghcr.io/${{ steps.docker-metadata.outputs.namespace }}/scaler:${{ steps.docker-metadata.outputs.version }}-${{ matrix.arch_suffix }}
+            ghcr.io/${{ steps.docker-metadata.outputs.namespace }}/scaler:latest-${{ matrix.arch_suffix }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.docker-metadata.outputs.version }}
+
+  release-wasm:
+    name: Attach WASM wheel to GitHub Release
+    needs: build-wasm-client
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
+      - name: 'Checkout Repository'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download wasm wheel artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: wasm-client-wheel
+          path: ./dist_wasm/
+
+      - name: Compute checksums and manifest
+        id: manifest
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+        run: |
+          set -euo pipefail
+          cd dist_wasm
+          shopt -s nullglob
+          wheels=( opengris_scaler-*emscripten*wasm32.whl )
+          if [[ ${#wheels[@]} -eq 0 ]]; then
+            echo "::error::No wasm wheel found in dist_wasm/"
+            exit 1
+          fi
+          # The wasm wheel build pins one cp313 / emscripten_4_0_9 wheel.
+          wheel="${wheels[0]}"
+          sha256sum "${wheel}" > "${wheel}.sha256"
+          version="${RELEASE_TAG#v}"
+          # Pyodide / python ABI tags come from the wheel filename:
+          # opengris_scaler-<version>-<py>-<abi>-<plat>.whl
+          stripped="${wheel%.whl}"
+          plat="${stripped##*-}"
+          stripped="${stripped%-*}"
+          abi="${stripped##*-}"
+          stripped="${stripped%-*}"
+          py="${stripped##*-}"
+          cat > wasm-package-index.json <<EOF
+          {
+            "version": "${version}",
+            "wheel": "${wheel}",
+            "url": "https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/${wheel}",
+            "sha256": "$(cut -d' ' -f1 < "${wheel}.sha256")",
+            "pyodide_version": "0.29.3",
+            "python_tag": "${py}",
+            "abi_tag": "${abi}",
+            "platform_tag": "${plat}"
+          }
+          EOF
+          echo "wheel=${wheel}" >> "$GITHUB_OUTPUT"
+          ls -la
+
+      - name: Upload wheel + checksum + manifest to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          cd dist_wasm
+          gh release upload "${RELEASE_TAG}" \
+            opengris_scaler-*emscripten*wasm32.whl \
+            opengris_scaler-*emscripten*wasm32.whl.sha256 \
+            wasm-package-index.json \
+            --clobber

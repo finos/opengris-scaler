@@ -3,6 +3,11 @@
 
 const { useState, useEffect, useRef, useCallback } = React;
 
+const OCI_SHAPE_PRICING = {
+  "CI.Standard.A1.Flex": { ocpuPrice: 0.013106, memPrice: 0.0019659 },
+  "CI.Standard.E4.Flex": { ocpuPrice: 0.032765, memPrice: 0.0019659 },
+};
+
 /* ── SecretInput ── */
 function SecretInput({ value, onChange, placeholder, style }) {
   const [visible, setVisible] = useState(false);
@@ -255,6 +260,302 @@ function RegionSelect({ value, onChange }) {
           </div>,
           document.body,
         )}
+    </div>
+  );
+}
+
+/* ── OciRegionSelect ── */
+function OciRegionSelect({ value, onChange }) {
+  const regions = window.SCALER_OCI_REGIONS || [];
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const triggerRef = useRef(null);
+  const dropdownRef = useRef(null);
+  const [dropdownStyle, setDropdownStyle] = useState({});
+
+  const filtered = regions.filter(
+    (r) =>
+      r.value.toLowerCase().includes(search.toLowerCase()) ||
+      r.label.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (
+        triggerRef.current &&
+        !triggerRef.current.contains(e.target) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target)
+      ) {
+        setOpen(false);
+        setSearch("");
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const openDropdown = () => {
+    if (!triggerRef.current) return;
+    const r = triggerRef.current.getBoundingClientRect();
+    setDropdownStyle({
+      position: "fixed",
+      top: r.bottom + 4,
+      left: r.left,
+      width: r.width,
+    });
+    setSearch("");
+    setOpen(true);
+  };
+
+  const selected = regions.find((r) => r.value === value);
+
+  return (
+    <div ref={triggerRef} style={{ position: "relative" }}>
+      <button
+        onClick={() => (open ? setOpen(false) : openDropdown())}
+        style={{
+          width: "100%",
+          background: "var(--bg-surface)",
+          border: "1px solid var(--border-accent)",
+          borderRadius: 3,
+          padding: "8px 10px",
+          color: "var(--text-primary)",
+          fontFamily: "inherit",
+          fontSize: 12,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          textAlign: "left",
+          outline: "none",
+        }}
+      >
+        <span style={{ flex: 1 }}>
+          {value ? (
+            <>
+              <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>
+                {value}
+              </span>
+              {selected && (
+                <span style={{ color: "var(--text-muted)", marginLeft: 10, fontSize: 11 }}>
+                  {selected.label}
+                </span>
+              )}
+            </>
+          ) : (
+            <span style={{ color: "var(--text-dim)" }}>Select region…</span>
+          )}
+        </span>
+        <span
+          style={{
+            display: "inline-block",
+            width: 7,
+            height: 7,
+            borderRight: "1.5px solid var(--text-muted)",
+            borderBottom: "1.5px solid var(--text-muted)",
+            transform: open ? "rotate(225deg)" : "rotate(45deg)",
+            position: "relative",
+            top: open ? "2px" : "-2px",
+            flexShrink: 0,
+          }}
+        />
+      </button>
+      {open &&
+        ReactDOM.createPortal(
+          <div
+            ref={dropdownRef}
+            style={{
+              ...dropdownStyle,
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: 4,
+              zIndex: 9999,
+              boxShadow: "0 16px 48px rgba(0,0,0,0.7)",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ padding: "8px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <input
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search regions…"
+                style={{
+                  width: "100%",
+                  background: "var(--bg-surface)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: 3,
+                  padding: "6px 9px",
+                  color: "var(--text-primary)",
+                  fontFamily: "inherit",
+                  fontSize: 12,
+                  outline: "none",
+                }}
+              />
+            </div>
+            <div style={{ maxHeight: 260, overflowY: "auto" }}>
+              {filtered.map((r) => (
+                <div
+                  key={r.value}
+                  onClick={() => { onChange(r.value); setOpen(false); setSearch(""); }}
+                  style={{
+                    padding: "8px 12px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 10,
+                    background: r.value === value ? "rgba(0,200,224,0.08)" : "transparent",
+                    borderBottom: "1px solid rgba(255,255,255,0.03)",
+                  }}
+                  onMouseEnter={(e) => { if (r.value !== value) e.currentTarget.style.background = "var(--bg-surface)"; }}
+                  onMouseLeave={(e) => { if (r.value !== value) e.currentTarget.style.background = "transparent"; }}
+                >
+                  <span style={{ fontSize: 12, fontWeight: 600, color: r.value === value ? "var(--text-success)" : "var(--text-primary)", flexShrink: 0 }}>
+                    {r.value}
+                  </span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{r.label}</span>
+                </div>
+              ))}
+              {filtered.length === 0 && (
+                <div style={{ padding: 20, textAlign: "center", color: "var(--text-dim)", fontSize: 12 }}>
+                  No regions match
+                </div>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
+/* ── OciShapeSelect ── */
+const OCI_SHAPES = [
+  { value: "CI.Standard.A1.Flex", label: "ARM - Ampere A1", arch: "ARM" },
+  { value: "CI.Standard.E4.Flex", label: "x86 - Standard E4", arch: "x86" },
+];
+
+function OciShapeSelect({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef(null);
+  const dropdownRef = useRef(null);
+  const [dropdownStyle, setDropdownStyle] = useState({});
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target) &&
+        dropdownRef.current && !dropdownRef.current.contains(e.target)
+      ) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const openDropdown = () => {
+    if (!triggerRef.current) return;
+    const r = triggerRef.current.getBoundingClientRect();
+    setDropdownStyle({ position: "fixed", top: r.bottom + 4, left: r.left, width: r.width });
+    setOpen(true);
+  };
+
+  const selected = OCI_SHAPES.find((s) => s.value === value) || OCI_SHAPES[0];
+
+  return (
+    <div ref={triggerRef} style={{ position: "relative" }}>
+      <button
+        onClick={() => (open ? setOpen(false) : openDropdown())}
+        style={{
+          width: "100%",
+          background: "var(--bg-surface)",
+          border: "1px solid var(--border-accent)",
+          borderRadius: 3,
+          padding: "8px 10px",
+          color: "var(--text-primary)",
+          fontFamily: "inherit",
+          fontSize: 12,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          textAlign: "left",
+          outline: "none",
+        }}
+      >
+        <span style={{ flex: 1, color: "var(--text-secondary)", fontWeight: 600 }}>{selected.label}</span>
+        <span
+          style={{
+            display: "inline-block",
+            width: 7,
+            height: 7,
+            borderRight: "1.5px solid var(--text-muted)",
+            borderBottom: "1.5px solid var(--text-muted)",
+            transform: open ? "rotate(225deg)" : "rotate(45deg)",
+            position: "relative",
+            top: open ? "2px" : "-2px",
+            flexShrink: 0,
+          }}
+        />
+      </button>
+      {open && ReactDOM.createPortal(
+        <div
+          ref={dropdownRef}
+          style={{
+            ...dropdownStyle,
+            background: "var(--bg-elevated)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: 4,
+            zIndex: 9999,
+            boxShadow: "0 16px 48px rgba(0,0,0,0.7)",
+            overflow: "hidden",
+          }}
+        >
+          {OCI_SHAPES.map((s) => (
+            <div
+              key={s.value}
+              onClick={() => { onChange(s.value); setOpen(false); }}
+              style={{
+                padding: "10px 12px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                background: s.value === (value || OCI_SHAPES[0].value) ? "rgba(0,200,224,0.08)" : "transparent",
+                borderBottom: "1px solid rgba(255,255,255,0.04)",
+              }}
+              onMouseEnter={(e) => {
+                if (s.value !== (value || OCI_SHAPES[0].value))
+                  e.currentTarget.style.background = "var(--bg-surface)";
+              }}
+              onMouseLeave={(e) => {
+                if (s.value !== (value || OCI_SHAPES[0].value))
+                  e.currentTarget.style.background = "transparent";
+              }}
+            >
+              <span style={{ flex: 1 }}>
+                <span style={{
+                  display: "block",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: s.value === (value || OCI_SHAPES[0].value) ? "var(--text-success)" : "var(--text-primary)",
+                }}>
+                  {s.label}
+                </span>
+                <span style={{ display: "block", fontSize: 10, color: "var(--text-dim)", marginTop: 1 }}>
+                  ${OCI_SHAPE_PRICING[s.value].ocpuPrice.toFixed(2)}/OCPU/h · ${OCI_SHAPE_PRICING[s.value].memPrice.toFixed(3)}/GB/h
+                </span>
+              </span>
+              {s.value === (value || OCI_SHAPES[0].value) && (
+                <span style={{ color: "var(--text-success)", fontSize: 10, flexShrink: 0 }}>✓</span>
+              )}
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -843,10 +1144,23 @@ function TerminalWindow({ lines, config, style }) {
 function CopyButton({ value }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
-    navigator.clipboard.writeText(value).then(() => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(value).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      });
+    } else {
+      const el = document.createElement("textarea");
+      el.value = value;
+      el.style.position = "fixed";
+      el.style.opacity = "0";
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    });
+    }
   };
   return (
     <button
@@ -960,12 +1274,12 @@ function DeployDetails({ visible, style }) {
 }
 
 /* ── HelpTip ── */
-function HelpTip({ text }) {
+function HelpTip({ text, children, width = 400 }) {
   const [btnRect, setBtnRect] = useState(null);
-  const [placement, setPlacement] = useState(null);
+  const [measured, setMeasured] = useState(null); // null while measuring, then { above, width }
   const btnRef = useRef(null);
   const popupRef = useRef(null);
-  const POPUP_WIDTH = 260;
+  const MAX_WIDTH = width;
 
   const open = btnRect !== null;
 
@@ -980,15 +1294,16 @@ function HelpTip({ text }) {
   }, [open]);
 
   useEffect(() => {
-    if (!open || !popupRef.current || placement !== null) return;
+    if (!open || !popupRef.current || measured !== null) return;
     const h = popupRef.current.offsetHeight;
-    setPlacement(btnRect.top >= h + 16);
-  }, [open, btnRect, placement]);
+    const w = popupRef.current.offsetWidth;
+    setMeasured({ above: btnRect.top >= h + 16, width: w });
+  }, [open, btnRect, measured]);
 
   const handleOpen = () => {
     if (!btnRef.current) return;
     setBtnRect(btnRef.current.getBoundingClientRect());
-    setPlacement(null);
+    setMeasured(null);
   };
 
   const renderBlock = (block, key) => {
@@ -1030,13 +1345,14 @@ function HelpTip({ text }) {
   const popup =
     open &&
     (() => {
+      const actualWidth = measured?.width ?? MAX_WIDTH;
       const left = Math.min(
-        Math.max(8, btnRect.left + btnRect.width / 2 - POPUP_WIDTH / 2),
-        window.innerWidth - POPUP_WIDTH - 8,
+        Math.max(8, btnRect.left + btnRect.width / 2 - actualWidth / 2),
+        window.innerWidth - actualWidth - 8,
       );
-      const above = placement === true;
+      const above = measured?.above === true;
       const posStyle =
-        placement === null
+        measured === null
           ? { top: 0, visibility: "hidden" }
           : above
             ? { bottom: window.innerHeight - btnRect.top + 7 }
@@ -1053,7 +1369,8 @@ function HelpTip({ text }) {
             position: "fixed",
             left,
             ...posStyle,
-            width: POPUP_WIDTH,
+            width: "max-content",
+            maxWidth: MAX_WIDTH,
             background: "var(--bg-popup)",
             border: "1px solid var(--border-strong)",
             borderRadius: 4,
@@ -1070,7 +1387,7 @@ function HelpTip({ text }) {
           }}
         >
           {content}
-          {placement !== null && (
+          {measured !== null && (
             <div
               style={{
                 position: "absolute",
@@ -1088,6 +1405,20 @@ function HelpTip({ text }) {
         document.body,
       );
     })();
+
+  if (children) {
+    return (
+      <span
+        ref={btnRef}
+        onMouseEnter={handleOpen}
+        onMouseLeave={() => setBtnRect(null)}
+        style={{ display: "inline-flex" }}
+      >
+        {children}
+        {popup}
+      </span>
+    );
+  }
 
   return (
     <span style={{ display: "inline-flex", alignItems: "center" }}>
@@ -1523,28 +1854,37 @@ const WM_TYPE_DEFS = [
     desc: "Managed EC2 instances via ORB worker manager",
   },
   {
+    value: "oci_raw",
+    label: "OCI Container Instance",
+    badge: "OCI",
+    desc: "Oracle Cloud Infrastructure - container instances via OCIR",
+  },
+  {
     value: "aws_raw_ecs",
     label: "AWS ECS",
     badge: "AWS",
     desc: "Container tasks on Elastic Container Service",
+    disabled: true,
   },
   {
     value: "aws_hpc",
     label: "AWS Batch",
     badge: "AWS",
     desc: "High-performance compute via AWS Batch",
+    disabled: true,
   },
   {
     value: "symphony",
     label: "IBM Spectrum Symphony",
     badge: "IBM",
     desc: "IBM Spectrum Symphony grid via soamapi",
+    disabled: true,
   },
   {
-    value: "oci",
-    label: "OCI Compute",
+    value: "oci_hpc",
+    label: "OCI HPC",
     badge: "OCI",
-    desc: "Oracle Cloud Infrastructure — coming soon",
+    desc: "Oracle Cloud Infrastructure - per-task container instance jobs",
     disabled: true,
   },
 ];
@@ -1782,6 +2122,8 @@ function WorkerManagerTypeSelect({ value, onChange }) {
 Object.assign(window, {
   SecretInput,
   RegionSelect,
+  OciRegionSelect,
+  OciShapeSelect,
   InstancePicker,
   TerminalWindow,
   DeployDetails,

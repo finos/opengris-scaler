@@ -1,10 +1,10 @@
 #include <iostream>
 #include <string>
 
+#include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/sync/connector_socket.h"
 
-using scaler::ymq::Bytes;
 using scaler::ymq::IOContext;
 using scaler::ymq::Message;
 using scaler::ymq::sync::ConnectorSocket;
@@ -31,7 +31,7 @@ int main()
         }
         std::cout << "YOU ENTERED THIS MESSAGE: " << line << std::endl;
 
-        auto sendResult = socket.sendMessage(Bytes {line});
+        auto sendResult = socket.sendMessage(std::make_unique<scaler::ymq::BufferedBytes>(line));
         if (!sendResult.has_value()) {
             std::cerr << "Failed to send message: " << sendResult.error().what() << std::endl;
             continue;
@@ -46,7 +46,7 @@ int main()
         }
 
         Message reply        = std::move(recvResult.value());
-        std::string replyStr = reply.payload.as_string().value_or("");
+        std::string replyStr = reply.payload->asString().value_or("");
         std::cout << "Received echo: '" << replyStr << "'.\n";
     }
 

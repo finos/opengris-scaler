@@ -1,7 +1,6 @@
 import asyncio
 import multiprocessing
-from asyncio import AbstractEventLoop, Task
-from typing import TYPE_CHECKING, Any, Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from scaler.config.section.scheduler import PolicyConfig, SchedulerConfig
 from scaler.config.types.address import AddressConfig
@@ -12,6 +11,34 @@ from scaler.utility.signal_handler import install_async_shutdown_handler
 
 if TYPE_CHECKING:
     from multiprocessing.synchronize import Event as EventType
+
+
+def run_scheduler(
+    scheduler_config: SchedulerConfig,
+    logging_paths: Tuple[str, ...],
+    logging_config_file: Optional[str],
+    logging_level: str,
+    shutdown_event: Optional["EventType"] = None,
+) -> None:
+    """Run the scheduler in the current process until SIGINT/SIGTERM (or the optional
+    `shutdown_event`) triggers a graceful shutdown. Blocks until the scheduler exited."""
+
+    loop = asyncio.new_event_loop()
+
+    async def _run() -> None:
+        setup_logger(logging_paths, logging_config_file, logging_level)
+        register_event_loop(scheduler_config.event_loop)
+
+        scheduler = Scheduler(scheduler_config)
+        task = loop.create_task(scheduler.get_loops())
+
+        def _cancel_scheduler_task() -> None:
+            loop.call_soon_threadsafe(task.cancel)
+
+        install_async_shutdown_handler(loop, _cancel_scheduler_task, shutdown_event)
+        await task
+
+    run_task_forever(loop, _run())
 
 
 class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
@@ -60,28 +87,11 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
 
         self._shutdown_event = shutdown_event
 
-        self._scheduler: Optional[Scheduler] = None
-        self._loop: Optional[AbstractEventLoop] = None
-        self._task: Optional[Task[Any]] = None
-
     def run(self) -> None:
-        self._loop = asyncio.new_event_loop()
-        run_task_forever(self._loop, self._run())
-
-    async def _run(self) -> None:
-        self.__initialize()
-
-        scheduler = Scheduler(self._scheduler_config)
-        self._task = self._loop.create_task(scheduler.get_loops())
-        self.__register_signal()
-        await self._task
-
-    def __initialize(self) -> None:
-        setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
-        register_event_loop(self._scheduler_config.event_loop)
-
-    def __register_signal(self):
-        install_async_shutdown_handler(self._loop, self.__handle_signal, self._shutdown_event)
-
-    def __handle_signal(self):
-        self._loop.call_soon_threadsafe(self._task.cancel)
+        run_scheduler(
+            self._scheduler_config,
+            self._logging_paths,
+            self._logging_config_file,
+            self._logging_level,
+            self._shutdown_event,
+        )

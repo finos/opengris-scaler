@@ -41,7 +41,8 @@ public:
 
     const Identity& identity() const noexcept;
 
-    std::future<std::expected<void, scaler::ymq::Error>> sendMessage(scaler::ymq::Bytes messagePayload);
+    std::future<std::expected<void, scaler::ymq::Error>> sendMessage(
+        std::unique_ptr<scaler::ymq::Bytes> messagePayload);
 
     std::future<std::expected<scaler::ymq::Message, scaler::ymq::Error>> recvMessage();
 

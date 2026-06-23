@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING, Dict, List
 
 if TYPE_CHECKING:
@@ -29,6 +30,14 @@ def extract_desired_count(
         if request_capabilities.items() <= own_capabilities.items():
             total += request.taskConcurrency
     return total
+
+
+def load_requirements_content(requirements_txt: str) -> str:
+    """Return requirements file content, reading from disk if requirements_txt is a file path."""
+    if os.path.isfile(requirements_txt):
+        with open(requirements_txt) as f:
+            return f.read()
+    return requirements_txt
 
 
 def format_capabilities(capabilities: Dict[str, int]) -> str:

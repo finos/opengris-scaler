@@ -40,13 +40,13 @@
     {
       "name": "windows-x64",
       "displayName": "Windows x64 (MSVC)",
-      "generator": "Visual Studio 17 2022",
       "cacheVariables": {
-        "CMAKE_INSTALL_PREFIX": "${sourceDir}/src"
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/src",
+        "CMAKE_PREFIX_PATH": "C:/Program Files"
       },
       "architecture": {
         "value": "x64",
-        "strategy": "external"
+        "strategy": "set"
       },
       "binaryDir": "${sourceDir}/build_windows_x64"
     },
@@ -59,6 +59,19 @@
         "CMAKE_PREFIX_PATH": "$env{TEMP}/opengris-thirdparties"
       },
       "binaryDir": "${sourceDir}/build_windows_x64_wheel"
+    },
+    {
+      "name": "windows-arm64",
+      "displayName": "Windows ARM64 (MSVC)",
+      "cacheVariables": {
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/src",
+        "CMAKE_PREFIX_PATH": "C:/Program Files"
+      },
+      "architecture": {
+        "value": "ARM64",
+        "strategy": "set"
+      },
+      "binaryDir": "${sourceDir}/build_windows_arm64"
     }
   ],
   "buildPresets": [
@@ -106,6 +119,17 @@
       "name": "windows-x64",
       "displayName": "Windows x64 build",
       "configurePreset": "windows-x64",
+      "configuration": "Debug",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "windows-arm64",
+      "displayName": "Windows ARM64 build",
+      "configurePreset": "windows-arm64",
       "configuration": "Debug",
       "condition": {
         "type": "equals",
@@ -175,6 +199,20 @@
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
       }
+    },
+    {
+      "name": "windows-arm64",
+      "configurePreset": "windows-arm64",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
     }
   ]
 }
+

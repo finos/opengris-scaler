@@ -19,6 +19,8 @@ from scaler.utility.identifiers import ClientID, TaskID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.one_to_many_dict import OneToManyDict
 
+logger = logging.getLogger(__name__)
+
 
 class VanillaClientController(ClientController, Looper, Reporter):
     def __init__(self, config_controller: VanillaConfigController):
@@ -60,7 +62,16 @@ class VanillaClientController(ClientController, Looper, Reporter):
     def on_task_begin(self, client_id: ClientID, task_id: TaskID):
         self._client_to_task_ids.add(client_id, task_id)
 
-    def on_task_finish(self, task_id: TaskID) -> ClientID:
+    def on_task_finish(self, task_id: TaskID) -> Optional[ClientID]:
+        # Returns ``None`` when the task is not currently associated with any
+        # tracked client. This happens when the client was disconnected (e.g.
+        # client_timeout_seconds elapsed without a heartbeat) while the task
+        # was still running on a worker: the in-flight task arrives back at
+        # the scheduler after the client mapping has been torn down. Callers
+        # must handle ``None`` by skipping the client-bound send while still
+        # cleaning up scheduler-side state for the task.
+        if not self._client_to_task_ids.has_value(task_id):
+            return None
         return self._client_to_task_ids.remove_value(task_id)
 
     async def on_heartbeat(self, client_id: ClientID, info: ClientHeartbeat):
@@ -77,9 +88,19 @@ class VanillaClientController(ClientController, Looper, Reporter):
             ),
         )
         if client_id not in self._client_last_seen:
-            logging.info(f"{client_id!r} connected")
+            logger.info(f"{client_id!r} connected")
 
         self._client_last_seen[client_id] = (time.time(), info)
+
+    def notice_client_activity(self, client_id: ClientID):
+        # Any inbound message from a tracked client counts as liveness for
+        # the heartbeat-based timeout. We deliberately don't register new
+        # clients here -- a client must complete the proper ClientHeartbeat
+        # handshake before it shows up in ``_client_last_seen``.
+        existing = self._client_last_seen.get(client_id)
+        if existing is None:
+            return
+        self._client_last_seen[client_id] = (time.time(), existing[1])
 
     async def on_client_disconnect(self, client_id: ClientID, request: ClientDisconnect):
         if request.disconnectType == ClientDisconnect.DisconnectType.disconnect:
@@ -87,10 +108,10 @@ class VanillaClientController(ClientController, Looper, Reporter):
             return
 
         if self._config_controller.get_config("protected"):
-            logging.warning("cannot shutdown clusters as scheduler is running in protected mode")
+            logger.warning("cannot shutdown clusters as scheduler is running in protected mode")
             accepted = False
         else:
-            logging.info(f"shutdown scheduler and all clusters as received signal from {client_id!r}")
+            logger.info(f"shutdown scheduler and all clusters as received signal from {client_id!r}")
             accepted = True
 
         await self._binder.send(client_id, ClientShutdownResponse(accepted=accepted))
@@ -132,7 +153,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
             await self.__on_client_disconnect(client)
 
     async def __on_client_disconnect(self, client_id: ClientID):
-        logging.info(f"{client_id!r} disconnected")
+        logger.info(f"{client_id!r} disconnected")
         if client_id in self._client_last_seen:
             self._client_last_seen.pop(client_id)
 

@@ -286,6 +286,46 @@ class TestScalerAllConfigShape(unittest.TestCase):
         self.assertIsInstance(config.worker_managers[0], NativeWorkerManagerConfig)
         self.assertIsInstance(config.worker_managers[1], ORBAWSEC2WorkerManagerConfig)
 
+    def test_oci_hpc_worker_manager_parsed_from_toml(self) -> None:
+        from scaler.config.section.oci_hpc_worker_manager import OCIHPCWorkerManagerConfig
+
+        toml = {
+            "worker_manager": {
+                "type": "oci_hpc",
+                "scheduler_address": "tcp://127.0.0.1:6378",
+                "worker_manager_id": "wm-oci-hpc",
+                "compartment_id": "ocid1.compartment.oc1..example",
+                "availability_domain": "AD-1",
+                "subnet_id": "ocid1.subnet.oc1.phx.example",
+                "container_image": "phx.ocir.io/namespace/scaler:latest",
+                "object_storage_namespace": "namespace",
+                "object_storage_bucket": "bucket",
+            }
+        }
+        config = self._parse(toml)
+        self.assertEqual(len(config.worker_managers), 1)
+        self.assertIsInstance(config.worker_managers[0], OCIHPCWorkerManagerConfig)
+
+    def test_oci_raw_worker_manager_parsed_from_toml(self) -> None:
+        from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
+
+        toml = {
+            "worker_manager": {
+                "type": "oci_raw",
+                "scheduler_address": "tcp://127.0.0.1:6378",
+                "worker_manager_id": "wm-oci-raw",
+                "compartment_id": "ocid1.compartment.oc1..example",
+                "availability_domain": "AD-1",
+                "subnet_id": "ocid1.subnet.oc1.phx.example",
+                "container_image": "phx.ocir.io/namespace/scaler:latest",
+                "python_version": "3.12",
+                "requirements_txt": "opengris-scaler>=1.26.6",
+            }
+        }
+        config = self._parse(toml)
+        self.assertEqual(len(config.worker_managers), 1)
+        self.assertIsInstance(config.worker_managers[0], OCIRawWorkerManagerConfig)
+
 
 class TestRunWorkerManager(unittest.TestCase):
     """Tests that _run_worker_manager calls register_event_loop and setup_logger from the per-manager config."""
@@ -334,7 +374,9 @@ class TestRunWorkerManager(unittest.TestCase):
             mock_nm.return_value.run.return_value = None
             _run_worker_manager(config)
 
-        mock_log.assert_called_once_with(config.logging_config.paths, config.logging_config.config_file, "WARNING")
+        mock_log.assert_called_once_with(
+            config.logging_config.paths, config.logging_config.config_file, "WARNING", process_name=config._tag
+        )
 
     def _make_orb_aws_ec2_config(self, event_loop="builtin", logging_level="INFO"):
         from scaler.config.common.logging import LoggingConfig

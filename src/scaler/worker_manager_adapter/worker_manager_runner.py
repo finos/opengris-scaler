@@ -13,6 +13,8 @@ from scaler.utility.event_loop import create_async_loop_routine, run_task_foreve
 from scaler.utility.signal_handler import install_async_shutdown_handler
 from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
 
+logger = logging.getLogger(__name__)
+
 
 class WorkerManagerRunner:
     def __init__(
@@ -63,7 +65,7 @@ class WorkerManagerRunner:
             self._connector_external.destroy()
 
     def _destroy(self) -> None:
-        logging.info(f"Worker manager {self._ident!r} received signal, shutting down")
+        logger.info(f"Worker manager {self._ident!r} received signal, shutting down")
         self._task.cancel()
 
     def _register_signal(self) -> None:
@@ -100,9 +102,9 @@ class WorkerManagerRunner:
             if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
                 pass
             else:
-                logging.exception(f"{self._ident!r}: failed with unhandled exception:\n{e}")
+                logger.exception(f"{self._ident!r}: failed with unhandled exception:\n{e}")
         except Exception:
-            logging.exception(f"{self._ident!r}: failed with unhandled exception")
+            logger.exception(f"{self._ident!r}: failed with unhandled exception")
 
         await self._worker_provisioner.terminate()
 
@@ -113,13 +115,13 @@ class WorkerManagerRunner:
             elif isinstance(message, WorkerManagerHeartbeatEcho):
                 pass
             else:
-                logging.warning(f"Unknown action: received unrecognized message type {type(message).__name__!r}")
+                logger.warning(f"Unknown action: received unrecognized message type {type(message).__name__!r}")
         except Exception:
-            logging.exception(f"Unhandled exception while processing message {type(message).__name__}")
+            logger.exception(f"Unhandled exception while processing message {type(message).__name__}")
 
     async def _handle_command(self, command: WorkerManagerCommand) -> None:
         requests = getattr(command, "setDesiredTaskConcurrencyRequests", None)
         if requests is None:
-            logging.warning("Unknown action: received WorkerManagerCommand with no recognized payload")
+            logger.warning("Unknown action: received WorkerManagerCommand with no recognized payload")
             return
         await self._worker_provisioner.set_desired_task_concurrency(list(requests))

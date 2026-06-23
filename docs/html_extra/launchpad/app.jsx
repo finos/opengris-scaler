@@ -1,5 +1,12 @@
 const { useState, useEffect, useCallback, useRef } = React;
 
+const IS_ADVANCED = new URLSearchParams(window.location.search).has('advanced');
+
+const OCI_SHAPE_PRICING = {
+  "CI.Standard.A1.Flex": { ocpuPrice: 0.013106, memPrice: 0.0019659 },
+  "CI.Standard.E4.Flex": { ocpuPrice: 0.032765, memPrice: 0.0019659 },
+};
+
 /* ── NumericStepper ── */
 function NumericStepper({
   value,
@@ -136,7 +143,6 @@ function WorkerManagerCard({
   fullWidth,
 }) {
   const [localId, setLocalId] = useState(wm.id);
-  const [showAdv, setShowAdv] = useState(false);
   useEffect(() => {
     setLocalId(wm.id);
   }, [wm.id]);
@@ -230,7 +236,13 @@ function WorkerManagerCard({
           <Label>Type</Label>
           <WorkerManagerTypeSelect
             value={wm.type}
-            onChange={(v) => set("type", v)}
+            onChange={(v) => {
+              if (v === "oci_raw") {
+                onChange({ ...wm, type: v, ociShape: "CI.Standard.A1.Flex", ociContainerImage: "ghcr.io/finos/scaler:latest-arm64" });
+              } else {
+                set("type", v);
+              }
+            }}
           />
         </div>
         <div
@@ -311,66 +323,34 @@ function WorkerManagerCard({
               </select>
             </div>
           </div>
-          <button
-            onClick={() => setShowAdv((v) => !v)}
-            style={{
-              background: "none",
-              border: "1px solid var(--border-accent)",
-              borderRadius: 3,
-              padding: "6px 10px",
-              color: "var(--text-muted)",
-              fontFamily: "inherit",
-              fontSize: 11,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              width: "100%",
-            }}
-          >
-            <span>Advanced</span>
-            <span
+          <div>
+            <Label
+              help={
+                "- Installed on each worker instance\n- opengris-scaler must be included"
+              }
+            >
+              requirements.txt
+            </Label>
+            <textarea
+              value={wm.requirements}
+              onChange={(e) => set("requirements", e.target.value)}
+              spellCheck={false}
               style={{
-                display: "inline-block",
-                width: 7,
-                height: 7,
-                borderRight: "1.5px solid var(--text-muted)",
-                borderBottom: "1.5px solid var(--text-muted)",
-                transform: showAdv ? "rotate(225deg)" : "rotate(45deg)",
-                position: "relative",
-                top: showAdv ? "2px" : "-2px",
+                width: "100%",
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-accent)",
+                borderRadius: 3,
+                padding: "7px 10px",
+                color: "var(--text-primary)",
+                fontFamily: "inherit",
+                fontSize: 11,
+                outline: "none",
+                resize: "vertical",
+                minHeight: 72,
+                lineHeight: 1.6,
               }}
             />
-          </button>
-          {showAdv && (
-            <div>
-              <Label
-                help={
-                  "- Installed on each worker instance\n- opengris-scaler must be included"
-                }
-              >
-                requirements.txt
-              </Label>
-              <textarea
-                value={wm.requirements}
-                onChange={(e) => set("requirements", e.target.value)}
-                style={{
-                  width: "100%",
-                  background: "var(--bg-surface)",
-                  border: "1px solid var(--border-accent)",
-                  borderRadius: 3,
-                  padding: "7px 10px",
-                  color: "var(--text-primary)",
-                  fontFamily: "inherit",
-                  fontSize: 11,
-                  outline: "none",
-                  resize: "vertical",
-                  minHeight: 72,
-                  lineHeight: 1.6,
-                }}
-              />
-            </div>
-          )}
+          </div>
           <div
             style={{
               padding: "8px 10px",
@@ -536,18 +516,283 @@ function WorkerManagerCard({
           </div>
         </>
       )}
+
+      {/* oci_raw */}
+      {wm.type === "oci_raw" && (() => {
+        const ociShape = wm.ociShape || "CI.Standard.A1.Flex";
+        const ociPricing = OCI_SHAPE_PRICING[ociShape] || OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
+        const ociCostPerHr = ociPricing.ocpuPrice * (wm.ociOcpus || 4) + ociPricing.memPrice * (wm.ociMemoryGb || 30);
+        return (
+          <>
+            <div>
+              <Label help={"The OCID of the compartment where container instances will be launched. In the OCI Console, go to Identity & Security > Compartments, click your compartment, and copy the OCID. To use the root compartment, use your Tenancy OCID (ocid1.tenancy.oc1...) directly."}>Compartment ID</Label>
+              <input
+                value={wm.ociCompartmentId || ""}
+                onChange={(e) => set("ociCompartmentId", e.target.value)}
+                style={inp}
+                placeholder="ocid1.compartment.oc1... or ocid1.tenancy.oc1..."
+              />
+            </div>
+            <div>
+              <Label help={"The availability domain where instances will run. In the OCI Console, go to Compute > Instances — the full AD name is in the AD column (e.g. Uocm:PHX-AD-1). If you have no instances yet, click Create Instance and check the Placement section to see the available ADs for your region."}>Availability Domain</Label>
+              <input
+                value={wm.ociAvailabilityDomain || ""}
+                onChange={(e) => set("ociAvailabilityDomain", e.target.value)}
+                style={inp}
+                placeholder="AD-1"
+              />
+            </div>
+            <div>
+              <Label help={"The OCID of the subnet for container network interfaces. In the OCI Console, go to Networking > Virtual Cloud Networks > [your VCN] > Subnets, then click a subnet and copy its OCID.\n\nIf you don't have a VCN yet: go to Networking > Virtual Cloud Networks > Create VCN, and choose 'Create VCN with Internet Connectivity' to set up a VCN and public subnet automatically."}>Subnet ID</Label>
+              <input
+                value={wm.ociSubnetId || ""}
+                onChange={(e) => set("ociSubnetId", e.target.value)}
+                style={inp}
+                placeholder="ocid1.subnet.oc1..aaa..."
+              />
+            </div>
+            <div>
+              <Label help={"The OCI region where your resources are located. To confirm the identifier in the OCI Console, click the region selector at the top of the page, then Manage Regions — identifiers are shown in the Region Identifier column."}>Region</Label>
+              <OciRegionSelect
+                value={wm.ociRegion || ""}
+                onChange={(v) => set("ociRegion", v)}
+              />
+            </div>
+            <div>
+              <Label help="Instance shape determines the CPU architecture and pricing.">Instance Shape</Label>
+              <OciShapeSelect
+                value={ociShape}
+                onChange={(v) => {
+                  const image = v === "CI.Standard.A1.Flex"
+                    ? "ghcr.io/finos/scaler:latest-arm64"
+                    : "ghcr.io/finos/scaler:latest-amd64";
+                  onChange({ ...wm, ociShape: v, ociContainerImage: image });
+                }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <Label help="Number of OCPUs per container instance (also determines worker count).">OCPUs</Label>
+                <NumericStepper
+                  value={wm.ociOcpus || 4}
+                  onChange={(v) => set("ociOcpus", v)}
+                  min={1}
+                  max={64}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <Label help="Memory in GB for the container instance. Must satisfy OCI's minimum memory-per-OCPU ratio for your chosen shape.">Memory (GB)</Label>
+                <NumericStepper
+                  value={wm.ociMemoryGb || 30}
+                  onChange={(v) => set("ociMemoryGb", v)}
+                  min={1}
+                  max={512}
+                />
+              </div>
+            </div>
+            <div>
+              <Label help={"- Installed inside the container instance\n- opengris-scaler must be included"}>requirements.txt</Label>
+              <textarea
+                value={wm.requirements || ""}
+                onChange={(e) => set("requirements", e.target.value)}
+                spellCheck={false}
+                style={{
+                  width: "100%",
+                  background: "var(--bg-surface)",
+                  border: "1px solid var(--border-accent)",
+                  borderRadius: 3,
+                  padding: "7px 10px",
+                  color: "var(--text-primary)",
+                  fontFamily: "inherit",
+                  fontSize: 11,
+                  outline: "none",
+                  resize: "vertical",
+                  minHeight: 72,
+                  lineHeight: 1.6,
+                }}
+              />
+            </div>
+            <div
+              style={{
+                padding: "8px 10px",
+                background: "rgba(0,255,136,0.04)",
+                border: "1px solid var(--border-success)",
+                borderRadius: 3,
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
+                  {wm.ociOcpus || 4} OCPU × ${ociPricing.ocpuPrice.toFixed(2)}/h
+                </span>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  ${(ociPricing.ocpuPrice * (wm.ociOcpus || 4)).toFixed(2)}/h
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
+                  {wm.ociMemoryGb || 30} GB × ${ociPricing.memPrice.toFixed(3)}/h
+                </span>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  ${(ociPricing.memPrice * (wm.ociMemoryGb || 30)).toFixed(2)}/h
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderTop: "1px solid var(--border-success)", paddingTop: 4, marginTop: 2 }}>
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Total</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-success)" }}>
+                  USD {ociCostPerHr.toFixed(2)}/h
+                </span>
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
+      {/* oci_hpc */}
+      {wm.type === "oci_hpc" && (
+        <>
+          <div>
+            <Label help="OCI Compartment OCID where container instances are launched.">Compartment ID</Label>
+            <input
+              value={wm.ociCompartmentId || ""}
+              onChange={(e) => set("ociCompartmentId", e.target.value)}
+              style={inp}
+              placeholder="ocid1.compartment.oc1..aaa..."
+            />
+          </div>
+          <div>
+            <Label help="OCI Availability Domain (e.g. AD-1 or Uocm:PHX-AD-1).">Availability Domain</Label>
+            <input
+              value={wm.ociAvailabilityDomain || ""}
+              onChange={(e) => set("ociAvailabilityDomain", e.target.value)}
+              style={inp}
+              placeholder="AD-1"
+            />
+          </div>
+          <div>
+            <Label help="OCI Subnet OCID for container instance network interfaces.">Subnet ID</Label>
+            <input
+              value={wm.ociSubnetId || ""}
+              onChange={(e) => set("ociSubnetId", e.target.value)}
+              style={inp}
+              placeholder="ocid1.subnet.oc1..aaa..."
+            />
+          </div>
+          <div>
+            <Label help={"The OCI Container Registry (OCIR) image URI for worker containers. In the OCI Console, go to Developer Services > Container Registry, select your repository, and copy the full path shown (format: <region>.ocir.io/<namespace>/<repo>:<tag>)."}>Container Image</Label>
+            <input
+              value={wm.ociContainerImage || ""}
+              onChange={(e) => set("ociContainerImage", e.target.value)}
+              style={inp}
+              placeholder="us-ashburn-1.ocir.io/myns/scaler:latest"
+            />
+          </div>
+          <div>
+            <Label help={"The OCI region where your resources are located. To confirm the identifier in the OCI Console, click the region selector at the top of the page, then Manage Regions — identifiers are shown in the Region Identifier column."}>Region</Label>
+            <OciRegionSelect
+              value={wm.ociRegion || ""}
+              onChange={(v) => set("ociRegion", v)}
+            />
+          </div>
+          <div>
+            <Label help={"Your tenancy's Object Storage namespace (a short unique string). In the OCI Console, go to Storage > Object Storage & Archive Storage > Buckets — the namespace is shown at the top of the page, or under Governance & Administration > Tenancy Details."}>Object Storage Namespace</Label>
+            <input
+              value={wm.ociObjectStorageNamespace || ""}
+              onChange={(e) => set("ociObjectStorageNamespace", e.target.value)}
+              style={inp}
+              placeholder="mytenancy"
+            />
+          </div>
+          <div>
+            <Label help={"The OCI Object Storage bucket used to pass task inputs and results between the scheduler and workers. Create one in the OCI Console under Storage > Object Storage & Archive Storage > Buckets > Create Bucket."}>Object Storage Bucket</Label>
+            <input
+              value={wm.ociObjectStorageBucket || ""}
+              onChange={(e) => set("ociObjectStorageBucket", e.target.value)}
+              style={inp}
+              placeholder="scaler-tasks-bucket"
+            />
+          </div>
+          <div>
+            <Label help="Key prefix for task inputs and results in Object Storage.">Object Storage Prefix</Label>
+            <input
+              value={wm.ociObjectStoragePrefix || "scaler-tasks"}
+              onChange={(e) => set("ociObjectStoragePrefix", e.target.value)}
+              style={inp}
+              placeholder="scaler-tasks"
+            />
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <Label help="Number of OCPUs allocated to each job container instance. Check OCI Container Instances documentation for the valid OCPU/memory combinations for your chosen shape.">OCPUs per Job</Label>
+              <NumericStepper
+                value={wm.ociOcpus || 1}
+                onChange={(v) => set("ociOcpus", v)}
+                min={1}
+                max={64}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Label help="Memory in GB allocated to each job container instance. Must satisfy OCI's minimum memory-per-OCPU ratio for your shape.">Memory (GB)</Label>
+              <NumericStepper
+                value={wm.ociMemoryGb || 6}
+                onChange={(v) => set("ociMemoryGb", v)}
+                min={1}
+                max={512}
+              />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <Label help="Maximum number of concurrently running container instances.">Max Concurrent Jobs</Label>
+              <NumericStepper
+                value={wm.ociMaxConcurrentJobs || 100}
+                onChange={(v) => set("ociMaxConcurrentJobs", v)}
+                min={1}
+                max={10000}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Label help="Maximum time in minutes a job container instance may run before being forcibly terminated by OCI.">Timeout (min)</Label>
+              <NumericStepper
+                value={wm.ociJobTimeoutMinutes || 60}
+                onChange={(v) => set("ociJobTimeoutMinutes", v)}
+                min={1}
+                max={1440}
+              />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 /* ── CopyBtn ── */
+function copyText(text, onSuccess) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(onSuccess);
+  } else {
+    const el = document.createElement("textarea");
+    el.value = text;
+    el.style.position = "fixed";
+    el.style.opacity = "0";
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand("copy");
+    document.body.removeChild(el);
+    onSuccess();
+  }
+}
+
 function CopyBtn({ value }) {
   const [copied, setCopied] = useState(false);
   const [hov, setHov] = useState(false);
   return (
     <button
       onClick={() =>
-        navigator.clipboard.writeText(value).then(() => {
+        copyText(value, () => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         })
@@ -1068,16 +1313,20 @@ function App() {
   const [region, setRegion] = useState("us-east-1");
   const [accessKeyId, setAKI] = useState("");
   const [secretKey, setSK] = useState("");
+  const [credTab, setCredTab] = useState("aws");
+  const [ociUserId, setOciUserId] = useState("");
+  const [ociTenancyId, setOciTenancyId] = useState("");
+  const [ociFingerprint, setOciFingerprint] = useState("");
+  const [ociPrivateKey, setOciPrivateKey] = useState("");
   const [transport, setTransport] = useState("ws");
   const [networkBackend, setNetBack] = useState("ymq");
-  const [pythonVersion, setPyVer] = useState("3.14");
+  const [pythonVersion, setPyVer] = useState("3.13");
   const [schedulerRequirements, setSchedulerReqs] = useState(
     "opengris-scaler[all]",
   );
   const [schedulerType, setSchedulerType] = useState("c5.xlarge");
   const [schedulerPort, setSchedPort] = useState(6788);
   const [objectStoragePort, setObjPort] = useState(6789);
-  const [showSchedAdv, setShowSchedAdv] = useState(false);
   const [activeTab, setActiveTab] = useState("config");
   const [theme, setTheme] = useState(
     () =>
@@ -1126,7 +1375,9 @@ function App() {
     }
   });
   const [keyMaterial, setKeyMaterial] = useState(null);
+  const [pausedOp, setPausedOp] = useState(null); // "deploy" | "teardown"
   const abortRef = useRef(null);
+  const partialRef = useRef(null); // latest partial state, readable synchronously in catch blocks
 
   const [workerMonitorReady, setWorkerMonitorReady] = useState(false);
   const [workerMonitorElapsed, setWorkerMonitorElapsed] = useState(0);
@@ -1191,6 +1442,7 @@ function App() {
     setLog((prev) => [...prev, { text, cls: cls || "info" }]);
   }, []);
   const savePartial = useCallback((partial) => {
+    partialRef.current = partial;
     setProvState(partial);
     try {
       localStorage.setItem("scaler_state", JSON.stringify(partial));
@@ -1202,15 +1454,20 @@ function App() {
     price: 0.17,
   };
   const wmCosts = workerManagers.map((wm) => {
-    if (wm.type !== "orb_aws_ec2") return 0;
-    const inst = allInstances.find((i) => i.type === wm.instanceType) || {
-      price: 0,
-    };
-    const count =
-      wm.capMode === "instances"
-        ? Math.max(0, wm.instanceCap || 0)
-        : Math.max(0, Math.floor((wm.budgetCap || 0) / (inst.price || 1)));
-    return count * inst.price;
+    if (wm.type === "orb_aws_ec2") {
+      const inst = allInstances.find((i) => i.type === wm.instanceType) || { price: 0 };
+      const count =
+        wm.capMode === "instances"
+          ? Math.max(0, wm.instanceCap || 0)
+          : Math.max(0, Math.floor((wm.budgetCap || 0) / (inst.price || 1)));
+      return count * inst.price;
+    }
+    if (wm.type === "oci_raw") {
+      const shape = wm.ociShape || "CI.Standard.A1.Flex";
+      const pricing = OCI_SHAPE_PRICING[shape] || OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
+      return pricing.ocpuPrice * (wm.ociOcpus || 4) + pricing.memPrice * (wm.ociMemoryGb || 30);
+    }
+    return 0;
   });
   const totalCostPerHr =
     schedulerInst.price + wmCosts.reduce((a, b) => a + b, 0);
@@ -1274,20 +1531,36 @@ function App() {
       `Monitor port (scheduler + 2 = ${monitorPort}) conflicts with the Worker Monitor port (${WORKER_MONITOR_PORT}).`,
     );
 
+  const hasOciWm = workerManagers.some((wm) => wm.type === "oci_raw");
+  const hasOciCredentials =
+    ociUserId.trim().length > 0 &&
+    ociTenancyId.trim().length > 0 &&
+    ociFingerprint.trim().length > 0 &&
+    ociPrivateKey.trim().length > 0;
+  const ociWmErrors = workerManagers
+    .filter((wm) => wm.type === "oci_raw")
+    .flatMap((wm) => {
+      const errs = [];
+      if (!wm.ociCompartmentId?.trim()) errs.push(`OCI worker manager '${wm.id}' requires a Compartment ID`);
+      if (!wm.ociAvailabilityDomain?.trim()) errs.push(`OCI worker manager '${wm.id}' requires an Availability Domain`);
+      if (!wm.ociSubnetId?.trim()) errs.push(`OCI worker manager '${wm.id}' requires a Subnet ID`);
+      return errs;
+    });
+
   const checks = [
     {
       key: "aki",
-      label: "Access Key ID required",
+      label: "AWS Access Key ID is required",
       ok: accessKeyId.trim().length > 0,
     },
     {
       key: "sk",
-      label: "Secret Access Key required",
+      label: "AWS Secret Access Key is required",
       ok: secretKey.trim().length > 0,
     },
     {
       key: "wm",
-      label: "At least one worker manager required",
+      label: "At least one worker manager must be configured",
       ok: workerManagers.length > 0,
     },
     {
@@ -1295,21 +1568,37 @@ function App() {
       label: portConflicts.join(" "),
       ok: portConflicts.length === 0,
     },
+    ...(hasOciWm
+      ? [
+          {
+            key: "oci_creds",
+            label: "An OCI worker manager is configured but OCI credentials have not been provided",
+            ok: hasOciCredentials,
+          },
+          ...ociWmErrors.map((msg, i) => ({ key: `oci_wm_${i}`, label: msg, ok: false })),
+        ]
+      : []),
   ];
   const blocking = checks.filter((c) => !c.ok);
   const formReady = blocking.length === 0;
   const isRunning = phase === "provisioning" || phase === "destroying";
+  const isPaused = phase === "paused";
 
   const handleLaunch = useCallback(async () => {
-    if (!formReady) return;
-    setLog([]);
-    try {
-      localStorage.removeItem("scaler_log");
-    } catch (_) {}
+    const isResume = phase === "paused" && pausedOp === "deploy";
+    if (!isResume && !formReady) return;
+    setLog((prev) => (isResume ? [...prev, { text: "", cls: "dim" }] : []));
+    if (!isResume) {
+      try {
+        localStorage.removeItem("scaler_log");
+      } catch (_) {}
+    }
     setPhase("provisioning");
+    setPausedOp(null);
+    const resumeState = isResume ? provState : null;
     const cfg = {
       region,
-      nameSuffix: randomSuffix(),
+      nameSuffix: resumeState ? resumeState.name_suffix : randomSuffix(),
       instanceType: schedulerType,
       amiId: null,
       transport,
@@ -1332,26 +1621,78 @@ function App() {
     try {
       const state = await provision(
         cfg,
-        { accessKeyId, secretKey },
+        { accessKeyId, secretKey, ociUserId, ociTenancyId, ociFingerprint, ociPrivateKey },
         addLog,
         savePartial,
         (name, mat) => setKeyMaterial({ name, mat }),
         controller.signal,
+        resumeState,
       );
       savePartial(state);
       setPhase("ready");
     } catch (err) {
-      addLog(
-        err.name === "AbortError"
-          ? "\nAborted. Any resources created so far are saved — use Destroy to clean them up."
-          : "\nError: " + err.message,
-        err.name === "AbortError" ? "warn" : "err",
-      );
-      setPhase("error");
+      if (err.name === "RetryPausedError") {
+        addLog(
+          "\nDeployment paused — retries exhausted: " + err.message +
+            "\nUse Resume to continue or switch to teardown.",
+          "warn",
+        );
+        setPausedOp("deploy");
+        setPhase("paused");
+      } else if (err.name === "AbortError") {
+        addLog(
+          "\nAborted. Any resources created so far are saved — use Destroy to clean them up.",
+          "warn",
+        );
+        setPhase("error");
+      } else {
+        const snapshot = partialRef.current;
+        if (snapshot) {
+          addLog("\nProvisioning failed: " + err.message, "err");
+          addLog("Auto-tearing down created resources…", "warn");
+          setPhase("destroying");
+          const tdController = new AbortController();
+          abortRef.current = tdController;
+          try {
+            await teardown(
+              snapshot,
+              { accessKeyId, secretKey, ociUserId, ociTenancyId, ociFingerprint, ociPrivateKey },
+              addLog,
+              tdController.signal,
+            );
+            try {
+              localStorage.removeItem("scaler_state");
+              localStorage.removeItem("scaler_log");
+            } catch (_) {}
+            setProvState(null);
+            partialRef.current = null;
+            setKeyMaterial(null);
+            setPhase("idle");
+          } catch (tdErr) {
+            if (tdErr.name === "RetryPausedError") {
+              addLog(
+                "\nAuto-teardown paused — retries exhausted. Use Resume Teardown.",
+                "warn",
+              );
+              setPausedOp("teardown");
+              setPhase("paused");
+            } else {
+              addLog("\nAuto-teardown failed: " + tdErr.message, "err");
+              setPhase("error");
+            }
+          }
+        } else {
+          addLog("\nError: " + err.message, "err");
+          setPhase("error");
+        }
+      }
     } finally {
       abortRef.current = null;
     }
   }, [
+    phase,
+    pausedOp,
+    provState,
     formReady,
     region,
     schedulerType,
@@ -1364,6 +1705,10 @@ function App() {
     workerManagers,
     accessKeyId,
     secretKey,
+    ociUserId,
+    ociTenancyId,
+    ociFingerprint,
+    ociPrivateKey,
     addLog,
     savePartial,
   ]);
@@ -1374,33 +1719,37 @@ function App() {
 
   const handleDestroy = useCallback(async () => {
     if (!provState || !hasCredentials) return;
-    if (
-      !window.confirm(
-        "Terminate all AWS resources in this deployment?\n\n" +
-          "• EC2 instance: " +
-          (provState.instance_id || "—") +
-          "\n" +
-          "• Security group: " +
-          (provState.security_group_id || "—") +
-          "\n" +
-          "• Key pair: " +
-          (provState.key_pair_name || "—") +
-          "\n" +
-          (provState.iam && provState.iam.created
-            ? "• IAM role & profile\n"
-            : "") +
-          "\nThis cannot be undone.",
+    const isResume = phase === "paused" && pausedOp === "teardown";
+    if (!isResume) {
+      if (
+        !window.confirm(
+          "Terminate all AWS resources in this deployment?\n\n" +
+            "• EC2 instance: " +
+            (provState.instance_id || "—") +
+            "\n" +
+            "• Security group: " +
+            (provState.security_group_id || "—") +
+            "\n" +
+            "• Key pair: " +
+            (provState.key_pair_name || "—") +
+            "\n" +
+            (provState.iam && provState.iam.created
+              ? "• IAM role & profile\n"
+              : "") +
+            "\nThis cannot be undone.",
+        )
       )
-    )
-      return;
+        return;
+    }
     setPhase("destroying");
-    setActiveTab("deployment");
+    setPausedOp(null);
+    if (!isResume) setActiveTab("deployment");
     const controller = new AbortController();
     abortRef.current = controller;
     try {
       await teardown(
         provState,
-        { accessKeyId, secretKey },
+        { accessKeyId, secretKey, ociUserId, ociTenancyId, ociFingerprint, ociPrivateKey },
         addLog,
         controller.signal,
       );
@@ -1412,24 +1761,31 @@ function App() {
       setKeyMaterial(null);
       setPhase("idle");
     } catch (err) {
-      if (err.name === "AbortError") {
+      if (err.name === "RetryPausedError") {
+        addLog(
+          "\nTeardown paused — retries exhausted: " + err.message +
+            "\nUse Resume Teardown to retry.",
+          "warn",
+        );
+        setPausedOp("teardown");
+        setPhase("paused");
+      } else if (err.name === "AbortError") {
         addLog(
           "\nTeardown aborted. Some resources may still exist — run Destroy again to retry.",
           "warn",
         );
+        setPhase("ready");
       } else {
         addLog(
-          "\nError during teardown: " +
-            err.message +
-            "\nFix the issue and run Destroy again to retry.",
+          "\nError during teardown: " + err.message + "\nFix the issue and run Destroy again to retry.",
           "err",
         );
+        setPhase("ready");
       }
-      setPhase("ready");
     } finally {
       abortRef.current = null;
     }
-  }, [provState, hasCredentials, accessKeyId, secretKey, addLog, setActiveTab]);
+  }, [phase, pausedOp, provState, hasCredentials, accessKeyId, secretKey, addLog, setActiveTab]);
 
   const handleDownloadConfig = useCallback(() => {
     const cfg = {
@@ -1528,80 +1884,90 @@ function App() {
     </div>
   );
 
-  const advBtn = (show, onToggle, label) => (
-    <button
-      onClick={onToggle}
-      style={{
-        background: "none",
-        border: "1px solid var(--border-accent)",
-        borderRadius: 3,
-        padding: "6px 10px",
-        color: "var(--text-muted)",
-        fontFamily: "inherit",
-        fontSize: 11,
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        width: "100%",
-      }}
-    >
-      <span>{label}</span>
-      <span
-        style={{
-          display: "inline-block",
-          width: 7,
-          height: 7,
-          borderRight: "1.5px solid var(--text-muted)",
-          borderBottom: "1.5px solid var(--text-muted)",
-          transform: show ? "rotate(225deg)" : "rotate(45deg)",
-          position: "relative",
-          top: show ? "2px" : "-2px",
-        }}
-      />
-    </button>
-  );
+  const _destroyBtnStyle = (disabled) => ({
+    padding: "8px 20px",
+    background: disabled
+      ? "rgba(255,80,60,0.04)"
+      : "linear-gradient(135deg, oklch(0.32 0.18 15) 0%, oklch(0.26 0.14 30) 100%)",
+    border: "1px solid " + (disabled ? "var(--border-danger)" : "oklch(0.48 0.18 15)"),
+    borderRadius: 4,
+    color: disabled ? "var(--text-danger)" : "oklch(0.88 0.1 30)",
+    fontFamily: "inherit",
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: disabled ? "default" : "pointer",
+    transition: "all 0.2s",
+    flexShrink: 0,
+  });
 
   let launchControl;
-  if (phase === "error" && provState) {
+  if (isPaused) {
+    launchControl = (
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div
+          style={{
+            padding: "6px 12px",
+            background: "rgba(255,160,60,0.06)",
+            border: "1px solid rgba(255,160,60,0.35)",
+            borderRadius: 4,
+            color: "var(--text-warning)",
+            fontSize: 11,
+          }}
+        >
+          {pausedOp === "teardown" ? "Teardown paused" : "Deploy paused"}
+        </div>
+        {pausedOp === "deploy" && (
+          <button
+            onClick={handleLaunch}
+            style={{
+              padding: "6px 14px",
+              background: "linear-gradient(135deg, oklch(0.38 0.16 155) 0%, oklch(0.32 0.14 200) 100%)",
+              border: "1px solid oklch(0.55 0.16 155)",
+              borderRadius: 4,
+              color: "oklch(0.92 0.1 155)",
+              fontFamily: "inherit",
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            Resume Deploy
+          </button>
+        )}
+        <button
+          onClick={handleDestroy}
+          disabled={!hasCredentials}
+          style={_destroyBtnStyle(!hasCredentials)}
+        >
+          {pausedOp === "teardown" ? "Resume Teardown" : "Switch to Teardown"}
+          {!hasCredentials ? " (missing credentials)" : ""}
+        </button>
+      </div>
+    );
+  } else if (phase === "error" && provState) {
     launchControl = (
       <button
         onClick={handleDestroy}
         disabled={!hasCredentials}
-        style={{
-          padding: "8px 20px",
-          background: !hasCredentials
-            ? "rgba(255,80,60,0.04)"
-            : "linear-gradient(135deg, oklch(0.32 0.18 15) 0%, oklch(0.26 0.14 30) 100%)",
-          border:
-            "1px solid " +
-            (!hasCredentials ? "var(--border-danger)" : "oklch(0.48 0.18 15)"),
-          borderRadius: 4,
-          color: !hasCredentials ? "var(--text-danger)" : "oklch(0.88 0.1 30)",
-          fontFamily: "inherit",
-          fontSize: 11,
-          fontWeight: 700,
-          cursor: !hasCredentials ? "default" : "pointer",
-          transition: "all 0.2s",
-          flexShrink: 0,
-        }}
+        style={_destroyBtnStyle(!hasCredentials)}
       >
         Destroy Cluster{!hasCredentials ? " (missing credentials)" : ""}
       </button>
     );
   } else if (phase === "idle" || phase === "error") {
-    launchControl = (
+    const launchBtn = (
       <button
-        onClick={handleLaunch}
+        onClick={formReady ? handleLaunch : undefined}
         disabled={!formReady}
         style={{
           padding: "8px 20px",
           background: !formReady
-            ? "var(--bg-surface)"
+            ? "rgba(229,72,77,0.05)"
             : "linear-gradient(135deg, oklch(0.38 0.16 155) 0%, oklch(0.32 0.14 200) 100%)",
           border:
             "1px solid " +
-            (!formReady ? "var(--border-accent)" : "oklch(0.55 0.16 155)"),
+            (!formReady ? "var(--border-danger)" : "oklch(0.55 0.16 155)"),
           borderRadius: 4,
           color: !formReady ? "var(--text-muted)" : "oklch(0.92 0.1 155)",
           fontFamily: "inherit",
@@ -1609,34 +1975,37 @@ function App() {
           fontWeight: 700,
           cursor: !formReady ? "default" : "pointer",
           transition: "all 0.2s",
-          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          gap: 7,
+          pointerEvents: !formReady ? "none" : undefined,
         }}
       >
-        Launch Cluster
+        {!formReady && (
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: "var(--text-danger)",
+              flexShrink: 0,
+            }}
+          />
+        )}
+        Launch Scheduler
       </button>
+    );
+    launchControl = !formReady ? (
+      <HelpTip text={blocking.map((c) => "- " + c.label).join("\n")} width={520}>{launchBtn}</HelpTip>
+    ) : (
+      launchBtn
     );
   } else if (phase === "ready") {
     launchControl = (
       <button
         onClick={handleDestroy}
         disabled={!hasCredentials}
-        style={{
-          padding: "8px 20px",
-          background: !hasCredentials
-            ? "rgba(255,80,60,0.04)"
-            : "linear-gradient(135deg, oklch(0.32 0.18 15) 0%, oklch(0.26 0.14 30) 100%)",
-          border:
-            "1px solid " +
-            (!hasCredentials ? "var(--border-danger)" : "oklch(0.48 0.18 15)"),
-          borderRadius: 4,
-          color: !hasCredentials ? "var(--text-danger)" : "oklch(0.88 0.1 30)",
-          fontFamily: "inherit",
-          fontSize: 11,
-          fontWeight: 700,
-          cursor: !hasCredentials ? "default" : "pointer",
-          transition: "all 0.2s",
-          flexShrink: 0,
-        }}
+        style={_destroyBtnStyle(!hasCredentials)}
       >
         Destroy Cluster{!hasCredentials ? " (missing credentials)" : ""}
       </button>
@@ -1708,7 +2077,8 @@ function App() {
         theme={theme}
         setTheme={setTheme}
         showPostLaunch={
-          phase !== "idle" || ["deployment", "logs", "worker-monitor"].includes(activeTab)
+          (phase !== "idle" && phase !== "error") ||
+          ["deployment", "logs", "worker-monitor"].includes(activeTab)
         }
         launchControl={launchControl}
         workerMonitorAddress={phase === "ready" ? provState?.worker_monitor_address : undefined}
@@ -1758,12 +2128,13 @@ function App() {
                     ["ibm", "IBM"],
                     ["oci", "OCI"],
                   ].map(([id, lbl]) => {
-                    const active = id === "aws";
-                    const disabled = id !== "aws";
+                    const active = id === credTab;
+                    const disabled = id === "ibm";
                     return (
                       <button
                         key={id}
                         disabled={disabled}
+                        onClick={() => !disabled && setCredTab(id)}
                         style={{
                           padding: "5px 12px",
                           fontFamily: "inherit",
@@ -1788,129 +2159,196 @@ function App() {
                     );
                   })}
                 </div>
-                <div>
-                  <Label help="The AWS region where your cluster will be deployed.">
-                    AWS Region
-                  </Label>
-                  <RegionSelect value={region} onChange={setRegion} />
-                </div>
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: 6 }}
-                >
-                  <div
-                    style={{
-                      background: "var(--bg-surface)",
-                      border: "1px solid var(--border-accent)",
-                      borderRadius: 3,
-                      padding: "8px 10px",
-                      display: "flex",
-                      alignItems: "center",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 10,
-                        color: "var(--text-muted)",
-                        marginRight: 8,
-                        flexShrink: 0,
-                      }}
+                {credTab === "aws" && (
+                  <>
+                    <div>
+                      <Label help="The AWS region where your cluster will be deployed.">
+                        AWS Region
+                      </Label>
+                      <RegionSelect value={region} onChange={setRegion} />
+                    </div>
+                    <div
+                      style={{ display: "flex", flexDirection: "column", gap: 6 }}
                     >
-                      KEY_ID
-                    </span>
-                    <SecretInput
-                      value={accessKeyId}
-                      onChange={setAKI}
-                      placeholder="AKIA…"
-                      style={{
-                        flex: 1,
-                        fontSize: 12,
-                        color: "var(--text-primary)",
-                      }}
-                    />
-                  </div>
-                  <div
-                    style={{
-                      background: "var(--bg-surface)",
-                      border: "1px solid var(--border-accent)",
-                      borderRadius: 3,
-                      padding: "8px 10px",
-                      display: "flex",
-                      alignItems: "center",
-                    }}
-                  >
+                      <div
+                        style={{
+                          background: "var(--bg-surface)",
+                          border: "1px solid var(--border-accent)",
+                          borderRadius: 3,
+                          padding: "8px 10px",
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 10,
+                            color: "var(--text-muted)",
+                            marginRight: 8,
+                            flexShrink: 0,
+                          }}
+                        >
+                          Key ID
+                        </span>
+                        <SecretInput
+                          value={accessKeyId}
+                          onChange={setAKI}
+                          placeholder="AKIA…"
+                          style={{
+                            flex: 1,
+                            fontSize: 12,
+                            color: "var(--text-primary)",
+                          }}
+                        />
+                      </div>
+                      <div
+                        style={{
+                          background: "var(--bg-surface)",
+                          border: "1px solid var(--border-accent)",
+                          borderRadius: 3,
+                          padding: "8px 10px",
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 10,
+                            color: "var(--text-muted)",
+                            marginRight: 8,
+                            flexShrink: 0,
+                          }}
+                        >
+                          Secret
+                        </span>
+                        <SecretInput
+                          value={secretKey}
+                          onChange={setSK}
+                          placeholder="wJalr…"
+                          style={{
+                            flex: 1,
+                            fontSize: 12,
+                            color: "var(--text-primary)",
+                          }}
+                        />
+                      </div>
+                      <a
+                        href="https://console.aws.amazon.com/iam/home#/security_credentials"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          fontSize: 10,
+                          color: "var(--text-muted)",
+                          textDecoration: "none",
+                          alignSelf: "flex-end",
+                        }}
+                        onMouseOver={(e) =>
+                          (e.currentTarget.style.color = "var(--text-accent)")
+                        }
+                        onMouseOut={(e) =>
+                          (e.currentTarget.style.color = "var(--text-muted)")
+                        }
+                      >
+                        Generate access keys in AWS Console ↗
+                      </a>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          color: "var(--text-dim)",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        Your credentials are used from this browser to provision AWS
+                        resources and are made available to the scheduler instance
+                        for worker management. They are not stored by this
+                        application.
+                      </span>
+                    </div>
+                  </>
+                )}
+                {credTab === "oci" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div>
+                      <Label help={"Your OCI user OCID. In the OCI Console, click your profile avatar (top-right) > User Settings. The OCID is listed under User Information."}>User OCID</Label>
+                      <div style={{ ...inp, display: "flex", alignItems: "center" }}>
+                        <SecretInput
+                          value={ociUserId}
+                          onChange={setOciUserId}
+                          placeholder="ocid1.user.oc1..aaa..."
+                          style={{ flex: 1, fontSize: 12, color: "var(--text-primary)" }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label help={"Your tenancy OCID. In the OCI Console, open the navigation menu > Governance & Administration > Tenancy Details. The OCID is listed at the top."}>Tenancy OCID</Label>
+                      <div style={{ ...inp, display: "flex", alignItems: "center" }}>
+                        <SecretInput
+                          value={ociTenancyId}
+                          onChange={setOciTenancyId}
+                          placeholder="ocid1.tenancy.oc1..aaa..."
+                          style={{ flex: 1, fontSize: 12, color: "var(--text-primary)" }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label help={"The fingerprint of your API signing key. In the OCI Console, go to User Settings > Tokens and Keys > API Keys. The fingerprint (format: aa:bb:cc:...) is shown next to your key. If you don't have one, click Add API Key to generate a key pair."}>Fingerprint</Label>
+                      <div style={{ ...inp, display: "flex", alignItems: "center" }}>
+                        <SecretInput
+                          value={ociFingerprint}
+                          onChange={setOciFingerprint}
+                          placeholder="aa:bb:cc:dd:ee:ff"
+                          style={{ flex: 1, fontSize: 12, color: "var(--text-primary)" }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label help={"The private key that pairs with your API key fingerprint. In the OCI Console, go to User Settings > Tokens and Keys > API Keys > Add API Key, then download the private key file. Paste the full contents of the .pem file here, including the BEGIN/END lines."}>Private Key (PEM)</Label>
+                      <textarea
+                        value={ociPrivateKey}
+                        onChange={(e) => setOciPrivateKey(e.target.value)}
+                        placeholder={"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"}
+                        style={{
+                          ...inp,
+                          fontFamily: "monospace",
+                          fontSize: 10,
+                          resize: "vertical",
+                          minHeight: 80,
+                          lineHeight: 1.5,
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    </div>
                     <span
-                      style={{
-                        fontSize: 10,
-                        color: "var(--text-muted)",
-                        marginRight: 8,
-                        flexShrink: 0,
-                      }}
+                      style={{ fontSize: 10, color: "var(--text-dim)", lineHeight: 1.5 }}
                     >
-                      SECRET
+                      OCI credentials are written to ~/.oci/config on the scheduler
+                      instance so the worker manager can authenticate with OCI.
+                      They are not stored by this application.
                     </span>
-                    <SecretInput
-                      value={secretKey}
-                      onChange={setSK}
-                      placeholder="wJalr…"
-                      style={{
-                        flex: 1,
-                        fontSize: 12,
-                        color: "var(--text-primary)",
-                      }}
-                    />
                   </div>
-                  <a
-                    href="https://console.aws.amazon.com/iam/home#/security_credentials"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      fontSize: 10,
-                      color: "var(--text-muted)",
-                      textDecoration: "none",
-                      alignSelf: "flex-end",
-                    }}
-                    onMouseOver={(e) =>
-                      (e.currentTarget.style.color = "var(--text-accent)")
-                    }
-                    onMouseOut={(e) =>
-                      (e.currentTarget.style.color = "var(--text-muted)")
-                    }
-                  >
-                    Generate access keys in AWS Console ↗
-                  </a>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: "var(--text-dim)",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    Your credentials are used from this browser to provision AWS
-                    resources and are made available to the scheduler instance
-                    for worker management. They are not stored by this
-                    application.
-                  </span>
-                </div>
+                )}
               </PanelBox>
 
               <PanelBox title="General Options">
-                <div>
-                  <Label
-                    help={
-                      "WebSocket — connect to your cluster from a browser or any WebSocket client.\n---\nTCP — direct socket connection; slightly lower overhead."
-                    }
-                  >
-                    Transport Protocol
-                  </Label>
-                  <TogglePair
-                    options={[
-                      ["ws", "WS"],
-                      ["tcp", "TCP"],
-                    ]}
-                    value={transport}
-                    onSelect={setTransport}
-                  />
-                </div>
+                {IS_ADVANCED && (
+                  <div>
+                    <Label
+                      help={
+                        "WebSocket - connect to your cluster from a browser or any WebSocket client.\n---\nTCP - direct socket connection; slightly lower overhead."
+                      }
+                    >
+                      Transport Protocol
+                    </Label>
+                    <TogglePair
+                      options={[
+                        ["ws", "WS"],
+                        ["tcp", "TCP"],
+                      ]}
+                      value={transport}
+                      onSelect={setTransport}
+                    />
+                  </div>
+                )}
                 <div>
                   <Label help="Python version installed via uv on the scheduler and all workers.">
                     Python Version
@@ -1967,12 +2405,7 @@ function App() {
                     USD {schedulerInst.price.toFixed(2)}/h
                   </span>
                 </div>
-                {advBtn(
-                  showSchedAdv,
-                  () => setShowSchedAdv((v) => !v),
-                  "Advanced",
-                )}
-                {showSchedAdv && (
+                {IS_ADVANCED && (
                   <div
                     style={{
                       display: "flex",
@@ -2013,35 +2446,36 @@ function App() {
                         ))}
                       </div>
                     )}
-                    <div>
-                      <Label
-                        help={
-                          "- Installed on the scheduler instance\n- Shared by native worker manager workers (same instance)\n- opengris-scaler must be included"
-                        }
-                      >
-                        requirements.txt
-                      </Label>
-                      <textarea
-                        value={schedulerRequirements}
-                        onChange={(e) => setSchedulerReqs(e.target.value)}
-                        style={{
-                          width: "100%",
-                          background: "var(--bg-surface)",
-                          border: "1px solid var(--border-accent)",
-                          borderRadius: 3,
-                          padding: "7px 10px",
-                          color: "var(--text-primary)",
-                          fontFamily: "inherit",
-                          fontSize: 11,
-                          outline: "none",
-                          resize: "vertical",
-                          minHeight: 72,
-                          lineHeight: 1.6,
-                        }}
-                      />
-                    </div>
                   </div>
                 )}
+                <div>
+                  <Label
+                    help={
+                      "- Installed on the scheduler instance\n- Shared by native worker manager workers (same instance)\n- opengris-scaler must be included"
+                    }
+                  >
+                    requirements.txt
+                  </Label>
+                  <textarea
+                    value={schedulerRequirements}
+                    onChange={(e) => setSchedulerReqs(e.target.value)}
+                    spellCheck={false}
+                    style={{
+                      width: "100%",
+                      background: "var(--bg-surface)",
+                      border: "1px solid var(--border-accent)",
+                      borderRadius: 3,
+                      padding: "7px 10px",
+                      color: "var(--text-primary)",
+                      fontFamily: "inherit",
+                      fontSize: 11,
+                      outline: "none",
+                      resize: "vertical",
+                      minHeight: 72,
+                      lineHeight: 1.6,
+                    }}
+                  />
+                </div>
               </PanelBox>
 
               {/* Policy panel — display only, not yet wired up */}
@@ -2280,19 +2714,20 @@ function App() {
                     {workerManagers
                       .filter((wm) => wm.id === selectedWmId)
                       .map((wm) => (
-                        <WorkerManagerCard
-                          key={wm._uid}
-                          wm={wm}
-                          onChange={(updated) => {
-                            if (updated.id !== wm.id)
-                              setSelectedWmId(updated.id);
-                            updateWorkerManager(wm.id, updated);
-                          }}
-                          onRemove={() => removeWorkerManager(wm.id)}
-                          allInstances={allInstances}
-                          canRemove={workerManagers.length > 1}
-                          fullWidth={true}
-                        />
+                        <React.Fragment key={wm._uid}>
+                          <WorkerManagerCard
+                            wm={wm}
+                            onChange={(updated) => {
+                              if (updated.id !== wm.id)
+                                setSelectedWmId(updated.id);
+                              updateWorkerManager(wm.id, updated);
+                            }}
+                            onRemove={() => removeWorkerManager(wm.id)}
+                            allInstances={allInstances}
+                            canRemove={workerManagers.length > 1}
+                            fullWidth={true}
+                          />
+                        </React.Fragment>
                       ))}
                   </div>
                 </div>
@@ -2301,67 +2736,43 @@ function App() {
               <PanelBox title="Cost Summary">
                 {workerManagers.map((wm, idx) => {
                   const label = wm.id || `(wm ${idx + 1})`;
-                  if (wm.type !== "orb_aws_ec2")
+                  if (wm.type === "orb_aws_ec2") {
+                    const inst = allInstances.find((i) => i.type === wm.instanceType) || { price: 0 };
+                    const count =
+                      wm.capMode === "instances"
+                        ? Math.max(0, wm.instanceCap || 0)
+                        : Math.max(0, Math.floor((wm.budgetCap || 0) / (inst.price || 1)));
                     return (
-                      <div
-                        key={wm._uid}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "baseline",
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 10,
-                            color: "var(--text-muted)",
-                          }}
-                        >
-                          {label}
+                      <div key={wm._uid} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                          {label} · {count}× {wm.instanceType}
                         </span>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color: "var(--text-dim)",
-                            fontStyle: "italic",
-                          }}
-                        >
-                          n/a
+                        <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                          USD {(count * inst.price).toFixed(2)}/h
                         </span>
                       </div>
                     );
-                  const inst = allInstances.find(
-                    (i) => i.type === wm.instanceType,
-                  ) || { price: 0 };
-                  const count =
-                    wm.capMode === "instances"
-                      ? Math.max(0, wm.instanceCap || 0)
-                      : Math.max(
-                          0,
-                          Math.floor((wm.budgetCap || 0) / (inst.price || 1)),
-                        );
+                  }
+                  if (wm.type === "oci_raw") {
+                    const shape = wm.ociShape || "CI.Standard.A1.Flex";
+                    const shapeName = shape === "CI.Standard.A1.Flex" ? "ARM - Ampere A1" : "x86 - Standard E4";
+                    const pricing = OCI_SHAPE_PRICING[shape] || OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
+                    const cost = pricing.ocpuPrice * (wm.ociOcpus || 4) + pricing.memPrice * (wm.ociMemoryGb || 30);
+                    return (
+                      <div key={wm._uid} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                          {label} · {shapeName} · {wm.ociOcpus || 4} OCPU · {wm.ociMemoryGb || 30}GB
+                        </span>
+                        <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                          USD {cost.toFixed(2)}/h
+                        </span>
+                      </div>
+                    );
+                  }
                   return (
-                    <div
-                      key={wm._uid}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "baseline",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 10,
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        {label} · {count}× {wm.instanceType}
-                      </span>
-                      <span
-                        style={{ fontSize: 12, color: "var(--text-secondary)" }}
-                      >
-                        USD {(count * inst.price).toFixed(2)}/h
-                      </span>
+                    <div key={wm._uid} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{label}</span>
+                      <span style={{ fontSize: 11, color: "var(--text-dim)", fontStyle: "italic" }}>n/a</span>
                     </div>
                   );
                 })}

@@ -4,6 +4,7 @@ __pycache__/
 *.so
 
 dist/
+dist_wasm/
 sdist/
 wheels/
 eggs/
@@ -15,6 +16,7 @@ eggs/
 .cache
 
 .venv/
+.venv-wasm/
 venv*/
 .vscode/
 .kiro/
@@ -33,8 +35,8 @@ build*/
 CMakeUserPresets.json
 CMakeFiles/
 .vs/
-src/scaler/protocol/capnp/*.c++
-src/scaler/protocol/capnp/*.h
+src/protocol/*.capnp.c++
+src/protocol/*.capnp.h
 
 orb/logs/
 orb/metrics/
@@ -42,9 +44,16 @@ orb/metrics/
 # AWS HPC test-generated files
 .scaler_aws_batch_config.json
 .scaler_aws_hpc.env
+.scaler_oci_config.json
+.scaler_oci_hpc.env
+tests/worker_manager_adapter/oci_hpc/.scaler_oci_config.json
+tests/worker_manager_adapter/oci_hpc/.scaler_oci_hpc.env
 
 # Per-user agent preferences (not committed)
 .agents-local.md
 
 .ipynb_checkpoints/
 .claude/
+docs/source/_static/wasm/
+docs/source/.jupyterlite.doit.db
+docs/source/jupyter_lite_config.json

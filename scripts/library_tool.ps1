@@ -1,6 +1,10 @@
+$ErrorActionPreference = "Stop"
+
 # Constants
+
 $CAPNP_VERSION = "1.1.0"
 $UV_VERSION = "1.51.0"
+$OPENSSL_VERSION = "4.0.0"
 
 $THIRD_PARTY_DIRECTORY = ".\thirdparties"
 
@@ -10,8 +14,40 @@ $THIRD_PARTY_COMPILED = "$THIRD_PARTY_DIRECTORY\compiled"
 $PREFIX = "C:\Program Files"
 
 function showHelp {
-    Write-Host "Usage: .\library_tool.ps1 [capnp|libuv] [download|compile|install] [--prefix=DIR]"
+    Write-Host "Usage: .\library_tool.ps1 [capnp|libuv|openssl] [download|compile|install] [--prefix=DIR]"
     exit 1
+}
+
+function exitOnError {
+    param([scriptblock]$command)
+    & $command
+    if ($LASTEXITCODE -ne 0) {
+        throw "Command failed with exit code ${LASTEXITCODE}: $command"
+    }
+}
+
+function getVisualStudioCMakeGenerator {
+    $visualStudioVersion = $env:VisualStudioVersion
+
+    if ($visualStudioVersion -match '^18\.') {
+        return "Visual Studio 18 2026"
+    }
+
+    if ($visualStudioVersion -match '^17\.') {
+        return "Visual Studio 17 2022"
+    }
+
+    return "Visual Studio 17 2022"
+}
+
+function downloadTarGz($url, $folderName) {
+    exitOnError { curl.exe --retry 100 --retry-max-time 3600 -L $url -o "$THIRD_PARTY_DOWNLOADED\$folderName.tar.gz" }
+    Write-Host "Downloaded $folderName into $THIRD_PARTY_DOWNLOADED\$folderName.tar.gz"
+}
+
+function extractTarGz($folderName) {
+    Remove-Item -Path "$THIRD_PARTY_COMPILED\$folderName" -Recurse -Force -ErrorAction SilentlyContinue
+    exitOnError { tar -xzvf "$THIRD_PARTY_DOWNLOADED\$folderName.tar.gz" -C "$THIRD_PARTY_COMPILED" }
 }
 
 # Parse optional --prefix argument from $args
@@ -40,29 +76,42 @@ if ($args.Count -lt 2)
 $dependency = $args[0]
 $action = $args[1]
 
+if ($action -eq "download")
+{
+    mkdir "$THIRD_PARTY_DOWNLOADED" -Force
+}
+elseif ($action -eq "compile")
+{
+    mkdir "$THIRD_PARTY_COMPILED" -Force
+}
+
+$CMAKE_GENERATOR = getVisualStudioCMakeGenerator
+Write-Host "Using CMake generator: $CMAKE_GENERATOR"
+
 # Download, compile, or install Cap'n Proto
 if ($dependency -eq "capnp")
 {
     $CAPNP_FOLDER_NAME = "capnproto-c++-$CAPNP_VERSION"
+    $CAPNP_URL = "https://capnproto.org/$CAPNP_FOLDER_NAME.tar.gz"
 
     if ($action -eq "download")
     {
-        mkdir "$THIRD_PARTY_DOWNLOADED" -Force
-        $url = "https://capnproto.org/$CAPNP_FOLDER_NAME.tar.gz"
-        curl.exe --retry 100 --retry-max-time 3600 -L $url -o "$THIRD_PARTY_DOWNLOADED\$CAPNP_FOLDER_NAME.tar.gz"
-        Write-Host "Downloaded capnp into $THIRD_PARTY_DOWNLOADED\$CAPNP_FOLDER_NAME.tar.gz"
+        downloadTarGz $CAPNP_URL $CAPNP_FOLDER_NAME
     }
     elseif ($action -eq "compile")
     {
-        Remove-Item -Path "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME" -Recurse -Force -ErrorAction SilentlyContinue
-        mkdir "$THIRD_PARTY_COMPILED" -Force
-        tar -xzvf "$THIRD_PARTY_DOWNLOADED\$CAPNP_FOLDER_NAME.tar.gz" -C "$THIRD_PARTY_COMPILED"
+        extractTarGz $CAPNP_FOLDER_NAME
 
         # Configure and build with Visual Studio using CMake
         $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
-        cmake -G "Visual Studio 17 2022" -B build -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_TESTING=OFF
-        cmake --build build --config Release
+        exitOnError {
+            cmake -G "$CMAKE_GENERATOR" -B build `
+                -DCMAKE_INSTALL_PREFIX="$PREFIX" `
+                -DCMAKE_INSTALL_LIBDIR=lib `
+                -DBUILD_TESTING=OFF
+        }
+        exitOnError { cmake --build build --config Release }
         Write-Host "Compiled capnp into $THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
         Set-Location $oldDir
     }
@@ -70,7 +119,7 @@ if ($dependency -eq "capnp")
     {
         $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$CAPNP_FOLDER_NAME"
-        cmake --install build --config Release --prefix $PREFIX
+        exitOnError { cmake --install build --config Release --prefix $PREFIX }
 
         $capnpConfigDirectory = Join-Path $PREFIX "lib\cmake\CapnProto"
         $capnpBuildConfigDirectory = Join-Path (Get-Location) "build\cmake"
@@ -96,25 +145,25 @@ if ($dependency -eq "capnp")
 elseif ($dependency -eq "libuv")
 {
     $UV_FOLDER_NAME = "libuv-$UV_VERSION"
+    $UV_URL = "https://github.com/libuv/libuv/archive/refs/tags/v$UV_VERSION.tar.gz"
 
     if ($action -eq "download")
     {
-        mkdir "$THIRD_PARTY_DOWNLOADED" -Force
-        $url = "https://github.com/libuv/libuv/archive/refs/tags/v$UV_VERSION.tar.gz"
-        curl.exe --retry 100 --retry-max-time 3600 -L $url -o "$THIRD_PARTY_DOWNLOADED\$UV_FOLDER_NAME.tar.gz"
-        Write-Host "Downloaded libuv into $THIRD_PARTY_DOWNLOADED\$UV_FOLDER_NAME.tar.gz"
+        downloadTarGz $UV_URL $UV_FOLDER_NAME
     }
     elseif ($action -eq "compile")
     {
-        Remove-Item -Path "$THIRD_PARTY_COMPILED\$UV_FOLDER_NAME" -Recurse -Force -ErrorAction SilentlyContinue
-        mkdir "$THIRD_PARTY_COMPILED" -Force
-        tar -xzvf "$THIRD_PARTY_DOWNLOADED\$UV_FOLDER_NAME.tar.gz" -C "$THIRD_PARTY_COMPILED"
+        extractTarGz $UV_FOLDER_NAME
 
         # Configure and build with Visual Studio using CMake
         $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$UV_FOLDER_NAME"
-        cmake -G "Visual Studio 17 2022" -B build -DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_TESTING=OFF
-        cmake --build build --config Release
+        exitOnError {
+            cmake -G "$CMAKE_GENERATOR" -B build `
+                -DCMAKE_INSTALL_PREFIX="$PREFIX" `
+                -DBUILD_TESTING=OFF
+        }
+        exitOnError { cmake --build build --config Release }
         Write-Host "Compiled libuv into $THIRD_PARTY_COMPILED\$UV_FOLDER_NAME"
         Set-Location $oldDir
     }
@@ -122,8 +171,46 @@ elseif ($dependency -eq "libuv")
     {
         $oldDir = Get-Location
         Set-Location -Path "$THIRD_PARTY_COMPILED\$UV_FOLDER_NAME"
-        cmake --install build --config Release
+        exitOnError { cmake --install build --config Release }
         Write-Host "Installed libuv into $PREFIX"
+        Set-Location $oldDir
+    }
+    else
+    {
+        Write-Host "Argument needs to be download or compile or install"
+        showHelp
+    }
+}
+
+# Download, compile, or install OpenSSL
+elseif ($dependency -eq "openssl")
+{
+    $OPENSSL_FOLDER_NAME = "openssl-$OPENSSL_VERSION"
+    $OPENSSL_URL = "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/$OPENSSL_FOLDER_NAME.tar.gz"
+
+    if ($action -eq "download")
+    {
+        downloadTarGz $OPENSSL_URL $OPENSSL_FOLDER_NAME
+    }
+    elseif ($action -eq "compile")
+    {
+        extractTarGz $OPENSSL_FOLDER_NAME
+
+        $oldDir = Get-Location
+        Set-Location -Path "$THIRD_PARTY_COMPILED\$OPENSSL_FOLDER_NAME"
+        exitOnError {
+            perl Configure VC-WIN64A --prefix="$PREFIX" --libdir=lib no-tests no-shared
+        }
+        exitOnError { nmake }
+        Write-Host "Compiled OpenSSL into $THIRD_PARTY_COMPILED\$OPENSSL_FOLDER_NAME"
+        Set-Location $oldDir
+    }
+    elseif ($action -eq "install")
+    {
+        $oldDir = Get-Location
+        Set-Location -Path "$THIRD_PARTY_COMPILED\$OPENSSL_FOLDER_NAME"
+        exitOnError { nmake install_sw }
+        Write-Host "Installed OpenSSL into $PREFIX"
         Set-Location $oldDir
     }
     else

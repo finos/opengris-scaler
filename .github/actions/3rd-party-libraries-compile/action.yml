@@ -17,23 +17,18 @@ runs:
           thirdparties/compiled
         key: compiled-libraries-${{ inputs.os }}-${{ hashFiles('scripts/library_tool.*') }}
 
-    - name: Compile Libraries (Linux)
+    - name: Compile Libraries (Linux/macOS)
       shell: bash
-      if: (inputs.os == 'Linux') && (steps.compiled-libraries.outputs.cache-hit != 'true')
+      if: (inputs.os == 'Linux' || inputs.os == 'macOS') && (steps.compiled-libraries.outputs.cache-hit != 'true')
       run: |
-        ./scripts/library_tool.sh capnp compile
-        ./scripts/library_tool.sh libuv compile
-
-    - name: Compile Libraries (macOS)
-      shell: bash
-      if: (inputs.os == 'macOS') && (steps.download-libraries.outputs.cache-hit != 'true')
-      run: |
-        ./scripts/library_tool.sh capnp compile
-        ./scripts/library_tool.sh libuv compile
+        ./scripts/library_tool.sh capnp compile --prefix="$SCALER_THIRDPARTY_PREFIX"
+        ./scripts/library_tool.sh libuv compile --prefix="$SCALER_THIRDPARTY_PREFIX"
+        ./scripts/library_tool.sh openssl compile --prefix="$SCALER_THIRDPARTY_PREFIX"
 
     - name: Compile Libraries (Windows)
       shell: pwsh
       if: (inputs.os == 'Windows') && (steps.compiled-libraries.outputs.cache-hit != 'true')
       run: |
-        ./scripts/library_tool.ps1 capnp compile
-        ./scripts/library_tool.ps1 libuv compile
+        ./scripts/library_tool.ps1 capnp compile --prefix="$env:SCALER_THIRDPARTY_PREFIX"
+        ./scripts/library_tool.ps1 libuv compile --prefix="$env:SCALER_THIRDPARTY_PREFIX"
+        ./scripts/library_tool.ps1 openssl compile --prefix="$env:SCALER_THIRDPARTY_PREFIX"
