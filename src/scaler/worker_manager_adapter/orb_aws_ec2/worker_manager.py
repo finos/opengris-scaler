@@ -55,10 +55,10 @@ def _extract_git_url_and_branch(requirements_content: str) -> Optional[Tuple[str
         parsed = urlsplit(req.url)
         at_idx = parsed.path.find("@")
         if at_idx >= 0:
-            branch = parsed.path[at_idx + 1 :]
-            url = urlunsplit(parsed._replace(scheme=parsed.scheme[4:], path=parsed.path[:at_idx], fragment=""))
+            branch = parsed.path[at_idx + 1:]
+            url = urlunsplit(parsed._replace(scheme=parsed.scheme[4:], path=parsed.path[:at_idx]))
             return url, branch
-        return urlunsplit(parsed._replace(scheme=parsed.scheme[4:], fragment="")), ""
+        return urlunsplit(parsed._replace(scheme=parsed.scheme[4:])), ""
     return None
 
 
