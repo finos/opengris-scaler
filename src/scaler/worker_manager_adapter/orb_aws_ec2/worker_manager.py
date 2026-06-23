@@ -7,6 +7,7 @@ import logging
 import math
 import os
 from typing import Any, List, Optional, Tuple
+from urllib.parse import urlsplit, urlunsplit
 
 try:
     import boto3
@@ -31,16 +32,32 @@ ORB_AWS_EC2_MAX_POLLING_ATTEMPTS = 60
 
 
 def _extract_git_url_and_branch(requirements_content: str) -> Optional[Tuple[str, str]]:
-    """Return (clone_url, branch) for the first git+ line in a requirements file, or None."""
+    """Return (clone_url, branch) for the first git+ requirement, or None.
+
+    Only PEP 508 VCS form is supported: name @ git+<url>[@branch]
+      scaler @ git+https://github.com/org/repo.git@main      -> ("https://github.com/org/repo.git", "main")
+      scaler @ git+ssh://git@github.com/org/repo.git@main    -> ("ssh://git@github.com/org/repo.git", "main")
+      scaler @ git+https://TOKEN@github.com/org/repo.git     -> ("https://TOKEN@github.com/org/repo.git", "")
+    """
     for line in requirements_content.splitlines():
-        idx = line.find("git+")
-        if idx < 0:
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith("-"):
             continue
-        raw_url = line[idx + 4 :]
-        at_idx = raw_url.rfind("@")
+        try:
+            # Strip env markers before parsing: Requirement chokes on @branch when a
+            # "; marker" follows (e.g. "pkg @ git+https://.../repo.git@main; python_version<'3.9'").
+            req = Requirement(line.partition(";")[0].rstrip())
+        except Exception:
+            continue
+        if not req.url or not req.url.startswith("git+"):
+            continue
+        parsed = urlsplit(req.url)
+        at_idx = parsed.path.find("@")
         if at_idx >= 0:
-            return raw_url[:at_idx], raw_url[at_idx + 1 :]
-        return raw_url, ""
+            branch = parsed.path[at_idx + 1:]
+            url = urlunsplit(parsed._replace(scheme=parsed.scheme[4:], path=parsed.path[:at_idx]))
+            return url, branch
+        return urlunsplit(parsed._replace(scheme=parsed.scheme[4:])), ""
     return None
 
 
