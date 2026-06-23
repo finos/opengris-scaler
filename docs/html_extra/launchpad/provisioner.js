@@ -262,12 +262,11 @@ function buildSchedulerConfigToml(cfg, addr) {
     object_storage_server: TOML.Section({
       bind_address: `${proto}://0.0.0.0:${op}${wsSlash}`,
     }),
-    scheduler: TOML.Section({
+    scheduler: TOML.Section(Object.assign({
       bind_address: `${proto}://0.0.0.0:${sp}${wsSlash}`,
       object_storage_address: `${proto}://127.0.0.1:${op}${wsSlash}`,
       advertised_object_storage_address: `${proto}://${ctx.publicIp}:${op}${wsSlash}`,
-      policy: TOML.Section(policySection),
-    }),
+    }, policySection)),
   };
 
   var workerManagers = (cfg.workerManagers || []).map(function (wm) {
@@ -404,9 +403,8 @@ function configFromToml(toml) {
     if (rawWms[k].aws_region) { region = rawWms[k].aws_region; break; }
   }
 
-  var policySection = scheduler.policy || {};
-  var policy = policySection.policy_engine_type || "simple";
-  var policyContent = policySection.policy_content || "";
+  var policy = scheduler.policy_engine_type || "simple";
+  var policyContent = scheduler.policy_content || "";
 
   if (policy === "waterfall_v1" && policyContent) {
     var priorityMap = {};
