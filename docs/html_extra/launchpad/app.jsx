@@ -239,7 +239,7 @@ function WorkerManagerCard({
             value={wm.type}
             onChange={(v) => {
               if (v === "oci_raw") {
-                onChange({ ...wm, type: v, ociShape: "CI.Standard.A1.Flex", ociContainerImage: "ghcr.io/finos/scaler:latest-arm64", capMode: "instances", instanceCap: 4, budgetCap: 10 });
+                onChange({ ...wm, type: v, ociShape: "CI.Standard.A1.Flex", ociContainerImage: "ghcr.io/finos/scaler:latest-arm64", capMode: "instances", instanceCap: 4, budgetCap: 10, ociOcpus: 4, ociMemoryGb: 8 });
               } else {
                 set("type", v);
               }

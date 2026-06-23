@@ -192,7 +192,7 @@ function buildWorkerManagerTable(wm, cfg, ctx) {
   } else if (wm.type === "oci_raw") {
     var ociRawReq = (wm.requirements || "").trim();
     var ociRawPricing = _OCI_SHAPE_PRICING[wm.ociShape || "CI.Standard.A1.Flex"] || _OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
-    var ociRawCostPerInstance = ociRawPricing.ocpuPrice * (wm.ociOcpus || 4) + ociRawPricing.memPrice * (wm.ociMemoryGb || 30);
+    var ociRawCostPerInstance = ociRawPricing.ocpuPrice * wm.ociOcpus + ociRawPricing.memPrice * wm.ociMemoryGb;
     var ociRawDerivedCount = wm.capMode === "instances"
       ? Math.max(0, wm.instanceCap || 0)
       : Math.max(0, Math.floor((wm.budgetCap || 0) / (ociRawCostPerInstance || 1)));
@@ -204,9 +204,9 @@ function buildWorkerManagerTable(wm, cfg, ctx) {
       subnet_id: wm.ociSubnetId || "",
       container_image: wm.ociContainerImage || "",
       instance_shape: wm.ociShape || "CI.Standard.E4.Flex",
-      instance_ocpus: wm.ociOcpus || 4,
-      instance_memory_gb: wm.ociMemoryGb || 30,
-      max_task_concurrency: ociRawDerivedCount * (wm.ociOcpus || 4),
+      instance_ocpus: wm.ociOcpus,
+      instance_memory_gb: wm.ociMemoryGb,
+      max_task_concurrency: ociRawDerivedCount * wm.ociOcpus,
       python_version: cfg.pythonVersion,
       requirements_txt: TOML.multiline.basic(ociRawReq + "\n"),
     });
@@ -359,14 +359,17 @@ function configFromToml(toml) {
       });
     }
     if (wm.type === "oci_raw") {
-      var ociOcpus = wm.instance_ocpus || 4;
+      var ociOcpus = wm.instance_ocpus;
+      var ociMemoryGb = wm.instance_memory_gb;
+      if (ociOcpus == null) throw new Error("oci_raw config missing instance_ocpus");
+      if (ociMemoryGb == null) throw new Error("oci_raw config missing instance_memory_gb");
       var ociInstanceCap = wm.max_task_concurrency != null
         ? Math.max(1, Math.round(wm.max_task_concurrency / ociOcpus))
         : 4;
       return Object.assign(base, {
         ociShape: wm.instance_shape || "CI.Standard.A1.Flex",
         ociOcpus: ociOcpus,
-        ociMemoryGb: wm.instance_memory_gb || 30,
+        ociMemoryGb: ociMemoryGb,
         ociRegion: wm.oci_region || "",
         ociCompartmentId: wm.compartment_id || "",
         ociAvailabilityDomain: wm.availability_domain || "",
