@@ -1689,9 +1689,9 @@ function TopNav({
   const tabs = [
     { id: "config", label: "Config" },
     { id: "deployment", label: "Deployment", postLaunch: true },
-    { id: "logs", label: "Scheduler Logs", postLaunch: true },
+    { id: "logs", label: "Scheduler Logs", requiresScheduler: true },
     // { id: "worker-monitor", label: "Worker Monitor", postLaunch: true },
-    { id: "worker-monitor", label: "Worker Monitor", postLaunch: true },
+    { id: "worker-monitor", label: "Worker Monitor", requiresScheduler: true },
     { id: "try-it", label: "Try it", requiresScheduler: true },
   ];
   return (
@@ -2649,7 +2649,7 @@ function App() {
         setTheme={setTheme}
         showPostLaunch={
           (phase !== "idle" && phase !== "error") ||
-          ["deployment", "logs", "worker-monitor"].includes(activeTab)
+          activeTab === "deployment"
         }
         schedulerReady={phase === "ready" && !!provState?.scheduler_address}
         launchControl={launchControl}
