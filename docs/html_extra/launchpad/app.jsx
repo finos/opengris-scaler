@@ -1560,7 +1560,8 @@ function App() {
     setWorkerManagers((prev) => {
       const existingIds = new Set(prev.map((w) => w.id));
       do { wmCounterRef.current += 1; } while (existingIds.has("wm-" + wmCounterRef.current));
-      const newId = "wm-" + wmCounterRef.current;
+      const n = wmCounterRef.current;
+      const newId = "wm-" + n;
       setSelectedWmId(newId);
       return [
         ...prev,
