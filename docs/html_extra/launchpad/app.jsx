@@ -1683,22 +1683,16 @@ function TopNav({
   theme,
   setTheme,
   showPostLaunch,
+  schedulerReady,
   launchControl,
-  workerMonitorAddress,
 }) {
   const tabs = [
     { id: "config", label: "Config" },
     { id: "deployment", label: "Deployment", postLaunch: true },
     { id: "logs", label: "Scheduler Logs", postLaunch: true },
     // { id: "worker-monitor", label: "Worker Monitor", postLaunch: true },
-    {
-      id: "worker-monitor",
-      label: "Worker Monitor",
-      postLaunch: true,
-      isLink: true,
-      href: workerMonitorAddress,
-    },
-    { id: "try-it", label: "Try it" },
+    { id: "worker-monitor", label: "Worker Monitor", postLaunch: true },
+    { id: "try-it", label: "Try it", requiresScheduler: true },
   ];
   return (
     <div
@@ -1718,7 +1712,7 @@ function TopNav({
       />
       <div style={{ display: "flex", flex: 1 }}>
         {tabs.map((t) => {
-          const disabled = t.postLaunch && !showPostLaunch;
+          const disabled = (t.postLaunch && !showPostLaunch) || (t.requiresScheduler && !schedulerReady);
           return t.isLink ? (
             <a
               key={t.id}
@@ -2657,8 +2651,8 @@ function App() {
           (phase !== "idle" && phase !== "error") ||
           ["deployment", "logs", "worker-monitor"].includes(activeTab)
         }
+        schedulerReady={phase === "ready" && !!provState?.scheduler_address}
         launchControl={launchControl}
-        workerMonitorAddress={phase === "ready" ? provState?.worker_monitor_address : undefined}
       />
 
       {/* ── Config Tab ── */}
