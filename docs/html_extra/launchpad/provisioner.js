@@ -147,7 +147,8 @@ function buildWorkerManagerTable(wm, cfg, ctx) {
 
   if (wm.type === "orb_aws_ec2") {
     var req = (wm.requirements || "").trim();
-    var inst = (window.SCALER_INSTANCES || []).find(function (i) { return i.type === wm.instanceType; }) || { price: 0 };
+    var inst = (window.SCALER_INSTANCES || []).find(function (i) { return i.type === wm.instanceType; });
+    if (!inst || inst.vcpu == null) throw new Error("Unknown EC2 instance type: " + wm.instanceType);
     var orbDerivedCount = wm.capMode === "instances"
       ? Math.max(0, wm.instanceCap || 0)
       : Math.max(0, Math.floor((wm.budgetCap || 0) / (inst.price || 1)));
@@ -157,7 +158,7 @@ function buildWorkerManagerTable(wm, cfg, ctx) {
       python_version: cfg.pythonVersion,
       requirements_txt: TOML.multiline.basic(req + "\n"),
       instance_type: wm.instanceType,
-      max_task_concurrency: orbDerivedCount,
+      max_task_concurrency: orbDerivedCount * inst.vcpu,
       aws_region: cfg.region,
       key_name: `scaler-key-${ctx.nameSuffix}`,
       subnet_id: ctx.subnetId,
@@ -323,10 +324,16 @@ function configFromToml(toml) {
       type: wm.type || "orb_aws_ec2",
     };
     if (wm.type === "orb_aws_ec2") {
+      var orbInstType = wm.instance_type;
+      var orbInst = (window.SCALER_INSTANCES || []).find(function (i) { return i.type === orbInstType; });
+      if (!orbInst || orbInst.vcpu == null) throw new Error("Unknown EC2 instance type: " + orbInstType);
+      var orbInstanceCap = wm.max_task_concurrency != null
+        ? Math.max(1, Math.round(wm.max_task_concurrency / orbInst.vcpu))
+        : 4;
       return Object.assign(base, {
-        instanceType: wm.instance_type || "t3.medium",
+        instanceType: orbInstType,
         capMode: "instances",
-        instanceCap: wm.max_task_concurrency != null ? wm.max_task_concurrency : 4,
+        instanceCap: orbInstanceCap,
         budgetCap: 10,
         requirements: wm.requirements_txt || "opengris-scaler[all]",
       });
