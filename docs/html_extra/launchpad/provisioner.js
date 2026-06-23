@@ -166,7 +166,7 @@ function buildWorkerManagerTable(wm, cfg, ctx) {
       logging_level: "INFO",
       instance_tags: TOML.inline({ "scaler-deployment": ctx.nameSuffix }),
     });
-    if (cfg.networkBackend !== "zmq") table.network_backend = cfg.networkBackend || "ymq";
+    table.network_backend = cfg.networkBackend || "ymq";
   } else if (wm.type === "aws_raw_ecs") {
     Object.assign(table, {
       aws_region: cfg.region,
@@ -434,6 +434,11 @@ function configFromToml(toml) {
     });
   }
 
+  var networkBackend = null;
+  for (var k = 0; k < rawWms.length; k++) {
+    if (rawWms[k].network_backend) { networkBackend = rawWms[k].network_backend; break; }
+  }
+
   return {
     transport: proto,
     schedulerPort: schedulerPort,
@@ -442,6 +447,7 @@ function configFromToml(toml) {
     region: region,
     workerManagers: workerManagers.length ? workerManagers : null,
     policy: policy,
+    networkBackend: networkBackend,
   };
 }
 
@@ -554,7 +560,7 @@ mkdir -p /opt/scaler
 cat > /opt/scaler/config.toml << CONFIG_EOF
 ${configToml}CONFIG_EOF
 
-${cfg.networkBackend === "zmq" ? "SCALER_NETWORK_BACKEND=tcp_zmq " : ""}/opt/scaler-venv/bin/scaler /opt/scaler/config.toml >> /var/log/scaler.log 2>&1 &
+SCALER_NETWORK_BACKEND=${cfg.networkBackend || "ymq"} /opt/scaler-venv/bin/scaler /opt/scaler/config.toml >> /var/log/scaler.log 2>&1 &
 echo "Scaler started (PID=$!)"
 `;
 }

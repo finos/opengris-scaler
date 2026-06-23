@@ -1915,6 +1915,7 @@ function App() {
         if (cfg.pythonVersion) setPyVer(cfg.pythonVersion);
         if (cfg.region) setRegion(cfg.region);
         if (cfg.policy) setPolicy(cfg.policy);
+        if (cfg.networkBackend) setNetBack(cfg.networkBackend);
         if (cfg.workerManagers && cfg.workerManagers.length) {
           setWorkerManagers(cfg.workerManagers);
           setSelectedWmId(cfg.workerManagers[0].id);
