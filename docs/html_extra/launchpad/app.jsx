@@ -1306,20 +1306,35 @@ function registerJediHover(pyodide) {
   return monaco.languages.registerHoverProvider("python", {
     provideHover: async (model, position) => {
       try {
+        const wordInfo = model.getWordAtPosition(position);
         pyodide.globals.set("_jedi_code", model.getValue());
         pyodide.globals.set("_jedi_line", position.lineNumber);
         pyodide.globals.set("_jedi_col",  position.column - 1);
+        pyodide.globals.set("_hover_word", wordInfo?.word ?? "");
         const raw = await pyodide.runPythonAsync(
-          'import jedi as _j, json as _js\n' +
+          'import jedi as _j, json as _js, inspect as _ins\n' +
           '_hs = _j.Interpreter(_jedi_code, [globals()]).help(_jedi_line, _jedi_col)\n' +
-          '_js.dumps([{"name": h.full_name or h.name, "doc": h.docstring()} for h in _hs[:1]])'
+          '_doc = ""\n' +
+          '_name = ""\n' +
+          'if _hs:\n' +
+          '    _h = _hs[0]\n' +
+          '    _doc = _h.docstring() or ""\n' +
+          '    _name = _h.full_name or _h.name\n' +
+          'if not _doc and _hover_word:\n' +
+          '    try:\n' +
+          '        _obj = eval(_hover_word, globals())\n' +
+          '        _doc = _ins.getdoc(_obj) or ""\n' +
+          '        if not _name:\n' +
+          '            _name = getattr(_obj, "__qualname__", None) or getattr(_obj, "__name__", None) or _hover_word\n' +
+          '    except Exception:\n' +
+          '        pass\n' +
+          '_js.dumps({"name": _name, "doc": _doc})'
         );
-        const [item] = JSON.parse(raw);
+        const item = JSON.parse(raw);
         if (!item?.doc) return null;
-        const word = model.getWordAtPosition(position);
-        const range = word ? {
+        const range = wordInfo ? {
           startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
-          startColumn: word.startColumn, endColumn: word.endColumn,
+          startColumn: wordInfo.startColumn, endColumn: wordInfo.endColumn,
         } : undefined;
         return {
           range,
@@ -1356,7 +1371,8 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
   const defaultCode = [
     "from scaler import Client",
     "",
-    `SCHEDULER_ADDRESS = "${schedulerAddress || "ws://127.0.0.1:2345"}"${schedulerAddress ? "" : "  # edit me"}`,
+    "# This is the address of the scheduler you launched",
+    `SCHEDULER_ADDRESS = "${schedulerAddress}"`,
     "",
     "with Client(address=SCHEDULER_ADDRESS) as client:",
     "    futures = [client.submit(pow, 2, n) for n in range(8)]",
