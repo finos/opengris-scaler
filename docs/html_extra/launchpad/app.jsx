@@ -1552,23 +1552,26 @@ function App() {
     schedulerInst.price + wmCosts.reduce((a, b) => a + b, 0);
 
   const addWorkerManager = useCallback(() => {
-    wmCounterRef.current += 1;
-    const n = wmCounterRef.current;
-    const newId = "wm-" + n;
-    setWorkerManagers((prev) => [
-      ...prev,
-      {
-        _uid: n,
-        id: newId,
-        type: "orb_aws_ec2",
-        instanceType: "t3.medium",
-        capMode: "instances",
-        instanceCap: 4,
-        budgetCap: 10,
-        requirements: "opengris-scaler[all]",
-      },
-    ]);
-    setSelectedWmId(newId);
+    setWorkerManagers((prev) => {
+      const existingIds = new Set(prev.map((w) => w.id));
+      do { wmCounterRef.current += 1; } while (existingIds.has("wm-" + wmCounterRef.current));
+      const n = wmCounterRef.current;
+      const newId = "wm-" + n;
+      setSelectedWmId(newId);
+      return [
+        ...prev,
+        {
+          _uid: n,
+          id: newId,
+          type: "orb_aws_ec2",
+          instanceType: "t3.medium",
+          capMode: "instances",
+          instanceCap: 4,
+          budgetCap: 10,
+          requirements: "opengris-scaler[all]",
+        },
+      ];
+    });
   }, []);
   const removeWorkerManager = useCallback((id) => {
     setWorkerManagers((prev) => {
@@ -1640,6 +1643,11 @@ function App() {
       key: "wm",
       label: "At least one worker manager must be configured",
       ok: workerManagers.length > 0,
+    },
+    {
+      key: "wm_ids",
+      label: "Worker manager IDs must be unique",
+      ok: new Set(workerManagers.map((w) => w.id)).size === workerManagers.length,
     },
     {
       key: "ports",
@@ -1909,7 +1917,6 @@ function App() {
         if (cfg.policy) setPolicy(cfg.policy);
         if (cfg.workerManagers && cfg.workerManagers.length) {
           setWorkerManagers(cfg.workerManagers);
-          wmCounterRef.current = cfg.workerManagers.length;
           setSelectedWmId(cfg.workerManagers[0].id);
         }
       } catch (err) {
