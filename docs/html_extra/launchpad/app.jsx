@@ -1305,47 +1305,67 @@ function runAutoImports(pyodide, src) {
 function registerJediHover(pyodide) {
   return monaco.languages.registerHoverProvider("python", {
     provideHover: async (model, position) => {
+      const wordInfo = model.getWordAtPosition(position);
+      if (!wordInfo) return null;
+
+      let doc = "";
+      let name = wordInfo.word;
+
+      // Primary: look up the name in globals() via Python so we can do proper
+      // fallback to __init__.__doc__ when the class-level __doc__ is empty.
       try {
-        const wordInfo = model.getWordAtPosition(position);
-        pyodide.globals.set("_jedi_code", model.getValue());
-        pyodide.globals.set("_jedi_line", position.lineNumber);
-        pyodide.globals.set("_jedi_col",  position.column - 1);
-        pyodide.globals.set("_hover_word", wordInfo?.word ?? "");
+        pyodide.globals.set("_hover_word", wordInfo.word);
         const raw = await pyodide.runPythonAsync(
-          'import jedi as _j, json as _js, inspect as _ins\n' +
-          '_hs = _j.Interpreter(_jedi_code, [globals()]).help(_jedi_line, _jedi_col)\n' +
-          '_doc = ""\n' +
-          '_name = ""\n' +
-          'if _hs:\n' +
-          '    _h = _hs[0]\n' +
-          '    _doc = _h.docstring() or ""\n' +
-          '    _name = _h.full_name or _h.name\n' +
-          'if not _doc and _hover_word:\n' +
-          '    try:\n' +
-          '        _obj = eval(_hover_word, globals())\n' +
-          '        _doc = _ins.getdoc(_obj) or ""\n' +
-          '        if not _name:\n' +
-          '            _name = getattr(_obj, "__qualname__", None) or getattr(_obj, "__name__", None) or _hover_word\n' +
-          '    except Exception:\n' +
-          '        pass\n' +
+          'import json as _js, inspect as _ins\n' +
+          '_obj = globals().get(_hover_word)\n' +
+          'if _obj is not None:\n' +
+          '    _doc = (_obj.__doc__ or\n' +
+          '            getattr(getattr(_obj, "__init__", None), "__doc__", None) or "")\n' +
+          '    _doc = _ins.cleandoc(_doc) if _doc else ""\n' +
+          '    _name = getattr(_obj, "__qualname__", None) or getattr(_obj, "__name__", None) or _hover_word\n' +
+          'else:\n' +
+          '    _doc = ""\n' +
+          '    _name = ""\n' +
           '_js.dumps({"name": _name, "doc": _doc})'
         );
         const item = JSON.parse(raw);
-        if (!item?.doc) return null;
-        const range = wordInfo ? {
+        if (item?.doc) { doc = item.doc; name = item.name || name; }
+      } catch {}
+
+      // Fallback: Jedi for local variables and other names not yet in globals.
+      if (!doc) {
+        try {
+          pyodide.globals.set("_jedi_code", model.getValue());
+          pyodide.globals.set("_jedi_line", position.lineNumber);
+          pyodide.globals.set("_jedi_col",  position.column - 1);
+          const raw = await pyodide.runPythonAsync(
+            'import json as _js\n' +
+            'try:\n' +
+            '    import jedi as _j\n' +
+            '    _hs = _j.Interpreter(_jedi_code, [globals()]).help(_jedi_line, _jedi_col)\n' +
+            '    _h = _hs[0] if _hs else None\n' +
+            '    _r = {"name": _h.full_name or _h.name, "doc": _h.docstring() or ""} if _h else {"name": "", "doc": ""}\n' +
+            'except Exception:\n' +
+            '    _r = {"name": "", "doc": ""}\n' +
+            '_js.dumps(_r)'
+          );
+          const item = JSON.parse(raw);
+          if (item?.doc) { doc = item.doc; name = item.name || name; }
+        } catch {}
+      }
+
+      if (!doc) return null;
+
+      return {
+        range: {
           startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
           startColumn: wordInfo.startColumn, endColumn: wordInfo.endColumn,
-        } : undefined;
-        return {
-          range,
-          contents: [
-            { value: "```python\n" + item.name + "\n```" },
-            { value: item.doc },
-          ],
-        };
-      } catch {
-        return null;
-      }
+        },
+        contents: [
+          { value: "```python\n" + name + "\n```" },
+          { value: doc },
+        ],
+      };
     },
   });
 }
@@ -1364,7 +1384,6 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
   const completionDisposable   = useRef(null);
   const hoverDisposable        = useRef(null);
   const hasInitEditor          = useRef(false);
-  const hasInitPyodide         = useRef(false);
   const isRunningRef           = useRef(false);
   const importTimerRef         = useRef(null);
 
@@ -1480,54 +1499,59 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
     monaco.editor.setTheme(theme === "light" ? "vs" : "vs-dark");
   }, [theme, monacoReady]);
 
-  // Pyodide init — once, on first activation
+  // Pyodide init — once per page load, guarded at window level so remounts reuse the same instance
   useEffect(() => {
-    if (!isActive || hasInitPyodide.current) return;
-    hasInitPyodide.current = true;
+    if (!isActive || pyodideRef.current) return;
     setPyStatus("loading");
     (async () => {
       try {
-        // Lazy-load the Pyodide bootstrap script (~10 MB, deferred until tab open)
-        await new Promise((resolve, reject) => {
-          if (window.loadPyodide) { resolve(); return; }
-          const s = document.createElement("script");
-          s.src = PYODIDE_CDN;
-          s.onload = resolve;
-          s.onerror = () => reject(new Error("Failed to load Pyodide from CDN"));
-          document.head.appendChild(s);
-        });
+        if (!window._pyodideReady) {
+          window._pyodideReady = (async () => {
+            // Lazy-load the Pyodide bootstrap script (~10 MB, deferred until tab open)
+            await new Promise((resolve, reject) => {
+              if (window.loadPyodide) { resolve(); return; }
+              const s = document.createElement("script");
+              s.src = PYODIDE_CDN;
+              s.onload = resolve;
+              s.onerror = () => reject(new Error("Failed to load Pyodide from CDN"));
+              document.head.appendChild(s);
+            });
 
-        const pyodide = await window.loadPyodide();
-        pyodideRef.current = pyodide;
+            const pyodide = await window.loadPyodide();
 
-        // Try fetching the wheel manifest written by generate_jupyterlite_config.py
-        let manifest = null;
-        try {
-          const resp = await fetch("../_static/wasm/launchpad_wheels.json");
-          if (resp.ok) manifest = await resp.json();
-        } catch {}
+            // Try fetching the wheel manifest written by generate_jupyterlite_config.py
+            let manifest = null;
+            try {
+              const resp = await fetch("../_static/wasm/launchpad_wheels.json");
+              if (resp.ok) manifest = await resp.json();
+            } catch {}
 
-        if (manifest) {
-          await pyodide.loadPackage(manifest.pyodide_packages);
-          const base = new URL("../_static/wasm/", window.location.href).href;
-          pyodide.globals.set(
-            "_wheel_urls",
-            pyodide.toPy(manifest.local_wheels.map((f) => base + f))
-          );
-          await pyodide.runPythonAsync(
-            "import micropip\n" +
-            "await micropip.install(_wheel_urls)\n" +
-            "await micropip.install('jedi')"
-          );
-        } else {
-          // No local wheels: plain Python REPL only, scaler unavailable
-          setNoWheels(true);
-          await pyodide.loadPackage(["micropip"]);
-          await pyodide.runPythonAsync(
-            "import micropip; await micropip.install('jedi')"
-          );
+            if (manifest) {
+              const base = new URL("../_static/wasm/", window.location.href).href;
+              pyodide.globals.set(
+                "_wheel_urls",
+                pyodide.toPy(manifest.local_wheels.map((f) => base + f))
+              );
+              await pyodide.runPythonAsync(
+                "import micropip\n" +
+                "await micropip.install(list(_wheel_urls) + ['jedi'])"
+              );
+            } else {
+              // No local wheels: plain Python REPL only, scaler unavailable
+              pyodide._noWheels = true;
+              await pyodide.loadPackage(["micropip"]);
+              await pyodide.runPythonAsync(
+                "import micropip; await micropip.install('jedi')"
+              );
+            }
+
+            return pyodide;
+          })();
         }
 
+        const pyodide = await window._pyodideReady;
+        pyodideRef.current = pyodide;
+        if (pyodide._noWheels) setNoWheels(true);
         setPyStatus("ready");
       } catch (err) {
         setPyError(String(err));
