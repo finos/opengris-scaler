@@ -346,6 +346,7 @@ function configFromToml(toml) {
         ecsTaskDefinition: wm.ecs_task_definition || "",
         ecsTaskCpu: wm.ecs_task_cpu || 4,
         ecsTaskMemory: wm.ecs_task_memory || 30,
+        requirements: wm.ecs_python_requirements || "opengris-scaler[all]",
       });
     }
     if (wm.type === "aws_hpc") {
