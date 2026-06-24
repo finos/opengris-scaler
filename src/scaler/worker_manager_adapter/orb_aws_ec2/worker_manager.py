@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import os
+import shlex
 from typing import Any, List, Optional, Tuple
 from urllib.parse import urlsplit, urlunsplit
 
@@ -355,9 +356,9 @@ class ORBAWSEC2WorkerManager:
             if git_info is not None:
                 clone_url, clone_branch = git_info
                 clone_cmd = (
-                    f"git clone -b {clone_branch} --depth 1 {clone_url} /opt/scaler-src"
+                    f"git clone -b {shlex.quote(clone_branch)} --depth 1 {shlex.quote(clone_url)} /opt/scaler-src"
                     if clone_branch
-                    else f"git clone --depth 1 {clone_url} /opt/scaler-src"
+                    else f"git clone --depth 1 {shlex.quote(clone_url)} /opt/scaler-src"
                 )
                 # AL2023 ships GCC 11 which lacks C++23 <expected>; gcc14 is required.
                 # Cap'n Proto is not in the AL2023 repos and must be built from source.
