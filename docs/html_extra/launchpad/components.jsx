@@ -1686,10 +1686,14 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
   const hasCredentials = credentials.accessKeyId && credentials.secretKey;
 
   useEffect(() => {
-    if (!isActive || !instanceId || !hasCredentials) return;
-    setStatus("polling");
     byteOffsetRef.current = 0;
     setLines([]);
+    setStatus("idle");
+  }, [instanceId, hasCredentials]);
+
+  useEffect(() => {
+    if (!isActive || !instanceId || !hasCredentials) return;
+    setStatus("polling");
     let cancelled = false;
 
     const run = async () => {
