@@ -1607,6 +1607,7 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
   const triggerRef = useRef(null);
   const intervalMsRef = useRef(intervalMs);
   const byteOffsetRef = useRef(0);
+  const pendingPartialRef = useRef("");
   useEffect(() => {
     intervalMsRef.current = intervalMs;
   }, [intervalMs]);
@@ -1664,10 +1665,10 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
             const output = inv.StandardOutputContent || "";
             if (output) {
               byteOffsetRef.current += output.length;
-              setLines((prev) => [
-                ...prev,
-                ...output.split("\n").map((text) => ({ text, cls: "info" })),
-              ]);
+              const chunks = (pendingPartialRef.current + output).split("\n");
+              pendingPartialRef.current = chunks.pop();
+              const newLines = chunks.map((text) => ({ text, cls: "info" }));
+              setLines((prev) => [...prev, ...newLines]);
               return true;
             }
             if (byteOffsetRef.current === 0) {
@@ -1687,6 +1688,7 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
 
   useEffect(() => {
     byteOffsetRef.current = 0;
+    pendingPartialRef.current = "";
     setLines([]);
     setStatus("idle");
   }, [instanceId, hasCredentials]);
