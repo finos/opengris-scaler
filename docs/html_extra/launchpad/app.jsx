@@ -1319,6 +1319,7 @@ function TopNav({
       {launchControl && <div style={{ marginRight: 16 }}>{launchControl}</div>}
       {IS_DEV && (
         <div
+          title="DEV mode: credentials are persisted to sessionStorage for convenience. Note that browsers may write sessionStorage to disk for session-restore/crash-recovery, so plaintext secrets can outlive a tab close."
           style={{
             fontSize: 9,
             fontWeight: 700,
@@ -1330,6 +1331,7 @@ function TopNav({
             padding: "2px 7px",
             marginRight: 12,
             flexShrink: 0,
+            cursor: "help",
           }}
         >
           DEV
@@ -1494,6 +1496,8 @@ function App() {
     localStorage.setItem("launchpad-theme", theme);
   }, [theme]);
 
+  // DEV convenience: persist credentials across refreshes. sessionStorage is cleared on tab
+  // close but browsers may flush it to disk for crash-recovery, so secrets can outlive a reload.
   useEffect(() => {
     if (!IS_DEV) return;
     sessionStorage.setItem('launchpad-dev-aki', accessKeyId);
@@ -2276,6 +2280,23 @@ function App() {
                     );
                   })}
                 </div>
+                {IS_DEV && (
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "var(--text-warning)",
+                      background: "rgba(255,202,22,0.06)",
+                      border: "1px solid rgba(255,202,22,0.25)",
+                      borderRadius: 3,
+                      padding: "6px 10px",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    <strong>DEV mode:</strong> credentials are saved to sessionStorage on every
+                    keystroke. Browsers may flush sessionStorage to disk for crash-recovery, so
+                    plaintext secrets can persist beyond a tab close.
+                  </div>
+                )}
                 {credTab === "aws" && (
                   <>
                     <div>
