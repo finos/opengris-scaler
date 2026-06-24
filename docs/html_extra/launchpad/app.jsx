@@ -1399,6 +1399,7 @@ function App() {
   );
 
   const wmCounterRef = useRef(1);
+  const uidCounterRef = useRef(1);
   const loadConfigInputRef = useRef(null);
   const [workerManagers, setWorkerManagers] = useState([
     {
@@ -1555,13 +1556,12 @@ function App() {
     setWorkerManagers((prev) => {
       const existingIds = new Set(prev.map((w) => w.id));
       do { wmCounterRef.current += 1; } while (existingIds.has("wm-" + wmCounterRef.current));
-      const n = wmCounterRef.current;
-      const newId = "wm-" + n;
+      const newId = "wm-" + wmCounterRef.current;
       setSelectedWmId(newId);
       return [
         ...prev,
         {
-          _uid: n,
+          _uid: ++uidCounterRef.current,
           id: newId,
           type: "orb_aws_ec2",
           instanceType: "t3.medium",
@@ -1917,8 +1917,9 @@ function App() {
         if (cfg.policy) setPolicy(cfg.policy);
         if (cfg.networkBackend) setNetBack(cfg.networkBackend);
         if (cfg.workerManagers && cfg.workerManagers.length) {
-          setWorkerManagers(cfg.workerManagers);
-          setSelectedWmId(cfg.workerManagers[0].id);
+          const wms = cfg.workerManagers.map((wm) => ({ ...wm, _uid: ++uidCounterRef.current }));
+          setWorkerManagers(wms);
+          setSelectedWmId(wms[0].id);
         }
       } catch (err) {
         window.alert("Failed to load config.toml: " + err.message);
