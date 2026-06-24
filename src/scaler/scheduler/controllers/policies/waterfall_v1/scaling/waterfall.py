@@ -10,6 +10,8 @@ from scaler.scheduler.controllers.worker_manager_utilties import build_scaling_m
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot
 
+logger = logging.getLogger(__name__)
+
 
 class WaterfallScalingPolicy(ScalingPolicy):
     """
@@ -41,7 +43,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         rule = self._find_rule(manager_id)
 
         if rule is None:
-            logging.warning("Worker manager %r not found in waterfall rules, skipping scaling", manager_id)
+            logger.warning("Worker manager %r not found in waterfall rules, skipping scaling", manager_id)
             return []
 
         desired_per_capset = self._compute_desired_per_capset(

@@ -11,6 +11,8 @@ from scaler.utility.exceptions import WorkerDiedError
 from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.profile_result import retrieve_profiling_result_from_task_result
 
+logger = logging.getLogger(__name__)
+
 
 class ClientFutureManager(FutureManager):
     def __init__(self, serializer: Serializer):
@@ -32,12 +34,12 @@ class ClientFutureManager(FutureManager):
         # Actually cancelling the futures should occur without holding the future manager's lock. That's because
         # `cancel()` is blocking, and requires the manager to process result and cancel confirm messages.
 
-        logging.info(f"canceling {len(futures_to_cancel)} task(s)")
+        logger.info(f"canceling {len(futures_to_cancel)} task(s)")
         for future in futures_to_cancel:
             try:
                 future.cancel()
             except Exception:
-                logging.exception("failed to cancel future during disconnect")
+                logger.exception("failed to cancel future during disconnect")
 
             # The network-driven cancel above may not transition the future to CANCELLED if the
             # agent thread races to set an exception/result on it during the cancel-confirm
@@ -100,11 +102,11 @@ class ClientFutureManager(FutureManager):
                 future.set_canceled()
 
             elif cancel_confirm_type == TaskCancelConfirmType.cancelNotFound:
-                logging.error(f"{task_id!r}: task to cancel not found")
+                logger.error(f"{task_id!r}: task to cancel not found")
                 future.set_canceled()
 
             elif cancel_confirm_type == TaskCancelConfirmType.cancelFailed:
-                logging.error(f"{task_id!r}: task cancel failed")
+                logger.error(f"{task_id!r}: task cancel failed")
                 self._task_id_to_future[task_id] = future
 
             else:

@@ -4,6 +4,8 @@
 #include <functional>
 #include <utility>
 
+#include "scaler/ymq/buffered_bytes.h"
+
 namespace scaler {
 namespace ymq {
 
@@ -114,13 +116,14 @@ const Identity& ConnectorSocket::identity() const noexcept
     return _state->_identity;
 }
 
-void ConnectorSocket::sendMessage(Bytes messagePayload, SendMessageCallback onMessageSent) noexcept
+void ConnectorSocket::sendMessage(std::unique_ptr<Bytes> messagePayload, SendMessageCallback onMessageSent) noexcept
 {
     _state->_thread.executeThreadSafe([state          = _state,
                                        messagePayload = std::move(messagePayload),
                                        onMessageSent  = std::move(onMessageSent)]() mutable {
         if (state->_disconnected) {
-            onMessageSent(std::unexpected {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd});
+            onMessageSent(
+                std::unexpected {Error::ErrorCode::ConnectorSocketClosedByRemoteEnd}, std::move(messagePayload));
             return;
         }
         state->_connection->sendMessage(std::move(messagePayload), std::move(onMessageSent));
@@ -216,12 +219,12 @@ void ConnectorSocket::onRemoteDisconnect(
     }
 }
 
-void ConnectorSocket::onMessage(std::shared_ptr<State> state, Bytes messagePayload) noexcept
+void ConnectorSocket::onMessage(std::shared_ptr<State> state, std::unique_ptr<Bytes> messagePayload) noexcept
 {
     assert(state->_connection->remoteIdentity().has_value());
 
     Message message;
-    message.address = Bytes {state->_connection->remoteIdentity().value()};
+    message.address = std::make_unique<BufferedBytes>(state->_connection->remoteIdentity().value());
     message.payload = std::move(messagePayload);
 
     if (state->_pendingRecvCallbacks.empty()) {

@@ -268,7 +268,7 @@ class TestTaskManagerOnObjectInstruction(unittest.IsolatedAsyncioTestCase):
                 objectIds=(obj_id,), objectTypes=(ObjectMetadata.ObjectContentType.object,), objectNames=(b"name",)
             ),
         )
-        with self.assertLogs(level="ERROR"):
+        with self.assertLogs("scaler", level="ERROR"):
             await self.tm.on_object_instruction(instruction)
 
 

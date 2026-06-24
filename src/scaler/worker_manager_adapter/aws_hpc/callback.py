@@ -10,6 +10,8 @@ import logging
 import threading
 from typing import Any, Dict, List, Optional
 
+logger = logging.getLogger(__name__)
+
 
 class BatchJobCallback:
     """
@@ -36,12 +38,12 @@ class BatchJobCallback:
         with self._callback_lock:
             task_id = self._batch_job_id_to_task_id.get(batch_job_id)
             if task_id is None:
-                logging.warning(f"Received result for unknown batch job: {batch_job_id}")
+                logger.warning(f"Received result for unknown batch job: {batch_job_id}")
                 return
 
             future = self._task_id_to_future.pop(task_id, None)
             if future is None:
-                logging.warning(f"No future found for task: {task_id}")
+                logger.warning(f"No future found for task: {task_id}")
                 return
 
             self._cleanup_job_mapping(task_id, batch_job_id)
@@ -60,12 +62,12 @@ class BatchJobCallback:
         with self._callback_lock:
             task_id = self._batch_job_id_to_task_id.get(batch_job_id)
             if task_id is None:
-                logging.warning(f"Received failure for unknown batch job: {batch_job_id}")
+                logger.warning(f"Received failure for unknown batch job: {batch_job_id}")
                 return
 
             future = self._task_id_to_future.pop(task_id, None)
             if future is None:
-                logging.warning(f"No future found for task: {task_id}")
+                logger.warning(f"No future found for task: {task_id}")
                 return
 
             self._cleanup_job_mapping(task_id, batch_job_id)

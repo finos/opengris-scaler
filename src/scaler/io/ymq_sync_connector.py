@@ -7,6 +7,8 @@ from scaler.io.utility import deserialize, serialize
 from scaler.io.ymq import Bytes, ConnectorSocket, IOContext
 from scaler.protocol.capnp import BaseMessage
 
+logger = logging.getLogger(__name__)
+
 
 class YMQSyncConnector(SyncConnector):
     def __init__(self, context: IOContext, identity: bytes, address: AddressConfig):
@@ -58,7 +60,7 @@ class YMQSyncConnector(SyncConnector):
     def __compose_message(self, payload: bytes) -> Optional[BaseMessage]:
         result: Optional[BaseMessage] = deserialize(payload)
         if result is None:
-            logging.error(f"received unknown message: {payload!r}")
+            logger.error(f"received unknown message: {payload!r}")
             return None
 
         return result
