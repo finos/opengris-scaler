@@ -1386,6 +1386,7 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
   const hasInitEditor          = useRef(false);
   const isRunningRef           = useRef(false);
   const importTimerRef         = useRef(null);
+  const outputCallbackRef      = useRef(null);
 
   const defaultCode = [
     "from scaler import Client",
@@ -1409,11 +1410,8 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
 
     const pyodide = pyodideRef.current;
     let hasOutput = false;
-    const appendOut = (text) => { hasOutput = true; setOutput((prev) => [...prev, { text, cls: "info" }]); };
-    const appendErr = (text) => { hasOutput = true; setOutput((prev) => [...prev, { text, cls: "err"  }]); };
-
-    pyodide.setStdout({ batched: appendOut });
-    pyodide.setStderr({ batched: appendErr });
+    const appendErr = (text) => { hasOutput = true; setOutput((prev) => [...prev, { text, cls: "err" }]); };
+    outputCallbackRef.current = (text, cls) => { hasOutput = true; setOutput((prev) => [...prev, { text, cls }]); };
 
     try {
       pyodide.globals.set("_editor_code", editorRef.current.getValue());
@@ -1436,8 +1434,7 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
     } catch (err) {
       appendErr(err.message || String(err));
     } finally {
-      pyodide.setStdout(null);
-      pyodide.setStderr(null);
+      outputCallbackRef.current = null;
       isRunningRef.current = false;
       setIsRunning(false);
     }
@@ -1551,6 +1548,8 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
         const pyodide = await window._pyodideReady;
         pyodideRef.current = pyodide;
         if (pyodide._noWheels) setNoWheels(true);
+        pyodide.setStdout({ batched: (text) => outputCallbackRef.current?.(text, "info") });
+        pyodide.setStderr({ batched: (text) => outputCallbackRef.current?.(text, "err")  });
         setPyStatus("ready");
       } catch (err) {
         console.error("Pyodide init failed:", err);
