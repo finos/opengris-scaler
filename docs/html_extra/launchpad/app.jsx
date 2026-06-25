@@ -1387,6 +1387,8 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
   const isRunningRef           = useRef(false);
   const importTimerRef         = useRef(null);
   const outputCallbackRef      = useRef(null);
+  const interruptBufferRef     = useRef(null);
+  const cancelledRef           = useRef(false);
 
   const defaultCode = [
     "from scaler import Client",
@@ -1409,6 +1411,7 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
     setOutput([]);
 
     const pyodide = pyodideRef.current;
+    cancelledRef.current = false;
     let hasOutput = false;
     const appendErr = (text) => { hasOutput = true; setOutput((prev) => [...prev, { text, cls: "err" }]); };
     outputCallbackRef.current = (text, cls) => { hasOutput = true; setOutput((prev) => [...prev, { text, cls }]); };
@@ -1432,12 +1435,21 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
       );
       if (!hasOutput) setOutput([{ text: "(no output)\n", cls: "dim" }]);
     } catch (err) {
-      appendErr(err.message || String(err));
+      if (!cancelledRef.current) appendErr(err.message || String(err));
     } finally {
       outputCallbackRef.current = null;
+      if (interruptBufferRef.current) Atomics.store(interruptBufferRef.current, 0, 0);
       isRunningRef.current = false;
       setIsRunning(false);
     }
+  }, []);
+
+  const cancelRun = useCallback(() => {
+    if (!isRunningRef.current) return;
+    cancelledRef.current = true;
+    outputCallbackRef.current = null;
+    if (interruptBufferRef.current) Atomics.store(interruptBufferRef.current, 0, 2);
+    setOutput((prev) => [...prev, { text: "Cancelled.\n", cls: "dim" }]);
   }, []);
 
   // Monaco init — once, on first activation
@@ -1550,6 +1562,11 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
         if (pyodide._noWheels) setNoWheels(true);
         pyodide.setStdout({ batched: (text) => outputCallbackRef.current?.(text, "info") });
         pyodide.setStderr({ batched: (text) => outputCallbackRef.current?.(text, "err")  });
+        try {
+          const buf = new Int32Array(new SharedArrayBuffer(4));
+          pyodide.setInterruptBuffer(buf);
+          interruptBufferRef.current = buf;
+        } catch {}
         setPyStatus("ready");
       } catch (err) {
         console.error("Pyodide init failed:", err);
@@ -1610,22 +1627,24 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
         flexShrink: 0,
       }}>
         <button
-          onClick={canRun ? runCode : undefined}
-          disabled={!canRun}
+          onClick={isRunning ? cancelRun : (canRun ? runCode : undefined)}
+          disabled={!canRun && !isRunning}
           style={{
             padding: "5px 14px",
-            background: canRun
+            background: isRunning
+              ? "transparent"
+              : canRun
               ? "linear-gradient(135deg, oklch(0.38 0.16 155) 0%, oklch(0.32 0.14 200) 100%)"
               : "var(--bg-surface)",
-            border: "1px solid " + (canRun ? "oklch(0.55 0.16 155)" : "var(--border-accent)"),
+            border: "1px solid " + (isRunning ? "var(--text-danger)" : canRun ? "oklch(0.55 0.16 155)" : "var(--border-accent)"),
             borderRadius: 3,
-            color: canRun ? "oklch(0.92 0.1 155)" : "var(--text-dim)",
+            color: isRunning ? "var(--text-danger)" : canRun ? "oklch(0.92 0.1 155)" : "var(--text-dim)",
             fontFamily: "inherit", fontSize: 11, fontWeight: 700,
-            cursor: canRun ? "pointer" : "default",
+            cursor: (canRun || isRunning) ? "pointer" : "default",
             flexShrink: 0,
           }}
         >
-          {isRunning ? "■ Running…" : "▶ Run  Ctrl+Enter"}
+          {isRunning ? "✕ Cancel" : "▶ Run  Ctrl+Enter"}
         </button>
         <button
           onClick={() => setOutput([])}
