@@ -248,7 +248,6 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         # task_ratio = 1/2 = 0.5 < lower_task_ratio=1, but current=0 -> desired=0, not 1
         self.assertEqual(request.taskConcurrency, 0)
 
-
     def test_max_concurrency_clamps_then_emits(self):
         """Ratio asks for current+1 but cap clamps to current -> emits setDesired(current)."""
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(50)}
