@@ -974,8 +974,7 @@ class TestORBAWSEC2CreateUserData(unittest.TestCase):
     def test_auto_install_mode_installs_python(self) -> None:
         worker_manager = self._make_worker_manager(python_version="3.13", requirements_txt="opengris-scaler>=1.26.6")
         script = worker_manager._create_user_data()
-        self.assertIn("python3.13", script)
-        self.assertIn("dnf install", script)
+        self.assertIn("--python 3.13", script)
 
     def test_auto_install_mode_embeds_literal_requirements(self) -> None:
         worker_manager = self._make_worker_manager(

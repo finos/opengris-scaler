@@ -6,7 +6,9 @@ import json
 import logging
 import math
 import os
-from typing import Any, List, Optional
+import shlex
+from typing import Any, List, Optional, Tuple
+from urllib.parse import urlsplit, urlunsplit
 
 try:
     import boto3
@@ -28,6 +30,36 @@ logger = logging.getLogger(__name__)
 
 ORB_AWS_EC2_POLLING_INTERVAL_SECONDS = 5
 ORB_AWS_EC2_MAX_POLLING_ATTEMPTS = 60
+
+
+def _extract_git_url_and_branch(requirements_content: str) -> Optional[Tuple[str, str]]:
+    """Return (clone_url, branch) for the first git+ requirement, or None.
+
+    Only PEP 508 VCS form is supported: name @ git+<url>[@branch]
+      scaler @ git+https://github.com/org/repo.git@main      -> ("https://github.com/org/repo.git", "main")
+      scaler @ git+ssh://git@github.com/org/repo.git@main    -> ("ssh://git@github.com/org/repo.git", "main")
+      scaler @ git+https://TOKEN@github.com/org/repo.git     -> ("https://TOKEN@github.com/org/repo.git", "")
+    """
+    for line in requirements_content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith("-"):
+            continue
+        try:
+            # Strip env markers before parsing: Requirement chokes on @branch when a
+            # "; marker" follows (e.g. "pkg @ git+https://.../repo.git@main; python_version<'3.9'").
+            req = Requirement(line.partition(";")[0].rstrip())
+        except Exception:
+            continue
+        if not req.url or not req.url.startswith("git+"):
+            continue
+        parsed = urlsplit(req.url)
+        at_idx = parsed.path.find("@")
+        if at_idx >= 0:
+            branch = parsed.path[at_idx + 1 :]
+            url = urlunsplit(parsed._replace(scheme=parsed.scheme[4:], path=parsed.path[:at_idx], fragment=""))
+            return url, branch
+        return urlunsplit(parsed._replace(scheme=parsed.scheme[4:], fragment="")), ""
+    return None
 
 
 class ORBWorkerProvisioner(DeclarativeWorkerProvisioner):
@@ -320,15 +352,60 @@ class ORBAWSEC2WorkerManager:
 
             # User data runs as root so no sudo is needed.
             # set -e ensures any install failure aborts the script rather than launching a broken worker.
-            script += f"""set -e
+            git_info = _extract_git_url_and_branch(requirements_content)
+            if git_info is not None:
+                clone_url, clone_branch = git_info
+                clone_cmd = (
+                    f"git clone -b {shlex.quote(clone_branch)} --depth 1 {shlex.quote(clone_url)} /opt/scaler-src"
+                    if clone_branch
+                    else f"git clone --depth 1 {shlex.quote(clone_url)} /opt/scaler-src"
+                )
+                # AL2023 ships GCC 11 which lacks C++23 <expected>; gcc14 is required.
+                # Cap'n Proto is not in the AL2023 repos and must be built from source.
+                # Static libuv.a on AL2023 is not compiled with -fPIC, so we use the
+                # shared libuv from libuv-devel and disable CMake's find_package for it,
+                # letting pkg-config locate the shared library instead.
+                cmake_args = (
+                    "-DCMAKE_C_COMPILER=/usr/bin/gcc14-gcc"
+                    " -DCMAKE_CXX_COMPILER=/usr/bin/gcc14-g++"
+                    " -DCMAKE_DISABLE_FIND_PACKAGE_libuv=TRUE"
+                )
+                script += f"""set -e
 dnf update -y
-dnf install -y python{python_version} python{python_version}-pip openssl-devel
-python{python_version} -m venv /opt/opengris-scaler
-/opt/opengris-scaler/bin/python -m pip install --upgrade pip
+dnf install -y git gcc14 gcc14-c++ gcc14-libstdc++-devel autoconf automake libtool libuv-devel openssl-devel
+{clone_cmd}
+cd /opt/scaler-src
+CC=/usr/bin/gcc14-gcc CXX=/usr/bin/gcc14-g++ bash scripts/library_tool.sh capnp download
+CC=/usr/bin/gcc14-gcc CXX=/usr/bin/gcc14-g++ bash scripts/library_tool.sh capnp compile
+bash scripts/library_tool.sh capnp install
+cd /
+echo '/usr/local/lib' > /etc/ld.so.conf.d/local.conf
+ldconfig
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source /root/.local/bin/env
+uv venv --python {python_version} /opt/opengris-scaler
+source /opt/opengris-scaler/bin/activate
 cat > /tmp/requirements.txt << 'REQUIREMENTS_EOF'
 {requirements_content}
 REQUIREMENTS_EOF
-/opt/opengris-scaler/bin/pip install -r /tmp/requirements.txt
+PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \\
+CMAKE_ARGS='{cmake_args}' \\
+  uv pip install -r /tmp/requirements.txt
+ln -sf /opt/opengris-scaler/bin/scaler_* /usr/local/bin/
+set +e
+
+"""
+            else:
+                script += f"""set -e
+dnf update -y
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source /root/.local/bin/env
+uv venv --python {python_version} /opt/opengris-scaler
+source /opt/opengris-scaler/bin/activate
+cat > /tmp/requirements.txt << 'REQUIREMENTS_EOF'
+{requirements_content}
+REQUIREMENTS_EOF
+uv pip install -r /tmp/requirements.txt
 ln -sf /opt/opengris-scaler/bin/scaler_* /usr/local/bin/
 set +e
 
