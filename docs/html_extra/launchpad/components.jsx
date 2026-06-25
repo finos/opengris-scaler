@@ -1606,6 +1606,8 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
   const pollRef = useRef(null);
   const triggerRef = useRef(null);
   const intervalMsRef = useRef(intervalMs);
+  const byteOffsetRef = useRef(0);
+  const pendingPartialRef = useRef("");
   useEffect(() => {
     intervalMsRef.current = intervalMs;
   }, [intervalMs]);
@@ -1619,74 +1621,77 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
           credentials.secretKey,
         ),
       });
+
+      const command = `tail -c +$((${byteOffsetRef.current}+1)) /var/log/scaler.log 2>/dev/null`;
+
       let commandId;
       try {
         const r = await ssm
           .sendCommand({
             InstanceIds: [instanceId],
             DocumentName: "AWS-RunShellScript",
-            Parameters: {
-              commands: [
-                "cat /var/log/scaler.log 2>/dev/null || echo '(log not yet available)'",
-              ],
-            },
+            Parameters: { commands: [command] },
             TimeoutSeconds: 30,
           })
           .promise();
         commandId = r.Command.CommandId;
       } catch (err) {
         if (err.code === "InvalidInstanceId") {
-          setLines([
-            {
-              text: "Instance not yet registered with SSM — retrying…",
-              cls: "warn",
-            },
-          ]);
+          setLines([{ text: "Instance not yet registered with SSM — retrying…", cls: "warn" }]);
         } else if (err.code === "AccessDeniedException") {
           setStatus("error");
-          setError(
-            "Permission denied. Your IAM user needs ssm:SendCommand and ssm:GetCommandInvocation.",
-          );
+          setError("Permission denied. Your IAM user needs ssm:SendCommand and ssm:GetCommandInvocation.");
         } else if (
           err.code === "InvalidClientTokenId" ||
           err.code === "AuthFailure" ||
           /invalid.*token/i.test(err.message)
         ) {
           setStatus("error");
-          setError(
-            "Invalid AWS credentials. Re-enter your Access Key ID and Secret Access Key in the Configuration tab.",
-          );
+          setError("Invalid AWS credentials. Re-enter your Access Key ID and Secret Access Key in the Configuration tab.");
         } else {
           setStatus("error");
           setError("SSM error: " + err.message);
         }
-        return;
+        return false;
       }
+
       for (let i = 0; i < 12; i++) {
         await new Promise((r) => setTimeout(r, 2500));
         try {
           const inv = await ssm
-            .getCommandInvocation({
-              CommandId: commandId,
-              InstanceId: instanceId,
-            })
+            .getCommandInvocation({ CommandId: commandId, InstanceId: instanceId })
             .promise();
           if (inv.Status === "Success" || inv.Status === "Failed") {
-            setLines(
-              (inv.StandardOutputContent || "")
-                .split("\n")
-                .map((text) => ({ text, cls: "info" })),
-            );
-            break;
+            const output = inv.StandardOutputContent || "";
+            if (output) {
+              byteOffsetRef.current += output.length;
+              const chunks = (pendingPartialRef.current + output).split("\n");
+              pendingPartialRef.current = chunks.pop();
+              const newLines = chunks.map((text) => ({ text, cls: "info" }));
+              setLines((prev) => [...prev, ...newLines]);
+              return true;
+            }
+            if (byteOffsetRef.current === 0) {
+              setLines([{ text: "Waiting for log file…", cls: "warn" }]);
+            }
+            return false;
           }
         } catch (_) {
           break;
         }
       }
-    } catch (_) {}
+      return false;
+    } catch (_) { return false; }
   }, [instanceId, region, credentials]);
 
   const hasCredentials = credentials.accessKeyId && credentials.secretKey;
+
+  useEffect(() => {
+    byteOffsetRef.current = 0;
+    pendingPartialRef.current = "";
+    setLines([]);
+    setStatus("idle");
+  }, [instanceId, hasCredentials]);
 
   useEffect(() => {
     if (!isActive || !instanceId || !hasCredentials) return;
@@ -1697,14 +1702,17 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
       if (cancelled) return;
       setFetching(true);
       setNextFetchAt(null);
-      await fetchLogs();
+      const hadContent = await fetchLogs();
       if (cancelled) return;
-      const ms = intervalMsRef.current;
-      const next = Date.now() + ms;
       setFetching(false);
-      setNextFetchAt(next);
-      setCountdown(Math.round(ms / 1000));
-      pollRef.current = setTimeout(run, ms);
+      if (hadContent) {
+        pollRef.current = setTimeout(run, 0);
+      } else {
+        const ms = intervalMsRef.current;
+        setNextFetchAt(Date.now() + ms);
+        setCountdown(Math.round(ms / 1000));
+        pollRef.current = setTimeout(run, ms);
+      }
     };
 
     triggerRef.current = () => {

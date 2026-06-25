@@ -147,7 +147,8 @@ function buildWorkerManagerTable(wm, cfg, ctx) {
 
   if (wm.type === "orb_aws_ec2") {
     var req = (wm.requirements || "").trim();
-    var inst = (window.SCALER_INSTANCES || []).find(function (i) { return i.type === wm.instanceType; }) || { price: 0 };
+    var inst = (window.SCALER_INSTANCES || []).find(function (i) { return i.type === wm.instanceType; });
+    if (!inst || inst.vcpu == null) throw new Error("Unknown EC2 instance type: " + wm.instanceType);
     var orbDerivedCount = wm.capMode === "instances"
       ? Math.max(0, wm.instanceCap || 0)
       : Math.max(0, Math.floor((wm.budgetCap || 0) / (inst.price || 1)));
@@ -157,7 +158,7 @@ function buildWorkerManagerTable(wm, cfg, ctx) {
       python_version: cfg.pythonVersion,
       requirements_txt: TOML.multiline.basic(req + "\n"),
       instance_type: wm.instanceType,
-      max_task_concurrency: orbDerivedCount,
+      max_task_concurrency: orbDerivedCount * inst.vcpu,
       aws_region: cfg.region,
       key_name: `scaler-key-${ctx.nameSuffix}`,
       subnet_id: ctx.subnetId,
@@ -165,7 +166,7 @@ function buildWorkerManagerTable(wm, cfg, ctx) {
       logging_level: "INFO",
       instance_tags: TOML.inline({ "scaler-deployment": ctx.nameSuffix }),
     });
-    if (cfg.networkBackend !== "zmq") table.network_backend = cfg.networkBackend || "ymq";
+    table.network_backend = cfg.networkBackend || "ymq";
   } else if (wm.type === "aws_raw_ecs") {
     Object.assign(table, {
       aws_region: cfg.region,
@@ -191,7 +192,7 @@ function buildWorkerManagerTable(wm, cfg, ctx) {
   } else if (wm.type === "oci_raw") {
     var ociRawReq = (wm.requirements || "").trim();
     var ociRawPricing = _OCI_SHAPE_PRICING[wm.ociShape || "CI.Standard.A1.Flex"] || _OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
-    var ociRawCostPerInstance = ociRawPricing.ocpuPrice * (wm.ociOcpus || 4) + ociRawPricing.memPrice * (wm.ociMemoryGb || 30);
+    var ociRawCostPerInstance = ociRawPricing.ocpuPrice * wm.ociOcpus + ociRawPricing.memPrice * wm.ociMemoryGb;
     var ociRawDerivedCount = wm.capMode === "instances"
       ? Math.max(0, wm.instanceCap || 0)
       : Math.max(0, Math.floor((wm.budgetCap || 0) / (ociRawCostPerInstance || 1)));
@@ -203,9 +204,9 @@ function buildWorkerManagerTable(wm, cfg, ctx) {
       subnet_id: wm.ociSubnetId || "",
       container_image: wm.ociContainerImage || "",
       instance_shape: wm.ociShape || "CI.Standard.E4.Flex",
-      instance_ocpus: wm.ociOcpus || 4,
-      instance_memory_gb: wm.ociMemoryGb || 30,
-      max_task_concurrency: ociRawDerivedCount * (wm.ociOcpus || 4),
+      instance_ocpus: wm.ociOcpus,
+      instance_memory_gb: wm.ociMemoryGb,
+      max_task_concurrency: ociRawDerivedCount * wm.ociOcpus,
       python_version: cfg.pythonVersion,
       requirements_txt: TOML.multiline.basic(ociRawReq + "\n"),
     });
@@ -262,12 +263,11 @@ function buildSchedulerConfigToml(cfg, addr) {
     object_storage_server: TOML.Section({
       bind_address: `${proto}://0.0.0.0:${op}${wsSlash}`,
     }),
-    scheduler: TOML.Section({
+    scheduler: TOML.Section(Object.assign({
       bind_address: `${proto}://0.0.0.0:${sp}${wsSlash}`,
       object_storage_address: `${proto}://127.0.0.1:${op}${wsSlash}`,
       advertised_object_storage_address: `${proto}://${ctx.publicIp}:${op}${wsSlash}`,
-      policy: TOML.Section(policySection),
-    }),
+    }, policySection)),
   };
 
   var workerManagers = (cfg.workerManagers || []).map(function (wm) {
@@ -324,10 +324,16 @@ function configFromToml(toml) {
       type: wm.type || "orb_aws_ec2",
     };
     if (wm.type === "orb_aws_ec2") {
+      var orbInstType = wm.instance_type;
+      var orbInst = (window.SCALER_INSTANCES || []).find(function (i) { return i.type === orbInstType; });
+      if (!orbInst || orbInst.vcpu == null) throw new Error("Unknown EC2 instance type: " + orbInstType);
+      var orbInstanceCap = wm.max_task_concurrency != null
+        ? Math.max(1, Math.round(wm.max_task_concurrency / orbInst.vcpu))
+        : 4;
       return Object.assign(base, {
-        instanceType: wm.instance_type || "t3.medium",
+        instanceType: orbInstType,
         capMode: "instances",
-        instanceCap: wm.max_task_concurrency != null ? wm.max_task_concurrency : 4,
+        instanceCap: orbInstanceCap,
         budgetCap: 10,
         requirements: wm.requirements_txt || "opengris-scaler[all]",
       });
@@ -340,6 +346,7 @@ function configFromToml(toml) {
         ecsTaskDefinition: wm.ecs_task_definition || "",
         ecsTaskCpu: wm.ecs_task_cpu || 4,
         ecsTaskMemory: wm.ecs_task_memory || 30,
+        requirements: wm.ecs_python_requirements || "opengris-scaler[all]",
       });
     }
     if (wm.type === "aws_hpc") {
@@ -353,14 +360,17 @@ function configFromToml(toml) {
       });
     }
     if (wm.type === "oci_raw") {
-      var ociOcpus = wm.instance_ocpus || 4;
+      var ociOcpus = wm.instance_ocpus;
+      var ociMemoryGb = wm.instance_memory_gb;
+      if (ociOcpus == null) throw new Error("oci_raw config missing instance_ocpus");
+      if (ociMemoryGb == null) throw new Error("oci_raw config missing instance_memory_gb");
       var ociInstanceCap = wm.max_task_concurrency != null
         ? Math.max(1, Math.round(wm.max_task_concurrency / ociOcpus))
         : 4;
       return Object.assign(base, {
         ociShape: wm.instance_shape || "CI.Standard.A1.Flex",
         ociOcpus: ociOcpus,
-        ociMemoryGb: wm.instance_memory_gb || 30,
+        ociMemoryGb: ociMemoryGb,
         ociRegion: wm.oci_region || "",
         ociCompartmentId: wm.compartment_id || "",
         ociAvailabilityDomain: wm.availability_domain || "",
@@ -404,9 +414,8 @@ function configFromToml(toml) {
     if (rawWms[k].aws_region) { region = rawWms[k].aws_region; break; }
   }
 
-  var policySection = scheduler.policy || {};
-  var policy = policySection.policy_engine_type || "simple";
-  var policyContent = policySection.policy_content || "";
+  var policy = scheduler.policy_engine_type || "simple";
+  var policyContent = scheduler.policy_content || "";
 
   if (policy === "waterfall_v1" && policyContent) {
     var priorityMap = {};
@@ -426,6 +435,12 @@ function configFromToml(toml) {
     });
   }
 
+  var networkBackend = null;
+  for (var k = 0; k < rawWms.length; k++) {
+    if (rawWms[k].network_backend) { networkBackend = rawWms[k].network_backend; break; }
+  }
+
+
   return {
     transport: proto,
     schedulerPort: schedulerPort,
@@ -434,6 +449,7 @@ function configFromToml(toml) {
     region: region,
     workerManagers: workerManagers.length ? workerManagers : null,
     policy: policy,
+    networkBackend: networkBackend,
   };
 }
 
@@ -554,7 +570,7 @@ uv tool install certbot
   --register-unsafely-without-email \
   -d $PUBLIC_IP
 
-${cfg.networkBackend === "zmq" ? "SCALER_NETWORK_BACKEND=tcp_zmq " : ""}/opt/scaler-venv/bin/scaler /opt/scaler/config.toml >> /var/log/scaler.log 2>&1 &
+SCALER_NETWORK_BACKEND=${cfg.networkBackend || "ymq"} /opt/scaler-venv/bin/scaler /opt/scaler/config.toml >> /var/log/scaler.log 2>&1 &
 echo "Scaler started (PID=$!)"
 `;
 }

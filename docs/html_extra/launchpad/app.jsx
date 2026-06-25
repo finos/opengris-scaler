@@ -239,7 +239,7 @@ function WorkerManagerCard({
             value={wm.type}
             onChange={(v) => {
               if (v === "oci_raw") {
-                onChange({ ...wm, type: v, ociShape: "CI.Standard.A1.Flex", ociContainerImage: "ghcr.io/finos/scaler:latest-arm64", capMode: "instances", instanceCap: 4, budgetCap: 10 });
+                onChange({ ...wm, type: v, ociShape: "CI.Standard.A1.Flex", ociContainerImage: "ghcr.io/finos/scaler:latest-arm64", capMode: "instances", instanceCap: 4, budgetCap: 10, ociOcpus: 4, ociMemoryGb: 8 });
               } else {
                 set("type", v);
               }
@@ -1319,6 +1319,7 @@ function TopNav({
       {launchControl && <div style={{ marginRight: 16 }}>{launchControl}</div>}
       {IS_DEV && (
         <div
+          title="DEV mode: credentials are persisted to sessionStorage for convenience. Note that browsers may write sessionStorage to disk for session-restore/crash-recovery, so plaintext secrets can outlive a tab close."
           style={{
             fontSize: 9,
             fontWeight: 700,
@@ -1330,6 +1331,7 @@ function TopNav({
             padding: "2px 7px",
             marginRight: 12,
             flexShrink: 0,
+            cursor: "help",
           }}
         >
           DEV
@@ -1399,6 +1401,7 @@ function App() {
   );
 
   const wmCounterRef = useRef(1);
+  const uidCounterRef = useRef(1);
   const loadConfigInputRef = useRef(null);
   const [workerManagers, setWorkerManagers] = useState([
     {
@@ -1493,6 +1496,8 @@ function App() {
     localStorage.setItem("launchpad-theme", theme);
   }, [theme]);
 
+  // DEV convenience: persist credentials across refreshes. sessionStorage is cleared on tab
+  // close but browsers may flush it to disk for crash-recovery, so secrets can outlive a reload.
   useEffect(() => {
     if (!IS_DEV) return;
     sessionStorage.setItem('launchpad-dev-aki', accessKeyId);
@@ -1552,23 +1557,25 @@ function App() {
     schedulerInst.price + wmCosts.reduce((a, b) => a + b, 0);
 
   const addWorkerManager = useCallback(() => {
-    wmCounterRef.current += 1;
-    const n = wmCounterRef.current;
-    const newId = "wm-" + n;
-    setWorkerManagers((prev) => [
-      ...prev,
-      {
-        _uid: n,
-        id: newId,
-        type: "orb_aws_ec2",
-        instanceType: "t3.medium",
-        capMode: "instances",
-        instanceCap: 4,
-        budgetCap: 10,
-        requirements: "opengris-scaler[all]",
-      },
-    ]);
-    setSelectedWmId(newId);
+    setWorkerManagers((prev) => {
+      const existingIds = new Set(prev.map((w) => w.id));
+      do { wmCounterRef.current += 1; } while (existingIds.has("wm-" + wmCounterRef.current));
+      const newId = "wm-" + wmCounterRef.current;
+      setSelectedWmId(newId);
+      return [
+        ...prev,
+        {
+          _uid: ++uidCounterRef.current,
+          id: newId,
+          type: "orb_aws_ec2",
+          instanceType: "t3.medium",
+          capMode: "instances",
+          instanceCap: 4,
+          budgetCap: 10,
+          requirements: "opengris-scaler[all]",
+        },
+      ];
+    });
   }, []);
   const removeWorkerManager = useCallback((id) => {
     setWorkerManagers((prev) => {
@@ -1640,6 +1647,11 @@ function App() {
       key: "wm",
       label: "At least one worker manager must be configured",
       ok: workerManagers.length > 0,
+    },
+    {
+      key: "wm_ids",
+      label: "Worker manager IDs must be unique",
+      ok: new Set(workerManagers.map((w) => w.id)).size === workerManagers.length,
     },
     {
       key: "ports",
@@ -1907,10 +1919,11 @@ function App() {
         if (cfg.pythonVersion) setPyVer(cfg.pythonVersion);
         if (cfg.region) setRegion(cfg.region);
         if (cfg.policy) setPolicy(cfg.policy);
+        if (cfg.networkBackend) setNetBack(cfg.networkBackend);
         if (cfg.workerManagers && cfg.workerManagers.length) {
-          setWorkerManagers(cfg.workerManagers);
-          wmCounterRef.current = cfg.workerManagers.length;
-          setSelectedWmId(cfg.workerManagers[0].id);
+          const wms = cfg.workerManagers.map((wm) => ({ ...wm, _uid: ++uidCounterRef.current }));
+          setWorkerManagers(wms);
+          setSelectedWmId(wms[0].id);
         }
       } catch (err) {
         window.alert("Failed to load config.toml: " + err.message);
@@ -2267,6 +2280,23 @@ function App() {
                     );
                   })}
                 </div>
+                {IS_DEV && (
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "var(--text-warning)",
+                      background: "rgba(255,202,22,0.06)",
+                      border: "1px solid rgba(255,202,22,0.25)",
+                      borderRadius: 3,
+                      padding: "6px 10px",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    <strong>DEV mode:</strong> credentials are saved to sessionStorage on every
+                    keystroke. Browsers may flush sessionStorage to disk for crash-recovery, so
+                    plaintext secrets can persist beyond a tab close.
+                  </div>
+                )}
                 {credTab === "aws" && (
                   <>
                     <div>

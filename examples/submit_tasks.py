@@ -55,6 +55,9 @@ def main():
     parser.add_argument("--workers", type=int, default=8, help="Number of local workers (ignored if url is provided)")
     args = parser.parse_args()
 
+    if args.count < 1:
+        parser.error("--count must be >= 1")
+
     cluster = None
     if args.url is None:
         print("No scheduler URL provided. Spinning up a local cluster...")
