@@ -1406,16 +1406,20 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
     isRunningRef.current = true;
     setIsRunning(true);
     setOutput([]);
-    const code = editorRef.current.getValue();
+
+    const pyodide = pyodideRef.current;
+    let hasOutput = false;
+    const appendOut = (text) => { hasOutput = true; setOutput((prev) => [...prev, { text, cls: "info" }]); };
+    const appendErr = (text) => { hasOutput = true; setOutput((prev) => [...prev, { text, cls: "err"  }]); };
+
+    pyodide.setStdout({ batched: appendOut });
+    pyodide.setStderr({ batched: appendErr });
+
     try {
-      pyodideRef.current.globals.set("_editor_code", code);
-      const result = await pyodideRef.current.runPythonAsync(
-        "import sys as _s, io as _io, traceback as _tb, logging as _log\n" +
-        "_out = _io.StringIO()\n" +
-        "_tb_buf = _io.StringIO()\n" +
-        "_save = (_s.stdout, _s.stderr)\n" +
-        "_s.stdout, _s.stderr = _out, _out\n" +
-        "_log_h = _log.StreamHandler(_out)\n" +
+      pyodide.globals.set("_editor_code", editorRef.current.getValue());
+      await pyodide.runPythonAsync(
+        "import sys as _s, logging as _log\n" +
+        "_log_h = _log.StreamHandler(_s.stdout)\n" +
         "_log_h.setFormatter(_log.Formatter('%(levelname)s:%(name)s: %(message)s'))\n" +
         "_root = _log.getLogger()\n" +
         "_saved_level = _root.level\n" +
@@ -1424,24 +1428,16 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
         "    _root.setLevel(_log.INFO)\n" +
         "try:\n" +
         "    exec(compile(_editor_code, '<editor>', 'exec'))\n" +
-        "except Exception:\n" +
-        "    _tb_buf.write(_tb.format_exc())\n" +
         "finally:\n" +
-        "    _s.stdout, _s.stderr = _save\n" +
         "    _root.removeHandler(_log_h)\n" +
-        "    _root.setLevel(_saved_level)\n" +
-        "[_out.getvalue(), _tb_buf.getvalue()]"
+        "    _root.setLevel(_saved_level)\n"
       );
-      const [stdout, stderr] = result.toJs();
-      result.destroy();
-      const entries = [];
-      if (stdout) entries.push({ text: stdout, cls: "info" });
-      if (stderr) entries.push({ text: stderr, cls: "err" });
-      if (!stdout && !stderr) entries.push({ text: "(no output)\n", cls: "dim" });
-      setOutput(entries);
+      if (!hasOutput) setOutput([{ text: "(no output)\n", cls: "dim" }]);
     } catch (err) {
-      setOutput([{ text: String(err), cls: "err" }]);
+      appendErr(err.message || String(err));
     } finally {
+      pyodide.setStdout(null);
+      pyodide.setStderr(null);
       isRunningRef.current = false;
       setIsRunning(false);
     }
