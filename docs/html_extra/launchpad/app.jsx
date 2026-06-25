@@ -1529,6 +1529,7 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
             } catch {}
 
             if (manifest) {
+              await pyodide.loadPackage(["micropip"]);
               const base = new URL("../_static/wasm/", window.location.href).href;
               pyodide.globals.set(
                 "_wheel_urls",
@@ -1556,6 +1557,7 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
         if (pyodide._noWheels) setNoWheels(true);
         setPyStatus("ready");
       } catch (err) {
+        console.error("Pyodide init failed:", err);
         setPyError(String(err));
         setPyStatus("error");
       }
@@ -1586,7 +1588,7 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
       );
     if (pyStatus === "error")
       return (
-        <span style={{ fontSize: 11, color: "var(--text-danger)" }} title={pyError}>
+        <span style={{ fontSize: 11, color: "var(--text-danger)" }}>
           ● Pyodide failed
         </span>
       );
