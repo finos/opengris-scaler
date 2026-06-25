@@ -1658,7 +1658,7 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
             flexShrink: 0,
           }}
         >
-          Clear
+          Clear output
         </button>
         <div style={{ flex: 1 }} />
         {statusNode}
