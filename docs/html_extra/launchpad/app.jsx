@@ -1464,6 +1464,8 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
         scrollBeyondLastLine: false,
         padding: { top: 12, bottom: 12 },
       });
+      // Remeasure after custom fonts load so cursor aligns with JetBrains Mono glyphs
+      document.fonts.ready.then(() => monaco.editor.remeasureFonts());
       editorRef.current.addCommand(
         monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
         () => runCode()
