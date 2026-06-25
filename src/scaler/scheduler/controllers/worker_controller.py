@@ -128,7 +128,11 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         )
 
     async def on_client_shutdown(self, client_id: ClientID):
-        for worker in self._policy_controller.get_worker_ids():
+        # shut down every connected worker, including actor-designated ones. Those are absent from
+        # the task policy, so iterating get_worker_ids() would leave them running. Snapshot the
+        # keys because __shutdown_worker pops from _worker_alive_since (and it is idempotent, so a
+        # worker removed concurrently is simply skipped).
+        for worker in list(self._worker_alive_since.keys()):
             await self.__shutdown_worker(worker)
 
     async def on_disconnect(self, worker_id: WorkerID, request: DisconnectRequest):
