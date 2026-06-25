@@ -3726,26 +3726,7 @@ function App() {
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                 {provState.worker_monitor_address}
               </span>
-              <a
-                href={provState.worker_monitor_address}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  fontSize: 10,
-                  color: "var(--text-accent)",
-                  border: "1px solid var(--border-accent)",
-                  borderRadius: 3,
-                  padding: "2px 8px",
-                  textDecoration: "none",
-                }}
-              >
-                Open in new tab
-              </a>
-              {workerMonitorReady ? (
-                <span style={{ fontSize: 10, color: "var(--text-success)" }}>
-                  server ready
-                </span>
-              ) : (
+              {!workerMonitorReady && (
                 <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
                   waiting for server… {workerMonitorElapsed}s
                 </span>
