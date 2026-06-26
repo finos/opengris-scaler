@@ -285,9 +285,9 @@ class ORBAWSEC2WorkerManager:
         register_event_loop(self._event_loop)
 
         try:
-            from orb import ORBClient as orb
             from orb.config.managers.configuration_manager import ConfigurationManager
             from orb.infrastructure.di.container import get_container
+            from orb.sdk.client import ORBClient as orb
         except ModuleNotFoundError as exc:
             raise ModuleNotFoundError(
                 'execute "pip install opengris-scaler[orb]" to use ORB AWS EC2 worker Manager'
