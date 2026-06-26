@@ -287,6 +287,8 @@ class ORBAWSEC2WorkerManager:
         try:
             from orb.config.managers.configuration_manager import ConfigurationManager
             from orb.infrastructure.di.container import get_container
+            # Import from the typed submodule directly: the top-level orb package lacks py.typed,
+            # so mypy cannot see its __init__.py re-exports once the typed submodules are imported.
             from orb.sdk.client import ORBClient as orb
         except ModuleNotFoundError as exc:
             raise ModuleNotFoundError(
