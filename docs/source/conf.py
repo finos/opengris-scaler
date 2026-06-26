@@ -135,7 +135,7 @@ def _regen_jupyterlite_config():
 
     Runs at conf.py import time, before jupyterlite-sphinx reads the config.
     The file is gitignored; the wheel filenames are versioned (e.g.
-    ``opengris_scaler-2.3.0-cp313-cp313-emscripten_4_0_9_wasm32.whl``) so the
+    ``opengris_scaler-2.5.0-cp314-cp314-pyemscripten_2026_0_wasm32.whl``) so the
     config has to be derived from whatever is on disk at build time.
     """
     import sys as _sys

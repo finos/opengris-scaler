@@ -3,10 +3,10 @@
 #
 # Run from the workspace root: ./scripts/build_wasm.sh
 #
-# Uses a dedicated Python 3.13 venv under the user's cache dir (the main dev
-# venv stays on 3.12). Pyodide pins CPython 3.13, so the scheduler and worker
-# the wasm client connects to MUST also run CPython 3.13 -- mismatched ABI
-# makes capnp struct decoding fail with opaque errors.
+# Uses a dedicated Python 3.14 venv under the user's cache dir. Pyodide 314 pins
+# CPython 3.14, so the scheduler and worker the wasm client connects to MUST also
+# run CPython 3.14 -- mismatched ABI makes capnp struct decoding fail with opaque
+# errors. pyodide-build's host Python must also match the target (3.14).
 #
 # THIRD_PARTY_DIR controls where the wasm toolchain lives. Defaults to
 # ./thirdparties; the devcontainer sets it to /opt/scaler via Dockerfile ENV.
@@ -20,16 +20,16 @@ WASM_VENV_ROOT="${XDG_CACHE_HOME:-${HOME}/.cache}/opengris-scaler"
 WASM_VENV="${WASM_VENV_ROOT}/pyodide-build-venv"
 
 if ! command -v uv >/dev/null 2>&1; then
-    echo "uv is required to create the Python 3.13 wasm build environment."
+    echo "uv is required to create the Python 3.14 wasm build environment."
     exit 1
 fi
 
-# 1. Create / refresh the dedicated Python 3.13 wasm build venv.
+# 1. Create / refresh the dedicated Python 3.14 wasm build venv.
 mkdir -p "${WASM_VENV_ROOT}"
-uv venv "${WASM_VENV}" --python 3.13 --allow-existing
+uv venv "${WASM_VENV}" --python 3.14 --allow-existing
 # shellcheck disable=SC1091
 source "${WASM_VENV}/bin/activate"
-uv pip install "pyodide-build==0.34.3" wheel pip
+uv pip install "pyodide-build==0.35.1" wheel pip
 
 # 2. Activate emsdk.
 if [[ ! -f "${EMSDK_ENV}" ]]; then
@@ -40,9 +40,10 @@ fi
 # shellcheck disable=SC1090
 source "${EMSDK_ENV}"
 
-# 3. Install the matching xbuildenv for pyodide-build 0.34.3. With Python 3.13
-#    this resolves to the same 0.29.3 environment CI uses.
-pyodide xbuildenv install
+# 3. Install the Pyodide 314 cross-build environment (CPython 3.14 / Emscripten
+#    5.0.3). pyodide-build 0.35.x is decoupled from the runtime, so the version
+#    is selected explicitly to match the jupyterlite-pyodide-kernel 0.8.0 build.
+pyodide xbuildenv install 314.0.0
 
 # 4. Point cmake at the wasm-target capnp/libuv install.
 if [[ ! -d "${WASM_INSTALL}" ]]; then
@@ -53,18 +54,14 @@ fi
 export CMAKE_PREFIX_PATH="${WASM_INSTALL}"
 export CapnProto_DIR="${WASM_INSTALL}/lib/cmake/CapnProto"
 
-# 5. Build. Default to a single CMake job on low-memory machines.
+# 5. Build. Default to a single CMake job on low-memory machines. pyodide-build
+#    0.35.x emits the PEP 783 platform tag (pyemscripten_2026_0_wasm32 for
+#    Pyodide 314) directly, and Pyodide >= 0.29.4 micropip installs that tag
+#    as-is, so the old ``python -m wheel tags`` re-tagging step is gone.
 rm -rf dist_wasm
 CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-1}" pyodide build . --outdir dist_wasm
 
-# 6. pyodide-build 0.34.x tags wheels as pyemscripten_2025_0; Pyodide 0.29.3's
-#    micropip expects emscripten_4_0_9_wasm32. Retag the freshly built wheel.
-python -m wheel tags \
-    --python-tag cp313 --abi-tag cp313 \
-    --platform-tag emscripten_4_0_9_wasm32 \
-    dist_wasm/opengris_scaler-*pyemscripten*wasm32.whl
-
-# 7. Deploy to the docs source tree. The lite build (jupyterlite-sphinx) runs
+# 6. Deploy to the docs source tree. The lite build (jupyterlite-sphinx) runs
 #    during ``make html`` and reads piplite_urls from
 #    docs/source/jupyter_lite_config.json -- those URLs are resolved relative to
 #    the config file, so the wheel(s) MUST live under docs/source/ before docs
@@ -74,9 +71,9 @@ python -m wheel tags \
 WASM_STATIC="docs/source/_static/wasm"
 mkdir -p "${WASM_STATIC}"
 rm -f "${WASM_STATIC}"/opengris_scaler-*wasm32.whl
-cp dist_wasm/opengris_scaler-*emscripten_4_0_9*wasm32.whl "${WASM_STATIC}/"
+cp dist_wasm/opengris_scaler-*pyemscripten_2026_0*wasm32.whl "${WASM_STATIC}/"
 
-# 8. Vendor / build the runtime deps the JupyterLite kernel pulls at boot.
+# 7. Vendor / build the runtime deps the JupyterLite kernel pulls at boot.
 #    Three groups: (a) pure-Python wheels from PyPI (cloudpickle, tblib>=3.2.0,
 #    opengris-parfun, pargraph, bidict, pydot); (b) stub wheels built from
 #    scripts/wasm_stubs/ (psutil, loky) -- both upstream packages need C
@@ -94,7 +91,7 @@ for stub in psutil loky; do
         --wheel-dir "${WASM_STATIC}" "scripts/wasm_stubs/${stub}"
 done
 
-# 8b. Smoke-test that the vendored + stub wheels are importable inside a
+# 7b. Smoke-test that the vendored + stub wheels are importable inside a
 #     Pyodide virtualenv. Catches the most common breakage: a transitive dep
 #     that imports a missing C extension at module load. Skipped if the pyodide
 #     CLI is unavailable.
@@ -148,7 +145,7 @@ print('wasm import smoke test: OK (psutil.cpu_count={})'.format(psutil.cpu_count
     rm -rf "${SMOKE_PARENT}"
 fi
 
-# 9. ``jupyter_lite_config.json`` is regenerated automatically from the
+# 8. ``jupyter_lite_config.json`` is regenerated automatically from the
 #    wheels above by ``docs/source/conf.py`` during ``make html``, so it
 #    does not need to live in git or be regenerated explicitly here.
 

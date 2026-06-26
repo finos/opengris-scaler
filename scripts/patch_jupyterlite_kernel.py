@@ -2,7 +2,7 @@
 """Patch the jupyterlite-pyodide-kernel boot bundle so opengris-scaler and its
 pure-Python deps are auto-installed when the kernel starts.
 
-jupyterlite-pyodide-kernel 0.22 has no public hook for "run this Python on
+jupyterlite-pyodide-kernel 0.8.x has no public hook for "run this Python on
 kernel boot", so we splice extra ``piplite.install`` lines into the kernel's
 bootstrap statement array via a string replace on a unique marker. The wheels
 are staged locally by PipliteAddon (see ``docs/source/jupyter_lite_config.json``)

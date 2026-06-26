@@ -154,20 +154,18 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.docker-metadata.outputs.version }}
 
-  release-wasm:
-    name: Attach WASM wheel to GitHub Release
-    needs: build-wasm-client
+  publish-wasm:
+    name: Publish WASM wheel to PyPI
+    needs: [ build-wasm-client, publish ]
     runs-on: ubuntu-latest
+    environment: release
     permissions:
-      contents: write
+      id-token: write
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
         with:
           egress-policy: audit
-
-      - name: 'Checkout Repository'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Download wasm wheel artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -175,56 +173,12 @@ jobs:
           name: wasm-client-wheel
           path: ./dist_wasm/
 
-      - name: Compute checksums and manifest
-        id: manifest
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_URL: ${{ github.event.release.html_url }}
-        run: |
-          set -euo pipefail
-          cd dist_wasm
-          shopt -s nullglob
-          wheels=( opengris_scaler-*emscripten*wasm32.whl )
-          if [[ ${#wheels[@]} -eq 0 ]]; then
-            echo "::error::No wasm wheel found in dist_wasm/"
-            exit 1
-          fi
-          # The wasm wheel build pins one cp313 / emscripten_4_0_9 wheel.
-          wheel="${wheels[0]}"
-          sha256sum "${wheel}" > "${wheel}.sha256"
-          version="${RELEASE_TAG#v}"
-          # Pyodide / python ABI tags come from the wheel filename:
-          # opengris_scaler-<version>-<py>-<abi>-<plat>.whl
-          stripped="${wheel%.whl}"
-          plat="${stripped##*-}"
-          stripped="${stripped%-*}"
-          abi="${stripped##*-}"
-          stripped="${stripped%-*}"
-          py="${stripped##*-}"
-          cat > wasm-package-index.json <<EOF
-          {
-            "version": "${version}",
-            "wheel": "${wheel}",
-            "url": "https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/${wheel}",
-            "sha256": "$(cut -d' ' -f1 < "${wheel}.sha256")",
-            "pyodide_version": "0.29.3",
-            "python_tag": "${py}",
-            "abi_tag": "${abi}",
-            "platform_tag": "${plat}"
-          }
-          EOF
-          echo "wheel=${wheel}" >> "$GITHUB_OUTPUT"
-          ls -la
-
-      - name: Upload wheel + checksum + manifest to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: |
-          set -euo pipefail
-          cd dist_wasm
-          gh release upload "${RELEASE_TAG}" \
-            opengris_scaler-*emscripten*wasm32.whl \
-            opengris_scaler-*emscripten*wasm32.whl.sha256 \
-            wasm-package-index.json \
-            --clobber
+      - name: Publish WASM wheel to PyPI
+        # pyodide-build emits a single PEP 783 pyemscripten_2026_0_wasm32 wheel
+        # for Pyodide 314; PyPI accepts that platform tag and micropip installs
+        # it directly. This replaces the previous GitHub-release wasm asset.
+        # Runs after the main publish job so the release version already exists.
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: ./dist_wasm/
+          skip-existing: true
