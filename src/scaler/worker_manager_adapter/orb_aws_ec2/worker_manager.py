@@ -286,12 +286,21 @@ class ORBAWSEC2WorkerManager:
 
         try:
             from orb import ORBClient as orb
+            from orb.config.managers.configuration_manager import ConfigurationManager
+            from orb.infrastructure.di.container import get_container
         except ModuleNotFoundError as exc:
             raise ModuleNotFoundError(
                 'execute "pip install opengris-scaler[orb]" to use ORB AWS EC2 worker Manager'
             ) from exc
 
-        async with orb(app_config=self._build_app_config()) as sdk:
+        app_config = self._build_app_config()
+
+        # ORB bug: create_aws_strategy() uses get_container() (the process-global DI singleton)
+        # instead of the per-client container, so it reads region="us-east-1" from aws_defaults.json.
+        # Pre-seed the global container so AWSClient resolves the correct region.
+        get_container().register_instance(ConfigurationManager, ConfigurationManager(config_dict=app_config))
+        os.environ["AWS_DEFAULT_REGION"] = self._config.aws_region
+        async with orb(app_config=app_config) as sdk:
             # setup_logger is called after the ORB context is entered because ORB reconfigures
             # the root logger during __aenter__, which would otherwise suppress scaler log output.
             setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
