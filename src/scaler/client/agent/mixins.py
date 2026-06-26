@@ -95,25 +95,25 @@ class DisconnectManager(metaclass=abc.ABCMeta):
 
 class ActorManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def on_create_actor(self, actor_create: ActorCreate):
+    async def on_create_actor(self, actor_create: ActorCreate) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_destroy_actor(self, actor_destroy: ActorDestroy):
+    async def on_destroy_actor(self, actor_destroy: ActorDestroy) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_actor_state_update(self, actor_state_update: ActorStateUpdate):
+    async def on_actor_state_update(self, actor_state_update: ActorStateUpdate) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_send_actor_message(self, actor_message: ActorMessage):
+    async def on_send_actor_message(self, actor_message: ActorMessage) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_actor_message(self, actor_message: ActorMessage):
+    async def on_actor_message(self, actor_message: ActorMessage) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def set_all_actors_dead(self):
+    def set_all_actors_dead(self) -> None:
         raise NotImplementedError()

@@ -168,19 +168,19 @@ class TaskController(Reporter):
 
 class ActorController(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def on_actor_create(self, client_id: ClientID, actor_create: ActorCreate):
+    async def on_actor_create(self, client_id: ClientID, actor_create: ActorCreate) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_actor_destroy(self, client_id: ClientID, actor_destroy: ActorDestroy):
+    async def on_actor_destroy(self, client_id: ClientID, actor_destroy: ActorDestroy) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_actor_state_update(self, worker_id: WorkerID, actor_state_update: ActorStateUpdate):
+    async def on_actor_state_update(self, worker_id: WorkerID, actor_state_update: ActorStateUpdate) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_actor_message(self, source: bytes, actor_message: ActorMessage):
+    async def on_actor_message(self, source: bytes, actor_message: ActorMessage) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -188,11 +188,11 @@ class ActorController(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_client_disconnect(self, client_id: ClientID):
+    async def on_client_disconnect(self, client_id: ClientID) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_worker_disconnect(self, worker_id: WorkerID):
+    async def on_worker_disconnect(self, worker_id: WorkerID) -> None:
         raise NotImplementedError()
 
 

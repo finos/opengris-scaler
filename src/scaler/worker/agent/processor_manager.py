@@ -66,6 +66,11 @@ class VanillaProcessorManager(ProcessorManager):
 
         self._can_accept_task_lock: asyncio.Lock = asyncio.Lock()
 
+        # set when the current processor reports ProcessorInitialized, cleared whenever a fresh
+        # (uninitialized) processor is started; lets actor designation await initialization
+        # without polling
+        self._processor_initialized_event: asyncio.Event = asyncio.Event()
+
         self._binder_internal: Optional[AsyncBinder] = None
 
     def register(
@@ -113,6 +118,7 @@ class VanillaProcessorManager(ProcessorManager):
         self._current_holder.initialize(processor_id)
 
         self._can_accept_task_lock.release()
+        self._processor_initialized_event.set()
 
     async def on_task(self, task: Task) -> bool:
         assert self._can_accept_task_lock.locked()
@@ -295,6 +301,9 @@ class VanillaProcessorManager(ProcessorManager):
     def current_processor_is_initialized(self) -> bool:
         return self._current_holder is not None and self._current_holder.initialized()
 
+    async def wait_until_current_processor_initialized(self) -> None:
+        await self._processor_initialized_event.wait()
+
     def current_processor_id(self) -> Optional[ProcessorID]:
         if not self.current_processor_is_initialized():
             return None
@@ -324,6 +333,9 @@ class VanillaProcessorManager(ProcessorManager):
         return len(self._suspended_holders_by_task_id)
 
     def __start_new_processor(self):
+        # the fresh processor is not initialized yet; block actor designation until it reports in
+        self._processor_initialized_event.clear()
+
         object_storage_address = self._heartbeat_manager.get_object_storage_address()
 
         self._current_holder = ProcessorHolder(

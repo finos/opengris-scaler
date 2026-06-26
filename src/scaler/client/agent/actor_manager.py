@@ -33,7 +33,7 @@ class _Lifecycle:
 
 
 class _ActorRecord:
-    def __init__(self):
+    def __init__(self) -> None:
         # serializes lifecycle transitions and carries the wait/notify protocol; plain reads
         # of `lifecycle` never take it
         self.condition = threading.Condition()
@@ -50,7 +50,7 @@ class ClientActorManager(ActorManager):
     queue, and blocking waits go through the record's condition variable instead of polling.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._dict_lock = threading.Lock()
         self._actor_id_to_record: Dict[ActorID, _ActorRecord] = dict()
         # dead actor ids in death order, used to evict the oldest dead records once the retained
@@ -62,13 +62,13 @@ class ClientActorManager(ActorManager):
 
         self._connector_external: Optional[AsyncConnector] = None
 
-    def register(self, connector_external: AsyncConnector):
+    def register(self, connector_external: AsyncConnector) -> None:
         self._connector_external = connector_external
 
-    def track_actor(self, actor_id: ActorID):
+    def track_actor(self, actor_id: ActorID) -> None:
         self.__ensure_record(actor_id)
 
-    def untrack_actor(self, actor_id: ActorID):
+    def untrack_actor(self, actor_id: ActorID) -> None:
         """Drops a record again, e.g. when a create could not be sent after track_actor()."""
         with self._dict_lock:
             self._actor_id_to_record.pop(actor_id, None)
@@ -125,17 +125,17 @@ class ClientActorManager(ActorManager):
 
         return item
 
-    async def on_create_actor(self, actor_create: ActorCreate):
+    async def on_create_actor(self, actor_create: ActorCreate) -> None:
         self.track_actor(ActorID(bytes(actor_create.actorId)))
         await self._connector_external.send(actor_create)
 
-    async def on_destroy_actor(self, actor_destroy: ActorDestroy):
+    async def on_destroy_actor(self, actor_destroy: ActorDestroy) -> None:
         await self._connector_external.send(actor_destroy)
 
-    async def on_send_actor_message(self, actor_message: ActorMessage):
+    async def on_send_actor_message(self, actor_message: ActorMessage) -> None:
         await self._connector_external.send(actor_message)
 
-    async def on_actor_message(self, actor_message: ActorMessage):
+    async def on_actor_message(self, actor_message: ActorMessage) -> None:
         actor_id = ActorID(bytes(actor_message.actorId))
 
         record = self.__get_record(actor_id)
@@ -147,7 +147,7 @@ class ClientActorManager(ActorManager):
         # payload is a stable bytes object we can hand to the inbox without re-copying
         record.inbox.put(actor_message.payload)
 
-    async def on_actor_state_update(self, actor_state_update: ActorStateUpdate):
+    async def on_actor_state_update(self, actor_state_update: ActorStateUpdate) -> None:
         actor_id = ActorID(bytes(actor_state_update.actorId))
         record = self.__get_record(actor_id)
         if record is None:
@@ -166,7 +166,7 @@ class ClientActorManager(ActorManager):
 
     def set_all_actors_dead(
         self, reason: ActorStateUpdate.DeathInfo.Reason = ActorStateUpdate.DeathInfo.Reason.clientDisconnected
-    ):
+    ) -> None:
         with self._dict_lock:
             # latch inside the same locked section that snapshots the records, so a record added
             # by __ensure_record after this point sees the flag and is born dead instead of being
@@ -183,7 +183,7 @@ class ClientActorManager(ActorManager):
         record: _ActorRecord,
         new_state: ActorState,
         death_reason: Optional[ActorStateUpdate.DeathInfo.Reason],
-    ):
+    ) -> None:
         with record.condition:
             current = record.lifecycle
 
@@ -205,7 +205,7 @@ class ClientActorManager(ActorManager):
             # record lock is held would invert ordering); first death only, since dead is absorbing
             self.__retain_dead(actor_id)
 
-    def __retain_dead(self, actor_id: ActorID):
+    def __retain_dead(self, actor_id: ActorID) -> None:
         with self._dict_lock:
             self._dead_actor_ids[actor_id] = None
             while len(self._dead_actor_ids) > _MAX_RETAINED_DEAD_RECORDS:

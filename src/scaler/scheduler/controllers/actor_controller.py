@@ -15,7 +15,7 @@ class VanillaActorController(ActorController):
     blocked.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._binder: Optional[AsyncBinder] = None
         self._worker_controller: Optional[WorkerController] = None
 
@@ -23,14 +23,14 @@ class VanillaActorController(ActorController):
         self._worker_to_actor_ids: OneToManyDict[WorkerID, ActorID] = OneToManyDict()
         self._actor_id_to_state: Dict[ActorID, ActorState] = dict()
 
-    def register(self, binder: AsyncBinder, worker_controller: WorkerController):
+    def register(self, binder: AsyncBinder, worker_controller: WorkerController) -> None:
         self._binder = binder
         self._worker_controller = worker_controller
 
     def is_actor_worker(self, worker_id: WorkerID) -> bool:
         return self._worker_to_actor_ids.has_key(worker_id)
 
-    async def on_actor_create(self, client_id: ClientID, actor_create: ActorCreate):
+    async def on_actor_create(self, client_id: ClientID, actor_create: ActorCreate) -> None:
         actor_id = ActorID(bytes(actor_create.actorId))
 
         if actor_create.source != client_id:
@@ -80,7 +80,7 @@ class VanillaActorController(ActorController):
         await self.__send_state(client_id, actor_id, None, ActorState.pending)
         await self._binder.send(worker_id, actor_create)
 
-    async def on_actor_destroy(self, client_id: ClientID, actor_destroy: ActorDestroy):
+    async def on_actor_destroy(self, client_id: ClientID, actor_destroy: ActorDestroy) -> None:
         actor_id = ActorID(bytes(actor_destroy.actorId))
 
         if actor_id not in self._actor_id_to_state:
@@ -101,7 +101,7 @@ class VanillaActorController(ActorController):
         worker_id = self._worker_to_actor_ids.get_key(actor_id)
         await self._binder.send(worker_id, actor_destroy)
 
-    async def on_actor_state_update(self, worker_id: WorkerID, actor_state_update: ActorStateUpdate):
+    async def on_actor_state_update(self, worker_id: WorkerID, actor_state_update: ActorStateUpdate) -> None:
         actor_id = ActorID(bytes(actor_state_update.actorId))
         state = ActorState(actor_state_update.state.value)
 
@@ -140,7 +140,7 @@ class VanillaActorController(ActorController):
 
         await self._binder.send(owner, actor_state_update)
 
-    async def on_actor_message(self, source: bytes, actor_message: ActorMessage):
+    async def on_actor_message(self, source: bytes, actor_message: ActorMessage) -> None:
         actor_id = ActorID(bytes(actor_message.actorId))
 
         if source.startswith(b"Client|"):
@@ -181,7 +181,7 @@ class VanillaActorController(ActorController):
 
         await self._binder.send(self._client_to_actor_ids.get_key(actor_id), actor_message)
 
-    async def on_client_disconnect(self, client_id: ClientID):
+    async def on_client_disconnect(self, client_id: ClientID) -> None:
         if client_id not in self._client_to_actor_ids.keys():
             return
 
@@ -198,7 +198,7 @@ class VanillaActorController(ActorController):
                 worker_id, ActorDestroy(actorId=actor_id, source=client_id, mode=ActorDestroy.Mode.kill)
             )
 
-    async def on_worker_disconnect(self, worker_id: WorkerID):
+    async def on_worker_disconnect(self, worker_id: WorkerID) -> None:
         if worker_id not in self._worker_to_actor_ids.keys():
             return
 
@@ -213,7 +213,7 @@ class VanillaActorController(ActorController):
             self.__forget_actor(actor_id)
             await self.__send_dead(owner, actor_id, ActorStateUpdate.DeathInfo.Reason.workerDied, worker_id=worker_id)
 
-    def __forget_actor(self, actor_id: ActorID):
+    def __forget_actor(self, actor_id: ActorID) -> None:
         self._actor_id_to_state.pop(actor_id, None)
         if self._client_to_actor_ids.has_value(actor_id):
             self._client_to_actor_ids.remove_value(actor_id)
@@ -222,7 +222,7 @@ class VanillaActorController(ActorController):
 
     async def __send_state(
         self, client_id: ClientID, actor_id: ActorID, worker_id: Optional[WorkerID], state: ActorState
-    ):
+    ) -> None:
         await self._binder.send(
             client_id, ActorStateUpdate(actorId=actor_id, source=client_id, workerId=worker_id or b"", state=state)
         )
@@ -234,7 +234,7 @@ class VanillaActorController(ActorController):
         reason: ActorStateUpdate.DeathInfo.Reason,
         detail: str = "",
         worker_id: Optional[WorkerID] = None,
-    ):
+    ) -> None:
         error = (
             ActorError(errorType="scaler.utility.exceptions.ActorDeadError", message=detail) if detail else ActorError()
         )

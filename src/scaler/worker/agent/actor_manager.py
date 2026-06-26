@@ -11,7 +11,6 @@ from scaler.utility.mixins import Looper
 from scaler.worker.agent.mixins import ActorManager, ProcessorManager
 
 _PROCESSOR_READY_WAIT_SECONDS = 30
-_PROCESSOR_READY_POLL_SECONDS = 0.1
 
 
 @dataclasses.dataclass
@@ -36,7 +35,7 @@ class VanillaActorManager(Looper, ActorManager):
     designation. Process lifecycle stays with the processor manager.
     """
 
-    def __init__(self, identity: WorkerID):
+    def __init__(self, identity: WorkerID) -> None:
         self._identity = identity
 
         self._connector_external: Optional[AsyncConnector] = None
@@ -50,12 +49,12 @@ class VanillaActorManager(Looper, ActorManager):
 
     def register(
         self, connector_external: AsyncConnector, binder_internal: AsyncBinder, processor_manager: ProcessorManager
-    ):
+    ) -> None:
         self._connector_external = connector_external
         self._binder_internal = binder_internal
         self._processor_manager = processor_manager
 
-    async def on_actor_state_update(self, host_identity: bytes, actor_state_update: ActorStateUpdate):
+    async def on_actor_state_update(self, host_identity: bytes, actor_state_update: ActorStateUpdate) -> None:
         designation = self._designation
         actor_id = ActorID(bytes(actor_state_update.actorId))
         state = ActorState(actor_state_update.state.value)
@@ -68,7 +67,7 @@ class VanillaActorManager(Looper, ActorManager):
 
         await self._connector_external.send(self.__stamp_worker_id(actor_state_update))
 
-    async def on_actor_message(self, actor_message: ActorMessage):
+    async def on_actor_message(self, actor_message: ActorMessage) -> None:
         designation = self._designation
 
         if (
@@ -83,10 +82,10 @@ class VanillaActorManager(Looper, ActorManager):
 
         await self._binder_internal.send(designation.processor_id, actor_message)
 
-    async def on_actor_message_from_host(self, actor_message: ActorMessage):
+    async def on_actor_message_from_host(self, actor_message: ActorMessage) -> None:
         await self._connector_external.send(actor_message)
 
-    async def routine(self):
+    async def routine(self) -> None:
         designation = self._designation
         if designation is None:
             return
@@ -106,14 +105,14 @@ class VanillaActorManager(Looper, ActorManager):
 
             await self.__send_dead(designation.actor_id, designation.source, reason, detail)
 
-    def destroy(self, reason: str):
+    def destroy(self, reason: str) -> None:
         for task in self._pending_creates.values():
             task.cancel()
         self._pending_creates.clear()
 
         self._designation = None
 
-    async def on_actor_create(self, actor_create: ActorCreate):
+    async def on_actor_create(self, actor_create: ActorCreate) -> None:
         actor_id = ActorID(bytes(actor_create.actorId))
         source = bytes(actor_create.source)
 
@@ -162,7 +161,7 @@ class VanillaActorManager(Looper, ActorManager):
         self._pending_creates[actor_id] = task
         task.add_done_callback(functools.partial(self.__forget_pending_create, actor_id))
 
-    async def on_actor_destroy(self, actor_destroy: ActorDestroy):
+    async def on_actor_destroy(self, actor_destroy: ActorDestroy) -> None:
         actor_id = ActorID(bytes(actor_destroy.actorId))
 
         pending = self._pending_creates.pop(actor_id, None)
@@ -199,30 +198,31 @@ class VanillaActorManager(Looper, ActorManager):
         # manager detects the exit and starts a fresh processor
         await self._binder_internal.send(designation.processor_id, actor_destroy)
 
-    def __forget_pending_create(self, actor_id: ActorID, task: asyncio.Task):
+    def __forget_pending_create(self, actor_id: ActorID, task: asyncio.Task) -> None:
         # only drop the entry if it is still this task: a destroy may have already removed it (and
         # scheduled a fresh one is impossible here since actor ids are never reused)
         if self._pending_creates.get(actor_id) is task:
             del self._pending_creates[actor_id]
 
-    async def __designate_when_processor_ready(self, actor_create: ActorCreate):
+    async def __designate_when_processor_ready(self, actor_create: ActorCreate) -> None:
         actor_id = ActorID(bytes(actor_create.actorId))
         source = bytes(actor_create.source)
 
-        waited_seconds = 0.0
-        while self._processor_manager.current_processor_id() is None:
-            if waited_seconds >= _PROCESSOR_READY_WAIT_SECONDS:
-                self._pending_creates.pop(actor_id, None)
-                await self.__send_dead(
-                    actor_id,
-                    source,
-                    ActorStateUpdate.DeathInfo.Reason.constructorFailed,
-                    "worker has no initialized processor",
-                )
-                return
-
-            await asyncio.sleep(_PROCESSOR_READY_POLL_SECONDS)
-            waited_seconds += _PROCESSOR_READY_POLL_SECONDS
+        try:
+            # wait for the processor to report ProcessorInitialized instead of polling for it
+            await asyncio.wait_for(
+                self._processor_manager.wait_until_current_processor_initialized(),
+                timeout=_PROCESSOR_READY_WAIT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            self._pending_creates.pop(actor_id, None)
+            await self.__send_dead(
+                actor_id,
+                source,
+                ActorStateUpdate.DeathInfo.Reason.constructorFailed,
+                "worker has no initialized processor",
+            )
+            return
 
         # claim the designation atomically with leaving the pending map: there is no await in
         # between, so a destroy that cancelled us removed our entry and this coroutine was
@@ -232,7 +232,7 @@ class VanillaActorManager(Looper, ActorManager):
 
         await self.__designate(actor_create)
 
-    async def __designate(self, actor_create: ActorCreate):
+    async def __designate(self, actor_create: ActorCreate) -> None:
         actor_id = ActorID(bytes(actor_create.actorId))
         source = bytes(actor_create.source)
         processor_id = self._processor_manager.current_processor_id()
@@ -263,14 +263,14 @@ class VanillaActorManager(Looper, ActorManager):
 
         return ActorStateUpdate(**fields)
 
-    async def __send_state(self, actor_id: ActorID, source: bytes, state: ActorState):
+    async def __send_state(self, actor_id: ActorID, source: bytes, state: ActorState) -> None:
         await self._connector_external.send(
             ActorStateUpdate(actorId=actor_id, source=source, workerId=self._identity, state=state)
         )
 
     async def __send_dead(
         self, actor_id: ActorID, source: bytes, reason: ActorStateUpdate.DeathInfo.Reason, detail: str
-    ):
+    ) -> None:
         error = (
             ActorError(errorType="scaler.utility.exceptions.ActorDeadError", message=detail) if detail else ActorError()
         )

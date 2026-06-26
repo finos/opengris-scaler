@@ -21,27 +21,27 @@ from scaler.worker.agent.processor_holder import ProcessorHolder
 
 class ActorManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def on_actor_create(self, actor_create: ActorCreate):
+    async def on_actor_create(self, actor_create: ActorCreate) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_actor_destroy(self, actor_destroy: ActorDestroy):
+    async def on_actor_destroy(self, actor_destroy: ActorDestroy) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_actor_state_update(self, host_identity: bytes, actor_state_update: ActorStateUpdate):
+    async def on_actor_state_update(self, host_identity: bytes, actor_state_update: ActorStateUpdate) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_actor_message(self, actor_message: ActorMessage):
+    async def on_actor_message(self, actor_message: ActorMessage) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_actor_message_from_host(self, actor_message: ActorMessage):
+    async def on_actor_message_from_host(self, actor_message: ActorMessage) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def destroy(self, reason: str):
+    def destroy(self, reason: str) -> None:
         raise NotImplementedError()
 
 
@@ -133,11 +133,15 @@ class ProcessorManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
+    async def wait_until_current_processor_initialized(self) -> None:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
     def current_processor_id(self) -> Optional[ProcessorID]:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def restart_current_processor(self, reason: str):
+    def restart_current_processor(self, reason: str) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
