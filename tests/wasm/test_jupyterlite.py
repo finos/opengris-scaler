@@ -34,6 +34,7 @@ To run locally:
 
 import http.server
 import os
+import re
 import socketserver
 import threading
 import unittest
@@ -121,67 +122,87 @@ class JupyterLiteTests(unittest.TestCase):
             page.get_by_role("menuitem", name="Run", exact=True).click()
             page.get_by_role("menuitem", name="Run All Cells", exact=True).click()
 
-            # Wait for the kernel to actually execute user code that touches
-            # scaler. Cell 1 is just variable assignment (no scaler import),
-            # cell 2 is ``import scaler`` + ``Client(...)`` -- and ``Client``
-            # blocks indefinitely trying to reach an unreachable scheduler,
-            # so we cannot wait for cell 2 to *complete*. Instead we wait for
-            # cell 1 to finish (prompt = "[1]:") AND cell 2 to be running
-            # (prompt = "[*]:"). That state proves:
-            #   * the lite kernel booted,
-            #   * the bootstrap injection ran piplite.install successfully
-            #     (otherwise cell 1 would not advance past "[*]:"),
-            #   * ``import scaler`` worked (otherwise cell 2 would error
-            #     immediately and its prompt would jump to "[2]:" with a
-            #     traceback in the output, not stay at "[*]:").
-            #
-            # The wait absorbs cold pyodide load + scaler wheel install +
-            # kernel exec; 5 minutes is conservative for slow CI runners.
-            deadline_ms = 300_000
+            # "Run All Cells" queues every cell as "[*]:" immediately, so "[*]:"
+            # alone proves nothing ran. Each demo runs ``%pip install
+            # opengris-scaler`` first, then ``from scaler import Client`` +
+            # ``Client(...)``. Two observed facts drive the check below:
+            #   * Jupyter "Run All" HALTS on the first cell error, so if the %pip
+            #     install fails, the import cell never runs -- it stays at the empty
+            #     "[ ]:" prompt with no output.
+            #   * ``Client(...)`` itself raises here (the test runs no scheduler),
+            #     so on SUCCESS the import cell finishes with a *connection* error
+            #     (e.g. SysCallError) -- NOT a scaler import error.
+            # Therefore success == the import cell actually RAN (numeric/running
+            # prompt, not "[ ]:") AND its output shows no scaler-import failure. We
+            # read cell OUTPUT because a ModuleNotFoundError is kernel output, not a
+            # JS pageerror -- a pageerror-only check missed a fully broken import.
+            import_error_markers = ("No module named 'scaler'", "Can't find a pure Python 3 wheel")
+
+            def cell_state(js_regex: str):
+                """{prompt, output} of the first code cell whose source matches js_regex."""
+                return page.evaluate(
+                    "() => {"
+                    "  const cells = Array.from(document.querySelectorAll('.jp-Notebook .jp-Cell'))"
+                    "    .filter(c => c.querySelector('.jp-InputPrompt'));"
+                    f"  const cell = cells.find(c => ({js_regex})"
+                    "    .test(c.querySelector('.jp-InputArea-editor')?.innerText || ''));"
+                    "  if (!cell) return null;"
+                    "  return {"
+                    "    prompt: (cell.querySelector('.jp-InputPrompt').textContent || '').trim(),"
+                    "    output: (cell.querySelector('.jp-OutputArea')?.innerText || '').trim(),"
+                    "  };"
+                    "}"
+                )
+
+            # (1) Wait for the %pip install cell to FINISH -- a numeric prompt
+            # ("[N]:"), not the queued/running "[*]:". 5 minutes absorbs cold
+            # pyodide load + the wheel install on slow CI runners.
             page.wait_for_function(
-                """() => {
-                    const prompts = Array.from(
-                        document.querySelectorAll('.jp-Notebook .jp-InputPrompt')
-                    ).map(p => (p.textContent || '').trim());
-                    if (prompts.length < 3) return false;
-                    const cell1Done = /^\\[\\s*\\d+\\s*\\]:?$/.test(prompts[1]);
-                    const cell2Running = prompts[2] === '[*]:' ||
-                        /^\\[\\s*\\d+\\s*\\]:?$/.test(prompts[2]);
-                    return cell1Done && cell2Running;
-                }""",
-                timeout=deadline_ms,
+                "() => {"
+                "  const cells = Array.from(document.querySelectorAll('.jp-Notebook .jp-Cell'))"
+                "    .filter(c => c.querySelector('.jp-InputPrompt'));"
+                "  const cell = cells.find(c => /pip install [^\\n]*opengris-scaler/"
+                "    .test(c.querySelector('.jp-InputArea-editor')?.innerText || ''));"
+                "  if (!cell) return false;"
+                "  const prompt = (cell.querySelector('.jp-InputPrompt').textContent || '').trim();"
+                "  return /^\\[\\s*\\d+\\s*\\]/.test(prompt);"
+                "}",
+                timeout=300_000,
             )
 
-            # If we got past wait_for_function, scaler imported successfully
-            # in the lite kernel (see the cell2Running rationale above). The
-            # cell may still be running (Client blocked on connection), so
-            # outputs may be empty -- that's fine. We additionally inspect
-            # console / outputs for any scaler-related text as belt-and-braces
-            # evidence and to surface useful failure context if assertions
-            # below tighten in the future.
-            outputs_text = page.evaluate("""() => {
-                    const nodes = document.querySelectorAll(
-                        '.jp-Notebook .jp-OutputArea-output, .jp-Notebook .jp-OutputArea'
-                    );
-                    return Array.from(nodes).map(n => n.innerText).join('\\n');
-                }""")
-            evidence = outputs_text + "\n".join(console_messages)
-            # If cell 2 is in [*]:, the import succeeded and the cell is in
-            # the user code. We do not assert on output here because Client
-            # produces none until it connects. Just sanity-check no fatal
-            # pageerror about scaler/piplite slipped through.
-            fatal = [
-                m
-                for m in console_messages
-                if "PAGEERROR" in m
-                and ("ModuleNotFoundError" in m and "scaler" in m or "Can't find a pure Python 3 wheel" in m)
-            ]
-            self.assertFalse(
-                fatal, msg=(f"Fatal scaler/piplite errors observed: {fatal[:3]} " f"Outputs: {outputs_text[-500:]!r}")
+            # (2) Grace for execution to continue into the import cell (or to halt
+            # and revert it to "[ ]:" if the install failed), then inspect it. We do
+            # NOT assert on the %pip cell's own output: piplite's install log is
+            # noisy and non-deterministic (benign "Path resolution bailing" lines /
+            # non-fatal resolution tracebacks appear even on a clean install).
+            page.wait_for_timeout(25_000)
+            imp_cell = cell_state(r"/\bfrom scaler\b|\bimport scaler\b/")
+            self.assertIsNotNone(imp_cell, f"{notebook}: no cell importing scaler was found")
+            pip_cell = cell_state(r"/pip install [^\n]*opengris-scaler/")
+
+            # The import cell must have RUN (numeric or still-running prompt). The
+            # empty "[ ]:" means Run-All halted on the %pip cell -> install failed.
+            ran = bool(re.match(r"^\[\s*(?:\d+|\*)\s*\]", imp_cell["prompt"]))
+            self.assertTrue(
+                ran,
+                msg=(
+                    f"{notebook}: the scaler import cell never executed (prompt "
+                    f"{imp_cell['prompt']!r}); '%pip install opengris-scaler' must have "
+                    f"failed and halted Run-All.\n%pip-cell output:\n{(pip_cell or {}).get('output', '')[:1200]}"
+                ),
             )
-            # Keep `evidence` referenced so the assertion message above is
-            # meaningful when run with -v.
-            self.assertIsInstance(evidence, str)
+            # And it must not have failed to import scaler. The Client(...) call
+            # raises a connection error here (no scheduler) -- expected, and NOT a
+            # scaler import failure -- so we match only the import/install signature.
+            imp_failed = [m for m in import_error_markers if m in imp_cell["output"]]
+            self.assertFalse(
+                imp_failed,
+                msg=(
+                    f"{notebook}: in-browser 'import scaler' FAILED (matched {imp_failed}).\n"
+                    f"import-cell prompt={imp_cell['prompt']!r}\noutput:\n{imp_cell['output'][:1200]}\n"
+                    f"console:\n{chr(10).join(console_messages[-15:])}"
+                ),
+            )
             browser.close()
 
 
