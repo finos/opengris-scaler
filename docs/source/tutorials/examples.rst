@@ -57,6 +57,46 @@ Examples
      - 6m 14s
      - 10.27
 
+Running these notebooks locally
+-------------------------------
+
+The notebooks live under ``examples/notebooks/`` in the
+`OpenGRIS Scaler repository <https://github.com/finos/opengris-scaler>`_. From a
+fresh checkout, set them up in four steps:
+
+1. **Set up your environment.** Create and activate a virtual environment, then
+   install OpenGRIS Scaler (see :ref:`installation_options` for more options):
+
+   .. code-block:: bash
+
+       uv venv
+       source .venv/bin/activate
+       uv pip install opengris-scaler
+
+2. **Install the notebook dependencies** from the bundled requirements file:
+
+   .. code-block:: bash
+
+       uv pip install -r examples/notebooks/requirements_notebooks.txt
+
+3. **Install Jupyter:**
+
+   .. code-block:: bash
+
+       uv pip install jupyter
+
+4. **Launch Jupyter and run the code:**
+
+   .. code-block:: bash
+
+       cd examples/notebooks
+       jupyter notebook
+
+   Open a notebook and run its cells in order. Notebooks that connect to a
+   Scaler cluster over a ``tcp://`` address expect a
+   :doc:`running scheduler and cluster <../tutorials/quickstart>`; the others
+   start a local cluster automatically.
+
 .. toctree::
    :hidden:
    :maxdepth: 1
