@@ -29,6 +29,11 @@ const _ORB_INLINE_POLICY = JSON.stringify({
   ],
 });
 
+const _OCI_SHAPE_PRICING = {
+  "CI.Standard.A1.Flex": { ocpuPrice: 0.013106, memPrice: 0.0019659 },
+  "CI.Standard.E4.Flex": { ocpuPrice: 0.032765, memPrice: 0.0019659 },
+};
+
 function randomSuffix(n) {
   n = n || 8;
   var chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -130,130 +135,324 @@ function downloadText(filename, content) {
   URL.revokeObjectURL(url);
 }
 
-function buildConfigToml(cfg) {
+// Builds one [[worker_manager]] TOML table. `ctx` carries the proto/port/address values that
+// differ between the download template (placeholder strings like <PRIVATE_IP>) and the actual
+// EC2 user-data script (bash variables like $PRIVATE_IP, resolved at instance boot).
+function buildWorkerManagerTable(wm, cfg, ctx) {
+  var table = {
+    type: wm.type,
+    scheduler_address: `${ctx.proto}://127.0.0.1:${ctx.sp}${ctx.wsSlash}`,
+    worker_manager_id: wm.id,
+  };
+
+  if (wm.type === "orb_aws_ec2") {
+    var req = (wm.requirements || "").trim();
+    var inst = (window.SCALER_INSTANCES || []).find(function (i) { return i.type === wm.instanceType; });
+    if (!inst || inst.vcpu == null) throw new Error("Unknown EC2 instance type: " + wm.instanceType);
+    var orbDerivedCount = wm.capMode === "instances"
+      ? Math.max(0, wm.instanceCap || 0)
+      : Math.max(0, Math.floor((wm.budgetCap || 0) / (inst.price || 1)));
+    Object.assign(table, {
+      worker_scheduler_address: `${ctx.proto}://${ctx.privateIp}:${ctx.sp}${ctx.wsSlash}`,
+      object_storage_address: `${ctx.proto}://${ctx.privateIp}:${ctx.op}${ctx.wsSlash}`,
+      python_version: cfg.pythonVersion,
+      requirements_txt: TOML.multiline.basic(req + "\n"),
+      instance_type: wm.instanceType,
+      max_task_concurrency: orbDerivedCount * inst.vcpu,
+      aws_region: cfg.region,
+      key_name: `scaler-key-${ctx.nameSuffix}`,
+      subnet_id: ctx.subnetId,
+      security_group_ids: TOML.inline([ctx.securityGroupId]),
+      logging_level: "INFO",
+      instance_tags: TOML.inline({ "scaler-deployment": ctx.nameSuffix }),
+    });
+    table.network_backend = cfg.networkBackend || "ymq";
+  } else if (wm.type === "aws_raw_ecs") {
+    Object.assign(table, {
+      aws_region: cfg.region,
+      ecs_cluster: wm.ecsCluster || "scaler-cluster",
+      ecs_task_image: wm.ecsTaskImage || "",
+      ecs_subnets: wm.ecsSubnets || "",
+      ecs_task_definition: wm.ecsTaskDefinition || "scaler-task-definition",
+      ecs_task_cpu: wm.ecsTaskCpu || 4,
+      ecs_task_memory: wm.ecsTaskMemory || 30,
+      ecs_python_version: cfg.pythonVersion,
+    });
+    if (wm.requirements) table.ecs_python_requirements = wm.requirements;
+  } else if (wm.type === "aws_hpc") {
+    Object.assign(table, {
+      aws_region: cfg.region,
+      job_queue: wm.jobQueue || "",
+      job_definition: wm.jobDefinition || "",
+      s3_bucket: wm.s3Bucket || "",
+      s3_prefix: wm.s3Prefix || "scaler-tasks",
+      max_concurrent_jobs: wm.maxConcurrentJobs || 100,
+      job_timeout_minutes: wm.jobTimeoutMinutes || 60,
+    });
+  } else if (wm.type === "oci_raw") {
+    var ociRawReq = (wm.requirements || "").trim();
+    var ociRawPricing = _OCI_SHAPE_PRICING[wm.ociShape || "CI.Standard.A1.Flex"] || _OCI_SHAPE_PRICING["CI.Standard.A1.Flex"];
+    var ociRawCostPerInstance = ociRawPricing.ocpuPrice * wm.ociOcpus + ociRawPricing.memPrice * wm.ociMemoryGb;
+    var ociRawDerivedCount = wm.capMode === "instances"
+      ? Math.max(0, wm.instanceCap || 0)
+      : Math.max(0, Math.floor((wm.budgetCap || 0) / (ociRawCostPerInstance || 1)));
+    Object.assign(table, {
+      worker_scheduler_address: `${ctx.proto}://$PUBLIC_IP:${ctx.sp}${ctx.wsSlash}`,
+      oci_region: wm.ociRegion || "us-ashburn-1",
+      compartment_id: wm.ociCompartmentId || "",
+      availability_domain: wm.ociAvailabilityDomain || "",
+      subnet_id: wm.ociSubnetId || "",
+      container_image: wm.ociContainerImage || "",
+      instance_shape: wm.ociShape || "CI.Standard.E4.Flex",
+      instance_ocpus: wm.ociOcpus,
+      instance_memory_gb: wm.ociMemoryGb,
+      max_task_concurrency: ociRawDerivedCount * wm.ociOcpus,
+      python_version: cfg.pythonVersion,
+      requirements_txt: TOML.multiline.basic(ociRawReq + "\n"),
+    });
+  } else if (wm.type === "oci_hpc") {
+    Object.assign(table, {
+      worker_scheduler_address: `${ctx.proto}://$PUBLIC_IP:${ctx.sp}${ctx.wsSlash}`,
+      oci_region: wm.ociRegion || "us-ashburn-1",
+      compartment_id: wm.ociCompartmentId || "",
+      availability_domain: wm.ociAvailabilityDomain || "",
+      subnet_id: wm.ociSubnetId || "",
+      container_image: wm.ociContainerImage || "",
+      object_storage_namespace: wm.ociObjectStorageNamespace || "",
+      object_storage_bucket: wm.ociObjectStorageBucket || "",
+      object_storage_prefix: wm.ociObjectStoragePrefix || "scaler-tasks",
+      instance_ocpus: wm.ociOcpus || 1,
+      instance_memory_gb: wm.ociMemoryGb || 6,
+      base_concurrency: wm.ociMaxConcurrentJobs || 100,
+      job_timeout_seconds: (wm.ociJobTimeoutMinutes || 60) * 60,
+    });
+  } else if (wm.type === "baremetal_native") {
+    Object.assign(table, {
+      mode: wm.mode || "fixed",
+      object_storage_address: `${ctx.proto}://127.0.0.1:${ctx.op}${ctx.wsSlash}`,
+    });
+    if (wm.workerType) table.worker_type = wm.workerType;
+    if (wm.maxTaskConcurrency != null && wm.maxTaskConcurrency >= 0) table.max_task_concurrency = wm.maxTaskConcurrency;
+  } else if (wm.type === "symphony") {
+    table.service_name = wm.serviceName || "";
+  }
+
+  return TOML.Section(table);
+}
+
+// Builds the full scheduler config.toml as a string via @ltd/j-toml. `addr` supplies the
+// privateIp/publicIp/subnetId/securityGroupId/nameSuffix values, which differ between the
+// download template (placeholders) and the actual EC2 user-data script (bash variables).
+function buildSchedulerConfigToml(cfg, addr) {
   var proto = cfg.transport || "ws";
   var sp = cfg.schedulerPort;
   var op = cfg.objectStoragePort;
   var wsSlash = proto === "ws" ? "/" : "";
-  var suffix = cfg.nameSuffix || "<suffix>";
+  var ctx = Object.assign({ proto: proto, sp: sp, op: op, wsSlash: wsSlash }, addr);
 
-  var wmToml = (cfg.workerManagers || [])
-    .map(function (wm) {
-      var block = `[[worker_manager]]
-type = "${wm.type}"
-scheduler_address = "${proto}://127.0.0.1:${sp}${wsSlash}"
-worker_manager_id = "${wm.id}"
-`;
+  var policyEngineType = cfg.policy || "simple";
+  var policySection = { policy_engine_type: policyEngineType };
+  if (policyEngineType === "waterfall_v1" && cfg.workerManagers && cfg.workerManagers.length > 0) {
+    var policyLines = cfg.workerManagers.map(function (wm, idx) {
+      return (idx + 1) + "," + wm.id;
+    }).join("\n");
+    policySection.policy_content = TOML.multiline.basic(policyLines + "\n");
+  }
 
-      if (wm.type === "orb_aws_ec2") {
-        var req = (wm.requirements || "").trim();
-        block += `worker_scheduler_address = "${proto}://<PRIVATE_IP>:${sp}${wsSlash}"
-object_storage_address = "${proto}://<PRIVATE_IP>:${op}${wsSlash}"
-python_version = "${cfg.pythonVersion}"
-requirements_txt = """
-${req}
-"""
-instance_type = "${wm.instanceType}"
-aws_region = "${cfg.region}"
-key_name = "scaler-key-${suffix}"
-subnet_id = "<SUBNET_ID>"
-security_group_ids = ["<SECURITY_GROUP_ID>"]
-logging_level = "INFO"
-instance_tags = {scaler-deployment = "${suffix}"}
-`;
-        if (cfg.networkBackend !== "zmq")
-          block += `network_backend = "${cfg.networkBackend || "ymq"}"\n`;
-      } else if (wm.type === "aws_raw_ecs") {
-        block += `aws_region = "${cfg.region}"
-ecs_cluster = "${wm.ecsCluster || "scaler-cluster"}"
-ecs_task_image = "${wm.ecsTaskImage || ""}"
-ecs_subnets = "${wm.ecsSubnets || ""}"
-ecs_task_definition = "${wm.ecsTaskDefinition || "scaler-task-definition"}"
-ecs_task_cpu = ${wm.ecsTaskCpu || 4}
-ecs_task_memory = ${wm.ecsTaskMemory || 30}
-ecs_python_version = "${cfg.pythonVersion}"
-`;
-        if (wm.requirements)
-          block += `ecs_python_requirements = "${wm.requirements}"\n`;
-      } else if (wm.type === "aws_hpc") {
-        block += `aws_region = "${cfg.region}"
-job_queue = "${wm.jobQueue || ""}"
-job_definition = "${wm.jobDefinition || ""}"
-s3_bucket = "${wm.s3Bucket || ""}"
-s3_prefix = "${wm.s3Prefix || "scaler-tasks"}"
-max_concurrent_jobs = ${wm.maxConcurrentJobs || 100}
-job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
-`;
-      } else if (wm.type === "oci_raw") {
-        var ociRawReq = (wm.requirements || "").trim();
-        block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
-oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-`;
-        block += `compartment_id = "${wm.ociCompartmentId || ""}"
-availability_domain = "${wm.ociAvailabilityDomain || ""}"
-subnet_id = "${wm.ociSubnetId || ""}"
-container_image = "${wm.ociContainerImage || ""}"
-`;
-        block += `instance_shape = "${wm.ociShape || "CI.Standard.E4.Flex"}"
-instance_ocpus = ${wm.ociOcpus || 4}
-instance_memory_gb = ${wm.ociMemoryGb || 30}
-python_version = "${cfg.pythonVersion}"
-requirements_txt = """
-${ociRawReq}
-"""
-`;
-      } else if (wm.type === "oci_hpc") {
-        block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
-oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-`;
-        block += `compartment_id = "${wm.ociCompartmentId || ""}"
-availability_domain = "${wm.ociAvailabilityDomain || ""}"
-subnet_id = "${wm.ociSubnetId || ""}"
-container_image = "${wm.ociContainerImage || ""}"
-object_storage_namespace = "${wm.ociObjectStorageNamespace || ""}"
-object_storage_bucket = "${wm.ociObjectStorageBucket || ""}"
-object_storage_prefix = "${wm.ociObjectStoragePrefix || "scaler-tasks"}"
-instance_ocpus = ${wm.ociOcpus || 1}
-instance_memory_gb = ${wm.ociMemoryGb || 6}
-base_concurrency = ${wm.ociMaxConcurrentJobs || 100}
-job_timeout_seconds = ${(wm.ociJobTimeoutMinutes || 60) * 60}
-`;
-      } else if (wm.type === "baremetal_native") {
-        block += `mode = "${wm.mode || "fixed"}"
-object_storage_address = "${proto}://127.0.0.1:${op}${wsSlash}"
-`;
-        if (wm.workerType) block += `worker_type = "${wm.workerType}"\n`;
-        if (wm.maxTaskConcurrency != null && wm.maxTaskConcurrency >= 0)
-          block += `max_task_concurrency = ${wm.maxTaskConcurrency}\n`;
-      } else if (wm.type === "symphony") {
-        block += `service_name = "${wm.serviceName || ""}"\n`;
+  var root = {
+    object_storage_server: TOML.Section({
+      bind_address: `${proto}://0.0.0.0:${op}${wsSlash}`,
+    }),
+    scheduler: TOML.Section(Object.assign({
+      bind_address: `${proto}://0.0.0.0:${sp}${wsSlash}`,
+      object_storage_address: `${proto}://127.0.0.1:${op}${wsSlash}`,
+      advertised_object_storage_address: `${proto}://${ctx.publicIp}:${op}${wsSlash}`,
+    }, policySection)),
+  };
+
+  var workerManagers = (cfg.workerManagers || []).map(function (wm) {
+    return buildWorkerManagerTable(wm, cfg, ctx);
+  });
+  if (workerManagers.length > 0) root.worker_manager = workerManagers;
+
+  root.gui = TOML.Section({
+    monitor_address: `${proto}://127.0.0.1:${sp + 2}${wsSlash}`,
+    gui_address: "0.0.0.0:50001",
+  });
+
+  return TOML.stringify(root, {
+    newline: "\n",
+    integer: Number.MAX_SAFE_INTEGER,
+    newlineAround: "section",
+    forceInlineArraySpacing: 0,
+  }).replace(/^\n+/, "");
+}
+
+function buildConfigToml(cfg) {
+  return buildSchedulerConfigToml(cfg, {
+    privateIp: "<PRIVATE_IP>",
+    publicIp: "<PUBLIC_IP>",
+    subnetId: "<SUBNET_ID>",
+    securityGroupId: "<SECURITY_GROUP_ID>",
+    nameSuffix: cfg.nameSuffix || "<suffix>",
+  });
+}
+
+function parseConfigToml(text) {
+  return TOML.parse(text, 1, "\n", false);
+}
+
+function configFromToml(toml) {
+  var scheduler = toml.scheduler || {};
+  var schedBind = scheduler.bind_address || "";
+  var objBind = (toml.object_storage_server || {}).bind_address || "";
+
+  function extractPort(addr) {
+    var m = addr.match(/:(\d+)/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  var proto = schedBind.slice(0, 3) === "tcp" ? "tcp" : "ws";
+  var schedulerPort = extractPort(schedBind) || 6788;
+  var objectStoragePort = extractPort(objBind) || 6789;
+
+  var rawWms = toml.worker_manager || [];
+  var workerManagers = rawWms.map(function(wm, idx) {
+    var base = {
+      _uid: idx + 1,
+      id: wm.worker_manager_id || ("wm-" + (idx + 1)),
+      type: wm.type || "orb_aws_ec2",
+    };
+    if (wm.type === "orb_aws_ec2") {
+      var orbInstType = wm.instance_type;
+      var orbInst = (window.SCALER_INSTANCES || []).find(function (i) { return i.type === orbInstType; });
+      if (!orbInst || orbInst.vcpu == null) throw new Error("Unknown EC2 instance type: " + orbInstType);
+      var orbInstanceCap = wm.max_task_concurrency != null
+        ? Math.max(1, Math.round(wm.max_task_concurrency / orbInst.vcpu))
+        : 4;
+      return Object.assign(base, {
+        instanceType: orbInstType,
+        capMode: "instances",
+        instanceCap: orbInstanceCap,
+        budgetCap: 10,
+        requirements: wm.requirements_txt || "opengris-scaler[all]",
+      });
+    }
+    if (wm.type === "aws_raw_ecs") {
+      return Object.assign(base, {
+        ecsCluster: wm.ecs_cluster || "",
+        ecsTaskImage: wm.ecs_task_image || "",
+        ecsSubnets: wm.ecs_subnets || "",
+        ecsTaskDefinition: wm.ecs_task_definition || "",
+        ecsTaskCpu: wm.ecs_task_cpu || 4,
+        ecsTaskMemory: wm.ecs_task_memory || 30,
+        requirements: wm.ecs_python_requirements || "opengris-scaler[all]",
+      });
+    }
+    if (wm.type === "aws_hpc") {
+      return Object.assign(base, {
+        jobQueue: wm.job_queue || "",
+        jobDefinition: wm.job_definition || "",
+        s3Bucket: wm.s3_bucket || "",
+        s3Prefix: wm.s3_prefix || "scaler-tasks",
+        maxConcurrentJobs: wm.max_concurrent_jobs || 100,
+        jobTimeoutMinutes: wm.job_timeout_minutes || 60,
+      });
+    }
+    if (wm.type === "oci_raw") {
+      var ociOcpus = wm.instance_ocpus;
+      var ociMemoryGb = wm.instance_memory_gb;
+      if (ociOcpus == null) throw new Error("oci_raw config missing instance_ocpus");
+      if (ociMemoryGb == null) throw new Error("oci_raw config missing instance_memory_gb");
+      var ociInstanceCap = wm.max_task_concurrency != null
+        ? Math.max(1, Math.round(wm.max_task_concurrency / ociOcpus))
+        : 4;
+      return Object.assign(base, {
+        ociShape: wm.instance_shape || "CI.Standard.A1.Flex",
+        ociOcpus: ociOcpus,
+        ociMemoryGb: ociMemoryGb,
+        ociRegion: wm.oci_region || "",
+        ociCompartmentId: wm.compartment_id || "",
+        ociAvailabilityDomain: wm.availability_domain || "",
+        ociSubnetId: wm.subnet_id || "",
+        ociContainerImage: wm.container_image || "",
+        requirements: wm.requirements_txt || "",
+        capMode: "instances",
+        instanceCap: ociInstanceCap,
+        budgetCap: 10,
+      });
+    }
+    if (wm.type === "oci_hpc") {
+      return Object.assign(base, {
+        ociRegion: wm.oci_region || "",
+        ociCompartmentId: wm.compartment_id || "",
+        ociAvailabilityDomain: wm.availability_domain || "",
+        ociSubnetId: wm.subnet_id || "",
+        ociContainerImage: wm.container_image || "",
+        ociObjectStorageNamespace: wm.object_storage_namespace || "",
+        ociObjectStorageBucket: wm.object_storage_bucket || "",
+        ociObjectStoragePrefix: wm.object_storage_prefix || "scaler-tasks",
+        ociOcpus: wm.instance_ocpus || 1,
+        ociMemoryGb: wm.instance_memory_gb || 6,
+        ociMaxConcurrentJobs: wm.base_concurrency || 100,
+        ociJobTimeoutMinutes: Math.round((wm.job_timeout_seconds || 3600) / 60),
+      });
+    }
+    if (wm.type === "symphony") {
+      return Object.assign(base, { serviceName: wm.service_name || "" });
+    }
+    return base;
+  });
+
+  var pyVer = "3.13";
+  for (var j = 0; j < rawWms.length; j++) {
+    if (rawWms[j].python_version) { pyVer = rawWms[j].python_version; break; }
+  }
+
+  var region = "us-east-1";
+  for (var k = 0; k < rawWms.length; k++) {
+    if (rawWms[k].aws_region) { region = rawWms[k].aws_region; break; }
+  }
+
+  var policy = scheduler.policy_engine_type || "simple";
+  var policyContent = scheduler.policy_content || "";
+
+  if (policy === "waterfall_v1" && policyContent) {
+    var priorityMap = {};
+    policyContent.split("\n").forEach(function(line) {
+      line = line.split("#")[0].trim();
+      if (!line) return;
+      var parts = line.split(",");
+      if (parts.length >= 2) {
+        var pri = parseInt(parts[0].trim(), 10);
+        var wmId = parts[1].trim();
+        if (!isNaN(pri) && wmId) priorityMap[wmId] = pri;
       }
+    });
+    workerManagers.sort(function(a, b) {
+      return (priorityMap[a.id] !== undefined ? priorityMap[a.id] : 999) -
+             (priorityMap[b.id] !== undefined ? priorityMap[b.id] : 999);
+    });
+  }
 
-      return block;
-    })
-    .join("\n");
+  var networkBackend = null;
+  for (var k = 0; k < rawWms.length; k++) {
+    if (rawWms[k].network_backend) { networkBackend = rawWms[k].network_backend; break; }
+  }
 
-  return `[object_storage_server]
-bind_address = "${proto}://0.0.0.0:${op}${wsSlash}"
-
-[scheduler]
-bind_address = "${proto}://0.0.0.0:${sp}${wsSlash}"
-object_storage_address = "${proto}://127.0.0.1:${op}${wsSlash}"
-advertised_object_storage_address = "${proto}://<PUBLIC_IP>:${op}${wsSlash}"
-
-${wmToml}
-[gui]
-monitor_address = "${proto}://127.0.0.1:${sp + 2}${wsSlash}"
-gui_address = "0.0.0.0:50001"
-`;
+  return {
+    transport: proto,
+    schedulerPort: schedulerPort,
+    objectStoragePort: objectStoragePort,
+    pythonVersion: pyVer,
+    region: region,
+    workerManagers: workerManagers.length ? workerManagers : null,
+    policy: policy,
+    networkBackend: networkBackend,
+  };
 }
 
 function buildUserData(cfg, creds) {
-  var proto = cfg.transport || "ws";
-  var sp = cfg.schedulerPort;
-  var op = cfg.objectStoragePort;
-  var wsSlash = proto === "ws" ? "/" : "";
-
   var isGitInstall = cfg.scalerPackage.indexOf("git+") >= 0;
 
   // When installing from a git repo, the C++ extension must be compiled from source.
@@ -299,102 +498,13 @@ CMAKE_ARGS='-DCMAKE_C_COMPILER=/usr/bin/gcc14-gcc -DCMAKE_CXX_COMPILER=/usr/bin/
 `;
   }
 
-  // Build one [[worker_manager]] TOML block per configured manager.
-  var wmToml = (cfg.workerManagers || [])
-    .map(function (wm) {
-      var block = `[[worker_manager]]
-type = "${wm.type}"
-scheduler_address = "${proto}://127.0.0.1:${sp}${wsSlash}"
-worker_manager_id = "${wm.id}"
-`;
-
-      if (wm.type === "orb_aws_ec2") {
-        var req = (wm.requirements || "").trim();
-        block += `worker_scheduler_address = "${proto}://$PRIVATE_IP:${sp}${wsSlash}"
-object_storage_address = "${proto}://$PRIVATE_IP:${op}${wsSlash}"
-python_version = "${cfg.pythonVersion}"
-requirements_txt = """
-${req}
-"""
-instance_type = "${wm.instanceType}"
-aws_region = "${cfg.region}"
-key_name = "scaler-key-${cfg.nameSuffix}"
-subnet_id = "$SUBNET_ID"
-security_group_ids = ["${cfg.securityGroupId}"]
-logging_level = "INFO"
-instance_tags = {scaler-deployment = "${cfg.nameSuffix}"}
-`;
-        if (cfg.networkBackend !== "zmq")
-          block += `network_backend = "${cfg.networkBackend || "ymq"}"\n`;
-      } else if (wm.type === "aws_raw_ecs") {
-        block += `aws_region = "${cfg.region}"
-ecs_cluster = "${wm.ecsCluster || "scaler-cluster"}"
-ecs_task_image = "${wm.ecsTaskImage || ""}"
-ecs_subnets = "${wm.ecsSubnets || ""}"
-ecs_task_definition = "${wm.ecsTaskDefinition || "scaler-task-definition"}"
-ecs_task_cpu = ${wm.ecsTaskCpu || 4}
-ecs_task_memory = ${wm.ecsTaskMemory || 30}
-ecs_python_version = "${cfg.pythonVersion}"
-`;
-        if (wm.requirements)
-          block += `ecs_python_requirements = "${wm.requirements}"\n`;
-      } else if (wm.type === "aws_hpc") {
-        block += `aws_region = "${cfg.region}"
-job_queue = "${wm.jobQueue || ""}"
-job_definition = "${wm.jobDefinition || ""}"
-s3_bucket = "${wm.s3Bucket || ""}"
-s3_prefix = "${wm.s3Prefix || "scaler-tasks"}"
-max_concurrent_jobs = ${wm.maxConcurrentJobs || 100}
-job_timeout_minutes = ${wm.jobTimeoutMinutes || 60}
-`;
-      } else if (wm.type === "oci_raw") {
-        var ociRawReq = (wm.requirements || "").trim();
-        block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
-oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-`;
-        block += `compartment_id = "${wm.ociCompartmentId || ""}"
-availability_domain = "${wm.ociAvailabilityDomain || ""}"
-subnet_id = "${wm.ociSubnetId || ""}"
-container_image = "${wm.ociContainerImage || ""}"
-`;
-        block += `instance_shape = "${wm.ociShape || "CI.Standard.E4.Flex"}"
-instance_ocpus = ${wm.ociOcpus || 4}
-instance_memory_gb = ${wm.ociMemoryGb || 30}
-python_version = "${cfg.pythonVersion}"
-requirements_txt = """
-${ociRawReq}
-"""
-`;
-      } else if (wm.type === "oci_hpc") {
-        block += `worker_scheduler_address = "${proto}://$PUBLIC_IP:${sp}${wsSlash}"
-oci_region = "${wm.ociRegion || "us-ashburn-1"}"
-`;
-        block += `compartment_id = "${wm.ociCompartmentId || ""}"
-availability_domain = "${wm.ociAvailabilityDomain || ""}"
-subnet_id = "${wm.ociSubnetId || ""}"
-container_image = "${wm.ociContainerImage || ""}"
-object_storage_namespace = "${wm.ociObjectStorageNamespace || ""}"
-object_storage_bucket = "${wm.ociObjectStorageBucket || ""}"
-object_storage_prefix = "${wm.ociObjectStoragePrefix || "scaler-tasks"}"
-instance_ocpus = ${wm.ociOcpus || 1}
-instance_memory_gb = ${wm.ociMemoryGb || 6}
-base_concurrency = ${wm.ociMaxConcurrentJobs || 100}
-job_timeout_seconds = ${(wm.ociJobTimeoutMinutes || 60) * 60}
-`;
-      } else if (wm.type === "baremetal_native") {
-        block += `mode = "${wm.mode || "fixed"}"
-object_storage_address = "${proto}://127.0.0.1:${op}${wsSlash}"
-`;
-        if (wm.workerType) block += `worker_type = "${wm.workerType}"\n`;
-        if (wm.maxTaskConcurrency != null && wm.maxTaskConcurrency >= 0)
-          block += `max_task_concurrency = ${wm.maxTaskConcurrency}\n`;
-      } else if (wm.type === "symphony") {
-        block += `service_name = "${wm.serviceName || ""}"\n`;
-      }
-
-      return block;
-    })
-    .join("\n");
+  var configToml = buildSchedulerConfigToml(cfg, {
+    privateIp: "$PRIVATE_IP",
+    publicIp: "$PUBLIC_IP",
+    subnetId: "$SUBNET_ID",
+    securityGroupId: cfg.securityGroupId,
+    nameSuffix: cfg.nameSuffix,
+  });
 
   var ociConfigBlock = "";
   if (creds.ociUserId && creds.ociTenancyId && creds.ociFingerprint && creds.ociPrivateKey) {
@@ -449,21 +559,9 @@ ${ociConfigBlock}
 mkdir -p /opt/scaler
 
 cat > /opt/scaler/config.toml << CONFIG_EOF
-[object_storage_server]
-bind_address = "${proto}://0.0.0.0:${op}${wsSlash}"
+${configToml}CONFIG_EOF
 
-[scheduler]
-bind_address = "${proto}://0.0.0.0:${sp}${wsSlash}"
-object_storage_address = "${proto}://127.0.0.1:${op}${wsSlash}"
-advertised_object_storage_address = "${proto}://$PUBLIC_IP:${op}${wsSlash}"
-
-${wmToml}
-[gui]
-monitor_address = "${proto}://127.0.0.1:${sp + 2}${wsSlash}"
-gui_address = "0.0.0.0:50001"
-CONFIG_EOF
-
-${cfg.networkBackend === "zmq" ? "SCALER_NETWORK_BACKEND=tcp_zmq " : ""}/opt/scaler-venv/bin/scaler /opt/scaler/config.toml >> /var/log/scaler.log 2>&1 &
+SCALER_NETWORK_BACKEND=${cfg.networkBackend || "ymq"} /opt/scaler-venv/bin/scaler /opt/scaler/config.toml >> /var/log/scaler.log 2>&1 &
 echo "Scaler started (PID=$!)"
 `;
 }
@@ -768,7 +866,22 @@ async function provision(
     onPartialState(partial);
   }
 
-  // 4. Security group
+  // 4. Default VPC
+  {
+    addLog("Checking for default VPC...", "cmd");
+    var vpcCheck = await retrying(addLog, signal, () =>
+      ec2.describeVpcs({ Filters: [{ Name: "isDefault", Values: ["true"] }] }).promise(),
+    );
+    if (vpcCheck.Vpcs.length === 0) {
+      addLog("  → No default VPC found — creating one...", "info");
+      await retrying(addLog, signal, () => ec2.createDefaultVpc({}).promise());
+      addLog("  ✓ Default VPC created", "ok");
+    } else {
+      addLog("  → Default VPC: " + vpcCheck.Vpcs[0].VpcId, "info");
+    }
+  }
+
+  // 5. Security group
   var sgId;
   if (partial.security_group_id) {
     sgId = partial.security_group_id;
@@ -853,7 +966,7 @@ async function provision(
     addLog("  ✓ Security group created: " + sgId, "ok");
   }
 
-  // 5. Launch instance
+  // 6. Launch instance
   var instanceId;
   if (partial.instance_id) {
     instanceId = partial.instance_id;
@@ -911,7 +1024,7 @@ async function provision(
     addLog("  → Instance launched: " + instanceId, "info");
   }
 
-  // 6. Wait for running state + post-launch network rules
+  // 7. Wait for running state + post-launch network rules
   var publicIp, privateIp, vpcId, subnetId;
   if (partial.public_ip) {
     publicIp = partial.public_ip;
@@ -1003,7 +1116,7 @@ async function provision(
     onPartialState(partial);
   }
 
-  // 7. Build addresses and persist complete state
+  // 8. Build addresses and persist complete state
   var addrSlash = cfg.transport === "ws" ? "/" : "";
   var schedAddr =
     cfg.transport + "://" + publicIp + ":" + cfg.schedulerPort + addrSlash;
@@ -1039,7 +1152,7 @@ async function provision(
   };
   onPartialState(state);
 
-  // 8. Poll for scheduler readiness — temporarily skipped: browsers block ws:// from https pages (mixed content).
+  // 9. Poll for scheduler readiness — temporarily skipped: browsers block ws:// from https pages (mixed content).
   addLog(
     "  ℹ Skipping scheduler connection check (browser security restriction) — assuming ready",
     "warn",
