@@ -70,14 +70,15 @@ jobs:
       - name: Upload wasm wheel
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          # NOTE: must NOT match the `dist-*` pattern used by the publish job;
-          # the wasm wheel is for browser distribution (micropip URLs), not PyPI.
-          name: wasm-client-wheel
+          # Named to match the `dist-*` pattern the publish job collects, so the
+          # PEP 783 pyemscripten_2026_0 wheel is published to PyPI alongside the
+          # native wheels (PyPI accepts the tag; micropip installs it directly).
+          name: dist-pyodide
           path: ./dist_wasm/*.whl
 
   publish:
     name: Publish to PyPI
-    needs: build
+    needs: [ build, build-wasm-client ]
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -153,32 +154,3 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.docker-metadata.outputs.version }}
-
-  publish-wasm:
-    name: Publish WASM wheel to PyPI
-    needs: [ build-wasm-client, publish ]
-    runs-on: ubuntu-latest
-    environment: release
-    permissions:
-      id-token: write
-    steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
-        with:
-          egress-policy: audit
-
-      - name: Download wasm wheel artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: wasm-client-wheel
-          path: ./dist_wasm/
-
-      - name: Publish WASM wheel to PyPI
-        # pyodide-build emits a single PEP 783 pyemscripten_2026_0_wasm32 wheel
-        # for Pyodide 314; PyPI accepts that platform tag and micropip installs
-        # it directly. This replaces the previous GitHub-release wasm asset.
-        # Runs after the main publish job so the release version already exists.
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: ./dist_wasm/
-          skip-existing: true

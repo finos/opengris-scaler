@@ -71,7 +71,7 @@ CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-1}" pyodide build . --
 WASM_STATIC="docs/source/_static/wasm"
 mkdir -p "${WASM_STATIC}"
 rm -f "${WASM_STATIC}"/opengris_scaler-*wasm32.whl
-cp dist_wasm/opengris_scaler-*pyemscripten_2026_0*wasm32.whl "${WASM_STATIC}/"
+cp dist_wasm/opengris_scaler-*wasm32.whl "${WASM_STATIC}/"
 
 # 7. Vendor / build the runtime deps the JupyterLite kernel pulls at boot.
 #    Three groups: (a) pure-Python wheels from PyPI (cloudpickle, tblib>=3.2.0,
