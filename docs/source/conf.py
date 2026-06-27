@@ -80,6 +80,7 @@ html_theme_options = {
         {"title": "Release Notes", "url": "release_notes"},
         {"title": "Example Gallery", "url": "gallery/index"},
         {"title": "Launchpad", "url": "launchpad/", "resource": True},
+        {"title": "GitHub Repository", "url": "https://github.com/finos/opengris-scaler"},
     ]
 }
 
