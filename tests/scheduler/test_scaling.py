@@ -607,14 +607,14 @@ class TestScaleDownCooldown(unittest.TestCase):
         with patch(_VANILLA_TIME_PATH) as mock_time:
             # time.time() is only called on scale-down paths, so the scale-up call
             # in the middle does not consume a side_effect value.
-            elapsed = _SCALE_DOWN_COOLDOWN_SECONDS + 16
-            mock_time.time.side_effect = [0.0, elapsed]
+            past_cooldown = _SCALE_DOWN_COOLDOWN_SECONDS + 1
+            mock_time.time.side_effect = [0.0, past_cooldown]
             self._get_concurrency(snapshot, heartbeat, managed)  # t=0: cooldown starts
             self._get_concurrency(busy_snapshot, busy_heartbeat, managed)  # scale-up: resets cooldown
-            result = self._get_concurrency(snapshot, heartbeat, managed)  # t=elapsed: fresh cooldown, still held
+            result = self._get_concurrency(snapshot, heartbeat, managed)  # t=past_cooldown: fresh cooldown, still held
 
-        # Without the reset, elapsed > _SCALE_DOWN_COOLDOWN_SECONDS so scale-down would apply.
-        # With the reset, the cooldown restarts at t=elapsed so the new elapsed=0 -> still held at 3.
+        # Without the reset, past_cooldown > _SCALE_DOWN_COOLDOWN_SECONDS so scale-down would apply.
+        # With the reset, the cooldown restarts at t=past_cooldown so the new elapsed=0 -> still held at 3.
         self.assertEqual(result, 3)
 
 
