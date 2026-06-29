@@ -270,6 +270,12 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         except ymq.YMQException as e:
             if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
                 pass
+            elif e.code == ymq.ErrorCode.SocketStopRequested:
+                # A YMQ socket (e.g. the internal binder) was shut down via `disconnect`/teardown
+                # while a send or recv driven by one of the loops above was still in flight. Like
+                # ConnectorSocketClosedByRemoteEnd, this is an expected teardown condition that is
+                # out of our control: log it, but never let it surface as a crash.
+                logger.info(f"{self.identity!r}: a YMQ socket was shut down during teardown: {e}")
             else:
                 logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
         except (ClientShutdownException, TimeoutError) as e:
