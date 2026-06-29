@@ -56,7 +56,7 @@ orb = [
     "botocore[crt]",
 ]
 oci = [
-    "oci",
+    "oci==2.177.0",
 ]
 all = [
     "opengris-scaler[aws]",
