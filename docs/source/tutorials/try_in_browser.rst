@@ -12,8 +12,8 @@ address it gives you into a notebook's ``SCHEDULER_ADDRESS`` and run all cells.
 
 .. note::
 
-   Workers must run Python 3.13 to match the in-browser (Pyodide) kernel, with
-   ``numpy`` (pinned ``<2.3`` to match Pyodide) and ``scikit-learn`` installed
+   Workers must run Python 3.14 to match the in-browser (Pyodide 314) kernel, with
+   ``numpy`` (pinned ``<2.5`` to match Pyodide's 2.4.x) and ``scikit-learn`` installed
    on the worker side.
 
 Demo notebooks

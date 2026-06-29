@@ -1,0 +1,14 @@
+# TEMPORARY override constraints for the docs / JupyterLite build.
+#
+# jupyterlite-sphinx 0.22.1 (the latest release) caps jupyterlite-core<0.8, but
+# jupyterlite-pyodide-kernel 0.8.0 -- which bundles Pyodide 314 / CPython 3.14 --
+# requires jupyterlite-core>=0.8. The cap is conservative metadata only: 0.22.1
+# builds and runs fine against core 0.8.0 (verified by the docs build and the
+# headless JupyterLite test on Pyodide 314).
+#
+# Install the docs dependencies with this override applied, e.g.:
+#   uv pip install --override docs/jupyterlite-overrides.txt -r docs/requirements_docs.txt
+#
+# Remove this file (and the --override flags wired into CI) once jupyterlite-sphinx
+# releases jupyterlite-core>=0.8 support.
+jupyterlite-core>=0.8.0,<0.9

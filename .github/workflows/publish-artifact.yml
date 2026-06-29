@@ -70,14 +70,15 @@ jobs:
       - name: Upload wasm wheel
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          # NOTE: must NOT match the `dist-*` pattern used by the publish job;
-          # the wasm wheel is for browser distribution (micropip URLs), not PyPI.
-          name: wasm-client-wheel
+          # Named to match the `dist-*` pattern the publish job collects, so the
+          # PEP 783 pyemscripten_2026_0 wheel is published to PyPI alongside the
+          # native wheels (PyPI accepts the tag; micropip installs it directly).
+          name: dist-pyodide
           path: ./dist_wasm/*.whl
 
   publish:
     name: Publish to PyPI
-    needs: build
+    needs: [ build, build-wasm-client ]
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -153,78 +154,3 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.docker-metadata.outputs.version }}
-
-  release-wasm:
-    name: Attach WASM wheel to GitHub Release
-    needs: build-wasm-client
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
-        with:
-          egress-policy: audit
-
-      - name: 'Checkout Repository'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Download wasm wheel artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: wasm-client-wheel
-          path: ./dist_wasm/
-
-      - name: Compute checksums and manifest
-        id: manifest
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_URL: ${{ github.event.release.html_url }}
-        run: |
-          set -euo pipefail
-          cd dist_wasm
-          shopt -s nullglob
-          wheels=( opengris_scaler-*emscripten*wasm32.whl )
-          if [[ ${#wheels[@]} -eq 0 ]]; then
-            echo "::error::No wasm wheel found in dist_wasm/"
-            exit 1
-          fi
-          # The wasm wheel build pins one cp313 / emscripten_4_0_9 wheel.
-          wheel="${wheels[0]}"
-          sha256sum "${wheel}" > "${wheel}.sha256"
-          version="${RELEASE_TAG#v}"
-          # Pyodide / python ABI tags come from the wheel filename:
-          # opengris_scaler-<version>-<py>-<abi>-<plat>.whl
-          stripped="${wheel%.whl}"
-          plat="${stripped##*-}"
-          stripped="${stripped%-*}"
-          abi="${stripped##*-}"
-          stripped="${stripped%-*}"
-          py="${stripped##*-}"
-          cat > wasm-package-index.json <<EOF
-          {
-            "version": "${version}",
-            "wheel": "${wheel}",
-            "url": "https://github.com/${{ github.repository }}/releases/download/${RELEASE_TAG}/${wheel}",
-            "sha256": "$(cut -d' ' -f1 < "${wheel}.sha256")",
-            "pyodide_version": "0.29.3",
-            "python_tag": "${py}",
-            "abi_tag": "${abi}",
-            "platform_tag": "${plat}"
-          }
-          EOF
-          echo "wheel=${wheel}" >> "$GITHUB_OUTPUT"
-          ls -la
-
-      - name: Upload wheel + checksum + manifest to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: |
-          set -euo pipefail
-          cd dist_wasm
-          gh release upload "${RELEASE_TAG}" \
-            opengris_scaler-*emscripten*wasm32.whl \
-            opengris_scaler-*emscripten*wasm32.whl.sha256 \
-            wasm-package-index.json \
-            --clobber

@@ -5,13 +5,13 @@ description: "Install host capnp, pyodide-build and a pinned Emscripten SDK"
 # The emsdk version is pinned in scripts/library_tool.sh (EMSDK_VERSION).
 # They must stay in lockstep with the Pyodide kernel that ships in
 # jupyterlite-pyodide-kernel (see docs/requirements_docs.txt):
-#   pyodide-build 0.34.3 -> Pyodide 0.29.3 -> Emscripten 4.0.9 -> CPython 3.13
+#   pyodide-build 0.35.1 + xbuildenv 314.0.0 -> Pyodide 314 -> Emscripten 5.0.3 -> CPython 3.14
 # See https://pyodide.org/en/stable/development/building-and-testing-packages.html
 inputs:
   python-version:
-    description: "Host Python used to run pyodide-build"
+    description: "Host Python used to run pyodide-build (must match the target CPython)"
     required: false
-    default: "3.13"
+    default: "3.14"
 
 runs:
   using: "composite"
@@ -40,10 +40,11 @@ runs:
         # pyproject.toml's [dependency-groups] dev (and the EMSDK_VERSION
         # pin in scripts/library_tool.sh). All three move together with the
         # Pyodide kernel that JupyterLite ships.
-        pip install "pyodide-build==0.34.3"
-        # Let pyodide-build pick the compatible xbuildenv for the selected
-        # host Python (currently 3.13 in this action).
-        pyodide xbuildenv install
+        pip install "pyodide-build==0.35.1"
+        # pyodide-build 0.35.x is decoupled from the runtime; install the
+        # Pyodide 314 cross-build env (CPython 3.14 / Emscripten 5.0.3)
+        # explicitly so it matches the jupyterlite-pyodide-kernel 0.8.0 build.
+        pyodide xbuildenv install 314.0.0
 
     - name: Cache Emscripten SDK
       id: cache-emsdk

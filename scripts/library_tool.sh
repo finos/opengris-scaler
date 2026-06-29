@@ -26,8 +26,8 @@ CAPNP_VERSION="1.1.0"
 UV_VERSION="1.51.0"
 OPENSSL_VERSION="4.0.0"
 # emsdk version must match the Pyodide xbuildenv/kernel used for the wasm wheel build
-# (currently 4.0.9 -> Pyodide 0.29.3 -> CPython 3.13).
-EMSDK_VERSION="4.0.9"
+# (currently 5.0.3 -> Pyodide 314.0.0 -> CPython 3.14).
+EMSDK_VERSION="5.0.3"
 
 THIRD_PARTY_DIRECTORY="${THIRD_PARTY_DIR:-./thirdparties}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

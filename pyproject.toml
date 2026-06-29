@@ -56,7 +56,7 @@ orb = [
     "botocore[crt]",
 ]
 oci = [
-    "oci",
+    "oci==2.177.0",
 ]
 all = [
     "opengris-scaler[aws]",
@@ -74,11 +74,11 @@ dev = [
     "flake8-pyproject>=1.2.3",
     "flake8>=5.0.4",
     "isort>=7.0.0; python_version >= '3.10'",
-    "jupyterlite-pyodide-kernel",
-    "jupyterlite-sphinx",
+    "jupyterlite-pyodide-kernel==0.8.0",
+    "jupyterlite-sphinx==0.22.1",
     "mypy>=1.14.1",
     "nbsphinx",
-    "pyodide-build==0.34.3; python_version >= '3.12'",
+    "pyodide-build==0.35.1; python_version >= '3.12'",
     "shibuya",
     "sphinx-copybutton",
     "sphinx-substitution-extensions",
@@ -86,6 +86,15 @@ dev = [
     "sphinx>=7.1.2",
     "websockets>=12.0",
 ]
+
+# TEMPORARY override: jupyterlite-sphinx 0.22.1 (latest release) caps
+# jupyterlite-core<0.8, but jupyterlite-pyodide-kernel 0.8.0 -- which bundles
+# Pyodide 314 / CPython 3.14 -- requires jupyterlite-core>=0.8. The cap is
+# conservative metadata only; 0.22.1 builds and runs fine against core 0.8.0
+# (verified by the docs build + headless JupyterLite test). Remove this override
+# once jupyterlite-sphinx ships jupyterlite-core>=0.8 support.
+[tool.uv]
+override-dependencies = ["jupyterlite-core>=0.8.0,<0.9"]
 
 [tool.scikit-build.metadata.version]
 provider = "scikit_build_core.metadata.regex"
