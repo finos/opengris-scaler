@@ -48,37 +48,112 @@ class WorkerManagerController(Looper, Reporter):
 
     async def on_heartbeat(self, source: bytes, heartbeat: WorkerManagerHeartbeat):
         heartbeat.capabilities = capabilities_to_dict(heartbeat.capabilities)
-        if source not in self._manager_alive_since:
-            manager_id = heartbeat.workerManagerID
+        manager_id = heartbeat.workerManagerID
+        is_new = source not in self._manager_alive_since
+
+        print(
+            f"[WM-CONTROLLER][on_heartbeat] ts={time.time():.3f} "
+            f"source={source!r} manager_id={manager_id!r} "
+            f"maxTaskConcurrency={heartbeat.maxTaskConcurrency} "
+            f"capabilities={heartbeat.capabilities} "
+            f"is_new_connection={is_new}",
+            flush=True,
+        )
+
+        if is_new:
             existing_source = self._manager_id_to_source.get(manager_id)
             if existing_source is not None and existing_source != source:
+                print(
+                    f"[WM-CONTROLLER][on_heartbeat] REJECTED duplicate manager_id={manager_id!r}: "
+                    f"already registered by source={existing_source!r}, rejecting source={source!r}",
+                    flush=True,
+                )
                 logger.warning(
                     f"Duplicate worker_manager_id {manager_id!r}: source {source!r} rejected, "
                     f"already registered by source {existing_source!r}"
                 )
                 return
             self._manager_id_to_source[manager_id] = source
-
+            print(
+                f"[WM-CONTROLLER][on_heartbeat] NEW manager registered: manager_id={manager_id!r} source={source!r}",
+                flush=True,
+            )
             logger.info(f"WorkerManager {manager_id!r} connected")
 
         self._manager_alive_since[source] = (time.time(), heartbeat)
 
         await self._binder.send(source, WorkerManagerHeartbeatEcho())
+        print(
+            f"[WM-CONTROLLER][on_heartbeat]   sent HeartbeatEcho to source={source!r}",
+            flush=True,
+        )
 
         information_snapshot = self._build_snapshot()
         managed_worker_ids = self._worker_controller.get_workers_by_manager_id(heartbeat.workerManagerID)
         worker_manager_snapshots = self._build_manager_snapshots()
 
+        print(
+            f"[WM-CONTROLLER][on_heartbeat]   snapshot: "
+            f"pending_tasks={len(information_snapshot.tasks)} "
+            f"connected_workers={len(information_snapshot.workers)} "
+            f"managed_by_this_manager={len(managed_worker_ids)} "
+            f"total_managers_known={len(worker_manager_snapshots)}",
+            flush=True,
+        )
+        print(
+            f"[WM-CONTROLLER][on_heartbeat]   managed_worker_ids_for_this_manager={[bytes(w).hex() for w in managed_worker_ids]}",
+            flush=True,
+        )
+        print(
+            f"[WM-CONTROLLER][on_heartbeat]   all_known_managers: "
+            + str({
+                mid.hex() if isinstance(mid, (bytes, bytearray)) else repr(mid): snap.worker_count
+                for mid, snap in worker_manager_snapshots.items()
+            }),
+            flush=True,
+        )
+
         commands = self._policy_controller.get_scaling_commands(
             information_snapshot, heartbeat, managed_worker_ids, worker_manager_snapshots
         )
 
-        for command in commands:
+        print(
+            f"[WM-CONTROLLER][on_heartbeat]   policy returned {len(commands)} command(s)",
+            flush=True,
+        )
+        for i, command in enumerate(commands):
+            requests = list(getattr(command, "setDesiredTaskConcurrencyRequests", []))
+            print(
+                f"[WM-CONTROLLER][on_heartbeat]   command[{i}]: {len(requests)} setDesiredTaskConcurrency request(s):",
+                flush=True,
+            )
+            for j, req in enumerate(requests):
+                req_caps = {entry.key: entry.value for entry in req.capabilities} if hasattr(req, "capabilities") else {}
+                print(
+                    f"[WM-CONTROLLER][on_heartbeat]     request[{j}]: caps={req_caps} taskConcurrency={req.taskConcurrency}",
+                    flush=True,
+                )
             await self._send_command(source, command)
+            print(
+                f"[WM-CONTROLLER][on_heartbeat]   command[{i}] sent to source={source!r}",
+                flush=True,
+            )
 
-        self._last_desired_total[source] = _sum_desired_for_manager(commands, heartbeat.capabilities)
+        last_desired = _sum_desired_for_manager(commands, heartbeat.capabilities)
+        self._last_desired_total[source] = last_desired
+        print(
+            f"[WM-CONTROLLER][on_heartbeat]   last_desired_total for this manager={last_desired} "
+            f"(summed from capability-matched requests)",
+            flush=True,
+        )
 
     async def routine(self):
+        print(
+            f"[WM-CONTROLLER][routine] ts={time.time():.3f} "
+            f"known_managers={len(self._manager_alive_since)} "
+            f"checking for dead managers...",
+            flush=True,
+        )
         await self._clean_managers()
 
     def get_status(self) -> ScalingManagerStatus:
@@ -150,6 +225,26 @@ class WorkerManagerController(Looper, Reporter):
             for source, (alive_since, _) in self._manager_alive_since.items()
             if now - alive_since > timeout_seconds
         ]
+        if dead_managers:
+            dead_reprs = [repr(s) for s in dead_managers]
+            print(
+                f"[WM-CONTROLLER][_clean_managers] ts={now:.3f} "
+                f"found {len(dead_managers)} dead manager(s) (timeout={timeout_seconds}s): "
+                f"{dead_reprs}",
+                flush=True,
+            )
+        else:
+            ages = {
+                source: now - alive_since
+                for source, (alive_since, _) in self._manager_alive_since.items()
+            }
+            ages_str = ", ".join(repr(s) + ":" + f"{a:.1f}" for s, a in ages.items())
+            print(
+                f"[WM-CONTROLLER][_clean_managers] ts={now:.3f} "
+                f"all {len(self._manager_alive_since)} manager(s) alive. "
+                f"ages_s={{{ages_str}}} timeout={timeout_seconds}s",
+                flush=True,
+            )
         for dead_manager in dead_managers:
             await self._disconnect_manager(dead_manager)
 
@@ -161,6 +256,10 @@ class WorkerManagerController(Looper, Reporter):
         manager_id = heartbeat.workerManagerID
         self._manager_id_to_source.pop(manager_id, None)
 
+        print(
+            f"[WM-CONTROLLER][_disconnect_manager] DISCONNECTING source={source!r} manager_id={manager_id!r}",
+            flush=True,
+        )
         logger.info(f"WorkerManager {source!r} disconnected")
         self._manager_alive_since.pop(source)
         self._last_desired_total.pop(source, None)

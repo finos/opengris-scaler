@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import shlex
+import time
 from typing import Any, List, Optional, Tuple
 from urllib.parse import urlsplit, urlunsplit
 
@@ -91,10 +92,29 @@ class ORBWorkerProvisioner(DeclarativeWorkerProvisioner):
         self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
     ) -> None:
         own_capabilities = self._config.worker_config.per_worker_capabilities.capabilities
-        task_concurrency = extract_desired_count(requests, own_capabilities)
-        await self._capacity_coordinator.set_desired_unit_count(
-            math.ceil(task_concurrency / self._workers_per_instance)
+        print(
+            f"[ORB-PROVISIONER][set_desired_task_concurrency] ts={time.time():.3f} "
+            f"own_capabilities={own_capabilities} "
+            f"num_requests={len(requests)} "
+            f"workers_per_instance={self._workers_per_instance} "
+            f"active_units={self.active_unit_count()}",
+            flush=True,
         )
+        for i, req in enumerate(requests):
+            req_caps = {entry.key: entry.value for entry in req.capabilities} if hasattr(req, "capabilities") else {}
+            print(
+                f"[ORB-PROVISIONER][set_desired_task_concurrency]   request[{i}]: caps={req_caps} taskConcurrency={req.taskConcurrency}",
+                flush=True,
+            )
+        task_concurrency = extract_desired_count(requests, own_capabilities)
+        desired_units = math.ceil(task_concurrency / self._workers_per_instance)
+        print(
+            f"[ORB-PROVISIONER][set_desired_task_concurrency]   "
+            f"extract_desired_count => task_concurrency={task_concurrency} "
+            f"=> desired_units=ceil({task_concurrency}/{self._workers_per_instance})={desired_units}",
+            flush=True,
+        )
+        await self._capacity_coordinator.set_desired_unit_count(desired_units)
 
     async def start_units(self, count: int) -> None:
         logger.info(f"Submitting ORB batch machine request for template {self._template_id} (count={count})...")

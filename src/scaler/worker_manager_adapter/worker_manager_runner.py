@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import Dict, Optional
 
 from scaler.config.types.address import AddressConfig
@@ -76,9 +77,20 @@ class WorkerManagerRunner:
         await self._task
 
     async def _send_heartbeat(self) -> None:
+        max_concurrency = self._max_provisioner_units * self._workers_per_provisioner_unit
+        print(
+            f"[WM-RUNNER][_send_heartbeat] ts={time.time():.3f} "
+            f"ident={self._ident!r} "
+            f"worker_manager_id={self._worker_manager_id!r} "
+            f"max_provisioner_units={self._max_provisioner_units} "
+            f"workers_per_unit={self._workers_per_provisioner_unit} "
+            f"=> maxTaskConcurrency={max_concurrency} "
+            f"capabilities={self._capabilities}",
+            flush=True,
+        )
         await self._connector_external.send(
             WorkerManagerHeartbeat(
-                maxTaskConcurrency=self._max_provisioner_units * self._workers_per_provisioner_unit,
+                maxTaskConcurrency=max_concurrency,
                 capabilities=dict_to_capabilities(self._capabilities),
                 workerManagerID=self._worker_manager_id,
             )
@@ -109,12 +121,25 @@ class WorkerManagerRunner:
         await self._worker_provisioner.terminate()
 
     async def _on_receive_external(self, message: BaseMessage) -> None:
+        print(
+            f"[WM-RUNNER][_on_receive_external] ts={time.time():.3f} "
+            f"ident={self._ident!r} "
+            f"message_type={type(message).__name__!r}",
+            flush=True,
+        )
         try:
             if isinstance(message, WorkerManagerCommand):
                 await self._handle_command(message)
             elif isinstance(message, WorkerManagerHeartbeatEcho):
-                pass
+                print(
+                    f"[WM-RUNNER][_on_receive_external]   received HeartbeatEcho (scheduler alive)",
+                    flush=True,
+                )
             else:
+                print(
+                    f"[WM-RUNNER][_on_receive_external]   UNKNOWN message type={type(message).__name__!r}",
+                    flush=True,
+                )
                 logger.warning(f"Unknown action: received unrecognized message type {type(message).__name__!r}")
         except Exception:
             logger.exception(f"Unhandled exception while processing message {type(message).__name__}")
@@ -122,6 +147,29 @@ class WorkerManagerRunner:
     async def _handle_command(self, command: WorkerManagerCommand) -> None:
         requests = getattr(command, "setDesiredTaskConcurrencyRequests", None)
         if requests is None:
+            print(
+                f"[WM-RUNNER][_handle_command] WARNING: WorkerManagerCommand has no recognized payload. "
+                f"command fields={dir(command)}",
+                flush=True,
+            )
             logger.warning("Unknown action: received WorkerManagerCommand with no recognized payload")
             return
-        await self._worker_provisioner.set_desired_task_concurrency(list(requests))
+
+        requests_list = list(requests)
+        print(
+            f"[WM-RUNNER][_handle_command] ts={time.time():.3f} "
+            f"ident={self._ident!r} "
+            f"received setDesiredTaskConcurrency with {len(requests_list)} request(s):",
+            flush=True,
+        )
+        for i, req in enumerate(requests_list):
+            req_caps = {entry.key: entry.value for entry in req.capabilities} if hasattr(req, "capabilities") else {}
+            print(
+                f"[WM-RUNNER][_handle_command]   request[{i}]: caps={req_caps} taskConcurrency={req.taskConcurrency}",
+                flush=True,
+            )
+        print(
+            f"[WM-RUNNER][_handle_command]   forwarding to provisioner.set_desired_task_concurrency ...",
+            flush=True,
+        )
+        await self._worker_provisioner.set_desired_task_concurrency(requests_list)
