@@ -49,7 +49,7 @@ class CapacityCoordinator:
         logger.info(f"Desired unit count changed: {self._desired_unit_count} -> {count}")
         self._desired_unit_count = count
         self._reconcile_needed.set()
-        if self._active_reconcile_task is None or self._active_reconcile_task.done():
+        if self._active_reconcile_task is None:
             self._active_reconcile_task = asyncio.create_task(self._reconcile())
 
     def cancel(self) -> None:
