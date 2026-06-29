@@ -440,6 +440,7 @@ function configFromToml(toml) {
     if (rawWms[k].network_backend) { networkBackend = rawWms[k].network_backend; break; }
   }
 
+
   return {
     transport: proto,
     schedulerPort: schedulerPort,
@@ -560,6 +561,14 @@ mkdir -p /opt/scaler
 
 cat > /opt/scaler/config.toml << CONFIG_EOF
 ${configToml}CONFIG_EOF
+
+uv tool install certbot
+/root/.local/bin/certbot certonly \
+  --standalone \
+  --non-interactive \
+  --agree-tos \
+  --register-unsafely-without-email \
+  -d $PUBLIC_IP
 
 SCALER_NETWORK_BACKEND=${cfg.networkBackend || "ymq"} /opt/scaler-venv/bin/scaler /opt/scaler/config.toml >> /var/log/scaler.log 2>&1 &
 echo "Scaler started (PID=$!)"
@@ -957,6 +966,14 @@ async function provision(
               ToPort: 50001,
               IpRanges: [
                 { CidrIp: myIp + "/32", Description: "Scaler Worker Monitor from local machine" },
+              ],
+            },
+            {
+              IpProtocol: "tcp",
+              FromPort: 80,
+              ToPort: 80,
+              IpRanges: [
+                { CidrIp: "0.0.0.0/0", Description: "ACME HTTP-01 challenge (Let's Encrypt)" },
               ],
             },
           ],
