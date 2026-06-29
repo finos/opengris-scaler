@@ -3,15 +3,27 @@
 #
 # Run from the workspace root: ./scripts/build_wasm.sh
 #
-# Uses a dedicated Python 3.14 venv under the user's cache dir. Pyodide 314 pins
-# CPython 3.14, so the scheduler and worker the wasm client connects to MUST also
-# run CPython 3.14 -- mismatched ABI makes capnp struct decoding fail with opaque
-# errors. pyodide-build's host Python must also match the target (3.14).
+# Uses a dedicated Python venv (see PYTHON_VERSION below) under the user's cache
+# dir. The Pyodide xbuildenv pins that exact CPython, so the scheduler and worker
+# the wasm client connects to MUST run the SAME CPython -- mismatched ABI makes
+# capnp struct decoding fail with opaque errors. pyodide-build's host Python must
+# match the target too. See the version-pin block below for the concrete numbers.
 #
 # THIRD_PARTY_DIR controls where the wasm toolchain lives. Defaults to
 # ./thirdparties; the devcontainer sets it to /opt/scaler via Dockerfile ENV.
 
 set -euo pipefail
+
+# Version pins -- the single place version numbers are allowed to live. The
+# Pyodide xbuildenv fixes a specific CPython, so PYTHON_VERSION and
+# PYODIDE_XBUILDENV_VERSION MUST be bumped together. pyodide-build is decoupled
+# from the runtime; PYODIDE_BUILD_VERSION tracks the jupyterlite-pyodide-kernel
+# 0.8.0 build the docs site ships. Comments elsewhere name these variables instead
+# of repeating numbers, so they cannot drift.
+PYTHON_VERSION="3.14"
+PYODIDE_BUILD_VERSION="0.35.1"
+PYODIDE_XBUILDENV_VERSION="314.0.0"
+TBLIB_MIN_VERSION="3.2.0"
 
 THIRD_PARTY_DIR="${THIRD_PARTY_DIR:-${PWD}/thirdparties}"
 EMSDK_ENV="${THIRD_PARTY_DIR}/emsdk/emsdk_env.sh"
@@ -20,16 +32,16 @@ WASM_VENV_ROOT="${XDG_CACHE_HOME:-${HOME}/.cache}/opengris-scaler"
 WASM_VENV="${WASM_VENV_ROOT}/pyodide-build-venv"
 
 if ! command -v uv >/dev/null 2>&1; then
-    echo "uv is required to create the Python 3.14 wasm build environment."
+    echo "uv is required to create the Python ${PYTHON_VERSION} wasm build environment."
     exit 1
 fi
 
-# 1. Create / refresh the dedicated Python 3.14 wasm build venv.
+# 1. Create / refresh the dedicated Python ${PYTHON_VERSION} wasm build venv.
 mkdir -p "${WASM_VENV_ROOT}"
-uv venv "${WASM_VENV}" --python 3.14 --allow-existing
+uv venv "${WASM_VENV}" --python "${PYTHON_VERSION}" --allow-existing
 # shellcheck disable=SC1091
 source "${WASM_VENV}/bin/activate"
-uv pip install "pyodide-build==0.35.1" wheel pip
+uv pip install "pyodide-build==${PYODIDE_BUILD_VERSION}" wheel pip
 
 # 2. Activate emsdk.
 if [[ ! -f "${EMSDK_ENV}" ]]; then
@@ -40,10 +52,11 @@ fi
 # shellcheck disable=SC1090
 source "${EMSDK_ENV}"
 
-# 3. Install the Pyodide 314 cross-build environment (CPython 3.14 / Emscripten
-#    5.0.3). pyodide-build 0.35.x is decoupled from the runtime, so the version
-#    is selected explicitly to match the jupyterlite-pyodide-kernel 0.8.0 build.
-pyodide xbuildenv install 314.0.0
+# 3. Install the Pyodide cross-build environment (PYODIDE_XBUILDENV_VERSION). It
+#    bundles the matching CPython (PYTHON_VERSION) and Emscripten toolchain.
+#    pyodide-build (PYODIDE_BUILD_VERSION) is decoupled from the runtime, so it is
+#    pinned explicitly at the top rather than inferred from the xbuildenv.
+pyodide xbuildenv install "${PYODIDE_XBUILDENV_VERSION}"
 
 # 4. Point cmake at the wasm-target capnp/libuv install.
 if [[ ! -d "${WASM_INSTALL}" ]]; then
@@ -55,9 +68,9 @@ export CMAKE_PREFIX_PATH="${WASM_INSTALL}"
 export CapnProto_DIR="${WASM_INSTALL}/lib/cmake/CapnProto"
 
 # 5. Build. Default to a single CMake job on low-memory machines. pyodide-build
-#    0.35.x emits the PEP 783 platform tag (pyemscripten_2026_0_wasm32 for
-#    Pyodide 314) directly, and Pyodide >= 0.29.4 micropip installs that tag
-#    as-is, so the old ``python -m wheel tags`` re-tagging step is gone.
+#    emits the PEP 783 platform tag (pyemscripten_*_wasm32) directly, and a
+#    recent-enough Pyodide micropip installs that tag as-is, so the old
+#    ``python -m wheel tags`` re-tagging step is gone.
 rm -rf dist_wasm
 CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-1}" pyodide build . --outdir dist_wasm
 
@@ -74,7 +87,7 @@ rm -f "${WASM_STATIC}"/opengris_scaler-*wasm32.whl
 cp dist_wasm/opengris_scaler-*wasm32.whl "${WASM_STATIC}/"
 
 # 7. Vendor / build the runtime deps the JupyterLite kernel pulls at boot.
-#    Three groups: (a) pure-Python wheels from PyPI (cloudpickle, tblib>=3.2.0,
+#    Three groups: (a) pure-Python wheels from PyPI (cloudpickle, tblib,
 #    opengris-parfun, pargraph, bidict, pydot); (b) stub wheels built from
 #    scripts/wasm_stubs/ (psutil, loky) -- both upstream packages need C
 #    extensions Pyodide lacks; (c) Pyodide-bundled deps resolved at boot from
@@ -85,7 +98,7 @@ rm -f "${WASM_STATIC}"/cloudpickle-*.whl "${WASM_STATIC}"/tblib-*.whl \
       "${WASM_STATIC}"/psutil-*.whl "${WASM_STATIC}"/loky-*.whl \
       "${WASM_STATIC}"/attrs-*.whl
 python -m pip download --quiet --no-deps --dest "${WASM_STATIC}" \
-    "cloudpickle" "tblib>=3.2.0" "opengris-parfun" "pargraph" "bidict" "pydot"
+    "cloudpickle" "tblib>=${TBLIB_MIN_VERSION}" "opengris-parfun" "pargraph" "bidict" "pydot"
 for stub in psutil loky; do
     python -m pip wheel --quiet --no-deps \
         --wheel-dir "${WASM_STATIC}" "scripts/wasm_stubs/${stub}"
@@ -109,7 +122,7 @@ if command -v pyodide >/dev/null 2>&1; then
         attrs jsonschema msgpack numpy scikit-learn pyparsing \
         argcomplete sortedcontainers
     "${SMOKE_VENV}/bin/pip" install --quiet --no-index --find-links "${SMOKE_WHEELS}" \
-        cloudpickle "tblib>=3.2.0" bidict pydot psutil loky
+        cloudpickle "tblib>=${TBLIB_MIN_VERSION}" bidict pydot psutil loky
     "${SMOKE_VENV}/bin/pip" install --quiet --no-deps --no-index \
         --find-links "${SMOKE_WHEELS}" opengris-parfun pargraph opengris-scaler
     # Pyodide's CLI sometimes raises a benign TypeError from its shutdown
