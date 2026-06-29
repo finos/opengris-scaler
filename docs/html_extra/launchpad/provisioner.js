@@ -404,7 +404,7 @@ function configFromToml(toml) {
     return base;
   });
 
-  var pyVer = "3.13";
+  var pyVer = "3.14";
   for (var j = 0; j < rawWms.length; j++) {
     if (rawWms[j].python_version) { pyVer = rawWms[j].python_version; break; }
   }

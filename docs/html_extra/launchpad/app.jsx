@@ -1383,7 +1383,7 @@ function App() {
   const [ociPrivateKey, setOciPrivateKey] = useState(() => IS_DEV ? (sessionStorage.getItem('launchpad-dev-oci-pk') || '') : '');
   const [transport, setTransport] = useState("ws");
   const [networkBackend, setNetBack] = useState("ymq");
-  const [pythonVersion, setPyVer] = useState("3.13");
+  const [pythonVersion, setPyVer] = useState("3.14");
   const [policy, setPolicy] = useState("simple");
   const [schedulerRequirements, setSchedulerReqs] = useState(
     "opengris-scaler[all]",
