@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import time
 from typing import TYPE_CHECKING, Dict, List
 
 if TYPE_CHECKING:
@@ -25,29 +24,11 @@ def extract_desired_count(
     An empty capability set in a request acts as a wildcard that matches any provisioner.
     Returns 0 if no request matches.
     """
-    print(
-        f"[COMMON][extract_desired_count] ts={time.time():.3f} "
-        f"own_capabilities={own_capabilities} "
-        f"num_requests={len(requests)}",
-        flush=True,
-    )
     total = 0
-    for i, request in enumerate(requests):
+    for request in requests:
         request_capabilities = {entry.key: entry.value for entry in request.capabilities}
-        matches = request_capabilities.items() <= own_capabilities.items()
-        print(
-            f"[COMMON][extract_desired_count]   request[{i}]: "
-            f"req_caps={request_capabilities} taskConcurrency={request.taskConcurrency} "
-            f"subset_of_own={matches}"
-            + (f" => adding {request.taskConcurrency} to total" if matches else " => SKIPPED (caps don't match)"),
-            flush=True,
-        )
-        if matches:
+        if request_capabilities.items() <= own_capabilities.items():
             total += request.taskConcurrency
-    print(
-        f"[COMMON][extract_desired_count]   => total task_concurrency={total} for this provisioner",
-        flush=True,
-    )
     return total
 
 

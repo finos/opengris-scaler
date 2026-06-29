@@ -1,4 +1,3 @@
-import time
 from collections import defaultdict
 from math import ceil
 from typing import Dict, FrozenSet, List, Tuple
@@ -22,9 +21,6 @@ class CapabilityScalingPolicy(ScalingPolicy):
 
     def __init__(self):
         self._upper_task_ratio = 5
-        print(
-            f"[CAP-SCALING][INIT] CapabilityScalingPolicy created. upper_task_ratio={self._upper_task_ratio}"
-        )
 
     def get_scaling_commands(
         self,
@@ -33,43 +29,8 @@ class CapabilityScalingPolicy(ScalingPolicy):
         managed_worker_ids: List[WorkerID],
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
-        manager_id = getattr(worker_manager_heartbeat, "workerManagerID", b"?")
-        print(
-            f"[CAP-SCALING][get_scaling_commands] ts={time.time():.3f} "
-            f"manager_id={manager_id!r} "
-            f"managed_workers={len(managed_worker_ids)} "
-            f"total_tasks={len(information_snapshot.tasks)} "
-            f"total_workers={len(information_snapshot.workers)} "
-            f"max_task_concurrency={worker_manager_heartbeat.maxTaskConcurrency} "
-            f"num_other_managers={len(worker_manager_snapshots)}"
-        )
-        print(
-            f"[CAP-SCALING][get_scaling_commands]   managed_worker_ids={[bytes(w).hex() for w in managed_worker_ids]}"
-        )
-
         tasks_by_capability = self._group_tasks_by_capability(information_snapshot)
-
-        print(
-            f"[CAP-SCALING][get_scaling_commands]   distinct capability sets in pending tasks: {len(tasks_by_capability)}"
-        )
-        for capset, tasks in tasks_by_capability.items():
-            print(f"[CAP-SCALING][get_scaling_commands]     capset={set(capset)} -> {len(tasks)} task(s)")
-
         desired_per_capset = self._compute_desired_per_capset(tasks_by_capability, worker_manager_heartbeat)
-
-        print(
-            f"[CAP-SCALING][get_scaling_commands]   => desired_per_capset ({len(desired_per_capset)} entries):"
-        )
-        for caps, count in desired_per_capset:
-            print(f"[CAP-SCALING][get_scaling_commands]       caps={caps} => desired={count}")
-
-        if not desired_per_capset:
-            print(
-                f"[CAP-SCALING][get_scaling_commands]   WARNING: desired_per_capset is EMPTY — "
-                f"sending command with no requests (no scaling signal). "
-                f"total_tasks={len(information_snapshot.tasks)}"
-            )
-
         return [build_set_desired_command(desired_per_capset)]
 
     def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
@@ -85,17 +46,6 @@ class CapabilityScalingPolicy(ScalingPolicy):
             capability_keys = frozenset(task.capabilities.keys())
             tasks_by_capability[capability_keys].append(task.capabilities)
 
-        print(
-            f"[CAP-SCALING][_group_tasks_by_capability] "
-            f"grouped {len(information_snapshot.tasks)} tasks into {len(tasks_by_capability)} capability bucket(s)"
-        )
-        for capset, tasks in tasks_by_capability.items():
-            sample_caps = tasks[0] if tasks else {}
-            print(
-                f"[CAP-SCALING][_group_tasks_by_capability]   capset_keys={set(capset)} "
-                f"count={len(tasks)} sample_caps={sample_caps}"
-            )
-
         return tasks_by_capability
 
     def _compute_desired_per_capset(
@@ -109,36 +59,13 @@ class CapabilityScalingPolicy(ScalingPolicy):
         Each desired count is clamped by the manager's maxTaskConcurrency.
         """
         max_concurrency = worker_manager_heartbeat.maxTaskConcurrency
-        manager_id = getattr(worker_manager_heartbeat, "workerManagerID", b"?")
-        print(
-            f"[CAP-SCALING][_compute_desired_per_capset] "
-            f"manager_id={manager_id!r} max_concurrency={max_concurrency} "
-            f"num_capsets={len(tasks_by_capability)}"
-        )
-
         result: List[Tuple[Dict[str, int], int]] = []
-        for capability_keys, tasks in tasks_by_capability.items():
+        for _capability_keys, tasks in tasks_by_capability.items():
             if not tasks:
-                print(
-                    f"[CAP-SCALING][_compute_desired_per_capset]   capset={set(capability_keys)} skipped (0 tasks)"
-                )
                 continue
-            desired_raw = max(1, ceil(len(tasks) / self._upper_task_ratio))
-            desired = desired_raw
-            capped = False
+            desired = max(1, ceil(len(tasks) / self._upper_task_ratio))
             if max_concurrency != -1:
-                desired = min(desired_raw, max_concurrency)
-                capped = desired != desired_raw
-            print(
-                f"[CAP-SCALING][_compute_desired_per_capset]   capset={set(capability_keys)} "
-                f"tasks={len(tasks)} raw_desired={desired_raw} "
-                f"final_desired={desired}"
-                + (f" (capped from {desired_raw} by max_concurrency={max_concurrency})" if capped else "")
-            )
+                desired = min(desired, max_concurrency)
             # Use first task's concrete capability dict as the representative for the capset.
             result.append((tasks[0], desired))
-
-        print(
-            f"[CAP-SCALING][_compute_desired_per_capset]   => {len(result)} capset(s) with nonzero desired"
-        )
         return result
