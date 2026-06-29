@@ -446,11 +446,11 @@ set +e
         # --max-task-concurrency is not passed: scaler_worker_manager defaults to cpu_count - 1 workers,
         # where cpu_count is determined by the machine type the user configured in the ORB template.
         backend_prefix = f"SCALER_NETWORK_BACKEND={self._config.network_backend.name} "
-        script += f"""INSTANCE_ID=$(ec2-metadata --instance-id --quiet)
-{backend_prefix}nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} \\
+        wm_id = shlex.quote(worker_manager_config.worker_manager_id)
+        script += f"""{backend_prefix}nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} \\
     --mode fixed \\
     --worker-type ORB \\
-    --worker-manager-id "${{INSTANCE_ID}}" \\
+    --worker-manager-id {wm_id} \\
     --per-worker-task-queue-size {worker_config.per_worker_task_queue_size} \\
     --heartbeat-interval-seconds {worker_config.heartbeat_interval_seconds} \\
     --task-timeout-seconds {worker_config.task_timeout_seconds} \\
