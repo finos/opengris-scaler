@@ -98,3 +98,7 @@ Additional Jupyter notebooks demonstrating real-world distributed computing use 
 - :doc:`Parallel Vol Surface Calibration & PDE Exotic Pricing with Parfun <../gallery/VolSurface>`
 - :doc:`Parallel Swap Portfolio CVA with Pargraph + Parfun <../gallery/SwapCVA>`
 - :doc:`Portfolio-Level XVA Risk Computation with Pargraph <../gallery/XVA>`
+
+These notebooks need a few extra libraries and Jupyter. See
+:doc:`examples` for step-by-step setup instructions, or install everything at
+once with ``uv pip install -r examples/notebooks/requirements_notebooks.txt``.
