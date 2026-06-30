@@ -12,7 +12,6 @@ from scaler.protocol.capnp import (
     BaseMessage,
     ClientDisconnect,
     ClientHeartbeat,
-    DisconnectRequest,
     GraphTask,
     InformationRequest,
     ObjectInstruction,
@@ -21,6 +20,7 @@ from scaler.protocol.capnp import (
     TaskCancelConfirm,
     TaskLog,
     TaskResult,
+    WorkerDisconnectNotification,
     WorkerHeartbeat,
     WorkerManagerHeartbeat,
 )
@@ -226,9 +226,8 @@ class Scheduler:
             await self._worker_controller.on_heartbeat(WorkerID(source), message)
             return
 
-        # scheduler receives worker disconnect request from downstream
-        if isinstance(message, DisconnectRequest):
-            await self._worker_controller.on_disconnect(WorkerID(source), message)
+        if isinstance(message, WorkerDisconnectNotification):
+            await self._worker_controller.on_disconnect_notification(WorkerID(source), message)
             return
 
         # =====================================================================================

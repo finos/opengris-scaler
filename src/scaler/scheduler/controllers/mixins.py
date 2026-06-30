@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional, Set
 from scaler.protocol.capnp import (
     ClientDisconnect,
     ClientHeartbeat,
-    DisconnectRequest,
     GraphTask,
     InformationRequest,
     ObjectInstruction,
@@ -14,6 +13,7 @@ from scaler.protocol.capnp import (
     TaskCancel,
     TaskCancelConfirm,
     TaskResult,
+    WorkerDisconnectNotification,
     WorkerHeartbeat,
     WorkerManagerCommand,
     WorkerManagerHeartbeat,
@@ -191,7 +191,7 @@ class WorkerController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_disconnect(self, worker_id: WorkerID, request: DisconnectRequest):
+    async def on_disconnect_notification(self, worker_id: WorkerID, notification: WorkerDisconnectNotification):
         raise NotImplementedError()
 
     @abc.abstractmethod

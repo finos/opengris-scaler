@@ -135,10 +135,15 @@ void MessageConnection::shutdownClient() noexcept
 
     auto shutdownCallback = [client =
                                  std::move(client)](std::expected<void, scaler::wrapper::uv::Error> result) noexcept {
-        UV_EXIT_ON_ERROR(result);
+        // ENOTCONN means the peer already closed before our FIN completed — treat as success.
+        if (!result.has_value() && result.error().code() != UV_ENOTCONN)
+            UV_EXIT_ON_ERROR(result);
     };
 
-    UV_EXIT_ON_ERROR(clientPtr->shutdown(std::move(shutdownCallback)));
+    auto shutdownResult = clientPtr->shutdown(std::move(shutdownCallback));
+    // ENOTCONN on the synchronous return means the socket is already disconnected.
+    if (!shutdownResult.has_value() && shutdownResult.error().code() != UV_ENOTCONN)
+        UV_EXIT_ON_ERROR(shutdownResult);
 }
 
 void MessageConnection::initialize() noexcept

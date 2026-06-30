@@ -119,11 +119,7 @@ struct ObjectInstruction {
     }
 }
 
-struct DisconnectRequest {
-    worker @0 :Data;
-}
-
-struct DisconnectResponse {
+struct WorkerDisconnectNotification {
     worker @0 :Data;
 }
 
@@ -218,27 +214,26 @@ struct Message {
         workerHeartbeat @9 :WorkerHeartbeat;
         workerHeartbeatEcho @10 :WorkerHeartbeatEcho;
 
-        disconnectRequest @11 :DisconnectRequest;
-        disconnectResponse @12 :DisconnectResponse;
+        stateClient @11 :StateClient;
+        stateObject @12 :StateObject;
+        stateBalanceAdvice @13 :StateBalanceAdvice;
+        stateScheduler @14 :StateScheduler;
+        stateWorker @15 :StateWorker;
+        stateTask @16 :StateTask;
+        stateGraphTask @17 :StateGraphTask;
 
-        stateClient @13 :StateClient;
-        stateObject @14 :StateObject;
-        stateBalanceAdvice @15 :StateBalanceAdvice;
-        stateScheduler @16 :StateScheduler;
-        stateWorker @17 :StateWorker;
-        stateTask @18 :StateTask;
-        stateGraphTask @19 :StateGraphTask;
+        clientDisconnect @18 :ClientDisconnect;
+        clientShutdownResponse @19 :ClientShutdownResponse;
 
-        clientDisconnect @20 :ClientDisconnect;
-        clientShutdownResponse @21 :ClientShutdownResponse;
+        processorInitialized @20 :ProcessorInitialized;
 
-        processorInitialized @22 :ProcessorInitialized;
+        informationRequest @21 :InformationRequest;
+        informationResponse @22 :InformationResponse;
 
-        informationRequest @23 :InformationRequest;
-        informationResponse @24 :InformationResponse;
+        workerManagerHeartbeat @23 :WorkerManagerHeartbeat;
+        workerManagerHeartbeatEcho @24 :WorkerManagerHeartbeatEcho;
+        workerManagerCommand @25 :WorkerManagerCommand;
 
-        workerManagerHeartbeat @25 :WorkerManagerHeartbeat;
-        workerManagerHeartbeatEcho @26 :WorkerManagerHeartbeatEcho;
-        workerManagerCommand @27 :WorkerManagerCommand;
+        workerDisconnectNotification @26 :WorkerDisconnectNotification;
     }
 }

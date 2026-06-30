@@ -64,8 +64,6 @@ PROTOCOL: bidict.bidict[str, type] = bidict.bidict(
         "workerManagerHeartbeat": capnp.WorkerManagerHeartbeat,
         "workerManagerHeartbeatEcho": capnp.WorkerManagerHeartbeatEcho,
         "workerManagerCommand": capnp.WorkerManagerCommand,
-        "disconnectRequest": capnp.DisconnectRequest,
-        "disconnectResponse": capnp.DisconnectResponse,
         "stateClient": capnp.StateClient,
         "stateObject": capnp.StateObject,
         "stateBalanceAdvice": capnp.StateBalanceAdvice,
@@ -78,5 +76,6 @@ PROTOCOL: bidict.bidict[str, type] = bidict.bidict(
         "processorInitialized": capnp.ProcessorInitialized,
         "informationRequest": capnp.InformationRequest,
         "informationResponse": capnp.InformationResponse,
+        "workerDisconnectNotification": capnp.WorkerDisconnectNotification,
     }
 )
