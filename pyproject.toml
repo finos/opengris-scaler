@@ -74,7 +74,7 @@ dev = [
     "flake8-pyproject>=1.2.3",
     "flake8>=5.0.4",
     "isort>=7.0.0; python_version >= '3.10'",
-    "jupyterlite-pyodide-kernel==0.8.0",
+    "jupyterlite-pyodide-kernel==0.8.1",
     "jupyterlite-sphinx==0.22.1",
     "mypy>=1.14.1",
     "nbsphinx",
@@ -267,4 +267,4 @@ set -ex && \
 [tool.cibuildwheel.windows]
 archs = ["AMD64"]
 before-all = "pwsh -File ./scripts/cibuildwheel_before_all_windows.ps1"
-environment = { CMAKE_C_COMPILER = "cl", CMAKE_CXX_COMPILER = "cl", CMAKE_GENERATOR = "Visual Studio 17 2022", CMAKE_GENERATOR_PLATFORM = "x64", CMAKE_CONFIGURATION_TYPES = "Release", CMAKE_PREFIX_PATH = "$TEMP/opengris-thirdparties" }
+environment = { CMAKE_C_COMPILER = "cl", CMAKE_CXX_COMPILER = "cl", CMAKE_GENERATOR = "Visual Studio 18 2026", CMAKE_GENERATOR_PLATFORM = "x64", CMAKE_CONFIGURATION_TYPES = "Release", CMAKE_PREFIX_PATH = "$TEMP/opengris-thirdparties" }
