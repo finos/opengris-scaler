@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Tuple
 import tblib.pickling_support
 
 # from scaler.utility.logging.utility import setup_logger
+from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncBinder, AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.capnp import (
@@ -38,6 +39,7 @@ class VanillaProcessorManager(ProcessorManager):
         hard_processor_suspend: bool,
         logging_paths: Tuple[str, ...],
         logging_level: str,
+        security_config: Optional[SecurityConfig] = None,
     ):
         tblib.pickling_support.install()
 
@@ -45,6 +47,7 @@ class VanillaProcessorManager(ProcessorManager):
         self._event_loop = event_loop
         self._scheduler_address = scheduler_address
         self._preload = preload
+        self._security_config = security_config
 
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
@@ -329,6 +332,7 @@ class VanillaProcessorManager(ProcessorManager):
             self._hard_processor_suspend,
             self._logging_paths,
             self._logging_level,
+            self._security_config,
         )
 
         processor_pid = self._current_holder.pid()

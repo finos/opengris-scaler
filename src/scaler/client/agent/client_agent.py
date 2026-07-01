@@ -11,6 +11,7 @@ from scaler.client.agent.heartbeat_manager import ClientHeartbeatManager
 from scaler.client.agent.object_manager import ClientObjectManager
 from scaler.client.agent.task_manager import ClientTaskManager
 from scaler.client.serializer.mixins import Serializer
+from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend
 from scaler.io.ymq import YMQException
@@ -48,6 +49,7 @@ class ClientAgent(threading.Thread):
         serializer: Serializer,
         object_storage_address: Optional[str] = None,
         internal_connector_factory: Optional["Callable[..., AsyncConnector]"] = None,
+        security_config: Optional[SecurityConfig] = None,
     ):
         threading.Thread.__init__(self, daemon=True)
 
@@ -55,6 +57,7 @@ class ClientAgent(threading.Thread):
         self._timeout_seconds = timeout_seconds
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._serializer = serializer
+        self._security_config = security_config
 
         self._identity = identity
         self._client_agent_address = client_agent_address
@@ -175,7 +178,9 @@ class ClientAgent(threading.Thread):
         exception = None
         try:
             await self._connector_internal.bind(self._client_agent_address)
-            await self._connector_external.connect(self._scheduler_address, ConnectorRemoteType.Binder)
+            await self._connector_external.connect(
+                self._scheduler_address, ConnectorRemoteType.Binder, security_config=self._security_config
+            )
 
             await self._heartbeat_manager.send_heartbeat()
 

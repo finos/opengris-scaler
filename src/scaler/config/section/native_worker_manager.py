@@ -4,6 +4,7 @@ import enum
 from typing import ClassVar, Optional
 
 from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.security import SecurityConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.config_class import ConfigClass
@@ -22,6 +23,7 @@ class NativeWorkerManagerConfig(ConfigClass):
 
     worker_config: WorkerConfig = dataclasses.field(default_factory=WorkerConfig)
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
+    security: SecurityConfig = dataclasses.field(default_factory=SecurityConfig)
 
     mode: NativeWorkerManagerMode = dataclasses.field(
         default=NativeWorkerManagerMode.DYNAMIC,

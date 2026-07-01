@@ -8,6 +8,7 @@ import psutil
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
 from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.security import SecurityConfig
 from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.defaults import (
@@ -70,8 +71,10 @@ class SchedulerClusterCombo:
         logging_level: str = DEFAULT_LOGGING_LEVEL,
         logging_config_file: Optional[str] = None,
         worker_manager_id: str = "combo",
+        security_config: Optional[SecurityConfig] = None,
     ):
         self._shutdown_called = False
+        self._security_config = security_config if security_config is not None else SecurityConfig()
 
         if address is None:
             self._address = AddressConfig(SocketType.tcp, "127.0.0.1", get_available_tcp_port())
@@ -96,6 +99,7 @@ class SchedulerClusterCombo:
             logging_paths=logging_paths,
             logging_level=logging_level,
             logging_config_file=logging_config_file,
+            security_config=self._security_config,
         )
         self._object_storage.start()
         self._object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
@@ -122,6 +126,7 @@ class SchedulerClusterCombo:
                     event_loop=event_loop,
                 ),
                 logging_config=LoggingConfig(paths=logging_paths, config_file=logging_config_file, level=logging_level),
+                security=self._security_config,
             )
         )
 
@@ -153,6 +158,7 @@ class SchedulerClusterCombo:
             logging_level=logging_level,
             policy=scaler_policy,
             shutdown_event=self._scheduler_shutdown_event,
+            security_config=self._security_config,
         )
 
         self._scheduler.start()

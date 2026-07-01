@@ -3,10 +3,12 @@ import threading
 from datetime import timedelta
 from typing import Callable, Optional
 
+from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import SyncSubscriber
 from scaler.io.utility import deserialize
 from scaler.io.ymq import ConnectorSocket, IOContext
+from scaler.io.ymq.utils import to_tls_config
 from scaler.protocol.capnp import BaseMessage
 
 logger = logging.getLogger(__name__)
@@ -20,6 +22,7 @@ class YMQSyncSubscriber(SyncSubscriber):
         address: AddressConfig,
         callback: Callable[[BaseMessage], None],
         timeout: Optional[timedelta] = None,
+        security_config: Optional[SecurityConfig] = None,
     ):
         super().__init__()
 
@@ -31,7 +34,9 @@ class YMQSyncSubscriber(SyncSubscriber):
         self._callback = callback
         self._timeout = timeout
 
-        self._socket = ConnectorSocket.connect(self._ymq_context, self._identity.decode(), repr(self._address))
+        self._socket = ConnectorSocket.connect(
+            self._ymq_context, self._identity.decode(), repr(self._address), tls_config=to_tls_config(security_config)
+        )
 
     def __close(self):
         self._socket.shutdown()

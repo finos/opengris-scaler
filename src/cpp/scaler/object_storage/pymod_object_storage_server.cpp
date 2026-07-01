@@ -37,9 +37,20 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
     const char* log_level;
     const char* log_format;
     PyObject* logging_paths_tuple = nullptr;
+    const char* tls_cert          = nullptr;
+    const char* tls_key           = nullptr;
 
     if (!PyArg_ParseTuple(
-            args, "ssssO!", &addr, &identity, &log_level, &log_format, &PyTuple_Type, &logging_paths_tuple))
+            args,
+            "ssssO!|zz",
+            &addr,
+            &identity,
+            &log_level,
+            &log_format,
+            &PyTuple_Type,
+            &logging_paths_tuple,
+            &tls_cert,
+            &tls_key))
         return nullptr;
 
     std::vector<std::string> logging_paths;
@@ -68,6 +79,12 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
     std::string logLevelString(log_level);
     std::string logFormatString(log_format);
 
+    // Build a TLSConfig only when both cert chain and private key paths are provided and non-empty.
+    std::optional<scaler::ymq::TLSConfig> tlsConfig;
+    if (tls_cert != nullptr && tls_cert[0] != '\0' && tls_key != nullptr && tls_key[0] != '\0') {
+        tlsConfig.emplace(std::string(tls_cert), std::string(tls_key));
+    }
+
     Py_BEGIN_ALLOW_THREADS;
     ((PyObjectStorageServer*)self)
         ->server.run(
@@ -76,7 +93,8 @@ static PyObject* PyObjectStorageServerRun(PyObject* self, PyObject* args)
             std::move(logLevelString),
             std::move(logFormatString),
             std::move(logging_paths),
-            std::move(running));
+            std::move(running),
+            std::move(tlsConfig));
     Py_END_ALLOW_THREADS;
 
     if (!res) {

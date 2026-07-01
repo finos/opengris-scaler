@@ -18,6 +18,7 @@
 #include "scaler/ymq/pymod/exception.h"
 #include "scaler/ymq/pymod/io_context.h"
 #include "scaler/ymq/pymod/message.h"
+#include "scaler/ymq/pymod/tls_config.h"
 #include "scaler/ymq/pymod/ymq.h"
 
 namespace scaler {
@@ -72,13 +73,14 @@ static PyObject* PyConnectorSocket_connect(PyObject* cls, PyObject* args, PyObje
     Py_ssize_t addressLen        = 0;
     unsigned long maxRetryTimes  = defaultClientMaxRetryTimes;
     unsigned long initRetryDelay = defaultClientInitRetryDelay.count();
+    PyObject* pyTLSConfig        = Py_None;
     const char* kwlist[]         = {
-        "callback", "context", "identity", "address", "max_retry_times", "init_retry_delay", nullptr};
+        "callback", "context", "identity", "address", "max_retry_times", "init_retry_delay", "tls_config", nullptr};
 
     if (!PyArg_ParseTupleAndKeywords(
             args,
             kwds,
-            "OO!s#s#|kk",
+            "OO!s#s#|kkO",
             (char**)kwlist,
             &onConnectCallback,
             (PyTypeObject*)state->PyIOContextType.get(),
@@ -88,8 +90,11 @@ static PyObject* PyConnectorSocket_connect(PyObject* cls, PyObject* args, PyObje
             &address,
             &addressLen,
             &maxRetryTimes,
-            &initRetryDelay))
+            &initRetryDelay,
+            &pyTLSConfig))
         return nullptr;
+
+    std::optional<scaler::ymq::TLSConfig> tlsConfig = fromPyTLSConfig(pyTLSConfig);
 
     OwnedPyObject<PyConnectorSocket> self = PyConnectorSocket_new(state);
 
@@ -117,7 +122,7 @@ static PyObject* PyConnectorSocket_connect(PyObject* cls, PyObject* args, PyObje
 
                 completeCallback(callback, OwnedPyObject<>::none());
             },
-            std::nullopt,
+            std::move(tlsConfig),
             maxRetryTimes,
             std::chrono::milliseconds(initRetryDelay)));
     } catch (...) {
@@ -140,12 +145,13 @@ static PyObject* PyConnectorSocket_bind(PyObject* cls, PyObject* args, PyObject*
     Py_ssize_t identityLen   = 0;
     const char* address      = nullptr;
     Py_ssize_t addressLen    = 0;
-    const char* kwlist[]     = {"callback", "context", "identity", "address", nullptr};
+    PyObject* pyTLSConfig    = Py_None;
+    const char* kwlist[]     = {"callback", "context", "identity", "address", "tls_config", nullptr};
 
     if (!PyArg_ParseTupleAndKeywords(
             args,
             kwds,
-            "OO!s#s#",
+            "OO!s#s#|O",
             (char**)kwlist,
             &onBindCallback,
             (PyTypeObject*)state->PyIOContextType.get(),
@@ -153,8 +159,11 @@ static PyObject* PyConnectorSocket_bind(PyObject* cls, PyObject* args, PyObject*
             &identity,
             &identityLen,
             &address,
-            &addressLen))
+            &addressLen,
+            &pyTLSConfig))
         return nullptr;
+
+    std::optional<scaler::ymq::TLSConfig> tlsConfig = fromPyTLSConfig(pyTLSConfig);
 
     OwnedPyObject<PyConnectorSocket> self = PyConnectorSocket_new(state);
 
@@ -187,7 +196,8 @@ static PyObject* PyConnectorSocket_bind(PyObject* cls, PyObject* args, PyObject*
                 }
 
                 completeCallback(callback, pyAddress);
-            }));
+            },
+            std::move(tlsConfig)));
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create ConnectorSocket");
         return nullptr;

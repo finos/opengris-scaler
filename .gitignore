@@ -57,3 +57,5 @@ tests/worker_manager_adapter/oci_hpc/.scaler_oci_hpc.env
 docs/source/_static/wasm/
 docs/source/.jupyterlite.doit.db
 docs/source/jupyter_lite_config.json
+
+*.pem

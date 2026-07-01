@@ -43,6 +43,7 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._logging_paths = config.logging_config.paths
         self._logging_level = config.logging_config.level
         self._logging_config_file = config.logging_config.config_file
+        self._security_config = config.security
 
         if config.worker_type is not None:
             self._worker_prefix = config.worker_type
@@ -80,6 +81,7 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
             logging_paths=self._logging_paths,
             logging_level=self._logging_level,
             worker_manager_id=self._worker_manager_id,
+            security_config=self._security_config,
         )
 
     def run_fixed(self) -> None:
@@ -161,5 +163,6 @@ class NativeWorkerManager:
             worker_manager_id=self._config.worker_manager_config.worker_manager_id.encode(),
             worker_provisioner=provisioner,
             io_threads=self._config.worker_config.io_threads,
+            security_config=self._config.security,
         )
         runner.run()

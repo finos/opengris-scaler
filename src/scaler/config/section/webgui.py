@@ -1,6 +1,7 @@
 import dataclasses
 
 from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.security import SecurityConfig
 from scaler.config.config_class import ConfigClass
 from scaler.config.types.address import AddressConfig
 from scaler.config.types.http import HTTPConfig
@@ -17,3 +18,4 @@ class WebGUIConfig(ConfigClass):
     )
 
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
+    security: SecurityConfig = dataclasses.field(default_factory=SecurityConfig)

@@ -31,6 +31,7 @@ from typing import Any, Awaitable, Callable, Iterable, Iterator, Optional
 from scaler.client.agent.client_agent import ClientAgent
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.serializer.mixins import Serializer
+from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend, SyncConnector
 from scaler.io.utility import serialize as _capnp_serialize
@@ -101,9 +102,11 @@ class IPCAgentBridge(ClientAgentBridge):
         heartbeat_interval_seconds: int,
         serializer: Serializer,
         object_storage_address: Optional[str] = None,
+        security_config: Optional[SecurityConfig] = None,
     ) -> None:
         self._identity = identity
         self._backend = network_backend
+        self._security_config = security_config
 
         self._client_agent_address = self._backend.create_internal_address(
             f"scaler_client_{uuid.uuid4().hex}", same_process=True
@@ -120,6 +123,7 @@ class IPCAgentBridge(ClientAgentBridge):
             heartbeat_interval_seconds=heartbeat_interval_seconds,
             serializer=serializer,
             object_storage_address=object_storage_address,
+            security_config=security_config,
         )
 
         self._connector: Optional[SyncConnector] = None
@@ -642,10 +646,12 @@ class _InProcessAsyncConnector(AsyncConnector):
         self._address: Optional[AddressConfig] = None
         self._destroyed = False
 
-    async def bind(self, address: AddressConfig) -> None:
+    async def bind(self, address: AddressConfig, security_config: Optional[SecurityConfig] = None) -> None:
         self._address = address
 
-    async def connect(self, address: AddressConfig, remote_type: ConnectorRemoteType) -> None:
+    async def connect(
+        self, address: AddressConfig, remote_type: ConnectorRemoteType, security_config: Optional[SecurityConfig] = None
+    ) -> None:
         self._address = address
 
     def destroy(self) -> None:
@@ -757,9 +763,11 @@ class InProcessAgentBridge(ClientAgentBridge):
         heartbeat_interval_seconds: int,
         serializer: Serializer,
         object_storage_address: Optional[str] = None,
+        security_config: Optional[SecurityConfig] = None,
     ) -> None:
         self._identity = identity
         self._stop_event = stop_event
+        self._security_config = security_config
 
         # Queues carry BaseMessage objects directly; the wire protocol between
         # Client and Agent is internal and need not be serialized.
@@ -790,6 +798,7 @@ class InProcessAgentBridge(ClientAgentBridge):
             serializer=serializer,
             object_storage_address=object_storage_address,
             internal_connector_factory=_internal_factory,
+            security_config=security_config,
         )
 
         self._task: Optional[asyncio.Task] = None
@@ -880,6 +889,7 @@ def create_default_bridge(
     heartbeat_interval_seconds: int,
     serializer: Serializer,
     object_storage_address: Optional[str] = None,
+    security_config: Optional[SecurityConfig] = None,
 ) -> ClientAgentBridge:
     """Pick the bridge implementation appropriate for the current platform.
 
@@ -902,6 +912,7 @@ def create_default_bridge(
         heartbeat_interval_seconds=heartbeat_interval_seconds,
         serializer=serializer,
         object_storage_address=object_storage_address,
+        security_config=security_config,
     )
 
 

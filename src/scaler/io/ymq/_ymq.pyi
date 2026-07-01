@@ -60,6 +60,12 @@ class Address:
 
     def __repr__(self) -> str: ...
 
+class TLSConfig:
+    """TLS certificate configuration used by secure YMQ sockets."""
+
+    def __init__(self, cert_chain: str, private_key: str) -> None: ...
+    def __repr__(self) -> str: ...
+
 class IOContext:
     """Manages a pool of IO event threads"""
 
@@ -81,7 +87,12 @@ class BinderSocket:
         """Create a BinderSocket with the specified identity."""
 
     def __repr__(self) -> str: ...
-    def bind_to(self, callback: Callable[[Union[Address, Exception]], None], address: str) -> None:
+    def bind_to(
+        self,
+        callback: Callable[[Union[Address, Exception]], None],
+        address: str,
+        tls_config: Optional[TLSConfig] = None,
+    ) -> None:
         """Bind the socket to an address and listen for incoming connections."""
 
     def send_message(
@@ -122,12 +133,18 @@ class ConnectorSocket:
         address: str,
         max_retry_times: int = DEFAULT_MAX_RETRY_TIMES,
         init_retry_delay: int = DEFAULT_INIT_RETRY_DELAY,
+        tls_config: Optional[TLSConfig] = None,
     ) -> "ConnectorSocket":
         """Create a ConnectorSocket and initiate connection to the remote address."""
 
     @classmethod
     def bind(
-        cls, callback: Callable[[Union[Address, Exception]], None], context: IOContext, identity: str, address: str
+        cls,
+        callback: Callable[[Union[Address, Exception]], None],
+        context: IOContext,
+        identity: str,
+        address: str,
+        tls_config: Optional[TLSConfig] = None,
     ) -> "ConnectorSocket":
         """Create a ConnectorSocket that binds to an address and waits for incoming connections."""
 
