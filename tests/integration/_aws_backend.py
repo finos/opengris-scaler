@@ -27,6 +27,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import os
+import uuid
 from typing import Any, Dict, Iterator, List, Optional
 
 # moto reads this lazily when a managed policy is attached; it MUST be set before the
@@ -125,6 +126,15 @@ class SeededECSEnvironment:
     task_definition: str
     subnets: List[str]
     security_groups: List[str]
+
+
+@dataclasses.dataclass
+class SeededEC2Environment:
+    region: str
+    subnets: List[str]
+    security_groups: List[str]
+    key_name: str
+    image_id: str
 
 
 class MockedAWS:
@@ -237,6 +247,34 @@ class MockedAWS:
             task_definition=task_definition,
             subnets=[subnet_id],
             security_groups=[sg_id],
+        )
+
+    def seed_ec2_environment(self, key_name: Optional[str] = None) -> SeededEC2Environment:
+        """Create the VPC/subnet/security-group/key-pair/AMI a real EC2 account would have.
+
+        EC2 is available in LocalStack's free community tier (as an in-memory mock VM manager), so
+        this seam works on moto AND free LocalStack -- unlike ECS/Batch which are LocalStack Pro.
+
+        Resource names get a unique suffix because LocalStack persists state across tests within a
+        container (moto resets per test), so fixed names would collide on the second seed.
+        """
+        suffix = uuid.uuid4().hex[:8]
+        key_name = key_name or f"scaler-it-key-{suffix}"
+
+        ec2 = self.client("ec2")
+        vpc_id = ec2.create_vpc(CidrBlock="10.0.0.0/16")["Vpc"]["VpcId"]
+        ec2.modify_vpc_attribute(VpcId=vpc_id, EnableDnsHostnames={"Value": True})
+        subnet_id = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.0.1.0/24")["Subnet"]["SubnetId"]
+        sg_id = ec2.create_security_group(
+            GroupName=f"scaler-it-ec2-sg-{suffix}", Description="scaler integration test", VpcId=vpc_id
+        )["GroupId"]
+        ec2.create_key_pair(KeyName=key_name)
+
+        images = ec2.describe_images(Owners=["amazon"]).get("Images", [])
+        image_id = images[0]["ImageId"] if images else "ami-0abcdef1234567890"
+
+        return SeededEC2Environment(
+            region=self.region, subnets=[subnet_id], security_groups=[sg_id], key_name=key_name, image_id=image_id
         )
 
 

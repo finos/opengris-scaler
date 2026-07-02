@@ -16,11 +16,24 @@ into two complementary layers so each can be tested deterministically:
 
 | File | Layer | What is real | What is mocked |
 |------|-------|--------------|----------------|
-| `test_ecs_provisioning_moto.py` | **control plane** | the real `ECSWorkerProvisioner`, the real boto3 request path, the real scheduler command object | AWS (moto/LocalStack); provisioned containers do **not** boot |
+| `test_ecs_provisioning_moto.py` | **control plane** | the real `ECSWorkerProvisioner`, the real boto3 request path, the real scheduler command object | AWS ECS (moto / LocalStack **Pro**); provisioned containers do **not** boot |
+| `test_ec2_orb_provisioning.py` | **control plane** | the real `ORBWorkerProvisioner` driven through the real `orb-py` SDK down to boto3 `ec2.run_instances` | AWS EC2 (moto / **free community LocalStack**); provisioned instances do **not** boot |
 | `test_dynamic_local_e2e.py` | **data plane** | real scheduler + object storage + `WorkerManagerRunner` (over the wire) + provisioned worker processes + task execution | nothing — provisioning is local processes instead of cloud instances |
 
 Together they exercise the entire path: client submits work -> scheduler scaling policy emits
 `setDesiredTaskConcurrency` -> worker manager -> provisioner -> AWS API / real workers.
+
+**Which backend covers which manager** (see "Do moto and LocalStack test different things?" below):
+
+| worker manager | AWS service | moto | free community LocalStack | LocalStack Pro |
+|----------------|-------------|:----:|:-------------------------:|:--------------:|
+| ECS (`aws_raw`) | ECS | ✅ | ❌ (ECS is Pro-only) | ✅ |
+| EC2 (`orb_aws_ec2`) | EC2 | ✅ | ✅ (**EC2 is free-tier**) | ✅ |
+| Batch (`aws_hpc`) | Batch + ECR | ✅ | ❌ (Batch/ECR are Pro-only) | ✅ |
+
+So **EC2/orb is the one control-plane E2E that runs against free community LocalStack**; ECS and Batch
+need moto (free, in-process) or LocalStack Pro. No mock boots the compute, so real task execution is
+always covered by the local data-plane test.
 
 ### Why a "local process" data-plane layer?
 
