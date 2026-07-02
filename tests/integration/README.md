@@ -18,7 +18,9 @@ into two complementary layers so each can be tested deterministically:
 |------|-------|--------------|----------------|
 | `test_ecs_provisioning_moto.py` | **control plane** | the real `ECSWorkerProvisioner`, the real boto3 request path, the real scheduler command object | AWS ECS (moto / LocalStack **Pro**); provisioned containers do **not** boot |
 | `test_ec2_orb_provisioning.py` | **control plane** | the real `ORBWorkerProvisioner` driven through the real `orb-py` SDK down to boto3 `ec2.run_instances` | AWS EC2 (moto / **free community LocalStack**); provisioned instances do **not** boot |
+| `test_batch_provisioning_moto.py` | **control plane** | the real `AWSBatchProvisioner.provision_all` infra flow over the real boto3 path | AWS Batch (moto / LocalStack **Pro**): S3 + IAM + compute env + job queue + job def |
 | `test_dynamic_local_e2e.py` | **data plane** | real scheduler + object storage + `WorkerManagerRunner` (over the wire) + provisioned worker processes + task execution | nothing — provisioning is local processes instead of cloud instances |
+| `test_scaling_stress_e2e.py` | **data plane (scale)** | a real client bursts light tasks; the scheduler scales a dynamic manager from 0 up to several real worker processes that run them | nothing — opt-in via `RUN_SCALING_STRESS_TEST=1` (see below) |
 
 Together they exercise the entire path: client submits work -> scheduler scaling policy emits
 `setDesiredTaskConcurrency` -> worker manager -> provisioner -> AWS API / real workers.
@@ -67,6 +69,28 @@ To run against a real LocalStack instead, use the helper (starts a container, ru
 # if your user can't reach the docker socket:
 DOCKER="sudo docker" ./scripts/run_integration_localstack.sh
 ```
+
+## Scaling stress test (`test_scaling_stress_e2e.py`)
+
+A heavier, opt-in end-to-end test that simulates a small distributed system on one machine: a real
+client bursts a load of light `time.sleep` tasks at a scheduler that starts with **zero** workers, and
+asserts the scheduler scaled a dynamic worker manager **up** to provision several real worker processes
+that connected back and ran the work (verified by counting the distinct worker PIDs in the results).
+On a 4-core box the defaults scale 0 -> ~6 workers.
+
+It has its own gate (`RUN_SCALING_STRESS_TEST=1`) so it is excluded from the default run, and is tuned
+by env vars so it can be scaled up on a bigger box without code changes:
+
+```bash
+RUN_SCALING_STRESS_TEST=1 \
+  SCALING_STRESS_MAX_WORKERS=8 SCALING_STRESS_TASKS=240 \
+  SCALING_STRESS_TASK_SECONDS=0.2 SCALING_STRESS_MIN_WORKERS=3 \
+  python -m unittest tests.integration.test_scaling_stress_e2e -v
+```
+
+In CI it is **not** part of the normal build; trigger it on demand via the `Scaling Stress Test`
+workflow (`.github/workflows/scaling-stress.yml`): run it manually from the Actions tab (with optional
+overrides for the knobs above), or add the **`scaling-stress`** label to a pull request.
 
 ## Choosing the mocked-AWS backend
 

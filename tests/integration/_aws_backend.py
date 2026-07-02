@@ -50,7 +50,12 @@ class ECSNotAvailable(RuntimeError):
     """
 
 
-def _is_ecs_unavailable(exc: Exception) -> bool:
+class BatchNotAvailable(RuntimeError):
+    """The selected backend does not provide AWS Batch (Batch/ECR are LocalStack Pro-only, like ECS)."""
+
+
+def is_service_unavailable(exc: Exception) -> bool:
+    """True when a backend reports a service as unimplemented (e.g. community LocalStack -> Pro)."""
     message = str(exc)
     return "not yet implemented" in message or "pro feature" in message
 
@@ -90,20 +95,18 @@ def is_available() -> bool:
     return availability_reason() is None
 
 
-# A real security group id created during seeding, injected into ECS run_task calls that
-# omit securityGroups (moto requires the key; real AWS defaults it). Module-global because
-# the botocore handler below is shared by every client, including the provisioner's own.
-_DEFAULT_SECURITY_GROUPS: List[str] = []
+# Injected into ECS/Batch calls that omit fields moto requires but real AWS defaults. Module-global
+# because the botocore handlers below are shared by every client, including the provisioner's own.
+_DEFAULT_SECURITY_GROUPS: List[str] = []  # ECS run_task securityGroups (real AWS defaults it)
+_BATCH_SERVICE_ROLE_ARN: Optional[str] = None  # Batch CreateComputeEnvironment serviceRole
 _COMPAT_INSTALLED = False
 
 
-def _install_ecs_run_task_compat() -> None:
-    """Inject a default securityGroups into any ECS RunTask that omits it.
+def _install_aws_compat() -> None:
+    """Bridge the small gaps where moto is stricter than real AWS, so provisioner code runs unchanged.
 
-    The ECS worker manager calls run_task with only ``subnets`` + ``assignPublicIp``.
-    Real AWS defaults the security group; moto raises KeyError. Registering the handler in
-    ``BUILTIN_HANDLERS`` makes every later-created botocore client (including the ones the
-    provisioner constructs internally) pick it up.
+    Registering handlers in ``BUILTIN_HANDLERS`` makes every later-created botocore client (including
+    the ones the provisioner constructs internally) pick them up.
     """
     global _COMPAT_INSTALLED
     if _COMPAT_INSTALLED:
@@ -111,11 +114,22 @@ def _install_ecs_run_task_compat() -> None:
     import botocore.handlers
 
     def _inject_security_groups(params, **kwargs):
+        # ECS worker manager calls run_task with only subnets + assignPublicIp; real AWS defaults the
+        # security group, moto raises KeyError.
         awsvpc = (params.get("networkConfiguration") or {}).get("awsvpcConfiguration")
         if awsvpc is not None and not awsvpc.get("securityGroups"):
             awsvpc["securityGroups"] = list(_DEFAULT_SECURITY_GROUPS)
 
+    def _inject_service_role(params, **kwargs):
+        # Batch provisioner omits serviceRole (real AWS auto-creates the service-linked role); moto
+        # requires it.
+        if not params.get("serviceRole") and _BATCH_SERVICE_ROLE_ARN:
+            params["serviceRole"] = _BATCH_SERVICE_ROLE_ARN
+
     botocore.handlers.BUILTIN_HANDLERS.append(("before-parameter-build.ecs.RunTask", _inject_security_groups))
+    botocore.handlers.BUILTIN_HANDLERS.append(
+        ("before-parameter-build.batch.CreateComputeEnvironment", _inject_service_role)
+    )
     _COMPAT_INSTALLED = True
 
 
@@ -148,7 +162,7 @@ class MockedAWS:
         self._saved_env: Dict[str, Optional[str]] = {}
 
     def __enter__(self) -> "MockedAWS":
-        _install_ecs_run_task_compat()
+        _install_aws_compat()
         if self._backend == "moto":
             from moto import mock_aws
 
@@ -238,7 +252,7 @@ class MockedAWS:
                 ],
             )
         except botocore.exceptions.ClientError as exc:
-            if _is_ecs_unavailable(exc):
+            if is_service_unavailable(exc):
                 raise ECSNotAvailable(str(exc)) from exc
             raise
         return SeededECSEnvironment(
@@ -276,6 +290,34 @@ class MockedAWS:
         return SeededEC2Environment(
             region=self.region, subnets=[subnet_id], security_groups=[sg_id], key_name=key_name, image_id=image_id
         )
+
+    def seed_batch_service_role(self, role_name: str = "scaler-it-batch-service-role") -> str:
+        """Create the AWS Batch service role and register it for CreateComputeEnvironment injection.
+
+        Real AWS auto-creates the Batch service-linked role; moto requires an explicit serviceRole,
+        so the harness pre-creates one and the compat handler injects it. Returns the role ARN.
+        """
+        import json
+
+        import botocore.exceptions
+
+        global _BATCH_SERVICE_ROLE_ARN
+        iam = self.client("iam")
+        trust = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {"Effect": "Allow", "Principal": {"Service": "batch.amazonaws.com"}, "Action": "sts:AssumeRole"}
+            ],
+        }
+        try:
+            arn = iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=json.dumps(trust))["Role"]["Arn"]
+        except botocore.exceptions.ClientError as exc:
+            if "EntityAlreadyExists" in str(exc):
+                arn = iam.get_role(RoleName=role_name)["Role"]["Arn"]
+            else:
+                raise
+        _BATCH_SERVICE_ROLE_ARN = arn
+        return arn
 
 
 @contextlib.contextmanager
