@@ -35,9 +35,11 @@ using scaler::ymq::Message;
 // a test suite for different socket types that's parameterized by transport protocol (e.g. "tcp", "ipc")
 class YMQSocketTest: public ::testing::TestWithParam<std::string> {
 protected:
-    std::string GetAddress(int port)
+    // Allocate a fresh OS-assigned port per call instead of a hard-coded one, so repeated or
+    // concurrent test runs cannot collide on a fixed port (a source of flaky binds in CI).
+    std::string GetAddress()
     {
-        return getTransportAddress(GetParam(), port);
+        return getTransportAddress(GetParam(), getFreePort());
     }
 };
 
@@ -507,7 +509,7 @@ TestResult serverSocketStopBeforeCloseConnection(std::string address)
 // in this variant, both the client and server are implemented using ymq
 TEST_P(YMQSocketTest, TestBasicYMQClientYMQServer)
 {
-    const auto address = GetAddress(2889);
+    const auto address = GetAddress();
 
     // this is the test harness, it accepts a timeout, a list of functions to run,
     // and an optional third argument used to coordinate the execution of python (for mitm)
@@ -520,7 +522,7 @@ TEST_P(YMQSocketTest, TestBasicYMQClientYMQServer)
 // same as above, except ymq's protocol is directly implemented on top of a TCP socket
 TEST_P(YMQSocketTest, TestBasicRawClientYMQServer)
 {
-    const auto address = GetAddress(2891);
+    const auto address = GetAddress();
 
     // this is the test harness, it accepts a timeout, a list of functions to run,
     // and an optional third argument used to coordinate the execution of python (for mitm)
@@ -532,7 +534,7 @@ TEST_P(YMQSocketTest, TestBasicRawClientYMQServer)
 
 TEST_P(YMQSocketTest, TestBasicRawClientRawServer)
 {
-    const auto address = GetAddress(2892);
+    const auto address = GetAddress();
 
     // this is the test harness, it accepts a timeout, a list of functions to run,
     // and an optional third argument used to coordinate the execution of python (for mitm)
@@ -545,7 +547,7 @@ TEST_P(YMQSocketTest, TestBasicRawClientRawServer)
 // this is the same as above, except that it has no delay before calling close() on the socket
 TEST_P(YMQSocketTest, TestBasicRawClientRawServerNoDelay)
 {
-    const auto address = GetAddress(2893);
+    const auto address = GetAddress();
 
     auto result = test(10, {[=] { return basicServerYmq(address); }, [=] { return basicClientRaw(address); }});
 
@@ -554,7 +556,7 @@ TEST_P(YMQSocketTest, TestBasicRawClientRawServerNoDelay)
 
 TEST_P(YMQSocketTest, TestBasicDelayYMQClientRawServer)
 {
-    const auto address = GetAddress(2894);
+    const auto address = GetAddress();
 
     // this is the test harness, it accepts a timeout, a list of functions to run,
     // and an optional third argument used to coordinate the execution of python (for mitm)
@@ -568,7 +570,7 @@ TEST_P(YMQSocketTest, TestBasicDelayYMQClientRawServer)
 // ymq should be able to handle this without issue
 TEST_P(YMQSocketTest, TestClientSendBigMessageToServer)
 {
-    const auto address = GetAddress(2895);
+    const auto address = GetAddress();
 
     auto result =
         test(10, {[=] { return serverReceivesBigMessage(address); }, [=] { return clientSendsBigMessage(address); }});
@@ -580,7 +582,7 @@ TEST_P(YMQSocketTest, TestClientSendBigMessageToServer)
 // but we simulate a slow network connection by sending the message in segmented chunks
 TEST_P(YMQSocketTest, TestSlowNetwork)
 {
-    const auto address = GetAddress(2905);
+    const auto address = GetAddress();
 
     auto result =
         test(20, {[=] { return basicServerYmq(address); }, [=] { return clientSimulatedSlowNetwork(address); }});
@@ -593,7 +595,7 @@ TEST_P(YMQSocketTest, TestSlowNetwork)
 // YMQ should be able to recover from a poorly-behaved client like this
 TEST_P(YMQSocketTest, TestClientSendIncompleteIdentity)
 {
-    const auto address = GetAddress(2896);
+    const auto address = GetAddress();
 
     auto result =
         test(20, {[=] { return basicServerYmq(address); }, [=] { return clientSendsIncompleteIdentity(address); }});
@@ -606,7 +608,7 @@ TEST_P(YMQSocketTest, TestClientSendIncompleteIdentity)
 // both for resilience against attacks and to guard against errors
 TEST_P(YMQSocketTest, TestClientSendHugeHeader)
 {
-    const auto address = GetAddress(2897);
+    const auto address = GetAddress();
 
     auto result =
         test(20, {[=] { return serverReceivesHugeHeader(address); }, [=] { return clientSendsHugeHeader(address); }});
@@ -621,7 +623,7 @@ TEST_P(YMQSocketTest, TestClientSendHugeHeader)
 // it's important that the behaviour of YMQ is known for both of these cases
 TEST_P(YMQSocketTest, TestClientSendEmptyMessage)
 {
-    const auto address = GetAddress(2898);
+    const auto address = GetAddress();
 
     auto result = test(
         20, {[=] { return serverReceivesEmptyMessages(address); }, [=] { return clientSendsEmptyMessages(address); }});
@@ -633,7 +635,7 @@ TEST_P(YMQSocketTest, TestClientSendEmptyMessage)
 // Then the publisher sends multicast messages filtered by that prefix that both subscribers should receive.
 TEST_P(YMQSocketTest, TestMulticast)
 {
-    const auto address = GetAddress(2900);
+    const auto address = GetAddress();
     Identity prefix {"test_multicast_prefix"};
 
     auto result = test(
@@ -648,7 +650,7 @@ TEST_P(YMQSocketTest, TestMulticast)
 // in this test case, the client establishes a connection with the server and then explicitly closes it
 TEST_P(YMQSocketTest, TestClientCloseEstablishedConnection)
 {
-    const auto address = GetAddress(2902);
+    const auto address = GetAddress();
 
     auto result = test(
         20,
@@ -661,7 +663,7 @@ TEST_P(YMQSocketTest, TestClientCloseEstablishedConnection)
 // this test case is similar to the one above, except that it requests the socket stop before closing the connection
 TEST_P(YMQSocketTest, TestClientSocketStopBeforeCloseConnection)
 {
-    const auto address = GetAddress(2904);
+    const auto address = GetAddress();
 
     auto result = test(
         20,

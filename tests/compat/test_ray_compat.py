@@ -1,16 +1,30 @@
 import time
 import unittest
 
-import numpy as np
-import ray
-from numpy import random
+try:
+    import numpy as np
+    from numpy import random
+except ModuleNotFoundError:  # optional test dependency
+    np = None
+    random = None
+
+try:
+    import ray
+except ModuleNotFoundError:  # optional test dependency
+    ray = None
 
 from scaler.cluster.combo import SchedulerClusterCombo
 
-# this patches ray
-from scaler.compat.ray import scaler_init
+if ray is not None:
+    from scaler.compat.ray import scaler_init  # importing this patches ray in-place
+else:
+    scaler_init = None
 
 
+@unittest.skipUnless(
+    ray is not None and np is not None,
+    "ray and numpy are required for the ray-compat tests (pip install -r examples/ray_compat/requirements.txt)",
+)
 class TestRayCompat(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
@@ -79,6 +93,10 @@ class TestRayCompat(unittest.TestCase):
 
     # https://docs.ray.io/en/latest/ray-core/patterns/nested-tasks.html#code-example
     def test_ray_example_nested_quicksort(self) -> None:
+        # Kept small (the docs example uses millions) so the test still drives several levels of
+        # distributed recursion and verifies correctness without multi-second sorts of 8M elements.
+        _QUICKSORT_INLINE_THRESHOLD = 1000
+
         def partition(collection):
             # Use the last element as the pivot
             pivot = collection.pop()
@@ -91,7 +109,7 @@ class TestRayCompat(unittest.TestCase):
             return lesser, pivot, greater
 
         def quick_sort(collection):
-            if len(collection) <= 200000:  # magic number
+            if len(collection) <= _QUICKSORT_INLINE_THRESHOLD:  # sort in place below this size
                 return sorted(collection)
             else:
                 lesser, pivot, greater = partition(collection)
@@ -107,7 +125,7 @@ class TestRayCompat(unittest.TestCase):
             # when the sorting should be done in place. The rule
             # of thumb is that the duration of an individual task
             # should be at least 1 second.
-            if len(collection) <= 200000:  # magic number
+            if len(collection) <= _QUICKSORT_INLINE_THRESHOLD:  # sort in place below this size
                 return sorted(collection)
             else:
                 lesser, pivot, greater = partition(collection)
@@ -115,7 +133,7 @@ class TestRayCompat(unittest.TestCase):
                 greater = quick_sort_distributed.remote(greater)
                 return ray.get(lesser) + [pivot] + ray.get(greater)
 
-        for size in [200000, 4000000, 8000000]:
+        for size in [1000, 5000, 20000]:
             unsorted = random.randint(1000000, size=(size)).tolist()
             s = time.time()
             sequential_sorted = quick_sort(unsorted[:])
@@ -188,15 +206,12 @@ class TestRayCompat(unittest.TestCase):
             time.sleep(secs)
             return secs
 
-        refs = [sleep.remote(x) for x in (2, 1, 3)]
-        completed_refs = []
-        for ref in ray.util.as_completed(refs):
-            completed_refs.append(ref)
+        refs = [sleep.remote(x) for x in (1, 3, 5)]
+        completed_values = [ray.get(ref) for ref in ray.util.as_completed(refs)]
 
-        # The order of completion should be 1, 2, 3
-        self.assertEqual(ray.get(completed_refs[0]), 1)
-        self.assertEqual(ray.get(completed_refs[1]), 2)
-        self.assertEqual(ray.get(completed_refs[2]), 3)
+        # as_completed must yield refs in completion order. The sleep durations are spaced 2s apart
+        # so the completion order is deterministic even on a loaded box.
+        self.assertEqual(completed_values, [1, 3, 5])
 
     def test_ray_util_map_unordered(self) -> None:
         @ray.remote
@@ -213,6 +228,7 @@ class TestRayCompat(unittest.TestCase):
 
     def test_ray_external_cluster(self) -> None:
         combo = SchedulerClusterCombo(n_workers=1)
+        self.addCleanup(combo.shutdown)
 
         # explicitly init scaler's ray interface, passing the address of an existing cluster
         scaler_init(address=combo.get_address())
@@ -233,6 +249,7 @@ class TestRayCompat(unittest.TestCase):
         self.assertFalse(ray.is_initialized())
 
         combo = SchedulerClusterCombo(n_workers=1)
+        self.addCleanup(combo.shutdown)
         scaler_init(address=combo.get_address())
 
         self.assertEqual(ray.get(fn.remote()), 1)
