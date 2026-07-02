@@ -24,7 +24,13 @@ from scaler.config.types.worker import WorkerCapabilities
 from scaler.scheduler.controllers.worker_manager_utilties import build_set_desired_command
 from scaler.utility.logging.utility import setup_logger
 from tests.integration import INTEGRATION_SKIP_REASON, RUN_INTEGRATION_TESTS
-from tests.integration._aws_backend import MockedAWS, SeededECSEnvironment, availability_reason, is_available
+from tests.integration._aws_backend import (
+    ECSNotAvailable,
+    MockedAWS,
+    SeededECSEnvironment,
+    availability_reason,
+    is_available,
+)
 from tests.integration._harness import async_wait_until
 from tests.utility.utility import logging_test_name
 
@@ -62,7 +68,11 @@ class TestECSProvisioningControlPlane(unittest.IsolatedAsyncioTestCase):
         logging_test_name(self)
         self._aws = MockedAWS().__enter__()
         self.addCleanup(self._aws.__exit__, None, None, None)
-        self.env = self._aws.seed_ecs_environment()
+        try:
+            self.env = self._aws.seed_ecs_environment()
+        except ECSNotAvailable as exc:
+            # Community LocalStack has no ECS (it is a Pro feature); moto and LocalStack Pro do.
+            self.skipTest(f"backend does not provide ECS -- use moto or LocalStack Pro ({exc})")
         self.ecs = self._aws.client("ecs")
 
     def _running_task_count(self) -> int:

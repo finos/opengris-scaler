@@ -36,12 +36,23 @@ control loop — so "did provisioning actually run work?" is answered with real 
 # Install the test dependencies (moto is in-process; no Docker required):
 uv pip install -e '.[all,integration]'
 
-# Run the whole skeleton:
-python -m unittest discover -s tests/integration -t . -v
+# Run the whole skeleton (moto backend, the default):
+RUN_INTEGRATION_TESTS=1 python -m unittest discover -s tests/integration -t . -v
 
 # Or a single layer:
-python -m unittest tests.integration.test_ecs_provisioning_moto -v
-python -m unittest tests.integration.test_dynamic_local_e2e -v
+RUN_INTEGRATION_TESTS=1 python -m unittest tests.integration.test_ecs_provisioning_moto -v
+RUN_INTEGRATION_TESTS=1 python -m unittest tests.integration.test_dynamic_local_e2e -v
+```
+
+The suite is opt-in (`RUN_INTEGRATION_TESTS=1`), so the default `unittest discover` skips it. CI runs
+it on the **Linux** lane only, with the moto backend (see `.github/actions/run-test/action.yml`).
+
+To run against a real LocalStack instead, use the helper (starts a container, runs, tears down):
+
+```bash
+./scripts/run_integration_localstack.sh
+# if your user can't reach the docker socket:
+DOCKER="sudo docker" ./scripts/run_integration_localstack.sh
 ```
 
 ## Choosing the mocked-AWS backend
@@ -50,31 +61,40 @@ The AWS backend is selected by `SCALER_E2E_AWS_BACKEND` (default `moto`) and is 
 that changes between backends — the test body is identical:
 
 * **`moto`** (default): in-process boto3 mock. No Docker, no network, runs on Linux/macOS/Windows.
-  Best for CI. Mocks the ECS control plane only.
+  Best for CI. Implements the ECS control plane in-process.
 * **`localstack`**: point `AWS_ENDPOINT_URL` at a running LocalStack (default
-  `http://localhost:4566`) and run:
-  ```bash
-  docker run --rm -d -p 4566:4566 localstack/localstack
-  SCALER_E2E_AWS_BACKEND=localstack python -m unittest tests.integration.test_ecs_provisioning_moto -v
-  ```
+  `http://localhost:4566`). Use `scripts/run_integration_localstack.sh` (above), which manages the
+  container for you.
 
-### Is there a better tool than LocalStack?
+### Do moto and LocalStack test different things? Which should I use?
 
-For CI, **moto is the better default**: it is a pip dependency (no Docker daemon), runs
-in-process, is fast, and is cross-platform. Community LocalStack needs Docker and — like moto —
-still does not boot the provisioned containers, so it buys little over moto for these tests.
+For **this** skeleton the control-plane assertions are the same on both backends, but they exercise
+different layers:
 
-The only way to get a **true cloud data-plane** (provisioned "instances" that boot and connect
-back as real workers) with a mock is:
+* **moto** reimplements AWS *in-process* and intercepts boto3 below botocore — fast, free,
+  cross-platform, no Docker. It **implements ECS**, so it runs the whole ECS control-plane test.
+* **LocalStack** is a *separate service* boto3 talks to over real HTTP, so it also exercises the
+  serialization/endpoint/region path that moto's in-process interception bypasses.
 
-* **LocalStack Pro** — its ECS/EC2 Docker backend actually launches containers. Point the ECS
-  task image at a real `opengris-scaler` image and the provisioned tasks will connect back to
-  the scheduler. This is the highest-fidelity option but requires a licence + Docker.
-* **moto standalone server + AWS Batch** — moto's Batch backend executes jobs in local Docker
-  containers; the `aws_hpc` (Batch) worker manager could be pointed at it for a real boot.
+The important caveat, confirmed by running it: **community LocalStack does NOT implement ECS — ECS is
+a LocalStack Pro feature.** So on the free community image the ECS control-plane test **skips itself**
+(the harness detects the "not implemented / pro feature" error; the EC2 seeding still runs). That
+makes **moto the only *free* backend that fully runs the ECS skeleton**, which is why CI uses it.
 
-Both are heavier and Docker-bound, so they are documented here as opt-in extensions rather than
-wired into the default skeleton.
+The value of the LocalStack seam is therefore:
+
+* a higher-fidelity cross-check of the real HTTP path (for services community LocalStack *does*
+  support, e.g. EC2), and
+* the on-ramp to a **true cloud data-plane**. The only way to get provisioned "instances" that
+  actually boot and connect back as real workers via a mock is:
+  * **LocalStack Pro** — its ECS/EC2 Docker backend launches real containers. Export
+    `LOCALSTACK_AUTH_TOKEN` and `scripts/run_integration_localstack.sh` uses the Pro image so the
+    ECS tests run (point the ECS task image at a real `opengris-scaler` image and the tasks connect
+    back to the scheduler).
+  * **moto standalone server + AWS Batch** — moto's Batch backend executes jobs in local Docker
+    containers; the `aws_hpc` (Batch) worker manager could be pointed at it for a real boot.
+
+Both real-boot paths are heavier and Docker-bound, so they are opt-in extensions, not the default.
 
 ## moto compatibility notes
 

@@ -8,9 +8,10 @@ Two backends are supported behind one interface, selected by the
   ``run_task`` / ``stop_task`` API calls the worker manager makes) but does NOT boot
   the resulting containers, so provisioned "instances" never connect back as workers.
 * ``localstack`` -- a real LocalStack container reachable at ``AWS_ENDPOINT_URL``
-  (default ``http://localhost:4566``). Community LocalStack also mocks only the ECS
-  control plane; LocalStack Pro's ECS/EC2 Docker backend can actually launch containers
-  (see README) for a true data-plane run.
+  (default ``http://localhost:4566``). NOTE: ECS is a LocalStack *Pro* feature, so the ECS
+  control-plane test skips itself on the free community image (the EC2 seam still runs);
+  LocalStack Pro's ECS/EC2 Docker backend can additionally launch containers for a true
+  data-plane run. See README and scripts/run_integration_localstack.sh.
 
 Both backends are seeded through the same plain boto3 calls, so a test written against
 this harness is identical regardless of backend.
@@ -37,6 +38,21 @@ DEFAULT_REGION = "us-east-1"
 DEFAULT_CLUSTER = "scaler-it-cluster"
 DEFAULT_TASK_DEFINITION = "scaler-it-task-definition"
 LOCALSTACK_DEFAULT_ENDPOINT = "http://localhost:4566"
+
+
+class ECSNotAvailable(RuntimeError):
+    """The selected backend does not provide ECS.
+
+    moto implements ECS in-process, but LocalStack only provides ECS in its Pro tier -- community
+    LocalStack returns "not yet implemented or pro feature". Tests catch this and skip rather than
+    fail, so the same suite runs on moto (free) and LocalStack Pro, and skips ECS on community.
+    """
+
+
+def _is_ecs_unavailable(exc: Exception) -> bool:
+    message = str(exc)
+    return "not yet implemented" in message or "pro feature" in message
+
 
 try:
     import boto3  # noqa: F401
@@ -190,24 +206,31 @@ class MockedAWS:
         global _DEFAULT_SECURITY_GROUPS
         _DEFAULT_SECURITY_GROUPS = [sg_id]
 
+        import botocore.exceptions
+
         ecs = self.client("ecs")
-        ecs.create_cluster(clusterName=cluster)
-        ecs.register_task_definition(
-            family=task_definition,
-            cpu=str(task_cpu * 1024),
-            memory=str(task_memory_mb),
-            networkMode="awsvpc",
-            requiresCompatibilities=["FARGATE"],
-            containerDefinitions=[
-                {
-                    "name": "scaler-container",
-                    "image": container_image,
-                    "essential": True,
-                    "memory": task_memory_mb,
-                    "cpu": task_cpu * 1024,
-                }
-            ],
-        )
+        try:
+            ecs.create_cluster(clusterName=cluster)
+            ecs.register_task_definition(
+                family=task_definition,
+                cpu=str(task_cpu * 1024),
+                memory=str(task_memory_mb),
+                networkMode="awsvpc",
+                requiresCompatibilities=["FARGATE"],
+                containerDefinitions=[
+                    {
+                        "name": "scaler-container",
+                        "image": container_image,
+                        "essential": True,
+                        "memory": task_memory_mb,
+                        "cpu": task_cpu * 1024,
+                    }
+                ],
+            )
+        except botocore.exceptions.ClientError as exc:
+            if _is_ecs_unavailable(exc):
+                raise ECSNotAvailable(str(exc)) from exc
+            raise
         return SeededECSEnvironment(
             region=self.region,
             cluster=cluster,
