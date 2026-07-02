@@ -133,7 +133,8 @@ class TestConfigClass(unittest.TestCase):
         class MyConfigClass(ConfigClass):
             pass
 
-        MyConfigClass.parse("this is a test config", "my_config")
+        config = MyConfigClass.parse("this is a test config", "my_config")
+        self.assertIsInstance(config, MyConfigClass)
 
     @patch("sys.argv", ["script", "--config", "file", "--command-line", "99"])
     @patch.dict("os.environ", {"ENV_VAR_ONE": "99", "ENV_VAR_TWO": "98"})

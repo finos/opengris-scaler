@@ -25,6 +25,8 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
 
         self._context = IOContext()
         self._binder = YMQAsyncBinder(self._context, identity=b"binder-under-test", callback=self._on_receive)
+        # destroy() is idempotent (guards on a None socket), so tests may also destroy explicitly.
+        self.addCleanup(self._binder.destroy)
         await self._binder.bind(AddressConfig.from_string("tcp://127.0.0.1:0"))
 
     async def _on_receive(self, address: bytes, message: BaseMessage) -> None:
@@ -56,6 +58,7 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
     async def test_normal_send_still_delivers(self) -> None:
         """A normal send still reaches a connected peer (happy path is unaffected)."""
         connector = ConnectorSocket.connect(self._context, "peer", repr(self._binder.address))
+        self.addCleanup(connector.shutdown)
 
         message = self._make_message()
         await self._binder.send(b"peer", message)  # completes once the peer identifies itself

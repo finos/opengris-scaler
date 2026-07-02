@@ -58,6 +58,12 @@ orb = [
 oci = [
     "oci==2.177.0",
 ]
+# Extra dependencies for the end-to-end integration test skeleton (tests/integration).
+# moto provides an in-process AWS mock so the cloud worker managers can be provisioned
+# against a mocked control plane without Docker. Not required for the default test suite.
+integration = [
+    "moto[ec2,ecs,batch]>=5,<6",
+]
 all = [
     "opengris-scaler[aws]",
     # graphblas need compile on 3.14, and this python condition prevents up from building 3.14 wheel, comment it out for now
@@ -78,6 +84,9 @@ dev = [
     "jupyterlite-sphinx==0.22.1",
     "mypy>=1.14.1",
     "nbsphinx",
+    # numpy is required by tests/client/test_object_buffer.py (numpy-array zero-copy dedup).
+    # Those tests skip gracefully when it is absent; declare it so the dev/test env runs them.
+    "numpy>=1.26",
     "pyodide-build==0.35.1; python_version >= '3.12'",
     "shibuya",
     "sphinx-copybutton",

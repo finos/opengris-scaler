@@ -29,6 +29,15 @@ class TestCapabilities(unittest.TestCase):
     def tearDown(self) -> None:
         self.combo.shutdown()
 
+    @staticmethod
+    def _reap_process(process: multiprocessing.process.BaseProcess) -> None:
+        if process.is_alive():
+            process.terminate()
+        process.join(timeout=10)
+        if process.is_alive():
+            process.kill()
+            process.join()
+
     def test_capabilities(self):
         base_config = self.combo._worker_manager.config
 
@@ -72,11 +81,9 @@ class TestCapabilities(unittest.TestCase):
             )
             gpu_process = multiprocessing.get_context("spawn").Process(target=gpu_manager.run)
             gpu_process.start()
+            self.addCleanup(self._reap_process, gpu_process)
 
             self.assertEqual(future.result(), 3.0)
-
-            gpu_process.terminate()
-            gpu_process.join()
 
     def test_graph_capabilities(self):
         base_config = self.combo._worker_manager.config
@@ -122,8 +129,6 @@ class TestCapabilities(unittest.TestCase):
             )
             gpu_process = multiprocessing.get_context("spawn").Process(target=gpu_manager.run)
             gpu_process.start()
+            self.addCleanup(self._reap_process, gpu_process)
 
             self.assertEqual(future.result(), 8)
-
-            gpu_process.terminate()
-            gpu_process.join()

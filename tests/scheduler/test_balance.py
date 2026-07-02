@@ -35,6 +35,10 @@ class TestBalance(unittest.TestCase):
         N_TASKS = 8
         N_WORKERS = N_TASKS
 
+        # Long enough that even under slow CI (slow process spawn + balancing), the tasks are still running by the
+        # time the new workers register and load balancing redistributes them one-per-worker.
+        TASK_DURATION_SECONDS = 30
+
         address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         combo = SchedulerClusterCombo(
             address=address,
@@ -42,10 +46,12 @@ class TestBalance(unittest.TestCase):
             per_worker_task_queue_size=N_TASKS,
             load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
         )
+        self.addCleanup(combo.shutdown)
 
         client = Client(address=address)
+        self.addCleanup(client.disconnect)
 
-        futures = [client.submit(sleep_and_return_pid, 10) for _ in range(N_TASKS)]
+        futures = [client.submit(sleep_and_return_pid, TASK_DURATION_SECONDS) for _ in range(N_TASKS)]
 
         time.sleep(3)
 
@@ -81,12 +87,15 @@ class TestBalance(unittest.TestCase):
         process = multiprocessing.get_context("spawn").Process(target=new_manager.run)
         process.start()
 
+        def _terminate_process() -> None:
+            process.terminate()
+            process.join(timeout=10)
+            if process.is_alive():
+                process.kill()
+                process.join()
+
+        self.addCleanup(_terminate_process)
+
         pids = {f.result() for f in futures}
 
         self.assertEqual(len(pids), N_WORKERS)
-
-        client.disconnect()
-
-        process.terminate()
-        process.join()
-        combo.shutdown()

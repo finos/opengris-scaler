@@ -23,8 +23,8 @@ _BIND_ADDRESS = AddressConfig.from_string("tcp://127.0.0.1:0")
 # Time budget for the message to be delivered after publish.
 _RECEIVE_TIMEOUT_SECONDS = 5.0
 # Pub/Sub is best-effort - messages published before the SUB socket has finished
-# subscribing are dropped - so warm up briefly between subscriber start and publish.
-_SUBSCRIPTION_WARMUP_SECONDS = 0.3
+# subscribing are dropped - so republish at this interval until delivery is acknowledged.
+_REPUBLISH_INTERVAL_SECONDS = 0.1
 # Per-recv timeout so we can interrupt the polling loop without tearing down the
 # context mid-recv (which crashes libzmq).
 _POLL_TIMEOUT = timedelta(seconds=1)
@@ -64,14 +64,18 @@ class TestSyncSubscriberReceivesPublishedMessages(unittest.TestCase):
         poller = threading.Thread(target=poll_loop, daemon=True)
         poller.start()
         try:
-            time.sleep(_SUBSCRIPTION_WARMUP_SECONDS)
-            loop.run_until_complete(publisher.send(StateBalanceAdvice(workerId=WorkerID(b"worker-a"), taskIds=[])))
+            # Pub/Sub is best-effort: a single publish can be dropped if the SUB socket
+            # has not finished connecting yet. Republish until the subscriber acknowledges
+            # receipt (or the deadline elapses) so delivery does not hinge on a fixed sleep.
+            deadline = time.monotonic() + _RECEIVE_TIMEOUT_SECONDS
+            while not received_event.is_set() and time.monotonic() < deadline:
+                loop.run_until_complete(publisher.send(StateBalanceAdvice(workerId=WorkerID(b"worker-a"), taskIds=[])))
+                received_event.wait(timeout=_REPUBLISH_INTERVAL_SECONDS)
 
             self.assertTrue(
-                received_event.wait(timeout=_RECEIVE_TIMEOUT_SECONDS),
-                "subscriber did not receive the published message within the timeout",
+                received_event.is_set(), "subscriber did not receive the published message within the timeout"
             )
-            self.assertEqual(len(received), 1)
+            self.assertGreaterEqual(len(received), 1)
             self.assertIsInstance(received[0], StateBalanceAdvice)
         finally:
             subscriber.destroy()

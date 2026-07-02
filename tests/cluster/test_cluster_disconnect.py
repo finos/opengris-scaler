@@ -29,7 +29,15 @@ class TestClusterDisconnect(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.combo.shutdown()
-        pass
+
+    @staticmethod
+    def _reap_process(process: multiprocessing.process.BaseProcess) -> None:
+        if process.is_alive():
+            process.terminate()
+        process.join(timeout=10)
+        if process.is_alive():
+            process.kill()
+            process.join()
 
     def test_cluster_disconnect(self):
         base_config = self.combo._worker_manager.config
@@ -65,13 +73,16 @@ class TestClusterDisconnect(unittest.TestCase):
         )
         dying_process = multiprocessing.get_context("spawn").Process(target=dying_manager.run)
         dying_process.start()
+        # Guarantee the spawned worker manager is reaped even if the body below raises before the
+        # explicit terminate(); terminate()/join() on an already-dead process is a no-op.
+        self.addCleanup(self._reap_process, dying_process)
 
-        client = Client(self.address)
-        future_result = client.submit(noop_sleep, 5)
-        time.sleep(2)
-        dying_process.terminate()
-        dying_process.join()
+        with Client(self.address) as client:
+            future_result = client.submit(noop_sleep, 5)
+            time.sleep(2)
+            dying_process.terminate()
+            dying_process.join()
 
-        with self.assertRaises(CancelledError):
-            client.clear()
-            future_result.result()
+            with self.assertRaises(CancelledError):
+                client.clear()
+                future_result.result()

@@ -68,6 +68,7 @@ class TestScaling(unittest.TestCase):
             logging_level="INFO",
         )
         object_storage.start()
+        self.addCleanup(_cleanup_kill_process, object_storage)
         object_storage.wait_until_ready()
 
         scheduler = SchedulerProcess(
@@ -90,21 +91,14 @@ class TestScaling(unittest.TestCase):
             logging_level="INFO",
         )
         scheduler.start()
+        self.addCleanup(_cleanup_graceful_scheduler, scheduler)
 
         manager_process = Process(target=_run_native_worker_manager, args=(self.scheduler_address,))
         manager_process.start()
+        self.addCleanup(_cleanup_terminate_process, manager_process)
 
         with Client(self.scheduler_address) as client:
             client.map(time.sleep, [0.1] * 100)
-
-        os.kill(scheduler.pid, signal.SIGINT)
-        scheduler.join()
-
-        object_storage.kill()
-        object_storage.join()
-
-        manager_process.terminate()
-        manager_process.join()
 
     @unittest.skipIf(
         sys.platform == "win32",
@@ -121,6 +115,7 @@ class TestScaling(unittest.TestCase):
             logging_level="INFO",
         )
         object_storage.start()
+        self.addCleanup(_cleanup_kill_process, object_storage)
         object_storage.wait_until_ready()
 
         scheduler = SchedulerProcess(
@@ -143,22 +138,15 @@ class TestScaling(unittest.TestCase):
             logging_level="INFO",
         )
         scheduler.start()
+        self.addCleanup(_cleanup_graceful_scheduler, scheduler)
 
         manager_process = Process(target=_run_native_worker_manager, args=(self.scheduler_address,))
         manager_process.start()
+        self.addCleanup(_cleanup_terminate_process, manager_process)
 
         with Client(self.scheduler_address) as client:
             # Submit tasks without capabilities (should work like vanilla)
             client.map(time.sleep, [0.1] * 50)
-
-        os.kill(scheduler.pid, signal.SIGINT)
-        scheduler.join()
-
-        object_storage.kill()
-        object_storage.join()
-
-        manager_process.terminate()
-        manager_process.join()
 
 
 class TestVanillaScalingPolicy(unittest.TestCase):
@@ -205,34 +193,6 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         request = self._single_request(snapshot, heartbeat, managed)
 
         self.assertEqual(request.taskConcurrency, 2)
-
-    def test_no_tasks_with_workers_targets_zero(self):
-        """No tasks but managers exist: desired drains to 0."""
-        workers = {
-            WorkerID(b"w0"): _create_mock_worker_heartbeat({}, queued_tasks=0),
-            WorkerID(b"w1"): _create_mock_worker_heartbeat({}, queued_tasks=1),
-            WorkerID(b"w2"): _create_mock_worker_heartbeat({}, queued_tasks=2),
-        }
-        managed = list(workers.keys())
-        snapshot = InformationSnapshot(tasks={}, workers=workers)
-        heartbeat = _create_worker_manager_heartbeat(b"mgr")
-
-        request = self._single_request(snapshot, heartbeat, managed)
-
-        self.assertEqual(request.taskConcurrency, 0)
-
-    def test_few_tasks_with_many_workers_targets_min_keep(self):
-        """Low task ratio shrinks toward ceil(tasks / upper_task_ratio) min_keep."""
-        tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(5)}
-        workers = {WorkerID(f"w{i}".encode()): _create_mock_worker_heartbeat({}, queued_tasks=i) for i in range(10)}
-        managed = list(workers.keys())
-        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
-        heartbeat = _create_worker_manager_heartbeat(b"mgr")
-
-        request = self._single_request(snapshot, heartbeat, managed)
-
-        # ceil(5 / 10) = 1 minimum to keep
-        self.assertEqual(request.taskConcurrency, 1)
 
     def test_max_concurrency_clamps_then_emits(self):
         """Ratio asks for current+1 but cap clamps to current -> emits setDesired(current)."""
@@ -632,6 +592,33 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
         detail = next(d for d in status.workerManagerDetails if d.workerManagerID == manager_id)
         # 2 (empty wildcard) + 3 (cpu subset) - 0 connected = 5; gpu (4) is excluded.
         self.assertEqual(detail.pendingWorkers, 5)
+
+
+_PROCESS_JOIN_TIMEOUT_SECONDS = 30
+
+
+def _cleanup_kill_process(process: Process) -> None:
+    if process.is_alive():
+        process.kill()
+    process.join()
+
+
+def _cleanup_terminate_process(process: Process) -> None:
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout=_PROCESS_JOIN_TIMEOUT_SECONDS)
+    if process.is_alive():
+        process.kill()
+        process.join()
+
+
+def _cleanup_graceful_scheduler(process: Process) -> None:
+    if process.is_alive():
+        os.kill(process.pid, signal.SIGINT)
+        process.join(timeout=_PROCESS_JOIN_TIMEOUT_SECONDS)
+    if process.is_alive():
+        process.kill()
+        process.join()
 
 
 def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:

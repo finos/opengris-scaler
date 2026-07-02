@@ -18,7 +18,12 @@ class TestConfigTypes(unittest.TestCase):
     def test_http_config_ipv6(self):
         """Test HTTPConfig.from_string handles IPv6 addresses via rpartition."""
         cfg = HTTPConfig.from_string("::1:8080")
+        self.assertEqual(cfg.host, "::1")
         self.assertEqual(cfg.port, 8080)
+
+        bracketed = HTTPConfig.from_string("[::1]:8080")
+        self.assertEqual(bracketed.host, "[::1]")
+        self.assertEqual(bracketed.port, 8080)
 
     def test_http_config_validation(self):
         """Test HTTPConfig.from_string raises ValueError for malformed strings."""

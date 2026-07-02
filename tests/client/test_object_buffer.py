@@ -8,7 +8,10 @@ import gc
 import unittest
 from typing import List, Tuple
 
-import numpy as np
+try:
+    import numpy as np
+except ModuleNotFoundError:
+    np = None  # tests needing numpy are skipped below rather than failing module collection
 
 from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.serializer.default import DefaultSerializer
@@ -52,6 +55,7 @@ def _make_buffer() -> Tuple[ObjectBuffer, _FakeAgentConnector, _FakeStorageConne
     return buf, agent, storage
 
 
+@unittest.skipUnless(np is not None, "numpy not installed (pip install numpy or install the dev dependency group)")
 class TestObjectBufferDedup(unittest.TestCase):
     def test_same_object_uploaded_only_once_within_batch(self) -> None:
         """Buffer the same Python object N times in one cycle, commit once -> 1 upload."""

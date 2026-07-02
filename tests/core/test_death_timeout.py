@@ -25,13 +25,31 @@ from scaler.utility.network_util import get_available_tcp_port
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
-# This is a manual test because it can loop infinitely if it fails
+# Workers that cannot reach a scheduler self-terminate once they exhaust their connection-retry
+# backoff. The tests below bound every wait on that behaviour, so they cannot loop forever and are
+# safe under `unittest discover`.
+DEATH_TIMEOUT_SECONDS = 10
+# Generous upper bound (loaded CI box) on how long a cluster shutdown may take.
+TEARDOWN_TIMEOUT_SECONDS = 30
+# A worker manager that never reaches a scheduler exits only after its workers exhaust their
+# connection-retry backoff (~50s on an unloaded box), which dominates the death timeout. Bound the
+# wait well above that so a real regression fails the test instead of hanging CI, without flaking.
+NO_SCHEDULER_EXIT_TIMEOUT_SECONDS = 120
 
 
 class TestDeathTimeout(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
+
+    @staticmethod
+    def _terminate_process(process: multiprocessing.process.BaseProcess) -> None:
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+        if process.is_alive():
+            process.kill()
+            process.join()
 
     def test_no_scheduler(self):
         logging.info("test with no scheduler")
@@ -52,7 +70,7 @@ class TestDeathTimeout(unittest.TestCase):
                     garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
                     trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
                     task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
-                    death_timeout_seconds=10,
+                    death_timeout_seconds=DEATH_TIMEOUT_SECONDS,
                     hard_processor_suspend=False,
                     io_threads=DEFAULT_IO_THREADS,
                     event_loop="builtin",
@@ -64,7 +82,14 @@ class TestDeathTimeout(unittest.TestCase):
         )
         process = multiprocessing.get_context("spawn").Process(target=manager.run)
         process.start()
-        process.join()
+        self.addCleanup(self._terminate_process, process)
+
+        # With no scheduler to reach, the workers must self-terminate once they exhaust their connection
+        # retries, which lets run() return and the process exit cleanly. Bound the join so a regression
+        # that breaks this fails the test instead of hanging CI forever.
+        process.join(timeout=NO_SCHEDULER_EXIT_TIMEOUT_SECONDS)
+        self.assertFalse(process.is_alive(), "worker manager did not exit after losing its scheduler")
+        self.assertEqual(process.exitcode, 0)
 
     def test_shutdown(self):
         logging.info("test with explicitly shutdown")
@@ -73,15 +98,26 @@ class TestDeathTimeout(unittest.TestCase):
         cluster = SchedulerClusterCombo(
             address=address, n_workers=2, per_worker_task_queue_size=2, event_loop="builtin", protected=False
         )
-        client = Client(address=address)
+        # this is a combo cluster: client.shutdown() only stops the workers, not the scheduler, so the combo
+        # itself must always be shut down (via cleanup, so it runs even if an assertion below raises).
+        self.addCleanup(cluster.shutdown)
 
-        time.sleep(10)
-        logging.info("Shutting down")
-        client.shutdown()
+        with Client(address=address) as client:
+            # Run a real task first: a completed result proves the workers have connected and the cluster is
+            # fully up, which replaces the fixed warm-up sleep with an actual readiness condition.
+            self.assertEqual(client.submit(round, 3.14).result(), 3)
 
-        time.sleep(5)
-        # this is combo cluster, client only shutdown clusters, not scheduler, so scheduler need be shutdown also
-        cluster.shutdown()
+            logging.info("Shutting down")
+            client.shutdown()
+
+        # client.shutdown() stops the workers connected to the scheduler, but not the combo's own scheduler.
+        # Poll until the worker manager process has actually exited instead of sleeping a fixed amount.
+        deadline = time.monotonic() + TEARDOWN_TIMEOUT_SECONDS
+        while cluster._worker_manager_process.is_alive() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertFalse(
+            cluster._worker_manager_process.is_alive(), "client.shutdown() did not stop the worker cluster"
+        )
 
     def test_no_timeout_if_suspended(self):
         """

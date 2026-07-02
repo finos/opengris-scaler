@@ -44,5 +44,12 @@ class TestECSWorkerProvisionerConcurrencyConversion(unittest.IsolatedAsyncioTest
         self.assertEqual(provisioner._capacity_coordinator._desired_unit_count, 3)  # ceil(10 / 4) = 3
 
     async def test_max_instances_wired_to_capacity_coordinator(self) -> None:
-        provisioner = _make_provisioner(max_task_concurrency=8, ecs_task_cpu=4)
-        self.assertEqual(provisioner._capacity_coordinator._max_unit_count, 2)  # ceil(8 / 4) = 2
+        # Exercise the real __init__ so the production ceil-division and the coordinator wiring line run.
+        config = MagicMock()
+        config.ecs_task_cpu = 4
+        config.worker_manager_config.max_task_concurrency = 8
+        config.worker_manager_config.worker_manager_id = "test-worker-manager"
+        with patch("boto3.Session"):
+            provisioner = ECSWorkerProvisioner(config)
+        self.assertEqual(provisioner._max_instances, 2)  # ceil(8 / 4) = 2
+        self.assertEqual(provisioner._capacity_coordinator._max_unit_count, 2)
