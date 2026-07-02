@@ -20,7 +20,7 @@ into two complementary layers so each can be tested deterministically:
 | `test_ec2_orb_provisioning.py` | **control plane** | the real `ORBWorkerProvisioner` driven through the real `orb-py` SDK down to boto3 `ec2.run_instances` | AWS EC2 (moto / **free community LocalStack**); provisioned instances do **not** boot |
 | `test_batch_provisioning_moto.py` | **control plane** | the real `AWSBatchProvisioner.provision_all` infra flow over the real boto3 path | AWS Batch (moto / LocalStack **Pro**): S3 + IAM + compute env + job queue + job def |
 | `test_dynamic_local_e2e.py` | **data plane** | real scheduler + object storage + `WorkerManagerRunner` (over the wire) + provisioned worker processes + task execution | nothing — provisioning is local processes instead of cloud instances |
-| `test_scaling_stress_e2e.py` | **data plane (scale)** | a real client bursts light tasks; the scheduler scales a dynamic manager from 0 up to several real worker processes that run them | nothing — opt-in via `RUN_SCALING_STRESS_TEST=1` (see below) |
+| `test_scaling_stress_e2e.py` | **data plane (scale)** | a real client bursts light tasks; the scheduler scales up real workers -- across one manager, and across several managers ("machines") each provisioning its own workers | nothing — opt-in via `RUN_SCALING_STRESS_TEST=1` (see below) |
 
 Together they exercise the entire path: client submits work -> scheduler scaling policy emits
 `setDesiredTaskConcurrency` -> worker manager -> provisioner -> AWS API / real workers.
@@ -70,21 +70,28 @@ To run against a real LocalStack instead, use the helper (starts a container, ru
 DOCKER="sudo docker" ./scripts/run_integration_localstack.sh
 ```
 
-## Scaling stress test (`test_scaling_stress_e2e.py`)
+## Scaling stress tests (`test_scaling_stress_e2e.py`)
 
-A heavier, opt-in end-to-end test that simulates a small distributed system on one machine: a real
-client bursts a load of light `time.sleep` tasks at a scheduler that starts with **zero** workers, and
-asserts the scheduler scaled a dynamic worker manager **up** to provision several real worker processes
-that connected back and ran the work (verified by counting the distinct worker PIDs in the results).
-On a 4-core box the defaults scale 0 -> ~6 workers.
+Heavier, opt-in end-to-end tests that simulate a small distributed system on one machine. Two shapes:
 
-It has its own gate (`RUN_SCALING_STRESS_TEST=1`) so it is excluded from the default run, and is tuned
-by env vars so it can be scaled up on a bigger box without code changes:
+* **`TestScalingStressE2E`** -- one dynamic worker manager: a real client bursts light `time.sleep`
+  tasks at a scheduler that starts with **zero** workers, and asserts it scaled that manager **up** to
+  several real worker processes that ran the work (distinct worker PIDs). On a 4-core box the defaults
+  scale 0 -> ~6 workers.
+* **`TestMultiManagerScalingE2E`** -- multiple worker managers, one per simulated **"machine"** (as a
+  `baremetal_native` manager runs inside each provisioned cloud instance), each provisioning its own
+  workers on one scheduler. It asserts work spreads across several machines, and that **provisioning a
+  new machine mid-flight** adds capacity that picks up work. Each manager tags its workers with an env
+  var so a task reports which machine ran it; defaults are 3 machines x 2 workers.
+
+They share the gate (`RUN_SCALING_STRESS_TEST=1`) so they are excluded from the default run, and are
+tuned by env vars so they can be scaled up on a bigger box without code changes:
 
 ```bash
 RUN_SCALING_STRESS_TEST=1 \
   SCALING_STRESS_MAX_WORKERS=8 SCALING_STRESS_TASKS=240 \
   SCALING_STRESS_TASK_SECONDS=0.2 SCALING_STRESS_MIN_WORKERS=3 \
+  SCALING_STRESS_MACHINES=3 SCALING_STRESS_WORKERS_PER_MACHINE=2 \
   python -m unittest tests.integration.test_scaling_stress_e2e -v
 ```
 

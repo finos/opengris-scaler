@@ -18,8 +18,14 @@ on:
         description: "Per-task sleep (seconds); keeps tasks light"
         default: "0.2"
       min_workers:
-        description: "Minimum distinct workers the burst must spread across"
+        description: "Minimum distinct workers the single-manager burst must spread across"
         default: "3"
+      machines:
+        description: "Number of machines / worker managers (multi-manager test)"
+        default: "3"
+      workers_per_machine:
+        description: "Per-machine worker cap (multi-manager test)"
+        default: "2"
   pull_request:
     types: [ labeled ]
 
@@ -80,5 +86,7 @@ jobs:
           SCALING_STRESS_TASKS: ${{ github.event.inputs.tasks || '240' }}
           SCALING_STRESS_TASK_SECONDS: ${{ github.event.inputs.task_seconds || '0.2' }}
           SCALING_STRESS_MIN_WORKERS: ${{ github.event.inputs.min_workers || '3' }}
+          SCALING_STRESS_MACHINES: ${{ github.event.inputs.machines || '3' }}
+          SCALING_STRESS_WORKERS_PER_MACHINE: ${{ github.event.inputs.workers_per_machine || '2' }}
         run: |
           python -m unittest tests.integration.test_scaling_stress_e2e -v
