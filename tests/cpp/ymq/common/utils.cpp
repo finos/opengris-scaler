@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "scaler/object_storage/io_helper.h"
+
 // change the current working directory to the project root
 // this is important for finding the python mitm script
 void chdirToProjectRoot()
@@ -58,6 +60,14 @@ std::string getTransportAddress(const std::string& transport, int port)
     }
 
     throw std::invalid_argument("invalid transport");
+}
+
+int getFreePort()
+{
+    // Reuse the object-storage helper rather than re-opening a socket here: it is the project's
+    // canonical "ask the OS for a free ephemeral port" utility (and RAII-guards WSAStartup on
+    // Windows), so the test suite does not carry a second, platform-split copy of it.
+    return scaler::object_storage::getAvailableTCPPort();
 }
 
 std::optional<scaler::ymq::TLSConfig> getTLSConfig(const std::string& transport)
