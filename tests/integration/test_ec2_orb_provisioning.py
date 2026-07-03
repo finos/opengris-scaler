@@ -15,7 +15,7 @@ Neither moto nor mock LocalStack boots the instance's user-data, so instances ne
 workers; real task execution is covered by test_dynamic_local_e2e.py.
 """
 
-import importlib.util
+import sys
 import unittest
 import uuid
 from unittest.mock import MagicMock, patch
@@ -23,39 +23,18 @@ from unittest.mock import MagicMock, patch
 from scaler.scheduler.controllers.worker_manager_utilties import build_set_desired_command
 from scaler.utility.logging.utility import setup_logger
 from tests.integration import INTEGRATION_SKIP_REASON, RUN_INTEGRATION_TESTS
-from tests.integration._aws_backend import MockedAWS, availability_reason, is_available
+from tests.integration._aws_backend import MockedAWS
 from tests.integration._harness import async_wait_until
 from tests.utility.utility import logging_test_name
-
-
-def _orb_sdk_importable() -> bool:
-    """Whether the real orb-py SDK can actually be imported on this interpreter.
-
-    orb-py 1.7.0 declares Requires-Python>=3.10 but its provisioning service imports
-    typing.assert_never (added in Python 3.11), so on 3.10 the SDK installs yet errors on import.
-    A bare find_spec("orb") passes there (the top-level package loads); probe the exact submodule
-    the test's get_container() path pulls in instead, so this suite runs wherever orb genuinely
-    works and skips -- rather than errors -- where it cannot load (e.g. CI on Python 3.10).
-    """
-    if importlib.util.find_spec("orb") is None:
-        return False
-    try:
-        import orb.application.services.provisioning_orchestration_service  # noqa: F401
-    except Exception:
-        return False
-    return True
-
-
-_HAS_ORB = _orb_sdk_importable()
 
 
 def _desired_requests(count: int):
     return list(build_set_desired_command([({}, count)]).setDesiredTaskConcurrencyRequests)
 
 
+# orb-py imports typing.assert_never, which only exists on Python 3.11+, so its SDK cannot load on 3.10.
 @unittest.skipUnless(RUN_INTEGRATION_TESTS, INTEGRATION_SKIP_REASON)
-@unittest.skipUnless(is_available(), availability_reason() or "mocked AWS backend unavailable")
-@unittest.skipUnless(_HAS_ORB, "orb-py SDK not importable (not installed, or requires Python 3.11+)")
+@unittest.skipUnless(sys.version_info >= (3, 11), "orb-py requires Python 3.11+")
 class TestORBEC2ProvisioningControlPlane(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         import os

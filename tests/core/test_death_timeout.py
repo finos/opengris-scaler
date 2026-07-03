@@ -25,16 +25,16 @@ from scaler.utility.network_util import get_available_tcp_port
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 from tests.utility.utility import logging_test_name
 
-# Workers that cannot reach a scheduler self-terminate once they exhaust their connection-retry
-# backoff. The tests below bound every wait on that behaviour, so they cannot loop forever and are
-# safe under `unittest discover`.
+# Deliberately short worker death-timeout (vs the 5-min DEFAULT_WORKER_DEATH_TIMEOUT) so a worker
+# that never reaches a scheduler self-terminates quickly and keeps the test fast.
 DEATH_TIMEOUT_SECONDS = 10
-# Generous upper bound (loaded CI box) on how long a cluster shutdown may take.
+# Upper bound on cluster teardown time.
 TEARDOWN_TIMEOUT_SECONDS = 30
-# A worker manager that never reaches a scheduler exits only after its workers exhaust their
-# connection-retry backoff (~50s on an unloaded box), which dominates the death timeout. Bound the
-# wait well above that so a real regression fails the test instead of hanging CI, without flaking.
+# A no-scheduler worker manager exits only after its workers exhaust their connection-retry backoff
+# (~50s measured), so bound the wait well above that: a real regression fails instead of hanging CI.
 NO_SCHEDULER_EXIT_TIMEOUT_SECONDS = 120
+# Poll interval for the "process has actually exited" waits below.
+POLL_INTERVAL_SECONDS = 0.05
 
 
 class TestDeathTimeout(unittest.TestCase):
@@ -113,7 +113,7 @@ class TestDeathTimeout(unittest.TestCase):
         # Poll until the worker manager process has actually exited instead of sleeping a fixed amount.
         deadline = time.monotonic() + TEARDOWN_TIMEOUT_SECONDS
         while cluster._worker_manager_process.is_alive() and time.monotonic() < deadline:
-            time.sleep(0.05)
+            time.sleep(POLL_INTERVAL_SECONDS)
         self.assertFalse(
             cluster._worker_manager_process.is_alive(), "client.shutdown() did not stop the worker cluster"
         )

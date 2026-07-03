@@ -15,14 +15,13 @@ import unittest
 
 from scaler.utility.logging.utility import setup_logger
 from tests.integration import INTEGRATION_SKIP_REASON, RUN_INTEGRATION_TESTS
-from tests.integration._aws_backend import MockedAWS, availability_reason, is_available, is_service_unavailable
+from tests.integration._aws_backend import MockedAWS, is_service_unavailable
 from tests.utility.utility import logging_test_name
 
 PREFIX = "scaler-it-batch"
 
 
 @unittest.skipUnless(RUN_INTEGRATION_TESTS, INTEGRATION_SKIP_REASON)
-@unittest.skipUnless(is_available(), availability_reason() or "mocked AWS backend unavailable")
 class TestBatchProvisioningControlPlane(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()

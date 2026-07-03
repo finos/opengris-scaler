@@ -24,13 +24,7 @@ from scaler.config.types.worker import WorkerCapabilities
 from scaler.scheduler.controllers.worker_manager_utilties import build_set_desired_command
 from scaler.utility.logging.utility import setup_logger
 from tests.integration import INTEGRATION_SKIP_REASON, RUN_INTEGRATION_TESTS
-from tests.integration._aws_backend import (
-    ECSNotAvailable,
-    MockedAWS,
-    SeededECSEnvironment,
-    availability_reason,
-    is_available,
-)
+from tests.integration._aws_backend import ECSNotAvailable, MockedAWS, SeededECSEnvironment
 from tests.integration._harness import async_wait_until
 from tests.utility.utility import logging_test_name
 
@@ -61,7 +55,6 @@ def _desired_requests(count: int):
 
 
 @unittest.skipUnless(RUN_INTEGRATION_TESTS, INTEGRATION_SKIP_REASON)
-@unittest.skipUnless(is_available(), availability_reason() or "mocked AWS backend unavailable")
 class TestECSProvisioningControlPlane(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         setup_logger()

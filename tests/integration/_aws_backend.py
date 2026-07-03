@@ -30,6 +30,8 @@ import os
 import uuid
 from typing import Any, Dict, Iterator, List, Optional
 
+import boto3
+
 # moto reads this lazily when a managed policy is attached; it MUST be set before the
 # first attach_role_policy call. The ECS provisioner attaches the AWS-managed
 # AmazonECSTaskExecutionRolePolicy, which moto only knows about when this is enabled.
@@ -52,39 +54,8 @@ def is_service_unavailable(exc: Exception) -> bool:
     return "not yet implemented" in message or "pro feature" in message
 
 
-try:
-    import boto3  # noqa: F401
-
-    _HAS_BOTO3 = True
-except ModuleNotFoundError:
-    _HAS_BOTO3 = False
-
-try:
-    import moto  # noqa: F401
-
-    _HAS_MOTO = True
-except ModuleNotFoundError:
-    _HAS_MOTO = False
-
-
 def selected_backend() -> str:
     return os.environ.get("SCALER_E2E_AWS_BACKEND", "moto").strip().lower()
-
-
-def availability_reason() -> Optional[str]:
-    """Return None if the mocked-AWS harness can run, else a human-readable skip reason."""
-    if not _HAS_BOTO3:
-        return "boto3 not installed (pip install 'opengris-scaler[aws]')"
-    backend = selected_backend()
-    if backend == "moto":
-        return None if _HAS_MOTO else "moto not installed (pip install 'moto[ec2,ecs,batch]')"
-    if backend == "localstack":
-        return None  # assume the caller pointed AWS_ENDPOINT_URL at a running LocalStack
-    return f"unknown SCALER_E2E_AWS_BACKEND={backend!r} (expected 'moto' or 'localstack')"
-
-
-def is_available() -> bool:
-    return availability_reason() is None
 
 
 # Injected into ECS/Batch calls that omit fields moto requires but real AWS defaults. Module-global

@@ -45,7 +45,9 @@ runs:
       run: |
         wheel_file=$(ls dist/*.whl | head -n 1)
         echo "Installing wheel: $wheel_file"
-        uv pip install --system "$wheel_file[all]"
+        # numpy is a test dependency (tests/client/test_object_buffer.py); install it alongside so the
+        # unittest suite has the full environment rather than skipping when it is absent.
+        uv pip install --system "$wheel_file[all]" numpy
 
     - name: Run Unittests
       shell: bash

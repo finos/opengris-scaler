@@ -1,30 +1,14 @@
 import time
 import unittest
 
-try:
-    import numpy as np
-    from numpy import random
-except ModuleNotFoundError:  # optional test dependency
-    np = None
-    random = None
-
-try:
-    import ray
-except ModuleNotFoundError:  # optional test dependency
-    ray = None
+import numpy as np
+import ray
+from numpy import random
 
 from scaler.cluster.combo import SchedulerClusterCombo
-
-if ray is not None:
-    from scaler.compat.ray import scaler_init  # importing this patches ray in-place
-else:
-    scaler_init = None
+from scaler.compat.ray import scaler_init  # importing this patches ray in-place
 
 
-@unittest.skipUnless(
-    ray is not None and np is not None,
-    "ray and numpy are required for the ray-compat tests (pip install -r examples/ray_compat/requirements.txt)",
-)
 class TestRayCompat(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
@@ -93,9 +77,8 @@ class TestRayCompat(unittest.TestCase):
 
     # https://docs.ray.io/en/latest/ray-core/patterns/nested-tasks.html#code-example
     def test_ray_example_nested_quicksort(self) -> None:
-        # Kept small (the docs example uses millions) so the test still drives several levels of
-        # distributed recursion and verifies correctness without multi-second sorts of 8M elements.
-        _QUICKSORT_INLINE_THRESHOLD = 1000
+        # Sort in place below this size instead of spawning a distributed sub-task (docs example value).
+        _QUICKSORT_INLINE_THRESHOLD = 200000
 
         def partition(collection):
             # Use the last element as the pivot
@@ -133,7 +116,7 @@ class TestRayCompat(unittest.TestCase):
                 greater = quick_sort_distributed.remote(greater)
                 return ray.get(lesser) + [pivot] + ray.get(greater)
 
-        for size in [1000, 5000, 20000]:
+        for size in [200000, 4000000, 8000000]:
             unsorted = random.randint(1000000, size=(size)).tolist()
             s = time.time()
             sequential_sorted = quick_sort(unsorted[:])
