@@ -10,6 +10,7 @@ scaler_add_python_module(
         exception.h
         io_context.h
         message.h
+        tls_config.h
         ymq.h
         ymq.cpp
     LINK_LIBRARIES

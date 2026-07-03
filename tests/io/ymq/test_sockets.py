@@ -1,7 +1,21 @@
 import asyncio
+import pathlib
 import unittest
 
-from scaler.io.ymq import BinderSocket, Bytes, ConnectorSocket, ErrorCode, InvalidAddressFormatError, IOContext
+from scaler.io.ymq import (
+    BinderSocket,
+    Bytes,
+    ConnectorSocket,
+    ErrorCode,
+    InvalidAddressFormatError,
+    IOContext,
+    TLSConfig,
+)
+
+# Reuse the self-signed certificate/key pair shipped for the C++ OpenSSL tests.
+_OPENSSL_TEST_DIR = pathlib.Path(__file__).resolve().parents[2] / "cpp" / "wrapper" / "openssl"
+_CERT_CHAIN = str(_OPENSSL_TEST_DIR / "sample_cert.pem")
+_PRIVATE_KEY = str(_OPENSSL_TEST_DIR / "sample_private_key.pem")
 
 
 class TestSockets(unittest.IsolatedAsyncioTestCase):
@@ -153,3 +167,29 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(asyncio.TimeoutError):
             await asyncio.wait_for(connector2.recv_message(), timeout=0.2)  # connector2 should not receive anything
+
+    async def test_tls(self):
+        ctx = IOContext()
+        binder = BinderSocket(ctx, "binder")
+
+        tls_config = TLSConfig(cert_chain=_CERT_CHAIN, private_key=_PRIVATE_KEY)
+
+        # Only provide a certificate chain and private key to the binder (server).
+        bound_address = await binder.bind_to("tls://127.0.0.1:0", tls_config)
+        self.assertEqual(repr(bound_address)[:6], "tls://")
+
+        connector = ConnectorSocket.connect(ctx, "connector", repr(bound_address))
+        self.assertEqual(connector.identity, "connector")
+
+        # Connector -> Binder
+        await connector.send_message(Bytes(b"secret-payload"))
+        msg = await asyncio.wait_for(binder.recv_message(), timeout=5.0)
+
+        assert msg.address is not None
+        self.assertEqual(msg.address.data, b"connector")
+        self.assertEqual(msg.payload.data, b"secret-payload")
+
+        # Binder -> Connector
+        await binder.send_message("connector", Bytes(b"secret-reply"))
+        msg = await asyncio.wait_for(connector.recv_message(), timeout=5.0)
+        self.assertEqual(msg.payload.data, b"secret-reply")

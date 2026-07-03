@@ -15,6 +15,7 @@ class SocketType(enum.Enum):
     inproc = "inproc"
     ipc = "ipc"
     tcp = "tcp"
+    tls = "tls"
     ws = "ws"
     wss = "wss"
 
@@ -23,7 +24,7 @@ class SocketType(enum.Enum):
         return {t.value for t in SocketType}
 
 
-_TYPES_WITH_PORT = {SocketType.tcp, SocketType.ws, SocketType.wss}
+_TYPES_WITH_PORT = {SocketType.tcp, SocketType.tls, SocketType.ws, SocketType.wss}
 _TYPES_WITHOUT_PORT = {SocketType.inproc, SocketType.ipc}
 
 
@@ -80,7 +81,7 @@ class AddressConfig(ConfigType):
         raise ValueError(f"Unsupported socket type: {socket_type}")
 
     def __repr__(self) -> str:
-        if self.type == SocketType.tcp:
+        if self.type in {SocketType.tcp, SocketType.tls}:
             return f"{self.type.value}://{self.host}:{self.port}"
 
         if self.type in _TYPES_WITHOUT_PORT:

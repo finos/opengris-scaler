@@ -49,6 +49,7 @@ def poke(screen, config: TopConfig):
             address=config.monitor_address,
             callback=functools.partial(show_status, screen=screen),
             timeout=config.timeout,
+            security_config=config.security,
         )
         subscriber.run()
     except KeyboardInterrupt:

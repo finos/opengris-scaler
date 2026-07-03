@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Dict, Optional
 
 import psutil
 
+from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.capnp import Resource, WorkerHeartbeat, WorkerHeartbeatEcho
@@ -24,11 +25,13 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
         task_queue_size: int,
         worker_manager_id: bytes,
         processor_status_provider: ProcessorStatusProvider,
+        security_config: Optional[SecurityConfig] = None,
     ) -> None:
         self._capabilities = capabilities
         self._task_queue_size = task_queue_size
         self._worker_manager_id = worker_manager_id
         self._processor_status_provider = processor_status_provider
+        self._security_config = security_config
 
         self._agent_process = psutil.Process()
 
@@ -67,7 +70,7 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
             address_message = heartbeat.objectStorageAddress
             scheme = SocketType(address_message.scheme)
             self._object_storage_address = AddressConfig(scheme, address_message.host, address_message.port)
-            await self._connector_storage.connect(self._object_storage_address)
+            await self._connector_storage.connect(self._object_storage_address, security_config=self._security_config)
 
     def get_object_storage_address(self) -> Optional[AddressConfig]:
         return self._object_storage_address

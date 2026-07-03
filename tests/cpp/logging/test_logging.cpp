@@ -81,7 +81,7 @@ TEST_F(LoggingUnitTest, TestLogsMultipleArgumentTypes)
     int line_number = 42;
     double value    = 3.14;
     logger.log(scaler::ymq::Logger::LoggingLevel::critical, line_number, " with value ", value);
-    EXPECT_EQ(readLogFile(curr_log_filename), "CTIC: Error on line 42 with value 3.14");
+    EXPECT_EQ(readLogFile(curr_log_filename), "CRITICAL: Error on line 42 with value 3.14");
 }
 
 TEST_F(LoggingUnitTest, TestLogsLargeNumbers)
@@ -158,7 +158,7 @@ TEST_F(LoggingUnitTest, TestLogsToMultipleFiles)
 
     logger.log(scaler::ymq::Logger::LoggingLevel::warning, "This message should appear in both files.");
 
-    std::string expected_output = "WARN - This message should appear in both files.";
+    std::string expected_output = "WARNING - This message should appear in both files.";
 
     EXPECT_EQ(readLogFile(log_file1), expected_output);
     EXPECT_EQ(readLogFile(log_file2), expected_output);
