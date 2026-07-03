@@ -23,7 +23,7 @@ from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
-from tests.utility.utility import POLL_INTERVAL_SECONDS, PROCESS_TERMINATION_TIMEOUT_SECONDS, logging_test_name
+from tests.utility.utility import logging_test_name, terminate_process, wait_until
 
 # Deliberately short worker death-timeout (vs the 5-min DEFAULT_WORKER_DEATH_TIMEOUT) so a worker
 # that never reaches a scheduler self-terminates quickly and keeps the test fast.
@@ -38,15 +38,6 @@ class TestDeathTimeout(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
-
-    @staticmethod
-    def _terminate_process(process: multiprocessing.process.BaseProcess) -> None:
-        if process.is_alive():
-            process.terminate()
-            process.join(timeout=5)
-        if process.is_alive():
-            process.kill()
-            process.join()
 
     def test_no_scheduler(self):
         logging.info("test with no scheduler")
@@ -79,7 +70,7 @@ class TestDeathTimeout(unittest.TestCase):
         )
         process = multiprocessing.get_context("spawn").Process(target=manager.run)
         process.start()
-        self.addCleanup(self._terminate_process, process)
+        self.addCleanup(terminate_process, process)
 
         # With no scheduler to reach, the workers must self-terminate once they exhaust their connection
         # retries, which lets run() return and the process exit cleanly. Bound the join so a regression
@@ -108,9 +99,7 @@ class TestDeathTimeout(unittest.TestCase):
             client.shutdown()
 
         # Poll until the worker manager process has actually exited instead of sleeping a fixed amount.
-        deadline = time.monotonic() + PROCESS_TERMINATION_TIMEOUT_SECONDS
-        while cluster._worker_manager_process.is_alive() and time.monotonic() < deadline:
-            time.sleep(POLL_INTERVAL_SECONDS)
+        wait_until(lambda: not cluster._worker_manager_process.is_alive())
         self.assertFalse(
             cluster._worker_manager_process.is_alive(), "client.shutdown() did not stop the worker cluster"
         )

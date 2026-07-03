@@ -116,7 +116,7 @@ class TestRayCompat(unittest.TestCase):
                 greater = quick_sort_distributed.remote(greater)
                 return ray.get(lesser) + [pivot] + ray.get(greater)
 
-        for size in [200000, 4000000, 8000000]:
+        for size in [_QUICKSORT_INLINE_THRESHOLD, 4000000, 8000000]:
             unsorted = random.randint(1000000, size=(size)).tolist()
             s = time.time()
             sequential_sorted = quick_sort(unsorted[:])

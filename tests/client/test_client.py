@@ -137,7 +137,8 @@ class TestClient(unittest.TestCase):
 
             time.sleep(0.15)
 
-            future.cancel()
+            self.assertTrue(future.cancel())
+            self.assertTrue(future.cancelled())
 
     def test_heavy_function(self):
         with Client(self.address) as client:
@@ -167,13 +168,9 @@ class TestClient(unittest.TestCase):
     def test_sleep(self):
         with Client(self.address) as client:
             tasks = [10, 1, 1] * 10
-            # tasks = [10] * 10
             with ScopedLogger(f"submit {len(tasks)} sleep and balance tasks"):
                 futures = [client.submit(noop_sleep, i) for i in tasks]
 
-            # time.sleep(60)
-            # print(f"number of futures: {len(futures)}")
-            # print(f"number of states: {Counter([future._state for future in futures])}")
             with ScopedLogger(f"gather {len(futures)} results"):
                 results = [future.result() for future in futures]
 
@@ -297,12 +294,12 @@ class TestClient(unittest.TestCase):
             with self.assertRaises(TimeoutError):
                 future.result()
 
-    def test_responsiveness(self):
-        # Makes sure the cluster has the time to start up.
+    def test_submit_with_explicit_disconnect(self):
+        # A client used WITHOUT the `with` context manager still round-trips a task, with disconnect
+        # run via cleanup. (Latency assertions were dropped here as flaky over live TCP.)
         with Client(self.address) as client:
-            client.submit(pow, 1, 1).result()
+            client.submit(pow, 1, 1).result()  # ensure the cluster is up
 
-        # Strict sub-second wall-clock bounds were removed as flaky over live TCP; verify behavior only.
         client = Client(self.address)
         self.addCleanup(client.disconnect)
 

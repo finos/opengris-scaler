@@ -39,7 +39,7 @@ from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
 from tests.integration import INTEGRATION_SKIP_REASON, RUN_INTEGRATION_TESTS
 from tests.integration._harness import SchedulerHarness
-from tests.utility.utility import logging_test_name
+from tests.utility.utility import logging_test_name, terminate_process
 
 
 def _square(value: int) -> int:
@@ -96,17 +96,8 @@ class TestDynamicLocalProvisioningE2E(unittest.TestCase):
             target=_run_native_worker_manager, args=(self.harness.scheduler_address, max_task_concurrency)
         )
         process.start()
-        self.addCleanup(self._stop_process, process)
+        self.addCleanup(terminate_process, process)
         return process
-
-    @staticmethod
-    def _stop_process(process) -> None:
-        if process.is_alive():
-            process.terminate()
-            process.join(timeout=15)
-        if process.is_alive():
-            process.kill()
-            process.join(timeout=5)
 
     def test_dynamic_provisioning_executes_tasks(self) -> None:
         """With zero pre-provisioned workers, submitted work forces the manager to scale up

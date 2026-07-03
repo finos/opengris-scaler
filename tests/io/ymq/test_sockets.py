@@ -122,10 +122,11 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
         connector = ConnectorSocket.connect(ctx, "connector", repr(address))
         self.assertEqual(connector.identity, "connector")
 
-        # A few MB round-trips fine (was 500MB x10, trimmed for CI speed); hoist the literal to avoid
-        # re-allocating it each iteration.
-        expected_payload = b"." * 4_000_000
-        for _ in range(3):
+        # Exceed the YMQ single-write buffer (maxWriteBufferSize = 256MB, configuration.h) so the send
+        # path exercises its multi-write chunking branch, not just the single-write fast path. Hoist the
+        # literal so it is not re-allocated per iteration.
+        expected_payload = b"." * (256 * 1024 * 1024 + 1024)
+        for _ in range(2):
             await connector.send_message(Bytes(expected_payload))
             msg = await binder.recv_message()
 

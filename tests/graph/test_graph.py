@@ -10,6 +10,9 @@ from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
 
+# Generous bound on how long to wait for a graph result before failing (vs hanging CI).
+RESULT_TIMEOUT_SECONDS = 30.0
+
 
 def inc(i):
     return i + 1
@@ -44,7 +47,6 @@ class TestGraph(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.combo.shutdown()
-        pass
 
     def test_graph(self):
         # fmt: off
@@ -93,7 +95,7 @@ class TestGraph(unittest.TestCase):
             with ScopedLogger("test graph with math.sqrt node"):
                 futures = client.get(graph, ["e"], block=False)
                 # e = d - c = (a + b) - sqrt(a) = 4 - sqrt(2)
-                self.assertEqual(futures["e"].result(timeout=30.0), 4 - math.sqrt(2))
+                self.assertEqual(futures["e"].result(timeout=RESULT_TIMEOUT_SECONDS), 4 - math.sqrt(2))
 
     def test_graph_return_order(self):
         # fmt: off
@@ -121,7 +123,7 @@ class TestGraph(unittest.TestCase):
         with Client(self.address) as client:
             # Warm-up task: its completion proves a worker connected and exchanged the object-storage
             # address with the scheduler, avoiding the tearDown race where the cluster blocks on that.
-            self.assertEqual(client.submit(func, 0).result(timeout=30.0), 0)
+            self.assertEqual(client.submit(func, 0).result(timeout=RESULT_TIMEOUT_SECONDS), 0)
 
             result = client.get({"a": (func, "b"), "b": [1]}, keys=["b"])
             self.assertEqual(result["b"], [1])

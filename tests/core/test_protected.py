@@ -1,24 +1,15 @@
-import time
 import unittest
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
-from tests.utility.utility import POLL_INTERVAL_SECONDS, PROCESS_TERMINATION_TIMEOUT_SECONDS, logging_test_name
+from tests.utility.utility import logging_test_name, wait_until
 
 
 class TestProtected(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
-
-    def _wait_until(self, predicate) -> bool:
-        deadline = time.monotonic() + PROCESS_TERMINATION_TIMEOUT_SECONDS
-        while time.monotonic() < deadline:
-            if predicate():
-                return True
-            time.sleep(POLL_INTERVAL_SECONDS)
-        return predicate()
 
     def test_protected_true(self) -> None:
         address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
@@ -51,4 +42,4 @@ class TestProtected(unittest.TestCase):
         client.shutdown()
 
         # After accepting the shutdown request the scheduler quits, so its process must stop being alive.
-        self.assertTrue(self._wait_until(lambda: not cluster._scheduler.is_alive()))
+        self.assertTrue(wait_until(lambda: not cluster._scheduler.is_alive()))

@@ -12,7 +12,7 @@ from scaler.config.section.native_worker_manager import NativeWorkerManagerConfi
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
-from tests.utility.utility import logging_test_name
+from tests.utility.utility import logging_test_name, terminate_process
 
 
 def noop_sleep(sec: int):
@@ -29,15 +29,6 @@ class TestClusterDisconnect(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.combo.shutdown()
-
-    @staticmethod
-    def _reap_process(process: multiprocessing.process.BaseProcess) -> None:
-        if process.is_alive():
-            process.terminate()
-        process.join(timeout=10)
-        if process.is_alive():
-            process.kill()
-            process.join()
 
     def test_cluster_disconnect(self):
         base_config = self.combo._worker_manager.config
@@ -75,7 +66,7 @@ class TestClusterDisconnect(unittest.TestCase):
         dying_process.start()
         # Guarantee the spawned worker manager is reaped even if the body below raises before the
         # explicit terminate(); terminate()/join() on an already-dead process is a no-op.
-        self.addCleanup(self._reap_process, dying_process)
+        self.addCleanup(terminate_process, dying_process)
 
         with Client(self.address) as client:
             future_result = client.submit(noop_sleep, 5)

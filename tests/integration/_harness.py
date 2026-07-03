@@ -26,19 +26,9 @@ from scaler.config.defaults import (
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.address import AddressConfig
 from scaler.utility.network_util import get_available_tcp_port
+from tests.utility.utility import POLL_INTERVAL_SECONDS, PROCESS_TERMINATION_TIMEOUT_SECONDS
 
 DEFAULT_WAIT_TIMEOUT_SECONDS = 30.0
-_POLL_INTERVAL_SECONDS = 0.1
-
-
-def wait_until(predicate: Callable[[], bool], timeout: float = DEFAULT_WAIT_TIMEOUT_SECONDS, message: str = "") -> None:
-    """Block until ``predicate()`` is truthy or ``timeout`` elapses (raises TimeoutError)."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return
-        time.sleep(_POLL_INTERVAL_SECONDS)
-    raise TimeoutError(message or f"condition not met within {timeout:.1f}s")
 
 
 async def async_wait_until(
@@ -49,7 +39,7 @@ async def async_wait_until(
     while time.monotonic() < deadline:
         if predicate():
             return
-        await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+        await asyncio.sleep(POLL_INTERVAL_SECONDS)
     raise TimeoutError(message or f"condition not met within {timeout:.1f}s")
 
 
@@ -119,7 +109,7 @@ class SchedulerHarness:
                     process.terminate()
             except (ProcessLookupError, OSError):
                 pass
-            process.join(timeout=15)
+            process.join(timeout=PROCESS_TERMINATION_TIMEOUT_SECONDS)
             if process.is_alive():
                 process.kill()
-                process.join(timeout=5)
+                process.join()

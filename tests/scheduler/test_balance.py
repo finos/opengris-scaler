@@ -13,7 +13,7 @@ from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
-from tests.utility.utility import logging_test_name
+from tests.utility.utility import logging_test_name, terminate_process
 
 
 def sleep_and_return_pid(sec: int):
@@ -87,14 +87,7 @@ class TestBalance(unittest.TestCase):
         process = multiprocessing.get_context("spawn").Process(target=new_manager.run)
         process.start()
 
-        def _terminate_process() -> None:
-            process.terminate()
-            process.join(timeout=10)
-            if process.is_alive():
-                process.kill()
-                process.join()
-
-        self.addCleanup(_terminate_process)
+        self.addCleanup(terminate_process, process)
 
         pids = {f.result() for f in futures}
 

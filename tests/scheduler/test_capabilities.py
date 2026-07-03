@@ -11,7 +11,7 @@ from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
-from tests.utility.utility import logging_test_name
+from tests.utility.utility import logging_test_name, terminate_process
 
 
 class TestCapabilities(unittest.TestCase):
@@ -28,15 +28,6 @@ class TestCapabilities(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.combo.shutdown()
-
-    @staticmethod
-    def _reap_process(process: multiprocessing.process.BaseProcess) -> None:
-        if process.is_alive():
-            process.terminate()
-        process.join(timeout=10)
-        if process.is_alive():
-            process.kill()
-            process.join()
 
     def test_capabilities(self):
         base_config = self.combo._worker_manager.config
@@ -81,7 +72,7 @@ class TestCapabilities(unittest.TestCase):
             )
             gpu_process = multiprocessing.get_context("spawn").Process(target=gpu_manager.run)
             gpu_process.start()
-            self.addCleanup(self._reap_process, gpu_process)
+            self.addCleanup(terminate_process, gpu_process)
 
             self.assertEqual(future.result(), 3.0)
 
@@ -129,6 +120,6 @@ class TestCapabilities(unittest.TestCase):
             )
             gpu_process = multiprocessing.get_context("spawn").Process(target=gpu_manager.run)
             gpu_process.start()
-            self.addCleanup(self._reap_process, gpu_process)
+            self.addCleanup(terminate_process, gpu_process)
 
             self.assertEqual(future.result(), 8)

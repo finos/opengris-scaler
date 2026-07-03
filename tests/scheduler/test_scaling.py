@@ -39,7 +39,7 @@ from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.snapshot import InformationSnapshot
-from tests.utility.utility import PROCESS_TERMINATION_TIMEOUT_SECONDS, logging_test_name
+from tests.utility.utility import PROCESS_TERMINATION_TIMEOUT_SECONDS, logging_test_name, terminate_process
 
 
 class TestScaling(unittest.TestCase):
@@ -95,7 +95,7 @@ class TestScaling(unittest.TestCase):
 
         manager_process = Process(target=_run_native_worker_manager, args=(self.scheduler_address,))
         manager_process.start()
-        self.addCleanup(_cleanup_terminate_process, manager_process)
+        self.addCleanup(terminate_process, manager_process)
 
         with Client(self.scheduler_address) as client:
             client.map(time.sleep, [0.1] * 100)
@@ -142,7 +142,7 @@ class TestScaling(unittest.TestCase):
 
         manager_process = Process(target=_run_native_worker_manager, args=(self.scheduler_address,))
         manager_process.start()
-        self.addCleanup(_cleanup_terminate_process, manager_process)
+        self.addCleanup(terminate_process, manager_process)
 
         with Client(self.scheduler_address) as client:
             # Submit tasks without capabilities (should work like vanilla)
@@ -598,15 +598,6 @@ def _cleanup_kill_process(process: Process) -> None:
     if process.is_alive():
         process.kill()
     process.join()
-
-
-def _cleanup_terminate_process(process: Process) -> None:
-    if process.is_alive():
-        process.terminate()
-        process.join(timeout=PROCESS_TERMINATION_TIMEOUT_SECONDS)
-    if process.is_alive():
-        process.kill()
-        process.join()
 
 
 def _cleanup_graceful_scheduler(process: Process) -> None:

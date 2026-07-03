@@ -24,11 +24,10 @@ resources, and lifecycle bugs a MagicMock cannot.
 
 from __future__ import annotations
 
-import contextlib
 import dataclasses
 import os
 import uuid
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, List, Optional
 
 import boto3
 
@@ -102,7 +101,6 @@ class SeededECSEnvironment:
     cluster: str
     task_definition: str
     subnets: List[str]
-    security_groups: List[str]
 
 
 @dataclasses.dataclass
@@ -219,11 +217,7 @@ class MockedAWS:
                 raise ECSNotAvailable(str(exc)) from exc
             raise
         return SeededECSEnvironment(
-            region=self.region,
-            cluster=cluster,
-            task_definition=task_definition,
-            subnets=[subnet_id],
-            security_groups=[sg_id],
+            region=self.region, cluster=cluster, task_definition=task_definition, subnets=[subnet_id]
         )
 
     def seed_ec2_environment(self, key_name: Optional[str] = None) -> SeededEC2Environment:
@@ -281,9 +275,3 @@ class MockedAWS:
                 raise
         _BATCH_SERVICE_ROLE_ARN = arn
         return arn
-
-
-@contextlib.contextmanager
-def mocked_aws(region: str = DEFAULT_REGION) -> Iterator[MockedAWS]:
-    with MockedAWS(region=region) as handle:
-        yield handle
