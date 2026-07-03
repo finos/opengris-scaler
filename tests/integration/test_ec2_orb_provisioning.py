@@ -27,7 +27,26 @@ from tests.integration._aws_backend import MockedAWS, availability_reason, is_av
 from tests.integration._harness import async_wait_until
 from tests.utility.utility import logging_test_name
 
-_HAS_ORB = importlib.util.find_spec("orb") is not None
+
+def _orb_sdk_importable() -> bool:
+    """Whether the real orb-py SDK can actually be imported on this interpreter.
+
+    orb-py 1.7.0 declares Requires-Python>=3.10 but its provisioning service imports
+    typing.assert_never (added in Python 3.11), so on 3.10 the SDK installs yet errors on import.
+    A bare find_spec("orb") passes there (the top-level package loads); probe the exact submodule
+    the test's get_container() path pulls in instead, so this suite runs wherever orb genuinely
+    works and skips -- rather than errors -- where it cannot load (e.g. CI on Python 3.10).
+    """
+    if importlib.util.find_spec("orb") is None:
+        return False
+    try:
+        import orb.application.services.provisioning_orchestration_service  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+_HAS_ORB = _orb_sdk_importable()
 
 
 def _desired_requests(count: int):
@@ -36,7 +55,7 @@ def _desired_requests(count: int):
 
 @unittest.skipUnless(RUN_INTEGRATION_TESTS, INTEGRATION_SKIP_REASON)
 @unittest.skipUnless(is_available(), availability_reason() or "mocked AWS backend unavailable")
-@unittest.skipUnless(_HAS_ORB, "orb-py not installed (pip install 'opengris-scaler[orb]')")
+@unittest.skipUnless(_HAS_ORB, "orb-py SDK not importable (not installed, or requires Python 3.11+)")
 class TestORBEC2ProvisioningControlPlane(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         import os
