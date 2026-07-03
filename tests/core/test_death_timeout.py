@@ -23,18 +23,15 @@ from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
-from tests.utility.utility import logging_test_name
+from tests.utility.utility import POLL_INTERVAL_SECONDS, PROCESS_TERMINATION_TIMEOUT_SECONDS, logging_test_name
 
 # Deliberately short worker death-timeout (vs the 5-min DEFAULT_WORKER_DEATH_TIMEOUT) so a worker
 # that never reaches a scheduler self-terminates quickly and keeps the test fast.
 DEATH_TIMEOUT_SECONDS = 10
-# Upper bound on cluster teardown time.
-TEARDOWN_TIMEOUT_SECONDS = 30
 # A no-scheduler worker manager exits only after its workers exhaust their connection-retry backoff
-# (~50s measured), so bound the wait well above that: a real regression fails instead of hanging CI.
+# (~50s measured), so bound the wait well above the shared termination timeout: a real regression
+# fails instead of hanging CI.
 NO_SCHEDULER_EXIT_TIMEOUT_SECONDS = 120
-# Poll interval for the "process has actually exited" waits below.
-POLL_INTERVAL_SECONDS = 0.05
 
 
 class TestDeathTimeout(unittest.TestCase):
@@ -111,7 +108,7 @@ class TestDeathTimeout(unittest.TestCase):
             client.shutdown()
 
         # Poll until the worker manager process has actually exited instead of sleeping a fixed amount.
-        deadline = time.monotonic() + TEARDOWN_TIMEOUT_SECONDS
+        deadline = time.monotonic() + PROCESS_TERMINATION_TIMEOUT_SECONDS
         while cluster._worker_manager_process.is_alive() and time.monotonic() < deadline:
             time.sleep(POLL_INTERVAL_SECONDS)
         self.assertFalse(

@@ -4,10 +4,7 @@ import unittest
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
-from tests.utility.utility import logging_test_name
-
-SHUTDOWN_TIMEOUT_SECONDS = 30
-POLL_INTERVAL_SECONDS = 0.05
+from tests.utility.utility import POLL_INTERVAL_SECONDS, PROCESS_TERMINATION_TIMEOUT_SECONDS, logging_test_name
 
 
 class TestProtected(unittest.TestCase):
@@ -16,7 +13,7 @@ class TestProtected(unittest.TestCase):
         logging_test_name(self)
 
     def _wait_until(self, predicate) -> bool:
-        deadline = time.monotonic() + SHUTDOWN_TIMEOUT_SECONDS
+        deadline = time.monotonic() + PROCESS_TERMINATION_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
             if predicate():
                 return True

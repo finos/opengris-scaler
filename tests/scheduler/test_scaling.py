@@ -39,7 +39,7 @@ from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.snapshot import InformationSnapshot
-from tests.utility.utility import logging_test_name
+from tests.utility.utility import PROCESS_TERMINATION_TIMEOUT_SECONDS, logging_test_name
 
 
 class TestScaling(unittest.TestCase):
@@ -594,9 +594,6 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(detail.pendingWorkers, 5)
 
 
-_PROCESS_JOIN_TIMEOUT_SECONDS = 30
-
-
 def _cleanup_kill_process(process: Process) -> None:
     if process.is_alive():
         process.kill()
@@ -606,7 +603,7 @@ def _cleanup_kill_process(process: Process) -> None:
 def _cleanup_terminate_process(process: Process) -> None:
     if process.is_alive():
         process.terminate()
-        process.join(timeout=_PROCESS_JOIN_TIMEOUT_SECONDS)
+        process.join(timeout=PROCESS_TERMINATION_TIMEOUT_SECONDS)
     if process.is_alive():
         process.kill()
         process.join()
@@ -615,7 +612,7 @@ def _cleanup_terminate_process(process: Process) -> None:
 def _cleanup_graceful_scheduler(process: Process) -> None:
     if process.is_alive():
         os.kill(process.pid, signal.SIGINT)
-        process.join(timeout=_PROCESS_JOIN_TIMEOUT_SECONDS)
+        process.join(timeout=PROCESS_TERMINATION_TIMEOUT_SECONDS)
     if process.is_alive():
         process.kill()
         process.join()

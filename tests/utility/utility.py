@@ -1,6 +1,12 @@
 import logging
 import unittest
 
+# Shared timing bounds for tests that spawn real processes / clusters: one poll granularity and one
+# "wait for a spawned process to terminate" bound, so the process-lifecycle tests do not each
+# hard-code their own. Only reached in full on failure, so the bound errs on the side of patience.
+POLL_INTERVAL_SECONDS = 0.05
+PROCESS_TERMINATION_TIMEOUT_SECONDS = 30
+
 # Global variable to test preload functionality
 PRELOAD_VALUE = None
 

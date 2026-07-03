@@ -12,10 +12,9 @@ import psutil
 
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
-from tests.utility.utility import logging_test_name
+from tests.utility.utility import POLL_INTERVAL_SECONDS, PROCESS_TERMINATION_TIMEOUT_SECONDS, logging_test_name
 
 STARTUP_TIMEOUT_SECONDS = 60
-SHUTDOWN_TIMEOUT_SECONDS = 30
 DESCENDANT_EXIT_TIMEOUT_SECONDS = 15
 
 
@@ -128,7 +127,7 @@ max_task_concurrency = 1
                     self.fail(f"scaler exited during startup (code {process.returncode}):\n{log_file.read()}")
             if _ports_listening(self._ports) == self._ports:
                 return
-            time.sleep(0.25)
+            time.sleep(POLL_INTERVAL_SECONDS)
         listening = _ports_listening(self._ports)
         self.fail(f"cluster did not start within {STARTUP_TIMEOUT_SECONDS}s; listening: {listening}")
 
@@ -140,11 +139,11 @@ max_task_concurrency = 1
 
     def _assert_clean_exit(self, process: subprocess.Popen, descendants: List[psutil.Process]) -> None:
         try:
-            process.wait(timeout=SHUTDOWN_TIMEOUT_SECONDS)
+            process.wait(timeout=PROCESS_TERMINATION_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             with open(self._log_path) as log_file:
                 log_content = log_file.read()
-            self.fail(f"scaler main process did not exit within {SHUTDOWN_TIMEOUT_SECONDS}s:\n{log_content}")
+            self.fail(f"scaler main process did not exit within {PROCESS_TERMINATION_TIMEOUT_SECONDS}s:\n{log_content}")
 
         _, alive = psutil.wait_procs(descendants, timeout=DESCENDANT_EXIT_TIMEOUT_SECONDS)
         survivors = []
@@ -157,7 +156,7 @@ max_task_concurrency = 1
 
         deadline = time.monotonic() + DESCENDANT_EXIT_TIMEOUT_SECONDS
         while time.monotonic() < deadline and _ports_listening(self._ports):
-            time.sleep(0.25)
+            time.sleep(POLL_INTERVAL_SECONDS)
         self.assertEqual(set(), _ports_listening(self._ports), "ports still bound after shutdown")
 
     def test_sigterm_terminates_whole_cluster(self) -> None:
@@ -189,7 +188,7 @@ max_task_concurrency = 1
                 break
             if self._descendants(process) or _ports_listening(self._ports):
                 break
-            time.sleep(0.05)
+            time.sleep(POLL_INTERVAL_SECONDS)
 
         descendants = self._descendants(process)
         if process.poll() is None:
