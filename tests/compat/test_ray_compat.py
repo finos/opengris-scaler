@@ -206,7 +206,8 @@ class TestRayCompat(unittest.TestCase):
             time.sleep(secs)
             return secs
 
-        refs = [sleep.remote(x) for x in (1, 3, 5)]
+        # Submit out of completion order so a submission-order (non-completion-order) impl would fail.
+        refs = [sleep.remote(x) for x in (5, 1, 3)]
         completed_values = [ray.get(ref) for ref in ray.util.as_completed(refs)]
 
         # as_completed must yield refs in completion order. The sleep durations are spaced 2s apart

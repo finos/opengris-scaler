@@ -11,7 +11,7 @@ from typing import List, Tuple
 try:
     import numpy as np
 except ModuleNotFoundError:
-    np = None  # tests needing numpy are skipped below rather than failing module collection
+    np = None  # only the numpy-dependent tests below skip; the rest still run
 
 from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.serializer.default import DefaultSerializer
@@ -55,8 +55,13 @@ def _make_buffer() -> Tuple[ObjectBuffer, _FakeAgentConnector, _FakeStorageConne
     return buf, agent, storage
 
 
-@unittest.skipUnless(np is not None, "numpy not installed (pip install numpy or install the dev dependency group)")
+requires_numpy = unittest.skipUnless(
+    np is not None, "numpy not installed (pip install numpy or install the dev dependency group)"
+)
+
+
 class TestObjectBufferDedup(unittest.TestCase):
+    @requires_numpy
     def test_same_object_uploaded_only_once_within_batch(self) -> None:
         """Buffer the same Python object N times in one cycle, commit once -> 1 upload."""
         buf, _agent, storage = _make_buffer()
@@ -76,6 +81,7 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertEqual(len(storage.calls), 1)
         self.assertEqual(storage.calls[0][0], first_id)
 
+    @requires_numpy
     def test_distinct_content_gets_distinct_uploads(self) -> None:
         buf, _agent, storage = _make_buffer()
 
@@ -89,6 +95,7 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertNotEqual(ca.object_id, cb.object_id)
         self.assertEqual(len(storage.calls), 2)
 
+    @requires_numpy
     def test_equal_content_distinct_objects_share_one_upload(self) -> None:
         """Identical serialized content uploads only once: two *distinct* Python objects
         with identical bytes share one object ID and one upload -- a win the identity
@@ -105,6 +112,7 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertEqual(ca.object_id, cb.object_id)
         self.assertEqual(len(storage.calls), 1)
 
+    @requires_numpy
     def test_equal_content_reuses_one_object_id(self) -> None:
         """Equal payloads reuse one object ID; changed payload -> different ID. (Hold
         references like real callers do, so temporaries can't be GC'd and id-recycled.)"""
@@ -159,6 +167,7 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertEqual(c1.object_id, c3.object_id)
         self.assertEqual(len(storage.calls), 1)
 
+    @requires_numpy
     def test_dedup_survives_commit(self) -> None:
         """A weakref-able object reused across separate commit cycles is uploaded
         only once: the persistent identity cache is not dropped on commit."""
@@ -230,6 +239,7 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertEqual(c3.object_id, c2.object_id)
         self.assertEqual(len(storage.calls), 2)
 
+    @requires_numpy
     def test_reserialize_dedups_repeats_within_one_cycle(self) -> None:
         """A shared, mutated object passed many times in one reserialize call is
         re-serialized and re-uploaded once, then deduped within that commit cycle
@@ -256,6 +266,7 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertNotEqual(first_id, storage.calls[0][0])  # different from the pre-mutation upload
         self.assertEqual(len(storage.calls), 2)
 
+    @requires_numpy
     def test_reserialize_unchanged_content_skips_reupload(self) -> None:
         """The content-dedup payoff: reserialize=True on an object that turns out not
         to have changed re-serializes it but does NOT re-upload, because the unchanged
@@ -300,6 +311,7 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertEqual(c1.object_id, c2.object_id)
         self.assertEqual(len(storage.calls), 1)
 
+    @requires_numpy
     def test_clear_invalidates_dedup_cache(self) -> None:
         """After clear(), the same object must be re-uploaded because the server has
         discarded its prior copy. clear() drops valid_object_ids AND the content dedup
@@ -318,8 +330,7 @@ class TestObjectBufferDedup(unittest.TestCase):
         c2 = buf.buffer_send_object(shared, None, reserialize=False, dedup=True)
         buf.commit_send_objects()
 
-        # clear() reset the content dedup map, so the same bytes get a brand-new object ID
-        # (never the cleared one) and a genuine re-upload.
+        # clear() reset the dedup map, so the same bytes get a brand-new object ID and re-upload.
         self.assertNotEqual(c1.object_id, c2.object_id)
         self.assertEqual(len(storage.calls), 2)
 
@@ -360,6 +371,7 @@ class TestObjectBufferDedup(unittest.TestCase):
         self.assertNotEqual(c1.object_id, c2.object_id)
         self.assertEqual(len(storage.calls), 2)
 
+    @requires_numpy
     def test_weakref_guard_rejects_recycled_id(self) -> None:
         """Deterministic counterpart to the id-recycling test: when id(obj) collides
         with a stale persistent entry left by a different, now-collected object, the

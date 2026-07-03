@@ -68,7 +68,7 @@ class TestBatchProvisioningControlPlane(unittest.TestCase):
 
     def test_provisioning_is_idempotent(self) -> None:
         first = self._provision()
-        # A second provision_all must not create duplicate queues/definitions or raise.
+        # A second provision_all must reuse the same job queue (no duplicate) and not raise.
         second = self._provision()
 
         self.assertEqual(first["job_queue_name"], second["job_queue_name"])

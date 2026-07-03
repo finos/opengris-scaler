@@ -181,10 +181,8 @@ max_task_concurrency = 1
     def test_sigint_during_startup_does_not_hang(self) -> None:
         process = self._start_scaler()
 
-        # Land the signal deterministically mid-startup: wait until the cluster has begun spawning
-        # (a descendant appears or a port starts listening) but is not yet fully up, rather than
-        # relying on a fixed wall-clock sleep. If startup somehow completes first, that is still a
-        # valid signal-during-lifetime case and _assert_clean_exit remains meaningful.
+        # Wait until startup begins (a descendant or listening port appears) instead of a fixed sleep,
+        # so the signal lands mid-startup. If startup finishes first, that is still a valid case.
         deadline = time.monotonic() + STARTUP_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
             if process.poll() is not None:

@@ -128,7 +128,7 @@ class TestClient(unittest.TestCase):
                 self.assertTrue(any(future.cancelled() for future in futures))
 
     def test_cancel_unassigned(self):
-        # Cancels a graph task that hasn't been assigned to a worker yet.
+        # Cancels a simple task that hasn't been assigned to a worker yet.
         combo = SchedulerClusterCombo(n_workers=0, event_loop="builtin")
         self.addCleanup(combo.shutdown)
 
@@ -157,7 +157,7 @@ class TestClient(unittest.TestCase):
             return data
 
         with Client(self.address) as client:
-            payload = os.urandom(2**26 + 300)  # 64MB + 300B: still exceeds a single transfer frame
+            payload = os.urandom(2**26 + 300)  # ~64MB, odd length: large round trip, fits one 256MB YMQ write chunk
             future = client.submit(func, payload)
 
             result = future.result()
@@ -302,9 +302,7 @@ class TestClient(unittest.TestCase):
         with Client(self.address) as client:
             client.submit(pow, 1, 1).result()
 
-        # Exercises the connect -> submit -> result -> disconnect round trip. The strict sub-second
-        # wall-clock bounds were removed as they are flaky against live processes over TCP; this now
-        # verifies the functional behaviour only.
+        # Strict sub-second wall-clock bounds were removed as flaky over live TCP; verify behavior only.
         client = Client(self.address)
         self.addCleanup(client.disconnect)
 

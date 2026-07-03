@@ -119,10 +119,8 @@ class TestGraph(unittest.TestCase):
             return a
 
         with Client(self.address) as client:
-            # Run a warm-up task through a worker before the graph completes. A worker can only
-            # finish this task once it has connected and exchanged the object-storage address with
-            # the scheduler, so waiting on its completion deterministically avoids the shutdown race
-            # (in tearDown) where the cluster would otherwise block waiting for that exchange.
+            # Warm-up task: its completion proves a worker connected and exchanged the object-storage
+            # address with the scheduler, avoiding the tearDown race where the cluster blocks on that.
             self.assertEqual(client.submit(func, 0).result(timeout=30.0), 0)
 
             result = client.get({"a": (func, "b"), "b": [1]}, keys=["b"])
@@ -251,8 +249,7 @@ class TestGraphWithoutCluster(unittest.TestCase):
         with Client(address=combo.get_address()) as client:
             future = client.get(graph, ["c"], block=False)["c"]
 
-            # No worker exists, so the task stays unassigned; cancel() blocks until the scheduler
-            # confirms the cancellation and returns the resulting state.
+            # No worker exists, so the task stays unassigned; cancel() blocks until the scheduler confirms.
             self.assertTrue(future.cancel())
             self.assertTrue(future.cancelled())
 

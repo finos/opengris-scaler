@@ -64,9 +64,8 @@ std::string getTransportAddress(const std::string& transport, int port)
 
 int getFreePort()
 {
-    // Reuse the object-storage helper rather than re-opening a socket here: it is the project's
-    // canonical "ask the OS for a free ephemeral port" utility (and RAII-guards WSAStartup on
-    // Windows), so the test suite does not carry a second, platform-split copy of it.
+    // Delegate to the object-storage helper (the project's canonical free-ephemeral-port utility)
+    // rather than duplicating a platform-split socket probe in the test suite.
     return scaler::object_storage::getAvailableTCPPort();
 }
 

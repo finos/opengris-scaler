@@ -98,8 +98,8 @@ class TestDeathTimeout(unittest.TestCase):
         cluster = SchedulerClusterCombo(
             address=address, n_workers=2, per_worker_task_queue_size=2, event_loop="builtin", protected=False
         )
-        # this is a combo cluster: client.shutdown() only stops the workers, not the scheduler, so the combo
-        # itself must always be shut down (via cleanup, so it runs even if an assertion below raises).
+        # Unprotected combo: client.shutdown() stops the workers and the scheduler, but the object
+        # storage server still needs cluster.shutdown() -- via cleanup so it runs even if an assert raises.
         self.addCleanup(cluster.shutdown)
 
         with Client(address=address) as client:
@@ -110,7 +110,6 @@ class TestDeathTimeout(unittest.TestCase):
             logging.info("Shutting down")
             client.shutdown()
 
-        # client.shutdown() stops the workers connected to the scheduler, but not the combo's own scheduler.
         # Poll until the worker manager process has actually exited instead of sleeping a fixed amount.
         deadline = time.monotonic() + TEARDOWN_TIMEOUT_SECONDS
         while cluster._worker_manager_process.is_alive() and time.monotonic() < deadline:

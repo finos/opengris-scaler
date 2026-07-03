@@ -87,7 +87,10 @@ class TestECSProvisioningControlPlane(unittest.IsolatedAsyncioTestCase):
 
     async def test_construct_discovers_seeded_cluster_and_task_definition(self) -> None:
         provisioner = self._make_provisioner()
-        # The provisioner should adopt the pre-seeded task definition ARN, not register a new one.
+        # Adoption (not re-registration) means the family still has only the seeded revision, and the
+        # provisioner points at it -- a substring check alone would also pass on a re-registered :2.
+        revisions = self.ecs.list_task_definitions(familyPrefix=self.env.task_definition)["taskDefinitionArns"]
+        self.assertEqual(len(revisions), 1)
         self.assertIn(self.env.task_definition, provisioner._ecs_task_definition)
         self.assertEqual(provisioner.active_unit_count(), 0)
 
@@ -118,7 +121,7 @@ class TestECSProvisioningControlPlane(unittest.IsolatedAsyncioTestCase):
         await provisioner.set_desired_task_concurrency(_desired_requests(40))  # would want ceil(40/4)=10
         await async_wait_until(lambda: provisioner.active_unit_count() == 2, message="scale-up capped at 2 units")
 
-        # Give any (incorrect) extra reconcile a chance to over-provision, then assert the cap held.
+        # Cap held at 2 (a broken cap would over-provision to ~10 and already have timed out above).
         self.assertEqual(provisioner.active_unit_count(), 2)
         self.assertEqual(self._running_task_count(), 2)
 

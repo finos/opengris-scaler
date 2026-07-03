@@ -35,8 +35,7 @@ using scaler::ymq::Message;
 // a test suite for different socket types that's parameterized by transport protocol (e.g. "tcp", "ipc")
 class YMQSocketTest: public ::testing::TestWithParam<std::string> {
 protected:
-    // Allocate a fresh OS-assigned port per call instead of a hard-coded one, so repeated or
-    // concurrent test runs cannot collide on a fixed port (a source of flaky binds in CI).
+    // Allocate a fresh OS-assigned port per call so test runs don't collide on a fixed port.
     std::string GetAddress()
     {
         return getTransportAddress(GetParam(), getFreePort());

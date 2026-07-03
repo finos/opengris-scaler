@@ -64,9 +64,8 @@ class TestSyncSubscriberReceivesPublishedMessages(unittest.TestCase):
         poller = threading.Thread(target=poll_loop, daemon=True)
         poller.start()
         try:
-            # Pub/Sub is best-effort: a single publish can be dropped if the SUB socket
-            # has not finished connecting yet. Republish until the subscriber acknowledges
-            # receipt (or the deadline elapses) so delivery does not hinge on a fixed sleep.
+            # Best-effort Pub/Sub: republish until the subscriber receives one (or the deadline
+            # elapses) instead of relying on a fixed warm-up sleep.
             deadline = time.monotonic() + _RECEIVE_TIMEOUT_SECONDS
             while not received_event.is_set() and time.monotonic() < deadline:
                 loop.run_until_complete(publisher.send(StateBalanceAdvice(workerId=WorkerID(b"worker-a"), taskIds=[])))

@@ -35,8 +35,8 @@ class TestBalance(unittest.TestCase):
         N_TASKS = 8
         N_WORKERS = N_TASKS
 
-        # Long enough that even under slow CI (slow process spawn + balancing), the tasks are still running by the
-        # time the new workers register and load balancing redistributes them one-per-worker.
+        # Long enough that the tasks are still running when the new workers register and load
+        # balancing redistributes them one-per-worker, even on slow CI.
         TASK_DURATION_SECONDS = 30
 
         address = f"tcp://127.0.0.1:{get_available_tcp_port()}"

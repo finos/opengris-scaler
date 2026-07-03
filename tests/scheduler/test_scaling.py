@@ -217,7 +217,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         setup_logger()
 
     def test_vanilla_at_cap_emits_current(self):
-        """Vanilla: ratio asks for current+1, cap clamps to current -> emits setDesired(current)."""
+        """Vanilla: ratio equals the upper bound (in-band), so desired == current -> emits setDesired(current)."""
         policy = VanillaScalingPolicy()
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(100)}
         managed = [WorkerID(f"w{i}".encode()) for i in range(10)]

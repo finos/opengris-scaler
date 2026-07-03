@@ -80,8 +80,7 @@ def _run_native_worker_manager(scheduler_address: str, max_task_concurrency: int
 @unittest.skipIf(
     sys.platform == "win32",
     "Declarative scale-down calls stop_units mid-test, which has no graceful SIGINT path on "
-    "Windows (see tests/scheduler/test_scaling.py). The provisioning control loop itself is "
-    "cross-platform; only the teardown timing differs.",
+    "Windows (see tests/scheduler/test_scaling.py).",
 )
 class TestDynamicLocalProvisioningE2E(unittest.TestCase):
     def setUp(self) -> None:

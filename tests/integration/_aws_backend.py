@@ -42,16 +42,8 @@ LOCALSTACK_DEFAULT_ENDPOINT = "http://localhost:4566"
 
 
 class ECSNotAvailable(RuntimeError):
-    """The selected backend does not provide ECS.
-
-    moto implements ECS in-process, but LocalStack only provides ECS in its Pro tier -- community
-    LocalStack returns "not yet implemented or pro feature". Tests catch this and skip rather than
-    fail, so the same suite runs on moto (free) and LocalStack Pro, and skips ECS on community.
-    """
-
-
-class BatchNotAvailable(RuntimeError):
-    """The selected backend does not provide AWS Batch (Batch/ECR are LocalStack Pro-only, like ECS)."""
+    """Selected backend has no ECS (community LocalStack: "not yet implemented or pro feature"); moto
+    and LocalStack Pro do. Tests catch this and skip instead of failing."""
 
 
 def is_service_unavailable(exc: Exception) -> bool:

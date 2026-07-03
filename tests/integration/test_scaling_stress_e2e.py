@@ -179,10 +179,8 @@ _WORKERS_PER_MACHINE = int(os.environ.get("SCALING_STRESS_WORKERS_PER_MACHINE", 
     "Dynamic scale-down has no graceful SIGINT path on Windows (see tests/scheduler/test_scaling.py).",
 )
 class TestMultiManagerScalingE2E(unittest.TestCase):
-    """Simulate a multi-machine cluster: several native worker managers (one per 'machine'), each
-    provisioning its own workers, all attached to one scheduler. This mirrors production, where a
-    cloud manager provisions an instance whose user-data launches a `scaler_worker_manager
-    baremetal_native` that runs that machine's workers."""
+    """Multiple worker managers (one per 'machine') on one scheduler, each provisioning its own
+    workers; see the module docstring."""
 
     def setUp(self) -> None:
         setup_logger()
