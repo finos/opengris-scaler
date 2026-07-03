@@ -122,7 +122,8 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
         connector = ConnectorSocket.connect(ctx, "connector", repr(address))
         self.assertEqual(connector.identity, "connector")
 
-        # A few MB still spans multiple frames/chunks; hoist the literal so it is not re-allocated per iteration.
+        # A few MB round-trips fine (was 500MB x10, trimmed for CI speed); hoist the literal to avoid
+        # re-allocating it each iteration.
         expected_payload = b"." * 4_000_000
         for _ in range(3):
             await connector.send_message(Bytes(expected_payload))
