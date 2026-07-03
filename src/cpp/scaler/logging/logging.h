@@ -18,7 +18,7 @@ namespace ymq {
 
 class Logger {
 public:
-    enum LoggingLevel {
+    enum class LoggingLevel {
         critical = 0,
         error    = 1,
         warning  = 2,
@@ -62,12 +62,12 @@ public:
     static constexpr std::string_view convertLevelToString(LoggingLevel level)
     {
         switch (level) {
-            case debug: return "DEBUG";
-            case info: return "INFO";
-            case error: return "ERROR";
-            case warning: return "WARNING";
-            case critical: return "CRITICAL";
-            case notset: return "NOTSET";
+            case LoggingLevel::debug: return "DEBUG";
+            case LoggingLevel::info: return "INFO";
+            case LoggingLevel::error: return "ERROR";
+            case LoggingLevel::warning: return "WARNING";
+            case LoggingLevel::critical: return "CRITICAL";
+            case LoggingLevel::notset: return "NOTSET";
         }
         return "UNKNOWN";
     }
