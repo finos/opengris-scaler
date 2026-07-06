@@ -17,6 +17,7 @@ import scaler.worker.worker as worker_module
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
 from scaler.io.ymq import SocketStopRequestedError, SysCallError
+from scaler.protocol.capnp import WorkerDisconnectNotification
 from scaler.worker.worker import Worker
 
 
@@ -30,6 +31,7 @@ class _StubCollaborator:
     def __init__(self, routine_behavior: Callable[[], Awaitable[None]] = _hang) -> None:
         self._routine_behavior = routine_behavior
         self.destroyed = False
+        self.sent_messages: list = []
 
     async def routine(self) -> None:
         await self._routine_behavior()
@@ -40,8 +42,8 @@ class _StubCollaborator:
     async def bind(self, *args: object, **kwargs: object) -> None:
         return None
 
-    async def send(self, *args: object, **kwargs: object) -> None:
-        return None
+    async def send(self, message: object, *args: object, **kwargs: object) -> None:
+        self.sent_messages.append(message)
 
     async def initialize(self, *args: object, **kwargs: object) -> None:
         await _hang()
@@ -131,6 +133,18 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
 
         unhandled = [c for c in mock_logger.exception.call_args_list if "failed with unhandled exception" in str(c)]
         self.assertTrue(unhandled, "an unexpected YMQ error should still be logged as an unhandled exception")
+
+    async def test_worker_disconnect_notification_sent_during_teardown(self) -> None:
+        error = SocketStopRequestedError(ymq.ErrorCode.SocketStopRequested, "binder socket shut down mid-send")
+        worker = self._build_worker(error)
+        with mock.patch.object(worker_module, "logger"):
+            await worker._Worker__get_loops()  # name-mangled private method
+        await self._drain_pending_tasks()
+
+        sent = worker._connector_external.sent_messages
+        self.assertEqual(len(sent), 1, "WorkerDisconnectNotification was not sent during teardown")
+        self.assertIsInstance(sent[0], WorkerDisconnectNotification)
+        self.assertEqual(sent[0].worker, worker.identity)
 
 
 if __name__ == "__main__":
