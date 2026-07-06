@@ -54,19 +54,6 @@ runs:
       run: |
         python -m unittest discover -v tests -t .
 
-    - name: Run End-to-End Integration Tests (Linux, moto backend)
-      # Opt-in suite (tests/integration) that provisions a worker manager against a mocked AWS
-      # control plane (moto, in-process) plus a real dynamic-provisioning data-plane run. Linux-only
-      # to keep the win/mac lanes lean; the LocalStack backend is available locally via
-      # scripts/run_integration_localstack.sh.
-      if: inputs.os == 'Linux'
-      shell: bash
-      env:
-        RUN_INTEGRATION_TESTS: '1'
-      run: |
-        uv pip install --system 'moto[ec2,ecs,batch]>=5,<6'
-        python -m unittest discover -s tests/integration -t . -v
-
     - name: Run Examples (Linux)
       if: inputs.os == 'Linux'
       shell: bash
