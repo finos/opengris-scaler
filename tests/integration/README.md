@@ -8,8 +8,10 @@ run stays fast:
 RUN_INTEGRATION_TESTS=1 python -m unittest discover -s tests/integration -t . -v
 ```
 
-CI runs this suite on the Linux lane with moto. LocalStack is available through the
-helper script:
+CI runs the moto backend automatically on the Linux lane of every build. The heavier
+LocalStack backend (Docker) runs only on demand: trigger the "LocalStack Integration
+Test" workflow from the Actions tab, or add the `localstack` label to a pull request.
+Locally it is available through the helper script:
 
 ```bash
 ./scripts/run_integration_localstack.sh

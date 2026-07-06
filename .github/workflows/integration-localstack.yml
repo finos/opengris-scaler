@@ -1,0 +1,73 @@
+name: "LocalStack Integration Test"
+
+# End-to-end AWS integration tests (tests/integration) run against a real LocalStack container
+# instead of the default in-process moto backend. moto already runs on every build via the normal
+# test job, so this heavier LocalStack lane (needs Docker) is manual-only:
+#   * manually via the Actions tab ("Run workflow"); or
+#   * by adding the "localstack" label to a pull request.
+#
+# The free community LocalStack image only implements EC2, so on it the ECS and Batch tests skip
+# themselves and the ORB/EC2 seam runs. Set the LOCALSTACK_AUTH_TOKEN repository secret to run the
+# ECS and Batch coverage against LocalStack Pro.
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [ labeled ]
+
+permissions:
+  contents: read
+
+jobs:
+  localstack-integration:
+    name: LocalStack Integration (Linux)
+    # Manual dispatch always runs; on a PR only when it carries the "localstack" label.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.label.name == 'localstack' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
+      - name: 'Checkout Repository'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: ./.github/actions/setup-env
+        with:
+          os: ${{ runner.os }}
+          # 3.11+ so orb-py imports and the ORB/EC2 test runs (it version-skips on <3.11); community
+          # LocalStack implements EC2, so that seam is the one exercised for free on this lane.
+          python-version: '3.11'
+
+      - uses: ./.github/actions/3rd-party-libraries-download
+        with:
+          os: ${{ runner.os }}
+
+      - uses: ./.github/actions/3rd-party-libraries-compile
+        with:
+          os: ${{ runner.os }}
+
+      - uses: ./.github/actions/3rd-party-libraries-install
+        with:
+          os: ${{ runner.os }}
+
+      - uses: ./.github/actions/compile-libraries
+        with:
+          os: ${{ runner.os }}
+
+      - name: Build and install wheel
+        shell: bash
+        run: |
+          uv pip install --system build
+          python -m build --wheel
+          wheel_file=$(ls dist/*.whl | head -n 1)
+          echo "Installing wheel: $wheel_file"
+          uv pip install --system "$wheel_file[all,integration]"
+
+      - name: Run integration tests against LocalStack
+        shell: bash
+        env:
+          LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
+        run: |
+          ./scripts/run_integration_localstack.sh

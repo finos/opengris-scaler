@@ -29,6 +29,8 @@ import os
 import uuid
 from typing import Any, Dict, List, Optional
 
+import boto3
+
 # moto reads this lazily when a managed policy is attached; it MUST be set before the
 # first attach_role_policy call. The ECS provisioner attaches the AWS-managed
 # AmazonECSTaskExecutionRolePolicy, which moto only knows about when this is enabled.
@@ -157,8 +159,6 @@ class MockedAWS:
         os.environ[key] = value
 
     def client(self, service: str):
-        import boto3
-
         kwargs = {"region_name": self.region}
         if self._endpoint_url is not None:
             kwargs["endpoint_url"] = self._endpoint_url
