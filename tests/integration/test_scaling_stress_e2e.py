@@ -29,9 +29,12 @@ Tunables (env vars, so CI / a bigger box can scale them up without code changes)
 
 import os
 import sys
+import time
 import unittest
 from multiprocessing import get_context
 from typing import Optional
+
+import psutil
 
 from scaler import Client
 from scaler.config.common.logging import LoggingConfig
@@ -58,6 +61,14 @@ _MAX_WORKERS = int(os.environ.get("SCALING_STRESS_MAX_WORKERS", "8"))
 _N_TASKS = int(os.environ.get("SCALING_STRESS_TASKS", "240"))
 _TASK_SECONDS = float(os.environ.get("SCALING_STRESS_TASK_SECONDS", "0.2"))
 _MIN_WORKERS = int(os.environ.get("SCALING_STRESS_MIN_WORKERS", "3"))
+
+# Scale-DOWN convergence targets. Counting only LIVE workers (zombies excluded -- see
+# _worker_agent_count), the pool drops to ~0 within ~2s when idle and to ~1 under a steady
+# concurrency-1 trickle. Allow one transitional extra worker.
+_SCALE_DOWN_TARGET_WORKERS = 2
+_SCALE_DOWN_TIMEOUT_SECONDS = 60.0
+# Generous upper bound to poll for the idle pool to drain to zero (measured ~2s).
+_IDLE_SCALE_DOWN_WAIT_SECONDS = 20.0
 
 
 def _sleep_and_identify(value: int):
@@ -137,6 +148,25 @@ class TestScalingStressE2E(unittest.TestCase):
         self.addCleanup(terminate_process, process)
         return process
 
+    @staticmethod
+    def _worker_agent_count(manager_process) -> int:
+        """Count LIVE worker-agent subprocesses (the manager's direct children), EXCLUDING zombies.
+        stop_units() SIGINTs a worker and drops its reference without reaping it, so a scaled-down
+        worker lingers as a zombie child until a later start_units triggers reaping -- counting zombies
+        would make a real scale-down look like it never happened. One live child == one running worker."""
+        try:
+            children = psutil.Process(manager_process.pid).children(recursive=False)
+        except psutil.NoSuchProcess:
+            return 0
+        live = 0
+        for child in children:
+            try:
+                if child.status() != psutil.STATUS_ZOMBIE:
+                    live += 1
+            except psutil.NoSuchProcess:
+                continue
+        return live
+
     def test_burst_scales_up_across_many_workers(self) -> None:
         self._start_worker_manager(max_task_concurrency=_MAX_WORKERS)
 
@@ -157,6 +187,67 @@ class TestScalingStressE2E(unittest.TestCase):
             len(worker_pids),
             _MIN_WORKERS,
             f"expected the burst to scale up to >= {_MIN_WORKERS} workers, saw {len(worker_pids)}",
+        )
+
+    def test_reduced_load_scales_workers_back_down(self) -> None:
+        """Scale-DOWN: after a burst scales the pool up, a sustained light load must let the scheduler
+        tear the surplus workers back down. A fully idle queue does not re-trigger scaling (the pool
+        would sit at its peak), so a concurrency-1 trickle drives the reduction -- exercising the
+        declarative stop_units path (graceful SIGINT on POSIX; hence the class-level Windows skip)."""
+        manager = self._start_worker_manager(max_task_concurrency=_MAX_WORKERS)
+
+        with Client(self.harness.scheduler_address) as client:
+            # Burst to force scale-up, then confirm the pool actually grew.
+            results = client.map(_sleep_and_identify, range(_N_TASKS))
+            self.assertEqual([value for value, _pid in results], list(range(_N_TASKS)))
+            peak_workers = self._worker_agent_count(manager)
+            self.assertGreaterEqual(peak_workers, _MIN_WORKERS, f"burst did not scale up (peak={peak_workers})")
+
+            # Sustained concurrency-1 trickle: the surplus workers must be scaled back down.
+            deadline = time.monotonic() + _SCALE_DOWN_TIMEOUT_SECONDS
+            while time.monotonic() < deadline:
+                client.submit(_sleep_and_identify, 0).result()
+                if self._worker_agent_count(manager) <= _SCALE_DOWN_TARGET_WORKERS:
+                    break
+            settled_workers = self._worker_agent_count(manager)
+
+        print(f"scaling stress: worker pool scaled {peak_workers} -> {settled_workers} when load dropped")
+        self.assertLess(settled_workers, peak_workers, "worker pool did not shrink after the load dropped")
+        self.assertLessEqual(
+            settled_workers,
+            _SCALE_DOWN_TARGET_WORKERS,
+            f"workers did not scale down under reduced load: peaked at {peak_workers}, still "
+            f"{settled_workers} after {_SCALE_DOWN_TIMEOUT_SECONDS:.0f}s",
+        )
+
+    def test_idle_queue_scales_workers_down_to_zero(self) -> None:
+        """Scale-DOWN to zero on an IDLE queue: after a burst, with no further work the scheduler tears
+        ALL workers back down (VanillaScalingPolicy computes desired=0 on an empty queue; the manager's
+        periodic heartbeats keep the policy re-evaluating even with no tasks flowing). Complements
+        test_reduced_load_scales_workers_back_down, which keeps ~1 worker under a light trickle.
+
+        NOTE: the dynamic provisioner's stop_units SIGINTs each worker but never reaps it, so a
+        scaled-down worker lingers as a zombie child (a minor product leak); _worker_agent_count counts
+        only LIVE workers, which drop to 0 within ~2s of going idle."""
+        manager = self._start_worker_manager(max_task_concurrency=_MAX_WORKERS)
+
+        with Client(self.harness.scheduler_address) as client:
+            client.map(_sleep_and_identify, range(_N_TASKS))
+            peak_workers = self._worker_agent_count(manager)
+            self.assertGreaterEqual(peak_workers, _MIN_WORKERS, f"burst did not scale up (peak={peak_workers})")
+
+            # Go idle; the live pool must drain to (near) zero.
+            deadline = time.monotonic() + _IDLE_SCALE_DOWN_WAIT_SECONDS
+            while time.monotonic() < deadline and self._worker_agent_count(manager) > _SCALE_DOWN_TARGET_WORKERS:
+                time.sleep(1.0)
+            idle_workers = self._worker_agent_count(manager)
+
+        print(f"scaling stress: idle pool scaled {peak_workers} -> {idle_workers} live workers")
+        self.assertLessEqual(
+            idle_workers,
+            _SCALE_DOWN_TARGET_WORKERS,
+            f"idle queue did not scale workers down: peaked {peak_workers}, still {idle_workers} live "
+            f"after {_IDLE_SCALE_DOWN_WAIT_SECONDS:.0f}s idle",
         )
 
 
