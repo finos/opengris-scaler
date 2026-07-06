@@ -53,8 +53,10 @@ runs:
         python -m unittest discover -v tests -t .
 
     - name: Run End-to-End Integration Tests (Linux, moto backend)
-      # Opt-in suite that provisions cloud worker managers against a mocked AWS control plane.
-      # Linux-only keeps the win/mac lanes lean; LocalStack can be run locally via the helper script.
+      # tests/integration is opt-in: the "Run Unittests" step above collects it but every test skips
+      # itself unless RUN_INTEGRATION_TESTS=1, and moto is not in [all]. This step is what actually
+      # runs the suite -- install moto, flip the gate, Linux-only to keep the win/mac lanes lean. The
+      # heavier LocalStack and scaling-stress runs are separate manual workflows.
       if: inputs.os == 'Linux'
       shell: bash
       env:
