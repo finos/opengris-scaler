@@ -40,6 +40,9 @@ class _StubCollaborator:
     async def bind(self, *args: object, **kwargs: object) -> None:
         return None
 
+    async def send(self, *args: object, **kwargs: object) -> None:
+        return None
+
     async def initialize(self, *args: object, **kwargs: object) -> None:
         await _hang()
 
