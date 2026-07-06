@@ -5,6 +5,7 @@
 #include <span>
 #include <variant>
 
+#include "scaler/wrapper/openssl/secure_socket.h"
 #include "scaler/wrapper/uv/callback.h"
 #include "scaler/wrapper/uv/error.h"
 #include "scaler/wrapper/uv/pipe.h"
@@ -15,10 +16,11 @@ namespace scaler {
 namespace ymq {
 namespace internal {
 
-// A connected client socket abstracting TCP, IPC, and WebSocket transports.
+// A connected client socket abstracting TCP, TLS, IPC, and WebSocket transports.
 class Client {
 public:
     explicit Client(scaler::wrapper::uv::TCPSocket socket) noexcept;
+    explicit Client(scaler::wrapper::openssl::SecureSocket socket) noexcept;
     explicit Client(scaler::wrapper::uv::Pipe pipe) noexcept;
     explicit Client(WebSocketStream stream) noexcept;
 
@@ -31,6 +33,9 @@ public:
     Client& operator=(Client&&) noexcept = default;
 
     bool isTCP() const noexcept;
+
+    bool isSecure() const noexcept;
+
     bool isWebSocket() const noexcept;
 
     // The buffers' content must remain valid until the callback is called.
@@ -45,11 +50,18 @@ public:
 
     std::expected<void, scaler::wrapper::uv::Error> shutdown(scaler::wrapper::uv::ShutdownCallback callback) noexcept;
 
-    // Only valid for TCP and WebSocket (which is TCP-backed) clients.
+    // Send a RST packet to the remote, immediately closing the connection.
+    //
+    // Returns UV_ENOTSUP if not supported.
     std::expected<void, scaler::wrapper::uv::Error> closeReset() noexcept;
 
 private:
-    std::variant<scaler::wrapper::uv::TCPSocket, scaler::wrapper::uv::Pipe, WebSocketStream> _socket;
+    std::variant<
+        scaler::wrapper::uv::TCPSocket,
+        scaler::wrapper::openssl::SecureSocket,
+        scaler::wrapper::uv::Pipe,
+        WebSocketStream>
+        _socket;
 };
 
 }  // namespace internal

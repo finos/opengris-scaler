@@ -60,12 +60,12 @@ runs:
       shell: bash
       if: inputs.os == 'macOS'
       run: |
-        brew install cmake llvm
+        brew install cmake llvm@21
         chmod 755 ./scripts/library_tool.sh
         chmod 755 ./scripts/build.sh
 
         # Forces Homebrew's Clang instead of Apple's built-in
-        llvm_prefix="$(brew --prefix llvm)"
+        llvm_prefix="$(brew --prefix llvm@21)"
         echo "CC=${llvm_prefix}/bin/clang" >> "$GITHUB_ENV"
         echo "CMAKE_C_COMPILER=${llvm_prefix}/bin/clang" >> "$GITHUB_ENV"
         echo "CXX=${llvm_prefix}/bin/clang++" >> "$GITHUB_ENV"

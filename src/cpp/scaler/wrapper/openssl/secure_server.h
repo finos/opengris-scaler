@@ -16,7 +16,7 @@ namespace openssl {
 // A libuv-like server socket implementing SSL/TLS using OpenSSL.
 class SecureServer {
 public:
-    static std::expected<SecureServer, uv::Error> init(SSLContext context, uv::Loop& loop) noexcept;
+    static std::expected<SecureServer, uv::Error> init(uv::Loop& loop) noexcept;
 
     std::expected<void, uv::Error> bind(const uv::SocketAddress& address, uv_tcp_flags flags) noexcept;
 
@@ -27,9 +27,8 @@ public:
     std::expected<uv::SocketAddress, uv::Error> getSockName() const noexcept;
 
 private:
-    SecureServer(SSLContext context, uv::TCPServer server) noexcept;
+    SecureServer(uv::TCPServer server) noexcept;
 
-    SSLContext _context;
     uv::TCPServer _server;
 };
 

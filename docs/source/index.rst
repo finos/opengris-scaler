@@ -41,6 +41,7 @@ Content
    tutorials/policy_engine
    tutorials/worker_managers/index
    tutorials/additional_features
+   tutorials/security
    tutorials/examples
    tutorials/try_in_browser
    tutorials/development

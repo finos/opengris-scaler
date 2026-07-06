@@ -520,6 +520,11 @@ void WebSocketStream::onRead(
     const auto& data = result.value();
     state->_recvBuffer.insert(state->_recvBuffer.end(), data.begin(), data.end());
 
+    processRecvBuffer(state);
+}
+
+void WebSocketStream::processRecvBuffer(std::shared_ptr<State> state) noexcept
+{
     while (state->_readActive && !state->_recvBuffer.empty()) {
         auto frameResult = tryDecodeFrame(state->_recvBuffer);
         if (!frameResult.has_value()) {
@@ -610,9 +615,7 @@ std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::readStart(
     // Drain any bytes already buffered from the WebSocket upgrade leftover.
     // Without this, if the peer sent WebSocket frames coalesced into the same TCP segment as the
     // HTTP upgrade response, those frames would sit in `_recvBuffer` until new data arrives.
-    if (!state->_recvBuffer.empty()) {
-        onRead(state, std::span<const uint8_t> {});
-    }
+    processRecvBuffer(_state);
 
     return startResult;
 }
@@ -672,8 +675,16 @@ std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::shutdown(
     return {};
 }
 
+WebSocketStream::~WebSocketStream() noexcept
+{
+    if (_state && _state->_readActive) {
+        readStop();
+    }
+}
+
 std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::closeReset() noexcept
 {
+    readStop();
     return _state->_socket.closeReset();
 }
 

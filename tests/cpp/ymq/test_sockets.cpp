@@ -4,8 +4,6 @@
 #include <cassert>
 #include <chrono>
 #include <cstdint>
-#include <cstdlib>
-#include <format>
 #include <future>
 #include <iostream>
 #include <limits>
@@ -39,24 +37,7 @@ class YMQSocketTest: public ::testing::TestWithParam<std::string> {
 protected:
     std::string GetAddress(int port)
     {
-        const std::string& transport = GetParam();
-        if (transport == "tcp") {
-            return std::format("tcp://127.0.0.1:{}", port);
-        }
-        if (transport == "ipc") {
-            // using a unique path for each test based on port
-            const char* runner_temp = std::getenv("RUNNER_TEMP");
-            if (runner_temp) {
-                return std::format("ipc://{}/ymq-test-{}.ipc", runner_temp, port);
-            }
-            return std::format("ipc:///tmp/ymq-test-{}.ipc", port);
-        }
-        if (transport == "ws") {
-            return std::format("ws://127.0.0.1:{}/", port);
-        }
-        // Gtest should not select this for unsupported platforms, but as a fallback,
-        // return something that will cause tests to fail clearly.
-        return "invalid-transport";
+        return getTransportAddress(GetParam(), port);
     }
 };
 

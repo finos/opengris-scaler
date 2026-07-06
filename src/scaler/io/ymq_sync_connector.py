@@ -1,23 +1,31 @@
 import logging
 from typing import Optional
 
+from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import SyncConnector
 from scaler.io.utility import deserialize, serialize
 from scaler.io.ymq import Bytes, ConnectorSocket, IOContext
+from scaler.io.ymq.utils import to_tls_config
 from scaler.protocol.capnp import BaseMessage
 
 logger = logging.getLogger(__name__)
 
 
 class YMQSyncConnector(SyncConnector):
-    def __init__(self, context: IOContext, identity: bytes, address: AddressConfig):
+    def __init__(
+        self,
+        context: IOContext,
+        identity: bytes,
+        address: AddressConfig,
+        security_config: Optional[SecurityConfig] = None,
+    ):
         self._ymq_context = context
         self._identity = identity
         self._address = address
 
         self._socket: Optional[ConnectorSocket] = ConnectorSocket.connect(
-            self._ymq_context, self._identity.decode(), repr(self._address)
+            self._ymq_context, self._identity.decode(), repr(self._address), tls_config=to_tls_config(security_config)
         )
 
     def __del__(self):

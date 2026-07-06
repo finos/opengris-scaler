@@ -6,18 +6,17 @@ namespace scaler {
 namespace wrapper {
 namespace openssl {
 
-std::expected<SecureServer, uv::Error> SecureServer::init(SSLContext context, uv::Loop& loop) noexcept
+std::expected<SecureServer, uv::Error> SecureServer::init(uv::Loop& loop) noexcept
 {
     std::expected<uv::TCPServer, uv::Error> server = uv::TCPServer::init(loop);
     if (!server.has_value()) {
         return std::unexpected {server.error()};
     }
 
-    return SecureServer {std::move(context), std::move(server.value())};
+    return SecureServer {std::move(server.value())};
 }
 
-SecureServer::SecureServer(SSLContext context, uv::TCPServer server) noexcept
-    : _context(std::move(context)), _server(std::move(server))
+SecureServer::SecureServer(uv::TCPServer server) noexcept: _server(std::move(server))
 {
 }
 

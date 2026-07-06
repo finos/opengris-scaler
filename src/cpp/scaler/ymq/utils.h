@@ -27,7 +27,7 @@ constexpr std::string argsToString(Args&&... args)
 {
     static constexpr const auto str = getFormatString<sizeof...(Args)>();
 
-    std::string res = std::format(std::string_view {str}, std::forward<Args>(args)...);
+    std::string res = std::format(std::string_view {str.data(), str.size()}, std::forward<Args>(args)...);
     return res;
 }
 

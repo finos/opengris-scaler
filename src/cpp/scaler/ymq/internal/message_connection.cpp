@@ -84,7 +84,11 @@ void MessageConnection::abort() noexcept
     assert(connected());
 
     _client->readStop();
-    UV_EXIT_ON_ERROR(_client->closeReset());
+
+    auto result = _client->closeReset();
+    if (!result.has_value() && result.error() != scaler::wrapper::uv::Error {UV_ENOTSUP}) {
+        UV_EXIT_ON_ERROR(std::move(result));
+    }
 
     initialize();
 }
@@ -130,11 +134,17 @@ void MessageConnection::shutdownClient() noexcept
     // By moving its ownership to the shutdown()'s callback, close() is guaranteed to be called only after the callback
     // completes.
 
-    auto client       = std::make_unique<Client>(std::move(_client.value()));
+    auto client = std::make_unique<Client>(std::move(_client.value()));
+    _client.reset();
+
     Client* clientPtr = client.get();
 
     auto shutdownCallback = [client =
                                  std::move(client)](std::expected<void, scaler::wrapper::uv::Error> result) noexcept {
+        if (!result.has_value() && isConnectionError(result.error())) {
+            return;  // Ignore connection errors during shutdown
+        }
+
         UV_EXIT_ON_ERROR(result);
     };
 
@@ -249,29 +259,24 @@ void MessageConnection::onWriteDone(
     SendCallback callback, std::expected<void, scaler::wrapper::uv::Error> result) noexcept
 {
     if (!result.has_value()) {
-        switch (result.error().code()) {
-            case UV_ECONNRESET:
-            case UV_ECONNABORTED:
-            case UV_ETIMEDOUT:
-            case UV_EPIPE:
-            case UV_ENETDOWN:
-            case UV_ENOTCONN:
-                // Connection closed/failed WHILE libuv issued the write to the OS.
-                // No need to handle this disconnect event, as this will be handled by onRead().
-                callback({});
-                return;
-            case UV_ECANCELED:
-                // Connection closed/failed BEFORE libuv issued the write to the OS.
-                // FIXME: as we are certain these bytes haven't been issued on the wire, we could requeue these messages
-                // in case the connection is later re-established. But we can't be sure the MessageConnection object is
-                // still live, as this callback might be called after the connection object got destroyed.
-                callback(std::unexpected(Error {Error::ErrorCode::SocketStopRequested}));
-                return;
-            default:
-                // Unexpected error
-                UV_EXIT_ON_ERROR(result);
-                break;
-        };
+        const scaler::wrapper::uv::Error& error = result.error();
+
+        if (isConnectionError(error)) {
+            // Connection closed/failed WHILE libuv issued the write to the OS.
+            // No need to handle this disconnect event, as this will be handled by onRead().
+            callback({});
+            return;
+        } else if (error.code() == UV_ECANCELED) {
+            // Connection closed/failed BEFORE libuv issued the write to the OS.
+            // FIXME: as we are certain these bytes haven't been issued on the wire, we could requeue these messages
+            // in case the connection is later re-established. But we can't be sure the MessageConnection object is
+            // still live, as this callback might be called after the connection object got destroyed.
+            callback(std::unexpected(Error {Error::ErrorCode::SocketStopRequested}));
+            return;
+        } else {
+            // Unexpected error
+            UV_EXIT_ON_ERROR(result);
+        }
     }
 
     callback({});
@@ -282,24 +287,20 @@ void MessageConnection::onRead(std::expected<std::span<const uint8_t>, scaler::w
     assert(connected());
 
     if (!result.has_value()) {
-        switch (result.error().code()) {
-            case UV_EOF:
-                // Remote explicitly closed the connection (graceful disconnect)
-                onRemoteDisconnect(DisconnectReason::Disconnected);
-                return;
-            case UV_ECONNRESET:
-            case UV_ECONNABORTED:
-            case UV_ETIMEDOUT:
-            case UV_EPIPE:
-            case UV_ENETDOWN:
-            case UV_ENOTCONN:
-                // Connection aborted unexpectedly
-                onRemoteDisconnect(DisconnectReason::Aborted);
-                return;
-            default:
-                // Unexpected error
-                UV_EXIT_ON_ERROR(result);
-                return;
+        const scaler::wrapper::uv::Error& error = result.error();
+
+        if (error.code() == UV_EOF) {
+            // Remote explicitly closed the connection (graceful disconnect)
+            onRemoteDisconnect(DisconnectReason::Disconnected);
+            return;
+        } else if (isConnectionError(error)) {
+            // Connection aborted unexpectedly
+            onRemoteDisconnect(DisconnectReason::Aborted);
+            return;
+        } else {
+            // Unexpected error
+            UV_EXIT_ON_ERROR(result);
+            return;
         }
     }
 
@@ -355,7 +356,10 @@ void MessageConnection::onRemoteDisconnect(MessageConnection::DisconnectReason r
 {
     assert(connected());
 
-    _client->readStop();
+    if (reason == DisconnectReason::Disconnected) {
+        shutdownClient();
+    }
+
     initialize();
 
     _onRemoteDisconnectCallback(reason);
@@ -429,6 +433,19 @@ void MessageConnection::processSendOperation(SendOperation operation) noexcept
             offset += buffer.size();
         }
     }
+}
+
+bool MessageConnection::isConnectionError(const scaler::wrapper::uv::Error& error)
+{
+    switch (error.code()) {
+        case UV_ECONNRESET:
+        case UV_ECONNABORTED:
+        case UV_ETIMEDOUT:
+        case UV_EPIPE:
+        case UV_ENETDOWN:
+        case UV_ENOTCONN: return true;
+        default: return false;
+    };
 }
 
 }  // namespace internal

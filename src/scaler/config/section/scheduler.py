@@ -3,6 +3,7 @@ from typing import Optional
 
 from scaler.config import defaults
 from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.security import SecurityConfig
 from scaler.config.config_class import ConfigClass
 from scaler.config.types.address import AddressConfig
 from scaler.utility.event_loop import EventLoopType
@@ -96,6 +97,8 @@ class SchedulerConfig(ConfigClass):
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
 
     policy: PolicyConfig = dataclasses.field(default_factory=PolicyConfig)
+
+    security: SecurityConfig = dataclasses.field(default_factory=SecurityConfig)
 
     def __post_init__(self):
         if self.max_number_of_tasks_waiting < -1:

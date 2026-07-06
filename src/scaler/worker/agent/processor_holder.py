@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 
 import psutil
 
+from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import DEFAULT_PROCESSOR_KILL_DELAY_SECONDS
 from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import Task
@@ -29,6 +30,7 @@ class ProcessorHolder:
         hard_suspend: bool,
         logging_paths: Tuple[str, ...],
         logging_level: str,
+        security_config: Optional[SecurityConfig] = None,
     ):
         self._processor_id: Optional[ProcessorID] = None
         self._task: Optional[Task] = None
@@ -60,6 +62,7 @@ class ProcessorHolder:
             trim_memory_threshold_bytes=trim_memory_threshold_bytes,
             logging_paths=logging_paths,
             logging_level=logging_level,
+            security_config=security_config,
         )
         self._processor.start()
         self._process = psutil.Process(self._processor.pid)

@@ -16,9 +16,12 @@ add_library(ymq_objs OBJECT
     message.h
 
     timestamp.h
+
+    tls_config.h
+    tls_config.cpp
 )
 
-target_link_libraries(ymq_objs PUBLIC scaler_wrapper_uv)
+target_link_libraries(ymq_objs PUBLIC scaler_wrapper_uv scaler_wrapper_openssl)
 
 add_subdirectory(internal)
 add_subdirectory(future)

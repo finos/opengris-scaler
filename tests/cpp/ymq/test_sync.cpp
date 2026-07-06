@@ -3,12 +3,14 @@
 #include <expected>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/bytes.h"
 #include "scaler/ymq/io_context.h"
 #include "scaler/ymq/sync/binder_socket.h"
 #include "scaler/ymq/sync/connector_socket.h"
+#include "tests/cpp/ymq/common/utils.h"
 
 namespace {
 
@@ -16,9 +18,9 @@ const std::string messagePayload = "Hello Sync YMQ!";
 
 }  // namespace
 
-class YMQSyncTest: public ::testing::Test {};
+class YMQSyncTest: public ::testing::TestWithParam<std::string> {};
 
-TEST_F(YMQSyncTest, BasicMessageExchange)
+TEST_P(YMQSyncTest, BasicMessageExchange)
 {
     // Test basic message exchange between a sync::BinderSocket and sync::ConnectorSocket
 
@@ -30,15 +32,15 @@ TEST_F(YMQSyncTest, BasicMessageExchange)
     // Create and bind the binder socket
     scaler::ymq::sync::BinderSocket binder {context, binderIdentity};
 
-    auto bindResult = binder.bindTo("tcp://127.0.0.1:0");
+    auto bindResult = binder.bindTo(getTransportAddress(GetParam(), 0), getTLSConfig(GetParam()));
     ASSERT_TRUE(bindResult.has_value());
 
     scaler::ymq::Address boundAddress = bindResult.value();
 
     // Create connector socket in a separate thread to avoid blocking
     std::jthread connectorThread([&]() {
-        auto connectorResult =
-            scaler::ymq::sync::ConnectorSocket::connect(context, connectorIdentity, boundAddress.toString().value());
+        auto connectorResult = scaler::ymq::sync::ConnectorSocket::connect(
+            context, connectorIdentity, boundAddress.toString().value(), getTLSConfig(GetParam()));
 
         ASSERT_TRUE(connectorResult.has_value());
 
@@ -80,3 +82,9 @@ TEST_F(YMQSyncTest, BasicMessageExchange)
     // Ensures the connector thread finishes
     connectorThread.join();
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    YMQTransport,
+    YMQSyncTest,
+    ::testing::ValuesIn(getTransports()),
+    [](const testing::TestParamInfo<YMQSyncTest::ParamType>& info) { return info.param; });

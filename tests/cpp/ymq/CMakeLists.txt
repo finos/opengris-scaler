@@ -4,6 +4,9 @@ target_sources(test_ymq PRIVATE
     test_binder_socket.cpp
     test_connector_socket.cpp
     test_sync.cpp
+
+    common/utils.h
+    common/utils.cpp
 )
 
 add_subdirectory(internal)
@@ -15,8 +18,6 @@ if(LINUX OR WIN32)
 
 		common/testing.h
 		common/testing.cpp
-		common/utils.h
-		common/utils.cpp
 
 		net/socket.h
 		net/socket_utils.h

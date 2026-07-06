@@ -15,9 +15,9 @@ const Identity& BinderSocket::identity() const noexcept
     return _socket.identity();
 }
 
-std::expected<Address, Error> BinderSocket::bindTo(std::string address) noexcept
+std::expected<Address, Error> BinderSocket::bindTo(std::string address, std::optional<TLSConfig> tlsConfig) noexcept
 {
-    return _socket.bindTo(std::move(address)).get();
+    return _socket.bindTo(std::move(address), std::move(tlsConfig)).get();
 }
 
 std::expected<void, Error> BinderSocket::sendMessage(

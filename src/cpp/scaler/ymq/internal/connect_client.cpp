@@ -3,7 +3,10 @@
 #include <chrono>
 #include <functional>
 #include <string>
+#include <variant>
 
+#include "scaler/wrapper/openssl/secure_socket.h"
+#include "scaler/wrapper/openssl/ssl_context.h"
 #include "scaler/wrapper/uv/pipe.h"
 #include "scaler/wrapper/uv/socket_address.h"
 #include "scaler/wrapper/uv/tcp.h"
@@ -13,28 +16,46 @@ namespace scaler {
 namespace ymq {
 namespace internal {
 
-ConnectClient::ConnectClient(
+std::expected<ConnectClient, scaler::ymq::Error> ConnectClient::init(
     scaler::wrapper::uv::Loop& loop,
     Address address,
     ConnectCallback onConnectCallback,
     size_t maxRetryTimes,
     std::chrono::milliseconds initRetryDelay) noexcept
-    : _state(
-          std::make_shared<State>(
-              loop, std::move(address), std::move(onConnectCallback), maxRetryTimes, initRetryDelay))
 {
-    tryConnect(_state);
+    auto sslContext = address.getSSLContext();
+    if (!sslContext.has_value()) {
+        return std::unexpected {std::move(sslContext.error())};
+    }
+
+    auto state = std::make_shared<State>(
+        loop,
+        std::move(address),
+        std::move(onConnectCallback),
+        std::move(sslContext.value()),
+        maxRetryTimes,
+        initRetryDelay);
+
+    tryConnect(state);
+
+    return ConnectClient {std::move(state)};
+}
+
+ConnectClient::ConnectClient(std::shared_ptr<State> state) noexcept: _state(std::move(state))
+{
 }
 
 ConnectClient::State::State(
     scaler::wrapper::uv::Loop& loop,
     Address addr,
     ConnectCallback callback,
+    std::optional<scaler::wrapper::openssl::SSLContext> sslContext,
     size_t maxRetries,
     std::chrono::milliseconds delay) noexcept
     : _loop(loop)
     , _address(std::move(addr))
     , _onConnectCallback(std::move(callback))
+    , _sslContext(std::move(sslContext))
     , _maxRetryTimes(maxRetries)
     , _initRetryDelay(delay)
 {
@@ -65,12 +86,22 @@ void ConnectClient::tryConnect(std::shared_ptr<State> state) noexcept
 {
     switch (state->_address.type()) {
         case Address::Type::TCP: {
-            auto tcpClient = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(state->_loop));
+            if (state->_address.secure()) {
+                auto secureClient = UV_EXIT_ON_ERROR(
+                    scaler::wrapper::openssl::SecureSocket::init(state->_loop, state->_sslContext.value()));
 
-            state->_connectRequest = UV_EXIT_ON_ERROR(
-                tcpClient.connect(state->_address.asTCP(), std::bind_front(&ConnectClient::onConnect, state)));
+                state->_connectRequest = UV_EXIT_ON_ERROR(
+                    secureClient.connect(state->_address.asTCP(), std::bind_front(&ConnectClient::onConnect, state)));
 
-            state->_client = Client(std::move(tcpClient));
+                state->_client = Client(std::move(secureClient));
+            } else {
+                auto tcpClient = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(state->_loop));
+
+                state->_connectRequest = UV_EXIT_ON_ERROR(
+                    tcpClient.connect(state->_address.asTCP(), std::bind_front(&ConnectClient::onConnect, state)));
+
+                state->_client = Client(std::move(tcpClient));
+            }
             break;
         }
         case Address::Type::IPC: {
