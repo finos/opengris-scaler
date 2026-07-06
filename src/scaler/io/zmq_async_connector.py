@@ -4,8 +4,10 @@ from typing import Awaitable, Callable, Optional
 import zmq
 import zmq.asyncio
 
+from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncConnector, ConnectorRemoteType
+from scaler.io.network_backends import ZMQNetworkBackend
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.capnp import BaseMessage
 
@@ -35,14 +37,20 @@ class ZMQAsyncConnector(AsyncConnector):
 
         self._socket.close(linger=1)
 
-    async def connect(self, address: AddressConfig, remote_type: ConnectorRemoteType) -> None:
+    async def connect(
+        self, address: AddressConfig, remote_type: ConnectorRemoteType, security_config: Optional[SecurityConfig] = None
+    ) -> None:
+        ZMQNetworkBackend.raise_if_unsupported(address, security_config)
+
         self._address = address
         self.__create_socket(remote_type)
         assert self._socket is not None
 
         self._socket.connect(repr(self._address))
 
-    async def bind(self, address: AddressConfig) -> None:
+    async def bind(self, address: AddressConfig, security_config: Optional[SecurityConfig] = None) -> None:
+        ZMQNetworkBackend.raise_if_unsupported(address, security_config)
+
         self.__create_socket(ConnectorRemoteType.Connector)
         assert self._socket is not None
 

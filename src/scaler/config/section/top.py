@@ -1,6 +1,7 @@
 import dataclasses
 from datetime import timedelta
 
+from scaler.config.common.security import SecurityConfig
 from scaler.config.config_class import ConfigClass
 from scaler.config.types.address import AddressConfig
 
@@ -18,6 +19,7 @@ class TopConfig(ConfigClass):
         default=timedelta(seconds=5),
         metadata={"short": "-t", "type": _parse_timeout_seconds, "help": "timeout seconds"},
     )
+    security: SecurityConfig = dataclasses.field(default_factory=SecurityConfig)
 
     def __post_init__(self):
         if self.timeout <= timedelta(seconds=0):

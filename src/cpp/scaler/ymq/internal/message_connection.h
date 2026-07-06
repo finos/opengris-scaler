@@ -79,8 +79,6 @@ public:
     void disconnect() noexcept;
 
     // Same as disconnect(), but send a RST packet to the remote, triggering an Aborted event.
-    //
-    // Only TCP clients are supported.
     void abort() noexcept;
 
     const Identity& localIdentity() const noexcept;
@@ -163,6 +161,8 @@ private:
     void processSendQueue() noexcept;
 
     void processSendOperation(SendOperation operation) noexcept;
+
+    static bool isConnectionError(const scaler::wrapper::uv::Error& error);
 };
 
 }  // namespace internal

@@ -7,6 +7,8 @@ try:
 except ImportError:
     from typing_extensions import Concatenate, ParamSpec  # type: ignore[assignment]
 
+from scaler.config.common.security import SecurityConfig
+from scaler.io.ymq import TLSConfig
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -66,3 +68,12 @@ def _safe_set_exception(future: asyncio.Future, exc: BaseException) -> None:
     if future.done():
         return
     future.set_exception(exc)
+
+
+def to_tls_config(security_config: Optional[SecurityConfig]) -> Optional[TLSConfig]:
+    """Convert a Scaler ``SecurityConfig`` into a YMQ ``TLSConfig``."""
+
+    if security_config is None or not security_config.has_credentials():
+        return None
+
+    return TLSConfig(cert_chain=security_config.tls_cert, private_key=security_config.tls_key)

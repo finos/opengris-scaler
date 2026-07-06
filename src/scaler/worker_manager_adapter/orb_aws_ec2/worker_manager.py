@@ -285,13 +285,25 @@ class ORBAWSEC2WorkerManager:
         register_event_loop(self._event_loop)
 
         try:
-            from orb import ORBClient as orb
+            from orb.config.managers.configuration_manager import ConfigurationManager
+            from orb.infrastructure.di.container import get_container
+
+            # Import from the typed submodule directly: the top-level orb package lacks py.typed,
+            # so mypy cannot see its __init__.py re-exports once the typed submodules are imported.
+            from orb.sdk.client import ORBClient as orb
         except ModuleNotFoundError as exc:
             raise ModuleNotFoundError(
                 'execute "pip install opengris-scaler[orb]" to use ORB AWS EC2 worker Manager'
             ) from exc
 
-        async with orb(app_config=self._build_app_config()) as sdk:
+        app_config = self._build_app_config()
+
+        # ORB bug: create_aws_strategy() uses get_container() (the process-global DI singleton)
+        # instead of the per-client container, so it reads region="us-east-1" from aws_defaults.json.
+        # Pre-seed the global container so AWSClient resolves the correct region.
+        get_container().register_instance(ConfigurationManager, ConfigurationManager(config_dict=app_config))
+        os.environ["AWS_DEFAULT_REGION"] = self._config.aws_region
+        async with orb(app_config=app_config) as sdk:
             # setup_logger is called after the ORB context is entered because ORB reconfigures
             # the root logger during __aenter__, which would otherwise suppress scaler log output.
             setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
@@ -414,11 +426,11 @@ set +e
         # --max-task-concurrency is not passed: scaler_worker_manager defaults to cpu_count - 1 workers,
         # where cpu_count is determined by the machine type the user configured in the ORB template.
         backend_prefix = f"SCALER_NETWORK_BACKEND={self._config.network_backend.name} "
-        script += f"""INSTANCE_ID=$(ec2-metadata --instance-id --quiet)
-{backend_prefix}nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} \\
+        wm_id = shlex.quote(worker_manager_config.worker_manager_id)
+        script += f"""{backend_prefix}nohup scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} \\
     --mode fixed \\
     --worker-type ORB \\
-    --worker-manager-id "${{INSTANCE_ID}}" \\
+    --worker-manager-id {wm_id} \\
     --per-worker-task-queue-size {worker_config.per_worker_task_queue_size} \\
     --heartbeat-interval-seconds {worker_config.heartbeat_interval_seconds} \\
     --task-timeout-seconds {worker_config.task_timeout_seconds} \\

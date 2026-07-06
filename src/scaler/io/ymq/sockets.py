@@ -16,11 +16,13 @@ class BinderSocket:
     def identity(self) -> str:
         return self._base.identity
 
-    async def bind_to(self, address: str) -> _ymq.Address:
-        return await call_async(self._base.bind_to, address)
+    async def bind_to(self, address: str, tls_config: Optional[_ymq.TLSConfig] = None) -> _ymq.Address:
+        return await call_async(self._base.bind_to, address, tls_config)
 
-    def bind_to_sync(self, address: str, /, timeout: Optional[float] = None) -> _ymq.Address:
-        return call_sync(self._base.bind_to, address, timeout=timeout)
+    def bind_to_sync(
+        self, address: str, tls_config: Optional[_ymq.TLSConfig] = None, /, timeout: Optional[float] = None
+    ) -> _ymq.Address:
+        return call_sync(self._base.bind_to, address, tls_config, timeout=timeout)
 
     async def send_message(self, remote_identity: str, message_payload: _ymq.Bytes) -> None:
         await call_async(self._base.send_message, remote_identity, message_payload)
@@ -61,6 +63,7 @@ class ConnectorSocket:
         address: str,
         max_retry_times: int = _ymq.DEFAULT_MAX_RETRY_TIMES,
         init_retry_delay: int = _ymq.DEFAULT_INIT_RETRY_DELAY,
+        tls_config: Optional[_ymq.TLSConfig] = None,
     ) -> "ConnectorSocket":
         base_socket: Optional[_ymq.ConnectorSocket] = None
 
@@ -68,7 +71,7 @@ class ConnectorSocket:
             nonlocal base_socket
             base_socket = _ymq.ConnectorSocket.connect(callback, *args, **kwargs)
 
-        call_sync(create, context, identity, address, max_retry_times, init_retry_delay)
+        call_sync(create, context, identity, address, max_retry_times, init_retry_delay, tls_config)
         assert base_socket is not None
 
         return ConnectorSocket(base_socket)
@@ -80,6 +83,7 @@ class ConnectorSocket:
         address: str,
         max_retry_times: int = _ymq.DEFAULT_MAX_RETRY_TIMES,
         init_retry_delay: int = _ymq.DEFAULT_INIT_RETRY_DELAY,
+        tls_config: Optional[_ymq.TLSConfig] = None,
     ) -> "ConnectorSocket":
         base_socket: Optional[_ymq.ConnectorSocket] = None
 
@@ -87,20 +91,22 @@ class ConnectorSocket:
             nonlocal base_socket
             base_socket = _ymq.ConnectorSocket.connect(callback, *args, **kwargs)
 
-        await call_async(create, context, identity, address, max_retry_times, init_retry_delay)
+        await call_async(create, context, identity, address, max_retry_times, init_retry_delay, tls_config)
         assert base_socket is not None
 
         return ConnectorSocket(base_socket)
 
     @staticmethod
-    def bind(context: _ymq.IOContext, identity: str, address: str) -> "ConnectorSocket":
+    def bind(
+        context: _ymq.IOContext, identity: str, address: str, tls_config: Optional[_ymq.TLSConfig] = None
+    ) -> "ConnectorSocket":
         base_socket: Optional[_ymq.ConnectorSocket] = None
 
         def create(callback, *args, **kwargs):
             nonlocal base_socket
             base_socket = _ymq.ConnectorSocket.bind(callback, *args, **kwargs)
 
-        call_sync(create, context, identity, address)
+        call_sync(create, context, identity, address, tls_config)
         assert base_socket is not None
 
         return ConnectorSocket(base_socket)

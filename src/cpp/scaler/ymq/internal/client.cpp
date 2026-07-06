@@ -11,6 +11,10 @@ Client::Client(scaler::wrapper::uv::TCPSocket socket) noexcept: _socket(std::mov
 {
 }
 
+Client::Client(scaler::wrapper::openssl::SecureSocket socket) noexcept: _socket(std::move(socket))
+{
+}
+
 Client::Client(scaler::wrapper::uv::Pipe pipe) noexcept: _socket(std::move(pipe))
 {
 }
@@ -24,6 +28,11 @@ bool Client::isTCP() const noexcept
     return std::holds_alternative<scaler::wrapper::uv::TCPSocket>(_socket);
 }
 
+bool Client::isSecure() const noexcept
+{
+    return std::holds_alternative<scaler::wrapper::openssl::SecureSocket>(_socket);
+}
+
 bool Client::isWebSocket() const noexcept
 {
     return std::holds_alternative<WebSocketStream>(_socket);
@@ -34,6 +43,10 @@ std::expected<void, scaler::wrapper::uv::Error> Client::write(
 {
     if (auto* tcp = std::get_if<scaler::wrapper::uv::TCPSocket>(&_socket)) {
         if (auto result = tcp->write(buffers, std::move(callback)); !result) {
+            return std::unexpected(result.error());
+        }
+    } else if (auto* tls = std::get_if<scaler::wrapper::openssl::SecureSocket>(&_socket)) {
+        if (auto result = tls->write(buffers, std::move(callback)); !result) {
             return std::unexpected(result.error());
         }
     } else if (auto* pipe = std::get_if<scaler::wrapper::uv::Pipe>(&_socket)) {
@@ -55,6 +68,8 @@ std::expected<void, scaler::wrapper::uv::Error> Client::readStart(scaler::wrappe
 {
     if (auto* tcp = std::get_if<scaler::wrapper::uv::TCPSocket>(&_socket)) {
         return tcp->readStart(std::move(callback));
+    } else if (auto* tls = std::get_if<scaler::wrapper::openssl::SecureSocket>(&_socket)) {
+        return tls->readStart(std::move(callback));
     } else if (auto* pipe = std::get_if<scaler::wrapper::uv::Pipe>(&_socket)) {
         return pipe->readStart(std::move(callback));
     } else if (auto* ws = std::get_if<WebSocketStream>(&_socket)) {
@@ -68,6 +83,8 @@ void Client::readStop() noexcept
 {
     if (auto* tcp = std::get_if<scaler::wrapper::uv::TCPSocket>(&_socket)) {
         tcp->readStop();
+    } else if (auto* tls = std::get_if<scaler::wrapper::openssl::SecureSocket>(&_socket)) {
+        tls->readStop();
     } else if (auto* pipe = std::get_if<scaler::wrapper::uv::Pipe>(&_socket)) {
         pipe->readStop();
     } else if (auto* ws = std::get_if<WebSocketStream>(&_socket)) {
@@ -82,6 +99,9 @@ std::expected<void, scaler::wrapper::uv::Error> Client::setNoDelay(bool enable) 
     if (auto* tcp = std::get_if<scaler::wrapper::uv::TCPSocket>(&_socket)) {
         return tcp->nodelay(enable);
     }
+    if (auto* tls = std::get_if<scaler::wrapper::openssl::SecureSocket>(&_socket)) {
+        return tls->nodelay(enable);
+    }
     // WebSocket is TCP-backed but TCP_NODELAY is already set during connection setup.
     // IPC does not support TCP_NODELAY.
     return {};
@@ -92,6 +112,10 @@ std::expected<void, scaler::wrapper::uv::Error> Client::shutdown(
 {
     if (auto* tcp = std::get_if<scaler::wrapper::uv::TCPSocket>(&_socket)) {
         if (auto result = tcp->shutdown(std::move(callback)); !result) {
+            return std::unexpected(result.error());
+        }
+    } else if (auto* tls = std::get_if<scaler::wrapper::openssl::SecureSocket>(&_socket)) {
+        if (auto result = tls->shutdown(std::move(callback)); !result) {
             return std::unexpected(result.error());
         }
     } else if (auto* pipe = std::get_if<scaler::wrapper::uv::Pipe>(&_socket)) {
@@ -114,10 +138,17 @@ std::expected<void, scaler::wrapper::uv::Error> Client::closeReset() noexcept
     if (auto* tcp = std::get_if<scaler::wrapper::uv::TCPSocket>(&_socket)) {
         return tcp->closeReset();
     }
+    if (auto* tls = std::get_if<scaler::wrapper::openssl::SecureSocket>(&_socket)) {
+        return tls->closeReset();
+    }
     if (auto* ws = std::get_if<WebSocketStream>(&_socket)) {
         return ws->closeReset();
     }
-    assert(false && "closeReset() is only supported for TCP-based sockets");
+    if ([[maybe_unused]] auto* pipe = std::get_if<scaler::wrapper::uv::Pipe>(&_socket)) {
+        // IPC don't support RST-style close.
+        return std::unexpected(scaler::wrapper::uv::Error {UV_ENOTSUP});
+    }
+
     std::unreachable();
 }
 

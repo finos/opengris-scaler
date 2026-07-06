@@ -61,10 +61,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p docs/source/_static/wasm
-          # Only stage the emscripten_4_0_9 ABI wheel; the pyemscripten copy
-          # uploaded as part of the same artifact has the wrong ABI tag for
-          # micropip and would shadow the right wheel in the lite kernel.
-          cp dist_wasm/opengris_scaler-*emscripten_4_0_9*wasm32.whl docs/source/_static/wasm/
+          # pyodide-build emits a single PEP 783 pyemscripten wheel (Pyodide 314);
+          # the lite kernel's micropip installs it directly. Matched by the wasm32
+          # suffix so no edit is needed on a future Pyodide/ABI bump.
+          cp dist_wasm/opengris_scaler-*wasm32.whl docs/source/_static/wasm/
           python -m pip download --quiet --no-deps --dest docs/source/_static/wasm/ "cloudpickle" "tblib>=3.2.0" "opengris-parfun" "pargraph" "bidict" "pydot"
           for stub in psutil loky; do
             python -m pip wheel --quiet --no-deps \

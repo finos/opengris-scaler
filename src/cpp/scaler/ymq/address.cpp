@@ -1,15 +1,19 @@
 #include "scaler/ymq/address.h"
 
+#include <array>
 #include <cassert>
 #include <charconv>
 #include <utility>
+
+#include "scaler/wrapper/uv/error.h"
 
 namespace scaler {
 namespace ymq {
 
 namespace details {
 
-std::expected<Address, Error> fromTCPString(std::string_view addrPart) noexcept
+// Parse a "ip:port" address.
+std::expected<Address::AddressValue, Error> fromTCPString(std::string_view addrPart) noexcept
 {
     const size_t colonPos = addrPart.rfind(':');
     if (colonPos == std::string_view::npos) {
@@ -29,20 +33,25 @@ std::expected<Address, Error> fromTCPString(std::string_view addrPart) noexcept
     // Try IPv4 first
     auto socketAddress = scaler::wrapper::uv::SocketAddress::IPv4(ip, port);
     if (socketAddress.has_value()) {
-        return Address(std::move(*socketAddress));
+        return *socketAddress;
     }
 
     // Try IPv6
     socketAddress = scaler::wrapper::uv::SocketAddress::IPv6(ip, port);
     if (socketAddress.has_value()) {
-        return Address(std::move(*socketAddress));
+        return *socketAddress;
     }
 
     return std::unexpected {Error {Error::ErrorCode::InvalidAddressFormat, "Failed to parse IP address"}};
 }
 
-// Parse ws://host:port/path or wss://host:port/path.
-std::expected<Address, Error> fromWSString(std::string_view addrPart, bool secure) noexcept
+std::expected<Address::AddressValue, Error> fromIPCString(std::string_view addrPart) noexcept
+{
+    return {std::string {addrPart}};
+}
+
+// Parse host:port/path address.
+std::expected<Address::AddressValue, Error> fromWSString(std::string_view addrPart) noexcept
 {
     // Split authority (host:port) from path
     const size_t slashPos            = addrPart.find('/');
@@ -77,24 +86,22 @@ std::expected<Address, Error> fromWSString(std::string_view addrPart, bool secur
             Error {Error::ErrorCode::InvalidAddressFormat, "Failed to parse WebSocket host as IP address"}};
     }
 
-    WebSocketAddress wsAddr {
+    return WebSocketAddress {
         .tcpAddress = std::move(*socketAddress),
         .host       = host,
         .port       = static_cast<uint16_t>(port),
         .path       = path,
-        .secure     = secure,
     };
-    return Address(std::move(wsAddr));
 }
 
 }  // namespace details
 
-Address::Address(std::variant<scaler::wrapper::uv::SocketAddress, std::string, WebSocketAddress> value) noexcept
-    : _value(std::move(value))
+Address::Address(AddressValue value, bool secure, std::optional<TLSConfig> tlsConfig) noexcept
+    : _value(std::move(value)), _secure(secure), _tlsConfig(std::move(tlsConfig))
 {
 }
 
-const std::variant<scaler::wrapper::uv::SocketAddress, std::string, WebSocketAddress>& Address::value() const noexcept
+const Address::AddressValue& Address::value() const noexcept
 {
     return _value;
 }
@@ -110,6 +117,16 @@ Address::Type Address::type() const noexcept
     } else {
         std::unreachable();
     }
+}
+
+bool Address::secure() const noexcept
+{
+    return _secure;
+}
+
+const std::optional<TLSConfig>& Address::tlsConfig() const noexcept
+{
+    return _tlsConfig;
 }
 
 const scaler::wrapper::uv::SocketAddress& Address::asTCP() const noexcept
@@ -139,38 +156,72 @@ std::expected<std::string, Error> Address::toString() const noexcept
                 return std::unexpected {
                     Error {Error::ErrorCode::InvalidAddressFormat, "Failed to convert TCP address to string"}};
             }
-            return std::string(_tcpPrefix) + tcpAddrStr.value();
+            const std::string_view prefix = _secure ? _tlsPrefix : _tcpPrefix;
+            return std::string(prefix) + tcpAddrStr.value();
         }
         case Type::IPC: return std::string {_ipcPrefix} + asIPC();
         case Type::WebSocket: {
             const auto& ws                = asWebSocket();
-            const std::string_view prefix = ws.secure ? _wssPrefix : _wsPrefix;
+            const std::string_view prefix = _secure ? _wssPrefix : _wsPrefix;
             return std::string(prefix) + ws.host + ":" + std::to_string(ws.port) + ws.path;
         }
         default: std::unreachable();
     };
 }
 
-std::expected<Address, Error> Address::fromString(std::string_view address) noexcept
+std::expected<Address, Error> Address::fromString(std::string_view address, std::optional<TLSConfig> tlsConfig) noexcept
 {
-    if (address.starts_with(_tcpPrefix)) {
-        return details::fromTCPString(address.substr(_tcpPrefix.size()));
-    }
+    using ParseFunction = std::expected<AddressValue, Error> (*)(std::string_view);
 
-    if (address.starts_with(_ipcPrefix)) {
-        return Address(std::string {address.substr(_ipcPrefix.size())});
-    }
+    struct PrefixEntry {
+        std::string_view prefix;
+        ParseFunction parser;
+        bool secure;
+    };
 
-    if (address.starts_with(_wsPrefix)) {
-        return details::fromWSString(address.substr(_wsPrefix.size()), false);
-    }
+    static constexpr std::array<PrefixEntry, 5> prefixParsers {{
+        {_tcpPrefix, details::fromTCPString, false},
+        {_tlsPrefix, details::fromTCPString, true},
+        {_ipcPrefix, details::fromIPCString, false},
+        {_wsPrefix, details::fromWSString, false},
+        {_wssPrefix, details::fromWSString, true},
+    }};
 
-    if (address.starts_with(_wssPrefix)) {
-        return details::fromWSString(address.substr(_wssPrefix.size()), true);
+    for (const PrefixEntry& entry: prefixParsers) {
+        if (address.starts_with(entry.prefix)) {
+            auto result = entry.parser(address.substr(entry.prefix.size()));
+            if (!result.has_value()) {
+                return std::unexpected {result.error()};
+            }
+            return Address(std::move(*result), entry.secure, std::move(tlsConfig));
+        }
     }
 
     return std::unexpected {Error {
-        Error::ErrorCode::InvalidAddressFormat, "Address must start with 'tcp://', 'ipc://', 'ws://', or 'wss://'"}};
+        Error::ErrorCode::InvalidAddressFormat,
+        "Address must start with 'tcp://', 'tls://', 'ipc://', 'ws://', or 'wss://'"}};
+}
+
+std::expected<std::optional<scaler::wrapper::openssl::SSLContext>, Error> Address::getSSLContext() const noexcept
+{
+    if (!_secure) {
+        return std::nullopt;
+    }
+
+    if (_tlsConfig.has_value()) {
+        auto context = _tlsConfig->getSSLContext();
+        if (!context.has_value()) {
+            return std::unexpected {std::move(context.error())};
+        }
+        return std::move(context.value());
+    }
+
+    // No TLS config provided, use default SSL context.
+    auto context = scaler::wrapper::openssl::SSLContext::init();
+    if (!context.has_value()) {
+        return std::unexpected {Error {Error::ErrorCode::SysCallError, "SSLContext::init() failed"}};
+    }
+    return std::move(context.value());
 }
 
 }  // namespace ymq

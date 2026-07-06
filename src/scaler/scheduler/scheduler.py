@@ -49,6 +49,7 @@ class Scheduler:
         self._backend = get_network_backend_from_env(io_threads=config.io_threads)
 
         self._address = config.bind_address
+        self._security_config = config.security
 
         self._binder: AsyncBinder = self._backend.create_async_binder(
             identity=self._identity, callback=self.on_receive_message
@@ -122,7 +123,7 @@ class Scheduler:
         # Scheduler's binder
         assert self._address is not None
 
-        await self._binder.bind(self._address)
+        await self._binder.bind(self._address, security_config=self._security_config)
 
         self._address = self._binder.address
         assert self._address is not None
@@ -132,7 +133,9 @@ class Scheduler:
 
         # Object storage
 
-        await self._connector_storage.connect(self._config_controller.get_config("object_storage_address"))
+        await self._connector_storage.connect(
+            self._config_controller.get_config("object_storage_address"), security_config=self._security_config
+        )
         object_storage_address = self._connector_storage.address
 
         logger.info(f"{self.__class__.__name__}: connected to object storage server {object_storage_address!r}")
@@ -157,7 +160,7 @@ class Scheduler:
 
         monitor_address = self._config_controller.get_config("monitor_address") or default_monitor
 
-        await self._binder_monitor.bind(monitor_address)
+        await self._binder_monitor.bind(monitor_address, security_config=self._security_config)
 
         monitor_address = self._binder_monitor.address
         assert monitor_address is not None

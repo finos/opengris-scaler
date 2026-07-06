@@ -57,7 +57,8 @@ public:
     // Bind to a TCP or IPC address string (e.g. "tcp://127.0.0.1:9000", "ipc://my_socket").
     //
     // Multiple bind calls are allowed: the socket will accept connections on all bound addresses.
-    void bindTo(std::string address, BindCallback onBindCallback) noexcept;
+    void bindTo(
+        std::string address, BindCallback onBindCallback, std::optional<TLSConfig> tlsConfig = std::nullopt) noexcept;
 
     // Send a message to a remote identity.
     void sendMessage(

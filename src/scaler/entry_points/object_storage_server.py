@@ -21,7 +21,13 @@ def main():
 
     try:
         ObjectStorageServer().run(
-            repr(oss_config.bind_address), oss_config.identity, log_level_str, log_format_str, log_paths
+            repr(oss_config.bind_address),
+            oss_config.identity,
+            log_level_str,
+            log_format_str,
+            log_paths,
+            oss_config.security.tls_cert,
+            oss_config.security.tls_key,
         )
     except KeyboardInterrupt:
         sys.exit(0)

@@ -4,5 +4,9 @@ sphinx-substitution-extensions
 sphinx-tabs
 sphinx-copybutton
 nbsphinx
-jupyterlite-sphinx
-jupyterlite-pyodide-kernel
+# Pinned to the Pyodide 314 JupyterLite stack (kernel 0.8.0 -> Pyodide 314 /
+# CPython 3.14). jupyterlite-sphinx 0.22.1 caps jupyterlite-core<0.8, so these
+# MUST be installed with ``--override docs/jupyterlite-overrides.txt`` (see that
+# file); otherwise the resolver conflicts with kernel 0.8.0 (needs core>=0.8).
+jupyterlite-sphinx==0.22.1
+jupyterlite-pyodide-kernel==0.8.1

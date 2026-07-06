@@ -5,6 +5,7 @@ import pathlib
 import uuid
 from typing import Dict, Optional, Tuple
 
+from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import PROFILING_INTERVAL_SECONDS
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io import ymq
@@ -63,6 +64,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         logging_level: str,
         worker_manager_id: bytes,
         deterministic_worker_ids: bool = False,
+        security_config: Optional[SecurityConfig] = None,
     ):
         super().__init__(name="Agent")
 
@@ -74,6 +76,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._capabilities = capabilities
         self._io_threads = io_threads
         self._task_queue_size = task_queue_size
+        self._security_config = security_config
 
         if deterministic_worker_ids:
             self._ident = WorkerID(name.encode())
@@ -149,6 +152,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             capabilities=self._capabilities,
             task_queue_size=self._task_queue_size,
             worker_manager_id=self._worker_manager_id,
+            security_config=self._security_config,
         )
 
         self._profiling_manager = VanillaProfilingManager()
@@ -165,6 +169,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             hard_processor_suspend=self._hard_processor_suspend,
             logging_paths=self._logging_paths,
             logging_level=self._logging_level,
+            security_config=self._security_config,
         )
 
         # register
@@ -237,12 +242,16 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             # never reachable, which surfaces as ConnectorSocketClosedByRemoteEnd once the connector exhausts its
             # retries) is absorbed by the YMQException handler below and shuts the worker down cleanly, instead of
             # escaping __get_loops as an unhandled exception that crashes the worker process.
-            await self._connector_external.connect(self._address, ConnectorRemoteType.Binder)
+            await self._connector_external.connect(
+                self._address, ConnectorRemoteType.Binder, security_config=self._security_config
+            )
             await self._binder_internal.bind(self._address_internal)
 
             if self._object_storage_address is not None:
                 # With a manually set storage address, immediately connect to the object storage server.
-                await self._connector_storage.connect(self._object_storage_address)
+                await self._connector_storage.connect(
+                    self._object_storage_address, security_config=self._security_config
+                )
 
             await asyncio.gather(
                 self._processor_manager.initialize(),
@@ -264,6 +273,12 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         except ymq.YMQException as e:
             if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
                 pass
+            elif e.code == ymq.ErrorCode.SocketStopRequested:
+                # A YMQ socket (e.g. the internal binder) was shut down via `disconnect`/teardown
+                # while a send or recv driven by one of the loops above was still in flight. Like
+                # ConnectorSocketClosedByRemoteEnd, this is an expected teardown condition that is
+                # out of our control: log it, but never let it surface as a crash.
+                logger.info(f"{self.identity!r}: a YMQ socket was shut down during teardown: {e}")
             else:
                 logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
         except (ClientShutdownException, TimeoutError) as e:

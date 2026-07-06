@@ -7,12 +7,15 @@
 #include <variant>
 
 #include "scaler/logging/logging.h"
+#include "scaler/wrapper/openssl/secure_socket.h"
+#include "scaler/wrapper/openssl/ssl_context.h"
 #include "scaler/wrapper/uv/loop.h"
 #include "scaler/wrapper/uv/timer.h"
 #include "scaler/ymq/address.h"
 #include "scaler/ymq/configuration.h"
 #include "scaler/ymq/internal/client.h"
 #include "scaler/ymq/internal/event_loop_thread.h"
+#include "scaler/ymq/utils.h"
 
 namespace scaler {
 namespace ymq {
@@ -25,7 +28,8 @@ class ConnectClient {
 public:
     using ConnectCallback = scaler::utility::MoveOnlyFunction<void(std::expected<Client, scaler::ymq::Error>)>;
 
-    ConnectClient(
+    // Create a client and initiate connection to the address.
+    static std::expected<ConnectClient, scaler::ymq::Error> init(
         scaler::wrapper::uv::Loop& loop,
         Address address,
         ConnectCallback onConnectCallback,
@@ -60,6 +64,8 @@ private:
         // Holds the TCP socket during the WebSocket upgrade phase (after TCP connect, before upgrade done).
         std::optional<scaler::wrapper::uv::TCPSocket> _upgradeSocket {};
 
+        std::optional<scaler::wrapper::openssl::SSLContext> _sslContext;
+
         size_t _maxRetryTimes;
         size_t _retryTimes {0};
         std::chrono::milliseconds _initRetryDelay;
@@ -69,9 +75,12 @@ private:
             scaler::wrapper::uv::Loop& loop,
             Address address,
             ConnectCallback onConnectCallback,
+            std::optional<scaler::wrapper::openssl::SSLContext> sslContext,
             size_t maxRetryTimes,
             std::chrono::milliseconds initRetryDelay) noexcept;
     };
+
+    ConnectClient(std::shared_ptr<State> state) noexcept;
 
     std::shared_ptr<State> _state;
 

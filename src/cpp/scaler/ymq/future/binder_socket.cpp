@@ -16,14 +16,17 @@ const Identity& BinderSocket::identity() const noexcept
     return _socket.identity();
 }
 
-std::future<std::expected<Address, Error>> BinderSocket::bindTo(std::string address)
+std::future<std::expected<Address, Error>> BinderSocket::bindTo(std::string address, std::optional<TLSConfig> tlsConfig)
 {
     std::promise<std::expected<Address, Error>> promise {};
     auto future = promise.get_future();
 
-    _socket.bindTo(std::move(address), [promise = std::move(promise)](std::expected<Address, Error> result) mutable {
-        promise.set_value(std::move(result));
-    });
+    _socket.bindTo(
+        std::move(address),
+        [promise = std::move(promise)](std::expected<Address, Error> result) mutable {
+            promise.set_value(std::move(result));
+        },
+        std::move(tlsConfig));
 
     return future;
 }

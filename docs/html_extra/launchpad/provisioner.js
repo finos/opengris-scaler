@@ -404,7 +404,7 @@ function configFromToml(toml) {
     return base;
   });
 
-  var pyVer = "3.13";
+  var pyVer = "3.14";
   for (var j = 0; j < rawWms.length; j++) {
     if (rawWms[j].python_version) { pyVer = rawWms[j].python_version; break; }
   }
@@ -866,7 +866,22 @@ async function provision(
     onPartialState(partial);
   }
 
-  // 4. Security group
+  // 4. Default VPC
+  {
+    addLog("Checking for default VPC...", "cmd");
+    var vpcCheck = await retrying(addLog, signal, () =>
+      ec2.describeVpcs({ Filters: [{ Name: "isDefault", Values: ["true"] }] }).promise(),
+    );
+    if (vpcCheck.Vpcs.length === 0) {
+      addLog("  → No default VPC found — creating one...", "info");
+      await retrying(addLog, signal, () => ec2.createDefaultVpc({}).promise());
+      addLog("  ✓ Default VPC created", "ok");
+    } else {
+      addLog("  → Default VPC: " + vpcCheck.Vpcs[0].VpcId, "info");
+    }
+  }
+
+  // 5. Security group
   var sgId;
   if (partial.security_group_id) {
     sgId = partial.security_group_id;
@@ -951,7 +966,7 @@ async function provision(
     addLog("  ✓ Security group created: " + sgId, "ok");
   }
 
-  // 5. Launch instance
+  // 6. Launch instance
   var instanceId;
   if (partial.instance_id) {
     instanceId = partial.instance_id;
@@ -1009,7 +1024,7 @@ async function provision(
     addLog("  → Instance launched: " + instanceId, "info");
   }
 
-  // 6. Wait for running state + post-launch network rules
+  // 7. Wait for running state + post-launch network rules
   var publicIp, privateIp, vpcId, subnetId;
   if (partial.public_ip) {
     publicIp = partial.public_ip;
@@ -1101,7 +1116,7 @@ async function provision(
     onPartialState(partial);
   }
 
-  // 7. Build addresses and persist complete state
+  // 8. Build addresses and persist complete state
   var addrSlash = cfg.transport === "ws" ? "/" : "";
   var schedAddr =
     cfg.transport + "://" + publicIp + ":" + cfg.schedulerPort + addrSlash;
@@ -1137,7 +1152,7 @@ async function provision(
   };
   onPartialState(state);
 
-  // 8. Poll for scheduler readiness — temporarily skipped: browsers block ws:// from https pages (mixed content).
+  // 9. Poll for scheduler readiness — temporarily skipped: browsers block ws:// from https pages (mixed content).
   addLog(
     "  ℹ Skipping scheduler connection check (browser security restriction) — assuming ready",
     "warn",

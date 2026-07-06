@@ -19,6 +19,7 @@
 #include "scaler/ymq/pymod/exception.h"
 #include "scaler/ymq/pymod/io_context.h"
 #include "scaler/ymq/pymod/message.h"
+#include "scaler/ymq/pymod/tls_config.h"
 #include "scaler/ymq/pymod/ymq.h"
 
 namespace scaler {
@@ -116,10 +117,15 @@ static PyObject* PyBinderSocket_bind_to(PyBinderSocket* self, PyObject* args, Py
     PyObject* callback    = nullptr;
     const char* address   = nullptr;
     Py_ssize_t addressLen = 0;
-    const char* kwlist[]  = {"callback", "address", nullptr};
+    PyObject* pyTLSConfig = Py_None;
+    const char* kwlist[]  = {"callback", "address", "tls_config", nullptr};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Os#", (char**)kwlist, &callback, &address, &addressLen))
+    if (!PyArg_ParseTupleAndKeywords(
+            args, kwargs, "Os#|O", (char**)kwlist, &callback, &address, &addressLen, &pyTLSConfig)) {
         return nullptr;
+    }
+
+    std::optional<scaler::ymq::TLSConfig> tlsConfig = fromPyTLSConfig(pyTLSConfig);
 
     try {
         self->socket->bindTo(
@@ -143,7 +149,8 @@ static PyObject* PyBinderSocket_bind_to(PyBinderSocket* self, PyObject* args, Py
                 }
 
                 completeCallback(callback, pyAddress);
-            });
+            },
+            std::move(tlsConfig));
     } catch (...) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to bind to address");
         return nullptr;

@@ -4,16 +4,18 @@
 #include <expected>
 #include <future>
 #include <string>
+#include <vector>
 
 #include "scaler/wrapper/uv/callback.h"
 #include "scaler/wrapper/uv/error.h"
 #include "scaler/wrapper/uv/loop.h"
-#include "scaler/wrapper/uv/tcp.h"
 #include "scaler/ymq/binder_socket.h"
 #include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/bytes.h"
+#include "scaler/ymq/internal/connect_client.h"
 #include "scaler/ymq/internal/message_connection.h"
 #include "scaler/ymq/io_context.h"
+#include "tests/cpp/ymq/common/utils.h"
 
 namespace {
 
@@ -28,6 +30,7 @@ public:
     static const scaler::ymq::Identity clientIdentity;
 
     BinderClientPair(
+        const std::string& transport,
         scaler::ymq::internal::MessageConnection::RecvMessageCallback clientOnMessage,
         scaler::ymq::internal::MessageConnection::RemoteDisconnectCallback clientOnDisconnect)
         : _context()
@@ -39,25 +42,28 @@ public:
               [](scaler::ymq::Identity identity) { ASSERT_EQ(identity, binderIdentity); },  // onRemoteIdentity
               std::move(clientOnDisconnect),
               std::move(clientOnMessage))
-        , _clientSocket(UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(_loop)))
     {
         // Bind to an available port
         std::promise<scaler::ymq::Address> bindPromise;
         std::future<scaler::ymq::Address> bindFuture = bindPromise.get_future();
 
         _binder.bindTo(
-            "tcp://127.0.0.1:0",
+            getTransportAddress(transport, 0),
             [promise = std::move(bindPromise)](std::expected<scaler::ymq::Address, scaler::ymq::Error> result) mutable {
                 ASSERT_TRUE(result.has_value());
                 promise.set_value(result.value());
-            });
+            },
+            getTLSConfig(transport));
 
         scaler::ymq::Address boundAddress = bindFuture.get();
 
-        // Connect the client to the binder
-        _clientSocket.connect(boundAddress.asTCP(), [this](std::expected<void, scaler::wrapper::uv::Error>) {
-            _client.connect(scaler::ymq::internal::Client(std::move(_clientSocket)));
-        });
+        // Connect the client to the binder using ConnectClient (transport-agnostic)
+        auto onConnect = [this](std::expected<scaler::ymq::internal::Client, scaler::ymq::Error> result) {
+            ASSERT_TRUE(result.has_value());
+            _client.connect(std::move(result.value()));
+        };
+
+        _connectClient = scaler::ymq::internal::ConnectClient::init(_loop, boundAddress, onConnect).value();
     }
 
     scaler::ymq::BinderSocket& binder()
@@ -78,17 +84,17 @@ private:
     scaler::wrapper::uv::Loop _loop;
     scaler::ymq::BinderSocket _binder;
     scaler::ymq::internal::MessageConnection _client;
-    scaler::wrapper::uv::TCPSocket _clientSocket;
+    std::optional<scaler::ymq::internal::ConnectClient> _connectClient;
 };
 
 const scaler::ymq::Identity BinderClientPair::binderIdentity = "binder-identity";
 const scaler::ymq::Identity BinderClientPair::clientIdentity = "client-identity";
 
-class YMQBinderSocketTest: public ::testing::Test {};
+class YMQBinderSocketTest: public ::testing::TestWithParam<std::string> {};
 
-TEST_F(YMQBinderSocketTest, BindTo)
+TEST_P(YMQBinderSocketTest, BindTo)
 {
-    // Test that a BinderSocket can successfully bind to a TCP address
+    // Test that a BinderSocket can successfully bind to an address
 
     scaler::ymq::IOContext context {};
     scaler::ymq::BinderSocket binder {context, BinderClientPair::binderIdentity};
@@ -97,16 +103,46 @@ TEST_F(YMQBinderSocketTest, BindTo)
 
     std::promise<void> bindCalled {};
 
-    binder.bindTo("tcp://127.0.0.1:0", [&](std::expected<scaler::ymq::Address, scaler::ymq::Error> result) mutable {
-        ASSERT_TRUE(result.has_value());
-        bindCalled.set_value();
-    });
+    binder.bindTo(
+        getTransportAddress(GetParam(), 0),
+        [&](std::expected<scaler::ymq::Address, scaler::ymq::Error> result) mutable {
+            ASSERT_TRUE(result.has_value());
+            bindCalled.set_value();
+        },
+        getTLSConfig(GetParam()));
 
     // Wait for bind to complete
     ASSERT_EQ(bindCalled.get_future().wait_for(std::chrono::seconds {1}), std::future_status::ready);
 }
 
-TEST_F(YMQBinderSocketTest, SendMessage)
+TEST(YMQBinderSocketTLSTest, BindToWithInvalidCertificate)
+{
+    // Test that a TLS credentials failure (e.g. a non-existent certificate file) is propagated back to the bind
+    // callback instead of terminating the process.
+
+    scaler::ymq::IOContext context {};
+    scaler::ymq::BinderSocket binder {context, BinderClientPair::binderIdentity};
+
+    scaler::ymq::TLSConfig invalidTLSConfig {"non_existent_cert.pem", "non_existent_private_key.pem"};
+
+    std::promise<std::expected<scaler::ymq::Address, scaler::ymq::Error>> bindPromise {};
+
+    binder.bindTo(
+        getTransportAddress("tls", 0),
+        [&](std::expected<scaler::ymq::Address, scaler::ymq::Error> result) mutable {
+            bindPromise.set_value(std::move(result));
+        },
+        std::move(invalidTLSConfig));
+
+    std::future<std::expected<scaler::ymq::Address, scaler::ymq::Error>> bindFuture = bindPromise.get_future();
+    ASSERT_EQ(bindFuture.wait_for(std::chrono::seconds {1}), std::future_status::ready);
+
+    std::expected<scaler::ymq::Address, scaler::ymq::Error> result = bindFuture.get();
+    ASSERT_FALSE(result.has_value());
+    ASSERT_EQ(result.error()._errorCode, scaler::ymq::Error::ErrorCode::SysCallError);
+}
+
+TEST_P(YMQBinderSocketTest, SendMessage)
 {
     // Test that messages can be sent before and after a connection is established
 
@@ -119,7 +155,7 @@ TEST_F(YMQBinderSocketTest, SendMessage)
 
     auto onClientDisconnect = [](auto) { FAIL() << "Unexpected disconnect on client"; };
 
-    BinderClientPair connections(std::move(onClientRecvMessage), std::move(onClientDisconnect));
+    BinderClientPair connections(GetParam(), std::move(onClientRecvMessage), std::move(onClientDisconnect));
 
     scaler::ymq::BinderSocket& binder = connections.binder();
     scaler::wrapper::uv::Loop& loop   = connections.loop();
@@ -166,7 +202,7 @@ TEST_F(YMQBinderSocketTest, SendMessage)
     ASSERT_EQ(sendCallbackCalled.get_future().wait_for(std::chrono::seconds {5}), std::future_status::ready);
 }
 
-TEST_F(YMQBinderSocketTest, SendMulticastMessage)
+TEST_P(YMQBinderSocketTest, SendMulticastMessage)
 {
     // Test that the binder can multicast and broadcast messages
 
@@ -180,7 +216,7 @@ TEST_F(YMQBinderSocketTest, SendMulticastMessage)
 
     auto onClientDisconnect = [](auto) { FAIL() << "Unexpected disconnect on client"; };
 
-    BinderClientPair connections(std::move(onClientRecvMessage), std::move(onClientDisconnect));
+    BinderClientPair connections(GetParam(), std::move(onClientRecvMessage), std::move(onClientDisconnect));
 
     scaler::ymq::BinderSocket& binder = connections.binder();
     scaler::wrapper::uv::Loop& loop   = connections.loop();
@@ -219,7 +255,7 @@ TEST_F(YMQBinderSocketTest, SendMulticastMessage)
     }
 }
 
-TEST_F(YMQBinderSocketTest, RecvMessage)
+TEST_P(YMQBinderSocketTest, RecvMessage)
 {
     // Test that the binder can receive messages
 
@@ -227,7 +263,7 @@ TEST_F(YMQBinderSocketTest, RecvMessage)
 
     auto onClientDisconnect = [](auto) { FAIL() << "Unexpected disconnect on client"; };
 
-    BinderClientPair connections(std::move(onClientRecvMessage), std::move(onClientDisconnect));
+    BinderClientPair connections(GetParam(), std::move(onClientRecvMessage), std::move(onClientDisconnect));
 
     scaler::ymq::BinderSocket& binder                = connections.binder();
     scaler::ymq::internal::MessageConnection& client = connections.client();
@@ -286,7 +322,7 @@ TEST_F(YMQBinderSocketTest, RecvMessage)
     ASSERT_EQ(message.payload->asString(), messagePayload);
 }
 
-TEST_F(YMQBinderSocketTest, CloseConnection)
+TEST_P(YMQBinderSocketTest, CloseConnection)
 {
     // Test that the client receives a disconnect event when the binder calls closeConnection()
 
@@ -299,7 +335,7 @@ TEST_F(YMQBinderSocketTest, CloseConnection)
         clientDisconnected = true;
     };
 
-    BinderClientPair connections(std::move(onClientRecvMessage), std::move(onClientDisconnect));
+    BinderClientPair connections(GetParam(), std::move(onClientRecvMessage), std::move(onClientDisconnect));
 
     scaler::ymq::BinderSocket& binder                = connections.binder();
     scaler::ymq::internal::MessageConnection& client = connections.client();
@@ -338,7 +374,7 @@ TEST_F(YMQBinderSocketTest, CloseConnection)
     ASSERT_FALSE(client.connected());
 }
 
-TEST_F(YMQBinderSocketTest, SendToClosedIdentityFailsFast)
+TEST_P(YMQBinderSocketTest, SendToClosedIdentityFailsFast)
 {
     // Regression test: after the binder has terminated a peer connection (either via an
     // explicit closeConnection() or by observing the peer's graceful FIN), a subsequent
@@ -361,7 +397,7 @@ TEST_F(YMQBinderSocketTest, SendToClosedIdentityFailsFast)
         clientDisconnected = true;
     };
 
-    BinderClientPair connections(std::move(onClientRecvMessage), std::move(onClientDisconnect));
+    BinderClientPair connections(GetParam(), std::move(onClientRecvMessage), std::move(onClientDisconnect));
 
     scaler::ymq::BinderSocket& binder                = connections.binder();
     scaler::ymq::internal::MessageConnection& client = connections.client();
@@ -425,16 +461,17 @@ TEST_F(YMQBinderSocketTest, SendToClosedIdentityFailsFast)
     ASSERT_EQ(result.error()._errorCode, scaler::ymq::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
 }
 
-TEST_F(YMQBinderSocketTest, StopRequested)
+TEST_P(YMQBinderSocketTest, StopRequested)
 {
     scaler::ymq::IOContext context {};
     scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
     std::optional<scaler::ymq::BinderSocket> binder =
         scaler::ymq::BinderSocket {context, BinderClientPair::binderIdentity};
 
-    binder->bindTo("tcp://127.0.0.1:0", [](std::expected<scaler::ymq::Address, scaler::ymq::Error> result) {
-        ASSERT_TRUE(result.has_value());
-    });
+    binder->bindTo(
+        getTransportAddress(GetParam(), 0),
+        [](std::expected<scaler::ymq::Address, scaler::ymq::Error> result) { ASSERT_TRUE(result.has_value()); },
+        getTLSConfig(GetParam()));
 
     // Queue a receive call
 
@@ -468,3 +505,9 @@ TEST_F(YMQBinderSocketTest, StopRequested)
     ASSERT_EQ(recvError->_errorCode, scaler::ymq::Error::ErrorCode::SocketStopRequested);
     ASSERT_EQ(sendError->_errorCode, scaler::ymq::Error::ErrorCode::SocketStopRequested);
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    YMQTransport,
+    YMQBinderSocketTest,
+    ::testing::ValuesIn(getTransports()),
+    [](const testing::TestParamInfo<YMQBinderSocketTest::ParamType>& info) { return info.param; });

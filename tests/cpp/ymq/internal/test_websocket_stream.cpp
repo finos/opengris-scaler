@@ -171,18 +171,20 @@ TEST_F(WebSocketStreamTest, ClientServerHandshake)
     // Keep the server-side client alive across the callback boundary.
     std::optional<scaler::ymq::internal::Client> serverClient {};
 
-    scaler::ymq::internal::AcceptServer server = UV_EXIT_ON_ERROR(
-        scaler::ymq::internal::AcceptServer::init(loop, listenAddress, [&](scaler::ymq::internal::Client client) {
-            ASSERT_TRUE(client.isWebSocket());
-            serverClient.emplace(std::move(client));
-            UV_EXIT_ON_ERROR(serverClient->readStart(
-                [&](std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) {
-                    if (!result.has_value())
-                        return;
-                    serverReceived.insert(serverReceived.end(), result->begin(), result->end());
-                    messageReceived = true;
-                }));
-        }));
+    auto onConnection = [&](scaler::ymq::internal::Client client) {
+        ASSERT_TRUE(client.isWebSocket());
+        serverClient.emplace(std::move(client));
+        UV_EXIT_ON_ERROR(
+            serverClient->readStart([&](std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) {
+                if (!result.has_value())
+                    return;
+                serverReceived.insert(serverReceived.end(), result->begin(), result->end());
+                messageReceived = true;
+            }));
+    };
+
+    scaler::ymq::internal::AcceptServer server =
+        scaler::ymq::internal::AcceptServer::init(loop, listenAddress, onConnection).value();
 
     const scaler::ymq::Address boundAddress = server.address();
     ASSERT_EQ(boundAddress.type(), scaler::ymq::Address::Type::WebSocket);
@@ -192,16 +194,18 @@ TEST_F(WebSocketStreamTest, ClientServerHandshake)
     std::optional<scaler::ymq::internal::Client> clientClient {};
     const std::vector<uint8_t> msg {'H', 'e', 'l', 'l', 'o'};
 
-    scaler::ymq::internal::ConnectClient connector(
-        loop, boundAddress, [&](std::expected<scaler::ymq::internal::Client, scaler::ymq::Error> result) {
-            ASSERT_TRUE(result.has_value());
-            ASSERT_TRUE(result->isWebSocket());
-            clientConnected = true;
+    auto onConnect = [&](std::expected<scaler::ymq::internal::Client, scaler::ymq::Error> result) {
+        ASSERT_TRUE(result.has_value());
+        ASSERT_TRUE(result->isWebSocket());
+        clientConnected = true;
 
-            clientClient.emplace(std::move(*result));
-            const std::span<const uint8_t> msgSpan(msg.data(), msg.size());
-            UV_EXIT_ON_ERROR(clientClient->write(std::span<const std::span<const uint8_t>>(&msgSpan, 1), [](auto) {}));
-        });
+        clientClient.emplace(std::move(*result));
+        const std::span<const uint8_t> msgSpan(msg.data(), msg.size());
+        UV_EXIT_ON_ERROR(clientClient->write(std::span<const std::span<const uint8_t>>(&msgSpan, 1), [](auto) {}));
+    };
+
+    scaler::ymq::internal::ConnectClient connector =
+        scaler::ymq::internal::ConnectClient::init(loop, boundAddress, onConnect).value();
 
     runUntil(loop, messageReceived);
 

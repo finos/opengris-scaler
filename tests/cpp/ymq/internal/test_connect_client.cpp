@@ -41,8 +41,9 @@ TEST_F(YMQConnectClientTest, ConnectClient)
     // Get the actual bound address (since we used port 0)
     scaler::ymq::Address connectAddress {UV_EXIT_ON_ERROR(server.getSockName())};
 
-    scaler::ymq::internal::ConnectClient connectClient(
-        loop, connectAddress, onConnectCallback, maxRetryTimes, initRetryDelay);
+    auto connectClient = scaler::ymq::internal::ConnectClient::init(
+                             loop, connectAddress, onConnectCallback, maxRetryTimes, initRetryDelay)
+                             .value();
 
     while (!callbackCalled) {
         loop.run(UV_RUN_ONCE);
@@ -69,7 +70,9 @@ TEST_F(YMQConnectClientTest, ConnectClientFailure)
         callbackCalled = true;
     };
 
-    scaler::ymq::internal::ConnectClient connectClient(loop, address, onConnectCallback, maxRetryTimes, initRetryDelay);
+    auto connectClient =
+        scaler::ymq::internal::ConnectClient::init(loop, address, onConnectCallback, maxRetryTimes, initRetryDelay)
+            .value();
 
     loop.run();
 
@@ -96,7 +99,9 @@ TEST_F(YMQConnectClientTest, ConnectClientDisconnect)
         callbackCalled = true;
     };
 
-    scaler::ymq::internal::ConnectClient connectClient(loop, address, onConnectCallback, maxRetryTimes, initRetryDelay);
+    auto connectClient =
+        scaler::ymq::internal::ConnectClient::init(loop, address, onConnectCallback, maxRetryTimes, initRetryDelay)
+            .value();
 
     // Set up a timer to disconnect after a short delay
     scaler::wrapper::uv::Timer disconnectTimer = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Timer::init(loop));

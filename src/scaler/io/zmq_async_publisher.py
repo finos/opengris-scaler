@@ -3,8 +3,10 @@ from typing import Optional
 import zmq
 import zmq.asyncio
 
+from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncPublisher
+from scaler.io.network_backends import ZMQNetworkBackend
 from scaler.io.utility import serialize
 from scaler.protocol.capnp import BaseMessage
 
@@ -16,8 +18,10 @@ class ZMQAsyncPublisher(AsyncPublisher):
         self._address: Optional[AddressConfig] = None
         self._socket: Optional[zmq.asyncio.Socket] = None
 
-    async def bind(self, address: AddressConfig) -> None:
+    async def bind(self, address: AddressConfig, security_config: Optional[SecurityConfig] = None) -> None:
         assert self._socket is None
+
+        ZMQNetworkBackend.raise_if_unsupported(address, security_config)
 
         self._socket = self._zmq_context.socket(zmq.PUB)
         assert self._socket is not None

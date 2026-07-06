@@ -15,7 +15,7 @@ runs:
       with:
         path: |
           thirdparties/compiled
-        key: compiled-libraries-${{ inputs.os }}-${{ hashFiles('scripts/library_tool.*') }}
+        key: compiled-libraries-v3-${{ inputs.os }}-${{ hashFiles('scripts/library_tool.*') }}
 
     - name: Compile Libraries (Linux/macOS)
       shell: bash

@@ -6,8 +6,10 @@ import zmq
 import zmq.asyncio
 from zmq import Frame
 
+from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncBinder
+from scaler.io.network_backends import ZMQNetworkBackend
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.capnp import BaseMessage, BinderStatus
 
@@ -38,7 +40,9 @@ class ZMQAsyncBinder(AsyncBinder):
 
         self._socket.close(linger=0)
 
-    async def bind(self, address: AddressConfig) -> None:
+    async def bind(self, address: AddressConfig, security_config: Optional[SecurityConfig] = None) -> None:
+        ZMQNetworkBackend.raise_if_unsupported(address, security_config)
+
         self.__set_socket_options()
         self._socket.bind(repr(address))
 

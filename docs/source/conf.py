@@ -80,6 +80,7 @@ html_theme_options = {
         {"title": "Release Notes", "url": "release_notes"},
         {"title": "Example Gallery", "url": "gallery/index"},
         {"title": "Launchpad", "url": "launchpad/", "resource": True},
+        {"title": "GitHub Repository", "url": "https://github.com/finos/opengris-scaler"},
     ]
 }
 
@@ -135,7 +136,7 @@ def _regen_jupyterlite_config():
 
     Runs at conf.py import time, before jupyterlite-sphinx reads the config.
     The file is gitignored; the wheel filenames are versioned (e.g.
-    ``opengris_scaler-2.3.0-cp313-cp313-emscripten_4_0_9_wasm32.whl``) so the
+    ``opengris_scaler-2.5.0-cp314-cp314-pyemscripten_2026_0_wasm32.whl``) so the
     config has to be derived from whatever is on disk at build time.
     """
     import sys as _sys
@@ -181,32 +182,9 @@ nbsphinx_prolog = (
 ) % (nbsphinx_browser_notebooks,)
 
 
-# -- Auto-install opengris-scaler in the JupyterLite kernel ------------------
-# After ``jupyter lite build`` finishes (which jupyterlite-sphinx triggers
-# during ``make html``), patch the kernel boot bundle so ``import scaler``
-# Just Works in browser notebooks without a visible install cell. See
-# scripts/patch_jupyterlite_kernel.py for the full rationale.
-def _patch_jupyterlite_kernel(app, exception):
-    if exception is not None:
-        return
-    if app.builder.name != "html":
-        return
-
-    import sys as _sys
-    from pathlib import Path as _Path
-
-    repo_root = _Path(app.srcdir).resolve().parent.parent
-    lite_dir = _Path(app.outdir) / "lite"
-    if not lite_dir.is_dir():
-        return
-
-    _sys.path.insert(0, str(repo_root / "scripts"))
-    try:
-        import patch_jupyterlite_kernel as _patcher
-    finally:
-        _sys.path.pop(0)
-    _patcher.patch_tree(lite_dir)
-
-
-def setup(app):
-    app.connect("build-finished", _patch_jupyterlite_kernel)
+# NOTE: the in-browser Scaler client is installed by a ``%pip install
+# opengris-scaler`` setup cell at the top of each shipped gallery notebook
+# (resolved from the local JupyterLite wheel index built above). The previous
+# kernel-bootstrap auto-install patch was removed: jupyterlite-pyodide-kernel
+# 0.8.x runs bootstrap installs in a context that does not persist to the cell
+# session, so it silently failed there.

@@ -666,6 +666,7 @@ class WebUIApp:
             address=self._config.monitor_address,
             callback=self._on_monitor_message,
             timeout=None,
+            security_config=self._config.security,
         )
         self._subscriber.daemon = True
         self._subscriber.start()

@@ -66,37 +66,31 @@ const Identity& BinderSocket::identity() const noexcept
     return _state->_identity;
 }
 
-void BinderSocket::bindTo(std::string address, BindCallback onBindCallback) noexcept
+void BinderSocket::bindTo(std::string address, BindCallback onBindCallback, std::optional<TLSConfig> tlsConfig) noexcept
 {
-    _state->_thread.executeThreadSafe(
-        [state = _state, address = std::move(address), callback = std::move(onBindCallback)]() mutable {
-            auto parsedAddress = Address::fromString(address);
-            if (!parsedAddress.has_value()) {
-                callback(std::unexpected(parsedAddress.error()));
-                return;
-            }
+    _state->_thread.executeThreadSafe([state     = _state,
+                                       address   = std::move(address),
+                                       callback  = std::move(onBindCallback),
+                                       tlsConfig = std::move(tlsConfig)]() mutable {
+        auto parsedAddress = Address::fromString(address, std::move(tlsConfig));
+        if (!parsedAddress.has_value()) {
+            callback(std::unexpected(parsedAddress.error()));
+            return;
+        }
 
-            auto server = internal::AcceptServer::init(
-                state->_thread.loop(), parsedAddress.value(), std::bind_front(&BinderSocket::onClientConnect, state));
-            if (!server.has_value()) {
-                callback(
-                    std::unexpected {Error {
-                        Error::ErrorCode::SysCallError,
-                        "Originated from",
-                        "AcceptServer::init",
-                        "Error code",
-                        server.error().name(),
-                        server.error().message(),
-                    }});
-                return;
-            }
+        auto server = internal::AcceptServer::init(
+            state->_thread.loop(), parsedAddress.value(), std::bind_front(&BinderSocket::onClientConnect, state));
+        if (!server.has_value()) {
+            callback(std::unexpected {std::move(server.error())});
+            return;
+        }
 
-            state->_servers.push_back(std::move(server.value()));
+        state->_servers.push_back(std::move(server.value()));
 
-            // Get the actual bound address (useful when binding to port 0)
-            Address boundAddress = state->_servers.back().address();
-            callback(boundAddress);
-        });
+        // Get the actual bound address (useful when binding to port 0)
+        Address boundAddress = state->_servers.back().address();
+        callback(boundAddress);
+    });
 }
 
 void BinderSocket::sendMessage(
@@ -216,7 +210,7 @@ void BinderSocket::onRemoteIdentity(
 void BinderSocket::onRemoteDisconnect(
     std::shared_ptr<State> state,
     ConnectionID connectionId,
-    internal::MessageConnection::DisconnectReason reason) noexcept
+    [[maybe_unused]] internal::MessageConnection::DisconnectReason reason) noexcept
 {
     auto node = state->_connections.extract(connectionId);
     assert(!node.empty());

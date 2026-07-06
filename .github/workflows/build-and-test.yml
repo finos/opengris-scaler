@@ -104,16 +104,16 @@ jobs:
       - uses: ./.github/actions/setup-env
         with:
           os: ${{ runner.os }}
-          python-version: '3.13'
+          python-version: '3.14'
 
       - name: Stage wasm wheel + vendored deps under docs/source/_static/wasm
         run: |
           set -euo pipefail
           mkdir -p docs/source/_static/wasm
-          # Only stage the emscripten_4_0_9 ABI wheel; the pyemscripten copy
-          # uploaded as part of the same artifact has the wrong ABI tag for
-          # micropip and would shadow the right wheel in the lite kernel.
-          cp dist_wasm/opengris_scaler-*emscripten_4_0_9*wasm32.whl docs/source/_static/wasm/
+          # pyodide-build emits a single PEP 783 pyemscripten wheel (Pyodide 314);
+          # the lite kernel's micropip installs it directly. Matched by the wasm32
+          # suffix so no edit is needed on a future Pyodide/ABI bump.
+          cp dist_wasm/opengris_scaler-*wasm32.whl docs/source/_static/wasm/
           python -m pip download --quiet --no-deps --dest docs/source/_static/wasm/ "cloudpickle" "tblib>=3.2.0" "opengris-parfun" "pargraph" "bidict" "pydot"
           for stub in psutil loky; do
             python -m pip wheel --quiet --no-deps \
@@ -126,8 +126,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends pandoc
-          python -m pip install --upgrade pip
-          python -m pip install -r docs/requirements_docs.txt playwright
+          # --override: jupyterlite-sphinx 0.22.1 caps jupyterlite-core<0.8 while
+          # kernel 0.8.0 (Pyodide 314) needs core>=0.8. See docs/jupyterlite-overrides.txt.
+          uv pip install --system --override docs/jupyterlite-overrides.txt -r docs/requirements_docs.txt playwright
           playwright install --with-deps chromium
 
       - name: Build docs (incl. JupyterLite)

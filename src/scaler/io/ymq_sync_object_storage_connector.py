@@ -1,9 +1,11 @@
 from threading import Lock
 from typing import Iterable, Optional
 
+from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import SyncObjectStorageConnector
 from scaler.io.ymq import Bytes, ConnectorSocket, IOContext, YMQException
+from scaler.io.ymq.utils import to_tls_config
 from scaler.protocol.capnp import ObjectRequestHeader, ObjectResponseHeader
 from scaler.protocol.helpers import to_capnp_object_id
 from scaler.utility.exceptions import ObjectStorageException
@@ -16,7 +18,13 @@ MAX_CHUNK_SIZE = 128 * 1024 * 1024
 class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
     """A synchronous connector that uses YMQ to connect to a Scaler's object storage instance."""
 
-    def __init__(self, context: IOContext, identity: bytes, address: AddressConfig):
+    def __init__(
+        self,
+        context: IOContext,
+        identity: bytes,
+        address: AddressConfig,
+        security_config: Optional[SecurityConfig] = None,
+    ):
         self._ymq_context = context
         self._identity = identity
         self._address = address
@@ -26,7 +34,9 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         self._socket_lock = Lock()
         self._socket: Optional[ConnectorSocket] = None
 
-        self._socket = ConnectorSocket.connect(self._ymq_context, self._identity.decode(), repr(self._address))
+        self._socket = ConnectorSocket.connect(
+            self._ymq_context, self._identity.decode(), repr(self._address), tls_config=to_tls_config(security_config)
+        )
 
     def __del__(self):
         self.destroy()

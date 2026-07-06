@@ -84,10 +84,10 @@ def __logging_config(
     log_paths: typing.List[LogPath], logging_level: str = LoggingLevel.INFO.name, process_name: str = "scaler"
 ):
     logging.addLevelName(logging.INFO, "INFO")
-    logging.addLevelName(logging.WARNING, "WARN")
-    logging.addLevelName(logging.ERROR, "EROR")
-    logging.addLevelName(logging.DEBUG, "DEBG")
-    logging.addLevelName(logging.CRITICAL, "CTIC")
+    logging.addLevelName(logging.WARNING, "WARNING")
+    logging.addLevelName(logging.ERROR, "ERROR")
+    logging.addLevelName(logging.DEBUG, "DEBUG")
+    logging.addLevelName(logging.CRITICAL, "CRITICAL")
 
     config = __generate_log_config(process_name)
     handlers = config["handlers"]
