@@ -149,8 +149,7 @@ void MessageConnection::shutdownClient() noexcept
     };
 
     auto shutdownResult = clientPtr->shutdown(std::move(shutdownCallback));
-    // ENOTCONN on the synchronous return means the socket is already disconnected.
-    if (!shutdownResult.has_value() && shutdownResult.error().code() != UV_ENOTCONN)
+    if (!shutdownResult.has_value() && !isConnectionError(shutdownResult.error()))
         UV_EXIT_ON_ERROR(shutdownResult);
 }
 
