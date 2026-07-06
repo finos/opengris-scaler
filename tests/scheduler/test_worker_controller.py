@@ -5,12 +5,13 @@ from unittest.mock import AsyncMock, MagicMock
 from scaler.protocol.capnp import WorkerDisconnectNotification
 from scaler.scheduler.controllers.mixins import ConfigController, PolicyController, TaskController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
-from scaler.utility.identifiers import WorkerID
+from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
 
 _WORKER_ID = WorkerID(b"worker_aaa")
 _MANAGER_ID = b"manager_bbb"
+_TASK_ID = TaskID(b"0" * 16)
 
 
 class TestVanillaWorkerControllerOnDisconnectNotification(unittest.IsolatedAsyncioTestCase):
@@ -49,3 +50,11 @@ class TestVanillaWorkerControllerOnDisconnectNotification(unittest.IsolatedAsync
         notification = WorkerDisconnectNotification(worker=unknown_id)
         await self.controller.on_disconnect_notification(_WORKER_ID, notification)
         self.assertIn(_WORKER_ID, self.controller._worker_alive_since)
+
+    async def test_on_disconnect_notification_re_dispatches_in_flight_tasks(self) -> None:
+        self.controller._policy_controller.remove_worker.return_value = [_TASK_ID]
+
+        notification = WorkerDisconnectNotification(worker=_WORKER_ID)
+        await self.controller.on_disconnect_notification(_WORKER_ID, notification)
+
+        self.task_controller.on_worker_disconnect.assert_awaited_once_with(_TASK_ID, _WORKER_ID)
