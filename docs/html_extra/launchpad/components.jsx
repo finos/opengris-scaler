@@ -1608,6 +1608,8 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
   const intervalMsRef = useRef(intervalMs);
   const byteOffsetRef = useRef(0);
   const pendingPartialRef = useRef("");
+  const credentialsRef = useRef(credentials);
+  credentialsRef.current = credentials;
   useEffect(() => {
     intervalMsRef.current = intervalMs;
   }, [intervalMs]);
@@ -1617,8 +1619,8 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
       const ssm = new AWS.SSM({
         region,
         credentials: new AWS.Credentials(
-          credentials.accessKeyId,
-          credentials.secretKey,
+          credentialsRef.current.accessKeyId,
+          credentialsRef.current.secretKey,
         ),
       });
 
@@ -1682,7 +1684,7 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
       }
       return false;
     } catch (_) { return false; }
-  }, [instanceId, region, credentials]);
+  }, [instanceId, region]);
 
   const hasCredentials = credentials.accessKeyId && credentials.secretKey;
 
