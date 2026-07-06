@@ -74,6 +74,13 @@ class TestBatchProvisioningControlPlane(unittest.TestCase):
         queue_names = [q["jobQueueName"] for q in self.batch.describe_job_queues()["jobQueues"]]
         self.assertEqual(queue_names.count(first["job_queue_name"]), 1)
 
+        # The compute environment must not be duplicated either. (The job DEFINITION is intentionally
+        # re-registered as a new revision each call -- keep_latest bounds it -- so its count is not asserted.)
+        env_names = [
+            ce["computeEnvironmentName"] for ce in self.batch.describe_compute_environments()["computeEnvironments"]
+        ]
+        self.assertEqual(env_names.count(f"{PREFIX}-compute"), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

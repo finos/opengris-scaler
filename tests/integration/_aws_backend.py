@@ -48,9 +48,13 @@ class ECSNotAvailable(RuntimeError):
 
 
 def is_service_unavailable(exc: Exception) -> bool:
-    """True when a backend reports a service as unimplemented (e.g. community LocalStack -> Pro)."""
-    message = str(exc)
-    return "not yet implemented" in message or "pro feature" in message
+    """True when a backend reports a service as unimplemented or gated behind a paid tier (e.g. a
+    Pro-only service on community LocalStack). Matches the several phrasings LocalStack has used across
+    versions so the ECS/Batch tests skip (not error) regardless of the exact wording."""
+    message = str(exc).lower()
+    return any(
+        phrase in message for phrase in ("not yet implemented", "not yet been emulated", "pro feature", "license plan")
+    )
 
 
 def selected_backend() -> str:

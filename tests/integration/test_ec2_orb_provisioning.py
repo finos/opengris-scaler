@@ -20,16 +20,11 @@ import unittest
 import uuid
 from unittest.mock import MagicMock, patch
 
-from scaler.scheduler.controllers.worker_manager_utilties import build_set_desired_command
 from scaler.utility.logging.utility import setup_logger
 from tests.integration import INTEGRATION_SKIP_REASON, RUN_INTEGRATION_TESTS
 from tests.integration._aws_backend import MockedAWS
-from tests.integration._harness import async_wait_until
+from tests.integration._harness import async_wait_until, desired_requests
 from tests.utility.utility import logging_test_name
-
-
-def _desired_requests(count: int):
-    return list(build_set_desired_command([({}, count)]).setDesiredTaskConcurrencyRequests)
 
 
 # orb-py imports typing.assert_never, which only exists on Python 3.11+, so its SDK cannot load on 3.10.
@@ -141,7 +136,7 @@ class TestORBEC2ProvisioningControlPlane(unittest.IsolatedAsyncioTestCase):
     async def test_scale_up_launches_ec2_instances(self) -> None:
         provisioner = self._make_provisioner(workers_per_instance=1)
 
-        await provisioner.set_desired_task_concurrency(_desired_requests(2))
+        await provisioner.set_desired_task_concurrency(desired_requests(2))
         await async_wait_until(lambda: provisioner.active_unit_count() == 2, message="scale-up to 2 instances")
 
         self.assertEqual(self._running_count(provisioner._units), 2)
@@ -150,14 +145,14 @@ class TestORBEC2ProvisioningControlPlane(unittest.IsolatedAsyncioTestCase):
         # 8 desired workers / 4 workers-per-instance = 2 EC2 instances.
         provisioner = self._make_provisioner(workers_per_instance=4)
 
-        await provisioner.set_desired_task_concurrency(_desired_requests(8))
+        await provisioner.set_desired_task_concurrency(desired_requests(8))
         await async_wait_until(lambda: provisioner.active_unit_count() == 2, message="scale-up to 2 instances")
 
         self.assertEqual(self._running_count(provisioner._units), 2)
 
     async def test_terminate_stops_all_instances(self) -> None:
         provisioner = self._make_provisioner(workers_per_instance=1)
-        await provisioner.set_desired_task_concurrency(_desired_requests(3))
+        await provisioner.set_desired_task_concurrency(desired_requests(3))
         await async_wait_until(lambda: provisioner.active_unit_count() == 3, message="scale-up to 3 instances")
         instance_ids = list(provisioner._units)
         self.assertEqual(self._running_count(instance_ids), 3)

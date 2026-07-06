@@ -1,31 +1,12 @@
 import logging
 import multiprocessing
-import time
 import unittest
-from typing import Callable
 
 # Shared timing bounds for tests that spawn real processes / clusters: one poll granularity and one
 # "wait for a spawned process to terminate" bound, so the process-lifecycle tests do not each
 # hard-code their own. Only reached in full on failure, so the bound errs on the side of patience.
 POLL_INTERVAL_SECONDS = 0.05
 PROCESS_TERMINATION_TIMEOUT_SECONDS = 30
-
-
-def wait_until(
-    predicate: Callable[[], bool],
-    timeout: float = PROCESS_TERMINATION_TIMEOUT_SECONDS,
-    interval: float = POLL_INTERVAL_SECONDS,
-) -> bool:
-    """Poll ``predicate`` until it returns true or ``timeout`` elapses; return the final result.
-
-    Non-raising (returns the last predicate value) so callers can assert on it with a clear message.
-    """
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return True
-        time.sleep(interval)
-    return predicate()
 
 
 def terminate_process(process: multiprocessing.process.BaseProcess) -> None:

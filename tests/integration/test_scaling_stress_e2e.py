@@ -32,29 +32,13 @@ import sys
 import time
 import unittest
 from multiprocessing import get_context
-from typing import Optional
 
 import psutil
 
 from scaler import Client
-from scaler.config.common.logging import LoggingConfig
-from scaler.config.common.worker import WorkerConfig
-from scaler.config.common.worker_manager import WorkerManagerConfig
-from scaler.config.defaults import (
-    DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
-    DEFAULT_HARD_PROCESSOR_SUSPEND,
-    DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
-    DEFAULT_IO_THREADS,
-    DEFAULT_TASK_TIMEOUT_SECONDS,
-    DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
-    DEFAULT_WORKER_DEATH_TIMEOUT,
-)
-from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
-from scaler.config.types.address import AddressConfig
-from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
 from tests.integration import RUN_SCALING_STRESS_TEST, SCALING_STRESS_SKIP_REASON
-from tests.integration._harness import SchedulerHarness
+from tests.integration._harness import SchedulerHarness, run_native_worker_manager
 from tests.utility.utility import logging_test_name, terminate_process
 
 _MAX_WORKERS = int(os.environ.get("SCALING_STRESS_MAX_WORKERS", "8"))
@@ -89,45 +73,6 @@ def _identify_machine(value: int):
     return value, os.environ.get("SCALER_IT_MACHINE_ID", "?"), os.getpid()
 
 
-def _run_native_worker_manager(
-    scheduler_address: str,
-    max_task_concurrency: int,
-    worker_manager_id: str = "wm-scaling-stress",
-    machine_id: Optional[str] = None,
-) -> None:
-    from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
-
-    # Tag this "machine" so tasks can report which manager provisioned the worker that ran them.
-    # Set before the manager spawns workers so the value is inherited by the worker/processor procs.
-    if machine_id is not None:
-        os.environ["SCALER_IT_MACHINE_ID"] = machine_id
-
-    manager = NativeWorkerManager(
-        NativeWorkerManagerConfig(
-            worker_manager_config=WorkerManagerConfig(
-                scheduler_address=AddressConfig.from_string(scheduler_address),
-                worker_manager_id=worker_manager_id,
-                object_storage_address=None,
-                max_task_concurrency=max_task_concurrency,
-            ),
-            worker_config=WorkerConfig(
-                per_worker_capabilities=WorkerCapabilities({}),
-                per_worker_task_queue_size=10,
-                heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
-                task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
-                death_timeout_seconds=DEFAULT_WORKER_DEATH_TIMEOUT,
-                garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
-                trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
-                hard_processor_suspend=DEFAULT_HARD_PROCESSOR_SUSPEND,
-                io_threads=DEFAULT_IO_THREADS,
-                event_loop="builtin",
-            ),
-            logging_config=LoggingConfig(paths=("/dev/stdout",), level="INFO", config_file=None),
-        )
-    )
-    manager.run()
-
-
 @unittest.skipUnless(RUN_SCALING_STRESS_TEST, SCALING_STRESS_SKIP_REASON)
 @unittest.skipIf(
     sys.platform == "win32",
@@ -142,7 +87,7 @@ class TestScalingStressE2E(unittest.TestCase):
 
     def _start_worker_manager(self, max_task_concurrency: int):
         process = get_context("spawn").Process(
-            target=_run_native_worker_manager, args=(self.harness.scheduler_address, max_task_concurrency)
+            target=run_native_worker_manager, args=(self.harness.scheduler_address, max_task_concurrency)
         )
         process.start()
         self.addCleanup(terminate_process, process)
@@ -253,6 +198,8 @@ class TestScalingStressE2E(unittest.TestCase):
 
 _NUM_MACHINES = int(os.environ.get("SCALING_STRESS_MACHINES", "3"))
 _WORKERS_PER_MACHINE = int(os.environ.get("SCALING_STRESS_WORKERS_PER_MACHINE", "2"))
+# Bound for feeding work until newly-started machines have brought up workers and taken some.
+_MULTI_MACHINE_SPREAD_TIMEOUT_SECONDS = 60.0
 
 
 @unittest.skipUnless(RUN_SCALING_STRESS_TEST, SCALING_STRESS_SKIP_REASON)
@@ -272,7 +219,7 @@ class TestMultiManagerScalingE2E(unittest.TestCase):
 
     def _start_machine(self, machine_id: str, max_task_concurrency: int):
         process = get_context("spawn").Process(
-            target=_run_native_worker_manager,
+            target=run_native_worker_manager,
             args=(self.harness.scheduler_address, max_task_concurrency, f"wm-{machine_id}", machine_id),
         )
         process.start()
@@ -284,13 +231,18 @@ class TestMultiManagerScalingE2E(unittest.TestCase):
         for index in range(_NUM_MACHINES):
             self._start_machine(f"machine-{index}", max_task_concurrency=_WORKERS_PER_MACHINE)
 
+        # Keep feeding work (bounded) until at least two machines have taken some: a single map can land
+        # entirely on the first machine to bring up workers, before the others have provisioned theirs.
+        machines: set = set()
+        pids_per_machine: dict = {}
         with Client(self.harness.scheduler_address) as client:
-            results = client.map(_identify_machine, range(_N_TASKS))
+            deadline = time.monotonic() + _MULTI_MACHINE_SPREAD_TIMEOUT_SECONDS
+            while len(machines) < 2 and time.monotonic() < deadline:
+                results = client.map(_identify_machine, range(_N_TASKS))
+                self.assertEqual([value for value, _machine, _pid in results], list(range(_N_TASKS)))
+                machines = {machine for _value, machine, _pid in results if machine != "?"}
+                pids_per_machine = {m: len({pid for _v, mm, pid in results if mm == m}) for m in machines}
 
-        self.assertEqual([value for value, _machine, _pid in results], list(range(_N_TASKS)))
-
-        machines = {machine for _value, machine, _pid in results if machine != "?"}
-        pids_per_machine = {m: len({pid for _v, mm, pid in results if mm == m}) for m in machines}
         print(
             f"multi-manager: {_N_TASKS} tasks ran across machines {sorted(machines)} "
             f"(distinct workers per machine: {pids_per_machine})"
@@ -301,8 +253,6 @@ class TestMultiManagerScalingE2E(unittest.TestCase):
     def test_provisioning_new_machine_adds_capacity(self) -> None:
         """Start one machine, then provision a second machine mid-flight and prove the new machine's
         newly-provisioned workers pick up work."""
-        import time
-
         self._start_machine("machine-0", max_task_concurrency=_WORKERS_PER_MACHINE)
 
         with Client(self.harness.scheduler_address) as client:
@@ -315,7 +265,7 @@ class TestMultiManagerScalingE2E(unittest.TestCase):
 
             # Keep feeding work until the new machine's provisioned workers contribute (bounded).
             saw_new_machine = False
-            deadline = time.monotonic() + 60.0
+            deadline = time.monotonic() + _MULTI_MACHINE_SPREAD_TIMEOUT_SECONDS
             while not saw_new_machine and time.monotonic() < deadline:
                 batch = client.map(_identify_machine, range(_N_TASKS))
                 machines = {m for _v, m, _p in batch if m != "?"}
