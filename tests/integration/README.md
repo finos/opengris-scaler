@@ -77,17 +77,10 @@ DOCKER="sudo docker" ./scripts/run_integration_localstack.sh
 
 Heavier, opt-in end-to-end tests that simulate a small distributed system on one machine. Two shapes:
 
-* **`TestScalingStressE2E`** -- one dynamic worker manager. `test_burst_scales_up_across_many_workers`
-  bursts light `time.sleep` tasks at a scheduler that starts with **zero** workers and asserts it scaled
-  **up** to several real worker processes that ran the work (distinct worker PIDs; on a 4-core box the
-  defaults scale 0 -> ~6). `test_reduced_load_scales_workers_back_down` then covers the **down** path:
-  after the burst, a light concurrency-1 trickle drives the pool back down to a single worker. (A fully
-  idle queue does not re-trigger scaling, so the trickle is what exercises the declarative `stop_units`
-  teardown -- graceful SIGINT on POSIX, hence the Windows skip.) `test_idle_queue_scales_workers_down_to_zero`
-  covers the other end: with no further work the idle pool drains all the way to zero within a couple of
-  seconds (heartbeats keep the scaling policy re-evaluating). Both count only LIVE workers -- the dynamic
-  provisioner SIGINTs stopped workers without reaping them, so they linger as zombie children (a minor
-  product leak worth a follow-up).
+* **`TestScalingStressE2E`** -- one dynamic worker manager, exercising the full scale curve against a
+  scheduler that starts with **zero** workers: a burst of light tasks scales the pool **up** across
+  several real worker processes; a light steady load scales it back **down**; and an idle queue drains
+  it to **zero**.
 * **`TestMultiManagerScalingE2E`** -- multiple worker managers, one per simulated **"machine"** (as a
   `baremetal_native` manager runs inside each provisioned cloud instance), each provisioning its own
   workers on one scheduler. It asserts work spreads across several machines, and that **provisioning a
