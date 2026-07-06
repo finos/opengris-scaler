@@ -7,6 +7,7 @@ unprefixed payloads.
 """
 
 import asyncio
+import concurrent.futures
 import threading
 import time
 import unittest
@@ -53,13 +54,23 @@ class TestSyncSubscriberReceivesPublishedMessages(unittest.TestCase):
             callback=on_message,
         )
 
+        poller_errors: list[Exception] = []
+
+        def assert_no_poller_errors() -> None:
+            if poller_errors:
+                self.fail(f"subscriber polling thread failed: {poller_errors[0]!r}")
+
         def poll_loop() -> None:
-            while True:
-                try:
-                    subscriber.run()
-                    break
-                except TimeoutError:
-                    continue
+            try:
+                while True:
+                    try:
+                        subscriber.run()
+                        break
+                    except (TimeoutError, concurrent.futures.TimeoutError):
+                        continue
+            except Exception as exception:
+                poller_errors.append(exception)
+                received_event.set()
 
         poller = threading.Thread(target=poll_loop, daemon=True)
         poller.start()
@@ -71,6 +82,7 @@ class TestSyncSubscriberReceivesPublishedMessages(unittest.TestCase):
                 loop.run_until_complete(publisher.send(StateBalanceAdvice(workerId=WorkerID(b"worker-a"), taskIds=[])))
                 received_event.wait(timeout=_REPUBLISH_INTERVAL_SECONDS)
 
+            assert_no_poller_errors()
             self.assertTrue(
                 received_event.is_set(), "subscriber did not receive the published message within the timeout"
             )
@@ -83,6 +95,9 @@ class TestSyncSubscriberReceivesPublishedMessages(unittest.TestCase):
             loop.run_until_complete(asyncio.sleep(0))
             loop.close()
             backend.destroy()
+
+        self.assertFalse(poller.is_alive(), "subscriber polling thread did not stop after destroy")
+        assert_no_poller_errors()
 
 
 if __name__ == "__main__":

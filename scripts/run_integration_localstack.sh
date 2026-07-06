@@ -44,13 +44,21 @@ echo "Starting LocalStack (${IMAGE})..."
 ${DOCKER} run -d --name "${CONTAINER_NAME}" -p "${PORT}:4566" "${AUTH_ENV[@]}" "${IMAGE}" >/dev/null
 
 echo "Waiting for LocalStack to become ready..."
+LOCALSTACK_READY=0
 for _ in $(seq 1 60); do
     if curl -sf "${ENDPOINT}/_localstack/health" >/dev/null 2>&1; then
         echo "LocalStack is ready."
+        LOCALSTACK_READY=1
         break
     fi
     sleep 2
 done
+
+if [[ "${LOCALSTACK_READY}" != "1" ]]; then
+    echo "LocalStack did not become ready at ${ENDPOINT} within 120 seconds." >&2
+    ${DOCKER} logs "${CONTAINER_NAME}" >&2 || true
+    exit 1
+fi
 
 export SCALER_E2E_AWS_BACKEND=localstack
 export RUN_INTEGRATION_TESTS=1
