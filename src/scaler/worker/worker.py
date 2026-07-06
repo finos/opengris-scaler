@@ -287,23 +287,24 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
         try:
-            await self._connector_external.send(WorkerDisconnectNotification(worker=self.identity))
-        except ymq.YMQException as e:
-            if e.code != ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
-                raise
+            try:
+                await self._connector_external.send(WorkerDisconnectNotification(worker=self.identity))
+            except ymq.YMQException as e:
+                if e.code != ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
+                    raise
+        finally:
+            self._connector_external.destroy()
+            self._processor_manager.destroy("quit")
+            self._binder_internal.destroy()
+            self._connector_storage.destroy()
 
-        self._connector_external.destroy()
-        self._processor_manager.destroy("quit")
-        self._binder_internal.destroy()
-        self._connector_storage.destroy()
+            if self._address_internal.type == SocketType.ipc and not self._address_internal.host.startswith(
+                "\\\\.\\pipe\\"
+            ):
+                # Windows named pipes have no filesystem entry to remove; only unlink Unix-domain-socket paths.
+                pathlib.Path(self._address_internal.host).unlink(missing_ok=True)
 
-        if self._address_internal.type == SocketType.ipc and not self._address_internal.host.startswith(
-            "\\\\.\\pipe\\"
-        ):
-            # Windows named pipes have no filesystem entry to remove; only unlink Unix-domain-socket paths.
-            pathlib.Path(self._address_internal.host).unlink(missing_ok=True)
-
-        logger.info(f"{self.identity!r}: quit")
+            logger.info(f"{self.identity!r}: quit")
 
     def __register_signal(self):
         install_async_shutdown_handler(self._loop, self.__destroy)

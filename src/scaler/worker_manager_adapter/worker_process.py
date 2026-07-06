@@ -210,12 +210,13 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
         try:
-            await self._connector_external.send(WorkerDisconnectNotification(worker=self.identity))
-        except ymq.YMQException as e:
-            if e.code != ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
-                raise
-
-        logger.info(f"{self.identity!r}: quit")
+            try:
+                await self._connector_external.send(WorkerDisconnectNotification(worker=self.identity))
+            except ymq.YMQException as e:
+                if e.code != ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
+                    raise
+        finally:
+            logger.info(f"{self.identity!r}: quit")
 
     def __register_signal(self) -> None:
         install_async_shutdown_handler(self._loop, self.__destroy)
