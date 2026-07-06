@@ -20,10 +20,10 @@ class TestVanillaWorkerControllerOnDisconnectNotification(unittest.IsolatedAsync
         logging_test_name(self)
 
         config_controller = MagicMock(spec=ConfigController)
-        policy_controller = MagicMock(spec=PolicyController)
-        policy_controller.remove_worker.return_value = []
+        self.policy_controller = MagicMock(spec=PolicyController)
+        self.policy_controller.remove_worker.return_value = []
 
-        self.controller = VanillaWorkerController(config_controller, policy_controller)
+        self.controller = VanillaWorkerController(config_controller, self.policy_controller)
 
         self.binder = AsyncMock()
         self.binder_monitor = AsyncMock()
@@ -52,7 +52,7 @@ class TestVanillaWorkerControllerOnDisconnectNotification(unittest.IsolatedAsync
         self.assertIn(_WORKER_ID, self.controller._worker_alive_since)
 
     async def test_on_disconnect_notification_re_dispatches_in_flight_tasks(self) -> None:
-        self.controller._policy_controller.remove_worker.return_value = [_TASK_ID]
+        self.policy_controller.remove_worker.return_value = [_TASK_ID]
 
         notification = WorkerDisconnectNotification(worker=_WORKER_ID)
         await self.controller.on_disconnect_notification(_WORKER_ID, notification)
