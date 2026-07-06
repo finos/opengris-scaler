@@ -125,7 +125,7 @@ class TestGracefulWorkerShutdown(unittest.TestCase):
         future = self.client.submit(noop_sleep, 5)
         time.sleep(2)  # Let task reach worker A
 
-        # Graceful SIGINT: manager sends SIGTERM to worker → worker sends WDN → scheduler
+        # Graceful SIGINT: manager sends SIGTERM to worker -> worker sends WDN -> scheduler
         # re-queues the task immediately. Without WDN the task would stay assigned to the
         # dead worker until the heartbeat timeout (_HEARTBEAT_TIMEOUT_SECONDS).
         os.kill(proc_a.pid, signal.SIGINT)
