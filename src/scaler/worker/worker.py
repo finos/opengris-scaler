@@ -287,11 +287,10 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
         try:
-            try:
-                await self._connector_external.send(WorkerDisconnectNotification(worker=self.identity))
-            except ymq.YMQException as e:
-                if e.code != ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
-                    raise
+            await self._connector_external.send(WorkerDisconnectNotification(worker=self.identity))
+        except ymq.YMQException as e:
+            if e.code != ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
+                raise
         finally:
             self._connector_external.destroy()
             self._processor_manager.destroy("quit")
