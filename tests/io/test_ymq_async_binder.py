@@ -15,7 +15,7 @@ from scaler.config.types.address import AddressConfig
 from scaler.io.utility import deserialize
 from scaler.io.ymq import ConnectorSocket, IOContext, SocketStopRequestedError
 from scaler.io.ymq_async_binder import YMQAsyncBinder
-from scaler.protocol.capnp import BaseMessage, DisconnectRequest
+from scaler.protocol.capnp import BaseMessage, WorkerDisconnectNotification
 from scaler.utility.identifiers import WorkerID
 
 
@@ -31,8 +31,8 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
         self._received.append((address, message))
 
     @staticmethod
-    def _make_message() -> DisconnectRequest:
-        return DisconnectRequest(worker=WorkerID.generate_worker_id("nobody"))
+    def _make_message() -> WorkerDisconnectNotification:
+        return WorkerDisconnectNotification(worker=WorkerID.generate_worker_id("nobody"))
 
     async def test_send_propagates_socket_stop_requested_when_socket_shut_down(self) -> None:
         """binder.send surfaces SocketStopRequested when its own socket is shut down mid-send.
@@ -63,7 +63,7 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
         ymq_msg = await asyncio.wait_for(connector.recv_message(), timeout=5.0)
         received = deserialize(ymq_msg.payload.data)
 
-        assert isinstance(received, DisconnectRequest)
+        assert isinstance(received, WorkerDisconnectNotification)
         self.assertEqual(received.worker, message.worker)
 
 
