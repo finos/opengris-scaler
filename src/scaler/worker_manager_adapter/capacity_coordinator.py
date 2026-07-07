@@ -108,6 +108,9 @@ class CapacityCoordinator:
                 if delta >= 0:
                     self._scale_down_cooldown.reset()
                 else:
+                    # Anchors to the first scale-down request in the streak; further requests while
+                    # deferred don't extend the window. When it expires, we act on whatever
+                    # desired/delta is current then - not the value that first triggered the cooldown.
                     self._scale_down_cooldown.start_if_not_running()
                     remaining = self._scale_down_cooldown.remaining_seconds()
                     if remaining is not None:
