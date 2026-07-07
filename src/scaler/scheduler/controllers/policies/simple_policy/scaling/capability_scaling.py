@@ -3,6 +3,7 @@ from math import ceil
 from typing import Dict, FrozenSet, List, Tuple
 
 from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.scheduler.controllers.policies.library.scale_down_cooldown import ScaleDownCooldown
 from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.controllers.worker_manager_utilties import build_scaling_manager_status, build_set_desired_command
@@ -17,10 +18,16 @@ class CapabilityScalingPolicy(ScalingPolicy):
     For each distinct capability set observed in pending tasks, it computes a desired worker
     count using a task-to-worker ratio threshold. The desired counts are sent declaratively
     via setDesiredTaskConcurrency; the worker manager is responsible for making it so.
+
+    Scale-down is gated by a per-worker-manager, per-capability-set cooldown: a capability
+    set whose desired count would drop (including dropping out of the output entirely
+    because it has no more pending tasks) is held at its last value for a cooldown window.
+    See ScaleDownCooldown.
     """
 
     def __init__(self):
         self._upper_task_ratio = 5
+        self._cooldowns: Dict[bytes, ScaleDownCooldown] = {}
 
     def get_scaling_commands(
         self,
@@ -31,6 +38,8 @@ class CapabilityScalingPolicy(ScalingPolicy):
     ) -> List[WorkerManagerCommand]:
         tasks_by_capability = self._group_tasks_by_capability(information_snapshot)
         desired_per_capset = self._compute_desired_per_capset(tasks_by_capability, worker_manager_heartbeat)
+        cooldown = self._cooldowns.setdefault(worker_manager_heartbeat.workerManagerID, ScaleDownCooldown())
+        desired_per_capset = cooldown.reconcile(desired_per_capset)
         return [build_set_desired_command(desired_per_capset)]
 
     def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:

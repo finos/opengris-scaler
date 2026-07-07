@@ -3,6 +3,7 @@ from math import ceil
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
 from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.scheduler.controllers.policies.library.scale_down_cooldown import ScaleDownCooldown
 from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.controllers.policies.waterfall_v1.scaling.types import WaterfallRule
@@ -24,6 +25,11 @@ class WaterfallScalingPolicy(ScalingPolicy):
 
     Capability-aware allocation: only managers whose advertised capabilities are a superset
     of a task capset participate in that capset's allocation chain.
+
+    Scale-down is gated by a per-worker-manager cooldown (see ScaleDownCooldown): the generic
+    entry is held against the manager's own real connected worker count, and capability-specific
+    entries are held against their own last-emitted values, including when a capset drops out
+    of the output entirely because it has no more pending tasks.
     """
 
     def __init__(self, rules: List[WaterfallRule]):
@@ -31,6 +37,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         self._rule_by_manager_id: Dict[bytes, WaterfallRule] = {r.worker_manager_id: r for r in self._rules}
         # Scale up when tasks/workers > 10 (tasks significantly outnumber workers, overloaded)
         self._upper_task_ratio = 10
+        self._cooldowns: Dict[bytes, ScaleDownCooldown] = {}
 
     def get_scaling_commands(
         self,
@@ -47,7 +54,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
             return []
 
         desired_per_capset = self._compute_desired_per_capset(
-            rule, information_snapshot, worker_manager_heartbeat, worker_manager_snapshots
+            rule, information_snapshot, worker_manager_heartbeat, managed_worker_ids, worker_manager_snapshots
         )
         return [build_set_desired_command(desired_per_capset)]
 
@@ -69,6 +76,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         current_rule: WaterfallRule,
         information_snapshot: InformationSnapshot,
         current_heartbeat: WorkerManagerHeartbeat,
+        managed_worker_ids: List[WorkerID],
         snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[Tuple[Dict[str, int], int]]:
         """Compute desired worker count per capability set for this manager only.
@@ -79,19 +87,22 @@ class WaterfallScalingPolicy(ScalingPolicy):
         Capability-specific requests are emitted only for capsets this manager owns: the
         highest-priority manager whose advertised capabilities are a superset of the capset.
         """
-        result: List[Tuple[Dict[str, int], int]] = []
+        cooldown = self._cooldowns.setdefault(current_rule.worker_manager_id, ScaleDownCooldown())
 
         generic_desired = self._allocate_generic_desired(
             current_rule, information_snapshot, current_heartbeat, snapshots
         )
-        result.append(({}, generic_desired))
+        generic_desired = cooldown.apply(generic_desired, len(managed_worker_ids))
+        result: List[Tuple[Dict[str, int], int]] = [({}, generic_desired)]
 
+        capset_entries: List[Tuple[Dict[str, int], int]] = []
         for required_keys, capability_dict in self._tasks_by_capability(information_snapshot).items():
             cap_desired = self._allocate_capset_desired(
                 current_rule, required_keys, information_snapshot, current_heartbeat, snapshots
             )
             if cap_desired > 0:
-                result.append((capability_dict, cap_desired))
+                capset_entries.append((capability_dict, cap_desired))
+        result.extend(cooldown.reconcile(capset_entries))
 
         return result
 
