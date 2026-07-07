@@ -64,6 +64,8 @@ class CapacityCoordinator:
         so callers that re-assert the same desired count on a fixed interval (e.g. every
         heartbeat) will trigger a retry once the cooldown window has elapsed.
         """
+        # An unchanged count is only a true no-op if nothing is pending: while a scale-down is
+        # deferred, we must keep signalling or it would never be retried once the cooldown ends.
         if count == self._desired_unit_count and not self._scale_down_cooldown.is_running:
             return
         if count != self._desired_unit_count:
