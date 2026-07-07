@@ -19,7 +19,6 @@ into two complementary layers so each can be tested deterministically:
 | `test_ecs_provisioning_moto.py` | **control plane** | the real `ECSWorkerProvisioner`, the real boto3 request path, the real scheduler command object | AWS ECS (moto / LocalStack **Pro**); provisioned containers do **not** boot |
 | `test_ec2_orb_provisioning.py` | **control plane** | the real `ORBWorkerProvisioner` driven through the real `orb-py` SDK down to boto3 `ec2.run_instances` | AWS EC2 (moto / **free community LocalStack**); provisioned instances do **not** boot |
 | `test_batch_provisioning_moto.py` | **control plane** | the real `AWSBatchProvisioner.provision_all` infra flow over the real boto3 path | AWS Batch (moto / LocalStack **Pro**): S3 + IAM + compute env + job queue + job def |
-| `test_dynamic_local_e2e.py` | **data plane** | real scheduler + object storage + `WorkerManagerRunner` (over the wire) + provisioned worker processes + task execution | nothing — provisioning is local processes instead of cloud instances |
 | `test_scaling_stress_e2e.py` | **data plane (scale)** | a real client bursts light tasks; the scheduler scales up real workers -- across one manager, and across several managers ("machines") each provisioning its own workers | nothing — opt-in via `RUN_SCALING_STRESS_TEST=1` (see below) |
 
 Together they exercise the entire path: client submits work -> scheduler scaling policy emits
@@ -34,16 +33,17 @@ Together they exercise the entire path: client submits work -> scheduler scaling
 | Batch (`aws_hpc`) | Batch + ECR | ✅ | ❌ (Batch/ECR are Pro-only) | ✅ |
 
 So **EC2/orb is the one control-plane E2E that runs against free community LocalStack**; ECS and Batch
-need moto (free, in-process) or LocalStack Pro. No mock boots the compute, so real task execution is
-always covered by the local data-plane test.
+need moto (free, in-process) or LocalStack Pro. No mock boots the compute, so real task execution through
+dynamic provisioning is covered separately by `tests/scheduler/test_scaling.py` (part of the default suite).
 
-### Why a "local process" data-plane layer?
+### Where is real task execution covered?
 
 Neither **moto** nor **community LocalStack** actually boots the containers/instances they
-"provision" (they mock the control-plane API only), so a cloud-mocked test cannot verify real
-task execution. `test_dynamic_local_e2e.py` closes that gap with the `NativeWorkerProvisioner`,
-which provisions real worker *processes* through the identical scheduler->manager->provisioner
-control loop — so "did provisioning actually run work?" is answered with real components.
+"provision" (they mock the control-plane API only), so a cloud-mocked test cannot verify real task
+execution. That gap is covered outside this suite by `tests/scheduler/test_scaling.py`, which boots a
+scheduler-from-zero plus a native worker manager and asserts that dynamically provisioned worker
+*processes* return correct results through the identical scheduler->manager->provisioner loop. The
+heavier `test_scaling_stress_e2e.py` (below) exercises the same path under scale.
 
 ## Running
 
@@ -56,14 +56,15 @@ RUN_INTEGRATION_TESTS=1 python -m unittest discover -s tests/integration -t . -v
 
 # Or a single layer:
 RUN_INTEGRATION_TESTS=1 python -m unittest tests.integration.test_ecs_provisioning_moto -v
-RUN_INTEGRATION_TESTS=1 python -m unittest tests.integration.test_dynamic_local_e2e -v
 ```
 
 The suite is opt-in (`RUN_INTEGRATION_TESTS=1`), so the default `unittest discover` skips it. CI runs
 it on the **Linux** lane only, with the moto backend (see `.github/actions/run-test/action.yml`). The
 LocalStack backend runs on CI only on demand -- via the **`LocalStack Integration Test`** workflow
 (`.github/workflows/integration-localstack.yml`): trigger it from the Actions tab, or add the
-**`localstack`** label to a pull request.
+**`localstack`** label to a pull request. That lane uses the free community image (EC2 only, so the ECS
+and Batch tests skip themselves); set a `LOCALSTACK_AUTH_TOKEN` repository secret to run the ECS and
+Batch coverage against LocalStack Pro.
 
 To run against a real LocalStack locally instead, use the helper (starts a container, runs, tears down):
 

@@ -34,18 +34,11 @@ runs:
       shell: pwsh
       run: ./scripts/test.ps1 -C Debug
 
-    - name: Build Wheel
-      shell: bash
-      run: |
-        uv pip install --system build
-        python -m build --wheel
-
-    - name: Install Wheel
-      shell: bash
-      run: |
-        wheel_file=$(ls dist/*.whl | head -n 1)
-        echo "Installing wheel: $wheel_file"
-        uv pip install --system "$wheel_file[all]"
+    - name: Build and install wheel
+      uses: ./.github/actions/build-and-install-wheel
+      with:
+        # Linux also pulls the integration extra (moto) for the tests/integration step below.
+        extras: ${{ inputs.os == 'Linux' && 'all,integration' || 'all' }}
 
     - name: Run Unittests
       shell: bash
@@ -53,18 +46,12 @@ runs:
         python -m unittest discover -v tests -t .
 
     - name: Run End-to-End Integration Tests (Linux, moto backend)
-      # tests/integration is opt-in: the "Run Unittests" step above collects it but every test skips
-      # itself unless RUN_INTEGRATION_TESTS=1, and moto is not in [all]. This step is what actually
-      # runs the suite -- install moto, flip the gate, Linux-only to keep the win/mac lanes lean. The
-      # heavier LocalStack and scaling-stress runs are separate manual workflows.
+      # The run above skips tests/integration (gated on RUN_INTEGRATION_TESTS); run it here with the gate on.
       if: inputs.os == 'Linux'
       shell: bash
       env:
         RUN_INTEGRATION_TESTS: '1'
       run: |
-        # Install the integration extra (moto) from the built wheel so the pin lives only in pyproject.
-        wheel_file=$(ls dist/*.whl | head -n 1)
-        uv pip install --system "$wheel_file[integration]"
         python -m unittest discover -s tests/integration -t . -v
 
     - name: Run Examples (Linux)

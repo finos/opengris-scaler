@@ -10,7 +10,7 @@ run the identical assertions against a running LocalStack (see README.md).
 
 NOTE: neither moto nor community LocalStack boots the provisioned containers, so these tasks
 never connect back as workers -- this test covers the *control plane* (does the manager call
-AWS correctly and track lifecycle). Real task execution is covered by test_dynamic_local_e2e.py.
+AWS correctly and track lifecycle). Real task execution is covered by tests/scheduler/test_scaling.py.
 """
 
 import unittest

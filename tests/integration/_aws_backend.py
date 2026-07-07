@@ -129,6 +129,8 @@ class MockedAWS:
     def __enter__(self) -> "MockedAWS":
         _install_aws_compat()
         if self._backend == "moto":
+            # Imported lazily, not at module top: moto is absent on the win/mac test lanes (they install
+            # [all], which excludes the integration extra), and `discover tests` still imports this module.
             from moto import mock_aws
 
             self._moto_ctx = mock_aws()

@@ -1,14 +1,8 @@
 name: "LocalStack Integration Test"
 
-# End-to-end AWS integration tests (tests/integration) run against a real LocalStack container
-# instead of the default in-process moto backend. moto already runs on every build via the normal
-# test job, so this heavier LocalStack lane (needs Docker) is manual-only:
-#   * manually via the Actions tab ("Run workflow"); or
-#   * by adding the "localstack" label to a pull request.
-#
-# The free community LocalStack image only implements EC2, so on it the ECS and Batch tests skip
-# themselves and the ORB/EC2 seam runs. Set the LOCALSTACK_AUTH_TOKEN repository secret to run the
-# ECS and Batch coverage against LocalStack Pro.
+# Runs tests/integration against a real LocalStack container instead of the in-process moto backend.
+# Manual-only (needs Docker): trigger from the Actions tab, or add the "localstack" label to a PR.
+# See tests/integration/README.md for backend coverage and the LOCALSTACK_AUTH_TOKEN (Pro) setup.
 on:
   workflow_dispatch:
   pull_request:
@@ -40,30 +34,13 @@ jobs:
           # LocalStack implements EC2, so that seam is the one exercised for free on this lane.
           python-version: '3.11'
 
-      - uses: ./.github/actions/3rd-party-libraries-download
+      - uses: ./.github/actions/build-native-dependencies
         with:
           os: ${{ runner.os }}
 
-      - uses: ./.github/actions/3rd-party-libraries-compile
+      - uses: ./.github/actions/build-and-install-wheel
         with:
-          os: ${{ runner.os }}
-
-      - uses: ./.github/actions/3rd-party-libraries-install
-        with:
-          os: ${{ runner.os }}
-
-      - uses: ./.github/actions/compile-libraries
-        with:
-          os: ${{ runner.os }}
-
-      - name: Build and install wheel
-        shell: bash
-        run: |
-          uv pip install --system build
-          python -m build --wheel
-          wheel_file=$(ls dist/*.whl | head -n 1)
-          echo "Installing wheel: $wheel_file"
-          uv pip install --system "$wheel_file[all,integration]"
+          extras: all,integration
 
       - name: Run integration tests against LocalStack
         shell: bash

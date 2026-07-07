@@ -12,7 +12,7 @@ Backends (``SCALER_E2E_AWS_BACKEND``):
 
 NOTE: this covers the *control plane* (does the manager launch/track/terminate instances correctly).
 Neither moto nor mock LocalStack boots the instance's user-data, so instances never connect back as
-workers; real task execution is covered by test_dynamic_local_e2e.py.
+workers; real task execution is covered by tests/scheduler/test_scaling.py.
 """
 
 import sys
