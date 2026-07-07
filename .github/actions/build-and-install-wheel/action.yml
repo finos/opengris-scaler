@@ -1,26 +1,16 @@
 name: 'Build And Install Wheel'
-description: 'Build the Scaler wheel and install it, optionally with extras'
-
-inputs:
-  extras:
-    description: "Comma-separated extras to install with the wheel, e.g. 'all' or 'all,integration'"
-    required: false
-    default: ''
+description: 'Build the Scaler wheel and install it with all extras and the dev dependency-group'
 
 runs:
   using: "composite"
   steps:
     - name: Build and install wheel
       shell: bash
-      env:
-        EXTRAS: ${{ inputs.extras }}
       run: |
         uv pip install --system build
         python -m build --wheel
         wheel_file=$(find dist -maxdepth 1 -name '*.whl' | sort | head -n 1)
         echo "Installing wheel: $wheel_file"
-        if [ -n "$EXTRAS" ]; then
-          uv pip install --system "${wheel_file}[${EXTRAS}]"
-        else
-          uv pip install --system "$wheel_file"
-        fi
+        uv pip install --system "${wheel_file}[all]"
+        # dev is a dependency-group (from pyproject), not a wheel extra.
+        uv pip install --system --group dev

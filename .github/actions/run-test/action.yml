@@ -36,9 +36,6 @@ runs:
 
     - name: Build and install wheel
       uses: ./.github/actions/build-and-install-wheel
-      with:
-        # Linux also pulls the integration extra (moto) for the tests/integration step below.
-        extras: ${{ inputs.os == 'Linux' && 'all,integration' || 'all' }}
 
     - name: Run Unittests
       shell: bash

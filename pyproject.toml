@@ -58,10 +58,6 @@ orb = [
 oci = [
     "oci==2.177.0",
 ]
-# Extra dependencies for the end-to-end integration tests under tests/integration.
-integration = [
-    "moto[ec2,ecs,batch]>=5,<6",
-]
 all = [
     "opengris-scaler[aws]",
     # graphblas need compile on 3.14, and this python condition prevents up from building 3.14 wheel, comment it out for now
@@ -80,6 +76,7 @@ dev = [
     "isort>=7.0.0; python_version >= '3.10'",
     "jupyterlite-pyodide-kernel==0.8.1",
     "jupyterlite-sphinx==0.22.1",
+    "moto[ec2,ecs,batch]>=5,<6",
     "mypy>=1.14.1",
     "nbsphinx",
     "pyodide-build==0.35.1; python_version >= '3.12'",

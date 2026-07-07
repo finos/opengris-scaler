@@ -39,8 +39,6 @@ jobs:
           os: ${{ runner.os }}
 
       - uses: ./.github/actions/build-and-install-wheel
-        with:
-          extras: all,integration
 
       - name: Run integration tests against LocalStack
         shell: bash

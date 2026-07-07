@@ -11,7 +11,7 @@
 #     skips itself (the EC2 seam is still exercised). Export LOCALSTACK_AUTH_TOKEN to use the Pro
 #     image so the ECS tests actually run.
 #   * If your user cannot reach the Docker socket, run with `DOCKER="sudo docker" ./scripts/...`.
-#   * Requires the package installed with the integration extra: uv pip install -e '.[all,integration]'
+#   * Requires the package installed with the dev group: uv pip install -e '.[all]' --group dev
 #
 set -euo pipefail
 

@@ -49,7 +49,7 @@ heavier `test_scaling_stress_e2e.py` (below) exercises the same path under scale
 
 ```bash
 # Install the test dependencies (moto is in-process; no Docker required):
-uv pip install -e '.[all,integration]'
+uv pip install -e '.[all]' --group dev
 
 # Run the whole skeleton (moto backend, the default):
 RUN_INTEGRATION_TESTS=1 python -m unittest discover -s tests/integration -t . -v
