@@ -28,7 +28,7 @@ class Cooldown:
 
     def remaining_seconds(self) -> Optional[float]:
         """Return None if disabled, not running, or already elapsed, else the seconds left."""
-        if self._duration_seconds is None or self._started_at is None:
+        if self._started_at is None:
             return None
         remaining = self._duration_seconds - (time.time() - self._started_at)
         return remaining if remaining > 0 else None
