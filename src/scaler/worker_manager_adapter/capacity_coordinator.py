@@ -4,6 +4,7 @@ import asyncio
 import logging
 from typing import Awaitable, Callable, Optional
 
+from scaler.config import defaults
 from scaler.utility.cooldown import Cooldown
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ class CapacityCoordinator:
         active_unit_count: Callable that returns the current live unit count.
         max_unit_count: Hard cap on the number of units. -1 means unlimited.
         scale_down_cooldown_seconds: Minimum seconds a scale-down must be requested for before
-            it is honored. None (default) disables the cooldown.
+            it is honored. None disables the cooldown.
     """
 
     def __init__(
@@ -44,7 +45,7 @@ class CapacityCoordinator:
         stop_units: Callable[[int], Awaitable[None]],
         active_unit_count: Callable[[], int],
         max_unit_count: int,
-        scale_down_cooldown_seconds: Optional[float] = None,
+        scale_down_cooldown_seconds: Optional[float] = defaults.DEFAULT_SCALE_DOWN_COOLDOWN_SECONDS,
     ) -> None:
         self._start_units = start_units
         self._stop_units = stop_units
