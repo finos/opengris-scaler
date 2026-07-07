@@ -6,6 +6,7 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
 
 #include "scaler/logging/logging.h"
@@ -17,6 +18,7 @@
 #include "scaler/ymq/buffered_bytes.h"
 #include "scaler/ymq/future/binder_socket.h"
 #include "scaler/ymq/io_context.h"
+#include "scaler/ymq/tls_config.h"
 #include "scaler/ymq/typedefs.h"
 
 namespace scaler {
@@ -33,11 +35,12 @@ public:
 
     void run(
         std::string address,
-        Identity identity                  = "ObjectStorageServer",
-        std::string log_level              = "INFO",
-        std::string log_format             = "%(levelname)s: %(message)s",
-        std::vector<std::string> log_paths = {"/dev/stdout"},
-        std::function<bool()> running      = []() { return true; });
+        Identity identity                               = "ObjectStorageServer",
+        std::string log_level                           = "INFO",
+        std::string log_format                          = "%(levelname)s: %(message)s",
+        std::vector<std::string> log_paths              = {"/dev/stdout"},
+        std::function<bool()> running                   = []() { return true; },
+        std::optional<scaler::ymq::TLSConfig> tlsConfig = std::nullopt);
 
     void waitUntilReady();
 

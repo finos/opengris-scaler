@@ -51,6 +51,7 @@ public:
         Identity identity,
         std::string address,
         ConnectCallback onConnectCallback,
+        std::optional<TLSConfig> tlsConfig       = std::nullopt,
         size_t maxRetryTimes                     = defaultClientMaxRetryTimes,
         std::chrono::milliseconds initRetryDelay = defaultClientInitRetryDelay) noexcept;
 
@@ -60,7 +61,11 @@ public:
     //
     // The onBindCallback will be invoked once the server is listening, or with an error.
     static ConnectorSocket bind(
-        IOContext& context, Identity identity, std::string address, BindCallback onBindCallback) noexcept;
+        IOContext& context,
+        Identity identity,
+        std::string address,
+        BindCallback onBindCallback,
+        std::optional<TLSConfig> tlsConfig = std::nullopt) noexcept;
 
     ~ConnectorSocket() noexcept;
 

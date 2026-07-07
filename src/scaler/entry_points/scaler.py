@@ -178,6 +178,7 @@ def main() -> None:
                 logging_paths=oss_logging.paths,
                 logging_config_file=oss_logging.config_file,
                 logging_level=oss_logging.level,
+                security_config=config.object_storage.security,
             )
             processes.append(oss_process)
             oss_process.start()

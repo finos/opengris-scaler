@@ -2,9 +2,11 @@ import asyncio
 import logging
 from typing import Dict, Optional, Tuple
 
+from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncObjectStorageConnector
 from scaler.io.ymq import Bytes, ConnectorSocket, IOContext, YMQException
+from scaler.io.ymq.utils import to_tls_config
 from scaler.protocol.capnp import ObjectRequestHeader, ObjectResponseHeader
 from scaler.protocol.helpers import from_capnp_object_id, to_capnp_object_id
 from scaler.utility.exceptions import ObjectStorageException
@@ -34,14 +36,16 @@ class YMQAsyncObjectStorageConnector(AsyncObjectStorageConnector):
     def __del__(self):
         self.destroy()
 
-    async def connect(self, address: AddressConfig):
+    async def connect(self, address: AddressConfig, security_config: Optional[SecurityConfig] = None):
         self._address = address
 
         if self.is_connected():
             raise ObjectStorageException("connector is already connected.")
 
         assert self._ymq_context is not None
-        self._socket = ConnectorSocket.connect(self._ymq_context, self._identity.decode(), repr(address))
+        self._socket = ConnectorSocket.connect(
+            self._ymq_context, self._identity.decode(), repr(address), tls_config=to_tls_config(security_config)
+        )
         self._connected_event.set()
 
     async def wait_until_connected(self):

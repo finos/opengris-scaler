@@ -31,7 +31,8 @@ public:
 
     const Identity& identity() const noexcept;
 
-    std::expected<Address, Error> bindTo(std::string address) noexcept;
+    std::expected<Address, Error> bindTo(
+        std::string address, std::optional<TLSConfig> tlsConfig = std::nullopt) noexcept;
 
     std::expected<void, Error> sendMessage(Identity remoteIdentity, std::unique_ptr<Bytes> messagePayload) noexcept;
 

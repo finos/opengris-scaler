@@ -45,7 +45,8 @@ void ObjectStorageServer::run(
     std::string log_level,
     std::string log_format,
     std::vector<std::string> log_paths,
-    std::function<bool()> running)
+    std::function<bool()> running,
+    std::optional<scaler::ymq::TLSConfig> tlsConfig)
 {
     _logger = scaler::ymq::Logger(log_format, std::move(log_paths), scaler::ymq::Logger::stringToLogLevel(log_level));
 
@@ -53,7 +54,8 @@ void ObjectStorageServer::run(
         _socket = std::make_unique<scaler::ymq::future::BinderSocket>(_ioContext, std::move(identity));
         const std::string networkAddress {std::move(address)};
 
-        std::expected<scaler::ymq::Address, scaler::ymq::Error> bindResult = _socket->bindTo(networkAddress).get();
+        std::expected<scaler::ymq::Address, scaler::ymq::Error> bindResult =
+            _socket->bindTo(networkAddress, std::move(tlsConfig)).get();
         if (!bindResult) {
             throw bindResult.error();
         }

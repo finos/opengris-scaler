@@ -20,7 +20,7 @@ jobs:
             cibw_archs: aarch64
           - os: windows-latest
             cibw_archs: AMD64
-          - os: macos-latest
+          - os: macos-15
             cibw_archs: native
           - os: macos-15-intel
             cibw_archs: native

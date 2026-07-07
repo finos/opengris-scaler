@@ -13,7 +13,7 @@ add_library(object_storage_server_objs OBJECT
     object_manager.cpp
 )
 
-target_link_libraries(object_storage_server_objs PUBLIC protocol_objs)
+target_link_libraries(object_storage_server_objs PUBLIC protocol_objs ymq_objs)
 
 if(WIN32)
     target_link_libraries(object_storage_server_objs PUBLIC ws2_32)

@@ -17,31 +17,63 @@ namespace scaler {
 namespace ymq {
 namespace internal {
 
-std::expected<AcceptServer, scaler::wrapper::uv::Error> AcceptServer::init(
+namespace details {
+
+Error toYMQError(scaler::wrapper::uv::Error uvError) noexcept
+{
+    return Error {
+        Error::ErrorCode::SysCallError,
+        "Originated from",
+        "AcceptServer::init",
+        "Error code",
+        uvError.name(),
+        uvError.message(),
+    };
+}
+
+}  // namespace details
+
+std::expected<AcceptServer, scaler::ymq::Error> AcceptServer::init(
     scaler::wrapper::uv::Loop& loop, Address address, ConnectionCallback onConnectionCallback) noexcept
 {
+    auto sslContext = address.getSSLContext();
+    if (!sslContext.has_value()) {
+        return std::unexpected {std::move(sslContext.error())};
+    }
+
     std::optional<Server> server;
     std::optional<WebSocketAddress> webSocketAddress;
 
     switch (address.type()) {
         case Address::Type::TCP: {
-            auto tcpServer = scaler::wrapper::uv::TCPServer::init(loop);
-            if (!tcpServer.has_value()) {
-                return std::unexpected {tcpServer.error()};
+            if (address.secure()) {
+                auto secureServer = scaler::wrapper::openssl::SecureServer::init(loop);
+                if (!secureServer.has_value()) {
+                    return std::unexpected {details::toYMQError(secureServer.error())};
+                }
+                if (auto bindResult = secureServer->bind(address.asTCP(), uv_tcp_flags(0)); !bindResult.has_value()) {
+                    return std::unexpected {details::toYMQError(bindResult.error())};
+                }
+                server = std::move(secureServer.value());
+            } else {
+                auto tcpServer = scaler::wrapper::uv::TCPServer::init(loop);
+                if (!tcpServer.has_value()) {
+                    return std::unexpected {details::toYMQError(tcpServer.error())};
+                }
+                if (auto bindResult = tcpServer->bind(address.asTCP(), uv_tcp_flags(0)); !bindResult.has_value()) {
+                    return std::unexpected {details::toYMQError(bindResult.error())};
+                }
+                server = std::move(tcpServer.value());
             }
-            if (auto bindResult = tcpServer->bind(address.asTCP(), uv_tcp_flags(0)); !bindResult.has_value()) {
-                return std::unexpected {bindResult.error()};
-            }
-            server = std::move(tcpServer.value());
             break;
         }
         case Address::Type::IPC: {
             auto pipeServer = scaler::wrapper::uv::PipeServer::init(loop, false);
             if (!pipeServer.has_value()) {
-                return std::unexpected {pipeServer.error()};
+                return std::unexpected {details::toYMQError(pipeServer.error())};
             }
             if (auto bindResult = pipeServer->bind(address.asIPC()); !bindResult.has_value()) {
-                return std::unexpected {bindResult.error()};
+                return std::unexpected {details::toYMQError(bindResult.error())};
             }
             server = std::move(pipeServer.value());
             break;
@@ -51,11 +83,11 @@ std::expected<AcceptServer, scaler::wrapper::uv::Error> AcceptServer::init(
             webSocketAddress = address.asWebSocket();
             auto tcpServer   = scaler::wrapper::uv::TCPServer::init(loop);
             if (!tcpServer.has_value()) {
-                return std::unexpected {tcpServer.error()};
+                return std::unexpected {details::toYMQError(tcpServer.error())};
             }
             if (auto bindResult = tcpServer->bind(webSocketAddress->tcpAddress, uv_tcp_flags(0));
                 !bindResult.has_value()) {
-                return std::unexpected {bindResult.error()};
+                return std::unexpected {details::toYMQError(bindResult.error())};
             }
             server = std::move(tcpServer.value());
             break;
@@ -63,38 +95,49 @@ std::expected<AcceptServer, scaler::wrapper::uv::Error> AcceptServer::init(
         default: std::unreachable();
     }
 
-    AcceptServer acceptServer;
-    acceptServer._state = std::make_shared<State>(
-        loop, std::move(onConnectionCallback), std::move(server.value()), std::move(webSocketAddress));
+    auto state = std::make_shared<State>(
+        loop,
+        std::move(onConnectionCallback),
+        std::move(server.value()),
+        std::move(webSocketAddress),
+        std::move(sslContext.value()));
+
+    auto listenCallback = std::bind_front(&AcceptServer::onConnection, state);
 
     // On Linux, a bind() EADDRINUSE is delayed by libuv and only reported here, at listen().
     std::expected<void, scaler::wrapper::uv::Error> listenResult;
-    if (auto* tcpServer = std::get_if<scaler::wrapper::uv::TCPServer>(&acceptServer._state->_server.value())) {
-        listenResult =
-            tcpServer->listen(serverListenBacklog, std::bind_front(&AcceptServer::onConnection, acceptServer._state));
-    } else if (auto* pipeServer = std::get_if<scaler::wrapper::uv::PipeServer>(&acceptServer._state->_server.value())) {
-        listenResult =
-            pipeServer->listen(serverListenBacklog, std::bind_front(&AcceptServer::onConnection, acceptServer._state));
+    if (auto* tcpServer = std::get_if<scaler::wrapper::uv::TCPServer>(&state->_server.value())) {
+        listenResult = tcpServer->listen(serverListenBacklog, std::move(listenCallback));
+    } else if (auto* secureServer = std::get_if<scaler::wrapper::openssl::SecureServer>(&state->_server.value())) {
+        listenResult = secureServer->listen(serverListenBacklog, std::move(listenCallback));
+    } else if (auto* pipeServer = std::get_if<scaler::wrapper::uv::PipeServer>(&state->_server.value())) {
+        listenResult = pipeServer->listen(serverListenBacklog, std::move(listenCallback));
     } else {
         std::unreachable();
     }
 
     if (!listenResult.has_value()) {
-        return std::unexpected {listenResult.error()};
+        return std::unexpected {details::toYMQError(listenResult.error())};
     }
 
-    return acceptServer;
+    return AcceptServer {std::move(state)};
+}
+
+AcceptServer::AcceptServer(std::shared_ptr<State> state) noexcept: _state(std::move(state))
+{
 }
 
 AcceptServer::State::State(
     scaler::wrapper::uv::Loop& loop,
     ConnectionCallback onConnectionCallback,
     Server server,
-    std::optional<WebSocketAddress> webSocketAddress) noexcept
+    std::optional<WebSocketAddress> webSocketAddress,
+    std::optional<scaler::wrapper::openssl::SSLContext> sslContext) noexcept
     : _loop(loop)
     , _onConnectionCallback(std::move(onConnectionCallback))
     , _server(std::move(server))
     , _webSocketAddress(std::move(webSocketAddress))
+    , _sslContext(std::move(sslContext))
 {
 }
 
@@ -121,6 +164,8 @@ Address AcceptServer::address() const noexcept
         }
 
         return Address {actualAddr};
+    } else if (auto* secureServer = std::get_if<scaler::wrapper::openssl::SecureServer>(&_state->_server.value())) {
+        return Address {UV_EXIT_ON_ERROR(secureServer->getSockName()), true};
     } else if (auto* pipeServer = std::get_if<scaler::wrapper::uv::PipeServer>(&_state->_server.value())) {
         return Address {UV_EXIT_ON_ERROR(pipeServer->getSockName())};
     } else {
@@ -177,6 +222,11 @@ void AcceptServer::onConnection(
         }
 
         return state->_onConnectionCallback(Client(std::move(tcpClient)));
+    } else if (auto* secureServer = std::get_if<scaler::wrapper::openssl::SecureServer>(&state->_server.value())) {
+        scaler::wrapper::openssl::SecureSocket secureClient =
+            UV_EXIT_ON_ERROR(scaler::wrapper::openssl::SecureSocket::init(state->_loop, state->_sslContext.value()));
+        UV_EXIT_ON_ERROR(secureServer->accept(secureClient));
+        return state->_onConnectionCallback(Client(std::move(secureClient)));
     } else if (auto* pipeServer = std::get_if<scaler::wrapper::uv::PipeServer>(&state->_server.value())) {
         scaler::wrapper::uv::Pipe pipeClient = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Pipe::init(state->_loop, false));
         UV_EXIT_ON_ERROR(pipeServer->accept(pipeClient));

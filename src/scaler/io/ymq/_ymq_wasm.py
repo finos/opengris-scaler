@@ -252,6 +252,24 @@ class Address:
         return self._raw
 
 
+class TLSConfig:
+    """TLS certificate configuration. Mirrors the native ``_ymq.TLSConfig``.
+
+    Browser WebSocket clients cannot present client certificates from script,
+    so this type is accepted for API compatibility but not otherwise used by
+    the WASM transport; ``wss://`` security is handled by the browser.
+    """
+
+    __slots__ = ("cert_chain", "private_key")
+
+    def __init__(self, cert_chain: str, private_key: str) -> None:
+        self.cert_chain = cert_chain
+        self.private_key = private_key
+
+    def __repr__(self) -> str:
+        return "TLSConfig()"
+
+
 # ---------------------------------------------------------------------------
 # IOContext (no-op stub; threading does not exist in the browser).
 
@@ -333,6 +351,7 @@ class ConnectorSocket:
         address: str,
         max_retry_times: int = DEFAULT_MAX_RETRY_TIMES,
         init_retry_delay: int = DEFAULT_INIT_RETRY_DELAY,
+        tls_config: Optional[TLSConfig] = None,
     ) -> "ConnectorSocket":
         """Create a ConnectorSocket and initiate connection to the remote address.
 
@@ -346,8 +365,21 @@ class ConnectorSocket:
         ``max_retry_times`` and ``init_retry_delay`` are accepted for API
         compatibility but ignored: browser WebSockets do not expose the retry
         semantics native ymq uses.
+
+        ``tls_config`` must be left as ``None``: TLS for ``wss://`` is handled
+        entirely by the browser, which does not allow scripts to supply their
+        own certificates to a ``WebSocket``. A caller-provided ``TLSConfig``
+        therefore cannot be honored and is rejected rather than silently
+        ignored.
         """
         del context, max_retry_times, init_retry_delay  # unused
+
+        if tls_config is not None:
+            raise _make_exception(
+                ErrorCode.InvalidAddressFormat,
+                "tls_config is not supported by the browser ConnectorSocket; "
+                "wss:// TLS is managed by the browser and scripts cannot supply certificates",
+            )
 
         ws_url = _normalize_ws_address(address)
 
@@ -685,6 +717,7 @@ __all__ = [
     "ErrorCode",
     "IOContext",
     "Message",
+    "TLSConfig",
     "YMQException",
     "ConnectorSocketClosedByRemoteEndError",
     "InvalidAddressFormatError",

@@ -5,6 +5,7 @@ import signal
 from collections import deque
 from typing import Callable, Dict, Optional
 
+from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector, ConnectorRemoteType, NetworkBackend
@@ -50,6 +51,7 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         processor_status_provider_factory: Callable[[], ProcessorStatusProvider],
         execution_backend_factory: Callable[[], ExecutionBackend],
         idle_sleep_seconds: float = 0.0,
+        security_config: Optional[SecurityConfig] = None,
     ) -> None:
         super().__init__(name=name)
 
@@ -59,6 +61,7 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         self._object_storage_address = object_storage_address
         self._capabilities = capabilities
         self._io_threads = io_threads
+        self._security_config = security_config
 
         self._ident = WorkerID.generate_worker_id(name)
 
@@ -126,6 +129,7 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             task_queue_size=self._task_queue_size,
             worker_manager_id=self._worker_manager_id,
             processor_status_provider=processor_status_provider,
+            security_config=self._security_config,
         )
         self._task_manager = TaskManager(
             base_concurrency=self._base_concurrency,
@@ -187,10 +191,12 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         raise TypeError(f"Unknown {message=}")
 
     async def __get_loops(self) -> None:
-        await self._connector_external.connect(self._address, ConnectorRemoteType.Binder)
+        await self._connector_external.connect(
+            self._address, ConnectorRemoteType.Binder, security_config=self._security_config
+        )
 
         if self._object_storage_address is not None:
-            await self._connector_storage.connect(self._object_storage_address)
+            await self._connector_storage.connect(self._object_storage_address, security_config=self._security_config)
 
         try:
             await asyncio.gather(

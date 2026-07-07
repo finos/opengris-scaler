@@ -6,7 +6,6 @@
 #include <cstddef>
 #include <fstream>
 #include <iostream>
-#include <memory>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -19,7 +18,14 @@ namespace ymq {
 
 class Logger {
 public:
-    enum LoggingLevel { critical = 0, error = 1, warning = 2, info = 3, debug = 4, notset = 5 };
+    enum class LoggingLevel {
+        critical = 0,
+        error    = 1,
+        warning  = 2,
+        info     = 3,
+        debug    = 4,
+        notset   = 5,
+    };
 
 // Sound default logging level based on build type.
 #ifdef NDEBUG  // Release build
@@ -56,12 +62,12 @@ public:
     static constexpr std::string_view convertLevelToString(LoggingLevel level)
     {
         switch (level) {
-            case debug: return "DEBG";
-            case info: return "INFO";
-            case error: return "EROR";
-            case warning: return "WARN";
-            case critical: return "CTIC";
-            case notset: return "NOTSET";
+            case LoggingLevel::debug: return "DEBUG";
+            case LoggingLevel::info: return "INFO";
+            case LoggingLevel::error: return "ERROR";
+            case LoggingLevel::warning: return "WARNING";
+            case LoggingLevel::critical: return "CRITICAL";
+            case LoggingLevel::notset: return "NOTSET";
         }
         return "UNKNOWN";
     }

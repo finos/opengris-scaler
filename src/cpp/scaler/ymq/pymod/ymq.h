@@ -24,6 +24,7 @@ struct YMQState {
 
     OwnedPyObject<> PyAddressTypeEnumType;  // Reference to the Address.Type enum
     OwnedPyObject<> PyAddressType;          // Reference to the Address type
+    OwnedPyObject<> PyTLSConfigType;        // Reference to the TLSConfig type
     OwnedPyObject<> PyErrorCodeType;        // Reference to the ErrorCode enum
     OwnedPyObject<> PyBytesType;            // Reference to Bytes type
     OwnedPyObject<> PyMessageType;          // Reference to Message type

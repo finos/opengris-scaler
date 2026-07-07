@@ -4,6 +4,7 @@ from datetime import timedelta
 from enum import Enum
 from typing import Awaitable, Callable, Optional
 
+from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import BaseMessage, BinderStatus
 from scaler.utility.identifiers import ObjectID
@@ -46,7 +47,11 @@ class NetworkBackend(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def create_sync_connector(
-        self, identity: bytes, connector_remote_type: ConnectorRemoteType, address: AddressConfig
+        self,
+        identity: bytes,
+        connector_remote_type: ConnectorRemoteType,
+        address: AddressConfig,
+        security_config: Optional[SecurityConfig] = None,
     ) -> "SyncConnector":
         raise NotImplementedError()
 
@@ -56,7 +61,7 @@ class NetworkBackend(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def create_sync_object_storage_connector(
-        self, identity: bytes, address: AddressConfig
+        self, identity: bytes, address: AddressConfig, security_config: Optional[SecurityConfig] = None
     ) -> "SyncObjectStorageConnector":
         raise NotImplementedError()
 
@@ -67,13 +72,14 @@ class NetworkBackend(metaclass=abc.ABCMeta):
         address: AddressConfig,
         callback: Callable[[BaseMessage], None],
         timeout: Optional[timedelta],
+        security_config: Optional[SecurityConfig] = None,
     ) -> "SyncSubscriber":
         raise NotImplementedError()
 
 
 class AsyncBinder(Looper, Reporter, metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def bind(self, address: AddressConfig) -> None:
+    async def bind(self, address: AddressConfig, security_config: Optional[SecurityConfig] = None) -> None:
         raise NotImplementedError()
 
     @property
@@ -101,11 +107,13 @@ class AsyncBinder(Looper, Reporter, metaclass=abc.ABCMeta):
 
 class AsyncConnector(Looper, metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def connect(self, address: AddressConfig, remote_type: ConnectorRemoteType) -> None:
+    async def connect(
+        self, address: AddressConfig, remote_type: ConnectorRemoteType, security_config: Optional[SecurityConfig] = None
+    ) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def bind(self, address: AddressConfig) -> None:
+    async def bind(self, address: AddressConfig, security_config: Optional[SecurityConfig] = None) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -133,7 +141,7 @@ class AsyncConnector(Looper, metaclass=abc.ABCMeta):
 
 class AsyncPublisher(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def bind(self, address: AddressConfig) -> None:
+    async def bind(self, address: AddressConfig, security_config: Optional[SecurityConfig] = None) -> None:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -181,7 +189,7 @@ class SyncConnector(metaclass=abc.ABCMeta):
 
 class AsyncObjectStorageConnector(Looper, metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def connect(self, address: AddressConfig):
+    async def connect(self, address: AddressConfig, security_config: Optional[SecurityConfig] = None):
         raise NotImplementedError()
 
     @abc.abstractmethod

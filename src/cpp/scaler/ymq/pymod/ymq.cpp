@@ -14,6 +14,7 @@
 #include "scaler/ymq/pymod/exception.h"
 #include "scaler/ymq/pymod/io_context.h"
 #include "scaler/ymq/pymod/message.h"
+#include "scaler/ymq/pymod/tls_config.h"
 
 namespace scaler {
 namespace ymq {
@@ -237,6 +238,9 @@ static int YMQ_exec(PyObject* pyModule)
         return -1;
 
     if (YMQ_createType(pyModule, &state->PyAddressType, &PyAddress_spec, "Address") < 0)
+        return -1;
+
+    if (YMQ_createType(pyModule, &state->PyTLSConfigType, &PyTLSConfig_spec, "TLSConfig") < 0)
         return -1;
 
     if (YMQ_createType(pyModule, &state->PyBinderSocketType, &PyBinderSocket_spec, "BinderSocket") < 0)

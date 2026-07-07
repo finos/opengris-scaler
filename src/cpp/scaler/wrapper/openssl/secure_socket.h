@@ -24,7 +24,7 @@ namespace openssl {
 // A libuv-like socket implementing SSL/TLS using OpenSSL.
 class SecureSocket {
 public:
-    enum class State {
+    enum class ConnectionState {
         Uninitialized,
         Connecting,
         Handshaking,
@@ -33,7 +33,15 @@ public:
         Closed,
     };
 
-    static std::expected<SecureSocket, uv::Error> init(SSLContext context, uv::TCPSocket transport) noexcept;
+    ~SecureSocket() noexcept;
+
+    SecureSocket(const SecureSocket&)            = delete;
+    SecureSocket& operator=(const SecureSocket&) = delete;
+
+    SecureSocket(SecureSocket&&) noexcept            = default;
+    SecureSocket& operator=(SecureSocket&&) noexcept = default;
+
+    static std::expected<SecureSocket, uv::Error> init(uv::Loop& loop, SSLContext context) noexcept;
 
     // Initiate a client-side TLS connection.
     std::expected<uv::ConnectRequest, uv::Error> connect(
@@ -62,7 +70,7 @@ public:
 
     std::expected<void, uv::Error> nodelay(bool enable) noexcept;
 
-    State state() const noexcept;
+    ConnectionState state() const noexcept;
 
     bool established() const noexcept;
 
@@ -78,45 +86,54 @@ private:
         uv::WriteCallback _callback;
     };
 
-    SecureSocket(
-        SSLContext context,
-        uv::TCPSocket transport,
-        SSLPtr<SSL> ssl,
-        SSLPtr<BIO> readBIO,
-        SSLPtr<BIO> writeBIO) noexcept;
+    // State is heap-allocated to provide a stable memory for callbacks if the socket is std::move'd.
 
-    std::expected<void, uv::Error> startHandshake(HandshakeMode mode) noexcept;
+    struct State {
+        SSLContext _context;
+        uv::TCPSocket _transport;
 
-    std::expected<void, uv::Error> tryFinishHandshake() noexcept;
+        SSLPtr<SSL> _ssl {};
+        SSLPtr<BIO> _readBIO {};
+        SSLPtr<BIO> _writeBIO {};
 
-    std::expected<void, uv::Error> tryFinishShutdown() noexcept;
+        ConnectionState _connectionState {ConnectionState::Uninitialized};
 
-    std::expected<void, uv::Error> flushToApplication() noexcept;
+        std::optional<uv::ConnectCallback> _onHandshakeCallback {};
+        std::optional<uv::ReadCallback> _onReadCallback {};
+        std::optional<uv::ShutdownCallback> _onShutdownCallback {};
 
-    std::expected<void, uv::Error> flushToTransport() noexcept;
+        std::deque<PendingWrite> _pendingWrites {};
 
-    std::expected<void, uv::Error> processPendingWrites() noexcept;
+        State(
+            SSLContext context,
+            uv::TCPSocket transport,
+            SSLPtr<SSL> ssl,
+            SSLPtr<BIO> readBIO,
+            SSLPtr<BIO> writeBIO) noexcept;
+    };
 
-    void failWithError(uv::Error error) noexcept;
+    SecureSocket(std::shared_ptr<State> state) noexcept;
 
-    void onTransportConnected(std::expected<void, uv::Error> result) noexcept;
+    std::shared_ptr<State> _state;
 
-    void onTransportRead(std::expected<std::span<const uint8_t>, uv::Error> result) noexcept;
+    static std::expected<void, uv::Error> startHandshake(std::shared_ptr<State> state, HandshakeMode mode) noexcept;
 
-    SSLContext _context;
-    uv::TCPSocket _transport;
+    static std::expected<void, uv::Error> tryFinishHandshake(std::shared_ptr<State> state) noexcept;
 
-    SSLPtr<SSL> _ssl {};
-    SSLPtr<BIO> _readBIO {};
-    SSLPtr<BIO> _writeBIO {};
+    static std::expected<void, uv::Error> tryFinishShutdown(std::shared_ptr<State> state) noexcept;
 
-    State _state {State::Uninitialized};
+    static std::expected<void, uv::Error> flushToApplication(std::shared_ptr<State> state) noexcept;
 
-    std::optional<uv::ConnectCallback> _onHandshakeCallback {};
-    std::optional<uv::ReadCallback> _onReadCallback {};
-    std::optional<uv::ShutdownCallback> _onShutdownCallback {};
+    static std::expected<void, uv::Error> flushToTransport(std::shared_ptr<State> state) noexcept;
 
-    std::deque<PendingWrite> _pendingWrites {};
+    static std::expected<void, uv::Error> processPendingWrites(std::shared_ptr<State> state) noexcept;
+
+    static void failWithError(std::shared_ptr<State> state, uv::Error error) noexcept;
+
+    static void onTransportConnected(std::shared_ptr<State> state, std::expected<void, uv::Error> result) noexcept;
+
+    static void onTransportRead(
+        std::shared_ptr<State> state, std::expected<std::span<const uint8_t>, uv::Error> result) noexcept;
 };
 
 }  // namespace openssl

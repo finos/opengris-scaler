@@ -1,6 +1,7 @@
 import dataclasses
 
 from scaler.config.common.logging import LoggingConfig
+from scaler.config.common.security import SecurityConfig
 from scaler.config.config_class import ConfigClass
 from scaler.config.types.address import AddressConfig
 
@@ -14,3 +15,4 @@ class ObjectStorageServerConfig(ConfigClass):
     )
     identity: str = dataclasses.field(default="ObjectStorageServer")
     logging_config: LoggingConfig = dataclasses.field(default_factory=LoggingConfig)
+    security: SecurityConfig = dataclasses.field(default_factory=SecurityConfig)

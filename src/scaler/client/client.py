@@ -14,6 +14,7 @@ from scaler.client.object_buffer import ObjectBuffer
 from scaler.client.object_reference import ObjectReference
 from scaler.client.serializer.default import DefaultSerializer
 from scaler.client.serializer.mixins import Serializer
+from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import NetworkBackend, SyncConnector, SyncObjectStorageConnector
@@ -65,6 +66,7 @@ class Client:
         serializer: Serializer = DefaultSerializer(),
         stream_output: bool = False,
         object_storage_address: Optional[str] = None,
+        security_config: Optional[SecurityConfig] = None,
     ):
         """
         The Scaler Client used to send tasks to a scheduler.
@@ -92,6 +94,7 @@ class Client:
             serializer,
             stream_output,
             object_storage_address,
+            security_config,
         )
 
     def __initialize__(
@@ -103,6 +106,7 @@ class Client:
         serializer: Serializer = DefaultSerializer(),
         stream_output: bool = False,
         object_storage_address: Optional[str] = None,
+        security_config: Optional[SecurityConfig] = None,
     ):
         check_browser_runtime()
 
@@ -116,6 +120,7 @@ class Client:
         self._profiling = profiling
         self._stream_output = stream_output
         self._identity = ClientID.generate_client_id()
+        self._security_config = security_config
 
         self._backend: NetworkBackend = get_network_backend_from_env()
 
@@ -136,6 +141,7 @@ class Client:
             heartbeat_interval_seconds=self._heartbeat_interval_seconds,
             serializer=self._serializer,
             object_storage_address=object_storage_address,
+            security_config=self._security_config,
         )
         self._bridge.start()
 
@@ -148,7 +154,7 @@ class Client:
 
         logger.info(f"ScalerClient: connect to object storage at {self._object_storage_address}")
         self._connector_storage = self._backend.create_sync_object_storage_connector(
-            identity=self._identity, address=self._object_storage_address
+            identity=self._identity, address=self._object_storage_address, security_config=self._security_config
         )
 
         self._object_buffer = ObjectBuffer(

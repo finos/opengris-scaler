@@ -12,8 +12,41 @@ namespace scaler {
 namespace wrapper {
 namespace openssl {
 
-std::expected<SecureSocket, uv::Error> SecureSocket::init(SSLContext context, uv::TCPSocket transport) noexcept
+SecureSocket::State::State(
+    SSLContext context, uv::TCPSocket transport, SSLPtr<SSL> ssl, SSLPtr<BIO> readBIO, SSLPtr<BIO> writeBIO) noexcept
+    : _context(std::move(context))
+    , _transport(std::move(transport))
+    , _ssl(std::move(ssl))
+    , _readBIO(std::move(readBIO))
+    , _writeBIO(std::move(writeBIO))
 {
+}
+
+SecureSocket::SecureSocket(std::shared_ptr<State> state) noexcept: _state(std::move(state))
+{
+}
+
+SecureSocket::~SecureSocket() noexcept
+{
+    if (_state == nullptr) {
+        return;
+    }
+
+    if (_state->_connectionState == ConnectionState::Closed) {
+        return;
+    }
+
+    failWithError(_state, uv::Error {UV_ECANCELED});
+}
+
+std::expected<SecureSocket, uv::Error> SecureSocket::init(uv::Loop& loop, SSLContext context) noexcept
+{
+    // Create the TCP transport socket
+    std::expected<uv::TCPSocket, uv::Error> tcpSocket = uv::TCPSocket::init(loop);
+    if (!tcpSocket.has_value()) {
+        return std::unexpected {tcpSocket.error()};
+    }
+
     // Create SSL session
     SSLPtr<SSL> ssl {SSL_new(context.native())};
     if (ssl == nullptr) {
@@ -32,34 +65,26 @@ std::expected<SecureSocket, uv::Error> SecureSocket::init(SSLContext context, uv
     BIO_up_ref(writeBIO.get());
     SSL_set_bio(ssl.get(), readBIO.get(), writeBIO.get());
 
-    return SecureSocket {
-        std::move(context), std::move(transport), std::move(ssl), std::move(readBIO), std::move(writeBIO)};
-}
+    auto state = std::make_shared<State>(
+        std::move(context), std::move(tcpSocket.value()), std::move(ssl), std::move(readBIO), std::move(writeBIO));
 
-SecureSocket::SecureSocket(
-    SSLContext context, uv::TCPSocket transport, SSLPtr<SSL> ssl, SSLPtr<BIO> readBIO, SSLPtr<BIO> writeBIO) noexcept
-    : _context(std::move(context))
-    , _transport(std::move(transport))
-    , _ssl(std::move(ssl))
-    , _readBIO(std::move(readBIO))
-    , _writeBIO(std::move(writeBIO))
-{
+    return SecureSocket {std::move(state)};
 }
 
 std::expected<uv::ConnectRequest, uv::Error> SecureSocket::connect(
     const uv::SocketAddress& address, uv::ConnectCallback callback) noexcept
 {
-    if (_state != State::Uninitialized) {
+    if (_state->_connectionState != ConnectionState::Uninitialized) {
         return std::unexpected {uv::Error {UV_EINVAL}};
     }
 
-    _state               = State::Connecting;
-    _onHandshakeCallback = std::move(callback);
+    _state->_connectionState     = ConnectionState::Connecting;
+    _state->_onHandshakeCallback = std::move(callback);
 
     std::expected<uv::ConnectRequest, uv::Error> result =
-        _transport.connect(address, std::bind_front(&SecureSocket::onTransportConnected, this));
+        _state->_transport.connect(address, std::bind_front(&SecureSocket::onTransportConnected, _state));
     if (!result.has_value()) {
-        failWithError(result.error());
+        failWithError(_state, result.error());
         return result;
     }
 
@@ -68,38 +93,38 @@ std::expected<uv::ConnectRequest, uv::Error> SecureSocket::connect(
 
 std::expected<void, uv::Error> SecureSocket::accept(uv::ConnectCallback callback) noexcept
 {
-    if (_state != State::Uninitialized) {
+    if (_state->_connectionState != ConnectionState::Uninitialized) {
         return std::unexpected {uv::Error {UV_EINVAL}};
     }
 
-    _onHandshakeCallback = std::move(callback);
+    _state->_onHandshakeCallback = std::move(callback);
 
-    return startHandshake(HandshakeMode::Accept);
+    return startHandshake(_state, HandshakeMode::Accept);
 }
 
 std::expected<void, uv::Error> SecureSocket::readStart(uv::ReadCallback callback) noexcept
 {
-    if (_state == State::Closing || _state == State::Closed) {
+    if (_state->_connectionState == ConnectionState::Closing || _state->_connectionState == ConnectionState::Closed) {
         return std::unexpected {uv::Error {UV_EPIPE}};
     }
 
     // We do not propagate readStart() to the transport layer, as we already enabled it during the SSL handshake.
     // We instead "mask" and queue the reads until the application layer registers a callback.
 
-    _onReadCallback = std::move(callback);
+    _state->_onReadCallback = std::move(callback);
 
-    return flushToApplication();
+    return flushToApplication(_state);
 }
 
 void SecureSocket::readStop() noexcept
 {
-    _onReadCallback.reset();
+    _state->_onReadCallback.reset();
 }
 
 std::expected<void, uv::Error> SecureSocket::write(
     std::span<const std::span<const uint8_t>> buffers, uv::WriteCallback callback) noexcept
 {
-    if (_state == State::Closing || _state == State::Closed) {
+    if (_state->_connectionState == ConnectionState::Closing || _state->_connectionState == ConnectionState::Closed) {
         return std::unexpected {uv::Error {UV_EPIPE}};
     }
 
@@ -113,10 +138,10 @@ std::expected<void, uv::Error> SecureSocket::write(
         // Only attach the callback to the last buffer; earlier get a noop.
         auto bufferCallback = &buffer == &buffers.back() ? std::move(callback) : [](std::expected<void, uv::Error>) {};
 
-        _pendingWrites.push_back(PendingWrite {buffer, std::move(bufferCallback)});
+        _state->_pendingWrites.push_back(PendingWrite {buffer, std::move(bufferCallback)});
     }
 
-    return processPendingWrites();
+    return processPendingWrites(_state);
 }
 
 std::expected<void, uv::Error> SecureSocket::write(std::span<const uint8_t> buffer, uv::WriteCallback callback) noexcept
@@ -127,137 +152,139 @@ std::expected<void, uv::Error> SecureSocket::write(std::span<const uint8_t> buff
 
 std::expected<void, uv::Error> SecureSocket::shutdown(uv::ShutdownCallback callback) noexcept
 {
-    if (_state == State::Closing || _state == State::Closed) {
+    if (_state->_connectionState == ConnectionState::Closing || _state->_connectionState == ConnectionState::Closed) {
         return std::unexpected {uv::Error {UV_EPIPE}};
     }
 
-    _state              = State::Closing;
-    _onShutdownCallback = std::move(callback);
+    _state->_connectionState    = ConnectionState::Closing;
+    _state->_onShutdownCallback = std::move(callback);
 
     // Drain pending writes first. We will initiate the SSL shutdown once the write queue is empty.
-    return processPendingWrites();
+    return processPendingWrites(_state);
 }
 
 std::expected<void, uv::Error> SecureSocket::closeReset() noexcept
 {
-    if (_state == State::Closed) {
+    if (_state->_connectionState == ConnectionState::Closed) {
         return std::unexpected {uv::Error {UV_EINVAL}};
     }
 
     // Follow libuv behavior on close-reset, by stopping reads and calling remaining callbacks with UV_ECANCELED.
     readStop();
-    failWithError(uv::Error {UV_ECANCELED});
+    failWithError(_state, uv::Error {UV_ECANCELED});
 
-    return _transport.closeReset();
+    return _state->_transport.closeReset();
 }
 
 std::expected<uv::SocketAddress, uv::Error> SecureSocket::getSockName() const noexcept
 {
-    return _transport.getSockName();
+    return _state->_transport.getSockName();
 }
 
 std::expected<uv::SocketAddress, uv::Error> SecureSocket::getPeerName() const noexcept
 {
-    return _transport.getPeerName();
+    return _state->_transport.getPeerName();
 }
 
 std::expected<void, uv::Error> SecureSocket::nodelay(bool enable) noexcept
 {
-    return _transport.nodelay(enable);
+    return _state->_transport.nodelay(enable);
 }
 
-SecureSocket::State SecureSocket::state() const noexcept
+SecureSocket::ConnectionState SecureSocket::state() const noexcept
 {
-    return _state;
+    return _state->_connectionState;
 }
 
 bool SecureSocket::established() const noexcept
 {
-    return _state == State::Established;
+    return _state->_connectionState == ConnectionState::Established;
 }
 
 uv::TCPSocket& SecureSocket::transport() noexcept
 {
-    return _transport;
+    return _state->_transport;
 }
 
-std::expected<void, uv::Error> SecureSocket::startHandshake(HandshakeMode mode) noexcept
+std::expected<void, uv::Error> SecureSocket::startHandshake(std::shared_ptr<State> state, HandshakeMode mode) noexcept
 {
-    assert(_state == State::Uninitialized || _state == State::Connecting);
-    assert(_onHandshakeCallback.has_value());
+    assert(
+        state->_connectionState == ConnectionState::Uninitialized ||
+        state->_connectionState == ConnectionState::Connecting);
+    assert(state->_onHandshakeCallback.has_value());
 
-    _state = State::Handshaking;
+    state->_connectionState = ConnectionState::Handshaking;
 
     if (mode == HandshakeMode::Connect) {
-        SSL_set_connect_state(_ssl.get());
+        SSL_set_connect_state(state->_ssl.get());
     } else {
-        SSL_set_accept_state(_ssl.get());
+        SSL_set_accept_state(state->_ssl.get());
     }
 
     std::expected<void, uv::Error> readResult =
-        _transport.readStart(std::bind_front(&SecureSocket::onTransportRead, this));
+        state->_transport.readStart(std::bind_front(&SecureSocket::onTransportRead, state));
     if (!readResult.has_value()) {
-        failWithError(readResult.error());
+        failWithError(state, readResult.error());
         return readResult;
     }
 
-    return tryFinishHandshake();
+    return tryFinishHandshake(state);
 }
 
-std::expected<void, uv::Error> SecureSocket::tryFinishHandshake() noexcept
+std::expected<void, uv::Error> SecureSocket::tryFinishHandshake(std::shared_ptr<State> state) noexcept
 {
-    assert(_state == State::Handshaking);
-    assert(_onHandshakeCallback.has_value());
+    assert(state->_connectionState == ConnectionState::Handshaking);
+    assert(state->_onHandshakeCallback.has_value());
 
-    const int status = SSL_do_handshake(_ssl.get());
+    const int status = SSL_do_handshake(state->_ssl.get());
 
-    std::expected<void, uv::Error> flushResult = flushToTransport();
+    std::expected<void, uv::Error> flushResult = flushToTransport(state);
     if (!flushResult.has_value()) {
-        failWithError(flushResult.error());
+        failWithError(state, flushResult.error());
         return flushResult;
     }
 
     if (status != 1) {
-        const int sslError = SSL_get_error(_ssl.get(), status);
+        const int sslError = SSL_get_error(state->_ssl.get(), status);
 
         if (sslError == SSL_ERROR_WANT_WRITE) {
-            return tryFinishHandshake();  // try again
+            return tryFinishHandshake(state);  // try again
         } else if (sslError == SSL_ERROR_WANT_READ) {
             return {};  // try again later
         } else {
-            failWithError(uv::Error {UV_EPROTO});
+            failWithError(state, uv::Error {UV_EPROTO});
             return std::unexpected {uv::Error {UV_EPROTO}};
         }
     }
 
     assert(status == 1);
 
-    _state = State::Established;
+    state->_connectionState = ConnectionState::Established;
 
-    (*_onHandshakeCallback)({});
-    _onHandshakeCallback.reset();
+    (*state->_onHandshakeCallback)({});
+    state->_onHandshakeCallback.reset();
 
     // We might already have data in the SSL buffers that we need to read or write.
 
-    flushResult = flushToApplication();
+    flushResult = flushToApplication(state);
     if (!flushResult.has_value()) {
         return flushResult;
     }
 
-    return processPendingWrites();
+    return processPendingWrites(state);
 }
 
-std::expected<void, uv::Error> SecureSocket::tryFinishShutdown() noexcept
+std::expected<void, uv::Error> SecureSocket::tryFinishShutdown(std::shared_ptr<State> state) noexcept
 {
-    assert(_state == State::Closing);
-    assert(_onShutdownCallback.has_value());
-    assert(_pendingWrites.empty());
+    assert(state->_connectionState == ConnectionState::Closing);
+    assert(state->_onShutdownCallback.has_value());
+    assert(state->_pendingWrites.empty());
 
-    const int status = SSL_shutdown(_ssl.get());
+    const int status = SSL_shutdown(state->_ssl.get());
 
-    std::expected<void, uv::Error> flushResult = flushToTransport();
+    std::expected<void, uv::Error> flushResult = flushToTransport(state);
     if (!flushResult.has_value()) {
-        failWithError(flushResult.error());
+        failWithError(state, flushResult.error());
         return flushResult;
     }
 
@@ -267,28 +294,33 @@ std::expected<void, uv::Error> SecureSocket::tryFinishShutdown() noexcept
     }
 
     if (status < 0) {
-        const int sslError = SSL_get_error(_ssl.get(), status);
+        const int sslError = SSL_get_error(state->_ssl.get(), status);
 
         if (sslError == SSL_ERROR_WANT_WRITE) {
-            return tryFinishShutdown();  // try again
+            return tryFinishShutdown(state);  // try again
         } else if (sslError == SSL_ERROR_WANT_READ) {
             return {};  // try again later
         } else {
-            failWithError(uv::Error {UV_EPROTO});
+            failWithError(state, uv::Error {UV_EPROTO});
             return std::unexpected {uv::Error {UV_EPROTO}};
         }
     }
 
     assert(status == 1);
 
-    _state = State::Closed;
-
     // SSL shutdown completed, shut down the transport.
 
-    _transport.readStop();
+    state->_transport.readStop();
 
-    std::expected<uv::ShutdownRequest, uv::Error> shutdownResult = _transport.shutdown(std::move(*_onShutdownCallback));
-    _onShutdownCallback.reset();
+    std::expected<uv::ShutdownRequest, uv::Error> shutdownResult =
+        state->_transport.shutdown([state](std::expected<void, uv::Error> result) mutable {
+            state->_connectionState = ConnectionState::Closed;
+
+            if (state->_onShutdownCallback.has_value()) {
+                (*state->_onShutdownCallback)(std::move(result));
+                state->_onShutdownCallback.reset();
+            }
+        });
 
     if (!shutdownResult.has_value()) {
         return std::unexpected {shutdownResult.error()};
@@ -297,39 +329,45 @@ std::expected<void, uv::Error> SecureSocket::tryFinishShutdown() noexcept
     return {};
 }
 
-std::expected<void, uv::Error> SecureSocket::flushToApplication() noexcept
+std::expected<void, uv::Error> SecureSocket::flushToApplication(std::shared_ptr<State> state) noexcept
 {
     std::array<uint8_t, defaultDecryptChunkSize> buffer {};
 
-    while (_onReadCallback.has_value()) {  // Stops if a callback calls readStop().
-        const int readCount = SSL_read(_ssl.get(), buffer.data(), static_cast<int>(buffer.size()));
+    // When closing, we must drain and discard any pending application data from the SSL buffer even if no read callback
+    // is registered, or else OpenSSL cannot complete its shutdown process.
+    const bool isClosing = (state->_connectionState == ConnectionState::Closing);
+
+    while (state->_onReadCallback.has_value() || isClosing) {
+        const int readCount = SSL_read(state->_ssl.get(), buffer.data(), static_cast<int>(buffer.size()));
         if (readCount <= 0) {
-            const int sslError = SSL_get_error(_ssl.get(), readCount);
+            const int sslError = SSL_get_error(state->_ssl.get(), readCount);
             if (sslError == SSL_ERROR_WANT_READ || sslError == SSL_ERROR_WANT_WRITE) {
                 return {};
             } else if (sslError == SSL_ERROR_ZERO_RETURN) {
                 // Peer requested shutdown.
-                if (_onReadCallback.has_value()) {
-                    (*_onReadCallback)(std::unexpected {uv::Error {UV_EOF}});
-                    _onReadCallback.reset();
+                if (state->_onReadCallback.has_value()) {
+                    (*state->_onReadCallback)(std::unexpected {uv::Error {UV_EOF}});
+                    state->_onReadCallback.reset();
                 }
                 return {};
             } else {
-                failWithError(uv::Error {UV_EPROTO});
+                failWithError(state, uv::Error {UV_EPROTO});
                 return std::unexpected {uv::Error {UV_EPROTO}};
             }
         }
 
-        (*_onReadCallback)(std::span<const uint8_t> {buffer.data(), static_cast<size_t>(readCount)});
+        if (state->_onReadCallback.has_value()) {
+            (*state->_onReadCallback)(std::span<const uint8_t> {buffer.data(), static_cast<size_t>(readCount)});
+        }
     }
 
     return {};
 }
 
-std::expected<void, uv::Error> SecureSocket::flushToTransport() noexcept
+std::expected<void, uv::Error> SecureSocket::flushToTransport(std::shared_ptr<State> state) noexcept
 {
     for (;;) {
-        const size_t pending = BIO_ctrl_pending(_writeBIO.get());
+        const size_t pending = BIO_ctrl_pending(state->_writeBIO.get());
         if (pending == 0) {
             return {};
         }
@@ -337,7 +375,7 @@ std::expected<void, uv::Error> SecureSocket::flushToTransport() noexcept
         auto buffer = std::make_unique<std::vector<uint8_t>>(pending);
 
         const int readCount =
-            BIO_read(_writeBIO.get(), reinterpret_cast<char*>(buffer->data()), static_cast<int>(buffer->size()));
+            BIO_read(state->_writeBIO.get(), reinterpret_cast<char*>(buffer->data()), static_cast<int>(buffer->size()));
         if (readCount <= 0) {
             return {};
         }
@@ -347,49 +385,50 @@ std::expected<void, uv::Error> SecureSocket::flushToTransport() noexcept
         const std::span<const uint8_t> bufferSpan {*buffer};
 
         // Callback captures the buffer to extend its lifetime until the write completes
-        auto writeResult = _transport.write(
+        auto writeResult = state->_transport.write(
             bufferSpan, [buffer = std::move(buffer)](std::expected<void, uv::Error>) mutable noexcept {});
         if (!writeResult.has_value()) {
-            failWithError(writeResult.error());
+            failWithError(state, writeResult.error());
             return std::unexpected {writeResult.error()};
         }
     }
 }
 
-std::expected<void, uv::Error> SecureSocket::processPendingWrites() noexcept
+std::expected<void, uv::Error> SecureSocket::processPendingWrites(std::shared_ptr<State> state) noexcept
 {
-    if (_state != State::Established && _state != State::Closing) {
+    if (state->_connectionState != ConnectionState::Established &&
+        state->_connectionState != ConnectionState::Closing) {
         return {};
     }
 
-    while (!_pendingWrites.empty()) {
-        PendingWrite& pendingWrite             = _pendingWrites.front();
+    while (!state->_pendingWrites.empty()) {
+        PendingWrite& pendingWrite             = state->_pendingWrites.front();
         const std::span<const uint8_t> payload = pendingWrite._payload;
 
         if (payload.empty()) {
             pendingWrite._callback({});
-            _pendingWrites.pop_front();
+            state->_pendingWrites.pop_front();
             continue;
         }
 
         // SSL only supports writes up to INT_MAX.
         const int writeSize = static_cast<int>(std::min(payload.size(), static_cast<size_t>(INT_MAX)));
 
-        const int status = SSL_write(_ssl.get(), payload.data(), writeSize);
+        const int status = SSL_write(state->_ssl.get(), payload.data(), writeSize);
 
         if (status <= 0) {
-            const int sslError = SSL_get_error(_ssl.get(), status);
+            const int sslError = SSL_get_error(state->_ssl.get(), status);
             if (sslError == SSL_ERROR_WANT_READ) {
                 break;
             } else if (sslError == SSL_ERROR_WANT_WRITE) {
                 // SSL needs to write to transport. Flush then retry.
-                std::expected<void, uv::Error> flushResult = flushToTransport();
+                std::expected<void, uv::Error> flushResult = flushToTransport(state);
                 if (!flushResult.has_value()) {
                     return flushResult;
                 }
                 continue;
             } else {
-                failWithError(uv::Error {UV_EPROTO});
+                failWithError(state, uv::Error {UV_EPROTO});
                 return std::unexpected {uv::Error {UV_EPROTO}};
             }
         }
@@ -398,101 +437,104 @@ std::expected<void, uv::Error> SecureSocket::processPendingWrites() noexcept
 
         if (bytesWritten >= payload.size()) {
             pendingWrite._callback({});
-            _pendingWrites.pop_front();
+            state->_pendingWrites.pop_front();
         } else {
             pendingWrite._payload = payload.subspan(bytesWritten);
         }
     }
 
-    std::expected<void, uv::Error> flushResult = flushToTransport();
+    std::expected<void, uv::Error> flushResult = flushToTransport(state);
     if (!flushResult.has_value()) {
         return flushResult;
     }
 
     // All writes drained, proceed the shutdown process.
-    if (_state == State::Closing) {
-        return tryFinishShutdown();
+    if (state->_connectionState == ConnectionState::Closing) {
+        return tryFinishShutdown(state);
     }
 
     return {};
 }
-void SecureSocket::failWithError(uv::Error error) noexcept
+
+void SecureSocket::failWithError(std::shared_ptr<State> state, uv::Error error) noexcept
 {
-    _state = State::Closed;
+    state->_connectionState = ConnectionState::Closed;
 
-    _transport.readStop();
+    state->_transport.readStop();
 
-    if (_onReadCallback.has_value()) {
-        (*_onReadCallback)(std::unexpected {error});
-        _onReadCallback.reset();
+    if (state->_onReadCallback.has_value()) {
+        (*state->_onReadCallback)(std::unexpected {error});
+        state->_onReadCallback.reset();
     }
 
-    for (PendingWrite& pendingWrite: _pendingWrites) {
+    for (PendingWrite& pendingWrite: state->_pendingWrites) {
         pendingWrite._callback(std::unexpected {error});
     }
-    _pendingWrites.clear();
+    state->_pendingWrites.clear();
 
-    if (_onHandshakeCallback.has_value()) {
-        (*_onHandshakeCallback)(std::unexpected {error});
-        _onHandshakeCallback.reset();
+    if (state->_onHandshakeCallback.has_value()) {
+        (*state->_onHandshakeCallback)(std::unexpected {error});
+        state->_onHandshakeCallback.reset();
     }
 
-    if (_onShutdownCallback.has_value()) {
-        (*_onShutdownCallback)(std::unexpected {error});
-        _onShutdownCallback.reset();
+    if (state->_onShutdownCallback.has_value()) {
+        (*state->_onShutdownCallback)(std::unexpected {error});
+        state->_onShutdownCallback.reset();
     }
 }
 
-void SecureSocket::onTransportConnected(std::expected<void, uv::Error> result) noexcept
+void SecureSocket::onTransportConnected(std::shared_ptr<State> state, std::expected<void, uv::Error> result) noexcept
 {
-    assert(_state == State::Connecting);
-    assert(_onHandshakeCallback.has_value());
+    assert(state->_connectionState == ConnectionState::Connecting);
+    assert(state->_onHandshakeCallback.has_value());
 
     if (!result.has_value()) {
-        failWithError(result.error());
+        failWithError(state, result.error());
         return;
     }
 
-    startHandshake(HandshakeMode::Connect);
+    startHandshake(state, HandshakeMode::Connect);
 }
 
-void SecureSocket::onTransportRead(std::expected<std::span<const uint8_t>, uv::Error> result) noexcept
+void SecureSocket::onTransportRead(
+    std::shared_ptr<State> state, std::expected<std::span<const uint8_t>, uv::Error> result) noexcept
 {
     if (!result.has_value()) {
-        failWithError(result.error());
+        failWithError(state, result.error());
         return;
     }
 
     const std::span<const uint8_t> data = result.value();
-    BIO_write(_readBIO.get(), reinterpret_cast<const char*>(data.data()), static_cast<int>(data.size()));
+    BIO_write(state->_readBIO.get(), reinterpret_cast<const char*>(data.data()), static_cast<int>(data.size()));
 
-    std::expected<void, uv::Error> flushResult = flushToApplication();
+    std::expected<void, uv::Error> flushResult = flushToApplication(state);
     if (!flushResult.has_value()) {
         return;
     }
 
-    switch (_state) {
-        case State::Handshaking: {
-            std::expected<void, uv::Error> handshakeResult = tryFinishHandshake();
+    switch (state->_connectionState) {
+        case ConnectionState::Handshaking: {
+            std::expected<void, uv::Error> handshakeResult = tryFinishHandshake(state);
             if (!handshakeResult.has_value()) {
                 return;
             }
             break;
         }
-        case State::Closing: {
-            std::expected<void, uv::Error> shutdownResult = tryFinishShutdown();
+        case ConnectionState::Closing: {
+            std::expected<void, uv::Error> shutdownResult = tryFinishShutdown(state);
             if (!shutdownResult.has_value()) {
                 return;
             }
             break;
         }
-        case State::Established: {
-            std::expected<void, uv::Error> writeResult = processPendingWrites();
+        case ConnectionState::Established: {
+            std::expected<void, uv::Error> writeResult = processPendingWrites(state);
             if (!writeResult.has_value()) {
                 return;
             }
             break;
         }
+        case ConnectionState::Closed: return;
         default: std::unreachable();
     }
 }
