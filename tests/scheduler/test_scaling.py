@@ -34,18 +34,17 @@ from scaler.config.types.address import AddressConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
 from scaler.protocol.helpers import capabilities_to_dict
+from scaler.scheduler.controllers.policies.library.scale_down_cooldown import DEFAULT_SCALE_DOWN_COOLDOWN_SECONDS
 from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla import (
-    _SCALE_DOWN_COOLDOWN_SECONDS,
-    VanillaScalingPolicy,
-)
+from scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla import VanillaScalingPolicy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.snapshot import InformationSnapshot
 from tests.utility.utility import logging_test_name
 
-_VANILLA_TIME_PATH = "scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla.time"
+_SCALE_DOWN_COOLDOWN_SECONDS = DEFAULT_SCALE_DOWN_COOLDOWN_SECONDS
+_SCALE_DOWN_TIME_PATH = "scaler.scheduler.controllers.policies.library.scale_down_cooldown.time"
 
 
 class TestScaling(unittest.TestCase):
@@ -223,7 +222,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         snapshot = InformationSnapshot(tasks={}, workers=workers)
         heartbeat = _create_worker_manager_heartbeat(b"mgr")
 
-        with patch(_VANILLA_TIME_PATH) as mock_time:
+        with patch(_SCALE_DOWN_TIME_PATH) as mock_time:
             mock_time.time.side_effect = [0.0, _SCALE_DOWN_COOLDOWN_SECONDS + 1]
             self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})  # starts cooldown
             request = self._single_request(snapshot, heartbeat, managed)  # cooldown elapsed
@@ -238,7 +237,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         snapshot = InformationSnapshot(tasks=tasks, workers=workers)
         heartbeat = _create_worker_manager_heartbeat(b"mgr")
 
-        with patch(_VANILLA_TIME_PATH) as mock_time:
+        with patch(_SCALE_DOWN_TIME_PATH) as mock_time:
             mock_time.time.side_effect = [0.0, _SCALE_DOWN_COOLDOWN_SECONDS + 1]
             self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})  # starts cooldown
             request = self._single_request(snapshot, heartbeat, managed)  # cooldown elapsed
@@ -493,7 +492,7 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         snapshot = InformationSnapshot(tasks={}, workers=workers)
         heartbeat = _create_worker_manager_heartbeat(b"mgr")
 
-        with patch(_VANILLA_TIME_PATH) as mock_time:
+        with patch(_SCALE_DOWN_TIME_PATH) as mock_time:
             mock_time.time.side_effect = [0.0, _SCALE_DOWN_COOLDOWN_SECONDS + 1]
             self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})  # starts cooldown
             commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})  # cooldown elapsed
@@ -512,7 +511,7 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         snapshot = InformationSnapshot(tasks=tasks, workers=workers)
         heartbeat = _create_worker_manager_heartbeat(b"mgr")
 
-        with patch(_VANILLA_TIME_PATH) as mock_time:
+        with patch(_SCALE_DOWN_TIME_PATH) as mock_time:
             mock_time.time.side_effect = [0.0, _SCALE_DOWN_COOLDOWN_SECONDS + 1]
             self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})  # starts cooldown
             commands = self.policy.get_scaling_commands(snapshot, heartbeat, managed, {})  # cooldown elapsed
@@ -546,7 +545,7 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         self.assertIsInstance(status, ScalingManagerStatus)
 
 
-class TestScaleDownCooldown(unittest.TestCase):
+class TestVanillaScaleDownCooldown(unittest.TestCase):
     """Verifies the 30-second scale-down cooldown gate in VanillaScalingPolicy."""
 
     def setUp(self):
@@ -577,14 +576,14 @@ class TestScaleDownCooldown(unittest.TestCase):
     def test_first_scale_down_held_at_current(self):
         """The first observation wanting scale-down is held at current; cooldown starts."""
         snapshot, heartbeat, managed = self._idle_scenario()
-        with patch(_VANILLA_TIME_PATH) as mock_time:
+        with patch(_SCALE_DOWN_TIME_PATH) as mock_time:
             mock_time.time.return_value = 0.0
             self.assertEqual(self._get_concurrency(snapshot, heartbeat, managed), 3)
 
     def test_scale_down_still_held_before_cooldown_elapses(self):
         """A second scale-down observation before the cooldown elapses is still held at current."""
         snapshot, heartbeat, managed = self._idle_scenario()
-        with patch(_VANILLA_TIME_PATH) as mock_time:
+        with patch(_SCALE_DOWN_TIME_PATH) as mock_time:
             mock_time.time.side_effect = [0.0, _SCALE_DOWN_COOLDOWN_SECONDS - 1]
             self._get_concurrency(snapshot, heartbeat, managed)  # starts cooldown at t=0
             self.assertEqual(self._get_concurrency(snapshot, heartbeat, managed), 3)
@@ -592,7 +591,7 @@ class TestScaleDownCooldown(unittest.TestCase):
     def test_scale_down_applied_after_cooldown_elapses(self):
         """After the cooldown elapses the computed reduction is applied."""
         snapshot, heartbeat, managed = self._idle_scenario()
-        with patch(_VANILLA_TIME_PATH) as mock_time:
+        with patch(_SCALE_DOWN_TIME_PATH) as mock_time:
             mock_time.time.side_effect = [0.0, _SCALE_DOWN_COOLDOWN_SECONDS + 1]
             self._get_concurrency(snapshot, heartbeat, managed)  # starts cooldown at t=0
             self.assertEqual(self._get_concurrency(snapshot, heartbeat, managed), 0)
@@ -604,7 +603,7 @@ class TestScaleDownCooldown(unittest.TestCase):
         snapshot, heartbeat, managed = self._idle_scenario()
         busy_snapshot, busy_heartbeat = self._busy_scenario(managed)
 
-        with patch(_VANILLA_TIME_PATH) as mock_time:
+        with patch(_SCALE_DOWN_TIME_PATH) as mock_time:
             # time.time() is only called on scale-down paths, so the scale-up call
             # in the middle does not consume a side_effect value.
             past_cooldown = _SCALE_DOWN_COOLDOWN_SECONDS + 1
@@ -616,6 +615,77 @@ class TestScaleDownCooldown(unittest.TestCase):
         # Without the reset, past_cooldown > _SCALE_DOWN_COOLDOWN_SECONDS so scale-down would apply.
         # With the reset, the cooldown restarts at t=past_cooldown so the new elapsed=0 -> still held at 3.
         self.assertEqual(result, 3)
+
+
+class TestCapabilityScaleDownCooldown(unittest.TestCase):
+    """Verifies the scale-down cooldown gate in CapabilityScalingPolicy, including the case
+    where a capability set drops out of the declarative output entirely because it has no
+    more pending tasks -- this must be held the same as an explicit reduction to 0."""
+
+    def setUp(self):
+        setup_logger()
+        self.policy = CapabilityScalingPolicy()
+
+    def _gpu_concurrency(self, snapshot, heartbeat):
+        commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], {})
+        requests = list(commands[0].setDesiredTaskConcurrencyRequests)
+        gpu_requests = [r for r in requests if capabilities_to_dict(r.capabilities) == {"gpu": 1}]
+        return gpu_requests[0].taskConcurrency if gpu_requests else None
+
+    def _gpu_scenario(self, task_count: int):
+        """`task_count` gpu tasks -> ceil(task_count / upper_task_ratio) desired for that capset."""
+        tasks = {}
+        for _ in range(task_count):
+            tid = TaskID.generate_task_id()
+            tasks[tid] = _create_mock_task(tid, {"gpu": 1})
+        snapshot = InformationSnapshot(tasks=tasks, workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=-1, capabilities={"gpu": -1})
+        return snapshot, heartbeat
+
+    def test_shrink_held_then_applied(self):
+        """A capset whose desired count would drop is held at its last value until the
+        cooldown elapses."""
+        busy_snapshot, heartbeat = self._gpu_scenario(50)  # ceil(50/5) = 10
+        idle_snapshot, _ = self._gpu_scenario(5)  # ceil(5/5) = 1
+
+        with patch(_SCALE_DOWN_TIME_PATH) as mock_time:
+            mock_time.time.side_effect = [0.0, _SCALE_DOWN_COOLDOWN_SECONDS + 1]
+            self._gpu_concurrency(busy_snapshot, heartbeat)  # first sighting, held=10
+            held = self._gpu_concurrency(idle_snapshot, heartbeat)  # t=0: shrink held at 10
+            applied = self._gpu_concurrency(idle_snapshot, heartbeat)  # t=past cooldown: applied
+
+        self.assertEqual(held, 10)
+        self.assertEqual(applied, 1)
+
+    def test_capset_vanishing_is_held_then_drained(self):
+        """Once a capset's tasks disappear entirely it's omitted from the declarative output --
+        this must still be held at its last value during the cooldown window."""
+        busy_snapshot, heartbeat = self._gpu_scenario(50)  # ceil(50/5) = 10
+        empty_snapshot = InformationSnapshot(tasks={}, workers={})
+
+        with patch(_SCALE_DOWN_TIME_PATH) as mock_time:
+            mock_time.time.side_effect = [0.0, _SCALE_DOWN_COOLDOWN_SECONDS + 1]
+            self._gpu_concurrency(busy_snapshot, heartbeat)  # first sighting, held=10
+            held = self._gpu_concurrency(empty_snapshot, heartbeat)  # t=0: vanished, still held
+            drained = self._gpu_concurrency(empty_snapshot, heartbeat)  # t=past cooldown: drained
+
+        self.assertEqual(held, 10)
+        self.assertIsNone(drained)
+
+    def test_scale_up_resets_cooldown(self):
+        busy_snapshot, heartbeat = self._gpu_scenario(50)  # ceil(50/5) = 10
+        idle_snapshot, _ = self._gpu_scenario(5)  # ceil(5/5) = 1
+        even_busier_snapshot, _ = self._gpu_scenario(100)  # ceil(100/5) = 20
+
+        with patch(_SCALE_DOWN_TIME_PATH) as mock_time:
+            past_cooldown = _SCALE_DOWN_COOLDOWN_SECONDS + 1
+            mock_time.time.side_effect = [0.0, past_cooldown]
+            self._gpu_concurrency(busy_snapshot, heartbeat)  # first sighting, held=10
+            self._gpu_concurrency(idle_snapshot, heartbeat)  # t=0: shrink, cooldown starts
+            self._gpu_concurrency(even_busier_snapshot, heartbeat)  # scale-up: resets cooldown
+            result = self._gpu_concurrency(idle_snapshot, heartbeat)  # t=past_cooldown: fresh cooldown, held
+
+        self.assertEqual(result, 20)
 
 
 class TestCapabilityDeclarativeEquivalents(unittest.TestCase):

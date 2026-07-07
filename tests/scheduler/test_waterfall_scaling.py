@@ -2,9 +2,11 @@ import asyncio
 import time
 import unittest
 from typing import Dict, Optional
+from unittest.mock import patch
 
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
 from scaler.protocol.helpers import capabilities_to_dict
+from scaler.scheduler.controllers.policies.library.scale_down_cooldown import DEFAULT_SCALE_DOWN_COOLDOWN_SECONDS
 from scaler.scheduler.controllers.policies.library.utility import create_policy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.controllers.policies.waterfall_v1.scaling.types import WaterfallRule
@@ -14,6 +16,18 @@ from scaler.scheduler.controllers.policies.waterfall_v1.waterfall_v1_policy impo
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.snapshot import InformationSnapshot
+
+_SCALE_DOWN_TIME_PATH = "scaler.scheduler.controllers.policies.library.scale_down_cooldown.time"
+
+
+def _past_generic_cooldown(policy: WaterfallScalingPolicy, snapshot, heartbeat, managed, manager_snapshots):
+    """Call get_scaling_commands twice under a mocked clock so the generic-capset scale-down
+    cooldown (gated against the manager's real connected worker count) starts on the first
+    call and has fully elapsed by the second -- returning the second call's commands."""
+    with patch(_SCALE_DOWN_TIME_PATH) as mock_time:
+        mock_time.time.side_effect = [0.0, DEFAULT_SCALE_DOWN_COOLDOWN_SECONDS + 1]
+        policy.get_scaling_commands(snapshot, heartbeat, managed, manager_snapshots)  # starts cooldown
+        return policy.get_scaling_commands(snapshot, heartbeat, managed, manager_snapshots)  # cooldown elapsed
 
 
 def _generic_request(command):
@@ -173,10 +187,10 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
             b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=20, worker_count=2),
         }
 
-        # manager_b (lower priority) is told to drain to 0
+        # manager_b (lower priority) is told to drain to 0 once its scale-down cooldown elapses.
         managed_b = [WorkerID(b"worker-3"), WorkerID(b"worker-4")]
         heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
-        commands_b = policy.get_scaling_commands(snapshot, heartbeat_b, managed_b, manager_snapshots)
+        commands_b = _past_generic_cooldown(policy, snapshot, heartbeat_b, managed_b, manager_snapshots)
         self.assertEqual(len(commands_b), 1)
         self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
 
@@ -202,9 +216,10 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
         managed_a = [WorkerID(b"worker-0"), WorkerID(b"worker-1"), WorkerID(b"worker-2")]
         heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
-        commands_a = policy.get_scaling_commands(snapshot, heartbeat_a, managed_a, manager_snapshots)
+        commands_a = _past_generic_cooldown(policy, snapshot, heartbeat_a, managed_a, manager_snapshots)
 
-        # No lower-priority manager to wait on -- emit setDesired(0) to drain.
+        # No lower-priority manager to wait on -- emits setDesired(0) to drain once the
+        # scale-down cooldown elapses.
         self.assertEqual(len(commands_a), 1)
         self.assertEqual(_generic_request(commands_a[0]).taskConcurrency, 0)
 
@@ -276,7 +291,8 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
     def test_greedy_shutdown_partial_with_tasks(self):
         """With a small task count and many workers, the policy targets the ratio-based
-        minimum and emits a setDesired with that smaller count to drain excess workers."""
+        minimum and emits a setDesired with that smaller count to drain excess workers,
+        once the scale-down cooldown elapses."""
         rules = [WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=20)]
         policy = WaterfallScalingPolicy(rules)
         # 5 tasks; ratio yields ceil(5/10) = 1 desired total.
@@ -288,7 +304,7 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         managed = [WorkerID(f"worker-{i}".encode()) for i in range(10)]
         heartbeat = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=20)
 
-        commands = policy.get_scaling_commands(snapshot, heartbeat, managed, manager_snapshots)
+        commands = _past_generic_cooldown(policy, snapshot, heartbeat, managed, manager_snapshots)
 
         self.assertEqual(len(commands), 1)
         self.assertEqual(_generic_request(commands[0]).taskConcurrency, 1)
@@ -310,12 +326,104 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
 
         managed_b = [WorkerID(b"w0"), WorkerID(b"w1")]
         heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=20)
-        commands_b = policy.get_scaling_commands(snapshot, heartbeat_b, managed_b, manager_snapshots)
+        commands_b = _past_generic_cooldown(policy, snapshot, heartbeat_b, managed_b, manager_snapshots)
 
         # 5 tasks -> total_desired=1, absorbed by manager_a entirely -> manager_b's share=0;
-        # but manager_b has 2 connected workers, so the command is not a no-op.
+        # but manager_b has 2 connected workers, so the command is not a no-op (once its
+        # scale-down cooldown elapses).
         self.assertEqual(len(commands_b), 1)
         self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
+
+
+class TestWaterfallScaleDownCooldown(unittest.TestCase):
+    """Verifies the per-worker-manager scale-down cooldown in WaterfallScalingPolicy, for
+    both the generic (empty capset) entry and capability-specific entries."""
+
+    def setUp(self):
+        setup_logger()
+
+    def test_generic_shrink_held_then_applied(self):
+        """The generic entry is gated against the manager's real connected worker count."""
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"mgr", max_task_concurrency=20)]
+        policy = WaterfallScalingPolicy(rules)
+        busy_tasks = _create_tasks(50)  # ceil(50/10) = 5
+        idle_tasks: Dict[TaskID, Task] = {}
+        managed = [WorkerID(f"w{i}".encode()) for i in range(5)]
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=20)
+        manager_snapshots = {b"mgr": _create_manager_snapshot(b"mgr", max_task_concurrency=20, worker_count=5)}
+
+        with patch(_SCALE_DOWN_TIME_PATH) as mock_time:
+            mock_time.time.side_effect = [0.0, DEFAULT_SCALE_DOWN_COOLDOWN_SECONDS + 1]
+            busy_snapshot = InformationSnapshot(tasks=busy_tasks, workers={})
+            policy.get_scaling_commands(busy_snapshot, heartbeat, managed, manager_snapshots)  # desired=5, no gate
+
+            idle_snapshot = InformationSnapshot(tasks=idle_tasks, workers={})
+            held = policy.get_scaling_commands(idle_snapshot, heartbeat, managed, manager_snapshots)  # t=0: held
+            applied = policy.get_scaling_commands(
+                idle_snapshot, heartbeat, managed, manager_snapshots
+            )  # t=past cooldown
+
+        self.assertEqual(_generic_request(held[0]).taskConcurrency, 5)
+        self.assertEqual(_generic_request(applied[0]).taskConcurrency, 0)
+
+    def test_capset_vanishing_is_held_then_drained(self):
+        """A capability-specific entry whose tasks disappear entirely is held at its last
+        value (via reconcile()) rather than instantly omitted from the output."""
+        rules = [WaterfallRule(priority=1, worker_manager_id=b"mgr", max_task_concurrency=20)]
+        policy = WaterfallScalingPolicy(rules)
+        gpu_tasks = _create_tasks(10, capabilities={"gpu": 1})  # ceil(10/10) = 1
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=20, capabilities={"gpu": 4})
+        manager_snapshots = {
+            b"mgr": _create_manager_snapshot(b"mgr", max_task_concurrency=20, worker_count=0, capabilities={"gpu": 4})
+        }
+
+        with patch(_SCALE_DOWN_TIME_PATH) as mock_time:
+            mock_time.time.side_effect = [0.0, DEFAULT_SCALE_DOWN_COOLDOWN_SECONDS + 1]
+            busy_snapshot = InformationSnapshot(tasks=gpu_tasks, workers={})
+            policy.get_scaling_commands(busy_snapshot, heartbeat, [], manager_snapshots)  # first sighting, held=1
+
+            empty_snapshot = InformationSnapshot(tasks={}, workers={})
+            held = policy.get_scaling_commands(empty_snapshot, heartbeat, [], manager_snapshots)  # t=0: vanished
+            drained = policy.get_scaling_commands(empty_snapshot, heartbeat, [], manager_snapshots)  # t=past cooldown
+
+        self.assertEqual(_capability_requests(held[0]), [({"gpu": 1}, 1)])
+        self.assertEqual(_capability_requests(drained[0]), [])
+
+    def test_generic_cooldowns_independent_across_managers(self):
+        """One manager's scale-down cooldown must not be affected by a different manager's
+        traffic -- each worker manager gets its own cooldown tracker."""
+        rules = [
+            WaterfallRule(priority=1, worker_manager_id=b"manager_a", max_task_concurrency=10),
+            WaterfallRule(priority=2, worker_manager_id=b"manager_b", max_task_concurrency=10),
+        ]
+        policy = WaterfallScalingPolicy(rules)
+        managed_a = [WorkerID(f"a{i}".encode()) for i in range(5)]
+        managed_b = [WorkerID(f"b{i}".encode()) for i in range(5)]
+        heartbeat_a = _create_worker_manager_heartbeat(b"manager_a", max_task_concurrency=10)
+        heartbeat_b = _create_worker_manager_heartbeat(b"manager_b", max_task_concurrency=10)
+        manager_snapshots = {
+            b"manager_a": _create_manager_snapshot(b"manager_a", max_task_concurrency=10, worker_count=5),
+            b"manager_b": _create_manager_snapshot(b"manager_b", max_task_concurrency=10, worker_count=5),
+        }
+        # manager_a is priority 1 and absorbs all demand; manager_b (priority 2) always sees
+        # desired=0 for the generic capset regardless of task count, isolating its cooldown
+        # from manager_a's task-driven scale-up.
+        busy_snapshot = InformationSnapshot(tasks=_create_tasks(100), workers={})  # manager_a: ceil(100/10)=10
+        idle_snapshot = InformationSnapshot(tasks={}, workers={})
+
+        with patch(_SCALE_DOWN_TIME_PATH) as mock_time:
+            mock_time.time.side_effect = [0.0, 1.0]  # 1s later, still well within the cooldown window
+            # manager_b: first sighting of a scale-down (idle -> desired 0 < current 5) starts its cooldown.
+            policy.get_scaling_commands(idle_snapshot, heartbeat_b, managed_b, manager_snapshots)
+
+            # manager_a: unrelated scale-up traffic on a different manager. If cooldown state
+            # were shared, this would incorrectly reset manager_b's timer.
+            policy.get_scaling_commands(busy_snapshot, heartbeat_a, managed_a, manager_snapshots)
+
+            # manager_b again, still within its own cooldown window -> still held at current (5).
+            still_held = policy.get_scaling_commands(idle_snapshot, heartbeat_b, managed_b, manager_snapshots)
+
+        self.assertEqual(_generic_request(still_held[0]).taskConcurrency, 5)
 
 
 class TestWaterfallCapabilities(unittest.TestCase):
