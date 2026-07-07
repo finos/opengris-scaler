@@ -7,8 +7,8 @@ the real boto3 request path and asserts the resources actually exist in the mock
 
 Backend: moto by default (implements Batch in-process). Batch is a LocalStack **Pro** feature, so on
 community LocalStack this test skips itself (like the ECS test). Real task execution by a Batch
-container is out of scope for a mock (needs LocalStack Pro / real AWS + Docker); the local data-plane
-test covers "provisioned worker actually runs a task".
+container is out of scope for a mock (needs LocalStack Pro / real AWS + Docker); the container-scaling e2e
+covers "provisioned worker actually runs a task".
 """
 
 import unittest

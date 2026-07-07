@@ -1,8 +1,11 @@
-name: "LocalStack Integration Test"
+name: "LocalStack AWS-Mock Cross-Check"
 
-# Runs tests/integration against a real LocalStack container instead of the in-process moto backend.
-# Manual-only (needs Docker): trigger from the Actions tab, or add the "localstack" label to a PR.
-# See tests/integration/README.md for backend coverage and the LOCALSTACK_AUTH_TOKEN (Pro) setup.
+# Cross-checks the AWS worker-manager CONTROL PLANE (does the provisioner call AWS correctly?) against a
+# real LocalStack container -- the real HTTP + serialization + endpoint path that the in-process moto
+# backend bypasses. LocalStack is purely an AWS API mock here: nothing boots and no task runs (real
+# containerized execution is the container-scaling e2e's job, tests/integration/test_container_scaling_e2e.py).
+# Manual-only (needs Docker): run from the Actions tab, or add the "localstack" label to a PR. See
+# tests/integration/README.md for per-service coverage and the LOCALSTACK_AUTH_TOKEN (Pro) note.
 on:
   workflow_dispatch:
   pull_request:

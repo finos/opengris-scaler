@@ -1,7 +1,9 @@
 #!/bin/bash
 #
-# Run the end-to-end integration tests (tests/integration) against a LocalStack container
-# instead of the default in-process moto backend.
+# Cross-check the AWS worker-manager control plane against a real LocalStack container -- the real
+# HTTP/endpoint path the default in-process moto backend bypasses. LocalStack is purely an AWS API mock:
+# nothing boots and no task runs (that is the container-scaling e2e's job). Same AWS control-plane tests,
+# just pointed at LocalStack instead of moto.
 #
 # Usage:
 #       ./scripts/run_integration_localstack.sh

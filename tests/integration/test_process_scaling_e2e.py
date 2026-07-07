@@ -3,10 +3,10 @@ across one and across many worker managers ("machines").
 
 This simulates a small distributed system on one physical machine:
 
-* ``TestScalingStressE2E`` -- one dynamic native worker manager: a scheduler starts with ZERO workers,
+* ``TestProcessScalingE2E`` -- one dynamic native worker manager: a scheduler starts with ZERO workers,
   a client bursts light tasks, and the scheduler scales that manager up to provision worker processes
   that run the work (asserted via the distinct worker PIDs seen in the results).
-* ``TestMultiManagerScalingE2E`` -- several worker managers, one per simulated "machine", each
+* ``TestMultiMachineScalingE2E`` -- several worker managers, one per simulated "machine", each
   provisioning its own workers and all attached to one scheduler. This mirrors production, where a
   cloud manager (ECS/ORB) provisions an instance whose user-data launches a `scaler_worker_manager
   baremetal_native` that runs that machine's workers. It checks that work spreads across multiple
@@ -15,16 +15,16 @@ This simulates a small distributed system on one physical machine:
   task can report which machine ran it.
 
 Heavier than the rest of the suite (spawns many processes), so these are behind their own gate
-(``RUN_SCALING_STRESS_TEST=1``) and are not part of the default integration run. CI exposes them as a
-manually-triggered workflow (.github/workflows/scaling-stress.yml).
+(``RUN_PROCESS_SCALING_TEST=1``) and are not part of the default integration run. CI exposes them as a
+manually-triggered workflow (.github/workflows/process-scaling.yml).
 
 Tunables (env vars, so CI / a bigger box can scale them up without code changes):
-  SCALING_STRESS_MAX_WORKERS         cap the single dynamic manager scales toward (default 8)
-  SCALING_STRESS_TASKS               number of tasks in a burst (default 240)
-  SCALING_STRESS_TASK_SECONDS        per-task sleep, keeps tasks light + non-CPU-bound (default 0.2)
-  SCALING_STRESS_MIN_WORKERS         minimum distinct workers the single-manager burst spreads across (default 3)
-  SCALING_STRESS_MACHINES            number of machines / worker managers (default 3)
-  SCALING_STRESS_WORKERS_PER_MACHINE per-machine worker cap (default 2)
+  PROCESS_SCALING_MAX_WORKERS         cap the single dynamic manager scales toward (default 8)
+  PROCESS_SCALING_TASKS               number of tasks in a burst (default 240)
+  PROCESS_SCALING_TASK_SECONDS        per-task sleep, keeps tasks light + non-CPU-bound (default 0.2)
+  PROCESS_SCALING_MIN_WORKERS         minimum distinct workers the single-manager burst spreads across (default 3)
+  PROCESS_SCALING_MACHINES            number of machines / worker managers (default 3)
+  PROCESS_SCALING_WORKERS_PER_MACHINE per-machine worker cap (default 2)
 """
 
 import os
@@ -37,14 +37,14 @@ import psutil
 
 from scaler import Client
 from scaler.utility.logging.utility import setup_logger
-from tests.integration import RUN_SCALING_STRESS_TEST, SCALING_STRESS_SKIP_REASON
+from tests.integration import RUN_PROCESS_SCALING_TEST, PROCESS_SCALING_SKIP_REASON
 from tests.integration._harness import SchedulerHarness, run_native_worker_manager
 from tests.utility.utility import logging_test_name, terminate_process
 
-_MAX_WORKERS = int(os.environ.get("SCALING_STRESS_MAX_WORKERS", "8"))
-_N_TASKS = int(os.environ.get("SCALING_STRESS_TASKS", "240"))
-_TASK_SECONDS = float(os.environ.get("SCALING_STRESS_TASK_SECONDS", "0.2"))
-_MIN_WORKERS = int(os.environ.get("SCALING_STRESS_MIN_WORKERS", "3"))
+_MAX_WORKERS = int(os.environ.get("PROCESS_SCALING_MAX_WORKERS", "8"))
+_N_TASKS = int(os.environ.get("PROCESS_SCALING_TASKS", "240"))
+_TASK_SECONDS = float(os.environ.get("PROCESS_SCALING_TASK_SECONDS", "0.2"))
+_MIN_WORKERS = int(os.environ.get("PROCESS_SCALING_MIN_WORKERS", "3"))
 
 # Scale-DOWN convergence targets. Counting only LIVE workers (zombies excluded -- see
 # _worker_agent_count), the pool drops to ~0 within ~2s when idle and to ~1 under a steady
@@ -73,12 +73,12 @@ def _identify_machine(value: int):
     return value, os.environ.get("SCALER_IT_MACHINE_ID", "?"), os.getpid()
 
 
-@unittest.skipUnless(RUN_SCALING_STRESS_TEST, SCALING_STRESS_SKIP_REASON)
+@unittest.skipUnless(RUN_PROCESS_SCALING_TEST, PROCESS_SCALING_SKIP_REASON)
 @unittest.skipIf(
     sys.platform == "win32",
     "Dynamic scale-down has no graceful SIGINT path on Windows (see tests/scheduler/test_scaling.py).",
 )
-class TestScalingStressE2E(unittest.TestCase):
+class TestProcessScalingE2E(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -125,7 +125,7 @@ class TestScalingStressE2E(unittest.TestCase):
         worker_pids = {pid for _value, pid in results}
         # print (not logging) so the scaling result is visible in the test/CI output.
         print(
-            f"scaling stress: {_N_TASKS} tasks ({_TASK_SECONDS:.2f}s each) ran across "
+            f"process scaling: {_N_TASKS} tasks ({_TASK_SECONDS:.2f}s each) ran across "
             f"{len(worker_pids)} distinct workers (cap={_MAX_WORKERS})"
         )
         self.assertGreaterEqual(
@@ -156,7 +156,7 @@ class TestScalingStressE2E(unittest.TestCase):
                     break
             settled_workers = self._worker_agent_count(manager)
 
-        print(f"scaling stress: worker pool scaled {peak_workers} -> {settled_workers} when load dropped")
+        print(f"process scaling: worker pool scaled {peak_workers} -> {settled_workers} when load dropped")
         self.assertLess(settled_workers, peak_workers, "worker pool did not shrink after the load dropped")
         self.assertLessEqual(
             settled_workers,
@@ -187,7 +187,7 @@ class TestScalingStressE2E(unittest.TestCase):
                 time.sleep(1.0)
             idle_workers = self._worker_agent_count(manager)
 
-        print(f"scaling stress: idle pool scaled {peak_workers} -> {idle_workers} live workers")
+        print(f"process scaling: idle pool scaled {peak_workers} -> {idle_workers} live workers")
         self.assertLessEqual(
             idle_workers,
             _SCALE_DOWN_TARGET_WORKERS,
@@ -196,18 +196,18 @@ class TestScalingStressE2E(unittest.TestCase):
         )
 
 
-_NUM_MACHINES = int(os.environ.get("SCALING_STRESS_MACHINES", "3"))
-_WORKERS_PER_MACHINE = int(os.environ.get("SCALING_STRESS_WORKERS_PER_MACHINE", "2"))
+_NUM_MACHINES = int(os.environ.get("PROCESS_SCALING_MACHINES", "3"))
+_WORKERS_PER_MACHINE = int(os.environ.get("PROCESS_SCALING_WORKERS_PER_MACHINE", "2"))
 # Bound for feeding work until newly-started machines have brought up workers and taken some.
 _MULTI_MACHINE_SPREAD_TIMEOUT_SECONDS = 60.0
 
 
-@unittest.skipUnless(RUN_SCALING_STRESS_TEST, SCALING_STRESS_SKIP_REASON)
+@unittest.skipUnless(RUN_PROCESS_SCALING_TEST, PROCESS_SCALING_SKIP_REASON)
 @unittest.skipIf(
     sys.platform == "win32",
     "Dynamic scale-down has no graceful SIGINT path on Windows (see tests/scheduler/test_scaling.py).",
 )
-class TestMultiManagerScalingE2E(unittest.TestCase):
+class TestMultiMachineScalingE2E(unittest.TestCase):
     """Multiple worker managers (one per 'machine') on one scheduler, each provisioning its own
     workers; see the module docstring."""
 

@@ -2,8 +2,8 @@
 
 Brings up a real object-storage server + scheduler (in their own processes, exactly like production)
 with clean, exception-safe teardown, plus the small polling helper and the shared native-worker-manager
-entry point. Kept separate from the AWS backend so the same harness serves both the cloud-mock
-control-plane tests and the local data-plane tests.
+entry point. Kept separate from the AWS backend so the same harness serves both the AWS control-plane
+tests and the container-scaling / process-scaling data-plane tests.
 """
 
 from __future__ import annotations
@@ -74,8 +74,8 @@ def run_native_worker_manager(
     worker_manager_id: str = "wm-native-it",
     machine_id: Optional[str] = None,
 ) -> None:
-    """Process entry point for a dynamic (auto-scaling) native worker manager, shared by the local
-    data-plane and scaling-stress tests. When ``machine_id`` is set it is exported as
+    """Process entry point for a dynamic (auto-scaling) native worker manager, used by the
+    process-scaling tests. When ``machine_id`` is set it is exported as
     ``SCALER_IT_MACHINE_ID`` *before* the manager spawns workers so the worker/processor procs inherit
     it, letting a task report which manager provisioned the worker that ran it."""
     from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
@@ -117,7 +117,13 @@ class SchedulerHarness:
     :meth:`shutdown` with ``self.addCleanup`` so it is torn down even if the test body raises.
     """
 
-    def __init__(self, scaling_policy: str = "allocate=even_load; scaling=vanilla") -> None:
+    def __init__(
+        self, scaling_policy: str = "allocate=even_load; scaling=vanilla", gateway: Optional[str] = None
+    ) -> None:
+        # gateway: a docker-bridge gateway IP. When set, the scheduler + object storage bind 0.0.0.0 and
+        # advertise gateway-reachable addresses so workers running in containers can connect back; the
+        # host client still uses loopback. None keeps the original loopback-only behavior.
+        self._gateway = gateway
         self._object_storage: Optional[ObjectStorageServerProcess] = None
         self._scheduler: Optional[SchedulerProcess] = None
         self._shutdown_done = False
@@ -137,8 +143,15 @@ class SchedulerHarness:
         ) from errors[-1]
 
     def _bring_up(self, scaling_policy: str) -> None:
-        self.scheduler_address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        self._object_storage_address = AddressConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}")
+        sched_port, os_port = get_available_tcp_port(), get_available_tcp_port()
+        bind_host = "0.0.0.0" if self._gateway else "127.0.0.1"
+        # The host client always connects over loopback; container workers use the gateway address.
+        self.scheduler_address = f"tcp://127.0.0.1:{sched_port}"
+        self.worker_scheduler_address = (
+            f"tcp://{self._gateway}:{sched_port}" if self._gateway else self.scheduler_address
+        )
+        self._object_storage_address = AddressConfig.from_string(f"tcp://{bind_host}:{os_port}")
+        advertised_os = AddressConfig.from_string(f"tcp://{self._gateway}:{os_port}") if self._gateway else None
 
         self._object_storage = ObjectStorageServerProcess(
             bind_address=self._object_storage_address,
@@ -151,9 +164,9 @@ class SchedulerHarness:
         self._object_storage.wait_until_ready()  # raises TimeoutError if the port was taken
 
         self._scheduler = SchedulerProcess(
-            bind_address=AddressConfig.from_string(self.scheduler_address),
-            object_storage_address=self._object_storage_address,
-            advertised_object_storage_address=None,
+            bind_address=AddressConfig.from_string(f"tcp://{bind_host}:{sched_port}"),
+            object_storage_address=AddressConfig.from_string(f"tcp://127.0.0.1:{os_port}"),
+            advertised_object_storage_address=advertised_os,
             monitor_address=None,
             policy=PolicyConfig(policy_content=scaling_policy),
             io_threads=DEFAULT_IO_THREADS,

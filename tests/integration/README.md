@@ -1,169 +1,136 @@
 # End-to-end integration tests
 
-A skeleton for full-stack, end-to-end tests of OpenGRIS Scaler with a worker manager
-that provisions "cloud instances", using a mocked AWS control plane.
+Full-stack tests of OpenGRIS Scaler's scaling control loop. Every worker manager (ECS, ORB/EC2, Batch,
+native, ...) is a `DeclarativeWorkerProvisioner` driven by the **same** scheduler command
+(`setDesiredTaskConcurrency`) over the **same** wire protocol, so the suite splits the loop into three
+layers by *what is real*, and each layer can be exercised on its own.
 
-These tests are **not** run by the default `python -m unittest discover` CI job unless the
-extra dependencies are installed; each test `skipUnless(...)` its requirements, so they are
-safe to keep in-tree without slowing the standard build.
+Every test is **opt-in** behind an environment gate and skips itself otherwise, so the default
+`python -m unittest discover` build never pays their cost.
 
-## What is covered
+## The three layers
 
-The worker managers (ECS, ORB/EC2, Batch, native, ...) are all
-`DeclarativeWorkerProvisioner`s driven by the **same** scheduler command
-(`setDesiredTaskConcurrency`) over the **same** wire protocol. The skeleton splits the loop
-into two complementary layers so each can be tested deterministically:
+| Layer | File(s) | What is real | What is mocked / simulated | Gate |
+|-------|---------|--------------|----------------------------|------|
+| **1. AWS control plane** | `test_ecs_provisioning.py`, `test_ec2_orb_provisioning.py`, `test_batch_provisioning.py` | the real provisioner, the real boto3 request path, the real scheduler command object | AWS itself (moto in-process, or LocalStack over real HTTP). **Nothing boots and no task runs.** | `RUN_INTEGRATION_TESTS=1` |
+| **2. Container-scaling data plane** | `test_container_scaling_e2e.py` | a real client, scheduler, and **real workers in real Docker containers** (each its own IP) that run real tasks; scheduler-driven scale-up | the "cloud": a container stands in for an instance, with optional boot/shutdown delays to simulate provisioning latency | `RUN_CONTAINER_E2E=1` (+ Docker) |
+| **3. Process scaling** | `test_process_scaling_e2e.py` | a real client, scheduler, and many real worker **processes**; scale up / down / to-zero and multi-"machine" spread | nothing -- all local processes | `RUN_PROCESS_SCALING_TEST=1` |
 
-| File | Layer | What is real | What is mocked |
-|------|-------|--------------|----------------|
-| `test_ecs_provisioning_moto.py` | **control plane** | the real `ECSWorkerProvisioner`, the real boto3 request path, the real scheduler command object | AWS ECS (moto / LocalStack **Pro**); provisioned containers do **not** boot |
-| `test_ec2_orb_provisioning.py` | **control plane** | the real `ORBWorkerProvisioner` driven through the real `orb-py` SDK down to boto3 `ec2.run_instances` | AWS EC2 (moto / **free community LocalStack**); provisioned instances do **not** boot |
-| `test_batch_provisioning_moto.py` | **control plane** | the real `AWSBatchProvisioner.provision_all` infra flow over the real boto3 path | AWS Batch (moto / LocalStack **Pro**): S3 + IAM + compute env + job queue + job def |
-| `test_scaling_stress_e2e.py` | **data plane (scale)** | a real client bursts light tasks; the scheduler scales up real workers -- across one manager, and across several managers ("machines") each provisioning its own workers | nothing — opt-in via `RUN_SCALING_STRESS_TEST=1` (see below) |
+Layer 1 asks *"does the manager drive AWS correctly?"*; layers 2 and 3 ask *"do real workers provision,
+connect, and return correct results under scaling?"* -- layer 2 across container boundaries (distinct
+IPs, the base for nested-client and multi-machine scenarios), layer 3 at process scale on one box.
 
-Together they exercise the entire path: client submits work -> scheduler scaling policy emits
-`setDesiredTaskConcurrency` -> worker manager -> provisioner -> AWS API / real workers.
+## Layer 1 -- AWS control plane
 
-**Which backend covers which manager** (see "Do moto and LocalStack test different things?" below):
+The provisioner's boto3 calls are asserted against a mocked AWS; no compute is launched.
+
+**Which backend covers which manager:**
 
 | worker manager | AWS service | moto | free community LocalStack | LocalStack Pro |
 |----------------|-------------|:----:|:-------------------------:|:--------------:|
-| ECS (`aws_raw`) | ECS | ✅ | ❌ (ECS is Pro-only) | ✅ |
-| EC2 (`orb_aws_ec2`) | EC2 | ✅ | ✅ (**EC2 is free-tier**) | ✅ |
-| Batch (`aws_hpc`) | Batch + ECR | ✅ | ❌ (Batch/ECR are Pro-only) | ✅ |
+| ECS (`aws_raw`) | ECS | yes | no (ECS is Pro-only) | yes |
+| EC2 (`orb_aws_ec2`) | EC2 | yes | yes (**EC2 is free-tier**) | yes |
+| Batch (`aws_hpc`) | Batch + ECR | yes | no (Batch/ECR are Pro-only) | yes |
 
-So **EC2/orb is the one control-plane E2E that runs against free community LocalStack**; ECS and Batch
-need moto (free, in-process) or LocalStack Pro. No mock boots the compute, so real task execution through
-dynamic provisioning is covered separately by `tests/scheduler/test_scaling.py` (part of the default suite).
+* **moto** (default, used in CI) reimplements AWS *in-process* and intercepts boto3 below botocore --
+  fast, free, cross-platform, no Docker. It implements ECS, so it runs the whole ECS control-plane test.
+  The small gaps between moto and real AWS are centralised in `_aws_backend.py` (see notes below) so the
+  provisioner code runs unchanged.
+* **LocalStack** is a **pure AWS API mock** that boto3 talks to over real HTTP: it adds a
+  higher-fidelity cross-check of the serialization/endpoint/region path that moto's in-process
+  interception bypasses. It does **not** boot instances or run tasks -- that is layer 2's job. Community
+  LocalStack does not implement ECS or Batch (Pro features), so those tests skip themselves against it;
+  set a `LOCALSTACK_AUTH_TOKEN` to run them against Pro.
 
-### Where is real task execution covered?
+## Layer 2 -- Container-scaling data plane
 
-Neither **moto** nor **community LocalStack** actually boots the containers/instances they
-"provision" (they mock the control-plane API only), so a cloud-mocked test cannot verify real task
-execution. That gap is covered outside this suite by `tests/scheduler/test_scaling.py`, which boots a
-scheduler-from-zero plus a native worker manager and asserts that dynamically provisioned worker
-*processes* return correct results through the identical scheduler->manager->provisioner loop. The
-heavier `test_scaling_stress_e2e.py` (below) exercises the same path under scale.
+`test_container_scaling_e2e.py` runs the whole loop with **no cloud and no AWS mock**: a real client bursts
+work at a real scheduler, whose scaling policy drives a `ContainerWorkerProvisioner` (in
+`_container_backend.py`) to launch container "machines" -- each a *fixed* `baremetal_native` worker
+manager with its own IP -- which run the tasks and return real results. Correct results are themselves
+the proof that real containerized workers ran the work.
+
+This is the free, local analog of a cloud manager provisioning an instance whose user-data starts a
+worker, and it is the **base for richer e2e scenarios** (scale up/down under load, multi-machine spread,
+nested clients with distinct IPs) that no in-process or cloud-mock test can reach.
+
+**How a container runs the host's scaler (no image build).** Rather than build and version-match an
+image, each container (`ubuntu:26.04`, chosen to match the host glibc) runs the host's already-built
+scaler via read-only bind-mounts -- the repo, the uv interpreter store, and the C++ runtime libs (see
+`_container_backend.scaler_bind_mounts`). It is therefore byte-identical to the scheduler it talks to, so
+the wire protocol always matches. The container runtime is abstracted (`_container_runtime.py`, Docker
+today, `SCALER_IT_CONTAINER_CLI`-swappable for podman), and the workers reach the host scheduler + object
+storage over the docker-bridge gateway (`SchedulerHarness(gateway=...)` binds `0.0.0.0` and advertises
+the gateway address). Because it depends on the host's dev layout + a Docker daemon, it has its own gate
+(`RUN_CONTAINER_E2E=1`) and never runs in the standard CI lanes.
+
+## Layer 3 -- Process scaling (`test_process_scaling_e2e.py`)
+
+Heavier, opt-in tests that simulate a small distributed system on one machine with **local worker
+processes** (no containers). Two shapes:
+
+* **`TestProcessScalingE2E`** -- one dynamic manager against a scheduler that starts with **zero**
+  workers: a burst of light tasks scales the pool **up** across several real worker processes; a steady
+  light load scales it back **down**; an idle queue drains it to **zero**.
+* **`TestMultiMachineScalingE2E`** -- multiple managers, one per simulated **"machine"**, each
+  provisioning its own workers on one scheduler; asserts work spreads across machines and that
+  provisioning a new machine mid-flight adds capacity. Each manager tags its workers via an env var so a
+  task reports which machine ran it.
+
+Both are tuned by env vars so they can be scaled up on a bigger box without code changes:
+
+```bash
+RUN_PROCESS_SCALING_TEST=1 \
+  PROCESS_SCALING_MAX_WORKERS=8 PROCESS_SCALING_TASKS=240 PROCESS_SCALING_TASK_SECONDS=0.2 \
+  PROCESS_SCALING_MIN_WORKERS=3 PROCESS_SCALING_MACHINES=3 PROCESS_SCALING_WORKERS_PER_MACHINE=2 \
+  python -m unittest tests.integration.test_process_scaling_e2e -v
+```
+
+## Where is real task execution covered?
+
+Neither moto nor community LocalStack boots the compute they "provision", so layer 1 cannot verify task
+execution. That is covered by **layer 2** (`test_container_scaling_e2e.py`, in containers) and **layer 3**
+(`test_process_scaling_e2e.py`, in processes), plus `tests/scheduler/test_scaling.py` in the default
+suite (a scheduler-from-zero + native manager asserting dynamically provisioned workers return correct
+results). A real *cloud* data plane -- provisioned instances that actually boot and connect back --
+needs LocalStack Pro (its ECS/EC2 Docker backend) or a comparable real backend, and is out of scope here.
 
 ## Running
 
 ```bash
-# Install the test dependencies (moto is in-process; no Docker required):
+# Install test dependencies (moto is in-process; layer 1 needs no Docker):
 uv pip install -e '.[all]' --group dev
 
-# Run the whole skeleton (moto backend, the default):
+# Layer 1 -- AWS control plane (moto backend, the CI default):
 RUN_INTEGRATION_TESTS=1 python -m unittest discover -s tests/integration -t . -v
 
-# Or a single layer:
-RUN_INTEGRATION_TESTS=1 python -m unittest tests.integration.test_ecs_provisioning_moto -v
+# Layer 1 against a real LocalStack instead of moto (starts a container, runs, tears down):
+./scripts/run_integration_localstack.sh          # DOCKER="sudo docker" ./... if the socket is root-only
+
+# Layer 2 -- container-scaling e2e (needs a Docker daemon):
+RUN_CONTAINER_E2E=1 python -m unittest tests.integration.test_container_scaling_e2e -v
+
+# Layer 3 -- process scaling:
+RUN_PROCESS_SCALING_TEST=1 python -m unittest tests.integration.test_process_scaling_e2e -v
 ```
 
-The suite is opt-in (`RUN_INTEGRATION_TESTS=1`), so the default `unittest discover` skips it. CI runs
-it on the **Linux** lane only, with the moto backend (see `.github/actions/run-test/action.yml`). The
-LocalStack backend runs on CI only on demand -- via the **`LocalStack Integration Test`** workflow
-(`.github/workflows/integration-localstack.yml`): trigger it from the Actions tab, or add the
-**`localstack`** label to a pull request. That lane uses the free community image (EC2 only, so the ECS
-and Batch tests skip themselves); set a `LOCALSTACK_AUTH_TOKEN` repository secret to run the ECS and
-Batch coverage against LocalStack Pro.
-
-To run against a real LocalStack locally instead, use the helper (starts a container, runs, tears down):
-
-```bash
-./scripts/run_integration_localstack.sh
-# if your user can't reach the docker socket:
-DOCKER="sudo docker" ./scripts/run_integration_localstack.sh
-```
-
-## Scaling stress tests (`test_scaling_stress_e2e.py`)
-
-Heavier, opt-in end-to-end tests that simulate a small distributed system on one machine. Two shapes:
-
-* **`TestScalingStressE2E`** -- one dynamic worker manager, exercising the full scale curve against a
-  scheduler that starts with **zero** workers: a burst of light tasks scales the pool **up** across
-  several real worker processes; a light steady load scales it back **down**; and an idle queue drains
-  it to **zero**.
-* **`TestMultiManagerScalingE2E`** -- multiple worker managers, one per simulated **"machine"** (as a
-  `baremetal_native` manager runs inside each provisioned cloud instance), each provisioning its own
-  workers on one scheduler. It asserts work spreads across several machines, and that **provisioning a
-  new machine mid-flight** adds capacity that picks up work. Each manager tags its workers with an env
-  var so a task reports which machine ran it; defaults are 3 machines x 2 workers.
-
-They share the gate (`RUN_SCALING_STRESS_TEST=1`) so they are excluded from the default run, and are
-tuned by env vars so they can be scaled up on a bigger box without code changes:
-
-```bash
-RUN_SCALING_STRESS_TEST=1 \
-  SCALING_STRESS_MAX_WORKERS=8 SCALING_STRESS_TASKS=240 \
-  SCALING_STRESS_TASK_SECONDS=0.2 SCALING_STRESS_MIN_WORKERS=3 \
-  SCALING_STRESS_MACHINES=3 SCALING_STRESS_WORKERS_PER_MACHINE=2 \
-  python -m unittest tests.integration.test_scaling_stress_e2e -v
-```
-
-In CI it is **not** part of the normal build; trigger it on demand via the `Scaling Stress Test`
-workflow (`.github/workflows/scaling-stress.yml`): run it manually from the Actions tab (with optional
-overrides for the knobs above), or add the **`scaling-stress`** label to a pull request.
-
-## Choosing the mocked-AWS backend
-
-The AWS backend is selected by `SCALER_E2E_AWS_BACKEND` (default `moto`) and is the only thing
-that changes between backends — the test body is identical:
-
-* **`moto`** (default): in-process boto3 mock. No Docker, no network, runs on Linux/macOS/Windows.
-  Best for CI. Implements the ECS control plane in-process.
-* **`localstack`**: point `AWS_ENDPOINT_URL` at a running LocalStack (default
-  `http://localhost:4566`). Use `scripts/run_integration_localstack.sh` (above), which manages the
-  container for you.
-
-### Do moto and LocalStack test different things? Which should I use?
-
-For **this** skeleton the control-plane assertions are the same on both backends, but they exercise
-different layers:
-
-* **moto** reimplements AWS *in-process* and intercepts boto3 below botocore — fast, free,
-  cross-platform, no Docker. It **implements ECS**, so it runs the whole ECS control-plane test.
-* **LocalStack** is a *separate service* boto3 talks to over real HTTP, so it also exercises the
-  serialization/endpoint/region path that moto's in-process interception bypasses.
-
-The important caveat, confirmed by running it: **community LocalStack does NOT implement ECS — ECS is
-a LocalStack Pro feature.** So on the free community image the ECS control-plane test **skips itself**
-(the harness detects the "not implemented / pro feature" error; the EC2 seeding still runs). That
-makes **moto the only *free* backend that fully runs the ECS skeleton**, which is why CI uses it.
-
-The value of the LocalStack seam is therefore:
-
-* a higher-fidelity cross-check of the real HTTP path (for services community LocalStack *does*
-  support, e.g. EC2), and
-* the on-ramp to a **true cloud data-plane**. The only way to get provisioned "instances" that
-  actually boot and connect back as real workers via a mock is:
-  * **LocalStack Pro** — its ECS/EC2 Docker backend launches real containers. Export
-    `LOCALSTACK_AUTH_TOKEN` and `scripts/run_integration_localstack.sh` uses the Pro image so the
-    ECS tests run (point the ECS task image at a real `opengris-scaler` image and the tasks connect
-    back to the scheduler).
-  * **moto standalone server + AWS Batch** — moto's Batch backend executes jobs in local Docker
-    containers; the `aws_hpc` (Batch) worker manager could be pointed at it for a real boot.
-
-Both real-boot paths are heavier and Docker-bound, so they are opt-in extensions, not the default.
+**In CI:** layer 1 runs on the Linux lane with moto (see `.github/actions/run-test/action.yml`).
+LocalStack runs on demand via the **`LocalStack AWS-Mock Cross-Check`** workflow
+(`integration-localstack.yml`): trigger it from the Actions tab or add the **`localstack`** label to a
+PR. The process scaling test runs on demand via the **`Process Scaling Test`** workflow. The container
+e2e (`RUN_CONTAINER_E2E`) is developer/manual-run: it depends on a Docker daemon and the host's dev
+layout, so it is not wired into a standard CI lane.
 
 ## moto compatibility notes
 
-`tests/integration/_aws_backend.py` centralises the small gaps between moto and real AWS so the
-provisioner code is exercised **unchanged**:
+`_aws_backend.py` centralises the small gaps between moto and real AWS so the provisioner runs unchanged:
 
-1. `MOTO_IAM_LOAD_MANAGED_POLICIES=true` — so the provisioner can attach the AWS-managed
-   `AmazonECSTaskExecutionRolePolicy`.
-2. The ECS environment (VPC with DNS hostnames, subnet, security group, cluster, and a task
-   definition with container-level memory) is pre-seeded, exactly as a real AWS account would
-   already have it. This also lets the provisioner *discover* the task definition instead of
-   registering one (which trips a moto Fargate memory-summing quirk).
-3. A botocore `before-parameter-build.ecs.RunTask` handler injects a default `securityGroups`,
-   which moto requires but real AWS defaults.
-
-## Extending the skeleton
-
-* **ORB / EC2** — the ORB manager provisions via the `orb-py` SDK (not raw boto3), so mock at
-  the SDK level, or use moto EC2 if ORB is pointed at raw `RunInstances`.
-* **AWS Batch (`aws_hpc`)** — mock with `moto[batch]`; its Docker backend can boot real jobs.
-* **Full scheduler-driven cloud loop** — run a real scheduler and a `WorkerManagerRunner`
-  wrapping a cloud provisioner in-process (so moto intercepts its boto3 calls), submit work, and
-  assert on the mocked AWS backend's task state. The two current files already cover the two
-  halves of this loop deterministically.
+1. `MOTO_IAM_LOAD_MANAGED_POLICIES=true` -- so the provisioner can attach AWS-managed policies (e.g.
+   `AmazonECSTaskExecutionRolePolicy`).
+2. The ECS environment (VPC with DNS hostnames, subnet, security group, cluster, and a task definition
+   with container-level memory) is pre-seeded, as a real account already would be. This also lets the
+   provisioner *discover* the task definition rather than register one (which trips a moto Fargate
+   memory-summing quirk).
+3. A `before-parameter-build.ecs.RunTask` handler injects a default `securityGroups` (moto requires it;
+   real AWS defaults it), and a matching Batch handler injects the `serviceRole`
+   `CreateComputeEnvironment` needs.
