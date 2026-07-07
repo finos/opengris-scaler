@@ -50,7 +50,7 @@ class WorkerManagerConfig(ConfigClass):
             short="-sdc",
             help=(
                 "minimum number of seconds a scale-down must be requested for before it is honored, "
-                "to avoid flapping under intermittent load. None disables the cooldown."
+                "to avoid flapping under intermittent load. 0 disables the cooldown."
             ),
         ),
     )
@@ -66,3 +66,5 @@ class WorkerManagerConfig(ConfigClass):
             raise ValueError("max_task_concurrency must be -1 (no limit) or a non-negative integer.")
         if self.scale_down_cooldown_seconds is not None and self.scale_down_cooldown_seconds < 0:
             raise ValueError("scale_down_cooldown_seconds must be None or a non-negative number.")
+        if self.scale_down_cooldown_seconds == 0:
+            self.scale_down_cooldown_seconds = None
