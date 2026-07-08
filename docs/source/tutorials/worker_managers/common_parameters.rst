@@ -38,6 +38,9 @@ These parameters control individual worker processes started by the worker manag
 * ``--hard-processor-suspend`` (``-hps``): When set, suspends worker processors using SIGTSTP instead of a synchronization event.
 * ``--io-threads`` (``-it``): Number of IO threads per worker (default: ``1``).
 * ``--per-worker-capabilities`` (``-pwc``): Comma-separated list of capabilities (e.g., ``"linux,cpu=4"``).
+  Each entry is either a bare capability name (e.g., ``linux``, meaning unlimited) or ``name=integer`` (e.g., ``cpu=4``).
+  Capability names must not be empty strings: entries like ``=1`` or a value without an integer after ``=``
+  (e.g., ``cpu=``) are rejected.
 
 Logging and Event Loop
 ----------------------
