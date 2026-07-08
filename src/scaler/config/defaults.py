@@ -42,6 +42,10 @@ DEFAULT_CLIENT_TIMEOUT_SECONDS = 60
 # if didn't receive heartbeat for following seconds, then scheduler will treat worker manager as dead and disconnect it
 DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS = 10
 
+# minimum number of seconds after a scale-up before a worker manager will honor a scale-down request,
+# to avoid flapping under intermittent load. 0 disables the cooldown.
+DEFAULT_WORKER_MANAGER_SCALE_DOWN_COOLDOWN_SECONDS = 30
+
 # number of seconds for load balance, if value is -1 means disable load balance
 DEFAULT_LOAD_BALANCE_SECONDS = 1
 
@@ -57,10 +61,6 @@ DEFAULT_PER_WORKER_QUEUE_SIZE = 1000
 
 # number of workers, echo worker use 1 process
 DEFAULT_MAX_TASK_CONCURRENCY = os.cpu_count()
-
-# minimum number of seconds after a scale-up before a worker manager will honor a scale-down request,
-# to avoid flapping under intermittent load. 0 disables the cooldown.
-DEFAULT_SCALE_DOWN_COOLDOWN_SECONDS = 30
 
 # number of seconds that worker agent send heartbeat to scheduler
 DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 2

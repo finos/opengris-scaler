@@ -45,7 +45,7 @@ class WorkerManagerConfig(ConfigClass):
     )
 
     scale_down_cooldown_seconds: Optional[float] = dataclasses.field(
-        default=defaults.DEFAULT_SCALE_DOWN_COOLDOWN_SECONDS,
+        default=defaults.DEFAULT_WORKER_MANAGER_SCALE_DOWN_COOLDOWN_SECONDS,
         metadata=dict(
             short="-sdc",
             help=(

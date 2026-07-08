@@ -4,7 +4,7 @@ import asyncio
 import logging
 from typing import Awaitable, Callable, Optional
 
-from scaler.config.defaults import DEFAULT_SCALE_DOWN_COOLDOWN_SECONDS
+from scaler.config.defaults import DEFAULT_WORKER_MANAGER_SCALE_DOWN_COOLDOWN_SECONDS
 from scaler.utility.cooldown import Cooldown
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class CapacityCoordinator:
         stop_units: Callable[[int], Awaitable[None]],
         active_unit_count: Callable[[], int],
         max_unit_count: int,
-        scale_down_cooldown_seconds: Optional[float] = DEFAULT_SCALE_DOWN_COOLDOWN_SECONDS,
+        scale_down_cooldown_seconds: Optional[float] = DEFAULT_WORKER_MANAGER_SCALE_DOWN_COOLDOWN_SECONDS,
     ) -> None:
         self._start_units = start_units
         self._stop_units = stop_units
