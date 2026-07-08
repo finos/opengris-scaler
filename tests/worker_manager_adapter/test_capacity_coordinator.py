@@ -118,7 +118,7 @@ class TestCapacityCoordinator(unittest.IsolatedAsyncioTestCase):
         start_mock.assert_not_called()
         stop_mock.assert_not_called()
 
-    @patch("scaler.utility.cooldown.time.time")
+    @patch("scaler.utility.cooldown.time.monotonic")
     async def test_reconcile_defers_scale_down_when_cooldown_active(self, mock_time) -> None:
         mock_time.return_value = 100.0
         units = [object(), object(), object()]
@@ -130,7 +130,7 @@ class TestCapacityCoordinator(unittest.IsolatedAsyncioTestCase):
         start_mock.assert_not_called()
         stop_mock.assert_not_called()
 
-    @patch("scaler.utility.cooldown.time.time")
+    @patch("scaler.utility.cooldown.time.monotonic")
     async def test_reconcile_executes_deferred_scale_down_once_cooldown_elapses(self, mock_time) -> None:
         mock_time.return_value = 100.0
         units = [object(), object(), object()]
@@ -146,7 +146,7 @@ class TestCapacityCoordinator(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0)
         stop_mock.assert_called_once_with(2)
 
-    @patch("scaler.utility.cooldown.time.time")
+    @patch("scaler.utility.cooldown.time.monotonic")
     async def test_further_scale_down_requests_do_not_extend_the_cooldown_window(self, mock_time) -> None:
         mock_time.return_value = 100.0
         units = [object(), object(), object()]
@@ -166,7 +166,7 @@ class TestCapacityCoordinator(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0)
         stop_mock.assert_called_once_with(2)
 
-    @patch("scaler.utility.cooldown.time.time")
+    @patch("scaler.utility.cooldown.time.monotonic")
     async def test_scale_up_cancels_deferred_scale_down_and_resets_cooldown(self, mock_time) -> None:
         mock_time.return_value = 100.0
         units = [object(), object(), object()]

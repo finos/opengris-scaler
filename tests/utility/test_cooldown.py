@@ -10,7 +10,7 @@ class TestCooldown(unittest.TestCase):
         self.assertFalse(cooldown.is_running)
         self.assertIsNone(cooldown.remaining_seconds())
 
-    @patch("scaler.utility.cooldown.time.time")
+    @patch("scaler.utility.cooldown.time.monotonic")
     def test_remaining_seconds_counts_down(self, mock_time) -> None:
         mock_time.return_value = 100.0
         cooldown = Cooldown(duration_seconds=10)
@@ -19,7 +19,7 @@ class TestCooldown(unittest.TestCase):
         mock_time.return_value = 104.0
         self.assertEqual(cooldown.remaining_seconds(), 6.0)
 
-    @patch("scaler.utility.cooldown.time.time")
+    @patch("scaler.utility.cooldown.time.monotonic")
     def test_remaining_seconds_none_once_elapsed(self, mock_time) -> None:
         mock_time.return_value = 100.0
         cooldown = Cooldown(duration_seconds=10)
@@ -28,7 +28,7 @@ class TestCooldown(unittest.TestCase):
         mock_time.return_value = 110.0
         self.assertIsNone(cooldown.remaining_seconds())
 
-    @patch("scaler.utility.cooldown.time.time")
+    @patch("scaler.utility.cooldown.time.monotonic")
     def test_start_if_not_running_does_not_restart_when_already_running(self, mock_time) -> None:
         mock_time.return_value = 100.0
         cooldown = Cooldown(duration_seconds=10)
@@ -43,7 +43,7 @@ class TestCooldown(unittest.TestCase):
         mock_time.return_value = 111.0
         self.assertIsNone(cooldown.remaining_seconds())
 
-    @patch("scaler.utility.cooldown.time.time")
+    @patch("scaler.utility.cooldown.time.monotonic")
     def test_reset_stops_the_timer(self, mock_time) -> None:
         mock_time.return_value = 100.0
         cooldown = Cooldown(duration_seconds=10)
@@ -54,7 +54,7 @@ class TestCooldown(unittest.TestCase):
         self.assertFalse(cooldown.is_running)
         self.assertIsNone(cooldown.remaining_seconds())
 
-    @patch("scaler.utility.cooldown.time.time")
+    @patch("scaler.utility.cooldown.time.monotonic")
     def test_can_be_restarted_after_reset(self, mock_time) -> None:
         mock_time.return_value = 100.0
         cooldown = Cooldown(duration_seconds=10)

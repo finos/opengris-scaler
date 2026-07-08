@@ -25,7 +25,7 @@ class Cooldown:
         if self._duration_seconds == 0:
             return
         if self._started_at is None:
-            self._started_at = time.time()
+            self._started_at = time.monotonic()
 
     def reset(self) -> None:
         self._started_at = None
@@ -34,7 +34,7 @@ class Cooldown:
         """Return None if disabled, not running, or already elapsed, else the seconds left."""
         if self._started_at is None:
             return None
-        remaining = self._duration_seconds - (time.time() - self._started_at)
+        remaining = self._duration_seconds - (time.monotonic() - self._started_at)
         return remaining if remaining > 0 else None
 
     @property
