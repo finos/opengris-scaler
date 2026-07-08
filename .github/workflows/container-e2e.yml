@@ -1,0 +1,51 @@
+name: "Container Scaling E2E"
+
+# Full end-to-end container-scaling test (tests/integration/test_container_scaling_e2e.py): a client
+# bursts work at a real scheduler, whose scaling policy provisions real workers in real Docker containers
+# that run the tasks and return results. It builds a self-contained worker image and needs a Docker
+# daemon, so it is NOT part of the normal build-and-test run; trigger it on demand:
+#   * manually via the Actions tab ("Run workflow"); or
+#   * by adding the "container-e2e" label to a pull request.
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [ labeled ]
+
+permissions:
+  contents: read
+
+jobs:
+  container-e2e:
+    name: Container Scaling E2E (Linux)
+    # Manual dispatch always runs; on a PR only when it carries the "container-e2e" label.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.label.name == 'container-e2e' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
+      - name: 'Checkout Repository'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: ./.github/actions/setup-env
+        with:
+          os: ${{ runner.os }}
+          python-version: '3.11'
+
+      - uses: ./.github/actions/build-native-dependencies
+        with:
+          os: ${{ runner.os }}
+
+      - uses: ./.github/actions/build-and-install-wheel
+
+      - name: Run container-scaling e2e
+        shell: bash
+        env:
+          RUN_CONTAINER_E2E: '1'
+          # GitHub runners can reach the Docker socket without sudo.
+          SCALER_IT_CONTAINER_CLI: docker
+        run: |
+          python -m unittest tests.integration.test_container_scaling_e2e -v

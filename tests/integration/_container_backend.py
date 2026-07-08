@@ -1,14 +1,18 @@
-"""The simulated 'cloud' worker manager for the container-scaling e2e skeleton.
+"""The simulated 'cloud' worker manager for the container-scaling e2e.
 
 ``ContainerWorkerProvisioner`` is a real ``DeclarativeWorkerProvisioner`` (driven by the scheduler
 through ``WorkerManagerRunner``, exactly like the cloud managers), but each provisioned "machine" is a
-Docker container running a *fixed* ``baremetal_native`` worker manager -- the local, free analog of a
-cloud manager provisioning an instance whose user-data launches a worker. Configurable boot/shutdown
-delays simulate cloud latency, and each container gets its own IP so tests can exercise multi-machine
-spread and nested clients with distinct network identities.
+container running a *fixed* ``baremetal_native`` worker manager -- the local, free analog of a cloud
+manager provisioning an instance whose user-data launches a worker. Configurable boot/shutdown delays
+simulate cloud latency, and each container gets its own IP so tests can exercise multi-machine spread
+and nested clients with distinct network identities.
 
-The container runs the host's already-built scaler via read-only bind-mounts (no image build, exact
-version/protocol match with the host scheduler); see ``scaler_bind_mounts``.
+Machines run the self-contained worker image (``_container_image``), so they are byte-identical to the
+host scheduler with no host-layout coupling; the repo is bind-mounted read-only only so a container can
+import the test's task module (``tests.integration._tasks``), which the wheel does not ship.
+
+``worker_manager_id`` / ``name_prefix`` are parameterized so several provisioners (e.g. two priorities
+in a waterfall policy) can coexist on one scheduler.
 """
 
 from __future__ import annotations
@@ -16,32 +20,23 @@ from __future__ import annotations
 import asyncio
 import math
 import os
-import sys
 from typing import List
 
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager_adapter.common import extract_desired_count
 from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
+from tests.integration._container_image import DEFAULT_IMAGE_TAG
 from tests.integration._container_runtime import ContainerRuntime, DockerRuntime
 
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-DEFAULT_WORKER_IMAGE = os.environ.get("SCALER_IT_WORKER_IMAGE", "ubuntu:26.04")
+_WORKER_ENTRYPOINT = "scaler_worker_manager"  # on PATH inside the worker image
+_DEFAULT_NAME_PREFIX = "scaler-it-machine"
 
 
-def scaler_bind_mounts() -> List[str]:
-    """Read-only bind-mounts that make the host's built scaler runnable in the container: the repo (its
-    editable install + the venv), the uv interpreter store, and the C++ runtime libs.
-
-    The venv's ``python`` symlinks to a version-agnostic name (``.../uv/python/cpython-3.13-.../``) that
-    in turn points at the versioned dir (``cpython-3.13.14-...``); both live in the uv store, so mount
-    the whole ``.../uv`` root -- mounting only the versioned dir leaves the shebang symlink dangling."""
-    real_python = os.path.realpath(sys.executable)  # .../uv/python/cpython-X.Y.Z-.../bin/python3.13
-    uv_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(real_python))))  # .../uv
-    return [f"{_REPO_ROOT}:{_REPO_ROOT}:ro", f"{uv_root}:{uv_root}:ro", "/usr/local/lib:/usr/local/lib:ro"]
-
-
-def worker_manager_entrypoint() -> str:
-    return os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "scaler_worker_manager")
+def repo_bind_mounts() -> List[str]:
+    """Read-only repo mount so a container worker can import ``tests.integration._tasks`` (not in the
+    wheel). The container path equals the host path, so it doubles as the worker's ``PYTHONPATH``."""
+    return [f"{_REPO_ROOT}:{_REPO_ROOT}:ro"]
 
 
 class ContainerWorkerProvisioner(DeclarativeWorkerProvisioner):
@@ -53,8 +48,8 @@ class ContainerWorkerProvisioner(DeclarativeWorkerProvisioner):
         max_machines: int,
         boot_delay_seconds: float = 0.0,
         shutdown_delay_seconds: float = 0.0,
-        image: str = DEFAULT_WORKER_IMAGE,
-        name_prefix: str = "scaler-it-machine",
+        image: str = DEFAULT_IMAGE_TAG,
+        name_prefix: str = _DEFAULT_NAME_PREFIX,
     ) -> None:
         self._runtime = runtime
         self._worker_scheduler_address = worker_scheduler_address  # gateway-reachable, for the containers
@@ -63,8 +58,7 @@ class ContainerWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._shutdown_delay = shutdown_delay_seconds
         self._image = image
         self._name_prefix = name_prefix
-        self._volumes = scaler_bind_mounts()
-        self._entry = worker_manager_entrypoint()
+        self._volumes = repo_bind_mounts()
         self._units: List[str] = []
         self._counter = 0
         self._coordinator = CapacityCoordinator(
@@ -89,7 +83,7 @@ class ContainerWorkerProvisioner(DeclarativeWorkerProvisioner):
             self._counter += 1
             name = f"{self._name_prefix}-{self._counter}"
             command = [
-                self._entry,
+                _WORKER_ENTRYPOINT,
                 "baremetal_native",
                 self._worker_scheduler_address,
                 "--worker-manager-id",
@@ -104,9 +98,9 @@ class ContainerWorkerProvisioner(DeclarativeWorkerProvisioner):
                 "--per-worker-task-queue-size",
                 "1",
             ]
-            # PYTHONPATH=repo root so the worker can import the task's module by reference (the editable
-            # install only exposes src/, not tests/); SCALER_IT_MACHINE_ID tags workers with their machine.
-            env = {"LD_LIBRARY_PATH": "/usr/local/lib", "PYTHONPATH": _REPO_ROOT, "SCALER_IT_MACHINE_ID": name}
+            # PYTHONPATH=repo root so the worker can import the task module by reference (the wheel only ships
+            # src/, not tests/); SCALER_IT_MACHINE_ID tags workers with their machine for spread/rebalance tests.
+            env = {"PYTHONPATH": _REPO_ROOT, "SCALER_IT_MACHINE_ID": name}
             self._units.append(await self._runtime.run(self._image, name, command, env=env, volumes=self._volumes))
 
     async def stop_units(self, count: int) -> None:
@@ -129,10 +123,13 @@ def run_container_worker_manager(
     max_machines: int = 8,
     boot_delay_seconds: float = 0.0,
     shutdown_delay_seconds: float = 0.0,
+    worker_manager_id: str = "wm-container-it",
+    name_prefix: str = _DEFAULT_NAME_PREFIX,
 ) -> None:
-    """Process entry point for the Level-1 container manager: it connects to the scheduler over loopback
+    """Process entry point for a container worker manager: it connects to the scheduler over loopback
     (``scheduler_address``) and provisions container machines that reach it via ``worker_scheduler_address``
-    (the docker-bridge gateway)."""
+    (the docker-bridge gateway). ``worker_manager_id`` is how this provisioner is addressed by the
+    scheduler's scaling policy (e.g. a waterfall priority rule); ``name_prefix`` namespaces its containers."""
     from scaler.config.defaults import DEFAULT_HEARTBEAT_INTERVAL_SECONDS, DEFAULT_IO_THREADS
     from scaler.config.types.address import AddressConfig
     from scaler.utility.logging.utility import setup_logger
@@ -146,6 +143,7 @@ def run_container_worker_manager(
         max_machines=max_machines,
         boot_delay_seconds=boot_delay_seconds,
         shutdown_delay_seconds=shutdown_delay_seconds,
+        name_prefix=name_prefix,
     )
     WorkerManagerRunner(
         address=AddressConfig.from_string(scheduler_address),
@@ -153,7 +151,7 @@ def run_container_worker_manager(
         heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
         capabilities={},
         max_provisioner_units=max_machines,
-        worker_manager_id=b"wm-container-it",
+        worker_manager_id=worker_manager_id.encode(),
         worker_provisioner=provisioner,
         io_threads=DEFAULT_IO_THREADS,
         workers_per_provisioner_unit=workers_per_machine,
