@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import threading
 import time
 import unittest
 from multiprocessing import get_context
@@ -55,6 +56,13 @@ _DRAIN_TIMEOUT_SECONDS = 90.0
 # A concurrency-1 trickle needs only one machine at a time; a heavier burst must provision more.
 _WARMUP_TASKS = 4
 
+# Churn tripwire: hold a steady load and sample the pool. A healthy pool creates about as many machines as
+# ever run at once; churn cycles through far more. The window is long enough that churn accumulates a
+# decisive machine count (each flap creates another), well clear of the small re-provision slack.
+_CHURN_LOAD_SECONDS = 45.0
+_CHURN_SAMPLE_SECONDS = 0.4
+_CHURN_TOLERANCE = 2
+
 # Waterfall: manager A (priority 1) caps at one machine's worth; overflow spills to manager B (priority 2).
 _MANAGER_A = "wm-container-a"
 _MANAGER_B = "wm-container-b"
@@ -74,6 +82,26 @@ _SKIP_REASON = (
 def _running_machines(prefix: str) -> int:
     result = subprocess.run([*_CLI, "ps", "-q", "--filter", f"name={prefix}"], capture_output=True, text=True)
     return len(result.stdout.split())
+
+
+def _running_machine_names(prefix: str) -> list:
+    result = subprocess.run(
+        [*_CLI, "ps", "--filter", f"name={prefix}", "--format", "{{.Names}}"], capture_output=True, text=True
+    )
+    return [name for name in result.stdout.split() if name]
+
+
+def _max_machine_number(names: list) -> int:
+    """The highest trailing counter across ``prefix-N`` container names. The provisioner numbers machines
+    monotonically, so the max ever seen is how many were created -- a churn-robust total that a single
+    sample of the running set (which misses machines that already came and went) would undercount."""
+    best = 0
+    for name in names:
+        try:
+            best = max(best, int(name.rsplit("-", 1)[-1]))
+        except ValueError:
+            continue
+    return best
 
 
 def _remove_machines(prefix: str) -> None:
@@ -185,6 +213,46 @@ class TestContainerScalingE2E(unittest.TestCase):
             len(burst_machines),
             len(trickle_machines),
             "rising load did not provision more machines than a concurrency-1 trickle",
+        )
+
+    def test_steady_load_uses_a_stable_pool_not_churn(self) -> None:
+        """CHURN TRIPWIRE (steady-load scenario only). Under a sustained, non-varying load the pool should
+        be stable -- about as many machines CREATED as ever run CONCURRENTLY at the peak. Today container
+        boot latency (~3s) far exceeds the task time, so the vanilla policy flaps and cycles through many
+        more machines than ever run at once (workers disconnect, tasks retry), so this FAILS. It turns
+        GREEN once the worker-manager scale-down cooldown (finos/opengris-scaler PR #873, inherited via the
+        shared CapacityCoordinator) damps the flapping. Do NOT copy this invariant onto tests that
+        deliberately scale up AND back down -- those legitimately create more machines than the peak."""
+        stop = threading.Event()
+        peak = 0
+        created = 0
+
+        def sample() -> None:
+            nonlocal peak, created
+            while not stop.is_set():
+                names = _running_machine_names(_MACHINE_PREFIX)
+                peak = max(peak, len(names))
+                created = max(created, _max_machine_number(names))
+                time.sleep(_CHURN_SAMPLE_SECONDS)
+
+        sampler = threading.Thread(target=sample, daemon=True)
+        sampler.start()
+        try:
+            with Client(self.harness.scheduler_address) as client:
+                deadline = time.monotonic() + _CHURN_LOAD_SECONDS
+                while time.monotonic() < deadline:
+                    client.map(square, range(_SPREAD_TASKS))  # steady, back-to-back waves of load
+        finally:
+            stop.set()
+            sampler.join(timeout=5.0)
+
+        print(f"container scaling churn: created {created} machines, peak {peak} concurrent")
+        self.assertGreaterEqual(created, 1, "no machines were provisioned under the steady load")
+        self.assertLessEqual(
+            created,
+            peak + _CHURN_TOLERANCE,
+            f"scaling churned: created {created} machines but only {peak} ever ran concurrently at the "
+            f"peak (machines flapping under a steady load; fixed by the scale-down cooldown, PR #873)",
         )
 
 
