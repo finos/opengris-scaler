@@ -42,7 +42,7 @@ DEFAULT_CLIENT_TIMEOUT_SECONDS = 60
 # if didn't receive heartbeat for following seconds, then scheduler will treat worker manager as dead and disconnect it
 DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS = 10
 
-# minimum number of seconds after a scale-up before a worker manager will honor a scale-down request,
+# minimum number of seconds after a scale-down request before a worker manager will honor it,
 # to avoid flapping under intermittent load. 0 disables the cooldown.
 DEFAULT_WORKER_MANAGER_SCALE_DOWN_COOLDOWN_SECONDS = 30
 
