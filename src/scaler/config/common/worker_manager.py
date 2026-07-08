@@ -44,7 +44,7 @@ class WorkerManagerConfig(ConfigClass):
         ),
     )
 
-    scale_down_cooldown_seconds: Optional[float] = dataclasses.field(
+    scale_down_cooldown_seconds: float = dataclasses.field(
         default=defaults.DEFAULT_WORKER_MANAGER_SCALE_DOWN_COOLDOWN_SECONDS,
         metadata=dict(
             short="-sdc",
@@ -64,7 +64,5 @@ class WorkerManagerConfig(ConfigClass):
             raise ValueError("worker_manager_id cannot be an empty string.")
         if self.max_task_concurrency != -1 and self.max_task_concurrency < 0:
             raise ValueError("max_task_concurrency must be -1 (no limit) or a non-negative integer.")
-        if self.scale_down_cooldown_seconds is not None and self.scale_down_cooldown_seconds < 0:
-            raise ValueError("scale_down_cooldown_seconds must be None or a non-negative number.")
-        if self.scale_down_cooldown_seconds == 0:
-            self.scale_down_cooldown_seconds = None
+        if self.scale_down_cooldown_seconds < 0:
+            raise ValueError("scale_down_cooldown_seconds must be a non-negative number.")

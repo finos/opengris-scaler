@@ -1,13 +1,12 @@
 import asyncio
 import unittest
-from typing import Optional
 from unittest.mock import AsyncMock, patch
 
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
 
 
 def _make_coordinator(
-    units: list, max_unit_count: int = -1, scale_down_cooldown_seconds: Optional[float] = None
+    units: list, max_unit_count: int = -1, scale_down_cooldown_seconds: float = 0
 ) -> tuple[CapacityCoordinator, AsyncMock, AsyncMock]:
     start_mock = AsyncMock()
     stop_mock = AsyncMock()
@@ -196,15 +195,6 @@ class TestCapacityCoordinator(unittest.IsolatedAsyncioTestCase):
     async def test_scale_down_is_immediate_when_cooldown_is_zero(self) -> None:
         units = [object(), object(), object()]
         loop, _, stop_mock = _make_coordinator(units=units, scale_down_cooldown_seconds=0)
-
-        await loop.set_desired_unit_count(1)
-        await asyncio.sleep(0)
-
-        stop_mock.assert_called_once_with(2)
-
-    async def test_scale_down_is_immediate_when_cooldown_is_none(self) -> None:
-        units = [object(), object(), object()]
-        loop, _, stop_mock = _make_coordinator(units=units, scale_down_cooldown_seconds=None)
 
         await loop.set_desired_unit_count(1)
         await asyncio.sleep(0)

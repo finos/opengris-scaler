@@ -65,16 +65,15 @@ class TestCooldown(unittest.TestCase):
         cooldown.start_if_not_running()
         self.assertEqual(cooldown.remaining_seconds(), 10.0)
 
-    def test_zero_duration_expires_immediately(self) -> None:
+    def test_zero_duration_disables_the_timer(self) -> None:
         cooldown = Cooldown(duration_seconds=0)
-        cooldown.start_if_not_running()
-        self.assertIsNone(cooldown.remaining_seconds())
-
-    def test_none_duration_disables_the_timer(self) -> None:
-        cooldown = Cooldown(duration_seconds=None)
         cooldown.start_if_not_running()
         self.assertFalse(cooldown.is_running)
         self.assertIsNone(cooldown.remaining_seconds())
+
+    def test_negative_duration_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            Cooldown(duration_seconds=-1)
 
 
 if __name__ == "__main__":

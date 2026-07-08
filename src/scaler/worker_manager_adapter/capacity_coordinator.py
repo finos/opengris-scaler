@@ -20,7 +20,7 @@ class CapacityCoordinator:
     desired count has been signalled; rapid successive calls are coalesced because
     the task always reads the latest desired count when it wakes.
 
-    If `scale_down_cooldown_seconds` is set, a scale-down is deferred until that many
+    If `scale_down_cooldown_seconds` is positive, a scale-down is deferred until that many
     seconds have passed since the first scale-down request in the current streak;
     further decreases while deferred do not extend the window, but a scale-up (or the
     desired count returning to/above the live count) cancels it. This avoids flapping
@@ -36,7 +36,7 @@ class CapacityCoordinator:
         active_unit_count: Callable that returns the current live unit count.
         max_unit_count: Hard cap on the number of units. -1 means unlimited.
         scale_down_cooldown_seconds: Minimum seconds a scale-down must be requested for before
-            it is honored. None disables the cooldown.
+            it is honored. 0 disables the cooldown.
     """
 
     def __init__(
@@ -45,7 +45,7 @@ class CapacityCoordinator:
         stop_units: Callable[[int], Awaitable[None]],
         active_unit_count: Callable[[], int],
         max_unit_count: int,
-        scale_down_cooldown_seconds: Optional[float] = DEFAULT_WORKER_MANAGER_SCALE_DOWN_COOLDOWN_SECONDS,
+        scale_down_cooldown_seconds: float = DEFAULT_WORKER_MANAGER_SCALE_DOWN_COOLDOWN_SECONDS,
     ) -> None:
         self._start_units = start_units
         self._stop_units = stop_units
