@@ -3,14 +3,11 @@
 This exercises the actual boto3 request path (``ECSWorkerProvisioner`` -> AWS ECS API) rather
 than a MagicMock, using the same ``build_set_desired_command`` object the scheduler emits over
 the wire. It verifies the full scale-up / scale-down / terminate lifecycle by inspecting the
-mocked ECS backend's real task state.
+moto-mocked ECS backend's real task state.
 
-Default backend is moto (in-process, no Docker); set ``SCALER_E2E_AWS_BACKEND=localstack`` to
-run the identical assertions against a running LocalStack (see README.md).
-
-NOTE: neither moto nor community LocalStack boots the provisioned containers, so these tasks
-never connect back as workers -- this test covers the *control plane* (does the manager call
-AWS correctly and track lifecycle). Real task execution is covered by tests/scheduler/test_scaling.py.
+NOTE: moto does not boot the provisioned containers, so these tasks never connect back as workers --
+this test covers the *control plane* (does the manager call AWS correctly and track lifecycle). Real ECS
+task execution is covered by the floci-backed e2e (``test_ecs_scaling_e2e.py``).
 """
 
 import unittest
@@ -23,7 +20,7 @@ from scaler.config.types.address import AddressConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
 from tests.integration import INTEGRATION_SKIP_REASON, RUN_INTEGRATION_TESTS
-from tests.integration._aws_backend import ECSNotAvailable, MockedAWS, SeededECSEnvironment
+from tests.integration._aws_backend import MockedAWS, SeededECSEnvironment
 from tests.integration._harness import async_wait_until, desired_requests
 from tests.utility.utility import logging_test_name
 
@@ -55,11 +52,7 @@ class TestECSProvisioningControlPlane(unittest.IsolatedAsyncioTestCase):
         logging_test_name(self)
         self._aws = MockedAWS().__enter__()
         self.addCleanup(self._aws.__exit__, None, None, None)
-        try:
-            self.env = self._aws.seed_ecs_environment()
-        except ECSNotAvailable as exc:
-            # Community LocalStack has no ECS (it is a Pro feature); moto and LocalStack Pro do.
-            self.skipTest(f"backend does not provide ECS -- use moto or LocalStack Pro ({exc})")
+        self.env = self._aws.seed_ecs_environment()
         self.ecs = self._aws.client("ecs")
 
     def _running_task_count(self) -> int:

@@ -56,9 +56,8 @@ _DRAIN_TIMEOUT_SECONDS = 90.0
 # A concurrency-1 trickle needs only one machine at a time; a heavier burst must provision more.
 _WARMUP_TASKS = 4
 
-# Churn tripwire: hold a steady load and sample the pool. A healthy pool creates about as many machines as
-# ever run at once; churn cycles through far more. The window is long enough that churn accumulates a
-# decisive machine count (each flap creates another), well clear of the small re-provision slack.
+# Hold the steady load long enough that churn accumulates a decisive machine count (each flap creates
+# another), well clear of the small re-provision slack.
 _CHURN_LOAD_SECONDS = 45.0
 _CHURN_SAMPLE_SECONDS = 0.4
 _CHURN_TOLERANCE = 2
@@ -216,13 +215,12 @@ class TestContainerScalingE2E(unittest.TestCase):
         )
 
     def test_steady_load_uses_a_stable_pool_not_churn(self) -> None:
-        """CHURN TRIPWIRE (steady-load scenario only). Under a sustained, non-varying load the pool should
-        be stable -- about as many machines CREATED as ever run CONCURRENTLY at the peak. Today container
-        boot latency (~3s) far exceeds the task time, so the vanilla policy flaps and cycles through many
-        more machines than ever run at once (workers disconnect, tasks retry), so this FAILS. It turns
-        GREEN once the worker-manager scale-down cooldown (finos/opengris-scaler PR #873, inherited via the
-        shared CapacityCoordinator) damps the flapping. Do NOT copy this invariant onto tests that
-        deliberately scale up AND back down -- those legitimately create more machines than the peak."""
+        """Churn tripwire (steady-load only): a sustained, non-varying load should hold a stable pool --
+        about as many machines CREATED as ever run CONCURRENTLY at the peak. Because boot latency far
+        exceeds the task time, the vanilla policy flaps and cycles through many more machines than ever run
+        at once (workers disconnect, tasks retry) until the scale-down cooldown (inherited from the shared
+        CapacityCoordinator) damps it. Do NOT copy this onto tests that scale up AND down -- those
+        legitimately create more machines than the peak."""
         stop = threading.Event()
         peak = 0
         created = 0
@@ -251,8 +249,8 @@ class TestContainerScalingE2E(unittest.TestCase):
         self.assertLessEqual(
             created,
             peak + _CHURN_TOLERANCE,
-            f"scaling churned: created {created} machines but only {peak} ever ran concurrently at the "
-            f"peak (machines flapping under a steady load; fixed by the scale-down cooldown, PR #873)",
+            f"scaling churned: created {created} machines but only {peak} ran concurrently at the peak "
+            f"(machines flapping under steady load; the scale-down cooldown should damp this)",
         )
 
 

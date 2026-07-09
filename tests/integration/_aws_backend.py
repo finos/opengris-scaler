@@ -1,25 +1,17 @@
-"""Tool-agnostic mocked-AWS control plane for the integration skeleton.
+"""Mocked-AWS control plane for the integration skeleton.
 
-Two backends are supported behind one interface, selected by the
-``SCALER_E2E_AWS_BACKEND`` environment variable:
+``moto`` is an in-process boto3 mock: no Docker, no network, runs on Linux/macOS/Windows CI. It
+faithfully backs the AWS *control plane* (the ECS ``run_task`` / ``stop_task`` API calls the worker
+manager makes) but does NOT boot the resulting containers, so provisioned "instances" never connect back
+as workers. A true ECS data-plane run -- provisioned task containers that actually boot and connect -- is
+the floci-backed ECS e2e's job (``test_ecs_scaling_e2e.py``).
 
-* ``moto`` (default) -- an in-process boto3 mock. No Docker, no network, runs on
-  Linux/macOS/Windows CI. It faithfully backs the AWS *control plane* (the ECS
-  ``run_task`` / ``stop_task`` API calls the worker manager makes) but does NOT boot
-  the resulting containers, so provisioned "instances" never connect back as workers.
-* ``localstack`` -- a real LocalStack container reachable at ``AWS_ENDPOINT_URL``
-  (default ``http://localhost:4566``). NOTE: ECS is a LocalStack *Pro* feature, so the ECS
-  control-plane test skips itself on the free community image (the EC2 seam still runs);
-  LocalStack Pro's ECS/EC2 Docker backend can additionally launch containers for a true
-  data-plane run. See README and scripts/run_integration_localstack.sh.
+Resources are seeded through plain boto3 calls, so a test written against this harness reads like ordinary
+AWS code.
 
-Both backends are seeded through the same plain boto3 calls, so a test written against
-this harness is identical regardless of backend.
-
-Why this seam and not just ``MagicMock``: the existing provisioner unit tests already
-patch boto3 with ``MagicMock``. This harness instead exercises the real boto3 request
-path against a real (mocked) AWS state machine, so it catches wrong parameters, missing
-resources, and lifecycle bugs a MagicMock cannot.
+Why this seam and not just ``MagicMock``: the existing provisioner unit tests already patch boto3 with
+``MagicMock``. This harness instead exercises the real boto3 request path against a real (mocked) AWS state
+machine, so it catches wrong parameters, missing resources, and lifecycle bugs a MagicMock cannot.
 """
 
 from __future__ import annotations
@@ -39,26 +31,6 @@ os.environ.setdefault("MOTO_IAM_LOAD_MANAGED_POLICIES", "true")
 DEFAULT_REGION = "us-east-1"
 DEFAULT_CLUSTER = "scaler-it-cluster"
 DEFAULT_TASK_DEFINITION = "scaler-it-task-definition"
-LOCALSTACK_DEFAULT_ENDPOINT = "http://localhost:4566"
-
-
-class ECSNotAvailable(RuntimeError):
-    """Selected backend has no ECS (community LocalStack: "not yet implemented or pro feature"); moto
-    and LocalStack Pro do. Tests catch this and skip instead of failing."""
-
-
-def is_service_unavailable(exc: Exception) -> bool:
-    """True when a backend reports a service as unimplemented or gated behind a paid tier (e.g. a
-    Pro-only service on community LocalStack). Matches the several phrasings LocalStack has used across
-    versions so the ECS/Batch tests skip (not error) regardless of the exact wording."""
-    message = str(exc).lower()
-    return any(
-        phrase in message for phrase in ("not yet implemented", "not yet been emulated", "pro feature", "license plan")
-    )
-
-
-def selected_backend() -> str:
-    return os.environ.get("SCALER_E2E_AWS_BACKEND", "moto").strip().lower()
 
 
 # Injected into ECS/Batch calls that omit fields moto requires but real AWS defaults. Module-global
@@ -117,35 +89,26 @@ class SeededEC2Environment:
 
 
 class MockedAWS:
-    """Context manager yielding a mocked AWS control plane and boto3 client factory."""
+    """Context manager yielding a moto-mocked AWS control plane and boto3 client factory."""
 
     def __init__(self, region: str = DEFAULT_REGION) -> None:
         self.region = region
-        self._backend = selected_backend()
         self._moto_ctx: Optional[Any] = None
-        self._endpoint_url: Optional[str] = None
         self._saved_env: Dict[str, Optional[str]] = {}
 
     def __enter__(self) -> "MockedAWS":
         _install_aws_compat()
-        if self._backend == "moto":
-            # Imported lazily so this module stays importable even without the dev group (moto) installed.
-            from moto import mock_aws
+        # Imported lazily so this module stays importable even without the dev group (moto) installed.
+        from moto import mock_aws
 
-            self._moto_ctx = mock_aws()
-            self._moto_ctx.__enter__()
-            # moto needs *some* credentials present; they are never validated.
-            self._set_env("AWS_ACCESS_KEY_ID", "testing")
-            self._set_env("AWS_SECRET_ACCESS_KEY", "testing")
-            self._set_env("AWS_SECURITY_TOKEN", "testing")
-            self._set_env("AWS_SESSION_TOKEN", "testing")
-            self._set_env("AWS_DEFAULT_REGION", self.region)
-        else:  # localstack
-            self._endpoint_url = os.environ.get("AWS_ENDPOINT_URL", LOCALSTACK_DEFAULT_ENDPOINT)
-            self._set_env("AWS_ENDPOINT_URL", self._endpoint_url)
-            self._set_env("AWS_DEFAULT_REGION", self.region)
-            self._set_env("AWS_ACCESS_KEY_ID", os.environ.get("AWS_ACCESS_KEY_ID", "test"))
-            self._set_env("AWS_SECRET_ACCESS_KEY", os.environ.get("AWS_SECRET_ACCESS_KEY", "test"))
+        self._moto_ctx = mock_aws()
+        self._moto_ctx.__enter__()
+        # moto needs *some* credentials present; they are never validated.
+        self._set_env("AWS_ACCESS_KEY_ID", "testing")
+        self._set_env("AWS_SECRET_ACCESS_KEY", "testing")
+        self._set_env("AWS_SECURITY_TOKEN", "testing")
+        self._set_env("AWS_SESSION_TOKEN", "testing")
+        self._set_env("AWS_DEFAULT_REGION", self.region)
         return self
 
     def __exit__(self, *exc) -> None:
@@ -164,10 +127,7 @@ class MockedAWS:
         os.environ[key] = value
 
     def client(self, service: str):
-        kwargs = {"region_name": self.region}
-        if self._endpoint_url is not None:
-            kwargs["endpoint_url"] = self._endpoint_url
-        return boto3.client(service, **kwargs)
+        return boto3.client(service, region_name=self.region)
 
     def seed_ecs_environment(
         self,
@@ -196,31 +156,24 @@ class MockedAWS:
         global _DEFAULT_SECURITY_GROUPS
         _DEFAULT_SECURITY_GROUPS = [sg_id]
 
-        import botocore.exceptions
-
         ecs = self.client("ecs")
-        try:
-            ecs.create_cluster(clusterName=cluster)
-            ecs.register_task_definition(
-                family=task_definition,
-                cpu=str(task_cpu * 1024),
-                memory=str(task_memory_mb),
-                networkMode="awsvpc",
-                requiresCompatibilities=["FARGATE"],
-                containerDefinitions=[
-                    {
-                        "name": "scaler-container",
-                        "image": container_image,
-                        "essential": True,
-                        "memory": task_memory_mb,
-                        "cpu": task_cpu * 1024,
-                    }
-                ],
-            )
-        except botocore.exceptions.ClientError as exc:
-            if is_service_unavailable(exc):
-                raise ECSNotAvailable(str(exc)) from exc
-            raise
+        ecs.create_cluster(clusterName=cluster)
+        ecs.register_task_definition(
+            family=task_definition,
+            cpu=str(task_cpu * 1024),
+            memory=str(task_memory_mb),
+            networkMode="awsvpc",
+            requiresCompatibilities=["FARGATE"],
+            containerDefinitions=[
+                {
+                    "name": "scaler-container",
+                    "image": container_image,
+                    "essential": True,
+                    "memory": task_memory_mb,
+                    "cpu": task_cpu * 1024,
+                }
+            ],
+        )
         return SeededECSEnvironment(
             region=self.region, cluster=cluster, task_definition=task_definition, subnets=[subnet_id]
         )
@@ -228,11 +181,7 @@ class MockedAWS:
     def seed_ec2_environment(self, key_name: Optional[str] = None) -> SeededEC2Environment:
         """Create the VPC/subnet/security-group/key-pair/AMI a real EC2 account would have.
 
-        EC2 is available in LocalStack's free community tier (as an in-memory mock VM manager), so
-        this seam works on moto AND free LocalStack -- unlike ECS/Batch which are LocalStack Pro.
-
-        Resource names get a unique suffix because LocalStack persists state across tests within a
-        container (moto resets per test), so fixed names would collide on the second seed.
+        A unique suffix per seed keeps resource names from colliding if a test seeds more than once.
         """
         suffix = uuid.uuid4().hex[:8]
         key_name = key_name or f"scaler-it-key-{suffix}"

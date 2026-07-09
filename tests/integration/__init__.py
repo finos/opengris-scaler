@@ -16,3 +16,9 @@ INTEGRATION_SKIP_REASON = "set RUN_INTEGRATION_TESTS=1 to enable the end-to-end 
 # run in the standard CI lanes. Independent of RUN_INTEGRATION_TESTS; opt in explicitly.
 RUN_CONTAINER_E2E = os.environ.get("RUN_CONTAINER_E2E") == "1"
 CONTAINER_E2E_SKIP_REASON = "set RUN_CONTAINER_E2E=1 to enable the container-scaling e2e"
+
+# The floci-backed ECS e2e drives the shipped ECS worker manager against a local floci emulator that
+# launches real task containers on the host Docker daemon. Like the container e2e it needs Docker and runs
+# on demand only, so it has its own explicit gate.
+RUN_FLOCI_E2E = os.environ.get("RUN_FLOCI_E2E") == "1"
+FLOCI_E2E_SKIP_REASON = "set RUN_FLOCI_E2E=1 to enable the floci-backed ECS scaling e2e"

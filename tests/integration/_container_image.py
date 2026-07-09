@@ -23,8 +23,12 @@ from typing import List
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", ".."))
 _DOCKERFILE = os.path.join(_HERE, "worker.Dockerfile")
+_ECS_DOCKERFILE = os.path.join(_HERE, "ecs.Dockerfile")
+_ECS_ENTRYPOINT = os.path.join(_HERE, "ecs_entrypoint.sh")
 
 DEFAULT_IMAGE_TAG = os.environ.get("SCALER_IT_WORKER_IMAGE", "scaler-it-worker:local")
+# The ECS e2e task image: the worker image plus an entrypoint that execs the provisioner's COMMAND env var.
+DEFAULT_ECS_IMAGE_TAG = os.environ.get("SCALER_IT_ECS_IMAGE", "scaler-it-ecs-worker:local")
 _DEFAULT_BASE_IMAGE = os.environ.get("SCALER_IT_BASE_IMAGE", "ubuntu:26.04")
 
 # The scaler extensions dynamically link the custom capnp/kj libs; ymq statically links libuv, so the
@@ -101,6 +105,28 @@ def build_worker_image(tag: str = DEFAULT_IMAGE_TAG) -> str:
                 tag,
                 context,
             ],
+            check=True,
+        )
+    return tag
+
+
+def ensure_ecs_worker_image(
+    tag: str = DEFAULT_ECS_IMAGE_TAG, base: str = DEFAULT_IMAGE_TAG, rebuild: bool = False
+) -> str:
+    """Return an ECS task image (the worker image plus the COMMAND-exec entrypoint), building it and its
+    base only if missing (or forced). ``rebuild`` rebuilds both so a wheel change is never run stale."""
+    ensure_worker_image(base, rebuild=rebuild)
+    if rebuild or not image_exists(tag):
+        build_ecs_worker_image(tag, base)
+    return tag
+
+
+def build_ecs_worker_image(tag: str = DEFAULT_ECS_IMAGE_TAG, base: str = DEFAULT_IMAGE_TAG) -> str:
+    # Stage just the entrypoint so the build context stays tiny (not the whole tests/integration dir).
+    with tempfile.TemporaryDirectory(prefix="scaler-it-ecs-image-") as context:
+        shutil.copy(_ECS_ENTRYPOINT, context)
+        subprocess.run(
+            [*_cli(), "build", "-f", _ECS_DOCKERFILE, "--build-arg", f"BASE_IMAGE={base}", "-t", tag, context],
             check=True,
         )
     return tag

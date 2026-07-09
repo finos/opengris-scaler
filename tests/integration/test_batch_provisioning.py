@@ -5,17 +5,16 @@ one-time infrastructure -- S3 bucket, IAM roles, EC2 compute environment, job qu
 is created by ``AWSBatchProvisioner.provision_all``. This test drives that real provisioning flow over
 the real boto3 request path and asserts the resources actually exist in the mocked AWS backend.
 
-Backend: moto by default (implements Batch in-process). Batch is a LocalStack **Pro** feature, so on
-community LocalStack this test skips itself (like the ECS test). Real task execution by a Batch
-container is out of scope for a mock (needs LocalStack Pro / real AWS + Docker); the container-scaling e2e
-covers "provisioned worker actually runs a task".
+Backend: moto (implements Batch in-process). Real task execution by a Batch container is out of scope for
+a mock (needs real AWS + Docker); the container-scaling e2e covers "provisioned worker actually runs a
+task".
 """
 
 import unittest
 
 from scaler.utility.logging.utility import setup_logger
 from tests.integration import INTEGRATION_SKIP_REASON, RUN_INTEGRATION_TESTS
-from tests.integration._aws_backend import MockedAWS, is_service_unavailable
+from tests.integration._aws_backend import MockedAWS
 from tests.utility.utility import logging_test_name
 
 PREFIX = "scaler-it-batch"
@@ -33,20 +32,13 @@ class TestBatchProvisioningControlPlane(unittest.TestCase):
         self.s3 = self._aws.client("s3")
 
     def _provision(self):
-        import botocore.exceptions
-
         from scaler.worker_manager_adapter.aws_hpc.utility.provisioner import AWSBatchProvisioner
 
         provisioner = AWSBatchProvisioner(aws_region=self._aws.region, prefix=PREFIX)
-        try:
-            # instance_types=["optimal"] is the AWS Batch keyword (moto rejects the placeholder default).
-            return provisioner.provision_all(
-                container_image="opengris-scaler:it", vcpus=1, memory_mb=2048, max_vcpus=16, instance_types=["optimal"]
-            )
-        except botocore.exceptions.ClientError as exc:
-            if is_service_unavailable(exc):
-                self.skipTest(f"backend does not provide AWS Batch -- use moto or LocalStack Pro ({exc})")
-            raise
+        # instance_types=["optimal"] is the AWS Batch keyword (moto rejects the placeholder default).
+        return provisioner.provision_all(
+            container_image="opengris-scaler:it", vcpus=1, memory_mb=2048, max_vcpus=16, instance_types=["optimal"]
+        )
 
     def test_provision_all_creates_batch_infrastructure(self) -> None:
         result = self._provision()

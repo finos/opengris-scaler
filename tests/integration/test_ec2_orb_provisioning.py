@@ -1,18 +1,12 @@
-"""End-to-end control-plane test: the ORB (EC2) worker manager provisioning against mocked AWS.
+"""End-to-end control-plane test: the ORB (EC2) worker manager provisioning against moto-mocked AWS.
 
-Unlike the ECS test, EC2 is available in LocalStack's **free community tier** (as an in-memory mock
-VM manager), so this suite is the one that runs against free LocalStack -- not just moto. It drives
-the real ``ORBWorkerProvisioner`` through the real ``orb-py`` SDK, whose provisioning path ends in
-boto3 ``ec2.run_instances`` / ``terminate_instances``, and asserts on the mocked EC2 instance state.
+It drives the real ``ORBWorkerProvisioner`` through the real ``orb-py`` SDK, whose provisioning path ends
+in boto3 ``ec2.run_instances`` / ``terminate_instances`` (moto intercepts the SDK's boto3 EC2 client), and
+asserts on the mocked EC2 instance state.
 
-Backends (``SCALER_E2E_AWS_BACKEND``):
-* ``moto`` (default): in-process; moto intercepts the orb SDK's boto3 EC2 client.
-* ``localstack``: the harness sets ``AWS_ENDPOINT_URL`` so the orb SDK's EC2 client (which ignores
-  orb's own endpoint config) is redirected to LocalStack. Community LocalStack supports EC2.
-
-NOTE: this covers the *control plane* (does the manager launch/track/terminate instances correctly).
-Neither moto nor mock LocalStack boots the instance's user-data, so instances never connect back as
-workers; real task execution is covered by tests/scheduler/test_scaling.py.
+NOTE: this covers the *control plane* (does the manager launch/track/terminate instances correctly). moto
+does not boot the instance's user-data, so instances never connect back as workers; real task execution is
+covered by tests/scheduler/test_scaling.py.
 """
 
 import sys
@@ -108,8 +102,8 @@ class TestORBEC2ProvisioningControlPlane(unittest.IsolatedAsyncioTestCase):
         await self.sdk.validate_template(template_id=self.template_id)
 
     def _running_count(self, instance_ids) -> int:
-        # Assert against the specific instance IDs the provisioner tracks (rather than a global count),
-        # so persistent LocalStack state from other tests does not leak in.
+        # Assert against the specific instance IDs the provisioner tracks, not a global count, so the
+        # assertion stays precise regardless of any other instances seeded in the backend.
         instance_ids = list(instance_ids)
         if not instance_ids:
             return 0
