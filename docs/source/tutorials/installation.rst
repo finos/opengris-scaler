@@ -8,6 +8,10 @@ The ``opengris-scaler`` package is available on PyPI and can be installed using 
 Install uv and Create a Virtual Environment
 -------------------------------------------
 
+.. note::
+
+    Skip this section if you already have a uv virtual environment prepared.
+
 Install `uv <https://docs.astral.sh/uv/getting-started/installation>`__:
 
 .. tabs::
@@ -24,7 +28,7 @@ Install `uv <https://docs.astral.sh/uv/getting-started/installation>`__:
 
             powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 
-Then create and activate a virtual environment pinned to Python 3.13, the newest version supported by all optional dependencies (Scaler itself supports Python 3.10 or later). uv downloads this Python version automatically if it is not already installed:
+Then create and activate a virtual environment named ``opengris-scaler-venv``, pinned to Python 3.13, the newest version supported by all optional dependencies (Scaler itself supports Python 3.10 or later). uv downloads this Python version automatically if it is not already installed:
 
 .. tabs::
 
@@ -32,18 +36,22 @@ Then create and activate a virtual environment pinned to Python 3.13, the newest
 
         .. code-block:: bash
 
-            uv venv --python 3.13
-            source .venv/bin/activate
+            uv venv opengris-scaler-venv --python 3.13
+            source opengris-scaler-venv/bin/activate
 
     .. group-tab:: Windows
 
         .. code-block:: powershell
 
-            uv venv --python 3.13
-            .venv\Scripts\activate
+            uv venv opengris-scaler-venv --python 3.13
+            opengris-scaler-venv\Scripts\activate
 
 Install Scaler
 --------------
+
+.. note::
+
+    The commands below assume you are inside an activated virtual environment.
 
 Base installation:
 
