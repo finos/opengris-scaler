@@ -3066,7 +3066,11 @@ function App() {
             flex: 1,
             padding: "20px 28px",
             display: "grid",
-            gridTemplateColumns: "1fr 600px",
+            gridTemplateColumns:
+              (provState && phase !== "destroying") || phase === "error"
+                ? "1fr 600px"
+                : "1fr",
+            gridTemplateRows: "1fr",
             gap: 20,
             minHeight: 0,
             overflow: "hidden",
