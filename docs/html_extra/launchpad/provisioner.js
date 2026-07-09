@@ -877,7 +877,7 @@ async function provision(
       await retrying(addLog, signal, () => ec2.createDefaultVpc({}).promise());
       addLog("  ✓ Default VPC created", "ok");
     } else {
-      addLog("  → Default VPC: " + vpcCheck.Vpcs[0].VpcId, "info");
+      addLog("  → Using existing default VPC", "info");
     }
   }
 
@@ -1031,7 +1031,7 @@ async function provision(
     privateIp = partial.private_ip;
     vpcId = partial.vpc_id;
     subnetId = partial.subnet_id;
-    addLog("  → Checkpoint: instance running at " + publicIp, "info");
+    addLog("  → Checkpoint: instance already running", "info");
   } else {
     addLog("Waiting for instance to reach running state...", "cmd");
     await retrying(addLog, signal, () =>
@@ -1052,8 +1052,6 @@ async function provision(
     partial.subnet_id = subnetId;
     partial.worker_monitor_address = "http://" + publicIp + ":50001";
     addLog("  ✓ Instance running", "ok");
-    addLog("  → Public IP:  " + publicIp, "info");
-    addLog("  → Private IP: " + privateIp, "info");
 
     // Allow all inbound traffic from the VPC's CIDR so ORB workers can reach the scheduler.
     var vpcDesc = await retrying(addLog, signal, () =>
@@ -1079,8 +1077,6 @@ async function provision(
     } catch (e) {
       if (e.name === "RetryPausedError" || e.name === "AbortError") throw e;
     }
-    addLog("  → VPC: " + vpcId + "  CIDR: " + vpcCidr + "  subnet: " + subnetId, "info");
-
     // OCI workers connect over the public internet — open scheduler and object storage ports.
     var hasOci = (cfg.workerManagers || []).some(function (wm) {
       return wm.type === "oci_raw" || wm.type === "oci_hpc";
@@ -1175,6 +1171,7 @@ async function provision(
   addLog("─".repeat(52), "dim");
   addLog("  DEPLOYMENT COMPLETE", "done");
   addLog("─".repeat(52), "dim");
+  addLog("  → Your connection details are in the panel on the right →", "addr");
 
   return state;
 }
