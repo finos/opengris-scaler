@@ -26,8 +26,9 @@ _FLOCI_IMAGE = os.environ.get("SCALER_IT_FLOCI_IMAGE", "floci/floci:latest")
 _FLOCI_CONTAINER_NAME = "scaler-it-floci"
 _FLOCI_INTERNAL_PORT = 4566
 _DOCKER_SOCKET = "/var/run/docker.sock"
-# floci launches every ECS task container with this name prefix; used to reap leftovers on teardown.
-FLOCI_TASK_CONTAINER_PREFIX = "floci-ecs"
+# floci names each launched container by the service that started it; used to count/reap them on teardown.
+FLOCI_TASK_CONTAINER_PREFIX = "floci-ecs"  # ECS RunTask containers
+FLOCI_INSTANCE_CONTAINER_PREFIX = "floci-ec2"  # EC2 RunInstances containers
 
 _READY_TIMEOUT_SECONDS = 60.0
 _READY_POLL_SECONDS = 0.5
@@ -46,23 +47,22 @@ def floci_available() -> bool:
         return False
 
 
-def remove_task_containers() -> None:
-    """Reap any leftover floci-launched ECS task containers (last-resort cleanup if a run is killed
-    before the manager can drain its tasks)."""
+def remove_task_containers(prefix: str = FLOCI_TASK_CONTAINER_PREFIX) -> None:
+    """Reap any leftover floci-launched containers (last-resort cleanup if a run is killed before the
+    manager can drain them). ``prefix`` selects ECS tasks (default) or EC2 instances."""
     cli = _cli()
     ids = subprocess.run(
-        [*cli, "ps", "-aq", "--filter", f"name={FLOCI_TASK_CONTAINER_PREFIX}"], capture_output=True, text=True
+        [*cli, "ps", "-aq", "--filter", f"name={prefix}"], capture_output=True, text=True
     ).stdout.split()
     for container in ids:
         subprocess.run([*cli, "rm", "-f", container], capture_output=True)
 
 
-def running_task_containers() -> int:
-    """Number of floci-launched ECS task containers currently running -- the ground-truth pool size."""
+def running_task_containers(prefix: str = FLOCI_TASK_CONTAINER_PREFIX) -> int:
+    """Number of floci-launched containers currently running -- the ground-truth pool size. ``prefix``
+    selects ECS tasks (default) or EC2 instances."""
     cli = _cli()
-    result = subprocess.run(
-        [*cli, "ps", "-q", "--filter", f"name={FLOCI_TASK_CONTAINER_PREFIX}"], capture_output=True, text=True
-    )
+    result = subprocess.run([*cli, "ps", "-q", "--filter", f"name={prefix}"], capture_output=True, text=True)
     return len(result.stdout.split())
 
 

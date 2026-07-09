@@ -22,3 +22,9 @@ CONTAINER_E2E_SKIP_REASON = "set RUN_CONTAINER_E2E=1 to enable the container-sca
 # on demand only, so it has its own explicit gate.
 RUN_FLOCI_E2E = os.environ.get("RUN_FLOCI_E2E") == "1"
 FLOCI_E2E_SKIP_REASON = "set RUN_FLOCI_E2E=1 to enable the floci-backed ECS scaling e2e"
+
+# The floci-backed EC2 e2e drives the shipped ORB/EC2 worker manager against floci, which launches real
+# Amazon Linux 2023 instances that install a manylinux wheel of the current source and boot a worker. It
+# needs Docker plus a prebuilt manylinux wheel, so it runs on demand only behind its own gate.
+RUN_EC2_E2E = os.environ.get("RUN_EC2_E2E") == "1"
+EC2_E2E_SKIP_REASON = "set RUN_EC2_E2E=1 to enable the floci-backed EC2 scaling e2e"

@@ -25,10 +25,14 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", ".."))
 _DOCKERFILE = os.path.join(_HERE, "worker.Dockerfile")
 _ECS_DOCKERFILE = os.path.join(_HERE, "ecs.Dockerfile")
 _ECS_ENTRYPOINT = os.path.join(_HERE, "ecs_entrypoint.sh")
+_EC2_DOCKERFILE = os.path.join(_HERE, "ec2.Dockerfile")
 
 DEFAULT_IMAGE_TAG = os.environ.get("SCALER_IT_WORKER_IMAGE", "scaler-it-worker:local")
 # The ECS e2e task image: the worker image plus an entrypoint that execs the provisioner's COMMAND env var.
 DEFAULT_ECS_IMAGE_TAG = os.environ.get("SCALER_IT_ECS_IMAGE", "scaler-it-ecs-worker:local")
+# floci launches EC2 RunInstances on this exact image; the e2e augments it to a real-AMI baseline (see
+# ec2.Dockerfile) and re-tags it here so floci uses the superset in place of the minimal image.
+EC2_BASE_IMAGE = os.environ.get("SCALER_IT_EC2_BASE_IMAGE", "public.ecr.aws/amazonlinux/amazonlinux:2023")
 _DEFAULT_BASE_IMAGE = os.environ.get("SCALER_IT_BASE_IMAGE", "ubuntu:26.04")
 
 # The scaler extensions dynamically link the custom capnp/kj libs; ymq statically links libuv, so the
@@ -129,6 +133,15 @@ def build_ecs_worker_image(tag: str = DEFAULT_ECS_IMAGE_TAG, base: str = DEFAULT
             [*_cli(), "build", "-f", _ECS_DOCKERFILE, "--build-arg", f"BASE_IMAGE={base}", "-t", tag, context],
             check=True,
         )
+    return tag
+
+
+def ensure_ec2_base_image(tag: str = EC2_BASE_IMAGE) -> str:
+    """Build the AMI-baseline AL2023 image floci launches for EC2 RunInstances (see ec2.Dockerfile) and tag
+    it as the base image name so floci uses the superset. Rebuilt each run -- it is a couple of dnf packages
+    layered over the cached base, so it is cheap."""
+    with tempfile.TemporaryDirectory(prefix="scaler-it-ec2-base-") as context:
+        subprocess.run([*_cli(), "build", "-f", _EC2_DOCKERFILE, "-t", tag, context], check=True)
     return tag
 
 

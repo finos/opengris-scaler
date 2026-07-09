@@ -1,0 +1,60 @@
+name: "floci EC2 Scaling E2E"
+
+# Full end-to-end EC2-scaling test (tests/integration/test_ec2_scaling_e2e.py): a client bursts work at a
+# real scheduler, whose scaling policy drives the SHIPPED ORB/EC2 worker manager to launch real Amazon
+# Linux 2023 instances via a local floci AWS emulator. Each instance installs a manylinux wheel of the
+# CURRENT source (built here with cibuildwheel) and boots a worker that connects back. It builds that wheel
+# and needs a Docker daemon, so it is NOT part of the normal build-and-test run; trigger it on demand:
+#   * manually via the Actions tab ("Run workflow"); or
+#   * by adding the "ec2-e2e" label to a pull request.
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [ labeled ]
+
+permissions:
+  contents: read
+
+jobs:
+  ec2-e2e:
+    name: floci EC2 Scaling E2E (Linux)
+    # Manual dispatch always runs; on a PR only when it carries the "ec2-e2e" label.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.label.name == 'ec2-e2e' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
+      - name: 'Checkout Repository'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: ./.github/actions/setup-env
+        with:
+          os: ${{ runner.os }}
+          python-version: '3.13'
+
+      - uses: ./.github/actions/build-native-dependencies
+        with:
+          os: ${{ runner.os }}
+
+      # Install scaler on the host so the manager process (the shipped ORB SDK) runs.
+      - uses: ./.github/actions/build-and-install-wheel
+
+      # The instances run the CURRENT source, so build a portable manylinux wheel of it (not a PyPI
+      # release). Matches the interpreter the instances install (cp313).
+      - name: Build current-source manylinux wheel
+        shell: bash
+        run: |
+          CIBW_OUTPUT_DIR=dist_manylinux ./scripts/build_cibuildwheel.sh --only cp313-manylinux_x86_64
+
+      - name: Run floci EC2 scaling e2e
+        shell: bash
+        env:
+          RUN_EC2_E2E: '1'
+          # GitHub runners can reach the Docker socket without sudo.
+          SCALER_IT_CONTAINER_CLI: docker
+        run: |
+          python -m unittest tests.integration.test_ec2_scaling_e2e -v

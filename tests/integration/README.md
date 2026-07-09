@@ -9,10 +9,11 @@ native, container, ...) is a `DeclarativeWorkerProvisioner` driven by the **same
 | **AWS control plane** | `test_ecs_provisioning.py`, `test_ec2_orb_provisioning.py`, `test_batch_provisioning.py` | the real provisioner, the real boto3 request path, the real scheduler command object | AWS itself (moto, in-process). **Nothing boots and no task runs.** | `RUN_INTEGRATION_TESTS=1` |
 | **Container-scaling e2e** | `test_container_scaling_e2e.py` | a real client, scheduler, and **real workers in real Docker containers** (each its own IP) that run real tasks | the "cloud": a container stands in for a provisioned instance (no AWS at all) | `RUN_CONTAINER_E2E=1` (+ Docker) |
 | **ECS scaling e2e** | `test_ecs_scaling_e2e.py` | the **shipped ECS worker manager** and its boto3 calls, **plus real workers in real ECS task containers** | AWS is a local [floci](https://github.com/hechmik/floci) emulator that actually launches `RunTask` containers | `RUN_FLOCI_E2E=1` (+ Docker) |
+| **EC2 scaling e2e** | `test_ec2_scaling_e2e.py` | the **shipped ORB/EC2 worker manager** and the ORB SDK, **plus real workers in real Amazon Linux 2023 instances** that install a current-source wheel and boot | AWS is the same floci emulator, launching `RunInstances` containers | `RUN_EC2_E2E=1` (+ Docker) |
 
-The AWS control-plane tests ask *"does the manager drive AWS correctly?"*; the two Docker e2es ask *"do
+The AWS control-plane tests ask *"does the manager drive AWS correctly?"*; the three Docker e2es ask *"do
 real workers provision, connect, scale, and return correct results?"* -- the container e2e with no cloud at
-all, the ECS e2e through the *shipped* ECS manager against an emulator that boots the containers for real.
+all, the ECS and EC2 e2es through the *shipped* managers against an emulator that boots the compute for real.
 
 Every test is **opt-in** behind an environment gate and skips itself otherwise, so the default
 `python -m unittest discover` build never pays their cost.
@@ -65,29 +66,50 @@ results. It closes the gap the control-plane ECS test leaves open (which never b
   image (`ecs.Dockerfile`, built on the container-scaling `worker.Dockerfile`) are the only new pieces --
   everything downstream is the shipped manager.
 
-**Watching either Docker e2e run.** The harness starts the web GUI wired to the scheduler monitor and
-prints a `web GUI: http://localhost:PORT` line; open it during a local run to watch the pool scale. (It is
-on in CI too, just unwatched, to keep the setup identical.)
+## EC2 scaling e2e (floci)
+
+`test_ec2_scaling_e2e.py` drives the **shipped `ORBAWSEC2WorkerManager`** and the real `orb-py` SDK against
+the same floci emulator, which launches each `RunInstances` as a real Amazon Linux 2023 container and
+executes its UserData. So the exact production ORB provisioning path -- template creation, the ORB SDK,
+`run_instances`, polling, scale, terminate -- runs for real, and the instance's shipped UserData installs
+scaler and boots a worker that connects back.
+
+* The instance runs the **current source**, not a PyPI release: `scripts/build_cibuildwheel.sh` builds a
+  portable `manylinux` wheel of the working tree (the plain `python -m build` wheel is `linux_x86_64` and
+  will not run on AL2023's older glibc), the harness serves it over the docker-bridge gateway, and the
+  requirements point the shipped UserData at that wheel URL -- so no in-instance compile, and the worker is
+  this branch's build. Tasks travel by value and tag their instance by hostname, as in the ECS e2e.
+* Two harness-side shims bridge where floci diverges from a real AMI / AWS, with **no product change**
+  (`_ec2_backend.py`): the launched image is augmented to the AL2023 AMI baseline (floci's minimal image
+  lacks `tar`, which the shipped `curl | uv install` needs -- `ec2.Dockerfile`), and a botocore handler
+  restores the `InvalidLaunchTemplateName.NotFoundException` the ORB SDK expects (floci returns an empty
+  list for a missing launch-template name, which would otherwise trip an `IndexError` in the SDK).
+
+**Watching a Docker e2e run.** The harness starts the web GUI wired to the scheduler monitor and prints a
+`web GUI: http://localhost:PORT` line; open it during a local run to watch the pool scale. (It is on in CI
+too, just unwatched, to keep the setup identical.)
 
 ## The self-contained worker image (no host-layout coupling)
 
-Both Docker e2es run their workers from a small image (`worker.Dockerfile`, built by `_container_image.py`)
-that installs the host's freshly built wheel plus the custom capnp/kj runtime libs, so a container is
-byte-identical to the scheduler it talks to -- the wire protocol always matches. The container e2e mounts
-the repo read-only so a worker can import its task module; the ECS e2e needs no mount (tasks travel by
-value) and layers a thin `COMMAND`-exec entrypoint on top (`ecs.Dockerfile`). The container runtime is
-abstracted (`_container_runtime.py`, Docker today, `SCALER_IT_CONTAINER_CLI`-swappable for podman), and the
-workers reach the host scheduler + object storage over the docker-bridge gateway
-(`SchedulerHarness(gateway=...)` binds `0.0.0.0` and advertises the gateway address). Both need a Docker
-daemon, so each has its own gate and neither runs in the standard CI lanes.
+The container and ECS e2es run their workers from a small image (`worker.Dockerfile`, built by
+`_container_image.py`) that installs the host's freshly built wheel plus the custom capnp/kj runtime libs,
+so a container is byte-identical to the scheduler it talks to -- the wire protocol always matches. The
+container e2e mounts the repo read-only so a worker can import its task module; the ECS e2e needs no mount
+(tasks travel by value) and layers a thin `COMMAND`-exec entrypoint on top (`ecs.Dockerfile`). The EC2 e2e
+uses no bind mount at all -- its instances install the current-source `manylinux` wheel over the gateway.
+The container runtime is abstracted (`_container_runtime.py`, Docker today, `SCALER_IT_CONTAINER_CLI`-swappable
+for podman), and the workers reach the host scheduler + object storage over the docker-bridge gateway
+(`SchedulerHarness(gateway=...)` binds `0.0.0.0` and advertises the gateway address). All three need a
+Docker daemon, so each has its own gate and none run in the standard CI lanes.
 
 ## Where is real task execution covered?
 
 moto does not boot the compute it "provisions", so the AWS control-plane tests cannot verify task
-execution. That is covered by the two **Docker e2es** (in containers) plus `tests/scheduler/test_scaling.py`
-in the **default suite** (a scheduler-from-zero + native manager asserting dynamically provisioned worker
-*processes* return correct results, on every push). The floci ECS e2e is the closest to a real cloud data
-plane -- the shipped manager launching real task containers -- without a paid tier or a real AWS account.
+execution. That is covered by the three **Docker e2es** plus `tests/scheduler/test_scaling.py` in the
+**default suite** (a scheduler-from-zero + native manager asserting dynamically provisioned worker
+*processes* return correct results, on every push). The floci ECS and EC2 e2es are the closest to a real
+cloud data plane -- the shipped managers launching real task containers / instances -- without a paid tier
+or a real AWS account.
 
 ## Running
 
@@ -104,12 +126,18 @@ RUN_INTEGRATION_TESTS=1 python -m unittest discover -s tests/integration -t . -v
 # ECS scaling e2e (floci + Docker): builds the ECS task image, starts a floci emulator, drives the shipped
 # ECS manager through the scale curve:
 ./scripts/run_floci_e2e.sh                       # DOCKER="sudo docker" ./... if the socket is root-only
+
+# EC2 scaling e2e (floci + Docker): builds a current-source manylinux wheel (cibuildwheel, several minutes)
+# if absent, then drives the shipped ORB/EC2 manager on real AL2023 instances:
+./scripts/run_ec2_e2e.sh                         # DOCKER="sudo docker" ./... if the socket is root-only
 ```
 
-**In CI:** the AWS control-plane tests run on the Linux lane with moto (see
-`.github/actions/run-test/action.yml`). The two Docker e2es run on demand: the **`Container Scaling E2E`**
-workflow (`container-e2e.yml`) and the **`floci ECS Scaling E2E`** workflow (`floci-e2e.yml`) -- trigger
-either from the Actions tab, or add the **`container-e2e`** / **`floci-e2e`** label to a PR.
+**In CI:** the AWS control-plane tests run with moto on the Linux lane (`.github/actions/run-test/action.yml`,
+Python 3.10) and again on a dedicated **Python 3.11** job in `build-and-test.yml` (so the ORB/EC2 test,
+which needs 3.11+, actually executes). The three Docker e2es run on demand -- the **`Container Scaling E2E`**
+(`container-e2e.yml`), **`floci ECS Scaling E2E`** (`floci-e2e.yml`), and **`floci EC2 Scaling E2E`**
+(`ec2-e2e.yml`) workflows -- triggered from the Actions tab or by adding the **`container-e2e`** /
+**`floci-e2e`** / **`ec2-e2e`** label to a PR.
 
 ## moto compatibility notes
 
