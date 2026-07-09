@@ -81,6 +81,34 @@ class TestConfigTypes(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Expected an integer, but got 'MostPowerful'"):
             WorkerCapabilities.from_string("linux,cpu=MostPowerful")
 
+    def test_worker_capabilities_empty_string(self):
+        """Test that an empty capabilities string parses to no capabilities."""
+        self.assertEqual(WorkerCapabilities.from_string("").capabilities, {})
+
+    def test_worker_capabilities_single_pair(self):
+        """Test that a single name=value entry parses correctly, including surrounding whitespace."""
+        self.assertEqual(WorkerCapabilities.from_string("a=1").capabilities, {"a": 1})
+        self.assertEqual(WorkerCapabilities.from_string(" a = 1 ").capabilities, {"a": 1})
+
+    def test_worker_capabilities_empty_name(self):
+        """Test that capability entries with an empty name are rejected."""
+        for text in ["=", "=1", "a,=", "gpu,=1", "a,", ",", " ", " = 1"]:
+            with self.subTest(text=text):
+                with self.assertRaisesRegex(ValueError, "capability name cannot be an empty string"):
+                    WorkerCapabilities.from_string(text)
+
+    def test_worker_capabilities_empty_value(self):
+        """Test that an explicit '=' without an integer value is rejected."""
+        for text in ["a=", "a= ", "linux,a="]:
+            with self.subTest(text=text):
+                with self.assertRaisesRegex(ValueError, "Expected an integer, but got"):
+                    WorkerCapabilities.from_string(text)
+
+    def test_worker_capabilities_multiple_equals(self):
+        """Test that only the first '=' separates name and value, so 'a=1=2' has a non-integer value."""
+        with self.assertRaisesRegex(ValueError, "Expected an integer, but got '1=2'"):
+            WorkerCapabilities.from_string("a=1=2")
+
 
 if __name__ == "__main__":
     unittest.main()
