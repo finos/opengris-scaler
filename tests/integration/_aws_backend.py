@@ -4,7 +4,7 @@
 faithfully backs the AWS *control plane* (the ECS ``run_task`` / ``stop_task`` API calls the worker
 manager makes) but does NOT boot the resulting containers, so provisioned "instances" never connect back
 as workers. A true ECS data-plane run -- provisioned task containers that actually boot and connect -- is
-the floci-backed ECS e2e's job (``test_ecs_scaling_e2e.py``).
+the floci-backed ECS e2e's job (the ``Test_ecs`` topology in ``tests/integration/e2e/``).
 
 Resources are seeded through plain boto3 calls, so a test written against this harness reads like ordinary
 AWS code.

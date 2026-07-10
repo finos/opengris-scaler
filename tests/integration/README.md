@@ -7,10 +7,10 @@ native, container, ...) is a `DeclarativeWorkerProvisioner` driven by the **same
 | Test | File(s) | What is real | What is mocked / simulated | Gate |
 |------|---------|--------------|----------------------------|------|
 | **AWS control plane** | `test_ecs_provisioning.py`, `test_ec2_orb_provisioning.py`, `test_batch_provisioning.py` | the real provisioner, the real boto3 request path, the real scheduler command object | AWS itself (moto, in-process). **Nothing boots and no task runs.** | `RUN_INTEGRATION_TESTS=1` |
-| **Container-scaling e2e** | `test_container_scaling_e2e.py` | a real client, scheduler, and **real workers in real Docker containers** (each its own IP) that run real tasks | the "cloud": a container stands in for a provisioned instance (no AWS at all) | `RUN_CONTAINER_E2E=1` (+ Docker) |
-| **ECS scaling e2e** | `test_ecs_scaling_e2e.py` | the **shipped ECS worker manager** and its boto3 calls, **plus real workers in real ECS task containers** | AWS is a local [floci](https://github.com/hechmik/floci) emulator that actually launches `RunTask` containers | `RUN_FLOCI_E2E=1` (+ Docker) |
-| **EC2 scaling e2e** | `test_ec2_scaling_e2e.py` | the **shipped ORB/EC2 worker manager** and the ORB SDK, **plus real workers in real Amazon Linux 2023 instances** that install a current-source wheel and boot | AWS is the same floci emulator, launching `RunInstances` containers | `RUN_EC2_E2E=1` (+ Docker) |
-| **Cross-backend waterfall e2e** | `test_cross_backend_waterfall_e2e.py` | **both** shipped managers (ECS + ORB/EC2) at different waterfall priorities on **one** scheduler; real ECS task containers and real EC2 instances run the work together | AWS is the same floci emulator, driving both `RunTask` and `RunInstances` | `RUN_CROSS_BACKEND_E2E=1` (+ Docker) |
+| **Container-scaling e2e** | `e2e/` `Test_container`(`_waterfall`) | a real client, scheduler, and **real workers in real Docker containers** (each its own IP) that run real tasks | the "cloud": a container stands in for a provisioned instance (no AWS at all) | `RUN_CONTAINER_E2E=1` (+ Docker) |
+| **ECS scaling e2e** | `e2e/` `Test_ecs` | the **shipped ECS worker manager** and its boto3 calls, **plus real workers in real ECS task containers** | AWS is a local [floci](https://github.com/floci-io/floci) emulator that actually launches `RunTask` containers | `RUN_FLOCI_E2E=1` (+ Docker) |
+| **EC2 scaling e2e** | `e2e/` `Test_ec2` | the **shipped ORB/EC2 worker manager** and the ORB SDK, **plus real workers in real Amazon Linux 2023 instances** that install a current-source wheel and boot | AWS is the same floci emulator, launching `RunInstances` containers | `RUN_EC2_E2E=1` (+ Docker) |
+| **Cross-backend waterfall e2e** | `e2e/` `Test_ecs_ec2` | **both** shipped managers (ECS + ORB/EC2) at different waterfall priorities on **one** scheduler; real ECS task containers and real EC2 instances run the work together | AWS is the same floci emulator, driving both `RunTask` and `RunInstances` | `RUN_CROSS_BACKEND_E2E=1` (+ Docker) |
 
 The AWS control-plane tests ask *"does the manager drive AWS correctly?"*; the four Docker e2es ask *"do
 real workers provision, connect, scale, and return correct results?"* -- the container e2e with no cloud at
@@ -28,79 +28,60 @@ cross-platform, no Docker. It reimplements AWS below botocore and covers all thr
 control plane; the small gaps between moto and real AWS are centralised in `_aws_backend.py` (see notes
 below) so the provisioner code runs unchanged.
 
-## Container-scaling e2e (Docker)
+## The Docker e2e framework: scenarios x backends
 
-`test_container_scaling_e2e.py` runs the whole loop with **no cloud and no AWS mock**: a real client
-bursts work at a real scheduler, whose scaling policy drives one or more `ContainerWorkerProvisioner`s
-(in `_container_backend.py`) to launch container "machines" -- each a *fixed* `baremetal_native` worker
-manager with its own IP -- which run the tasks and return real results. Correct results are the proof
-that real containerized workers ran the work; the running-container count is the proof of how the pool
-scaled. Two classes:
+The Docker e2es are generated from a small framework (`tests/integration/e2e/`) that separates **what** is
+tested from **which** worker manager runs it, so a scenario is written once and every backend reuses it:
 
-* **`TestContainerScalingE2E`** -- one auto-scaling manager against a scheduler that starts with zero
-  machines: a burst scales the pool **up** across container machines and returns correct results; an idle
-  queue drains it back to **zero**; a deep burst **spreads** work across several machines; and a
-  concurrency-1 trickle followed by a burst provisions a machine **mid-flight** under rising load.
-* **`TestContainerWaterfallE2E`** -- two container managers at different **waterfall priorities** on one
-  scheduler: work fills the high-priority manager first and **spills** onto the low-priority one when it
-  saturates.
+* **Scenarios** (`e2e/scenarios.py`) -- backend-agnostic `(test, deployment)` functions asserting on the
+  scaling curve: `burst_and_drain`, `work_spreads`, `rising_load`, `steady_load_stable`, and
+  `waterfall_spills` (which needs >= 2 managers).
+* **Backends** (`e2e/backends.py`) -- each supplies only the seams a scenario cannot know: a boot-latency
+  matched `Profile`, how to build its task image, and how to provision one manager + observe its pool.
+  `FlociEcsBackend`, `FlociEc2Backend`, `ContainerBackend`.
+* **Topologies** (`e2e/matrix.py`) -- an ordered list of backends (1 = a single manager on the vanilla
+  policy; N = a `waterfall_v1` deployment, priority = position, possibly cross-backend) plus the scenarios
+  it runs. Each becomes one generated `unittest.TestCase` named for it -- `Test_ecs`, `Test_ec2`,
+  `Test_container`, `Test_ecs_ec2`, `Test_container_waterfall` -- gated by its `RUN_*_E2E` flag, so each
+  on-demand workflow (all running `tests.integration.e2e.test_scaling`) enables exactly its own rows.
 
-This is the free, local analog of a cloud manager provisioning an instance whose user-data starts a
-worker. The provisioner is built for it: per-manager `worker_manager_id` / container prefix,
-`workers_per_machine` / `max_machines`, and `boot_delay_seconds` / `shutdown_delay_seconds` knobs to
-simulate cloud latency.
+Two unifications let one scenario drive them all: every backend runs its workers in host Docker containers,
+so pool observation is a single prefix-scoped `docker ps` (`e2e/framework.py` `ContainerPool`); and tasks
+are cloudpickled **by value** and tag their unit via `SCALER_IT_MACHINE_ID or hostname` (`e2e/tasks.py`),
+covering the container backend's per-machine env id and the floci backends' hostname in one expression. The
+`SchedulerHarness` health check (`assert_backend_processes_alive`) is deployment-level: if the scheduler or
+a manager crashes -- or stays up but wedges the pool -- under churn, the test fails **naming the fault**
+(from a tee'd scheduler log) instead of surfacing only a client `TimeoutError`.
 
-## ECS scaling e2e (floci)
+## The backends
 
-`test_ecs_scaling_e2e.py` drives the **shipped `ECSWorkerManager`** (`scaler.worker_manager_adapter.aws_raw.ecs`)
--- nothing about the worker manager is faked -- against [floci](https://github.com/hechmik/floci), a free
-local AWS emulator that, unlike moto or community LocalStack, actually launches each ECS `RunTask` as a
-sibling Docker container (through the host docker socket). So the exact production ECS code path runs, boto3
-is merely pointed at floci via `AWS_ENDPOINT_URL`, and real workers connect back, run work, and return
-results. It closes the gap the control-plane ECS test leaves open (which never boots anything).
+**Container (no cloud) -- `ContainerBackend`.** Launches container "machines", each a *fixed*
+`baremetal_native` worker with its own IP (`_container_backend.py`), with no AWS at all -- the free, local
+analog of a cloud manager booting an instance. It churns decisively under the vanilla policy (a test-double
+provisioner), so `steady_load_stable` is a red tripwire on it. `Test_container_waterfall` runs two at
+different priorities (distinct container prefixes) to exercise spill.
 
-* The scheduler's scaling policy drives the manager to launch ECS task containers; correct results prove
-  those containers ran the work and the running-container count proves how the pool scaled up and drained.
-* Tasks are submitted **by value** (nested functions, cloudpickled whole) because the shipped provisioner
-  mounts no repo into the task, and each task tags its work by **container hostname** (the provisioner sets
-  no machine id), so a test can see work **spread** across tasks.
-* floci (`_floci.py`) is started per test with the docker socket mounted; the emulator and the entrypoint
-  image (`ecs.Dockerfile`, built on the container-scaling `worker.Dockerfile`) are the only new pieces --
-  everything downstream is the shipped manager.
+**ECS (floci) -- `FlociEcsBackend`.** Drives the shipped `ECSWorkerManager`
+(`scaler.worker_manager_adapter.aws_raw.ecs`) unmodified against [floci](https://github.com/floci-io/floci),
+a free local AWS emulator that -- unlike moto or community LocalStack -- actually launches each ECS
+`RunTask` as a sibling Docker container (through the host docker socket) from a prebaked image. So the exact
+production ECS path runs, boto3 merely pointed at floci via `AWS_ENDPOINT_URL`, and real workers connect
+back and run work. Boots in seconds (`_floci.py`, `ecs.Dockerfile`).
 
-## EC2 scaling e2e (floci)
+**EC2 (floci) -- `FlociEc2Backend`.** Drives the shipped `ORBAWSEC2WorkerManager` and the real `orb-py` SDK
+against the same floci, which launches each `RunInstances` as a real Amazon Linux 2023 container and runs
+its UserData. The instance installs a **current-source** `manylinux` wheel (`scripts/build_cibuildwheel.sh`
+builds it -- the plain `python -m build` wheel is `linux_x86_64` and will not run on AL2023's older glibc --
+and the harness serves it over the docker-bridge gateway) and boots a worker. Minute-long boots, so the
+profile raises the client/worker liveness timeouts to match. Two harness-side shims bridge floci vs a real
+AMI/AWS with **no product change** (`_ec2_backend.py`): the launched image is augmented to the AL2023
+baseline (floci's minimal image lacks `tar`, `ec2.Dockerfile`), and a botocore handler restores the
+`InvalidLaunchTemplateName.NotFoundException` the ORB SDK expects.
 
-`test_ec2_scaling_e2e.py` drives the **shipped `ORBAWSEC2WorkerManager`** and the real `orb-py` SDK against
-the same floci emulator, which launches each `RunInstances` as a real Amazon Linux 2023 container and
-executes its UserData. So the exact production ORB provisioning path -- template creation, the ORB SDK,
-`run_instances`, polling, scale, terminate -- runs for real, and the instance's shipped UserData installs
-scaler and boots a worker that connects back.
-
-* The instance runs the **current source**, not a PyPI release: `scripts/build_cibuildwheel.sh` builds a
-  portable `manylinux` wheel of the working tree (the plain `python -m build` wheel is `linux_x86_64` and
-  will not run on AL2023's older glibc), the harness serves it over the docker-bridge gateway, and the
-  requirements point the shipped UserData at that wheel URL -- so no in-instance compile, and the worker is
-  this branch's build. Tasks travel by value and tag their instance by hostname, as in the ECS e2e.
-* Two harness-side shims bridge where floci diverges from a real AMI / AWS, with **no product change**
-  (`_ec2_backend.py`): the launched image is augmented to the AL2023 AMI baseline (floci's minimal image
-  lacks `tar`, which the shipped `curl | uv install` needs -- `ec2.Dockerfile`), and a botocore handler
-  restores the `InvalidLaunchTemplateName.NotFoundException` the ORB SDK expects (floci returns an empty
-  list for a missing launch-template name, which would otherwise trip an `IndexError` in the SDK).
-
-## Cross-backend waterfall e2e (floci)
-
-`test_cross_backend_waterfall_e2e.py` runs **two different shipped managers on one scheduler**: the ECS
-manager at waterfall priority 1 (capped at one task's worth of concurrency) and the ORB/EC2 manager at
-priority 2. A sustained burst fills the fast ECS pool first and, once it saturates, **spills** onto real
-EC2 instances -- so both cloud data planes run work under a single scheduler at the same time.
-
-* The shipped provisioners set no machine id, so work is attributed to a manager by its floci **container
-  prefix** (`floci-ecs-*` vs `floci-ec2-*`), which the running-container counts already expose; correct
-  results throughout prove both backends actually ran the work.
-* It needs everything the ECS and EC2 e2es do -- both task images plus the current-source `manylinux` wheel
-  -- so it is the heaviest job. Because a real EC2 boot is minutes and a churning pool can stall the client
-  heartbeat past the stock 60s, the harness raises the client/worker liveness timeouts for it (and for the
-  EC2 e2e) to match cloud provisioning latency.
+**Cross-backend waterfall -- `Test_ecs_ec2`.** `waterfall_spills` on `[FlociEcsBackend` (priority 1,
+capped)`, FlociEc2Backend` (priority 2)`]`: a sustained burst fills the fast ECS pool first and spills onto
+real EC2 instances -- both cloud data planes running under one scheduler at once, attributed by container
+prefix (`floci-ecs-*` vs `floci-ec2-*`).
 
 **Watching a Docker e2e run.** The harness starts the web GUI wired to the scheduler monitor and prints a
 `web GUI: http://localhost:PORT` line; open it during a local run to watch the pool scale. (It is on in CI
@@ -108,16 +89,16 @@ too, just unwatched, to keep the setup identical.)
 
 ## The self-contained worker image (no host-layout coupling)
 
-The container and ECS e2es run their workers from a small image (`worker.Dockerfile`, built by
+The container and ECS backends run their workers from a small image (`worker.Dockerfile`, built by
 `_container_image.py`) that installs the host's freshly built wheel plus the custom capnp/kj runtime libs,
-so a container is byte-identical to the scheduler it talks to -- the wire protocol always matches. The
-container e2e mounts the repo read-only so a worker can import its task module; the ECS e2e needs no mount
-(tasks travel by value) and layers a thin `COMMAND`-exec entrypoint on top (`ecs.Dockerfile`). The EC2 e2e
-uses no bind mount at all -- its instances install the current-source `manylinux` wheel over the gateway.
-The container runtime is abstracted (`_container_runtime.py`, Docker today, `SCALER_IT_CONTAINER_CLI`-swappable
-for podman), and the workers reach the host scheduler + object storage over the docker-bridge gateway
-(`SchedulerHarness(gateway=...)` binds `0.0.0.0` and advertises the gateway address). All four need a
-Docker daemon, so each has its own gate and none run in the standard CI lanes.
+so a container is byte-identical to the scheduler it talks to -- the wire protocol always matches. Tasks
+travel **by value** for every backend (`e2e/tasks.py`), so no worker needs the repo: the ECS backend layers
+only a thin `COMMAND`-exec entrypoint on top (`ecs.Dockerfile`), and the EC2 backend's instances just
+install the current-source `manylinux` wheel over the gateway. The container runtime is abstracted
+(`_container_runtime.py`, Docker today, `SCALER_IT_CONTAINER_CLI`-swappable for podman), and the workers
+reach the host scheduler + object storage over the docker-bridge gateway (`SchedulerHarness(gateway=...)`
+binds `0.0.0.0` and advertises the gateway address). All four topologies need a Docker daemon, so each has
+its own gate and none run in the standard CI lanes.
 
 ## Where is real task execution covered?
 
@@ -153,6 +134,18 @@ RUN_INTEGRATION_TESTS=1 python -m unittest discover -s tests/integration -t . -v
 ./scripts/run_cross_backend_e2e.sh               # DOCKER="sudo docker" ./... if the socket is root-only
 ```
 
+Each runner just builds its image(s), sets its `RUN_*_E2E` gate, and runs the framework module, so you can
+drive it directly -- a whole topology, or one scenario -- once the images/wheel exist:
+
+```bash
+# one topology (RUN_*_E2E selects which class is enabled; others skip):
+RUN_FLOCI_E2E=1 SCALER_IT_CONTAINER_CLI="sudo docker" \
+  python -m unittest tests.integration.e2e.test_scaling.Test_ecs -v
+# one scenario:
+RUN_CONTAINER_E2E=1 SCALER_IT_CONTAINER_CLI="sudo docker" \
+  python -m unittest tests.integration.e2e.test_scaling.Test_container.test_steady_load_stable -v
+```
+
 **In CI:** the AWS control-plane tests run with moto on the Linux lane (`.github/actions/run-test/action.yml`,
 Python 3.10) and again on a dedicated **Python 3.11** job in `build-and-test.yml` (so the ORB/EC2 test,
 which needs 3.11+, actually executes). The Docker e2es run on demand -- the **`Container Scaling E2E`**
@@ -160,6 +153,28 @@ which needs 3.11+, actually executes). The Docker e2es run on demand -- the **`C
 (`ec2-e2e.yml`), and **`Floci Cross-Backend Waterfall E2E`** (`cross-backend-e2e.yml`) workflows --
 triggered from the Actions tab or by adding the **`container-e2e`** / **`floci-e2e`** / **`ec2-e2e`** /
 **`cross-backend-e2e`** label to a PR.
+
+## Adding a scenario, backend, or topology
+
+The three axes are independent -- extend one without touching the others:
+
+* **A scenario** -- add a `(test_case, deployment)` function to `e2e/scenarios.py`: read timing off
+  `deployment.profile`, submit via `deployment.tasks`, and observe with `deployment.running()` /
+  `running_names()` or per-manager `deployment.pools`. Set its `min_managers`, then list it on the
+  topologies that should run it in `e2e/matrix.py`. It now runs on every listed backend.
+* **A backend** -- add a class to `e2e/backends.py` satisfying `WorkerManagerBackend`: a `Profile` matched to
+  its boot latency, `ensure_image()`, and `provision()` returning a `ManagerHandle` with a prefix-scoped
+  `ContainerPool`. Add a `Topology` for it in `e2e/matrix.py` with a gate, and every existing scenario runs
+  on it for free. If it needs new shared infra (an emulator, a wheel server), extend `deploy()` behind a
+  `needs_*` flag.
+* **A topology** -- add a `Topology` to `TOPOLOGIES` in `e2e/matrix.py`: an ordered list of `ManagerSpec`s
+  (priority = position; cap the higher tiers to force spill), the scenarios it runs, and its gate. A
+  cross-backend waterfall is just `[ManagerSpec(BackendA(), cap=N), ManagerSpec(BackendB())]`; the generated
+  class is `Test_<name>`.
+
+Everything else -- pool observation, by-value task tagging, the scheduler harness, the crash/wedge
+diagnostic, and the workflows (all running the gated `tests.integration.e2e.test_scaling`) -- is shared, so
+a new axis needs no wiring beyond the above.
 
 ## moto compatibility notes
 

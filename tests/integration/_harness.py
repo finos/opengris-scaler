@@ -231,24 +231,31 @@ class SchedulerHarness:
     def scheduler_exitcode(self) -> Optional[int]:
         return self._scheduler.exitcode if self._scheduler is not None else None
 
-    def scheduler_unhandled_error(self) -> Optional[str]:
+    def scheduler_unhandled_error(self, settle_seconds: float = 4.0) -> Optional[str]:
         """A one-line summary if the scheduler logged an unhandled exception (a traceback) during the run,
         else None. Catches the case where an unhandled scheduler error does not kill the process but wedges
-        the pool, so the client only sees a downstream timeout. The full traceback is in the captured log."""
-        try:
-            with open(self._scheduler_log_path, "r", encoding="utf-8", errors="replace") as log_file:
-                lines = log_file.read().splitlines()
-        except OSError:
-            return None
-        if not any("Traceback (most recent call last)" in line for line in lines):
-            return None
-        # __routing logs "<task>: exception happened, transition: ... path: ..." right before the traceback;
-        # report that line (it names the state path) if present, else the exception's final line.
-        context = next((line.strip() for line in lines if "exception happened" in line), "")
-        exception = next(
-            (line.strip() for line in reversed(lines) if line[:1].strip() and "Error" in line and ":" in line), ""
-        )
-        return " | ".join(part for part in (context, exception) if part) or "unhandled scheduler exception"
+        the pool, so the client only sees a downstream timeout. The scheduler often logs the fault a beat
+        AFTER the client gives up (the client disconnect is what triggers the fatal send to a gone worker),
+        so briefly poll for it to land rather than scanning once. The full traceback is in the captured log."""
+        deadline = time.monotonic() + settle_seconds
+        while True:
+            try:
+                with open(self._scheduler_log_path, "r", encoding="utf-8", errors="replace") as log_file:
+                    lines = log_file.read().splitlines()
+            except OSError:
+                return None
+            if any("Traceback (most recent call last)" in line for line in lines):
+                # __routing logs "<task>: exception happened, transition: ... path: ..." right before the
+                # traceback; report that line (it names the state path) if present, else the exception line.
+                context = next((line.strip() for line in lines if "exception happened" in line), "")
+                exception = next(
+                    (line.strip() for line in reversed(lines) if line[:1].strip() and "Error" in line and ":" in line),
+                    "",
+                )
+                return " | ".join(part for part in (context, exception) if part) or "unhandled scheduler exception"
+            if time.monotonic() >= deadline:
+                return None
+            time.sleep(0.25)
 
     def _kill_processes(self) -> None:
         """Force-terminate whatever is running (used to clean up a partial bring-up between retries)."""

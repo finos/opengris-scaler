@@ -7,7 +7,7 @@ moto-mocked ECS backend's real task state.
 
 NOTE: moto does not boot the provisioned containers, so these tasks never connect back as workers --
 this test covers the *control plane* (does the manager call AWS correctly and track lifecycle). Real ECS
-task execution is covered by the floci-backed e2e (``test_ecs_scaling_e2e.py``).
+task execution is covered by the floci-backed e2e (the ``Test_ecs`` topology in ``tests/integration/e2e/``).
 """
 
 import unittest

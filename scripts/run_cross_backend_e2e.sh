@@ -33,4 +33,4 @@ export RUN_CROSS_BACKEND_E2E=1
 export SCALER_IT_CONTAINER_CLI="${SCALER_IT_CONTAINER_CLI:-${DOCKER}}"
 export SCALER_IT_MANYLINUX_WHEEL_DIR="${WHEEL_DIR}"
 
-exec "${PYTHON}" -m unittest tests.integration.test_cross_backend_waterfall_e2e -v "$@"
+exec "${PYTHON}" -m unittest tests.integration.e2e.test_scaling -v "$@"

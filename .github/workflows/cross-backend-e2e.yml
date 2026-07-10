@@ -1,6 +1,6 @@
 name: "Floci Cross-Backend Waterfall E2E"
 
-# Full end-to-end cross-backend waterfall test (tests/integration/test_cross_backend_waterfall_e2e.py): a
+# Full end-to-end cross-backend waterfall test (the Test_ecs_ec2 topology in tests/integration/e2e/): a
 # client bursts work at a real scheduler running the waterfall policy, driving the SHIPPED ECS worker
 # manager (priority 1) and the SHIPPED ORB/EC2 worker manager (priority 2) at once. Work fills the fast ECS
 # pool first and spills onto real Amazon Linux 2023 EC2 instances once ECS saturates, all via a local floci
@@ -59,4 +59,4 @@ jobs:
           # GitHub runners can reach the Docker socket without sudo.
           SCALER_IT_CONTAINER_CLI: docker
         run: |
-          python -m unittest tests.integration.test_cross_backend_waterfall_e2e -v
+          python -m unittest tests.integration.e2e.test_scaling -v

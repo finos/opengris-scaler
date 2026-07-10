@@ -30,4 +30,4 @@ export SCALER_IT_CONTAINER_CLI="${SCALER_IT_CONTAINER_CLI:-${DOCKER}}"
 # Rebuild the worker image so a wheel change is never silently run against a stale image.
 export SCALER_IT_REBUILD=1
 
-exec "${PYTHON}" -m unittest tests.integration.test_container_scaling_e2e -v "$@"
+exec "${PYTHON}" -m unittest tests.integration.e2e.test_scaling -v "$@"

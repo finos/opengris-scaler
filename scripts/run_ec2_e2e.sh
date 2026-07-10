@@ -31,4 +31,4 @@ export RUN_EC2_E2E=1
 export SCALER_IT_CONTAINER_CLI="${SCALER_IT_CONTAINER_CLI:-${DOCKER}}"
 export SCALER_IT_MANYLINUX_WHEEL_DIR="${WHEEL_DIR}"
 
-exec "${PYTHON}" -m unittest tests.integration.test_ec2_scaling_e2e -v "$@"
+exec "${PYTHON}" -m unittest tests.integration.e2e.test_scaling -v "$@"

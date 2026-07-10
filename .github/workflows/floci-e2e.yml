@@ -1,6 +1,6 @@
 name: "Floci ECS Scaling E2E"
 
-# Full end-to-end ECS-scaling test (tests/integration/test_ecs_scaling_e2e.py): a client bursts work at a
+# Full end-to-end ECS-scaling test (the Test_ecs topology in tests/integration/e2e/): a client bursts work at a
 # real scheduler, whose scaling policy drives the SHIPPED ECS worker manager to launch real workers in real
 # Docker containers via a local floci AWS emulator (a free stand-in for AWS that actually runs RunTask
 # containers). It builds an ECS task image and needs a Docker daemon, so it is NOT part of the normal
@@ -49,4 +49,4 @@ jobs:
           # GitHub runners can reach the Docker socket without sudo.
           SCALER_IT_CONTAINER_CLI: docker
         run: |
-          python -m unittest tests.integration.test_ecs_scaling_e2e -v
+          python -m unittest tests.integration.e2e.test_scaling -v
