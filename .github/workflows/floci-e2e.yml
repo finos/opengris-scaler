@@ -1,4 +1,4 @@
-name: "floci ECS Scaling E2E"
+name: "Floci ECS Scaling E2E"
 
 # Full end-to-end ECS-scaling test (tests/integration/test_ecs_scaling_e2e.py): a client bursts work at a
 # real scheduler, whose scaling policy drives the SHIPPED ECS worker manager to launch real workers in real
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   floci-e2e:
-    name: floci ECS Scaling E2E (Linux)
+    name: Floci ECS Scaling E2E (Linux)
     # Manual dispatch always runs; on a PR only when it carries the "floci-e2e" label.
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.label.name == 'floci-e2e' }}
     runs-on: ubuntu-latest

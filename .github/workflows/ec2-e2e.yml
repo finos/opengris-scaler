@@ -1,4 +1,4 @@
-name: "floci EC2 Scaling E2E"
+name: "Floci EC2 Scaling E2E"
 
 # Full end-to-end EC2-scaling test (tests/integration/test_ec2_scaling_e2e.py): a client bursts work at a
 # real scheduler, whose scaling policy drives the SHIPPED ORB/EC2 worker manager to launch real Amazon
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   ec2-e2e:
-    name: floci EC2 Scaling E2E (Linux)
+    name: Floci EC2 Scaling E2E (Linux)
     # Manual dispatch always runs; on a PR only when it carries the "ec2-e2e" label.
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.label.name == 'ec2-e2e' }}
     runs-on: ubuntu-latest

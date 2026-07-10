@@ -19,8 +19,14 @@ set -euo pipefail
 PYTHON="${PYTHON:-python}"
 OUTPUT_DIR="${CIBW_OUTPUT_DIR:-dist}"
 
-# Match the release pipeline's toolchain (uv, not pip -- uv-created venvs ship no pip).
-uv pip install --python "${PYTHON}" --quiet --upgrade cibuildwheel
+# Match the release pipeline's toolchain (uv, not pip -- uv-created venvs ship no pip). uv refuses to
+# install into a non-virtual environment without --system: local runs use an activated venv, while the
+# release/CI lane has none and installs into the system interpreter that `python -m cibuildwheel` runs below.
+if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+    uv pip install --python "${PYTHON}" --quiet --upgrade cibuildwheel
+else
+    uv pip install --system --quiet --upgrade cibuildwheel
+fi
 
 # cibuildwheel invokes `docker` directly; where that needs sudo, expose a shim named `docker` on PATH.
 DOCKER="${DOCKER:-docker}"
