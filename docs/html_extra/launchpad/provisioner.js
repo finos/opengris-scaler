@@ -472,7 +472,6 @@ function buildUserData(cfg, creds) {
       : `git clone --depth 1 ${cloneUrl} /opt/scaler-src`;
 
     gitBuildLines = `# C++ build deps: GCC 14 (required for C++23 <expected>) + Cap'n Proto toolchain
-# perl is needed to run OpenSSL's Configure script when building it from source below.
 dnf install -y git gcc14 gcc14-c++ gcc14-libstdc++-devel autoconf automake libtool libuv-devel openssl-devel perl
 
 # Clone repo to access build scripts
@@ -484,9 +483,7 @@ CC=/usr/bin/gcc14-gcc CXX=/usr/bin/gcc14-g++ bash scripts/library_tool.sh capnp 
 CC=/usr/bin/gcc14-gcc CXX=/usr/bin/gcc14-g++ bash scripts/library_tool.sh capnp compile
 bash scripts/library_tool.sh capnp install
 
-# CMake requires a statically-linked OpenSSL (OPENSSL_USE_STATIC_LIBS); AL2023's
-# openssl-devel package only ships libssl.so, not libssl.a, so build it from source
-# into /usr/local, same as CI does via .github/actions/3rd-party-libraries-*.
+# compile openssl because we need static library
 CC=/usr/bin/gcc14-gcc CXX=/usr/bin/gcc14-g++ bash scripts/library_tool.sh openssl download
 CC=/usr/bin/gcc14-gcc CXX=/usr/bin/gcc14-g++ bash scripts/library_tool.sh openssl compile
 bash scripts/library_tool.sh openssl install
