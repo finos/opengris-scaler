@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import tempfile
 import time
 from multiprocessing import get_context
 from multiprocessing.process import BaseProcess
@@ -59,6 +60,35 @@ def desired_requests(count: int) -> list:
     return list(build_set_desired_command([({}, count)]).setDesiredTaskConcurrencyRequests)
 
 
+def assert_backend_processes_alive(test_case, harness: "SchedulerHarness", **named_processes) -> None:
+    """Fail ``test_case`` with a clear diagnostic if the scheduler or any named worker-manager process died,
+    or if the scheduler logged an unhandled exception, during the test. A client that fails with a bare
+    ``TimeoutError`` is almost always the *downstream* symptom of one of those under churn -- whether the
+    scheduler crashed outright or stayed up but wedged the pool -- so naming the fault (and pointing at the
+    traceback the harness captures) turns it into an actionable failure. Call from tearDown, which runs
+    before the addCleanup stack tears the processes down."""
+    dead = []
+    if harness.scheduler_died():
+        dead.append(f"scheduler (exit {harness.scheduler_exitcode()})")
+    for name, process in named_processes.items():
+        if process is not None and not process.is_alive():
+            dead.append(f"{name} (exit {process.exitcode})")
+    scheduler_error = harness.scheduler_unhandled_error()
+    if dead:
+        detail = f" scheduler logged: {scheduler_error}." if scheduler_error else ""
+        test_case.fail(
+            f"{', '.join(dead)} exited during the run -- an unhandled crash under churn, not just a slow or "
+            f"timed-out client. See the traceback in the captured scheduler/manager log above for the cause." + detail
+        )
+    elif scheduler_error:
+        # The scheduler stayed up but logged an unhandled exception that wedged the pool (the client only
+        # sees a downstream timeout); name the fault so the failure is actionable, not opaque.
+        test_case.fail(
+            f"scheduler logged an unhandled exception under churn and wedged the pool ({scheduler_error}); "
+            f"the client's TimeoutError is the downstream symptom. See the full traceback in the captured log."
+        )
+
+
 def _run_webgui(monitor_address: str, host: str, port: int) -> None:
     """Process entry point for the web GUI (blocking uvicorn server); it subscribes to the scheduler's
     monitor address and serves the dashboard on ``host:port``."""
@@ -86,17 +116,27 @@ class SchedulerHarness:
         policy_engine_type: str = "simple",
         gateway: Optional[str] = None,
         enable_webgui: bool = False,
+        client_timeout_seconds: int = DEFAULT_CLIENT_TIMEOUT_SECONDS,
+        worker_timeout_seconds: int = DEFAULT_WORKER_TIMEOUT_SECONDS,
     ) -> None:
         # gateway: a docker-bridge gateway IP. When set, the scheduler + object storage bind 0.0.0.0 and
         # advertise gateway-reachable addresses so workers running in containers can connect back; the
         # host client still uses loopback. None keeps the original loopback-only behavior.
         self._gateway = gateway
         self._enable_webgui = enable_webgui
+        # Cloud provisioning latency (a real EC2 boot is minutes) can starve the scheduler and stall client
+        # heartbeats past the stock 60s, so the floci e2es raise these; loopback tests keep the defaults.
+        self._client_timeout_seconds = client_timeout_seconds
+        self._worker_timeout_seconds = worker_timeout_seconds
         self._object_storage: Optional[ObjectStorageServerProcess] = None
         self._scheduler: Optional[SchedulerProcess] = None
         self._webgui: Optional[BaseProcess] = None
         self._monitor_client_address: Optional[str] = None
         self._shutdown_done = False
+        # Tee the scheduler log to a file (as well as stdout) so a test can detect an unhandled scheduler
+        # exception under churn -- which may crash the scheduler OR leave it up but wedged (client times out).
+        scheduler_log_fd, self._scheduler_log_path = tempfile.mkstemp(prefix="scaler-it-scheduler-", suffix=".log")
+        os.close(scheduler_log_fd)
 
         errors: list = []
         for _attempt in range(_HARNESS_START_ATTEMPTS):
@@ -151,14 +191,14 @@ class SchedulerHarness:
             policy=PolicyConfig(policy_engine_type=policy_engine_type, policy_content=policy_content),
             io_threads=DEFAULT_IO_THREADS,
             max_number_of_tasks_waiting=DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
-            client_timeout_seconds=DEFAULT_CLIENT_TIMEOUT_SECONDS,
-            worker_timeout_seconds=DEFAULT_WORKER_TIMEOUT_SECONDS,
+            client_timeout_seconds=self._client_timeout_seconds,
+            worker_timeout_seconds=self._worker_timeout_seconds,
             object_retention_seconds=DEFAULT_OBJECT_RETENTION_SECONDS,
             load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
             load_balance_trigger_times=DEFAULT_LOAD_BALANCE_TRIGGER_TIMES,
             protected=False,
             event_loop="builtin",
-            logging_paths=("/dev/stdout",),
+            logging_paths=("/dev/stdout", self._scheduler_log_path),
             logging_config_file=None,
             logging_level="INFO",
         )
@@ -182,6 +222,33 @@ class SchedulerHarness:
     @property
     def object_storage_address(self) -> AddressConfig:
         return self._object_storage_address
+
+    def scheduler_died(self) -> bool:
+        """True if the scheduler process has exited. A healthy run keeps it alive for the whole test, so a
+        dead scheduler mid-test means an unhandled scheduler crash (see :func:`assert_backend_processes_alive`)."""
+        return self._scheduler is not None and not self._scheduler.is_alive()
+
+    def scheduler_exitcode(self) -> Optional[int]:
+        return self._scheduler.exitcode if self._scheduler is not None else None
+
+    def scheduler_unhandled_error(self) -> Optional[str]:
+        """A one-line summary if the scheduler logged an unhandled exception (a traceback) during the run,
+        else None. Catches the case where an unhandled scheduler error does not kill the process but wedges
+        the pool, so the client only sees a downstream timeout. The full traceback is in the captured log."""
+        try:
+            with open(self._scheduler_log_path, "r", encoding="utf-8", errors="replace") as log_file:
+                lines = log_file.read().splitlines()
+        except OSError:
+            return None
+        if not any("Traceback (most recent call last)" in line for line in lines):
+            return None
+        # __routing logs "<task>: exception happened, transition: ... path: ..." right before the traceback;
+        # report that line (it names the state path) if present, else the exception's final line.
+        context = next((line.strip() for line in lines if "exception happened" in line), "")
+        exception = next(
+            (line.strip() for line in reversed(lines) if line[:1].strip() and "Error" in line and ":" in line), ""
+        )
+        return " | ".join(part for part in (context, exception) if part) or "unhandled scheduler exception"
 
     def _kill_processes(self) -> None:
         """Force-terminate whatever is running (used to clean up a partial bring-up between retries)."""
@@ -219,3 +286,7 @@ class SchedulerHarness:
             if process.is_alive():
                 process.kill()
                 process.join()
+        try:
+            os.unlink(self._scheduler_log_path)
+        except OSError:
+            pass

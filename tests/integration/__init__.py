@@ -28,3 +28,10 @@ FLOCI_E2E_SKIP_REASON = "set RUN_FLOCI_E2E=1 to enable the floci-backed ECS scal
 # needs Docker plus a prebuilt manylinux wheel, so it runs on demand only behind its own gate.
 RUN_EC2_E2E = os.environ.get("RUN_EC2_E2E") == "1"
 EC2_E2E_SKIP_REASON = "set RUN_EC2_E2E=1 to enable the floci-backed EC2 scaling e2e"
+
+# The cross-backend waterfall e2e puts an ECS and an EC2 worker manager at different waterfall priorities on
+# ONE scheduler and proves work fills the fast ECS pool first and spills to EC2. It needs everything both
+# floci e2es do (Docker, both task images, and a prebuilt manylinux wheel), so it is the heaviest job and
+# runs on demand only behind its own gate.
+RUN_CROSS_BACKEND_E2E = os.environ.get("RUN_CROSS_BACKEND_E2E") == "1"
+CROSS_BACKEND_E2E_SKIP_REASON = "set RUN_CROSS_BACKEND_E2E=1 to enable the floci-backed cross-backend waterfall e2e"

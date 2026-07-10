@@ -58,12 +58,22 @@ def remove_task_containers(prefix: str = FLOCI_TASK_CONTAINER_PREFIX) -> None:
         subprocess.run([*cli, "rm", "-f", container], capture_output=True)
 
 
+def running_task_container_names(prefix: str = FLOCI_TASK_CONTAINER_PREFIX) -> List[str]:
+    """Names of the floci-launched containers currently running. floci gives each RunTask/RunInstances a
+    fresh id (hence a fresh container name), so accumulating the DISTINCT set ever seen is a churn-robust
+    CREATED count -- one a single running-set snapshot (which misses containers that already came and went)
+    undercounts. ``prefix`` selects ECS tasks (default) or EC2 instances."""
+    cli = _cli()
+    result = subprocess.run(
+        [*cli, "ps", "--filter", f"name={prefix}", "--format", "{{.Names}}"], capture_output=True, text=True
+    )
+    return [name for name in result.stdout.split() if name]
+
+
 def running_task_containers(prefix: str = FLOCI_TASK_CONTAINER_PREFIX) -> int:
     """Number of floci-launched containers currently running -- the ground-truth pool size. ``prefix``
     selects ECS tasks (default) or EC2 instances."""
-    cli = _cli()
-    result = subprocess.run([*cli, "ps", "-q", "--filter", f"name={prefix}"], capture_output=True, text=True)
-    return len(result.stdout.split())
+    return len(running_task_container_names(prefix))
 
 
 class FlociEmulator:

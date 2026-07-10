@@ -58,9 +58,7 @@ def run_ecs_worker_manager(
             worker_manager_id=worker_manager_id,
             max_task_concurrency=max_task_concurrency,
         ),
-        # Prefetch one task per worker so the scheduler queue stays non-empty while tasks are in flight,
-        # keeping the scaling signal honest (workers otherwise hoard the burst and the pool tears down).
-        worker_config=WorkerConfig(per_worker_capabilities=WorkerCapabilities({}), per_worker_task_queue_size=1),
+        worker_config=WorkerConfig(per_worker_capabilities=WorkerCapabilities({})),
         aws_region=_AWS_REGION,
         ecs_subnets=list(_ECS_SUBNETS),
         ecs_task_image=ecs_task_image,

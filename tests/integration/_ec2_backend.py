@@ -10,8 +10,15 @@ wheel; the provisioning, UserData generation, ORB SDK path, and scaling are all 
 from __future__ import annotations
 
 import functools
+import glob
 import http.server
+import os
 import threading
+
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+# Where scripts/build_cibuildwheel.sh drops the portable current-source wheel; the e2e serves it to the
+# instance over the gateway. Override the directory with SCALER_IT_MANYLINUX_WHEEL_DIR.
+WHEEL_DIR = os.environ.get("SCALER_IT_MANYLINUX_WHEEL_DIR", os.path.join(_REPO_ROOT, "dist_manylinux"))
 
 _AWS_REGION = "us-east-1"
 # t3.medium reports 2 vCPUs via floci's describe_instance_types, which the manager uses as the scale-up
@@ -56,6 +63,13 @@ def install_floci_ec2_compat() -> None:
     botocore.handlers.BUILTIN_HANDLERS.append(("after-call.ec2.DescribeLaunchTemplates", _raise_not_found_on_empty))
 
 
+def manylinux_wheel() -> str:
+    """Path to the newest current-source manylinux wheel under :data:`WHEEL_DIR`, or ``""`` if none is
+    present (the EC2/cross-backend e2es skip themselves then). Built by ``scripts/build_cibuildwheel.sh``."""
+    wheels = sorted(glob.glob(os.path.join(WHEEL_DIR, "*manylinux*.whl")))
+    return wheels[-1] if wheels else ""
+
+
 def serve_directory_on_gateway(directory: str, host: str, port: int) -> http.server.ThreadingHTTPServer:
     """Serve ``directory`` over HTTP so a floci EC2 instance can fetch the local wheel over the bridge
     gateway. Runs in a daemon thread; call ``shutdown()`` on the returned server to stop it."""
@@ -78,7 +92,6 @@ def run_ec2_worker_manager(
     at ``endpoint_url`` (floci), launches AL2023 instances whose shipped UserData ``uv pip install``s the
     current-source wheel from ``wheel_url`` (the gateway) and starts a worker that dials back over
     ``worker_scheduler_address``. ``max_task_concurrency`` caps the pool at ``ceil(mtc / vCPUs)`` instances."""
-    import os
     import tempfile
 
     # Set on the child only so the shipped manager's boto3 hits floci.
@@ -120,8 +133,7 @@ def run_ec2_worker_manager(
             requirements_txt=f"opengris-scaler @ {wheel_url}",
         ),
         instance_type=_INSTANCE_TYPE,
-        # Prefetch one task per worker so the scheduler queue stays non-empty while work is in flight.
-        worker_config=WorkerConfig(per_worker_capabilities=WorkerCapabilities({}), per_worker_task_queue_size=1),
+        worker_config=WorkerConfig(per_worker_capabilities=WorkerCapabilities({})),
         # Match the host scheduler (which defaults to ymq); the UserData forwards this to the worker.
         network_backend=NetworkBackendType.ymq,
     )

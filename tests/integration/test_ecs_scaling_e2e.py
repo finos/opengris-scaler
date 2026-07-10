@@ -20,6 +20,7 @@ URL, so a local run can be watched in a browser.
 from __future__ import annotations
 
 import os
+import threading
 import time
 import unittest
 from multiprocessing import get_context
@@ -30,8 +31,14 @@ from tests.integration import FLOCI_E2E_SKIP_REASON, RUN_FLOCI_E2E
 from tests.integration._container_image import DEFAULT_ECS_IMAGE_TAG, ensure_ecs_worker_image
 from tests.integration._container_runtime import DockerRuntime
 from tests.integration._ecs_backend import run_ecs_worker_manager
-from tests.integration._floci import FlociEmulator, floci_available, remove_task_containers, running_task_containers
-from tests.integration._harness import SchedulerHarness
+from tests.integration._floci import (
+    FlociEmulator,
+    floci_available,
+    remove_task_containers,
+    running_task_container_names,
+    running_task_containers,
+)
+from tests.integration._harness import SchedulerHarness, assert_backend_processes_alive
 from tests.utility.utility import logging_test_name, terminate_process
 
 _REBUILD = os.environ.get("SCALER_IT_REBUILD") == "1"
@@ -53,6 +60,15 @@ _HELD_LOAD_TASKS = 30
 _SCALE_UP_OBSERVE_SECONDS = 30.0
 _DRAIN_TIMEOUT_SECONDS = 90.0
 _SPREAD_TIMEOUT_SECONDS = 150.0
+# A concurrency-1 trickle needs only one task at a time; a heavier burst must provision more.
+_WARMUP_TASKS = 4
+
+# Steady-load stability: hold a steady load and check the pool settles rather than thrashes (creating many
+# more task containers than ever run at once). Tolerance leaves room for the mild create>peak gap a real
+# manager shows while still catching a decisively churning pool.
+_CHURN_LOAD_SECONDS = 45.0
+_CHURN_SAMPLE_SECONDS = 0.4
+_CHURN_TOLERANCE = 2
 
 
 def _make_tasks():
@@ -116,6 +132,11 @@ class TestECSScalingE2E(unittest.TestCase):
         self.manager.start()
         self.addCleanup(terminate_process, self.manager)
 
+    def tearDown(self) -> None:
+        # Runs before the addCleanup teardown, so the scheduler/manager are still in their post-test state:
+        # if either crashed under churn, fail with that instead of the client's downstream TimeoutError.
+        assert_backend_processes_alive(self, self.harness, worker_manager=self.manager)
+
     def test_burst_scales_up_ecs_tasks_then_drains_to_zero(self) -> None:
         """From zero tasks, a held burst forces the shipped manager to launch ECS task containers that
         compute the results (correct results prove the containers ran the work); once the queue goes idle
@@ -154,6 +175,72 @@ class TestECSScalingE2E(unittest.TestCase):
                 hosts |= {host for _value, host in results if host}
         print(f"ecs scaling: work ran across task hosts {sorted(hosts)}")
         self.assertGreaterEqual(len(hosts), 2, f"work only ran on {hosts}; expected >= 2 ECS task containers")
+
+    def test_rising_load_provisions_more_ecs_tasks(self) -> None:
+        """Capacity tracks demand: a concurrency-1 trickle needs only a single task at a time, while a
+        heavier burst must provision additional tasks. Tasks churn under the vanilla policy's aggressive
+        scale-down, so this compares the distinct hosts used by each phase, not a concurrent snapshot."""
+        _, square_on_host = _make_tasks()
+        with Client(self.harness.scheduler_address) as client:
+            trickle_hosts: set = set()
+            for value in range(_WARMUP_TASKS):
+                _result, host = client.submit(square_on_host, value).result()
+                if host:
+                    trickle_hosts.add(host)
+
+            burst_hosts: set = set()
+            deadline = time.monotonic() + _SPREAD_TIMEOUT_SECONDS
+            while len(burst_hosts) <= len(trickle_hosts) and time.monotonic() < deadline:
+                batch = client.map(square_on_host, range(_BURST_TASKS))
+                self.assertEqual([value for value, _host in batch], [value * value for value in range(_BURST_TASKS)])
+                burst_hosts |= {host for _value, host in batch if host}
+
+        print(f"ecs scaling: trickle used {len(trickle_hosts)} host(s), burst used {len(burst_hosts)}")
+        self.assertGreater(
+            len(burst_hosts),
+            len(trickle_hosts),
+            "rising load did not provision more ECS tasks than a concurrency-1 trickle",
+        )
+
+    def test_steady_load_uses_a_stable_pool_not_churn(self) -> None:
+        """Steady-load stability (steady-load only): a sustained, non-varying load should settle on a stable
+        pool -- about as many task containers CREATED over the run as ever run CONCURRENTLY at the peak. A
+        pool that instead cycles through many more units than it ever runs at once is thrashing under the
+        provision/teardown loop (workers disconnect mid-flight, tasks retry). Steady-load only: do NOT copy
+        onto tests that scale up AND down, which legitimately create more units than the peak."""
+        square, _ = _make_tasks()
+        stop = threading.Event()
+        peak = 0
+        created: set = set()
+
+        def sample() -> None:
+            nonlocal peak
+            while not stop.is_set():
+                names = running_task_container_names()
+                peak = max(peak, len(names))
+                created.update(names)
+                time.sleep(_CHURN_SAMPLE_SECONDS)
+
+        sampler = threading.Thread(target=sample, daemon=True)
+        sampler.start()
+        try:
+            with Client(self.harness.scheduler_address) as client:
+                deadline = time.monotonic() + _CHURN_LOAD_SECONDS
+                while time.monotonic() < deadline:
+                    client.map(square, range(_BURST_TASKS))  # steady, back-to-back waves of load
+        finally:
+            stop.set()
+            sampler.join(timeout=5.0)
+
+        total_created = len(created)
+        print(f"ecs scaling churn: created {total_created} task container(s), peak {peak} concurrent")
+        self.assertGreaterEqual(total_created, 1, "no ECS task container was provisioned under the steady load")
+        self.assertLessEqual(
+            total_created,
+            peak + _CHURN_TOLERANCE,
+            f"pool thrashed: created {total_created} task containers but only {peak} ran concurrently at the "
+            f"peak (steady load should settle on a stable pool, not repeatedly provision and tear down)",
+        )
 
 
 if __name__ == "__main__":
