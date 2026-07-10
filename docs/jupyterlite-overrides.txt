@@ -11,4 +11,4 @@
 #
 # Remove this file (and the --override flags wired into CI) once jupyterlite-sphinx
 # releases jupyterlite-core>=0.8 support.
-jupyterlite-core>=0.8.0,<0.9
+jupyterlite-core>=0.8.1,<0.9

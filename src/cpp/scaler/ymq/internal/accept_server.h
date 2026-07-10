@@ -13,6 +13,7 @@
 #include "scaler/wrapper/uv/tcp.h"
 #include "scaler/ymq/address.h"
 #include "scaler/ymq/internal/client.h"
+#include "scaler/ymq/internal/websocket_server.h"
 #include "scaler/ymq/utils.h"
 
 namespace scaler {
@@ -47,7 +48,8 @@ private:
     using Server = std::variant<
         scaler::wrapper::uv::TCPServer,
         scaler::wrapper::openssl::SecureServer,
-        scaler::wrapper::uv::PipeServer>;
+        scaler::wrapper::uv::PipeServer,
+        WebSocketServer>;
 
     // State is heap-allocated to provide a stable memory for callbacks if the client is std::move'd or freed.
 
@@ -58,16 +60,12 @@ private:
 
         std::optional<Server> _server;
 
-        // Set when the transport is WebSocket; used to reconstruct the address() return value.
-        std::optional<WebSocketAddress> _webSocketAddress;
-
         std::optional<scaler::wrapper::openssl::SSLContext> _sslContext;
 
         State(
             scaler::wrapper::uv::Loop& loop,
             ConnectionCallback onConnectionCallback,
             Server server,
-            std::optional<WebSocketAddress> webSocketAddress,
             std::optional<scaler::wrapper::openssl::SSLContext> sslContext) noexcept;
     };
 
