@@ -28,7 +28,7 @@ Install `uv <https://docs.astral.sh/uv/getting-started/installation>`__:
 
             powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 
-Restart your shell. Then create and activate a virtual environment named ``opengris-scaler-venv``, pinned to Python 3.13, the newest version supported by all optional dependencies (Scaler itself supports Python 3.10 or later). uv downloads this Python version automatically if it is not already installed:
+Restart your shell, then create and activate a virtual environment named ``opengris-scaler-venv``, pinned to Python 3.13, the newest version supported by all optional dependencies (Scaler itself supports Python 3.10 or later). uv downloads this Python version automatically if it is not already installed:
 
 .. tabs::
 
