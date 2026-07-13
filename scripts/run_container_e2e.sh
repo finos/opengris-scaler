@@ -9,6 +9,13 @@
 #       ./scripts/run_container_e2e.sh
 #       DOCKER="sudo docker" ./scripts/run_container_e2e.sh      # if the docker socket is root-only
 #
+# Tunables (same knobs as the workflow_dispatch inputs; each is inherited by the test process):
+#       SCALER_IT_WATERFALL_POLICY  raw waterfall_v1 policy for Test_container_waterfall, one rule/line
+#                                   "priority,worker_manager_id[,cap]" (ids: wm-container-p1, wm-container-p2)
+#       SCALER_IT_NUM_TASKS         tasks per burst wave
+#       SCALER_IT_TASK_SECONDS      sleep per task, seconds
+#   e.g. SCALER_IT_NUM_TASKS=60 SCALER_IT_TASK_SECONDS=0.3 ./scripts/run_container_e2e.sh
+#
 # Notes:
 #   * Requires the package installed with the gui extras and a built wheel under dist/. If no wheel is
 #     present one is built (this recompiles the C++ extensions and can take a few minutes). After changing

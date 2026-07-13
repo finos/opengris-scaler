@@ -11,6 +11,13 @@
 #       ./scripts/run_cross_backend_e2e.sh
 #       DOCKER="sudo docker" ./scripts/run_cross_backend_e2e.sh      # if the docker socket is root-only
 #
+# Tunables (same knobs as the workflow_dispatch inputs; each is inherited by the test process):
+#       SCALER_IT_WATERFALL_POLICY  raw waterfall_v1 policy, one rule/line "priority,worker_manager_id[,cap]"
+#                                   (ids: wm-ecs-p1, wm-ec2-p2); blank = default
+#       SCALER_IT_NUM_TASKS         tasks per burst wave
+#       SCALER_IT_TASK_SECONDS      sleep per task, seconds
+#   e.g. SCALER_IT_NUM_TASKS=60 SCALER_IT_TASK_SECONDS=0.3 ./scripts/run_cross_backend_e2e.sh
+#
 # Notes:
 #   * The manylinux wheel is built with cibuildwheel (compiles the C++ ext + thirdparties in a manylinux
 #     container -- several minutes) only if one is not already under dist_manylinux/. After changing PRODUCT

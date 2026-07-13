@@ -154,6 +154,37 @@ which needs 3.11+, actually executes). The Docker e2es run on demand -- the **`C
 triggered from the Actions tab or by adding the **`container-e2e`** / **`floci-e2e`** / **`ec2-e2e`** /
 **`cross-backend-e2e`** label to a PR.
 
+### Parameterizing an on-demand run
+
+Each on-demand workflow exposes `workflow_dispatch` inputs (and the same knobs work locally as env vars, since
+the run scripts inherit the environment). Blank/unset always falls back to the backend's tuned default:
+
+| Input / env var | What it sets |
+|-----------------|--------------|
+| `num_tasks` / `SCALER_IT_NUM_TASKS` | tasks per burst wave (and per held-load burst) |
+| `task_seconds` / `SCALER_IT_TASK_SECONDS` | the `time.sleep` in each task |
+| `policy_content` / `SCALER_IT_WATERFALL_POLICY` | the **raw** `waterfall_v1` policy (waterfall topologies only) |
+
+`SCALER_IT_WATERFALL_POLICY` is passed to the scheduler verbatim -- one rule per line,
+`priority,worker_manager_id[,max_task_concurrency]` (`#` comments allowed), the same format `deploy()` generates.
+It lets you set which managers run, their priorities, and their caps without touching code; a cap in the policy
+also resizes that manager's own pool, so the scheduler's spill threshold and the provisioned pool stay in step.
+The manager ids are `wm-<name>-p<position>` (position = priority, 1 = highest): `wm-ecs-p1` + `wm-ec2-p2` for the
+cross-backend topology, `wm-container-p1` + `wm-container-p2` for `Test_container_waterfall`. `deploy()` logs the
+ids and the effective policy at start-up (`[deploy] waterfall_v1 policy for managers [...]`), so a run tells you
+exactly what to reference; a policy that names an id no manager registers under fails fast. The override is
+ignored (with a logged note) on the single-manager topologies, which run the vanilla policy. Raising
+`task_seconds` well past the default keeps the timeouts fixed, so it is meant mainly for the waterfall runs,
+where longer tasks make the top pool saturate and spill deterministically.
+
+```bash
+# a bigger, slower cross-backend waterfall with ecs (priority 1, cap 4) spilling to ec2 (priority 2):
+RUN_CROSS_BACKEND_E2E=1 SCALER_IT_CONTAINER_CLI="sudo docker" \
+  SCALER_IT_NUM_TASKS=60 SCALER_IT_TASK_SECONDS=0.3 \
+  SCALER_IT_WATERFALL_POLICY=$'1,wm-ecs-p1,4\n2,wm-ec2-p2' \
+  python -m unittest tests.integration.e2e.test_scaling.Test_ecs_ec2 -v
+```
+
 ## Adding a scenario, backend, or topology
 
 The three axes are independent -- extend one without touching the others:

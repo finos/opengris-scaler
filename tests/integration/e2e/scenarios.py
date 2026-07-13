@@ -41,42 +41,70 @@ def burst_and_drain(test_case, deployment: Deployment) -> None:
 
 def work_spreads(test_case, deployment: Deployment) -> None:
     """A burst deep enough to need more than one unit's concurrency runs work on >= 2 distinct units (each
-    tags its work). Units churn under the vanilla policy, so count distinct units over the run, not a snapshot."""
+    tags its work). Units churn under the vanilla policy, so count distinct units over the run, not a
+    snapshot: this asserts the scheduler distributes work across multiple machines, not that one machine
+    ran everything."""
     profile = deployment.profile
     tags: set = set()
+    expected = [value * value for value in range(profile.burst_tasks)]
     with Client(deployment.harness.scheduler_address, timeout_seconds=profile.client_timeout) as client:
         deadline = time.monotonic() + profile.spread_timeout
         while len(tags) < 2 and time.monotonic() < deadline:
             batch = client.map(deployment.tasks.square_tagged, range(profile.burst_tasks))
-            expected = [value * value for value in range(profile.burst_tasks)]
             test_case.assertEqual([value for value, _tag in batch], expected)
             tags |= {tag for _value, tag in batch if tag}
     print(f"scaling: work ran across units {sorted(tags)}")
-    test_case.assertGreaterEqual(len(tags), 2, f"work only ran on {tags}; expected >= 2 units")
+    test_case.assertGreaterEqual(len(tags), 2, f"work only ran on {tags or 'no tagged unit'}; expected >= 2 units")
 
 
 def rising_load(test_case, deployment: Deployment) -> None:
-    """Capacity tracks demand: a concurrency-1 trickle uses fewer distinct units than a deep burst. Units
-    churn, so compare the distinct units each phase used rather than a concurrent snapshot."""
+    """Capacity tracks demand: a SUSTAINED deep burst runs more units AT ONCE than a concurrency-1 trickle.
+    Sample the live pool during each phase and compare the peak concurrent counts -- an instantaneous count
+    is honest about concurrency where accumulated distinct names (which churn inflates) are not, so a pool
+    that only ever re-provisions one unit at a time cannot pass by churning. The burst is held continuously
+    (a single short wave can drain before a second unit finishes booting) so a backend that genuinely scales
+    reaches a higher peak, while one that thrashes back to one unit legitimately fails here."""
     profile = deployment.profile
+    expected = [value * value for value in range(profile.burst_tasks)]
+
+    def run_with_peak_sampling(load) -> int:
+        peak = [0]
+        stop = threading.Event()
+
+        def sample() -> None:
+            while not stop.is_set():
+                peak[0] = max(peak[0], deployment.running())
+                time.sleep(profile.poll)
+
+        sampler = threading.Thread(target=sample, daemon=True)
+        sampler.start()
+        try:
+            load(peak)
+        finally:
+            stop.set()
+            sampler.join(timeout=5.0)
+        return peak[0]
+
     with Client(deployment.harness.scheduler_address, timeout_seconds=profile.client_timeout) as client:
-        trickle: set = set()
-        for value in range(profile.warmup_tasks):
-            _result, tag = client.submit(deployment.tasks.square_tagged, value).result()
-            if tag:
-                trickle.add(tag)
 
-        burst: set = set()
-        deadline = time.monotonic() + profile.spread_timeout
-        while len(burst) <= len(trickle) and time.monotonic() < deadline:
-            batch = client.map(deployment.tasks.square_tagged, range(profile.burst_tasks))
-            expected = [value * value for value in range(profile.burst_tasks)]
-            test_case.assertEqual([value for value, _tag in batch], expected)
-            burst |= {tag for _value, tag in batch if tag}
+        def trickle(_peak) -> None:
+            for value in range(profile.warmup_tasks):
+                result, _tag = client.submit(deployment.tasks.square_tagged, value).result()
+                test_case.assertEqual(result, value * value)
 
-    print(f"scaling: trickle used {len(trickle)} unit(s), burst used {len(burst)}")
+        trickle_peak = run_with_peak_sampling(trickle)
+
+        def burst(peak) -> None:
+            deadline = time.monotonic() + profile.spread_timeout
+            while peak[0] <= trickle_peak and time.monotonic() < deadline:
+                batch = client.map(deployment.tasks.square_tagged, range(profile.burst_tasks))
+                test_case.assertEqual([value for value, _tag in batch], expected)
+
+        burst_peak = run_with_peak_sampling(burst)
+
+    print(f"scaling: trickle peaked at {trickle_peak} unit(s), burst peaked at {burst_peak}")
     test_case.assertGreater(
-        len(burst), len(trickle), "rising load did not provision more units than a concurrency-1 trickle"
+        burst_peak, trickle_peak, "a sustained burst did not run more units concurrently than a concurrency-1 trickle"
     )
 
 
@@ -85,6 +113,7 @@ def steady_load_stable(test_case, deployment: Deployment) -> None:
     units created over the run as ever run concurrently at the peak -- not thrash through provision/teardown.
     Steady-load only: do NOT reuse on scenarios that scale up AND down, which legitimately create > peak."""
     profile = deployment.profile
+    expected = [value * value for value in range(profile.burst_tasks)]
     stop = threading.Event()
     peak = 0
     created: set = set()
@@ -103,7 +132,8 @@ def steady_load_stable(test_case, deployment: Deployment) -> None:
         with Client(deployment.harness.scheduler_address, timeout_seconds=profile.client_timeout) as client:
             deadline = time.monotonic() + profile.churn_window
             while time.monotonic() < deadline:
-                client.map(deployment.tasks.square, range(profile.burst_tasks))  # steady back-to-back waves
+                wave = client.map(deployment.tasks.square, range(profile.burst_tasks))  # steady back-to-back waves
+                test_case.assertEqual(wave, expected)  # sustained load must still compute correct results
     finally:
         stop.set()
         sampler.join(timeout=5.0)

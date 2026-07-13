@@ -8,8 +8,7 @@ simulate cloud latency, and each container gets its own IP so tests can exercise
 and nested clients with distinct network identities.
 
 Machines run the self-contained worker image (``_container_image``), so they are byte-identical to the
-host scheduler with no host-layout coupling; the repo is bind-mounted read-only only so a container can
-import the test's task module (``tests.integration._tasks``), which the wheel does not ship.
+host scheduler with no host-layout coupling; the e2e tasks travel by value, so nothing is mounted.
 
 ``worker_manager_id`` / ``name_prefix`` are parameterized so several provisioners (e.g. two priorities
 in a waterfall policy) can coexist on one scheduler.
@@ -19,7 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import math
-import os
 from typing import List
 
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
@@ -28,15 +26,8 @@ from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
 from tests.integration._container_image import DEFAULT_IMAGE_TAG
 from tests.integration._container_runtime import ContainerRuntime, DockerRuntime
 
-_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _WORKER_ENTRYPOINT = "scaler_worker_manager"  # on PATH inside the worker image
 _DEFAULT_NAME_PREFIX = "scaler-it-machine"
-
-
-def repo_bind_mounts() -> List[str]:
-    """Read-only repo mount so a container worker can import ``tests.integration._tasks`` (not in the
-    wheel). The container path equals the host path, so it doubles as the worker's ``PYTHONPATH``."""
-    return [f"{_REPO_ROOT}:{_REPO_ROOT}:ro"]
 
 
 class ContainerWorkerProvisioner(DeclarativeWorkerProvisioner):
@@ -58,7 +49,6 @@ class ContainerWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._shutdown_delay = shutdown_delay_seconds
         self._image = image
         self._name_prefix = name_prefix
-        self._volumes = repo_bind_mounts()
         self._units: List[str] = []
         self._counter = 0
         self._coordinator = CapacityCoordinator(
@@ -92,16 +82,17 @@ class ContainerWorkerProvisioner(DeclarativeWorkerProvisioner):
                 "fixed",
                 "--num-of-workers",
                 str(self._workers),
-                # Prefetch only one task per worker so the scheduler's queue stays non-empty while machines
-                # are in use; otherwise workers hoard the whole burst, the queue looks idle, and the scaling
-                # policy tears the machine down mid-flight.
+                # Prefetch one task per worker so the scheduler queue stays non-empty and the vanilla policy
+                # does not tear a machine down mid-burst -- keeping this test-double a stable scale-up harness.
+                # The stock-prefetch churn that crashes the scheduler on a send-to-dead-worker is exercised by
+                # the floci topologies, which drive the shipped managers at the default queue size.
                 "--per-worker-task-queue-size",
                 "1",
             ]
-            # PYTHONPATH=repo root so the worker can import the task module by reference (the wheel only ships
-            # src/, not tests/); SCALER_IT_MACHINE_ID tags workers with their machine for spread/rebalance tests.
-            env = {"PYTHONPATH": _REPO_ROOT, "SCALER_IT_MACHINE_ID": name}
-            self._units.append(await self._runtime.run(self._image, name, command, env=env, volumes=self._volumes))
+            # Tag each worker with its machine so spread/rebalance scenarios can attribute work; tasks travel
+            # by value (e2e/tasks.py), so no repo mount or PYTHONPATH is needed.
+            env = {"SCALER_IT_MACHINE_ID": name}
+            self._units.append(await self._runtime.run(self._image, name, command, env=env))
 
     async def stop_units(self, count: int) -> None:
         if self._shutdown_delay:

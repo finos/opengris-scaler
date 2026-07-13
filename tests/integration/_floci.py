@@ -18,9 +18,9 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
-from typing import List
 
 from scaler.utility.network_util import get_available_tcp_port
+from tests.integration import container_cli
 
 _FLOCI_IMAGE = os.environ.get("SCALER_IT_FLOCI_IMAGE", "floci/floci:latest")
 _FLOCI_CONTAINER_NAME = "scaler-it-floci"
@@ -35,45 +35,12 @@ _READY_POLL_SECONDS = 0.5
 _STOP_GRACE_SECONDS = 5
 
 
-def _cli() -> List[str]:
-    return os.environ.get("SCALER_IT_CONTAINER_CLI", "sudo docker").split()
-
-
 def floci_available() -> bool:
     """True when the Docker daemon is reachable (floci needs it to launch sibling task containers)."""
     try:
-        return subprocess.run([*_cli(), "info"], capture_output=True, timeout=30).returncode == 0
+        return subprocess.run([*container_cli(), "info"], capture_output=True, timeout=30).returncode == 0
     except Exception:
         return False
-
-
-def remove_task_containers(prefix: str = FLOCI_TASK_CONTAINER_PREFIX) -> None:
-    """Reap any leftover floci-launched containers (last-resort cleanup if a run is killed before the
-    manager can drain them). ``prefix`` selects ECS tasks (default) or EC2 instances."""
-    cli = _cli()
-    ids = subprocess.run(
-        [*cli, "ps", "-aq", "--filter", f"name={prefix}"], capture_output=True, text=True
-    ).stdout.split()
-    for container in ids:
-        subprocess.run([*cli, "rm", "-f", container], capture_output=True)
-
-
-def running_task_container_names(prefix: str = FLOCI_TASK_CONTAINER_PREFIX) -> List[str]:
-    """Names of the floci-launched containers currently running. floci gives each RunTask/RunInstances a
-    fresh id (hence a fresh container name), so accumulating the DISTINCT set ever seen is a churn-robust
-    CREATED count -- one a single running-set snapshot (which misses containers that already came and went)
-    undercounts. ``prefix`` selects ECS tasks (default) or EC2 instances."""
-    cli = _cli()
-    result = subprocess.run(
-        [*cli, "ps", "--filter", f"name={prefix}", "--format", "{{.Names}}"], capture_output=True, text=True
-    )
-    return [name for name in result.stdout.split() if name]
-
-
-def running_task_containers(prefix: str = FLOCI_TASK_CONTAINER_PREFIX) -> int:
-    """Number of floci-launched containers currently running -- the ground-truth pool size. ``prefix``
-    selects ECS tasks (default) or EC2 instances."""
-    return len(running_task_container_names(prefix))
 
 
 class FlociEmulator:
@@ -82,7 +49,7 @@ class FlociEmulator:
 
     def __init__(self, image: str = _FLOCI_IMAGE) -> None:
         self._image = image
-        self._cli = _cli()
+        self._cli = container_cli()
         self._port = get_available_tcp_port()
         self._started = False
 

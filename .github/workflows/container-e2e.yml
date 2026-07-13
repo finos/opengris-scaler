@@ -9,6 +9,22 @@ name: "Container Scaling E2E"
 #   * by adding the "container-e2e" label to a pull request.
 on:
   workflow_dispatch:
+    inputs:
+      policy_content:
+        description: >-
+          Raw waterfall_v1 policy for the container-waterfall topology, one rule per line:
+          'priority,worker_manager_id[,max_task_concurrency]'. Manager ids are wm-container-p1, wm-container-p2.
+          Ignored by the single-manager Test_container. Blank = default.
+        required: false
+        type: string
+      num_tasks:
+        description: "Tasks per burst wave (SCALER_IT_NUM_TASKS). Blank = backend default."
+        required: false
+        type: string
+      task_seconds:
+        description: "Sleep per task, seconds (SCALER_IT_TASK_SECONDS). Blank = backend default (0.15)."
+        required: false
+        type: string
   pull_request:
     types: [ labeled ]
 
@@ -48,5 +64,9 @@ jobs:
           RUN_CONTAINER_E2E: '1'
           # GitHub runners can reach the Docker socket without sudo.
           SCALER_IT_CONTAINER_CLI: docker
+          # workflow_dispatch knobs; empty on the labeled-PR trigger, which the framework reads as "unset".
+          SCALER_IT_WATERFALL_POLICY: ${{ github.event.inputs.policy_content }}
+          SCALER_IT_NUM_TASKS: ${{ github.event.inputs.num_tasks }}
+          SCALER_IT_TASK_SECONDS: ${{ github.event.inputs.task_seconds }}
         run: |
           python -m unittest tests.integration.e2e.test_scaling -v

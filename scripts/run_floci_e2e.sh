@@ -9,6 +9,9 @@
 #       ./scripts/run_floci_e2e.sh
 #       DOCKER="sudo docker" ./scripts/run_floci_e2e.sh      # if the docker socket is root-only
 #
+# Tunables (inherited by the test process): SCALER_IT_NUM_TASKS (tasks per burst wave),
+#   SCALER_IT_TASK_SECONDS (sleep per task). e.g. SCALER_IT_NUM_TASKS=48 ./scripts/run_floci_e2e.sh
+#
 # Notes:
 #   * Requires the package installed with the gui extras and a built wheel under dist/. If no wheel is
 #     present one is built (recompiles the C++ extensions, may take a few minutes). After changing PRODUCT

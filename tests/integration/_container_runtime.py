@@ -13,10 +13,11 @@ rootless ``docker``).
 from __future__ import annotations
 
 import asyncio
-import os
 import subprocess
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Sequence
+
+from tests.integration import container_cli
 
 # Max seconds docker waits for a container to exit on stop before SIGKILL. Headroom for the worker's
 # graceful task-finishing shutdown, not a fixed delay (docker returns as soon as the container exits).
@@ -65,7 +66,7 @@ class ContainerRuntime(ABC):
 
 class DockerRuntime(ContainerRuntime):
     def __init__(self) -> None:
-        self._cli: List[str] = os.environ.get("SCALER_IT_CONTAINER_CLI", "sudo docker").split()
+        self._cli: List[str] = container_cli()
 
     def _run_cli(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
         # Sync helper for the introspection calls (invoked from sync test code, never the event loop).
@@ -86,9 +87,8 @@ class DockerRuntime(ContainerRuntime):
 
     @staticmethod
     def is_available() -> bool:
-        cli = os.environ.get("SCALER_IT_CONTAINER_CLI", "sudo docker").split()
         try:
-            return subprocess.run([*cli, "info"], capture_output=True, timeout=30).returncode == 0
+            return subprocess.run([*container_cli(), "info"], capture_output=True, timeout=30).returncode == 0
         except Exception:
             return False
 

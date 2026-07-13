@@ -9,6 +9,9 @@
 #       ./scripts/run_ec2_e2e.sh
 #       DOCKER="sudo docker" ./scripts/run_ec2_e2e.sh      # if the docker socket is root-only
 #
+# Tunables (inherited by the test process): SCALER_IT_NUM_TASKS (tasks per burst wave),
+#   SCALER_IT_TASK_SECONDS (sleep per task). e.g. SCALER_IT_NUM_TASKS=48 ./scripts/run_ec2_e2e.sh
+#
 # Notes:
 #   * The manylinux wheel is built with cibuildwheel (compiles the C++ ext + thirdparties in a manylinux
 #     container -- several minutes) only if one is not already under dist_manylinux/. After changing PRODUCT

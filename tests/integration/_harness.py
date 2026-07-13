@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import socket
 import tempfile
 import time
 from multiprocessing import get_context
@@ -70,6 +71,8 @@ def assert_backend_processes_alive(test_case, harness: "SchedulerHarness", **nam
     dead = []
     if harness.scheduler_died():
         dead.append(f"scheduler (exit {harness.scheduler_exitcode()})")
+    if harness.object_storage_died():
+        dead.append(f"object storage (exit {harness.object_storage_exitcode()})")
     for name, process in named_processes.items():
         if process is not None and not process.is_alive():
             dead.append(f"{name} (exit {process.exitcode})")
@@ -203,20 +206,43 @@ class SchedulerHarness:
             logging_level="INFO",
         )
         self._scheduler.start()
+        self._wait_scheduler_ready(sched_port)
+
+    def _wait_scheduler_ready(self, port: int, timeout: float = DEFAULT_WAIT_TIMEOUT_SECONDS) -> None:
+        """Fail bring-up if the scheduler did not come up on ``port``.
+
+        get_available_tcp_port() releases the port before the child binds it, so a foreign process can grab
+        it in between (the TOCTOU the retry loop exists for); the scheduler then dies on its bind. Only the
+        object storage port is otherwise probed (wait_until_ready), so without this the scheduler race slips
+        through as a dead scheduler that surfaces much later as a client TimeoutError misattributed to a
+        crash under churn. Raising TimeoutError here routes it back through the fresh-ports retry instead."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self._scheduler is not None and not self._scheduler.is_alive():
+                raise TimeoutError(f"scheduler exited during startup (exit {self._scheduler.exitcode}); port taken?")
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=1):
+                    return  # scheduler process is alive and its port accepts connections
+            except OSError:
+                time.sleep(POLL_INTERVAL_SECONDS)
+        raise TimeoutError(f"scheduler did not accept connections on 127.0.0.1:{port} within {timeout:.0f}s")
 
     def _start_webgui(self) -> None:
-        """Start the dashboard, wired to the scheduler monitor, and print its URL. Best-effort: a missing
-        ``[gui]`` extra must not fail the e2e (the GUI is a convenience, not the thing under test)."""
+        """Start the dashboard, wired to the scheduler monitor, and print its URL. Best-effort: neither a
+        missing ``[gui]`` extra nor a failed spawn/port grab may fail the e2e (the GUI is a convenience, not
+        the thing under test) -- and it runs after the scheduler is up, so a raise here would leak it."""
         try:
             import scaler.ui.webgui  # noqa: F401
+
+            port = get_available_tcp_port()
+            webgui = get_context("spawn").Process(
+                target=_run_webgui, args=(self._monitor_client_address, "0.0.0.0", port), daemon=True
+            )
+            webgui.start()
         except Exception as error:
             print(f"[harness] web GUI unavailable ({error}); continuing without it")
             return
-        port = get_available_tcp_port()
-        self._webgui = get_context("spawn").Process(
-            target=_run_webgui, args=(self._monitor_client_address, "0.0.0.0", port), daemon=True
-        )
-        self._webgui.start()
+        self._webgui = webgui
         print(f"[harness] web GUI: http://localhost:{port}  (scheduler monitor {self._monitor_client_address})")
 
     @property
@@ -230,6 +256,15 @@ class SchedulerHarness:
 
     def scheduler_exitcode(self) -> Optional[int]:
         return self._scheduler.exitcode if self._scheduler is not None else None
+
+    def object_storage_died(self) -> bool:
+        """True if the object-storage server exited mid-test. It logs only to stdout (not the scheduler
+        log), so without this its crash surfaces only as a downstream client TimeoutError with no fault
+        named -- or gets misattributed to the scheduler."""
+        return self._object_storage is not None and not self._object_storage.is_alive()
+
+    def object_storage_exitcode(self) -> Optional[int]:
+        return self._object_storage.exitcode if self._object_storage is not None else None
 
     def scheduler_unhandled_error(self, settle_seconds: float = 4.0) -> Optional[str]:
         """A one-line summary if the scheduler logged an unhandled exception (a traceback) during the run,
