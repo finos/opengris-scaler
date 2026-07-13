@@ -17,6 +17,9 @@ target_sources(ymq_objs PRIVATE
     message_connection.h
     message_connection.cpp
 
+    websocket_server.h
+    websocket_server.cpp
+
     websocket_stream.h
     websocket_stream.cpp
 )

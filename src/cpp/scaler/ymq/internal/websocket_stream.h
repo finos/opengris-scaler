@@ -3,12 +3,16 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 #include "scaler/utility/move_only_function.h"
 #include "scaler/wrapper/uv/callback.h"
 #include "scaler/wrapper/uv/error.h"
+#include "scaler/wrapper/uv/loop.h"
+#include "scaler/wrapper/uv/request.h"
 #include "scaler/wrapper/uv/tcp.h"
 #include "scaler/ymq/address.h"
 
@@ -16,30 +20,17 @@ namespace scaler {
 namespace ymq {
 namespace internal {
 
-struct ClientUpgradeContext;
-struct ServerUpgradeContext;
-
-// Manages the WebSocket protocol over an established TCP connection.
+// Manages the WebSocket protocol over a TCP connection.
 //
 // Handles the RFC 6455 HTTP/1.1 Upgrade handshake and binary frame framing/deframing.
 // YMQ magic bytes and message frames are transported as WebSocket binary frames.
 // Only ws:// (plain TCP) is supported; wss:// (TLS) requires an external library.
 class WebSocketStream {
 public:
-    // Perform the server-side HTTP/1.1 Upgrade handshake on an accepted TCP socket,
-    // then call callback with a ready-to-use WebSocketStream.
-    static void upgradeAsServer(
-        scaler::wrapper::uv::TCPSocket socket,
-        scaler::utility::MoveOnlyFunction<void(std::expected<WebSocketStream, scaler::wrapper::uv::Error>)>
-            callback) noexcept;
+    using HandshakeDoneCallback =
+        scaler::utility::MoveOnlyFunction<void(std::expected<void, scaler::wrapper::uv::Error>)>;
 
-    // Perform the client-side HTTP/1.1 Upgrade handshake on a connected TCP socket,
-    // then call callback with a ready-to-use WebSocketStream.
-    static void upgradeAsClient(
-        scaler::wrapper::uv::TCPSocket socket,
-        const WebSocketAddress& address,
-        scaler::utility::MoveOnlyFunction<void(std::expected<WebSocketStream, scaler::wrapper::uv::Error>)>
-            callback) noexcept;
+    static std::expected<WebSocketStream, scaler::wrapper::uv::Error> init(scaler::wrapper::uv::Loop& loop) noexcept;
 
     ~WebSocketStream() noexcept;
 
@@ -48,6 +39,20 @@ public:
 
     WebSocketStream(WebSocketStream&&) noexcept            = default;
     WebSocketStream& operator=(WebSocketStream&&) noexcept = default;
+
+    // Perform the client-side HTTP/1.1 Upgrade handshake.
+    //
+    // The callback is called when the upgrade completes (or fails).
+    std::expected<scaler::wrapper::uv::ConnectRequest, scaler::wrapper::uv::Error> connect(
+        WebSocketAddress address, HandshakeDoneCallback callback) noexcept;
+
+    // Perform the server-side HTTP/1.1 Upgrade handshake.
+    //
+    // The callback is called when the upgrade completes (or fails).
+    std::expected<void, scaler::wrapper::uv::Error> accept(HandshakeDoneCallback callback) noexcept;
+
+    // Returns the underlying TCP socket.
+    scaler::wrapper::uv::TCPSocket& transport() noexcept;
 
     // The buffers' content must remain valid until the callback is called.
     std::expected<void, scaler::wrapper::uv::Error> write(
@@ -62,24 +67,39 @@ public:
     std::expected<void, scaler::wrapper::uv::Error> closeReset() noexcept;
 
 private:
-    static WebSocketStream fromUpgradedSocket(
-        scaler::wrapper::uv::TCPSocket socket, bool isServer, std::vector<uint8_t> leftover = {}) noexcept;
-
-    static void finishClientUpgrade(std::shared_ptr<ClientUpgradeContext> ctx) noexcept;
-    static void finishServerUpgrade(std::shared_ptr<ServerUpgradeContext> ctx) noexcept;
+    enum class Role { Undefined, Client, Server };
 
     struct State {
         scaler::wrapper::uv::TCPSocket _socket;
-        bool _isServer;
+        Role _role {Role::Undefined};
+
+        // Used only during the HTTP Upgrade handshake, reset once completed.
+        std::optional<HandshakeDoneCallback> _upgradeCallback {};
+
         std::vector<uint8_t> _recvBuffer {};
         std::vector<uint8_t> _fragmentBuffer {};
         bool _readActive {false};
         scaler::wrapper::uv::ReadCallback _readCallback {};
 
-        State(scaler::wrapper::uv::TCPSocket socket, bool isServer) noexcept;
+        explicit State(scaler::wrapper::uv::TCPSocket socket) noexcept;
     };
 
     explicit WebSocketStream(std::shared_ptr<State> state) noexcept;
+
+    static void upgradeAsClient(
+        std::shared_ptr<State> state,
+        WebSocketAddress address,
+        std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
+
+    static std::expected<void, scaler::wrapper::uv::Error> upgradeAsServer(std::shared_ptr<State> state) noexcept;
+
+    static void finishClientUpgrade(std::shared_ptr<State> state, std::string key) noexcept;
+
+    static void finishServerUpgrade(std::shared_ptr<State> state) noexcept;
+
+    // Invokes and clears the upgrade callback exactly.
+    static void completeUpgrade(
+        const std::shared_ptr<State>& state, std::expected<void, scaler::wrapper::uv::Error> result) noexcept;
 
     static void onRead(
         std::shared_ptr<State> state,
