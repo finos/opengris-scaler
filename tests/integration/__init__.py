@@ -20,6 +20,20 @@ def container_cli() -> List[str]:
     return os.environ.get("SCALER_IT_CONTAINER_CLI", "sudo docker").split()
 
 
+# The region every AWS-backed test uses (moto seeding and the floci ECS/EC2 managers). One definition.
+AWS_REGION = "us-east-1"
+
+
+def point_boto3_at_floci(endpoint_url: str) -> None:
+    """Point this process's boto3 clients at a floci emulator. Call from a manager entry point (a spawned
+    child) only: it mutates the child's os.environ so the shipped provisioner's boto3 hits floci with dummy
+    credentials floci never validates."""
+    os.environ["AWS_ENDPOINT_URL"] = endpoint_url
+    os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
+    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
+    os.environ.setdefault("AWS_DEFAULT_REGION", AWS_REGION)
+
+
 # A separate, heavier gate for the container-scaling e2e: it launches real Docker containers (each a
 # fixed worker manager) that run the self-contained worker image, so it needs a Docker daemon and cannot
 # run in the standard CI lanes. Independent of RUN_INTEGRATION_TESTS; opt in explicitly.

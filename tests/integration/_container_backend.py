@@ -84,8 +84,9 @@ class ContainerWorkerProvisioner(DeclarativeWorkerProvisioner):
                 str(self._workers),
                 # Prefetch one task per worker so the scheduler queue stays non-empty and the vanilla policy
                 # does not tear a machine down mid-burst -- keeping this test-double a stable scale-up harness.
-                # The stock-prefetch churn that crashes the scheduler on a send-to-dead-worker is exercised by
-                # the floci topologies, which drive the shipped managers at the default queue size.
+                # The stock-prefetch send-to-dead-worker churn is exercised by the SLOW-BOOT floci topologies
+                # (EC2 / cross-backend), where boot latency >> task time; the fast-booting ECS pool settles
+                # (peak 2) and does not churn hard enough to trip it.
                 "--per-worker-task-queue-size",
                 "1",
             ]

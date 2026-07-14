@@ -2,8 +2,8 @@
 client workload and asserts on how the pool scaled, reading everything backend-specific (task callables,
 timing, pool observation) off the ``Deployment``. Written once here; every backend reuses them.
 
-A scenario carries a ``min_managers`` attribute so the wiring can skip it on deployments that cannot satisfy
-it (e.g. the waterfall spill needs at least two managers).
+How many managers a scenario needs (>1 only for the waterfall spill) lives in ``matrix.MIN_MANAGERS``, so
+the wiring can skip a scenario on a deployment too small for it.
 """
 
 from __future__ import annotations
@@ -40,10 +40,10 @@ def burst_and_drain(test_case, deployment: Deployment) -> None:
 
 
 def work_spreads(test_case, deployment: Deployment) -> None:
-    """A burst deep enough to need more than one unit's concurrency runs work on >= 2 distinct units (each
-    tags its work). Units churn under the vanilla policy, so count distinct units over the run, not a
-    snapshot: this asserts the scheduler distributes work across multiple machines, not that one machine
-    ran everything."""
+    """Work runs on >= 2 distinct units over the run (each tags itself), proving the pool is not pinned to a
+    single machine. Distinct units are counted over the whole run, not a snapshot, so churn does not hide the
+    result -- but for the same reason this proves only that more than one machine was USED, not that two ran
+    AT ONCE (a 0<->1 churn passes it via serial re-provisioning). rising_load owns the concurrency claim."""
     profile = deployment.profile
     tags: set = set()
     expected = [value * value for value in range(profile.burst_tasks)]
@@ -150,27 +150,36 @@ def steady_load_stable(test_case, deployment: Deployment) -> None:
 
 
 def waterfall_spills(test_case, deployment: Deployment) -> None:
-    """With managers at descending waterfall priority (the top one capped), a sustained burst fills the top
-    pool first and, once it saturates, spills onto the lower tier -- so both/every backend runs work under one
-    scheduler. Each tier is attributed by its own container pool, since the shipped provisioners set no id."""
+    """With managers at descending waterfall priority (the top one capped), a continuously replenished backlog
+    fills the top pool first and, once it saturates, spills onto a lower tier -- so every backend runs work
+    under one scheduler. The backlog is held continuously (not blocking per-wave maps, which let the queue
+    drain between waves and the lower tier's desired fall back) so the top pool stays at its cap and the spill
+    is deterministic even when the lower tier boots slowly. ``top_ran`` is asserted so a mis-prioritized policy
+    that runs a lower tier before the top is a red, not a pass. Each tier is attributed by its own container
+    pool, since the shipped provisioners set no id."""
     profile = deployment.profile
     top, *overflow = deployment.handles
     top_ran = False
     spilled = False
     with Client(deployment.harness.scheduler_address, timeout_seconds=profile.client_timeout) as client:
+        inflight = {}  # future -> expected result; kept topped up so the overflow load stays saturated
+
+        def replenish() -> None:
+            for value in range(profile.burst_tasks):
+                inflight[client.submit(deployment.tasks.square, value)] = value * value
+
+        replenish()
         deadline = time.monotonic() + profile.spread_timeout
         while not spilled and time.monotonic() < deadline:
-            batch = client.map(deployment.tasks.square, range(profile.burst_tasks))
-            test_case.assertEqual(batch, [value * value for value in range(profile.burst_tasks)])
+            for future in [future for future in inflight if future.done()]:
+                test_case.assertEqual(future.result(), inflight.pop(future))  # real workers ran the work
+            if len(inflight) < profile.burst_tasks:
+                replenish()
             top_ran = top_ran or top.pool.running() > 0
             spilled = any(handle.pool.running() > 0 for handle in overflow)
+            time.sleep(profile.poll)
+        for future, expected in list(inflight.items()):
+            test_case.assertEqual(future.result(), expected)
     print(f"waterfall: top tier ran = {top_ran}, spilled to lower tier = {spilled}")
-    test_case.assertTrue(top_ran, "the top-priority pool never ran work")
+    test_case.assertTrue(top_ran, "the top-priority pool never ran work before overflow spilled to a lower tier")
     test_case.assertTrue(spilled, "sustained overflow beyond the top pool's cap never spilled to a lower tier")
-
-
-burst_and_drain.min_managers = 1  # type: ignore[attr-defined]
-work_spreads.min_managers = 1  # type: ignore[attr-defined]
-rising_load.min_managers = 1  # type: ignore[attr-defined]
-steady_load_stable.min_managers = 1  # type: ignore[attr-defined]
-waterfall_spills.min_managers = 2  # type: ignore[attr-defined]

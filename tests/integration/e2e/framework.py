@@ -13,7 +13,7 @@ import dataclasses
 import os
 import subprocess
 from multiprocessing.process import BaseProcess
-from typing import Dict, List, Optional, Protocol
+from typing import Any, Callable, Dict, List, Optional, Protocol, TypeVar
 
 from scaler.utility.network_util import get_available_tcp_port
 from tests.integration import container_cli
@@ -126,7 +126,7 @@ class Deployment:
     """A scheduler harness bound to one or more worker managers. Scenarios read :attr:`profile`, submit via
     :attr:`tasks`, and observe the whole pool through :meth:`running` / :meth:`running_names`."""
 
-    def __init__(self, harness: SchedulerHarness, handles: List[ManagerHandle], tasks: Tasks, profile: Profile):
+    def __init__(self, harness: SchedulerHarness, handles: List[ManagerHandle], tasks: Tasks, profile: Profile) -> None:
         self.harness = harness
         self.handles = handles
         self.tasks = tasks
@@ -182,7 +182,10 @@ def _env_value(name: str) -> Optional[str]:
     return value or None
 
 
-def _env_number(name: str, parse):
+_T = TypeVar("_T")
+
+
+def _env_number(name: str, parse: Callable[[str], _T]) -> Optional[_T]:
     raw = _env_value(name)
     if raw is None:
         return None
@@ -198,7 +201,7 @@ def _apply_profile_overrides(profile: Profile) -> Profile:
     each task's sleep. Unset/empty leaves the backend's boot-latency-tuned default. Note the timeouts stay
     fixed, so a much larger task_seconds or count can exceed them -- these knobs are for the waterfall runs,
     where longer tasks make top-pool saturation and spill deterministic."""
-    changes = {}
+    changes: Dict[str, Any] = {}  # heterogeneous: task_seconds is a float, the task counts are ints
     task_seconds = _env_number("SCALER_IT_TASK_SECONDS", float)
     if task_seconds is not None:
         changes["task_seconds"] = task_seconds
@@ -258,8 +261,11 @@ def deploy(test_case, specs: List[ManagerSpec]) -> Deployment:
 
     floci_endpoint = None
     if any(backend.needs_floci for backend in backends):
-        floci = FlociEmulator().start()
+        floci = FlociEmulator()
+        # Register cleanup BEFORE start(): if start() brings the container up but then times out waiting for
+        # readiness, the privileged emulator (host docker.sock mounted) must still be reaped.
         test_case.addCleanup(floci.stop)
+        floci.start()
         floci_endpoint = floci.endpoint_url
 
     wheel_url = None

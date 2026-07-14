@@ -15,12 +15,13 @@ import http.server
 import os
 import threading
 
+from tests.integration import AWS_REGION, point_boto3_at_floci
+
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 # Where scripts/build_cibuildwheel.sh drops the portable current-source wheel; the e2e serves it to the
 # instance over the gateway. Override the directory with SCALER_IT_MANYLINUX_WHEEL_DIR.
 WHEEL_DIR = os.environ.get("SCALER_IT_MANYLINUX_WHEEL_DIR", os.path.join(_REPO_ROOT, "dist_manylinux"))
 
-_AWS_REGION = "us-east-1"
 # t3.medium reports 2 vCPUs via floci's describe_instance_types, which the manager uses as the scale-up
 # divisor (workers-per-instance); the launched worker itself sizes to the container's CPUs.
 _INSTANCE_TYPE = "t3.medium"
@@ -94,11 +95,7 @@ def run_ec2_worker_manager(
     ``worker_scheduler_address``. ``max_task_concurrency`` caps the pool at ``ceil(mtc / vCPUs)`` instances."""
     import tempfile
 
-    # Set on the child only so the shipped manager's boto3 hits floci.
-    os.environ["AWS_ENDPOINT_URL"] = endpoint_url
-    os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
-    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
-    os.environ.setdefault("AWS_DEFAULT_REGION", _AWS_REGION)
+    point_boto3_at_floci(endpoint_url)
     install_floci_ec2_compat()  # before any boto3 client (incl. the ORB SDK's) is created
     # ORB persists templates/config under ORB_ROOT_DIR plus a cwd-relative metrics/ dir; keep both in a
     # temp dir so nothing lands in the repo (the manager process is short-lived, so the dir is disposable).
@@ -124,7 +121,7 @@ def run_ec2_worker_manager(
             worker_manager_id=worker_manager_id,
             max_task_concurrency=max_task_concurrency,
         ),
-        aws_region=_AWS_REGION,
+        aws_region=AWS_REGION,
         image_id=None,  # None triggers the UserData bootstrap; floci launches AL2023 regardless of the id
         python_worker_environment=PythonWorkerEnvironmentConfig(
             python_version=python_version,

@@ -22,13 +22,16 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 import boto3
+from moto import mock_aws
+
+from tests.integration import AWS_REGION
 
 # moto reads this lazily when a managed policy is attached; it MUST be set before the
 # first attach_role_policy call. The ECS provisioner attaches the AWS-managed
 # AmazonECSTaskExecutionRolePolicy, which moto only knows about when this is enabled.
 os.environ.setdefault("MOTO_IAM_LOAD_MANAGED_POLICIES", "true")
 
-DEFAULT_REGION = "us-east-1"
+DEFAULT_REGION = AWS_REGION
 DEFAULT_CLUSTER = "scaler-it-cluster"
 DEFAULT_TASK_DEFINITION = "scaler-it-task-definition"
 
@@ -98,9 +101,6 @@ class MockedAWS:
 
     def __enter__(self) -> "MockedAWS":
         _install_aws_compat()
-        # Imported lazily so this module stays importable even without the dev group (moto) installed.
-        from moto import mock_aws
-
         self._moto_ctx = mock_aws()
         self._moto_ctx.__enter__()
         # moto needs *some* credentials present; they are never validated.

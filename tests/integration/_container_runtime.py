@@ -28,22 +28,11 @@ class ContainerRuntime(ABC):
     """Minimal surface the container worker manager needs: run detached, stop, and introspect."""
 
     @abstractmethod
-    async def run(
-        self,
-        image: str,
-        name: str,
-        command: Sequence[str],
-        env: Optional[Dict[str, str]] = None,
-        volumes: Optional[Sequence[str]] = None,
-    ) -> str:
+    async def run(self, image: str, name: str, command: Sequence[str], env: Optional[Dict[str, str]] = None) -> str:
         """Start a detached container on a bridge network (so it gets its own IP) and return its id.
 
         Async because it is driven from the worker manager's event loop: a blocking subprocess there
-        both stalls heartbeats and can deadlock waitpid against the loop's child reaping.
-
-        ``volumes`` are ``host:container[:mode]`` bind-mounts -- the test harness mounts the host's
-        already-built scaler in read-only, so the container runs the exact same version as the scheduler
-        without an image build."""
+        both stalls heartbeats and can deadlock waitpid against the loop's child reaping."""
 
     @abstractmethod
     async def stop(self, container: str) -> None:
@@ -92,19 +81,10 @@ class DockerRuntime(ContainerRuntime):
         except Exception:
             return False
 
-    async def run(
-        self,
-        image: str,
-        name: str,
-        command: Sequence[str],
-        env: Optional[Dict[str, str]] = None,
-        volumes: Optional[Sequence[str]] = None,
-    ) -> str:
+    async def run(self, image: str, name: str, command: Sequence[str], env: Optional[Dict[str, str]] = None) -> str:
         args: List[str] = []
         for key, value in (env or {}).items():
             args += ["-e", f"{key}={value}"]
-        for volume in volumes or ():
-            args += ["-v", volume]
         # --rm so an exited/killed machine leaves nothing behind; detached so start_units does not block.
         return (await self._run_cli_async("run", "-d", "--rm", "--name", name, *args, image, *command)).strip()
 

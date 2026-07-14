@@ -12,6 +12,7 @@ its own rows.
 from __future__ import annotations
 
 import dataclasses
+import functools
 import unittest
 from typing import Callable, Dict, List
 
@@ -28,7 +29,6 @@ from tests.integration import (
 )
 from tests.integration._container_runtime import DockerRuntime
 from tests.integration._ec2_backend import WHEEL_DIR, manylinux_wheel
-from tests.integration._floci import floci_available
 from tests.integration.e2e.backends import ContainerBackend, FlociEc2Backend, FlociEcsBackend
 from tests.integration.e2e.framework import ManagerSpec, deploy
 from tests.integration.e2e.scenarios import (
@@ -44,11 +44,24 @@ from tests.utility.utility import logging_test_name
 SCALING_SCENARIOS: List[Callable] = [burst_and_drain, work_spreads, rising_load, steady_load_stable]
 WATERFALL_SCENARIOS: List[Callable] = [waterfall_spills]
 
-_DOCKER = DockerRuntime.is_available()
-_FLOCI = floci_available()
-_WHEEL = bool(manylinux_wheel())
+# How many managers each scenario needs; absent == 1. Data, not a function attribute, so the wiring below
+# needs no type: ignore to read it.
+MIN_MANAGERS: Dict[Callable, int] = {waterfall_spills: 2}
+
 _NO_DOCKER = "Docker is required for this e2e"
 _NO_WHEEL = f"no manylinux wheel under {WHEEL_DIR}; build one with scripts/build_cibuildwheel.sh"
+
+
+@functools.lru_cache(maxsize=None)
+def _docker_available() -> bool:
+    # Probed lazily, and only when a RUN_*_E2E flag is set (see the topology helpers), so a plain docker-free
+    # ``unittest discover`` never shells out to the container CLI at import time.
+    return DockerRuntime.is_available()
+
+
+@functools.lru_cache(maxsize=None)
+def _wheel_available() -> bool:
+    return bool(manylinux_wheel())
 
 
 @dataclasses.dataclass
@@ -70,9 +83,9 @@ def _floci_topology(
 ) -> Topology:
     if not run_flag:
         return Topology(name, specs, scenarios, False, off_reason)
-    if not _FLOCI:
+    if not _docker_available():
         return Topology(name, specs, scenarios, False, _NO_DOCKER)
-    if need_wheel and not _WHEEL:
+    if need_wheel and not _wheel_available():
         return Topology(name, specs, scenarios, False, _NO_WHEEL)
     return Topology(name, specs, scenarios, True, "")
 
@@ -82,7 +95,7 @@ def _container_topology(
 ) -> Topology:
     if not run_flag:
         return Topology(name, specs, scenarios, False, off_reason)
-    if not _DOCKER:
+    if not _docker_available():
         return Topology(name, specs, scenarios, False, _NO_DOCKER)
     return Topology(name, specs, scenarios, True, "")
 
@@ -140,10 +153,11 @@ def generate(namespace: Dict) -> None:
     for topology in TOPOLOGIES:
         attributes: Dict[str, Callable] = {"setUp": _make_set_up(topology.specs), "tearDown": _tear_down}
         for scenario in topology.scenarios:
-            if scenario.min_managers > len(topology.specs):  # type: ignore[attr-defined]
+            min_managers = MIN_MANAGERS.get(scenario, 1)
+            if min_managers > len(topology.specs):
                 raise ValueError(
                     f"topology {topology.name!r} has {len(topology.specs)} manager(s) but "
-                    f"{scenario.__name__} needs {scenario.min_managers}"  # type: ignore[attr-defined]
+                    f"{scenario.__name__} needs {min_managers}"
                 )
             attributes[f"test_{scenario.__name__}"] = _make_test(scenario)
         test_case = type(f"Test_{topology.name}", (unittest.TestCase,), attributes)

@@ -5,9 +5,10 @@ observe its pool. Everything downstream (harness, floci, scenarios, tasks) is sh
 
 from __future__ import annotations
 
+import math
 import sys
 from multiprocessing import get_context
-from typing import Optional
+from typing import Callable, Optional
 
 from scaler.config.defaults import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_WORKER_TIMEOUT_SECONDS
 from tests.integration._container_backend import run_container_worker_manager
@@ -29,7 +30,17 @@ def _max_machines_for_cap(cap: Optional[int], default: int, workers_per_machine:
     """A waterfall rule caps concurrency; translate that to the machine count a container/EC2 manager may run."""
     if cap is None:
         return default
-    return max(1, -(-cap // workers_per_machine))  # ceil(cap / workers_per_machine)
+    return max(1, math.ceil(cap / workers_per_machine))
+
+
+def _spawn_manager(
+    ctx: DeployContext, worker_manager_id: str, priority: int, prefix: str, target: Callable, args: tuple
+) -> ManagerHandle:
+    """Spawn one manager entry point in its own process and pair it with a prefix-scoped pool observer.
+    Shared by every backend -- only ``target``, ``args``, and the container-name ``prefix`` differ."""
+    process = get_context("spawn").Process(target=target, args=args)
+    process.start()
+    return ManagerHandle(worker_manager_id, priority, ContainerPool(prefix, ctx.cli), process)
 
 
 class FlociEcsBackend:
@@ -65,21 +76,18 @@ class FlociEcsBackend:
         ensure_ecs_worker_image()
 
     def provision(self, ctx: DeployContext, worker_manager_id: str, priority: int, cap: Optional[int]) -> ManagerHandle:
-        process = get_context("spawn").Process(
-            target=run_ecs_worker_manager,
-            args=(
-                ctx.harness.scheduler_address,
-                ctx.harness.worker_scheduler_address,
-                ctx.floci_endpoint,
-                DEFAULT_ECS_IMAGE_TAG,
-                self._task_cpu,
-                cap if cap is not None else self._max_task_concurrency,
-                worker_manager_id,
-            ),
+        args = (
+            ctx.harness.scheduler_address,
+            ctx.harness.worker_scheduler_address,
+            ctx.floci_endpoint,
+            DEFAULT_ECS_IMAGE_TAG,
+            self._task_cpu,
+            cap if cap is not None else self._max_task_concurrency,
+            worker_manager_id,
         )
-        process.start()
-        pool = ContainerPool(FLOCI_TASK_CONTAINER_PREFIX, ctx.cli)
-        return ManagerHandle(worker_manager_id, priority, pool, process)
+        return _spawn_manager(
+            ctx, worker_manager_id, priority, FLOCI_TASK_CONTAINER_PREFIX, run_ecs_worker_manager, args
+        )
 
 
 class FlociEc2Backend:
@@ -115,21 +123,18 @@ class FlociEc2Backend:
         ensure_ec2_base_image()
 
     def provision(self, ctx: DeployContext, worker_manager_id: str, priority: int, cap: Optional[int]) -> ManagerHandle:
-        process = get_context("spawn").Process(
-            target=run_ec2_worker_manager,
-            args=(
-                ctx.harness.scheduler_address,
-                ctx.harness.worker_scheduler_address,
-                ctx.floci_endpoint,
-                ctx.wheel_url,
-                _PYTHON_VERSION,
-                cap if cap is not None else self._max_task_concurrency,
-                worker_manager_id,
-            ),
+        args = (
+            ctx.harness.scheduler_address,
+            ctx.harness.worker_scheduler_address,
+            ctx.floci_endpoint,
+            ctx.wheel_url,
+            _PYTHON_VERSION,
+            cap if cap is not None else self._max_task_concurrency,
+            worker_manager_id,
         )
-        process.start()
-        pool = ContainerPool(FLOCI_INSTANCE_CONTAINER_PREFIX, ctx.cli)
-        return ManagerHandle(worker_manager_id, priority, pool, process)
+        return _spawn_manager(
+            ctx, worker_manager_id, priority, FLOCI_INSTANCE_CONTAINER_PREFIX, run_ec2_worker_manager, args
+        )
 
 
 class ContainerBackend:
@@ -138,11 +143,11 @@ class ContainerBackend:
     provisioner, unlike the shipped cloud managers). A per-instance prefix lets two run at different waterfall
     tiers with distinguishable pools."""
 
+    name = "container"
     needs_floci = False
     needs_wheel = False
 
     def __init__(self, prefix: str = "scaler-it-machine", workers_per_machine: int = 2, max_machines: int = 3) -> None:
-        self.name = "container"
         self._prefix = prefix
         self._workers_per_machine = workers_per_machine
         self._max_machines = max_machines
@@ -168,19 +173,14 @@ class ContainerBackend:
 
     def provision(self, ctx: DeployContext, worker_manager_id: str, priority: int, cap: Optional[int]) -> ManagerHandle:
         max_machines = _max_machines_for_cap(cap, self._max_machines, self._workers_per_machine)
-        process = get_context("spawn").Process(
-            target=run_container_worker_manager,
-            args=(
-                ctx.harness.scheduler_address,
-                ctx.harness.worker_scheduler_address,
-                self._workers_per_machine,
-                max_machines,
-                0.0,
-                0.0,
-                worker_manager_id,
-                self._prefix,
-            ),
+        args = (
+            ctx.harness.scheduler_address,
+            ctx.harness.worker_scheduler_address,
+            self._workers_per_machine,
+            max_machines,
+            0.0,
+            0.0,
+            worker_manager_id,
+            self._prefix,
         )
-        process.start()
-        pool = ContainerPool(self._prefix, ctx.cli)
-        return ManagerHandle(worker_manager_id, priority, pool, process)
+        return _spawn_manager(ctx, worker_manager_id, priority, self._prefix, run_container_worker_manager, args)

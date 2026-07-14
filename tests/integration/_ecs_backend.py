@@ -18,7 +18,6 @@ from __future__ import annotations
 _ECS_CLUSTER = "scaler-it-ecs-cluster"
 _ECS_TASK_DEFINITION = "scaler-it-ecs-taskdef"
 _ECS_SUBNETS = ["subnet-e2e"]
-_AWS_REGION = "us-east-1"
 
 
 def run_ecs_worker_manager(
@@ -34,13 +33,9 @@ def run_ecs_worker_manager(
     and, via boto3 aimed at ``endpoint_url`` (floci), provisions ECS task containers whose workers dial back
     over ``worker_scheduler_address`` (the docker-bridge gateway). ``ecs_task_cpu`` is the workers per task
     and the scale-up divisor; ``max_task_concurrency`` caps the pool at ``ceil(mtc / ecs_task_cpu)`` tasks."""
-    import os
+    from tests.integration import AWS_REGION, point_boto3_at_floci
 
-    # Set on the child only (not the parent) so the shipped provisioner's boto3 clients hit floci.
-    os.environ["AWS_ENDPOINT_URL"] = endpoint_url
-    os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
-    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
-    os.environ.setdefault("AWS_DEFAULT_REGION", _AWS_REGION)
+    point_boto3_at_floci(endpoint_url)
 
     from scaler.config.common.worker import WorkerConfig
     from scaler.config.common.worker_manager import WorkerManagerConfig
@@ -59,7 +54,7 @@ def run_ecs_worker_manager(
             max_task_concurrency=max_task_concurrency,
         ),
         worker_config=WorkerConfig(per_worker_capabilities=WorkerCapabilities({})),
-        aws_region=_AWS_REGION,
+        aws_region=AWS_REGION,
         ecs_subnets=list(_ECS_SUBNETS),
         ecs_task_image=ecs_task_image,
         ecs_python_requirements="",  # scaler wheel is prebaked into the image; nothing to install at task start

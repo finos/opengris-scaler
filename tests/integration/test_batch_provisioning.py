@@ -45,14 +45,14 @@ class TestBatchProvisioningControlPlane(unittest.TestCase):
 
         # The compute environment, job queue and job definition are really registered in the backend.
         env_names = [
-            ce["computeEnvironmentName"] for ce in self.batch.describe_compute_environments()["computeEnvironments"]
+            env["computeEnvironmentName"] for env in self.batch.describe_compute_environments()["computeEnvironments"]
         ]
-        queue_names = [q["jobQueueName"] for q in self.batch.describe_job_queues()["jobQueues"]]
+        queue_names = [queue["jobQueueName"] for queue in self.batch.describe_job_queues()["jobQueues"]]
         job_defs = self.batch.describe_job_definitions(status="ACTIVE")["jobDefinitions"]
 
         self.assertIn(f"{PREFIX}-compute", env_names)
         self.assertIn(result["job_queue_name"], queue_names)
-        self.assertTrue(any(jd["jobDefinitionName"] == result["job_definition_name"] for jd in job_defs))
+        self.assertTrue(any(job_def["jobDefinitionName"] == result["job_definition_name"] for job_def in job_defs))
 
         # And the payload S3 bucket exists (head_bucket raises if it does not).
         self.s3.head_bucket(Bucket=result["s3_bucket"])
@@ -63,13 +63,13 @@ class TestBatchProvisioningControlPlane(unittest.TestCase):
         second = self._provision()
 
         self.assertEqual(first["job_queue_name"], second["job_queue_name"])
-        queue_names = [q["jobQueueName"] for q in self.batch.describe_job_queues()["jobQueues"]]
+        queue_names = [queue["jobQueueName"] for queue in self.batch.describe_job_queues()["jobQueues"]]
         self.assertEqual(queue_names.count(first["job_queue_name"]), 1)
 
         # The compute environment must not be duplicated either. (The job DEFINITION is intentionally
         # re-registered as a new revision each call -- keep_latest bounds it -- so its count is not asserted.)
         env_names = [
-            ce["computeEnvironmentName"] for ce in self.batch.describe_compute_environments()["computeEnvironments"]
+            env["computeEnvironmentName"] for env in self.batch.describe_compute_environments()["computeEnvironments"]
         ]
         self.assertEqual(env_names.count(f"{PREFIX}-compute"), 1)
 

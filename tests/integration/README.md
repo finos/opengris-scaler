@@ -63,8 +63,8 @@ different priorities (distinct container prefixes) to exercise spill.
 
 **ECS (floci) -- `FlociEcsBackend`.** Drives the shipped `ECSWorkerManager`
 (`scaler.worker_manager_adapter.aws_raw.ecs`) unmodified against [floci](https://github.com/floci-io/floci),
-a free local AWS emulator that -- unlike moto or community LocalStack -- actually launches each ECS
-`RunTask` as a sibling Docker container (through the host docker socket) from a prebaked image. So the exact
+a free local AWS emulator that actually launches each ECS `RunTask` as a sibling Docker container (through
+the host docker socket) from a prebaked image. So the exact
 production ECS path runs, boto3 merely pointed at floci via `AWS_ENDPOINT_URL`, and real workers connect
 back and run work. Boots in seconds (`_floci.py`, `ecs.Dockerfile`).
 
@@ -165,17 +165,16 @@ the run scripts inherit the environment). Blank/unset always falls back to the b
 | `task_seconds` / `SCALER_IT_TASK_SECONDS` | the `time.sleep` in each task |
 | `policy_content` / `SCALER_IT_WATERFALL_POLICY` | the **raw** `waterfall_v1` policy (waterfall topologies only) |
 
-`SCALER_IT_WATERFALL_POLICY` is passed to the scheduler verbatim -- one rule per line,
-`priority,worker_manager_id[,max_task_concurrency]` (`#` comments allowed), the same format `deploy()` generates.
-It lets you set which managers run, their priorities, and their caps without touching code; a cap in the policy
-also resizes that manager's own pool, so the scheduler's spill threshold and the provisioned pool stay in step.
-The manager ids are `wm-<name>-p<position>` (position = priority, 1 = highest): `wm-ecs-p1` + `wm-ec2-p2` for the
-cross-backend topology, `wm-container-p1` + `wm-container-p2` for `Test_container_waterfall`. `deploy()` logs the
-ids and the effective policy at start-up (`[deploy] waterfall_v1 policy for managers [...]`), so a run tells you
-exactly what to reference; a policy that names an id no manager registers under fails fast. The override is
-ignored (with a logged note) on the single-manager topologies, which run the vanilla policy. Raising
-`task_seconds` well past the default keeps the timeouts fixed, so it is meant mainly for the waterfall runs,
-where longer tasks make the top pool saturate and spill deterministically.
+`SCALER_IT_WATERFALL_POLICY` (multi-manager topologies only; ignored with a logged note on single-manager
+ones) is passed to the scheduler verbatim:
+
+* **Format** -- one rule per line, `priority,worker_manager_id[,max_task_concurrency]` (`#` comments allowed),
+  the same format `deploy()` generates.
+* **Manager ids** -- `wm-<name>-p<position>` (position = priority, 1 = highest): `wm-ecs-p1` + `wm-ec2-p2`
+  (cross-backend), `wm-container-p1` + `wm-container-p2` (`Test_container_waterfall`). `deploy()` logs them at
+  start-up; a policy naming an unregistered id fails fast.
+* **Caps** -- a cap here also resizes that manager's pool, so the scheduler's spill threshold and the
+  provisioned pool stay in step.
 
 ```bash
 # a bigger, slower cross-backend waterfall with ecs (priority 1, cap 4) spilling to ec2 (priority 2):
@@ -191,8 +190,9 @@ The three axes are independent -- extend one without touching the others:
 
 * **A scenario** -- add a `(test_case, deployment)` function to `e2e/scenarios.py`: read timing off
   `deployment.profile`, submit via `deployment.tasks`, and observe with `deployment.running()` /
-  `running_names()` or per-manager `deployment.pools`. Set its `min_managers`, then list it on the
-  topologies that should run it in `e2e/matrix.py`. It now runs on every listed backend.
+  `running_names()` or per-manager `deployment.pools`. If it needs more than one manager, add it to
+  `MIN_MANAGERS` in `e2e/matrix.py`; then list it on the topologies that should run it there. It now runs on
+  every listed backend.
 * **A backend** -- add a class to `e2e/backends.py` satisfying `WorkerManagerBackend`: a `Profile` matched to
   its boot latency, `ensure_image()`, and `provision()` returning a `ManagerHandle` with a prefix-scoped
   `ContainerPool`. Add a `Topology` for it in `e2e/matrix.py` with a gate, and every existing scenario runs

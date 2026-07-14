@@ -23,7 +23,10 @@ from scaler.utility.network_util import get_available_tcp_port
 from tests.integration import container_cli
 
 _FLOCI_IMAGE = os.environ.get("SCALER_IT_FLOCI_IMAGE", "floci/floci:latest")
-_FLOCI_CONTAINER_NAME = "scaler-it-floci"
+# Per-run emulator name (suffixed with the pid) so two floci-backed runs on one host do not reap each
+# other's emulator on start-up. (The task containers floci spawns still carry its fixed floci-ecs/floci-ec2
+# prefixes, so genuinely concurrent floci runs on one host remain unsupported.)
+_FLOCI_CONTAINER_PREFIX = "scaler-it-floci"
 _FLOCI_INTERNAL_PORT = 4566
 _DOCKER_SOCKET = "/var/run/docker.sock"
 # floci names each launched container by the service that started it; used to count/reap them on teardown.
@@ -35,14 +38,6 @@ _READY_POLL_SECONDS = 0.5
 _STOP_GRACE_SECONDS = 5
 
 
-def floci_available() -> bool:
-    """True when the Docker daemon is reachable (floci needs it to launch sibling task containers)."""
-    try:
-        return subprocess.run([*container_cli(), "info"], capture_output=True, timeout=30).returncode == 0
-    except Exception:
-        return False
-
-
 class FlociEmulator:
     """Runs floci in a container with the host docker socket mounted, so ECS ``RunTask`` launches real
     sibling containers. Start it, read :attr:`endpoint_url`, and register :meth:`stop` with ``addCleanup``."""
@@ -51,6 +46,7 @@ class FlociEmulator:
         self._image = image
         self._cli = container_cli()
         self._port = get_available_tcp_port()
+        self._name = f"{_FLOCI_CONTAINER_PREFIX}-{os.getpid()}"
         self._started = False
 
     @property
@@ -66,7 +62,7 @@ class FlociEmulator:
                 "-d",
                 "--rm",
                 "--name",
-                _FLOCI_CONTAINER_NAME,
+                self._name,
                 "-p",
                 f"{self._port}:{_FLOCI_INTERNAL_PORT}",
                 "-v",
@@ -100,13 +96,13 @@ class FlociEmulator:
         )
 
     def logs(self) -> str:
-        return subprocess.run([*self._cli, "logs", _FLOCI_CONTAINER_NAME], capture_output=True, text=True).stdout
+        return subprocess.run([*self._cli, "logs", self._name], capture_output=True, text=True).stdout
 
     def stop(self) -> None:
         if not self._started:
             return
         self._started = False
-        subprocess.run([*self._cli, "stop", "-t", str(_STOP_GRACE_SECONDS), _FLOCI_CONTAINER_NAME], capture_output=True)
+        subprocess.run([*self._cli, "stop", "-t", str(_STOP_GRACE_SECONDS), self._name], capture_output=True)
 
     def _remove_existing(self) -> None:
-        subprocess.run([*self._cli, "rm", "-f", _FLOCI_CONTAINER_NAME], capture_output=True)
+        subprocess.run([*self._cli, "rm", "-f", self._name], capture_output=True)

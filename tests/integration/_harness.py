@@ -76,7 +76,9 @@ def assert_backend_processes_alive(test_case, harness: "SchedulerHarness", **nam
     for name, process in named_processes.items():
         if process is not None and not process.is_alive():
             dead.append(f"{name} (exit {process.exitcode})")
-    scheduler_error = harness.scheduler_unhandled_error()
+    # The scheduler can log its crash traceback a beat after the client gives up, so wait for it to land only
+    # when a fault is already evident (a process died); a green run scans the log once and returns at once.
+    scheduler_error = harness.scheduler_unhandled_error(settle_seconds=4.0 if dead else 0.0)
     if dead:
         detail = f" scheduler logged: {scheduler_error}." if scheduler_error else ""
         test_case.fail(
@@ -84,8 +86,6 @@ def assert_backend_processes_alive(test_case, harness: "SchedulerHarness", **nam
             f"timed-out client. See the traceback in the captured scheduler/manager log above for the cause." + detail
         )
     elif scheduler_error:
-        # The scheduler stayed up but logged an unhandled exception that wedged the pool (the client only
-        # sees a downstream timeout); name the fault so the failure is actionable, not opaque.
         test_case.fail(
             f"scheduler logged an unhandled exception under churn and wedged the pool ({scheduler_error}); "
             f"the client's TimeoutError is the downstream symptom. See the full traceback in the captured log."
@@ -258,20 +258,20 @@ class SchedulerHarness:
         return self._scheduler.exitcode if self._scheduler is not None else None
 
     def object_storage_died(self) -> bool:
-        """True if the object-storage server exited mid-test. It logs only to stdout (not the scheduler
-        log), so without this its crash surfaces only as a downstream client TimeoutError with no fault
-        named -- or gets misattributed to the scheduler."""
+        """True if the object-storage server exited mid-test (it logs only to stdout, so its crash is
+        otherwise invisible to the scheduler-log scan)."""
         return self._object_storage is not None and not self._object_storage.is_alive()
 
     def object_storage_exitcode(self) -> Optional[int]:
         return self._object_storage.exitcode if self._object_storage is not None else None
 
-    def scheduler_unhandled_error(self, settle_seconds: float = 4.0) -> Optional[str]:
+    def scheduler_unhandled_error(self, settle_seconds: float = 0.0) -> Optional[str]:
         """A one-line summary if the scheduler logged an unhandled exception (a traceback) during the run,
-        else None. Catches the case where an unhandled scheduler error does not kill the process but wedges
-        the pool, so the client only sees a downstream timeout. The scheduler often logs the fault a beat
-        AFTER the client gives up (the client disconnect is what triggers the fatal send to a gone worker),
-        so briefly poll for it to land rather than scanning once. The full traceback is in the captured log."""
+        else None -- this catches a fault that wedges the pool without killing the process. ``settle_seconds``
+        > 0 briefly polls for a traceback that lands just after the scan (the caller sets it only when a crash
+        is already evident). A silent wedge that logs NO traceback (a deadlock, or a C++/ymq-layer fault) is
+        out of reach here; only ``scheduler_died`` and the scenario's own timeout guard that. Full traceback
+        is in the captured log."""
         deadline = time.monotonic() + settle_seconds
         while True:
             try:
