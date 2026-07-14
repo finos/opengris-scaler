@@ -23,9 +23,15 @@ from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
-from tests.utility.utility import logging_test_name
+from tests.utility.utility import logging_test_name, terminate_process, wait_until
 
-# This is a manual test because it can loop infinitely if it fails
+# Deliberately short worker death-timeout (vs the 5-min DEFAULT_WORKER_DEATH_TIMEOUT) so a worker
+# that never reaches a scheduler self-terminates quickly and keeps the test fast.
+DEATH_TIMEOUT_SECONDS = 10
+# A no-scheduler worker manager exits only after its workers exhaust their connection-retry backoff
+# (~50s measured), so bound the wait well above the shared termination timeout: a real regression
+# fails instead of hanging CI.
+NO_SCHEDULER_EXIT_TIMEOUT_SECONDS = 120
 
 
 class TestDeathTimeout(unittest.TestCase):
@@ -52,7 +58,7 @@ class TestDeathTimeout(unittest.TestCase):
                     garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
                     trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
                     task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
-                    death_timeout_seconds=10,
+                    death_timeout_seconds=DEATH_TIMEOUT_SECONDS,
                     hard_processor_suspend=False,
                     io_threads=DEFAULT_IO_THREADS,
                     event_loop="builtin",
@@ -64,7 +70,14 @@ class TestDeathTimeout(unittest.TestCase):
         )
         process = multiprocessing.get_context("spawn").Process(target=manager.run)
         process.start()
-        process.join()
+        self.addCleanup(terminate_process, process)
+
+        # With no scheduler to reach, the workers must self-terminate once they exhaust their connection
+        # retries, which lets run() return and the process exit cleanly. Bound the join so a regression
+        # that breaks this fails the test instead of hanging CI forever.
+        process.join(timeout=NO_SCHEDULER_EXIT_TIMEOUT_SECONDS)
+        self.assertFalse(process.is_alive(), "worker manager did not exit after losing its scheduler")
+        self.assertEqual(process.exitcode, 0)
 
     def test_shutdown(self):
         logging.info("test with explicitly shutdown")
@@ -73,15 +86,23 @@ class TestDeathTimeout(unittest.TestCase):
         cluster = SchedulerClusterCombo(
             address=address, n_workers=2, per_worker_task_queue_size=2, event_loop="builtin", protected=False
         )
-        client = Client(address=address)
+        # Unprotected combo: client.shutdown() stops the workers and the scheduler, but the object
+        # storage server still needs cluster.shutdown() -- via cleanup so it runs even if an assert raises.
+        self.addCleanup(cluster.shutdown)
 
-        time.sleep(10)
-        logging.info("Shutting down")
-        client.shutdown()
+        with Client(address=address) as client:
+            # Run a real task first: a completed result proves the workers have connected and the cluster is
+            # fully up, which replaces the fixed warm-up sleep with an actual readiness condition.
+            self.assertEqual(client.submit(round, 3.14).result(), 3)
 
-        time.sleep(5)
-        # this is combo cluster, client only shutdown clusters, not scheduler, so scheduler need be shutdown also
-        cluster.shutdown()
+            logging.info("Shutting down")
+            client.shutdown()
+
+        # Poll until the worker manager process has actually exited instead of sleeping a fixed amount.
+        wait_until(lambda: not cluster._worker_manager_process.is_alive())
+        self.assertFalse(
+            cluster._worker_manager_process.is_alive(), "client.shutdown() did not stop the worker cluster"
+        )
 
     def test_no_timeout_if_suspended(self):
         """

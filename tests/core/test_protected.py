@@ -1,10 +1,9 @@
-import time
 import unittest
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
-from tests.utility.utility import logging_test_name
+from tests.utility.utility import logging_test_name, wait_until
 
 
 class TestProtected(unittest.TestCase):
@@ -17,29 +16,30 @@ class TestProtected(unittest.TestCase):
         cluster = SchedulerClusterCombo(
             address=address, n_workers=2, per_worker_task_queue_size=2, event_loop="builtin", protected=True
         )
-        print("wait for 3 seconds")
-        time.sleep(3)
+        self.addCleanup(cluster.shutdown)
+
+        # Client construction blocks until the scheduler is reachable, so no fixed readiness sleep is needed.
+        # Client.shutdown() always tears the client down in its own finally, so it needs no separate cleanup.
+        client = Client(address=address)
 
         with self.assertRaises(ValueError):
-            client = Client(address=address)
             client.shutdown()
 
-        time.sleep(3)
-
-        cluster.shutdown()
+        # Protected mode must reject the shutdown request, so the scheduler stays alive.
+        self.assertTrue(cluster._scheduler.is_alive())
 
     def test_protected_false(self) -> None:
         address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         cluster = SchedulerClusterCombo(
             address=address, n_workers=2, per_worker_task_queue_size=2, event_loop="builtin", protected=False
         )
-        print("wait for 3 seconds")
-        time.sleep(3)
+        self.addCleanup(cluster.shutdown)
 
+        # Client construction blocks until the scheduler is reachable, so no fixed readiness sleep is needed.
         client = Client(address=address)
+
+        # Not protected: shutdown must be accepted and return without raising.
         client.shutdown()
 
-        # wait scheduler received shutdown instruction and kill all workers, then call cluster.shutdown
-        time.sleep(3)
-        print("finish slept 3 seconds")
-        cluster.shutdown()
+        # After accepting the shutdown request the scheduler quits, so its process must stop being alive.
+        self.assertTrue(wait_until(lambda: not cluster._scheduler.is_alive()))

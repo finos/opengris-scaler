@@ -10,6 +10,9 @@ from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
 from tests.utility.utility import logging_test_name
 
+# Generous bound on how long to wait for a graph result before failing (vs hanging CI).
+RESULT_TIMEOUT_SECONDS = 30.0
+
 
 def inc(i):
     return i + 1
@@ -44,7 +47,6 @@ class TestGraph(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.combo.shutdown()
-        pass
 
     def test_graph(self):
         # fmt: off
@@ -79,20 +81,21 @@ class TestGraph(unittest.TestCase):
             with ScopedLogger("test graph node fail"), self.assertRaises(ValueError):
                 client.get(graph, ["e"])
 
-    def test_graph_fail_2(self):
+    def test_graph_success_with_sqrt(self):
         # fmt: off
         graph = {
             "a": 2,
             "b": 2,
-            "c": (math.sqrt, "a"),  # c = sqft(a)
+            "c": (math.sqrt, "a"),  # c = sqrt(a)
             "d": (add_sleep, "a", "b"),  # d = a + b (sleep for 5 seconds)
             "e": (minus, "d", "c")}  # e = d - c
         # fmt: on
 
         with Client(self.address) as client:
-            with ScopedLogger("test graph node should restore from failure"):
+            with ScopedLogger("test graph with math.sqrt node"):
                 futures = client.get(graph, ["e"], block=False)
-                futures["e"].result(timeout=15.0)
+                # e = d - c = (a + b) - sqrt(a) = 4 - sqrt(2)
+                self.assertEqual(futures["e"].result(timeout=RESULT_TIMEOUT_SECONDS), 4 - math.sqrt(2))
 
     def test_graph_return_order(self):
         # fmt: off
@@ -117,10 +120,11 @@ class TestGraph(unittest.TestCase):
         def func(a):
             return a
 
-        # If we don't sleep, then cluster will shutdown before OSS address get exchanged
-        # between scheduler and cluster. Thus, cluster will wait OSS address for a long time.
-        time.sleep(2)
         with Client(self.address) as client:
+            # Warm-up task: its completion proves a worker connected and exchanged the object-storage
+            # address with the scheduler, avoiding the tearDown race where the cluster blocks on that.
+            self.assertEqual(client.submit(func, 0).result(timeout=RESULT_TIMEOUT_SECONDS), 0)
+
             result = client.get({"a": (func, "b"), "b": [1]}, keys=["b"])
             self.assertEqual(result["b"], [1])
 
@@ -175,28 +179,9 @@ class TestGraph(unittest.TestCase):
             futures = client.get(graph, keys=["b"], block=False)
 
             time.sleep(1)
-            futures["b"].cancel()
-
-    def test_cancel_unassigned(self):
-        # Cancels a graph task that hasn't been assigned to a worker yet.
-        combo = SchedulerClusterCombo(n_workers=0, event_loop="builtin")
-
-        # fmt: off
-        graph = {
-            "a": 3.14,
-            "b": (round, "a"),
-            "c": (minus, "a", "b")
-        }
-        # fmt: on
-
-        with Client(address=combo.get_address()) as client:
-            future = client.get(graph, ["c"], block=False)["c"]
-
-            time.sleep(0.15)
-
-            future.cancel()
-
-        combo.shutdown()
+            # cancel() blocks until the scheduler confirms and returns the resulting state.
+            self.assertTrue(futures["b"].cancel())
+            self.assertTrue(futures["b"].cancelled())
 
     def test_client_quit(self):
         def func(a):
@@ -216,26 +201,6 @@ class TestGraph(unittest.TestCase):
             time.sleep(4)
 
         self.assertTrue(all(f.cancelled() for f in futures.values()))
-
-    def test_cull_graph(self):
-        # fmt: off
-        graph = {
-            "a": (lambda *_: None,),
-            "b": (lambda *_: None, "a"),
-            "c": (lambda *_: None, "a"),
-            "d": (lambda *_: None, "b"),
-            "e": (lambda *_: None, "b", "c"),
-            "f": (lambda *_: None, "c"),
-        }
-        # fmt: on
-
-        def filter_keys(_graph, keys):
-            return {key: value for key, value in _graph.items() if key in keys}
-
-        self.assertEqual(cull_graph(graph, ["d"]), filter_keys(graph, ["a", "b", "d"]))
-        self.assertEqual(cull_graph(graph, ["e"]), filter_keys(graph, ["a", "b", "c", "e"]))
-        self.assertEqual(cull_graph(graph, ["f"]), filter_keys(graph, ["a", "c", "f"]))
-        self.assertEqual(cull_graph(graph, ["d", "e", "f"]), graph)
 
     def test_graph_error(self):
         def raise_exception(*args):
@@ -261,3 +226,51 @@ class TestGraph(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     fut.result()
                 logging.info(f"Raised ValueError exception for {k}")
+
+
+class TestGraphWithoutCluster(unittest.TestCase):
+    """Graph tests that do not need the shared 3-worker cluster started in TestGraph.setUp."""
+
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+
+    def test_cancel_unassigned(self):
+        # Cancels a graph task that hasn't been assigned to a worker yet.
+        combo = SchedulerClusterCombo(n_workers=0, event_loop="builtin")
+        self.addCleanup(combo.shutdown)
+
+        # fmt: off
+        graph = {
+            "a": 3.14,
+            "b": (round, "a"),
+            "c": (minus, "a", "b")
+        }
+        # fmt: on
+
+        with Client(address=combo.get_address()) as client:
+            future = client.get(graph, ["c"], block=False)["c"]
+
+            # No worker exists, so the task stays unassigned; cancel() blocks until the scheduler confirms.
+            self.assertTrue(future.cancel())
+            self.assertTrue(future.cancelled())
+
+    def test_cull_graph(self):
+        # fmt: off
+        graph = {
+            "a": (lambda *_: None,),
+            "b": (lambda *_: None, "a"),
+            "c": (lambda *_: None, "a"),
+            "d": (lambda *_: None, "b"),
+            "e": (lambda *_: None, "b", "c"),
+            "f": (lambda *_: None, "c"),
+        }
+        # fmt: on
+
+        def filter_keys(_graph, keys):
+            return {key: value for key, value in _graph.items() if key in keys}
+
+        self.assertEqual(cull_graph(graph, ["d"]), filter_keys(graph, ["a", "b", "d"]))
+        self.assertEqual(cull_graph(graph, ["e"]), filter_keys(graph, ["a", "b", "c", "e"]))
+        self.assertEqual(cull_graph(graph, ["f"]), filter_keys(graph, ["a", "c", "f"]))
+        self.assertEqual(cull_graph(graph, ["d", "e", "f"]), graph)

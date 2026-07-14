@@ -158,19 +158,10 @@ class TestWorkerManagerSubcommands(unittest.TestCase):
 # Tests for the scaler_worker_manager subcommand interface
 # ---------------------------------------------------------------------------
 
-_NATIVE_BASE_ARGS = [
-    "scaler_worker_manager",
-    "baremetal_native",
-    "--worker-manager-id",
-    "wm-test",
-    "tcp://127.0.0.1:6378",
-]
-
 
 class TestWorkerManagerConfigFields(unittest.TestCase):
     """Tests that the subcommand interface correctly parses per-manager fields from CLI and TOML."""
 
-    @patch("sys.argv", [*_NATIVE_BASE_ARGS, "--logging-level", "DEBUG"])
     def test_logging_level_from_cli(self) -> None:
         from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 
@@ -181,7 +172,6 @@ class TestWorkerManagerConfigFields(unittest.TestCase):
         )
         self.assertEqual(config.logging_config.level, "DEBUG")
 
-    @patch("sys.argv", [*_NATIVE_BASE_ARGS, "--logging-paths", "/tmp/scaler.log"])
     def test_logging_paths_from_cli(self) -> None:
         from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
 

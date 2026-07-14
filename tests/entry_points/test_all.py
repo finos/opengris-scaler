@@ -90,7 +90,7 @@ class TestScalerAllEndToEnd(unittest.TestCase):
         return patch("scaler.config.config_class._load_toml", return_value=data)
 
     @patch("sys.argv", ["scaler", "--config", "test.toml"])
-    def test_no_recognized_sections_exits(self) -> None:
+    def test_no_recognized_sections_parses_to_empty(self) -> None:
         with self._make_toml_data({}):
             config = _StubScalerAllConfig.parse("scaler", "all")
         self.assertIsNone(config.scheduler)

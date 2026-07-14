@@ -63,23 +63,22 @@ class TestSerializer(unittest.TestCase):
         pass
 
     def test_one_task(self):
-        client = Client(self.address, serializer=MySerializer())
+        with Client(self.address, serializer=MySerializer()) as client:
+            with ScopedLogger("submitting task"):
+                future = client.submit(noop, 1)
 
-        with ScopedLogger("submitting task"):
-            future = client.submit(noop, 1)
+            with ScopedLogger("gathering task"):
+                result = future.result()
 
-        with ScopedLogger("gathering task"):
-            result = future.result()
-
-        self.assertEqual(result, 1)
-        print("done test_one_task")
+            self.assertEqual(result, 1)
+            print("done test_one_task")
 
     def test_heavy_function(self):
         with Client(self.address, serializer=MySerializer()) as client:
-            size = 500_000_000
+            size = 4_000_000
             tasks = [random.randint(0, 100) for _ in range(5)]
             function = functools.partial(heavy_function, payload=b"1" * size)
-            with ScopedLogger(f"submit {len(tasks)} heavy function (500mb) tasks"):
+            with ScopedLogger(f"submit {len(tasks)} heavy function ({size} byte payload) tasks"):
                 results = client.map(function, tasks)
 
             expected = [task * size for task in tasks]

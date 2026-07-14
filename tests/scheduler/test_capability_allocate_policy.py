@@ -77,7 +77,11 @@ class TestCapabilityAllocatePolicy(unittest.TestCase):
         # Removing an assigned task returns the assigned worker
 
         assigned_worker = allocator.assign_task(task)
-        self.assertTrue(assigned_worker, allocator.remove_task(task.taskId).is_valid())
+        self.assertTrue(assigned_worker.is_valid())
+
+        removed_worker = allocator.remove_task(task.taskId)
+        self.assertTrue(removed_worker.is_valid())
+        self.assertEqual(removed_worker, assigned_worker)
 
         # Removing it again returns an invalid worker ID
 

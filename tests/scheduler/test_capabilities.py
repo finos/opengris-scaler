@@ -11,7 +11,7 @@ from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
-from tests.utility.utility import logging_test_name
+from tests.utility.utility import logging_test_name, terminate_process
 
 
 class TestCapabilities(unittest.TestCase):
@@ -72,11 +72,9 @@ class TestCapabilities(unittest.TestCase):
             )
             gpu_process = multiprocessing.get_context("spawn").Process(target=gpu_manager.run)
             gpu_process.start()
+            self.addCleanup(terminate_process, gpu_process)
 
             self.assertEqual(future.result(), 3.0)
-
-            gpu_process.terminate()
-            gpu_process.join()
 
     def test_graph_capabilities(self):
         base_config = self.combo._worker_manager.config
@@ -122,8 +120,6 @@ class TestCapabilities(unittest.TestCase):
             )
             gpu_process = multiprocessing.get_context("spawn").Process(target=gpu_manager.run)
             gpu_process.start()
+            self.addCleanup(terminate_process, gpu_process)
 
             self.assertEqual(future.result(), 8)
-
-            gpu_process.terminate()
-            gpu_process.join()

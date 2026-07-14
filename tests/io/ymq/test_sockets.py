@@ -98,8 +98,8 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
                     break
             return True
 
-        binder_success, connector_success = await asyncio.gather(
-            binder_routine(binder, 100), connector_routine(connector, 100)
+        binder_success, connector_success = await asyncio.wait_for(
+            asyncio.gather(binder_routine(binder, 100), connector_routine(connector, 100)), timeout=30.0
         )
 
         if not binder_success:
@@ -122,13 +122,17 @@ class TestSockets(unittest.IsolatedAsyncioTestCase):
         connector = ConnectorSocket.connect(ctx, "connector", repr(address))
         self.assertEqual(connector.identity, "connector")
 
-        for _ in range(10):
-            await connector.send_message(Bytes(b"." * 500_000_000))
+        # Exceed the YMQ single-write buffer (maxWriteBufferSize = 256MB, configuration.h) so the send
+        # path exercises its multi-write chunking branch, not just the single-write fast path. Hoist the
+        # literal so it is not re-allocated per iteration.
+        expected_payload = b"." * (256 * 1024 * 1024 + 1024)
+        for _ in range(2):
+            await connector.send_message(Bytes(expected_payload))
             msg = await binder.recv_message()
 
             assert msg.address is not None
             self.assertEqual(msg.address.data, b"connector")
-            self.assertEqual(msg.payload.data, b"." * 500_000_000)
+            self.assertEqual(msg.payload.data, expected_payload)
 
     async def test_multicast(self):
         ctx = IOContext()

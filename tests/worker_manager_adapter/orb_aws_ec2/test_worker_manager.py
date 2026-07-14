@@ -32,12 +32,12 @@ class TestORBAWSEC2WorkerManagerValidateRequirements(unittest.TestCase):
 
     def test_raises_on_malformed_line(self):
         requirements = "opengris-scaler\n!!!invalid package!!!\n"
-        with self.assertRaises(ValueError, msg="Invalid requirement line"):
+        with self.assertRaisesRegex(ValueError, "Invalid requirement line"):
             ORBAWSEC2WorkerManager._validate_requirements(requirements)
 
     def test_raises_on_local_path(self):
         requirements = "opengris-scaler\n./local_package\n"
-        with self.assertRaises(ValueError, msg="Invalid requirement line"):
+        with self.assertRaisesRegex(ValueError, "Invalid requirement line"):
             ORBAWSEC2WorkerManager._validate_requirements(requirements)
 
 

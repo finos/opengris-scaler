@@ -13,7 +13,7 @@ from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
-from tests.utility.utility import logging_test_name
+from tests.utility.utility import logging_test_name, terminate_process
 
 
 def sleep_and_return_pid(sec: int):
@@ -35,6 +35,10 @@ class TestBalance(unittest.TestCase):
         N_TASKS = 8
         N_WORKERS = N_TASKS
 
+        # Long enough that the tasks are still running when the new workers register and load
+        # balancing redistributes them one-per-worker, even on slow CI.
+        TASK_DURATION_SECONDS = 30
+
         address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         combo = SchedulerClusterCombo(
             address=address,
@@ -42,10 +46,12 @@ class TestBalance(unittest.TestCase):
             per_worker_task_queue_size=N_TASKS,
             load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
         )
+        self.addCleanup(combo.shutdown)
 
         client = Client(address=address)
+        self.addCleanup(client.disconnect)
 
-        futures = [client.submit(sleep_and_return_pid, 10) for _ in range(N_TASKS)]
+        futures = [client.submit(sleep_and_return_pid, TASK_DURATION_SECONDS) for _ in range(N_TASKS)]
 
         time.sleep(3)
 
@@ -81,12 +87,8 @@ class TestBalance(unittest.TestCase):
         process = multiprocessing.get_context("spawn").Process(target=new_manager.run)
         process.start()
 
+        self.addCleanup(terminate_process, process)
+
         pids = {f.result() for f in futures}
 
         self.assertEqual(len(pids), N_WORKERS)
-
-        client.disconnect()
-
-        process.terminate()
-        process.join()
-        combo.shutdown()

@@ -16,20 +16,13 @@ since browser wasm clients exclusively speak ``ws://``.
 """
 
 import asyncio
-import os
-import socket
 import unittest
 
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.config.types.address import AddressConfig
 from scaler.io.ymq import BinderSocket, Bytes, ConnectorSocket, IOContext
 from scaler.utility.identifiers import ObjectID
-
-
-def _free_tcp_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+from scaler.utility.network_util import get_available_tcp_port
 
 
 class WebSocketTransportTest(unittest.IsolatedAsyncioTestCase):
@@ -92,10 +85,9 @@ class WebSocketObjectStorageTest(unittest.TestCase):
     """
 
     def test_set_get_over_websocket(self) -> None:
-        os.environ["SCALER_NETWORK_BACKEND"] = "ymq"
         from scaler.io.ymq_sync_object_storage_connector import YMQSyncObjectStorageConnector
 
-        port = _free_tcp_port()
+        port = get_available_tcp_port()
         bind_addr = f"ws://127.0.0.1:{port}"
         addr = AddressConfig.from_string(bind_addr)
 

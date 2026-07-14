@@ -101,6 +101,18 @@ class TestFuture(unittest.TestCase):
         with self.assertRaises(CancelledError):
             fut.result()
 
+
+class TestMockedFuture(unittest.TestCase):
+    """Unit tests for ``ScalerFuture`` that drive the future via mocked connectors.
+
+    These tests never touch a scheduler, cluster, or socket, so unlike ``TestFuture`` they do not build a
+    ``SchedulerClusterCombo`` in ``setUp``.
+    """
+
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+
     def test_mocked_success(self):
         task_result = "Task result"
         client_id, future, _connector_agent, connector_storage = self.__create_mocked_future(future_result=task_result)

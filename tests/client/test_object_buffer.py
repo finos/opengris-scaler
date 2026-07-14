@@ -314,8 +314,7 @@ class TestObjectBufferDedup(unittest.TestCase):
         c2 = buf.buffer_send_object(shared, None, reserialize=False, dedup=True)
         buf.commit_send_objects()
 
-        # clear() reset the content dedup map, so the same bytes get a brand-new object ID
-        # (never the cleared one) and a genuine re-upload.
+        # clear() reset the dedup map, so the same bytes get a brand-new object ID and re-upload.
         self.assertNotEqual(c1.object_id, c2.object_id)
         self.assertEqual(len(storage.calls), 2)
 

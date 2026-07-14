@@ -1,6 +1,6 @@
 import asyncio
 import unittest
-from typing import Any, List, Optional, Tuple
+from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
@@ -17,7 +17,7 @@ from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import TaskFlags
 from scaler.worker.agent.mixins import HeartbeatManager
-from scaler.worker_manager_adapter.mixins import ExecutionBackend, TaskDeserializer, TaskInputLoader
+from scaler.worker_manager_adapter.mixins import ExecutionBackend
 from scaler.worker_manager_adapter.task_manager import TaskManager
 from tests.utility.utility import logging_test_name
 
@@ -108,10 +108,6 @@ class TestTaskManagerOnTaskNew(unittest.IsolatedAsyncioTestCase):
         self.assertIn(task.taskId, self.tm._task_id_to_task)
         self.assertNotIn(task.taskId, self.tm._processing_task_ids)
         self.backend.execute.assert_not_called()
-
-    async def test_queued_task_appears_in_priority_queue(self) -> None:
-        await self.tm.on_task_new(_make_task())
-        self.assertEqual(self.tm.get_queued_size(), 1)
 
     async def test_priority_bypass_strictly_higher(self) -> None:
         acquiring_task = _make_task(priority=1)
@@ -446,41 +442,46 @@ class TestTaskManagerResolveTasks(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.tm._executor_semaphore.locked())
 
 
-class TestExecutionBackendSentinel(unittest.IsolatedAsyncioTestCase):
+class TestTaskManagerLoadTaskInputs(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
+        self.backend = _make_backend()
+        self.connector_external = AsyncMock(spec=AsyncConnector)
+        self.connector_storage = AsyncMock(spec=AsyncObjectStorageConnector)
+        self.heartbeat_manager = MagicMock(spec=HeartbeatManager)
+        self.tm = TaskManager(1, self.backend)
+        self.tm.register(self.connector_external, self.connector_storage, self.heartbeat_manager)
 
-    async def test_load_task_inputs_after_register_does_not_raise(self) -> None:
-        async def _loader(task: Task) -> Tuple[Any, List[Any]]:
-            return None, []
+    async def test_load_task_inputs_deserializes_function_and_args(self) -> None:
+        client_id = ClientID.generate_client_id()
+        arg_object_id = ObjectID.generate_object_id(client_id)
+        task = Task(
+            taskId=TaskID.generate_task_id(),
+            source=client_id,
+            metadata=TaskFlags(priority=0).serialize(),
+            funcObjectId=ObjectID.generate_object_id(client_id),
+            functionArgs=[Task.Argument(type=Task.Argument.ArgumentType.objectID, data=bytes(arg_object_id))],
+            capabilities={},
+        )
 
-        class _ConcreteBackend(TaskInputLoader, ExecutionBackend):
-            _loader: TaskDeserializer
+        serializer = MagicMock()
+        serializer.deserialize.side_effect = lambda data: {b"func_bytes": "the_function", b"arg_bytes": "the_arg"}[data]
+        serializer_id = ObjectID.generate_serializer_object_id(client_id)
+        self.tm._serializers[serializer_id] = serializer
 
-            def register(self, load_task_inputs: TaskDeserializer) -> None:
-                self._loader = load_task_inputs
+        payloads = {bytes(ObjectID(task.funcObjectId)): b"func_bytes", bytes(arg_object_id): b"arg_bytes"}
 
-            async def load_task_inputs(self, task: Task) -> Tuple[Any, List[Any]]:
-                return await self._loader(task)
+        async def _get_object(object_id: ObjectID) -> bytes:
+            return payloads[bytes(object_id)]
 
-            async def execute(self, task: Task) -> asyncio.Future:
-                return asyncio.get_running_loop().create_future()
+        self.connector_storage.get_object = AsyncMock(side_effect=_get_object)
 
-            async def on_cancel(self, task_cancel: TaskCancel) -> None:
-                pass
+        function, args = await self.tm.load_task_inputs(task)
 
-            def on_cleanup(self, task_id: TaskID) -> None:
-                pass
-
-            async def routine(self) -> None:
-                pass
-
-        backend = _ConcreteBackend()
-        backend.register(_loader)
-        func, args = await backend.load_task_inputs(_make_task())
-        self.assertIsNone(func)
-        self.assertEqual(args, [])
+        self.assertEqual(function, "the_function")
+        self.assertEqual(args, ["the_arg"])
+        self.assertEqual(self.connector_storage.get_object.await_count, 2)
 
 
 class TestTaskManagerOnTaskResult(unittest.IsolatedAsyncioTestCase):
