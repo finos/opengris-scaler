@@ -4,6 +4,7 @@ import logging
 import math
 from typing import TYPE_CHECKING, List
 
+from scaler.config import defaults
 from scaler.config.section.aws_hpc_worker_manager import AWSBatchWorkerManagerConfig, AWSHPCBackend
 from scaler.worker_manager_adapter.aws_hpc.worker import create_aws_batch_worker
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
@@ -28,7 +29,7 @@ class BatchWorkerProvisioner(DeclarativeWorkerProvisioner):
             start_units=self.start_units,
             stop_units=self.stop_units,
             active_unit_count=self.active_unit_count,
-            max_unit_count=-1,
+            max_unit_count=defaults.MAX_TASK_CONCURRENCY_LIMIT,
         )
 
     def active_unit_count(self) -> int:
@@ -102,7 +103,7 @@ class AWSHPCWorkerManager:
             name="worker_manager_aws_hpc",
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
-            max_provisioner_units=-1,
+            max_provisioner_units=defaults.MAX_TASK_CONCURRENCY_LIMIT,
             worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
             worker_provisioner=provisioner,
             io_threads=config.worker_config.io_threads,

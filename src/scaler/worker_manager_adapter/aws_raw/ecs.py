@@ -27,9 +27,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._io_threads = config.worker_config.io_threads
         self._per_worker_task_queue_size = config.worker_config.per_worker_task_queue_size
         self._max_task_concurrency = config.worker_manager_config.max_task_concurrency
-        self._max_instances = (
-            math.ceil(self._max_task_concurrency / config.ecs_task_cpu) if self._max_task_concurrency != -1 else -1
-        )
+        self._max_instances = math.ceil(self._max_task_concurrency / config.ecs_task_cpu)
         self._heartbeat_interval_seconds = config.worker_config.heartbeat_interval_seconds
         self._task_timeout_seconds = config.worker_config.task_timeout_seconds
         self._death_timeout_seconds = config.worker_config.death_timeout_seconds
@@ -207,8 +205,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
 class ECSWorkerManager:
     def __init__(self, config: ECSWorkerManagerConfig) -> None:
         provisioner = ECSWorkerProvisioner(config)
-        mtc = config.worker_manager_config.max_task_concurrency
-        max_instances = math.ceil(mtc / config.ecs_task_cpu) if mtc != -1 else -1
+        max_instances = math.ceil(config.worker_manager_config.max_task_concurrency / config.ecs_task_cpu)
         self._runner = WorkerManagerRunner(
             address=config.worker_manager_config.scheduler_address,
             name="worker_manager_ecs",
