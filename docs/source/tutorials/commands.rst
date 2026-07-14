@@ -403,7 +403,8 @@ Arguments (shared by all subcommands)
    * - ``-pwc``, ``--per-worker-capabilities``
      - No
      - Empty
-     - Capabilities string (for example ``linux,cpu=4,gpu=1``).
+     - Capabilities string (for example ``linux,cpu=4,gpu=1``). Each entry is ``name`` or ``name=integer``;
+       empty capability names (for example ``=1``) are not allowed.
    * - ``-wtqs``, ``--per-worker-task-queue-size``
      - No
      - ``1000``
