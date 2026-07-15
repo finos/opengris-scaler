@@ -1233,6 +1233,519 @@ with Client(address="${addr}") as client:
   );
 }
 
+/* ── Try it tab: Pyodide + Monaco + Jedi ── */
+
+const PYODIDE_CDN = "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.js";
+const MONACO_VS   = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
+
+function loadMonacoOnce() {
+  if (window._monacoReady) return window._monacoReady;
+  window.MonacoEnvironment = { getWorkerUrl: () => "data:text/javascript;charset=utf-8," };
+  window._monacoReady = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = MONACO_VS + "/loader.js";
+    s.onload = () => {
+      require.config({ paths: { vs: MONACO_VS } });
+      require(["vs/editor/editor.main"], resolve);
+    };
+    s.onerror = () => reject(new Error("Failed to load Monaco from CDN"));
+    document.head.appendChild(s);
+  });
+  return window._monacoReady;
+}
+
+function registerJediCompletion(pyodide) {
+  const KIND = {
+    function:  monaco.languages.CompletionItemKind.Function,
+    class:     monaco.languages.CompletionItemKind.Class,
+    module:    monaco.languages.CompletionItemKind.Module,
+    instance:  monaco.languages.CompletionItemKind.Variable,
+    keyword:   monaco.languages.CompletionItemKind.Keyword,
+    statement: monaco.languages.CompletionItemKind.Variable,
+    param:     monaco.languages.CompletionItemKind.TypeParameter,
+    path:      monaco.languages.CompletionItemKind.File,
+  };
+  return monaco.languages.registerCompletionItemProvider("python", {
+    triggerCharacters: [".", "(", "'", '"'],
+    provideCompletionItems: async (model, position) => {
+      const word = model.getWordUntilPosition(position);
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber:   position.lineNumber,
+        startColumn:     word.startColumn,
+        endColumn:       position.column,
+      };
+      try {
+        pyodide.globals.set("_jedi_code", model.getValue());
+        pyodide.globals.set("_jedi_line", position.lineNumber);
+        pyodide.globals.set("_jedi_col",  position.column - 1);
+        const raw = await pyodide.runPythonAsync(
+          'import jedi as _j, json as _js\n' +
+          '_cs = _j.Interpreter(_jedi_code, [globals()]).complete(_jedi_line, _jedi_col)\n' +
+          '_js.dumps([{"name": c.name, "type": c.type} for c in _cs[:80]])'
+        );
+        return {
+          suggestions: JSON.parse(raw).map(({ name, type }) => ({
+            label: name,
+            kind: KIND[type] ?? monaco.languages.CompletionItemKind.Text,
+            insertText: name,
+            range,
+          })),
+        };
+      } catch {
+        return { suggestions: [] };
+      }
+    },
+  });
+}
+
+const AUTO_IMPORT_PY =
+  "import ast as _ast\n" +
+  "try:\n" +
+  "    _tree = _ast.parse(_auto_import_src)\n" +
+  "    _stmts = [n for n in _tree.body if isinstance(n, (_ast.Import, _ast.ImportFrom))]\n" +
+  "    if _stmts:\n" +
+  "        exec(compile(_ast.Module(_stmts, []), '<auto-imports>', 'exec'), globals())\n" +
+  "except Exception:\n" +
+  "    pass\n";
+
+function runAutoImports(pyodide, src) {
+  pyodide.globals.set("_auto_import_src", src);
+  return pyodide.runPythonAsync(AUTO_IMPORT_PY).catch(() => {});
+}
+
+function registerJediHover(pyodide) {
+  return monaco.languages.registerHoverProvider("python", {
+    provideHover: async (model, position) => {
+      const wordInfo = model.getWordAtPosition(position);
+      if (!wordInfo) return null;
+
+      let doc = "";
+      let name = wordInfo.word;
+
+      // Primary: look up the name in globals() via Python so we can do proper
+      // fallback to __init__.__doc__ when the class-level __doc__ is empty.
+      try {
+        pyodide.globals.set("_hover_word", wordInfo.word);
+        const raw = await pyodide.runPythonAsync(
+          'import json as _js, inspect as _ins\n' +
+          '_obj = globals().get(_hover_word)\n' +
+          'if _obj is not None:\n' +
+          '    _doc = (_obj.__doc__ or\n' +
+          '            getattr(getattr(_obj, "__init__", None), "__doc__", None) or "")\n' +
+          '    _doc = _ins.cleandoc(_doc) if _doc else ""\n' +
+          '    _name = getattr(_obj, "__qualname__", None) or getattr(_obj, "__name__", None) or _hover_word\n' +
+          'else:\n' +
+          '    _doc = ""\n' +
+          '    _name = ""\n' +
+          '_js.dumps({"name": _name, "doc": _doc})'
+        );
+        const item = JSON.parse(raw);
+        if (item?.doc) { doc = item.doc; name = item.name || name; }
+      } catch {}
+
+      // Fallback: Jedi for local variables and other names not yet in globals.
+      if (!doc) {
+        try {
+          pyodide.globals.set("_jedi_code", model.getValue());
+          pyodide.globals.set("_jedi_line", position.lineNumber);
+          pyodide.globals.set("_jedi_col",  position.column - 1);
+          const raw = await pyodide.runPythonAsync(
+            'import json as _js\n' +
+            'try:\n' +
+            '    import jedi as _j\n' +
+            '    _hs = _j.Interpreter(_jedi_code, [globals()]).help(_jedi_line, _jedi_col)\n' +
+            '    _h = _hs[0] if _hs else None\n' +
+            '    _r = {"name": _h.full_name or _h.name, "doc": _h.docstring() or ""} if _h else {"name": "", "doc": ""}\n' +
+            'except Exception:\n' +
+            '    _r = {"name": "", "doc": ""}\n' +
+            '_js.dumps(_r)'
+          );
+          const item = JSON.parse(raw);
+          if (item?.doc) { doc = item.doc; name = item.name || name; }
+        } catch {}
+      }
+
+      if (!doc) return null;
+
+      return {
+        range: {
+          startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
+          startColumn: wordInfo.startColumn, endColumn: wordInfo.endColumn,
+        },
+        contents: [
+          { value: "```python\n" + name + "\n```" },
+          { value: doc },
+        ],
+      };
+    },
+  });
+}
+
+function TryItTab({ isActive, theme, schedulerAddress }) {
+  const [pyStatus, setPyStatus]   = useState("idle"); // idle | loading | ready | error
+  const [pyError, setPyError]     = useState("");
+  const [noWheels, setNoWheels]   = useState(false);
+  const [output, setOutput]       = useState([]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [monacoReady, setMonacoReady] = useState(false);
+
+  const editorContainerRef     = useRef(null);
+  const editorRef              = useRef(null);
+  const pyodideRef             = useRef(null);
+  const completionDisposable   = useRef(null);
+  const hoverDisposable        = useRef(null);
+  const hasInitEditor          = useRef(false);
+  const isRunningRef           = useRef(false);
+  const importTimerRef         = useRef(null);
+  const outputCallbackRef      = useRef(null);
+  const interruptBufferRef     = useRef(null);
+  const cancelledRef           = useRef(false);
+
+  const defaultCode = [
+    "from scaler import Client",
+    "",
+    "# This is the address of the scheduler you launched",
+    `SCHEDULER_ADDRESS = "${schedulerAddress}"`,
+    "",
+    "with Client(address=SCHEDULER_ADDRESS) as client:",
+    "    futures = [client.submit(pow, 2, n) for n in range(8)]",
+    "    results = [f.result() for f in futures]",
+    "",
+    "print(results)",
+    "",
+  ].join("\n");
+
+  const runCode = useCallback(async () => {
+    if (!editorRef.current || !pyodideRef.current || isRunningRef.current) return;
+    isRunningRef.current = true;
+    setIsRunning(true);
+    setOutput([]);
+
+    const pyodide = pyodideRef.current;
+    cancelledRef.current = false;
+    let hasOutput = false;
+    const appendErr = (text) => { hasOutput = true; setOutput((prev) => [...prev, { text, cls: "err" }]); };
+    outputCallbackRef.current = (text, cls) => { hasOutput = true; setOutput((prev) => [...prev, { text, cls }]); };
+
+    try {
+      pyodide.globals.set("_editor_code", editorRef.current.getValue());
+      await pyodide.runPythonAsync(
+        "import sys as _s, logging as _log\n" +
+        "_log_h = _log.StreamHandler(_s.stdout)\n" +
+        "_log_h.setFormatter(_log.Formatter('%(levelname)s:%(name)s: %(message)s'))\n" +
+        "_root = _log.getLogger()\n" +
+        "_saved_level = _root.level\n" +
+        "_root.addHandler(_log_h)\n" +
+        "if _root.level == 0 or _root.level > _log.INFO:\n" +
+        "    _root.setLevel(_log.INFO)\n" +
+        "try:\n" +
+        "    exec(compile(_editor_code, '<editor>', 'exec'))\n" +
+        "finally:\n" +
+        "    _root.removeHandler(_log_h)\n" +
+        "    _root.setLevel(_saved_level)\n"
+      );
+      if (!hasOutput) setOutput([{ text: "(no output)\n", cls: "dim" }]);
+    } catch (err) {
+      if (!cancelledRef.current) appendErr(err.message || String(err));
+    } finally {
+      outputCallbackRef.current = null;
+      if (interruptBufferRef.current) Atomics.store(interruptBufferRef.current, 0, 0);
+      isRunningRef.current = false;
+      setIsRunning(false);
+    }
+  }, []);
+
+  const cancelRun = useCallback(() => {
+    if (!isRunningRef.current) return;
+    cancelledRef.current = true;
+    outputCallbackRef.current = null;
+    if (interruptBufferRef.current) Atomics.store(interruptBufferRef.current, 0, 2);
+    setOutput((prev) => [...prev, { text: "Cancelled.\n", cls: "dim" }]);
+  }, []);
+
+  // Monaco init — once, on first activation
+  useEffect(() => {
+    if (!isActive || hasInitEditor.current) return;
+    hasInitEditor.current = true;
+    loadMonacoOnce().then(() => {
+      if (!editorContainerRef.current) return;
+      editorRef.current = monaco.editor.create(editorContainerRef.current, {
+        value: defaultCode,
+        language: "python",
+        theme: theme === "light" ? "vs" : "vs-dark",
+        minimap: { enabled: false },
+        fontSize: 13,
+        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+        automaticLayout: true,
+        scrollBeyondLastLine: false,
+        padding: { top: 12, bottom: 12 },
+      });
+      // Remeasure after custom fonts load so cursor aligns with JetBrains Mono glyphs
+      document.fonts.ready.then(() => monaco.editor.remeasureFonts());
+      editorRef.current.addCommand(
+        monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+        () => runCode()
+      );
+      editorRef.current.onDidChangeModelContent(() => {
+        clearTimeout(importTimerRef.current);
+        importTimerRef.current = setTimeout(() => {
+          if (!pyodideRef.current) return;
+          runAutoImports(pyodideRef.current, editorRef.current?.getValue() ?? "");
+        }, 600);
+      });
+      setMonacoReady(true);
+    });
+  }, [isActive]);
+
+  // Re-measure editor when tab becomes visible again (display:none collapses dimensions)
+  useEffect(() => {
+    if (isActive) editorRef.current?.layout();
+  }, [isActive]);
+
+  // Dispose editor and completion provider only on unmount
+  useEffect(() => {
+    return () => {
+      completionDisposable.current?.dispose();
+      hoverDisposable.current?.dispose();
+      editorRef.current?.dispose();
+    };
+  }, []);
+
+  // Sync Monaco theme when the app theme changes
+  useEffect(() => {
+    if (!monacoReady) return;
+    monaco.editor.setTheme(theme === "light" ? "vs" : "vs-dark");
+  }, [theme, monacoReady]);
+
+  // Pyodide init — once per page load, guarded at window level so remounts reuse the same instance
+  useEffect(() => {
+    if (!isActive || pyodideRef.current) return;
+    setPyStatus("loading");
+    (async () => {
+      try {
+        if (!window._pyodideReady) {
+          window._pyodideReady = (async () => {
+            // Lazy-load the Pyodide bootstrap script (~10 MB, deferred until tab open)
+            await new Promise((resolve, reject) => {
+              if (window.loadPyodide) { resolve(); return; }
+              const s = document.createElement("script");
+              s.src = PYODIDE_CDN;
+              s.onload = resolve;
+              s.onerror = () => reject(new Error("Failed to load Pyodide from CDN"));
+              document.head.appendChild(s);
+            });
+
+            const pyodide = await window.loadPyodide();
+
+            // Try fetching the wheel manifest written by generate_jupyterlite_config.py
+            let manifest = null;
+            try {
+              const resp = await fetch("../_static/wasm/launchpad_wheels.json");
+              if (resp.ok) manifest = await resp.json();
+            } catch {}
+
+            if (manifest) {
+              await pyodide.loadPackage(["micropip"]);
+              const base = new URL("../_static/wasm/", window.location.href).href;
+              pyodide.globals.set(
+                "_wheel_urls",
+                pyodide.toPy(manifest.local_wheels.map((f) => base + f))
+              );
+              await pyodide.runPythonAsync(
+                "import micropip\n" +
+                "await micropip.install(list(_wheel_urls) + ['jedi'])"
+              );
+            } else {
+              // No local wheels: plain Python REPL only, scaler unavailable
+              pyodide._noWheels = true;
+              await pyodide.loadPackage(["micropip"]);
+              await pyodide.runPythonAsync(
+                "import micropip; await micropip.install('jedi')"
+              );
+            }
+
+            return pyodide;
+          })();
+        }
+
+        const pyodide = await window._pyodideReady;
+        pyodideRef.current = pyodide;
+        if (pyodide._noWheels) setNoWheels(true);
+        pyodide.setStdout({ batched: (text) => outputCallbackRef.current?.(text, "info") });
+        pyodide.setStderr({ batched: (text) => outputCallbackRef.current?.(text, "err")  });
+        try {
+          const buf = new Int32Array(new SharedArrayBuffer(4));
+          pyodide.setInterruptBuffer(buf);
+          interruptBufferRef.current = buf;
+        } catch {}
+        setPyStatus("ready");
+      } catch (err) {
+        console.error("Pyodide init failed:", err);
+        setPyError(String(err));
+        setPyStatus("error");
+      }
+    })();
+  }, [isActive]);
+
+  // Register Jedi completions and hover once both Monaco and Pyodide are ready,
+  // and eagerly run the editor's import statements so autocomplete works immediately.
+  useEffect(() => {
+    if (!monacoReady || pyStatus !== "ready" || !pyodideRef.current) return;
+    completionDisposable.current?.dispose();
+    hoverDisposable.current?.dispose();
+    completionDisposable.current = registerJediCompletion(pyodideRef.current);
+    hoverDisposable.current      = registerJediHover(pyodideRef.current);
+    runAutoImports(pyodideRef.current, editorRef.current?.getValue() ?? "");
+  }, [monacoReady, pyStatus]);
+
+  const canRun = monacoReady && pyStatus === "ready" && !isRunning;
+
+  const statusNode = (() => {
+    if (pyStatus === "idle") return null;
+    if (pyStatus === "loading")
+      return (
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          <span style={{ animation: "blink 1s step-start infinite", marginRight: 5 }}>●</span>
+          Loading Pyodide…
+        </span>
+      );
+    if (pyStatus === "error")
+      return (
+        <span style={{ fontSize: 11, color: "var(--text-danger)" }}>
+          ● Pyodide failed
+        </span>
+      );
+    return (
+      <span style={{ fontSize: 11, color: "var(--text-success)" }}>
+        ● ready
+        {noWheels && (
+          <span style={{ color: "var(--text-warning)", marginLeft: 6 }}>
+            (wasm wheels not built — import scaler will fail)
+          </span>
+        )}
+      </span>
+    );
+  })();
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      {/* Toolbar */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "7px 16px",
+        background: "var(--bg-panel)",
+        borderBottom: "1px solid var(--border-accent)",
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={isRunning ? cancelRun : (canRun ? runCode : undefined)}
+          disabled={!canRun && !isRunning}
+          style={{
+            padding: "5px 14px",
+            background: isRunning
+              ? "transparent"
+              : canRun
+              ? "linear-gradient(135deg, oklch(0.38 0.16 155) 0%, oklch(0.32 0.14 200) 100%)"
+              : "var(--bg-surface)",
+            border: "1px solid " + (isRunning ? "var(--text-danger)" : canRun ? "oklch(0.55 0.16 155)" : "var(--border-accent)"),
+            borderRadius: 3,
+            color: isRunning ? "var(--text-danger)" : canRun ? "oklch(0.92 0.1 155)" : "var(--text-dim)",
+            fontFamily: "inherit", fontSize: 11, fontWeight: 700,
+            cursor: (canRun || isRunning) ? "pointer" : "default",
+            flexShrink: 0,
+          }}
+        >
+          {isRunning ? "✕ Cancel" : "▶ Run  Ctrl+Enter"}
+        </button>
+        <button
+          onClick={() => setOutput([])}
+          style={{
+            padding: "5px 10px",
+            background: "transparent",
+            border: "1px solid var(--border-accent)",
+            borderRadius: 3,
+            color: "var(--text-muted)",
+            fontFamily: "inherit", fontSize: 11, cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          Clear output
+        </button>
+        <div style={{ flex: 1 }} />
+        {statusNode}
+      </div>
+
+      {/* Editor | Output split */}
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        <div
+          ref={editorContainerRef}
+          style={{ flex: "0 0 60%", minHeight: 0, position: "relative" }}
+        >
+          {!monacoReady && (
+            <div style={{
+              position: "absolute", inset: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "var(--text-dim)", fontSize: 12,
+              background: "var(--bg-page)",
+            }}>
+              Loading editor…
+            </div>
+          )}
+        </div>
+
+        {/* Output panel */}
+        <div style={{
+          flex: "0 0 40%", minHeight: 0,
+          borderLeft: "1px solid var(--border-accent)",
+          display: "flex", flexDirection: "column",
+        }}>
+          <div style={{
+            padding: "5px 12px",
+            fontSize: 10,
+            color: "var(--text-dim)",
+            borderBottom: "1px solid var(--border-accent)",
+            background: "var(--bg-panel)",
+            flexShrink: 0,
+            letterSpacing: "0.06em",
+          }}>
+            OUTPUT
+          </div>
+          <div style={{
+            flex: 1, minHeight: 0, overflowY: "auto",
+            background: "var(--term-bg)",
+            padding: "10px 14px",
+            fontFamily: "var(--font-mono)",
+            fontSize: 12,
+            lineHeight: 1.7,
+          }}>
+            {output.length === 0 && !isRunning && pyStatus === "ready" && (
+              <span style={{ color: "var(--text-dim)", fontStyle: "italic" }}>
+                Press ▶ Run or Ctrl+Enter to execute
+              </span>
+            )}
+            {output.map((line, i) => (
+              <div key={i} style={{
+                color: line.cls === "err"  ? "var(--text-danger)"
+                     : line.cls === "warn" ? "var(--text-warning)"
+                     : line.cls === "dim"  ? "var(--text-dim)"
+                     : "var(--text-secondary)",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-all",
+              }}>
+                {line.text}
+              </div>
+            ))}
+            {isRunning && (
+              <span style={{ color: "var(--text-success)", animation: "blink 1s step-end infinite" }}>▌</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── TopNav ── */
 function TopNav({
   activeTab,
@@ -1240,21 +1753,16 @@ function TopNav({
   theme,
   setTheme,
   showPostLaunch,
+  schedulerReady,
   launchControl,
-  workerMonitorAddress,
 }) {
   const tabs = [
     { id: "config", label: "Config" },
     { id: "deployment", label: "Deployment", postLaunch: true },
-    { id: "logs", label: "Scheduler Logs", postLaunch: true },
+    { id: "logs", label: "Scheduler Logs", requiresScheduler: true },
     // { id: "worker-monitor", label: "Worker Monitor", postLaunch: true },
-    {
-      id: "worker-monitor",
-      label: "Worker Monitor",
-      postLaunch: true,
-      isLink: true,
-      href: workerMonitorAddress,
-    },
+    { id: "worker-monitor", label: "Worker Monitor", requiresScheduler: true },
+    { id: "try-it", label: "Try it", requiresScheduler: true },
   ];
   return (
     <div
@@ -1274,7 +1782,7 @@ function TopNav({
       />
       <div style={{ display: "flex", flex: 1 }}>
         {tabs.map((t) => {
-          const disabled = t.postLaunch && !showPostLaunch;
+          const disabled = (t.postLaunch && !showPostLaunch) || (t.requiresScheduler && !schedulerReady);
           return t.isLink ? (
             <a
               key={t.id}
@@ -2263,10 +2771,10 @@ function App() {
         setTheme={setTheme}
         showPostLaunch={
           (phase !== "idle" && phase !== "error") ||
-          ["deployment", "logs", "worker-monitor"].includes(activeTab)
+          activeTab === "deployment"
         }
+        schedulerReady={phase === "ready" && !!provState?.scheduler_address}
         launchControl={launchControl}
-        workerMonitorAddress={phase === "ready" ? provState?.worker_monitor_address : undefined}
       />
 
       {/* ── Config Tab ── */}
@@ -3283,26 +3791,7 @@ function App() {
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                 {provState.worker_monitor_address}
               </span>
-              <a
-                href={provState.worker_monitor_address}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  fontSize: 10,
-                  color: "var(--text-accent)",
-                  border: "1px solid var(--border-accent)",
-                  borderRadius: 3,
-                  padding: "2px 8px",
-                  textDecoration: "none",
-                }}
-              >
-                Open in new tab
-              </a>
-              {workerMonitorReady ? (
-                <span style={{ fontSize: 10, color: "var(--text-success)" }}>
-                  server ready
-                </span>
-              ) : (
+              {!workerMonitorReady && (
                 <span style={{ fontSize: 10, color: "var(--text-dim)" }}>
                   waiting for server… {workerMonitorElapsed}s
                 </span>
@@ -3340,6 +3829,22 @@ function App() {
             )}
           </>
         )}
+      </div>
+
+      {/* ── Try it Tab ── */}
+      <div
+        style={{
+          display: activeTab === "try-it" ? "flex" : "none",
+          flex: 1,
+          flexDirection: "column",
+          minHeight: 0,
+        }}
+      >
+        <TryItTab
+          isActive={activeTab === "try-it"}
+          theme={theme}
+          schedulerAddress={phase === "ready" ? provState?.scheduler_address : ""}
+        />
       </div>
     </div>
   );

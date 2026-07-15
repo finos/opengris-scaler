@@ -22,6 +22,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WHEEL_DIR = REPO_ROOT / "docs" / "source" / "_static" / "wasm"
 CONFIG_PATH = REPO_ROOT / "docs" / "source" / "jupyter_lite_config.json"
+LAUNCHPAD_MANIFEST_PATH = WHEEL_DIR / "launchpad_wheels.json"
+
+# Pyodide built-in packages pre-loaded via pyodide.loadPackage() (faster than micropip).
+# Must match what patch_jupyterlite_kernel.py installs in the JupyterLite kernel.
+PYODIDE_PACKAGES = ["numpy", "scikit-learn", "micropip"]
 
 
 def main() -> None:
@@ -59,6 +64,11 @@ def main() -> None:
     print(f"Wrote {CONFIG_PATH.relative_to(REPO_ROOT)} with {len(urls)} wheels:")
     for url in urls:
         print(f"  - {url}")
+
+    basenames = [u.split("/")[-1] for u in urls]
+    manifest = {"pyodide_packages": PYODIDE_PACKAGES, "local_wheels": basenames}
+    LAUNCHPAD_MANIFEST_PATH.write_text(json.dumps(manifest, indent=4) + "\n")
+    print(f"Wrote {LAUNCHPAD_MANIFEST_PATH.relative_to(REPO_ROOT)}")
 
 
 if __name__ == "__main__":
