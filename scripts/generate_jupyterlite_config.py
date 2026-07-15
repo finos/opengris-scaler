@@ -19,21 +19,37 @@ Paths in the config are relative to ``docs/source/`` (the directory containing
 import json
 from pathlib import Path
 
+from jupyterlite_pyodide_kernel.constants import PYODIDE_VERSION
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WHEEL_DIR = REPO_ROOT / "docs" / "source" / "_static" / "wasm"
 CONFIG_PATH = REPO_ROOT / "docs" / "source" / "jupyter_lite_config.json"
 LAUNCHPAD_MANIFEST_PATH = WHEEL_DIR / "launchpad_wheels.json"
+LAUNCHPAD_PYODIDE_PATH = WHEEL_DIR / "launchpad_pyodide.json"
 
 # Pyodide built-in packages pre-loaded via pyodide.loadPackage() (faster than micropip).
 # Must match what patch_jupyterlite_kernel.py installs in the JupyterLite kernel.
 PYODIDE_PACKAGES = ["numpy", "scikit-learn", "micropip"]
 
 
-def main() -> None:
-    if not WHEEL_DIR.is_dir():
-        raise SystemExit(f"{WHEEL_DIR} does not exist. Run scripts/build_wasm.sh first.")
+def _write_pyodide_version() -> None:
+    """Emit the Pyodide runtime version the Launchpad Try-it tab should load.
 
-    urls = []
+    Written unconditionally (unlike the rest of this script) because the
+    Try-it tab needs it on the default PyPI-install path too, not just when a
+    local wasm build is staged below. jupyterlite-pyodide-kernel hardcodes the
+    exact Pyodide release its bundled kernel embeds as PYODIDE_VERSION, so
+    pinning that package's version in pyproject.toml is the only place a
+    Pyodide upgrade needs to happen -- this file and the Try-it tab's CDN URL
+    follow automatically.
+    """
+    WHEEL_DIR.mkdir(parents=True, exist_ok=True)
+    LAUNCHPAD_PYODIDE_PATH.write_text(json.dumps({"pyodide_version": PYODIDE_VERSION}, indent=4) + "\n")
+    print(f"Wrote {LAUNCHPAD_PYODIDE_PATH.relative_to(REPO_ROOT)} (pyodide {PYODIDE_VERSION})")
+
+
+def main() -> None:
+    _write_pyodide_version()
 
     # PEP 783: pyodide-build emits the PyEmscripten platform tag
     # ``pyemscripten_<year>_<patch>_wasm32`` (e.g. pyemscripten_2026_0_wasm32 for
@@ -44,7 +60,8 @@ def main() -> None:
     scaler_wheels = sorted(WHEEL_DIR.glob("opengris_scaler-*_wasm32.whl"))
     if not scaler_wheels:
         raise SystemExit(f"No opengris_scaler *_wasm32 wheel in {WHEEL_DIR}. " "Run scripts/build_wasm.sh.")
-    urls.append(f"_static/wasm/{scaler_wheels[-1].name}")
+
+    urls = [f"_static/wasm/{scaler_wheels[-1].name}"]
 
     # Wheels in this directory fall into two groups: real PyPI wheels
     # (cloudpickle, tblib, opengris-parfun, pargraph, bidict, pydot) and

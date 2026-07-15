@@ -1235,8 +1235,34 @@ with Client(address="${addr}") as client:
 
 /* ── Try it tab: Pyodide + Monaco + Jedi ── */
 
-const PYODIDE_CDN = "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.js";
-const MONACO_VS   = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
+// Last-known-good Pyodide version, used only if launchpad_pyodide.json (written at doc-build
+// time by scripts/generate_jupyterlite_config.py from jupyterlite-pyodide-kernel's pin in
+// pyproject.toml -- the actual source of truth) can't be fetched, e.g. when serving this
+// directory directly without a `make html` pass.
+const PYODIDE_VERSION_FALLBACK = "314.0.1";
+const pyodideCdnUrl = (version) => `https://cdn.jsdelivr.net/pyodide/v${version}/full/pyodide.js`;
+
+const MONACO_VS = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
+
+// localStorage keys: both are dev/advanced overrides for the Try-it tab, kept out of the
+// per-deployment scaler_state blob since they describe the browser sandbox, not the cluster.
+const TRYIT_PYODIDE_VERSION_KEY = "launchpad-tryit-pyodide-version";
+const TRYIT_REQUIREMENTS_KEY = "launchpad-tryit-requirements";
+const DEFAULT_TRYIT_REQUIREMENTS = "opengris-scaler";
+// jedi powers autocomplete/hover in this tab (registerJediCompletion / registerJediHover below) --
+// it's infra for the editor, not something the user's code depends on, so it's always installed
+// alongside whatever's in the requirements.txt pane rather than living in that editable text.
+const TRYIT_INFRA_PACKAGES = ["jedi"];
+
+const parseRequirements = (text) =>
+  text.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+
+const readLocalStorage = (key, fallback = "") => {
+  try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+};
+const writeLocalStorage = (key, value) => {
+  try { localStorage.setItem(key, value); } catch {}
+};
 
 function loadMonacoOnce() {
   if (window._monacoReady) return window._monacoReady;
@@ -1385,10 +1411,26 @@ function registerJediHover(pyodide) {
 function TryItTab({ isActive, theme, schedulerAddress }) {
   const [pyStatus, setPyStatus]   = useState("idle"); // idle | loading | ready | error
   const [pyError, setPyError]     = useState("");
-  const [noWheels, setNoWheels]   = useState(false);
+  const [usingLocalWheels, setUsingLocalWheels] = useState(false);
   const [output, setOutput]       = useState([]);
   const [isRunning, setIsRunning] = useState(false);
   const [monacoReady, setMonacoReady] = useState(false);
+
+  const [showRequirements, setShowRequirements] = useState(false);
+  const [requirementsInput, setRequirementsInput] = useState(
+    () => readLocalStorage(TRYIT_REQUIREMENTS_KEY, DEFAULT_TRYIT_REQUIREMENTS)
+  );
+  // The requirements string actually installed into the running interpreter (set once at boot,
+  // and again each time the Install button applies an edit) -- diffing against requirementsInput
+  // is how the pane knows to show "unsaved changes".
+  const [appliedRequirements, setAppliedRequirements] = useState(
+    () => readLocalStorage(TRYIT_REQUIREMENTS_KEY, DEFAULT_TRYIT_REQUIREMENTS)
+  );
+  const [installStatus, setInstallStatus] = useState("idle"); // idle | installing | error
+  const [installError, setInstallError] = useState("");
+  const [pyodideVersionInput, setPyodideVersionInput] = useState(
+    () => readLocalStorage(TRYIT_PYODIDE_VERSION_KEY, "")
+  );
 
   const editorContainerRef     = useRef(null);
   const editorRef              = useRef(null);
@@ -1398,6 +1440,8 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
   const hasInitEditor          = useRef(false);
   const isRunningRef           = useRef(false);
   const importTimerRef         = useRef(null);
+  const resolvedPyodideVersionRef         = useRef(null);
+  const resolvedPyodideVersionOverrideRef = useRef(false);
   const outputCallbackRef      = useRef(null);
   const interruptBufferRef     = useRef(null);
   const cancelledRef           = useRef(false);
@@ -1518,7 +1562,11 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
     monaco.editor.setTheme(theme === "light" ? "vs" : "vs-dark");
   }, [theme, monacoReady]);
 
-  // Pyodide init — once per page load, guarded at window level so remounts reuse the same instance
+  // Pyodide init -- once per page load, guarded at window level so remounts reuse the same instance.
+  // A version override (advanced field below) or a requirements.txt edit only takes effect on the
+  // *next* boot -- there's no in-place swap of an already-running Pyodide runtime -- so both are
+  // read fresh from localStorage here rather than from React state, and a version change prompts
+  // for a full page reload (see pyodideVersionDirty below) rather than pretending to hot-apply.
   useEffect(() => {
     if (!isActive || pyodideRef.current) return;
     setPyStatus("loading");
@@ -1526,19 +1574,39 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
       try {
         if (!window._pyodideReady) {
           window._pyodideReady = (async () => {
+            const versionOverride = readLocalStorage(TRYIT_PYODIDE_VERSION_KEY, "").trim();
+            let pyodideVersion = versionOverride;
+            if (!pyodideVersion) {
+              try {
+                const resp = await fetch("../_static/wasm/launchpad_pyodide.json");
+                if (resp.ok) {
+                  const data = await resp.json();
+                  if (data.pyodide_version) pyodideVersion = data.pyodide_version;
+                }
+              } catch {}
+            }
+            if (!pyodideVersion) pyodideVersion = PYODIDE_VERSION_FALLBACK;
+
             // Lazy-load the Pyodide bootstrap script (~10 MB, deferred until tab open)
             await new Promise((resolve, reject) => {
               if (window.loadPyodide) { resolve(); return; }
               const s = document.createElement("script");
-              s.src = PYODIDE_CDN;
+              s.src = pyodideCdnUrl(pyodideVersion);
               s.onload = resolve;
-              s.onerror = () => reject(new Error("Failed to load Pyodide from CDN"));
+              s.onerror = () => reject(new Error(`Failed to load Pyodide ${pyodideVersion} from CDN`));
               document.head.appendChild(s);
             });
 
             const pyodide = await window.loadPyodide();
+            pyodide._pyodideVersion = pyodideVersion;
+            pyodide._pyodideVersionOverride = !!versionOverride;
+            await pyodide.loadPackage(["micropip"]);
 
-            // Try fetching the wheel manifest written by generate_jupyterlite_config.py
+            // Dev override: if scripts/build_wasm.sh has staged a local wasm
+            // wheel build (see generate_jupyterlite_config.py), prefer it so
+            // in-progress wasm-client changes can be tried here without
+            // publishing to PyPI first. The requirements.txt pane is ignored
+            // in this mode -- the local build is already a fixed set of wheels.
             let manifest = null;
             try {
               const resp = await fetch("../_static/wasm/launchpad_wheels.json");
@@ -1546,7 +1614,7 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
             } catch {}
 
             if (manifest) {
-              await pyodide.loadPackage(["micropip"]);
+              pyodide._usingLocalWheels = true;
               const base = new URL("../_static/wasm/", window.location.href).href;
               pyodide.globals.set(
                 "_wheel_urls",
@@ -1557,11 +1625,13 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
                 "await micropip.install(list(_wheel_urls) + ['jedi'])"
               );
             } else {
-              // No local wheels: plain Python REPL only, scaler unavailable
-              pyodide._noWheels = true;
-              await pyodide.loadPackage(["micropip"]);
+              // Default path: install from PyPI using the requirements.txt pane's contents,
+              // plus the fixed infra packages (jedi) the editor itself needs.
+              const requirements = parseRequirements(readLocalStorage(TRYIT_REQUIREMENTS_KEY, DEFAULT_TRYIT_REQUIREMENTS));
+              pyodide.globals.set("_requirements", pyodide.toPy([...requirements, ...TRYIT_INFRA_PACKAGES]));
               await pyodide.runPythonAsync(
-                "import micropip; await micropip.install('jedi')"
+                "import micropip\n" +
+                "await micropip.install(list(_requirements))"
               );
             }
 
@@ -1571,7 +1641,9 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
 
         const pyodide = await window._pyodideReady;
         pyodideRef.current = pyodide;
-        if (pyodide._noWheels) setNoWheels(true);
+        resolvedPyodideVersionRef.current = pyodide._pyodideVersion;
+        resolvedPyodideVersionOverrideRef.current = !!pyodide._pyodideVersionOverride;
+        if (pyodide._usingLocalWheels) setUsingLocalWheels(true);
         pyodide.setStdout({ batched: (text) => outputCallbackRef.current?.(text, "info") });
         pyodide.setStderr({ batched: (text) => outputCallbackRef.current?.(text, "err")  });
         try {
@@ -1587,6 +1659,43 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
       }
     })();
   }, [isActive]);
+
+  // Re-install requirements.txt into the already-running interpreter (unlike the Pyodide version,
+  // packages *can* be changed live -- no reload needed).
+  const installRequirements = useCallback(async () => {
+    if (!pyodideRef.current || usingLocalWheels) return;
+    setInstallStatus("installing");
+    setInstallError("");
+    try {
+      const pyodide = pyodideRef.current;
+      const requirements = parseRequirements(requirementsInput);
+      pyodide.globals.set("_requirements", pyodide.toPy([...requirements, ...TRYIT_INFRA_PACKAGES]));
+      await pyodide.runPythonAsync(
+        "import micropip\n" +
+        "await micropip.install(list(_requirements))"
+      );
+      writeLocalStorage(TRYIT_REQUIREMENTS_KEY, requirementsInput);
+      setAppliedRequirements(requirementsInput);
+      setInstallStatus("idle");
+    } catch (err) {
+      setInstallError(String(err));
+      setInstallStatus("error");
+    }
+  }, [requirementsInput, usingLocalWheels]);
+
+  const requirementsDirty = requirementsInput.trim() !== appliedRequirements.trim();
+
+  const pyodideVersionDirty =
+    resolvedPyodideVersionRef.current !== null &&
+    (pyodideVersionInput.trim()
+      ? pyodideVersionInput.trim() !== resolvedPyodideVersionRef.current
+      : resolvedPyodideVersionOverrideRef.current);
+
+  // Persisted immediately (unlike requirements.txt, which needs its own Install click) since the
+  // only way this ever takes effect is a page reload -- see the "Reload to apply" button below.
+  useEffect(() => {
+    writeLocalStorage(TRYIT_PYODIDE_VERSION_KEY, pyodideVersionInput.trim());
+  }, [pyodideVersionInput]);
 
   // Register Jedi completions and hover once both Monaco and Pyodide are ready,
   // and eagerly run the editor's import statements so autocomplete works immediately.
@@ -1619,9 +1728,14 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
     return (
       <span style={{ fontSize: 11, color: "var(--text-success)" }}>
         ● ready
-        {noWheels && (
-          <span style={{ color: "var(--text-warning)", marginLeft: 6 }}>
-            (wasm wheels not built — import scaler will fail)
+        {usingLocalWheels && (
+          <span style={{ color: "var(--text-muted)", marginLeft: 6 }}>
+            (local dev wasm build)
+          </span>
+        )}
+        {IS_ADVANCED && resolvedPyodideVersionRef.current && (
+          <span style={{ color: "var(--text-dim)", marginLeft: 6 }}>
+            pyodide v{resolvedPyodideVersionRef.current}
           </span>
         )}
       </span>
@@ -1672,9 +1786,152 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
         >
           Clear output
         </button>
+        <button
+          onClick={() => setShowRequirements((v) => !v)}
+          style={{
+            padding: "5px 10px",
+            background: showRequirements ? "var(--bg-surface)" : "transparent",
+            border: "1px solid var(--border-accent)",
+            borderRadius: 3,
+            color: (requirementsDirty || pyodideVersionDirty) ? "var(--text-warning)" : "var(--text-muted)",
+            fontFamily: "inherit", fontSize: 11, cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          Requirements{(requirementsDirty || pyodideVersionDirty) ? " •" : ""}
+        </button>
         <div style={{ flex: 1 }} />
         {statusNode}
       </div>
+
+      {/* Requirements panel */}
+      {showRequirements && (
+        <div style={{
+          padding: "10px 16px",
+          background: "var(--bg-panel)",
+          borderBottom: "1px solid var(--border-accent)",
+          flexShrink: 0,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+            <span style={{ fontSize: 11, color: "var(--text-label)" }}>requirements.txt</span>
+            <HelpTip text={
+              "Packages installed via micropip in this browser session.\n" +
+              "Must be pure Python, or a wasm wheel built for the exact Pyodide/Emscripten build " +
+              "currently loaded (see Pyodide version below) -- micropip rejects any other build " +
+              "with a clear error rather than silently falling back.\n" +
+              "jedi (autocomplete/hover) is always installed alongside this list and doesn't need " +
+              "to be listed here."
+            } />
+            <div style={{ flex: 1 }} />
+            {usingLocalWheels ? (
+              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                Ignored while using a local dev wasm build
+              </span>
+            ) : (
+              <>
+                {installStatus === "installing" && (
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Installing…</span>
+                )}
+                <button
+                  onClick={installRequirements}
+                  disabled={!requirementsDirty || installStatus === "installing" || pyStatus !== "ready"}
+                  style={{
+                    padding: "4px 12px",
+                    background: requirementsDirty && pyStatus === "ready" ? "var(--bg-surface)" : "transparent",
+                    border: "1px solid var(--border-accent)",
+                    borderRadius: 3,
+                    color: requirementsDirty && pyStatus === "ready" ? "var(--text-primary)" : "var(--text-dim)",
+                    fontFamily: "inherit", fontSize: 11, fontWeight: 600,
+                    cursor: requirementsDirty && pyStatus === "ready" ? "pointer" : "default",
+                  }}
+                >
+                  Install
+                </button>
+              </>
+            )}
+          </div>
+          <textarea
+            value={requirementsInput}
+            onChange={(e) => setRequirementsInput(e.target.value)}
+            disabled={usingLocalWheels}
+            spellCheck={false}
+            style={{
+              width: "100%",
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border-accent)",
+              borderRadius: 3,
+              padding: "7px 10px",
+              color: "var(--text-primary)",
+              fontFamily: "inherit",
+              fontSize: 11,
+              outline: "none",
+              resize: "vertical",
+              minHeight: 60,
+              lineHeight: 1.6,
+            }}
+          />
+          {installStatus === "error" && (
+            <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-danger)", whiteSpace: "pre-wrap" }}>
+              {installError}
+            </div>
+          )}
+
+          {IS_ADVANCED && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                <span style={{ fontSize: 11, color: "var(--text-label)" }}>Pyodide version</span>
+                <HelpTip text={
+                  "The Pyodide/Emscripten build loaded in this tab. Must exactly match the build any " +
+                  "wasm wheel in requirements.txt was built for -- there is no forward/backward " +
+                  "compatibility. Blank uses the version generated from pyproject.toml's " +
+                  "jupyterlite-pyodide-kernel pin. Changing this only takes effect after a reload."
+                } />
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  type="text"
+                  value={pyodideVersionInput}
+                  onChange={(e) => setPyodideVersionInput(e.target.value)}
+                  placeholder={resolvedPyodideVersionRef.current || PYODIDE_VERSION_FALLBACK}
+                  spellCheck={false}
+                  style={{
+                    width: 140,
+                    background: "var(--bg-surface)",
+                    border: "1px solid var(--border-accent)",
+                    borderRadius: 3,
+                    padding: "6px 10px",
+                    color: "var(--text-primary)",
+                    fontFamily: "inherit",
+                    fontSize: 11,
+                    outline: "none",
+                  }}
+                />
+                {pyodideVersionDirty && (
+                  <>
+                    <span style={{ fontSize: 10, color: "var(--text-warning)" }}>
+                      Requires a reload to apply
+                    </span>
+                    <button
+                      onClick={() => window.location.reload()}
+                      style={{
+                        padding: "4px 12px",
+                        background: "var(--bg-surface)",
+                        border: "1px solid var(--border-accent)",
+                        borderRadius: 3,
+                        color: "var(--text-primary)",
+                        fontFamily: "inherit", fontSize: 11, fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Reload tab
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Editor | Output split */}
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
