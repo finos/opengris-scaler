@@ -167,19 +167,19 @@ if [ "$1" == "capnp" ]; then
                 -DWITH_OPENSSL=OFF \
                 -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
                 -DCMAKE_C_FLAGS="-fPIC -fwasm-exceptions -sSUPPORT_LONGJMP -fno-merge-all-constants" \
-                -DCMAKE_CXX_FLAGS="-fPIC -fwasm-exceptions -sSUPPORT_LONGJMP -fno-merge-all-constants"
-            cmake --build build-wasm --config Release -j "${NUM_CORES}"
+                -DCMAKE_CXX_FLAGS="-fPIC -fwasm-exceptions -sSUPPORT_LONGJMP -fno-merge-all-constants" >/dev/null
+            cmake --build build-wasm --config Release -j "${NUM_CORES}" >/dev/null
         else
             cd "${THIRD_PARTY_COMPILED}/${CAPNP_FOLDER_NAME}"
-            ./configure --prefix="${PREFIX}" CXXFLAGS="${CXXFLAGS} -I${PREFIX}/include" LDFLAGS="${LDFLAGS} -L${PREFIX}/lib -Wl,-rpath,${PREFIX}/lib"
-            make -j "${NUM_CORES}"
+            ./configure --prefix="${PREFIX}" CXXFLAGS="${CXXFLAGS} -I${PREFIX}/include" LDFLAGS="${LDFLAGS} -L${PREFIX}/lib -Wl,-rpath,${PREFIX}/lib" >/dev/null
+            make -j "${NUM_CORES}" >/dev/null
         fi
         echo "Compiled capnp to ${THIRD_PARTY_COMPILED}/${CAPNP_FOLDER_NAME}"
 
     elif [ "$2" == "install" ]; then
         cd "${THIRD_PARTY_COMPILED}/${CAPNP_FOLDER_NAME}"
         if [[ "$TARGET" == "wasm" ]]; then
-            cmake --install build-wasm
+            cmake --install build-wasm >/dev/null
             # CapnProtoTargets.cmake imports CapnProto::capnp_tool as
             # ${prefix}/bin/<tool>.js (Pyodide convention). The tools can't run
             # in wasm, so symlink the host-installed binaries instead.
@@ -193,7 +193,7 @@ if [ "$1" == "capnp" ]; then
                 ln -sf "${host_tool}" "${PREFIX}/bin/${tool}.js"
             done
         else
-            make install
+            make install >/dev/null
         fi
         echo "Installed capnp into ${PREFIX}"
 
@@ -226,17 +226,17 @@ elif [ "$1" == "libuv" ]; then
                 -DLIBUV_BUILD_SHARED=OFF \
                 -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
                 -DCMAKE_C_FLAGS="-fPIC -fwasm-exceptions -sSUPPORT_LONGJMP -fno-merge-all-constants" \
-                -DCMAKE_CXX_FLAGS="-fPIC -fwasm-exceptions -sSUPPORT_LONGJMP -fno-merge-all-constants"
+                -DCMAKE_CXX_FLAGS="-fPIC -fwasm-exceptions -sSUPPORT_LONGJMP -fno-merge-all-constants" >/dev/null
         else
             cd "${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}"
-            cmake -B build -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DBUILD_TESTING=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+            cmake -B build -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DBUILD_TESTING=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON >/dev/null
         fi
-        cmake --build build --config Release -j "${NUM_CORES}"
+        cmake --build build --config Release -j "${NUM_CORES}" >/dev/null
         echo "Compiled libuv to ${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}"
 
     elif [ "$2" == "install" ]; then
         cd "${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}"
-        cmake --install build
+        cmake --install build >/dev/null
         echo "Installed libuv into ${PREFIX}"
 
     else
@@ -258,13 +258,13 @@ elif [ "$1" == "openssl" ]; then
         extract_tar_gz "${OPENSSL_FOLDER_NAME}"
 
         cd "${THIRD_PARTY_COMPILED}/${OPENSSL_FOLDER_NAME}"
-        ./config --prefix="${PREFIX}" --libdir=lib no-tests no-shared
-        make -j "${NUM_CORES}"
+        ./config --prefix="${PREFIX}" --libdir=lib no-tests no-shared >/dev/null
+        make -j "${NUM_CORES}" >/dev/null
         echo "Compiled OpenSSL to ${THIRD_PARTY_COMPILED}/${OPENSSL_FOLDER_NAME}"
 
     elif [ "$2" == "install" ]; then
         cd "${THIRD_PARTY_COMPILED}/${OPENSSL_FOLDER_NAME}"
-        make install_sw
+        make install_sw >/dev/null
         echo "Installed OpenSSL into ${PREFIX}"
 
     else
