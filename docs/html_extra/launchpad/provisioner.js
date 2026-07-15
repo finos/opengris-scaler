@@ -259,8 +259,8 @@ function buildSchedulerConfigToml(cfg, addr) {
     policySection.policy_content = TOML.multiline.basic(policyLines + "\n");
   }
 
-  // wss:// binds (scheduler + object storage server) need a certificate; connecting components
-  // (worker managers, GUI) reach them over wss:// with no credentials of their own.
+  // wss:// binds (scheduler + object storage server + GUI's HTTP server) need a certificate;
+  // connecting components (worker managers) reach them over wss:// with no credentials of their own.
   var tlsSection = {};
   if (proto === "wss") {
     tlsSection = { tls_cert: ctx.tlsCertPath, tls_key: ctx.tlsKeyPath };
@@ -282,10 +282,13 @@ function buildSchedulerConfigToml(cfg, addr) {
   });
   if (workerManagers.length > 0) root.worker_manager = workerManagers;
 
-  root.gui = TOML.Section({
+  // The GUI's own HTTP server is a bind, not a connection, so like the scheduler/object storage
+  // binds above it needs the certificate (not just wss:// credentials to reach them with) whenever
+  // one is available -- otherwise browsers loading this https:// page can't reach it (mixed content).
+  root.gui = TOML.Section(Object.assign({
     monitor_address: `${proto}://127.0.0.1:${sp + 2}${wsSlash}`,
     gui_address: "0.0.0.0:50001",
-  });
+  }, tlsSection));
 
   return TOML.stringify(root, {
     newline: "\n",
@@ -1119,7 +1122,10 @@ async function provision(
     partial.private_ip = privateIp;
     partial.vpc_id = vpcId;
     partial.subnet_id = subnetId;
-    partial.worker_monitor_address = "http://" + publicIp + ":50001";
+    // The GUI's HTTP server only gets a TLS cert (via certbot) when wss:// is used -- see the
+    // matching comment near the "9. Poll for scheduler readiness" step below for why this matters:
+    // this page is loaded over https:// and browsers block plain http:// as mixed content.
+    partial.worker_monitor_address = (cfg.transport === "wss" ? "https://" : "http://") + publicIp + ":50001";
     addLog("  ✓ Instance running", "ok");
     addLog("  → Public IP:  " + publicIp, "info");
     addLog("  → Private IP: " + privateIp, "info");
@@ -1215,7 +1221,7 @@ async function provision(
       ":" +
       (cfg.schedulerPort + 2) +
       addrSlash,
-    worker_monitor_address: "http://" + publicIp + ":50001",
+    worker_monitor_address: (cfg.transport === "wss" ? "https://" : "http://") + publicIp + ":50001",
     iam: iamState,
     worker_name: "scaler-worker-" + suffix,
   };
