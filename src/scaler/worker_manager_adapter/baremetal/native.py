@@ -126,8 +126,9 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
         for worker in to_stop:
             if sys.platform == "win32":
                 # Windows os.kill with SIGINT only works for processes attached to the same console.
-                # TerminateProcess is forceful: the worker's __destroy/__graceful_shutdown handlers
-                # do not run, so the scheduler will time out the worker on its own.
+                # TerminateProcess is forceful: the worker's __destroy handler (which sends
+                # WorkerDisconnectNotification before exiting) never runs, so the scheduler
+                # will time out the worker on its own.
                 psutil.Process(worker.pid).terminate()
             else:
                 os.kill(worker.pid, signal.SIGINT)

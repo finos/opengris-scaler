@@ -148,7 +148,9 @@ void MessageConnection::shutdownClient() noexcept
         UV_EXIT_ON_ERROR(result);
     };
 
-    UV_EXIT_ON_ERROR(clientPtr->shutdown(std::move(shutdownCallback)));
+    auto shutdownResult = clientPtr->shutdown(std::move(shutdownCallback));
+    if (!shutdownResult.has_value() && !isConnectionError(shutdownResult.error()))
+        UV_EXIT_ON_ERROR(shutdownResult);
 }
 
 void MessageConnection::initialize() noexcept

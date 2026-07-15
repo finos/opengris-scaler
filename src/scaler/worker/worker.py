@@ -16,18 +16,17 @@ from scaler.io.mixins import (
     ConnectorRemoteType,
     NetworkBackend,
 )
-from scaler.io.network_backends import YMQNetworkBackend, ZMQNetworkBackend, get_network_backend_from_env
+from scaler.io.network_backends import get_network_backend_from_env
 from scaler.protocol.capnp import (
     BaseMessage,
     ClientDisconnect,
-    DisconnectRequest,
-    DisconnectResponse,
     ObjectInstruction,
     ProcessorInitialized,
     Task,
     TaskCancel,
     TaskLog,
     TaskResult,
+    WorkerDisconnectNotification,
     WorkerHeartbeatEcho,
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
@@ -214,11 +213,6 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             logger.error(f"Worker received invalid ClientDisconnect type, ignoring {message=}")
             return
 
-        if isinstance(message, DisconnectResponse):
-            logger.error("Worker initiated DisconnectRequest got replied")
-            self._task.cancel()
-            return
-
         raise TypeError(f"Unknown {message=}")
 
     async def __on_receive_internal(self, processor_id_bytes: bytes, message: BaseMessage):
@@ -292,36 +286,27 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         except Exception as e:
             logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
 
-        if isinstance(self._backend, ZMQNetworkBackend):
-            await self.__graceful_shutdown()
+        try:
+            await self._connector_external.send(WorkerDisconnectNotification(worker=self.identity))
+        except ymq.YMQException as e:
+            if e.code != ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
+                raise
+        finally:
+            self._connector_external.destroy()
+            self._processor_manager.destroy("quit")
+            self._binder_internal.destroy()
+            self._connector_storage.destroy()
 
-        self._connector_external.destroy()
-        self._processor_manager.destroy("quit")
-        self._binder_internal.destroy()
-        self._connector_storage.destroy()
+            if self._address_internal.type == SocketType.ipc and not self._address_internal.host.startswith(
+                "\\\\.\\pipe\\"
+            ):
+                # Windows named pipes have no filesystem entry to remove; only unlink Unix-domain-socket paths.
+                pathlib.Path(self._address_internal.host).unlink(missing_ok=True)
 
-        if self._address_internal.type == SocketType.ipc and not self._address_internal.host.startswith(
-            "\\\\.\\pipe\\"
-        ):
-            # Windows named pipes have no filesystem entry to remove; only unlink Unix-domain-socket paths.
-            pathlib.Path(self._address_internal.host).unlink(missing_ok=True)
-
-        logger.info(f"{self.identity!r}: quit")
+            logger.info(f"{self.identity!r}: quit")
 
     def __register_signal(self):
-        if isinstance(self._backend, ZMQNetworkBackend):
-            install_async_shutdown_handler(self._loop, self.__destroy)
-        elif isinstance(self._backend, YMQNetworkBackend):
-            install_async_shutdown_handler(self._loop, self.__schedule_graceful_shutdown)
-
-    def __schedule_graceful_shutdown(self) -> None:
-        asyncio.ensure_future(self.__graceful_shutdown())
-
-    async def __graceful_shutdown(self):
-        try:
-            await self._connector_external.send(DisconnectRequest(worker=self.identity))
-        except ymq.YMQException:
-            pass
+        install_async_shutdown_handler(self._loop, self.__destroy)
 
     def __destroy(self):
         self._task.cancel()
