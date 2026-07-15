@@ -1434,6 +1434,7 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
 
   const editorContainerRef     = useRef(null);
   const editorRef              = useRef(null);
+  const editorAddressRef       = useRef(null); // scheduler address currently reflected in the editor
   const pyodideRef             = useRef(null);
   const completionDisposable   = useRef(null);
   const hoverDisposable        = useRef(null);
@@ -1514,6 +1515,7 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
     hasInitEditor.current = true;
     loadMonacoOnce().then(() => {
       if (!editorContainerRef.current) return;
+      editorAddressRef.current = schedulerAddress;
       editorRef.current = monaco.editor.create(editorContainerRef.current, {
         value: defaultCode,
         language: "python",
@@ -1541,6 +1543,17 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
       setMonacoReady(true);
     });
   }, [isActive]);
+
+  // A new deployment (destroy + relaunch) hands out a new scheduler address -- overwrite the
+  // editor with the default snippet again so SCHEDULER_ADDRESS stays accurate, rather than
+  // leaving it pointed at a cluster that no longer exists. Only fires on an actual change, so it
+  // doesn't clobber in-progress edits from switching tabs or re-rendering within one deployment.
+  useEffect(() => {
+    if (!editorRef.current || !schedulerAddress) return;
+    if (editorAddressRef.current === schedulerAddress) return;
+    editorAddressRef.current = schedulerAddress;
+    editorRef.current.setValue(defaultCode);
+  }, [schedulerAddress]);
 
   // Re-measure editor when tab becomes visible again (display:none collapses dimensions)
   useEffect(() => {
