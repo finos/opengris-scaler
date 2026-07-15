@@ -1,4 +1,4 @@
-const { useState, useEffect, useCallback, useRef } = React;
+const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
 const IS_ADVANCED = new URLSearchParams(window.location.search).has('advanced');
 const IS_DEV = new URLSearchParams(window.location.search).has('dev');
@@ -1244,18 +1244,39 @@ const pyodideCdnUrl = (version) => `https://cdn.jsdelivr.net/pyodide/v${version}
 
 const MONACO_VS = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
 
-// localStorage keys: both are dev/advanced overrides for the Try-it tab, kept out of the
-// per-deployment scaler_state blob since they describe the browser sandbox, not the cluster.
+// localStorage key: a dev/advanced override for the Try-it tab, kept out of the per-deployment
+// scaler_state blob since it describes the browser sandbox, not the cluster.
 const TRYIT_PYODIDE_VERSION_KEY = "launchpad-tryit-pyodide-version";
-const TRYIT_REQUIREMENTS_KEY = "launchpad-tryit-requirements";
-const DEFAULT_TRYIT_REQUIREMENTS = "opengris-scaler";
 // jedi powers autocomplete/hover in this tab (registerJediCompletion / registerJediHover below) --
 // it's infra for the editor, not something the user's code depends on, so it's always installed
-// alongside whatever's in the requirements.txt pane rather than living in that editable text.
+// alongside whatever the worker managers' requirements.txt union resolves to.
 const TRYIT_INFRA_PACKAGES = ["jedi"];
 
 const parseRequirements = (text) =>
   text.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+
+// Package name portion of a requirement line, stripped of extras/version specifiers/markers, used
+// to de-duplicate the union below (e.g. "opengris-scaler[all]>=1.0" -> "opengris-scaler").
+const requirementPackageName = (line) => line.split(/[=<>!~;\[\s]/, 1)[0].toLowerCase();
+
+// Tasks the client submits can land on any worker manager in the cluster, so a package the client
+// imports has to be installed on every worker manager that might run it -- otherwise the worker
+// fails to unpickle/execute the task. We union every worker manager's requirements.txt so the
+// client has everything the cluster can possibly provide, de-duplicating by package name and
+// keeping the first-seen spec.
+const unionWorkerRequirements = (workerManagers) => {
+  const seen = new Set();
+  const lines = [];
+  for (const wm of workerManagers) {
+    for (const line of parseRequirements(wm.requirements || "")) {
+      const name = requirementPackageName(line);
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      lines.push(line);
+    }
+  }
+  return lines.join("\n");
+};
 
 const readLocalStorage = (key, fallback = "") => {
   try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
@@ -1408,7 +1429,7 @@ function registerJediHover(pyodide) {
   });
 }
 
-function TryItTab({ isActive, theme, schedulerAddress }) {
+function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
   const [pyStatus, setPyStatus]   = useState("idle"); // idle | loading | ready | error
   const [pyError, setPyError]     = useState("");
   const [usingLocalWheels, setUsingLocalWheels] = useState(false);
@@ -1417,17 +1438,13 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
   const [monacoReady, setMonacoReady] = useState(false);
 
   const [showRequirements, setShowRequirements] = useState(false);
-  const [requirementsInput, setRequirementsInput] = useState(
-    () => readLocalStorage(TRYIT_REQUIREMENTS_KEY, DEFAULT_TRYIT_REQUIREMENTS)
-  );
-  // The requirements string actually installed into the running interpreter (set once at boot,
-  // and again each time the Install button applies an edit) -- diffing against requirementsInput
-  // is how the pane knows to show "unsaved changes".
-  const [appliedRequirements, setAppliedRequirements] = useState(
-    () => readLocalStorage(TRYIT_REQUIREMENTS_KEY, DEFAULT_TRYIT_REQUIREMENTS)
-  );
-  const [installStatus, setInstallStatus] = useState("idle"); // idle | installing | error
-  const [installError, setInstallError] = useState("");
+  // The requirements union actually installed into the running interpreter. Frozen at the point
+  // the deploy's scheduler address first appears (boot) or changes (redeploy) -- edits to a
+  // worker manager's requirements.txt back in the Setup tab only take effect on the next deploy,
+  // they never live-sync into an already-running interpreter.
+  const [appliedRequirements, setAppliedRequirements] = useState("");
+  const [syncStatus, setSyncStatus] = useState("idle"); // idle | syncing | error
+  const [syncError, setSyncError] = useState("");
   const [pyodideVersionInput, setPyodideVersionInput] = useState(
     () => readLocalStorage(TRYIT_PYODIDE_VERSION_KEY, "")
   );
@@ -1548,11 +1565,45 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
   // editor with the default snippet again so SCHEDULER_ADDRESS stays accurate, rather than
   // leaving it pointed at a cluster that no longer exists. Only fires on an actual change, so it
   // doesn't clobber in-progress edits from switching tabs or re-rendering within one deployment.
+  //
+  // This is also the one place we pick up the worker managers' requirements.txt union: it's
+  // frozen for the lifetime of a deployment, the same as the address, so re-installing here
+  // (rather than watching workerRequirements directly) means edits made back in the Setup tab
+  // don't affect an already-running interpreter -- only the requirements in effect at the moment
+  // a deploy's address showed up here do. Deliberately reads workerRequirements from the closure
+  // instead of listing it as a dependency, for that same reason.
   useEffect(() => {
     if (!editorRef.current || !schedulerAddress) return;
     if (editorAddressRef.current === schedulerAddress) return;
     editorAddressRef.current = schedulerAddress;
     editorRef.current.setValue(defaultCode);
+
+    if (!pyodideRef.current || usingLocalWheels) return;
+    const requirementsText = workerRequirements || "";
+    if (requirementsText.trim() === appliedRequirements.trim()) return;
+    let cancelled = false;
+    setSyncStatus("syncing");
+    setSyncError("");
+    (async () => {
+      try {
+        const pyodide = pyodideRef.current;
+        const requirements = parseRequirements(requirementsText);
+        pyodide.globals.set("_requirements", pyodide.toPy([...requirements, ...TRYIT_INFRA_PACKAGES]));
+        await pyodide.runPythonAsync(
+          "import micropip\n" +
+          "await micropip.install(list(_requirements))"
+        );
+        if (cancelled) return;
+        pyodide._installedRequirements = requirementsText;
+        setAppliedRequirements(requirementsText);
+        setSyncStatus("idle");
+      } catch (err) {
+        if (cancelled) return;
+        setSyncError(String(err));
+        setSyncStatus("error");
+      }
+    })();
+    return () => { cancelled = true; };
   }, [schedulerAddress]);
 
   // Re-measure editor when tab becomes visible again (display:none collapses dimensions)
@@ -1640,14 +1691,16 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
                 "await micropip.install(list(_wheel_urls) + ['jedi'])"
               );
             } else {
-              // Default path: install from PyPI using the requirements.txt pane's contents,
+              // Default path: install the union of every worker manager's requirements.txt,
               // plus the fixed infra packages (jedi) the editor itself needs.
-              const requirements = parseRequirements(readLocalStorage(TRYIT_REQUIREMENTS_KEY, DEFAULT_TRYIT_REQUIREMENTS));
+              const requirementsText = workerRequirements || "";
+              const requirements = parseRequirements(requirementsText);
               pyodide.globals.set("_requirements", pyodide.toPy([...requirements, ...TRYIT_INFRA_PACKAGES]));
               await pyodide.runPythonAsync(
                 "import micropip\n" +
                 "await micropip.install(list(_requirements))"
               );
+              pyodide._installedRequirements = requirementsText;
             }
 
             return pyodide;
@@ -1659,6 +1712,7 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
         resolvedPyodideVersionRef.current = pyodide._pyodideVersion;
         resolvedPyodideVersionOverrideRef.current = !!pyodide._pyodideVersionOverride;
         if (pyodide._usingLocalWheels) setUsingLocalWheels(true);
+        else setAppliedRequirements(pyodide._installedRequirements || "");
         pyodide.setStdout({ batched: (text) => outputCallbackRef.current?.(text, "info") });
         pyodide.setStderr({ batched: (text) => outputCallbackRef.current?.(text, "err")  });
         try {
@@ -1674,31 +1728,6 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
       }
     })();
   }, [isActive]);
-
-  // Re-install requirements.txt into the already-running interpreter (unlike the Pyodide version,
-  // packages *can* be changed live -- no reload needed).
-  const installRequirements = useCallback(async () => {
-    if (!pyodideRef.current || usingLocalWheels) return;
-    setInstallStatus("installing");
-    setInstallError("");
-    try {
-      const pyodide = pyodideRef.current;
-      const requirements = parseRequirements(requirementsInput);
-      pyodide.globals.set("_requirements", pyodide.toPy([...requirements, ...TRYIT_INFRA_PACKAGES]));
-      await pyodide.runPythonAsync(
-        "import micropip\n" +
-        "await micropip.install(list(_requirements))"
-      );
-      writeLocalStorage(TRYIT_REQUIREMENTS_KEY, requirementsInput);
-      setAppliedRequirements(requirementsInput);
-      setInstallStatus("idle");
-    } catch (err) {
-      setInstallError(String(err));
-      setInstallStatus("error");
-    }
-  }, [requirementsInput, usingLocalWheels]);
-
-  const requirementsDirty = requirementsInput.trim() !== appliedRequirements.trim();
 
   const pyodideVersionDirty =
     resolvedPyodideVersionRef.current !== null &&
@@ -1808,12 +1837,12 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
             background: showRequirements ? "var(--bg-surface)" : "transparent",
             border: "1px solid var(--border-accent)",
             borderRadius: 3,
-            color: (requirementsDirty || pyodideVersionDirty) ? "var(--text-warning)" : "var(--text-muted)",
+            color: pyodideVersionDirty ? "var(--text-warning)" : "var(--text-muted)",
             fontFamily: "inherit", fontSize: 11, cursor: "pointer",
             flexShrink: 0,
           }}
         >
-          Requirements{(requirementsDirty || pyodideVersionDirty) ? " •" : ""}
+          Requirements{pyodideVersionDirty ? " •" : ""}
         </button>
         <div style={{ flex: 1 }} />
         {statusNode}
@@ -1830,12 +1859,17 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
             <span style={{ fontSize: 11, color: "var(--text-label)" }}>requirements.txt</span>
             <HelpTip text={
-              "Packages installed via micropip in this browser session.\n" +
+              "Packages installed via micropip in this browser session, derived automatically " +
+              "from the union of every worker manager's requirements.txt (Setup tab) -- the " +
+              "client can't usefully depend on a package the workers don't also have, since a " +
+              "submitted task could land on any of them.\n" +
+              "Frozen for the lifetime of this deployment: editing a worker manager's " +
+              "requirements.txt after deploying only takes effect on the next deploy.\n" +
               "Must be pure Python, or a wasm wheel built for the exact Pyodide/Emscripten build " +
               "currently loaded (see Pyodide version below) -- micropip rejects any other build " +
               "with a clear error rather than silently falling back.\n" +
               "jedi (autocomplete/hover) is always installed alongside this list and doesn't need " +
-              "to be listed here."
+              "to be listed in any worker manager's requirements.txt."
             } />
             <div style={{ flex: 1 }} />
             {usingLocalWheels ? (
@@ -1843,51 +1877,31 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
                 Ignored while using a local dev wasm build
               </span>
             ) : (
-              <>
-                {installStatus === "installing" && (
-                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Installing…</span>
-                )}
-                <button
-                  onClick={installRequirements}
-                  disabled={!requirementsDirty || installStatus === "installing" || pyStatus !== "ready"}
-                  style={{
-                    padding: "4px 12px",
-                    background: requirementsDirty && pyStatus === "ready" ? "var(--bg-surface)" : "transparent",
-                    border: "1px solid var(--border-accent)",
-                    borderRadius: 3,
-                    color: requirementsDirty && pyStatus === "ready" ? "var(--text-primary)" : "var(--text-dim)",
-                    fontFamily: "inherit", fontSize: 11, fontWeight: 600,
-                    cursor: requirementsDirty && pyStatus === "ready" ? "pointer" : "default",
-                  }}
-                >
-                  Install
-                </button>
-              </>
+              syncStatus === "syncing" && (
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Syncing…</span>
+              )
             )}
           </div>
-          <textarea
-            value={requirementsInput}
-            onChange={(e) => setRequirementsInput(e.target.value)}
-            disabled={usingLocalWheels}
-            spellCheck={false}
-            style={{
-              width: "100%",
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border-accent)",
-              borderRadius: 3,
-              padding: "7px 10px",
-              color: "var(--text-primary)",
-              fontFamily: "inherit",
-              fontSize: 11,
-              outline: "none",
-              resize: "vertical",
-              minHeight: 60,
-              lineHeight: 1.6,
-            }}
-          />
-          {installStatus === "error" && (
+          <pre style={{
+            width: "100%",
+            margin: 0,
+            boxSizing: "border-box",
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border-accent)",
+            borderRadius: 3,
+            padding: "7px 10px",
+            color: "var(--text-primary)",
+            fontFamily: "inherit",
+            fontSize: 11,
+            lineHeight: 1.6,
+            minHeight: 60,
+            whiteSpace: "pre-wrap",
+          }}>
+            {appliedRequirements || "(no worker manager requirements)"}
+          </pre>
+          {syncStatus === "error" && (
             <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-danger)", whiteSpace: "pre-wrap" }}>
-              {installError}
+              {syncError}
             </div>
           )}
 
@@ -2372,6 +2386,13 @@ function App() {
       localStorage.setItem("scaler_state", JSON.stringify(partial));
     } catch (_) {}
   }, []);
+
+  // Client-side requirements for the Try-it tab: a task submitted from there can land on any
+  // worker manager, so it's derived from the union of all of them rather than set independently.
+  const tryItRequirements = useMemo(
+    () => unionWorkerRequirements(workerManagers),
+    [workerManagers],
+  );
 
   const allInstances = window.SCALER_INSTANCES || [];
   const schedulerInst = allInstances.find((i) => i.type === schedulerType) || {
@@ -4116,6 +4137,7 @@ function App() {
           isActive={activeTab === "try-it"}
           theme={theme}
           schedulerAddress={phase === "ready" ? provState?.scheduler_address : ""}
+          workerRequirements={tryItRequirements}
         />
       </div>
     </div>
