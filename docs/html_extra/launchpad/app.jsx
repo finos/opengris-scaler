@@ -1602,11 +1602,13 @@ function TryItTab({ isActive, theme, schedulerAddress }) {
             pyodide._pyodideVersionOverride = !!versionOverride;
             await pyodide.loadPackage(["micropip"]);
 
-            // Dev override: if scripts/build_wasm.sh has staged a local wasm
-            // wheel build (see generate_jupyterlite_config.py), prefer it so
-            // in-progress wasm-client changes can be tried here without
-            // publishing to PyPI first. The requirements.txt pane is ignored
-            // in this mode -- the local build is already a fixed set of wheels.
+            // Dev override: this manifest only exists when a developer explicitly opted in
+            // with LAUNCHPAD_TRYIT_LOCAL_WHEELS=1 before `make html` (see generate_jupyterlite_config.py)
+            // to try an in-progress local wasm-client build (scripts/build_wasm.sh) without
+            // publishing to PyPI first. Plain wheel-staging (e.g. CI building the offline
+            // JupyterLite gallery) does NOT write this file, so production always installs from
+            // PyPI. The requirements.txt pane is ignored in this mode -- the local build is
+            // already a fixed set of wheels.
             let manifest = null;
             try {
               const resp = await fetch("../_static/wasm/launchpad_wheels.json");
