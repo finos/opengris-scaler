@@ -1488,7 +1488,7 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
   const [showRequirements, setShowRequirements] = useState(false);
   // The requirements union actually installed into the running interpreter. Frozen at the point
   // the deploy's scheduler address first appears (boot) or changes (redeploy) -- edits to a
-  // worker manager's requirements.txt back in the Setup tab only take effect on the next deploy,
+  // worker manager's requirements.txt back in the Config tab only take effect on the next deploy,
   // they never live-sync into an already-running interpreter.
   const [appliedRequirements, setAppliedRequirements] = useState("");
   // Resolved {name, version} pairs for appliedRequirements, as actually installed by micropip --
@@ -1620,7 +1620,7 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
   //
   // This is also the one place we pick up the worker managers' requirements.txt union: it's
   // frozen for the lifetime of a deployment, the same as the address, so re-installing here
-  // (rather than watching workerRequirements directly) means edits made back in the Setup tab
+  // (rather than watching workerRequirements directly) means edits made back in the Config tab
   // don't affect an already-running interpreter -- only the requirements in effect at the moment
   // a deploy's address showed up here do. Deliberately reads workerRequirements from the closure
   // instead of listing it as a dependency, for that same reason.
@@ -1918,17 +1918,8 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
             <span style={{ fontSize: 11, color: "var(--text-label)" }}>Available packages</span>
             <HelpTip text={
-              "Packages installed via micropip in this browser session, with the version micropip " +
-              "actually resolved -- derived automatically from the union of every worker manager's " +
-              "requirements.txt (Setup tab). The client can't usefully depend on a package the " +
-              "workers don't also have, since a submitted task could land on any of them.\n" +
-              "Frozen for the lifetime of this deployment: editing a worker manager's " +
-              "requirements.txt after deploying only takes effect on the next deploy.\n" +
-              "Must be pure Python, or a wasm wheel built for the exact Pyodide/Emscripten build " +
-              "currently loaded (see Pyodide version below) -- micropip rejects any other build " +
-              "with a clear error rather than silently falling back.\n" +
-              "jedi (autocomplete/hover) is always installed alongside this list and doesn't need " +
-              "to be listed in any worker manager's requirements.txt, so it isn't shown here."
+              "The packages available in the editor, determined from the union of every worker " +
+              "manager's requirements.txt (Config tab)."
             } />
             <div style={{ flex: 1 }} />
             {usingLocalWheels ? (
@@ -1943,7 +1934,6 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
           </div>
           <div style={{
             display: "inline-block",
-            minWidth: installedPackages.length === 0 ? "100%" : undefined,
             boxSizing: "border-box",
             background: "var(--bg-surface)",
             border: "1px solid var(--border-accent)",
@@ -1955,7 +1945,7 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
             minHeight: 60,
           }}>
             {installedPackages.length === 0 ? (
-              "(no worker manager requirements)"
+              pyStatus !== "ready" ? "Loading…" : "(no worker manager requirements)"
             ) : (
               <table style={{ borderCollapse: "collapse" }}>
                 <thead>
