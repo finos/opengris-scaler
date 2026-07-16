@@ -1951,21 +1951,39 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
             color: "var(--text-primary)",
             fontFamily: "inherit",
             fontSize: 11,
-            lineHeight: 1.6,
             minHeight: 60,
           }}>
             {installedPackages.length === 0 ? (
               "(no worker manager requirements)"
             ) : (
-              installedPackages.map(({ name, version }) => (
-                <div key={name} style={{ display: "flex", gap: 8 }}>
-                  <span>{name}</span>
-                  <span style={{ flex: 1 }} />
-                  <span style={{ color: "var(--text-muted)" }}>
-                    {version || "(version unknown)"}
-                  </span>
-                </div>
-              ))
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={{
+                      textAlign: "left", fontWeight: "normal", color: "var(--text-label)",
+                      borderBottom: "1px solid var(--border-accent)", padding: "2px 0 6px",
+                    }}>
+                      Package
+                    </th>
+                    <th style={{
+                      textAlign: "left", fontWeight: "normal", color: "var(--text-label)",
+                      borderBottom: "1px solid var(--border-accent)", padding: "2px 0 6px",
+                    }}>
+                      Version
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {installedPackages.map(({ name, version }) => (
+                    <tr key={name}>
+                      <td style={{ padding: "3px 12px 3px 0" }}>{name}</td>
+                      <td style={{ padding: "3px 0", color: "var(--text-muted)" }}>
+                        {version || "(version unknown)"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
           {syncStatus === "error" && (
