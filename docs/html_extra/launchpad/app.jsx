@@ -1296,6 +1296,36 @@ const unionWorkerRequirements = (workerManagers) => {
   return lines.join("\n");
 };
 
+// After a micropip.install, the requirement lines in requirements.txt (e.g. "numpy>=1.20", or no
+// version at all) don't say what actually landed in the sandbox -- micropip resolves them against
+// whatever wheels are available for this Pyodide build, which can differ from what a real venv
+// would pick. Look up the resolved version of each top-level requirement via importlib.metadata so
+// the Try-it tab can show what's really importable rather than the unresolved spec.
+const resolveInstalledPackages = async (pyodide, requirementsText) => {
+  const seen = new Set();
+  const names = [];
+  for (const line of parseRequirements(requirementsText)) {
+    const name = requirementPackageName(line);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    names.push(name);
+  }
+  if (names.length === 0) return [];
+  pyodide.globals.set("_tryit_pkg_names", pyodide.toPy(names));
+  const jsonText = await pyodide.runPythonAsync(
+    "import importlib.metadata as _tryit_im, json\n" +
+    "def _tryit_pkg_version(name):\n" +
+    "    try:\n" +
+    "        return _tryit_im.version(name)\n" +
+    "    except _tryit_im.PackageNotFoundError:\n" +
+    "        return None\n" +
+    "json.dumps([[name, _tryit_pkg_version(name)] for name in _tryit_pkg_names])"
+  );
+  const resolved = JSON.parse(jsonText).map(([name, version]) => ({ name, version }));
+  resolved.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  return resolved;
+};
+
 const readLocalStorage = (key, fallback = "") => {
   try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
 };
@@ -1461,6 +1491,10 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
   // worker manager's requirements.txt back in the Setup tab only take effect on the next deploy,
   // they never live-sync into an already-running interpreter.
   const [appliedRequirements, setAppliedRequirements] = useState("");
+  // Resolved {name, version} pairs for appliedRequirements, as actually installed by micropip --
+  // see resolveInstalledPackages. Kept alongside appliedRequirements rather than derived from it in
+  // render, since resolving requires an async round-trip into the Pyodide interpreter.
+  const [installedPackages, setInstalledPackages] = useState([]);
   const [syncStatus, setSyncStatus] = useState("idle"); // idle | syncing | error
   const [syncError, setSyncError] = useState("");
   const [pyodideVersionInput, setPyodideVersionInput] = useState(
@@ -1611,9 +1645,12 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
           "import micropip\n" +
           "await micropip.install(list(_requirements))"
         );
+        const resolvedPackages = await resolveInstalledPackages(pyodide, requirementsText);
         if (cancelled) return;
         pyodide._installedRequirements = requirementsText;
+        pyodide._resolvedPackages = resolvedPackages;
         setAppliedRequirements(requirementsText);
+        setInstalledPackages(resolvedPackages);
         setSyncStatus("idle");
       } catch (err) {
         if (cancelled) return;
@@ -1719,6 +1756,7 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
                 "await micropip.install(list(_requirements))"
               );
               pyodide._installedRequirements = requirementsText;
+              pyodide._resolvedPackages = await resolveInstalledPackages(pyodide, requirementsText);
             }
 
             return pyodide;
@@ -1730,7 +1768,10 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
         resolvedPyodideVersionRef.current = pyodide._pyodideVersion;
         resolvedPyodideVersionOverrideRef.current = !!pyodide._pyodideVersionOverride;
         if (pyodide._usingLocalWheels) setUsingLocalWheels(true);
-        else setAppliedRequirements(pyodide._installedRequirements || "");
+        else {
+          setAppliedRequirements(pyodide._installedRequirements || "");
+          setInstalledPackages(pyodide._resolvedPackages || []);
+        }
         pyodide.setStdout({ batched: (text) => outputCallbackRef.current?.(text, "info") });
         pyodide.setStderr({ batched: (text) => outputCallbackRef.current?.(text, "err")  });
         try {
@@ -1860,13 +1901,13 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
             flexShrink: 0,
           }}
         >
-          Requirements{pyodideVersionDirty ? " •" : ""}
+          Packages{pyodideVersionDirty ? " •" : ""}
         </button>
         <div style={{ flex: 1 }} />
         {statusNode}
       </div>
 
-      {/* Requirements panel */}
+      {/* Available packages panel */}
       {showRequirements && (
         <div style={{
           padding: "10px 16px",
@@ -1875,19 +1916,19 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
           flexShrink: 0,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-            <span style={{ fontSize: 11, color: "var(--text-label)" }}>requirements.txt</span>
+            <span style={{ fontSize: 11, color: "var(--text-label)" }}>Available packages</span>
             <HelpTip text={
-              "Packages installed via micropip in this browser session, derived automatically " +
-              "from the union of every worker manager's requirements.txt (Setup tab) -- the " +
-              "client can't usefully depend on a package the workers don't also have, since a " +
-              "submitted task could land on any of them.\n" +
+              "Packages installed via micropip in this browser session, with the version micropip " +
+              "actually resolved -- derived automatically from the union of every worker manager's " +
+              "requirements.txt (Setup tab). The client can't usefully depend on a package the " +
+              "workers don't also have, since a submitted task could land on any of them.\n" +
               "Frozen for the lifetime of this deployment: editing a worker manager's " +
               "requirements.txt after deploying only takes effect on the next deploy.\n" +
               "Must be pure Python, or a wasm wheel built for the exact Pyodide/Emscripten build " +
               "currently loaded (see Pyodide version below) -- micropip rejects any other build " +
               "with a clear error rather than silently falling back.\n" +
               "jedi (autocomplete/hover) is always installed alongside this list and doesn't need " +
-              "to be listed in any worker manager's requirements.txt."
+              "to be listed in any worker manager's requirements.txt, so it isn't shown here."
             } />
             <div style={{ flex: 1 }} />
             {usingLocalWheels ? (
@@ -1900,9 +1941,8 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
               )
             )}
           </div>
-          <pre style={{
+          <div style={{
             width: "100%",
-            margin: 0,
             boxSizing: "border-box",
             background: "var(--bg-surface)",
             border: "1px solid var(--border-accent)",
@@ -1913,10 +1953,21 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
             fontSize: 11,
             lineHeight: 1.6,
             minHeight: 60,
-            whiteSpace: "pre-wrap",
           }}>
-            {appliedRequirements || "(no worker manager requirements)"}
-          </pre>
+            {installedPackages.length === 0 ? (
+              "(no worker manager requirements)"
+            ) : (
+              installedPackages.map(({ name, version }) => (
+                <div key={name} style={{ display: "flex", gap: 8 }}>
+                  <span>{name}</span>
+                  <span style={{ flex: 1 }} />
+                  <span style={{ color: "var(--text-muted)" }}>
+                    {version || "(version unknown)"}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
           {syncStatus === "error" && (
             <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-danger)", whiteSpace: "pre-wrap" }}>
               {syncError}
