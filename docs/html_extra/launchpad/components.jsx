@@ -1,4 +1,4 @@
-// Shared components for openGRIS Scaler Launchpad
+// Shared components for OpenGRIS Scaler Launchpad
 // Exports to window.SC
 
 const { useState, useEffect, useRef, useCallback } = React;
@@ -1097,7 +1097,7 @@ function TerminalWindow({ lines, config, style }) {
             color: "var(--text-muted)",
           }}
         >
-          openGRIS Scaler — deploy log
+          OpenGRIS Scaler — deploy log
         </span>
       </div>
       <div
@@ -1579,7 +1579,7 @@ function LiveTerminal({ lines, isRunning, title, style, bare }) {
             color: "var(--text-muted)",
           }}
         >
-          {title || "openGRIS Scaler — deploy log"}
+          {title || "OpenGRIS Scaler — deploy log"}
         </span>
       </div>
       {content}

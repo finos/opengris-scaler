@@ -1,4 +1,4 @@
-// openGRIS Scaler — static data
+// OpenGRIS Scaler — static data
 
 window.SCALER_REGIONS = [
   { value: "us-east-1", label: "US East (N. Virginia)" },
@@ -681,7 +681,7 @@ window.FAKE_TERMINAL_LINES = [
   {
     t: 300,
     cls: "dim",
-    text: "openGRIS Scaler v2.1.4 — EC2 deployment engine",
+    text: "OpenGRIS Scaler v2.1.4 — EC2 deployment engine",
   },
   { t: 400, cls: "dim", text: "─".repeat(52) },
   { t: 800, cls: "cmd", text: "$ authenticating with AWS..." },

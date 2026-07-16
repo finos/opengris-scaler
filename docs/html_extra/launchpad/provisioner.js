@@ -813,7 +813,7 @@ async function provision(
   if (resumeState) {
     addLog("Resuming deployment from checkpoint…", "dim");
   }
-  addLog("openGRIS Scaler — EC2 deployment", "dim");
+  addLog("OpenGRIS Scaler — EC2 deployment", "dim");
   addLog("─".repeat(52), "dim");
 
   // 1. AMI
@@ -1186,7 +1186,7 @@ async function teardown(state, creds, addLog, signal) {
   var ec2 = clients.ec2,
     iam = clients.iam;
 
-  addLog("openGRIS Scaler — teardown", "dim");
+  addLog("OpenGRIS Scaler — teardown", "dim");
   addLog("─".repeat(52), "dim");
 
   // Terminate all deployment instances (scheduler + any ORB workers) in one pass.
