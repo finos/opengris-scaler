@@ -186,11 +186,9 @@ class SchedulerHarness:
         return None
 
     def unhandled_error(self, settle_seconds: float = 0.0) -> Optional[str]:
-        """A one-line summary if the scheduler logged a traceback during the run, else None -- this catches
-        a fault that wedges the pool without killing the process. ``settle_seconds`` polls for a traceback
-        that lands just after the client gives up (callers set it only once a crash is evident). A silent
-        wedge that logs nothing (a deadlock, or a C++/ymq fault) is out of reach here; only :meth:`died`
-        and the scenario's own timeout guard that."""
+        """A one-line summary if the scheduler logged a traceback (a fault that wedges the pool without
+        killing the process), else None. ``settle_seconds`` polls for a traceback that lands just after the
+        client gives up. A silent wedge that logs nothing is out of reach -- only :meth:`died` guards that."""
         deadline = time.monotonic() + settle_seconds
         while True:
             try:

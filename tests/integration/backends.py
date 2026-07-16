@@ -53,10 +53,9 @@ def _spawn_manager(worker_manager_id: str, prefix: str, target: Callable, args: 
 
 
 class ContainerWorkerProvisioner(DeclarativeWorkerProvisioner):
-    """A real ``DeclarativeWorkerProvisioner``, driven by the scheduler through ``WorkerManagerRunner``
-    exactly like the cloud managers, whose "machines" are containers running a *fixed* ``baremetal_native``
-    worker manager -- the local, free analog of a cloud manager booting an instance whose user-data
-    launches a worker. Each machine gets its own IP, so spread is real."""
+    """A real provisioner driven by the scheduler like the cloud managers, but each "machine" is a container
+    running a fixed ``baremetal_native`` worker -- the local, free analog of a booted instance. Each machine
+    gets its own IP, so spread is real."""
 
     def __init__(
         self, worker_scheduler_address: str, workers_per_machine: int, max_machines: int, name_prefix: str
@@ -309,13 +308,10 @@ def serve_wheel_on_gateway(directory: str, port: int) -> http.server.ThreadingHT
 
 
 def _install_floci_ec2_compat() -> None:
-    """Bridge the one place floci diverges from real AWS on the ORB provisioning path.
-
-    For a missing launch-template NAME floci returns an empty ``LaunchTemplates`` list where real AWS
-    raises ``InvalidLaunchTemplateName.NotFoundException``. The ORB SDK relies on that exception to fall
-    through to *creating* the template; without it, it indexes ``LaunchTemplates[0]`` and dies with "list
-    index out of range". Restoring the real behaviour is what lets the shipped provisioner run unchanged.
-    """
+    """Bridge the one place floci diverges from real AWS: for a missing launch-template NAME it returns an
+    empty ``LaunchTemplates`` list where real AWS raises ``InvalidLaunchTemplateName.NotFoundException``.
+    The ORB SDK relies on that exception to fall through to *creating* the template; without it, it indexes
+    ``LaunchTemplates[0]`` and dies. Restoring the exception lets the shipped provisioner run unchanged."""
     import botocore.exceptions
     import botocore.handlers
 

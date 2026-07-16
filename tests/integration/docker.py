@@ -1,13 +1,9 @@
-"""Docker: the CLI wrapper every backend provisions through, and the images they run.
+"""The container CLI every backend provisions through, and the images they run.
 
-The worker image bakes in the wheel the host just built plus the custom capnp/kj runtime libs the scaler
-C++ extensions link against, so a container runs the same build and wire protocol as the host scheduler
-with none of the host-layout coupling a bind-mount would need. Tasks travel by value, so nothing is
-mounted at run time.
-
-Portable across the dev host (libs in /usr/local/lib) and CI (libs under $SCALER_THIRDPARTY_PREFIX/lib);
-the wheel and the interpreter version come from the current environment, so whatever built the wheel
-builds a matching image.
+The worker image bakes in the freshly built wheel plus the custom capnp/kj libs the C++ extensions link
+against, so a container matches the host scheduler's build and wire protocol with no bind-mount. Portable
+across the dev host (libs in /usr/local/lib) and CI ($SCALER_THIRDPARTY_PREFIX/lib); the wheel and
+interpreter come from the current environment.
 """
 
 from __future__ import annotations

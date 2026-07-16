@@ -1,13 +1,8 @@
-"""A managed floci AWS emulator.
-
-floci is a free, local AWS emulator that -- unlike moto or the community LocalStack -- actually launches
-ECS ``RunTask`` and EC2 ``RunInstances`` containers as siblings on the host Docker daemon (through the
-mounted socket). That makes it the one backend that drives the shipped AWS worker managers through a real
-scale curve, with real workers, without a paid tier or a real AWS account. It speaks the AWS API over
-plain HTTP, so a manager reaches it by pointing boto3 at ``AWS_ENDPOINT_URL``.
-
-Spawned containers land on the default bridge, so their workers reach the host scheduler over the gateway
-exactly like the container backend's machines.
+"""A managed floci AWS emulator: it launches ECS ``RunTask`` and EC2 ``RunInstances`` containers as
+siblings on the host Docker daemon (via the mounted socket), so it drives the shipped AWS managers through
+a real scale curve with real workers and no AWS account. Speaks the AWS API over plain HTTP; a manager
+reaches it via ``AWS_ENDPOINT_URL``. Spawned containers land on the bridge, reaching the host scheduler
+over the gateway like the container backend's machines.
 
 https://github.com/floci-io/floci
 """

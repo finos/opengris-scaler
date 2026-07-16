@@ -24,8 +24,7 @@ from tests.utility.utility import logging_test_name
 
 
 def report(message: str) -> None:
-    """Print a run's headline facts. Every line is prefixed -- including a multi-line policy dump -- so the
-    story a run tells can be read out of a noisy CI log with `grep '\\[e2e\\]'`."""
+    """Print each line under an ``[e2e]`` prefix, so a run's story greps out of a noisy CI log."""
     for line in message.splitlines():
         print(f"[e2e] {line}", flush=True)
 
@@ -156,12 +155,9 @@ class Deployment:
         return [name for handle in self.handles for name in handle.pool.running()]
 
     def assert_healthy(self, test_case) -> None:
-        """Fail the test NAMING the fault if the scheduler or a manager crashed or wedged under churn.
-
-        A client that fails with a bare TimeoutError is almost always the downstream symptom of one of
-        those, so call this from tearDown (which runs before the addCleanup stack tears the processes
-        down) to turn an opaque timeout into an actionable failure.
-        """
+        """Fail the test naming the fault when the scheduler or a manager crashed or wedged. Call from
+        tearDown (before addCleanup tears the processes down), so a bare client TimeoutError -- usually the
+        downstream symptom -- becomes an actionable failure."""
         dead = [f"{handle.worker_manager_id} (exit {handle.process.exitcode})"
                 for handle in self.handles if not handle.process.is_alive()]  # fmt: skip
         harness_dead = self.harness.died()
@@ -224,93 +220,96 @@ def _apply_overrides(profile: Profile) -> Profile:
     return dataclasses.replace(profile, **changes) if changes else profile
 
 
-def _caps_from_policy(policy_content: str, worker_manager_ids: List[str]) -> Dict[str, Optional[int]]:
-    """Read each manager's cap from the effective policy with the scheduler's OWN parser, so the pool
-    ceiling comes from the same rules the scheduler spills on -- otherwise a raw SCALER_IT_WATERFALL_POLICY
-    would move only the scheduler half. Fails fast on a misnamed id, which would otherwise leave that tier
-    with no desired concurrency and read as a false red."""
+def _default_waterfall_policy(specs: List[ManagerSpec], manager_ids: List[str]) -> str:
+    """Priority = position (1 = highest); a spec's cap becomes its rule's max_task_concurrency."""
+    return "\n".join(
+        f"{position},{manager_id}" + (f",{spec.cap}" if spec.cap is not None else "")
+        for position, (manager_id, spec) in enumerate(zip(manager_ids, specs), start=1)
+    )
+
+
+def _caps_from_policy(policy_content: str, manager_ids: List[str]) -> Dict[str, Optional[int]]:
+    """Read each manager's cap back from the effective policy with the scheduler's own parser, so a raw
+    SCALER_IT_WATERFALL_POLICY sizes the provisioned pools too, not just the scheduler's spill threshold.
+    A misnamed id fails fast (it would otherwise leave that tier with no desired concurrency: a false red)."""
     from scaler.scheduler.controllers.policies.waterfall_v1.scaling.utility import parse_waterfall_rules
 
     caps = {
         rule.worker_manager_id.decode(): rule.max_task_concurrency for rule in parse_waterfall_rules(policy_content)
     }
-    missing = [manager_id for manager_id in worker_manager_ids if manager_id not in caps]
+    missing = [manager_id for manager_id in manager_ids if manager_id not in caps]
     if missing:
         raise ValueError(
-            f"waterfall policy has no rule for {missing}; the provisioned managers are {worker_manager_ids} "
+            f"waterfall policy has no rule for {missing}; provisioned managers are {manager_ids} "
             f"(one rule per line: 'priority,worker_manager_id[,max_task_concurrency]')"
         )
     return caps
 
 
-def deploy(test_case, topology: str, specs: List[ManagerSpec]) -> Deployment:
-    """Bring up the shared infra and every manager, registering teardown on ``test_case``. One manager runs
-    the vanilla policy; several run ``waterfall_v1`` at priority = position (1 = highest), so
-    ``deploy(self, "ecs_ec2", [ecs, ec2])`` is a cross-backend waterfall with no extra plumbing.
+def _resolve_policy(topology: str, specs: List[ManagerSpec], manager_ids: List[str]):
+    """Return (SchedulerHarness policy kwargs, {manager_id: cap}). One manager runs vanilla (harness
+    default); several run waterfall_v1, overridable by SCALER_IT_WATERFALL_POLICY."""
+    override = _env("SCALER_IT_WATERFALL_POLICY")
+    if len(specs) == 1:
+        if override:
+            report(f"ignoring SCALER_IT_WATERFALL_POLICY: {topology} is single-manager (vanilla)")
+        return {}, {manager_ids[0]: specs[0].cap}
+    content = override or _default_waterfall_policy(specs, manager_ids)
+    report(f"policy waterfall_v1:\n{content}")
+    return {"policy_content": content, "policy_engine_type": "waterfall_v1"}, _caps_from_policy(content, manager_ids)
 
-    On-demand runs override the defaults with ``SCALER_IT_NUM_TASKS``, ``SCALER_IT_TASK_SECONDS``, and
-    ``SCALER_IT_WATERFALL_POLICY`` (a raw multi-manager policy over the ids reported below).
-    """
+
+def _start_floci(test_case) -> str:
+    floci = FlociEmulator()
+    # Registered BEFORE start(): a start() that brings the container up then times out on readiness must
+    # still reap the privileged emulator (it holds the host docker socket).
+    test_case.addCleanup(floci.stop)
+    floci.start()
+    return floci.endpoint_url
+
+
+def _serve_wheel(test_case) -> str:
+    from tests.integration.backends import WHEEL_DIR, manylinux_wheel, serve_wheel_on_gateway
+
+    port = get_available_tcp_port()
+    test_case.addCleanup(serve_wheel_on_gateway(WHEEL_DIR, port).shutdown)
+    return f"http://{host_gateway()}:{port}/{os.path.basename(manylinux_wheel())}"
+
+
+def deploy(test_case, topology: str, specs: List[ManagerSpec]) -> Deployment:
+    """Bring up the scheduler + every manager, registering teardown on ``test_case``. One manager runs
+    vanilla; several run waterfall_v1 at priority = position, so ``deploy(self, "ecs_ec2", [ecs, ec2])`` is
+    a cross-backend waterfall. Overridable via SCALER_IT_NUM_TASKS / _TASK_SECONDS / _WATERFALL_POLICY."""
     setup_logger()
     logging_test_name(test_case)
     backends = [spec.backend for spec in specs]
     profile = _apply_overrides(_merge_profiles([backend.profile() for backend in backends]))
-    worker_manager_ids = [f"wm-{spec.backend.name}-p{index + 1}" for index, spec in enumerate(specs)]
-    caps: Dict[str, Optional[int]] = {manager_id: spec.cap for manager_id, spec in zip(worker_manager_ids, specs)}
+    manager_ids = [f"wm-{spec.backend.name}-p{position}" for position, spec in enumerate(specs, start=1)]
 
     for backend in backends:
         backend.ensure_image()
 
-    floci_endpoint = None
-    if any(backend.needs_floci for backend in backends):
-        floci = FlociEmulator()
-        # Registered BEFORE start(): if start() brings the container up but times out waiting for
-        # readiness, the privileged emulator (it has the host docker socket) must still be reaped.
-        test_case.addCleanup(floci.stop)
-        floci.start()
-        floci_endpoint = floci.endpoint_url
+    floci_endpoint = _start_floci(test_case) if any(backend.needs_floci for backend in backends) else None
+    wheel_url = _serve_wheel(test_case) if any(backend.needs_wheel for backend in backends) else None
 
-    wheel_url = None
-    if any(backend.needs_wheel for backend in backends):
-        from tests.integration.backends import WHEEL_DIR, manylinux_wheel, serve_wheel_on_gateway
-
-        port = get_available_tcp_port()
-        test_case.addCleanup(serve_wheel_on_gateway(WHEEL_DIR, port).shutdown)
-        wheel_url = f"http://{host_gateway()}:{port}/{os.path.basename(manylinux_wheel())}"
-
-    if len(specs) > 1:
-        policy_content = _env("SCALER_IT_WATERFALL_POLICY") or "\n".join(
-            f"{index + 1},{manager_id}" + (f",{spec.cap}" if spec.cap is not None else "")
-            for index, (manager_id, spec) in enumerate(zip(worker_manager_ids, specs))
-        )
-        caps = _caps_from_policy(policy_content, worker_manager_ids)
-        harness = SchedulerHarness(
-            policy_content=policy_content,
-            policy_engine_type="waterfall_v1",
-            gateway=host_gateway(),
-            client_timeout_seconds=profile.client_timeout,
-            worker_timeout_seconds=profile.worker_timeout,
-        )
-        report(f"policy waterfall_v1:\n{policy_content}")
-    else:
-        if _env("SCALER_IT_WATERFALL_POLICY"):
-            report(f"ignoring SCALER_IT_WATERFALL_POLICY: {topology} is single-manager, so it runs vanilla")
-        harness = SchedulerHarness(
-            gateway=host_gateway(),
-            client_timeout_seconds=profile.client_timeout,
-            worker_timeout_seconds=profile.worker_timeout,
-        )
+    policy_kwargs, caps = _resolve_policy(topology, specs, manager_ids)
+    harness = SchedulerHarness(
+        gateway=host_gateway(),
+        client_timeout_seconds=profile.client_timeout,
+        worker_timeout_seconds=profile.worker_timeout,
+        **policy_kwargs,
+    )
     test_case.addCleanup(harness.shutdown)
     report(
-        f"topology {topology}: managers {worker_manager_ids} caps {[caps[i] for i in worker_manager_ids]}, "
+        f"topology {topology}: managers {manager_ids} caps {[caps[manager_id] for manager_id in manager_ids]}, "
         f"{profile.burst_tasks} tasks x {profile.task_seconds}s"
     )
 
     context = DeployContext(harness=harness, floci_endpoint=floci_endpoint, wheel_url=wheel_url)
     handles = []
-    for manager_id, spec in zip(worker_manager_ids, specs):
+    for manager_id, spec in zip(manager_ids, specs):
         handle = spec.backend.provision(context, manager_id, caps[manager_id])
-        # LIFO teardown: kill the manager (registered last) before reaping any container it orphaned.
+        # LIFO teardown: terminate the manager (registered last) before reaping any container it orphaned.
         test_case.addCleanup(handle.pool.reap)
         test_case.addCleanup(terminate_process, handle.process)
         handles.append(handle)

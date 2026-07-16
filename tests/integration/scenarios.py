@@ -1,11 +1,5 @@
-"""Backend-agnostic scaling scenarios.
-
-Each is a ``(test_case, deployment)`` function that drives a real client workload and asserts on how the
-pool scaled, reading everything backend-specific (task callables, timing, pool observation) off the
-``Deployment``. Written once here; every backend reuses them.
-
-Each reports its numbers before asserting, so a failing run says what actually happened.
-"""
+"""Backend-agnostic scaling scenarios: ``(test_case, deployment)`` functions, reused by every backend,
+reading task callables / timing / pool observation off the ``Deployment``. Each reports before asserting."""
 
 from __future__ import annotations
 
@@ -32,8 +26,8 @@ class _PoolSample:
 
 @contextlib.contextmanager
 def _sampling(deployment: Deployment):
-    """Watch the pool in the background while a load runs, recording peak concurrent units and every unit
-    name seen (each provisioned unit gets a fresh name, so the set counts units CREATED over the run)."""
+    """Poll the pool in the background while a load runs. Each provisioned unit has a fresh name, so the
+    accumulated name set counts units CREATED while ``peak`` counts the most running at once."""
     sample = _PoolSample()
     stop = threading.Event()
 
@@ -52,8 +46,7 @@ def _sampling(deployment: Deployment):
 
 
 def burst_and_drain(test_case, deployment: Deployment) -> None:
-    """A held burst brings the pool up and returns correct results; an idle queue then drains it back to
-    zero. Correct results prove real workers ran the work; the container count proves the scaling."""
+    """A held burst brings the pool up with correct results, then an idle queue drains it to zero."""
     profile = deployment.profile
     expected = [value * value for value in range(profile.burst_tasks)]
 
@@ -80,13 +73,9 @@ def burst_and_drain(test_case, deployment: Deployment) -> None:
 
 
 def rising_load(test_case, deployment: Deployment) -> None:
-    """Capacity tracks demand: a sustained deep burst runs more units AT ONCE than a concurrency-1 trickle.
-
-    Peak CONCURRENT units is the honest measure -- counting distinct names over the run would let a pool
-    that only ever re-provisions one unit at a time pass by churning. The burst is held continuously
-    because a single wave can drain before a second unit finishes booting, so a backend that genuinely
-    scales reaches a higher peak while one that thrashes back to a single unit legitimately fails here.
-    """
+    """A sustained burst runs more units AT ONCE than a concurrency-1 trickle. Peak concurrent is the
+    honest measure: counting distinct names would let a pool that churns one unit at a time pass. The
+    burst is held continuously so a second unit has time to boot before the wave drains."""
     profile = deployment.profile
     expected = [value * value for value in range(profile.burst_tasks)]
 
@@ -107,11 +96,8 @@ def rising_load(test_case, deployment: Deployment) -> None:
 
 
 def steady_load_stable(test_case, deployment: Deployment) -> None:
-    """A sustained, non-varying load should settle on a stable pool -- about as many units created over the
-    run as ever ran at once -- not thrash through provision and teardown.
-
-    Steady-load only: do NOT reuse on scenarios that scale up AND down, which legitimately create > peak.
-    """
+    """A steady load settles on a stable pool: units created over the run stays close to peak concurrent,
+    not thrash through provision/teardown. Steady-load only -- scale up-and-down legitimately creates > peak."""
     profile = deployment.profile
     expected = [value * value for value in range(profile.burst_tasks)]
 
@@ -134,16 +120,10 @@ def steady_load_stable(test_case, deployment: Deployment) -> None:
 
 
 def waterfall_spills(test_case, deployment: Deployment) -> None:
-    """With managers at descending waterfall priority (the top one capped), a continuously replenished
-    backlog fills the top pool first and, once it saturates, spills onto the next tier -- so both backends
-    run work under one scheduler.
-
-    The backlog is held continuously rather than submitted as blocking waves, which would let the queue
-    drain between waves and the lower tier's desired count fall back, so the spill is deterministic even
-    when the lower tier boots slowly. ``top_ran`` is asserted too, so a mis-prioritized policy that runs a
-    lower tier first is a red rather than a pass. Each tier is attributed by its own container pool, since
-    the shipped provisioners set no machine id.
-    """
+    """A saturated top pool (capped, highest priority) spills onto the next tier. The backlog is held
+    continuously -- blocking waves would let the queue drain and the lower tier's desired count fall back --
+    so the spill is deterministic even when the lower tier boots slowly. ``top_ran`` is asserted so a
+    mis-prioritized policy that runs a lower tier first is a red, not a pass."""
     profile = deployment.profile
     top, *overflow = deployment.handles
     top_ran = False
