@@ -1942,7 +1942,8 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
             )}
           </div>
           <div style={{
-            width: "100%",
+            display: "inline-block",
+            minWidth: installedPackages.length === 0 ? "100%" : undefined,
             boxSizing: "border-box",
             background: "var(--bg-surface)",
             border: "1px solid var(--border-accent)",
