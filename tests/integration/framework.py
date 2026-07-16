@@ -193,11 +193,15 @@ def _merge_profiles(profiles: List[Profile]) -> Profile:
     })  # fmt: skip
 
 
-def _override(name: str, parse: Callable):
+def _env(name: str) -> Optional[str]:
     """An on-demand-run knob. A workflow_dispatch input expands to an empty string on the labeled-PR
     trigger, so empty must read the same as absent."""
-    raw = os.environ.get(name, "").strip()
-    if not raw:
+    return os.environ.get(name, "").strip() or None
+
+
+def _env_number(name: str, parse: Callable):
+    raw = _env(name)
+    if raw is None:
         return None
     try:
         return parse(raw)
@@ -209,10 +213,10 @@ def _apply_overrides(profile: Profile) -> Profile:
     """Resize the load from the environment, at one chokepoint so every backend and the merged mixed
     profile are covered. The timeouts stay fixed, so a much larger count or task_seconds can exceed them."""
     changes: Dict[str, Any] = {}  # heterogeneous: task_seconds is a float, burst_tasks an int
-    task_seconds = _override("SCALER_IT_TASK_SECONDS", float)
+    task_seconds = _env_number("SCALER_IT_TASK_SECONDS", float)
     if task_seconds is not None:
         changes["task_seconds"] = task_seconds
-    burst_tasks = _override("SCALER_IT_NUM_TASKS", int)
+    burst_tasks = _env_number("SCALER_IT_NUM_TASKS", int)
     if burst_tasks is not None:
         if burst_tasks < 1:
             raise ValueError(f"SCALER_IT_NUM_TASKS={burst_tasks} must be >= 1")
@@ -275,7 +279,7 @@ def deploy(test_case, topology: str, specs: List[ManagerSpec]) -> Deployment:
         wheel_url = f"http://{host_gateway()}:{port}/{os.path.basename(manylinux_wheel())}"
 
     if len(specs) > 1:
-        policy_content = _override("SCALER_IT_WATERFALL_POLICY", str) or "\n".join(
+        policy_content = _env("SCALER_IT_WATERFALL_POLICY") or "\n".join(
             f"{index + 1},{manager_id}" + (f",{spec.cap}" if spec.cap is not None else "")
             for index, (manager_id, spec) in enumerate(zip(worker_manager_ids, specs))
         )
@@ -289,6 +293,8 @@ def deploy(test_case, topology: str, specs: List[ManagerSpec]) -> Deployment:
         )
         report(f"policy waterfall_v1:\n{policy_content}")
     else:
+        if _env("SCALER_IT_WATERFALL_POLICY"):
+            report(f"ignoring SCALER_IT_WATERFALL_POLICY: {topology} is single-manager, so it runs vanilla")
         harness = SchedulerHarness(
             gateway=host_gateway(),
             client_timeout_seconds=profile.client_timeout,
