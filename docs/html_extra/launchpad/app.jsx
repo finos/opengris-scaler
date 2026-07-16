@@ -1259,6 +1259,16 @@ const parseRequirements = (text) =>
 // to de-duplicate the union below (e.g. "opengris-scaler[all]>=1.0" -> "opengris-scaler").
 const requirementPackageName = (line) => line.split(/[=<>!~;\[\s]/, 1)[0].toLowerCase();
 
+// Same as requirementPackageName, but also splits on "@" (PEP 508's direct-reference marker) so a
+// bare, not-quite-valid line like "scaler@some-branch" is still recognised as the scaler package
+// below rather than falling through as one opaque name.
+const SCALER_PACKAGE_NAMES = new Set(["opengris-scaler", "scaler"]);
+const SCALER_DEFAULT_REQUIREMENT = "opengris-scaler[all]";
+const isGitScalerRequirement = (line) => {
+  const name = line.split(/[=<>!~;\[\s@]/, 1)[0].toLowerCase();
+  return SCALER_PACKAGE_NAMES.has(name) && line.includes("@");
+};
+
 // Tasks the client submits can land on any worker manager in the cluster, so a package the client
 // imports has to be installed on every worker manager that might run it -- otherwise the worker
 // fails to unpickle/execute the task. We union every worker manager's requirements.txt so the
@@ -1269,10 +1279,18 @@ const unionWorkerRequirements = (workerManagers) => {
   const lines = [];
   for (const wm of workerManagers) {
     for (const line of parseRequirements(wm.requirements || "")) {
-      const name = requirementPackageName(line);
+      // A worker manager may point its own opengris-scaler install at a git branch/commit (e.g.
+      // "opengris-scaler @ git+https://...@my-branch") to try an unreleased server-side change.
+      // Pyodide/micropip can only install pure-Python or prebuilt wasm wheels -- it can never
+      // build the C++ extension from source, and a direct reference isn't even always valid PEP
+      // 508 syntax (a bare "scaler@my-branch" has no URL) -- so forward the default PyPI install
+      // for the browser-side client instead of this line.
+      const isScalerGitInstall = isGitScalerRequirement(line);
+      const effectiveLine = isScalerGitInstall ? SCALER_DEFAULT_REQUIREMENT : line;
+      const name = isScalerGitInstall ? "opengris-scaler" : requirementPackageName(effectiveLine);
       if (!name || seen.has(name)) continue;
       seen.add(name);
-      lines.push(line);
+      lines.push(effectiveLine);
     }
   }
   return lines.join("\n");
