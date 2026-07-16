@@ -206,7 +206,7 @@ python -m unittest discover  # Python
 
 When writing tests, try to match the directory and module/namespace structure of the code under test.
 
-Tests assume the full dev/test environment is installed: import test dependencies (numpy, boto3, moto,
+Tests assume the full dev/test environment is installed: import test dependencies (numpy, boto3,
 ...) directly rather than guarding them with `try/except ImportError` + `skipUnless`. Reserve
 `skipUnless`/`skipIf` for genuine platform or Python-version incompatibilities.
 

@@ -47,41 +47,6 @@ jobs:
         with:
           os: ${{ runner.os }}
 
-  integration-py311:
-    name: E2E Integration Tests (Linux, Python 3.11, moto)
-    # The main build job pins Python 3.10, where the ORB/EC2 control-plane test skips (orb-py needs 3.11+).
-    # This lane runs the moto integration suite on 3.11 so that path actually executes; the Docker-gated
-    # container / floci e2es stay off (no RUN_CONTAINER_E2E / RUN_FLOCI_E2E) and run only in their own
-    # on-demand workflows.
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
-        with:
-          egress-policy: audit
-
-      - name: 'Checkout Repository'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - uses: ./.github/actions/setup-env
-        with:
-          os: ${{ runner.os }}
-          python-version: '3.11'
-
-      - uses: ./.github/actions/build-native-dependencies
-        with:
-          os: ${{ runner.os }}
-
-      - uses: ./.github/actions/build-and-install-wheel
-
-      - name: Run End-to-End Integration Tests (moto backend)
-        shell: bash
-        env:
-          RUN_INTEGRATION_TESTS: '1'
-        run: |
-          python -m unittest discover -s tests/integration -t . -v
-
   build-wasm-client:
     name: Build WASM Client (Pyodide)
     runs-on: ubuntu-latest

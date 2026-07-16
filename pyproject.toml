@@ -76,7 +76,6 @@ dev = [
     "isort>=7.0.0; python_version >= '3.10'",
     "jupyterlite-pyodide-kernel==0.8.1",
     "jupyterlite-sphinx==0.22.1",
-    "moto[ec2,ecs,batch]>=5,<6",
     "mypy>=1.14.1",
     "nbsphinx",
     "pyodide-build==0.35.1; python_version >= '3.12'",

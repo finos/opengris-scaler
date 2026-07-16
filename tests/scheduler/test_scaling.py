@@ -100,7 +100,6 @@ class TestScaling(unittest.TestCase):
 
         with Client(self.scheduler_address) as client:
             client.map(time.sleep, [0.1] * 100)
-            # Verify provisioned-from-zero workers return correct results, not just that the run completes.
             self.assertEqual(client.map(_square, list(range(16))), [value * value for value in range(16)])
 
         os.kill(scheduler.pid, signal.SIGINT)

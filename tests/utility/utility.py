@@ -1,23 +1,5 @@
 import logging
-import multiprocessing
 import unittest
-
-# Shared timing bounds for tests that spawn real processes / clusters: one poll granularity and one
-# "wait for a spawned process to terminate" bound, so the process-lifecycle tests do not each
-# hard-code their own. Only reached in full on failure, so the bound errs on the side of patience.
-POLL_INTERVAL_SECONDS = 0.05
-PROCESS_TERMINATION_TIMEOUT_SECONDS = 30
-
-
-def terminate_process(process: multiprocessing.process.BaseProcess) -> None:
-    """Reap a spawned test process: terminate it gracefully, then force-kill if it does not exit."""
-    if process.is_alive():
-        process.terminate()
-        process.join(timeout=PROCESS_TERMINATION_TIMEOUT_SECONDS)
-    if process.is_alive():
-        process.kill()
-        process.join()
-
 
 # Global variable to test preload functionality
 PRELOAD_VALUE = None

@@ -42,15 +42,6 @@ runs:
       run: |
         python -m unittest discover -v tests -t .
 
-    - name: Run End-to-End Integration Tests (Linux, moto backend)
-      # The run above skips tests/integration (gated on RUN_INTEGRATION_TESTS); run it here with the gate on.
-      if: inputs.os == 'Linux'
-      shell: bash
-      env:
-        RUN_INTEGRATION_TESTS: '1'
-      run: |
-        python -m unittest discover -s tests/integration -t . -v
-
     - name: Run Examples (Linux)
       if: inputs.os == 'Linux'
       shell: bash

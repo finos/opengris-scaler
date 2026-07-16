@@ -7,13 +7,13 @@
 # does not run on older-glibc targets like Amazon Linux 2023).
 #
 # Usage:
-#   ./scripts/build_cibuildwheel.sh                                  # all non-skipped targets (release parity)
-#   ./scripts/build_cibuildwheel.sh --only cp313-manylinux_x86_64    # one target (fast; e.g. for an e2e)
-#   CIBW_OUTPUT_DIR=dist_manylinux ./scripts/build_cibuildwheel.sh --only cp313-manylinux_x86_64
+#   ./scripts/e2e/build_cibuildwheel.sh                                  # all non-skipped targets (release parity)
+#   ./scripts/e2e/build_cibuildwheel.sh --only cp313-manylinux_x86_64    # one target (fast; e.g. for an e2e)
+#   CIBW_OUTPUT_DIR=dist_manylinux ./scripts/e2e/build_cibuildwheel.sh --only cp313-manylinux_x86_64
 #
 # Needs Docker (Linux wheels build inside a manylinux container). Where the socket is root-only, pass the
 # sudo invocation via DOCKER and this script shims it onto PATH for cibuildwheel:
-#   DOCKER="sudo docker" ./scripts/build_cibuildwheel.sh --only cp313-manylinux_x86_64
+#   DOCKER="sudo docker" ./scripts/e2e/build_cibuildwheel.sh --only cp313-manylinux_x86_64
 set -euo pipefail
 
 PYTHON="${PYTHON:-python}"
