@@ -1956,7 +1956,7 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
             {installedPackages.length === 0 ? (
               "(no worker manager requirements)"
             ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <table style={{ borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
                     <th style={{
