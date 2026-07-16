@@ -42,7 +42,6 @@ std::expected<AcceptServer, scaler::ymq::Error> AcceptServer::init(
     }
 
     std::optional<Server> server;
-    std::optional<WebSocketAddress> webSocketAddress;
 
     switch (address.type()) {
         case Address::Type::TCP: {
@@ -79,28 +78,21 @@ std::expected<AcceptServer, scaler::ymq::Error> AcceptServer::init(
             break;
         }
         case Address::Type::WebSocket: {
-            // WebSocket runs over TCP; bind a TCPServer to the resolved TCP address.
-            webSocketAddress = address.asWebSocket();
-            auto tcpServer   = scaler::wrapper::uv::TCPServer::init(loop);
-            if (!tcpServer.has_value()) {
-                return std::unexpected {details::toYMQError(tcpServer.error())};
+            auto wsServer = WebSocketServer::init(loop);
+            if (!wsServer.has_value()) {
+                return std::unexpected {details::toYMQError(wsServer.error())};
             }
-            if (auto bindResult = tcpServer->bind(webSocketAddress->tcpAddress, uv_tcp_flags(0));
-                !bindResult.has_value()) {
+            if (auto bindResult = wsServer->bind(address.asWebSocket(), uv_tcp_flags(0)); !bindResult.has_value()) {
                 return std::unexpected {details::toYMQError(bindResult.error())};
             }
-            server = std::move(tcpServer.value());
+            server = std::move(wsServer.value());
             break;
         }
         default: std::unreachable();
     }
 
     auto state = std::make_shared<State>(
-        loop,
-        std::move(onConnectionCallback),
-        std::move(server.value()),
-        std::move(webSocketAddress),
-        std::move(sslContext.value()));
+        loop, std::move(onConnectionCallback), std::move(server.value()), std::move(sslContext.value()));
 
     auto listenCallback = std::bind_front(&AcceptServer::onConnection, state);
 
@@ -112,6 +104,8 @@ std::expected<AcceptServer, scaler::ymq::Error> AcceptServer::init(
         listenResult = secureServer->listen(serverListenBacklog, std::move(listenCallback));
     } else if (auto* pipeServer = std::get_if<scaler::wrapper::uv::PipeServer>(&state->_server.value())) {
         listenResult = pipeServer->listen(serverListenBacklog, std::move(listenCallback));
+    } else if (auto* wsServer = std::get_if<WebSocketServer>(&state->_server.value())) {
+        listenResult = wsServer->listen(serverListenBacklog, std::move(listenCallback));
     } else {
         std::unreachable();
     }
@@ -131,12 +125,10 @@ AcceptServer::State::State(
     scaler::wrapper::uv::Loop& loop,
     ConnectionCallback onConnectionCallback,
     Server server,
-    std::optional<WebSocketAddress> webSocketAddress,
     std::optional<scaler::wrapper::openssl::SSLContext> sslContext) noexcept
     : _loop(loop)
     , _onConnectionCallback(std::move(onConnectionCallback))
     , _server(std::move(server))
-    , _webSocketAddress(std::move(webSocketAddress))
     , _sslContext(std::move(sslContext))
 {
 }
@@ -153,21 +145,13 @@ AcceptServer::~AcceptServer() noexcept
 Address AcceptServer::address() const noexcept
 {
     if (auto* tcpServer = std::get_if<scaler::wrapper::uv::TCPServer>(&_state->_server.value())) {
-        const scaler::wrapper::uv::SocketAddress actualAddr = UV_EXIT_ON_ERROR(tcpServer->getSockName());
-
-        if (_state->_webSocketAddress.has_value()) {
-            // Reconstruct the WebSocket address with the actual bound port (handles port 0 auto-assignment).
-            WebSocketAddress reconstructed = _state->_webSocketAddress.value();
-            reconstructed.port             = static_cast<uint16_t>(actualAddr.port());
-            reconstructed.tcpAddress       = actualAddr;
-            return Address {std::move(reconstructed)};
-        }
-
-        return Address {actualAddr};
+        return Address {UV_EXIT_ON_ERROR(tcpServer->getSockName())};
     } else if (auto* secureServer = std::get_if<scaler::wrapper::openssl::SecureServer>(&_state->_server.value())) {
         return Address {UV_EXIT_ON_ERROR(secureServer->getSockName()), true};
     } else if (auto* pipeServer = std::get_if<scaler::wrapper::uv::PipeServer>(&_state->_server.value())) {
         return Address {UV_EXIT_ON_ERROR(pipeServer->getSockName())};
+    } else if (auto* wsServer = std::get_if<WebSocketServer>(&_state->_server.value())) {
+        return Address {UV_EXIT_ON_ERROR(wsServer->getSockName())};
     } else {
         std::unreachable();
     }
@@ -207,20 +191,6 @@ void AcceptServer::onConnection(
     if (auto* tcpServer = std::get_if<scaler::wrapper::uv::TCPServer>(&state->_server.value())) {
         scaler::wrapper::uv::TCPSocket tcpClient = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(state->_loop));
         UV_EXIT_ON_ERROR(tcpServer->accept(tcpClient));
-
-        if (state->_webSocketAddress.has_value()) {
-            WebSocketStream::upgradeAsServer(
-                std::move(tcpClient),
-                [state](std::expected<WebSocketStream, scaler::wrapper::uv::Error> wsResult) mutable {
-                    if (!wsResult.has_value()) {
-                        // Reject this connection silently; the server keeps running.
-                        return;
-                    }
-                    state->_onConnectionCallback(Client(std::move(wsResult.value())));
-                });
-            return;
-        }
-
         return state->_onConnectionCallback(Client(std::move(tcpClient)));
     } else if (auto* secureServer = std::get_if<scaler::wrapper::openssl::SecureServer>(&state->_server.value())) {
         scaler::wrapper::openssl::SecureSocket secureClient =
@@ -231,6 +201,20 @@ void AcceptServer::onConnection(
         scaler::wrapper::uv::Pipe pipeClient = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Pipe::init(state->_loop, false));
         UV_EXIT_ON_ERROR(pipeServer->accept(pipeClient));
         return state->_onConnectionCallback(Client(std::move(pipeClient)));
+    } else if (auto* wsServer = std::get_if<WebSocketServer>(&state->_server.value())) {
+        // Hold the socket in a unique_ptr so it stays alive until the handshake completes.
+        auto wsClient = std::make_unique<WebSocketStream>(UV_EXIT_ON_ERROR(WebSocketStream::init(state->_loop)));
+
+        WebSocketStream& wsClientRef = *wsClient;
+        UV_EXIT_ON_ERROR(wsServer->accept(
+            wsClientRef,
+            [state, wsClient = std::move(wsClient)](std::expected<void, scaler::wrapper::uv::Error> result) mutable {
+                if (!result.has_value()) {
+                    return;
+                }
+                state->_onConnectionCallback(Client(std::move(*wsClient)));
+            }));
+        return;
     } else {
         std::unreachable();
     }

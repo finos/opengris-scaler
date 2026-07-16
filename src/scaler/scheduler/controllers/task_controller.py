@@ -195,6 +195,10 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         assert task_id == task.taskId
         assert state_machine.current_state() == TaskState.inactive
 
+        if state_machine.previous_state() == TaskState.balanceCanceling:
+            # balance cancel confirmed: deregister the task from its old worker before re-acquiring
+            await self._worker_controller.on_task_done(task_id)
+
         self._client_controller.on_task_begin(task.source, task.taskId)
         self._task_id_to_task[task.taskId] = task
 

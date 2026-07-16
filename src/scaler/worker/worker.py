@@ -312,7 +312,10 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         if isinstance(self._backend, ZMQNetworkBackend):
             install_async_shutdown_handler(self._loop, self.__destroy)
         elif isinstance(self._backend, YMQNetworkBackend):
-            install_async_shutdown_handler(self._loop, lambda: asyncio.ensure_future(self.__graceful_shutdown()))
+            install_async_shutdown_handler(self._loop, self.__schedule_graceful_shutdown)
+
+    def __schedule_graceful_shutdown(self) -> None:
+        asyncio.ensure_future(self.__graceful_shutdown())
 
     async def __graceful_shutdown(self):
         try:

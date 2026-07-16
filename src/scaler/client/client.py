@@ -429,9 +429,8 @@ class Client:
         graph_task, compute_futures, finished_futures = self.__construct_graph(
             node_name_to_argument, call_graph, keys, block, capabilities
         )
-        self._object_buffer.commit_send_objects()
-        self._connector_agent.send(graph_task)
 
+        # future needs to be added first to avoid having task completes too early
         self._future_manager.add_future(
             self._future_factory(
                 task=Task(
@@ -448,6 +447,9 @@ class Client:
         )
         for future in compute_futures.values():
             self._future_manager.add_future(future)
+
+        self._object_buffer.commit_send_objects()
+        self._connector_agent.send(graph_task)
 
         # preserve the future insertion order based on inputted keys
         futures = {}

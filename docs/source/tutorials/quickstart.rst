@@ -31,7 +31,7 @@ Install `uv <https://docs.astral.sh/uv/getting-started/installation>`_:
 
             powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 
-Then create and activate a virtual environment and install OpenGRIS Scaler:
+Restart your shell, then create and activate a virtual environment and install OpenGRIS Scaler:
 
 .. tabs::
 
