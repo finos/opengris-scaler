@@ -44,14 +44,19 @@ class WorkerCapabilities(ConfigType):
         if not value:
             return cls(capabilities)
         for item in value.split(","):
-            name, _, value = item.partition("=")
-            if value != "":
-                try:
-                    capabilities[name.strip()] = int(value)
-                except ValueError:
-                    raise ValueError(f"Invalid capability value for '{name}'. Expected an integer, but got '{value}'.")
+            name, separator, capability_value = item.partition("=")
+            name = name.strip()
+            if name == "":
+                raise ValueError(f"Invalid capability '{item}': capability name cannot be an empty string.")
+            if separator == "":
+                capabilities[name] = -1
             else:
-                capabilities[name.strip()] = -1
+                try:
+                    capabilities[name] = int(capability_value)
+                except ValueError:
+                    raise ValueError(
+                        f"Invalid capability value for '{name}'. Expected an integer, but got '{capability_value}'."
+                    )
         return cls(capabilities)
 
     def __str__(self) -> str:
