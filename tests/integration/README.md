@@ -53,6 +53,21 @@ Backend-agnostic, in `scenarios.py`; each topology lists the ones it runs in `te
 * `waterfall_spills` -- (needs >= 2 managers) a replenished backlog fills the capped top pool, then spills
   to the next tier. Each tier is attributed by its own container pool.
 
+## Known reds
+
+These stay red until scaler is fixed -- they are findings, not broken tests. What tells the two apart is
+that the same scenario passes on another backend, so each red is a specific claim about a specific policy
+or code path:
+
+* `container` / `rising_load` + `steady_load_stable` -- the vanilla scaling policy has no scale-down
+  cooldown, so where boot latency (~3s) far exceeds task time (0.15s) it tears machines down with tasks
+  still in flight and oscillates between 0 and 1 instead of climbing. The pool churns through many units
+  while only ever running one at once. The shipped ECS manager passes both.
+* `ec2` / `steady_load_stable` -- under sustained scale-down the scheduler sends a task to a worker whose
+  socket has just closed, and `task_controller.__routing` re-raises the resulting
+  `ConnectorSocketClosedByRemoteEndError` out of the routing path. The scheduler survives but wedges the
+  pool. `assert_healthy` names it in the failure; the client's `TimeoutError` is the downstream symptom.
+
 ## Layout
 
 | File | |
