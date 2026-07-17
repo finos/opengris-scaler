@@ -1617,6 +1617,8 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
   // editor with the default snippet again so SCHEDULER_ADDRESS stays accurate, rather than
   // leaving it pointed at a cluster that no longer exists. Only fires on an actual change, so it
   // doesn't clobber in-progress edits from switching tabs or re-rendering within one deployment.
+  // Also clears the output panel -- otherwise it keeps showing results/logs from a run against
+  // the previous, now-torn-down cluster.
   //
   // This is also the one place we pick up the worker managers' requirements.txt union: it's
   // frozen for the lifetime of a deployment, the same as the address, so re-installing here
@@ -1629,6 +1631,7 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
     if (editorAddressRef.current === schedulerAddress) return;
     editorAddressRef.current = schedulerAddress;
     editorRef.current.setValue(defaultCode);
+    setOutput([]);
 
     if (!pyodideRef.current || usingLocalWheels) return;
     const requirementsText = workerRequirements || "";
