@@ -1925,7 +1925,6 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
             display: "inline-block",
             boxSizing: "border-box",
             background: "var(--bg-surface)",
-            border: "1px solid var(--border-accent)",
             borderRadius: 3,
             padding: "7px 10px",
             color: "var(--text-primary)",
