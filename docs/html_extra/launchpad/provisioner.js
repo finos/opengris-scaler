@@ -692,7 +692,7 @@ async function waitForWs(proto, host, port, timeoutMs, intervalMs, signal, addLo
     var delayMs = Math.min(intervalMs, remaining);
     if (addLog) {
       addLog(
-        "  … not reachable yet (attempt " +
+        "  ... not reachable yet (attempt " +
           attempt +
           " of " +
           maxAttempts +
