@@ -167,8 +167,8 @@ if [ "$1" == "capnp" ]; then
                 -DWITH_OPENSSL=OFF \
                 -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
                 -DCMAKE_C_FLAGS="-fPIC -fwasm-exceptions -sSUPPORT_LONGJMP -fno-merge-all-constants" \
-                -DCMAKE_CXX_FLAGS="-fPIC -fwasm-exceptions -sSUPPORT_LONGJMP -fno-merge-all-constants" >/dev/null
-            cmake --build build-wasm --config Release -j "${NUM_CORES}" >/dev/null
+                -DCMAKE_CXX_FLAGS="-fPIC -fwasm-exceptions -sSUPPORT_LONGJMP -fno-merge-all-constants"
+            cmake --build build-wasm --config Release -j "${NUM_CORES}"
         else
             cd "${THIRD_PARTY_COMPILED}/${CAPNP_FOLDER_NAME}"
             ./configure --prefix="${PREFIX}" CXXFLAGS="${CXXFLAGS} -I${PREFIX}/include" LDFLAGS="${LDFLAGS} -L${PREFIX}/lib -Wl,-rpath,${PREFIX}/lib" >/dev/null
@@ -179,7 +179,7 @@ if [ "$1" == "capnp" ]; then
     elif [ "$2" == "install" ]; then
         cd "${THIRD_PARTY_COMPILED}/${CAPNP_FOLDER_NAME}"
         if [[ "$TARGET" == "wasm" ]]; then
-            cmake --install build-wasm >/dev/null
+            cmake --install build-wasm
             # CapnProtoTargets.cmake imports CapnProto::capnp_tool as
             # ${prefix}/bin/<tool>.js (Pyodide convention). The tools can't run
             # in wasm, so symlink the host-installed binaries instead.
@@ -226,17 +226,17 @@ elif [ "$1" == "libuv" ]; then
                 -DLIBUV_BUILD_SHARED=OFF \
                 -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
                 -DCMAKE_C_FLAGS="-fPIC -fwasm-exceptions -sSUPPORT_LONGJMP -fno-merge-all-constants" \
-                -DCMAKE_CXX_FLAGS="-fPIC -fwasm-exceptions -sSUPPORT_LONGJMP -fno-merge-all-constants" >/dev/null
+                -DCMAKE_CXX_FLAGS="-fPIC -fwasm-exceptions -sSUPPORT_LONGJMP -fno-merge-all-constants"
         else
             cd "${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}"
-            cmake -B build -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DBUILD_TESTING=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON >/dev/null
+            cmake -B build -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DBUILD_TESTING=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON
         fi
-        cmake --build build --config Release -j "${NUM_CORES}" >/dev/null
+        cmake --build build --config Release -j "${NUM_CORES}"
         echo "Compiled libuv to ${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}"
 
     elif [ "$2" == "install" ]; then
         cd "${THIRD_PARTY_COMPILED}/${UV_FOLDER_NAME}"
-        cmake --install build >/dev/null
+        cmake --install build
         echo "Installed libuv into ${PREFIX}"
 
     else
