@@ -1879,20 +1879,6 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
           {isRunning ? "✕ Cancel" : "▶ Run  Ctrl+Enter"}
         </button>
         <button
-          onClick={() => setOutput([])}
-          style={{
-            padding: "5px 10px",
-            background: "transparent",
-            border: "1px solid var(--border-accent)",
-            borderRadius: 3,
-            color: "var(--text-muted)",
-            fontFamily: "inherit", fontSize: 11, cursor: "pointer",
-            flexShrink: 0,
-          }}
-        >
-          Clear output
-        </button>
-        <button
           onClick={() => setShowRequirements((v) => !v)}
           style={{
             padding: "5px 10px",
