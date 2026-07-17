@@ -1486,6 +1486,7 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
   const [monacoReady, setMonacoReady] = useState(false);
 
   const [showRequirements, setShowRequirements] = useState(false);
+  const [packagesDropdownStyle, setPackagesDropdownStyle] = useState({});
   // The requirements union actually installed into the running interpreter. Frozen at the point
   // the deploy's scheduler address first appears (boot) or changes (redeploy) -- edits to a
   // worker manager's requirements.txt back in the Config tab only take effect on the next deploy,
@@ -1501,6 +1502,8 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
     () => readLocalStorage(TRYIT_PYODIDE_VERSION_KEY, "")
   );
 
+  const packagesButtonRef      = useRef(null);
+  const packagesDropdownRef    = useRef(null);
   const editorContainerRef     = useRef(null);
   const editorRef              = useRef(null);
   const editorAddressRef       = useRef(null); // scheduler address currently reflected in the editor
@@ -1577,6 +1580,38 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
     if (interruptBufferRef.current) Atomics.store(interruptBufferRef.current, 0, 2);
     setOutput((prev) => [...prev, { text: "Cancelled.\n", cls: "dim" }]);
   }, []);
+
+  // Packages dropdown floats over the editor/output split via a portal (see the render below)
+  // rather than sitting inline in the toolbar, so a long package list never pushes the editor
+  // down -- it just scrolls within its own max-height instead.
+  const togglePackagesDropdown = useCallback(() => {
+    setShowRequirements((wasOpen) => {
+      if (!wasOpen && packagesButtonRef.current) {
+        const r = packagesButtonRef.current.getBoundingClientRect();
+        setPackagesDropdownStyle({ position: "fixed", top: r.bottom + 6, left: r.left });
+      }
+      return !wasOpen;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!showRequirements) return;
+    const handleClick = (e) => {
+      if (
+        packagesButtonRef.current && !packagesButtonRef.current.contains(e.target) &&
+        packagesDropdownRef.current && !packagesDropdownRef.current.contains(e.target)
+      ) setShowRequirements(false);
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") setShowRequirements(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showRequirements]);
 
   // Monaco init — once, on first activation
   useEffect(() => {
@@ -1879,7 +1914,8 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
           {isRunning ? "✕ Cancel" : "▶ Run  Ctrl+Enter"}
         </button>
         <button
-          onClick={() => setShowRequirements((v) => !v)}
+          ref={packagesButtonRef}
+          onClick={togglePackagesDropdown}
           style={{
             padding: "5px 10px",
             background: showRequirements ? "var(--bg-surface)" : "transparent",
@@ -1896,14 +1932,29 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
         {statusNode}
       </div>
 
-      {/* Available packages panel */}
-      {showRequirements && (
-        <div style={{
-          padding: "10px 16px",
-          background: "var(--bg-panel)",
-          borderBottom: "1px solid var(--border-accent)",
-          flexShrink: 0,
-        }}>
+      {/* Available packages dropdown -- floats over the editor/output split via a portal instead
+          of sitting inline, so a long package list scrolls within its own max-height rather than
+          pushing the editor down. */}
+      {showRequirements && ReactDOM.createPortal(
+        <div
+          ref={packagesDropdownRef}
+          style={{
+            ...packagesDropdownStyle,
+            zIndex: 9999,
+            background: "var(--bg-elevated)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: 4,
+            boxShadow: "0 16px 48px rgba(0,0,0,0.7)",
+            padding: "10px 16px",
+            minWidth: 260,
+            maxWidth: 420,
+            maxHeight: "min(360px, calc(100vh - " + (packagesDropdownStyle.top || 0) + "px - 16px))",
+            overflowY: "auto",
+            color: "var(--text-primary)",
+            fontFamily: "inherit",
+            fontSize: 11,
+          }}
+        >
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
             <span style={{ fontSize: 11, color: "var(--text-label)" }}>Available packages</span>
             <HelpTip text={
@@ -1921,50 +1972,40 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
               )
             )}
           </div>
-          <div style={{
-            display: "inline-block",
-            boxSizing: "border-box",
-            background: "var(--bg-surface)",
-            borderRadius: 3,
-            padding: "7px 10px",
-            color: "var(--text-primary)",
-            fontFamily: "inherit",
-            fontSize: 11,
-            minHeight: 60,
-          }}>
-            {installedPackages.length === 0 ? (
-              pyStatus !== "ready" ? "Loading…" : "(no worker manager requirements)"
-            ) : (
-              <table style={{ borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th style={{
-                      textAlign: "left", fontWeight: "normal", color: "var(--text-label)",
-                      borderBottom: "1px solid var(--border-accent)", padding: "2px 0 6px",
-                    }}>
-                      Package
-                    </th>
-                    <th style={{
-                      textAlign: "left", fontWeight: "normal", color: "var(--text-label)",
-                      borderBottom: "1px solid var(--border-accent)", padding: "2px 0 6px",
-                    }}>
-                      Version
-                    </th>
+          {installedPackages.length === 0 ? (
+            <div style={{ color: "var(--text-muted)" }}>
+              {pyStatus !== "ready" ? "Loading…" : "(no worker manager requirements)"}
+            </div>
+          ) : (
+            <table style={{ borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{
+                    textAlign: "left", fontWeight: "normal", color: "var(--text-label)",
+                    borderBottom: "1px solid var(--border-accent)", padding: "2px 0 6px",
+                  }}>
+                    Package
+                  </th>
+                  <th style={{
+                    textAlign: "left", fontWeight: "normal", color: "var(--text-label)",
+                    borderBottom: "1px solid var(--border-accent)", padding: "2px 0 6px",
+                  }}>
+                    Version
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {installedPackages.map(({ name, version }) => (
+                  <tr key={name}>
+                    <td style={{ padding: "3px 12px 3px 0" }}>{name}</td>
+                    <td style={{ padding: "3px 0", color: "var(--text-muted)" }}>
+                      {version || "(version unknown)"}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {installedPackages.map(({ name, version }) => (
-                    <tr key={name}>
-                      <td style={{ padding: "3px 12px 3px 0" }}>{name}</td>
-                      <td style={{ padding: "3px 0", color: "var(--text-muted)" }}>
-                        {version || "(version unknown)"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+                ))}
+              </tbody>
+            </table>
+          )}
           {syncStatus === "error" && (
             <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-danger)", whiteSpace: "pre-wrap" }}>
               {syncError}
@@ -1982,7 +2023,7 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
                   "jupyterlite-pyodide-kernel pin. Changing this only takes effect after a reload."
                 } />
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <input
                   type="text"
                   value={pyodideVersionInput}
@@ -2025,7 +2066,8 @@ function TryItTab({ isActive, theme, schedulerAddress, workerRequirements }) {
               </div>
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Editor | Output split */}
