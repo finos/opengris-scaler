@@ -10,6 +10,7 @@ from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.defaults import DEFAULT_LOGGING_PATHS
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.config.types.worker import WorkerCapabilities
+from scaler.utility.exceptions import DisconnectedError
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 from tests.utility.utility import logging_test_name
@@ -75,3 +76,22 @@ class TestClusterDisconnect(unittest.TestCase):
         with self.assertRaises(CancelledError):
             client.clear()
             future_result.result()
+
+    def test_scheduler_disconnect_raises_disconnected_error(self):
+        """When the scheduler connection drops with tasks in flight, the futures fail with a descriptive
+        DisconnectedError naming the scheduler -- not a bare TimeoutError() that reads as if the task
+        itself timed out. n_workers=0, so the task stays in flight until the scheduler vanishes."""
+        client = Client(self.address, timeout_seconds=15)
+        try:
+            future = client.submit(noop_sleep, 30)
+            time.sleep(2)  # let the task register on the scheduler
+
+            self.combo._scheduler.kill()  # scheduler vanishes: crash / network partition
+
+            with self.assertRaises(DisconnectedError):
+                future.result(timeout=15)
+        finally:
+            try:
+                client.disconnect()
+            except Exception:  # noqa: BLE001 -- the agent already tore down when the scheduler died
+                pass
