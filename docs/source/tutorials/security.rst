@@ -1,7 +1,8 @@
 Security
 ========
 
-Scaler supports encryption of network traffic using SSL/TLS through the use of ``tls://`` prefixed addresses.
+Scaler supports encryption of network traffic using SSL/TLS through the use of ``tls://`` or ``wss://`` (secure
+WebSocket) prefixed addresses.
 
 Step 1 -- Generate a self-signed certificate (optional)
 -------------------------------------------------------
@@ -27,8 +28,8 @@ Step 2 -- Secured cluster configuration
 
 Create a single ``secure_config.toml`` file.
 
-It mirrors a plain cluster definition but uses ``tls://`` for the binding addresses and adds the ``tls_cert`` and
-``tls_key`` keys to the binding components (object storage server and scheduler).
+It mirrors a plain cluster definition but uses ``tls://`` (or ``wss://``) for the binding addresses and adds the
+``tls_cert`` and ``tls_key`` keys to the binding components (object storage server and scheduler).
 
 Connecting components such as the worker manager and client will reach the scheduler over ``tls://`` and need no
 certificate.
