@@ -171,6 +171,33 @@ class TestCapabilityAllocatePolicy(unittest.TestCase):
         self.assertListEqual(list(balancing_advice.keys()), [WorkerID(b"worker_1")])
         self.assertAlmostEqual(len(balancing_advice[WorkerID(b"worker_1")]), avg_tasks_per_worker * 2, delta=1.0)
 
+    def test_balancing_when_workers_outnumber_tasks(self):
+        """A worker holding every task must still be rebalanced when workers outnumber tasks.
+
+        With more workers than tasks the average load is below one, and a strict "within one of the
+        average" test counts every idle worker as already balanced -- leaving the hoarder no eligible
+        receiver, so nothing moves and one worker keeps all the work.
+        """
+        N_TASKS = 5
+        N_IDLE_WORKERS = 15  # far more workers than tasks: average load is 5/16 < 1
+
+        allocator = CapabilityAllocatePolicy()
+
+        # The first worker comes up alone and is handed every task.
+        allocator.add_worker(WorkerID(b"worker_hoarder"), {"gpu": -1}, MAX_TASKS_PER_WORKER)
+        for i in range(N_TASKS):
+            allocator.assign_task(self.__create_task(TaskID(f"gpu_task_{i}".encode()), {"gpu": -1}))
+
+        # The rest of the pool then comes up idle.
+        for i in range(N_IDLE_WORKERS):
+            allocator.add_worker(WorkerID(f"worker_idle_{i}".encode()), {"gpu": -1}, MAX_TASKS_PER_WORKER)
+
+        advice = allocator.balance()
+
+        # The hoarder sheds down to a single task, spreading the rest one per idle worker.
+        self.assertEqual(list(advice.keys()), [WorkerID(b"worker_hoarder")])
+        self.assertEqual(sum(len(task_ids) for task_ids in advice.values()), N_TASKS - 1)
+
     @staticmethod
     def __create_task(task_id: TaskID, capabilities: Dict[str, int]) -> Task:
         return Task(

@@ -142,8 +142,14 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         n_tasks = sum(worker.n_tasks() for worker in self._worker_id_to_worker.values())
         avg_tasks_per_worker = n_tasks / len(self._worker_id_to_worker)
 
+        # When workers outnumber tasks the average drops below one, and a strict "within one of the
+        # average" test marks every idle worker as balanced -- so a single worker hoarding all the tasks
+        # has no eligible receiver and nothing ever moves. Flooring the comparison at one keeps idle
+        # workers eligible as receivers; at avg >= 1 this is a no-op, so balancing is unchanged there.
+        balance_target = max(avg_tasks_per_worker, 1.0)
+
         def is_balanced(worker: _WorkerHolder) -> bool:
-            return abs(worker.n_tasks() - avg_tasks_per_worker) < 1
+            return abs(worker.n_tasks() - balance_target) < 1
 
         # First, we create a copy of the current workers objects so that we can modify their respective task queues.
         # We also filter out workers that are already balanced as we will not touch these.
@@ -185,7 +191,7 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
                 if task.task_id in unbalanceable_tasks:
                     continue
 
-                worker_candidates = takewhile(lambda worker: worker.n_tasks() < avg_tasks_per_worker, sorted_workers)
+                worker_candidates = takewhile(lambda worker: worker.n_tasks() < balance_target, sorted_workers)
 
                 receiving_worker_index = self.__balance_try_reassign_task(task, worker_candidates)
 
