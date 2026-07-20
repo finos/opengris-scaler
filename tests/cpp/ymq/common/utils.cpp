@@ -29,6 +29,7 @@ std::vector<std::string> getTransports()
     transports.push_back("tcp");
     transports.push_back("tls");
     transports.push_back("ws");
+    transports.push_back("wss");
 #ifdef __linux__
     transports.push_back("ipc");
 #endif
