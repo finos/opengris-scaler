@@ -65,6 +65,42 @@ class TestGraph(unittest.TestCase):
             with self.assertRaises(graphlib.CycleError):
                 client.get({"b": (inc, "c"), "c": (inc, "b")}, ["b", "c"])
 
+    def test_graph_duplicated_dependency(self):
+        # a node can use the same dependency for several of its arguments, "c" below depends on "b" twice, and "d"
+        # makes sure the scheduler keeps scheduling the nodes that come after such a node
+        # fmt: off
+        graph = {
+            "a": 2,
+            "b": (inc, "a"),  # b = a + 1 = 3
+            "c": (add, "b", "b"),  # c = b + b = 6
+            "d": (inc, "c"),  # d = c + 1 = 7
+        }
+        # fmt: on
+
+        with Client(address=self.address) as client:
+            with ScopedLogger("test graph with duplicated dependency"):
+                futures = client.get(graph, keys=["c", "d"], block=False)
+                self.assertEqual(futures["c"].result(timeout=30.0), 6)
+                self.assertEqual(futures["d"].result(timeout=30.0), 7)
+
+    def test_graph_duplicated_dependency_on_failure(self):
+        # same duplicated dependency as above ("c" depends on "b" twice), but here a sibling "d" fails while "c"
+        # is still in flight, so "c" gets cleaned up through the graph-abort path instead of the normal success
+        # path; both paths clean the intermediate result the same way and used to hit the same error
+        # fmt: off
+        graph = {
+            "a": 2,
+            "b": (inc, "a"),  # b = a + 1 = 3
+            "c": (add_sleep, "b", "b"),  # c = b + b = 6, but stays running for a few seconds
+            "d": (inc_error, "a"),  # d fails after ~1 second and aborts the whole graph while "c" is running
+        }
+        # fmt: on
+
+        with Client(address=self.address) as client:
+            # without a clean abort the graph would leak and this call would hang instead of raising
+            with ScopedLogger("test duplicated dependency abort"), self.assertRaises(ValueError):
+                client.get(graph, keys=["c", "d"])
+
     def test_graph_fail(self):
         # fmt: off
         graph = {
