@@ -70,7 +70,18 @@ function(scaler_add_python_module)
         PREFIX ""
         OUTPUT_NAME "${PYMOD_MODULE_NAME}"
         LINKER_LANGUAGE CXX
+
+        # Hide all symbols except for the PyInit_<module> entry-point.
+        # That avoids symbol collisions when loading multiple modules from the same Python process.
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
     )
+
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+        # Hide symbols from statically linked 3rd-party library (e.g. OpenSSL), avoiding conflicts when loading multiple
+        # modules from the same Python process.
+        target_link_options(${PYMOD_TARGET} PRIVATE "LINKER:--exclude-libs,ALL")
+    endif()
 
     if(WIN32)
         # Windows: use .pyd extension and set library output directories.
