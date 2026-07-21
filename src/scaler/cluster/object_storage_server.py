@@ -10,7 +10,8 @@ from scaler.io.ymq import YMQException
 from scaler.object_storage.object_storage_server import ObjectStorageServer
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ClientID, ObjectID
-from scaler.utility.logging.utility import get_logger_info, setup_logger
+from scaler.utility.logging.utility import get_logger_info
+from scaler.utility.process_bootstrap import bootstrap_process
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ class ObjectStorageServerProcess(multiprocessing.get_context("spawn").Process): 
         raise TimeoutError(f"ObjectStorageServer at {self._bind_address!r} failed to start within 30 seconds")
 
     def run(self) -> None:
-        setup_logger(
+        bootstrap_process(
             self._logging_paths, self._logging_config_file, self._logging_level, process_name="object_storage_server"
         )
         logger.info(f"ObjectStorageServer: start and listen to {self._bind_address!r}")

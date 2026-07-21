@@ -34,7 +34,7 @@ from scaler.protocol.capnp import (
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ProcessorID, WorkerID
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.utility.signal_handler import install_async_shutdown_handler
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
 from scaler.worker.agent.processor_manager import VanillaProcessorManager
@@ -160,7 +160,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             self._connector_storage.destroy()
 
     def __initialize(self):
-        setup_logger()
+        bootstrap_process()
         register_event_loop(self._event_loop)
 
         self._backend = get_network_backend_from_env(io_threads=self._io_threads)

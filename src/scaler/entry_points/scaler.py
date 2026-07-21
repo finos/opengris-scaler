@@ -23,7 +23,7 @@ from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerC
 from scaler.config.section.webgui import WebGUIConfig
 from scaler.config.section.worker_manager_union import WorkerManagerUnion
 from scaler.utility.event_loop import register_event_loop
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.process_bootstrap import bootstrap_process
 
 
 @dataclasses.dataclass
@@ -50,7 +50,7 @@ def _run_scheduler(config: SchedulerConfig) -> None:
 
 
 def _run_worker_manager(config: WorkerManagerUnion) -> None:
-    setup_logger(
+    bootstrap_process(
         config.logging_config.paths,
         config.logging_config.config_file,
         config.logging_config.level,

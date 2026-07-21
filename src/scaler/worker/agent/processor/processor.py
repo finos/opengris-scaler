@@ -30,8 +30,8 @@ from scaler.protocol.capnp import (
 )
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
-from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
+from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.utility.serialization import serialize_failure
 from scaler.worker.agent.processor.object_cache import ObjectCache
 from scaler.worker.agent.processor.streaming_buffer import StreamingBuffer
@@ -115,7 +115,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         if "/dev/stdout" in self._logging_paths:
             logging_paths.append("/dev/stdout")
 
-        setup_logger(log_paths=tuple(logging_paths), logging_level=self._logging_level)
+        bootstrap_process(log_paths=tuple(logging_paths), logging_level=self._logging_level)
         tblib.pickling_support.install()
 
         self._backend = get_network_backend_from_env()

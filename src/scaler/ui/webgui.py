@@ -4,13 +4,13 @@ import uvicorn  # pyright: ignore[reportMissingImports]
 
 from scaler.config.section.webgui import WebGUIConfig
 from scaler.ui.app import create_app
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.process_bootstrap import bootstrap_process
 
 logger = logging.getLogger(__name__)
 
 
 def start_webgui(config: WebGUIConfig) -> None:
-    setup_logger(
+    bootstrap_process(
         config.logging_config.paths, config.logging_config.config_file, config.logging_config.level, process_name="gui"
     )
 
