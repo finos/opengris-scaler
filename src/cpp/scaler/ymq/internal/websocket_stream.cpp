@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "scaler/ymq/internal/websocket_utils.h"
@@ -214,9 +215,74 @@ std::expected<std::optional<DecodedFrame>, scaler::wrapper::uv::Error> tryDecode
     return std::optional<DecodedFrame> {DecodedFrame {opcode, fin, std::move(payload)}};
 }
 
+// The following dispatch to the actual transport socket (TCP or TLS), normalizing the API.
+
+std::expected<void, scaler::wrapper::uv::Error> transportWrite(
+    WebSocketStream::Transport& transport,
+    std::span<const std::span<const uint8_t>> buffers,
+    scaler::wrapper::uv::WriteCallback callback) noexcept
+{
+    return std::visit(
+        [&](auto& socket) -> std::expected<void, scaler::wrapper::uv::Error> {
+            auto result = socket.write(buffers, std::move(callback));
+            if (!result.has_value()) {
+                return std::unexpected(result.error());
+            }
+            return {};
+        },
+        transport);
+}
+
+std::expected<void, scaler::wrapper::uv::Error> transportWrite(
+    WebSocketStream::Transport& transport,
+    std::span<const uint8_t> buffer,
+    scaler::wrapper::uv::WriteCallback callback) noexcept
+{
+    const std::span<const std::span<const uint8_t>> buffers {&buffer, 1};
+    return transportWrite(transport, buffers, std::move(callback));
+}
+
+std::expected<scaler::wrapper::uv::ConnectRequest, scaler::wrapper::uv::Error> transportConnect(
+    WebSocketStream::Transport& transport,
+    const scaler::wrapper::uv::SocketAddress& address,
+    scaler::wrapper::uv::ConnectCallback callback) noexcept
+{
+    return std::visit([&](auto& socket) { return socket.connect(address, std::move(callback)); }, transport);
+}
+
+std::expected<void, scaler::wrapper::uv::Error> transportReadStart(
+    WebSocketStream::Transport& transport, scaler::wrapper::uv::ReadCallback callback) noexcept
+{
+    return std::visit([&](auto& socket) { return socket.readStart(std::move(callback)); }, transport);
+}
+
+void transportReadStop(WebSocketStream::Transport& transport) noexcept
+{
+    std::visit([](auto& socket) { socket.readStop(); }, transport);
+}
+
+std::expected<void, scaler::wrapper::uv::Error> transportShutdown(
+    WebSocketStream::Transport& transport, scaler::wrapper::uv::ShutdownCallback callback) noexcept
+{
+    return std::visit(
+        [&](auto& socket) -> std::expected<void, scaler::wrapper::uv::Error> {
+            auto result = socket.shutdown(std::move(callback));
+            if (!result.has_value()) {
+                return std::unexpected(result.error());
+            }
+            return {};
+        },
+        transport);
+}
+
+std::expected<void, scaler::wrapper::uv::Error> transportCloseReset(WebSocketStream::Transport& transport) noexcept
+{
+    return std::visit([](auto& socket) { return socket.closeReset(); }, transport);
+}
+
 }  // anonymous namespace
 
-WebSocketStream::State::State(scaler::wrapper::uv::TCPSocket socket) noexcept: _socket(std::move(socket))
+WebSocketStream::State::State(Transport transport) noexcept: _transport(std::move(transport))
 {
 }
 
@@ -225,18 +291,26 @@ WebSocketStream::WebSocketStream(std::shared_ptr<State> state) noexcept: _state(
 }
 
 std::expected<WebSocketStream, scaler::wrapper::uv::Error> WebSocketStream::init(
-    scaler::wrapper::uv::Loop& loop) noexcept
+    scaler::wrapper::uv::Loop& loop, std::optional<scaler::wrapper::openssl::SSLContext> sslContext) noexcept
 {
-    auto socket = scaler::wrapper::uv::TCPSocket::init(loop);
-    if (!socket.has_value()) {
-        return std::unexpected(socket.error());
+    if (sslContext.has_value()) {
+        auto secureSocket = scaler::wrapper::openssl::SecureSocket::init(loop, std::move(sslContext.value()));
+        if (!secureSocket.has_value()) {
+            return std::unexpected(secureSocket.error());
+        }
+        return WebSocketStream(std::make_shared<State>(std::move(secureSocket.value())));
+    } else {
+        auto tcpSocket = scaler::wrapper::uv::TCPSocket::init(loop);
+        if (!tcpSocket.has_value()) {
+            return std::unexpected(tcpSocket.error());
+        }
+        return WebSocketStream(std::make_shared<State>(std::move(tcpSocket.value())));
     }
-    return WebSocketStream(std::make_shared<State>(std::move(socket.value())));
 }
 
-scaler::wrapper::uv::TCPSocket& WebSocketStream::transport() noexcept
+WebSocketStream::Transport& WebSocketStream::transport() noexcept
 {
-    return _state->_socket;
+    return _state->_transport;
 }
 
 std::expected<scaler::wrapper::uv::ConnectRequest, scaler::wrapper::uv::Error> WebSocketStream::connect(
@@ -250,8 +324,8 @@ std::expected<scaler::wrapper::uv::ConnectRequest, scaler::wrapper::uv::Error> W
     // Copy the TCP address before moving `address` into the bound callback.
     const scaler::wrapper::uv::SocketAddress tcpAddress = address.tcpAddress;
 
-    return _state->_socket.connect(
-        tcpAddress, std::bind_front(&WebSocketStream::upgradeAsClient, _state, std::move(address)));
+    return transportConnect(
+        _state->_transport, tcpAddress, std::bind_front(&WebSocketStream::upgradeAsClient, _state, std::move(address)));
 }
 
 std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::accept(HandshakeDoneCallback callback) noexcept
@@ -266,7 +340,7 @@ std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::accept(Handshak
 // Called when a complete HTTP response has been assembled in _recvBuffer (client side handshake).
 void WebSocketStream::finishClientUpgrade(std::shared_ptr<State> state, std::string key) noexcept
 {
-    state->_socket.readStop();
+    transportReadStop(state->_transport);
 
     const std::string_view response(
         reinterpret_cast<const char*>(state->_recvBuffer.data()), state->_recvBuffer.size());
@@ -301,7 +375,7 @@ void WebSocketStream::finishClientUpgrade(std::shared_ptr<State> state, std::str
 // Called when a complete HTTP request has been assembled in _recvBuffer (server side handshake).
 void WebSocketStream::finishServerUpgrade(std::shared_ptr<State> state) noexcept
 {
-    state->_socket.readStop();
+    transportReadStop(state->_transport);
 
     const std::string_view request(reinterpret_cast<const char*>(state->_recvBuffer.data()), state->_recvBuffer.size());
 
@@ -363,7 +437,8 @@ void WebSocketStream::finishServerUpgrade(std::shared_ptr<State> state) noexcept
     const std::span<const uint8_t> responseSpan(
         reinterpret_cast<const uint8_t*>(responseData->data()), responseData->size());
 
-    auto writeResult = state->_socket.write(
+    auto writeResult = transportWrite(
+        state->_transport,
         std::span<const std::span<const uint8_t>>(&responseSpan, 1),
         [state,
          responseData = std::move(responseData)](std::expected<void, scaler::wrapper::uv::Error> result) mutable {
@@ -399,7 +474,8 @@ void WebSocketStream::upgradeAsClient(
     const std::span<const uint8_t> requestSpan(
         reinterpret_cast<const uint8_t*>(requestData->data()), requestData->size());
 
-    auto writeResult = state->_socket.write(
+    auto writeResult = transportWrite(
+        state->_transport,
         requestSpan,
         [state, requestData, key = std::move(key)](std::expected<void, scaler::wrapper::uv::Error> result) mutable {
             if (!result.has_value()) {
@@ -407,12 +483,13 @@ void WebSocketStream::upgradeAsClient(
                 return;
             }
 
-            auto readStartResult = state->_socket.readStart(
+            auto readStartResult = transportReadStart(
+                state->_transport,
                 [state, key = std::move(key)](
                     std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> readResult) mutable {
                     if (!readResult.has_value()) {
                         auto safeState = state;
-                        state->_socket.readStop();
+                        transportReadStop(state->_transport);
                         completeUpgrade(safeState, std::unexpected(readResult.error()));
                         return;
                     }
@@ -422,7 +499,7 @@ void WebSocketStream::upgradeAsClient(
 
                     if (state->_recvBuffer.size() > MAX_UPGRADE_HEADER_SIZE) {
                         auto safeState = state;
-                        state->_socket.readStop();
+                        transportReadStop(state->_transport);
                         completeUpgrade(safeState, std::unexpected(scaler::wrapper::uv::Error {UV_EPROTO}));
                         return;
                     }
@@ -446,13 +523,14 @@ void WebSocketStream::upgradeAsClient(
 
 std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::upgradeAsServer(std::shared_ptr<State> state) noexcept
 {
-    return state->_socket.readStart(
+    return transportReadStart(
+        state->_transport,
         [state](std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> readResult) mutable {
             if (!readResult.has_value()) {
                 // Copy state to the stack before readStop() - readStop() destroys this lambda (and the captured state)
                 // via setData({}), so state must outlive that call.
                 auto safeState = state;
-                state->_socket.readStop();
+                transportReadStop(state->_transport);
                 completeUpgrade(safeState, std::unexpected(readResult.error()));
                 return;
             }
@@ -462,7 +540,7 @@ std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::upgradeAsServer
 
             if (state->_recvBuffer.size() > MAX_UPGRADE_HEADER_SIZE) {
                 auto safeState = state;
-                state->_socket.readStop();
+                transportReadStop(state->_transport);
                 completeUpgrade(safeState, std::unexpected(scaler::wrapper::uv::Error {UV_EPROTO}));
                 return;
             }
@@ -502,7 +580,8 @@ std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::write(
         for (const auto& buf: buffers)
             writeBuffers.push_back(buf);
 
-        auto result = _state->_socket.write(
+        auto result = transportWrite(
+            _state->_transport,
             std::span<const std::span<const uint8_t>>(writeBuffers),
             [header = std::move(header), callback = std::move(callback)](
                 std::expected<void, scaler::wrapper::uv::Error> err) mutable { callback(err); });
@@ -520,7 +599,8 @@ std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::write(
     const std::span<const uint8_t> maskedSpan(*maskedData);
     const std::array<std::span<const uint8_t>, 2> writeBuffers {headerSpan, maskedSpan};
 
-    auto result = _state->_socket.write(
+    auto result = transportWrite(
+        _state->_transport,
         std::span<const std::span<const uint8_t>>(writeBuffers),
         [headerData = std::move(headerData), maskedData = std::move(maskedData), callback = std::move(callback)](
             std::expected<void, scaler::wrapper::uv::Error> err) mutable { callback(err); });
@@ -565,8 +645,9 @@ void WebSocketStream::processRecvBuffer(std::shared_ptr<State> state) noexcept
             auto frameData  = std::make_shared<std::vector<uint8_t>>(std::move(closeFrame));
             const std::span<const uint8_t> frameSpan(*frameData);
             // Best-effort CLOSE echo - connection is shutting down regardless.
-            if (auto r = state->_socket.write(
-                    std::span<const std::span<const uint8_t>>(&frameSpan, 1),
+            if (auto r = transportWrite(
+                    state->_transport,
+                    frameSpan,
                     [frameData = std::move(frameData)](std::expected<void, scaler::wrapper::uv::Error>) {});
                 !r.has_value()) {
             }
@@ -584,8 +665,9 @@ void WebSocketStream::processRecvBuffer(std::shared_ptr<State> state) noexcept
             auto frameData = std::make_shared<std::vector<uint8_t>>(std::move(pongFrame));
             const std::span<const uint8_t> frameSpan(*frameData);
             // Best-effort PONG - if this write fails the next read will catch the error.
-            if (auto r = state->_socket.write(
-                    std::span<const std::span<const uint8_t>>(&frameSpan, 1),
+            if (auto r = transportWrite(
+                    state->_transport,
+                    frameSpan,
                     [frameData = std::move(frameData)](std::expected<void, scaler::wrapper::uv::Error>) {});
                 !r.has_value()) {
             }
@@ -626,8 +708,8 @@ std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::readStart(
     state->_readCallback = std::move(callback);
     state->_readActive   = true;
 
-    auto startResult = state->_socket.readStart(
-        [state](std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) mutable {
+    auto startResult = transportReadStart(
+        state->_transport, [state](std::expected<std::span<const uint8_t>, scaler::wrapper::uv::Error> result) mutable {
             onRead(state, std::move(result));
         });
 
@@ -646,7 +728,7 @@ std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::readStart(
 void WebSocketStream::readStop() noexcept
 {
     _state->_readActive = false;
-    _state->_socket.readStop();
+    transportReadStop(_state->_transport);
     _state->_readCallback = {};
 }
 
@@ -661,7 +743,8 @@ std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::shutdown(
     // Share ownership so both the synchronous error path and the async write callback can invoke it.
     auto callbackPtr = std::make_shared<scaler::wrapper::uv::ShutdownCallback>(std::move(callback));
 
-    auto result = _state->_socket.write(
+    auto result = transportWrite(
+        _state->_transport,
         frameSpan,
         [state, frameData = std::move(frameData), callbackPtr](
             std::expected<void, scaler::wrapper::uv::Error> writeErr) mutable {
@@ -672,8 +755,8 @@ std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::shutdown(
             }
             // UV_ENOTCONN from the TCP shutdown callback means the peer already closed the
             // connection after we sent the CLOSE frame - treat as successful shutdown.
-            auto r = state->_socket.shutdown(
-                [callbackPtr](std::expected<void, scaler::wrapper::uv::Error> shutdownErr) mutable {
+            auto r = transportShutdown(
+                state->_transport, [callbackPtr](std::expected<void, scaler::wrapper::uv::Error> shutdownErr) mutable {
                     if (!shutdownErr.has_value() && shutdownErr.error().code() == UV_ENOTCONN)
                         (*callbackPtr)({});
                     else
@@ -708,7 +791,7 @@ WebSocketStream::~WebSocketStream() noexcept
 std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::closeReset() noexcept
 {
     readStop();
-    return _state->_socket.closeReset();
+    return transportCloseReset(_state->_transport);
 }
 
 }  // namespace internal

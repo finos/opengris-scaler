@@ -148,7 +148,12 @@ void MessageConnection::shutdownClient() noexcept
         UV_EXIT_ON_ERROR(result);
     };
 
-    UV_EXIT_ON_ERROR(clientPtr->shutdown(std::move(shutdownCallback)));
+    auto result = clientPtr->shutdown(std::move(shutdownCallback));
+    if (!result.has_value() && isConnectionError(result.error())) {
+        return;  // Ignore connection errors during shutdown
+    }
+
+    UV_EXIT_ON_ERROR(result);
 }
 
 void MessageConnection::initialize() noexcept
@@ -443,7 +448,8 @@ bool MessageConnection::isConnectionError(const scaler::wrapper::uv::Error& erro
         case UV_ETIMEDOUT:
         case UV_EPIPE:
         case UV_ENETDOWN:
-        case UV_ENOTCONN: return true;
+        case UV_ENOTCONN:
+        case UV_EOF: return true;
         default: return false;
     };
 }
