@@ -1,5 +1,6 @@
+import threading
 import unittest
-from typing import Dict, Set
+from typing import Dict, Optional, Set
 
 from scaler.protocol.capnp import Task
 from scaler.scheduler.controllers.policies.simple_policy.allocation.capability_allocate_policy import (
@@ -170,6 +171,69 @@ class TestCapabilityAllocatePolicy(unittest.TestCase):
 
         self.assertListEqual(list(balancing_advice.keys()), [WorkerID(b"worker_1")])
         self.assertAlmostEqual(len(balancing_advice[WorkerID(b"worker_1")]), avg_tasks_per_worker * 2, delta=1.0)
+
+    def test_balancing_when_workers_outnumber_tasks(self):
+        """A worker holding every task must still be rebalanced when workers outnumber tasks.
+
+        With more workers than tasks the average load is below one, and a strict "within one of the
+        average" test counts every idle worker as already balanced -- leaving the hoarder no eligible
+        receiver, so nothing moves and one worker keeps all the work.
+        """
+        N_TASKS = 5
+        N_IDLE_WORKERS = 15  # far more workers than tasks: average load is 5/16 < 1
+
+        allocator = CapabilityAllocatePolicy()
+
+        # The first worker comes up alone and is handed every task.
+        allocator.add_worker(WorkerID(b"worker_hoarder"), {"gpu": -1}, MAX_TASKS_PER_WORKER)
+        for i in range(N_TASKS):
+            allocator.assign_task(self.__create_task(TaskID(f"gpu_task_{i}".encode()), {"gpu": -1}))
+
+        # The rest of the pool then comes up idle.
+        for i in range(N_IDLE_WORKERS):
+            allocator.add_worker(WorkerID(f"worker_idle_{i}".encode()), {"gpu": -1}, MAX_TASKS_PER_WORKER)
+
+        advice = allocator.balance()
+
+        # The hoarder sheds down to a single task, spreading the rest one per idle worker.
+        self.assertEqual(list(advice.keys()), [WorkerID(b"worker_hoarder")])
+        self.assertEqual(sum(len(task_ids) for task_ids in advice.values()), N_TASKS - 1)
+
+    def test_balancing_terminates_when_most_loaded_is_below_target(self):
+        """balance() must terminate even when the only unbalanced workers sit below the average load.
+
+        Four workers at three tasks each count as balanced and drop out, leaving one worker at four and
+        two idle. Shedding the single over-target task leaves two under-target workers; the balancer used
+        to hand that task back and forth between them forever, pinning the scheduler's event loop at 100%.
+        """
+        allocator = CapabilityAllocatePolicy()
+
+        # Four workers come up and are handed 13 tasks -- assign_task spreads them 4/3/3/3.
+        for i in range(4):
+            allocator.add_worker(WorkerID(f"worker_{i}".encode()), {"capA": -1}, MAX_TASKS_PER_WORKER)
+        for i in range(13):
+            assigned_worker = allocator.assign_task(self.__create_task(TaskID(f"task_{i}".encode()), {}))
+            self.assertTrue(assigned_worker.is_valid())
+
+        # Two idle workers then join: the distribution is now 4/3/3/3/0/0.
+        allocator.add_worker(WorkerID(b"worker_idle_0"), {"capA": -1}, MAX_TASKS_PER_WORKER)
+        allocator.add_worker(WorkerID(b"worker_idle_1"), {"capA": -1}, MAX_TASKS_PER_WORKER)
+
+        advice = self.__balance_with_timeout(allocator, timeout_seconds=15)
+        self.assertIsNotNone(advice, "balance() did not terminate -- the balancer is stuck in an infinite loop")
+
+    @staticmethod
+    def __balance_with_timeout(allocator: CapabilityAllocatePolicy, timeout_seconds: float) -> Optional[Dict]:
+        """Runs balance() in a daemon thread; returns its result, or None if it did not finish in time."""
+        result: Dict[str, Dict] = {}
+
+        def run() -> None:
+            result["advice"] = allocator.balance()
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        thread.join(timeout_seconds)
+        return result.get("advice")
 
     @staticmethod
     def __create_task(task_id: TaskID, capabilities: Dict[str, int]) -> Task:
