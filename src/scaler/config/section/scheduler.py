@@ -76,7 +76,10 @@ class SchedulerConfig(ConfigClass):
     )
     load_balance_seconds: int = dataclasses.field(
         default=defaults.DEFAULT_LOAD_BALANCE_SECONDS,
-        metadata=dict(short="-ls", help="number of seconds for load balance operation in scheduler"),
+        metadata=dict(
+            short="-ls",
+            help="number of seconds between load balance operations in scheduler; a negative value disables it",
+        ),
     )
     load_balance_trigger_times: int = dataclasses.field(
         default=defaults.DEFAULT_LOAD_BALANCE_TRIGGER_TIMES,
@@ -103,12 +106,11 @@ class SchedulerConfig(ConfigClass):
     def __post_init__(self):
         if self.max_number_of_tasks_waiting < -1:
             raise ValueError("max_number_of_tasks_waiting must be -1 (for unlimited) or non-negative.")
-        if (
-            self.client_timeout_seconds <= 0
-            or self.worker_timeout_seconds <= 0
-            or self.object_retention_seconds <= 0
-            or self.load_balance_seconds <= 0
-        ):
-            raise ValueError("All timeout/retention/balance second values must be positive.")
+        if self.client_timeout_seconds <= 0 or self.worker_timeout_seconds <= 0 or self.object_retention_seconds <= 0:
+            raise ValueError("All timeout/retention second values must be positive.")
+        # A negative load_balance_seconds disables load balancing (create_async_loop_routine treats a
+        # negative interval as "off"); zero would busy-loop the balancer, so only zero is rejected.
+        if self.load_balance_seconds == 0:
+            raise ValueError("load_balance_seconds must be non-zero (use a negative value to disable balancing).")
         if self.load_balance_trigger_times <= 0:
             raise ValueError("load_balance_trigger_times must be a positive integer.")

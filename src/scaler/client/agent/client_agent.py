@@ -29,7 +29,12 @@ from scaler.protocol.capnp import (
     TaskResult,
 )
 from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
-from scaler.utility.exceptions import ClientCancelledException, ClientQuitException, ClientShutdownException
+from scaler.utility.exceptions import (
+    ClientCancelledException,
+    ClientQuitException,
+    ClientShutdownException,
+    DisconnectedError,
+)
 from scaler.utility.identifiers import ClientID
 
 logger = logging.getLogger(__name__)
@@ -221,10 +226,22 @@ class ClientAgent(threading.Thread):
             logger.info("ClientAgent: client quitting")
             self._future_manager.set_all_futures_with_exception(exception)
             public_exception = exception
-        elif isinstance(exception, (TimeoutError, YMQException)):
-            logger.error(f"ClientAgent: client timeout when connecting to {self._scheduler_address!r}")
-            self._future_manager.set_all_futures_with_exception(TimeoutError())
+        elif isinstance(exception, TimeoutError):
+            # The scheduler went silent for death_timeout_seconds; keep its descriptive message rather
+            # than replacing it with a bare TimeoutError().
+            logger.error(f"ClientAgent: lost contact with scheduler {self._scheduler_address!r}: {exception}")
+            self._future_manager.set_all_futures_with_exception(exception)
             public_exception = exception
+        elif isinstance(exception, YMQException):
+            # The scheduler closed the connection outright (it crashed, evicted this client, or shut
+            # down). Fail the in-flight tasks with a clear disconnection error naming the scheduler,
+            # not a bare TimeoutError() that reads as if the tasks themselves timed out.
+            logger.error(f"ClientAgent: connection to scheduler {self._scheduler_address!r} closed by remote end")
+            disconnected = DisconnectedError(
+                f"client lost its connection to scheduler {self._scheduler_address!r} before all tasks finished"
+            )
+            self._future_manager.set_all_futures_with_exception(disconnected)
+            public_exception = disconnected
         else:
             public_exception = exception
 
