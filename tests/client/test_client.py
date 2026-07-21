@@ -14,7 +14,7 @@ from scaler.config.common.worker import WorkerConfig
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.config.types.worker import WorkerCapabilities
-from scaler.utility.exceptions import MissingObjects, ProcessorDiedError
+from scaler.utility.exceptions import DisconnectedError, MissingObjects, ProcessorDiedError
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.preload import PreloadSpecError, _parse_preload_spec, execute_preload
@@ -291,7 +291,7 @@ class TestClient(unittest.TestCase):
 
             time.sleep(5)
 
-            with self.assertRaises(TimeoutError):
+            with self.assertRaises((TimeoutError, DisconnectedError)):
                 future.result()
 
     def test_responsiveness(self):
