@@ -81,7 +81,10 @@ class TestClusterDisconnect(unittest.TestCase):
         """When the scheduler connection drops with tasks in flight, the futures fail with a descriptive
         DisconnectedError naming the scheduler -- not a bare TimeoutError() that reads as if the task
         itself timed out. n_workers=0, so the task stays in flight until the scheduler vanishes."""
-        client = Client(self.address, timeout_seconds=15)
+        # The client's heartbeat death-timeout (5s) must be comfortably shorter than the future wait
+        # below, so the agent detects the vanished scheduler and fails the future with
+        # DisconnectedError well before future.result()'s own timeout could raise a bare TimeoutError.
+        client = Client(self.address, timeout_seconds=5)
         try:
             future = client.submit(noop_sleep, 30)
             time.sleep(2)  # let the task register on the scheduler
@@ -89,7 +92,7 @@ class TestClusterDisconnect(unittest.TestCase):
             self.combo._scheduler.kill()  # scheduler vanishes: crash / network partition
 
             with self.assertRaises(DisconnectedError):
-                future.result(timeout=15)
+                future.result(timeout=30)
         finally:
             try:
                 client.disconnect()
