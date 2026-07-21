@@ -1,5 +1,6 @@
+import threading
 import unittest
-from typing import Dict, Set
+from typing import Dict, Optional, Set
 
 from scaler.protocol.capnp import Task
 from scaler.scheduler.controllers.policies.simple_policy.allocation.capability_allocate_policy import (
@@ -197,6 +198,42 @@ class TestCapabilityAllocatePolicy(unittest.TestCase):
         # The hoarder sheds down to a single task, spreading the rest one per idle worker.
         self.assertEqual(list(advice.keys()), [WorkerID(b"worker_hoarder")])
         self.assertEqual(sum(len(task_ids) for task_ids in advice.values()), N_TASKS - 1)
+
+    def test_balancing_terminates_when_most_loaded_is_below_target(self):
+        """balance() must terminate even when the only unbalanced workers sit below the average load.
+
+        Four workers at three tasks each count as balanced and drop out, leaving one worker at four and
+        two idle. Shedding the single over-target task leaves two under-target workers; the balancer used
+        to hand that task back and forth between them forever, pinning the scheduler's event loop at 100%.
+        """
+        allocator = CapabilityAllocatePolicy()
+
+        # Four workers come up and are handed 13 tasks -- assign_task spreads them 4/3/3/3.
+        for i in range(4):
+            allocator.add_worker(WorkerID(f"worker_{i}".encode()), {"capA": -1}, MAX_TASKS_PER_WORKER)
+        for i in range(13):
+            assigned_worker = allocator.assign_task(self.__create_task(TaskID(f"task_{i}".encode()), {}))
+            self.assertTrue(assigned_worker.is_valid())
+
+        # Two idle workers then join: the distribution is now 4/3/3/3/0/0.
+        allocator.add_worker(WorkerID(b"worker_idle_0"), {"capA": -1}, MAX_TASKS_PER_WORKER)
+        allocator.add_worker(WorkerID(b"worker_idle_1"), {"capA": -1}, MAX_TASKS_PER_WORKER)
+
+        advice = self.__balance_with_timeout(allocator, timeout_seconds=15)
+        self.assertIsNotNone(advice, "balance() did not terminate -- the balancer is stuck in an infinite loop")
+
+    @staticmethod
+    def __balance_with_timeout(allocator: CapabilityAllocatePolicy, timeout_seconds: float) -> Optional[Dict]:
+        """Runs balance() in a daemon thread; returns its result, or None if it did not finish in time."""
+        result: Dict[str, Dict] = {}
+
+        def run() -> None:
+            result["advice"] = allocator.balance()
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        thread.join(timeout_seconds)
+        return result.get("advice")
 
     @staticmethod
     def __create_task(task_id: TaskID, capabilities: Dict[str, int]) -> Task:

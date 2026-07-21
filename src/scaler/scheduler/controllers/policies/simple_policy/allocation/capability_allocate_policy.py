@@ -151,6 +151,9 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         def is_balanced(worker: _WorkerHolder) -> bool:
             return abs(worker.n_tasks() - balance_target) < 1
 
+        def is_high_load(worker: _WorkerHolder) -> bool:
+            return worker.n_tasks() - balance_target >= 1
+
         # First, we create a copy of the current workers objects so that we can modify their respective task queues.
         # We also filter out workers that are already balanced as we will not touch these.
         #
@@ -178,8 +181,10 @@ class CapabilityAllocatePolicy(TaskAllocatePolicy):
         while len(sorted_workers) >= 2:
             most_loaded_worker: _WorkerHolder = sorted_workers.pop(-1)
 
-            if is_balanced(most_loaded_worker):
-                # Most loaded worker is not high-load, stop
+            if not is_high_load(most_loaded_worker):
+                # The most loaded remaining worker is at or below the target, so nothing is left to shed.
+                # This also prevents an infinite loop: a below-target worker would otherwise keep handing
+                # a task to an idle peer that immediately hands it back, never converging.
                 break
 
             # Go through all of the most loaded worker's tasks, trying to find a low-load worker that can accept it.
