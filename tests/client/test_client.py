@@ -3,6 +3,7 @@ import logging
 import multiprocessing
 import os
 import random
+import sys
 import tempfile
 import time
 import unittest
@@ -282,6 +283,11 @@ class TestClient(unittest.TestCase):
             fut = client.submit(add, ref, [6])
             self.assertEqual(fut.result(), [1, 2, 3, 4, 5, 6])
 
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "hangs on Windows: client teardown blocks forever waiting on a killed peer's socket "
+        "shutdown; see https://github.com/finos/opengris-scaler/issues/912",
+    )
     def test_scheduler_crash(self):
         client_timeout_seconds = 5
         with Client(address=self.address, timeout_seconds=client_timeout_seconds) as client:
