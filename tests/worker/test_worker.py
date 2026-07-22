@@ -177,6 +177,38 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
         handled = [c for c in mock_logger.info.call_args_list if "connector socket closed by remote end" in str(c)]
         self.assertTrue(handled, "the post-connection case was not logged as an expected condition")
 
+    async def test_teardown_failure_escalates_a_clean_exit_to_nonzero(self) -> None:
+        # A teardown failure must not swallow the "quit" log line or silently produce a clean exit;
+        # since nothing else went wrong, it's the only reason to exit nonzero.
+        error = SocketStopRequestedError(ymq.ErrorCode.SocketStopRequested, "binder socket shut down mid-send")
+        worker = self._build_worker(error)
+        worker._loop = asyncio.get_running_loop()
+        worker._binder_internal.destroy = mock.Mock(side_effect=RuntimeError("teardown boom"))
+
+        with mock.patch.object(worker_module, "logger") as mock_logger:
+            exit_code = await worker._run()
+        await self._drain_pending_tasks()
+
+        self.assertEqual(exit_code, 1, "a teardown failure should escalate an otherwise-clean exit to nonzero")
+        teardown_failed = [c for c in mock_logger.exception.call_args_list if "teardown failed" in str(c)]
+        self.assertTrue(teardown_failed, "the teardown failure was not logged")
+        quit_logged = [c for c in mock_logger.info.call_args_list if "quit" in str(c)]
+        self.assertTrue(quit_logged, "the 'quit' log line was lost when teardown failed")
+
+    async def test_teardown_failure_does_not_mask_a_more_specific_nonzero_exit(self) -> None:
+        error = SysCallError(ymq.ErrorCode.SysCallError, "something genuinely broke")
+        worker = self._build_worker(error)
+        worker._loop = asyncio.get_running_loop()
+        worker._binder_internal.destroy = mock.Mock(side_effect=RuntimeError("teardown boom"))
+
+        with mock.patch.object(worker_module, "logger") as mock_logger:
+            exit_code = await worker._run()
+        await self._drain_pending_tasks()
+
+        self.assertEqual(exit_code, 1, "the original nonzero exit code should be preserved")
+        quit_logged = [c for c in mock_logger.info.call_args_list if "quit" in str(c)]
+        self.assertTrue(quit_logged, "the 'quit' log line was lost when teardown failed")
+
 
 if __name__ == "__main__":
     unittest.main()

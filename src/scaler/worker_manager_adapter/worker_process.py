@@ -143,7 +143,12 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
             exit_code = 1
         finally:
-            await self.__teardown()
+            try:
+                await self.__teardown()
+            except Exception as e:
+                # Teardown failing is itself an anomaly; don't let it mask a more specific exit code.
+                logger.exception(f"{self.identity!r}: teardown failed: {e}")
+                exit_code = exit_code or 1
 
         logger.info(f"{self.identity!r}: quit")
         return exit_code
