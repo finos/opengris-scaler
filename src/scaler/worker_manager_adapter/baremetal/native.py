@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, List, Optional
 import psutil
 
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
+from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.worker.worker import Worker
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager_adapter.common import extract_desired_count
@@ -94,6 +95,10 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
         )
 
     def run_fixed(self) -> None:
+        bootstrap_process(
+            self._logging_paths, self._logging_config_file, self._logging_level, process_name="worker_manager_native"
+        )
+
         workers: List[Worker] = []
         for _ in range(self._max_task_concurrency):
             worker = self._create_worker()
