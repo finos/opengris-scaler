@@ -10,29 +10,23 @@ from scaler.utility.memory import get_memory_limit_and_available, get_process_me
 
 
 class TestGetProcessMemory(unittest.TestCase):
-    def test_returns_pss_when_available(self) -> None:
+    def test_uses_pss_when_available(self) -> None:
         process = mock.Mock()
-        process.memory_full_info.return_value = mock.Mock(pss=1234)
+        process.memory_full_info.return_value = mock.Mock(pss=1234, rss=9999)
         self.assertEqual(get_process_memory(process), 1234)
-        process.memory_info.assert_not_called()
 
-    def test_falls_back_to_rss_without_pss(self) -> None:
+    def test_falls_back_to_rss_where_pss_unavailable(self) -> None:
+        # macOS/Windows: memory_full_info() has rss but no pss field.
         process = mock.Mock()
-        process.memory_full_info.return_value = mock.Mock(spec=[])  # e.g. macOS/Windows: no pss attribute
-        process.memory_info.return_value = mock.Mock(rss=5678)
+        process.memory_full_info.return_value = mock.Mock(spec=["rss"], rss=5678)
         self.assertEqual(get_process_memory(process), 5678)
 
-    def test_falls_back_to_rss_on_error(self) -> None:
-        process = mock.Mock()
-        process.memory_full_info.side_effect = psutil.AccessDenied(1)
-        process.memory_info.return_value = mock.Mock(rss=999)
-        self.assertEqual(get_process_memory(process), 999)
-
-    def test_returns_zero_when_process_gone(self) -> None:
+    def test_propagates_error_when_process_gone(self) -> None:
+        # A vanished/zombie process raises; callers handle that explicitly rather than a silent fallback.
         process = mock.Mock()
         process.memory_full_info.side_effect = psutil.NoSuchProcess(1)
-        process.memory_info.side_effect = psutil.NoSuchProcess(1)
-        self.assertEqual(get_process_memory(process), 0)
+        with self.assertRaises(psutil.NoSuchProcess):
+            get_process_memory(process)
 
 
 class TestGetMemoryLimitAndAvailable(unittest.TestCase):
@@ -84,7 +78,3 @@ class TestGetMemoryLimitAndAvailable(unittest.TestCase):
     def test_usage_above_limit_clamps_available_to_zero(self) -> None:
         with self._patch_cgroup_paths(v2_max="1000", v2_current="1500"):
             self.assertEqual(get_memory_limit_and_available(), (1000, 0))
-
-
-if __name__ == "__main__":
-    unittest.main()

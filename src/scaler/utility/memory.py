@@ -14,22 +14,17 @@ _CGROUP_UNLIMITED_THRESHOLD = 2**62
 
 
 def get_process_memory(process: psutil.Process) -> int:
-    """Return a process's memory footprint in bytes: PSS when available (Linux), else RSS.
+    """Return a process's memory footprint in bytes: PSS on Linux, RSS where PSS is unavailable.
 
     PSS (proportional set size) splits shared pages across the processes that map them, so summing PSS
-    across a worker and its forked processors does not double-count the copy-on-write pages they share --
-    RSS would. Falls back to RSS on platforms without smaps (e.g. macOS/Windows) or on access errors.
+    across a worker and its forked processors does not double-count the copy-on-write pages they share.
+    psutil only exposes ``pss`` where the kernel does (Linux, via smaps), so on Linux this is always PSS;
+    on macOS/Windows ``memory_full_info()`` has no ``pss`` field and RSS is used. psutil errors (e.g. the
+    process has exited) propagate so callers handle them explicitly -- we never let a silent RSS reading
+    stand in for PSS on Linux.
     """
-    try:
-        pss = getattr(process.memory_full_info(), "pss", None)
-        if pss is not None:
-            return int(pss)
-    except (psutil.Error, OSError):
-        pass
-    try:
-        return int(process.memory_info().rss)
-    except psutil.Error:
-        return 0
+    memory = process.memory_full_info()
+    return int(getattr(memory, "pss", memory.rss))
 
 
 def _read_cgroup_int(path: str) -> Optional[int]:
