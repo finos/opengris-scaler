@@ -28,5 +28,16 @@ constexpr size_t maxWriteBufferSize = 256ULL * 1024ULL * 1024ULL;  // 256 MB
 // lag is millisecond-scale in practice, single-digit seconds even under heavy load.
 constexpr std::chrono::seconds disconnectedIdentityTTL {60};
 
+// Idle time before the OS sends the first TCP keepalive probe on a MessageConnection.
+//
+// A peer that vanishes without a clean shutdown (crash, kill -9, forcibly terminated process)
+// leaves an ESTABLISHED connection with no FIN/RST ever delivered back to this side: a pending
+// write to it, and consequently a graceful shutdown() waiting on that write, can then stay
+// unresolved indefinitely. This is most visible on Windows, where killing a process does not
+// synchronously tear down its sockets and notify the peer the way POSIX's kernel-owned fd
+// teardown does. Keepalive probing makes the OS itself notice and error out such a connection
+// within a bounded time instead of relying solely on application traffic to reveal it.
+constexpr std::chrono::seconds tcpKeepAliveDelay {10};
+
 }  // namespace ymq
 }  // namespace scaler
