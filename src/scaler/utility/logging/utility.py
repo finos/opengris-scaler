@@ -53,8 +53,13 @@ def setup_logger(
     logger.info(f"logging to {log_paths}")
 
 
+def is_screen_log_path(path: str) -> bool:
+    """Returns True if the path refers to the screen (stdout) rather than a file to write logs to."""
+    return path in {"-", "/dev/stdout"}
+
+
 def __detect_log_types(file_name: str) -> LogType:
-    if file_name in {"-", "/dev/stdout"}:
+    if is_screen_log_path(file_name):
         return LogType.Screen
 
     return LogType.File
