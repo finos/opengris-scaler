@@ -108,7 +108,10 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         except asyncio.CancelledError:
             logger.info(f"{self.identity!r}: cancelled, shutting down")
         except ObjectStorageException as e:
-            logger.info(f"{self.identity!r}: object storage exception: {e}")
+            # Nobody asked this worker to stop; it gave up because it could not reach a
+            # dependency it needs to do its job, so this is an anomaly worth a nonzero exit.
+            logger.warning(f"{self.identity!r}: object storage exception: {e}")
+            exit_code = 1
         except ymq.YMQException as e:
             if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
                 logger.info(f"{self.identity!r}: connector socket closed by remote end: {e}")
@@ -120,8 +123,14 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             else:
                 logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
                 exit_code = 1
-        except (ClientShutdownException, TimeoutError) as e:
+        except ClientShutdownException as e:
             logger.info(f"{self.identity!r}: {str(e)}")
+        except TimeoutError as e:
+            # The worker decided on its own that it is orphaned (no heartbeat from the scheduler
+            # within death_timeout_seconds), not that anyone asked it to stop: an anomaly worth a
+            # nonzero exit.
+            logger.warning(f"{self.identity!r}: {str(e)}")
+            exit_code = 1
         except Exception as e:
             logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
             exit_code = 1

@@ -128,6 +128,11 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
                     logger.info(
                         f"native worker {worker.identity!r} stopped (exitcode={_describe_exitcode(worker.exitcode)})"
                     )
+                elif worker.exitcode == 0:
+                    # A worker exits 0 only when it was told to stop (by the scheduler or a
+                    # cancellation), never as a symptom of a problem, even though this manager
+                    # was not the one that asked.
+                    logger.info(f"native worker {worker.identity!r} shut down cleanly")
                 else:
                     logger.warning(
                         f"native worker {worker.identity!r} exited unexpectedly "
