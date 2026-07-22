@@ -1,10 +1,11 @@
 import faulthandler
 import logging
 import os
+import sys
 import typing
 
 from scaler.config.defaults import DEFAULT_LOGGING_PATHS
-from scaler.utility.logging.utility import LoggingLevel, setup_logger
+from scaler.utility.logging.utility import LoggingLevel, LogType, detect_log_type, setup_logger
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,11 @@ def __enable_faulthandler(log_path: typing.Optional[str]) -> None:
     if log_path is None:
         faulthandler.enable(all_threads=True)
         logger.info("fatal signal crash dumps will be written to stderr")
+        return
+
+    if detect_log_type(log_path) == LogType.Screen:
+        faulthandler.enable(file=sys.stdout, all_threads=True)
+        logger.info("fatal signal crash dumps will be written to stdout")
         return
 
     try:
