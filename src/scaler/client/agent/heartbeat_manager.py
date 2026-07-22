@@ -1,3 +1,4 @@
+import logging
 import sys
 import time
 from concurrent.futures import Future
@@ -15,6 +16,8 @@ from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.mixins import AsyncConnector
 from scaler.protocol.capnp import ClientHeartbeat, ClientHeartbeatEcho, Resource
 from scaler.utility.mixins import Looper
+
+logger = logging.getLogger(__name__)
 
 
 class ClientHeartbeatManager(Looper, HeartbeatManager):
@@ -78,7 +81,12 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         # its own dead-client cleanup over the WebSocket, and the user can
         # interrupt the kernel manually, so skip the local check in browser.
         if sys.platform != "emscripten":
-            if time.time() - self._last_scheduler_contact > self._death_timeout_seconds:
+            elapsed_since_contact = time.time() - self._last_scheduler_contact
+            logger.error(  # DIAGNOSTIC: do not merge
+                f"DIAGNOSTIC heartbeat routine tick: elapsed_since_contact={elapsed_since_contact:.2f}s "
+                f"death_timeout={self._death_timeout_seconds}s"
+            )
+            if elapsed_since_contact > self._death_timeout_seconds:
                 raise TimeoutError(
                     f"Timeout when connecting to scheduler {self._connector_external.address} "
                     f"in {self._death_timeout_seconds} seconds"

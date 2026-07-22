@@ -2,6 +2,7 @@ import asyncio
 import logging
 import sys
 import threading
+import time
 from concurrent.futures import Future
 from typing import Callable, Optional
 
@@ -193,6 +194,7 @@ class ClientAgent(threading.Thread):
                 create_async_loop_routine(self._connector_external.routine, 0),
                 create_async_loop_routine(self._connector_internal.routine, 0),
                 create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
+                self.__diagnostic_canary(),  # DIAGNOSTIC: do not merge
             ]
 
             await asyncio.gather(*loops)
@@ -253,3 +255,15 @@ class ClientAgent(threading.Thread):
             (asyncio.CancelledError, ClientQuitException, ClientShutdownException, TimeoutError, YMQException),
         ):
             raise exception
+
+    async def __diagnostic_canary(self):
+        # DIAGNOSTIC: temporary instrumentation to determine whether the client agent's event loop
+        # keeps ticking on windows-latest after the scheduler is killed, or whether something stalls
+        # it outright (in which case neither the YMQException nor the heartbeat TimeoutError path
+        # would ever get a chance to run). Not for merge -- see PR discussion.
+        tick = 0
+        start = time.monotonic()
+        while True:
+            logger.error(f"DIAGNOSTIC canary: tick={tick} elapsed={time.monotonic() - start:.2f}s")
+            tick += 1
+            await asyncio.sleep(0.5)
