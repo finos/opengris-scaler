@@ -34,11 +34,21 @@ from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.address import AddressConfig, SocketType
 from scaler.config.types.worker import WorkerCapabilities
 from scaler.utility.network_util import get_available_tcp_port
+from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 
 logger = logging.getLogger(__name__)
 
 SCHEDULER_GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS = 10
+
+
+def _run_native_worker_manager(worker_manager: NativeWorkerManager) -> None:
+    # This process is spawned directly, so it must bootstrap its own logging/faulthandler.
+    logging_config = worker_manager.config.logging_config
+    bootstrap_process(
+        logging_config.paths, logging_config.config_file, logging_config.level, process_name="worker_manager_native"
+    )
+    worker_manager.run()
 
 
 class SchedulerClusterCombo:
@@ -130,7 +140,9 @@ class SchedulerClusterCombo:
             )
         )
 
-        self._worker_manager_process = multiprocessing.get_context("spawn").Process(target=self._worker_manager.run)
+        self._worker_manager_process = multiprocessing.get_context("spawn").Process(
+            target=_run_native_worker_manager, args=(self._worker_manager,)
+        )
 
         # Synthesized signal-disposition for the scheduler. multiprocessing.Process.terminate() is
         # TerminateProcess on Windows, which never runs Python signal handlers, so the scheduler would

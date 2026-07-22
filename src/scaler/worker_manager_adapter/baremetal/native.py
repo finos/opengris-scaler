@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, List, Optional
 import psutil
 
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
-from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.worker.worker import Worker
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager_adapter.common import extract_desired_count
@@ -52,7 +51,6 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._preload = config.worker_config.preload
         self._logging_paths = config.logging_config.paths
         self._logging_level = config.logging_config.level
-        self._logging_config_file = config.logging_config.config_file
         self._security_config = config.security
 
         if config.worker_type is not None:
@@ -95,25 +93,20 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
         )
 
     def run_fixed(self) -> None:
-        bootstrap_process(
-            self._logging_paths, self._logging_config_file, self._logging_level, process_name="worker_manager_native"
-        )
-
         workers: List[Worker] = []
         for _ in range(self._max_task_concurrency):
             worker = self._create_worker()
             worker.start()
             workers.append(worker)
 
-        shutting_down = False
+        terminated_by_us: set[Worker] = set()
 
         def _on_signal(sig: int, frame: object) -> None:
-            nonlocal shutting_down
-            shutting_down = True
             logger.info("NativeWorkerProvisioner (FIXED): received signal %d, terminating workers", sig)
             for worker in workers:
                 if worker.is_alive():
                     worker.terminate()
+                    terminated_by_us.add(worker)
 
         signal.signal(signal.SIGTERM, _on_signal)
         signal.signal(signal.SIGINT, _on_signal)
@@ -124,7 +117,7 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
                 worker = workers_by_sentinel.pop(sentinel)
                 worker.join()
 
-                if shutting_down:
+                if worker in terminated_by_us:
                     logger.info(
                         f"native worker {worker.identity!r} stopped (exitcode={_describe_exitcode(worker.exitcode)})"
                     )

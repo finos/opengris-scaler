@@ -13,21 +13,29 @@ class TestBootstrapProcessEnablesFaulthandler(unittest.TestCase):
         mock.patch("scaler.utility.process_bootstrap.setup_logger").start()
         self.addCleanup(mock.patch.stopall)
 
+    def _mock_resolved_log_path(self, log_path: str) -> None:
+        mock.patch("scaler.utility.process_bootstrap.get_logger_info", return_value=("", "INFO", (log_path,))).start()
+
     def test_dash_sentinel_targets_stdout(self) -> None:
-        bootstrap_process(log_paths=("-",))
+        self._mock_resolved_log_path("-")
+
+        bootstrap_process()
 
         self.mock_enable.assert_called_once_with(file=sys.stdout, all_threads=True)
 
     def test_dev_stdout_sentinel_targets_stdout(self) -> None:
-        bootstrap_process(log_paths=("/dev/stdout",))
+        self._mock_resolved_log_path("/dev/stdout")
+
+        bootstrap_process()
 
         self.mock_enable.assert_called_once_with(file=sys.stdout, all_threads=True)
 
     def test_file_path_opens_that_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             log_path = os.path.join(tmp_dir, "crash.log")
+            self._mock_resolved_log_path(log_path)
 
-            bootstrap_process(log_paths=(log_path,))
+            bootstrap_process()
 
             self.mock_enable.assert_called_once()
             _, kwargs = self.mock_enable.call_args
@@ -36,14 +44,24 @@ class TestBootstrapProcessEnablesFaulthandler(unittest.TestCase):
             kwargs["file"].close()
 
     def test_unopenable_path_falls_back_to_stderr(self) -> None:
-        bootstrap_process(log_paths=("/nonexistent-directory-xyz/crash.log",))
+        self._mock_resolved_log_path("/nonexistent-directory-xyz/crash.log")
+
+        bootstrap_process()
 
         self.mock_enable.assert_called_once_with(all_threads=True)
 
-    def test_no_log_paths_falls_back_to_stderr(self) -> None:
-        bootstrap_process(log_paths=())
+    def test_logging_config_file_derives_target_from_configured_logger_not_log_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            log_path = os.path.join(tmp_dir, "from_config_file.log")
+            self._mock_resolved_log_path(log_path)
 
-        self.mock_enable.assert_called_once_with(all_threads=True)
+            # log_paths points at stdout, but the resolved logger state must win regardless.
+            bootstrap_process(logging_config_file="unused.ini", log_paths=("/dev/stdout",))
+
+            self.mock_enable.assert_called_once()
+            _, kwargs = self.mock_enable.call_args
+            self.assertEqual(kwargs["file"].name, log_path)
+            kwargs["file"].close()
 
 
 if __name__ == "__main__":
