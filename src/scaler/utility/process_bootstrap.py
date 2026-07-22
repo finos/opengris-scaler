@@ -1,6 +1,5 @@
 import faulthandler
 import logging
-import os
 import sys
 import typing
 
@@ -37,7 +36,7 @@ def __enable_faulthandler(log_path: str) -> None:
         return
 
     try:
-        _faulthandler_file = open(os.path.expandvars(os.path.expanduser(log_path)), "a")
+        _faulthandler_file = open(log_path, "a")
         faulthandler.enable(file=_faulthandler_file, all_threads=True)
         logger.info(f"fatal signal crash dumps will be written to {log_path!r}")
     except OSError:
