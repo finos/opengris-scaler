@@ -134,6 +134,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             workerId=worker_id,
             agent=info.agent,
             rssFree=info.rssFree,
+            memLimit=info.memLimit,
             free=worker_task_numbers["free"],
             sent=worker_task_numbers["sent"],
             queued=info.queuedTasks,

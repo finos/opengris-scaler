@@ -821,6 +821,14 @@ class WebUIApp:
             total_proc_rss = sum(p.resource.rss for p in worker_data.processorStatuses)
             total_rss = int(total_proc_rss / 1e6)
             rss_free = int(worker_data.rssFree / 1e6)
+            agt_rss = int(worker_data.agent.rss / 1e6)
+
+            # OOM-proximity gauge: memLimit is the ceiling the worker runs under (cgroup limit in a pod,
+            # else host total) and rssFree is its headroom, so (limit - free) is what is actually in use
+            # against that ceiling -- the number that predicts an OOM kill.
+            mem_limit = int(worker_data.memLimit / 1e6)
+            mem_used = max(0, mem_limit - rss_free)
+            mem_used_pct = round(100.0 * mem_used / mem_limit, 1) if mem_limit > 0 else 0.0
 
             self._workers_data[worker_name] = {
                 "id": worker_name,
@@ -828,11 +836,15 @@ class WebUIApp:
                 "full_name": worker_name,
                 "manager_id": self._worker_manager_map.get(worker_name, "\u2014"),
                 "agt_cpu": round(worker_data.agent.cpu / 10, 1),
-                "agt_rss": int(worker_data.agent.rss / 1e6),
+                "agt_rss": agt_rss,
                 "proc_cpu": round(total_proc_cpu / 10, 1),
                 "proc_rss": total_rss,
                 "rss_free": rss_free,
                 "total_rss": total_rss + rss_free,
+                "worker_rss": agt_rss + total_rss,
+                "mem_limit": mem_limit,
+                "mem_used": mem_used,
+                "mem_used_pct": mem_used_pct,
                 "free": worker_data.free,
                 "sent": worker_data.sent,
                 "queued": worker_data.queued,
