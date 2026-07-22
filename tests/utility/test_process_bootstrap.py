@@ -62,7 +62,3 @@ class TestBootstrapProcessEnablesFaulthandler(unittest.TestCase):
             _, kwargs = self.mock_enable.call_args
             self.assertEqual(kwargs["file"].name, log_path)
             kwargs["file"].close()
-
-
-if __name__ == "__main__":
-    unittest.main()
