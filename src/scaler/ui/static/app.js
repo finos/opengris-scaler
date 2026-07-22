@@ -73,8 +73,8 @@ for (var i = 0; i < tabs.length; i++) {
     })(tabs[i]));
 }
 
-// Render the now-visible tab from the latest cached data. Hidden tabs are skipped on every update
-// (that is the perf win); switching to a tab replays its cached payload so it is immediately current.
+// Render the now-visible tab from the latest cached data. Hidden tabs are skipped on update; switching to
+// a tab replays its cached payload so it is immediately current.
 function renderActiveTab() {
     if (activeTab === "live") {
         if (lastSchedulerData) renderScheduler(lastSchedulerData);
@@ -455,8 +455,8 @@ function makeGaugeHTML(value, max, unit) {
         value + (unit || "") + '</span></div>';
 }
 
-// In-place gauge for the workers table: build the DOM once, then update width/value each tick without
-// re-parsing HTML -- re-innerHTML would restart the CSS width transition on every 10 Hz refresh.
+// In-place gauge for the workers table: build the DOM once, then update width/value each tick instead of
+// rebuilding the gauge HTML every refresh.
 function buildGauge(td) {
     var gauge = document.createElement("div");
     gauge.className = "gauge";

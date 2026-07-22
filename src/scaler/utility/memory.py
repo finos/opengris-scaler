@@ -20,8 +20,7 @@ def get_process_memory(process: psutil.Process) -> int:
     across a worker and its forked processors does not double-count the copy-on-write pages they share.
     psutil only exposes ``pss`` where the kernel does (Linux, via smaps), so on Linux this is always PSS;
     on macOS/Windows ``memory_full_info()`` has no ``pss`` field and RSS is used. psutil errors (e.g. the
-    process has exited) propagate so callers handle them explicitly -- we never let a silent RSS reading
-    stand in for PSS on Linux.
+    process has exited) propagate for the caller to handle.
     """
     memory = process.memory_full_info()
     return int(getattr(memory, "pss", memory.rss))

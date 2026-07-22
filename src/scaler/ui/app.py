@@ -40,9 +40,8 @@ STATIC_DIR = Path(__file__).parent / "static"
 BATCH_INTERVAL_SECONDS = 0.1
 TASK_LOG_MAX_SIZE = 500
 
-# The scheduler is shown as stale once its periodic StateScheduler heartbeat has not arrived for this
-# long. A stuck scheduler main loop stops that heartbeat, so this reflects scheduler health directly --
-# unlike "time since any monitor message", which stays fresh as long as buffered task messages trickle in.
+# Mark the scheduler stale once its periodic StateScheduler heartbeat has not arrived for this long. The
+# heartbeat runs on the scheduler's main loop, so a stalled loop stops it and the UI reflects that.
 SCHEDULER_STALE_SECONDS = 5 * STATUS_REPORT_INTERVAL_SECONDS
 
 COMPLETED_TASK_STATUSES = (
@@ -649,8 +648,8 @@ class WebUIApp:
         self._dead_managers: Dict[str, float] = {}  # manager_id -> disconnect timestamp
         self._manager_color_map: Dict[str, str] = {}  # manager_id -> color hex
         self._monitor_address: str = str(config.monitor_address)
-        # Timestamp of the last StateScheduler heartbeat specifically (not any monitor message), so the
-        # scheduler's "last seen" reflects its periodic heartbeat and goes stale when the loop stalls.
+        # Timestamp of the last StateScheduler heartbeat; the scheduler's last-seen derives from it and goes
+        # stale when the main loop stalls.
         self._last_scheduler_heartbeat_time: Optional[datetime.datetime] = None
 
         self._settings = {"stream_window": 5, "memory_scale": "linear"}
@@ -1051,10 +1050,6 @@ class WebUIApp:
             total_cpu = 0.0
             total_processors = 0
             active_processors = 0
-            # Note: free memory is deliberately NOT summed here. rssFree is per node/cgroup, and workers
-            # sharing one (e.g. several workers in a pod, or the local native manager) all report the same
-            # value, so a sum multiplies by worker count. Without node/pod identity we cannot dedupe it; the
-            # accurate signal is the per-worker Mem% gauge on the Live tab.
             for wp in workers:
                 for proc in wp["processors"]:
                     total_rss += proc["rss"]
@@ -1108,7 +1103,7 @@ class WebUIApp:
                 _logger.exception("error processing scheduler message during drain")
 
     def __scheduler_liveness(self) -> Dict[str, Any]:
-        """last_seen + stale flag from the last StateScheduler heartbeat (not any monitor message)."""
+        """last_seen + stale flag derived from the last StateScheduler heartbeat."""
         if self._last_scheduler_heartbeat_time is None:
             return {"last_seen": "\u2014", "stale": False}
         elapsed = int((datetime.datetime.now() - self._last_scheduler_heartbeat_time).total_seconds())
