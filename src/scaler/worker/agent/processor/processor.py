@@ -30,7 +30,7 @@ from scaler.protocol.capnp import (
 )
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.logging.utility import is_screen_log_path, setup_logger
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.serialization import serialize_failure
 from scaler.worker.agent.processor.object_cache import ObjectCache
@@ -110,10 +110,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __initialize(self):
         self._listener_shutdown = threading.Event()
 
-        # modify the logging path and add process id to the path
-        logging_paths = [f"{path}-{os.getpid()}" for path in self._logging_paths if path != "/dev/stdout"]
-        if "/dev/stdout" in self._logging_paths:
-            logging_paths.append("/dev/stdout")
+        # modify the logging path and add process id to the path, leaving screen paths (e.g. "/dev/stdout") untouched
+        logging_paths = [path if is_screen_log_path(path) else f"{path}-{os.getpid()}" for path in self._logging_paths]
 
         setup_logger(log_paths=tuple(logging_paths), logging_level=self._logging_level)
         tblib.pickling_support.install()

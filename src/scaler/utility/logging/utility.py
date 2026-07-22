@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 class LogType(enum.Enum):
-    Screen = enum.auto()
+    Stdout = enum.auto()
+    Stderr = enum.auto()
     File = enum.auto()
 
 
@@ -53,9 +54,17 @@ def setup_logger(
     logger.info(f"logging to {log_paths}")
 
 
+def is_screen_log_path(path: str) -> bool:
+    """Returns True if the path refers to a screen stream (stdout/stderr) rather than a file to write logs to."""
+    return path in {"-", "/dev/stdout", "/dev/stderr"}
+
+
 def __detect_log_types(file_name: str) -> LogType:
     if file_name in {"-", "/dev/stdout"}:
-        return LogType.Screen
+        return LogType.Stdout
+
+    if file_name == "/dev/stderr":
+        return LogType.Stderr
 
     return LogType.File
 
@@ -94,9 +103,16 @@ def __logging_config(
     scaler_handlers = config["loggers"]["scaler"]["handlers"]
 
     for log_path in log_paths:
-        if log_path.log_type == LogType.Screen:
-            handlers["console"] = __create_stdout_handler(logging_level)
-            scaler_handlers.append("console")
+        if log_path.log_type == LogType.Stdout:
+            if "console_stdout" not in handlers:
+                handlers["console_stdout"] = __create_stream_handler(logging_level, "ext://sys.stdout")
+                scaler_handlers.append("console_stdout")
+            continue
+
+        elif log_path.log_type == LogType.Stderr:
+            if "console_stderr" not in handlers:
+                handlers["console_stderr"] = __create_stream_handler(logging_level, "ext://sys.stderr")
+                scaler_handlers.append("console_stderr")
             continue
 
         elif log_path.log_type == LogType.File:
@@ -109,13 +125,8 @@ def __logging_config(
     logging.config.dictConfig(config)
 
 
-def __create_stdout_handler(logging_level: str):
-    return {
-        "class": "logging.StreamHandler",
-        "level": logging_level,
-        "formatter": "standard",
-        "stream": "ext://sys.stdout",
-    }
+def __create_stream_handler(logging_level: str, stream: str):
+    return {"class": "logging.StreamHandler", "level": logging_level, "formatter": "standard", "stream": stream}
 
 
 def __create_time_rotating_file_handler(logging_level: str, file_path: str):
