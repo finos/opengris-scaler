@@ -4,6 +4,7 @@ from collections import deque
 from typing import Any, Awaitable, Callable, Deque, Dict, List, Optional, Tuple
 
 from scaler.io.mixins import AsyncBinder, AsyncPublisher
+from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError
 from scaler.protocol.capnp import (
     StateTask,
     Task,
@@ -180,6 +181,20 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         await self.__retry_unassignable()
 
     async def on_worker_disconnect(self, task_id: TaskID, worker_id: WorkerID):
+        state_machine = self._task_state_manager.get_state_machine(task_id)
+        if state_machine is not None and state_machine.current_state() == TaskState.canceling:
+            # A worker that vanishes mid-cancel confirms the client's cancel by default: the
+            # workerDisconnect transition lands in `canceled`, whose handler expects a
+            # TaskCancelConfirm (not a worker id, which is what the running/balanceCanceling
+            # transitions to `workerDisconnecting` need). Synthesize the confirm so the client is
+            # notified instead of crashing __state_canceled with an unexpected keyword argument.
+            await self.__routing(
+                task_id,
+                TaskTransition.workerDisconnect,
+                task_cancel_confirm=TaskCancelConfirm(taskId=task_id, cancelConfirmType=TaskCancelConfirmType.canceled),
+            )
+            return
+
         await self.__routing(task_id, TaskTransition.workerDisconnect, worker_id=worker_id)
 
     def get_status(self) -> TaskManagerStatus:
@@ -220,7 +235,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         assert state_machine.current_state() == TaskState.running
 
         task = self._task_id_to_task[task_id]
-        await self._binder.send(worker_id, task)
+        await self.__send_to_worker(worker_id, task)
         await self.__send_monitor(task_id, self._object_controller.get_object_name(task.funcObjectId))
 
     async def __state_canceling(
@@ -315,6 +330,21 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         assert state_machine.current_state() == TaskState.failedWorkerDied
         await self.__send_task_result_to_client(task_result)
 
+    async def __send_to_worker(self, worker_id: WorkerID, message: Any):
+        # It's possible to send to a closed remote end.
+        # Let [t1, t2, t3] be a list of timepoints where t1 is when scheduler receives worker heartbeat
+        # and t2 is when the worker side ymq socket close
+        # and t3 is below send fires.
+
+        # In this case the remote worker died and scheduler should not crash because we assume worker can die.
+        try:
+            await self._binder.send(worker_id, message)
+        except ConnectorSocketClosedByRemoteEndError:
+            logger.info(
+                f"{worker_id!r} departed before {type(message).__name__} could be sent; "
+                f"worker-disconnect sweep will reroute its tasks"
+            )
+
     async def __send_task_cancel_to_worker(self, task_cancel: TaskCancel):
         worker = await self._worker_controller.on_task_cancel(task_cancel)
         assert isinstance(worker, WorkerID)
@@ -329,7 +359,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             )
             return
 
-        await self._binder.send(worker, task_cancel)
+        await self.__send_to_worker(worker, task_cancel)
         await self.__send_monitor(task_cancel.taskId, b"")
 
     async def __send_task_result_to_client(self, task_result: TaskResult):
