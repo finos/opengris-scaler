@@ -1048,12 +1048,14 @@ class WebUIApp:
         result = []
         for manager_id, workers in sorted(managers.items()):
             total_rss = 0
-            total_rss_free = 0
             total_cpu = 0.0
             total_processors = 0
             active_processors = 0
+            # Note: free memory is deliberately NOT summed here. rssFree is per node/cgroup, and workers
+            # sharing one (e.g. several workers in a pod, or the local native manager) all report the same
+            # value, so a sum multiplies by worker count. Without node/pod identity we cannot dedupe it; the
+            # accurate signal is the per-worker Mem% gauge on the Live tab.
             for wp in workers:
-                total_rss_free += wp["rss_free"]
                 for proc in wp["processors"]:
                     total_rss += proc["rss"]
                     total_cpu += proc["cpu"]
@@ -1065,7 +1067,6 @@ class WebUIApp:
                     "manager_id": manager_id,
                     "worker_count": len(workers),
                     "total_rss": total_rss,
-                    "total_rss_free": total_rss_free,
                     "total_cpu": round(total_cpu, 1),
                     "total_processors": total_processors,
                     "active_processors": active_processors,

@@ -1128,7 +1128,6 @@ function renderProcessors() {
                 '<span class="manager-stat"><b>Workers:</b> ' + group.worker_count + '</span>' +
                 '<span class="manager-stat"><b>Processors:</b> ' + group.active_processors + ' active</span>' +
                 '<span class="manager-stat"><b>Total PSS:</b> ' + group.total_rss + ' MB</span>' +
-                '<span class="manager-stat"><b>Mem Free:</b> ' + group.total_rss_free + ' MB</span>' +
                 '<span class="manager-stat"><b>Total CPU:</b> ' + group.total_cpu + '%</span>' +
             '</span>';
         managerSection.appendChild(managerSummary);
