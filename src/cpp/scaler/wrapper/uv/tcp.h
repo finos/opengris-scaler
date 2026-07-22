@@ -38,6 +38,10 @@ public:
     // See uv_tcp_nodelay
     std::expected<void, Error> nodelay(bool enable) noexcept;
 
+    // See uv_tcp_keepalive. delaySeconds is the idle time before the first keepalive probe; it is
+    // ignored when enable is false.
+    std::expected<void, Error> keepalive(bool enable, unsigned int delaySeconds) noexcept;
+
 private:
     TCPSocket() noexcept = default;
 };
