@@ -1127,8 +1127,8 @@ function renderProcessors() {
             '<span class="manager-stats">' +
                 '<span class="manager-stat"><b>Workers:</b> ' + group.worker_count + '</span>' +
                 '<span class="manager-stat"><b>Processors:</b> ' + group.active_processors + ' active</span>' +
-                '<span class="manager-stat"><b>Total RSS:</b> ' + group.total_rss + ' MB</span>' +
-                '<span class="manager-stat"><b>RSS Free:</b> ' + group.total_rss_free + ' MB</span>' +
+                '<span class="manager-stat"><b>Total PSS:</b> ' + group.total_rss + ' MB</span>' +
+                '<span class="manager-stat"><b>Mem Free:</b> ' + group.total_rss_free + ' MB</span>' +
                 '<span class="manager-stat"><b>Total CPU:</b> ' + group.total_cpu + '%</span>' +
             '</span>';
         managerSection.appendChild(managerSummary);
@@ -1173,7 +1173,8 @@ function renderProcessors() {
             // Header
             var thead = document.createElement("thead");
             var headerRow = document.createElement("tr");
-            var headers = ["PID", "CPU %", "RSS (MB)", "Max RSS (MB)", "Initialized", "Has Task", "Suspended"];
+            // memory columns are PSS on Linux, RSS on macOS/Windows (see get_process_memory)
+            var headers = ["PID", "CPU %", "PSS (MB)", "Max PSS (MB)", "Initialized", "Has Task", "Suspended"];
             for (var h = 0; h < headers.length; h++) {
                 var th = document.createElement("th");
                 th.textContent = headers[h];
