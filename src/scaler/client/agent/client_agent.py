@@ -39,6 +39,9 @@ from scaler.utility.identifiers import ClientID
 
 logger = logging.getLogger(__name__)
 
+# How often to re-check the heartbeat death-timeout, independent of the heartbeat send cadence.
+_DEATH_TIMEOUT_CHECK_INTERVAL_SECONDS = 1
+
 
 class ClientAgent(threading.Thread):
     def __init__(
@@ -193,6 +196,9 @@ class ClientAgent(threading.Thread):
                 create_async_loop_routine(self._connector_external.routine, 0),
                 create_async_loop_routine(self._connector_internal.routine, 0),
                 create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
+                create_async_loop_routine(
+                    self._heartbeat_manager.death_timeout_routine, _DEATH_TIMEOUT_CHECK_INTERVAL_SECONDS
+                ),
             ]
 
             await asyncio.gather(*loops)
