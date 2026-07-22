@@ -129,7 +129,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         except asyncio.CancelledError:
             logger.info(f"{self.identity!r}: cancelled, shutting down")
         except ObjectStorageException as e:
-            logger.info(f"{self.identity!r}: object storage exception during shutdown: {e}")
+            logger.info(f"{self.identity!r}: object storage exception: {e}")
         except ymq.YMQException as e:
             if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
                 logger.info(f"{self.identity!r}: connector socket closed by remote end: {e}")
