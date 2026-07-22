@@ -34,9 +34,11 @@ def __enable_faulthandler(log_path: str) -> None:
         _faulthandler_file.close()
         _faulthandler_file = None
 
-    if detect_log_type(log_path) == LogType.Screen:
-        faulthandler.enable(file=sys.stdout, all_threads=True)
-        logger.info("fatal signal crash dumps will be written to stdout")
+    log_type = detect_log_type(log_path)
+    if log_type in {LogType.Stdout, LogType.Stderr}:
+        stream = sys.stdout if log_type == LogType.Stdout else sys.stderr
+        faulthandler.enable(file=stream, all_threads=True)
+        logger.info(f"fatal signal crash dumps will be written to {stream.name}")
         return
 
     try:

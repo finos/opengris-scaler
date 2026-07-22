@@ -30,6 +30,13 @@ class TestBootstrapProcessEnablesFaulthandler(unittest.TestCase):
 
         self.mock_enable.assert_called_once_with(file=sys.stdout, all_threads=True)
 
+    def test_dev_stderr_sentinel_targets_stderr(self) -> None:
+        self._mock_resolved_log_path("/dev/stderr")
+
+        bootstrap_process()
+
+        self.mock_enable.assert_called_once_with(file=sys.stderr, all_threads=True)
+
     def test_file_path_opens_that_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             log_path = os.path.join(tmp_dir, "crash.log")
