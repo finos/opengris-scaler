@@ -1,4 +1,5 @@
 import multiprocessing
+import sys
 import time
 import unittest
 from concurrent.futures import CancelledError
@@ -77,6 +78,11 @@ class TestClusterDisconnect(unittest.TestCase):
             client.clear()
             future_result.result()
 
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "hangs on Windows: client teardown blocks forever waiting on a killed peer's socket "
+        "shutdown; see https://github.com/finos/opengris-scaler/issues/912",
+    )
     def test_scheduler_disconnect_raises_disconnected_error(self):
         """When the scheduler connection drops with tasks in flight, the futures fail with a descriptive
         DisconnectedError naming the scheduler -- not a bare TimeoutError() that reads as if the task
