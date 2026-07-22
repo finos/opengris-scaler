@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from scaler.config.defaults import STATUS_REPORT_INTERVAL_SECONDS
 from scaler.config.section.webgui import WebGUIConfig
 from scaler.io.mixins import SyncSubscriber
 from scaler.io.network_backends import get_network_backend_from_env
@@ -38,6 +39,11 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 BATCH_INTERVAL_SECONDS = 0.1
 TASK_LOG_MAX_SIZE = 500
+
+# The scheduler is shown as stale once its periodic StateScheduler heartbeat has not arrived for this
+# long. A stuck scheduler main loop stops that heartbeat, so this reflects scheduler health directly --
+# unlike "time since any monitor message", which stays fresh as long as buffered task messages trickle in.
+SCHEDULER_STALE_SECONDS = 5 * STATUS_REPORT_INTERVAL_SECONDS
 
 COMPLETED_TASK_STATUSES = (
     TaskState.success,
@@ -643,7 +649,9 @@ class WebUIApp:
         self._dead_managers: Dict[str, float] = {}  # manager_id -> disconnect timestamp
         self._manager_color_map: Dict[str, str] = {}  # manager_id -> color hex
         self._monitor_address: str = str(config.monitor_address)
-        self._last_message_time: Optional[datetime.datetime] = None
+        # Timestamp of the last StateScheduler heartbeat specifically (not any monitor message), so the
+        # scheduler's "last seen" reflects its periodic heartbeat and goes stale when the loop stalls.
+        self._last_scheduler_heartbeat_time: Optional[datetime.datetime] = None
 
         self._settings = {"stream_window": 5, "memory_scale": "linear"}
 
@@ -693,9 +701,6 @@ class WebUIApp:
                 except queue.Empty:
                     break
 
-            if messages:
-                self._last_message_time = datetime.datetime.now()
-
             # Process messages
             has_scheduler_update = False
             new_task_logs: List[Dict[str, Any]] = []
@@ -719,17 +724,16 @@ class WebUIApp:
                 except Exception:
                     _logger.exception("error processing scheduler message")
 
+            if has_scheduler_update:
+                self._last_scheduler_heartbeat_time = datetime.datetime.now()
+
             # Build broadcast payload
             payload: Dict[str, Any] = {}
 
-            # Always include scheduler data with fresh last_seen
+            # Always include scheduler data with a last_seen derived from the periodic heartbeat.
             if self._scheduler_data:
                 sched = dict(self._scheduler_data)
-                if self._last_message_time is not None:
-                    elapsed = int((datetime.datetime.now() - self._last_message_time).total_seconds())
-                    sched["last_seen"] = f"{elapsed}s"
-                else:
-                    sched["last_seen"] = "\u2014"
+                sched.update(self.__scheduler_liveness())
                 payload["scheduler"] = sched
 
             if has_scheduler_update:
@@ -1090,6 +1094,13 @@ class WebUIApp:
             except Exception:
                 _logger.exception("error processing scheduler message during drain")
 
+    def __scheduler_liveness(self) -> Dict[str, Any]:
+        """last_seen + stale flag from the last StateScheduler heartbeat (not any monitor message)."""
+        if self._last_scheduler_heartbeat_time is None:
+            return {"last_seen": "\u2014", "stale": False}
+        elapsed = int((datetime.datetime.now() - self._last_scheduler_heartbeat_time).total_seconds())
+        return {"last_seen": format_seconds(elapsed), "stale": elapsed > SCHEDULER_STALE_SECONDS}
+
     def get_full_state(self) -> Dict[str, Any]:
         """Get complete current state for a newly connected client."""
         # Flush any messages that arrived since the last batch-loop iteration so
@@ -1102,13 +1113,9 @@ class WebUIApp:
         # combine active + completed for initial task log, sorted by time (newest first)
         initial_task_log = list(self._active_tasks.values()) + list(self._task_log)
         initial_task_log.sort(key=lambda e: e.get("time", 0), reverse=True)
-        # Build scheduler data with fresh last_seen
+        # Build scheduler data with a last_seen derived from the periodic heartbeat.
         sched = dict(self._scheduler_data) if self._scheduler_data else {}
-        if self._last_message_time is not None:
-            elapsed = int((datetime.datetime.now() - self._last_message_time).total_seconds())
-            sched["last_seen"] = f"{elapsed}s"
-        else:
-            sched["last_seen"] = "—"
+        sched.update(self.__scheduler_liveness())
 
         return {
             "scheduler": sched,
