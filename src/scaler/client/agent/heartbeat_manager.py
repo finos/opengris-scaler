@@ -68,6 +68,21 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         )
 
     async def routine(self):
+        if self._start_timestamp_ns != 0:
+            # already sent heartbeat, expecting heartbeat echo, so not sending
+            return
+
+        await self.send_heartbeat()
+        self._start_timestamp_ns = time.time_ns()
+
+    async def death_timeout_routine(self):
+        # Runs as its own loop, independent of routine()/send_heartbeat(). send_heartbeat()
+        # awaits a network write that is not guaranteed to fail promptly when the scheduler is
+        # already gone -- on Windows a write to a dead peer can stay unresolved for tens of
+        # seconds instead of failing immediately as it does on POSIX. If this wall-clock check
+        # lived inside the same loop as routine(), a stuck send_heartbeat() would prevent it
+        # from ever re-running, defeating the timeout it's supposed to guarantee.
+
         # On Pyodide the agent shares the single asyncio event loop with the
         # user's notebook code. Any long synchronous block in user code (large
         # cloudpickle (de)serialization, pargraph graph walking, big numpy
@@ -77,19 +92,14 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         # raise, killing the agent mid-computation. The scheduler still runs
         # its own dead-client cleanup over the WebSocket, and the user can
         # interrupt the kernel manually, so skip the local check in browser.
-        if sys.platform != "emscripten":
-            if time.time() - self._last_scheduler_contact > self._death_timeout_seconds:
-                raise TimeoutError(
-                    f"Timeout when connecting to scheduler {self._connector_external.address} "
-                    f"in {self._death_timeout_seconds} seconds"
-                )
-
-        if self._start_timestamp_ns != 0:
-            # already sent heartbeat, expecting heartbeat echo, so not sending
+        if sys.platform == "emscripten":
             return
 
-        await self.send_heartbeat()
-        self._start_timestamp_ns = time.time_ns()
+        if time.time() - self._last_scheduler_contact > self._death_timeout_seconds:
+            raise TimeoutError(
+                f"Timeout when connecting to scheduler {self._connector_external.address} "
+                f"in {self._death_timeout_seconds} seconds"
+            )
 
     def get_object_storage_address(self) -> AddressConfig:
         """Returns the object storage configuration, or block until it receives it."""

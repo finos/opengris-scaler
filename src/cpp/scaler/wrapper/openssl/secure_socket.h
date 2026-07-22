@@ -70,6 +70,8 @@ public:
 
     std::expected<void, uv::Error> nodelay(bool enable) noexcept;
 
+    std::expected<void, uv::Error> keepalive(bool enable, unsigned int delaySeconds) noexcept;
+
     ConnectionState state() const noexcept;
 
     bool established() const noexcept;

@@ -48,6 +48,14 @@ public:
 
     std::expected<void, scaler::wrapper::uv::Error> setNoDelay(bool enable) noexcept;
 
+    // Enables the OS's TCP keepalive probing so a peer that vanishes without a clean shutdown
+    // (crash, network partition, forcefully killed process) gets noticed by the OS itself within a
+    // bounded time, instead of relying solely on an application-level read or write happening to
+    // fail. delaySeconds is the idle time before the first probe; ignored when enable is false.
+    //
+    // No-op on IPC (Pipe), which does not need dead-peer detection.
+    std::expected<void, scaler::wrapper::uv::Error> setKeepAlive(bool enable, unsigned int delaySeconds) noexcept;
+
     std::expected<void, scaler::wrapper::uv::Error> shutdown(scaler::wrapper::uv::ShutdownCallback callback) noexcept;
 
     // Send a RST packet to the remote, immediately closing the connection.

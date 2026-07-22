@@ -66,6 +66,7 @@ void MessageConnection::connect(Client client) noexcept
     _state  = State::Connected;
 
     UV_EXIT_ON_ERROR(_client->setNoDelay(true));
+    UV_EXIT_ON_ERROR(_client->setKeepAlive(true, static_cast<unsigned int>(tcpKeepAliveDelay.count())));
     UV_EXIT_ON_ERROR(_client->readStart(std::bind_front(&MessageConnection::onRead, this)));
     processSendQueue();
 }
