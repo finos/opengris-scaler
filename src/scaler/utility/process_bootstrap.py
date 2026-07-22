@@ -30,6 +30,10 @@ def bootstrap_process(
 def __enable_faulthandler(log_path: str) -> None:
     global _faulthandler_file
 
+    if _faulthandler_file is not None:
+        _faulthandler_file.close()
+        _faulthandler_file = None
+
     if detect_log_type(log_path) == LogType.Screen:
         faulthandler.enable(file=sys.stdout, all_threads=True)
         logger.info("fatal signal crash dumps will be written to stdout")

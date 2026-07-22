@@ -50,6 +50,21 @@ class TestBootstrapProcessEnablesFaulthandler(unittest.TestCase):
 
         self.mock_enable.assert_called_once_with(all_threads=True)
 
+    def test_second_call_closes_previous_file_handle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            first_log_path = os.path.join(tmp_dir, "first.log")
+            self._mock_resolved_log_path(first_log_path)
+            bootstrap_process()
+            first_file = self.mock_enable.call_args.kwargs["file"]
+
+            second_log_path = os.path.join(tmp_dir, "second.log")
+            self._mock_resolved_log_path(second_log_path)
+            bootstrap_process()
+            second_file = self.mock_enable.call_args.kwargs["file"]
+
+            self.assertTrue(first_file.closed, "the first faulthandler file handle was not closed")
+            second_file.close()
+
     def test_logging_config_file_derives_target_from_configured_logger_not_log_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             log_path = os.path.join(tmp_dir, "from_config_file.log")
