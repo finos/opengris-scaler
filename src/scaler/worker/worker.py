@@ -108,6 +108,11 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._profiling_manager: Optional[VanillaProfilingManager] = None
         self._processor_manager: Optional[VanillaProcessorManager] = None
 
+        # True once the scheduler has acknowledged us at least once. Used to distinguish "the
+        # scheduler was never reachable" from "the scheduler connection dropped after having worked",
+        # since both surface as the same ConnectorSocketClosedByRemoteEnd error.
+        self._connected_to_scheduler = False
+
     @property
     def identity(self) -> WorkerID:
         return self._ident
@@ -135,7 +140,15 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             exit_code = 1
         except ymq.YMQException as e:
             if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
-                logger.info(f"{self.identity!r}: connector socket closed by remote end: {e}")
+                if self._connected_to_scheduler:
+                    # The scheduler connection was dropped after having worked (e.g. scale-down),
+                    # which is a normal teardown condition out of our control.
+                    logger.info(f"{self.identity!r}: connector socket closed by remote end: {e}")
+                else:
+                    # We exhausted our connect retries without ever reaching the scheduler: an
+                    # unreachable dependency at startup, worth a nonzero exit.
+                    logger.warning(f"{self.identity!r}: never connected to scheduler, retries exhausted: {e}")
+                    exit_code = 1
             elif e.code == ymq.ErrorCode.SocketStopRequested:
                 # A YMQ socket (e.g. the internal binder) was shut down via `disconnect`/teardown
                 # while a send or recv driven by one of the loops above was still in flight. Like
@@ -233,6 +246,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
     async def __on_receive_external(self, message: BaseMessage):
         if isinstance(message, WorkerHeartbeatEcho):
+            self._connected_to_scheduler = True
             await self._heartbeat_manager.on_heartbeat_echo(message)
             return
 

@@ -114,7 +114,15 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             exit_code = 1
         except ymq.YMQException as e:
             if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
-                logger.info(f"{self.identity!r}: connector socket closed by remote end: {e}")
+                if self._heartbeat_received:
+                    # The scheduler connection was dropped after having worked (e.g. scale-down),
+                    # which is a normal teardown condition out of our control.
+                    logger.info(f"{self.identity!r}: connector socket closed by remote end: {e}")
+                else:
+                    # We exhausted our connect retries without ever reaching the scheduler: an
+                    # unreachable dependency at startup, worth a nonzero exit.
+                    logger.warning(f"{self.identity!r}: never connected to scheduler, retries exhausted: {e}")
+                    exit_code = 1
             elif e.code == ymq.ErrorCode.SocketStopRequested:
                 # A YMQ socket was shut down via `disconnect`/teardown while a send or recv driven
                 # by one of the loops above was still in flight: an expected teardown condition

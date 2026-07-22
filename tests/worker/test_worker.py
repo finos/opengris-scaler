@@ -17,7 +17,7 @@ from unittest import mock
 import scaler.worker.worker as worker_module
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
-from scaler.io.ymq import SocketStopRequestedError, SysCallError
+from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError, SocketStopRequestedError, SysCallError
 from scaler.worker.worker import Worker
 
 
@@ -139,6 +139,43 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(unhandled, "an unexpected YMQ error should still be logged as an unhandled exception")
 
         self.assertEqual(exit_code, 1, "an unexpected error should produce a nonzero exit code")
+
+    async def test_connector_closed_before_ever_connecting_is_nonzero_exit(self) -> None:
+        # ConnectorSocketClosedByRemoteEnd is also what the connect retries exhausting looks like:
+        # if we never heard from the scheduler, that is an unreachable dependency, not a clean
+        # teardown, and must produce a nonzero exit code.
+        error = ConnectorSocketClosedByRemoteEndError(
+            ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd, "retries exhausted"
+        )
+        worker = self._build_worker(error)
+        worker._loop = asyncio.get_running_loop()
+        self.assertFalse(worker._connected_to_scheduler)
+
+        with mock.patch.object(worker_module, "logger") as mock_logger:
+            exit_code = await worker._run()
+        await self._drain_pending_tasks()
+
+        self.assertEqual(exit_code, 1, "never having connected to the scheduler should produce a nonzero exit code")
+        never_connected = [c for c in mock_logger.warning.call_args_list if "never connected to scheduler" in str(c)]
+        self.assertTrue(never_connected, "the never-connected case was not logged distinctly")
+
+    async def test_connector_closed_after_connecting_is_clean_exit(self) -> None:
+        # The same error after we have successfully talked to the scheduler at least once (e.g. a
+        # scale-down disconnect) is an expected teardown condition, not an anomaly.
+        error = ConnectorSocketClosedByRemoteEndError(
+            ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd, "remote end closed the socket"
+        )
+        worker = self._build_worker(error)
+        worker._loop = asyncio.get_running_loop()
+        worker._connected_to_scheduler = True
+
+        with mock.patch.object(worker_module, "logger") as mock_logger:
+            exit_code = await worker._run()
+        await self._drain_pending_tasks()
+
+        self.assertEqual(exit_code, 0, "a post-connection disconnect should not produce a nonzero exit code")
+        handled = [c for c in mock_logger.info.call_args_list if "connector socket closed by remote end" in str(c)]
+        self.assertTrue(handled, "the post-connection case was not logged as an expected condition")
 
 
 if __name__ == "__main__":
