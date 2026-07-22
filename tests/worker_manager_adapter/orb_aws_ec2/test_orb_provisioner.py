@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from scaler.worker_manager_adapter.orb_aws_ec2.worker_manager import ORBWorkerProvisioner
@@ -20,7 +21,7 @@ def _make_provisioner(workers_per_instance: int = 1, max_instances: int = -1) ->
 def _make_request(task_concurrency: int, capabilities: dict) -> MagicMock:
     request = MagicMock()
     request.taskConcurrency = task_concurrency
-    request.capabilities = [MagicMock(key=k, value=v) for k, v in capabilities.items()]
+    request.capabilities = [SimpleNamespace(name=k, value=v) for k, v in capabilities.items()]
     return request
 
 
