@@ -244,10 +244,10 @@ function buildWorkerManagerTable(wm, cfg, ctx) {
 // privateIp/publicIp/subnetId/securityGroupId/nameSuffix values, which differ between the
 // download template (placeholders) and the actual EC2 user-data script (bash variables).
 function buildSchedulerConfigToml(cfg, addr) {
-  var proto = cfg.transport || "ws";
+  var proto = cfg.transport || "wss";
   var sp = cfg.schedulerPort;
   var op = cfg.objectStoragePort;
-  var wsSlash = proto === "ws" ? "/" : "";
+  var wsSlash = proto === "ws" || proto === "wss" ? "/" : "";
   var ctx = Object.assign({ proto: proto, sp: sp, op: op, wsSlash: wsSlash }, addr);
 
   var policyEngineType = cfg.policy || "simple";
@@ -259,15 +259,22 @@ function buildSchedulerConfigToml(cfg, addr) {
     policySection.policy_content = TOML.multiline.basic(policyLines + "\n");
   }
 
+  // wss:// binds (scheduler + object storage server) need a certificate; connecting components
+  // (worker managers, GUI) reach them over wss:// with no credentials of their own.
+  var tlsSection = {};
+  if (proto === "wss") {
+    tlsSection = { tls_cert: ctx.tlsCertPath, tls_key: ctx.tlsKeyPath };
+  }
+
   var root = {
-    object_storage_server: TOML.Section({
+    object_storage_server: TOML.Section(Object.assign({
       bind_address: `${proto}://0.0.0.0:${op}${wsSlash}`,
-    }),
+    }, tlsSection)),
     scheduler: TOML.Section(Object.assign({
       bind_address: `${proto}://0.0.0.0:${sp}${wsSlash}`,
       object_storage_address: `${proto}://127.0.0.1:${op}${wsSlash}`,
       advertised_object_storage_address: `${proto}://${ctx.publicIp}:${op}${wsSlash}`,
-    }, policySection)),
+    }, tlsSection, policySection)),
   };
 
   var workerManagers = (cfg.workerManagers || []).map(function (wm) {
@@ -295,6 +302,8 @@ function buildConfigToml(cfg) {
     subnetId: "<SUBNET_ID>",
     securityGroupId: "<SECURITY_GROUP_ID>",
     nameSuffix: cfg.nameSuffix || "<suffix>",
+    tlsCertPath: "<PATH_TO_TLS_CERT>",
+    tlsKeyPath: "<PATH_TO_TLS_KEY>",
   });
 }
 
@@ -312,7 +321,8 @@ function configFromToml(toml) {
     return m ? parseInt(m[1], 10) : null;
   }
 
-  var proto = schedBind.slice(0, 3) === "tcp" ? "tcp" : "ws";
+  var schedProto = schedBind.split("://")[0];
+  var proto = schedProto === "tcp" || schedProto === "wss" ? schedProto : "ws";
   var schedulerPort = extractPort(schedBind) || 6788;
   var objectStoragePort = extractPort(objBind) || 6789;
 
@@ -440,6 +450,7 @@ function configFromToml(toml) {
     if (rawWms[k].network_backend) { networkBackend = rawWms[k].network_backend; break; }
   }
 
+
   return {
     transport: proto,
     schedulerPort: schedulerPort,
@@ -472,7 +483,7 @@ function buildUserData(cfg, creds) {
       : `git clone --depth 1 ${cloneUrl} /opt/scaler-src`;
 
     gitBuildLines = `# C++ build deps: GCC 14 (required for C++23 <expected>) + Cap'n Proto toolchain
-dnf install -y git gcc14 gcc14-c++ gcc14-libstdc++-devel autoconf automake libtool libuv-devel openssl-devel perl
+dnf install -y git gcc14 gcc14-c++ gcc14-libstdc++-devel autoconf automake libtool libuv-devel perl
 
 # Clone repo to access build scripts
 ${cloneCmd}
@@ -503,13 +514,36 @@ CMAKE_ARGS='-DCMAKE_C_COMPILER=/usr/bin/gcc14-gcc -DCMAKE_CXX_COMPILER=/usr/bin/
 `;
   }
 
+  var proto = cfg.transport || "wss";
+  var letsEncryptLiveDir = "/etc/letsencrypt/live/$PUBLIC_IP";
   var configToml = buildSchedulerConfigToml(cfg, {
     privateIp: "$PRIVATE_IP",
     publicIp: "$PUBLIC_IP",
     subnetId: "$SUBNET_ID",
     securityGroupId: cfg.securityGroupId,
     nameSuffix: cfg.nameSuffix,
+    tlsCertPath: `${letsEncryptLiveDir}/fullchain.pem`,
+    tlsKeyPath: `${letsEncryptLiveDir}/privkey.pem`,
   });
+
+  // certbot's ACME HTTP-01 challenge needs a certificate only when the scheduler/object storage
+  // server actually bind over wss:// -- skip it entirely for plain ws:// or tcp:// deployments.
+  // IP address certs are only issued on the "shortlived" profile (~6 days) via --ip-address;
+  // plain `-d $PUBLIC_IP` is rejected outright since Let's Encrypt still won't issue a normal-lifetime
+  // cert for a bare IP. Requires certbot >= 5.4 (uv tool install always pulls latest from PyPI).
+  var certbotLines = "";
+  if (proto === "wss") {
+    certbotLines = `
+uv tool install certbot
+/root/.local/bin/certbot certonly \\
+  --standalone \\
+  --non-interactive \\
+  --agree-tos \\
+  --register-unsafely-without-email \\
+  --preferred-profile shortlived \\
+  --ip-address $PUBLIC_IP
+`;
+  }
 
   var ociConfigBlock = "";
   if (creds.ociUserId && creds.ociTenancyId && creds.ociFingerprint && creds.ociPrivateKey) {
@@ -565,7 +599,7 @@ mkdir -p /opt/scaler
 
 cat > /opt/scaler/config.toml << CONFIG_EOF
 ${configToml}CONFIG_EOF
-
+${certbotLines}
 SCALER_NETWORK_BACKEND=${cfg.networkBackend || "ymq"} /opt/scaler-venv/bin/scaler /opt/scaler/config.toml >> /var/log/scaler.log 2>&1 &
 echo "Scaler started (PID=$!)"
 `;
@@ -602,13 +636,16 @@ async function getLatestAl2023Ami(ec2) {
   return sorted[sorted.length - 1].ImageId;
 }
 
-async function waitForWs(host, port, timeoutMs, intervalMs, signal) {
+async function waitForWs(proto, host, port, timeoutMs, intervalMs, signal, addLog) {
   var deadline = Date.now() + timeoutMs;
+  var maxAttempts = Math.max(1, Math.ceil(timeoutMs / intervalMs));
+  var attempt = 0;
   while (Date.now() < deadline) {
+    attempt++;
     if (signal && signal.aborted)
       throw new DOMException("Aborted", "AbortError");
     var ok = await new Promise(function (resolve) {
-      var ws = new WebSocket("ws://" + host + ":" + port + "/");
+      var ws = new WebSocket(proto + "://" + host + ":" + port + "/");
       var done = false;
       function finish(v) {
         if (!done) {
@@ -649,7 +686,20 @@ async function waitForWs(host, port, timeoutMs, intervalMs, signal) {
     if (ok) return true;
     var remaining = deadline - Date.now();
     if (remaining <= 0) break;
-    await sleep(Math.min(intervalMs, remaining), signal);
+    var delayMs = Math.min(intervalMs, remaining);
+    if (addLog) {
+      addLog(
+        "  … not reachable yet (attempt " +
+          attempt +
+          " of " +
+          maxAttempts +
+          ") — retrying in " +
+          Math.round(delayMs / 1000) +
+          "s",
+        "dim",
+      );
+    }
+    await sleep(delayMs, signal);
   }
   return false;
 }
@@ -919,52 +969,66 @@ async function provision(
     partial.security_group_id = sgId;
     onPartialState(partial);
 
+    var ingressPermissions = [
+      {
+        IpProtocol: "tcp",
+        FromPort: 22,
+        ToPort: 22,
+        IpRanges: [
+          { CidrIp: myIp + "/32", Description: "SSH from local machine" },
+        ],
+      },
+      {
+        IpProtocol: "tcp",
+        FromPort: cfg.schedulerPort,
+        ToPort: cfg.schedulerPort,
+        IpRanges: [
+          { CidrIp: myIp + "/32", Description: "Scaler scheduler from local machine" },
+        ],
+      },
+      {
+        IpProtocol: "tcp",
+        FromPort: cfg.schedulerPort + 2,
+        ToPort: cfg.schedulerPort + 2,
+        IpRanges: [
+          { CidrIp: myIp + "/32", Description: "Scaler scheduler monitor from local machine" },
+        ],
+      },
+      {
+        IpProtocol: "tcp",
+        FromPort: cfg.objectStoragePort,
+        ToPort: cfg.objectStoragePort,
+        IpRanges: [
+          { CidrIp: myIp + "/32", Description: "Scaler object storage from local machine" },
+        ],
+      },
+      {
+        IpProtocol: "tcp",
+        FromPort: 50001,
+        ToPort: 50001,
+        IpRanges: [
+          { CidrIp: myIp + "/32", Description: "Scaler Worker Monitor from local machine" },
+        ],
+      },
+    ];
+    if (cfg.transport === "wss") {
+      // Only needed for certbot's ACME HTTP-01 challenge, which requires the whole internet to
+      // be able to reach port 80 on this instance.
+      ingressPermissions.push({
+        IpProtocol: "tcp",
+        FromPort: 80,
+        ToPort: 80,
+        IpRanges: [
+          { CidrIp: "0.0.0.0/0", Description: "ACME HTTP-01 challenge (Lets Encrypt)" },
+        ],
+      });
+    }
+
     await retrying(addLog, signal, () =>
       ec2
         .authorizeSecurityGroupIngress({
           GroupId: sgId,
-          IpPermissions: [
-            {
-              IpProtocol: "tcp",
-              FromPort: 22,
-              ToPort: 22,
-              IpRanges: [
-                { CidrIp: myIp + "/32", Description: "SSH from local machine" },
-              ],
-            },
-            {
-              IpProtocol: "tcp",
-              FromPort: cfg.schedulerPort,
-              ToPort: cfg.schedulerPort,
-              IpRanges: [
-                { CidrIp: myIp + "/32", Description: "Scaler scheduler from local machine" },
-              ],
-            },
-            {
-              IpProtocol: "tcp",
-              FromPort: cfg.schedulerPort + 2,
-              ToPort: cfg.schedulerPort + 2,
-              IpRanges: [
-                { CidrIp: myIp + "/32", Description: "Scaler scheduler monitor from local machine" },
-              ],
-            },
-            {
-              IpProtocol: "tcp",
-              FromPort: cfg.objectStoragePort,
-              ToPort: cfg.objectStoragePort,
-              IpRanges: [
-                { CidrIp: myIp + "/32", Description: "Scaler object storage from local machine" },
-              ],
-            },
-            {
-              IpProtocol: "tcp",
-              FromPort: 50001,
-              ToPort: 50001,
-              IpRanges: [
-                { CidrIp: myIp + "/32", Description: "Scaler Worker Monitor from local machine" },
-              ],
-            },
-          ],
+          IpPermissions: ingressPermissions,
         })
         .promise(),
     );
@@ -1122,7 +1186,7 @@ async function provision(
   }
 
   // 8. Build addresses and persist complete state
-  var addrSlash = cfg.transport === "ws" ? "/" : "";
+  var addrSlash = cfg.transport === "ws" || cfg.transport === "wss" ? "/" : "";
   var schedAddr =
     cfg.transport + "://" + publicIp + ":" + cfg.schedulerPort + addrSlash;
   var objAddr =
@@ -1157,25 +1221,36 @@ async function provision(
   };
   onPartialState(state);
 
-  // 9. Poll for scheduler readiness — temporarily skipped: browsers block ws:// from https pages (mixed content).
-  addLog(
-    "  ℹ Skipping scheduler connection check (browser security restriction) — assuming ready",
-    "warn",
-  );
-  // if (cfg.transport === "ws") {
-  //   addLog(
-  //     "Waiting up to " + cfg.pollTimeout + "s for scheduler at " + publicIp + ":" + cfg.schedulerPort + "...",
-  //     "cmd",
-  //   );
-  //   var ready = await waitForWs(publicIp, cfg.schedulerPort, cfg.pollTimeout * 1000, cfg.pollInterval * 1000, signal);
-  //   if (ready) {
-  //     addLog("  ✓ Scheduler is reachable", "ok");
-  //   } else {
-  //     addLog("  ✗ Could not verify readiness — check /var/log/scaler.log on the instance", "warn");
-  //   }
-  // } else {
-  //   addLog("  ℹ Skipping scheduler connection check — browsers can't open TCP connections", "warn");
-  // }
+  // 9. Poll for scheduler readiness. This docs site is served over https, and browsers treat
+  // ws:// as mixed content from an https:// page (blocked) but allow wss:// (like https itself),
+  // so only wss:// deployments can be polled directly from here.
+  if (cfg.transport === "wss") {
+    addLog(
+      "Waiting up to " + cfg.pollTimeout + "s for scheduler at " + publicIp + ":" + cfg.schedulerPort + "...",
+      "cmd",
+    );
+    var ready = await waitForWs(
+      "wss",
+      publicIp,
+      cfg.schedulerPort,
+      cfg.pollTimeout * 1000,
+      cfg.pollInterval * 1000,
+      signal,
+      addLog,
+    );
+    if (ready) {
+      addLog("  ✓ Scheduler is reachable", "ok");
+    } else {
+      addLog("  ✗ Could not verify readiness — check /var/log/scaler.log on the instance", "warn");
+    }
+  } else if (cfg.transport === "ws") {
+    addLog(
+      "  ℹ Skipping scheduler connection check (browser blocks ws:// from this https page) — assuming ready",
+      "warn",
+    );
+  } else {
+    addLog("  ℹ Skipping scheduler connection check — browsers can't open TCP connections", "warn");
+  }
 
   addLog("─".repeat(52), "dim");
   addLog("  DEPLOYMENT COMPLETE", "done");

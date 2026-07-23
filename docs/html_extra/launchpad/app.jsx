@@ -3,6 +3,18 @@ const { useState, useEffect, useCallback, useRef } = React;
 const IS_ADVANCED = new URLSearchParams(window.location.search).has('advanced');
 const IS_DEV = new URLSearchParams(window.location.search).has('dev');
 
+// DEV convenience: full form config (everything but credentials) persisted as a single JSON
+// blob, read once at load. See the persistence effect in App for what gets written back.
+const DEV_CONFIG = IS_DEV
+  ? (() => {
+      try {
+        return JSON.parse(sessionStorage.getItem('launchpad-dev-config') || '{}');
+      } catch (_) {
+        return {};
+      }
+    })()
+  : {};
+
 const OCI_SHAPE_PRICING = {
   "CI.Standard.A1.Flex": { ocpuPrice: 0.013106, memPrice: 0.0019659 },
   "CI.Standard.E4.Flex": { ocpuPrice: 0.032765, memPrice: 0.0019659 },
@@ -1373,24 +1385,24 @@ function TopNav({
 
 /* ── App ── */
 function App() {
-  const [region, setRegion] = useState("us-east-1");
+  const [region, setRegion] = useState(() => (IS_DEV && DEV_CONFIG.region) || "us-east-1");
   const [accessKeyId, setAKI] = useState(() => IS_DEV ? (sessionStorage.getItem('launchpad-dev-aki') || '') : '');
   const [secretKey, setSK] = useState(() => IS_DEV ? (sessionStorage.getItem('launchpad-dev-sk') || '') : '');
-  const [credTab, setCredTab] = useState("aws");
+  const [credTab, setCredTab] = useState(() => (IS_DEV && DEV_CONFIG.credTab) || "aws");
   const [ociUserId, setOciUserId] = useState(() => IS_DEV ? (sessionStorage.getItem('launchpad-dev-oci-uid') || '') : '');
   const [ociTenancyId, setOciTenancyId] = useState(() => IS_DEV ? (sessionStorage.getItem('launchpad-dev-oci-tid') || '') : '');
   const [ociFingerprint, setOciFingerprint] = useState(() => IS_DEV ? (sessionStorage.getItem('launchpad-dev-oci-fp') || '') : '');
   const [ociPrivateKey, setOciPrivateKey] = useState(() => IS_DEV ? (sessionStorage.getItem('launchpad-dev-oci-pk') || '') : '');
-  const [transport, setTransport] = useState("ws");
-  const [networkBackend, setNetBack] = useState("ymq");
-  const [pythonVersion, setPyVer] = useState("3.14");
-  const [policy, setPolicy] = useState("simple");
+  const [transport, setTransport] = useState(() => (IS_DEV && DEV_CONFIG.transport) || "wss");
+  const [networkBackend, setNetBack] = useState(() => (IS_DEV && DEV_CONFIG.networkBackend) || "ymq");
+  const [pythonVersion, setPyVer] = useState(() => (IS_DEV && DEV_CONFIG.pythonVersion) || "3.14");
+  const [policy, setPolicy] = useState(() => (IS_DEV && DEV_CONFIG.policy) || "simple");
   const [schedulerRequirements, setSchedulerReqs] = useState(
-    "opengris-scaler[all]",
+    () => (IS_DEV && DEV_CONFIG.schedulerRequirements) || "opengris-scaler[all]",
   );
-  const [schedulerType, setSchedulerType] = useState("c5.xlarge");
-  const [schedulerPort, setSchedPort] = useState(6788);
-  const [objectStoragePort, setObjPort] = useState(6789);
+  const [schedulerType, setSchedulerType] = useState(() => (IS_DEV && DEV_CONFIG.schedulerType) || "c5.xlarge");
+  const [schedulerPort, setSchedPort] = useState(() => (IS_DEV && DEV_CONFIG.schedulerPort) || 6788);
+  const [objectStoragePort, setObjPort] = useState(() => (IS_DEV && DEV_CONFIG.objectStoragePort) || 6789);
   const [activeTab, setActiveTab] = useState("config");
   const [theme, setTheme] = useState(
     () =>
@@ -1403,19 +1415,32 @@ function App() {
   const wmCounterRef = useRef(1);
   const uidCounterRef = useRef(1);
   const loadConfigInputRef = useRef(null);
-  const [workerManagers, setWorkerManagers] = useState([
-    {
-      _uid: 1,
-      id: "wm-1",
-      type: "orb_aws_ec2",
-      instanceType: "t3.medium",
-      capMode: "instances",
-      instanceCap: 4,
-      budgetCap: 10,
-      requirements: "opengris-scaler[all]",
-    },
-  ]);
-  const [selectedWmId, setSelectedWmId] = useState("wm-1");
+  const [workerManagers, setWorkerManagers] = useState(() => {
+    if (IS_DEV && DEV_CONFIG.workerManagers && DEV_CONFIG.workerManagers.length) {
+      const wms = DEV_CONFIG.workerManagers;
+      wmCounterRef.current = wms.reduce((max, wm) => {
+        const m = /^wm-(\d+)$/.exec(wm.id || "");
+        return m ? Math.max(max, parseInt(m[1], 10)) : max;
+      }, 1);
+      uidCounterRef.current = wms.reduce((max, wm) => Math.max(max, wm._uid || 0), 1);
+      return wms;
+    }
+    return [
+      {
+        _uid: 1,
+        id: "wm-1",
+        type: "orb_aws_ec2",
+        instanceType: "t3.medium",
+        capMode: "instances",
+        instanceCap: 4,
+        budgetCap: 10,
+        requirements: "opengris-scaler[all]",
+      },
+    ];
+  });
+  const [selectedWmId, setSelectedWmId] = useState(
+    () => (IS_DEV && DEV_CONFIG.selectedWmId) || (workerManagers[0] && workerManagers[0].id) || "wm-1",
+  );
   const [draggedWmId, setDraggedWmId] = useState(null);
   const [dragOverWmId, setDragOverWmId] = useState(null);
 
@@ -1507,6 +1532,45 @@ function App() {
     sessionStorage.setItem('launchpad-dev-oci-fp', ociFingerprint);
     sessionStorage.setItem('launchpad-dev-oci-pk', ociPrivateKey);
   }, [accessKeyId, secretKey, ociUserId, ociTenancyId, ociFingerprint, ociPrivateKey]);
+
+  // DEV convenience: persist the rest of the form (everything but credentials) across refreshes,
+  // including each requirements.txt textarea (scheduler-level and per worker manager), so a reload
+  // during Launchpad development doesn't wipe out a hand-built config.
+  useEffect(() => {
+    if (!IS_DEV) return;
+    try {
+      sessionStorage.setItem(
+        'launchpad-dev-config',
+        JSON.stringify({
+          region,
+          credTab,
+          transport,
+          networkBackend,
+          pythonVersion,
+          policy,
+          schedulerRequirements,
+          schedulerType,
+          schedulerPort,
+          objectStoragePort,
+          workerManagers,
+          selectedWmId,
+        }),
+      );
+    } catch (_) {}
+  }, [
+    region,
+    credTab,
+    transport,
+    networkBackend,
+    pythonVersion,
+    policy,
+    schedulerRequirements,
+    schedulerType,
+    schedulerPort,
+    objectStoragePort,
+    workerManagers,
+    selectedWmId,
+  ]);
 
   useEffect(() => {
     try {
@@ -2472,13 +2536,14 @@ function App() {
                   <div>
                     <Label
                       help={
-                        "WebSocket - connect to your cluster from a browser or any WebSocket client.\n---\nTCP - direct socket connection; slightly lower overhead."
+                        "WSS - WebSocket over TLS; connect from a browser or any WebSocket client using a Let's Encrypt certificate for the instance's public IP. Recommended default.\n---\nWS - plain WebSocket, no encryption.\n---\nTCP - direct socket connection; slightly lower overhead, but browsers can't connect to it."
                       }
                     >
                       Transport Protocol
                     </Label>
                     <TogglePair
                       options={[
+                        ["wss", "WSS"],
                         ["ws", "WS"],
                         ["tcp", "TCP"],
                       ]}
