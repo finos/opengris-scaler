@@ -28,6 +28,7 @@ from scaler.utility.mixins import Looper, Reporter
 logger = logging.getLogger(__name__)
 
 UINT8_MAX = 2**8 - 1
+UINT16_MAX = 2**16 - 1
 
 
 class VanillaWorkerController(WorkerController, Looper, Reporter):
@@ -122,7 +123,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
     ) -> WorkerStatus:
         current_processor = next((p for p in info.processors if not p.suspended), None)
         suspended = min(len([p for p in info.processors if p.suspended]), UINT8_MAX)
-        last_s = min(int(time.time() - last), UINT8_MAX)
+        last_s = min(int(time.time() - last), UINT16_MAX)
 
         if current_processor:
             debug_info = f"{int(current_processor.initialized)}{int(current_processor.hasTask)}{int(info.taskLock)}"
@@ -133,6 +134,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             workerId=worker_id,
             agent=info.agent,
             rssFree=info.rssFree,
+            memLimit=info.memLimit,
             free=worker_task_numbers["free"],
             sent=worker_task_numbers["sent"],
             queued=info.queuedTasks,

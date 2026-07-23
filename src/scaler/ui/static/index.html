@@ -34,11 +34,11 @@
                     <span class="metric-value" id="sched-cpu">—</span>
                 </div>
                 <div class="metric">
-                    <span class="metric-label">RSS:</span>
+                    <span class="metric-label">PSS:</span>
                     <span class="metric-value" id="sched-rss">—</span>
                 </div>
                 <div class="metric">
-                    <span class="metric-label">RSS Free:</span>
+                    <span class="metric-label">Mem Free:</span>
                     <span class="metric-value" id="sched-rss-free">—</span>
                 </div>
                 <div class="metric">
@@ -60,7 +60,7 @@
                             <th>Max Concurrency</th>
                             <th>Workers</th>
                             <th>Σ CPU %</th>
-                            <th>Σ RSS (MB)</th>
+                            <th>Σ PSS (MB)</th>
                             <th>Σ Free</th>
                             <th>Σ Sent</th>
                             <th>Σ Queued</th>
@@ -76,15 +76,17 @@
         <div class="card">
             <h3>Workers</h3>
             <div class="table-wrap">
+                <!-- Agt/Proc memory is PSS (proportional set size) on Linux, RSS on macOS/Windows; see get_process_memory. -->
                 <table class="data-table" id="workers-table">
                     <thead>
                         <tr>
                             <th>Worker</th>
                             <th>Manager</th>
                             <th>Agt CPU %</th>
-                            <th>Agt RSS (MB)</th>
+                            <th>Agt PSS (MB)</th>
                             <th>Proc CPU %</th>
-                            <th>Proc RSS (MB)</th>
+                            <th>Proc PSS (MB)</th>
+                            <th>Mem %</th>
                             <th>Free</th>
                             <th>Sent</th>
                             <th>Queued</th>

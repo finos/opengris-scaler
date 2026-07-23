@@ -23,6 +23,12 @@ var streamTicks = [];
 var streamWindow = 300;    // seconds
 var streamNeedsRedraw = false;
 var memoryNeedsRedraw = false;
+var activeTab = "live";          // currently visible tab; hidden tabs are cached, not re-rendered
+var lastSchedulerData = null;    // latest cached payloads, replayed on tab switch
+var lastManagersData = [];
+var lastProcessorsData = [];
+var streamLegendData = [];       // cached stream legend + manager legend for re-render on switch
+var streamManagerLegendData = [];
 
 // -- DOM refs --
 var $ = function(id) { return document.getElementById(id); };
@@ -58,16 +64,29 @@ for (var i = 0; i < tabs.length; i++) {
                 panels[j].classList.remove("active");
             }
             tab.classList.add("active");
-            var panel = $("panel-" + tab.getAttribute("data-tab"));
+            activeTab = tab.getAttribute("data-tab");
+            var panel = $("panel-" + activeTab);
             if (panel) panel.classList.add("active");
             updateFitPageStream();
-            // trigger redraws for canvas tabs
-            if (tab.getAttribute("data-tab") === "stream") {
-                streamNeedsRedraw = true;
-                memoryNeedsRedraw = true;
-            }
+            renderActiveTab();
         };
     })(tabs[i]));
+}
+
+// Render the now-visible tab from the latest cached data. Hidden tabs are skipped on update; switching to
+// a tab replays its cached payload so it is immediately current.
+function renderActiveTab() {
+    if (activeTab === "live") {
+        if (lastSchedulerData) renderScheduler(lastSchedulerData);
+        renderWorkers();
+        renderManagers();
+    } else if (activeTab === "processors") {
+        renderProcessors();
+    } else if (activeTab === "stream") {
+        renderStreamStatic();
+        streamNeedsRedraw = true;
+        memoryNeedsRedraw = true;
+    }
 }
 
 // -- Fit Page Toggle --
@@ -222,15 +241,28 @@ function applySettings(settings) {
 
 // -- Live Tab: Scheduler --
 function updateScheduler(sched) {
+    lastSchedulerData = sched;
+    if (activeTab === "live") renderScheduler(sched);
+}
+
+function renderScheduler(sched) {
     schedAddress.textContent = sched.monitor_address || "—";
     schedCpu.textContent = sched.cpu || "—";
     schedRss.textContent = sched.rss || "—";
     schedRssFree.textContent = sched.rss_free || "—";
     schedLastSeen.textContent = sched.last_seen || "—";
+    // stale = the scheduler's periodic heartbeat has gone quiet; flag it so a stuck scheduler is obvious.
+    schedLastSeen.classList.toggle("stale", !!sched.stale);
 }
 
 // -- Live Tab: Worker Managers --
 function updateWorkerManagers(managers) {
+    lastManagersData = managers;
+    if (activeTab === "live") renderManagers();
+}
+
+function renderManagers() {
+    var managers = lastManagersData;
     managersBody.innerHTML = "";
     if (!managers || managers.length === 0) {
         var tr = document.createElement("tr");
@@ -300,13 +332,18 @@ function updateWorkerManagers(managers) {
 }
 
 // -- Live Tab: Workers --
-var WORKER_FIELDS = ["name", "manager_id", "agt_cpu", "agt_rss", "proc_cpu", "proc_rss",
+var WORKER_FIELDS = ["name", "manager_id", "agt_cpu", "agt_rss", "proc_cpu", "proc_rss", "mem_used_pct",
                      "free", "sent", "queued", "suspended", "lag", "itl", "last_seen", "capabilities"];
-var WORKER_NUMERIC_FIELDS = {"agt_cpu":1, "agt_rss":1, "proc_cpu":1, "proc_rss":1,
+var WORKER_NUMERIC_FIELDS = {"agt_cpu":1, "agt_rss":1, "proc_cpu":1, "proc_rss":1, "mem_used_pct":1,
                              "free":1, "sent":1, "queued":1, "suspended":1, "itl":1};
 
 function updateWorkers(workers) {
     lastWorkersData = workers;
+    if (activeTab === "live") renderWorkers();
+}
+
+function renderWorkers() {
+    var workers = lastWorkersData;
     var seen = {};
     for (var i = 0; i < workers.length; i++) {
         var w = workers[i];
@@ -394,20 +431,21 @@ function setupWorkerSort() {
 }
 setupWorkerSort();
 
+var WORKER_GAUGE_FIELDS = {"agt_cpu": 1, "agt_rss": 1, "proc_cpu": 1, "proc_rss": 1, "mem_used_pct": 1};
+
 function createWorkerRow(w) {
     var tr = document.createElement("tr");
     tr.setAttribute("data-worker", w.id);
-    // 14 cells
-    var fields = ["name", "manager_id", "agt_cpu", "agt_rss", "proc_cpu", "proc_rss",
-                  "free", "sent", "queued", "suspended", "lag", "itl", "last_seen", "capabilities"];
-    for (var i = 0; i < fields.length; i++) {
+    for (var i = 0; i < WORKER_FIELDS.length; i++) {
         var td = document.createElement("td");
-        td.setAttribute("data-field", fields[i]);
+        td.setAttribute("data-field", WORKER_FIELDS[i]);
+        if (WORKER_GAUGE_FIELDS[WORKER_FIELDS[i]]) buildGauge(td);
         tr.appendChild(td);
     }
     return tr;
 }
 
+// Static HTML gauge, still used by the processors tree (which is rebuilt wholesale anyway).
 function makeGaugeHTML(value, max, unit) {
     if (max <= 0) max = 100;
     var pct = Math.min(100, (value / max) * 100);
@@ -417,23 +455,52 @@ function makeGaugeHTML(value, max, unit) {
         value + (unit || "") + '</span></div>';
 }
 
+// In-place gauge for the workers table: build the DOM once, then update width/value each tick instead of
+// rebuilding the gauge HTML every refresh.
+function buildGauge(td) {
+    var gauge = document.createElement("div");
+    gauge.className = "gauge";
+    var bar = document.createElement("div");
+    bar.className = "gauge-bar";
+    var fill = document.createElement("div");
+    fill.className = "gauge-fill";
+    var value = document.createElement("span");
+    value.className = "gauge-value";
+    bar.appendChild(fill);
+    gauge.appendChild(bar);
+    gauge.appendChild(value);
+    td.appendChild(gauge);
+    td._gaugeFill = fill;
+    td._gaugeValue = value;
+}
+
+function setGauge(td, value, max, unit) {
+    if (max <= 0) max = 100;
+    var pct = Math.min(100, (value / max) * 100);
+    td._gaugeFill.style.width = pct.toFixed(1) + "%";
+    td._gaugeFill.className = "gauge-fill" + (pct > 90 ? " critical" : pct > 70 ? " high" : "");
+    td._gaugeValue.textContent = value + (unit || "");
+}
+
 function updateWorkerRow(tr, w) {
     var cells = tr.children;
     cells[0].textContent = w.name;
     cells[0].title = w.full_name || w.name;
     cells[1].textContent = w.manager_id || "—";
-    cells[2].innerHTML = makeGaugeHTML(w.agt_cpu, 100, "%");
-    cells[3].innerHTML = makeGaugeHTML(w.agt_rss, w.total_rss, "");
-    cells[4].innerHTML = makeGaugeHTML(w.proc_cpu, 100, "%");
-    cells[5].innerHTML = makeGaugeHTML(w.proc_rss, w.total_rss, "");
-    cells[6].textContent = w.free;
-    cells[7].textContent = w.sent;
-    cells[8].textContent = w.queued;
-    cells[9].textContent = w.suspended;
-    cells[10].textContent = w.lag;
-    cells[11].textContent = w.itl;
-    cells[12].textContent = w.last_seen;
-    cells[13].textContent = w.capabilities;
+    setGauge(cells[2], w.agt_cpu, 100, "%");
+    setGauge(cells[3], w.agt_rss, w.total_rss, "");
+    setGauge(cells[4], w.proc_cpu, 100, "%");
+    setGauge(cells[5], w.proc_rss, w.total_rss, "");
+    setGauge(cells[6], w.mem_used_pct, 100, "%");
+    cells[6].title = w.mem_limit ? (w.mem_used + " / " + w.mem_limit + " MB used") : "";
+    cells[7].textContent = w.free;
+    cells[8].textContent = w.sent;
+    cells[9].textContent = w.queued;
+    cells[10].textContent = w.suspended;
+    cells[11].textContent = w.lag;
+    cells[12].textContent = w.itl;
+    cells[13].textContent = w.last_seen;
+    cells[14].textContent = w.capabilities;
 }
 
 function handleWorkerEvents(events) {
@@ -577,17 +644,24 @@ function updateTaskStream(data) {
     streamFullRows = data.full_rows || streamRows;
     streamRowManagers = data.row_managers || [];
     streamManagerColors = {};
-    var managerLegend = data.manager_legend || [];
-    for (var ml = 0; ml < managerLegend.length; ml++) {
-        streamManagerColors[managerLegend[ml].name] = managerLegend[ml].color;
+    streamManagerLegendData = data.manager_legend || [];
+    for (var ml = 0; ml < streamManagerLegendData.length; ml++) {
+        streamManagerColors[streamManagerLegendData[ml].name] = streamManagerLegendData[ml].color;
     }
     streamTicks = data.ticks || [];
     streamWindow = data.window || 300;
-    streamNeedsRedraw = true;
+    streamLegendData = data.legend || [];
 
-    // Update legend
-    var legend = data.legend || [];
-    var managerLegend = data.manager_legend || [];
+    if (activeTab === "stream") {
+        renderStreamStatic();
+        streamNeedsRedraw = true;
+    }
+}
+
+// Rebuild the stream legend + time axis (DOM) from cached data; runs only while the stream tab is visible.
+function renderStreamStatic() {
+    var legend = streamLegendData;
+    var managerLegend = streamManagerLegendData;
     streamLegend.innerHTML = "";
 
     // Manager legend (narrow swatches matching the 4px row stripe)
@@ -876,7 +950,7 @@ function updateMemoryChart(data) {
     memoryYTicks = data.y_ticks || [];
     memoryScale = data.scale || "linear";
     streamWindow = data.window || streamWindow;
-    memoryNeedsRedraw = true;
+    if (activeTab === "stream") memoryNeedsRedraw = true;
 }
 
 function drawMemoryChart() {
@@ -1026,6 +1100,12 @@ var processorsCollapsed = {};  // track collapsed state by worker name
 var managerCollapsed = {};    // track collapsed state by manager id
 
 function updateProcessors(processors) {
+    lastProcessorsData = processors;
+    if (activeTab === "processors") renderProcessors();
+}
+
+function renderProcessors() {
+    var processors = lastProcessorsData;
     processorsContainer.innerHTML = "";
     if (!processors || processors.length === 0) {
         processorsContainer.innerHTML = '<div class="card"><p style="color:#64748b">No workers connected</p></div>';
@@ -1047,8 +1127,7 @@ function updateProcessors(processors) {
             '<span class="manager-stats">' +
                 '<span class="manager-stat"><b>Workers:</b> ' + group.worker_count + '</span>' +
                 '<span class="manager-stat"><b>Processors:</b> ' + group.active_processors + ' active</span>' +
-                '<span class="manager-stat"><b>Total RSS:</b> ' + group.total_rss + ' MB</span>' +
-                '<span class="manager-stat"><b>RSS Free:</b> ' + group.total_rss_free + ' MB</span>' +
+                '<span class="manager-stat"><b>Total PSS:</b> ' + group.total_rss + ' MB</span>' +
                 '<span class="manager-stat"><b>Total CPU:</b> ' + group.total_cpu + '%</span>' +
             '</span>';
         managerSection.appendChild(managerSummary);
@@ -1093,7 +1172,8 @@ function updateProcessors(processors) {
             // Header
             var thead = document.createElement("thead");
             var headerRow = document.createElement("tr");
-            var headers = ["PID", "CPU %", "RSS (MB)", "Max RSS (MB)", "Initialized", "Has Task", "Suspended"];
+            // memory columns are PSS on Linux, RSS on macOS/Windows (see get_process_memory)
+            var headers = ["PID", "CPU %", "PSS (MB)", "Max PSS (MB)", "Initialized", "Has Task", "Suspended"];
             for (var h = 0; h < headers.length; h++) {
                 var th = document.createElement("th");
                 th.textContent = headers[h];
@@ -1173,13 +1253,16 @@ function formatBytes(bytes) {
 
 // -- Animation Loop --
 function renderLoop() {
-    if (streamNeedsRedraw) {
-        streamNeedsRedraw = false;
-        drawTaskStream();
-    }
-    if (memoryNeedsRedraw) {
-        memoryNeedsRedraw = false;
-        drawMemoryChart();
+    // Only the visible stream tab draws; hidden canvases are never touched (they redraw on switch-in).
+    if (activeTab === "stream") {
+        if (streamNeedsRedraw) {
+            streamNeedsRedraw = false;
+            drawTaskStream();
+        }
+        if (memoryNeedsRedraw) {
+            memoryNeedsRedraw = false;
+            drawMemoryChart();
+        }
     }
     requestAnimationFrame(renderLoop);
 }
