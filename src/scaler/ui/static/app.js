@@ -8,6 +8,7 @@ var workerRows = {};       // worker_id -> <tr> element
 var workerSortField = null;  // current sort column field name
 var workerSortAsc = true;    // sort direction
 var lastWorkersData = [];    // latest workers array for re-sorting
+var workersTotal = 0;        // full fleet size; workers array may be capped by the scheduler
 var taskLogTotal = 0;  // completed tasks seen by the server since it started, uncapped by the display ring
 var TASK_LOG_MAX_SIZE = 100;  // overridden by server's task_log_max_size on initial state
 var taskRowMap = {};  // task_id -> tr element for in-place updates
@@ -40,6 +41,7 @@ var schedRssFree = $("sched-rss-free");
 var schedLastSeen = $("sched-last-seen");
 var managersBody = $("managers-body");
 var workersBody = $("workers-body");
+var workersCount = $("workers-count");
 var tasklogBody = $("tasklog-body");
 var tasklogCount = $("tasklog-count");
 var streamCanvas = $("stream-canvas");
@@ -183,6 +185,7 @@ function handleMessage(data) {
         updateScheduler(data.scheduler);
     }
     if (data.workers) {
+        if (typeof data.workers_total === "number") workersTotal = data.workers_total;
         updateWorkers(data.workers);
     }
     if (data.worker_managers) {
@@ -208,6 +211,7 @@ function handleMessage(data) {
 
 function handleFullState(data) {
     if (data.scheduler) updateScheduler(data.scheduler);
+    if (typeof data.workers_total === "number") workersTotal = data.workers_total;
     if (data.workers) updateWorkers(data.workers);
     if (data.worker_managers) updateWorkerManagers(data.worker_managers);
     if (typeof data.task_log_max_size === "number" && data.task_log_max_size > 0) {
@@ -369,6 +373,14 @@ function renderWorkers() {
     if (workerSortField) {
         applySortOrder();
     }
+    updateWorkersCountBadge();
+}
+
+// The scheduler caps the per-worker detail it serializes at scale; show "shown of total" (total covers the
+// whole fleet via per-manager counts) so a capped view is explicit rather than looking like the whole fleet.
+function updateWorkersCountBadge() {
+    var shown = lastWorkersData.length;
+    workersCount.textContent = workersTotal > shown ? (shown + " of " + workersTotal) : shown;
 }
 
 function applySortOrder() {

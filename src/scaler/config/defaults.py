@@ -55,6 +55,12 @@ DEFAULT_LOAD_BALANCE_TRIGGER_TIMES = 2
 # number of tasks can be queued to each worker on scheduler side
 DEFAULT_PER_WORKER_QUEUE_SIZE = 1000
 
+# maximum number of workers whose full detail (per-processor stats) the scheduler serializes into each status
+# report; -1 (default) means unlimited. Serializing every worker each report is the dominant monitoring cost
+# at thousands of workers. Fleet and per-manager worker counts always stay accurate, but the web GUI's
+# per-manager resource sums are computed from the reported detail, so they undercount once this caps it.
+DEFAULT_STATUS_REPORT_WORKER_LIMIT = -1
+
 # =======================
 # WORKER SPECIFIC OPTIONS
 
