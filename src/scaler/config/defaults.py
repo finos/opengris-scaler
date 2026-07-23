@@ -8,8 +8,11 @@ from scaler.config.types.network_backend import NetworkBackendType
 # object clean up time interval
 CLEANUP_INTERVAL_SECONDS = 1
 
-# status report interval, used by poke or scaled monitor
-STATUS_REPORT_INTERVAL_SECONDS = 1
+# how often the scheduler publishes full status (every worker and processor) to monitors and the web GUI.
+# The scheduler builds this on its event loop every interval whether or not a monitor is attached, so the
+# cost scales with worker/processor count. Raise it via -sri on very large fleets (thousands of workers) to
+# cut that overhead.
+STATUS_REPORT_INTERVAL_SECONDS = 2
 
 # number of seconds for profiling
 PROFILING_INTERVAL_SECONDS = 1
@@ -52,6 +55,12 @@ DEFAULT_LOAD_BALANCE_TRIGGER_TIMES = 2
 # number of tasks can be queued to each worker on scheduler side
 DEFAULT_PER_WORKER_QUEUE_SIZE = 1000
 
+# maximum number of workers whose full detail (per-processor stats) the scheduler serializes into each status
+# report; -1 (default) means unlimited. Serializing every worker each report is the dominant monitoring cost
+# at thousands of workers. Fleet and per-manager worker counts always stay accurate, but the web GUI's
+# per-manager resource sums are computed from the reported detail, so they undercount once this caps it.
+DEFAULT_STATUS_REPORT_WORKER_LIMIT = -1
+
 # =======================
 # WORKER SPECIFIC OPTIONS
 
@@ -91,6 +100,20 @@ DEFAULT_LOGGING_LEVEL = "INFO"
 
 # default logging paths
 DEFAULT_LOGGING_PATHS = ("/dev/stdout",)
+
+# =======================
+# WEB GUI (scaler_gui) SPECIFIC OPTIONS
+
+# how often the web GUI backend pushes an update to connected browsers; drives the streaming chart cadence
+DEFAULT_GUI_BROADCAST_INTERVAL_SECONDS = 0.1
+
+# maximum number of completed tasks the web GUI retains and shows in the task log
+DEFAULT_GUI_TASK_LOG_MAX_SIZE = 500
+
+# maximum number of workers the web GUI backend sends to each browser (with per-processor detail); -1 means
+# unlimited. The backend keeps and aggregates the whole fleet, so per-manager stats stay complete -- this
+# only bounds what a browser must receive and render, which is what lags a viewer's machine at scale.
+DEFAULT_GUI_WORKER_DISPLAY_LIMIT = 500
 
 # =======================
 # SCALER NETWORK BACKEND SPECIFIC OPTIONS

@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import hashlib
+import itertools
 import json
 import logging
 import queue
@@ -14,7 +15,6 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from scaler.config.defaults import STATUS_REPORT_INTERVAL_SECONDS
 from scaler.config.section.webgui import WebGUIConfig
 from scaler.io.mixins import SyncSubscriber
 from scaler.io.network_backends import get_network_backend_from_env
@@ -36,13 +36,6 @@ from scaler.utility.metadata.profile_result import ProfileResult
 _logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
-
-BATCH_INTERVAL_SECONDS = 0.1
-TASK_LOG_MAX_SIZE = 500
-
-# Mark the scheduler stale once its periodic StateScheduler heartbeat has not arrived for this long. The
-# heartbeat runs on the scheduler's main loop, so a stalled loop stops it and the UI reflects that.
-SCHEDULER_STALE_SECONDS = 5 * STATUS_REPORT_INTERVAL_SECONDS
 
 COMPLETED_TASK_STATUSES = (
     TaskState.success,
@@ -629,6 +622,16 @@ class WebUIApp:
 
     def __init__(self, config: WebGUIConfig) -> None:
         self._config = config
+        self._broadcast_interval_seconds: float = config.broadcast_interval_seconds
+        self._task_log_max_size: int = config.task_log_max_size
+        self._worker_display_limit: int = config.worker_display_limit
+        # Mark the scheduler stale once its periodic StateScheduler heartbeat has not arrived for ~5x its
+        # report interval; that heartbeat runs on the scheduler's main loop, so a stalled loop stops it.
+        self._scheduler_stale_seconds: float = 5 * config.status_report_interval_seconds
+        # Total completed tasks seen since this GUI process started, uncapped by the display ring buffer.
+        self._task_log_total: int = 0
+        # Full fleet worker count from per-manager totals; the worker rows sent to each browser are a bounded subset.
+        self._total_workers: int = 0
         self._message_queue: queue.Queue[BaseMessage] = queue.Queue()
         self._clients: List[WebSocket] = []
         self._clients_lock = asyncio.Lock()
@@ -637,7 +640,7 @@ class WebUIApp:
         self._scheduler_data: Dict[str, Any] = {}
         self._workers_data: Dict[str, Dict[str, Any]] = {}
         self._worker_capabilities: Dict[str, Dict[str, int]] = {}
-        self._task_log: Deque[Dict[str, Any]] = deque(maxlen=TASK_LOG_MAX_SIZE)
+        self._task_log: Deque[Dict[str, Any]] = deque(maxlen=self._task_log_max_size)
         self._active_tasks: Dict[str, Dict[str, Any]] = {}  # task_id_hex -> entry (running tasks)
         self._task_id_to_function: Dict[str, str] = {}
         self._task_stream = TaskStreamState()
@@ -690,9 +693,9 @@ class WebUIApp:
                 pass
 
     async def _batch_loop(self) -> None:
-        """Drain message queue every BATCH_INTERVAL_SECONDS and broadcast."""
+        """Drain the message queue every broadcast interval and push to browsers."""
         while True:
-            await asyncio.sleep(BATCH_INTERVAL_SECONDS)
+            await asyncio.sleep(self._broadcast_interval_seconds)
             messages: List[BaseMessage] = []
             while True:
                 try:
@@ -736,16 +739,19 @@ class WebUIApp:
                 payload["scheduler"] = sched
 
             if has_scheduler_update:
-                payload["workers"] = list(self._workers_data.values())
+                payload["workers"] = self._capped_workers()
+                payload["workers_total"] = self._total_workers
 
             if worker_events:
                 payload["worker_events"] = worker_events
 
             if new_task_logs:
                 payload["task_updates"] = new_task_logs
+                payload["task_log_total"] = self._task_log_total
 
             # Always send chart data (auto-scrolling)
             stream_data = self._task_stream.get_render_data()
+            self._cap_stream_rows(stream_data)
             self._enrich_stream_with_managers(stream_data)
             payload["task_stream"] = stream_data
 
@@ -767,28 +773,39 @@ class WebUIApp:
             "monitor_address": self._monitor_address,
         }
 
-        # Update persistent worker-to-manager mapping with latest data
-        managed_workers_lookup: Dict[bytes, list] = {}
+        # Update the worker-to-manager mapping and count workers per manager and across the fleet, in a
+        # single pass while each capnp workerIDs list is freshly accessed. Storing the lazy lists to len()
+        # them in the detail loop below is unreliable -- the references do not survive -- which otherwise
+        # reports 0 workers for every manager past the first. The fleet total also feeds the "N of M"
+        # workers indicator, since each browser receives only a bounded subset of workers.
+        # Key by the decoded manager name (a materialized str), not by the capnp id field: reading that
+        # field more than once per detail returns divergent values under capnp aliasing, so joining the two
+        # loops on it silently misses.
+        manager_worker_counts: Dict[str, int] = {}
+        total_workers = 0
         for pair in data.scalingManager.managedWorkers:
-            manager_id_bytes = pair.workerManagerID
-            worker_ids = pair.workerIDs
-            managed_workers_lookup[bytes(manager_id_bytes)] = worker_ids
-            manager_name = manager_id_bytes.decode() if manager_id_bytes else "unknown"
-            for wid in worker_ids:
+            manager_id_raw = bytes(pair.workerManagerID)
+            manager_name = manager_id_raw.decode() if manager_id_raw else "unknown"
+            manager_worker_count = 0
+            for wid in pair.workerIDs:
                 self._worker_manager_map[bytes(wid).decode()] = manager_name
+                manager_worker_count += 1
+            manager_worker_counts[manager_name] = manager_worker_count
+            total_workers += manager_worker_count
+        self._total_workers = total_workers
 
         # Update worker manager details from scaling_manager
         current_managers: Set[str] = set()
         for detail in data.scalingManager.workerManagerDetails:
-            manager_id = detail.workerManagerID.decode() if detail.workerManagerID else "unknown"
+            manager_id_raw = bytes(detail.workerManagerID)
+            manager_id = manager_id_raw.decode() if manager_id_raw else "unknown"
             current_managers.add(manager_id)
-            worker_ids_for_manager = managed_workers_lookup.get(bytes(detail.workerManagerID), [])
             self._worker_managers_data[manager_id] = {
                 "manager_id": manager_id,
                 "identity": detail.identity,
                 "last_seen": format_seconds(detail.lastSeenS),
                 "max_task_concurrency": detail.maxTaskConcurrency,
-                "worker_count": len(worker_ids_for_manager),
+                "worker_count": manager_worker_counts.get(manager_id, 0),
                 "pending_workers": detail.pendingWorkers,
                 "capabilities": detail.capabilities,
             }
@@ -890,7 +907,9 @@ class WebUIApp:
                 StateWorker(workerId=WorkerID(w.encode()), state=WorkerState.disconnected, capabilities=[])
             )
 
-        # Aggregate summary stats from workers into each worker manager entry
+        # Aggregate per-manager summary stats over every worker the backend received (the whole fleet by
+        # default) -- so these sums are complete even though each browser is sent only a bounded subset for
+        # display. worker_count keeps the full per-manager total computed above.
         for manager_id, mgr_data in self._worker_managers_data.items():
             mgr_proc_cpu = 0.0
             mgr_proc_rss = 0
@@ -898,17 +917,14 @@ class WebUIApp:
             mgr_sent = 0
             mgr_queued = 0
             mgr_suspended = 0
-            worker_count = 0
             for w_data in self._workers_data.values():
                 if w_data.get("manager_id") == manager_id:
-                    worker_count += 1
                     mgr_proc_cpu += w_data.get("proc_cpu", 0)
                     mgr_proc_rss += w_data.get("proc_rss", 0)
                     mgr_free += w_data.get("free", 0)
                     mgr_sent += w_data.get("sent", 0)
                     mgr_queued += w_data.get("queued", 0)
                     mgr_suspended += w_data.get("suspended", 0)
-            mgr_data["worker_count"] = worker_count
             mgr_data["total_proc_cpu"] = round(mgr_proc_cpu, 1)
             mgr_data["total_proc_rss"] = mgr_proc_rss
             mgr_data["total_free"] = mgr_free
@@ -994,6 +1010,7 @@ class WebUIApp:
                 "capabilities": caps_str,
             }
             self._task_log.appendleft(entry)
+            self._task_log_total += 1
             return entry
         else:
             # running/inactive/canceling - track as active task
@@ -1003,7 +1020,9 @@ class WebUIApp:
                 worker_str = prev_entry.get("worker", "")
                 full_worker = prev_entry.get("full_worker", "")
             # remove stale completed entry if task was re-submitted
-            self._task_log = deque((e for e in self._task_log if e["task_id"] != task_id_hex), maxlen=TASK_LOG_MAX_SIZE)
+            self._task_log = deque(
+                (e for e in self._task_log if e["task_id"] != task_id_hex), maxlen=self._task_log_max_size
+            )
             entry = {
                 "task_id": task_id_hex,
                 "function": func_name,
@@ -1017,6 +1036,18 @@ class WebUIApp:
             }
             self._active_tasks[task_id_hex] = entry
             return entry
+
+    def _cap_stream_rows(self, stream_data: Dict[str, Any]) -> None:
+        """Bound the task stream to worker_display_limit, like the tables: without this the stream carries a
+        row (and its bars) per worker, so a browser would receive the whole fleet even though the tables do
+        not. Rows beyond the limit, and their bars, are dropped before the data is sent."""
+        limit = self._worker_display_limit
+        if limit < 0 or len(stream_data.get("rows", [])) <= limit:
+            return
+        stream_data["rows"] = stream_data["rows"][:limit]
+        if "full_rows" in stream_data:
+            stream_data["full_rows"] = stream_data["full_rows"][:limit]
+        stream_data["bars"] = [bar for bar in stream_data.get("bars", []) if bar.get("r", 0) < limit]
 
     def _enrich_stream_with_managers(self, stream_data: Dict[str, Any]) -> None:
         """Add per-row manager IDs and a manager color legend to task stream data."""
@@ -1033,8 +1064,17 @@ class WebUIApp:
         ]
         stream_data["manager_legend"] = manager_legend
 
+    def _capped_workers(self) -> List[Dict[str, Any]]:
+        """The worker rows to send a browser: the full detail list bounded by worker_display_limit. The
+        backend keeps the whole fleet in self._workers_data and aggregates over all of it; only what a
+        browser must receive and render is bounded here."""
+        workers = list(self._workers_data.values())
+        if self._worker_display_limit >= 0:
+            return workers[: self._worker_display_limit]
+        return workers
+
     def _build_processors_data(self) -> List[Dict[str, Any]]:
-        # Group workers by manager_id and include per-manager summary stats
+        # Group every worker by manager for complete per-manager summaries.
         managers: Dict[str, List[Dict[str, Any]]] = {}
         for wp in self._worker_processors.values():
             mid = wp.get("manager_id", "—")
@@ -1043,6 +1083,14 @@ class WebUIApp:
         # Ensure all known worker managers appear even if they have no workers
         for mid in self._worker_managers_data:
             managers.setdefault(mid, [])
+
+        # The bounded slice of per-worker detail a browser receives, grouped back under its manager. Summaries
+        # below still cover every worker; only this detail is capped, since it dominates the payload size.
+        limit = self._worker_display_limit
+        detail_source = itertools.islice(self._worker_processors.values(), limit if limit >= 0 else None)
+        shown_by_manager: Dict[str, List[Dict[str, Any]]] = {}
+        for wp in detail_source:
+            shown_by_manager.setdefault(wp.get("manager_id", "—"), []).append(wp)
 
         result = []
         for manager_id, workers in sorted(managers.items()):
@@ -1065,7 +1113,7 @@ class WebUIApp:
                     "total_cpu": round(total_cpu, 1),
                     "total_processors": total_processors,
                     "active_processors": active_processors,
-                    "workers": workers,
+                    "workers": shown_by_manager.get(manager_id, []),
                 }
             )
         return result
@@ -1107,7 +1155,7 @@ class WebUIApp:
         if self._last_scheduler_heartbeat_time is None:
             return {"last_seen": "\u2014", "stale": False}
         elapsed = int((datetime.datetime.now() - self._last_scheduler_heartbeat_time).total_seconds())
-        return {"last_seen": format_seconds(elapsed), "stale": elapsed > SCHEDULER_STALE_SECONDS}
+        return {"last_seen": format_seconds(elapsed), "stale": elapsed > self._scheduler_stale_seconds}
 
     def get_full_state(self) -> Dict[str, Any]:
         """Get complete current state for a newly connected client."""
@@ -1116,20 +1164,26 @@ class WebUIApp:
         self._drain_pending_messages()
 
         stream_data = self._task_stream.get_render_data()
+        self._cap_stream_rows(stream_data)
         self._enrich_stream_with_managers(stream_data)
         memory_data = self._memory_chart.get_render_data(stream_data["window"])
-        # combine active + completed for initial task log, sorted by time (newest first)
+        # combine active + completed for initial task log, sorted by time (newest first). _active_tasks is
+        # unbounded (one entry per running task), so cap the snapshot to the display size -- at thousands of
+        # concurrent tasks the browser only shows task_log_max_size rows anyway, and the rest stream in.
         initial_task_log = list(self._active_tasks.values()) + list(self._task_log)
         initial_task_log.sort(key=lambda e: e.get("time", 0), reverse=True)
+        initial_task_log = initial_task_log[: self._task_log_max_size]
         # Build scheduler data with a last_seen derived from the periodic heartbeat.
         sched = dict(self._scheduler_data) if self._scheduler_data else {}
         sched.update(self.__scheduler_liveness())
 
         return {
             "scheduler": sched,
-            "workers": list(self._workers_data.values()),
+            "workers": self._capped_workers(),
+            "workers_total": self._total_workers,
             "task_log": initial_task_log,
-            "task_log_max_size": TASK_LOG_MAX_SIZE,
+            "task_log_max_size": self._task_log_max_size,
+            "task_log_total": self._task_log_total,
             "task_stream": stream_data,
             "memory_chart": memory_data,
             "processors": self._build_processors_data(),

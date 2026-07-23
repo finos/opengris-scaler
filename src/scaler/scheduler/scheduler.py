@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from scaler.config.defaults import CLEANUP_INTERVAL_SECONDS, STATUS_REPORT_INTERVAL_SECONDS
+from scaler.config.defaults import CLEANUP_INTERVAL_SECONDS
 from scaler.config.section.scheduler import SchedulerConfig
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher
@@ -267,7 +267,10 @@ class Scheduler:
             create_async_loop_routine(self._object_controller.routine, CLEANUP_INTERVAL_SECONDS),
             create_async_loop_routine(self._worker_controller.routine, CLEANUP_INTERVAL_SECONDS),
             create_async_loop_routine(self._worker_manager_controller.routine, CLEANUP_INTERVAL_SECONDS),
-            create_async_loop_routine(self._information_controller.routine, STATUS_REPORT_INTERVAL_SECONDS),
+            create_async_loop_routine(
+                self._information_controller.routine,
+                self._config_controller.get_config("status_report_interval_seconds"),
+            ),
         ]
 
         try:

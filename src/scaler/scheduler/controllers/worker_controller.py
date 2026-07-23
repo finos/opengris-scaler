@@ -1,3 +1,4 @@
+import itertools
 import logging
 import time
 from typing import Dict, List, Optional, Set, Tuple
@@ -110,10 +111,16 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
     def get_status(self) -> WorkerManagerStatus:
         worker_to_task_numbers = self._policy_controller.statistics()
+        # Cap the per-worker detail list: serializing every worker (with its per-processor stats) on the
+        # scheduler loop every report is the dominant monitoring cost at thousands of workers. The per-manager
+        # worker lists are reported in full separately, so worker counts stay accurate; only the per-worker
+        # detail is bounded, so monitors that sum resources from it then cover just the reported workers.
+        limit = self._config_controller.get_config("status_report_worker_limit")
+        capped = itertools.islice(self._worker_alive_since.items(), limit if limit >= 0 else None)
         return WorkerManagerStatus(
             workers=[
                 self.__worker_status_from_heartbeat(worker, worker_to_task_numbers[worker], last, info)
-                for worker, (last, info) in self._worker_alive_since.items()
+                for worker, (last, info) in capped
             ]
         )
 
