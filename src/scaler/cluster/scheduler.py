@@ -7,7 +7,7 @@ from scaler.config.section.scheduler import PolicyConfig, SchedulerConfig
 from scaler.config.types.address import AddressConfig
 from scaler.scheduler.scheduler import Scheduler
 from scaler.utility.event_loop import register_event_loop, run_task_forever
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.utility.signal_handler import install_async_shutdown_handler
 
 if TYPE_CHECKING:
@@ -27,7 +27,7 @@ def run_scheduler(
     loop = asyncio.new_event_loop()
 
     async def _run() -> None:
-        setup_logger(logging_paths, logging_config_file, logging_level)
+        bootstrap_process(logging_paths, logging_config_file, logging_level)
         register_event_loop(scheduler_config.event_loop)
 
         scheduler = Scheduler(scheduler_config)

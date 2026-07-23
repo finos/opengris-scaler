@@ -328,7 +328,7 @@ class TestScalerAllConfigShape(unittest.TestCase):
 
 
 class TestRunWorkerManager(unittest.TestCase):
-    """Tests that _run_worker_manager calls register_event_loop and setup_logger from the per-manager config."""
+    """Tests that _run_worker_manager calls register_event_loop and bootstrap_process from the per-manager config."""
 
     def _make_native_config(self, event_loop="builtin", logging_level="INFO"):
         from scaler.config.common.logging import LoggingConfig
@@ -353,7 +353,7 @@ class TestRunWorkerManager(unittest.TestCase):
 
         with (
             patch("scaler.entry_points.scaler.register_event_loop") as mock_reg,
-            patch("scaler.entry_points.scaler.setup_logger"),
+            patch("scaler.entry_points.scaler.bootstrap_process"),
             patch("scaler.worker_manager_adapter.baremetal.native.NativeWorkerManager") as mock_nm,
         ):
             mock_nm.return_value.run.return_value = None
@@ -361,13 +361,13 @@ class TestRunWorkerManager(unittest.TestCase):
 
         mock_reg.assert_called_once_with("builtin")
 
-    def test_setup_logger_called_with_logging_config(self) -> None:
+    def test_bootstrap_process_called_with_logging_config(self) -> None:
         from scaler.entry_points.scaler import _run_worker_manager
 
         config = self._make_native_config(logging_level="WARNING")
 
         with (
-            patch("scaler.entry_points.scaler.setup_logger") as mock_log,
+            patch("scaler.entry_points.scaler.bootstrap_process") as mock_log,
             patch("scaler.entry_points.scaler.register_event_loop"),
             patch("scaler.worker_manager_adapter.baremetal.native.NativeWorkerManager") as mock_nm,
         ):
@@ -402,7 +402,7 @@ class TestRunWorkerManager(unittest.TestCase):
         config = self._make_orb_aws_ec2_config()
 
         with (
-            patch("scaler.entry_points.scaler.setup_logger"),
+            patch("scaler.entry_points.scaler.bootstrap_process"),
             patch("scaler.entry_points.scaler.register_event_loop"),
             patch("scaler.worker_manager_adapter.orb_aws_ec2.worker_manager.ORBAWSEC2WorkerManager") as mock_orb,
         ):
@@ -419,7 +419,7 @@ class TestRunWorkerManager(unittest.TestCase):
 
         with (
             patch("scaler.entry_points.scaler.register_event_loop") as mock_reg,
-            patch("scaler.entry_points.scaler.setup_logger"),
+            patch("scaler.entry_points.scaler.bootstrap_process"),
             patch("scaler.worker_manager_adapter.orb_aws_ec2.worker_manager.ORBAWSEC2WorkerManager") as mock_orb,
         ):
             mock_orb.return_value.run.return_value = None

@@ -20,7 +20,7 @@ except ModuleNotFoundError as exc:
 from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.utility.event_loop import register_event_loop, run_task_forever
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager_adapter.common import extract_desired_count, format_capabilities, load_requirements_content
 from scaler.worker_manager_adapter.mixins import DeclarativeWorkerProvisioner
@@ -304,9 +304,9 @@ class ORBAWSEC2WorkerManager:
         get_container().register_instance(ConfigurationManager, ConfigurationManager(config_dict=app_config))
         os.environ["AWS_DEFAULT_REGION"] = self._config.aws_region
         async with orb(app_config=app_config) as sdk:
-            # setup_logger is called after the ORB context is entered because ORB reconfigures
+            # bootstrap_process is called after the ORB context is entered because ORB reconfigures
             # the root logger during __aenter__, which would otherwise suppress scaler log output.
-            setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
+            bootstrap_process(self._logging_paths, self._logging_config_file, self._logging_level)
             await self._setup(sdk)
             try:
                 await self._runner.run_in_loop(self._loop)

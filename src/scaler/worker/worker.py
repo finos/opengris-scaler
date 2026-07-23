@@ -2,6 +2,7 @@ import asyncio
 import logging
 import multiprocessing
 import pathlib
+import sys
 import uuid
 from typing import Dict, Optional, Tuple
 
@@ -33,7 +34,7 @@ from scaler.protocol.capnp import (
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ProcessorID, WorkerID
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.utility.signal_handler import install_async_shutdown_handler
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
 from scaler.worker.agent.processor_manager import VanillaProcessorManager
@@ -107,20 +108,77 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._profiling_manager: Optional[VanillaProfilingManager] = None
         self._processor_manager: Optional[VanillaProcessorManager] = None
 
+        # True once the scheduler has acknowledged us at least once. Used to distinguish "the
+        # scheduler was never reachable" from "the scheduler connection dropped after having worked",
+        # since both surface as the same ConnectorSocketClosedByRemoteEnd error.
+        self._connected_to_scheduler = False
+
     @property
     def identity(self) -> WorkerID:
         return self._ident
 
     def run(self) -> None:
         self._loop = asyncio.new_event_loop()
-        run_task_forever(self._loop, self._run(), cleanup_callback=self._cleanup)
+        exit_code = run_task_forever(self._loop, self._run(), cleanup_callback=self._cleanup)
+        if exit_code:
+            sys.exit(exit_code)
 
-    async def _run(self) -> None:
-        self.__initialize()
+    async def _run(self) -> int:
+        exit_code = 0
+        try:
+            self.__initialize()
 
-        self._task = self._loop.create_task(self.__get_loops())
-        self.__register_signal()
-        await self._task
+            self._task = self._loop.create_task(self.__main_loop())
+            self.__register_signal()
+            await self._task
+        except asyncio.CancelledError:
+            logger.info(f"{self.identity!r}: cancelled, shutting down")
+        except ObjectStorageException as e:
+            # Nobody asked this worker to stop; it gave up because it could not reach a
+            # dependency it needs to do its job, so this is an anomaly worth a nonzero exit.
+            logger.warning(f"{self.identity!r}: object storage exception: {e}")
+            exit_code = 1
+        except ymq.YMQException as e:
+            if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
+                if self._connected_to_scheduler:
+                    # The scheduler connection was dropped after having worked (e.g. scale-down),
+                    # which is a normal teardown condition out of our control.
+                    logger.info(f"{self.identity!r}: connector socket closed by remote end: {e}")
+                else:
+                    # We exhausted our connect retries without ever reaching the scheduler: an
+                    # unreachable dependency at startup, worth a nonzero exit.
+                    logger.warning(f"{self.identity!r}: never connected to scheduler, retries exhausted: {e}")
+                    exit_code = 1
+            elif e.code == ymq.ErrorCode.SocketStopRequested:
+                # A YMQ socket (e.g. the internal binder) was shut down via `disconnect`/teardown
+                # while a send or recv driven by one of the loops above was still in flight. Like
+                # ConnectorSocketClosedByRemoteEnd, this is an expected teardown condition that is
+                # out of our control.
+                logger.info(f"{self.identity!r}: a YMQ socket was shut down during teardown: {e}")
+            else:
+                logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
+                exit_code = 1
+        except ClientShutdownException as e:
+            logger.info(f"{self.identity!r}: {str(e)}")
+        except TimeoutError as e:
+            # The worker decided on its own that it is orphaned (no heartbeat from the scheduler
+            # within death_timeout_seconds), not that anyone asked it to stop: an anomaly worth a
+            # nonzero exit.
+            logger.warning(f"{self.identity!r}: {str(e)}")
+            exit_code = 1
+        except Exception as e:
+            logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
+            exit_code = 1
+        finally:
+            try:
+                await self.__teardown()
+            except Exception as e:
+                # Teardown failing is itself an anomaly; don't let it mask a more specific exit code.
+                logger.exception(f"{self.identity!r}: teardown failed: {e}")
+                exit_code = exit_code or 1
+
+        logger.info(f"{self.identity!r}: quit")
+        return exit_code
 
     def _cleanup(self):
         # the storage connector has asyncio resources that need to be cleaned up
@@ -129,7 +187,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             self._connector_storage.destroy()
 
     def __initialize(self):
-        setup_logger()
+        bootstrap_process()
         register_event_loop(self._event_loop)
 
         self._backend = get_network_backend_from_env(io_threads=self._io_threads)
@@ -193,6 +251,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
     async def __on_receive_external(self, message: BaseMessage):
         if isinstance(message, WorkerHeartbeatEcho):
+            self._connected_to_scheduler = True
             await self._heartbeat_manager.on_heartbeat_echo(message)
             return
 
@@ -242,71 +301,49 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         raise TypeError(f"Unknown message from {processor_id!r}: {message}")
 
-    async def __get_loops(self):
-        try:
-            # Connection setup lives inside the try so a connection-level failure here (e.g. the scheduler is
-            # never reachable, which surfaces as ConnectorSocketClosedByRemoteEnd once the connector exhausts its
-            # retries) is absorbed by the YMQException handler below and shuts the worker down cleanly, instead of
-            # escaping __get_loops as an unhandled exception that crashes the worker process.
-            await self._connector_external.connect(
-                self._address, ConnectorRemoteType.Binder, security_config=self._security_config
-            )
-            await self._binder_internal.bind(self._address_internal)
+    async def __main_loop(self) -> None:
+        await self._connector_external.connect(
+            self._address, ConnectorRemoteType.Binder, security_config=self._security_config
+        )
+        await self._binder_internal.bind(self._address_internal)
 
-            if self._object_storage_address is not None:
-                # With a manually set storage address, immediately connect to the object storage server.
-                await self._connector_storage.connect(
-                    self._object_storage_address, security_config=self._security_config
-                )
+        if self._object_storage_address is not None:
+            # With a manually set storage address, immediately connect to the object storage server.
+            await self._connector_storage.connect(self._object_storage_address, security_config=self._security_config)
 
-            await asyncio.gather(
-                self._processor_manager.initialize(),
-                create_async_loop_routine(self._connector_external.routine, 0),
-                create_async_loop_routine(self._connector_storage.routine, 0),
-                create_async_loop_routine(self._binder_internal.routine, 0),
-                create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
-                create_async_loop_routine(self._timeout_manager.routine, 1),
-                create_async_loop_routine(self._task_manager.routine, 0),
-                create_async_loop_routine(self._profiling_manager.routine, PROFILING_INTERVAL_SECONDS),
-            )
-        except asyncio.CancelledError:
-            pass
+        await asyncio.gather(
+            self._processor_manager.initialize(),
+            create_async_loop_routine(self._connector_external.routine, 0),
+            create_async_loop_routine(self._connector_storage.routine, 0),
+            create_async_loop_routine(self._binder_internal.routine, 0),
+            create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
+            create_async_loop_routine(self._timeout_manager.routine, 1),
+            create_async_loop_routine(self._task_manager.routine, 0),
+            create_async_loop_routine(self._profiling_manager.routine, PROFILING_INTERVAL_SECONDS),
+        )
 
-        except ObjectStorageException:
-            pass
-
-        # TODO: Should the object storage connector catch this error?
-        except ymq.YMQException as e:
-            if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
-                pass
-            elif e.code == ymq.ErrorCode.SocketStopRequested:
-                # A YMQ socket (e.g. the internal binder) was shut down via `disconnect`/teardown
-                # while a send or recv driven by one of the loops above was still in flight. Like
-                # ConnectorSocketClosedByRemoteEnd, this is an expected teardown condition that is
-                # out of our control: log it, but never let it surface as a crash.
-                logger.info(f"{self.identity!r}: a YMQ socket was shut down during teardown: {e}")
-            else:
-                logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
-        except (ClientShutdownException, TimeoutError) as e:
-            logger.info(f"{self.identity!r}: {str(e)}")
-        except Exception as e:
-            logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
-
+    async def __teardown(self) -> None:
+        # Guarded with `is not None` throughout: this runs even when __initialize failed partway
+        # through, so some of these may never have been created.
         if isinstance(self._backend, ZMQNetworkBackend):
             await self.__graceful_shutdown()
 
-        self._connector_external.destroy()
-        self._processor_manager.destroy("quit")
-        self._binder_internal.destroy()
-        self._connector_storage.destroy()
+        if self._connector_external is not None:
+            self._connector_external.destroy()
+        if self._processor_manager is not None:
+            self._processor_manager.destroy("quit")
+        if self._binder_internal is not None:
+            self._binder_internal.destroy()
+        if self._connector_storage is not None:
+            self._connector_storage.destroy()
 
-        if self._address_internal.type == SocketType.ipc and not self._address_internal.host.startswith(
-            "\\\\.\\pipe\\"
+        if (
+            self._address_internal is not None
+            and self._address_internal.type == SocketType.ipc
+            and not self._address_internal.host.startswith("\\\\.\\pipe\\")
         ):
             # Windows named pipes have no filesystem entry to remove; only unlink Unix-domain-socket paths.
             pathlib.Path(self._address_internal.host).unlink(missing_ok=True)
-
-        logger.info(f"{self.identity!r}: quit")
 
     def __register_signal(self):
         if isinstance(self._backend, ZMQNetworkBackend):
@@ -318,6 +355,9 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         asyncio.ensure_future(self.__graceful_shutdown())
 
     async def __graceful_shutdown(self):
+        if self._connector_external is None:
+            return
+
         try:
             await self._connector_external.send(DisconnectRequest(worker=self.identity))
         except ymq.YMQException:
