@@ -2,6 +2,7 @@ import asyncio
 import logging
 import multiprocessing
 import signal
+import sys
 from collections import deque
 from typing import Callable, Dict, Optional
 
@@ -21,9 +22,9 @@ from scaler.protocol.capnp import (
     WorkerHeartbeatEcho,
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
-from scaler.utility.exceptions import ClientShutdownException
+from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import WorkerID
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 from scaler.worker_manager_adapter.heartbeat_manager import HeartbeatManager
 from scaler.worker_manager_adapter.mixins import ExecutionBackend, ProcessorStatusProvider
@@ -92,14 +93,65 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
 
     def run(self) -> None:
         self._loop = asyncio.new_event_loop()
-        run_task_forever(self._loop, self._run(), cleanup_callback=self._cleanup)
+        exit_code = run_task_forever(self._loop, self._run(), cleanup_callback=self._cleanup)
+        if exit_code:
+            sys.exit(exit_code)
 
-    async def _run(self) -> None:
-        self.__initialize()
+    async def _run(self) -> int:
+        exit_code = 0
+        try:
+            self.__initialize()
 
-        self._task = self._loop.create_task(self.__get_loops())
-        self.__register_signal()
-        await self._task
+            self._task = self._loop.create_task(self.__main_loop())
+            self.__register_signal()
+            await self._task
+        except asyncio.CancelledError:
+            logger.info(f"{self.identity!r}: cancelled, shutting down")
+        except ObjectStorageException as e:
+            # Nobody asked this worker to stop; it gave up because it could not reach a
+            # dependency it needs to do its job, so this is an anomaly worth a nonzero exit.
+            logger.warning(f"{self.identity!r}: object storage exception: {e}")
+            exit_code = 1
+        except ymq.YMQException as e:
+            if e.code == ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
+                if self._heartbeat_received:
+                    # The scheduler connection was dropped after having worked (e.g. scale-down),
+                    # which is a normal teardown condition out of our control.
+                    logger.info(f"{self.identity!r}: connector socket closed by remote end: {e}")
+                else:
+                    # We exhausted our connect retries without ever reaching the scheduler: an
+                    # unreachable dependency at startup, worth a nonzero exit.
+                    logger.warning(f"{self.identity!r}: never connected to scheduler, retries exhausted: {e}")
+                    exit_code = 1
+            elif e.code == ymq.ErrorCode.SocketStopRequested:
+                # A YMQ socket was shut down via `disconnect`/teardown while a send or recv driven
+                # by one of the loops above was still in flight: an expected teardown condition
+                # that is out of our control.
+                logger.info(f"{self.identity!r}: a YMQ socket was shut down during teardown: {e}")
+            else:
+                logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
+                exit_code = 1
+        except ClientShutdownException as e:
+            logger.info(f"{self.identity!r}: {str(e)}")
+        except TimeoutError as e:
+            # The worker decided on its own that it is orphaned (no heartbeat from the scheduler
+            # within death_timeout_seconds), not that anyone asked it to stop: an anomaly worth a
+            # nonzero exit.
+            logger.warning(f"{self.identity!r}: {str(e)}")
+            exit_code = 1
+        except Exception as e:
+            logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
+            exit_code = 1
+        finally:
+            try:
+                await self.__teardown()
+            except Exception as e:
+                # Teardown failing is itself an anomaly; don't let it mask a more specific exit code.
+                logger.exception(f"{self.identity!r}: teardown failed: {e}")
+                exit_code = exit_code or 1
+
+        logger.info(f"{self.identity!r}: quit")
+        return exit_code
 
     def _cleanup(self) -> None:
         if self._connector_external is not None:
@@ -109,7 +161,7 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             self._connector_storage.destroy()
 
     def __initialize(self) -> None:
-        setup_logger()
+        bootstrap_process()
         register_event_loop(self._event_loop)
 
         self._backend = get_network_backend_from_env(io_threads=self._io_threads)
@@ -190,7 +242,7 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
 
         raise TypeError(f"Unknown {message=}")
 
-    async def __get_loops(self) -> None:
+    async def __main_loop(self) -> None:
         await self._connector_external.connect(
             self._address, ConnectorRemoteType.Binder, security_config=self._security_config
         )
@@ -198,27 +250,19 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         if self._object_storage_address is not None:
             await self._connector_storage.connect(self._object_storage_address, security_config=self._security_config)
 
-        try:
-            await asyncio.gather(
-                create_async_loop_routine(self._connector_external.routine, 0),
-                create_async_loop_routine(self._connector_storage.routine, 0),
-                create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
-                create_async_loop_routine(self._timeout_manager.routine, 1),
-                create_async_loop_routine(self._execution_backend.routine, 0),
-                create_async_loop_routine(self._task_manager.process_task, 0),
-                create_async_loop_routine(self._task_manager.resolve_tasks, 0),
-            )
-        except asyncio.CancelledError:
-            pass
-        except (ClientShutdownException, TimeoutError) as e:
-            logger.info(f"{self.identity!r}: {str(e)}")
-        except Exception as e:
-            logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
+        await asyncio.gather(
+            create_async_loop_routine(self._connector_external.routine, 0),
+            create_async_loop_routine(self._connector_storage.routine, 0),
+            create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
+            create_async_loop_routine(self._timeout_manager.routine, 1),
+            create_async_loop_routine(self._execution_backend.routine, 0),
+            create_async_loop_routine(self._task_manager.process_task, 0),
+            create_async_loop_routine(self._task_manager.resolve_tasks, 0),
+        )
 
+    async def __teardown(self) -> None:
         if isinstance(self._backend, ZMQNetworkBackend):
             await self.__graceful_shutdown()
-
-        logger.info(f"{self.identity!r}: quit")
 
     def __register_signal(self) -> None:
         if isinstance(self._backend, ZMQNetworkBackend):
@@ -229,6 +273,9 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             self._loop.add_signal_handler(signal.SIGTERM, lambda: asyncio.ensure_future(self.__graceful_shutdown()))
 
     async def __graceful_shutdown(self) -> None:
+        if self._connector_external is None:
+            return
+
         try:
             await self._connector_external.send(DisconnectRequest(worker=self.identity))
         except ymq.YMQException:

@@ -49,17 +49,13 @@ def setup_logger(
         logging.config.fileConfig(logging_config_file, disable_existing_loggers=True)
         return
 
-    resolved_log_paths = [LogPath(log_type=__detect_log_types(file_name), path=file_name) for file_name in log_paths]
+    resolved_log_paths = [LogPath(log_type=detect_log_type(file_name), path=file_name) for file_name in log_paths]
     __logging_config(log_paths=resolved_log_paths, logging_level=logging_level, process_name=process_name)
     logger.info(f"logging to {log_paths}")
 
 
-def is_screen_log_path(path: str) -> bool:
-    """Returns True if the path refers to a screen stream (stdout/stderr) rather than a file to write logs to."""
-    return path in {"-", "/dev/stdout", "/dev/stderr"}
-
-
-def __detect_log_types(file_name: str) -> LogType:
+def detect_log_type(file_name: str) -> LogType:
+    """Classify a configured log path: "-" and "/dev/stdout" mean stdout, "/dev/stderr" means stderr, else a file."""
     if file_name in {"-", "/dev/stdout"}:
         return LogType.Stdout
 

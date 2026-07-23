@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import logging
+import multiprocessing.connection
 import os
 import signal
 import sys
 import uuid
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, List, Optional
 
 import psutil
 
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
-from scaler.utility.identifiers import WorkerID
 from scaler.worker.worker import Worker
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager_adapter.common import extract_desired_count
@@ -21,6 +21,15 @@ if TYPE_CHECKING:
     from scaler.protocol.capnp import WorkerManagerCommand
 
 logger = logging.getLogger(__name__)
+
+
+def _describe_exitcode(exitcode: Optional[int]) -> str:
+    if exitcode is not None and exitcode < 0:
+        try:
+            return f"{exitcode} ({signal.Signals(-exitcode).name})"
+        except ValueError:
+            pass
+    return str(exitcode)
 
 
 class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
@@ -42,7 +51,6 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._preload = config.worker_config.preload
         self._logging_paths = config.logging_config.paths
         self._logging_level = config.logging_config.level
-        self._logging_config_file = config.logging_config.config_file
         self._security_config = config.security
 
         if config.worker_type is not None:
@@ -85,23 +93,44 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
         )
 
     def run_fixed(self) -> None:
-        fixed_workers: Dict[WorkerID, Worker] = {}
+        workers: List[Worker] = []
         for _ in range(self._max_task_concurrency):
             worker = self._create_worker()
             worker.start()
-            fixed_workers[worker.identity] = worker
+            workers.append(worker)
+
+        terminated_by_us: set[Worker] = set()
 
         def _on_signal(sig: int, frame: object) -> None:
             logger.info("NativeWorkerProvisioner (FIXED): received signal %d, terminating workers", sig)
-            for worker in fixed_workers.values():
+            for worker in workers:
                 if worker.is_alive():
                     worker.terminate()
+                    terminated_by_us.add(worker)
 
         signal.signal(signal.SIGTERM, _on_signal)
         signal.signal(signal.SIGINT, _on_signal)
 
-        for worker in fixed_workers.values():
-            worker.join()
+        workers_by_sentinel = {worker.sentinel: worker for worker in workers}
+        while workers_by_sentinel:
+            for sentinel in multiprocessing.connection.wait(list(workers_by_sentinel)):
+                worker = workers_by_sentinel.pop(sentinel)
+                worker.join()
+
+                if worker in terminated_by_us:
+                    logger.info(
+                        f"native worker {worker.identity!r} stopped (exitcode={_describe_exitcode(worker.exitcode)})"
+                    )
+                elif worker.exitcode == 0:
+                    # A worker exits 0 only when it was told to stop (by the scheduler or a
+                    # cancellation), never as a symptom of a problem, even though this manager
+                    # was not the one that asked.
+                    logger.info(f"native worker {worker.identity!r} shut down cleanly")
+                else:
+                    logger.warning(
+                        f"native worker {worker.identity!r} exited unexpectedly "
+                        f"(exitcode={_describe_exitcode(worker.exitcode)})"
+                    )
 
     async def set_desired_task_concurrency(
         self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]

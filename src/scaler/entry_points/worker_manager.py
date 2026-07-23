@@ -15,7 +15,7 @@ from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConf
 from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerManagerConfig
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
 from scaler.utility.event_loop import register_event_loop
-from scaler.utility.logging.utility import setup_logger
+from scaler.utility.process_bootstrap import bootstrap_process
 
 _AnyWorkerManagerConfig = Union[
     NativeWorkerManagerConfig,
@@ -90,7 +90,7 @@ def main() -> None:
         config_cls.parse_with_section("scaler_worker_manager", section_data, argv=remaining_argv),
     )
 
-    setup_logger(
+    bootstrap_process(
         wm_config.logging_config.paths,
         wm_config.logging_config.config_file,
         wm_config.logging_config.level,
