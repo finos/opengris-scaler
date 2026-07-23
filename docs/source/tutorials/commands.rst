@@ -273,6 +273,14 @@ Scheduler arguments
      - No
      - ``1``
      - I/O backend thread count.
+   * - ``-sri``, ``--status-report-interval-seconds``
+     - No
+     - ``2``
+     - Interval between status reports the scheduler publishes to monitors (``scaler_top``/``scaler_gui``).
+   * - ``-srwl``, ``--status-report-worker-limit``
+     - No
+     - ``-1``
+     - Maximum workers whose full detail is serialized into each status report (``-1`` is unlimited).
 
 .. list-table:: Policy options
    :header-rows: 1
@@ -1014,6 +1022,22 @@ UI arguments
      - No
      - ``0.0.0.0:50001``
      - Host and port for the web server.
+   * - ``-bi``, ``--broadcast-interval-seconds``
+     - No
+     - ``0.1``
+     - Interval between updates the web GUI pushes to connected browsers.
+   * - ``-tl``, ``--task-log-max-size``
+     - No
+     - ``500``
+     - Maximum completed tasks kept and shown in the task log.
+   * - ``-wl``, ``--worker-display-limit``
+     - No
+     - ``500``
+     - Maximum workers sent to each browser (``-1`` is unlimited); the backend still aggregates the whole fleet.
+   * - ``-sri``, ``--status-report-interval-seconds``
+     - No
+     - ``2``
+     - The scheduler's status report interval; set it to match so the scheduler-stale indicator is accurate.
    * - ``-ll``, ``--logging-level``
      - No
      - ``INFO``

@@ -630,7 +630,7 @@ class WebUIApp:
         self._scheduler_stale_seconds: float = 5 * config.status_report_interval_seconds
         # Total completed tasks seen since this GUI process started, uncapped by the display ring buffer.
         self._task_log_total: int = 0
-        # Full fleet worker count from per-manager totals; the workers detail list may be capped by the scheduler.
+        # Full fleet worker count from per-manager totals; the worker rows sent to each browser are a bounded subset.
         self._total_workers: int = 0
         self._message_queue: queue.Queue[BaseMessage] = queue.Queue()
         self._clients: List[WebSocket] = []
@@ -776,7 +776,7 @@ class WebUIApp:
         # single pass while each capnp workerIDs list is freshly accessed. Storing the lazy lists to len()
         # them in the detail loop below is unreliable -- the references do not survive -- which otherwise
         # reports 0 workers for every manager past the first. The fleet total also feeds the "N of M"
-        # workers indicator, since the scheduler may cap the per-worker detail it serializes.
+        # workers indicator, since each browser receives only a bounded subset of workers.
         # Key by the decoded manager name (a materialized str), not by the capnp id field: reading that
         # field more than once per detail returns divergent values under capnp aliasing, so joining the two
         # loops on it silently misses.
@@ -906,9 +906,9 @@ class WebUIApp:
                 StateWorker(workerId=WorkerID(w.encode()), state=WorkerState.disconnected, capabilities=[])
             )
 
-        # Aggregate summary stats from the workers the GUI holds into each manager entry. worker_count is
-        # left as the full per-manager total computed above; these sums only cover workers currently in the
-        # detail list, which the scheduler may cap, so they are a lower bound at large scale.
+        # Aggregate per-manager summary stats over every worker the backend received (the whole fleet by
+        # default) -- so these sums are complete even though each browser is sent only a bounded subset for
+        # display. worker_count keeps the full per-manager total computed above.
         for manager_id, mgr_data in self._worker_managers_data.items():
             mgr_proc_cpu = 0.0
             mgr_proc_rss = 0

@@ -10,8 +10,8 @@ CLEANUP_INTERVAL_SECONDS = 1
 
 # how often the scheduler publishes full status (every worker and processor) to monitors and the web GUI.
 # The scheduler builds this on its event loop every interval whether or not a monitor is attached, so the
-# cost scales with worker/processor count; 2s keeps a dashboard responsive while halving that overhead
-# versus 1s. Very large fleets (thousands of workers) should raise it further via -sri.
+# cost scales with worker/processor count. Raise it via -sri on very large fleets (thousands of workers) to
+# cut that overhead.
 STATUS_REPORT_INTERVAL_SECONDS = 2
 
 # number of seconds for profiling

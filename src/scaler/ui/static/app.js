@@ -8,7 +8,7 @@ var workerRows = {};       // worker_id -> <tr> element
 var workerSortField = null;  // current sort column field name
 var workerSortAsc = true;    // sort direction
 var lastWorkersData = [];    // latest workers array for re-sorting
-var workersTotal = 0;        // full fleet size; workers array may be capped by the scheduler
+var workersTotal = 0;        // full fleet size; the workers array a browser receives may be a bounded subset
 var taskLogTotal = 0;  // completed tasks seen by the server since it started, uncapped by the display ring
 var TASK_LOG_MAX_SIZE = 100;  // overridden by server's task_log_max_size on initial state
 var taskRowMap = {};  // task_id -> tr element for in-place updates
@@ -376,8 +376,8 @@ function renderWorkers() {
     updateWorkersCountBadge();
 }
 
-// The scheduler caps the per-worker detail it serializes at scale; show "shown of total" (total covers the
-// whole fleet via per-manager counts) so a capped view is explicit rather than looking like the whole fleet.
+// The backend sends each browser only a bounded set of workers at scale; show "shown of total" (total is the
+// full fleet size) so a capped view is explicit rather than looking like the whole fleet.
 function updateWorkersCountBadge() {
     var shown = lastWorkersData.length;
     workersCount.textContent = workersTotal > shown ? (shown + " of " + workersTotal) : shown;
