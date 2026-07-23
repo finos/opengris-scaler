@@ -8,7 +8,7 @@ var workerRows = {};       // worker_id -> <tr> element
 var workerSortField = null;  // current sort column field name
 var workerSortAsc = true;    // sort direction
 var lastWorkersData = [];    // latest workers array for re-sorting
-var taskLogCount = 0;
+var taskLogTotal = 0;  // completed tasks seen by the server since it started, uncapped by the display ring
 var TASK_LOG_MAX_SIZE = 100;  // overridden by server's task_log_max_size on initial state
 var taskRowMap = {};  // task_id -> tr element for in-place updates
 var streamBars = [];       // current bar data from server
@@ -192,6 +192,7 @@ function handleMessage(data) {
         handleWorkerEvents(data.worker_events);
     }
     if (data.task_updates) {
+        if (typeof data.task_log_total === "number") taskLogTotal = data.task_log_total;
         handleTaskUpdates(data.task_updates);
     }
     if (data.task_stream) {
@@ -212,9 +213,9 @@ function handleFullState(data) {
     if (typeof data.task_log_max_size === "number" && data.task_log_max_size > 0) {
         TASK_LOG_MAX_SIZE = data.task_log_max_size;
     }
+    taskLogTotal = typeof data.task_log_total === "number" ? data.task_log_total : 0;
     if (data.task_log) {
         tasklogBody.innerHTML = "";
-        taskLogCount = 0;
         taskRowMap = {};
         addTaskLogEntries(data.task_log, true);
     }
@@ -618,7 +619,6 @@ function addTaskLogEntries(entries, append) {
             tasklogBody.appendChild(tr);
         }
         taskRowMap[e.task_id] = tr;
-        taskLogCount++;
     }
 
     // Trim to configured size
@@ -628,9 +628,18 @@ function addTaskLogEntries(entries, append) {
             delete taskRowMap[removed.dataset.taskId];
         }
         tasklogBody.removeChild(removed);
-        taskLogCount--;
     }
-    tasklogCount.textContent = Math.min(taskLogCount, TASK_LOG_MAX_SIZE);
+    updateTaskLogBadge();
+}
+
+// Badge shows the running total of completed tasks; once it passes the display cap it appends the cap it is
+// windowed to, e.g. "501 (showing 500)".
+function updateTaskLogBadge() {
+    if (taskLogTotal > TASK_LOG_MAX_SIZE) {
+        tasklogCount.textContent = taskLogTotal + " (showing " + TASK_LOG_MAX_SIZE + ")";
+    } else {
+        tasklogCount.textContent = taskLogTotal;
+    }
 }
 
 // -- Task Stream (Canvas) --

@@ -8,8 +8,11 @@ from scaler.config.types.network_backend import NetworkBackendType
 # object clean up time interval
 CLEANUP_INTERVAL_SECONDS = 1
 
-# status report interval, used by poke or scaled monitor
-STATUS_REPORT_INTERVAL_SECONDS = 1
+# how often the scheduler publishes full status (every worker and processor) to monitors and the web GUI.
+# The scheduler builds this on its event loop every interval whether or not a monitor is attached, so the
+# cost scales with worker/processor count; 2s keeps a dashboard responsive while halving that overhead
+# versus 1s. Very large fleets (thousands of workers) should raise it further via -sri.
+STATUS_REPORT_INTERVAL_SECONDS = 2
 
 # number of seconds for profiling
 PROFILING_INTERVAL_SECONDS = 1
@@ -91,6 +94,15 @@ DEFAULT_LOGGING_LEVEL = "INFO"
 
 # default logging paths
 DEFAULT_LOGGING_PATHS = ("/dev/stdout",)
+
+# =======================
+# WEB GUI (scaler_gui) SPECIFIC OPTIONS
+
+# how often the web GUI backend pushes an update to connected browsers; drives the streaming chart cadence
+DEFAULT_GUI_BROADCAST_INTERVAL_SECONDS = 0.1
+
+# maximum number of completed tasks the web GUI retains and shows in the task log
+DEFAULT_GUI_TASK_LOG_MAX_SIZE = 500
 
 # =======================
 # SCALER NETWORK BACKEND SPECIFIC OPTIONS

@@ -14,7 +14,6 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from scaler.config.defaults import STATUS_REPORT_INTERVAL_SECONDS
 from scaler.config.section.webgui import WebGUIConfig
 from scaler.io.mixins import SyncSubscriber
 from scaler.io.network_backends import get_network_backend_from_env
@@ -36,13 +35,6 @@ from scaler.utility.metadata.profile_result import ProfileResult
 _logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
-
-BATCH_INTERVAL_SECONDS = 0.1
-TASK_LOG_MAX_SIZE = 500
-
-# Mark the scheduler stale once its periodic StateScheduler heartbeat has not arrived for this long. The
-# heartbeat runs on the scheduler's main loop, so a stalled loop stops it and the UI reflects that.
-SCHEDULER_STALE_SECONDS = 5 * STATUS_REPORT_INTERVAL_SECONDS
 
 COMPLETED_TASK_STATUSES = (
     TaskState.success,
@@ -629,6 +621,13 @@ class WebUIApp:
 
     def __init__(self, config: WebGUIConfig) -> None:
         self._config = config
+        self._broadcast_interval_seconds: float = config.broadcast_interval_seconds
+        self._task_log_max_size: int = config.task_log_max_size
+        # Mark the scheduler stale once its periodic StateScheduler heartbeat has not arrived for ~5x its
+        # report interval; that heartbeat runs on the scheduler's main loop, so a stalled loop stops it.
+        self._scheduler_stale_seconds: float = 5 * config.status_report_interval_seconds
+        # Total completed tasks seen since this GUI process started, uncapped by the display ring buffer.
+        self._task_log_total: int = 0
         self._message_queue: queue.Queue[BaseMessage] = queue.Queue()
         self._clients: List[WebSocket] = []
         self._clients_lock = asyncio.Lock()
@@ -637,7 +636,7 @@ class WebUIApp:
         self._scheduler_data: Dict[str, Any] = {}
         self._workers_data: Dict[str, Dict[str, Any]] = {}
         self._worker_capabilities: Dict[str, Dict[str, int]] = {}
-        self._task_log: Deque[Dict[str, Any]] = deque(maxlen=TASK_LOG_MAX_SIZE)
+        self._task_log: Deque[Dict[str, Any]] = deque(maxlen=self._task_log_max_size)
         self._active_tasks: Dict[str, Dict[str, Any]] = {}  # task_id_hex -> entry (running tasks)
         self._task_id_to_function: Dict[str, str] = {}
         self._task_stream = TaskStreamState()
@@ -690,9 +689,9 @@ class WebUIApp:
                 pass
 
     async def _batch_loop(self) -> None:
-        """Drain message queue every BATCH_INTERVAL_SECONDS and broadcast."""
+        """Drain the message queue every broadcast interval and push to browsers."""
         while True:
-            await asyncio.sleep(BATCH_INTERVAL_SECONDS)
+            await asyncio.sleep(self._broadcast_interval_seconds)
             messages: List[BaseMessage] = []
             while True:
                 try:
@@ -743,6 +742,7 @@ class WebUIApp:
 
             if new_task_logs:
                 payload["task_updates"] = new_task_logs
+                payload["task_log_total"] = self._task_log_total
 
             # Always send chart data (auto-scrolling)
             stream_data = self._task_stream.get_render_data()
@@ -994,6 +994,7 @@ class WebUIApp:
                 "capabilities": caps_str,
             }
             self._task_log.appendleft(entry)
+            self._task_log_total += 1
             return entry
         else:
             # running/inactive/canceling - track as active task
@@ -1003,7 +1004,9 @@ class WebUIApp:
                 worker_str = prev_entry.get("worker", "")
                 full_worker = prev_entry.get("full_worker", "")
             # remove stale completed entry if task was re-submitted
-            self._task_log = deque((e for e in self._task_log if e["task_id"] != task_id_hex), maxlen=TASK_LOG_MAX_SIZE)
+            self._task_log = deque(
+                (e for e in self._task_log if e["task_id"] != task_id_hex), maxlen=self._task_log_max_size
+            )
             entry = {
                 "task_id": task_id_hex,
                 "function": func_name,
@@ -1107,7 +1110,7 @@ class WebUIApp:
         if self._last_scheduler_heartbeat_time is None:
             return {"last_seen": "\u2014", "stale": False}
         elapsed = int((datetime.datetime.now() - self._last_scheduler_heartbeat_time).total_seconds())
-        return {"last_seen": format_seconds(elapsed), "stale": elapsed > SCHEDULER_STALE_SECONDS}
+        return {"last_seen": format_seconds(elapsed), "stale": elapsed > self._scheduler_stale_seconds}
 
     def get_full_state(self) -> Dict[str, Any]:
         """Get complete current state for a newly connected client."""
@@ -1118,9 +1121,12 @@ class WebUIApp:
         stream_data = self._task_stream.get_render_data()
         self._enrich_stream_with_managers(stream_data)
         memory_data = self._memory_chart.get_render_data(stream_data["window"])
-        # combine active + completed for initial task log, sorted by time (newest first)
+        # combine active + completed for initial task log, sorted by time (newest first). _active_tasks is
+        # unbounded (one entry per running task), so cap the snapshot to the display size -- at thousands of
+        # concurrent tasks the browser only shows task_log_max_size rows anyway, and the rest stream in.
         initial_task_log = list(self._active_tasks.values()) + list(self._task_log)
         initial_task_log.sort(key=lambda e: e.get("time", 0), reverse=True)
+        initial_task_log = initial_task_log[: self._task_log_max_size]
         # Build scheduler data with a last_seen derived from the periodic heartbeat.
         sched = dict(self._scheduler_data) if self._scheduler_data else {}
         sched.update(self.__scheduler_liveness())
@@ -1129,7 +1135,8 @@ class WebUIApp:
             "scheduler": sched,
             "workers": list(self._workers_data.values()),
             "task_log": initial_task_log,
-            "task_log_max_size": TASK_LOG_MAX_SIZE,
+            "task_log_max_size": self._task_log_max_size,
+            "task_log_total": self._task_log_total,
             "task_stream": stream_data,
             "memory_chart": memory_data,
             "processors": self._build_processors_data(),
