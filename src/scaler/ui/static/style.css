@@ -630,3 +630,38 @@ body.fit-page #memory-card .memory-container {
 ::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
 }
+
+/* -- Pager (numbered pages for large views) -- */
+.pager {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 8px 4px 0;
+}
+.pager:empty {
+    display: none;
+}
+.pager-btn {
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.pager-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.pager-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.pager-info {
+    font-size: 12px;
+    color: var(--text-muted);
+}

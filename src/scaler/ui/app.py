@@ -751,6 +751,7 @@ class WebUIApp:
 
             # Always send chart data (auto-scrolling)
             stream_data = self._task_stream.get_render_data()
+            self._cap_stream_rows(stream_data)
             self._enrich_stream_with_managers(stream_data)
             payload["task_stream"] = stream_data
 
@@ -1036,6 +1037,18 @@ class WebUIApp:
             self._active_tasks[task_id_hex] = entry
             return entry
 
+    def _cap_stream_rows(self, stream_data: Dict[str, Any]) -> None:
+        """Bound the task stream to worker_display_limit, like the tables: without this the stream carries a
+        row (and its bars) per worker, so a browser would receive the whole fleet even though the tables do
+        not. Rows beyond the limit, and their bars, are dropped before the data is sent."""
+        limit = self._worker_display_limit
+        if limit < 0 or len(stream_data.get("rows", [])) <= limit:
+            return
+        stream_data["rows"] = stream_data["rows"][:limit]
+        if "full_rows" in stream_data:
+            stream_data["full_rows"] = stream_data["full_rows"][:limit]
+        stream_data["bars"] = [bar for bar in stream_data.get("bars", []) if bar.get("r", 0) < limit]
+
     def _enrich_stream_with_managers(self, stream_data: Dict[str, Any]) -> None:
         """Add per-row manager IDs and a manager color legend to task stream data."""
         full_rows = stream_data.get("full_rows", [])
@@ -1151,6 +1164,7 @@ class WebUIApp:
         self._drain_pending_messages()
 
         stream_data = self._task_stream.get_render_data()
+        self._cap_stream_rows(stream_data)
         self._enrich_stream_with_managers(stream_data)
         memory_data = self._memory_chart.get_render_data(stream_data["window"])
         # combine active + completed for initial task log, sorted by time (newest first). _active_tasks is
