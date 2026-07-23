@@ -109,7 +109,7 @@ async function retrying(addLog, signal, fn, maxAttempts) {
       var delayMs = 2000 * Math.pow(2, attempt - 1);
       addLog("  ! " + err.message, "warn");
       addLog(
-        "  → Retrying in " +
+        "  -> Retrying in " +
           Math.round(delayMs / 1000) +
           "s… (attempt " +
           (attempt + 1) +
@@ -813,7 +813,7 @@ async function provision(
   if (resumeState) {
     addLog("Resuming deployment from checkpoint…", "dim");
   }
-  addLog("openGRIS Scaler — EC2 deployment", "dim");
+  addLog("OpenGRIS Scaler — EC2 deployment", "dim");
   addLog("─".repeat(52), "dim");
 
   // 1. AMI
@@ -824,20 +824,20 @@ async function provision(
     "cmd",
   );
   var amiId = cfg.amiId || (await retrying(addLog, signal, () => getLatestAl2023Ami(ec2)));
-  addLog("  → " + amiId, "info");
+  addLog("  -> " + amiId, "info");
 
   // 2. IAM
   var iamState;
   if (partial.iam) {
     iamState = partial.iam;
-    addLog("  → Checkpoint: IAM profile '" + iamState.instance_profile_name + "' already exists", "info");
+    addLog("  -> Checkpoint: IAM profile '" + iamState.instance_profile_name + "' already exists", "info");
   } else if (cfg.instanceProfileName) {
     iamState = {
       instance_profile_name: cfg.instanceProfileName,
       role_name: "",
       created: false,
     };
-    addLog("  → Using existing instance profile: " + cfg.instanceProfileName, "info");
+    addLog("  -> Using existing instance profile: " + cfg.instanceProfileName, "info");
   } else {
     iamState = await createIamStack(iam, suffix, addLog, signal);
     addLog("  ✓ IAM role and profile created", "ok");
@@ -848,7 +848,7 @@ async function provision(
   // 3. Key pair
   var keyPairName = "scaler-key-" + suffix;
   if (partial.key_pair_name) {
-    addLog("  → Checkpoint: key pair '" + keyPairName + "' already created", "info");
+    addLog("  -> Checkpoint: key pair '" + keyPairName + "' already created", "info");
   } else {
     addLog("Creating key pair '" + keyPairName + "'...", "cmd");
     var keyResp = await retrying(addLog, signal, () =>
@@ -878,11 +878,11 @@ async function provision(
       ec2.describeVpcs({ Filters: [{ Name: "isDefault", Values: ["true"] }] }).promise(),
     );
     if (vpcCheck.Vpcs.length === 0) {
-      addLog("  → No default VPC found — creating one...", "info");
+      addLog("  -> No default VPC found — creating one...", "info");
       await retrying(addLog, signal, () => ec2.createDefaultVpc({}).promise());
       addLog("  ✓ Default VPC created", "ok");
     } else {
-      addLog("  → Default VPC: " + vpcCheck.Vpcs[0].VpcId, "info");
+      addLog("  -> Using existing default VPC", "info");
     }
   }
 
@@ -890,7 +890,7 @@ async function provision(
   var sgId;
   if (partial.security_group_id) {
     sgId = partial.security_group_id;
-    addLog("  → Checkpoint: security group " + sgId + " already exists", "info");
+    addLog("  -> Checkpoint: security group " + sgId + " already exists", "info");
   } else {
     var myIp = await retrying(addLog, signal, () => getMyPublicIp());
     var sgName = "scaler-sg-" + suffix;
@@ -975,7 +975,7 @@ async function provision(
   var instanceId;
   if (partial.instance_id) {
     instanceId = partial.instance_id;
-    addLog("  → Checkpoint: instance " + instanceId + " already launched", "info");
+    addLog("  -> Checkpoint: instance " + instanceId + " already launched", "info");
   } else {
     cfg = Object.assign({}, cfg, { securityGroupId: sgId });
     var userData = buildUserData(cfg, creds);
@@ -1019,14 +1019,14 @@ async function provision(
           }
           throw err;
         }
-        addLog("  → IAM profile not yet visible to EC2, retrying in 5s…", "dim");
+        addLog("  -> IAM profile not yet visible to EC2, retrying in 5s…", "dim");
         await sleep(5000, signal);
       }
     }
     instanceId = runResp.Instances[0].InstanceId;
     partial.instance_id = instanceId;
     onPartialState(partial);
-    addLog("  → Instance launched: " + instanceId, "info");
+    addLog("  -> Instance launched: " + instanceId, "info");
   }
 
   // 7. Wait for running state + post-launch network rules
@@ -1036,7 +1036,7 @@ async function provision(
     privateIp = partial.private_ip;
     vpcId = partial.vpc_id;
     subnetId = partial.subnet_id;
-    addLog("  → Checkpoint: instance running at " + publicIp, "info");
+    addLog("  -> Checkpoint: instance already running", "info");
   } else {
     addLog("Waiting for instance to reach running state...", "cmd");
     await retrying(addLog, signal, () =>
@@ -1057,8 +1057,6 @@ async function provision(
     partial.subnet_id = subnetId;
     partial.worker_monitor_address = "http://" + publicIp + ":50001";
     addLog("  ✓ Instance running", "ok");
-    addLog("  → Public IP:  " + publicIp, "info");
-    addLog("  → Private IP: " + privateIp, "info");
 
     // Allow all inbound traffic from the VPC's CIDR so ORB workers can reach the scheduler.
     var vpcDesc = await retrying(addLog, signal, () =>
@@ -1084,8 +1082,6 @@ async function provision(
     } catch (e) {
       if (e.name === "RetryPausedError" || e.name === "AbortError") throw e;
     }
-    addLog("  → VPC: " + vpcId + "  CIDR: " + vpcCidr + "  subnet: " + subnetId, "info");
-
     // OCI workers connect over the public internet — open scheduler and object storage ports.
     var hasOci = (cfg.workerManagers || []).some(function (wm) {
       return wm.type === "oci_raw" || wm.type === "oci_hpc";
@@ -1116,7 +1112,7 @@ async function provision(
       } catch (e) {
         if (e.name === "RetryPausedError" || e.name === "AbortError") throw e;
       }
-      addLog("  → Opened scheduler + object storage ports to 0.0.0.0/0 for OCI workers", "info");
+      addLog("  -> Opened scheduler + object storage ports to 0.0.0.0/0 for OCI workers", "info");
     }
     onPartialState(partial);
   }
@@ -1180,6 +1176,7 @@ async function provision(
   addLog("─".repeat(52), "dim");
   addLog("  DEPLOYMENT COMPLETE", "done");
   addLog("─".repeat(52), "dim");
+  addLog("  -> Your connection details are in the panel on the right ->", "addr");
 
   return state;
 }
@@ -1189,7 +1186,7 @@ async function teardown(state, creds, addLog, signal) {
   var ec2 = clients.ec2,
     iam = clients.iam;
 
-  addLog("openGRIS Scaler — teardown", "dim");
+  addLog("OpenGRIS Scaler — teardown", "dim");
   addLog("─".repeat(52), "dim");
 
   // Terminate all deployment instances (scheduler + any ORB workers) in one pass.
@@ -1225,7 +1222,7 @@ async function teardown(state, creds, addLog, signal) {
   var allInstanceIds = Object.keys(instanceIdSet);
   if (allInstanceIds.length > 0) {
     addLog(
-      "  → Terminating " +
+      "  -> Terminating " +
         allInstanceIds.length +
         " instance(s): " +
         allInstanceIds.join(", "),
@@ -1241,7 +1238,7 @@ async function teardown(state, creds, addLog, signal) {
     );
     addLog("  ✓ All instances terminated", "ok");
   } else {
-    addLog("  → No live instances found", "info");
+    addLog("  -> No live instances found", "info");
   }
 
   if (state.security_group_id) {

@@ -1,4 +1,4 @@
-// Shared components for openGRIS Scaler Launchpad
+// Shared components for OpenGRIS Scaler Launchpad
 // Exports to window.SC
 
 const { useState, useEffect, useRef, useCallback } = React;
@@ -1097,7 +1097,7 @@ function TerminalWindow({ lines, config, style }) {
             color: "var(--text-muted)",
           }}
         >
-          openGRIS Scaler — deploy log
+          OpenGRIS Scaler — deploy log
         </span>
       </div>
       <div
@@ -1579,7 +1579,7 @@ function LiveTerminal({ lines, isRunning, title, style, bare }) {
             color: "var(--text-muted)",
           }}
         >
-          {title || "openGRIS Scaler — deploy log"}
+          {title || "OpenGRIS Scaler — deploy log"}
         </span>
       </div>
       {content}
@@ -1639,7 +1639,7 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
         commandId = r.Command.CommandId;
       } catch (err) {
         if (err.code === "InvalidInstanceId") {
-          setLines([{ text: "Instance not yet registered with SSM — retrying…", cls: "warn" }]);
+          setLines([{ text: "Instance not yet registered with SSM — retrying...", cls: "warn" }]);
         } else if (err.code === "AccessDeniedException") {
           setStatus("error");
           setError("Permission denied. Your IAM user needs ssm:SendCommand and ssm:GetCommandInvocation.");
@@ -1666,15 +1666,16 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
           if (inv.Status === "Success" || inv.Status === "Failed") {
             const output = inv.StandardOutputContent || "";
             if (output) {
+              const isFirstContent = byteOffsetRef.current === 0;
               byteOffsetRef.current += output.length;
               const chunks = (pendingPartialRef.current + output).split("\n");
               pendingPartialRef.current = chunks.pop();
               const newLines = chunks.map((text) => ({ text, cls: "info" }));
-              setLines((prev) => [...prev, ...newLines]);
+              setLines((prev) => (isFirstContent ? newLines : [...prev, ...newLines]));
               return true;
             }
             if (byteOffsetRef.current === 0) {
-              setLines([{ text: "Waiting for log file…", cls: "warn" }]);
+              setLines([{ text: "Waiting for log file...", cls: "warn" }]);
             }
             return false;
           }
@@ -1759,6 +1760,7 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
 
   const labelMs =
     POLL_INTERVALS.find((o) => o.value === intervalMs)?.label ?? "15s";
+  const hasLogContent = lines.some((line) => line.cls === "info");
 
   return (
     <div
@@ -1822,15 +1824,40 @@ function SchedulerLogTerminal({ instanceId, region, credentials, isActive }) {
           <>
             <span style={{ fontSize: 11, color: "var(--text-dim)" }}>·</span>
             <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
-              {fetching ? "refreshing…" : `next refresh in ${countdown}s`}
+              {fetching ? "refreshing..." : `next refresh in ${countdown}s`}
             </span>
           </>
         )}
         <button
+          onClick={() =>
+            downloadText(
+              "scaler-" + instanceId + ".log",
+              lines
+                .filter((line) => line.cls === "info")
+                .map((line) => line.text)
+                .join("\n"),
+            )
+          }
+          disabled={!hasLogContent}
+          style={{
+            marginLeft: "auto",
+            background: "none",
+            border: "1px solid var(--border-accent)",
+            borderRadius: 3,
+            color: hasLogContent ? "var(--text-muted)" : "var(--text-dim)",
+            fontFamily: "inherit",
+            fontSize: 11,
+            padding: "2px 8px",
+            cursor: hasLogContent ? "pointer" : "default",
+            letterSpacing: "0.06em",
+          }}
+        >
+          Download
+        </button>
+        <button
           onClick={() => triggerRef.current?.()}
           disabled={fetching}
           style={{
-            marginLeft: "auto",
             background: "none",
             border: "1px solid var(--border-accent)",
             borderRadius: 3,
