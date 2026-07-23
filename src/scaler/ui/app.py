@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import hashlib
+import itertools
 import json
 import logging
 import queue
@@ -623,6 +624,7 @@ class WebUIApp:
         self._config = config
         self._broadcast_interval_seconds: float = config.broadcast_interval_seconds
         self._task_log_max_size: int = config.task_log_max_size
+        self._worker_display_limit: int = config.worker_display_limit
         # Mark the scheduler stale once its periodic StateScheduler heartbeat has not arrived for ~5x its
         # report interval; that heartbeat runs on the scheduler's main loop, so a stalled loop stops it.
         self._scheduler_stale_seconds: float = 5 * config.status_report_interval_seconds
@@ -737,7 +739,7 @@ class WebUIApp:
                 payload["scheduler"] = sched
 
             if has_scheduler_update:
-                payload["workers"] = list(self._workers_data.values())
+                payload["workers"] = self._capped_workers()
                 payload["workers_total"] = self._total_workers
 
             if worker_events:
@@ -1049,8 +1051,17 @@ class WebUIApp:
         ]
         stream_data["manager_legend"] = manager_legend
 
+    def _capped_workers(self) -> List[Dict[str, Any]]:
+        """The worker rows to send a browser: the full detail list bounded by worker_display_limit. The
+        backend keeps the whole fleet in self._workers_data and aggregates over all of it; only what a
+        browser must receive and render is bounded here."""
+        workers = list(self._workers_data.values())
+        if self._worker_display_limit >= 0:
+            return workers[: self._worker_display_limit]
+        return workers
+
     def _build_processors_data(self) -> List[Dict[str, Any]]:
-        # Group workers by manager_id and include per-manager summary stats
+        # Group every worker by manager for complete per-manager summaries.
         managers: Dict[str, List[Dict[str, Any]]] = {}
         for wp in self._worker_processors.values():
             mid = wp.get("manager_id", "—")
@@ -1059,6 +1070,14 @@ class WebUIApp:
         # Ensure all known worker managers appear even if they have no workers
         for mid in self._worker_managers_data:
             managers.setdefault(mid, [])
+
+        # The bounded slice of per-worker detail a browser receives, grouped back under its manager. Summaries
+        # below still cover every worker; only this detail is capped, since it dominates the payload size.
+        limit = self._worker_display_limit
+        detail_source = itertools.islice(self._worker_processors.values(), limit if limit >= 0 else None)
+        shown_by_manager: Dict[str, List[Dict[str, Any]]] = {}
+        for wp in detail_source:
+            shown_by_manager.setdefault(wp.get("manager_id", "—"), []).append(wp)
 
         result = []
         for manager_id, workers in sorted(managers.items()):
@@ -1081,7 +1100,7 @@ class WebUIApp:
                     "total_cpu": round(total_cpu, 1),
                     "total_processors": total_processors,
                     "active_processors": active_processors,
-                    "workers": workers,
+                    "workers": shown_by_manager.get(manager_id, []),
                 }
             )
         return result
@@ -1146,7 +1165,7 @@ class WebUIApp:
 
         return {
             "scheduler": sched,
-            "workers": list(self._workers_data.values()),
+            "workers": self._capped_workers(),
             "workers_total": self._total_workers,
             "task_log": initial_task_log,
             "task_log_max_size": self._task_log_max_size,

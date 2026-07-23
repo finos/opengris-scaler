@@ -110,6 +110,11 @@ DEFAULT_GUI_BROADCAST_INTERVAL_SECONDS = 0.1
 # maximum number of completed tasks the web GUI retains and shows in the task log
 DEFAULT_GUI_TASK_LOG_MAX_SIZE = 500
 
+# maximum number of workers the web GUI backend sends to each browser (with per-processor detail); -1 means
+# unlimited. The backend keeps and aggregates the whole fleet, so per-manager stats stay complete -- this
+# only bounds what a browser must receive and render, which is what lags a viewer's machine at scale.
+DEFAULT_GUI_WORKER_DISPLAY_LIMIT = 500
+
 # =======================
 # SCALER NETWORK BACKEND SPECIFIC OPTIONS
 

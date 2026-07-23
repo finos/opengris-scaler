@@ -31,6 +31,15 @@ class WebGUIConfig(ConfigClass):
             short="-tl", help="maximum number of completed tasks the web GUI keeps and displays in the task log."
         ),
     )
+    worker_display_limit: int = dataclasses.field(
+        default=defaults.DEFAULT_GUI_WORKER_DISPLAY_LIMIT,
+        metadata=dict(
+            short="-wl",
+            help="maximum number of workers the web GUI sends to each browser; -1 for unlimited. The backend "
+            "still holds and aggregates the whole fleet (per-manager stats stay complete); this bounds only what "
+            "a browser must receive and render, which is what lags a viewer's machine at large scale.",
+        ),
+    )
     status_report_interval_seconds: int = dataclasses.field(
         default=defaults.STATUS_REPORT_INTERVAL_SECONDS,
         metadata=dict(
@@ -48,5 +57,7 @@ class WebGUIConfig(ConfigClass):
             raise ValueError("broadcast_interval_seconds must be positive.")
         if self.task_log_max_size <= 0:
             raise ValueError("task_log_max_size must be positive.")
+        if self.worker_display_limit == 0 or self.worker_display_limit < -1:
+            raise ValueError("worker_display_limit must be -1 (unlimited) or a positive integer.")
         if self.status_report_interval_seconds <= 0:
             raise ValueError("status_report_interval_seconds must be positive.")

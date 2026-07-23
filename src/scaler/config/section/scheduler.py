@@ -65,10 +65,11 @@ class SchedulerConfig(ConfigClass):
         default=defaults.DEFAULT_STATUS_REPORT_WORKER_LIMIT,
         metadata=dict(
             short="-srwl",
-            help="maximum number of workers whose full detail is serialized into each status report; -1 "
-            "(default) for unlimited. Set it (e.g. 1000) to keep the monitor and web GUI responsive with many "
-            "thousands of workers; worker counts stay accurate, but per-manager resource sums then cover only "
-            "the reported workers.",
+            help="maximum number of workers whose full detail the scheduler serializes into each status report; "
+            "-1 (default) for unlimited. Rarely needed: it only bounds work on the scheduler's own event loop at "
+            "extreme scale. To keep browsers responsive, bound what they receive with scaler_gui "
+            "--worker-display-limit instead, which keeps per-manager resource sums complete; setting this caps "
+            "the data those sums see.",
         ),
     )
     protected: bool = dataclasses.field(
