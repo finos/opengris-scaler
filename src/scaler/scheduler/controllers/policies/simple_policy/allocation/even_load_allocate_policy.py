@@ -40,6 +40,7 @@ class EvenLoadAllocatePolicy(TaskAllocatePolicy):
             return []
 
         self._worker_queue.remove(worker)
+        self._workers_to_queue_size.pop(worker, None)
 
         task_ids = self._workers_to_task_ids.pop(worker).to_list()
         for task_id in task_ids:
