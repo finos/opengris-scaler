@@ -398,8 +398,8 @@ Arguments (shared by all subcommands)
      - Object storage server address (required for some remote worker setups).
    * - ``-mtc``, ``--max-task-concurrency``
      - No
-     - ``os.cpu_count() - 1``
-     - Max workers/jobs (``-1`` means no limit where supported).
+     - ``os.cpu_count()``
+     - Max workers/jobs, from ``0`` (start no workers) to ``2^32 - 1`` (the upper limit).
    * - ``-pwc``, ``--per-worker-capabilities``
      - No
      - Empty

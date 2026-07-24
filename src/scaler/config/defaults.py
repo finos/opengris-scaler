@@ -20,6 +20,10 @@ CAPNP_DATA_SIZE_LIMIT = 2**29 - 1
 # message size limitation, max can be 2**64
 CAPNP_MESSAGE_SIZE_LIMIT = 2**64 - 1
 
+# upper limit for max_task_concurrency, the protocol carries it as UInt32; worker managers without a practical
+# concurrency limit advertise this value instead of a negative sentinel
+MAX_TASK_CONCURRENCY_LIMIT = 2**32 - 1
+
 # ==========================
 # SCHEDULER SPECIFIC OPTIONS
 

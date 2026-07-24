@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Dict, Optional
 
+from scaler.config import defaults
 from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
 from scaler.io import ymq
@@ -79,9 +80,14 @@ class WorkerManagerRunner:
         await self._task
 
     async def _send_heartbeat(self) -> None:
+        # maxTaskConcurrency is a UInt32 on the wire; unit counts derived from ceil-division can push the
+        # product past the limit, so clamp before serializing
+        max_task_concurrency = min(
+            self._max_provisioner_units * self._workers_per_provisioner_unit, defaults.MAX_TASK_CONCURRENCY_LIMIT
+        )
         await self._connector_external.send(
             WorkerManagerHeartbeat(
-                maxTaskConcurrency=self._max_provisioner_units * self._workers_per_provisioner_unit,
+                maxTaskConcurrency=max_task_concurrency,
                 capabilities=dict_to_capabilities(self._capabilities),
                 workerManagerID=self._worker_manager_id,
             )

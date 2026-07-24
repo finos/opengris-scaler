@@ -54,7 +54,5 @@ class VanillaScalingPolicy(ScalingPolicy):
             else:
                 desired = current
 
-        max_concurrency = worker_manager_heartbeat.maxTaskConcurrency
-        if max_concurrency != -1:
-            desired = min(desired, max_concurrency)
+        desired = min(desired, worker_manager_heartbeat.maxTaskConcurrency)
         return max(0, desired)

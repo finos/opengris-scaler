@@ -1,10 +1,11 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from scaler.config import defaults
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerProvisioner
 
 
-def _make_provisioner(max_task_concurrency: int = -1) -> NativeWorkerProvisioner:
+def _make_provisioner(max_task_concurrency: int = defaults.MAX_TASK_CONCURRENCY_LIMIT) -> NativeWorkerProvisioner:
     config = MagicMock()
     config.worker_config.per_worker_capabilities.capabilities = {}
     config.worker_manager_config.max_task_concurrency = max_task_concurrency

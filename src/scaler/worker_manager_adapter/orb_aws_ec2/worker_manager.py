@@ -212,11 +212,11 @@ class ORBAWSEC2WorkerManager:
         self._subnet_id = self._config.subnet_id or self._discover_default_subnet()
 
         workers_per_instance = self._discover_vcpu_count(self._config.instance_type)
-        mtc = self._config.worker_manager_config.max_task_concurrency
-        max_instances = math.ceil(mtc / workers_per_instance) if mtc != -1 else -1
+        max_task_concurrency = self._config.worker_manager_config.max_task_concurrency
+        max_instances = math.ceil(max_task_concurrency / workers_per_instance)
         logger.info(
             f"ORB instance type {self._config.instance_type!r}: {workers_per_instance} vCPUs/instance, "
-            f"max_task_concurrency={mtc} -> max_instances={max_instances}"
+            f"max_task_concurrency={max_task_concurrency} -> max_instances={max_instances}"
         )
 
         template_id = os.urandom(8).hex()
@@ -423,7 +423,7 @@ set +e
 
 """
 
-        # --max-task-concurrency is not passed: scaler_worker_manager defaults to cpu_count - 1 workers,
+        # --max-task-concurrency is not passed: scaler_worker_manager defaults to cpu_count workers,
         # where cpu_count is determined by the machine type the user configured in the ORB template.
         backend_prefix = f"SCALER_NETWORK_BACKEND={self._config.network_backend.name} "
         wm_id = shlex.quote(worker_manager_config.worker_manager_id)

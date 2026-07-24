@@ -38,7 +38,8 @@ class WorkerManagerConfig(ConfigClass):
         metadata=dict(
             short="-mtc",
             help=(
-                "maximum number of workers that can be started, -1 means no limit."
+                "maximum number of workers that can be started, from 0 (start no worker at all) up to "
+                f"{defaults.MAX_TASK_CONCURRENCY_LIMIT} (2^32-1, the upper limit). "
                 "for fixed native worker manager, this is exactly the number of workers that will be spawned"
             ),
         ),
@@ -51,5 +52,8 @@ class WorkerManagerConfig(ConfigClass):
     def __post_init__(self) -> None:
         if not self.worker_manager_id:
             raise ValueError("worker_manager_id cannot be an empty string.")
-        if self.max_task_concurrency != -1 and self.max_task_concurrency < 0:
-            raise ValueError("max_task_concurrency must be -1 (no limit) or a non-negative integer.")
+        if not 0 <= self.max_task_concurrency <= defaults.MAX_TASK_CONCURRENCY_LIMIT:
+            raise ValueError(
+                f"max_task_concurrency must be an integer between 0 (start no worker at all) and "
+                f"{defaults.MAX_TASK_CONCURRENCY_LIMIT} (2^32-1)."
+            )
