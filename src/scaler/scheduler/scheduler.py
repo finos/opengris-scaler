@@ -256,18 +256,32 @@ class Scheduler:
     async def get_loops(self):
         await self.__initialize_network()
 
+        # swallow_peer_departed=True: the scheduler serves many transient peers (workers/clients), so a
+        # send racing a peer's departure must not escape a timer loop and tear the whole scheduler down.
         loops = [
-            create_async_loop_routine(self._binder.routine, 0),
-            create_async_loop_routine(self._connector_storage.routine, 0),
-            create_async_loop_routine(self._graph_controller.routine, 0),
+            create_async_loop_routine(self._binder.routine, 0, swallow_peer_departed=True),
+            create_async_loop_routine(self._connector_storage.routine, 0, swallow_peer_departed=True),
+            create_async_loop_routine(self._graph_controller.routine, 0, swallow_peer_departed=True),
             create_async_loop_routine(
-                self._balance_controller.routine, self._config_controller.get_config("load_balance_seconds")
+                self._balance_controller.routine,
+                self._config_controller.get_config("load_balance_seconds"),
+                swallow_peer_departed=True,
             ),
-            create_async_loop_routine(self._client_manager.routine, CLEANUP_INTERVAL_SECONDS),
-            create_async_loop_routine(self._object_controller.routine, CLEANUP_INTERVAL_SECONDS),
-            create_async_loop_routine(self._worker_controller.routine, CLEANUP_INTERVAL_SECONDS),
-            create_async_loop_routine(self._worker_manager_controller.routine, CLEANUP_INTERVAL_SECONDS),
-            create_async_loop_routine(self._information_controller.routine, STATUS_REPORT_INTERVAL_SECONDS),
+            create_async_loop_routine(
+                self._client_manager.routine, CLEANUP_INTERVAL_SECONDS, swallow_peer_departed=True
+            ),
+            create_async_loop_routine(
+                self._object_controller.routine, CLEANUP_INTERVAL_SECONDS, swallow_peer_departed=True
+            ),
+            create_async_loop_routine(
+                self._worker_controller.routine, CLEANUP_INTERVAL_SECONDS, swallow_peer_departed=True
+            ),
+            create_async_loop_routine(
+                self._worker_manager_controller.routine, CLEANUP_INTERVAL_SECONDS, swallow_peer_departed=True
+            ),
+            create_async_loop_routine(
+                self._information_controller.routine, STATUS_REPORT_INTERVAL_SECONDS, swallow_peer_departed=True
+            ),
         ]
 
         try:
@@ -276,11 +290,12 @@ class Scheduler:
             pass
         except ClientShutdownException as e:
             logger.info(f"{self.__class__.__name__}: {e}")
-            pass
-        except YMQException:
-            pass
-        except ObjectStorageException:
-            pass
+        except (YMQException, ObjectStorageException):
+            # The scheduler is tearing down below; never let this be silent -- a dead binder / object
+            # storage is one of the ways it "just stops responding" in production.
+            logger.exception(f"{self.__class__.__name__}: main loop stopped on a transport/storage error")
+        except Exception:
+            logger.exception(f"{self.__class__.__name__}: main loop stopped on an unexpected error")
 
         self._binder.destroy()
         self._binder_monitor.destroy()
