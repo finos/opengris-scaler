@@ -14,6 +14,7 @@ import psutil
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.config.defaults import DEFAULT_LOAD_BALANCE_SECONDS
+from scaler.config.section.scheduler import PolicyConfig
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
@@ -192,6 +193,117 @@ class TestBalance(unittest.TestCase):
             # Shut the scheduler down before disconnecting the client: if a task is still
             # orphaned, client.disconnect() blocks forever waiting for a cancel confirm that a
             # dead scheduler can never send.
+            combo.shutdown()
+            client.disconnect()
+
+            try:
+                os.remove(log_path)
+            except OSError:
+                pass
+
+    @unittest.skipIf(sys.platform == "win32", "kills a worker's process tree via SIGKILL/psutil, which is POSIX-only")
+    def test_balance_cancel_worker_socket_closed(self):
+        """
+        Regression test for a scale-down crash: a worker dies outright (Kubernetes pod eviction) while
+        the balancer is moving a task off it, so the balance-cancel is sent to a socket that has already
+        closed. That send raises ConnectorSocketClosedByRemoteEndError, and because the balancer runs in
+        its own loop -- not the binder receive loop that swallows it -- the exception would propagate
+        through asyncio.gather (``except YMQException``) and tear the whole scheduler down, hanging every
+        client until the deployment was restarted.
+
+        Asserts both halves: the scheduler stays alive through that undeliverable send, and the killed
+        worker's orphaned tasks are then rerouted -- by the heartbeat-timeout sweep, which is what reclaims
+        an abruptly-dead worker's tasks -- and complete on a second worker.
+
+        This complements test_balance_cancel_worker_death: that one SIGSTOPs the worker, so its socket
+        stays open and the send succeeds (the task orphans until a timeout); this one SIGKILLs the whole
+        process tree, so the socket closes and the send itself fails -- the case that killed the
+        scheduler. Uses the capability allocate policy, the configuration the fault was reported on.
+        """
+
+        TASK_SLEEP_SECONDS = 5
+        # Short enough that the heartbeat-timeout sweep -- which is what reroutes an abruptly-dead worker's
+        # tasks -- fires within the wait window below, yet long enough that the balancer (running every
+        # second) still lists the killed worker and sends it a cancel on its closed socket, the crash path.
+        WORKER_TIMEOUT_SECONDS = 8
+        HEARTBEAT_INTERVAL_SECONDS = 1
+        CAPABILITIES = {"gpu": -1}
+
+        log_fd, log_path = tempfile.mkstemp(prefix="scaler_balance_cancel_socket_closed_", suffix=".log")
+        os.close(log_fd)
+
+        address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
+        combo = SchedulerClusterCombo(
+            address=address,
+            n_workers=1,
+            per_worker_capabilities=CAPABILITIES,
+            # Two tasks queued so worker_a has something excess to be a balance candidate.
+            per_worker_task_queue_size=2,
+            worker_timeout_seconds=WORKER_TIMEOUT_SECONDS,
+            heartbeat_interval_seconds=HEARTBEAT_INTERVAL_SECONDS,
+            load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
+            load_balance_trigger_times=1,
+            scaler_policy=PolicyConfig(policy_content="allocate=capability; scaling=vanilla"),
+            logging_paths=(log_path,),
+        )
+
+        client = Client(address=address)
+        second_manager_process = None
+        try:
+            futures: List[Future] = [
+                client.submit_verbose(sleep_and_return_pid, (TASK_SLEEP_SECONDS,), {}, capabilities=CAPABILITIES),
+                client.submit_verbose(sleep_and_return_pid, (TASK_SLEEP_SECONDS,), {}, capabilities=CAPABILITIES),
+            ]
+
+            time.sleep(2)  # let worker_a register both tasks before it's killed
+
+            # Kill worker_a's whole tree: its socket closes, but with no graceful DisconnectRequest and
+            # the timeout far off the scheduler still lists it, so the balancer will send a cancel to it.
+            _signal_process_tree(combo._worker_manager_process, signal.SIGKILL)  # type: ignore[attr-defined]
+
+            base_config = combo._worker_manager.config
+            second_manager = NativeWorkerManager(
+                dataclasses.replace(
+                    base_config,
+                    worker_manager_config=dataclasses.replace(
+                        base_config.worker_manager_config,
+                        worker_manager_id="test_manager",
+                        object_storage_address=None,
+                        max_task_concurrency=2,  # both tasks can run concurrently once rerouted
+                    ),
+                )
+            )
+            second_manager_process = multiprocessing.get_context("spawn").Process(target=second_manager.run)
+            second_manager_process.start()
+
+            if not _wait_for_log_marker(log_path, "balancing task", 20.0):
+                self.fail(
+                    "balance controller never advised moving a task off the dead worker -- "
+                    "test setup did not reach the scenario under test"
+                )
+
+            # The balancer has now sent its cancel to the departed worker's closed socket; that send must
+            # be swallowed, not tear the scheduler down.
+            time.sleep(2)
+            self.assertTrue(
+                combo._scheduler.is_alive(),  # type: ignore[attr-defined]
+                "scheduler exited after a balance-cancel send to a departed worker (its socket had closed)",
+            )
+
+            done, not_done = wait_futures(futures, timeout=TASK_SLEEP_SECONDS + 20)
+            if not_done:
+                self.fail("a task never completed: worker_a's tasks were not rerouted after it died mid balance-cancel")
+
+            for future in done:
+                self.assertIsInstance(future.result(), int)
+        finally:
+            if second_manager_process is not None:
+                second_manager_process.terminate()
+                second_manager_process.join()
+
+            _signal_process_tree(combo._worker_manager_process, signal.SIGKILL)  # type: ignore[attr-defined]
+            combo._worker_manager_process.join()
+
             combo.shutdown()
             client.disconnect()
 

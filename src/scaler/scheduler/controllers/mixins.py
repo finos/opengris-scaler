@@ -84,7 +84,7 @@ class ClientController(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_task_finish(self, task_id: TaskID) -> Optional[bytes]:
+    def on_task_finish(self, task_id: TaskID) -> Optional[ClientID]:
         raise NotImplementedError()
 
     @abc.abstractmethod
