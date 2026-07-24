@@ -223,18 +223,17 @@ void BinderSocket::onRemoteDisconnect(
     const Identity& remoteIdentity = connection.remoteIdentity().value();
     state->_identityToConnectionID.erase(remoteIdentity);
 
-    // For an aborted disconnect we expect the remote to reconnect, so keep _pendingSendMessages
-    // intact - onRemoteIdentity will drain them onto the new MessageConnection. Only graceful
-    // (Disconnected) disconnects are terminal.
-    if (reason != internal::MessageConnection::DisconnectReason::Disconnected) {
-        return;
-    }
-
-    // Remember the identity so any sendMessage call that lands *after* this disconnect (because
-    // Python is just catching up on messages libuv already buffered) fails fast instead of
-    // queueing forever in _pendingSendMessages and hanging the asyncio loop. The set is
-    // bounded by a TTL purge driven from here (insert-time) so it cannot grow without bound
-    // even under workloads that churn many short-lived peers (e.g. nested-task clients).
+    // Treat BOTH a graceful close (Disconnected, a clean FIN) and an abrupt drop (Aborted, a reset
+    // or timeout) as terminal. A binder peer that is gone -- e.g. an evicted pod whose connection
+    // reset -- will not come back to drain a queued send, so recording it below makes a later send
+    // fail fast (ConnectorSocketClosedByRemoteEnd) instead of queueing forever in
+    // _pendingSendMessages and hanging the caller's coroutine -- which, on the scheduler's receive
+    // loop, freezes the whole event loop (it stops echoing heartbeats and never recovers). A peer
+    // that does reconnect with the same identity clears this entry in onRemoteIdentity and resumes;
+    // sends issued during the gap fail and the caller reroutes or drops them.
+    //
+    // The set is bounded by a TTL purge driven from here (insert-time) so it cannot grow without
+    // bound even under workloads that churn many short-lived peers (e.g. nested-task clients).
     const auto now = std::chrono::steady_clock::now();
     purgeExpiredDisconnectedIdentities(*state, now);
     state->_disconnectedIdentities[remoteIdentity] = now;
