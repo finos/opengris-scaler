@@ -74,6 +74,13 @@ class ProcessorHolder:
     def process(self) -> psutil.Process:
         return self._process
 
+    def exitcode(self) -> Optional[int]:
+        """The processor's exit code, once it has exited. Reaps it if it terminated but was not yet joined,
+        so a processor that died on its own (e.g. OOM -> SIGKILL) reports how it died, not a signal we sent."""
+        if self._processor.exitcode is None:
+            self._processor.join(timeout=0.1)
+        return self._processor.exitcode
+
     def processor_id(self) -> ProcessorID:
         assert self._processor_id is not None
         return self._processor_id

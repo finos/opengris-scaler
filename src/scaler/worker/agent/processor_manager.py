@@ -17,6 +17,7 @@ from scaler.protocol.capnp import (
     TaskResultType,
 )
 from scaler.utility.exceptions import ProcessorDiedError
+from scaler.utility.exitcode import describe_exitcode
 from scaler.utility.identifiers import ObjectID, ProcessorID, TaskID, WorkerID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.serialization import serialize_failure
@@ -168,12 +169,18 @@ class VanillaProcessorManager(ProcessorManager):
         else:
             self.__kill_processor(reason, holder)
 
+        # The kill/restart above reaped the dead process, so its exit code is now available. Name the signal
+        # so an OOM kill (SIGKILL) is obvious in the logs instead of just "zombie".
+        death = f"process_status={process_status!r} exitcode={describe_exitcode(holder.exitcode())}"
+        task_note = f", task_id={task.taskId.hex()}" if task is not None else ""
+        logger.warning(f"{self._identity!r}: Processor[{holder.pid()}] died: {death}{task_note}")
+
         if task is not None:
             source = task.source
             task_id = task.taskId
 
             result_object_id = ObjectID.generate_object_id(source)
-            result_object_bytes = serialize_failure(ProcessorDiedError(f"{process_status=}"))
+            result_object_bytes = serialize_failure(ProcessorDiedError(death))
 
             await self._connector_storage.set_object(result_object_id, result_object_bytes)
             await self._connector_external.send(
