@@ -461,6 +461,83 @@ TEST_P(YMQBinderSocketTest, SendToClosedIdentityFailsFast)
     ASSERT_EQ(result.error()._errorCode, scaler::ymq::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
 }
 
+TEST_P(YMQBinderSocketTest, SendToAbortedIdentityFailsFast)
+{
+    // Regression test: an ABRUPT peer loss -- a connection reset (Aborted), which is what an evicted
+    // Kubernetes pod produces (the network is torn away, no graceful FIN) -- must make a later
+    // sendMessage to that identity fail fast with ConnectorSocketClosedByRemoteEnd, exactly like a
+    // graceful close does, instead of queueing in _pendingSendMessages forever. A forever-queued
+    // send on the scheduler's receive loop wedges its whole asyncio loop: it stops echoing client
+    // heartbeats (the client dies at its death-timeout) and never recovers. This is the Aborted
+    // sibling of SendToClosedIdentityFailsFast; client.abort() sends an RST, exercising the path a
+    // FIN (Disconnected) does not.
+
+    auto onClientRecvMessage = [](std::unique_ptr<scaler::ymq::Bytes>) { FAIL() << "Unexpected message on client"; };
+    auto onClientDisconnect  = [](scaler::ymq::internal::MessageConnection::DisconnectReason) {};
+
+    BinderClientPair connections(GetParam(), std::move(onClientRecvMessage), std::move(onClientDisconnect));
+
+    scaler::ymq::BinderSocket& binder                = connections.binder();
+    scaler::ymq::internal::MessageConnection& client = connections.client();
+    scaler::wrapper::uv::Loop& loop                  = connections.loop();
+
+    // Establish the connection by exchanging a message (forces identity exchange).
+
+    std::promise<scaler::ymq::Message> binderRecvCalled;
+    binder.recvMessage([&](std::expected<scaler::ymq::Message, scaler::ymq::Error> result) {
+        ASSERT_TRUE(result.has_value());
+        binderRecvCalled.set_value(std::move(result.value()));
+    });
+
+    bool clientSendCalled = false;
+    client.sendMessage(
+        std::make_unique<scaler::ymq::BufferedBytes>(messagePayload),
+        [&]([[maybe_unused]] std::expected<void, scaler::ymq::Error> result,
+            [[maybe_unused]] std::unique_ptr<scaler::ymq::Bytes>) { clientSendCalled = true; });
+
+    while (!clientSendCalled) {
+        loop.run(UV_RUN_NOWAIT);
+    }
+    ASSERT_EQ(binderRecvCalled.get_future().wait_for(std::chrono::seconds {1}), std::future_status::ready);
+
+    // Abruptly reset the client: the binder observes this as an Aborted disconnect (an RST), the
+    // eviction path. The binder runs on its own IOContext thread, so drive the client loop for a
+    // bounded wall-clock window to let that thread read the reset and tear down the connection.
+
+    client.abort();
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds {500};
+    while (std::chrono::steady_clock::now() < deadline) {
+        loop.run(UV_RUN_NOWAIT);
+    }
+
+    // Pre-fix: this send lands in _pendingSendMessages[clientIdentity] and stays there forever --
+    // the callback never fires and the test hits the 5s wait_for timeout. Post-fix: the Aborted
+    // disconnect populated _disconnectedIdentities, so the callback fires immediately with
+    // ConnectorSocketClosedByRemoteEnd.
+
+    auto sendResult = std::make_shared<std::promise<std::expected<void, scaler::ymq::Error>>>();
+    binder.sendMessage(
+        BinderClientPair::clientIdentity,
+        std::make_unique<scaler::ymq::BufferedBytes>(messagePayload),
+        [sendResult](
+            std::expected<void, scaler::ymq::Error> result,
+            [[maybe_unused]] std::unique_ptr<scaler::ymq::Bytes>) noexcept {
+            try {
+                sendResult->set_value(std::move(result));
+            } catch (...) {
+            }
+        });
+
+    auto sendFuture = sendResult->get_future();
+    ASSERT_EQ(sendFuture.wait_for(std::chrono::seconds {5}), std::future_status::ready)
+        << "send callback did not fire: regression of the binder hang for abruptly-reset (Aborted) peers";
+
+    auto result = sendFuture.get();
+    ASSERT_FALSE(result.has_value());
+    ASSERT_EQ(result.error()._errorCode, scaler::ymq::Error::ErrorCode::ConnectorSocketClosedByRemoteEnd);
+}
+
 TEST_P(YMQBinderSocketTest, StopRequested)
 {
     scaler::ymq::IOContext context {};

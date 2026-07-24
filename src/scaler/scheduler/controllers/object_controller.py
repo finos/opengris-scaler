@@ -4,6 +4,7 @@ from asyncio import Queue
 from typing import Optional, Set
 
 from scaler.io.mixins import AsyncBinder, AsyncObjectStorageConnector, AsyncPublisher
+from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError
 from scaler.protocol.capnp import ObjectInstruction, ObjectManagerStatus, ObjectMetadata
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import ClientController, ObjectController, WorkerController
@@ -116,16 +117,23 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
             self._queue_deleted_object_ids.task_done()
 
         for worker in self._worker_manager.get_worker_ids():
-            await self._binder.send(
-                worker,
-                ObjectInstruction(
-                    instructionType=ObjectInstruction.ObjectInstructionType.delete,
-                    # TODO: ideally object_user should be set to the owning client ID, but then we cannot batch these
-                    # Delete instructions.
-                    objectUser=b"",
-                    objectMetadata=ObjectMetadata(objectIds=tuple(deleted_object_ids)),
-                ),
-            )
+            try:
+                await self._binder.send(
+                    worker,
+                    ObjectInstruction(
+                        instructionType=ObjectInstruction.ObjectInstructionType.delete,
+                        # TODO: object_user should be the owning client ID, but batching these delete
+                        # instructions prevents that.
+                        objectUser=b"",
+                        objectMetadata=ObjectMetadata(objectIds=tuple(deleted_object_ids)),
+                    ),
+                )
+            except ConnectorSocketClosedByRemoteEndError:
+                # A worker that departed (scale-down) does not need the delete -- its object cache goes
+                # with it. Skip it and keep deleting on the live workers. This send runs on a timer loop,
+                # so letting it propagate would reach asyncio.gather and tear the whole scheduler down;
+                # its disconnect/timeout cleanup removes it from the pool.
+                logger.info(f"{worker!r}: departed, skipping object-delete broadcast")
 
         for object_id in deleted_object_ids:
             await self._connector_storage.delete_object(object_id)

@@ -32,7 +32,7 @@ UINT16_MAX = 2**16 - 1
 
 
 class VanillaWorkerController(WorkerController, Looper, Reporter):
-    def __init__(self, config_controller: VanillaConfigController, policy_controller: PolicyController):
+    def __init__(self, config_controller: VanillaConfigController, policy_controller: PolicyController) -> None:
         self._config_controller = config_controller
 
         self._binder: Optional[AsyncBinder] = None
@@ -44,7 +44,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         self._manager_to_workers: Dict[bytes, Set[WorkerID]] = dict()
         self._policy_controller = policy_controller
 
-    def register(self, binder: AsyncBinder, binder_monitor: AsyncPublisher, task_controller: TaskController):
+    def register(self, binder: AsyncBinder, binder_monitor: AsyncPublisher, task_controller: TaskController) -> None:
         self._binder = binder
         self._binder_monitor = binder_monitor
         self._task_controller = task_controller
@@ -66,7 +66,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
 
         return worker
 
-    async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat):
+    async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat) -> None:
         info.capabilities = capabilities_to_dict(info.capabilities)
         if self._policy_controller.add_worker(worker_id, info.capabilities, info.queueSize):
             logger.info(f"worker {worker_id!r} connected")
@@ -97,15 +97,15 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             ),
         )
 
-    async def on_client_shutdown(self, client_id: ClientID):
+    async def on_client_shutdown(self, client_id: ClientID) -> None:
         for worker in self._policy_controller.get_worker_ids():
             await self.__shutdown_worker(worker)
 
-    async def on_disconnect(self, worker_id: WorkerID, request: DisconnectRequest):
-        await self.__disconnect_worker(request.worker)
+    async def on_disconnect(self, worker_id: WorkerID, request: DisconnectRequest) -> None:
+        await self.__disconnect_worker(request.worker, reason="graceful request")
         await self._binder.send(worker_id, DisconnectResponse(worker=request.worker))
 
-    async def routine(self):
+    async def routine(self) -> None:
         await self.__clean_workers()
 
     def get_status(self) -> WorkerManagerStatus:
@@ -166,40 +166,56 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
     def get_workers_by_manager_id(self, manager_id: bytes) -> List[WorkerID]:
         return list(self._manager_to_workers.get(manager_id, set()))
 
-    async def __clean_workers(self):
+    async def __clean_workers(self) -> None:
         now = time.time()
+        timeout = self._config_controller.get_config("worker_timeout_seconds")
         dead_workers = [
-            dead_worker
+            (dead_worker, now - alive_since)
             for dead_worker, (alive_since, info) in self._worker_alive_since.items()
-            if now - alive_since > self._config_controller.get_config("worker_timeout_seconds")
+            if now - alive_since > timeout
         ]
-        for dead_worker in dead_workers:
-            await self.__disconnect_worker(dead_worker)
+        for dead_worker, elapsed in dead_workers:
+            logger.warning(
+                f"{dead_worker!r} timed out: no heartbeat for {elapsed:.0f}s (worker_timeout_seconds={timeout})"
+            )
+            await self.__disconnect_worker(dead_worker, reason="heartbeat timeout")
 
-    async def __disconnect_worker(self, worker_id: WorkerID):
-        """return True if disconnect worker success"""
-        if worker_id not in self._worker_alive_since:
+    def __forget_worker_manager(self, worker_id: WorkerID) -> None:
+        manager_id = self._worker_to_manager.pop(worker_id, None)
+        if manager_id is None:
             return
 
-        logger.info(f"{worker_id!r} disconnected")
-        await self._binder_monitor.send(
-            StateWorker(workerId=worker_id, state=WorkerState.disconnected, capabilities=[])
-        )
-        self._worker_alive_since.pop(worker_id)
-        manager_id = self._worker_to_manager.pop(worker_id)
-        workers_set = self._manager_to_workers[manager_id]
+        workers_set = self._manager_to_workers.get(manager_id)
+        if workers_set is None:
+            return
+
         workers_set.discard(worker_id)
         if not workers_set:
             del self._manager_to_workers[manager_id]
+
+    async def __disconnect_worker(self, worker_id: WorkerID, reason: str) -> None:
+        if worker_id not in self._worker_alive_since:
+            return
+
+        logger.info(f"{worker_id!r} disconnected ({reason})")
+        # Drop the worker from local state before any await: on a backend whose monitor send yields (ZMQ),
+        # a second disconnect of the same worker could otherwise pass the guard above and pop() a
+        # now-missing id. Removing first keeps the guard-and-remove atomic.
+        self._worker_alive_since.pop(worker_id)
+        self.__forget_worker_manager(worker_id)
+
+        await self._binder_monitor.send(
+            StateWorker(workerId=worker_id, state=WorkerState.disconnected, capabilities=[])
+        )
 
         task_ids = self._policy_controller.remove_worker(worker_id)
         if not task_ids:
             return
 
-        logger.info(f"{len(task_ids)} task(s) failed due to worker {worker_id!r} disconnected")
+        logger.warning(f"{worker_id!r} disconnected ({reason}): rerouting/failing {len(task_ids)} in-flight task(s)")
         for task_id in task_ids:
             await self._task_controller.on_worker_disconnect(task_id, worker_id)
 
-    async def __shutdown_worker(self, worker_id: WorkerID):
+    async def __shutdown_worker(self, worker_id: WorkerID) -> None:
         await self._binder.send(worker_id, ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.shutdown))
-        await self.__disconnect_worker(worker_id)
+        await self.__disconnect_worker(worker_id, reason="client shutdown")

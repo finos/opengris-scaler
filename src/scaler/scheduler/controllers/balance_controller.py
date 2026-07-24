@@ -55,8 +55,10 @@ class VanillaBalanceController(Looper):
             self._last_balance_advice = current_advice
             self._same_load_balance_advice_count = 0
 
-        # if we have same advice for more than trigger times, then we start doing the balancing
-        if 0 < self._same_load_balance_advice_count < self._config_controller.get_config("load_balance_trigger_times"):
+        # Act exactly once, when the advice has been stable for the trigger count, then wait for it to change.
+        # Acting on every cycle beyond the trigger re-issues moves that are still in flight -- if a saturated
+        # worker is slow to confirm a balance-cancel, the same task is re-advised forever.
+        if self._same_load_balance_advice_count != self._config_controller.get_config("load_balance_trigger_times"):
             return False
 
         # if current advice is empty, then we skip

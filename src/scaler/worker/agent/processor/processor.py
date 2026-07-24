@@ -213,8 +213,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         except ymq.SocketStopRequestedError:
             pass
 
-        except ObjectStorageException:
-            pass
+        except ObjectStorageException as e:
+            logger.info(f"Processor[{self.pid}]: exiting, object storage unreachable: {e}")
 
         except (KeyboardInterrupt, InterruptedError):
             pass
