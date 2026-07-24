@@ -136,6 +136,12 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         await self.__routing(task_cancel.taskId, TaskTransition.taskCancel, client=client_id, task_cancel=task_cancel)
 
     async def on_task_balance_cancel(self, task_id: TaskID):
+        state_machine = self._task_state_manager.get_state_machine(task_id)
+        if state_machine is None or state_machine.current_state() != TaskState.running:
+            # Only a running task can be balance-canceled. If a previous balance-cancel is still in flight
+            # (the task is already balanceCanceling because a saturated worker has not confirmed it) the
+            # balancer keeps re-advising the same move; skip it rather than re-issue an invalid transition.
+            return
         await self.__routing(task_id, TaskTransition.balanceTaskCancel)
 
     async def on_task_cancel_confirm(self, task_cancel_confirm: TaskCancelConfirm):

@@ -156,5 +156,29 @@ class TestTaskControllerDepartedClientCleanup(unittest.TestCase):
         worker_controller.on_task_done.assert_awaited_once()
 
 
+class TestTaskControllerBalanceCancelGuard(unittest.TestCase):
+    """on_task_balance_cancel must be a no-op for a task that is not running.
+
+    Under load a saturated worker is slow to confirm a balance-cancel, so the task lingers in
+    balanceCanceling and the balancer re-advises the same move every cycle. Re-issuing balanceTaskCancel to a
+    balanceCanceling task is an invalid transition ("cannot apply 8 to current state 3"); the guard skips it
+    instead of logging that error every cycle.
+    """
+
+    def test_balance_cancel_on_balance_canceling_task_is_skipped(self):
+        controller = VanillaTaskController(config_controller=MagicMock())
+        task_id = TaskID(b"balancing-task")
+        state_machine = controller._task_state_manager.add_state_machine(task_id)
+        state_machine.on_transition(TaskTransition.hasCapacity)  # inactive -> running
+        state_machine.on_transition(TaskTransition.balanceTaskCancel)  # running -> balanceCanceling
+        self.assertEqual(state_machine.current_state(), TaskState.balanceCanceling)
+
+        with patch("scaler.scheduler.task.task_state_manager.logger") as mock_state_logger:
+            _run(controller.on_task_balance_cancel(task_id))
+
+        mock_state_logger.error.assert_not_called()  # no invalid-transition error
+        self.assertEqual(state_machine.current_state(), TaskState.balanceCanceling)
+
+
 if __name__ == "__main__":
     unittest.main()
