@@ -107,6 +107,23 @@ std::expected<void, scaler::wrapper::uv::Error> Client::setNoDelay(bool enable) 
     return {};
 }
 
+std::expected<void, scaler::wrapper::uv::Error> Client::setKeepAlive(bool enable, unsigned int delaySeconds) noexcept
+{
+    if (auto* tcp = std::get_if<scaler::wrapper::uv::TCPSocket>(&_socket)) {
+        return tcp->keepalive(enable, delaySeconds);
+    }
+    if (auto* tls = std::get_if<scaler::wrapper::openssl::SecureSocket>(&_socket)) {
+        return tls->keepalive(enable, delaySeconds);
+    }
+    if (auto* ws = std::get_if<WebSocketStream>(&_socket)) {
+        return std::visit(
+            [enable, delaySeconds](auto& transport) { return transport.keepalive(enable, delaySeconds); },
+            ws->transport());
+    }
+    // IPC does not need dead-peer detection.
+    return {};
+}
+
 std::expected<void, scaler::wrapper::uv::Error> Client::shutdown(
     scaler::wrapper::uv::ShutdownCallback callback) noexcept
 {
