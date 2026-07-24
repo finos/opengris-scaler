@@ -1,3 +1,4 @@
+import logging
 from math import ceil
 from typing import Dict, List, Tuple
 
@@ -7,6 +8,8 @@ from scaler.scheduler.controllers.policies.simple_policy.scaling.types import Wo
 from scaler.scheduler.controllers.worker_manager_utilties import build_scaling_manager_status, build_set_desired_command
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot
+
+logger = logging.getLogger(__name__)
 
 
 class VanillaScalingPolicy(ScalingPolicy):
@@ -57,4 +60,11 @@ class VanillaScalingPolicy(ScalingPolicy):
         max_concurrency = worker_manager_heartbeat.maxTaskConcurrency
         if max_concurrency != -1:
             desired = min(desired, max_concurrency)
-        return max(0, desired)
+
+        desired = max(0, desired)
+        if desired != current:
+            logger.info(
+                f"scaling {worker_manager_heartbeat.workerManagerID!r}: tasks={task_count}, "
+                f"workers={worker_count}, current={current} -> desired={desired}"
+            )
+        return desired
