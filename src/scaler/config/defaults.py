@@ -9,10 +9,9 @@ from scaler.config.types.network_backend import NetworkBackendType
 CLEANUP_INTERVAL_SECONDS = 1
 
 # how often the scheduler publishes full status (every worker and processor) to monitors and the web GUI.
-# The scheduler builds this on its event loop every interval whether or not a monitor is attached, so the
-# cost scales with worker/processor count. Raise it via -sri on very large fleets (thousands of workers) to
-# cut that overhead.
-STATUS_REPORT_INTERVAL_SECONDS = 2
+# It is built on the scheduler's event loop whether or not a monitor is attached, so very large fleets
+# should raise it via -sri.
+STATUS_REPORT_INTERVAL_SECONDS = 1
 
 # number of seconds for profiling
 PROFILING_INTERVAL_SECONDS = 1

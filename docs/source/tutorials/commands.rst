@@ -275,7 +275,7 @@ Scheduler arguments
      - I/O backend thread count.
    * - ``-sri``, ``--status-report-interval-seconds``
      - No
-     - ``2``
+     - ``1``
      - Interval between status reports the scheduler publishes to monitors (``scaler_top``/``scaler_gui``).
 
 .. list-table:: Policy options
@@ -1028,7 +1028,7 @@ UI arguments
      - Maximum completed tasks kept and shown in the task log.
    * - ``-sri``, ``--status-report-interval-seconds``
      - No
-     - ``2``
+     - ``1``
      - The scheduler's status report interval; set it to match so the scheduler-stale indicator is accurate.
    * - ``-ll``, ``--logging-level``
      - No
