@@ -28,6 +28,20 @@ class TestGetProcessMemory(unittest.TestCase):
         with self.assertRaises(psutil.NoSuchProcess):
             get_process_memory(process)
 
+    def test_falls_back_to_rss_on_access_denied(self) -> None:
+        # macOS: reading USS via task_for_pid is denied under SIP/hardened runtime; RSS still works.
+        process = mock.Mock()
+        process.memory_full_info.side_effect = psutil.AccessDenied(1)
+        process.memory_info.return_value = mock.Mock(rss=4321)
+        self.assertEqual(get_process_memory(process), 4321)
+
+    def test_falls_back_to_rss_on_permission_error(self) -> None:
+        # Some psutil paths surface the raw task_for_pid EPERM as a plain PermissionError.
+        process = mock.Mock()
+        process.memory_full_info.side_effect = PermissionError(13, "force permission denied")
+        process.memory_info.return_value = mock.Mock(rss=8765)
+        self.assertEqual(get_process_memory(process), 8765)
+
 
 class TestGetMemoryLimitAndAvailable(unittest.TestCase):
     def setUp(self) -> None:
