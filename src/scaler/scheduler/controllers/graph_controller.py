@@ -414,11 +414,15 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         task_info = graph_info.tasks[task_id]
 
-        for argument in task_info.task.functionArgs:
-            if argument.type != Task.Argument.ArgumentType.task:
-                continue
+        # a task can reference the same dependency in several arguments, but __add_new_graph registers every
+        # dependency only once, so deduplicate the arguments to not remove the same pair twice
+        depended_task_ids = {
+            TaskID(argument.data)
+            for argument in task_info.task.functionArgs
+            if argument.type == Task.Argument.ArgumentType.task
+        }
 
-            depended_task_id = TaskID(argument.data)
+        for depended_task_id in depended_task_ids:
             graph_info.depended_task_id_to_task_id.remove(depended_task_id, task_id)
             if graph_info.depended_task_id_to_task_id.has_left_key(depended_task_id):
                 continue
