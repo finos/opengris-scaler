@@ -53,7 +53,8 @@ SLIDING_WINDOW_OPTIONS = {
 
 DEFAULT_STREAM_WINDOW_MINUTES = 5
 
-# Rows per page. The browser reads these from the initial state, so the two cannot drift apart.
+# Rows per page. Server-side only: the browser is told which page it got and how many exist, never
+# the size, so it never has to agree with these.
 WORKERS_PAGE_SIZE = 50
 PROCESSORS_PAGE_SIZE = 20
 STREAM_PAGE_SIZE = 50
@@ -1317,12 +1318,6 @@ class WebUIApp:
             **self._processors_section(view, cache),
             "worker_managers": list(self._worker_managers_data.values()),
             "settings": view.settings(),
-            "page_sizes": {
-                "workers": WORKERS_PAGE_SIZE,
-                "processors": PROCESSORS_PAGE_SIZE,
-                "stream": STREAM_PAGE_SIZE,
-            },
-            "sort_fields": sorted(WORKER_SORT_FIELDS),
         }
 
     def view_update(self, view: ClientView) -> Dict[str, Any]:
