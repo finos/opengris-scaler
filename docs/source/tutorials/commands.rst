@@ -277,10 +277,6 @@ Scheduler arguments
      - No
      - ``2``
      - Interval between status reports the scheduler publishes to monitors (``scaler_top``/``scaler_gui``).
-   * - ``-srwl``, ``--status-report-worker-limit``
-     - No
-     - ``-1``
-     - Maximum workers whose full detail is serialized into each status report (``-1`` is unlimited).
 
 .. list-table:: Policy options
    :header-rows: 1

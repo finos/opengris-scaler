@@ -61,17 +61,6 @@ class SchedulerConfig(ConfigClass):
             "running thousands of workers or tasks.",
         ),
     )
-    status_report_worker_limit: int = dataclasses.field(
-        default=defaults.DEFAULT_STATUS_REPORT_WORKER_LIMIT,
-        metadata=dict(
-            short="-srwl",
-            help="maximum number of workers whose full detail the scheduler serializes into each status report; "
-            "-1 (default) for unlimited. Rarely needed: it only bounds work on the scheduler's own event loop at "
-            "extreme scale. To keep browsers responsive, bound what they receive with scaler_gui "
-            "--worker-display-limit instead, which keeps per-manager resource sums complete; setting this caps "
-            "the data those sums see.",
-        ),
-    )
     protected: bool = dataclasses.field(
         default=False,
         metadata=dict(
@@ -136,5 +125,3 @@ class SchedulerConfig(ConfigClass):
             raise ValueError("load_balance_trigger_times must be a positive integer.")
         if self.status_report_interval_seconds <= 0:
             raise ValueError("status_report_interval_seconds must be positive.")
-        if self.status_report_worker_limit == 0 or self.status_report_worker_limit < -1:
-            raise ValueError("status_report_worker_limit must be -1 (unlimited) or a positive integer.")
