@@ -148,6 +148,12 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
+/* Scheduler heartbeat went quiet: the last-seen value turns red so a stuck scheduler is obvious. */
+.metric-value.stale {
+    color: #dc2626;
+    font-weight: 700;
+}
+
 /* Tables */
 .table-wrap {
     overflow-x: auto;

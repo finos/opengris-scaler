@@ -8,6 +8,7 @@ from scaler.config.types.address import AddressConfig, SocketType
 from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector
 from scaler.protocol.capnp import Resource, WorkerHeartbeat, WorkerHeartbeatEcho
 from scaler.protocol.helpers import dict_to_capabilities
+from scaler.utility.memory import get_memory_limit_and_available, get_process_memory
 from scaler.utility.mixins import Looper
 from scaler.worker.agent.mixins import HeartbeatManager as HeartbeatManagerMixin
 from scaler.worker.agent.mixins import TimeoutManager
@@ -81,15 +82,18 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
 
         try:
             agent_cpu = int(self._agent_process.cpu_percent() * 10)
-            agent_rss = self._agent_process.memory_info().rss
+            agent_rss = get_process_memory(self._agent_process)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             agent_cpu = 0
             agent_rss = 0
 
+        mem_limit, mem_available = get_memory_limit_and_available()
+
         await self._connector_external.send(
             WorkerHeartbeat(
                 agent=Resource(cpu=agent_cpu, rss=agent_rss),
-                rssFree=psutil.virtual_memory().available,
+                rssFree=mem_available,
+                memLimit=mem_limit,
                 queueSize=self._task_queue_size,
                 queuedTasks=self._task_manager.get_queued_size(),
                 latencyUS=self._latency_us,

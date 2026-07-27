@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from scaler.config.defaults import STATUS_REPORT_INTERVAL_SECONDS
 from scaler.config.section.webgui import WebGUIConfig
 from scaler.io.mixins import SyncSubscriber
 from scaler.io.network_backends import get_network_backend_from_env
@@ -38,6 +39,10 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 BATCH_INTERVAL_SECONDS = 0.1
 TASK_LOG_MAX_SIZE = 500
+
+# Mark the scheduler stale once its periodic StateScheduler heartbeat has not arrived for this long. The
+# heartbeat runs on the scheduler's main loop, so a stalled loop stops it and the UI reflects that.
+SCHEDULER_STALE_SECONDS = 5 * STATUS_REPORT_INTERVAL_SECONDS
 
 COMPLETED_TASK_STATUSES = (
     TaskState.success,
@@ -643,7 +648,9 @@ class WebUIApp:
         self._dead_managers: Dict[str, float] = {}  # manager_id -> disconnect timestamp
         self._manager_color_map: Dict[str, str] = {}  # manager_id -> color hex
         self._monitor_address: str = str(config.monitor_address)
-        self._last_message_time: Optional[datetime.datetime] = None
+        # Timestamp of the last StateScheduler heartbeat; the scheduler's last-seen derives from it and goes
+        # stale when the main loop stalls.
+        self._last_scheduler_heartbeat_time: Optional[datetime.datetime] = None
 
         self._settings = {"stream_window": 5, "memory_scale": "linear"}
 
@@ -693,9 +700,6 @@ class WebUIApp:
                 except queue.Empty:
                     break
 
-            if messages:
-                self._last_message_time = datetime.datetime.now()
-
             # Process messages
             has_scheduler_update = False
             new_task_logs: List[Dict[str, Any]] = []
@@ -719,17 +723,16 @@ class WebUIApp:
                 except Exception:
                     _logger.exception("error processing scheduler message")
 
+            if has_scheduler_update:
+                self._last_scheduler_heartbeat_time = datetime.datetime.now()
+
             # Build broadcast payload
             payload: Dict[str, Any] = {}
 
-            # Always include scheduler data with fresh last_seen
+            # Always include scheduler data with a last_seen derived from the periodic heartbeat.
             if self._scheduler_data:
                 sched = dict(self._scheduler_data)
-                if self._last_message_time is not None:
-                    elapsed = int((datetime.datetime.now() - self._last_message_time).total_seconds())
-                    sched["last_seen"] = f"{elapsed}s"
-                else:
-                    sched["last_seen"] = "\u2014"
+                sched.update(self.__scheduler_liveness())
                 payload["scheduler"] = sched
 
             if has_scheduler_update:
@@ -817,6 +820,14 @@ class WebUIApp:
             total_proc_rss = sum(p.resource.rss for p in worker_data.processorStatuses)
             total_rss = int(total_proc_rss / 1e6)
             rss_free = int(worker_data.rssFree / 1e6)
+            agt_rss = int(worker_data.agent.rss / 1e6)
+
+            # OOM-proximity gauge: memLimit is the ceiling the worker runs under (cgroup limit in a pod,
+            # else host total) and rssFree is its headroom, so (limit - free) is what is actually in use
+            # against that ceiling -- the number that predicts an OOM kill.
+            mem_limit = int(worker_data.memLimit / 1e6)
+            mem_used = max(0, mem_limit - rss_free)
+            mem_used_pct = round(100.0 * mem_used / mem_limit, 1) if mem_limit > 0 else 0.0
 
             self._workers_data[worker_name] = {
                 "id": worker_name,
@@ -824,11 +835,15 @@ class WebUIApp:
                 "full_name": worker_name,
                 "manager_id": self._worker_manager_map.get(worker_name, "\u2014"),
                 "agt_cpu": round(worker_data.agent.cpu / 10, 1),
-                "agt_rss": int(worker_data.agent.rss / 1e6),
+                "agt_rss": agt_rss,
                 "proc_cpu": round(total_proc_cpu / 10, 1),
                 "proc_rss": total_rss,
                 "rss_free": rss_free,
                 "total_rss": total_rss + rss_free,
+                "worker_rss": agt_rss + total_rss,
+                "mem_limit": mem_limit,
+                "mem_used": mem_used,
+                "mem_used_pct": mem_used_pct,
                 "free": worker_data.free,
                 "sent": worker_data.sent,
                 "queued": worker_data.queued,
@@ -1032,12 +1047,10 @@ class WebUIApp:
         result = []
         for manager_id, workers in sorted(managers.items()):
             total_rss = 0
-            total_rss_free = 0
             total_cpu = 0.0
             total_processors = 0
             active_processors = 0
             for wp in workers:
-                total_rss_free += wp["rss_free"]
                 for proc in wp["processors"]:
                     total_rss += proc["rss"]
                     total_cpu += proc["cpu"]
@@ -1049,7 +1062,6 @@ class WebUIApp:
                     "manager_id": manager_id,
                     "worker_count": len(workers),
                     "total_rss": total_rss,
-                    "total_rss_free": total_rss_free,
                     "total_cpu": round(total_cpu, 1),
                     "total_processors": total_processors,
                     "active_processors": active_processors,
@@ -1090,6 +1102,13 @@ class WebUIApp:
             except Exception:
                 _logger.exception("error processing scheduler message during drain")
 
+    def __scheduler_liveness(self) -> Dict[str, Any]:
+        """last_seen + stale flag derived from the last StateScheduler heartbeat."""
+        if self._last_scheduler_heartbeat_time is None:
+            return {"last_seen": "\u2014", "stale": False}
+        elapsed = int((datetime.datetime.now() - self._last_scheduler_heartbeat_time).total_seconds())
+        return {"last_seen": format_seconds(elapsed), "stale": elapsed > SCHEDULER_STALE_SECONDS}
+
     def get_full_state(self) -> Dict[str, Any]:
         """Get complete current state for a newly connected client."""
         # Flush any messages that arrived since the last batch-loop iteration so
@@ -1102,13 +1121,9 @@ class WebUIApp:
         # combine active + completed for initial task log, sorted by time (newest first)
         initial_task_log = list(self._active_tasks.values()) + list(self._task_log)
         initial_task_log.sort(key=lambda e: e.get("time", 0), reverse=True)
-        # Build scheduler data with fresh last_seen
+        # Build scheduler data with a last_seen derived from the periodic heartbeat.
         sched = dict(self._scheduler_data) if self._scheduler_data else {}
-        if self._last_message_time is not None:
-            elapsed = int((datetime.datetime.now() - self._last_message_time).total_seconds())
-            sched["last_seen"] = f"{elapsed}s"
-        else:
-            sched["last_seen"] = "—"
+        sched.update(self.__scheduler_liveness())
 
         return {
             "scheduler": sched,

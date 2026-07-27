@@ -21,6 +21,8 @@ from scaler.utility.snapshot import InformationSnapshot
 
 logger = logging.getLogger(__name__)
 
+UINT16_MAX = 2**16 - 1
+
 
 class WorkerManagerController(Looper, Reporter):
     def __init__(self, config_controller: VanillaConfigController, policy_controller: PolicyController):
@@ -95,7 +97,7 @@ class WorkerManagerController(Looper, Reporter):
                 {
                     "worker_manager_id": heartbeat.workerManagerID,
                     "identity": source.decode(errors="replace"),
-                    "last_seen_s": min(int(now - last_seen), 255),
+                    "last_seen_s": min(int(now - last_seen), UINT16_MAX),
                     "max_task_concurrency": heartbeat.maxTaskConcurrency,
                     "capabilities": caps_str,
                     "pending_workers": pending,
