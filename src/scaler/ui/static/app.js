@@ -4,29 +4,31 @@
 // -- State --
 var ws = null;
 var reconnectDelay = 500;
-var workerSortField = null;  // current sort column field name
+var workerSortField = null;  // current sort column field name (the server does the sorting)
 var workerSortAsc = true;    // sort direction
-var lastWorkersData = [];    // workers array the browser received (bounded by -wl); sorted + paged client-side
-var workersTotal = 0;        // full fleet size; the workers array a browser receives may be a bounded subset
+var lastWorkersData = [];    // this browser's page of worker rows, already sorted by the server
+var workersTotal = 0;        // full fleet size, of which this browser holds one page
 var taskLogTotal = 0;  // completed tasks seen by the server since it started, uncapped by the display ring
 var TASK_LOG_MAX_SIZE = 100;  // overridden by server's task_log_max_size on initial state
 var taskLogData = [];        // full task-log data, newest first, up to TASK_LOG_MAX_SIZE
 var taskLogById = {};        // task_id -> entry, for in-place status updates
-// Numbered-page virtualization: each view keeps its full (received) data but renders only the current page,
-// so the DOM/canvas stays bounded to one page regardless of fleet or task count.
+// The worker views are paged by the server: it sends one page at a time and reports which page that was
+// and how many exist, so the browser never receives -- or parses -- the whole fleet. The task log is
+// small and bounded server-side, so it stays paged here with PAGE_SIZE.
 var PAGE_SIZE = 50;
 var workersPage = 0;
+var workersPages = 1;
 var taskLogPage = 0;
 var processorsPage = 0;
+var processorsPages = 1;
+var processorsTotal = 0;
 var streamPage = 0;
-var streamBars = [];       // bars for the current page (row index re-based to page-local)
+var streamPages = 1;
+var streamTotal = 0;
+var streamBars = [];       // bars for this page, row index already re-based page-local by the server
 var streamRows = [];       // row labels (truncated) for the current page
 var streamFullRows = [];   // row labels (full worker names) for the current page
 var streamRowManagers = []; // manager color per row, current page
-var streamBarsFull = [];       // full received stream data; sliced into the page vars above for drawing
-var streamRowsFull = [];
-var streamFullRowsFull = [];
-var streamRowManagersFull = [];
 var streamManagerColors = {}; // manager_id -> color
 var memoryPoints = [];     // memory chart points
 var memoryScale = "linear";
@@ -189,6 +191,15 @@ function sendSettings(settings) {
     }
 }
 
+// Tell the server what this browser is looking at (page, sort column). It answers with just that view,
+// so paging and sorting are immediate instead of waiting for the next scheduler update -- and because
+// the view lives on this socket, other browsers are unaffected.
+function sendView(view) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "view", view: view }));
+    }
+}
+
 // -- WebSocket --
 function connect() {
     var proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -232,7 +243,7 @@ function handleMessage(data) {
         updateScheduler(data.scheduler);
     }
     if (data.workers) {
-        if (typeof data.workers_total === "number") workersTotal = data.workers_total;
+        applyPageInfo(data);
         updateWorkers(data.workers);
     }
     if (data.worker_managers) {
@@ -252,13 +263,28 @@ function handleMessage(data) {
         updateMemoryChart(data.memory_chart);
     }
     if (data.processors) {
+        applyPageInfo(data);
         updateProcessors(data.processors);
     }
+    if (data.settings) {
+        applySettings(data.settings);
+    }
+}
+
+// Page/sort bookkeeping the server owns: it clamps the page it actually served, so mirror that back
+// rather than trusting what this browser last asked for.
+function applyPageInfo(data) {
+    if (typeof data.workers_total === "number") workersTotal = data.workers_total;
+    if (typeof data.workers_page === "number") workersPage = data.workers_page;
+    if (typeof data.workers_pages === "number") workersPages = data.workers_pages;
+    if (typeof data.processors_total === "number") processorsTotal = data.processors_total;
+    if (typeof data.processors_page === "number") processorsPage = data.processors_page;
+    if (typeof data.processors_pages === "number") processorsPages = data.processors_pages;
 }
 
 function handleFullState(data) {
     if (data.scheduler) updateScheduler(data.scheduler);
-    if (typeof data.workers_total === "number") workersTotal = data.workers_total;
+    applyPageInfo(data);
     if (data.workers) updateWorkers(data.workers);
     if (data.worker_managers) updateWorkerManagers(data.worker_managers);
     if (typeof data.task_log_max_size === "number" && data.task_log_max_size > 0) {
@@ -382,10 +408,10 @@ function renderManagers() {
 }
 
 // -- Live Tab: Workers --
+// Column order of the workers table; the header click sends the field name to the server, which knows
+// which of them sort numerically.
 var WORKER_FIELDS = ["name", "manager_id", "agt_cpu", "agt_rss", "proc_cpu", "proc_rss", "mem_used_pct",
                      "free", "sent", "queued", "suspended", "lag", "itl", "last_seen", "capabilities"];
-var WORKER_NUMERIC_FIELDS = {"agt_cpu":1, "agt_rss":1, "proc_cpu":1, "proc_rss":1, "mem_used_pct":1,
-                             "free":1, "sent":1, "queued":1, "suspended":1, "itl":1};
 
 function updateWorkers(workers) {
     lastWorkersData = workers;
@@ -393,13 +419,9 @@ function updateWorkers(workers) {
 }
 
 function renderWorkers() {
-    var data = lastWorkersData.slice();
-    if (workerSortField) sortWorkerData(data);
-    var pg = pageSlice(workersPage, data.length);
-    workersPage = pg.page;
-    var pageRows = data.slice(pg.start, pg.end);
+    // lastWorkersData is already this browser's page, sorted by the server.
+    var pageRows = lastWorkersData;
 
-    // Rebuild just this page's rows (<= PAGE_SIZE) each update; the DOM never holds the whole fleet.
     workersBody.innerHTML = "";
     for (var i = 0; i < pageRows.length; i++) {
         var row = createWorkerRow(pageRows[i]);
@@ -407,31 +429,19 @@ function renderWorkers() {
         workersBody.appendChild(row);
     }
     updateWorkersCountBadge();
-    renderPager("workers-pager", workersPage, pg.totalPages, data.length, function(p) {
+    renderPager("workers-pager", workersPage, workersPages, workersTotal, function(p) {
         workersPage = p;
-        renderWorkers();
+        sendView({ workers_page: p });
     });
 }
 
-// The backend sends each browser only a bounded set of workers at scale; show "shown of total" (total is the
-// full fleet size) so a capped view is explicit rather than looking like the whole fleet.
+// The badge counts the whole fleet, of which this browser holds one page.
 function updateWorkersCountBadge() {
-    var shown = lastWorkersData.length;
-    workersCount.textContent = workersTotal > shown ? (shown + " of " + workersTotal) : shown;
+    workersCount.textContent = workersTotal;
 }
 
-// Sort the worker data array in place by the active column; renderWorkers then paints the current page.
-function sortWorkerData(data) {
-    var field = workerSortField, asc = workerSortAsc, isNumeric = WORKER_NUMERIC_FIELDS[field];
-    data.sort(function(a, b) {
-        var va = a[field], vb = b[field];
-        if (va == null) va = "";
-        if (vb == null) vb = "";
-        var cmp = isNumeric ? (Number(va) || 0) - (Number(vb) || 0) : String(va).localeCompare(String(vb));
-        return asc ? cmp : -cmp;
-    });
-}
-
+// Sorting runs on the server (it holds the whole fleet; this browser only has a page), so a header click
+// records the indicator and asks for page 0 of the new order.
 function setupWorkerSort() {
     var thead = workersBody.parentElement.querySelector("thead tr");
     if (!thead) return;
@@ -454,7 +464,7 @@ function setupWorkerSort() {
                 }
                 th.classList.add(workerSortAsc ? "sort-asc" : "sort-desc");
                 workersPage = 0;  // jump to the top of the new sort order
-                renderWorkers();
+                sendView({ workers_sort: field, workers_sort_ascending: workerSortAsc, workers_page: 0 });
             });
         })(ths[i], WORKER_FIELDS[i]);
     }
@@ -655,10 +665,14 @@ var STREAM_ROW_HEIGHT = 24;
 var STREAM_PADDING_TOP = 4;
 
 function updateTaskStream(data) {
-    streamBarsFull = data.bars || [];
-    streamRowsFull = data.rows || [];
-    streamFullRowsFull = data.full_rows || streamRowsFull;
-    streamRowManagersFull = data.row_managers || [];
+    // Already one page: the server slices the rows and re-bases each bar's row index to the page.
+    streamBars = data.bars || [];
+    streamRows = data.rows || [];
+    streamFullRows = data.full_rows || streamRows;
+    streamRowManagers = data.row_managers || [];
+    if (typeof data.page === "number") streamPage = data.page;
+    if (typeof data.pages === "number") streamPages = data.pages;
+    if (typeof data.total_rows === "number") streamTotal = data.total_rows;
     streamManagerColors = {};
     streamManagerLegendData = data.manager_legend || [];
     for (var ml = 0; ml < streamManagerLegendData.length; ml++) {
@@ -667,37 +681,15 @@ function updateTaskStream(data) {
     streamTicks = data.ticks || [];
     streamWindow = data.window || 300;
     streamLegendData = data.legend || [];
-    applyStreamPage();
+    renderPager("stream-pager", streamPage, streamPages, streamTotal, function(p) {
+        streamPage = p;
+        sendView({ stream_page: p });
+    });
 
     if (activeTab === "stream") {
         renderStreamStatic();
         streamNeedsRedraw = true;
     }
-}
-
-// Slice the full stream data into the current page's drawing vars, re-basing each bar's row to page-local so
-// the canvas height stays bounded to one page regardless of worker count.
-function applyStreamPage() {
-    var pg = pageSlice(streamPage, streamRowsFull.length);
-    streamPage = pg.page;
-    streamRows = streamRowsFull.slice(pg.start, pg.end);
-    streamFullRows = streamFullRowsFull.slice(pg.start, pg.end);
-    streamRowManagers = streamRowManagersFull.slice(pg.start, pg.end);
-    streamBars = [];
-    for (var i = 0; i < streamBarsFull.length; i++) {
-        var b = streamBarsFull[i];
-        if (b.r >= pg.start && b.r < pg.end) {
-            var nb = {};
-            for (var k in b) { if (Object.prototype.hasOwnProperty.call(b, k)) nb[k] = b[k]; }
-            nb.r = b.r - pg.start;
-            streamBars.push(nb);
-        }
-    }
-    renderPager("stream-pager", streamPage, pg.totalPages, streamRowsFull.length, function(p) {
-        streamPage = p;
-        applyStreamPage();
-        if (activeTab === "stream") streamNeedsRedraw = true;
-    });
 }
 
 // Rebuild the stream legend + time axis (DOM) from cached data; runs only while the stream tab is visible.
@@ -1146,43 +1138,29 @@ function updateProcessors(processors) {
     if (activeTab === "processors") renderProcessors();
 }
 
-var PROCESSORS_PAGE_SIZE = 20;  // worker detail tables are large, so page them smaller than the flat tables
-
 function renderProcessors() {
+    // Each group carries fleet-wide summary numbers, but only this page's worker detail.
     var groups = lastProcessorsData || [];
-    // Flatten workers across managers (keeping each worker's group, whose summary aggregates the full fleet).
-    var flat = [];
-    for (var g = 0; g < groups.length; g++) {
-        for (var i = 0; i < groups[g].workers.length; i++) {
-            flat.push({ group: groups[g], wp: groups[g].workers[i] });
-        }
-    }
 
     processorsContainer.innerHTML = "";
-    if (flat.length === 0) {
+    if (processorsTotal === 0) {
         processorsContainer.innerHTML = '<div class="card"><p style="color:#64748b">No workers connected</p></div>';
         renderPager("processors-pager", 0, 1, 0, function() {});
         return;
     }
 
-    var pg = pageSlice(processorsPage, flat.length, PROCESSORS_PAGE_SIZE);
-    processorsPage = pg.page;
-    var pageItems = flat.slice(pg.start, pg.end);
-
-    // Render only this page's worker detail, opening a manager section whenever the manager changes.
-    var currentMid = null, section = null;
-    for (var k = 0; k < pageItems.length; k++) {
-        var item = pageItems[k];
-        if (item.group.manager_id !== currentMid) {
-            currentMid = item.group.manager_id;
-            section = buildManagerSection(item.group);
-            processorsContainer.appendChild(section);
+    for (var g = 0; g < groups.length; g++) {
+        var group = groups[g];
+        if (!group.workers || group.workers.length === 0) continue;
+        var section = buildManagerSection(group);
+        processorsContainer.appendChild(section);
+        for (var i = 0; i < group.workers.length; i++) {
+            section.appendChild(buildWorkerProcessorDetail(group.workers[i]));
         }
-        section.appendChild(buildWorkerProcessorDetail(item.wp));
     }
-    renderPager("processors-pager", processorsPage, pg.totalPages, flat.length, function(p) {
+    renderPager("processors-pager", processorsPage, processorsPages, processorsTotal, function(p) {
         processorsPage = p;
-        renderProcessors();
+        sendView({ processors_page: p });
     });
 }
 

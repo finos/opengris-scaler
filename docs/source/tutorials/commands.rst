@@ -1026,10 +1026,6 @@ UI arguments
      - No
      - ``500``
      - Maximum completed tasks kept and shown in the task log.
-   * - ``-wl``, ``--worker-display-limit``
-     - No
-     - ``500``
-     - Maximum workers sent to each browser (``-1`` is unlimited); the backend still aggregates the whole fleet.
    * - ``-sri``, ``--status-report-interval-seconds``
      - No
      - ``2``

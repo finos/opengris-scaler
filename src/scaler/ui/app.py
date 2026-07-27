@@ -1,7 +1,7 @@
 import asyncio
+import dataclasses
 import datetime
 import hashlib
-import itertools
 import json
 import logging
 import queue
@@ -9,7 +9,7 @@ import struct
 import threading
 from collections import deque
 from pathlib import Path
-from typing import Any, Deque, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -50,6 +50,117 @@ SLIDING_WINDOW_OPTIONS = {
     10: datetime.timedelta(minutes=10),
     30: datetime.timedelta(minutes=30),
 }
+
+DEFAULT_STREAM_WINDOW_MINUTES = 5
+
+# Rows per page for the views a browser pages through. The server owns these because it now serves one
+# page at a time: the browser reads them from the initial state, so the two cannot drift apart.
+WORKERS_PAGE_SIZE = 50
+PROCESSORS_PAGE_SIZE = 20
+STREAM_PAGE_SIZE = 50
+
+# Columns the workers table can be sorted by, and how. Sorting runs here rather than in the browser
+# because the browser only ever holds one page; these mirror the table's columns.
+WORKER_SORT_NUMERIC_FIELDS = frozenset(
+    {"agt_cpu", "agt_rss", "proc_cpu", "proc_rss", "mem_used_pct", "free", "sent", "queued", "suspended"}
+)
+# Columns whose display value is preformatted; sort them by the raw number behind it instead.
+WORKER_SORT_RAW_FIELDS = {"lag": "lag_us", "last_seen": "last_s"}
+WORKER_SORT_FIELDS = frozenset(
+    WORKER_SORT_NUMERIC_FIELDS | set(WORKER_SORT_RAW_FIELDS) | {"name", "manager_id", "itl", "capabilities"}
+)
+
+
+@dataclasses.dataclass
+class ClientView:
+    """What one browser is looking at: its page in each paged view, its sort column, its chart settings.
+
+    Held per socket. Two browsers therefore never overwrite each other -- paging, sorting and the
+    stream/memory chart controls used to be global server state, so one viewer's click moved everyone.
+    """
+
+    workers_page: int = 0
+    workers_sort: Optional[str] = None
+    workers_sort_ascending: bool = True
+    processors_page: int = 0
+    stream_page: int = 0
+    stream_window_minutes: int = DEFAULT_STREAM_WINDOW_MINUTES
+    memory_scale: str = "linear"
+
+    def apply_view(self, view: Dict[str, Any]) -> None:
+        """Apply a browser's `view` message, ignoring anything unrecognised."""
+        for name in ("workers_page", "processors_page", "stream_page"):
+            if name in view:
+                setattr(self, name, max(0, int(view[name])))
+
+        if "workers_sort" in view:
+            field = view["workers_sort"]
+            self.workers_sort = str(field) if field in WORKER_SORT_FIELDS else None
+        if "workers_sort_ascending" in view:
+            self.workers_sort_ascending = bool(view["workers_sort_ascending"])
+
+    def apply_settings(self, settings: Dict[str, Any]) -> None:
+        """Apply a browser's `settings` message (the stream window and memory scale controls)."""
+        if "stream_window" in settings:
+            window = int(settings["stream_window"])
+            if window in SLIDING_WINDOW_OPTIONS:
+                self.stream_window_minutes = window
+        if "memory_scale" in settings:
+            scale = str(settings["memory_scale"])
+            if scale in ("log", "linear"):
+                self.memory_scale = scale
+
+    def settings(self) -> Dict[str, Any]:
+        return {"stream_window": self.stream_window_minutes, "memory_scale": self.memory_scale}
+
+
+class _RenderCache:
+    """Memoizes the whole-fleet work shared by every connected browser, for one tick.
+
+    Browsers are served one page each, but the sort, the processor grouping and the stream render still
+    run over the whole fleet. Viewers usually share the same sort column and window, so this computes
+    each distinct one once per tick instead of once per browser.
+    """
+
+    def __init__(self) -> None:
+        self._sorted_workers: Dict[Tuple[Optional[str], bool], List[Dict[str, Any]]] = {}
+        self._processors: Optional[List[Dict[str, Any]]] = None
+        self._stream: Dict[int, Dict[str, Any]] = {}
+        self._memory: Dict[Tuple[float, str], Dict[str, Any]] = {}
+
+    def sorted_workers(self, app: "WebUIApp", view: ClientView) -> List[Dict[str, Any]]:
+        key = (view.workers_sort, view.workers_sort_ascending)
+        if key not in self._sorted_workers:
+            self._sorted_workers[key] = app._sorted_workers(*key)
+        return self._sorted_workers[key]
+
+    def processors(self, app: "WebUIApp") -> List[Dict[str, Any]]:
+        if self._processors is None:
+            self._processors = app._build_processors_data()
+        return self._processors
+
+    def stream(self, app: "WebUIApp", window_minutes: int) -> Dict[str, Any]:
+        if window_minutes not in self._stream:
+            stream_data = app._task_stream.get_render_data(window_minutes)
+            app._enrich_stream_with_managers(stream_data)
+            self._stream[window_minutes] = stream_data
+        return self._stream[window_minutes]
+
+    def memory(self, app: "WebUIApp", window_seconds: float, scale: str) -> Dict[str, Any]:
+        key = (window_seconds, scale)
+        if key not in self._memory:
+            self._memory[key] = app._memory_chart.get_render_data(window_seconds, scale)
+        return self._memory[key]
+
+
+def paginate(items: List[Any], page: int, size: int) -> Tuple[List[Any], int, int]:
+    """Slice `items` into the requested page, clamping it to what exists.
+
+    Returns (rows, clamped page, total pages).
+    """
+    total_pages = max(1, (len(items) + size - 1) // size)
+    page = min(max(page, 0), total_pages - 1)
+    return items[page * size : page * size + size], page, total_pages
 
 
 def _format_worker_name(worker_name: str, cutoff: int = 15) -> str:
@@ -130,7 +241,6 @@ class TaskStreamState:
     """Server-side state for the task stream chart."""
 
     def __init__(self) -> None:
-        self._stream_window = datetime.timedelta(minutes=5)
         self._memory_store_time = datetime.timedelta(minutes=30)
 
         # worker tracking
@@ -152,9 +262,6 @@ class TaskStreamState:
         self._dead_workers: Deque[Tuple[datetime.datetime, str]] = deque()
 
         self._lock = threading.Lock()
-
-    def set_stream_window(self, minutes: int) -> None:
-        self._stream_window = SLIDING_WINDOW_OPTIONS.get(minutes, datetime.timedelta(minutes=5))
 
     def _caps_to_colors(self, caps_str: str) -> List[str]:
         """Return a list of colors for the capabilities string.
@@ -343,13 +450,16 @@ class TaskStreamState:
             self._worker_capabilities.pop(worker, None)
             self._seen_workers.discard(worker)
 
-    def get_render_data(self) -> Dict[str, Any]:
+    def get_render_data(self, window_minutes: int) -> Dict[str, Any]:
+        """Render the stream over the requested window. The window is a per-browser setting, so it is
+        passed in rather than held here -- viewers can watch different windows at the same time."""
         now = datetime.datetime.now()
         now_ts = now.timestamp()
 
         with self._lock:
             self._prune_old_data(now)
-            window_seconds = self._stream_window.total_seconds()
+            window = SLIDING_WINDOW_OPTIONS.get(window_minutes, SLIDING_WINDOW_OPTIONS[DEFAULT_STREAM_WINDOW_MINUTES])
+            window_seconds = window.total_seconds()
             window_start_ts = now_ts - window_seconds
 
             # one row per worker, sorted by name - only include workers with visible activity
@@ -553,12 +663,7 @@ class MemoryChartState:
         self._start_time = datetime.datetime.now()
         self._points: List[Tuple[float, int]] = []  # (timestamp, memory_bytes)
         self._memory_store_time = datetime.timedelta(minutes=30)
-        self._memory_scale = "linear"
         self._lock = threading.Lock()
-
-    def set_memory_scale(self, scale: str) -> None:
-        if scale in ("log", "linear"):
-            self._memory_scale = scale
 
     def handle_task_state(self, state_task: StateTask) -> None:
         if state_task.metadata == b"":
@@ -578,7 +683,8 @@ class MemoryChartState:
             self._points.append((start_ts, profile.memory_peak))
             self._points.append((now.timestamp(), -profile.memory_peak))
 
-    def get_render_data(self, window_seconds: float) -> Dict[str, Any]:
+    def get_render_data(self, window_seconds: float, scale: str) -> Dict[str, Any]:
+        """Render the chart for one browser's window and scale, both per-viewer settings."""
         now = datetime.datetime.now()
         now_ts = now.timestamp()
         cutoff_ts = now_ts - self._memory_store_time.total_seconds()
@@ -614,7 +720,7 @@ class MemoryChartState:
             val = int(max_mem * i / 4)
             y_ticks.append({"val": val, "label": format_bytes(val)})
 
-        return {"points": chart_points, "y_ticks": y_ticks, "scale": self._memory_scale, "window": window_seconds}
+        return {"points": chart_points, "y_ticks": y_ticks, "scale": scale, "window": window_seconds}
 
 
 class WebUIApp:
@@ -624,16 +730,15 @@ class WebUIApp:
         self._config = config
         self._broadcast_interval_seconds: float = config.broadcast_interval_seconds
         self._task_log_max_size: int = config.task_log_max_size
-        self._worker_display_limit: int = config.worker_display_limit
         # Mark the scheduler stale once its periodic StateScheduler heartbeat has not arrived for ~5x its
         # report interval; that heartbeat runs on the scheduler's main loop, so a stalled loop stops it.
         self._scheduler_stale_seconds: float = 5 * config.status_report_interval_seconds
         # Total completed tasks seen since this GUI process started, uncapped by the display ring buffer.
         self._task_log_total: int = 0
-        # Full fleet worker count from per-manager totals; the worker rows sent to each browser are a bounded subset.
+        # Full fleet worker count from per-manager totals; each browser is sent one page of worker rows.
         self._total_workers: int = 0
         self._message_queue: queue.Queue[BaseMessage] = queue.Queue()
-        self._clients: List[WebSocket] = []
+        self._clients: Dict[WebSocket, ClientView] = {}
         self._clients_lock = asyncio.Lock()
 
         # server-side state
@@ -654,8 +759,6 @@ class WebUIApp:
         # Timestamp of the last StateScheduler heartbeat; the scheduler's last-seen derives from it and goes
         # stale when the main loop stalls.
         self._last_scheduler_heartbeat_time: Optional[datetime.datetime] = None
-
-        self._settings = {"stream_window": 5, "memory_scale": "linear"}
 
         self._identity = generate_identity_from_name("webui")
 
@@ -729,41 +832,39 @@ class WebUIApp:
             if has_scheduler_update:
                 self._last_scheduler_heartbeat_time = datetime.datetime.now()
 
-            # Build broadcast payload
-            payload: Dict[str, Any] = {}
+            # The parts every browser gets identically.
+            shared: Dict[str, Any] = {}
 
             # Always include scheduler data with a last_seen derived from the periodic heartbeat.
             if self._scheduler_data:
                 sched = dict(self._scheduler_data)
                 sched.update(self.__scheduler_liveness())
-                payload["scheduler"] = sched
-
-            if has_scheduler_update:
-                payload["workers"] = self._capped_workers()
-                payload["workers_total"] = self._fleet_worker_count()
+                shared["scheduler"] = sched
 
             if worker_events:
-                payload["worker_events"] = worker_events
+                shared["worker_events"] = worker_events
 
             if new_task_logs:
-                payload["task_updates"] = new_task_logs
-                payload["task_log_total"] = self._task_log_total
+                shared["task_updates"] = new_task_logs
+                shared["task_log_total"] = self._task_log_total
 
-            # Always send chart data (auto-scrolling)
-            stream_data = self._task_stream.get_render_data()
-            self._cap_stream_rows(stream_data)
-            self._enrich_stream_with_managers(stream_data)
-            payload["task_stream"] = stream_data
-
-            memory_data = self._memory_chart.get_render_data(stream_data["window"])
-            payload["memory_chart"] = memory_data
-
-            # Worker processors
             if has_scheduler_update:
-                payload["processors"] = self._build_processors_data()
-                payload["worker_managers"] = list(self._worker_managers_data.values())
+                shared["worker_managers"] = list(self._worker_managers_data.values())
 
-            await self._broadcast(payload)
+            # The paged parts differ per browser, so serialize per client. The whole-fleet work behind
+            # them (sort, grouping, stream render) is shared through the cache.
+            cache = _RenderCache()
+            await self._send_to_clients(
+                lambda view: {
+                    **shared,
+                    **(self._workers_section(view, cache) if has_scheduler_update else {}),
+                    **(self._processors_section(view, cache) if has_scheduler_update else {}),
+                    "task_stream": self._stream_section(view, cache),
+                    "memory_chart": cache.memory(
+                        self, cache.stream(self, view.stream_window_minutes)["window"], view.memory_scale
+                    ),
+                }
+            )
 
     def _process_scheduler(self, data: StateScheduler) -> None:
         self._scheduler_data = {
@@ -866,6 +967,10 @@ class WebUIApp:
                 "queued": worker_data.queued,
                 "suspended": worker_data.suspended,
                 "lag": format_microseconds(worker_data.lagUS),
+                # raw values behind the two preformatted columns, so sorting on them orders by magnitude
+                # instead of by the display string
+                "lag_us": worker_data.lagUS,
+                "last_s": worker_data.lastS,
                 "itl": worker_data.itl,
                 "last_seen": format_seconds(worker_data.lastS),
                 "capabilities": _display_capabilities(set(self._worker_capabilities.get(worker_name, {}).keys())),
@@ -1037,18 +1142,6 @@ class WebUIApp:
             self._active_tasks[task_id_hex] = entry
             return entry
 
-    def _cap_stream_rows(self, stream_data: Dict[str, Any]) -> None:
-        """Bound the task stream to worker_display_limit, like the tables: without this the stream carries a
-        row (and its bars) per worker, so a browser would receive the whole fleet even though the tables do
-        not. Rows beyond the limit, and their bars, are dropped before the data is sent."""
-        limit = self._worker_display_limit
-        if limit < 0 or len(stream_data.get("rows", [])) <= limit:
-            return
-        stream_data["rows"] = stream_data["rows"][:limit]
-        if "full_rows" in stream_data:
-            stream_data["full_rows"] = stream_data["full_rows"][:limit]
-        stream_data["bars"] = [bar for bar in stream_data.get("bars", []) if bar.get("r", 0) < limit]
-
     def _enrich_stream_with_managers(self, stream_data: Dict[str, Any]) -> None:
         """Add per-row manager IDs and a manager color legend to task stream data."""
         full_rows = stream_data.get("full_rows", [])
@@ -1064,14 +1157,79 @@ class WebUIApp:
         ]
         stream_data["manager_legend"] = manager_legend
 
-    def _capped_workers(self) -> List[Dict[str, Any]]:
-        """The worker rows to send a browser: the full detail list bounded by worker_display_limit. The
-        backend keeps the whole fleet in self._workers_data and aggregates over all of it; only what a
-        browser must receive and render is bounded here."""
+    def _sorted_workers(self, sort_field: Optional[str], ascending: bool) -> List[Dict[str, Any]]:
+        """The whole fleet in one browser's sort order. Sorting happens here because the browser is only
+        ever sent a page: it has no full array to sort."""
         workers = list(self._workers_data.values())
-        if self._worker_display_limit >= 0:
-            return workers[: self._worker_display_limit]
-        return workers
+        if sort_field is None:
+            return workers
+
+        raw_field = WORKER_SORT_RAW_FIELDS.get(sort_field, sort_field)
+        if sort_field in WORKER_SORT_NUMERIC_FIELDS or sort_field in WORKER_SORT_RAW_FIELDS:
+
+            def key(worker: Dict[str, Any]) -> Any:
+                value = worker.get(raw_field, 0)
+                return value if isinstance(value, (int, float)) else 0
+
+        else:
+
+            def key(worker: Dict[str, Any]) -> Any:
+                return str(worker.get(raw_field, "")).lower()
+
+        return sorted(workers, key=key, reverse=not ascending)
+
+    def _workers_section(self, view: ClientView, cache: "_RenderCache") -> Dict[str, Any]:
+        workers = cache.sorted_workers(self, view)
+        rows, page, total_pages = paginate(workers, view.workers_page, WORKERS_PAGE_SIZE)
+        view.workers_page = page
+        return {
+            "workers": rows,
+            "workers_total": self._fleet_worker_count(),
+            "workers_page": page,
+            "workers_pages": total_pages,
+        }
+
+    def _processors_section(self, view: ClientView, cache: "_RenderCache") -> Dict[str, Any]:
+        """One page of per-worker processor detail, regrouped under the managers it belongs to. The
+        per-manager summaries are computed over every worker, not just this page."""
+        groups = cache.processors(self)
+        flat: List[Tuple[str, Dict[str, Any]]] = [
+            (group["manager_id"], worker) for group in groups for worker in group["workers"]
+        ]
+        page_rows, page, total_pages = paginate(flat, view.processors_page, PROCESSORS_PAGE_SIZE)
+        view.processors_page = page
+
+        shown: Dict[str, List[Dict[str, Any]]] = {}
+        for manager_id, worker in page_rows:
+            shown.setdefault(manager_id, []).append(worker)
+
+        paged_groups = [dict(group, workers=shown.get(group["manager_id"], [])) for group in groups]
+        return {
+            "processors": paged_groups,
+            "processors_page": page,
+            "processors_pages": total_pages,
+            "processors_total": len(flat),
+        }
+
+    def _stream_section(self, view: ClientView, cache: "_RenderCache") -> Dict[str, Any]:
+        """One page of stream rows, with each bar's row index rebased to the page."""
+        stream_data = dict(cache.stream(self, view.stream_window_minutes))
+        rows = stream_data.get("rows", [])
+        _, page, total_pages = paginate(rows, view.stream_page, STREAM_PAGE_SIZE)
+        view.stream_page = page
+
+        start = page * STREAM_PAGE_SIZE
+        end = start + STREAM_PAGE_SIZE
+        stream_data["rows"] = rows[start:end]
+        stream_data["full_rows"] = stream_data.get("full_rows", [])[start:end]
+        stream_data["row_managers"] = stream_data.get("row_managers", [])[start:end]
+        stream_data["bars"] = [
+            dict(bar, r=bar["r"] - start) for bar in stream_data.get("bars", []) if start <= bar.get("r", 0) < end
+        ]
+        stream_data["page"] = page
+        stream_data["pages"] = total_pages
+        stream_data["total_rows"] = len(rows)
+        return stream_data
 
     def _fleet_worker_count(self) -> int:
         """Full fleet size, for the "N of M" indicator next to a bounded worker list.
@@ -1093,14 +1251,8 @@ class WebUIApp:
         for mid in self._worker_managers_data:
             managers.setdefault(mid, [])
 
-        # The bounded slice of per-worker detail a browser receives, grouped back under its manager. Summaries
-        # below still cover every worker; only this detail is capped, since it dominates the payload size.
-        limit = self._worker_display_limit
-        detail_source = itertools.islice(self._worker_processors.values(), limit if limit >= 0 else None)
-        shown_by_manager: Dict[str, List[Dict[str, Any]]] = {}
-        for wp in detail_source:
-            shown_by_manager.setdefault(wp.get("manager_id", "—"), []).append(wp)
-
+        # Every worker's detail, grouped under its manager. _processors_section slices one page out of
+        # this for each browser; the summaries below always cover the whole fleet.
         result = []
         for manager_id, workers in sorted(managers.items()):
             total_rss = 0
@@ -1122,22 +1274,10 @@ class WebUIApp:
                     "total_cpu": round(total_cpu, 1),
                     "total_processors": total_processors,
                     "active_processors": active_processors,
-                    "workers": shown_by_manager.get(manager_id, []),
+                    "workers": workers,
                 }
             )
         return result
-
-    def update_settings(self, settings: Dict[str, Any]) -> None:
-        if "stream_window" in settings:
-            val = int(settings["stream_window"])
-            if val in SLIDING_WINDOW_OPTIONS:
-                self._settings["stream_window"] = val
-                self._task_stream.set_stream_window(val)
-        if "memory_scale" in settings:
-            scale = str(settings["memory_scale"])
-            if scale in ("log", "linear"):
-                self._settings["memory_scale"] = scale
-                self._memory_chart.set_memory_scale(scale)
 
     def _drain_pending_messages(self) -> None:
         """Process any pending messages from the queue immediately.
@@ -1166,16 +1306,15 @@ class WebUIApp:
         elapsed = int((datetime.datetime.now() - self._last_scheduler_heartbeat_time).total_seconds())
         return {"last_seen": format_seconds(elapsed), "stale": elapsed > self._scheduler_stale_seconds}
 
-    def get_full_state(self) -> Dict[str, Any]:
-        """Get complete current state for a newly connected client."""
+    def get_full_state(self, view: ClientView) -> Dict[str, Any]:
+        """Get complete current state for one client, in that client's view."""
         # Flush any messages that arrived since the last batch-loop iteration so
         # the snapshot is as fresh as possible.
         self._drain_pending_messages()
 
-        stream_data = self._task_stream.get_render_data()
-        self._cap_stream_rows(stream_data)
-        self._enrich_stream_with_managers(stream_data)
-        memory_data = self._memory_chart.get_render_data(stream_data["window"])
+        cache = _RenderCache()
+        stream_data = self._stream_section(view, cache)
+        memory_data = cache.memory(self, stream_data["window"], view.memory_scale)
         # combine active + completed for initial task log, sorted by time (newest first). _active_tasks is
         # unbounded (one entry per running task), so cap the snapshot to the display size -- at thousands of
         # concurrent tasks the browser only shows task_log_max_size rows anyway, and the rest stream in.
@@ -1188,38 +1327,57 @@ class WebUIApp:
 
         return {
             "scheduler": sched,
-            "workers": self._capped_workers(),
-            "workers_total": self._fleet_worker_count(),
+            **self._workers_section(view, cache),
             "task_log": initial_task_log,
             "task_log_max_size": self._task_log_max_size,
             "task_log_total": self._task_log_total,
             "task_stream": stream_data,
             "memory_chart": memory_data,
-            "processors": self._build_processors_data(),
+            **self._processors_section(view, cache),
             "worker_managers": list(self._worker_managers_data.values()),
-            "settings": self._settings,
+            "settings": view.settings(),
+            "page_sizes": {
+                "workers": WORKERS_PAGE_SIZE,
+                "processors": PROCESSORS_PAGE_SIZE,
+                "stream": STREAM_PAGE_SIZE,
+            },
+            "sort_fields": sorted(WORKER_SORT_FIELDS),
         }
 
-    async def add_client(self, ws: WebSocket) -> None:
+    def view_update(self, view: ClientView) -> Dict[str, Any]:
+        """The paged sections for one client, answered as soon as it changes page/sort/settings rather
+        than at the next tick, so the click feels immediate."""
+        cache = _RenderCache()
+        stream_data = self._stream_section(view, cache)
+        return {
+            **self._workers_section(view, cache),
+            **self._processors_section(view, cache),
+            "task_stream": stream_data,
+            "memory_chart": cache.memory(self, stream_data["window"], view.memory_scale),
+            "settings": view.settings(),
+        }
+
+    async def add_client(self, ws: WebSocket) -> ClientView:
+        view = ClientView()
         async with self._clients_lock:
-            self._clients.append(ws)
+            self._clients[ws] = view
+        return view
 
     async def remove_client(self, ws: WebSocket) -> None:
         async with self._clients_lock:
-            if ws in self._clients:
-                self._clients.remove(ws)
+            self._clients.pop(ws, None)
 
-    async def _broadcast(self, payload: Dict[str, Any]) -> None:
-        data = json.dumps(payload)
+    async def _send_to_clients(self, build_payload: Callable[[ClientView], Dict[str, Any]]) -> None:
+        """Serialize and send one payload per client: each browser is on its own page and sort order."""
         async with self._clients_lock:
             dead: List[WebSocket] = []
-            for ws in self._clients:
+            for ws, view in self._clients.items():
                 try:
-                    await ws.send_text(data)
+                    await ws.send_text(json.dumps(build_payload(view)))
                 except Exception:
                     dead.append(ws)
             for ws in dead:
-                self._clients.remove(ws)
+                self._clients.pop(ws, None)
 
 
 def create_app(config: WebGUIConfig) -> FastAPI:
@@ -1256,21 +1414,30 @@ def create_app(config: WebGUIConfig) -> FastAPI:
     @app.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket) -> None:
         await ws.accept()
-        await app_state.add_client(ws)
+        view = await app_state.add_client(ws)
         try:
             # send full state on connect
-            full_state = app_state.get_full_state()
+            full_state = app_state.get_full_state(view)
             full_state["type"] = "full_state"
             await ws.send_text(json.dumps(full_state))
 
-            # listen for client messages (settings changes)
+            # listen for this browser's view changes: paging, sorting and the chart settings, all of
+            # which only move this browser's own view
             while True:
                 data = await ws.receive_text()
                 try:
                     msg = json.loads(data)
-                    if msg.get("type") == "settings":
-                        app_state.update_settings(msg.get("settings", {}))
-                except (json.JSONDecodeError, KeyError):
+                    message_type = msg.get("type")
+                    if message_type == "settings":
+                        view.apply_settings(msg.get("settings", {}))
+                    elif message_type == "view":
+                        view.apply_view(msg.get("view", {}))
+                    else:
+                        continue
+                    update = app_state.view_update(view)
+                    update["type"] = "view_update"
+                    await ws.send_text(json.dumps(update))
+                except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                     pass
         except WebSocketDisconnect:
             pass
