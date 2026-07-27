@@ -740,7 +740,7 @@ class WebUIApp:
 
             if has_scheduler_update:
                 payload["workers"] = self._capped_workers()
-                payload["workers_total"] = self._total_workers
+                payload["workers_total"] = self._fleet_worker_count()
 
             if worker_events:
                 payload["worker_events"] = worker_events
@@ -1073,6 +1073,15 @@ class WebUIApp:
             return workers[: self._worker_display_limit]
         return workers
 
+    def _fleet_worker_count(self) -> int:
+        """Full fleet size, for the "N of M" indicator next to a bounded worker list.
+
+        Per-manager totals are authoritative when managers report in, but a deployment can run workers
+        without a registered worker manager (e.g. the native manager in fixed mode), leaving those totals
+        at zero -- in which case the workers this backend holds are the fleet it knows about.
+        """
+        return max(self._total_workers, len(self._workers_data))
+
     def _build_processors_data(self) -> List[Dict[str, Any]]:
         # Group every worker by manager for complete per-manager summaries.
         managers: Dict[str, List[Dict[str, Any]]] = {}
@@ -1180,7 +1189,7 @@ class WebUIApp:
         return {
             "scheduler": sched,
             "workers": self._capped_workers(),
-            "workers_total": self._total_workers,
+            "workers_total": self._fleet_worker_count(),
             "task_log": initial_task_log,
             "task_log_max_size": self._task_log_max_size,
             "task_log_total": self._task_log_total,
