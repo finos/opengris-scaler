@@ -12,9 +12,8 @@ var taskLogTotal = 0;  // completed tasks seen by the server since it started, u
 var TASK_LOG_MAX_SIZE = 100;  // overridden by server's task_log_max_size on initial state
 var taskLogData = [];        // full task-log data, newest first, up to TASK_LOG_MAX_SIZE
 var taskLogById = {};        // task_id -> entry, for in-place status updates
-// The worker views are paged by the server: it sends one page at a time and reports which page that was
-// and how many exist, so the browser never receives -- or parses -- the whole fleet. The task log is
-// small and bounded server-side, so it stays paged here with PAGE_SIZE.
+// The worker views are paged by the server, so the browser never receives the whole fleet. The task
+// log is small and bounded server-side, so it stays paged here with PAGE_SIZE.
 var PAGE_SIZE = 50;
 var workersPage = 0;
 var workersPages = 1;
@@ -191,9 +190,7 @@ function sendSettings(settings) {
     }
 }
 
-// Tell the server what this browser is looking at (page, sort column). It answers with just that view,
-// so paging and sorting are immediate instead of waiting for the next scheduler update -- and because
-// the view lives on this socket, other browsers are unaffected.
+// Tell the server what this browser is looking at; it answers immediately with just that view.
 function sendView(view) {
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "view", view: view }));
@@ -271,8 +268,7 @@ function handleMessage(data) {
     }
 }
 
-// Page/sort bookkeeping the server owns: it clamps the page it actually served, so mirror that back
-// rather than trusting what this browser last asked for.
+// The server clamps the page it actually served, so mirror that back rather than what we asked for.
 function applyPageInfo(data) {
     if (typeof data.workers_total === "number") workersTotal = data.workers_total;
     if (typeof data.workers_page === "number") workersPage = data.workers_page;
@@ -408,8 +404,7 @@ function renderManagers() {
 }
 
 // -- Live Tab: Workers --
-// Column order of the workers table; the header click sends the field name to the server, which knows
-// which of them sort numerically.
+// Column order of the workers table; a header click sends the field name to the server.
 var WORKER_FIELDS = ["name", "manager_id", "agt_cpu", "agt_rss", "proc_cpu", "proc_rss", "mem_used_pct",
                      "free", "sent", "queued", "suspended", "lag", "itl", "last_seen", "capabilities"];
 
@@ -440,8 +435,7 @@ function updateWorkersCountBadge() {
     workersCount.textContent = workersTotal;
 }
 
-// Sorting runs on the server (it holds the whole fleet; this browser only has a page), so a header click
-// records the indicator and asks for page 0 of the new order.
+// Sorting runs on the server, so a click just sets the indicator and asks for page 0 of the new order.
 function setupWorkerSort() {
     var thead = workersBody.parentElement.querySelector("thead tr");
     if (!thead) return;

@@ -53,14 +53,12 @@ SLIDING_WINDOW_OPTIONS = {
 
 DEFAULT_STREAM_WINDOW_MINUTES = 5
 
-# Rows per page for the views a browser pages through. The server owns these because it now serves one
-# page at a time: the browser reads them from the initial state, so the two cannot drift apart.
+# Rows per page. The browser reads these from the initial state, so the two cannot drift apart.
 WORKERS_PAGE_SIZE = 50
 PROCESSORS_PAGE_SIZE = 20
 STREAM_PAGE_SIZE = 50
 
-# Columns the workers table can be sorted by, and how. Sorting runs here rather than in the browser
-# because the browser only ever holds one page; these mirror the table's columns.
+# Columns the workers table can be sorted by, mirroring the table's own columns.
 WORKER_SORT_NUMERIC_FIELDS = frozenset(
     {"agt_cpu", "agt_rss", "proc_cpu", "proc_rss", "mem_used_pct", "free", "sent", "queued", "suspended"}
 )
@@ -73,11 +71,7 @@ WORKER_SORT_FIELDS = frozenset(
 
 @dataclasses.dataclass
 class ClientView:
-    """What one browser is looking at: its page in each paged view, its sort column, its chart settings.
-
-    Held per socket. Two browsers therefore never overwrite each other -- paging, sorting and the
-    stream/memory chart controls used to be global server state, so one viewer's click moved everyone.
-    """
+    """What one browser is looking at. Held per socket, so viewers never move each other's view."""
 
     workers_page: int = 0
     workers_sort: Optional[str] = None
@@ -100,7 +94,7 @@ class ClientView:
             self.workers_sort_ascending = bool(view["workers_sort_ascending"])
 
     def apply_settings(self, settings: Dict[str, Any]) -> None:
-        """Apply a browser's `settings` message (the stream window and memory scale controls)."""
+        """Apply a browser's `settings` message, ignoring anything unrecognised."""
         if "stream_window" in settings:
             window = int(settings["stream_window"])
             if window in SLIDING_WINDOW_OPTIONS:
@@ -115,12 +109,8 @@ class ClientView:
 
 
 class _RenderCache:
-    """Memoizes the whole-fleet work shared by every connected browser, for one tick.
-
-    Browsers are served one page each, but the sort, the processor grouping and the stream render still
-    run over the whole fleet. Viewers usually share the same sort column and window, so this computes
-    each distinct one once per tick instead of once per browser.
-    """
+    """Memoizes the whole-fleet work (sort, grouping, stream render) for one tick, so N browsers
+    sharing a sort column cost one sort rather than N."""
 
     def __init__(self) -> None:
         self._sorted_workers: Dict[Tuple[Optional[str], bool], List[Dict[str, Any]]] = {}
@@ -154,10 +144,7 @@ class _RenderCache:
 
 
 def paginate(items: List[Any], page: int, size: int) -> Tuple[List[Any], int, int]:
-    """Slice `items` into the requested page, clamping it to what exists.
-
-    Returns (rows, clamped page, total pages).
-    """
+    """Slice `items` into the requested page, clamped to what exists: (rows, page, total pages)."""
     total_pages = max(1, (len(items) + size - 1) // size)
     page = min(max(page, 0), total_pages - 1)
     return items[page * size : page * size + size], page, total_pages
@@ -451,8 +438,7 @@ class TaskStreamState:
             self._seen_workers.discard(worker)
 
     def get_render_data(self, window_minutes: int) -> Dict[str, Any]:
-        """Render the stream over the requested window. The window is a per-browser setting, so it is
-        passed in rather than held here -- viewers can watch different windows at the same time."""
+        """Render the stream. The window is per-browser, so it is passed in rather than held here."""
         now = datetime.datetime.now()
         now_ts = now.timestamp()
 
@@ -684,7 +670,7 @@ class MemoryChartState:
             self._points.append((now.timestamp(), -profile.memory_peak))
 
     def get_render_data(self, window_seconds: float, scale: str) -> Dict[str, Any]:
-        """Render the chart for one browser's window and scale, both per-viewer settings."""
+        """Render the chart. Window and scale are per-browser, so they are passed in."""
         now = datetime.datetime.now()
         now_ts = now.timestamp()
         cutoff_ts = now_ts - self._memory_store_time.total_seconds()
@@ -851,8 +837,7 @@ class WebUIApp:
             if has_scheduler_update:
                 shared["worker_managers"] = list(self._worker_managers_data.values())
 
-            # The paged parts differ per browser, so serialize per client. The whole-fleet work behind
-            # them (sort, grouping, stream render) is shared through the cache.
+            # The paged parts differ per browser; the fleet-wide work behind them is shared via the cache.
             cache = _RenderCache()
             await self._send_to_clients(
                 lambda view: {
@@ -967,8 +952,7 @@ class WebUIApp:
                 "queued": worker_data.queued,
                 "suspended": worker_data.suspended,
                 "lag": format_microseconds(worker_data.lagUS),
-                # raw values behind the two preformatted columns, so sorting on them orders by magnitude
-                # instead of by the display string
+                # raw values behind the preformatted columns, so sorting them orders by magnitude
                 "lag_us": worker_data.lagUS,
                 "last_s": worker_data.lastS,
                 "itl": worker_data.itl,
@@ -1158,8 +1142,7 @@ class WebUIApp:
         stream_data["manager_legend"] = manager_legend
 
     def _sorted_workers(self, sort_field: Optional[str], ascending: bool) -> List[Dict[str, Any]]:
-        """The whole fleet in one browser's sort order. Sorting happens here because the browser is only
-        ever sent a page: it has no full array to sort."""
+        """The whole fleet in one browser's sort order; the browser holds a page and cannot sort."""
         workers = list(self._workers_data.values())
         if sort_field is None:
             return workers
@@ -1190,8 +1173,7 @@ class WebUIApp:
         }
 
     def _processors_section(self, view: ClientView, cache: "_RenderCache") -> Dict[str, Any]:
-        """One page of per-worker processor detail, regrouped under the managers it belongs to. The
-        per-manager summaries are computed over every worker, not just this page."""
+        """One page of processor detail; the per-manager summaries still cover every worker."""
         groups = cache.processors(self)
         flat: List[Tuple[str, Dict[str, Any]]] = [
             (group["manager_id"], worker) for group in groups for worker in group["workers"]
@@ -1251,8 +1233,7 @@ class WebUIApp:
         for mid in self._worker_managers_data:
             managers.setdefault(mid, [])
 
-        # Every worker's detail, grouped under its manager. _processors_section slices one page out of
-        # this for each browser; the summaries below always cover the whole fleet.
+        # Every worker's detail; _processors_section slices one page out of it per browser.
         result = []
         for manager_id, workers in sorted(managers.items()):
             total_rss = 0
@@ -1345,8 +1326,7 @@ class WebUIApp:
         }
 
     def view_update(self, view: ClientView) -> Dict[str, Any]:
-        """The paged sections for one client, answered as soon as it changes page/sort/settings rather
-        than at the next tick, so the click feels immediate."""
+        """The paged sections for one client, answered on its change instead of at the next tick."""
         cache = _RenderCache()
         stream_data = self._stream_section(view, cache)
         return {
@@ -1421,8 +1401,7 @@ def create_app(config: WebGUIConfig) -> FastAPI:
             full_state["type"] = "full_state"
             await ws.send_text(json.dumps(full_state))
 
-            # listen for this browser's view changes: paging, sorting and the chart settings, all of
-            # which only move this browser's own view
+            # this browser's own view changes: paging, sorting, chart settings
             while True:
                 data = await ws.receive_text()
                 try:
