@@ -105,6 +105,13 @@ function renderActiveTab() {
     }
 }
 
+// Every paged view carries the same controls above and below its content, so paging a long table does
+// not mean scrolling to the bottom for every click.
+function renderPagers(elId, page, totalPages, total, onPage) {
+    renderPager(elId + "-top", page, totalPages, total, onPage);
+    renderPager(elId, page, totalPages, total, onPage);
+}
+
 // Numbered-page controls: renders "Prev  Page X / Y (N)  Next" into elId; onPage(newPage) re-renders the view.
 // Renders nothing (hidden via CSS) when there is only one page.
 function renderPager(elId, page, totalPages, total, onPage) {
@@ -424,7 +431,7 @@ function renderWorkers() {
         workersBody.appendChild(row);
     }
     updateWorkersCountBadge();
-    renderPager("workers-pager", workersPage, workersPages, workersTotal, function(p) {
+    renderPagers("workers-pager", workersPage, workersPages, workersTotal, function(p) {
         workersPage = p;
         sendView({ workers_page: p });
     });
@@ -602,7 +609,7 @@ function renderTaskLog() {
     tasklogBody.innerHTML = "";
     for (var i = 0; i < pageEntries.length; i++) tasklogBody.appendChild(makeTaskLogRow(pageEntries[i]));
     updateTaskLogBadge();
-    renderPager("tasklog-pager", taskLogPage, pg.totalPages, taskLogData.length, function(p) {
+    renderPagers("tasklog-pager", taskLogPage, pg.totalPages, taskLogData.length, function(p) {
         taskLogPage = p;
         renderTaskLog();
     });
@@ -675,7 +682,7 @@ function updateTaskStream(data) {
     streamTicks = data.ticks || [];
     streamWindow = data.window || 300;
     streamLegendData = data.legend || [];
-    renderPager("stream-pager", streamPage, streamPages, streamTotal, function(p) {
+    renderPagers("stream-pager", streamPage, streamPages, streamTotal, function(p) {
         streamPage = p;
         sendView({ stream_page: p });
     });
@@ -1139,7 +1146,7 @@ function renderProcessors() {
     processorsContainer.innerHTML = "";
     if (processorsTotal === 0) {
         processorsContainer.innerHTML = '<div class="card"><p style="color:#64748b">No workers connected</p></div>';
-        renderPager("processors-pager", 0, 1, 0, function() {});
+        renderPagers("processors-pager", 0, 1, 0, function() {});
         return;
     }
 
@@ -1152,7 +1159,7 @@ function renderProcessors() {
             section.appendChild(buildWorkerProcessorDetail(group.workers[i]));
         }
     }
-    renderPager("processors-pager", processorsPage, processorsPages, processorsTotal, function(p) {
+    renderPagers("processors-pager", processorsPage, processorsPages, processorsTotal, function(p) {
         processorsPage = p;
         sendView({ processors_page: p });
     });

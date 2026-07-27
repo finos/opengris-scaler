@@ -75,6 +75,7 @@
 
         <div class="card">
             <h3>Workers <span class="badge" id="workers-count">0</span></h3>
+            <div class="pager pager-top" id="workers-pager-top"></div>
             <div class="table-wrap">
                 <!-- Agt/Proc memory is PSS (proportional set size) on Linux, RSS on macOS/Windows; see get_process_memory. -->
                 <table class="data-table" id="workers-table">
@@ -108,6 +109,7 @@
     <div class="tab-panel" id="panel-tasklog">
         <div class="card">
             <h3>Task Log <span class="badge" id="tasklog-count">0</span></h3>
+            <div class="pager pager-top" id="tasklog-pager-top"></div>
             <div class="table-wrap">
                 <table class="data-table" id="tasklog-table">
                     <thead>
@@ -137,6 +139,7 @@
                 <button class="fit-page-btn" id="fit-page-btn" title="Toggle fit-to-page layout">Fit Page</button>
             </div>
             <div class="legend" id="stream-legend"></div>
+            <div class="pager pager-top" id="stream-pager-top"></div>
             <div class="stream-container" id="stream-container">
                 <canvas id="stream-canvas"></canvas>
             </div>
@@ -153,6 +156,7 @@
 
     <!-- Tab: Worker Processors -->
     <div class="tab-panel" id="panel-processors">
+        <div class="pager pager-top" id="processors-pager-top"></div>
         <div id="processors-container"></div>
         <div class="pager" id="processors-pager"></div>
     </div>

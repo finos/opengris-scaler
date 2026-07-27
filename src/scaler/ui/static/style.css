@@ -642,6 +642,10 @@ body.fit-page #memory-card .memory-container {
 .pager:empty {
     display: none;
 }
+/* the copy above the content pads below itself instead of above, so it hugs the heading */
+.pager-top {
+    padding: 0 4px 8px;
+}
 .pager-btn {
     font-family: var(--font);
     font-size: 12px;
