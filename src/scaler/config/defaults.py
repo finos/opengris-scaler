@@ -98,8 +98,9 @@ DEFAULT_LOGGING_PATHS = ("/dev/stdout",)
 # =======================
 # WEB GUI (scaler_gui) SPECIFIC OPTIONS
 
-# how often the web GUI backend pushes an update to connected browsers; drives the streaming chart cadence
-DEFAULT_GUI_BROADCAST_INTERVAL_SECONDS = 0.1
+# how often the web GUI backend pushes an update to connected browsers; drives the streaming chart cadence.
+# Pushing faster mostly redraws the same picture: one tick is about a pixel over the stream's 5 minute window.
+DEFAULT_GUI_BROADCAST_INTERVAL_SECONDS = 0.5
 
 # maximum number of completed tasks the web GUI retains and shows in the task log
 DEFAULT_GUI_TASK_LOG_MAX_SIZE = 500

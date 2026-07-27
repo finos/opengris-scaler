@@ -1020,7 +1020,7 @@ UI arguments
      - Host and port for the web server.
    * - ``-bi``, ``--broadcast-interval-seconds``
      - No
-     - ``0.1``
+     - ``0.5``
      - Interval between updates the web GUI pushes to connected browsers.
    * - ``-tl``, ``--task-log-max-size``
      - No
