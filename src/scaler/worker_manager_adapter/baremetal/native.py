@@ -6,11 +6,12 @@ import os
 import signal
 import sys
 import uuid
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List
 
 import psutil
 
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
+from scaler.utility.exitcode import describe_exitcode
 from scaler.worker.worker import Worker
 from scaler.worker_manager_adapter.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager_adapter.common import extract_desired_count
@@ -21,15 +22,6 @@ if TYPE_CHECKING:
     from scaler.protocol.capnp import WorkerManagerCommand
 
 logger = logging.getLogger(__name__)
-
-
-def _describe_exitcode(exitcode: Optional[int]) -> str:
-    if exitcode is not None and exitcode < 0:
-        try:
-            return f"{exitcode} ({signal.Signals(-exitcode).name})"
-        except ValueError:
-            pass
-    return str(exitcode)
 
 
 class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
@@ -119,7 +111,7 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
 
                 if worker in terminated_by_us:
                     logger.info(
-                        f"native worker {worker.identity!r} stopped (exitcode={_describe_exitcode(worker.exitcode)})"
+                        f"native worker {worker.identity!r} stopped (exitcode={describe_exitcode(worker.exitcode)})"
                     )
                 elif worker.exitcode == 0:
                     # A worker exits 0 only when it was told to stop (by the scheduler or a
@@ -129,7 +121,7 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
                 else:
                     logger.warning(
                         f"native worker {worker.identity!r} exited unexpectedly "
-                        f"(exitcode={_describe_exitcode(worker.exitcode)})"
+                        f"(exitcode={describe_exitcode(worker.exitcode)})"
                     )
 
     async def set_desired_task_concurrency(
