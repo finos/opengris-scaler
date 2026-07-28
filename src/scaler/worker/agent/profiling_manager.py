@@ -37,7 +37,8 @@ class VanillaProfilingManager(ProfilingManager, Looper):
 
     def on_process_end(self, pid: int):
         if pid not in self._process_profiler_by_pid:
-            raise ValueError(f"process {pid=} is not registered.")
+            logger.error(f"process {pid=} is not registered.")
+            return
 
         self._process_profiler_by_pid.pop(pid)
 

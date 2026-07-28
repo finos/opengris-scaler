@@ -159,6 +159,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         task = holder.task()
         if task is not None:
+            self._suspended_holders_by_task_id.pop(task.taskId, None)
             profile_result = self.__end_task(holder)  # profiling the task should happen before killing the processor
         else:
             profile_result = None
@@ -222,7 +223,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         return True
 
-    def on_resume_task(self, task_id: TaskID) -> bool:
+    async def on_resume_task(self, task_id: TaskID) -> bool:
         assert self._can_accept_task_lock.locked()
         assert self.current_processor_is_initialized()
 
@@ -234,10 +235,16 @@ class VanillaProcessorManager(ProcessorManager):
         if suspended_holder is None:
             return False
 
+        # A suspended processor that died (e.g. killed by the OS' OOM killer) cannot be resumed. Clean it and keep the
+        # current healthy processor.
+        if not suspended_holder.resume():
+            await self.on_failing_processor(suspended_holder.processor_id(), "died while suspended")
+            self._can_accept_task_lock.release()
+            return False
+
         self.__kill_processor("replaced by suspended processor", self._current_holder)
 
         self._current_holder = suspended_holder
-        suspended_holder.resume()
 
         logger.info(f"{self._identity!r}: resume Processor[{self._current_holder.pid()}]")
 

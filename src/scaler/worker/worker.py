@@ -4,7 +4,7 @@ import multiprocessing
 import pathlib
 import sys
 import uuid
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import PROFILING_INTERVAL_SECONDS
@@ -329,13 +329,13 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             await self.__graceful_shutdown()
 
         if self._connector_external is not None:
-            self._connector_external.destroy()
+            self.__try_destroy("connector_external", self._connector_external.destroy)
         if self._processor_manager is not None:
-            self._processor_manager.destroy("quit")
+            self.__try_destroy("processor_manager", lambda: self._processor_manager.destroy("quit"))
         if self._binder_internal is not None:
-            self._binder_internal.destroy()
+            self.__try_destroy("binder_internal", self._binder_internal.destroy)
         if self._connector_storage is not None:
-            self._connector_storage.destroy()
+            self.__try_destroy("connector_storage", self._connector_storage.destroy)
 
         if (
             self._address_internal is not None
@@ -344,6 +344,12 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         ):
             # Windows named pipes have no filesystem entry to remove; only unlink Unix-domain-socket paths.
             pathlib.Path(self._address_internal.host).unlink(missing_ok=True)
+
+    def __try_destroy(self, name: str, destroy_func: Callable[..., None]) -> None:
+        try:
+            destroy_func()
+        except Exception as e:
+            logger.exception(f"{self.identity!r}: failed to destroy {name}: {e}")
 
     def __register_signal(self):
         if isinstance(self._backend, ZMQNetworkBackend):

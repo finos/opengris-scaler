@@ -79,7 +79,7 @@ class ProcessorManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_resume_task(self, task_id: TaskID) -> bool:
+    async def on_resume_task(self, task_id: TaskID) -> bool:
         raise NotImplementedError()
 
     @abc.abstractmethod

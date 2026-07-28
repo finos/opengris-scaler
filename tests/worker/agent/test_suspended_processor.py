@@ -9,6 +9,7 @@ import time
 import unittest
 
 from scaler import Client, SchedulerClusterCombo
+from scaler.config.defaults import DEFAULT_HEARTBEAT_INTERVAL_SECONDS
 from scaler.utility.exceptions import ProcessorDiedError
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
@@ -72,7 +73,8 @@ class TestDyingSuspendedProcessor(unittest.TestCase):
         See https://github.com/finos/opengris-scaler/issues/921
         """
 
-        CHILD_DURATION_SECONDS = 15
+        # Must keep the parent suspended until the worker notices it died, which happens on the next heartbeat.
+        CHILD_DURATION_SECONDS = 2 * DEFAULT_HEARTBEAT_INTERVAL_SECONDS
 
         parent_pid_path = os.path.join(self.directory, "parent_pid")
         child_started_path = os.path.join(self.directory, "child_started")

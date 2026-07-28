@@ -90,6 +90,9 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
 
         mem_limit, mem_available = get_memory_limit_and_available()
 
+        queued_tasks = self._worker_task_manager.get_queued_size() - num_suspended_processors
+        assert queued_tasks >= 0, f"negative queued task count, {num_suspended_processors=}"
+
         # TODO: add task queue size to WorkerHeartbeat
         await self._connector_external.send(
             WorkerHeartbeat(
@@ -99,7 +102,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
                 rssFree=mem_available,
                 memLimit=mem_limit,
                 queueSize=self._task_queue_size,
-                queuedTasks=self._worker_task_manager.get_queued_size() - num_suspended_processors,
+                queuedTasks=queued_tasks,
                 latencyUS=self._latency_us,
                 taskLock=self._processor_manager.can_accept_task(),
                 processors=[self.__get_processor_status_from_holder(processor) for processor in processors],
