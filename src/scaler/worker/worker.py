@@ -374,7 +374,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             return
 
         try:
-            await self._connector_external.send(DisconnectRequest(worker=self.identity))
+            await self._connector_external.send(DisconnectRequest(worker=self.identity), detached=False)
         except ymq.YMQException:
             pass
 

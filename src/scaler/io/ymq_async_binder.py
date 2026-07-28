@@ -1,13 +1,14 @@
+import asyncio
 import logging
 from collections import defaultdict
-from typing import Awaitable, Callable, Dict, Optional
+from typing import Awaitable, Callable, Dict, Optional, Set
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
 from scaler.io.mixins import AsyncBinder
 from scaler.io.utility import deserialize, serialize
 from scaler.io.ymq import BinderSocket, Bytes, ConnectorSocketClosedByRemoteEndError, IOContext
-from scaler.io.ymq.utils import to_tls_config
+from scaler.io.ymq.utils import run_detached, to_tls_config
 from scaler.protocol.capnp import BaseMessage, BinderStatus
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,8 @@ class YMQAsyncBinder(AsyncBinder):
 
         self._received: Dict[str, int] = defaultdict(lambda: 0)
         self._sent: Dict[str, int] = defaultdict(lambda: 0)
+
+        self._pending_tasks: Set["asyncio.Task"] = set()
 
     def __del__(self):
         self.destroy()
@@ -45,6 +48,9 @@ class YMQAsyncBinder(AsyncBinder):
     def destroy(self):
         if self._socket is None:
             return
+
+        for task in self._pending_tasks.copy():
+            task.cancel()
 
         self._socket.shutdown()
 
@@ -71,14 +77,19 @@ class YMQAsyncBinder(AsyncBinder):
             # tear down the whole scheduler for what is a normal peer departure.
             pass
 
-    async def send(self, to: bytes, message: BaseMessage):
-        # Errors (including ConnectorSocketClosedByRemoteEndError when the peer is gone) propagate
-        # up to whoever drove this send - the AsyncBinder send/recv API maps 1:1 to the underlying
-        # C++ BinderSocket. The scheduler-side swallow lives in routine() above, which is the loop
-        # that actually has to stay alive across peer departures.
+    async def send(self, to: bytes, message: BaseMessage, *, detached: bool = True):
         assert self._socket is not None
         self.__count_sent(message.__class__.__name__)
-        await self._socket.send_message(to.decode(), Bytes(serialize(message)))
+
+        awaitable = self._socket.send_message(to.decode(), Bytes(serialize(message)))
+
+        if not detached:
+            await awaitable
+            return
+
+        self._pending_tasks.add(
+            run_detached(awaitable, f"{self.__get_prefix()} send to {to!r}", self._pending_tasks.discard)
+        )
 
     def get_status(self) -> BinderStatus:
         return BinderStatus(
@@ -93,3 +104,6 @@ class YMQAsyncBinder(AsyncBinder):
 
     def __count_sent(self, message_type: str):
         self._sent[message_type] += 1
+
+    def __get_prefix(self) -> str:
+        return f"{self.__class__.__name__}[{self._identity!r}]:"

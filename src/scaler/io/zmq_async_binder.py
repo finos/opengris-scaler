@@ -77,7 +77,8 @@ class ZMQAsyncBinder(AsyncBinder):
         self.__count_received(message.__class__.__name__)
         await self._callback(source.bytes, message)
 
-    async def send(self, to: bytes, message: BaseMessage):
+    async def send(self, to: bytes, message: BaseMessage, *, detached: bool = True):
+        # `detached` is ignored: a ZMQ ROUTER socket is always fire-and-forget.
         self.__count_sent(message.__class__.__name__)
         await self._socket.send_multipart([to, serialize(message)], copy=False)
 
