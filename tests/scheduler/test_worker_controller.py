@@ -37,9 +37,10 @@ class TestWorkerControllerMassEviction(unittest.TestCase):
     """A whole batch of workers dropping at once must be cleaned up without crashing the scheduler.
 
     With one shared capability every task fits every worker, so a task shed from a dead worker is
-    reassigned to another dead-but-still-registered worker whose send also fails. __send_to_worker swallows
-    that departed-peer error instead of re-entering the disconnect path, so the heartbeat sweep disconnects
-    the whole batch iteratively, without a per-worker reroute cascade or unbounded coroutine recursion.
+    reassigned to another dead-but-still-registered worker whose send also fails. Nothing on that path may
+    re-enter the disconnect path: the heartbeat sweep disconnects the whole batch iteratively, without a
+    per-worker reroute cascade or unbounded coroutine recursion. The fake binder below raises on a send to
+    a dead worker, which real detached sends no longer do -- keeping it holds the stricter guarantee.
     """
 
     N_WORKERS = 300  # a large simultaneous batch, well past any reasonable recursion limit
@@ -96,8 +97,8 @@ class TestWorkerControllerMassEviction(unittest.TestCase):
                 await task_controller.on_task_new(self._make_task(i))
             for i in range(self.N_WORKERS):  # a batch of pods is evicted at once
                 binder.dead.add(WorkerID(f"worker-{i}".encode()))
-            # Must not raise RecursionError: the sweep disconnects the batch iteratively and each failed
-            # reroute send is swallowed rather than re-entering the disconnect path.
+            # Must not raise RecursionError: the sweep disconnects the batch iteratively rather than
+            # letting a failed reroute send re-enter the disconnect path.
             await worker_controller.routine()
 
         _run(scenario())

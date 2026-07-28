@@ -256,33 +256,33 @@ class Scheduler:
     async def get_loops(self):
         await self.__initialize_network()
 
-        # swallow_peer_departed=True: the scheduler serves many transient peers (workers/clients), so a
-        # send racing a peer's departure must not escape a timer loop and tear the whole scheduler down.
+        # swallow_routine_errors=True: a bug in any single routine must not escape to asyncio.gather and
+        # tear the whole scheduler down, taking every connected client and worker with it.
         loops = [
-            create_async_loop_routine(self._binder.routine, 0, swallow_peer_departed=True),
-            create_async_loop_routine(self._connector_storage.routine, 0, swallow_peer_departed=True),
-            create_async_loop_routine(self._graph_controller.routine, 0, swallow_peer_departed=True),
+            create_async_loop_routine(self._binder.routine, 0, swallow_routine_errors=True),
+            create_async_loop_routine(self._connector_storage.routine, 0, swallow_routine_errors=True),
+            create_async_loop_routine(self._graph_controller.routine, 0, swallow_routine_errors=True),
             create_async_loop_routine(
                 self._balance_controller.routine,
                 self._config_controller.get_config("load_balance_seconds"),
-                swallow_peer_departed=True,
+                swallow_routine_errors=True,
             ),
             create_async_loop_routine(
-                self._client_manager.routine, CLEANUP_INTERVAL_SECONDS, swallow_peer_departed=True
+                self._client_manager.routine, CLEANUP_INTERVAL_SECONDS, swallow_routine_errors=True
             ),
             create_async_loop_routine(
-                self._object_controller.routine, CLEANUP_INTERVAL_SECONDS, swallow_peer_departed=True
+                self._object_controller.routine, CLEANUP_INTERVAL_SECONDS, swallow_routine_errors=True
             ),
             create_async_loop_routine(
-                self._worker_controller.routine, CLEANUP_INTERVAL_SECONDS, swallow_peer_departed=True
+                self._worker_controller.routine, CLEANUP_INTERVAL_SECONDS, swallow_routine_errors=True
             ),
             create_async_loop_routine(
-                self._worker_manager_controller.routine, CLEANUP_INTERVAL_SECONDS, swallow_peer_departed=True
+                self._worker_manager_controller.routine, CLEANUP_INTERVAL_SECONDS, swallow_routine_errors=True
             ),
             create_async_loop_routine(
                 self._information_controller.routine,
                 self._config_controller.get_config("status_report_interval_seconds"),
-                swallow_peer_departed=True,
+                swallow_routine_errors=True,
             ),
         ]
 

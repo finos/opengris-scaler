@@ -4,9 +4,7 @@ from collections import deque
 from typing import Any, Awaitable, Callable, Deque, Dict, List, Optional, Tuple
 
 from scaler.io.mixins import AsyncBinder, AsyncPublisher
-from scaler.io.ymq import ConnectorSocketClosedByRemoteEndError
 from scaler.protocol.capnp import (
-    BaseMessage,
     StateTask,
     Task,
     TaskCancel,
@@ -239,8 +237,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         assert state_machine.current_state() == TaskState.running
 
         task = self._task_id_to_task[task_id]
-        if not await self.__send_to_worker(worker_id, task):
-            return
+        await self._binder.send(worker_id, task)
         await self.__send_monitor(task_id, self._object_controller.get_object_name(task.funcObjectId))
 
     async def __state_canceling(
@@ -350,8 +347,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             )
             return
 
-        if not await self.__send_to_worker(worker, task_cancel):
-            return
+        await self._binder.send(worker, task_cancel)
         await self.__send_monitor(task_cancel.taskId, b"")
 
     async def __send_task_result_to_client(self, task_result: TaskResult):
@@ -363,7 +359,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 f"registered (likely disconnected via client_timeout_seconds while the task was running)"
             )
         else:
-            await self.__send_to_client(client, task_result)
+            await self._binder.send(client, task_result)
 
         func_name = b""
         task = self._task_id_to_task.get(task_result.taskId)
@@ -387,7 +383,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 f"longer registered"
             )
         else:
-            await self.__send_to_client(client, task_cancel_confirm)
+            await self._binder.send(client, task_cancel_confirm)
         await self.__send_monitor(task_cancel_confirm.taskId, b"")
         self._task_state_manager.remove_state_machine(task_cancel_confirm.taskId)
         self._task_id_to_task.pop(task_cancel_confirm.taskId)
@@ -412,37 +408,6 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             )
         )
 
-    async def __send_to_worker(self, worker_id: WorkerID, message: BaseMessage) -> bool:
-        """Send to a worker, returning False if its socket was already closed by the peer.
-
-        A worker can die between its last heartbeat and this send (pod eviction, crash), and the closed
-        socket only surfaces here. A dead worker must never crash the scheduler, so swallow the error --
-        raised from a timer loop (not the binder receive loop) it would otherwise propagate through
-        asyncio.gather and tear the scheduler down. Rerouting the worker's tasks is left to the disconnect
-        path (its DisconnectRequest, or the heartbeat-timeout sweep); the False return only tells the
-        caller to stop this transition.
-        """
-        try:
-            await self._binder.send(worker_id, message)
-            return True
-        except ConnectorSocketClosedByRemoteEndError:
-            logger.info(f"{worker_id!r}: departed before {type(message).__name__} could be sent")
-            return False
-
-    async def __send_to_client(self, client_id: ClientID, message: BaseMessage) -> None:
-        """Deliver a result/cancel-confirm to a client, dropping it if the client has departed.
-
-        Swallowing the departed-client error HERE (rather than letting it raise out to __routing) is what
-        keeps the caller's cleanup running -- remove_state_machine, _task_id_to_task.pop and, critically,
-        __retry_unassignable. If it escaped, a client killed while its tasks are completing would leave
-        those tasks' state machines in limbo and, because the retry is skipped, freed workers would never
-        be handed the queued tasks, wedging the scheduler.
-        """
-        try:
-            await self._binder.send(client_id, message)
-        except ConnectorSocketClosedByRemoteEndError:
-            logger.info(f"{client_id!r}: departed, dropping undeliverable task message")
-
     async def __routing(self, task_id: TaskID, transition: TaskTransition, **kwargs):
         state_machine = self._task_state_manager.on_transition(task_id, transition)
         if state_machine is None:
@@ -451,12 +416,6 @@ class VanillaTaskController(TaskController, Looper, Reporter):
 
         try:
             await self._state_functions[state_machine.current_state()](task_id, state_machine, **kwargs)  # noqa
-        except ConnectorSocketClosedByRemoteEndError:
-            # Defensive net for any undeliverable send during a transition. __send_to_worker and
-            # __send_to_client swallow their own departed-peer errors, but anything they miss must still
-            # not be fatal here: raised from a timer loop (balancer/cleanup) rather than the binder receive
-            # loop, re-raising would propagate through asyncio.gather and tear the whole scheduler down.
-            logger.info(f"{task_id!r}: peer departed during {transition}, dropping undeliverable message")
         except Exception:
             # A bug in a state function must not crash the scheduler: __routing runs both from message
             # handlers and from the balance/cleanup timer loops, so re-raising would propagate through
