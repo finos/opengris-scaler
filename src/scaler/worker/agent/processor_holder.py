@@ -78,8 +78,8 @@ class ProcessorHolder:
         return self._process
 
     def exitcode(self) -> Optional[int]:
-        """The processor's exit code, once it has exited. Reaps it if it terminated but was not yet joined,
-        so a processor that died on its own (e.g. OOM -> SIGKILL) reports how it died, not a signal we sent."""
+        """The processor's exit code, or None if it has not exited yet: `Process.exitcode` reaps on read, so a
+        processor that died on its own reports how it died even though `kill()` never joined it."""
         if self._processor.exitcode is None:
             self._processor.join(timeout=0.1)
         return self._processor.exitcode

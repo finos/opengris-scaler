@@ -4,17 +4,30 @@
 // -- State --
 var ws = null;
 var reconnectDelay = 500;
-var workerRows = {};       // worker_id -> <tr> element
-var workerSortField = null;  // current sort column field name
+var workerSortField = null;  // current sort column field name (the server does the sorting)
 var workerSortAsc = true;    // sort direction
-var lastWorkersData = [];    // latest workers array for re-sorting
-var taskLogCount = 0;
+var lastWorkersData = [];    // this browser's page of worker rows, already sorted by the server
+var workersTotal = 0;        // full fleet size, of which this browser holds one page
+var taskLogTotal = 0;  // completed tasks seen by the server since it started, uncapped by the display ring
 var TASK_LOG_MAX_SIZE = 100;  // overridden by server's task_log_max_size on initial state
-var taskRowMap = {};  // task_id -> tr element for in-place updates
-var streamBars = [];       // current bar data from server
-var streamRows = [];       // row labels (truncated)
-var streamFullRows = [];   // row labels (full worker names)
-var streamRowManagers = []; // manager color per row
+var taskLogData = [];        // full task-log data, newest first, up to TASK_LOG_MAX_SIZE
+var taskLogById = {};        // task_id -> entry, for in-place status updates
+// The worker views are paged by the server, so the browser never receives the whole fleet. The task
+// log is small and bounded server-side, so it stays paged here with PAGE_SIZE.
+var PAGE_SIZE = 50;
+var workersPage = 0;
+var workersPages = 1;
+var taskLogPage = 0;
+var processorsPage = 0;
+var processorsPages = 1;
+var processorsTotal = 0;
+var streamPage = 0;
+var streamPages = 1;
+var streamTotal = 0;
+var streamBars = [];       // bars for this page, row index already re-based page-local by the server
+var streamRows = [];       // row labels (truncated) for the current page
+var streamFullRows = [];   // row labels (full worker names) for the current page
+var streamRowManagers = []; // manager color per row, current page
 var streamManagerColors = {}; // manager_id -> color
 var memoryPoints = [];     // memory chart points
 var memoryScale = "linear";
@@ -40,6 +53,7 @@ var schedRssFree = $("sched-rss-free");
 var schedLastSeen = $("sched-last-seen");
 var managersBody = $("managers-body");
 var workersBody = $("workers-body");
+var workersCount = $("workers-count");
 var tasklogBody = $("tasklog-body");
 var tasklogCount = $("tasklog-count");
 var streamCanvas = $("stream-canvas");
@@ -80,6 +94,8 @@ function renderActiveTab() {
         if (lastSchedulerData) renderScheduler(lastSchedulerData);
         renderWorkers();
         renderManagers();
+    } else if (activeTab === "tasklog") {
+        renderTaskLog();
     } else if (activeTab === "processors") {
         renderProcessors();
     } else if (activeTab === "stream") {
@@ -87,6 +103,47 @@ function renderActiveTab() {
         streamNeedsRedraw = true;
         memoryNeedsRedraw = true;
     }
+}
+
+// Every paged view carries the same controls above and below its content, so paging a long table does
+// not mean scrolling to the bottom for every click.
+function renderPagers(elId, page, totalPages, total, onPage) {
+    renderPager(elId + "-top", page, totalPages, total, onPage);
+    renderPager(elId, page, totalPages, total, onPage);
+}
+
+// Numbered-page controls: renders "Prev  Page X / Y (N)  Next" into elId; onPage(newPage) re-renders the view.
+// Renders nothing (hidden via CSS) when there is only one page.
+function renderPager(elId, page, totalPages, total, onPage) {
+    var el = $(elId);
+    if (!el) return;
+    if (totalPages <= 1) { el.innerHTML = ""; return; }
+    el.innerHTML = "";
+    var prev = document.createElement("button");
+    prev.className = "pager-btn";
+    prev.textContent = "‹ Prev";
+    prev.disabled = page <= 0;
+    prev.addEventListener("click", function() { if (page > 0) onPage(page - 1); });
+    var info = document.createElement("span");
+    info.className = "pager-info";
+    info.textContent = "Page " + (page + 1) + " / " + totalPages + "  (" + total + ")";
+    var next = document.createElement("button");
+    next.className = "pager-btn";
+    next.textContent = "Next ›";
+    next.disabled = page >= totalPages - 1;
+    next.addEventListener("click", function() { if (page < totalPages - 1) onPage(page + 1); });
+    el.appendChild(prev);
+    el.appendChild(info);
+    el.appendChild(next);
+}
+
+// Clamp a page index and return the slice bounds ([start, end)) for the current page over `total` items.
+function pageSlice(page, total, size) {
+    size = size || PAGE_SIZE;
+    var totalPages = Math.max(1, Math.ceil(total / size));
+    if (page >= totalPages) page = totalPages - 1;
+    if (page < 0) page = 0;
+    return { page: page, totalPages: totalPages, start: page * size, end: page * size + size };
 }
 
 // -- Fit Page Toggle --
@@ -140,6 +197,13 @@ function sendSettings(settings) {
     }
 }
 
+// Tell the server what this browser is looking at; it answers immediately with just that view.
+function sendView(view) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "view", view: view }));
+    }
+}
+
 // -- WebSocket --
 function connect() {
     var proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -183,6 +247,7 @@ function handleMessage(data) {
         updateScheduler(data.scheduler);
     }
     if (data.workers) {
+        applyPageInfo(data);
         updateWorkers(data.workers);
     }
     if (data.worker_managers) {
@@ -192,6 +257,7 @@ function handleMessage(data) {
         handleWorkerEvents(data.worker_events);
     }
     if (data.task_updates) {
+        if (typeof data.task_log_total === "number") taskLogTotal = data.task_log_total;
         handleTaskUpdates(data.task_updates);
     }
     if (data.task_stream) {
@@ -201,22 +267,35 @@ function handleMessage(data) {
         updateMemoryChart(data.memory_chart);
     }
     if (data.processors) {
+        applyPageInfo(data);
         updateProcessors(data.processors);
     }
+    if (data.settings) {
+        applySettings(data.settings);
+    }
+}
+
+// The server clamps the page it actually served, so mirror that back rather than what we asked for.
+function applyPageInfo(data) {
+    if (typeof data.workers_total === "number") workersTotal = data.workers_total;
+    if (typeof data.workers_page === "number") workersPage = data.workers_page;
+    if (typeof data.workers_pages === "number") workersPages = data.workers_pages;
+    if (typeof data.processors_total === "number") processorsTotal = data.processors_total;
+    if (typeof data.processors_page === "number") processorsPage = data.processors_page;
+    if (typeof data.processors_pages === "number") processorsPages = data.processors_pages;
 }
 
 function handleFullState(data) {
     if (data.scheduler) updateScheduler(data.scheduler);
+    applyPageInfo(data);
     if (data.workers) updateWorkers(data.workers);
     if (data.worker_managers) updateWorkerManagers(data.worker_managers);
     if (typeof data.task_log_max_size === "number" && data.task_log_max_size > 0) {
         TASK_LOG_MAX_SIZE = data.task_log_max_size;
     }
+    taskLogTotal = typeof data.task_log_total === "number" ? data.task_log_total : 0;
     if (data.task_log) {
-        tasklogBody.innerHTML = "";
-        taskLogCount = 0;
-        taskRowMap = {};
-        addTaskLogEntries(data.task_log, true);
+        setTaskLog(data.task_log);
     }
     if (data.task_stream) updateTaskStream(data.task_stream);
     if (data.memory_chart) updateMemoryChart(data.memory_chart);
@@ -332,10 +411,9 @@ function renderManagers() {
 }
 
 // -- Live Tab: Workers --
+// Column order of the workers table; a header click sends the field name to the server.
 var WORKER_FIELDS = ["name", "manager_id", "agt_cpu", "agt_rss", "proc_cpu", "proc_rss", "mem_used_pct",
                      "free", "sent", "queued", "suspended", "lag", "itl", "last_seen", "capabilities"];
-var WORKER_NUMERIC_FIELDS = {"agt_cpu":1, "agt_rss":1, "proc_cpu":1, "proc_rss":1, "mem_used_pct":1,
-                             "free":1, "sent":1, "queued":1, "suspended":1, "itl":1};
 
 function updateWorkers(workers) {
     lastWorkersData = workers;
@@ -343,66 +421,28 @@ function updateWorkers(workers) {
 }
 
 function renderWorkers() {
-    var workers = lastWorkersData;
-    var seen = {};
-    for (var i = 0; i < workers.length; i++) {
-        var w = workers[i];
-        seen[w.id] = true;
-        var row = workerRows[w.id];
-        if (!row) {
-            row = createWorkerRow(w);
-            workerRows[w.id] = row;
-            workersBody.appendChild(row);
-        }
-        updateWorkerRow(row, w);
-    }
-    // remove dead workers
-    var ids = Object.keys(workerRows);
-    for (var j = 0; j < ids.length; j++) {
-        if (!seen[ids[j]]) {
-            workersBody.removeChild(workerRows[ids[j]]);
-            delete workerRows[ids[j]];
-        }
-    }
-    // apply current sort order
-    if (workerSortField) {
-        applySortOrder();
-    }
-}
+    // lastWorkersData is already this browser's page, sorted by the server.
+    var pageRows = lastWorkersData;
 
-function applySortOrder() {
-    var rows = Array.prototype.slice.call(workersBody.children);
-    var field = workerSortField;
-    var asc = workerSortAsc;
-    var isNumeric = WORKER_NUMERIC_FIELDS[field];
-
-    // build a lookup from the latest data
-    var dataById = {};
-    for (var i = 0; i < lastWorkersData.length; i++) {
-        dataById[lastWorkersData[i].id] = lastWorkersData[i];
+    workersBody.innerHTML = "";
+    for (var i = 0; i < pageRows.length; i++) {
+        var row = createWorkerRow(pageRows[i]);
+        updateWorkerRow(row, pageRows[i]);
+        workersBody.appendChild(row);
     }
-
-    rows.sort(function(a, b) {
-        var wa = dataById[a.getAttribute("data-worker")];
-        var wb = dataById[b.getAttribute("data-worker")];
-        if (!wa || !wb) return 0;
-        var va = wa[field], vb = wb[field];
-        if (va == null) va = "";
-        if (vb == null) vb = "";
-        var cmp;
-        if (isNumeric) {
-            cmp = (Number(va) || 0) - (Number(vb) || 0);
-        } else {
-            cmp = String(va).localeCompare(String(vb));
-        }
-        return asc ? cmp : -cmp;
+    updateWorkersCountBadge();
+    renderPagers("workers-pager", workersPage, workersPages, workersTotal, function(p) {
+        workersPage = p;
+        sendView({ workers_page: p });
     });
-
-    for (var j = 0; j < rows.length; j++) {
-        workersBody.appendChild(rows[j]);
-    }
 }
 
+// The badge counts the whole fleet, of which this browser holds one page.
+function updateWorkersCountBadge() {
+    workersCount.textContent = workersTotal;
+}
+
+// Sorting runs on the server, so a click just sets the indicator and asks for page 0 of the new order.
 function setupWorkerSort() {
     var thead = workersBody.parentElement.querySelector("thead tr");
     if (!thead) return;
@@ -424,7 +464,8 @@ function setupWorkerSort() {
                     allTh[k].classList.remove("sort-asc", "sort-desc");
                 }
                 th.classList.add(workerSortAsc ? "sort-asc" : "sort-desc");
-                applySortOrder();
+                workersPage = 0;  // jump to the top of the new sort order
+                sendView({ workers_sort: field, workers_sort_ascending: workerSortAsc, workers_page: 0 });
             });
         })(ths[i], WORKER_FIELDS[i]);
     }
@@ -504,13 +545,16 @@ function updateWorkerRow(tr, w) {
 }
 
 function handleWorkerEvents(events) {
+    var removed = false;
     for (var i = 0; i < events.length; i++) {
         var ev = events[i];
-        if (ev.state === "disconnected" && workerRows[ev.worker_id]) {
-            workersBody.removeChild(workerRows[ev.worker_id]);
-            delete workerRows[ev.worker_id];
+        if (ev.state === "disconnected") {
+            var before = lastWorkersData.length;
+            lastWorkersData = lastWorkersData.filter(function(w) { return w.id !== ev.worker_id; });
+            if (lastWorkersData.length !== before) removed = true;
         }
     }
+    if (removed && activeTab === "live") renderWorkers();
 }
 
 // -- Task Log --
@@ -532,105 +576,88 @@ function statusClass(status) {
 function handleTaskUpdates(entries) {
     for (var i = 0; i < entries.length; i++) {
         var e = entries[i];
-        var existing = taskRowMap[e.task_id];
+        var existing = taskLogById[e.task_id];
         if (existing) {
-            // update cells in-place: worker(2), time(3), duration(4), peak_mem(5), status(6)
-            var cells = existing.children;
-            cells[2].textContent = e.worker || "";
-            cells[2].title = e.full_worker || e.worker || "";
-            cells[3].textContent = formatTime(e.time);
-            cells[4].textContent = e.duration;
-            cells[5].textContent = e.peak_mem;
-            cells[6].textContent = e.status;
-            cells[6].className = statusClass(e.status);
+            for (var k in e) { if (Object.prototype.hasOwnProperty.call(e, k)) existing[k] = e[k]; }
         } else {
-            // new task - insert at top
-            addTaskLogEntries([e]);
+            taskLogData.unshift(e);  // newest first
+            taskLogById[e.task_id] = e;
+            while (taskLogData.length > TASK_LOG_MAX_SIZE) {
+                var dropped = taskLogData.pop();
+                delete taskLogById[dropped.task_id];
+            }
         }
     }
+    if (activeTab === "tasklog") renderTaskLog();
+    else updateTaskLogBadge();  // the badge (server total) stays current even while the tab is hidden
 }
 
-function addTaskLogEntries(entries, append) {
-    for (var i = 0; i < entries.length; i++) {
-        var e = entries[i];
-        var tr = document.createElement("tr");
-        tr.dataset.taskId = e.task_id;
+// full_state: replace the whole task log (active + completed, newest first, already capped by the server).
+function setTaskLog(entries) {
+    taskLogData = entries.slice(0, TASK_LOG_MAX_SIZE);
+    taskLogById = {};
+    for (var i = 0; i < taskLogData.length; i++) taskLogById[taskLogData[i].task_id] = taskLogData[i];
+    taskLogPage = 0;
+    if (activeTab === "tasklog") renderTaskLog();
+    else updateTaskLogBadge();
+}
 
-        // Task ID (clickable to copy)
-        var tdId = document.createElement("td");
-        var span = document.createElement("span");
-        span.className = "task-id";
-        span.textContent = e.task_id;
-        span.title = e.task_id;
-        span.addEventListener("click", (function(id) {
-            return function() {
-                if (navigator.clipboard) {
-                    navigator.clipboard.writeText(id);
-                }
-            };
-        })(e.task_id));
-        tdId.appendChild(span);
-        tr.appendChild(tdId);
+function renderTaskLog() {
+    var pg = pageSlice(taskLogPage, taskLogData.length);
+    taskLogPage = pg.page;
+    var pageEntries = taskLogData.slice(pg.start, pg.end);
+    tasklogBody.innerHTML = "";
+    for (var i = 0; i < pageEntries.length; i++) tasklogBody.appendChild(makeTaskLogRow(pageEntries[i]));
+    updateTaskLogBadge();
+    renderPagers("tasklog-pager", taskLogPage, pg.totalPages, taskLogData.length, function(p) {
+        taskLogPage = p;
+        renderTaskLog();
+    });
+}
 
-        // Function
-        var tdFunc = document.createElement("td");
-        tdFunc.textContent = e.function;
-        tr.appendChild(tdFunc);
+function makeCell(text) {
+    var td = document.createElement("td");
+    td.textContent = text == null ? "" : text;
+    return td;
+}
 
-        // Worker
-        var tdWorker = document.createElement("td");
-        tdWorker.textContent = e.worker || "";
-        tdWorker.title = e.full_worker || e.worker || "";
-        tr.appendChild(tdWorker);
+function makeTaskLogRow(e) {
+    var tr = document.createElement("tr");
+    tr.dataset.taskId = e.task_id;
 
-        // Time
-        var tdTime = document.createElement("td");
-        tdTime.textContent = formatTime(e.time);
-        tr.appendChild(tdTime);
+    var tdId = document.createElement("td");
+    var span = document.createElement("span");
+    span.className = "task-id";
+    span.textContent = e.task_id;
+    span.title = e.task_id;
+    span.addEventListener("click", (function(id) {
+        return function() { if (navigator.clipboard) navigator.clipboard.writeText(id); };
+    })(e.task_id));
+    tdId.appendChild(span);
+    tr.appendChild(tdId);
 
-        // Duration
-        var tdDur = document.createElement("td");
-        tdDur.textContent = e.duration;
-        tr.appendChild(tdDur);
+    tr.appendChild(makeCell(e.function));
+    var tdWorker = makeCell(e.worker || "");
+    tdWorker.title = e.full_worker || e.worker || "";
+    tr.appendChild(tdWorker);
+    tr.appendChild(makeCell(formatTime(e.time)));
+    tr.appendChild(makeCell(e.duration));
+    tr.appendChild(makeCell(e.peak_mem));
+    var tdStatus = makeCell(e.status);
+    tdStatus.className = statusClass(e.status);
+    tr.appendChild(tdStatus);
+    tr.appendChild(makeCell(e.capabilities));
+    return tr;
+}
 
-        // Peak Mem
-        var tdMem = document.createElement("td");
-        tdMem.textContent = e.peak_mem;
-        tr.appendChild(tdMem);
-
-        // Status
-        var tdStatus = document.createElement("td");
-        tdStatus.textContent = e.status;
-        tdStatus.className = statusClass(e.status);
-        tr.appendChild(tdStatus);
-
-        // Capabilities
-        var tdCaps = document.createElement("td");
-        tdCaps.textContent = e.capabilities;
-        tr.appendChild(tdCaps);
-
-        // Insert row
-        if (append) {
-            tasklogBody.appendChild(tr);
-        } else if (tasklogBody.firstChild) {
-            tasklogBody.insertBefore(tr, tasklogBody.firstChild);
-        } else {
-            tasklogBody.appendChild(tr);
-        }
-        taskRowMap[e.task_id] = tr;
-        taskLogCount++;
+// Badge shows the running total of completed tasks; once it passes the display cap it appends the cap it is
+// windowed to, e.g. "501 (showing 500)".
+function updateTaskLogBadge() {
+    if (taskLogTotal > TASK_LOG_MAX_SIZE) {
+        tasklogCount.textContent = taskLogTotal + " (showing " + TASK_LOG_MAX_SIZE + ")";
+    } else {
+        tasklogCount.textContent = taskLogTotal;
     }
-
-    // Trim to configured size
-    while (tasklogBody.children.length > TASK_LOG_MAX_SIZE) {
-        var removed = tasklogBody.lastChild;
-        if (removed && removed.dataset && removed.dataset.taskId) {
-            delete taskRowMap[removed.dataset.taskId];
-        }
-        tasklogBody.removeChild(removed);
-        taskLogCount--;
-    }
-    tasklogCount.textContent = Math.min(taskLogCount, TASK_LOG_MAX_SIZE);
 }
 
 // -- Task Stream (Canvas) --
@@ -639,10 +666,14 @@ var STREAM_ROW_HEIGHT = 24;
 var STREAM_PADDING_TOP = 4;
 
 function updateTaskStream(data) {
+    // Already one page: the server slices the rows and re-bases each bar's row index to the page.
     streamBars = data.bars || [];
     streamRows = data.rows || [];
     streamFullRows = data.full_rows || streamRows;
     streamRowManagers = data.row_managers || [];
+    if (typeof data.page === "number") streamPage = data.page;
+    if (typeof data.pages === "number") streamPages = data.pages;
+    if (typeof data.total_rows === "number") streamTotal = data.total_rows;
     streamManagerColors = {};
     streamManagerLegendData = data.manager_legend || [];
     for (var ml = 0; ml < streamManagerLegendData.length; ml++) {
@@ -651,6 +682,10 @@ function updateTaskStream(data) {
     streamTicks = data.ticks || [];
     streamWindow = data.window || 300;
     streamLegendData = data.legend || [];
+    renderPagers("stream-pager", streamPage, streamPages, streamTotal, function(p) {
+        streamPage = p;
+        sendView({ stream_page: p });
+    });
 
     if (activeTab === "stream") {
         renderStreamStatic();
@@ -1105,125 +1140,96 @@ function updateProcessors(processors) {
 }
 
 function renderProcessors() {
-    var processors = lastProcessorsData;
+    // Each group carries fleet-wide summary numbers, but only this page's worker detail.
+    var groups = lastProcessorsData || [];
+
     processorsContainer.innerHTML = "";
-    if (!processors || processors.length === 0) {
+    if (processorsTotal === 0) {
         processorsContainer.innerHTML = '<div class="card"><p style="color:#64748b">No workers connected</p></div>';
+        renderPagers("processors-pager", 0, 1, 0, function() {});
         return;
     }
 
-    for (var g = 0; g < processors.length; g++) {
-        var group = processors[g];
-
-        // Manager group as collapsible details/summary
-        var managerSection = document.createElement("details");
-        managerSection.className = "manager-group card";
-        managerSection.open = !managerCollapsed[group.manager_id];
-
-        var managerSummary = document.createElement("summary");
-        managerSummary.className = "manager-header";
-        managerSummary.innerHTML =
-            '<span class="manager-title">Manager: ' + escapeHTML(group.manager_id) + '</span>' +
-            '<span class="manager-stats">' +
-                '<span class="manager-stat"><b>Workers:</b> ' + group.worker_count + '</span>' +
-                '<span class="manager-stat"><b>Processors:</b> ' + group.active_processors + ' active</span>' +
-                '<span class="manager-stat"><b>Total PSS:</b> ' + group.total_rss + ' MB</span>' +
-                '<span class="manager-stat"><b>Total CPU:</b> ' + group.total_cpu + '%</span>' +
-            '</span>';
-        managerSection.appendChild(managerSummary);
-
-        // track manager toggle state
-        (function(mid, el) {
-            el.addEventListener("toggle", function() {
-                managerCollapsed[mid] = !el.open;
-            });
-        })(group.manager_id, managerSection);
-
-        // Worker details within this manager group
-        var workers = group.workers;
-        if (workers.length === 0) {
-            var emptyMsg = document.createElement("p");
-            emptyMsg.style.color = "#64748b";
-            emptyMsg.style.padding = "8px 16px";
-            emptyMsg.textContent = "No workers currently running for this manager";
-            managerSection.appendChild(emptyMsg);
+    for (var g = 0; g < groups.length; g++) {
+        var group = groups[g];
+        if (!group.workers || group.workers.length === 0) continue;
+        var section = buildManagerSection(group);
+        processorsContainer.appendChild(section);
+        for (var i = 0; i < group.workers.length; i++) {
+            section.appendChild(buildWorkerProcessorDetail(group.workers[i]));
         }
-        for (var i = 0; i < workers.length; i++) {
-            var wp = workers[i];
-            var details = document.createElement("details");
-            details.className = "card processor-group";
-            details.open = !processorsCollapsed[wp.name];
-
-            var summary = document.createElement("summary");
-            summary.textContent = "Worker " + wp.name;
-            summary.title = wp.full_name || wp.name;
-            details.appendChild(summary);
-
-            // track toggle state
-            (function(name, el) {
-                el.addEventListener("toggle", function() {
-                    processorsCollapsed[name] = !el.open;
-                });
-            })(wp.name, details);
-
-            var table = document.createElement("table");
-            table.className = "data-table";
-
-            // Header
-            var thead = document.createElement("thead");
-            var headerRow = document.createElement("tr");
-            // memory columns are PSS on Linux, RSS on macOS/Windows (see get_process_memory)
-            var headers = ["PID", "CPU %", "PSS (MB)", "Max PSS (MB)", "Initialized", "Has Task", "Suspended"];
-            for (var h = 0; h < headers.length; h++) {
-                var th = document.createElement("th");
-                th.textContent = headers[h];
-                headerRow.appendChild(th);
-            }
-            thead.appendChild(headerRow);
-            table.appendChild(thead);
-
-            // Body
-            var tbody = document.createElement("tbody");
-            for (var p = 0; p < wp.processors.length; p++) {
-                var proc = wp.processors[p];
-                var tr = document.createElement("tr");
-
-                var tdPid = document.createElement("td");
-                tdPid.textContent = proc.pid;
-                tr.appendChild(tdPid);
-
-                var tdCpu = document.createElement("td");
-                tdCpu.innerHTML = makeGaugeHTML(proc.cpu, 100, "%");
-                tr.appendChild(tdCpu);
-
-                var tdRss = document.createElement("td");
-                tdRss.innerHTML = makeGaugeHTML(proc.rss, proc.rss_max_gauge, "");
-                tr.appendChild(tdRss);
-
-                var tdMaxRss = document.createElement("td");
-                tdMaxRss.innerHTML = makeGaugeHTML(proc.max_rss, proc.rss_max_gauge, "");
-                tr.appendChild(tdMaxRss);
-
-                var tdInit = document.createElement("td");
-                tdInit.innerHTML = boolIndicator(proc.initialized);
-                tr.appendChild(tdInit);
-
-                var tdTask = document.createElement("td");
-                tdTask.innerHTML = boolIndicator(proc.has_task);
-                tr.appendChild(tdTask);
-
-                var tdSusp = document.createElement("td");
-                tdSusp.innerHTML = boolIndicator(proc.suspended);
-                tr.appendChild(tdSusp);
-
-                tbody.appendChild(tr);
-            }
-            table.appendChild(tbody);
-            details.appendChild(table);
-            managerSection.appendChild(details);
-        }
-        processorsContainer.appendChild(managerSection);
     }
+    renderPagers("processors-pager", processorsPage, processorsPages, processorsTotal, function(p) {
+        processorsPage = p;
+        sendView({ processors_page: p });
+    });
+}
+
+function buildManagerSection(group) {
+    var managerSection = document.createElement("details");
+    managerSection.className = "manager-group card";
+    managerSection.open = !managerCollapsed[group.manager_id];
+
+    var managerSummary = document.createElement("summary");
+    managerSummary.className = "manager-header";
+    managerSummary.innerHTML =
+        '<span class="manager-title">Manager: ' + escapeHTML(group.manager_id) + '</span>' +
+        '<span class="manager-stats">' +
+            '<span class="manager-stat"><b>Workers:</b> ' + group.worker_count + '</span>' +
+            '<span class="manager-stat"><b>Processors:</b> ' + group.active_processors + ' active</span>' +
+            '<span class="manager-stat"><b>Total PSS:</b> ' + group.total_rss + ' MB</span>' +
+            '<span class="manager-stat"><b>Total CPU:</b> ' + group.total_cpu + '%</span>' +
+        '</span>';
+    managerSection.appendChild(managerSummary);
+    (function(mid, el) {
+        el.addEventListener("toggle", function() { managerCollapsed[mid] = !el.open; });
+    })(group.manager_id, managerSection);
+    return managerSection;
+}
+
+function buildWorkerProcessorDetail(wp) {
+    var details = document.createElement("details");
+    details.className = "card processor-group";
+    details.open = !processorsCollapsed[wp.name];
+
+    var summary = document.createElement("summary");
+    summary.textContent = "Worker " + wp.name;
+    summary.title = wp.full_name || wp.name;
+    details.appendChild(summary);
+    (function(name, el) {
+        el.addEventListener("toggle", function() { processorsCollapsed[name] = !el.open; });
+    })(wp.name, details);
+
+    var table = document.createElement("table");
+    table.className = "data-table";
+    var thead = document.createElement("thead");
+    var headerRow = document.createElement("tr");
+    // memory columns are PSS on Linux, RSS on macOS/Windows (see get_process_memory)
+    var headers = ["PID", "CPU %", "PSS (MB)", "Max PSS (MB)", "Initialized", "Has Task", "Suspended"];
+    for (var h = 0; h < headers.length; h++) {
+        var th = document.createElement("th");
+        th.textContent = headers[h];
+        headerRow.appendChild(th);
+    }
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    for (var p = 0; p < wp.processors.length; p++) {
+        var proc = wp.processors[p];
+        var tr = document.createElement("tr");
+        var tdPid = document.createElement("td"); tdPid.textContent = proc.pid; tr.appendChild(tdPid);
+        var tdCpu = document.createElement("td"); tdCpu.innerHTML = makeGaugeHTML(proc.cpu, 100, "%"); tr.appendChild(tdCpu);
+        var tdRss = document.createElement("td"); tdRss.innerHTML = makeGaugeHTML(proc.rss, proc.rss_max_gauge, ""); tr.appendChild(tdRss);
+        var tdMax = document.createElement("td"); tdMax.innerHTML = makeGaugeHTML(proc.max_rss, proc.rss_max_gauge, ""); tr.appendChild(tdMax);
+        var tdInit = document.createElement("td"); tdInit.innerHTML = boolIndicator(proc.initialized); tr.appendChild(tdInit);
+        var tdTask = document.createElement("td"); tdTask.innerHTML = boolIndicator(proc.has_task); tr.appendChild(tdTask);
+        var tdSusp = document.createElement("td"); tdSusp.innerHTML = boolIndicator(proc.suspended); tr.appendChild(tdSusp);
+        tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    details.appendChild(table);
+    return details;
 }
 
 function boolIndicator(val) {
