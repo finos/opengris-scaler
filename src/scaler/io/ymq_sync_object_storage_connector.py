@@ -1,5 +1,5 @@
 from threading import Lock
-from typing import Iterable, Optional
+from typing import Iterable, NoReturn, Optional
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
@@ -10,9 +10,6 @@ from scaler.protocol.capnp import ObjectRequestHeader, ObjectResponseHeader
 from scaler.protocol.helpers import to_capnp_object_id
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ObjectID
-
-# Some OSes raise an OSError when sending buffers too large with send() or sendmsg().
-MAX_CHUNK_SIZE = 128 * 1024 * 1024
 
 
 class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
@@ -158,11 +155,16 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
         )
         header_bytes = header.to_bytes()
 
-        if payload is not None:
+        try:
             self._socket.send_message_sync(Bytes(header_bytes))
-            self._socket.send_message_sync(Bytes(payload))
-        else:
-            self._socket.send_message_sync(Bytes(header_bytes))
+
+            if payload is not None:
+                self._socket.send_message_sync(Bytes(payload))
+        except YMQException as exception:
+            # A peer that aborts the connection mid-write cancels the send, which YMQ reports as
+            # SocketStopRequested. Report it the way __receive_response reports a failed read, or the raw YMQ
+            # error reads to the caller as a failure of whatever other socket it happens to be polling.
+            self.__raise_connection_failure(exception)
 
     def __receive_response(self):
         assert self._socket is not None
@@ -171,8 +173,8 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
             header = self.__read_response_header()
             payload = self.__read_response_payload(header)
             return header, payload
-        except YMQException:
-            self.__raise_connection_failure()
+        except YMQException as exception:
+            self.__raise_connection_failure(exception)
 
     def __read_response_header(self) -> ObjectResponseHeader:
         assert self._socket is not None
@@ -195,5 +197,8 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
             return bytearray()
 
     @staticmethod
-    def __raise_connection_failure():
-        raise ObjectStorageException("connection failure to object storage server.")
+    def __raise_connection_failure(cause: Optional[BaseException] = None) -> NoReturn:
+        if cause is None:
+            raise ObjectStorageException("connection failure to object storage server.")
+
+        raise ObjectStorageException(f"connection failure to object storage server: {cause!r}") from cause
