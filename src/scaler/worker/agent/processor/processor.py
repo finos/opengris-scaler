@@ -5,10 +5,11 @@ import os
 import signal
 import sys
 import threading
+import time
 from contextlib import redirect_stderr, redirect_stdout
 from contextvars import ContextVar, Token
 from multiprocessing.synchronize import Event as EventType
-from typing import IO, Callable, List, Optional, Tuple, cast
+from typing import IO, Callable, List, Optional, Tuple, TypeVar, cast
 
 import tblib.pickling_support
 
@@ -42,7 +43,15 @@ logger = logging.getLogger(__name__)
 
 SUSPEND_SIGNAL = "SIGUSR1"  # use str instead of a signal.Signal to not trigger an import error on unsupported systems.
 
+# How many times a finished task's result hand-off is attempted when the transport drops under it, and how
+# long to wait before the second attempt (doubled on every further retry). The connectors reconnect on their
+# own, so the delays only have to outlast a reconnect, not a peer restart.
+RESULT_HAND_OFF_MAX_ATTEMPTS = 4
+RESULT_HAND_OFF_RETRY_DELAY_SECONDS = 1.0
+
 _current_processor: ContextVar[Optional["Processor"]] = ContextVar("_current_processor", default=None)
+
+_T = TypeVar("_T")
 
 
 class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
@@ -214,8 +223,11 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
                 self.__on_connector_receive(message)
 
-        except ymq.SocketStopRequestedError:
-            self.__log_exit("agent connector stop requested")
+        except ymq.SocketStopRequestedError as e:
+            # Only the agent connector can surface this here: the storage connector reports its own
+            # transport failures as ObjectStorageException. Name the error anyway, so the next reader does
+            # not have to trust that attribution to know what dropped.
+            self.__log_exit("agent connector stop requested", exception=e)
 
         except ObjectStorageException as e:
             # Never swallow this silently: a storage error mid-task orphans the task (no result is ever
@@ -352,10 +364,9 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self.__send_result(task.source, task.taskId, task_result_type, result_bytes)
 
     def __send_result(self, source: ClientID, task_id: TaskID, task_result_type: TaskResultType, result_bytes: bytes):
-        result_object_id = ObjectID.generate_object_id(source)
+        result_object_id = self.__store_result(source, task_id, result_bytes)
 
-        self._connector_storage.set_object(result_object_id, result_bytes)
-        self._connector_agent.send(
+        self.__send_to_agent(
             ObjectInstruction(
                 instructionType=ObjectInstruction.ObjectInstructionType.create,
                 objectUser=source,
@@ -364,15 +375,66 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                     objectTypes=(ObjectMetadata.ObjectContentType.object,),
                     objectNames=(f"<res {repr(result_object_id)}>".encode(),),
                 ),
-            )
+            ),
+            task_id,
+            "announce the result object",
         )
-        self._connector_agent.send(
-            TaskResult(taskId=task_id, resultType=task_result_type, metadata=b"", results=[bytes(result_object_id)])
+        self.__send_to_agent(
+            TaskResult(taskId=task_id, resultType=task_result_type, metadata=b"", results=[bytes(result_object_id)]),
+            task_id,
+            "send the task result",
         )
 
         # only once the result is fully handed off is the task no longer in flight, so a failure above still
         # reports which task got orphaned
         self._current_task = None
+
+    def __store_result(self, source: ClientID, task_id: TaskID, result_bytes: bytes) -> ObjectID:
+        """Writes a finished task's result to the object storage, returning the object ID it landed under.
+
+        Every attempt uses a fresh object ID: a retry can follow a request the server only received part of,
+        and reusing the ID would risk announcing one the server holds a half-written object under.
+        """
+
+        def store() -> ObjectID:
+            result_object_id = ObjectID.generate_object_id(source)
+            self._connector_storage.set_object(result_object_id, result_bytes)
+            return result_object_id
+
+        return self.__hand_off(store, task_id, "store the result")
+
+    def __send_to_agent(self, message: BaseMessage, task_id: TaskID, description: str) -> None:
+        self.__hand_off(lambda: self._connector_agent.send(message), task_id, description)
+
+    def __hand_off(self, step: Callable[[], _T], task_id: TaskID, description: str) -> _T:
+        """Runs one step of a finished task's result hand-off, retrying it if the transport drops under us.
+
+        The result cannot be reproduced -- the work is already paid for, possibly hours of it -- but the
+        connections it travels over can drop at any point, and a peer aborting one mid-write surfaces as a
+        canceled send. Retrying beats letting that unwind the main loop, which exits the processor and loses
+        the result for good. Every step is safe to repeat: the storage write lands under a fresh object ID,
+        and the agent has not been told about the result yet. A teardown the agent asked for is never
+        retried, its connectors are gone for good.
+        """
+
+        attempt = 1
+        delay = RESULT_HAND_OFF_RETRY_DELAY_SECONDS
+
+        while True:
+            try:
+                return step()
+            except (ymq.SocketStopRequestedError, ObjectStorageException) as e:
+                if self._interrupted or attempt >= RESULT_HAND_OFF_MAX_ATTEMPTS:
+                    raise
+
+                logger.warning(
+                    f"Processor[{self.pid}]: failed to {description} of task_id={task_id.hex()} on attempt "
+                    f"{attempt}/{RESULT_HAND_OFF_MAX_ATTEMPTS} ({e!r}), retrying in {delay} seconds"
+                )
+
+            time.sleep(delay)
+            delay *= 2
+            attempt += 1
 
     @staticmethod
     def __set_current_processor(context: Optional["Processor"]) -> Token:

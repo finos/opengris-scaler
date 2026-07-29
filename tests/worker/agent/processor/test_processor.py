@@ -1,9 +1,13 @@
 import logging
 import unittest
 from typing import Any, Optional
+from unittest import mock
 from unittest.mock import Mock
 
+import scaler.worker.agent.processor.processor as processor_module
 from scaler.config.types.address import AddressConfig
+from scaler.io import ymq
+from scaler.io.ymq import SocketStopRequestedError
 from scaler.protocol.capnp import Task, TaskResultType
 from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
@@ -135,6 +139,11 @@ class ProcessorSendResultTest(unittest.TestCase):
         self.task = _make_task()
         self.processor._current_task = self.task
 
+        # a failing hand-off is retried with a backoff; the retries themselves are covered below
+        patcher = mock.patch.object(processor_module.time, "sleep")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def __send_result(self) -> None:
         self.processor._Processor__send_result(  # type: ignore[attr-defined]
             self.task.source, self.task.taskId, TaskResultType.success, b"result-bytes"
@@ -153,6 +162,104 @@ class ProcessorSendResultTest(unittest.TestCase):
             self.__send_result()
 
         self.assertIs(self.processor._current_task, self.task)
+
+
+class ProcessorResultHandOffRetryTest(unittest.TestCase):
+    """A finished task's result is unreproducible work, so a transport that drops under the hand-off must be
+    retried instead of unwinding the main loop, which exits the processor and loses the result."""
+
+    def setUp(self) -> None:
+        self.processor = _make_processor()
+        self.processor._connector_agent = Mock()
+        self.processor._connector_storage = Mock()
+
+        self.task = _make_task()
+        self.processor._current_task = self.task
+
+        # the retries sleep between attempts; nothing here depends on wall-clock time
+        patcher = mock.patch.object(processor_module.time, "sleep")
+        self.sleep = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def __send_result(self) -> None:
+        self.processor._Processor__send_result(  # type: ignore[attr-defined]
+            self.task.source, self.task.taskId, TaskResultType.success, b"result-bytes"
+        )
+
+    @staticmethod
+    def __canceled_send() -> SocketStopRequestedError:
+        return SocketStopRequestedError(ymq.ErrorCode.SocketStopRequested, "connection aborted mid-write")
+
+    def test_a_dropped_storage_write_is_retried_until_it_lands(self) -> None:
+        storage: Any = self.processor._connector_storage
+        storage.set_object.side_effect = [ObjectStorageException("connection failure"), None]
+
+        self.__send_result()
+
+        self.assertEqual(storage.set_object.call_count, 2)
+        self.assertIsNone(self.processor._current_task, "the result was never handed off")
+
+    def test_the_announced_object_id_is_the_one_that_landed(self) -> None:
+        # A retry can follow a request the server only received part of, so every attempt writes under a fresh
+        # object ID. The ID handed to the agent must be the one whose write succeeded.
+        storage: Any = self.processor._connector_storage
+        agent: Any = self.processor._connector_agent
+        storage.set_object.side_effect = [ObjectStorageException("connection failure"), None]
+
+        self.__send_result()
+
+        first_id, second_id = (call.args[0] for call in storage.set_object.call_args_list)
+        self.assertNotEqual(first_id, second_id)
+
+        task_result = agent.send.call_args_list[-1].args[0]
+        self.assertEqual(task_result.results, [bytes(second_id)])
+
+    def test_a_canceled_send_to_the_agent_is_retried(self) -> None:
+        agent: Any = self.processor._connector_agent
+        agent.send.side_effect = [self.__canceled_send(), None, None]
+
+        self.__send_result()
+
+        self.assertEqual(agent.send.call_count, 3, "the object instruction was not resent, or the result never was")
+        self.assertIsNone(self.processor._current_task)
+
+    def test_retries_are_given_up_on_and_the_task_stays_in_flight(self) -> None:
+        storage: Any = self.processor._connector_storage
+        storage.set_object.side_effect = ObjectStorageException("storage went away")
+
+        with self.assertRaises(ObjectStorageException):
+            self.__send_result()
+
+        self.assertEqual(storage.set_object.call_count, processor_module.RESULT_HAND_OFF_MAX_ATTEMPTS)
+        self.assertIs(self.processor._current_task, self.task, "the orphaned task must still be reportable")
+
+    def test_a_teardown_the_agent_asked_for_is_not_retried(self) -> None:
+        # __interrupt destroys the connectors on purpose, so every further attempt would fail the same way;
+        # retrying would only delay a shutdown the agent already asked for.
+        self.processor._interrupted = True
+        storage: Any = self.processor._connector_storage
+        storage.set_object.side_effect = ObjectStorageException("connector is closed.")
+
+        with self.assertRaises(ObjectStorageException):
+            self.__send_result()
+
+        self.assertEqual(storage.set_object.call_count, 1)
+        self.sleep.assert_not_called()
+
+    def test_backoff_grows_between_attempts(self) -> None:
+        storage: Any = self.processor._connector_storage
+        storage.set_object.side_effect = [self.__canceled_send(), self.__canceled_send(), None]
+
+        self.__send_result()
+
+        delays = [call.args[0] for call in self.sleep.call_args_list]
+        self.assertEqual(
+            delays,
+            [
+                processor_module.RESULT_HAND_OFF_RETRY_DELAY_SECONDS,
+                processor_module.RESULT_HAND_OFF_RETRY_DELAY_SECONDS * 2,
+            ],
+        )
 
 
 class ProcessorRunForeverTest(unittest.TestCase):
