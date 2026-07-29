@@ -9,7 +9,7 @@ namespace scaler {
 namespace ymq {
 
 // Expect all connections to start with this string.
-constexpr std::array<uint8_t, 4> magicString {'Y', 'M', 'Q', 1};
+constexpr std::array<uint8_t, 4> magicString {'Y', 'M', 'Q', 2};
 
 constexpr size_t defaultClientMaxRetryTimes = 8;
 constexpr std::chrono::milliseconds defaultClientInitRetryDelay {100};

@@ -10,7 +10,7 @@ browser (via ``js.WebSocket``). The wire protocol is byte-for-byte compatible
 with the native C++ implementation:
 
     1. After the WebSocket Upgrade handshake (handled by the browser), each
-       endpoint sends a 4-byte magic string ``YMQ\\x01``.
+       endpoint sends a 4-byte magic string ``YMQ\\x02``.
     2. Each endpoint then sends its identity as a length-prefixed message
        (8-byte little-endian length followed by the identity bytes).
     3. Subsequent application messages use the same length-prefixed framing.
@@ -36,7 +36,7 @@ DEFAULT_MAX_RETRY_TIMES: int = 8
 DEFAULT_INIT_RETRY_DELAY: int = 100  # milliseconds
 
 # YMQ wire-protocol constants (mirror src/cpp/scaler/ymq/configuration.h).
-_MAGIC_STRING: bytes = b"YMQ\x01"
+_MAGIC_STRING: bytes = b"YMQ\x02"
 _HEADER_FORMAT: str = "<Q"  # uint64_t little-endian, matches C++ ``Header``
 _HEADER_SIZE: int = struct.calcsize(_HEADER_FORMAT)
 
