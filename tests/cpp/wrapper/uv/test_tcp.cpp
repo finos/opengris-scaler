@@ -203,3 +203,33 @@ TEST_F(UVTCPTest, CloseReset)
 
     ASSERT_TRUE(receivedConnReset);
 }
+
+TEST_F(UVTCPTest, KeepAlive)
+{
+    // Connections that sit idle for the length of a task rely on keep-alive probes to notice a peer or a
+    // middlebox that dropped the flow, so enabling them must work on a live connection, not just a fresh
+    // handle.
+
+    const unsigned int delaySeconds = 30;
+
+    scaler::wrapper::uv::Loop loop = UV_EXIT_ON_ERROR(scaler::wrapper::uv::Loop::init());
+
+    TCPEchoServer server(loop);
+
+    scaler::wrapper::uv::TCPSocket client = UV_EXIT_ON_ERROR(scaler::wrapper::uv::TCPSocket::init(loop));
+    bool connected                        = false;
+
+    auto onClientConnected = [&](std::expected<void, scaler::wrapper::uv::Error> result) {
+        UV_EXIT_ON_ERROR(result);
+        connected = true;
+    };
+
+    UV_EXIT_ON_ERROR(client.connect(server.address(), onClientConnected));
+
+    while (!connected) {
+        loop.run(UV_RUN_ONCE);
+    }
+
+    ASSERT_TRUE(client.keepalive(true, delaySeconds).has_value());
+    ASSERT_TRUE(client.keepalive(false, delaySeconds).has_value());
+}

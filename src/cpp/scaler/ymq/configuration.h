@@ -21,6 +21,14 @@ constexpr int serverListenBacklog = 1024;
 // Some OSes discourage large writes (macOS, Windows).
 constexpr size_t maxWriteBufferSize = 256ULL * 1024ULL * 1024ULL;  // 256 MB
 
+// How long a TCP connection may sit idle before keep-alive probes start.
+//
+// Connections routinely go idle for the length of a task: a processor fetches its arguments, computes for
+// minutes or hours, then writes its result. Without probes, a peer that died or a middlebox (NAT, firewall,
+// load balancer) that dropped the flow goes unnoticed until that final write, which fails after the work it
+// carries can no longer be reproduced. Well under the idle timeouts such devices commonly enforce.
+constexpr unsigned int tcpKeepAliveDelaySeconds = 30;
+
 // How long a BinderSocket remembers a disconnected peer's identity so that subsequent
 // sendMessage() calls to it fail fast instead of queueing in _pendingSendMessages. The window
 // only needs to bracket the worst-case lag between libuv processing the disconnect and the user
