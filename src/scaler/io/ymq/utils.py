@@ -62,9 +62,7 @@ def call_sync(  # type: ignore[valid-type]
 
 
 def run_detached(
-    awaitable: Awaitable[Any],
-    description: str,
-    on_done_callback: Optional[Callable[[asyncio.Task], None]] = None,
+    awaitable: Awaitable[Any], description: str, on_done_callback: Optional[Callable[[asyncio.Task], None]] = None
 ) -> asyncio.Task:
     """Schedule an awaitable on the running event loop without waiting for its completion.
 
