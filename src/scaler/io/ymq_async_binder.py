@@ -27,7 +27,7 @@ class YMQAsyncBinder(AsyncBinder):
         self._received: Dict[str, int] = defaultdict(lambda: 0)
         self._sent: Dict[str, int] = defaultdict(lambda: 0)
 
-        self._pending_tasks: Set["asyncio.Task"] = set()
+        self._pending_tasks: Set[asyncio.Task] = set()
 
     def __del__(self):
         self.destroy()
