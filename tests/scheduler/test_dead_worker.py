@@ -79,7 +79,7 @@ class TestDeadWorker(unittest.TestCase):
 
         CLIENT_TIMEOUT_SECONDS = 2.0
 
-        outcome = concurrent.futures.Future()
+        outcome: concurrent.futures.Future = concurrent.futures.Future()
 
         def connect_and_run_task() -> None:
             try:
