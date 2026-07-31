@@ -46,7 +46,8 @@ class ClientObjectManager(ObjectManager):
                 instructionType=ObjectInstruction.ObjectInstructionType.delete,
                 objectUser=self._identity,
                 objectMetadata=ObjectMetadata(objectIds=tuple(cleared_object_ids)),
-            )
+            ),
+            detached=True,
         )
 
     async def __send_object_creation(self, instruction: ObjectInstruction):
@@ -92,7 +93,8 @@ class ClientObjectManager(ObjectManager):
                 instructionType=ObjectInstruction.ObjectInstructionType.create,
                 objectUser=instruction.objectUser,
                 objectMetadata=new_object_content,
-            )
+            ),
+            detached=True,
         )
 
     async def __delete_objects(self, instruction: ObjectInstruction):
@@ -105,4 +107,4 @@ class ClientObjectManager(ObjectManager):
             ObjectID(object_id) for object_id in instruction.objectMetadata.objectIds
         )
 
-        await self._connector_external.send(instruction)
+        await self._connector_external.send(instruction, detached=True)

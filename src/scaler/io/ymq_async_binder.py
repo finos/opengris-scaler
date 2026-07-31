@@ -77,7 +77,7 @@ class YMQAsyncBinder(AsyncBinder):
             # tear down the whole scheduler for what is a normal peer departure.
             pass
 
-    async def send(self, to: bytes, message: BaseMessage, *, detached: bool = True):
+    async def send(self, to: bytes, message: BaseMessage, *, detached: bool):
         assert self._socket is not None
         self.__count_sent(message.__class__.__name__)
 

@@ -94,7 +94,7 @@ class YMQAsyncConnector(AsyncConnector):
 
         return result
 
-    async def send(self, message: BaseMessage, *, detached: bool = True):
+    async def send(self, message: BaseMessage, *, detached: bool):
         if self._socket is None:
             return
 

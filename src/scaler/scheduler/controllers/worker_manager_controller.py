@@ -65,7 +65,7 @@ class WorkerManagerController(Looper, Reporter):
 
         self._manager_alive_since[source] = (time.time(), heartbeat)
 
-        await self._binder.send(source, WorkerManagerHeartbeatEcho())
+        await self._binder.send(source, WorkerManagerHeartbeatEcho(), detached=True)
 
         information_snapshot = self._build_snapshot()
         managed_worker_ids = self._worker_controller.get_workers_by_manager_id(heartbeat.workerManagerID)
@@ -115,7 +115,7 @@ class WorkerManagerController(Looper, Reporter):
         return result
 
     async def _send_command(self, source: bytes, command: WorkerManagerCommand):
-        await self._binder.send(source, command)
+        await self._binder.send(source, command, detached=True)
 
     def _build_manager_snapshots(self) -> Dict[bytes, WorkerManagerSnapshot]:
         """Build cross-manager snapshots from all known managers, keyed by worker_manager_id."""

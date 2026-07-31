@@ -23,7 +23,7 @@ class ClientTaskManager(TaskManager):
 
     async def on_new_task(self, task: Task):
         self._task_ids.add(task.taskId)
-        await self._connector_external.send(task)
+        await self._connector_external.send(task, detached=True)
 
     async def on_cancel_task(self, task_cancel: TaskCancel):
         # We might receive a cancel task event on a previously finished task if:
@@ -36,12 +36,12 @@ class ClientTaskManager(TaskManager):
         if task_cancel.taskId not in self._task_ids:
             return
 
-        await self._connector_external.send(task_cancel)
+        await self._connector_external.send(task_cancel, detached=True)
 
     async def on_new_graph_task(self, task: GraphTask):
         self._task_ids.add(task.taskId)
         self._task_ids.update(set(task.targets))
-        await self._connector_external.send(task)
+        await self._connector_external.send(task, detached=True)
 
     async def on_task_result(self, result: TaskResult):
         # All task result objects must be propagated to the object manager, even if we do not track the task anymore

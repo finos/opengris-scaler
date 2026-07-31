@@ -101,6 +101,7 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
                 processors=self._processor_status_provider.get_processor_statuses(),
                 capabilities=dict_to_capabilities(self._capabilities),
                 workerManagerID=self._worker_manager_id,
-            )
+            ),
+            detached=True,
         )
         self._start_timestamp_ns = time.time_ns()
