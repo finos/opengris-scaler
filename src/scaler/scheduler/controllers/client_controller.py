@@ -57,10 +57,8 @@ class VanillaClientController(ClientController, Looper, Reporter):
         return client_id in self._client_last_seen
 
     def get_client_id(self, task_id: TaskID) -> Optional[ClientID]:
-        # get_key raises when the task is not owned by any tracked client -- e.g. a TaskLog streamed
-        # while the task was running arrives after the task finished (mapping removed) or after the
-        # client was disconnected. Guard with has_value so callers get the documented None instead of a
-        # ValueError, which (from the unguarded on_receive_message TaskLog path) would crash the scheduler.
+        # get_key raises for a task no tracked client owns, which a TaskLog arriving after its task has
+        # finished hits straight from on_receive_message, killing the scheduler. Return the documented None.
         if not self._client_to_task_ids.has_value(task_id):
             return None
         return self._client_to_task_ids.get_key(task_id)

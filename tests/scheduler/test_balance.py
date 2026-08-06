@@ -206,10 +206,8 @@ class TestBalance(unittest.TestCase):
         """
         Regression test for a scale-down crash: a worker dies outright (Kubernetes pod eviction) while
         the balancer is moving a task off it, so the balance-cancel is sent to a socket that has already
-        closed. That send raises ConnectorSocketClosedByRemoteEndError, and because the balancer runs in
-        its own loop -- not the binder receive loop that swallows it -- the exception would propagate
-        through asyncio.gather (``except YMQException``) and tear the whole scheduler down, hanging every
-        client until the deployment was restarted.
+        closed. That undeliverable send used to tear the whole scheduler down, hanging every client until
+        the deployment was restarted.
 
         Asserts both halves: the scheduler stays alive through that undeliverable send, and the killed
         worker's orphaned tasks are then rerouted -- by the heartbeat-timeout sweep, which is what reclaims

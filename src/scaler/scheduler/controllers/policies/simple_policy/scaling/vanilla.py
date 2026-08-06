@@ -14,12 +14,15 @@ logger = logging.getLogger(__name__)
 
 class VanillaScalingPolicy(ScalingPolicy):
     """
-    Stateless scaling policy that scales workers based on task-to-worker ratio.
+    Scaling policy that scales workers based on task-to-worker ratio.
+
+    Decisions depend only on the current observation. The last count logged per manager is kept for logging.
     """
 
     def __init__(self):
         self._lower_task_ratio = 1
         self._upper_task_ratio = 10
+        self._logged_desired_by_manager: Dict[bytes, int] = {}
 
     def get_scaling_commands(
         self,
@@ -62,9 +65,24 @@ class VanillaScalingPolicy(ScalingPolicy):
             desired = min(desired, max_concurrency)
 
         desired = max(0, desired)
-        if desired != current:
-            logger.info(
-                f"scaling {worker_manager_heartbeat.workerManagerID!r}: tasks={task_count}, "
-                f"workers={worker_count}, current={current} -> desired={desired}"
-            )
+        self.__log_decision(worker_manager_heartbeat.workerManagerID, task_count, worker_count, current, desired)
         return desired
+
+    def __log_decision(self, manager_id: bytes, task_count: int, worker_count: int, current: int, desired: int) -> None:
+        """Logs a request to change a manager's worker count, once per run of that same request.
+
+        The request repeats every heartbeat until the manager reaches the count, and forever if it cannot.
+        """
+
+        if desired == current:
+            self._logged_desired_by_manager.pop(manager_id, None)
+            return
+
+        if self._logged_desired_by_manager.get(manager_id) == desired:
+            return
+
+        self._logged_desired_by_manager[manager_id] = desired
+        logger.info(
+            f"scaling {manager_id!r}: tasks={task_count}, workers={worker_count}, current={current} -> "
+            f"desired={desired}"
+        )

@@ -176,10 +176,9 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             if now - alive_since > timeout
         ]
         for dead_worker, elapsed in dead_workers:
-            logger.warning(
-                f"{dead_worker!r} timed out: no heartbeat for {elapsed:.0f}s (worker_timeout_seconds={timeout})"
+            await self.__disconnect_worker(
+                dead_worker, reason=f"no heartbeat for {elapsed:.0f}s, worker_timeout_seconds={timeout}"
             )
-            await self.__disconnect_worker(dead_worker, reason="heartbeat timeout")
 
     def __forget_worker_manager(self, worker_id: WorkerID) -> None:
         manager_id = self._worker_to_manager.pop(worker_id, None)
@@ -213,7 +212,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         if not task_ids:
             return
 
-        logger.warning(f"{worker_id!r} disconnected ({reason}): rerouting/failing {len(task_ids)} in-flight task(s)")
+        logger.warning(f"{worker_id!r}: rerouting/failing {len(task_ids)} in-flight task(s)")
         for task_id in task_ids:
             await self._task_controller.on_worker_disconnect(task_id, worker_id)
 

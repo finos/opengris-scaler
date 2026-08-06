@@ -330,7 +330,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
     ):
         assert task_id == task_result.taskId
         assert state_machine.current_state() == TaskState.failedWorkerDied
-        logger.warning(f"{task_id!r}: failed because its worker died; reporting failedWorkerDied to the client")
+        logger.warning(f"{task_id!r}: reporting failedWorkerDied to the client")
         await self.__send_task_result_to_client(task_result)
 
     async def __send_task_cancel_to_worker(self, task_cancel: TaskCancel):
@@ -417,10 +417,9 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         try:
             await self._state_functions[state_machine.current_state()](task_id, state_machine, **kwargs)  # noqa
         except Exception:
-            # A bug in a state function must not crash the scheduler: __routing runs both from message
-            # handlers and from the balance/cleanup timer loops, so re-raising would propagate through
-            # asyncio.gather. Log the transition + state path and drop it -- the task may stall (surfaced by
-            # the client/worker timeouts), but the scheduler stays alive.
+            # __routing runs from message handlers and from the balance and cleanup timer loops alike, so a
+            # bug in a state function would propagate through asyncio.gather and take the scheduler with it.
+            # Dropping the transition strands the task instead, which the client and worker timeouts surface.
             logger.exception(f"{task_id!r}: transition {transition} failed, path: {state_machine.get_path()}")
 
     async def __retry_unassignable(self):

@@ -129,8 +129,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
     async def on_graph_sub_task_result(self, result: TaskResult):
         graph_info = self.__graph_for_subtask(result.taskId)
         if graph_info is None:
-            # A late result for a subtask whose graph has already finished/cancelled and been cleaned up.
-            # Indexing the maps directly here would KeyError, and on this path that tears the scheduler down.
+            # Unreachable while every mapped id belongs to a live graph; a KeyError here kills the scheduler.
             return
         graph_task_id = self._task_id_to_graph_task_id[result.taskId]
 
@@ -155,7 +154,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
     async def on_graph_sub_task_cancel_confirm(self, task_cancel_confirm: TaskCancelConfirm):
         graph_info = self.__graph_for_subtask(task_cancel_confirm.taskId)
         if graph_info is None:
-            # A late cancel-confirm for a subtask whose graph has already been cleaned up.
+            # Unreachable while every mapped id belongs to a live graph; a KeyError here kills the scheduler.
             return
         graph_task_id = self._task_id_to_graph_task_id[task_cancel_confirm.taskId]
         self.__mark_node_canceled(graph_info, task_cancel_confirm)
@@ -166,8 +165,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         return task_id in self._task_id_to_graph_task_id
 
     def __graph_for_subtask(self, task_id: TaskID) -> Optional[_Graph]:
-        """The graph a subtask belongs to, or None if the subtask or its graph has already been cleaned up
-        (a subtask id can linger in the id map as an orphan after its graph is popped)."""
+        """The graph a subtask belongs to, or None if the subtask is not part of a graph that still exists."""
         graph_task_id = self._task_id_to_graph_task_id.get(task_id)
         if graph_task_id is None:
             return None
@@ -420,8 +418,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         """Forgets a graph that has reached an end state, and returns it.
 
         A subtask leaves the id map when its result comes back, but a cancelled one has no result to come
-        back, so without this the map keeps one entry per cancelled node for as long as the scheduler runs.
-        Sweeping the graph's own task ids is enough: they are all it ever added.
+        back, so its id has to be swept here or it outlives the graph for as long as the scheduler runs.
         """
 
         self._client_controller.on_task_finish(graph_task_id)
