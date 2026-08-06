@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 from math import ceil
 from typing import Dict, FrozenSet, List, Tuple
@@ -9,18 +10,24 @@ from scaler.scheduler.controllers.worker_manager_utilties import build_scaling_m
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot
 
+logger = logging.getLogger(__name__)
+
 
 class CapabilityScalingPolicy(ScalingPolicy):
     """
-    A stateless scaling policy that scales workers based on task-required capabilities.
+    A scaling policy that scales workers based on task-required capabilities.
 
     For each distinct capability set observed in pending tasks, it computes a desired worker
     count using a task-to-worker ratio threshold. The desired counts are sent declaratively
     via setDesiredTaskConcurrency; the worker manager is responsible for making it so.
+
+    Decisions depend only on the current observation. The last counts logged per manager are kept for
+    logging.
     """
 
     def __init__(self):
         self._upper_task_ratio = 5
+        self._logged_desired_by_manager: Dict[bytes, Dict[FrozenSet[Tuple[str, int]], int]] = {}
 
     def get_scaling_commands(
         self,
@@ -31,7 +38,31 @@ class CapabilityScalingPolicy(ScalingPolicy):
     ) -> List[WorkerManagerCommand]:
         tasks_by_capability = self._group_tasks_by_capability(information_snapshot)
         desired_per_capset = self._compute_desired_per_capset(tasks_by_capability, worker_manager_heartbeat)
+        self.__log_decisions(worker_manager_heartbeat.workerManagerID, tasks_by_capability, desired_per_capset)
         return [build_set_desired_command(desired_per_capset)]
+
+    def __log_decisions(
+        self,
+        manager_id: bytes,
+        tasks_by_capability: Dict[FrozenSet[str], List[Dict[str, int]]],
+        desired_per_capset: List[Tuple[Dict[str, int], int]],
+    ) -> None:
+        """Logs what is asked of a manager, once per run of the same request.
+
+        The request repeats every heartbeat until the manager reaches the count, and forever if it cannot.
+        """
+
+        previously_logged = self._logged_desired_by_manager.get(manager_id, {})
+        self._logged_desired_by_manager[manager_id] = {
+            frozenset(capabilities.items()): desired for capabilities, desired in desired_per_capset
+        }
+
+        for capabilities, desired in desired_per_capset:
+            if previously_logged.get(frozenset(capabilities.items())) == desired:
+                continue
+
+            task_count = len(tasks_by_capability[frozenset(capabilities.keys())])
+            logger.info(f"scaling {manager_id!r}: tasks={task_count}, capabilities={capabilities} -> desired={desired}")
 
     def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
         return build_scaling_manager_status(managed_workers)

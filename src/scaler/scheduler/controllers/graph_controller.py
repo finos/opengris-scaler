@@ -353,8 +353,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         while graph_info.sorter.is_active():
             ready_task_ids = graph_info.sorter.get_ready()
             if not ready_task_ids:
-                # Defensive, mirrors __cancel_whole_graph: never busy-spin the whole event loop if the
-                # sorter ever reports active with nothing ready.
+                # A sorter that reports active with nothing ready would spin the event loop.
                 break
             for task_id in ready_task_ids:
                 new_result_object_ids = await self.__duplicate_objects(graph_info.client, result_objects)

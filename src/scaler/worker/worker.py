@@ -356,8 +356,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             pathlib.Path(self._address_internal.host).unlink(missing_ok=True)
 
         if failed_to_destroy:
-            # `_run` turns this into a nonzero exit code: a worker that could not release its resources is
-            # an anomaly a supervisor needs to see, even when nothing else went wrong.
+            # `_run` turns this into a nonzero exit code, so a failed teardown reaches the supervisor.
             raise RuntimeError(f"failed to destroy {', '.join(failed_to_destroy)}")
 
     def __register_signal(self):

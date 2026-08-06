@@ -84,7 +84,7 @@ class TestWorkerControllerMassEviction(unittest.TestCase):
 
         # Register N workers with a stale last-heartbeat so the sweep times all of them out at once
         # (bypassing on_heartbeat; replicate the state it maintains).
-        manager_id = b"pod-manager"
+        manager_id = b"worker-manager"
         for i in range(self.N_WORKERS):
             worker_id = WorkerID(f"worker-{i}".encode())
             policy.add_worker(worker_id, {"capA": -1}, 10)
@@ -95,7 +95,7 @@ class TestWorkerControllerMassEviction(unittest.TestCase):
         async def scenario():
             for i in range(self.N_WORKERS):  # one running task per worker, all sent while live
                 await task_controller.on_task_new(self._make_task(i))
-            for i in range(self.N_WORKERS):  # a batch of pods is evicted at once
+            for i in range(self.N_WORKERS):  # a whole batch of workers dies at once
                 binder.dead.add(WorkerID(f"worker-{i}".encode()))
             # Must not raise RecursionError: the sweep disconnects the batch iteratively rather than
             # letting a failed reroute send re-enter the disconnect path.

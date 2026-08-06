@@ -204,10 +204,9 @@ class TestBalance(unittest.TestCase):
     @unittest.skipIf(sys.platform == "win32", "kills a worker's process tree via SIGKILL/psutil, which is POSIX-only")
     def test_balance_cancel_worker_socket_closed(self):
         """
-        Regression test for a scale-down crash: a worker dies outright (Kubernetes pod eviction) while
-        the balancer is moving a task off it, so the balance-cancel is sent to a socket that has already
-        closed. That undeliverable send used to tear the whole scheduler down, hanging every client until
-        the deployment was restarted.
+        Regression test for a scale-down crash: a worker dies outright while the balancer is moving a
+        task off it, so the balance-cancel is sent to a socket that has already closed. That
+        undeliverable send used to tear the whole scheduler down, hanging every client until restart.
 
         Asserts both halves: the scheduler stays alive through that undeliverable send, and the killed
         worker's orphaned tasks are then rerouted -- by the heartbeat-timeout sweep, which is what reclaims
@@ -216,7 +215,7 @@ class TestBalance(unittest.TestCase):
         This complements test_balance_cancel_worker_death: that one SIGSTOPs the worker, so its socket
         stays open and the send succeeds (the task orphans until a timeout); this one SIGKILLs the whole
         process tree, so the socket closes and the send itself fails -- the case that killed the
-        scheduler. Uses the capability allocate policy, the configuration the fault was reported on.
+        scheduler. Uses the capability allocate policy.
         """
 
         TASK_SLEEP_SECONDS = 5
