@@ -43,9 +43,8 @@ logger = logging.getLogger(__name__)
 
 SUSPEND_SIGNAL = "SIGUSR1"  # use str instead of a signal.Signal to not trigger an import error on unsupported systems.
 
-# How many times a finished task's result hand-off is attempted when the transport drops under it, and how
-# long to wait before the second attempt (doubled on every further retry). The connectors reconnect on their
-# own, so the delays only have to outlast a reconnect, not a peer restart.
+# Attempts at handing a finished task's result off, and the wait before the second one, doubling from
+# there. The connectors reconnect on their own, so the delays only have to outlast a reconnect.
 RESULT_HAND_OFF_MAX_ATTEMPTS = 4
 RESULT_HAND_OFF_RETRY_DELAY_SECONDS = 1.0
 
@@ -224,9 +223,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 self.__on_connector_receive(message)
 
         except ymq.SocketStopRequestedError as e:
-            # Only the agent connector can surface this here: the storage connector reports its own
-            # transport failures as ObjectStorageException. Name the error anyway, so the next reader does
-            # not have to trust that attribution to know what dropped.
+            # Only the agent connector can raise this here, now that the storage connector reports its own
+            # failures as ObjectStorageException. Name the error rather than rely on that attribution.
             self.__log_exit("agent connector stop requested", exception=e)
 
         except ObjectStorageException as e:
@@ -392,8 +390,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __store_result(self, source: ClientID, task_id: TaskID, result_bytes: bytes) -> ObjectID:
         """Writes a finished task's result to the object storage, returning the object ID it landed under.
 
-        Every attempt uses a fresh object ID: a retry can follow a request the server only received part of,
-        and reusing the ID would risk announcing one the server holds a half-written object under.
+        Every attempt uses a fresh ID, so a retry that follows a partially received request cannot announce
+        one the server holds a half-written object under.
         """
 
         def store() -> ObjectID:
@@ -409,12 +407,9 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __hand_off(self, step: Callable[[], _T], task_id: TaskID, description: str) -> _T:
         """Runs one step of a finished task's result hand-off, retrying it if the transport drops under us.
 
-        The result cannot be reproduced -- the work is already paid for, possibly hours of it -- but the
-        connections it travels over can drop at any point, and a peer aborting one mid-write surfaces as a
-        canceled send. Retrying beats letting that unwind the main loop, which exits the processor and loses
-        the result for good. Every step is safe to repeat: the storage write lands under a fresh object ID,
-        and the agent has not been told about the result yet. A teardown the agent asked for is never
-        retried, its connectors are gone for good.
+        The work behind the result is already paid for, possibly hours of it, and cannot be redone, whereas
+        letting the failure unwind the main loop exits the processor and loses it. Repeating a step is safe:
+        the agent has not been told about the result yet. A teardown the agent asked for is never retried.
         """
 
         attempt = 1

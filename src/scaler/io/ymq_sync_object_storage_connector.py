@@ -161,9 +161,8 @@ class YMQSyncObjectStorageConnector(SyncObjectStorageConnector):
             if payload is not None:
                 self._socket.send_message_sync(Bytes(payload))
         except YMQException as exception:
-            # A peer that aborts the connection mid-write cancels the send, which YMQ reports as
-            # SocketStopRequested. Report it the way __receive_response reports a failed read, or the raw YMQ
-            # error reads to the caller as a failure of whatever other socket it happens to be polling.
+            # Report a canceled send the way __receive_response reports a failed read: a raw YMQ error names
+            # no socket, so it reads to the caller as a failure of whatever else it handles errors for.
             self.__raise_connection_failure(exception)
 
     def __receive_response(self):
