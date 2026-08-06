@@ -292,7 +292,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             return
 
         if isinstance(message, TaskLog):
-            await self._connector_external.send(message)
+            await self._connector_external.send(message, detached=True)
             return
 
         if isinstance(message, TaskResult):

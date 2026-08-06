@@ -108,7 +108,8 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
                 processors=[self.__get_processor_status_from_holder(processor) for processor in processors],
                 capabilities=dict_to_capabilities(self._capabilities),
                 workerManagerID=self._worker_manager_id,
-            )
+            ),
+            detached=True,
         )
         self._start_timestamp_ns = time.time_ns()
 

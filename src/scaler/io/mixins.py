@@ -97,7 +97,7 @@ class AsyncBinder(Looper, Reporter, metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def send(self, to: bytes, message: BaseMessage, *, detached: bool = True):
+    async def send(self, to: bytes, message: BaseMessage, *, detached: bool):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -131,7 +131,7 @@ class AsyncConnector(Looper, metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def send(self, message: BaseMessage, *, detached: bool = True):
+    async def send(self, message: BaseMessage, *, detached: bool):
         raise NotImplementedError()
 
     @abc.abstractmethod

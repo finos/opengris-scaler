@@ -118,7 +118,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             if self._graph_controller.is_graph_subtask(task_cancel.taskId):
                 await self._graph_controller.on_graph_sub_task_cancel_confirm(task_cancel_confirm)
 
-            await self._binder.send(client_id, task_cancel_confirm)
+            await self._binder.send(client_id, task_cancel_confirm, detached=True)
             return
 
         if state_machine.current_state() == TaskState.inactive:
@@ -237,7 +237,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
         assert state_machine.current_state() == TaskState.running
 
         task = self._task_id_to_task[task_id]
-        await self._binder.send(worker_id, task)
+        await self._binder.send(worker_id, task, detached=True)
         await self.__send_monitor(task_id, self._object_controller.get_object_name(task.funcObjectId))
 
     async def __state_canceling(
@@ -347,7 +347,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
             )
             return
 
-        await self._binder.send(worker, task_cancel)
+        await self._binder.send(worker, task_cancel, detached=True)
         await self.__send_monitor(task_cancel.taskId, b"")
 
     async def __send_task_result_to_client(self, task_result: TaskResult):
@@ -359,7 +359,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 f"registered (likely disconnected via client_timeout_seconds while the task was running)"
             )
         else:
-            await self._binder.send(client, task_result)
+            await self._binder.send(client, task_result, detached=True)
 
         func_name = b""
         task = self._task_id_to_task.get(task_result.taskId)
@@ -383,7 +383,7 @@ class VanillaTaskController(TaskController, Looper, Reporter):
                 f"longer registered"
             )
         else:
-            await self._binder.send(client, task_cancel_confirm)
+            await self._binder.send(client, task_cancel_confirm, detached=True)
         await self.__send_monitor(task_cancel_confirm.taskId, b"")
         self._task_state_manager.remove_state_machine(task_cancel_confirm.taskId)
         self._task_id_to_task.pop(task_cancel_confirm.taskId)

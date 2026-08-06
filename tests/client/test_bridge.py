@@ -103,7 +103,7 @@ class InProcessConnectorPairTest(unittest.TestCase):
         async_conn, sync_conn, _ = self._make_pair()
         msg = ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.shutdown)
 
-        self._loop.run_until_complete(async_conn.send(msg))
+        self._loop.run_until_complete(async_conn.send(msg, detached=True))
 
         with _patched_run_sync(self._driver):
             got = sync_conn.receive()

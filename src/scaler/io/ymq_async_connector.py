@@ -22,7 +22,7 @@ class YMQAsyncConnector(AsyncConnector):
         self._callback: Callable[[BaseMessage], Awaitable[None]] = callback
         self._socket: Optional[ConnectorSocket] = None
 
-        self._pending_tasks: Set["asyncio.Task"] = set()
+        self._pending_tasks: Set[asyncio.Task] = set()
 
     def __del__(self):
         self.destroy()
@@ -94,7 +94,7 @@ class YMQAsyncConnector(AsyncConnector):
 
         return result
 
-    async def send(self, message: BaseMessage, *, detached: bool = True):
+    async def send(self, message: BaseMessage, *, detached: bool):
         if self._socket is None:
             return
 

@@ -21,7 +21,7 @@ class _DeadableBinder:
     def __init__(self):
         self.dead = set()
 
-    async def send(self, to, message):
+    async def send(self, to, message, *, detached: bool = True):
         if WorkerID(bytes(to)) in self.dead:
             raise ConnectorSocketClosedByRemoteEndError(
                 ErrorCode.ConnectorSocketClosedByRemoteEnd, "worker socket closed by remote end"

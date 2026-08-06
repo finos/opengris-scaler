@@ -220,7 +220,7 @@ class Scheduler:
         if isinstance(message, TaskLog):
             client = self._client_manager.get_client_id(message.taskId)
             if client is not None:
-                await self._binder.send(client, message)
+                await self._binder.send(client, message, detached=True)
             return
 
         # =====================================================================================

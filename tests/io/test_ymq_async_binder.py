@@ -1,6 +1,6 @@
 """io-layer contract tests for ``YMQAsyncBinder``.
 
-``send()`` is fire-and-forget by default: it schedules the send and returns, so a peer that never
+A ``detached=True`` send is fire-and-forget: it schedules the send and returns, so a peer that never
 connects cannot block the caller, and a failure is logged rather than raised at a caller that has
 already moved on. Callers that need the send to have left the process pass ``detached=False``, and
 they still get the ``SocketStopRequested`` fail-fast the worker boundary handles -- the graceful
@@ -41,9 +41,11 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
         return DisconnectRequest(worker=WorkerID.generate_worker_id("nobody"))
 
     async def test_detached_send_does_not_wait_for_the_peer(self) -> None:
-        """The default send returns without waiting for a peer that never connects."""
+        """A detached send returns without waiting for a peer that never connects."""
         # Would never return if the send were awaited through to the C++ socket.
-        await asyncio.wait_for(self._binder.send(b"peer-that-never-connects", self._make_message()), timeout=5.0)
+        await asyncio.wait_for(
+            self._binder.send(b"peer-that-never-connects", self._make_message(), detached=True), timeout=5.0
+        )
 
     async def test_undetached_send_propagates_socket_stop_requested_when_socket_shut_down(self) -> None:
         """detached=False surfaces SocketStopRequested when the socket is shut down mid-send.
