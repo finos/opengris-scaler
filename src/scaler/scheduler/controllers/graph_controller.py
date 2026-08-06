@@ -401,9 +401,7 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         if not self.__is_graph_finished(graph_task_id):
             return
 
-        self._client_controller.on_task_finish(graph_task_id)
-        self._task_id_to_graph_task_id.pop(graph_task_id)
-        info = self._graph_task_id_to_graph.pop(graph_task_id)
+        info = self.__pop_graph(graph_task_id)
         await self._binder.send(
             info.client,
             TaskCancelConfirm(taskId=graph_task_id, cancelConfirmType=TaskCancelConfirmType.canceled),
@@ -411,14 +409,29 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         )
 
     async def __done_graph_umbrella_task(self, graph_task_id: TaskID, result_type: TaskResultType):
-        self._client_controller.on_task_finish(graph_task_id)
-        self._task_id_to_graph_task_id.pop(graph_task_id)
-        info = self._graph_task_id_to_graph.pop(graph_task_id)
+        info = self.__pop_graph(graph_task_id)
         await self._binder.send(
             info.client,
             TaskResult(taskId=graph_task_id, resultType=result_type, metadata=b"", results=[]),
             detached=True,
         )
+
+    def __pop_graph(self, graph_task_id: TaskID) -> _Graph:
+        """Forgets a graph that has reached an end state, and returns it.
+
+        A subtask leaves the id map when its result comes back, but a cancelled one has no result to come
+        back, so without this the map keeps one entry per cancelled node for as long as the scheduler runs.
+        Sweeping the graph's own task ids is enough: they are all it ever added.
+        """
+
+        self._client_controller.on_task_finish(graph_task_id)
+        self._task_id_to_graph_task_id.pop(graph_task_id)
+        graph_info = self._graph_task_id_to_graph.pop(graph_task_id)
+
+        for task_id in graph_info.tasks:
+            self._task_id_to_graph_task_id.pop(task_id, None)
+
+        return graph_info
 
     def __is_graph_finished(self, graph_task_id: TaskID):
         if graph_task_id not in self._graph_task_id_to_graph:

@@ -58,11 +58,11 @@ def create_async_loop_routine(routine: Callable[[], Awaitable], seconds: int, sw
             while True:
                 try:
                     await routine()
-                except Exception:
+                except Exception as e:
                     if not swallow_routine_errors:
                         raise
                     routine_owner = routine.__self__.__class__.__name__  # type: ignore[attr-defined]
-                    logger.exception(f"{routine_owner}: routine raised, continuing")
+                    logger.exception(f"{routine_owner}: routine raised {e!r}, continuing")
                 await asyncio.sleep(seconds)
         except asyncio.CancelledError:
             pass
