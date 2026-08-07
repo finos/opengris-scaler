@@ -116,9 +116,7 @@ std::expected<void, scaler::wrapper::uv::Error> Client::setKeepAlive(bool enable
         return tls->keepalive(enable, delaySeconds);
     }
     if (auto* ws = std::get_if<WebSocketStream>(&_socket)) {
-        return std::visit(
-            [enable, delaySeconds](auto& transport) { return transport.keepalive(enable, delaySeconds); },
-            ws->transport());
+        return ws->keepalive(enable, delaySeconds);
     }
     // IPC connections are local, they cannot be dropped without either end noticing.
     return {};
