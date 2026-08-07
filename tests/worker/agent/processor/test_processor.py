@@ -77,8 +77,7 @@ class ProcessorLogExitTest(unittest.TestCase):
         self.assertIs(record.exc_info[1], exception)  # type: ignore[index]
 
     def test_in_flight_task_is_named_when_an_exception_is_present(self) -> None:
-        # Regression: __send_result used to clear _current_task before writing to storage, so the PR's headline
-        # scenario -- a storage failure mid-result -- logged without saying which task was orphaned.
+        # A storage failure mid-result has to name the task it orphaned, which needs _current_task still set.
         task = _make_task()
         self.processor._current_task = task
 
@@ -264,7 +263,7 @@ class ProcessorResultHandOffRetryTest(unittest.TestCase):
 
 class ProcessorRunForeverTest(unittest.TestCase):
     """SystemExit must reach multiprocessing's _bootstrap, otherwise the processor exits 0 and the exit code
-    this PR surfaces is destroyed."""
+    the task asked for is lost."""
 
     def setUp(self) -> None:
         self.processor = _make_processor()

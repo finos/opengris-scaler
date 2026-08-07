@@ -1,9 +1,8 @@
 """``YMQSyncObjectStorageConnector`` must report a transport failure as an object storage failure.
 
 A peer that aborts the connection mid-write cancels the send, which YMQ reports as ``SocketStopRequested``.
-The read side has always translated YMQ errors into ``ObjectStorageException``; the write side used to let
-them through raw, so a failed storage write surfaced to callers as whatever YMQ error they happened to
-handle -- in the processor's case, as "agent connector stop requested", naming a connection that was fine.
+Both the read and the write side translate it, so a caller sees a failure of the storage connection rather
+than a raw YMQ error, which names no socket and reads as a failure of whatever else the caller handles.
 """
 
 import unittest

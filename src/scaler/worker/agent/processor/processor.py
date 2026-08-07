@@ -223,8 +223,6 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 self.__on_connector_receive(message)
 
         except ymq.SocketStopRequestedError as e:
-            # Only the agent connector can raise this here, now that the storage connector reports its own
-            # failures as ObjectStorageException. Name the error rather than rely on that attribution.
             self.__log_exit("agent connector stop requested", exception=e)
 
         except ObjectStorageException as e:
