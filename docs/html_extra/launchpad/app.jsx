@@ -873,8 +873,9 @@ function CopyBtn({ value }) {
 
 /* ── DeploymentCard ── */
 function DeploymentCard({ state, onDownload, keyMaterial, isRunning }) {
-  const rows = [
-    { label: "Scheduler", value: state.scheduler_address },
+  const [expanded, setExpanded] = useState(false);
+
+  const advancedRows = [
     { label: "Object storage", value: state.object_storage_address },
     { label: "Monitor", value: state.monitor_address },
     { label: "Worker Monitor", value: state.worker_monitor_address, href: state.worker_monitor_address },
@@ -895,8 +896,9 @@ function DeploymentCard({ state, onDownload, keyMaterial, isRunning }) {
   return (
     <div
       style={{
-        background: "rgba(0,255,136,0.03)",
-        border: "1px solid var(--border-success)",
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--border-strong)",
+        borderLeft: "3px solid var(--accent-cyan)",
         borderRadius: 4,
         padding: "20px 24px",
         display: "flex",
@@ -909,16 +911,72 @@ function DeploymentCard({ state, onDownload, keyMaterial, isRunning }) {
         <div
           style={{
             fontSize: 11,
-            color: "var(--text-success)",
+            color: "var(--text-accent)",
             fontWeight: 600,
+            letterSpacing: "0.04em",
           }}
         >
           Active Deployment
         </div>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {rows.map(({ label, value, href, code }) => (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-primary)" }}>
+          Scheduler
+        </span>
+        {state.scheduler_address ? (
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: "var(--text-accent)",
+                fontFamily: "var(--font-mono)",
+                overflowWrap: "anywhere",
+              }}
+            >
+              {state.scheduler_address}
+            </span>
+            <CopyBtn value={state.scheduler_address} />
+          </div>
+        ) : (
+          <span style={{ fontSize: 13, color: "var(--text-dim)", fontStyle: "italic" }}>
+            pending...
+          </span>
+        )}
+        <span style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>
+          Connect your client to this address.
+        </span>
+      </div>
+
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        style={{
+          background: "none",
+          border: "none",
+          color: "var(--text-muted)",
+          fontFamily: "inherit",
+          fontSize: 11,
+          padding: 0,
+          cursor: "pointer",
+          textAlign: "left",
+          alignSelf: "flex-start",
+        }}
+      >
+        {expanded ? "▾" : "▸"} More deployment details
+      </button>
+
+      {expanded && (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          paddingTop: 8,
+          borderTop: "1px solid var(--border-accent)",
+        }}
+      >
+        {advancedRows.map(({ label, value, href, code }) => (
           <div
             key={label}
             style={{
@@ -1067,6 +1125,7 @@ function DeploymentCard({ state, onDownload, keyMaterial, isRunning }) {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -3066,7 +3125,11 @@ function App() {
             flex: 1,
             padding: "20px 28px",
             display: "grid",
-            gridTemplateColumns: "1fr 600px",
+            gridTemplateColumns:
+              (provState && phase !== "destroying") || phase === "error"
+                ? "1fr 600px"
+                : "1fr",
+            gridTemplateRows: "1fr",
             gap: 20,
             minHeight: 0,
             overflow: "hidden",
