@@ -16,7 +16,7 @@ class LoggingConfig(ConfigClass):
             short="-lp",
             nargs="*",
             help="specify where the cluster's log should logged to, there can be multiple paths."
-            '"/dev/stdout" means output to stdout, and is the default. '
+            '"/dev/stdout" means output to stdout, and is the default. "/dev/stderr" means output to stderr. '
             "each worker has its own log file with process id appended to the path",
         ),
     )

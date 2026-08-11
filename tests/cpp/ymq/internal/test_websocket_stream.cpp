@@ -5,6 +5,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "scaler/wrapper/uv/error.h"
@@ -55,7 +56,7 @@ struct TestWebSocketStreamPair {
         UV_EXIT_ON_ERROR(_tcpServer->listen(1, [this](std::expected<void, scaler::wrapper::uv::Error> result) {
             UV_EXIT_ON_ERROR(result);
             auto sock = UV_EXIT_ON_ERROR(scaler::ymq::internal::WebSocketStream::init(_loop));
-            UV_EXIT_ON_ERROR(_tcpServer->accept(sock.transport()));
+            UV_EXIT_ON_ERROR(_tcpServer->accept(std::get<scaler::wrapper::uv::TCPSocket>(sock.transport())));
             _serverSide.emplace(std::move(sock));
 
             UV_EXIT_ON_ERROR(_serverSide->accept([this](std::expected<void, scaler::wrapper::uv::Error> handshake) {

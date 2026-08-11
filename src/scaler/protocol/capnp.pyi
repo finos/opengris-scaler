@@ -119,6 +119,7 @@ class WorkerStatus(CapnpStruct):
     workerId: WorkerID
     agent: Resource
     rssFree: int
+    memLimit: int
     free: int
     sent: int
     queued: int
@@ -229,6 +230,7 @@ class WorkerHeartbeat(BaseMessage):
     processors: Any
     capabilities: Any
     workerManagerID: bytes
+    memLimit: int
 
 class WorkerHeartbeatEcho(BaseMessage):
     objectStorageAddress: ObjectStorageAddress

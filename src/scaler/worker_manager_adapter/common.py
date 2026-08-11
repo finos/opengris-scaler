@@ -26,7 +26,7 @@ def extract_desired_count(
     """
     total = 0
     for request in requests:
-        request_capabilities = {entry.key: entry.value for entry in request.capabilities}
+        request_capabilities = {entry.name: entry.value for entry in request.capabilities}
         if request_capabilities.items() <= own_capabilities.items():
             total += request.taskConcurrency
     return total

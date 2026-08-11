@@ -1,4 +1,5 @@
 import multiprocessing
+import sys
 import time
 import unittest
 from concurrent.futures import CancelledError
@@ -10,6 +11,7 @@ from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.defaults import DEFAULT_LOGGING_PATHS
 from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig, NativeWorkerManagerMode
 from scaler.config.types.worker import WorkerCapabilities
+from scaler.utility.exceptions import DisconnectedError
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager_adapter.baremetal.native import NativeWorkerManager
 from tests.utility.utility import logging_test_name
@@ -75,3 +77,30 @@ class TestClusterDisconnect(unittest.TestCase):
         with self.assertRaises(CancelledError):
             client.clear()
             future_result.result()
+
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "hangs on Windows: client teardown blocks forever waiting on a killed peer's socket "
+        "shutdown; see https://github.com/finos/opengris-scaler/issues/912",
+    )
+    def test_scheduler_disconnect_raises_disconnected_error(self):
+        """When the scheduler connection drops with tasks in flight, the futures fail with a descriptive
+        DisconnectedError naming the scheduler -- not a bare TimeoutError() that reads as if the task
+        itself timed out. n_workers=0, so the task stays in flight until the scheduler vanishes."""
+        # The client's heartbeat death-timeout (5s) must be comfortably shorter than the future wait
+        # below, so the agent detects the vanished scheduler and fails the future with
+        # DisconnectedError well before future.result()'s own timeout could raise a bare TimeoutError.
+        client = Client(self.address, timeout_seconds=5)
+        try:
+            future = client.submit(noop_sleep, 30)
+            time.sleep(2)  # let the task register on the scheduler
+
+            self.combo._scheduler.kill()  # scheduler vanishes: crash / network partition
+
+            with self.assertRaises(DisconnectedError):
+                future.result(timeout=30)
+        finally:
+            try:
+                client.disconnect()
+            except Exception:  # noqa: BLE001 -- the agent already tore down when the scheduler died
+                pass

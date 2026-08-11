@@ -83,6 +83,7 @@ struct WorkerHeartbeat {
     processors @6 :List(Status.ProcessorStatus);
     capabilities @7 :List(CommonType.TaskCapability);
     workerManagerID @8 :Data;
+    memLimit @9 :UInt64;  # memory limit in bytes the worker runs under (cgroup if set, else system total); 0 if unknown
 }
 
 struct WorkerHeartbeatEcho {

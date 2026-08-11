@@ -4,6 +4,7 @@
 #include <array>
 #include <cassert>
 #include <climits>
+#include <deque>
 #include <functional>
 #include <utility>
 #include <vector>
@@ -59,6 +60,11 @@ std::expected<SecureSocket, uv::Error> SecureSocket::init(uv::Loop& loop, SSLCon
     if (readBIO == nullptr || writeBIO == nullptr) {
         return std::unexpected {uv::Error {UV_ENOMEM}};
     }
+
+    // By default, reading from an empty BIO_s_mem() reports a hard EOF (returns 0), which OpenSSL treats as the
+    // underlying transport having closed. Since the read BIO legitimately runs dry between network reads (we
+    // haven't received the peer's next flight yet), tell it to report "no data yet, retry" (-1) instead of EOF.
+    BIO_set_mem_eof_return(readBIO.get(), -1);
 
     // Associate BIOs with the SSL session.
     BIO_up_ref(readBIO.get());  // BIO_up_ref() is required as SSL_set_bio() takes ownership of these buffers.
@@ -406,8 +412,9 @@ std::expected<void, uv::Error> SecureSocket::processPendingWrites(std::shared_pt
         const std::span<const uint8_t> payload = pendingWrite._payload;
 
         if (payload.empty()) {
-            pendingWrite._callback({});
+            auto callback = std::move(pendingWrite._callback);
             state->_pendingWrites.pop_front();
+            callback({});
             continue;
         }
 
@@ -436,8 +443,9 @@ std::expected<void, uv::Error> SecureSocket::processPendingWrites(std::shared_pt
         const size_t bytesWritten = static_cast<size_t>(status);
 
         if (bytesWritten >= payload.size()) {
-            pendingWrite._callback({});
+            auto callback = std::move(pendingWrite._callback);
             state->_pendingWrites.pop_front();
+            callback({});
         } else {
             pendingWrite._payload = payload.subspan(bytesWritten);
         }
@@ -463,23 +471,27 @@ void SecureSocket::failWithError(std::shared_ptr<State> state, uv::Error error) 
     state->_transport.readStop();
 
     if (state->_onReadCallback.has_value()) {
-        (*state->_onReadCallback)(std::unexpected {error});
+        auto callback = std::move(*state->_onReadCallback);
         state->_onReadCallback.reset();
+        callback(std::unexpected {error});
     }
 
-    for (PendingWrite& pendingWrite: state->_pendingWrites) {
+    std::deque<PendingWrite> pendingWrites = std::move(state->_pendingWrites);
+    state->_pendingWrites.clear();
+    for (PendingWrite& pendingWrite: pendingWrites) {
         pendingWrite._callback(std::unexpected {error});
     }
-    state->_pendingWrites.clear();
 
     if (state->_onHandshakeCallback.has_value()) {
-        (*state->_onHandshakeCallback)(std::unexpected {error});
+        auto callback = std::move(*state->_onHandshakeCallback);
         state->_onHandshakeCallback.reset();
+        callback(std::unexpected {error});
     }
 
     if (state->_onShutdownCallback.has_value()) {
-        (*state->_onShutdownCallback)(std::unexpected {error});
+        auto callback = std::move(*state->_onShutdownCallback);
         state->_onShutdownCallback.reset();
+        callback(std::unexpected {error});
     }
 }
 

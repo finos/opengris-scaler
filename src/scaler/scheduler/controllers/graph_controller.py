@@ -379,7 +379,9 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         self._task_id_to_graph_task_id.pop(graph_task_id)
         info = self._graph_task_id_to_graph.pop(graph_task_id)
         await self._binder.send(
-            info.client, TaskCancelConfirm(taskId=graph_task_id, cancelConfirmType=TaskCancelConfirmType.canceled)
+            info.client,
+            TaskCancelConfirm(taskId=graph_task_id, cancelConfirmType=TaskCancelConfirmType.canceled),
+            detached=True,
         )
 
     async def __done_graph_umbrella_task(self, graph_task_id: TaskID, result_type: TaskResultType):
@@ -387,7 +389,9 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         self._task_id_to_graph_task_id.pop(graph_task_id)
         info = self._graph_task_id_to_graph.pop(graph_task_id)
         await self._binder.send(
-            info.client, TaskResult(taskId=graph_task_id, resultType=result_type, metadata=b"", results=[])
+            info.client,
+            TaskResult(taskId=graph_task_id, resultType=result_type, metadata=b"", results=[]),
+            detached=True,
         )
 
     def __is_graph_finished(self, graph_task_id: TaskID):
@@ -414,11 +418,15 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         task_info = graph_info.tasks[task_id]
 
-        for argument in task_info.task.functionArgs:
-            if argument.type != Task.Argument.ArgumentType.task:
-                continue
+        # a task can reference the same dependency in several arguments, but __add_new_graph registers every
+        # dependency only once, so deduplicate the arguments to not remove the same pair twice
+        depended_task_ids = {
+            TaskID(argument.data)
+            for argument in task_info.task.functionArgs
+            if argument.type == Task.Argument.ArgumentType.task
+        }
 
-            depended_task_id = TaskID(argument.data)
+        for depended_task_id in depended_task_ids:
             graph_info.depended_task_id_to_task_id.remove(depended_task_id, task_id)
             if graph_info.depended_task_id_to_task_id.has_left_key(depended_task_id):
                 continue
@@ -455,9 +463,12 @@ class VanillaGraphTaskController(GraphTaskController, Looper, Reporter):
         )
 
     async def __send_results(self, client_id: ClientID, results: List[TaskResult]):
-        await asyncio.gather(*[self._binder.send(client_id, result) for result in results])
+        await asyncio.gather(*[self._binder.send(client_id, result, detached=True) for result in results])
 
     async def __send_task_cancel_confirms(self, client_id: ClientID, task_cancel_confirms: List[TaskCancelConfirm]):
         await asyncio.gather(
-            *[self._binder.send(client_id, task_cancel_confirm) for task_cancel_confirm in task_cancel_confirms]
+            *[
+                self._binder.send(client_id, task_cancel_confirm, detached=True)
+                for task_cancel_confirm in task_cancel_confirms
+            ]
         )

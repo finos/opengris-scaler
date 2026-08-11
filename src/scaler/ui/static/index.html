@@ -34,11 +34,11 @@
                     <span class="metric-value" id="sched-cpu">—</span>
                 </div>
                 <div class="metric">
-                    <span class="metric-label">RSS:</span>
+                    <span class="metric-label">PSS:</span>
                     <span class="metric-value" id="sched-rss">—</span>
                 </div>
                 <div class="metric">
-                    <span class="metric-label">RSS Free:</span>
+                    <span class="metric-label">Mem Free:</span>
                     <span class="metric-value" id="sched-rss-free">—</span>
                 </div>
                 <div class="metric">
@@ -60,7 +60,7 @@
                             <th>Max Concurrency</th>
                             <th>Workers</th>
                             <th>Σ CPU %</th>
-                            <th>Σ RSS (MB)</th>
+                            <th>Σ PSS (MB)</th>
                             <th>Σ Free</th>
                             <th>Σ Sent</th>
                             <th>Σ Queued</th>
@@ -74,17 +74,20 @@
         </div>
 
         <div class="card">
-            <h3>Workers</h3>
+            <h3>Workers <span class="badge" id="workers-count">0</span></h3>
+            <div class="pager pager-top" id="workers-pager-top"></div>
             <div class="table-wrap">
+                <!-- Agt/Proc memory is PSS (proportional set size) on Linux, RSS on macOS/Windows; see get_process_memory. -->
                 <table class="data-table" id="workers-table">
                     <thead>
                         <tr>
                             <th>Worker</th>
                             <th>Manager</th>
                             <th>Agt CPU %</th>
-                            <th>Agt RSS (MB)</th>
+                            <th>Agt PSS (MB)</th>
                             <th>Proc CPU %</th>
-                            <th>Proc RSS (MB)</th>
+                            <th>Proc PSS (MB)</th>
+                            <th>Mem %</th>
                             <th>Free</th>
                             <th>Sent</th>
                             <th>Queued</th>
@@ -98,6 +101,7 @@
                     <tbody id="workers-body"></tbody>
                 </table>
             </div>
+            <div class="pager" id="workers-pager"></div>
         </div>
     </div>
 
@@ -105,6 +109,7 @@
     <div class="tab-panel" id="panel-tasklog">
         <div class="card">
             <h3>Task Log <span class="badge" id="tasklog-count">0</span></h3>
+            <div class="pager pager-top" id="tasklog-pager-top"></div>
             <div class="table-wrap">
                 <table class="data-table" id="tasklog-table">
                     <thead>
@@ -122,6 +127,7 @@
                     <tbody id="tasklog-body"></tbody>
                 </table>
             </div>
+            <div class="pager" id="tasklog-pager"></div>
         </div>
     </div>
 
@@ -133,10 +139,12 @@
                 <button class="fit-page-btn" id="fit-page-btn" title="Toggle fit-to-page layout">Fit Page</button>
             </div>
             <div class="legend" id="stream-legend"></div>
+            <div class="pager pager-top" id="stream-pager-top"></div>
             <div class="stream-container" id="stream-container">
                 <canvas id="stream-canvas"></canvas>
             </div>
             <div class="stream-axis" id="stream-axis"></div>
+            <div class="pager" id="stream-pager"></div>
         </div>
         <div class="card" id="memory-card">
             <h3>Memory Usage</h3>
@@ -148,7 +156,9 @@
 
     <!-- Tab: Worker Processors -->
     <div class="tab-panel" id="panel-processors">
+        <div class="pager pager-top" id="processors-pager-top"></div>
         <div id="processors-container"></div>
+        <div class="pager" id="processors-pager"></div>
     </div>
 
     <!-- Tab: Settings -->

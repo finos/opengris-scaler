@@ -13,6 +13,7 @@ from scaler.scheduler.controllers.mixins import (
     WorkerController,
 )
 from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
+from scaler.utility.memory import get_memory_limit_and_available, get_process_memory
 from scaler.utility.mixins import Looper
 
 
@@ -53,11 +54,12 @@ class VanillaInformationController(InformationController, Looper):
         pass
 
     async def routine(self):
+        _, mem_available = get_memory_limit_and_available()
         await self._monitor_binder.send(
             StateScheduler(
                 binder=self._binder.get_status(),
-                scheduler=Resource(cpu=int(self._process.cpu_percent() * 10), rss=self._process.memory_info().rss),
-                rssFree=psutil.virtual_memory().available,
+                scheduler=Resource(cpu=int(self._process.cpu_percent() * 10), rss=get_process_memory(self._process)),
+                rssFree=mem_available,
                 clientManager=self._client_controller.get_status(),
                 objectManager=self._object_controller.get_status(),
                 taskManager=self._task_controller.get_status(),

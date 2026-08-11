@@ -6,9 +6,12 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "scaler/utility/move_only_function.h"
+#include "scaler/wrapper/openssl/secure_socket.h"
+#include "scaler/wrapper/openssl/ssl_context.h"
 #include "scaler/wrapper/uv/callback.h"
 #include "scaler/wrapper/uv/error.h"
 #include "scaler/wrapper/uv/loop.h"
@@ -20,17 +23,22 @@ namespace scaler {
 namespace ymq {
 namespace internal {
 
-// Manages the WebSocket protocol over a TCP connection.
+// Manages the WebSocket protocol over a TCP or TLS connection.
 //
 // Handles the RFC 6455 HTTP/1.1 Upgrade handshake and binary frame framing/deframing.
-// YMQ magic bytes and message frames are transported as WebSocket binary frames.
-// Only ws:// (plain TCP) is supported; wss:// (TLS) requires an external library.
+//
+// Both ws:// (plain TCP) and wss:// (TLS via SecureSocket) are supported.
 class WebSocketStream {
 public:
+    using Transport = std::variant<scaler::wrapper::uv::TCPSocket, scaler::wrapper::openssl::SecureSocket>;
+
     using HandshakeDoneCallback =
         scaler::utility::MoveOnlyFunction<void(std::expected<void, scaler::wrapper::uv::Error>)>;
 
-    static std::expected<WebSocketStream, scaler::wrapper::uv::Error> init(scaler::wrapper::uv::Loop& loop) noexcept;
+    // When an sslContext is provided the stream runs over TLS (wss://); otherwise plain TCP (ws://).
+    static std::expected<WebSocketStream, scaler::wrapper::uv::Error> init(
+        scaler::wrapper::uv::Loop& loop,
+        std::optional<scaler::wrapper::openssl::SSLContext> sslContext = std::nullopt) noexcept;
 
     ~WebSocketStream() noexcept;
 
@@ -51,8 +59,8 @@ public:
     // The callback is called when the upgrade completes (or fails).
     std::expected<void, scaler::wrapper::uv::Error> accept(HandshakeDoneCallback callback) noexcept;
 
-    // Returns the underlying TCP socket.
-    scaler::wrapper::uv::TCPSocket& transport() noexcept;
+    // Returns the underlying transport socket.
+    Transport& transport() noexcept;
 
     // The buffers' content must remain valid until the callback is called.
     std::expected<void, scaler::wrapper::uv::Error> write(
@@ -70,7 +78,7 @@ private:
     enum class Role { Undefined, Client, Server };
 
     struct State {
-        scaler::wrapper::uv::TCPSocket _socket;
+        Transport _transport;
         Role _role {Role::Undefined};
 
         // Used only during the HTTP Upgrade handshake, reset once completed.
@@ -81,7 +89,7 @@ private:
         bool _readActive {false};
         scaler::wrapper::uv::ReadCallback _readCallback {};
 
-        explicit State(scaler::wrapper::uv::TCPSocket socket) noexcept;
+        explicit State(Transport transport) noexcept;
     };
 
     explicit WebSocketStream(std::shared_ptr<State> state) noexcept;

@@ -17,13 +17,19 @@ since browser wasm clients exclusively speak ``ws://``.
 
 import asyncio
 import os
+import pathlib
 import socket
 import unittest
 
 from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.config.types.address import AddressConfig
-from scaler.io.ymq import BinderSocket, Bytes, ConnectorSocket, IOContext
+from scaler.io.ymq import BinderSocket, Bytes, ConnectorSocket, IOContext, TLSConfig
 from scaler.utility.identifiers import ObjectID
+
+# Reuse the self-signed certificate/key pair shipped for the C++ OpenSSL tests.
+_OPENSSL_TEST_DIR = pathlib.Path(__file__).resolve().parents[2] / "cpp" / "wrapper" / "openssl"
+_CERT_CHAIN = str(_OPENSSL_TEST_DIR / "sample_cert.pem")
+_PRIVATE_KEY = str(_OPENSSL_TEST_DIR / "sample_private_key.pem")
 
 
 def _free_tcp_port() -> int:
@@ -82,6 +88,31 @@ class WebSocketTransportTest(unittest.IsolatedAsyncioTestCase):
         for i in range(20):
             msg = await asyncio.wait_for(binder.recv_message(), timeout=5.0)
             self.assertEqual(msg.payload.data, f"msg-{i}".encode())
+
+    async def test_tls_roundtrip(self) -> None:
+        ctx = IOContext()
+        binder = BinderSocket(ctx, "binder")
+
+        tls_config = TLSConfig(cert_chain=_CERT_CHAIN, private_key=_PRIVATE_KEY)
+
+        # Only the binder (server) side supplies the certificate chain and private key.
+        address = await binder.bind_to("wss://127.0.0.1:0/", tls_config)
+        self.assertEqual(repr(address)[:6], "wss://")
+
+        connector = ConnectorSocket.connect(ctx, "connector", repr(address))
+
+        # Connector -> Binder over the encrypted WebSocket channel.
+        await connector.send_message(Bytes(b"secure-ws-payload"))
+        msg = await asyncio.wait_for(binder.recv_message(), timeout=5.0)
+
+        assert msg.address is not None
+        self.assertEqual(msg.address.data, b"connector")
+        self.assertEqual(msg.payload.data, b"secure-ws-payload")
+
+        # Binder -> Connector.
+        await binder.send_message("connector", Bytes(b"secure-ws-reply"))
+        msg = await asyncio.wait_for(connector.recv_message(), timeout=5.0)
+        self.assertEqual(msg.payload.data, b"secure-ws-reply")
 
 
 class WebSocketObjectStorageTest(unittest.TestCase):

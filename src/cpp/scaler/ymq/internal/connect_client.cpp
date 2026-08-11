@@ -1,5 +1,6 @@
 #include "scaler/ymq/internal/connect_client.h"
 
+#include <cassert>
 #include <chrono>
 #include <functional>
 #include <string>
@@ -83,6 +84,8 @@ void ConnectClient::disconnect() noexcept
 
 void ConnectClient::tryConnect(std::shared_ptr<State> state) noexcept
 {
+    assert(state->_address.secure() == state->_sslContext.has_value());
+
     switch (state->_address.type()) {
         case Address::Type::TCP: {
             if (state->_address.secure()) {
@@ -113,7 +116,7 @@ void ConnectClient::tryConnect(std::shared_ptr<State> state) noexcept
             break;
         }
         case Address::Type::WebSocket: {
-            auto wsClient = UV_EXIT_ON_ERROR(WebSocketStream::init(state->_loop));
+            auto wsClient = UV_EXIT_ON_ERROR(WebSocketStream::init(state->_loop, state->_sslContext));
 
             state->_connectRequest = UV_EXIT_ON_ERROR(
                 wsClient.connect(state->_address.asWebSocket(), std::bind_front(&ConnectClient::onConnect, state)));

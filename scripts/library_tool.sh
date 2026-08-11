@@ -171,8 +171,8 @@ if [ "$1" == "capnp" ]; then
             cmake --build build-wasm --config Release -j "${NUM_CORES}"
         else
             cd "${THIRD_PARTY_COMPILED}/${CAPNP_FOLDER_NAME}"
-            ./configure --prefix="${PREFIX}" CXXFLAGS="${CXXFLAGS} -I${PREFIX}/include" LDFLAGS="${LDFLAGS} -L${PREFIX}/lib -Wl,-rpath,${PREFIX}/lib"
-            make -j "${NUM_CORES}"
+            ./configure --prefix="${PREFIX}" CXXFLAGS="${CXXFLAGS} -I${PREFIX}/include" LDFLAGS="${LDFLAGS} -L${PREFIX}/lib -Wl,-rpath,${PREFIX}/lib" >/dev/null
+            make -j "${NUM_CORES}" >/dev/null
         fi
         echo "Compiled capnp to ${THIRD_PARTY_COMPILED}/${CAPNP_FOLDER_NAME}"
 
@@ -193,7 +193,7 @@ if [ "$1" == "capnp" ]; then
                 ln -sf "${host_tool}" "${PREFIX}/bin/${tool}.js"
             done
         else
-            make install
+            make install >/dev/null
         fi
         echo "Installed capnp into ${PREFIX}"
 
@@ -258,13 +258,13 @@ elif [ "$1" == "openssl" ]; then
         extract_tar_gz "${OPENSSL_FOLDER_NAME}"
 
         cd "${THIRD_PARTY_COMPILED}/${OPENSSL_FOLDER_NAME}"
-        ./config --prefix="${PREFIX}" --libdir=lib no-tests no-shared
-        make -j "${NUM_CORES}"
+        ./config --prefix="${PREFIX}" --libdir=lib no-tests no-shared >/dev/null
+        make -j "${NUM_CORES}" >/dev/null
         echo "Compiled OpenSSL to ${THIRD_PARTY_COMPILED}/${OPENSSL_FOLDER_NAME}"
 
     elif [ "$2" == "install" ]; then
         cd "${THIRD_PARTY_COMPILED}/${OPENSSL_FOLDER_NAME}"
-        make install_sw
+        make install_sw >/dev/null
         echo "Installed OpenSSL into ${PREFIX}"
 
     else

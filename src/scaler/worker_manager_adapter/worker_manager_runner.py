@@ -84,7 +84,8 @@ class WorkerManagerRunner:
                 maxTaskConcurrency=self._max_provisioner_units * self._workers_per_provisioner_unit,
                 capabilities=dict_to_capabilities(self._capabilities),
                 workerManagerID=self._worker_manager_id,
-            )
+            ),
+            detached=True,
         )
 
     async def _get_loops(self) -> None:

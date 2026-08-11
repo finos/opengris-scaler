@@ -41,7 +41,9 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
         destroyed. The native socket fails the pending send with ``SocketStopRequested``, which the
         io layer propagates as-is (fail fast). This is the exception the worker boundary must handle.
         """
-        send_task = asyncio.ensure_future(self._binder.send(b"peer-that-never-connects", self._make_message()))
+        send_task = asyncio.ensure_future(
+            self._binder.send(b"peer-that-never-connects", self._make_message(), detached=False)
+        )
 
         # Let the send reach the binder's event-loop thread and park in its pending-send queue.
         await asyncio.sleep(0.2)
@@ -58,7 +60,7 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
         connector = ConnectorSocket.connect(self._context, "peer", repr(self._binder.address))
 
         message = self._make_message()
-        await self._binder.send(b"peer", message)  # completes once the peer identifies itself
+        await self._binder.send(b"peer", message, detached=False)  # completes once the peer identifies itself
 
         ymq_msg = await asyncio.wait_for(connector.recv_message(), timeout=5.0)
         received = deserialize(ymq_msg.payload.data)

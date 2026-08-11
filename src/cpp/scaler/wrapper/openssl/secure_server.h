@@ -22,7 +22,8 @@ public:
 
     std::expected<void, uv::Error> listen(int backlog, uv::ConnectionCallback callback) noexcept;
 
-    std::expected<void, uv::Error> accept(SecureSocket& connection) noexcept;
+    std::expected<void, uv::Error> accept(
+        SecureSocket& connection, uv::ConnectCallback onHandshakeDone = [](std::expected<void, uv::Error>) {}) noexcept;
 
     std::expected<uv::SocketAddress, uv::Error> getSockName() const noexcept;
 

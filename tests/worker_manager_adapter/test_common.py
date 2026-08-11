@@ -1,16 +1,26 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import MagicMock
 
+from scaler.protocol.capnp import TaskCapability, WorkerManagerCommand
 from scaler.worker_manager_adapter.common import extract_desired_count, load_requirements_content
 
 
-def _make_request(task_concurrency: int, capabilities: dict) -> MagicMock:
-    request = MagicMock()
-    request.taskConcurrency = task_concurrency
-    request.capabilities = [MagicMock(key=k, value=v) for k, v in capabilities.items()]
-    return request
+def _make_request(task_concurrency: int, capabilities: dict) -> WorkerManagerCommand.DesiredTaskConcurrencyRequest:
+    # Build the real protocol struct (matching build_set_desired_command) and round-trip it through the
+    # wire, so the test reads capabilities exactly as a worker manager does. A MagicMock here can invent
+    # whatever attribute the code reads and hide a field-name mismatch (TaskCapability uses `name`, not
+    # `key`), which is how a broken extract_desired_count once passed its tests while failing in production.
+    command = WorkerManagerCommand(
+        setDesiredTaskConcurrencyRequests=[
+            WorkerManagerCommand.DesiredTaskConcurrencyRequest(
+                taskConcurrency=task_concurrency,
+                capabilities=[TaskCapability(name=name, value=value) for name, value in capabilities.items()],
+            )
+        ]
+    )
+    round_tripped = WorkerManagerCommand.from_bytes(command.to_bytes())
+    return list(round_tripped.setDesiredTaskConcurrencyRequests)[0]
 
 
 class TestLoadRequirementsContent(unittest.TestCase):

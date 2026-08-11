@@ -18,6 +18,13 @@ class ProcessorDiedError(Exception):
     pass
 
 
+class TaskExceptionNotSerializableError(Exception):
+    """A task raised an exception that could not be pickled back to the client; the message preserves the
+    original exception's type name and string so the failure is still meaningful."""
+
+    pass
+
+
 class DeserializeObjectError(Exception):
     pass
 

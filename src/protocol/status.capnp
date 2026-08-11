@@ -42,12 +42,13 @@ struct WorkerStatus {
     workerId @0 :Data;
     agent @1 :Resource;
     rssFree @2 :UInt64;
+    memLimit @11 :UInt64;  # memory limit in bytes the worker runs under (cgroup if set, else system total); 0 if unknown
     free @3 :UInt32;
     sent @4 :UInt32;
     queued @5 :UInt32;
     suspended @6: UInt8;
     lagUS @7 :UInt64;
-    lastS @8 :UInt8;
+    lastS @8 :UInt16;
     itl @9 :Text;
     processorStatuses @10 :List(ProcessorStatus);
 }
@@ -68,7 +69,7 @@ struct ScalingManagerStatus {
     struct WorkerManagerDetail {
         workerManagerID @0 :Data;
         identity @1 :Text;
-        lastSeenS @2 :UInt8;
+        lastSeenS @2 :UInt16;
         maxTaskConcurrency @3 :UInt32;
         capabilities @4 :Text;
         # Workers the scheduler has requested but that have not yet connected.

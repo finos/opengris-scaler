@@ -125,6 +125,7 @@ class VanillaObjectController(ObjectController, Looper, Reporter):
                     objectUser=b"",
                     objectMetadata=ObjectMetadata(objectIds=tuple(deleted_object_ids)),
                 ),
+                detached=True,
             )
 
         for object_id in deleted_object_ids:
