@@ -57,6 +57,8 @@ class _CallNode:
 
 
 class Client:
+    """Client for submitting tasks to an OpenGRIS Scaler scheduler."""
+
     def __init__(
         self,
         address: Optional[str] = None,
