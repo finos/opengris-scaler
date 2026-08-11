@@ -38,6 +38,9 @@ public:
     // See uv_tcp_nodelay
     std::expected<void, Error> nodelay(bool enable) noexcept;
 
+    // See uv_tcp_keepalive
+    std::expected<void, Error> keepalive(bool enable, unsigned int delaySeconds) noexcept;
+
 private:
     TCPSocket() noexcept = default;
 };
