@@ -86,6 +86,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
                     scheme=object_storage_address.type.value,
                 )
             ),
+            detached=True,
         )
         if client_id not in self._client_last_seen:
             logger.info(f"{client_id!r} connected")
@@ -114,7 +115,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
             logger.info(f"shutdown scheduler and all clusters as received signal from {client_id!r}")
             accepted = True
 
-        await self._binder.send(client_id, ClientShutdownResponse(accepted=accepted))
+        await self._binder.send(client_id, ClientShutdownResponse(accepted=accepted), detached=True)
 
         if self._config_controller.get_config("protected"):
             return

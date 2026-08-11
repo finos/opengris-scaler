@@ -129,7 +129,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         self._profiling_manager.on_task_start(holder.pid(), task.taskId)
 
-        await self._binder_internal.send(holder.processor_id(), task)
+        await self._binder_internal.send(holder.processor_id(), task, detached=True)
 
         return True
 
@@ -194,7 +194,8 @@ class VanillaProcessorManager(ProcessorManager):
                         objectTypes=(ObjectMetadata.ObjectContentType.object,),
                         objectNames=(b"",),
                     ),
-                )
+                ),
+                detached=True,
             )
 
             await self._task_manager.on_task_result(
@@ -290,13 +291,13 @@ class VanillaProcessorManager(ProcessorManager):
             if processor_id not in self._holders_by_processor_id:
                 continue  # processor got killed while we were iterating over the list
 
-            await self._binder_internal.send(processor_id, instruction)
+            await self._binder_internal.send(processor_id, instruction, detached=True)
 
     async def on_internal_object_instruction(self, processor_id: ProcessorID, instruction: ObjectInstruction):
         if not self.__processor_ready_to_process_object(processor_id):
             return
 
-        await self._connector_external.send(instruction)
+        await self._connector_external.send(instruction, detached=True)
 
     def destroy(self, reason: str):
         if self._connector_storage is not None:

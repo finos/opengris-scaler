@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
-from typing import Any, Callable, Optional, TypeVar, Union
+import logging
+from typing import Any, Awaitable, Callable, Optional, TypeVar, Union
 
 try:
     from typing import Concatenate, ParamSpec  # type: ignore[attr-defined]
@@ -9,6 +10,8 @@ except ImportError:
 
 from scaler.config.common.security import SecurityConfig
 from scaler.io.ymq import TLSConfig
+
+logger = logging.getLogger(__name__)
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -56,6 +59,40 @@ def call_sync(  # type: ignore[valid-type]
 
     func(callback, *args, **kwargs)
     return future.result(timeout)
+
+
+def run_detached(
+    awaitable: Awaitable[Any], description: str, on_done_callback: Optional[Callable[[asyncio.Task], None]] = None
+) -> asyncio.Task:
+    """Schedule an awaitable on the running event loop without waiting for its completion.
+
+    This turns an otherwise blocking asyncio operation into a fire-and-forget one.
+
+    Failures are logged instead of being propagated, as the caller does not wait for the result.
+
+    If provided, `on_done_callback` is called with the completed task once it finishes, including
+    when it is cancelled. It is typically used to remove the task from the caller's pending set.
+
+    The returned task must be kept referenced by the caller until completion, as asyncio only keeps weak references to
+    running tasks. Callers are also responsible for cancelling it on teardown.
+    """
+
+    task = asyncio.ensure_future(awaitable)
+
+    def on_done(completed: asyncio.Task) -> None:
+        if on_done_callback is not None:
+            on_done_callback(completed)
+
+        if completed.cancelled():
+            return
+
+        exception = completed.exception()
+        if exception is not None:
+            logger.debug(f"{description}: detached operation failed: {exception!r}")
+
+    task.add_done_callback(on_done)
+
+    return task
 
 
 def _safe_set_result(future: asyncio.Future, result: Any) -> None:

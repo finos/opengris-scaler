@@ -676,7 +676,7 @@ class _InProcessAsyncConnector(AsyncConnector):
     def address(self) -> Optional[AddressConfig]:
         return self._address
 
-    async def send(self, message: BaseMessage) -> None:
+    async def send(self, message: BaseMessage, *, detached: bool) -> None:
         if self._destroyed:
             return
         await self._outgoing.put(message)

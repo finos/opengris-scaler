@@ -98,7 +98,8 @@ class ZMQAsyncConnector(AsyncConnector):
 
         return result
 
-    async def send(self, message: BaseMessage):
+    async def send(self, message: BaseMessage, *, detached: bool):
+        # `detached` is ignored: ZMQ sockets are always fire-and-forget
         if self._socket is None:
             return
 
