@@ -66,6 +66,18 @@ void MessageConnection::connect(Client client) noexcept
     _state  = State::Connected;
 
     UV_EXIT_ON_ERROR(_client->setNoDelay(true));
+
+    // A socket option the platform refuses is not worth taking the process down for, so log it and carry on
+    // with a connection that just cannot detect an idle peer going away.
+    if (auto result = _client->setKeepAlive(true, tcpKeepAliveDelaySeconds); !result.has_value()) {
+        _logger.log(
+            Logger::LoggingLevel::warning,
+            "Could not enable TCP keep-alive: ",
+            result.error().name(),
+            ": ",
+            result.error().message());
+    }
+
     UV_EXIT_ON_ERROR(_client->readStart(std::bind_front(&MessageConnection::onRead, this)));
     processSendQueue();
 }
