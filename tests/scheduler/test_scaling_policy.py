@@ -6,13 +6,14 @@ from scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla import 
 from scaler.utility.identifiers import WorkerID
 
 MANAGER_ID = b"manager"
+OTHER_MANAGER_ID = b"other-manager"
 VANILLA_LOGGER = "scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla"
 CAPABILITY_LOGGER = "scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling"
 
 
-def _heartbeat() -> MagicMock:
+def _heartbeat(manager_id: bytes = MANAGER_ID) -> MagicMock:
     heartbeat = MagicMock()
-    heartbeat.workerManagerID = MANAGER_ID
+    heartbeat.workerManagerID = manager_id
     heartbeat.maxTaskConcurrency = -1
     return heartbeat
 
@@ -94,6 +95,54 @@ class TestCapabilityScalingPolicyLogging(unittest.TestCase):
             self.__decide({"fpga": 1}, task_count=20)
 
         self.assertEqual(len(logs.output), 2, logs.output)
+
+
+class TestScalingPolicyForgetsDepartedManagers(unittest.TestCase):
+    """What a policy remembers per manager must not outlive the managers themselves.
+
+    A policy hears about a manager only through its heartbeats, so an entry left behind by one that never
+    comes back stays for the lifetime of the scheduler. Manager ids are operator-supplied and usually stable,
+    but one derived from a pod or instance name is not, and then the map grows without bound.
+    """
+
+    @staticmethod
+    def _snapshots(*manager_ids: bytes) -> dict:
+        return {manager_id: MagicMock() for manager_id in manager_ids}
+
+    def test_vanilla_forgets_a_manager_the_scheduler_no_longer_knows(self):
+        policy = VanillaScalingPolicy()
+        workers = [WorkerID(b"worker")]
+
+        # asks each manager for one more worker, which is what gets remembered
+        policy.get_scaling_commands(_snapshot(100, 1), _heartbeat(MANAGER_ID), workers, self._snapshots(MANAGER_ID))
+        self.assertEqual(set(policy._logged_desired_by_manager), {MANAGER_ID})
+
+        policy.get_scaling_commands(
+            _snapshot(100, 1), _heartbeat(OTHER_MANAGER_ID), workers, self._snapshots(OTHER_MANAGER_ID)
+        )
+        self.assertEqual(set(policy._logged_desired_by_manager), {OTHER_MANAGER_ID})
+
+    def test_capability_forgets_a_manager_the_scheduler_no_longer_knows(self):
+        policy = CapabilityScalingPolicy()
+        snapshot = MagicMock()
+        snapshot.tasks = {0: MagicMock(capabilities={"gpu": 1})}
+
+        policy.get_scaling_commands(snapshot, _heartbeat(MANAGER_ID), [], self._snapshots(MANAGER_ID))
+        self.assertEqual(set(policy._logged_desired_by_manager), {MANAGER_ID})
+
+        policy.get_scaling_commands(snapshot, _heartbeat(OTHER_MANAGER_ID), [], self._snapshots(OTHER_MANAGER_ID))
+        self.assertEqual(set(policy._logged_desired_by_manager), {OTHER_MANAGER_ID})
+
+    def test_a_manager_still_heartbeating_is_kept(self):
+        policy = CapabilityScalingPolicy()
+        snapshot = MagicMock()
+        snapshot.tasks = {0: MagicMock(capabilities={"gpu": 1})}
+        known = self._snapshots(MANAGER_ID, OTHER_MANAGER_ID)
+
+        policy.get_scaling_commands(snapshot, _heartbeat(MANAGER_ID), [], known)
+        policy.get_scaling_commands(snapshot, _heartbeat(OTHER_MANAGER_ID), [], known)
+
+        self.assertEqual(set(policy._logged_desired_by_manager), {MANAGER_ID, OTHER_MANAGER_ID})
 
 
 if __name__ == "__main__":

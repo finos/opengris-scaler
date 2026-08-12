@@ -102,12 +102,12 @@ class AsyncBinder(Looper, Reporter, metaclass=abc.ABCMeta):
 
         A detached send returns once the send is scheduled and logs whatever failure follows, so a peer that
         left -- or one that never connected, which parks a send forever -- can neither raise into nor block a
-        caller that has already moved on. Ask for an undetached send only when the caller has to know the
+        caller that has already moved on. Ask for an attached send only when the caller has to know the
         message left the process: it waits for that and raises when it cannot, which is what the graceful
         shutdown path relies on.
 
         The two do not order against each other on one socket: a detached send is enqueued on the next loop
-        iteration, so an undetached one issued after it leaves first.
+        iteration, so an attached one issued after it leaves first.
         """
         raise NotImplementedError()
 

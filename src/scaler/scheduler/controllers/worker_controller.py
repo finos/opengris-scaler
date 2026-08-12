@@ -180,7 +180,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
                 dead_worker, reason=f"no heartbeat for {elapsed:.0f}s, worker_timeout_seconds={timeout}"
             )
 
-    def __forget_worker_manager(self, worker_id: WorkerID) -> None:
+    def __remove_worker_from_manager(self, worker_id: WorkerID) -> None:
         manager_id = self._worker_to_manager.pop(worker_id, None)
         if manager_id is None:
             return
@@ -202,7 +202,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
         # a second disconnect of the same worker could otherwise pass the guard above and pop() a
         # now-missing id. Removing first keeps the guard-and-remove atomic.
         self._worker_alive_since.pop(worker_id)
-        self.__forget_worker_manager(worker_id)
+        self.__remove_worker_from_manager(worker_id)
 
         await self._binder_monitor.send(
             StateWorker(workerId=worker_id, state=WorkerState.disconnected, capabilities=[])

@@ -35,12 +35,14 @@ def register_event_loop(event_loop_type: str):
     logger.info(f"use event loop: {event_loop_type}")
 
 
-def create_async_loop_routine(routine: Callable[[], Awaitable], seconds: int, swallow_routine_errors: bool = False):
+def create_async_loop_routine(
+    routine: Callable[[], Awaitable], interval_seconds: int, swallow_routine_errors: bool = False
+) -> Awaitable[None]:
     """create async loop routine,
 
-    - if seconds is negative, means disable
+    - if interval_seconds is negative, means disable
     - 0 means looping without any wait, as fast as possible
-    - positive number means execute routine every positive seconds, if passing 1 means run once every 1 seconds
+    - positive number means execute routine every interval_seconds, if passing 1 means run once every 1 seconds
 
     swallow_routine_errors: when True, an exception raised by the routine is logged per-iteration and the
     loop keeps running. This is for the SCHEDULER, which serves many peers and must survive a bug in any
@@ -48,8 +50,8 @@ def create_async_loop_routine(routine: Callable[[], Awaitable], seconds: int, sw
     An escape would otherwise propagate through asyncio.gather and take the whole scheduler down. It must
     stay False for the client/worker agents, which serve only themselves and should crash-and-restart."""
 
-    async def loop():
-        if seconds < 0:
+    async def loop() -> None:
+        if interval_seconds < 0:
             logger.info(f"{routine.__self__.__class__.__name__}: disabled")  # type: ignore[attr-defined]
             return
 
@@ -63,7 +65,7 @@ def create_async_loop_routine(routine: Callable[[], Awaitable], seconds: int, sw
                         raise
                     routine_owner = routine.__self__.__class__.__name__  # type: ignore[attr-defined]
                     logger.exception(f"{routine_owner}: routine raised {e!r}, continuing")
-                await asyncio.sleep(seconds)
+                await asyncio.sleep(interval_seconds)
         except asyncio.CancelledError:
             pass
         except KeyboardInterrupt:

@@ -6,7 +6,11 @@ from typing import Dict, FrozenSet, List, Tuple
 from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
-from scaler.scheduler.controllers.worker_manager_utilties import build_scaling_manager_status, build_set_desired_command
+from scaler.scheduler.controllers.worker_manager_utilties import (
+    build_scaling_manager_status,
+    build_set_desired_command,
+    forget_departed_managers,
+)
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot
 
@@ -36,9 +40,13 @@ class CapabilityScalingPolicy(ScalingPolicy):
         managed_worker_ids: List[WorkerID],
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
+        manager_id = worker_manager_heartbeat.workerManagerID
+        # the manager being answered counts as live even if no snapshot was built for it
+        forget_departed_managers(self._logged_desired_by_manager, set(worker_manager_snapshots) | {manager_id})
+
         tasks_by_capability = self._group_tasks_by_capability(information_snapshot)
         desired_per_capset = self._compute_desired_per_capset(tasks_by_capability, worker_manager_heartbeat)
-        self.__log_decisions(worker_manager_heartbeat.workerManagerID, tasks_by_capability, desired_per_capset)
+        self.__log_decisions(manager_id, tasks_by_capability, desired_per_capset)
         return [build_set_desired_command(desired_per_capset)]
 
     def __log_decisions(

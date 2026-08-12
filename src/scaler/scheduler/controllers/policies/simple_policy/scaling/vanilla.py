@@ -5,7 +5,11 @@ from typing import Dict, List, Tuple
 from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
-from scaler.scheduler.controllers.worker_manager_utilties import build_scaling_manager_status, build_set_desired_command
+from scaler.scheduler.controllers.worker_manager_utilties import (
+    build_scaling_manager_status,
+    build_set_desired_command,
+    forget_departed_managers,
+)
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot
 
@@ -31,6 +35,10 @@ class VanillaScalingPolicy(ScalingPolicy):
         managed_worker_ids: List[WorkerID],
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
+        # the manager being answered counts as live even if no snapshot was built for it
+        live_manager_ids = set(worker_manager_snapshots) | {worker_manager_heartbeat.workerManagerID}
+        forget_departed_managers(self._logged_desired_by_manager, live_manager_ids)
+
         desired = self._compute_desired_worker_count(information_snapshot, worker_manager_heartbeat, managed_worker_ids)
         desired_per_capset: List[Tuple[Dict[str, int], int]] = [({}, desired)]
         return [build_set_desired_command(desired_per_capset)]

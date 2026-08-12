@@ -47,7 +47,7 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
             self._binder.send(b"peer-that-never-connects", self._make_message(), detached=True), timeout=5.0
         )
 
-    async def test_undetached_send_propagates_socket_stop_requested_when_socket_shut_down(self) -> None:
+    async def test_attached_send_propagates_socket_stop_requested_when_socket_shut_down(self) -> None:
         """detached=False surfaces SocketStopRequested when the socket is shut down mid-send.
 
         The send is queued inside the C++ binder (the peer never connects), then the binder is
@@ -61,7 +61,7 @@ class TestYMQAsyncBinderSend(unittest.IsolatedAsyncioTestCase):
 
         # Let the send reach the binder's event-loop thread and park in its pending-send queue.
         await asyncio.sleep(0.2)
-        self.assertFalse(send_task.done(), "an undetached send should still be pending (peer never connected)")
+        self.assertFalse(send_task.done(), "an attached send should still be pending (peer never connected)")
 
         # Shut the binder down while the send is in flight (mirrors worker teardown / `disconnect`).
         self._binder.destroy()
