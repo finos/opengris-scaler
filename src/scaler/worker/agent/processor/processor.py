@@ -408,6 +408,10 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         The work behind the result is already paid for, possibly hours of it, and cannot be redone, whereas
         letting the failure unwind the main loop exits the processor and loses it. Repeating a step is safe:
         the agent has not been told about the result yet. A teardown the agent asked for is never retried.
+
+        Replaying is the sender's job. A socket reconnects on its own, but a write that was in flight when
+        the connection dropped is failed rather than resent, and a storage request is a header and a payload
+        the server frames in order, so a replay has to start at the header.
         """
 
         attempt = 1
