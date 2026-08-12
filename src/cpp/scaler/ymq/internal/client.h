@@ -48,6 +48,10 @@ public:
 
     std::expected<void, scaler::wrapper::uv::Error> setNoDelay(bool enable) noexcept;
 
+    // Enables TCP keep-alive probes after the connection has been idle for the given delay. No-op for
+    // transports that cannot silently drop (IPC).
+    std::expected<void, scaler::wrapper::uv::Error> setKeepAlive(bool enable, unsigned int delaySeconds) noexcept;
+
     std::expected<void, scaler::wrapper::uv::Error> shutdown(scaler::wrapper::uv::ShutdownCallback callback) noexcept;
 
     // Send a RST packet to the remote, immediately closing the connection.

@@ -261,6 +261,12 @@ void transportReadStop(WebSocketStream::Transport& transport) noexcept
     std::visit([](auto& socket) { socket.readStop(); }, transport);
 }
 
+std::expected<void, scaler::wrapper::uv::Error> transportKeepAlive(
+    WebSocketStream::Transport& transport, bool enable, unsigned int delaySeconds) noexcept
+{
+    return std::visit([&](auto& socket) { return socket.keepalive(enable, delaySeconds); }, transport);
+}
+
 std::expected<void, scaler::wrapper::uv::Error> transportShutdown(
     WebSocketStream::Transport& transport, scaler::wrapper::uv::ShutdownCallback callback) noexcept
 {
@@ -730,6 +736,12 @@ void WebSocketStream::readStop() noexcept
     _state->_readActive = false;
     transportReadStop(_state->_transport);
     _state->_readCallback = {};
+}
+
+std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::keepalive(
+    bool enable, unsigned int delaySeconds) noexcept
+{
+    return transportKeepAlive(_state->_transport, enable, delaySeconds);
 }
 
 std::expected<void, scaler::wrapper::uv::Error> WebSocketStream::shutdown(
