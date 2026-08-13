@@ -1,5 +1,4 @@
 from collections import defaultdict
-from math import ceil
 from typing import Dict, FrozenSet, List, Tuple
 
 from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
@@ -14,13 +13,10 @@ class CapabilityScalingPolicy(ScalingPolicy):
     """
     A stateless scaling policy that scales workers based on task-required capabilities.
 
-    For each distinct capability set observed in pending tasks, it computes a desired worker
-    count using a task-to-worker ratio threshold. The desired counts are sent declaratively
+    For each distinct capability set observed in pending tasks, it asks for one worker per task,
+    bounded by the manager's maximum task concurrency. The desired counts are sent declaratively
     via setDesiredTaskConcurrency; the worker manager is responsible for making it so.
     """
-
-    def __init__(self):
-        self._upper_task_ratio = 5
 
     def get_scaling_commands(
         self,
@@ -55,15 +51,18 @@ class CapabilityScalingPolicy(ScalingPolicy):
     ) -> List[Tuple[Dict[str, int], int]]:
         """Compute desired worker count per capability set from observed tasks.
 
+        A worker runs one task at a time, so the worker count is the cluster's parallelism: ask for
+        one worker per outstanding task. maxTaskConcurrency is what bounds that, and asking for less
+        than it while tasks are outstanding leaves capacity the operator paid for standing idle.
+
         Capsets with zero tasks are omitted (declarative "no opinion" for that capset).
-        Each desired count is clamped by the manager's maxTaskConcurrency.
         """
         max_concurrency = worker_manager_heartbeat.maxTaskConcurrency
         result: List[Tuple[Dict[str, int], int]] = []
         for _capability_keys, tasks in tasks_by_capability.items():
             if not tasks:
                 continue
-            desired = max(1, ceil(len(tasks) / self._upper_task_ratio))
+            desired = len(tasks)
             if max_concurrency != -1:
                 desired = min(desired, max_concurrency)
             # Use first task's concrete capability dict as the representative for the capset.

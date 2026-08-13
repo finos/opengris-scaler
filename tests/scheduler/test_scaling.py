@@ -184,18 +184,22 @@ class TestVanillaScalingPolicy(unittest.TestCase):
 
         self.assertEqual(request.taskConcurrency, 0)
 
-    def test_tasks_with_no_workers_targets_one(self):
-        """Tasks present but no workers: desired = 1 to bootstrap."""
+    def test_tasks_with_no_workers_targets_one_worker_per_task(self):
+        """Tasks present but no workers: every task gets a worker straight away."""
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(5)}
         snapshot = InformationSnapshot(tasks=tasks, workers={})
         heartbeat = _create_worker_manager_heartbeat(b"mgr")
 
         request = self._single_request(snapshot, heartbeat, [])
 
-        self.assertEqual(request.taskConcurrency, 1)
+        self.assertEqual(request.taskConcurrency, 5)
 
-    def test_high_task_ratio_targets_current_plus_one(self):
-        """Task/worker ratio above upper threshold scales by +1 toward equilibrium."""
+    def test_more_tasks_than_capacity_targets_the_maximum(self):
+        """More tasks than the manager can run: desired is the manager's maximum task concurrency.
+
+        A worker runs one task at a time, so anything less caps the run's parallelism and leaves the
+        rest of the fleet idle.
+        """
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(20)}
         managed = [WorkerID(b"w0")]
         workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=5) for wid in managed}
@@ -204,7 +208,7 @@ class TestVanillaScalingPolicy(unittest.TestCase):
 
         request = self._single_request(snapshot, heartbeat, managed)
 
-        self.assertEqual(request.taskConcurrency, 2)
+        self.assertEqual(request.taskConcurrency, 10)
 
     def test_no_tasks_with_workers_targets_zero(self):
         """No tasks but managers exist: desired drains to 0."""
@@ -221,8 +225,8 @@ class TestVanillaScalingPolicy(unittest.TestCase):
 
         self.assertEqual(request.taskConcurrency, 0)
 
-    def test_few_tasks_with_many_workers_targets_min_keep(self):
-        """Low task ratio shrinks toward ceil(tasks / upper_task_ratio) min_keep."""
+    def test_few_tasks_with_many_workers_shrinks_to_the_task_count(self):
+        """More workers than tasks: shrink to the outstanding task count, never below it."""
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(5)}
         workers = {WorkerID(f"w{i}".encode()): _create_mock_worker_heartbeat({}, queued_tasks=i) for i in range(10)}
         managed = list(workers.keys())
@@ -231,11 +235,10 @@ class TestVanillaScalingPolicy(unittest.TestCase):
 
         request = self._single_request(snapshot, heartbeat, managed)
 
-        # ceil(5 / 10) = 1 minimum to keep
-        self.assertEqual(request.taskConcurrency, 1)
+        self.assertEqual(request.taskConcurrency, 5)
 
     def test_max_concurrency_clamps_then_emits(self):
-        """Ratio asks for current+1 but cap clamps to current -> emits setDesired(current)."""
+        """The manager's maximum task concurrency bounds the request."""
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(50)}
         managed = [WorkerID(b"w0"), WorkerID(b"w1")]
         workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=20) for wid in managed}
@@ -244,8 +247,17 @@ class TestVanillaScalingPolicy(unittest.TestCase):
 
         request = self._single_request(snapshot, heartbeat, managed)
 
-        # Ratio would say desired=3, cap clamps to 2; emits setDesired(2).
         self.assertEqual(request.taskConcurrency, 2)
+
+    def test_unlimited_concurrency_asks_for_one_worker_per_task(self):
+        """maxTaskConcurrency of -1 means no limit, so nothing bounds the request but the task count."""
+        tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(7)}
+        snapshot = InformationSnapshot(tasks=tasks, workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=-1)
+
+        request = self._single_request(snapshot, heartbeat, [])
+
+        self.assertEqual(request.taskConcurrency, 7)
 
 
 class TestAtCapacityEmission(unittest.TestCase):
@@ -257,7 +269,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         setup_logger()
 
     def test_vanilla_at_cap_emits_current(self):
-        """Vanilla: ratio asks for current+1, cap clamps to current -> emits setDesired(current)."""
+        """Vanilla: already at the manager's maximum -> re-emits that maximum."""
         policy = VanillaScalingPolicy()
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(100)}
         managed = [WorkerID(f"w{i}".encode()) for i in range(10)]
@@ -272,7 +284,7 @@ class TestAtCapacityEmission(unittest.TestCase):
         self.assertEqual(requests[0].taskConcurrency, 10)
 
     def test_vanilla_changes_emit(self):
-        """Vanilla: when ratio's desired differs from current connected, emit."""
+        """Vanilla: when the desired count differs from current connected, emit."""
         policy = VanillaScalingPolicy()
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(100)}
         managed = [WorkerID(b"w0")]
@@ -284,7 +296,7 @@ class TestAtCapacityEmission(unittest.TestCase):
 
         self.assertEqual(len(commands), 1)
         requests = list(commands[0].setDesiredTaskConcurrencyRequests)
-        self.assertEqual(requests[0].taskConcurrency, 2)
+        self.assertEqual(requests[0].taskConcurrency, 10)
 
     def test_capability_at_cap_emits_current(self):
         """Capability: ratio's per-capset desired equals current connected -> emits setDesired(current)."""
@@ -399,7 +411,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         self.assertIn(frozenset({"tpu"}), caps_in_requests)
 
     def test_high_task_count_scales_per_capset(self):
-        """Many tasks for one capset: desired = ceil(task_count / upper_task_ratio)."""
+        """More tasks than the manager can run: desired is the manager's maximum task concurrency."""
         tasks = {}
         for _ in range(20):
             tid = TaskID.generate_task_id()
@@ -411,8 +423,56 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
 
         requests = list(command.setDesiredTaskConcurrencyRequests)
         self.assertEqual(len(requests), 1)
-        # ceil(20 / 5) = 4
-        self.assertEqual(requests[0].taskConcurrency, 4)
+        self.assertEqual(requests[0].taskConcurrency, 10)  # the heartbeat's maxTaskConcurrency
+
+    def test_desired_covers_every_task_the_manager_can_run(self):
+        """Fewer tasks than the fleet allows: every task gets a worker.
+
+        A worker runs one task at a time, so asking for fewer workers than there are tasks caps the
+        run's parallelism and leaves the rest of the fleet idle.
+        """
+        tasks = {}
+        for _ in range(6):
+            tid = TaskID.generate_task_id()
+            tasks[tid] = _create_mock_task(tid, {})
+        snapshot = InformationSnapshot(tasks=tasks, workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=20)
+
+        command = self._commands(snapshot, heartbeat, [])
+
+        requests = list(command.setDesiredTaskConcurrencyRequests)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0].taskConcurrency, 6)
+
+    def test_desired_never_drops_below_the_outstanding_task_count(self):
+        """Workers already running the tasks must not be scaled away underneath them."""
+        tasks = {}
+        for _ in range(4):
+            tid = TaskID.generate_task_id()
+            tasks[tid] = _create_mock_task(tid, {})
+        managed = [WorkerID(f"w{i}".encode()) for i in range(4)]
+        workers = {worker_id: _create_mock_worker_heartbeat({}, queued_tasks=1) for worker_id in managed}
+        snapshot = InformationSnapshot(tasks=tasks, workers=workers)
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=20)
+
+        command = self._commands(snapshot, heartbeat, managed)
+
+        requests = list(command.setDesiredTaskConcurrencyRequests)
+        self.assertGreaterEqual(requests[0].taskConcurrency, len(tasks))
+
+    def test_unlimited_concurrency_asks_for_one_worker_per_task(self):
+        """maxTaskConcurrency of -1 means no limit, so nothing bounds the request but the task count."""
+        tasks = {}
+        for _ in range(7):
+            tid = TaskID.generate_task_id()
+            tasks[tid] = _create_mock_task(tid, {})
+        snapshot = InformationSnapshot(tasks=tasks, workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"mgr", max_task_concurrency=-1)
+
+        command = self._commands(snapshot, heartbeat, [])
+
+        requests = list(command.setDesiredTaskConcurrencyRequests)
+        self.assertEqual(requests[0].taskConcurrency, 7)
 
     def test_max_concurrency_clamps_per_capset(self):
         """Per-capset desired clamped by manager's maxTaskConcurrency."""
@@ -487,10 +547,9 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         requests = list(commands[0].setDesiredTaskConcurrencyRequests)
         self.assertEqual(requests[0].taskConcurrency, 0)
 
-    def test_shrink_to_ratio_floor(self):
-        """With few tasks relative to workers (ratio below lower threshold), the policy
-        targets ceil(tasks/upper_task_ratio) and emits setDesired with that smaller count."""
-        # 5 tasks, 10 connected workers -> ratio 0.5 < 1; floor = max(1, ceil(5/10)) = 1.
+    def test_shrink_to_the_outstanding_task_count(self):
+        """With fewer tasks than connected workers, the policy shrinks to the task count."""
+        # 5 tasks, 10 connected workers, manager maximum 10 -> 5 workers still have work.
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(5)}
         workers = {WorkerID(f"w{i}".encode()): _create_mock_worker_heartbeat({}, queued_tasks=i) for i in range(10)}
         managed = list(workers.keys())
@@ -501,12 +560,14 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
 
         self.assertEqual(len(commands), 1)
         requests = list(commands[0].setDesiredTaskConcurrencyRequests)
-        self.assertEqual(requests[0].taskConcurrency, 1)
+        self.assertEqual(requests[0].taskConcurrency, 5)
 
-    def test_no_action_when_ratio_is_in_band(self):
-        """With the task/worker ratio inside [lower, upper], the policy targets the current
-        worker count and emits setDesired(current) unconditionally."""
-        # 15 tasks, 5 workers -> ratio 3, in [1, 10]; desired = current = 5.
+    def test_grows_to_the_maximum_while_tasks_outnumber_workers(self):
+        """With more tasks than connected workers, the policy grows to the manager's maximum.
+
+        The old ratio band left 15 tasks running on 5 workers indefinitely even though the manager
+        was allowed 10.
+        """
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(15)}
         workers = {WorkerID(f"w{i}".encode()): _create_mock_worker_heartbeat({}, queued_tasks=i) for i in range(5)}
         managed = list(workers.keys())
@@ -517,7 +578,7 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
 
         self.assertEqual(len(commands), 1)
         requests = list(commands[0].setDesiredTaskConcurrencyRequests)
-        self.assertEqual(requests[0].taskConcurrency, 5)
+        self.assertEqual(requests[0].taskConcurrency, 10)  # the heartbeat's maxTaskConcurrency
 
     def test_get_status_returns_scaling_manager_status(self):
         """VanillaScalingPolicy.get_status returns a ScalingManagerStatus object."""
