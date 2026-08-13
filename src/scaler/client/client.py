@@ -791,7 +791,7 @@ class Client:
             raise ClientQuitException("client is already stopped.")
 
     def __destroy(self):
-        if self._bridge is not None:
+        if self._bridge is not None and not sys.is_finalizing():
             self._bridge.join()
 
         if self._connector_agent is not None:
