@@ -126,9 +126,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends pandoc
-          # --override: jupyterlite-sphinx 0.22.1 caps jupyterlite-core<0.8 while
-          # kernel 0.8.0 (Pyodide 314) needs core>=0.8. See docs/jupyterlite-overrides.txt.
-          uv pip install --system --override docs/jupyterlite-overrides.txt -r docs/requirements_docs.txt playwright
+          uv pip install --system -r docs/requirements_docs.txt playwright
           playwright install --with-deps chromium
 
       - name: Build docs (incl. JupyterLite)
