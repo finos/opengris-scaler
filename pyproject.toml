@@ -79,7 +79,7 @@ dev = [
     "jupyterlite-sphinx>=0.23.0,<0.24",
     "mypy>=1.14.1",
     "nbsphinx",
-    "pyodide-build==0.35.1; python_version >= '3.12'",
+    "pyodide-build==0.39.0; python_version >= '3.12'",
     "shibuya",
     "sphinx-copybutton",
     "sphinx-substitution-extensions",
