@@ -13,7 +13,7 @@ from scaler.client.agent.task_manager import ClientTaskManager
 from scaler.client.serializer.mixins import Serializer
 from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig
-from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend
+from scaler.io.mixins import AsyncConnector, AsyncObjectStorageConnector, ConnectorRemoteType, NetworkBackend
 from scaler.io.ymq import YMQException
 from scaler.protocol.capnp import (
     BaseMessage,
@@ -69,10 +69,16 @@ class ClientAgent(threading.Thread):
         self._scheduler_address = scheduler_address
         self._network_backend = network_backend
         self._object_storage_address: Future[AddressConfig] = Future()
+
         if object_storage_address is not None:
             self._object_storage_address_override = AddressConfig.from_string(object_storage_address)
         else:
             self._object_storage_address_override = None
+
+        # The event loop is created by the agent's thread, but the client's thread requires it.
+        # A future safely publishes it across both threads.
+        self._loop: Future[asyncio.AbstractEventLoop] = Future()
+        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
 
         self._future_manager = future_manager
 
@@ -119,18 +125,30 @@ class ClientAgent(threading.Thread):
         self._heartbeat_manager.register(connector_external=self._connector_external)
 
     def run(self):
-        self._loop = asyncio.new_event_loop()
-        run_task_forever(self._loop, self._run())
+        loop = asyncio.new_event_loop()
+        self._loop.set_result(loop)
+        run_task_forever(loop, self._run())
 
     async def _run(self):
         self.__initialize()
         await self.__get_loops()
+
+    def get_loop(self) -> asyncio.AbstractEventLoop:
+        """Returns the agent's event loop, or blocks until the agent's thread starts it."""
+        return self._loop.result()
 
     def get_object_storage_address(self) -> AddressConfig:
         """Returns the object storage address, or block until it receives it."""
         if self._object_storage_address_override is not None:
             return self._object_storage_address_override
         return self._object_storage_address.result()
+
+    async def get_object_storage_connector(self) -> AsyncObjectStorageConnector:
+        """Returns the agent's object storage connector, or blocks until it is connected."""
+
+        assert self._connector_storage is not None
+        await self._connector_storage.wait_until_connected()
+        return self._connector_storage
 
     async def __on_receive_from_client(self, message: BaseMessage):
         if isinstance(message, ClientDisconnect):

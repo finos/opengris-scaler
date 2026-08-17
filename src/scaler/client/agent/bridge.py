@@ -26,14 +26,21 @@ import sys
 import threading
 import time
 import uuid
-from typing import Any, Awaitable, Callable, Iterable, Iterator, Optional
+from typing import Any, Awaitable, Callable, Coroutine, Iterable, Iterator, Optional
 
 from scaler.client.agent.client_agent import ClientAgent
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.serializer.mixins import Serializer
 from scaler.config.common.security import SecurityConfig
 from scaler.config.types.address import AddressConfig, SocketType
-from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend, SyncConnector
+from scaler.io.mixins import (
+    AsyncConnector,
+    AsyncObjectStorageConnector,
+    ConnectorRemoteType,
+    NetworkBackend,
+    SyncConnector,
+)
+from scaler.utility.exceptions import ClientQuitException
 from scaler.io.utility import serialize as _capnp_serialize
 from scaler.protocol.capnp import BaseMessage, ClientHeartbeat, Resource
 from scaler.utility.identifiers import ClientID
@@ -75,6 +82,20 @@ class ClientAgentBridge(abc.ABC):
     @abc.abstractmethod
     def join(self) -> None:
         """Wait for the agent to fully stop. Safe to call multiple times."""
+
+    @abc.abstractmethod
+    def run_in_agent(self, coroutine_factory: Callable[[], Coroutine]) -> concurrent.futures.Future:
+        """Run a coroutine on the agent's event loop, and return a future that completes with its result.
+
+        Can be called from any thread, including from the agent's event loop itself.
+        """
+
+    @abc.abstractmethod
+    async def object_storage_connector(self) -> AsyncObjectStorageConnector:
+        """Return the agent's object storage connector, once it is connected.
+
+        Must be awaited from the agent's event loop, e.g. from within ``run_in_agent()``.
+        """
 
 
 class IPCAgentBridge(ClientAgentBridge):
@@ -152,6 +173,22 @@ class IPCAgentBridge(ClientAgentBridge):
 
     def join(self) -> None:
         self._agent.join()
+
+    def run_in_agent(self, coroutine_factory: Callable[[], Coroutine]) -> concurrent.futures.Future:
+        loop = self._agent.get_loop()
+
+        coroutine = coroutine_factory()
+
+        try:
+            return asyncio.run_coroutine_threadsafe(coroutine, loop)
+        except RuntimeError as exc:
+            # The agent terminated (e.g. lost contact with the scheduler) and closed its event loop. Closing the
+            # coroutine avoids a "coroutine was never awaited" warning.
+            coroutine.close()
+            raise ClientQuitException("client agent is not running anymore.") from exc
+
+    async def object_storage_connector(self) -> AsyncObjectStorageConnector:
+        return await self._agent.get_object_storage_connector()
 
 
 # ---------------------------------------------------------------------------
@@ -741,6 +778,48 @@ class _InProcessSyncConnector(SyncConnector):
             pass
 
 
+class _InProcessFuture(concurrent.futures.Future):
+    """A future for a coroutine that runs on the browser's single event loop.
+
+    The client and the agent share that event loop, so blocking on a regular future would prevent the agent from ever
+    completing it. ``result()`` instead suspends the WebAssembly stack with ``run_sync()``, like
+    ``InProcessAgentBridge.get_object_storage_address()`` does, which lets the event loop keep driving the agent.
+    """
+
+    def __init__(self, coroutine: Coroutine) -> None:
+        super().__init__()
+
+        self._task = asyncio.ensure_future(coroutine)
+        self._task.add_done_callback(self.__on_task_done)
+
+    def result(self, timeout: Optional[float] = None) -> Any:
+        self.__wait(timeout)
+        return super().result(timeout=0)
+
+    def exception(self, timeout: Optional[float] = None) -> Optional[BaseException]:
+        self.__wait(timeout)
+        return super().exception(timeout=0)
+
+    def __wait(self, timeout: Optional[float]) -> None:
+        if self.done():
+            return
+
+        # `asyncio.wait()` never propagates the task's exception nor cancels it on timeout, so the outcome is always
+        # reported by the base class' methods below.
+        _run_sync(asyncio.wait([self._task], timeout=timeout))
+
+    def __on_task_done(self, task: "asyncio.Future") -> None:
+        if task.cancelled():
+            super().cancel()
+            return
+
+        exception = task.exception()
+        if exception is not None:
+            super().set_exception(exception)
+        else:
+            super().set_result(task.result())
+
+
 class InProcessAgentBridge(ClientAgentBridge):
     """Browser / Pyodide bridge. Runs the ``ClientAgent`` coroutine on the
     current asyncio loop instead of on a background thread, and exchanges
@@ -854,6 +933,21 @@ class InProcessAgentBridge(ClientAgentBridge):
         if self._task is None:
             return False
         return self._running and not self._task.done()
+
+    def run_in_agent(self, coroutine_factory: Callable[[], Coroutine]) -> concurrent.futures.Future:
+        coroutine = coroutine_factory()
+
+        if not self.is_alive():
+            # Closing the coroutine avoids a "coroutine was never awaited" warning.
+            coroutine.close()
+            raise ClientQuitException("client agent is not running anymore.")
+
+        # The agent runs on this very event loop, so the coroutine is scheduled directly instead of going through
+        # `asyncio.run_coroutine_threadsafe()`, which would deadlock.
+        return _InProcessFuture(coroutine)
+
+    async def object_storage_connector(self) -> AsyncObjectStorageConnector:
+        return await self._agent.get_object_storage_connector()
 
     def join(self) -> None:
         if self._task is None:
