@@ -103,6 +103,8 @@ class ClientAgent(threading.Thread):
         self._task_manager: Optional[ClientTaskManager] = None
 
     def __initialize(self):
+        self._connector_storage = self._network_backend.create_async_object_storage_connector(identity=self._identity)
+
         self._disconnect_manager = ClientDisconnectManager()
         self._heartbeat_manager = ClientHeartbeatManager(
             death_timeout_seconds=self._timeout_seconds, storage_address_future=self._object_storage_address
@@ -197,6 +199,16 @@ class ClientAgent(threading.Thread):
 
         raise TypeError(f"Unknown {message=}")
 
+    async def __connect_object_storage(self):
+        """Connects the object storage connector, or waits until the scheduler provides its address."""
+
+        if self._object_storage_address_override is not None:
+            object_storage_address = self._object_storage_address_override
+        else:
+            object_storage_address = await asyncio.wrap_future(self._object_storage_address)
+
+        await self._connector_storage.connect(object_storage_address, security_config=self._security_config)
+
     async def __get_loops(self):
         exception = None
         try:
@@ -208,6 +220,8 @@ class ClientAgent(threading.Thread):
             await self._heartbeat_manager.send_heartbeat()
 
             loops = [
+                self.__connect_object_storage(),
+                create_async_loop_routine(self._connector_storage.routine, 0),
                 create_async_loop_routine(self._connector_external.routine, 0),
                 create_async_loop_routine(self._connector_internal.routine, 0),
                 create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
@@ -227,6 +241,7 @@ class ClientAgent(threading.Thread):
 
             self._connector_external.destroy()
             self._connector_internal.destroy()
+            self._connector_storage.destroy()
 
         if exception is None:
             return
