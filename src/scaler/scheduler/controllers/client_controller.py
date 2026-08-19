@@ -57,8 +57,6 @@ class VanillaClientController(ClientController, Looper, Reporter):
         return client_id in self._client_last_seen
 
     def get_client_id(self, task_id: TaskID) -> Optional[ClientID]:
-        # get_key raises for a task no tracked client owns, which a TaskLog arriving after its task has
-        # finished hits straight from on_receive_message, killing the scheduler. Return the documented None.
         if not self._client_to_task_ids.has_value(task_id):
             return None
         return self._client_to_task_ids.get_key(task_id)
