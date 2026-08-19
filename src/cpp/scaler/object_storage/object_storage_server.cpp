@@ -1,6 +1,7 @@
 #include "scaler/object_storage/object_storage_server.h"
 
 #include <algorithm>
+#include <chrono>
 #include <csignal>
 #include <cstdint>
 #include <exception>
@@ -12,6 +13,9 @@
 
 namespace scaler {
 namespace object_storage {
+
+// How often the receive loop wakes up to check for a shutdown request.
+static constexpr std::chrono::milliseconds shutdownPollInterval {100};
 
 // Global atomic flag to indicate termination request
 static std::atomic<bool> sigRequestStop {false};
@@ -133,7 +137,7 @@ void ObjectStorageServer::processRequests(std::function<bool()> running)
             }
 
             auto maybeMessageFuture = _socket->recvMessage();
-            while (maybeMessageFuture.wait_for(std::chrono::milliseconds(100)) == std::future_status::timeout) {
+            while (maybeMessageFuture.wait_for(shutdownPollInterval) == std::future_status::timeout) {
                 if (!running() || sigRequestStop) {
                     _logger.log(scaler::ymq::Logger::LoggingLevel::info, "ObjectStorageServer: stopped by user");
                     pendingRequests.clear();
@@ -251,9 +255,9 @@ void ObjectStorageServer::processSetRequest(
 {
     const auto requestHeader = std::move(request.first);
     auto requestPayload      = std::move(request.second);
-    if (requestHeader.payloadLength > MEMORY_LIMIT_IN_BYTES) {
+    if (requestHeader.payloadLength > memoryLimitInBytes) {
         throw std::runtime_error(
-            "payload length is larger than MEMORY_LIMIT_IN_BYTES=" + std::to_string(MEMORY_LIMIT_IN_BYTES));
+            "payload length is larger than memoryLimitInBytes=" + std::to_string(memoryLimitInBytes));
     }
 
     if (requestHeader.payloadLength > std::numeric_limits<size_t>::max()) {
